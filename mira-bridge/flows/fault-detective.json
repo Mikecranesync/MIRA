@@ -939,5 +939,1645 @@
         "x": 560,
         "y": 360,
         "wires": []
+    },
+    {
+        "id": "fd-plc-modbus-client",
+        "type": "modbus-client",
+        "name": "Micro820 192.168.1.100",
+        "clienttype": "tcp",
+        "bufferCommands": true,
+        "stateLogEnabled": false,
+        "queueLogEnabled": false,
+        "failureLogEnabled": true,
+        "tcpHost": "192.168.1.100",
+        "tcpPort": "502",
+        "tcpType": "DEFAULT",
+        "serialPort": "",
+        "serialType": "RTU-BUFFERD",
+        "serialBaudrate": "9600",
+        "serialDatabits": "8",
+        "serialStopbits": "1",
+        "serialParity": "none",
+        "serialConnectionDelay": "100",
+        "unit_id": 1,
+        "commandDelay": "1",
+        "clientTimeout": 1500,
+        "reconnectOnTimeout": true,
+        "reconnectTimeout": 2000,
+        "parallelUnitIdsAllowed": true,
+        "showStatusActivities": false,
+        "showErrors": false
+    },
+    {
+        "id": "fd-plc-grp-buttons",
+        "type": "ui-group",
+        "name": "Pushbuttons / Selector / E-stop (Local I/O)",
+        "page": "fd-page",
+        "width": "12",
+        "order": 6
+    },
+    {
+        "id": "fd-plc-grp-outputs",
+        "type": "ui-group",
+        "name": "Outputs / Lights (DO)",
+        "page": "fd-page",
+        "width": "12",
+        "order": 7
+    },
+    {
+        "id": "fd-plc-grp-vfd",
+        "type": "ui-group",
+        "name": "VFD-101 (GS10)",
+        "page": "fd-page",
+        "width": "12",
+        "order": 8
+    },
+    {
+        "id": "fd-plc-grp-state",
+        "type": "ui-group",
+        "name": "State machine + counters",
+        "page": "fd-page",
+        "width": "12",
+        "order": 9
+    },
+    {
+        "id": "fd-plc-grp-safety",
+        "type": "ui-group",
+        "name": "Safety chain",
+        "page": "fd-page",
+        "width": "12",
+        "order": 10
+    },
+    {
+        "id": "fd-plc-tick",
+        "type": "inject",
+        "z": "fd-tab",
+        "name": "PLC poll 500ms",
+        "repeat": "0.5",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "2",
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 140,
+        "y": 800,
+        "wires": [
+            [
+                "fd-plc-build-coils",
+                "fd-plc-build-hrs"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-build-coils",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "build coil read",
+        "func": "msg.payload = {value: msg.payload, 'fc': 1, 'unitid': 1, 'address': 0, 'quantity': 22};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 360,
+        "y": 780,
+        "wires": [
+            [
+                "fd-plc-read-coils"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-read-coils",
+        "type": "modbus-flex-getter",
+        "z": "fd-tab",
+        "name": "Read coils 0-21",
+        "showStatusActivities": false,
+        "showErrors": false,
+        "logIOActivities": false,
+        "server": "fd-plc-modbus-client",
+        "useIOFile": false,
+        "ioFile": "",
+        "useIOForPayload": false,
+        "emptyMsgOnFail": false,
+        "keepMsgProperties": false,
+        "delayOnStart": false,
+        "startDelayTime": "",
+        "x": 580,
+        "y": 780,
+        "wires": [
+            [
+                "fd-plc-pub-coils"
+            ],
+            []
+        ]
+    },
+    {
+        "id": "fd-plc-build-hrs",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "build HR read",
+        "func": "msg.payload = {value: msg.payload, 'fc': 3, 'unitid': 1, 'address': 100, 'quantity': 17};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 360,
+        "y": 840,
+        "wires": [
+            [
+                "fd-plc-read-hrs"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-read-hrs",
+        "type": "modbus-flex-getter",
+        "z": "fd-tab",
+        "name": "Read HR 100-116",
+        "showStatusActivities": false,
+        "showErrors": false,
+        "logIOActivities": false,
+        "server": "fd-plc-modbus-client",
+        "useIOFile": false,
+        "ioFile": "",
+        "useIOForPayload": false,
+        "emptyMsgOnFail": false,
+        "keepMsgProperties": false,
+        "delayOnStart": false,
+        "startDelayTime": "",
+        "x": 580,
+        "y": 840,
+        "wires": [
+            [
+                "fd-plc-pub-hrs"
+            ],
+            []
+        ]
+    },
+    {
+        "id": "fd-plc-pub-coils",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "publish coil topics",
+        "func": "const bits = msg.payload || [];\nif (bits.length < 22) return null;\nconst T = (val) => ({payload: JSON.stringify({value: !!val, ts: Date.now()/1000, source: 'plc-live'})});\nconst labels = ['motor/m101/running','motor/m101/conveyor_running','safety/fault_alarm','vfd/vfd101/comm_ok',\n    'state/system_ready','safety/estop','plc/di/selector_fwd','plc/di/selector_rev','plc/heartbeat',\n    'safety/wiring','safety/dir_fault','plc/di/di00_fwd','plc/di/di01_rev','plc/di/di02_estop_nc',\n    'plc/di/di03_estop_no','plc/di/di04_pbrun','plc/do/do00_green','plc/do/do01_red',\n    'safety/contactor_q1','plc/do/do03_pbrun_led','vfd/vfd101/poll_active','vfd/vfd101/fault_reset_pending'];\nconst out = [];\nfor (let i = 0; i < 22; i++) {\n    out.push({topic: 'demo/cell1/conveyor/cv101/' + labels[i],\n             payload: JSON.stringify({value: !!bits[i], ts: Date.now()/1000, source: 'plc-live'})});\n}\n// Send as msg.payload array on a single output; we wire a 'split' to send N msgs.\nreturn [out];\n",
+        "outputs": 1,
+        "x": 820,
+        "y": 780,
+        "wires": [
+            [
+                "fd-plc-pub-out"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-pub-hrs",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "publish HR topics",
+        "func": "const r = msg.payload || [];\nif (r.length < 17) return null;\nfunction topic(rel, value, fmt) {\n    return {topic: 'demo/cell1/conveyor/cv101/' + rel,\n            payload: JSON.stringify({value, ts: Date.now()/1000, source: 'plc-live'})};\n}\nconst out = [\n    topic('motor/m101/speed_rpm', r[0]),\n    topic('motor/m101/current_a', r[1] / 10.0),\n    topic('motor/m101/temp_c', r[2]),\n    topic('motor/m101/pressure_psi', r[3]),\n    topic('vfd/vfd101/conveyor_speed', r[4]),\n    topic('state/error_code', r[5]),\n    topic('vfd/vfd101/freq', r[6] / 10.0),\n    topic('vfd/vfd101/current_a', r[7] / 10.0),\n    topic('vfd/vfd101/voltage_v', r[8] / 10.0),\n    topic('vfd/vfd101/dc_bus_v', r[9] / 10.0),\n    topic('state/item_count', r[10]),\n    topic('state/uptime_s', r[11]),\n    topic('vfd/vfd101/speed_cmd', r[12]),\n    topic('state/conv_state', r[13]),\n    topic('vfd/vfd101/cmd_word', r[14]),\n    topic('vfd/vfd101/freq_setpoint', r[15] / 10.0),\n    topic('vfd/vfd101/poll_step', r[16]),\n];\nreturn [out];\n",
+        "outputs": 1,
+        "x": 820,
+        "y": 840,
+        "wires": [
+            [
+                "fd-plc-pub-out"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-pub-out",
+        "type": "split",
+        "z": "fd-tab",
+        "name": "split",
+        "splt": "\\n",
+        "spltType": "str",
+        "arraySplt": 1,
+        "arraySpltType": "len",
+        "stream": false,
+        "addname": "",
+        "x": 1050,
+        "y": 810,
+        "wires": [
+            [
+                "fd-plc-mqtt-out"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-mqtt-out",
+        "type": "mqtt out",
+        "z": "fd-tab",
+        "name": "publish demo/#",
+        "topic": "",
+        "qos": "",
+        "retain": "true",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correlationData": "",
+        "expiry": "",
+        "broker": "fd-mqtt",
+        "x": 1250,
+        "y": 810,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-selector_fwd-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Selector FWD",
+        "topic": "demo/cell1/conveyor/cv101/plc/di/selector_fwd",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 1030,
+        "wires": [
+            [
+                "fd-plc-sub-selector_fwd-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-selector_fwd-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = v ? 'ON ' : 'off';\nmsg.ui_update = {color: v ? '#4caf50' : '#666666'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 1030,
+        "wires": [
+            [
+                "fd-plc-sub-selector_fwd-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-selector_fwd-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-buttons",
+        "name": "Selector FWD",
+        "label": "Selector FWD",
+        "order": 1,
+        "width": "4",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 1030,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-selector_rev-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Selector REV",
+        "topic": "demo/cell1/conveyor/cv101/plc/di/selector_rev",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 1060,
+        "wires": [
+            [
+                "fd-plc-sub-selector_rev-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-selector_rev-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = v ? 'ON ' : 'off';\nmsg.ui_update = {color: v ? '#4caf50' : '#666666'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 1060,
+        "wires": [
+            [
+                "fd-plc-sub-selector_rev-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-selector_rev-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-buttons",
+        "name": "Selector REV",
+        "label": "Selector REV",
+        "order": 2,
+        "width": "4",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 1060,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-pb_run-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "PB RUN",
+        "topic": "demo/cell1/conveyor/cv101/plc/di/di04_pbrun",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 1090,
+        "wires": [
+            [
+                "fd-plc-sub-pb_run-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-pb_run-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = v ? 'ON ' : 'off';\nmsg.ui_update = {color: v ? '#4caf50' : '#666666'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 1090,
+        "wires": [
+            [
+                "fd-plc-sub-pb_run-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-pb_run-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-buttons",
+        "name": "PB RUN",
+        "label": "PB RUN",
+        "order": 3,
+        "width": "4",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 1090,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-e_stop_nc-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "E-stop NC",
+        "topic": "demo/cell1/conveyor/cv101/plc/di/di02_estop_nc",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 1120,
+        "wires": [
+            [
+                "fd-plc-sub-e_stop_nc-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-e_stop_nc-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = v ? 'ON ' : 'off';\nmsg.ui_update = {color: v ? '#4caf50' : '#666666'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 1120,
+        "wires": [
+            [
+                "fd-plc-sub-e_stop_nc-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-e_stop_nc-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-buttons",
+        "name": "E-stop NC",
+        "label": "E-stop NC",
+        "order": 4,
+        "width": "4",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 1120,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-e_stop_no-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "E-stop NO",
+        "topic": "demo/cell1/conveyor/cv101/plc/di/di03_estop_no",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 1150,
+        "wires": [
+            [
+                "fd-plc-sub-e_stop_no-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-e_stop_no-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = v ? 'ON ' : 'off';\nmsg.ui_update = {color: v ? '#4caf50' : '#666666'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 1150,
+        "wires": [
+            [
+                "fd-plc-sub-e_stop_no-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-e_stop_no-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-buttons",
+        "name": "E-stop NO",
+        "label": "E-stop NO",
+        "order": 5,
+        "width": "4",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 1150,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-heartbeat-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Heartbeat",
+        "topic": "demo/cell1/conveyor/cv101/plc/heartbeat",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 1180,
+        "wires": [
+            [
+                "fd-plc-sub-heartbeat-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-heartbeat-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = v ? 'ON ' : 'off';\nmsg.ui_update = {color: v ? '#4caf50' : '#666666'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 1180,
+        "wires": [
+            [
+                "fd-plc-sub-heartbeat-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-heartbeat-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-buttons",
+        "name": "Heartbeat",
+        "label": "Heartbeat",
+        "order": 6,
+        "width": "4",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 1180,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-light_green-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Light GREEN",
+        "topic": "demo/cell1/conveyor/cv101/plc/do/do00_green",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 1630,
+        "wires": [
+            [
+                "fd-plc-sub-light_green-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-light_green-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = v ? 'ON ' : 'off';\nmsg.ui_update = {color: v ? '#4caf50' : '#666666'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 1630,
+        "wires": [
+            [
+                "fd-plc-sub-light_green-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-light_green-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-outputs",
+        "name": "Light GREEN",
+        "label": "Light GREEN",
+        "order": 21,
+        "width": "3",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 1630,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-light_red-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Light RED",
+        "topic": "demo/cell1/conveyor/cv101/plc/do/do01_red",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 1660,
+        "wires": [
+            [
+                "fd-plc-sub-light_red-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-light_red-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = v ? 'ON ' : 'off';\nmsg.ui_update = {color: v ? '#4caf50' : '#666666'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 1660,
+        "wires": [
+            [
+                "fd-plc-sub-light_red-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-light_red-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-outputs",
+        "name": "Light RED",
+        "label": "Light RED",
+        "order": 22,
+        "width": "3",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 1660,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-pb_run_led-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "PB RUN LED",
+        "topic": "demo/cell1/conveyor/cv101/plc/do/do03_pbrun_led",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 1690,
+        "wires": [
+            [
+                "fd-plc-sub-pb_run_led-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-pb_run_led-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = v ? 'ON ' : 'off';\nmsg.ui_update = {color: v ? '#4caf50' : '#666666'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 1690,
+        "wires": [
+            [
+                "fd-plc-sub-pb_run_led-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-pb_run_led-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-outputs",
+        "name": "PB RUN LED",
+        "label": "PB RUN LED",
+        "order": 23,
+        "width": "3",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 1690,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-contactor_q1-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Contactor Q1",
+        "topic": "demo/cell1/conveyor/cv101/safety/contactor_q1",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 1720,
+        "wires": [
+            [
+                "fd-plc-sub-contactor_q1-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-contactor_q1-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = v ? 'ON ' : 'off';\nmsg.ui_update = {color: v ? '#4caf50' : '#666666'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 1720,
+        "wires": [
+            [
+                "fd-plc-sub-contactor_q1-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-contactor_q1-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-outputs",
+        "name": "Contactor Q1",
+        "label": "Contactor Q1",
+        "order": 24,
+        "width": "3",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 1720,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-frequency_(hz)-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Frequency (Hz)",
+        "topic": "demo/cell1/conveyor/cv101/vfd/vfd101/freq",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 2230,
+        "wires": [
+            [
+                "fd-plc-sub-frequency_(hz)-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-frequency_(hz)-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = (typeof v === 'number') ? v.toFixed(1) : String(v);\nmsg.ui_update = {color: '#90caf9'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 2230,
+        "wires": [
+            [
+                "fd-plc-sub-frequency_(hz)-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-frequency_(hz)-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-vfd",
+        "name": "Frequency (Hz)",
+        "label": "Frequency (Hz)",
+        "order": 41,
+        "width": "3",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 2230,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-current_(a)-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Current (A)",
+        "topic": "demo/cell1/conveyor/cv101/vfd/vfd101/current_a",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 2260,
+        "wires": [
+            [
+                "fd-plc-sub-current_(a)-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-current_(a)-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = (typeof v === 'number') ? v.toFixed(1) : String(v);\nmsg.ui_update = {color: '#90caf9'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 2260,
+        "wires": [
+            [
+                "fd-plc-sub-current_(a)-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-current_(a)-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-vfd",
+        "name": "Current (A)",
+        "label": "Current (A)",
+        "order": 42,
+        "width": "3",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 2260,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-voltage_(v)-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Voltage (V)",
+        "topic": "demo/cell1/conveyor/cv101/vfd/vfd101/voltage_v",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 2290,
+        "wires": [
+            [
+                "fd-plc-sub-voltage_(v)-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-voltage_(v)-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = (typeof v === 'number') ? v.toFixed(1) : String(v);\nmsg.ui_update = {color: '#90caf9'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 2290,
+        "wires": [
+            [
+                "fd-plc-sub-voltage_(v)-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-voltage_(v)-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-vfd",
+        "name": "Voltage (V)",
+        "label": "Voltage (V)",
+        "order": 43,
+        "width": "3",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 2290,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-dc_bus_(v)-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "DC Bus (V)",
+        "topic": "demo/cell1/conveyor/cv101/vfd/vfd101/dc_bus_v",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 2320,
+        "wires": [
+            [
+                "fd-plc-sub-dc_bus_(v)-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-dc_bus_(v)-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = (typeof v === 'number') ? v.toFixed(1) : String(v);\nmsg.ui_update = {color: '#90caf9'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 2320,
+        "wires": [
+            [
+                "fd-plc-sub-dc_bus_(v)-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-dc_bus_(v)-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-vfd",
+        "name": "DC Bus (V)",
+        "label": "DC Bus (V)",
+        "order": 44,
+        "width": "3",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 2320,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-setpoint_(hz)-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Setpoint (Hz)",
+        "topic": "demo/cell1/conveyor/cv101/vfd/vfd101/freq_setpoint",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 2350,
+        "wires": [
+            [
+                "fd-plc-sub-setpoint_(hz)-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-setpoint_(hz)-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = (typeof v === 'number') ? v.toFixed(1) : String(v);\nmsg.ui_update = {color: '#90caf9'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 2350,
+        "wires": [
+            [
+                "fd-plc-sub-setpoint_(hz)-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-setpoint_(hz)-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-vfd",
+        "name": "Setpoint (Hz)",
+        "label": "Setpoint (Hz)",
+        "order": 45,
+        "width": "3",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 2350,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-speed_cmd-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Speed Cmd",
+        "topic": "demo/cell1/conveyor/cv101/vfd/vfd101/speed_cmd",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 2380,
+        "wires": [
+            [
+                "fd-plc-sub-speed_cmd-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-speed_cmd-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = String(v);\nmsg.ui_update = {color: '#90caf9'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 2380,
+        "wires": [
+            [
+                "fd-plc-sub-speed_cmd-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-speed_cmd-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-vfd",
+        "name": "Speed Cmd",
+        "label": "Speed Cmd",
+        "order": 46,
+        "width": "3",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 2380,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-cmd_word-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Cmd word",
+        "topic": "demo/cell1/conveyor/cv101/vfd/vfd101/cmd_word",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 2410,
+        "wires": [
+            [
+                "fd-plc-sub-cmd_word-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-cmd_word-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nconst names = {1:'STOP',7:'RESET',18:'FWD+RUN',20:'REV+RUN'};\nmsg.payload = (names[v] || ('?' + v));\nmsg.ui_update = {color: '#90caf9'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 2410,
+        "wires": [
+            [
+                "fd-plc-sub-cmd_word-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-cmd_word-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-vfd",
+        "name": "Cmd word",
+        "label": "Cmd word",
+        "order": 47,
+        "width": "3",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 2410,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-comm_ok-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Comm OK",
+        "topic": "demo/cell1/conveyor/cv101/vfd/vfd101/comm_ok",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 2440,
+        "wires": [
+            [
+                "fd-plc-sub-comm_ok-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-comm_ok-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = v ? 'ON ' : 'off';\nmsg.ui_update = {color: v ? '#4caf50' : '#666666'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 2440,
+        "wires": [
+            [
+                "fd-plc-sub-comm_ok-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-comm_ok-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-vfd",
+        "name": "Comm OK",
+        "label": "Comm OK",
+        "order": 48,
+        "width": "3",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 2440,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-conveyor_state-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Conveyor State",
+        "topic": "demo/cell1/conveyor/cv101/state/conv_state",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 2830,
+        "wires": [
+            [
+                "fd-plc-sub-conveyor_state-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-conveyor_state-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nconst names = {0:'IDLE',1:'STARTING',2:'RUNNING',3:'STOPPING',4:'FAULT'};\nmsg.payload = (names[v] || 'unk') + ' (' + v + ')';\nmsg.ui_update = {color: v === 2 ? '#4caf50' : (v === 4 ? '#f44336' : '#ff9800')};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 2830,
+        "wires": [
+            [
+                "fd-plc-sub-conveyor_state-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-conveyor_state-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-state",
+        "name": "Conveyor State",
+        "label": "Conveyor State",
+        "order": 61,
+        "width": "4",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 2830,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-error_code-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Error code",
+        "topic": "demo/cell1/conveyor/cv101/state/error_code",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 2860,
+        "wires": [
+            [
+                "fd-plc-sub-error_code-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-error_code-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nconst names = {0:'none',6:'E-STOP',7:'WIRING',8:'DIR',9:'VFD COMM'};\nmsg.payload = (names[v] || ('err' + v));\nmsg.ui_update = {color: v === 0 ? '#4caf50' : '#f44336'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 2860,
+        "wires": [
+            [
+                "fd-plc-sub-error_code-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-error_code-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-state",
+        "name": "Error code",
+        "label": "Error code",
+        "order": 62,
+        "width": "4",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 2860,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-motor_rpm-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Motor RPM",
+        "topic": "demo/cell1/conveyor/cv101/motor/m101/speed_rpm",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 2890,
+        "wires": [
+            [
+                "fd-plc-sub-motor_rpm-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-motor_rpm-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = String(v);\nmsg.ui_update = {color: '#90caf9'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 2890,
+        "wires": [
+            [
+                "fd-plc-sub-motor_rpm-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-motor_rpm-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-state",
+        "name": "Motor RPM",
+        "label": "Motor RPM",
+        "order": 63,
+        "width": "4",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 2890,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-item_count-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Item count",
+        "topic": "demo/cell1/conveyor/cv101/state/item_count",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 2920,
+        "wires": [
+            [
+                "fd-plc-sub-item_count-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-item_count-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = String(v);\nmsg.ui_update = {color: '#90caf9'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 2920,
+        "wires": [
+            [
+                "fd-plc-sub-item_count-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-item_count-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-state",
+        "name": "Item count",
+        "label": "Item count",
+        "order": 64,
+        "width": "4",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 2920,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-uptime_(s)-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Uptime (s)",
+        "topic": "demo/cell1/conveyor/cv101/state/uptime_s",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 2950,
+        "wires": [
+            [
+                "fd-plc-sub-uptime_(s)-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-uptime_(s)-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = String(v);\nmsg.ui_update = {color: '#90caf9'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 2950,
+        "wires": [
+            [
+                "fd-plc-sub-uptime_(s)-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-uptime_(s)-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-state",
+        "name": "Uptime (s)",
+        "label": "Uptime (s)",
+        "order": 65,
+        "width": "4",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 2950,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-e_stop_active-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "E-STOP active",
+        "topic": "demo/cell1/conveyor/cv101/safety/estop",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 3430,
+        "wires": [
+            [
+                "fd-plc-sub-e_stop_active-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-e_stop_active-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = v ? 'ACTIVE' : 'ok';\nmsg.ui_update = {color: v ? '#f44336' : '#4caf50'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 3430,
+        "wires": [
+            [
+                "fd-plc-sub-e_stop_active-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-e_stop_active-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-safety",
+        "name": "E-STOP active",
+        "label": "E-STOP active",
+        "order": 81,
+        "width": "3",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 3430,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-e_stop_wiring-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "E-stop wiring",
+        "topic": "demo/cell1/conveyor/cv101/safety/wiring",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 3460,
+        "wires": [
+            [
+                "fd-plc-sub-e_stop_wiring-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-e_stop_wiring-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = v ? 'ACTIVE' : 'ok';\nmsg.ui_update = {color: v ? '#f44336' : '#4caf50'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 3460,
+        "wires": [
+            [
+                "fd-plc-sub-e_stop_wiring-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-e_stop_wiring-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-safety",
+        "name": "E-stop wiring",
+        "label": "E-stop wiring",
+        "order": 82,
+        "width": "3",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 3460,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-direction_fault-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Direction fault",
+        "topic": "demo/cell1/conveyor/cv101/safety/dir_fault",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 3490,
+        "wires": [
+            [
+                "fd-plc-sub-direction_fault-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-direction_fault-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = v ? 'ACTIVE' : 'ok';\nmsg.ui_update = {color: v ? '#f44336' : '#4caf50'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 3490,
+        "wires": [
+            [
+                "fd-plc-sub-direction_fault-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-direction_fault-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-safety",
+        "name": "Direction fault",
+        "label": "Direction fault",
+        "order": 83,
+        "width": "3",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 3490,
+        "wires": []
+    },
+    {
+        "id": "fd-plc-sub-fault_alarm-in",
+        "type": "mqtt in",
+        "z": "fd-tab",
+        "name": "Fault alarm",
+        "topic": "demo/cell1/conveyor/cv101/safety/fault_alarm",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "fd-mqtt",
+        "x": 140,
+        "y": 3520,
+        "wires": [
+            [
+                "fd-plc-sub-fault_alarm-fn"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-fault_alarm-fn",
+        "type": "function",
+        "z": "fd-tab",
+        "name": "format",
+        "func": "const v = (msg.payload && typeof msg.payload === 'object') ? msg.payload.value : msg.payload;\nmsg.payload = v ? 'ACTIVE' : 'ok';\nmsg.ui_update = {color: v ? '#f44336' : '#4caf50'};\nreturn msg;\n",
+        "outputs": 1,
+        "x": 380,
+        "y": 3520,
+        "wires": [
+            [
+                "fd-plc-sub-fault_alarm-text"
+            ]
+        ]
+    },
+    {
+        "id": "fd-plc-sub-fault_alarm-text",
+        "type": "ui-text",
+        "z": "fd-tab",
+        "group": "fd-plc-grp-safety",
+        "name": "Fault alarm",
+        "label": "Fault alarm",
+        "order": 84,
+        "width": "3",
+        "height": "1",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "style": false,
+        "font": "",
+        "fontSize": "14",
+        "color": "#cccccc",
+        "x": 620,
+        "y": 3520,
+        "wires": []
     }
 ]
