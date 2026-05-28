@@ -132,6 +132,9 @@ class State:
         self._last_pe101_dropouts = 0
         self._last_pe102_dropouts = 0
         self._last_px101_dropouts = 0
+        self._pe101_window_anchor = 0
+        self._pe102_window_anchor = 0
+        self._px101_window_anchor = 0
         self._window_start = time.time()
         self._window_s = 1.5
 
@@ -186,10 +189,22 @@ class State:
                 s.sim_mode = value
 
     def refresh_dropout_windows(self) -> None:
+        """Compute delta-per-window so chatter detection isn't fooled by the
+        sim's cumulative counters (a normal product traversal ticks them too)."""
         s = self.snap
-        s.pe101_dropouts = self._last_pe101_dropouts
-        s.pe102_dropouts = self._last_pe102_dropouts
-        s.px101_dropouts = self._last_px101_dropouts
+        now = time.time()
+        elapsed = now - self._window_start
+        if elapsed >= self._window_s:
+            self.pe101_dropouts_window = max(0, self._last_pe101_dropouts - self._pe101_window_anchor)
+            self.pe102_dropouts_window = max(0, self._last_pe102_dropouts - self._pe102_window_anchor)
+            self.px101_dropouts_window = max(0, self._last_px101_dropouts - self._px101_window_anchor)
+            self._pe101_window_anchor = self._last_pe101_dropouts
+            self._pe102_window_anchor = self._last_pe102_dropouts
+            self._px101_window_anchor = self._last_px101_dropouts
+            self._window_start = now
+        s.pe101_dropouts = self.pe101_dropouts_window
+        s.pe102_dropouts = self.pe102_dropouts_window
+        s.px101_dropouts = self.px101_dropouts_window
 
 
 def _diagnosis_payload(diag: Optional[rules.Diagnosis]) -> str:
