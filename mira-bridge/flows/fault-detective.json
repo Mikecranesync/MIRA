@@ -39,7 +39,8 @@
         "type": "ui-base",
         "name": "MIRA Dashboard",
         "path": "/dashboard",
-        "appIcon": ""
+        "appIcon": "",
+        "navigationStyle": "temporary"
     },
     {
         "id": "fd-ui-theme",
