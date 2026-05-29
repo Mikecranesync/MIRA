@@ -1,114 +1,82 @@
-# PLAN — claude/upbeat-banach-4bb1d5 (hub-overhaul)
+# PLAN — feat/hub-discovery-scan
 
-**Status:** Active (2026-05-20)
-**Branch:** `claude/upbeat-banach-4bb1d5` (off `origin/main` after rebase to `09786be3`)
-**Worktree:** `.claude/worktrees/upbeat-banach-4bb1d5/`
-**Task source:** Mike's hub-overhaul brief, 2026-05-20
+**Status:** Active (2026-05-29)
+**Branch:** `feat/hub-discovery-scan` (off `origin/main` @ 16c4d3b4)
+**Worktree:** `.claude/worktrees/hub-discovery/`
+**Operator:** Mike · **Token budget:** default · **Max turns before compact:** 200
 
-> Previous PLAN.md (May-21 demo branch) is overwritten — that scope shipped on
-> a different branch. This file is THIS branch's scope contract.
-
----
-
-## In-scope (this session)
-
-### Phase 1 — File GitHub issues (no code yet)
-
-1. **Create `hub-overhaul` label** on the repo.
-2. **File 12 issues** under that label, in priority order P0 → P1 → P2:
-   - P0: ADR-0014 product-led decision · remove mira-sidecar from saas.yml ·
-     hide mock Hub pages behind Labs flag · reorder Hub sidebar · build
-     `/quickstart` page.
-   - P1: extend onboarding wizard step 5 · self-serve signup CTA on
-     marketing homepage · fix pricing inconsistency · remove /plc GitHub
-     Pages iframe.
-   - P2: evaluate sunsetting mira-core · split engine.py god-class ·
-     evaluate replacing mira-bridge with FlowFuse.
-
-### Phase 2 — Implement P0 items A–E on this branch
-
-A. **ADR-0014** — `docs/adr/0014-product-led-wedge.md` (status: accepted).
-B. **Remove `mira-sidecar` service block** from `docker-compose.saas.yml`
-   (the block at line 56 + the `SIDECAR_URL=…` env reference at line 175).
-C. **Sidebar reorder** — rewrite `NAV_ITEMS` in
-   `mira-hub/src/providers/access-control.ts`:
-   - Primary: Feed, Namespace, Channels, Knowledge, Proposals
-   - Secondary (collapsed): Assets, CMMS (Work Orders), Scan, Settings, Admin
-   - Labs-gated: Conversations, Alerts, Requests, Parts, Reports, Team,
-     Documents
-   - Sidebar reads `NEXT_PUBLIC_LABS_ENABLED` to include Labs items.
-D. **Hide mock pages** — wrap the route components (or layout) for
-   `/conversations`, `/alerts`, `/requests`, `/parts`, `/reports`, `/team`,
-   `/documents` so that when `NEXT_PUBLIC_LABS_ENABLED !== "true"` they
-   show a "Coming soon — turn on Labs to preview" stub (do NOT delete).
-E. **`/quickstart` public page** — `mira-hub/src/app/quickstart/page.tsx`
-   (NOT inside `(hub)`, no auth):
-   - Manufacturer dropdown sourced from a new `GET /api/quickstart/manufacturers`
-     route that queries distinct manufacturers from `kg_entities` /
-     `knowledge_entries`.
-   - Symptom / fault-code text input.
-   - "Ask MIRA" button → `POST /api/quickstart/ask` → forwards to the
-     existing pipeline answer endpoint (re-use mira-pipeline if reachable;
-     otherwise stub with a clear "wire me up" comment).
-   - Renders the answer with citation chips.
-   - "Sign up to save" CTA → `/signup`.
-   - Mobile-friendly. Uses existing Hub design tokens.
-
-### Phase 3 — Playwright verification (local `bun run dev`; no VPS deploy)
-
-Playwright spec under `mira-hub/tests/e2e/audit-hub-overhaul.spec.ts`:
-- Sidebar order matches the spec (primary vs secondary).
-- Mock pages redirect / show "Coming soon" when Labs flag off; render real
-  page when Labs flag on.
-- `/quickstart` loads without auth.
-- `/quickstart` submits a query and renders an answer block.
-
-Screenshots into `docs/promo-screenshots/2026-05-20_hub-overhaul_*.png`.
-
-### Phase 4 — Push branch, open ONE PR
-
-Title: `feat(hub): hub-overhaul P0 (ADR-0014 + saas.yml + sidebar + Labs gate + /quickstart)`.
-
-### Phase 5 — HANDOFF + stop
-
-Write `HANDOFF_2026-05-20.md` row-by-row, then stop. P1/P2 are filed as
-issues only — implementation NOT in this session.
+> This file is THIS branch's scope contract. (Previous PLAN.md was the stale May-20
+> hub-overhaul brief, already shipped on another branch — overwritten.)
 
 ---
 
-## Out-of-scope (HANDOFF to operator — Mike). Editing these = STOP.
+## Goal (one sentence)
 
-| Item | Why deferred |
-|---|---|
-| VPS staging deploy / stg-mira-hub rebuild | SSH to VPS; prod-guard blocks. Mike's brief asked for staging verification; verify LOCALLY, hand off the VPS deploy. |
-| P1 items (#6–#9) | Filed as issues only |
-| P2 items (#10–#12) | Same |
-| Any change to `mira-bots/`, `mira-mcp/`, `engine.py` | Not in this scope |
-| Any prod NeonDB or prod docker compose | Always |
+A "Discovery" page in the MIRA Hub that displays the output of `plc/discover.py`
+(`fieldbus-inventory/1` payloads) in the browser — device table with tier color-coding,
+drag-drop upload, mobile-responsive — proven by a passing local Playwright e2e + screenshots.
 
----
+## In scope — numbered, ordered, **complete this list and STOP**
 
-## Stop conditions
+1. **Types + validation** — `mira-hub/src/lib/discovery.ts`: TS types for
+   `FieldbusInventory` / `FieldbusDevice` / `FieldbusUnknown` + `validateInventory()`
+   guard (schema must equal `fieldbus-inventory/1`). Unit test `src/lib/discovery.test.ts`.
+2. **Store** — `mira-hub/src/lib/discovery-store.ts`: in-memory `Map<tenantId, FieldbusInventory>`
+   module singleton, latest-only. Documented limit: lost on restart, not multi-instance-safe.
+3. **API route** — `mira-hub/src/app/api/discovery/route.ts`: `sessionOr401` on GET + POST.
+   GET → stored payload for tenant (or `{inventory:null}`). POST → validate schema → store.
+   `force-dynamic`. Unit test `src/app/api/discovery/route.test.ts` (POST→GET roundtrip, bad schema → 400).
+4. **Presentational component** — `mira-hub/src/components/discovery/device-table.tsx`:
+   device cards (address, transport, protocol, tier, profile|"—", identity, uns_hint,
+   next_actions, evidence), tier color (device_identified=green, protocol_confirmed=yellow,
+   port_open=dim), `unknowns` muted section, empty state.
+5. **Page** — `mira-hub/src/app/(hub)/discovery/page.tsx`: client component; GET on mount;
+   drag-drop + file-input upload that POSTs inventory.json; renders DeviceTable. Mobile-readable at 412px.
+6. **Nav** — add `discovery` item to `NAV_ITEMS` in `src/providers/access-control.ts`;
+   add icon + `navLabel` entry in `src/components/layout/sidebar.tsx`.
+7. **e2e proof** — `mira-hub/playwright.discovery.config.ts` (local `next build && next start`,
+   `NEXT_PUBLIC_BASE_PATH=""`, fixed `AUTH_SECRET`) + `tests/e2e/discovery.spec.ts`
+   (mint next-auth JWT cookie via `encode()`, POST fixture through the REAL route, load
+   `/discovery`, assert micro820 row renders green with its `uns_hint`). Fixture
+   `tests/e2e/fixtures/inventory.sample.json` (micro820 device_identified + port_open Modbus row + 1 unknown).
+8. **Screenshots** — `docs/promo-screenshots/2026-05-29_hub-discovery-scan_desktop.png`
+   (1440x900) + `_mobile.png` (412x915), real fixture data.
 
-- All 5 phases complete → write HANDOFF, stop.
-- Token usage > 70% / turn count > 200 → stop, HANDOFF.
-- Edit would touch OUT-of-scope path → STOP.
-- Pipeline / `/api/ask` doesn't exist → stub with TODO + a passing
-  Playwright assertion on the form path, then continue. Don't spend > 5
-  turns wiring the pipeline.
-- `bun run build` fails and isn't fixed in 5 turns → STOP, HANDOFF.
+## Explicitly OUT of scope (do not touch)
 
----
+- `mira-hub/src/app/(hub)/scan/page.tsx` — existing QR camera scanner. Separate surface.
+- Live scan from browser (env boundary — cloud can't reach plant LAN).
+- v1.5 `uns_hint` → `ai_suggestions` / KG auto-onboarding (spec §8/§12). Display the hint only.
+- NeonDB persistence / scan history (v1 = latest-only in-memory).
+- Service-token CLI→Hub push route (deferred; v1 = browser drag-drop only).
+- `bottom-tabs.tsx` curated 3-item mobile bar (deliberately not expanded).
+- `plc/discover.py`, `device-profiles/` (read for schema only).
+- **No prod NeonDB, no VPS docker, no prod bot. Prod blocked by hooks.**
 
-## Verification gates
+## Success criteria — per task
 
-| Step | Gate |
-|---|---|
-| A | `docs/adr/0014-product-led-wedge.md` exists, references 0008 |
-| B | `grep -c mira-sidecar docker-compose.saas.yml` returns 0 |
-| C | `bun run build` in `mira-hub` passes; sidebar tests pass |
-| D | Labs-off render shows "Coming soon"; Labs-on renders real page |
-| E | `/quickstart` loads (200) without auth; submit returns an answer block |
-| All | Playwright `audit-hub-overhaul.spec.ts` green; screenshots committed |
+| # | Task | How "done" is measured |
+|---|------|------------------------|
+| 1 | Types+validation | `bunx vitest run src/lib/discovery.test.ts` passes |
+| 2 | Store | covered by route test |
+| 3 | API route | `bunx vitest run src/app/api/discovery/route.test.ts` passes (POST→GET, bad schema 400) |
+| 4-6 | Page/component/nav | `npm run build` exits 0; `bun run lint` clean |
+| 7 | e2e | `npx playwright test -c playwright.discovery.config.ts` passes |
+| 8 | Screenshots | both PNGs exist in `docs/promo-screenshots/` |
 
-`tools/hooks/stop-gate.sh` will fire — don't bypass.
+## Stop conditions (any one → stop and write HANDOFF.md)
+
+- All 8 tasks complete (then STOP — no scope expansion).
+- Stop-gate (`npm run build`) blocks the same gate twice in a row.
+- Any modification would touch an OUT-of-scope file.
+- > 5 consecutive turns on the same failing test.
+- Token > 70% or turns > 200.
+
+## Commit / branch policy
+
+- Conventional commits. Push to `feat/hub-discovery-scan` only. Never main/develop/dev.
+- Commit every 20–30 turns of useful work.
+
+## Handoff protocol
+
+- Write `HANDOFF.md` (template `docs/templates/overnight-HANDOFF.md`) before stopping for any reason.
