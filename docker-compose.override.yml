@@ -2,6 +2,8 @@ services:
   mira-relay:
     build: ./mira-relay
     container_name: mira-relay
+    mem_limit: 256m
+    memswap_limit: 256m
     ports:
       - "127.0.0.1:8765:8765"
     environment:
