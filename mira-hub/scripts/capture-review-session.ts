@@ -41,19 +41,28 @@ const EMAIL = process.env.E2E_HUB_EMAIL ?? "playwright@factorylm.com";
 const PASSWORD = process.env.E2E_HUB_PASSWORD ?? "TestPass123";
 const DEFAULT_EMAIL = "playwright@factorylm.com";
 
+// Production hostnames — capturing here would create/exercise a test account
+// on prod (the pollution fixed in PR #1579). Listed explicitly so that staging
+// on a *.factorylm.com subdomain (e.g. staging.factorylm.com) is NOT treated as
+// prod; add new prod hostnames here if prod ever serves under another name.
+const PROD_HOSTNAMES = new Set([
+  "app.factorylm.com", // prod Hub
+  "factorylm.com",     // prod marketing apex
+  "165.245.138.91",    // prod VPS — guards the IP-direct bypass
+]);
+
 function assertNotProd(): void {
-  let host = "";
+  let hostname = "";
   try {
-    host = new URL(HUB_URL).host;
+    hostname = new URL(HUB_URL).hostname;
   } catch {
     console.error(`✗ HUB_URL is not a valid URL: ${HUB_URL}`);
     process.exit(1);
   }
-  const isProd = /(^|\.)app\.factorylm\.com$/.test(host) || /(^|\.)factorylm\.com$/.test(host);
-  if (!isProd) return;
+  if (!PROD_HOSTNAMES.has(hostname)) return;
   if (process.env.REVIEW_SESSION_ALLOW_PROD !== "1") {
     console.error(
-      `✗ Refusing to capture a session against production (${host}).\n` +
+      `✗ Refusing to capture a session against production (${hostname}).\n` +
         `  This tool targets STAGING. Capturing here would create/exercise a\n` +
         `  test account on prod. Set HUB_URL to the staging tunnel, or for a\n` +
         `  genuine prod monitor set REVIEW_SESSION_ALLOW_PROD=1 with a dedicated\n` +

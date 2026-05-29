@@ -182,6 +182,7 @@ function LoginFormInner() {
             type="button"
             onClick={() => setShowPasswordForm(v => !v)}
             aria-expanded={showPasswordForm}
+            aria-controls="password-signin-form"
             className="w-full flex items-center justify-between min-h-[44px] py-2 text-xs text-slate-400 hover:text-slate-200 transition-colors mb-3"
           >
             <span>Sign in with password</span>
@@ -189,7 +190,7 @@ function LoginFormInner() {
           </button>
 
           {showPasswordForm && (
-            <form onSubmit={handleSubmit} method="post" className="space-y-4">
+            <form id="password-signin-form" onSubmit={handleSubmit} method="post" className="space-y-4">
               <div>
                 <label htmlFor="login-email" className="block text-xs font-medium text-slate-400 mb-1.5">Email</label>
                 <Input

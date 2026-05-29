@@ -26,6 +26,10 @@ bun run scripts/capture-review-session.ts
 # → tests/e2e/.state/review-session.json   (gitignored)
 ```
 
+> **Treat the output as a secret.** `review-session.json` holds a live session
+> cookie (a valid login). It is gitignored, but don't paste it into logs, CI
+> artifacts, or issues, and re-capture rather than long-lived reuse.
+
 Consume it:
 - **web-review skill / Playwright:** open the context with
   `{ storageState: "tests/e2e/.state/review-session.json" }` (or, via the MCP
