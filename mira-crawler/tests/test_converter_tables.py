@@ -9,7 +9,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from ingest.converter import _format_table_markdown, extract_from_pdf
 
 

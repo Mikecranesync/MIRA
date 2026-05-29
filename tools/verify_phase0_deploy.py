@@ -29,7 +29,6 @@ from dataclasses import dataclass
 
 import psycopg2
 
-
 # Expected schema. Mirrors `mira-hub/db/migrations/025-027*.sql`.
 #
 # Keeping this hand-written rather than introspected lets the script catch
@@ -41,25 +40,64 @@ EXPECTED_TABLES = ("tag_entities", "wiring_connections", "ai_suggestions")
 
 EXPECTED_COLUMNS: dict[str, set[str]] = {
     "tag_entities": {
-        "id", "tenant_id", "uns_path", "sparkplug_topic", "opcua_node_id",
-        "symbolic_name", "data_type", "units", "scaling", "source_kind",
-        "source_address", "component_instance_id", "expected_envelope",
-        "approval_state", "proposed_by", "evidence_summary",
-        "created_at", "updated_at",
+        "id",
+        "tenant_id",
+        "uns_path",
+        "sparkplug_topic",
+        "opcua_node_id",
+        "symbolic_name",
+        "data_type",
+        "units",
+        "scaling",
+        "source_kind",
+        "source_address",
+        "component_instance_id",
+        "expected_envelope",
+        "approval_state",
+        "proposed_by",
+        "evidence_summary",
+        "created_at",
+        "updated_at",
     },
     "wiring_connections": {
-        "id", "tenant_id", "source_entity_id", "source_terminal",
-        "dest_entity_id", "dest_terminal", "wire_number", "cable_id",
-        "gauge_awg", "color", "function_class", "drawing_reference",
-        "approval_state", "proposed_by", "evidence_summary",
-        "created_at", "updated_at",
+        "id",
+        "tenant_id",
+        "source_entity_id",
+        "source_terminal",
+        "dest_entity_id",
+        "dest_terminal",
+        "wire_number",
+        "cable_id",
+        "gauge_awg",
+        "color",
+        "function_class",
+        "drawing_reference",
+        "approval_state",
+        "proposed_by",
+        "evidence_summary",
+        "created_at",
+        "updated_at",
     },
     "ai_suggestions": {
-        "id", "tenant_id", "suggestion_type", "source_kind",
-        "source_document_id", "source_page", "source_id",
-        "extracted_data", "confidence", "status", "risk_level",
-        "proposed_by", "reviewed_by", "reviewed_at", "review_note",
-        "title", "body", "created_at", "updated_at",
+        "id",
+        "tenant_id",
+        "suggestion_type",
+        "source_kind",
+        "source_document_id",
+        "source_page",
+        "source_id",
+        "extracted_data",
+        "confidence",
+        "status",
+        "risk_level",
+        "proposed_by",
+        "reviewed_by",
+        "reviewed_at",
+        "review_note",
+        "title",
+        "body",
+        "created_at",
+        "updated_at",
     },
 }
 
@@ -108,11 +146,13 @@ def _check_tables(cur) -> list[CheckResult]:
     for tbl in EXPECTED_TABLES:
         cur.execute("SELECT to_regclass(%s)", (f"public.{tbl}",))
         exists = cur.fetchone()[0] is not None
-        out.append(CheckResult(
-            f"table {tbl}",
-            exists,
-            "exists" if exists else "MISSING",
-        ))
+        out.append(
+            CheckResult(
+                f"table {tbl}",
+                exists,
+                "exists" if exists else "MISSING",
+            )
+        )
     return out
 
 
@@ -126,11 +166,13 @@ def _check_columns(cur) -> list[CheckResult]:
         )
         present = {r[0] for r in cur.fetchall()}
         missing = expected - present
-        out.append(CheckResult(
-            f"columns {tbl}",
-            not missing,
-            "all present" if not missing else f"MISSING: {sorted(missing)}",
-        ))
+        out.append(
+            CheckResult(
+                f"columns {tbl}",
+                not missing,
+                "all present" if not missing else f"MISSING: {sorted(missing)}",
+            )
+        )
     return out
 
 
@@ -139,11 +181,13 @@ def _check_indexes(cur) -> list[CheckResult]:
     for idx in EXPECTED_INDEXES:
         cur.execute("SELECT to_regclass(%s)", (f"public.{idx}",))
         exists = cur.fetchone()[0] is not None
-        out.append(CheckResult(
-            f"index {idx}",
-            exists,
-            "exists" if exists else "MISSING",
-        ))
+        out.append(
+            CheckResult(
+                f"index {idx}",
+                exists,
+                "exists" if exists else "MISSING",
+            )
+        )
     return out
 
 
@@ -164,11 +208,13 @@ def _check_rls(cur) -> list[CheckResult]:
             out.append(CheckResult(f"RLS enabled {tbl}", False, "TABLE MISSING"))
             continue
         enabled = bool(row[0])
-        out.append(CheckResult(
-            f"RLS enabled {tbl}",
-            enabled,
-            "enabled" if enabled else "DISABLED",
-        ))
+        out.append(
+            CheckResult(
+                f"RLS enabled {tbl}",
+                enabled,
+                "enabled" if enabled else "DISABLED",
+            )
+        )
     for tbl, pol in EXPECTED_POLICIES.items():
         cur.execute(
             "SELECT 1 FROM pg_policies WHERE schemaname='public' "
@@ -176,11 +222,13 @@ def _check_rls(cur) -> list[CheckResult]:
             (tbl, pol),
         )
         exists = cur.fetchone() is not None
-        out.append(CheckResult(
-            f"policy {pol}",
-            exists,
-            "present" if exists else "MISSING",
-        ))
+        out.append(
+            CheckResult(
+                f"policy {pol}",
+                exists,
+                "present" if exists else "MISSING",
+            )
+        )
     return out
 
 
@@ -195,11 +243,13 @@ def _check_grants(cur) -> list[CheckResult]:
         )
         granted = {r[0] for r in cur.fetchall()}
         missing = expected - granted
-        out.append(CheckResult(
-            f"grants {tbl} factorylm_app",
-            not missing,
-            f"{sorted(expected)}" if not missing else f"MISSING: {sorted(missing)}",
-        ))
+        out.append(
+            CheckResult(
+                f"grants {tbl} factorylm_app",
+                not missing,
+                f"{sorted(expected)}" if not missing else f"MISSING: {sorted(missing)}",
+            )
+        )
     return out
 
 
@@ -207,15 +257,23 @@ def _check_check_constraints(cur) -> list[CheckResult]:
     """Spot-check the CHECK constraints that gate writer typos at INSERT time."""
     out: list[CheckResult] = []
     checks = [
-        ("tag_entities",      "data_type",       {"BOOL", "REAL", "INT16", "STRING"}),
-        ("tag_entities",      "source_kind",     {"plc_address", "modbus_register", "sparkplug_metric"}),
-        ("tag_entities",      "approval_state",  {"proposed", "verified", "rejected", "needs_review"}),
-        ("ai_suggestions",    "suggestion_type", {"kg_edge", "kg_entity", "tag_mapping",
-                                                  "component_profile", "uns_confirmation",
-                                                  "namespace_move"}),
-        ("ai_suggestions",    "status",          {"pending", "accepted", "rejected", "deferred",
-                                                  "superseded"}),
-        ("ai_suggestions",    "risk_level",      {"low", "medium", "high", "safety_critical"}),
+        ("tag_entities", "data_type", {"BOOL", "REAL", "INT16", "STRING"}),
+        ("tag_entities", "source_kind", {"plc_address", "modbus_register", "sparkplug_metric"}),
+        ("tag_entities", "approval_state", {"proposed", "verified", "rejected", "needs_review"}),
+        (
+            "ai_suggestions",
+            "suggestion_type",
+            {
+                "kg_edge",
+                "kg_entity",
+                "tag_mapping",
+                "component_profile",
+                "uns_confirmation",
+                "namespace_move",
+            },
+        ),
+        ("ai_suggestions", "status", {"pending", "accepted", "rejected", "deferred", "superseded"}),
+        ("ai_suggestions", "risk_level", {"low", "medium", "high", "safety_critical"}),
     ]
     for tbl, col, must_include in checks:
         cur.execute(
@@ -230,13 +288,15 @@ def _check_check_constraints(cur) -> list[CheckResult]:
         defs = [r[0] for r in cur.fetchall()]
         joined = " | ".join(defs)
         missing_values = [v for v in must_include if v not in joined]
-        out.append(CheckResult(
-            f"CHECK {tbl}.{col}",
-            not missing_values and bool(defs),
-            "ok" if not missing_values and defs else (
-                f"NO CHECK FOUND" if not defs else f"MISSING values: {missing_values}"
-            ),
-        ))
+        out.append(
+            CheckResult(
+                f"CHECK {tbl}.{col}",
+                not missing_values and bool(defs),
+                "ok"
+                if not missing_values and defs
+                else ("NO CHECK FOUND" if not defs else f"MISSING values: {missing_values}"),
+            )
+        )
     return out
 
 
