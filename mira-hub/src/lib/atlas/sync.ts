@@ -129,6 +129,10 @@ export function createCooldownBreaker(
 
 // Module-level breaker shared across ticks (the worker calls runForwardSync once
 // per tick inside one long-lived process).
+// TODO(per-tenant): key woBreaker by Atlas base URL once per-tenant Atlas
+// provisioning ships — today all tenants share one Atlas instance (one quota),
+// so a single global breaker is correct; after that, one tenant hitting its cap
+// would wrongly pause forward WO push for every tenant.
 const woBreaker = createCooldownBreaker();
 
 // ─── Forward sync: Assets (NeonDB → Atlas) ────────────────────────────────────
