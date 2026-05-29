@@ -224,7 +224,10 @@ jobs:
           import sys
           import httpx
 
-          with open("/tmp/pr_truncated.diff") as f:
+          # errors="replace": the diff can carry raw bytes from binary files
+          # (PNG/PDF screenshots, etc.). A naive UTF-8 read crashes on them and
+          # exits 1 — defeating the soft-skip below. Decode lossily instead.
+          with open("/tmp/pr_truncated.diff", encoding="utf-8", errors="replace") as f:
               diff = f.read()
 
           pr_title = os.environ.get("PR_TITLE", "")

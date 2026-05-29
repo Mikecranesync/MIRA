@@ -7202,4 +7202,869 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - tools/seeds/run_demo_seed.py
 **Working tree:** clean
 **Next:** _set by next session_
+
+### 2026-05-28 01:03 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** 76fb5d04 feat(demo): wire Talk-to-MIRA chat to Groq with UNS confirmation gate
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+- mira-fault-sim/pyproject.toml
+**Working tree:**
+- M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-27T1817-offline-text.md
+- ?? tests/eval/runs/2026-05-27T2234-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-28 01:14 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** 02a96609 chore(demo): ruff fixes for fault-detective scaffolding
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+- mira-fault-sim/pyproject.toml
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-27T1817-offline-text.md
+- ?? tests/eval/runs/2026-05-27T2234-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-28 03:27 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** 02a96609 chore(demo): ruff fixes for fault-detective scaffolding
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+- mira-fault-sim/pyproject.toml
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-27T1817-offline-text.md
+- ?? tests/eval/runs/2026-05-27T2234-offline-text.md
+- ?? tests/eval/runs/2026-05-28T0300-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-28 04:39 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** dabd0db4 feat(demo): add DC bus voltage gauge to fault detective dashboard
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-27T1817-offline-text.md
+- ?? tests/eval/runs/2026-05-27T2234-offline-text.md
+- ?? tests/eval/runs/2026-05-28T0300-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-28 05:11 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** 28c4dea6 docs(wiki): eval-fixer run 2026-05-28 — 35/57 regression flagged in #1576
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_mobile.png
+**Next:** _set by next session_
+
+### 2026-05-28 07:16 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** d71ed9d5 fix(demo): set sidebar to temporary mode for mobile layout
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_mobile.png
+**Next:** _set by next session_
+
+### 2026-05-28 07:17 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** d71ed9d5 fix(demo): set sidebar to temporary mode for mobile layout
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_mobile.png
+**Next:** _set by next session_
+
+### 2026-05-28 10:11 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** d71ed9d5 fix(demo): set sidebar to temporary mode for mobile layout
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 14:06 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** d71ed9d5 fix(demo): set sidebar to temporary mode for mobile layout
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 14:18 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** 2568c625 feat(demo): live PLC I/O panel + Modbus map PDF generator
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 14:19 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** ff0d478b feat(demo): live PLC I/O panel + Modbus map PDF generator
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 21:11 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** ff0d478b feat(demo): live PLC I/O panel + Modbus map PDF generator
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 21:13 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** ff0d478b feat(demo): live PLC I/O panel + Modbus map PDF generator
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 21:15 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** ff0d478b feat(demo): live PLC I/O panel + Modbus map PDF generator
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 21:27 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** a0ddf31d feat(plc): one-shot deploy of MbSrvConf into CCW project — no typing
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 21:31 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** a0ddf31d feat(plc): one-shot deploy of MbSrvConf into CCW project — no typing
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 21:37 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** a0ddf31d feat(plc): one-shot deploy of MbSrvConf into CCW project — no typing
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 21:44 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** f1baa009 feat(plc): MbSrvConf_v4 map for v4.1.9 ladder — 22 coils + 17 HRs
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 22:35 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** f1baa009 feat(plc): MbSrvConf_v4 map for v4.1.9 ladder — 22 coils + 17 HRs
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 22:36 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** f1baa009 feat(plc): MbSrvConf_v4 map for v4.1.9 ladder — 22 coils + 17 HRs
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
 <!-- END AUTOLOG -->

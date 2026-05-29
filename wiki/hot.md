@@ -1,4 +1,13 @@
-# Hot Cache — 2026-05-23 — CHARLIE
+# Hot Cache — 2026-05-28 — CHARLIE
+
+## eval-fixer run — 2026-05-28
+- Scorecard: **35/57 passing (61%)** — `tests/eval/runs/2026-05-28T0300-offline-text.md` (FRESH, nightly eval job is producing scorecards again)
+- Action: filed #1576. 22 patchable failures across 3 file clusters — exceeds both single-patch hard limits (>15 failures, >1 file). No autopatch.
+- **Major regression: 48/57 → 35/57 (-13 fixtures) since the last fresh scorecard on 2026-05-06.** Three clusters:
+  - **A) UNS confirmation gate over-blocking (8 fixtures)** — fixtures stuck at `AWAITING_UNS_CONFIRMATION` when expected to progress to Q1/Q2/DIAGNOSIS. Likely caused by recent UNS-gate work (Namespace Builder Phase 1/2 — PRs #1330/#1332 and follow-ups).
+  - **B) VFD documentation-request fixtures landing in diagnostic FSM (7 fixtures)** — `find_manual` / `find_datasheet` intent not routing to IDLE.
+  - **C) Question-skip logic too conservative (5 fixtures)** — vendor+model+fault present but engine still asking Q1.
+- See #1576 for full triage and suggested remediation order (A → B → C → smaller clusters).
 
 ## eval-fixer run — 2026-05-23
 - Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (17 days stale, unchanged since 2026-05-06)
