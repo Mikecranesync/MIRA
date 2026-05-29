@@ -145,10 +145,11 @@ function LoginFormInner() {
               </button>
             </div>
           ) : (
-            <form onSubmit={handleMagicLink} className="mb-4">
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">Email magic link</label>
+            <form onSubmit={handleMagicLink} method="post" className="mb-4">
+              <label htmlFor="magic-email" className="block text-xs font-medium text-slate-400 mb-1.5">Email magic link</label>
               <div className="flex gap-2">
                 <Input
+                  id="magic-email"
                   type="email"
                   value={magicEmail}
                   onChange={(e) => setMagicEmail(e.target.value)}
@@ -161,7 +162,7 @@ function LoginFormInner() {
                   type="submit"
                   aria-label="Send magic link"
                   disabled={magicLoading || !magicEmail}
-                  className="px-4 h-11 rounded-md font-medium text-white text-sm disabled:opacity-50 flex items-center gap-1.5"
+                  className="px-4 h-11 min-w-[44px] rounded-md font-medium text-white text-sm disabled:opacity-50 flex items-center justify-center gap-1.5"
                   style={{ background: "linear-gradient(135deg,#2563EB,#0891B2)" }}
                 >
                   {magicLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
