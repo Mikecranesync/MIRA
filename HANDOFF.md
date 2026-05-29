@@ -38,6 +38,23 @@ npx playwright install chromium && npx playwright test -c playwright.discovery.c
 - **Mobile bottom-tab bar (`bottom-tabs.tsx`) deliberately NOT expanded** — it's a curated 3-item set.
   `/discovery` is reachable via the desktop sidebar; the page itself is mobile-responsive (412px verified).
 
+## CI (PR #1589)
+
+Green: AI Code Review, Architecture Check, Lint & Format, Unit Tests, Security (Bandit/Semgrep/Secrets),
+staging-gate, Write-Path, Enum Drift, License, Migration Order, E2E smoke. (`hardcoded-ip` ast-grep rule
+is `language: Python` only — does not scan the `192.168.x` strings in the TS/JSON.) Pending at handoff:
+Docker Build Check, Eval Offline (no Python/engine changed → eval baseline unaffected).
+
+## Caveats the reviewer should know
+
+- **Lint/test were run scoped, not global.** `bun run lint` / `bun test` across the whole repo are red on
+  **pre-existing, unrelated** files (e.g. `event-log/page.tsx`: `set-state-in-effect`, unescaped entities).
+  The discovery files are clean: 13 unit tests pass, eslint clean on every new/edited file. CI's
+  "Lint & Format" + "Unit Tests" checks pass.
+- **Untested path:** the drag-drop / file-input → `upload()` → POST → `setInventory` UI flow has no e2e
+  coverage (the e2e POSTs via `page.request` and asserts the GET render — goal item 6's bar). Manual
+  upload was exercised by hand via the rendered dropzone; automate it if drag-drop becomes load-bearing.
+
 ## Risks / things to know
 
 - **e2e config caveat:** `next.config.ts` uses `output: "standalone"`, so `next start` prints a warning
