@@ -80,6 +80,33 @@ services:
       - core-net
     restart: unless-stopped
 
+  # Stream A: live Micro 820 Modbus TCP -> MQTT ingest (real bench PLC data).
+  # Publishes source-qualified _streams/bridge/* topics; the Node-RED flow runs
+  # a redundant Stream B under _streams/nr/*, and the dashboard selector picks
+  # the active one with failover. Read-only (no coil/HR writes).
+  live-plc-bridge:
+    build:
+      context: ./plc/live-plc-bridge
+    container_name: mira-live-plc-bridge
+    mem_limit: 128m
+    memswap_limit: 128m
+    environment:
+      PLC_HOST: "192.168.1.100"
+      PLC_PORT: "502"
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      UNS_PREFIX: demo/cell1/conveyor/cv101
+      STREAM: bridge
+      SOURCE: plc-bridge
+      POLL_MS: "500"
+      LOG_LEVEL: INFO
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - core-net
+    restart: unless-stopped
+
 volumes:
   mosquitto-data:
   mosquitto-log:
