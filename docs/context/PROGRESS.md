@@ -8067,4 +8067,516 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
 - ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
 **Next:** _set by next session_
+
+### 2026-05-29 14:16 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 4dfe906 fix(ruff): sort imports and remove bare f-string prefix
+**Changed (vs. fork point):**
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:17 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 4dfe906 fix(ruff): sort imports and remove bare f-string prefix
+**Changed (vs. fork point):**
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:18 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 115c5f3 chore: retrigger CI — staging gate flaky on session-followup (unrelated to ruff fixes)
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:18 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 115c5f3 chore: retrigger CI — staging gate flaky on session-followup (unrelated to ruff fixes)
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:19 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 771eeb7 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:19 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 771eeb7 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:19 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 7783e21 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:20 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 7783e21 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:20 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 83136d9 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:20 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 83136d9 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:20 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 8bdd7fa chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:25 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 8bdd7fa chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:25 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 535842e chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:26 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 535842e chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:26 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 34a9cd3 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:27 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 34a9cd3 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:28 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 218f937 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:28 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 218f937 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:29 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 8b50a73 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:30 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 8b50a73 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:30 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** c276129 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:31 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** c276129 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:31 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 756a5a3 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:33 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 756a5a3 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:33 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 29d9797 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:34 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 29d9797 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:34 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** aae1cbe chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:35 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** aae1cbe chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:36 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** ab57b96 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:37 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** ab57b96 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:37 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 545e42d chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:38 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 545e42d chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:38 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 8af4a86 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:39 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 8af4a86 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:40 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 080fb5f chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:41 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 080fb5f chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:41 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 05ec415 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:41 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 05ec415 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:41 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 72e6f4c chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:42 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 72e6f4c chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:42 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 40f68f5 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:42 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 40f68f5 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:43 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** f115c45 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:43 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** f115c45 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:43 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 891c136 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:44 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 891c136 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:44 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** b829a62 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:44 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** b829a62 chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:45 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** cb3fe1f chore(context): session autolog 2026-05-29
+**Changed (vs. fork point):**
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
