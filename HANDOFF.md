@@ -40,10 +40,19 @@ npx playwright install chromium && npx playwright test -c playwright.discovery.c
 
 ## CI (PR #1589)
 
-Green: AI Code Review, Architecture Check, Lint & Format, Unit Tests, Security (Bandit/Semgrep/Secrets),
-staging-gate, Write-Path, Enum Drift, License, Migration Order, E2E smoke. (`hardcoded-ip` ast-grep rule
-is `language: Python` only — does not scan the `192.168.x` strings in the TS/JSON.) Pending at handoff:
-Docker Build Check, Eval Offline (no Python/engine changed → eval baseline unaffected).
+Green: AI Code Review, Architecture Check, **Lint & Format, Unit Tests** (the checks that exercise this
+change), Security (Bandit/Semgrep/Secrets), Write-Path, Enum Drift, License, Migration Order, E2E smoke,
+Static Analysis. (`hardcoded-ip` ast-grep rule is `language: Python` only — does not scan the `192.168.x`
+strings in the TS/JSON.)
+
+⚠️ **`staging-gate` = FLAKY, unrelated to this PR — Mike re-run before judging.** It's the LLM-judged
+diagnostic-engine eval (`tools/staging_*`). It **passed** on the first push of this branch (run
+26641779266) and **failed** on the docs-only HANDOFF commit (run 26642027568) — identical engine code,
+only `HANDOFF.md` changed. The fail was `session-followup` scoring a nondeterministic `dim_below_2`
+(9/10 cases passed, mean 4.66). This PR touches **zero** Python/engine files, so it cannot have caused
+it; "fixing" it would mean editing the engine (out of scope). Re-run `staging-gate` to clear.
+
+Pending at handoff: Docker Build Check, Eval Offline (no Python/engine changed → baseline unaffected).
 
 ## Caveats the reviewer should know
 
