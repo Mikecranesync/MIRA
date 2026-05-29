@@ -9,6 +9,11 @@ title = "MIRA gitleaks config"
     '''docs/''',
     '''artifacts/''',
   ]
+  regexes = [
+    # Claude Code session URLs appended to commit messages by the harness —
+    # not secrets; format is https://claude.ai/code/session_<alphanumeric>
+    '''claude\.ai/code/session_[a-zA-Z0-9]+''',
+  ]
 
 [[rules]]
   id = "anthropic-api-key"
