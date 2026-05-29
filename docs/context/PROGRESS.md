@@ -6495,4 +6495,23 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - M docs/context/PROGRESS.md
 - ?? tools/staging_results.json
 **Next:** _set by next session_
+
+### 2026-05-29 14:16 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 4dfe906 fix(ruff): sort imports and remove bare f-string prefix
+**Changed (vs. fork point):**
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:17 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** 4dfe906 fix(ruff): sort imports and remove bare f-string prefix
+**Changed (vs. fork point):**
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
