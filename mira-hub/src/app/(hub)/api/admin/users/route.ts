@@ -1,25 +1,30 @@
 import { NextResponse } from "next/server";
-import { listAllUsers } from "@/lib/users";
+import { listAllUsers, isSystemAccount } from "@/lib/users";
 import { requireSession, UnauthorizedError } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const session = await requireSession();
     if (session.status !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    const users = await listAllUsers();
-    return NextResponse.json({ users: users.map(u => ({
-      id: u.id,
-      email: u.email,
-      name: u.name,
-      status: u.status,
-      plan: u.plan,
-      trialExpiresAt: u.trialExpiresAt?.toISOString() ?? null,
-      role: u.role,
-    }))});
+    const includeSystem = new URL(req.url).searchParams.get("includeSystem") === "1";
+    const all = await listAllUsers();
+    const users = includeSystem ? all : all.filter(u => !isSystemAccount(u));
+    return NextResponse.json({
+      users: users.map(u => ({
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        status: u.status,
+        plan: u.plan,
+        trialExpiresAt: u.trialExpiresAt?.toISOString() ?? null,
+        role: u.role,
+      })),
+      systemHidden: all.length - users.length,
+    });
   } catch (err) {
     if (err instanceof UnauthorizedError) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

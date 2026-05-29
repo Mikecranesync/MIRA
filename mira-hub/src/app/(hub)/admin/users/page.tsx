@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Search, CheckCircle2, XCircle, ShieldCheck, Clock, Loader2, Zap } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useTranslations } from "next-intl";
@@ -34,16 +34,21 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [updating, setUpdating] = useState<string | null>(null);
+  const [showSystem, setShowSystem] = useState(false);
+  const [systemHidden, setSystemHidden] = useState(0);
 
-  async function loadUsers() {
-    const res = await fetch(`${API_BASE}/api/admin/users`);
+  const loadUsers = useCallback(async () => {
+    const qs = showSystem ? "?includeSystem=1" : "";
+    const res = await fetch(`${API_BASE}/api/admin/users${qs}`);
     if (!res.ok) return;
-    const { users: data } = await res.json() as { users: ApiUser[] };
+    const { users: data, systemHidden: hidden } =
+      await res.json() as { users: ApiUser[]; systemHidden?: number };
     setUsers(data);
+    setSystemHidden(hidden ?? 0);
     setLoading(false);
-  }
+  }, [showSystem]);
 
-  useEffect(() => { loadUsers(); }, []);
+  useEffect(() => { loadUsers(); }, [loadUsers]);
 
   async function setStatus(id: string, status: string) {
     setUpdating(id);
@@ -72,6 +77,17 @@ export default function AdminUsersPage() {
               {users.length} total{pendingCount > 0 && ` · ${pendingCount} pending review`}
             </p>
           </div>
+          {(showSystem || systemHidden > 0) && (
+            <button
+              onClick={() => { setLoading(true); setShowSystem(s => !s); }}
+              className="text-xs px-2.5 py-1 rounded-md transition-colors flex-shrink-0"
+              style={{ backgroundColor: "var(--surface-1)", color: "var(--foreground-muted)" }}
+            >
+              {showSystem
+                ? "Hide system accounts"
+                : `Show ${systemHidden} system account${systemHidden === 1 ? "" : "s"}`}
+            </button>
+          )}
         </div>
       </div>
 
