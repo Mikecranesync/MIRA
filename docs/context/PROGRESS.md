@@ -7007,4 +7007,15 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 **Working tree:**
 - ?? docs/context/PROGRESS.local.md
 **Next:** _set by next session_
+
+### 2026-05-29 14:48 UTC — `fix/ruff-import-sort-f-string`
+**Last commit:** cacb932 fix(ci): allowlist Claude Code session URL in gitleaks
+**Changed (vs. fork point):**
+- .gitleaks.toml
+- docs/context/PROGRESS.md
+- mira-crawler/tests/test_converter_tables.py
+- tools/verify_phase0_deploy.py
+**Working tree:**
+- ?? docs/context/PROGRESS.local.md
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
