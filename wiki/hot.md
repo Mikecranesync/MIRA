@@ -1,3 +1,37 @@
+# Hot Cache — 2026-05-29 — ALPHA
+
+## Session — 2026-05-29 (printing-press toolchain bootstrap + Linear/Stripe CLIs)
+
+Work spanned 2026-05-10 → 2026-05-29; landing now as one continuity entry. Local `main` was 447 commits behind origin when commit happened — reset to origin/main, re-applied this block on top of current hot.md.
+
+- **Installed `mksglu/context-mode` Claude Code plugin** (user scope). Registers `PreToolUse`/`PostToolUse`/`PreCompact`/`SessionStart` hooks + 11 `ctx_*` MCP tools. Intercepts large-output `WebFetch`/`Bash` calls and routes through a sandbox + FTS5 KB. v1.0.111 on disk; v1.0.118+ available.
+- **Installed Go 1.26.3** via `brew install go`; added `export PATH="$HOME/go/bin:$PATH"` to `~/.zprofile`.
+- **Installed `mvanhorn/cli-printing-press` v4.2.2** generator at `~/go/bin/printing-press`. 9 skills under `~/.claude/skills/printing-press*`. Drives `/printing-press <api>` slash command. MIT.
+- **Installed `linear-pp-cli` 1.0.0** via `npx -y @mvanhorn/printing-press install linear`. Local SQLite at `~/.local/share/linear-pp-cli/data.db` — hydrated (290 items in 3.16s: 1 team `CRA` / 2 users / 11 workflow states / 6 labels / 13 projects / 0 cycles / 257 issues). `doctor` green; `me` = `mike @ Cranesync (Admin)`.
+- **Installed `stripe-pp-cli` 1.0.0** same orchestrator. Local SQLite at `~/.local/share/stripe-pp-cli/data.db` — NOT hydrated yet (recommend `sync --dry-run` first; event volume could be large). `doctor` 5/5 green via Doppler-injected `STRIPE_SECRET_KEY`; live `balance` call confirmed `meta.source: "live"`.
+- **Canonical invocation pattern**: `doppler run --project factorylm --config prd -- <api>-pp-cli <cmd>`. Both CLIs honor `auth_source: env:<KEY>` ahead of file auth — no plaintext on disk.
+- **`~/.claude/CLAUDE.md` updated**: dropped the stale "`gh` CLI auth broken" line. Verified `gh 2.87.2` logged in as `Mikecranesync` via keyring (scopes: `gist`, `read:org`, `repo`, `workflow`); auth-required API calls succeed.
+
+**Findings worth flagging:**
+
+- **Linear workspace is at its free-tier issue cap.** Tried to file the session-handoff issue via `linear-pp-cli issues create` and the Anthropic-hosted Linear MCP — both refused: *"Usage limit exceeded — please upgrade or contact sales@linear.app"*. Workspace has 257 issues. Future sessions: don't try to create new Linear issues; comment on existing ones instead.
+- **Two `linear-pp-cli` bugs for `/printing-press-retro` filing**: (1) `teams list` always calls GraphQL via GET → Linear rejects as CSRF; `--data-source local` short-circuits before fallback. Workaround: `sqlite3 ~/.local/share/linear-pp-cli/data.db`. (2) `issues create` response parser dies with `decoding graphql response: json: cannot unmarshal string into Go struct field .errors.extensions.userPresentableMessage of type bool` when Linear returns the usage-cap error — the CLI masks the real reason for failure.
+
+**Pointers for continuity:**
+
+- Plan file with full candidate analysis + tier rankings: `~/.claude/plans/polymorphic-hugging-parnas.md`
+- Auto-memory: `~/.claude/projects/-Users-factorylm-mira/memory/project_printing_press_toolchain.md`
+
+**Suggested next actions:**
+
+- [ ] Bundle install Tier 1 backlog: `npx -y @mvanhorn/printing-press install openrouter digitalocean` (~90s, both have keys in Doppler).
+- [ ] Hydrate Stripe local mirror: `doppler run … -- stripe-pp-cli sync --dry-run` (check scope first).
+- [ ] Pick a Tier 3 fresh-print candidate: NeonDB (cleanest OpenAPI), Groq, Telegram Bot API, Atlassian — 30–60 min generation each.
+- [ ] Upgrade Linear plan or archive stale issues to unblock future issue creation.
+- [ ] File `/printing-press-retro` for the two `linear-pp-cli` bugs above.
+
+---
+
 # Hot Cache — 2026-05-28 — CHARLIE
 
 ## eval-fixer run — 2026-05-28
