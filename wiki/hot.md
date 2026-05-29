@@ -511,3 +511,8 @@ Yaskawa: 27 chunks (NULL model) + 1 (CIMR-AU4A0058AAA)
 Danfoss: 2 chunks (VLT FC302 only)
 Mitsubishi Electric: 16 chunks (NULL model)
 ```
+
+## eval-fixer run — 2026-05-29
+- Scorecard: 33/57 passing (58%) — `tests/eval/runs/2026-05-29T0058-offline-text.md`
+- Action: issue-filed (#1583) — autopatch skipped (24 patchable > 15 limit AND 3 file clusters)
+- Systemic FSM/UNS-gate regression band (64%→56%→58% over last 3 runs), not a single patchable cluster. Dominant symptoms: sessions stuck at AWAITING_UNS_CONFIRMATION (expect Q1/Q2/DIAGNOSIS) and find-manual fixtures landing in ASSET_IDENTIFIED instead of IDLE. NOTE: `last_response_snippet` empty for every failure — offline runner not capturing final response; fix that before diagnosing.
