@@ -8067,4 +8067,51 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
 - ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
 **Next:** _set by next session_
+
+### 2026-05-29 13:15 UTC — `feat/conveyor-one-click-launchers`
+**Last commit:** f051be7a Revert "docs(miradrop): v2 ingest design lock — ADR-0019, spec, plan"
+**Changed (vs. fork point):**
+- docs/competitive-intelligence/competitors-2026-05-27.md
+- docs/context/PROGRESS.md
+- docs/guides/garage-conveyor-live-monitoring-quickstart.pdf
+- docs/ops/fault-detective-demo-prompt.md
+- marketing/prospects/hardening-alerts.jsonl
+- tests/eval/runs/2026-05-27T0030-offline-text.md
+- tests/eval/runs/2026-05-27T0457-offline-text.md
+- tests/eval/runs/2026-05-27T0920-offline-text.md
+- tests/eval/runs/2026-05-27T1348-offline-text.md
+- tools/lead-hunter/.hourly_state.json
+- tools/start-conveyor-terminal.command
+- tools/start-conveyor.command
+- wiki/hot.md
+**Working tree:**
+- ?? docs/competitors-2026-05-29.md
+- ?? tests/eval/runs/2026-05-29T0058-offline-text.md
+- ?? tests/eval/runs/2026-05-29T0523-offline-text.md
+- ?? tests/eval/runs/2026-05-29T0942-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-29 13:20 UTC — `feat/conveyor-one-click-launchers`
+**Last commit:** f051be7a Revert "docs(miradrop): v2 ingest design lock — ADR-0019, spec, plan"
+**Changed (vs. fork point):**
+- docs/competitive-intelligence/competitors-2026-05-27.md
+- docs/context/PROGRESS.md
+- docs/guides/garage-conveyor-live-monitoring-quickstart.pdf
+- docs/ops/fault-detective-demo-prompt.md
+- marketing/prospects/hardening-alerts.jsonl
+- tests/eval/runs/2026-05-27T0030-offline-text.md
+- tests/eval/runs/2026-05-27T0457-offline-text.md
+- tests/eval/runs/2026-05-27T0920-offline-text.md
+- tests/eval/runs/2026-05-27T1348-offline-text.md
+- tools/lead-hunter/.hourly_state.json
+- tools/start-conveyor-terminal.command
+- tools/start-conveyor.command
+- wiki/hot.md
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/competitors-2026-05-29.md
+- ?? tests/eval/runs/2026-05-29T0058-offline-text.md
+- ?? tests/eval/runs/2026-05-29T0523-offline-text.md
+- ?? tests/eval/runs/2026-05-29T0942-offline-text.md
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
