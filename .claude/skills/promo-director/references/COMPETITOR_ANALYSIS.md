@@ -1,8 +1,31 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-05-29
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-05-29
+
+### Most actionable change for MIRA playbook
+
+MaintainX acquired by Autodesk for $3.6B (May 28). The closest AI-native CMMS competitor exits independent positioning — absorbed into a CAD/BIM platform. MIRA can now claim "the independent AI-native maintenance copilot" vs. tools bundled into design software. Playbook edit warranted.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — Autodesk acquisition announced May 28, 2026: https://adsknews.autodesk.com/en/news/autodesk-to-acquire-maintainx-advancing-unified-platform-in-operations/ — $3.6B all-cash, close targeted August 2026; no launch video; MaintainX folds into Autodesk Operations Solutions (AOS); independent AI copilot positioning ends at close
+
+**B2B SaaS / dev-tools (pattern transfer)**
+- **Anthropic** — "Code with Claude 2026: Opening Keynote" (May 6, 2026): https://www.youtube.com/watch?v=GMIWm5y90xA — first Anthropic developer conference; Claude Opus 4.8 + Managed Agents (Proactive Workflows) shipped same day; 80x Q1 usage growth claim; founder-led, no hard CTA; conference-as-launch-vehicle pattern now confirmed for all three top AI labs
+- **Notion** — "Meet the Notion CLI: Built for Agents & Humans" (May 13, 2026): https://www.youtube.com/watch?v=k-6ldiWIDsg — developer platform pivot (Workers runtime + CLI); "for agents & humans" dual-audience framing is a new hook template emerging across SaaS
+- **Figma** — "Release Notes 2026: May Edition" (May 5, 2026): https://www.youtube.com/watch?v=11mdb7lLclM — monthly release-notes-as-video format; agents co-designing with product teams; Make Skills + production code editing beta; Config 2026 upcoming June 23-25 (update next refresh)
+
+**Stripe Sessions 2026 detail fill (event was April 29 — pre-cutoff; prior cache entry was stub)**
+- Opening Keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8 — Collison hook: "day 119 of the singularity"; 288 launches; Agentic Commerce Protocol (ACP), Link agent wallet, Google/Meta partnerships
+- Machine payments / agentic commerce session: https://www.youtube.com/watch?v=uBGqhGRzkuU
+- Developer keynote: https://www.youtube.com/watch?v=NCw4TWMfV-k
 
 ---
 
@@ -87,6 +110,13 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+
+**Autodesk acquisition (May 28, 2026)**
+- Source: https://adsknews.autodesk.com/en/news/autodesk-to-acquire-maintainx-advancing-unified-platform-in-operations/
+- $3.6B all-cash; close targeted August 2026; subject to regulatory approval
+- No launch video confirmed; press release + Bloomberg coverage
+- Autodesk rationale: converge design→build→operate in a single platform; creates Autodesk Operations Solutions (AOS)
+- Competitive implication for MIRA: MaintainX's independent AI maintenance copilot positioning ends at close. Position shifts from "AI-native CMMS startup" to "Autodesk operations module." MIRA's adjacent positioning as independent maintenance intelligence now has clear air.
 
 ---
 
@@ -254,11 +284,18 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026 opening keynote (April 29, 2026)**
+- Opening Keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8 (also livestreamed at https://www.youtube.com/live/e13-s0p1tfE)
+- Machine payments / agentic commerce: https://www.youtube.com/watch?v=uBGqhGRzkuU
+- Developer keynote: https://www.youtube.com/watch?v=NCw4TWMfV-k
+- Presenters: Patrick Collison (CEO) + Will Gaybrick (President, Product & Business)
+- Opening hook: "Good morning, and welcome to Stripe Sessions. It's April 29th, otherwise known, of course, as day 119 of the singularity." [search-derived]
+- Scale: 288 products launched in a single day — "most ambitious single-day launch in Stripe history"
+- Key launches: Agentic Commerce Protocol (ACP), Link agent wallet, Checkout Studio, Google AI Mode / Gemini integration, Meta + OpenAI + Microsoft partnerships
+- VO register: founder + product executive
+- CTA: none explicit; ecosystem/developer
 
-**Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
+**Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube. The "day N of the singularity" opening is a compressed way to signal AI-native positioning without explaining AI.
 
 ---
 
@@ -301,8 +338,17 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
-- 30+ product releases in recent months per search results
-- No standalone promo video; analyst/conference appearances as primary video channel
+
+**Code with Claude 2026 opening keynote (May 6, 2026)**
+- URL: https://www.youtube.com/watch?v=GMIWm5y90xA
+- Title: "Code with Claude 2026: Opening Keynote"
+- Presenters: Dario Amodei (CEO) + Daniela Amodei (President); in-person SF developer conference
+- Opening hook: Daniela Amodei: "Developers are the most important users of Claude." [search-derived]
+- Key claims: Q1 2026 annualized revenue/usage grew 80x (vs planned 10x); Claude Opus 4.8 launched same day (1M token context default on API/Bedrock/Vertex); Managed Agents with Multiagent Orchestration, Outcomes, Dreaming, and Proactive Workflows
+- VO register: founder
+- CTA: none explicit; ecosystem/developer — partners present: GitHub, Vercel, Datadog, Bun
+- London follow-up event: May 19–20, 2026
+- Pattern note: first standalone Anthropic developer conference; conference-as-launch-vehicle pattern now confirmed across all top AI labs. "Proactive Workflows" = agents that initiate work without being asked — same autonomous-trigger positioning MIRA needs for fault detection without tech intervention.
 
 ---
 
@@ -340,6 +386,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**Notion 3.5: Developer Platform — "Meet the Notion CLI: Built for Agents & Humans" (May 13, 2026)**
+- URL: https://www.youtube.com/watch?v=k-6ldiWIDsg
+- Presenter: Ivan Zhao (co-founder / CEO); livestreamed product event
+- Hook: "Built for agents & humans" — dual-audience framing [title-derived]
+- New capabilities: Notion Workers (hosted runtime for custom code, sandbox, no server needed), Notion CLI (programmatic access for developers and coding agents), External Agents (connect outside tools to Notion workspace)
+- Workers free in beta; billing starts August 11, 2026
+- Pattern note: productivity-tool-to-developer-infrastructure pivot. "For agents & humans" is a new hook template spreading across SaaS — signals that targeting both AI agents and human users in the same product/copy is now expected positioning, not a differentiator.
+
 ---
 
 ### Figma
@@ -354,6 +408,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**Release Notes May 2026 (May 5, 2026)**
+- URL: https://www.youtube.com/watch?v=11mdb7lLclM
+- Title: "Release Notes 2026: May Edition | Figma"
+- Hook: "vibe-coded prototypes, connecting design systems to code, shipping ideas fast" [search-derived]
+- New: Make Skills (markdown-based reusable prompts, slash-command invocable); live demos of agents co-designing with product teams; Make production code editing launched limited beta May 28
+- Format: monthly release-notes-as-video — live demos → hosted on YouTube; separate from Config
+- Config 2026: June 23-25, Moscone Center SF — keynote not yet recorded; update next refresh
 
 ---
 
@@ -386,15 +448,25 @@ No video content surfaced for 2025–2026.
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
 
+### Winning hooks (2026 additions)
+
+| Pattern | Example | Transfer to MIRA |
+|---|---|---|
+| "For agents & humans" dual-audience | Notion CLI (May 2026): "Built for Agents & Humans" | "Works for your AI layer and your tech on the floor" |
+| Conference-as-launch-vehicle (all AI labs) | Anthropic Code with Claude (May 2026), Stripe Sessions (Apr 2026) | MIRA's own demo events could anchor quarterly launches |
+| Proactive-trigger framing | Anthropic Managed Agents "Proactive Workflows" — agent starts work without being asked | "MIRA didn't wait for the call — it already had the diagnosis" |
+
 ### Anti-patterns (avoid)
 
 - Corporate narration over stock footage of factories with no specific claim → forgettable (common among mid-market CMMS vendors)
 - Feature list VO without a single proof number → no hook, no memory
 - "AI-powered" as the lead without explaining what the AI specifically does → now invisible signal (every competitor uses it)
+- Conference keynote without shipping product same day → Anthropic Code with Claude worked because Opus 4.8 + Managed Agents were live on day one; announcement-only keynotes without a demo don't generate the same earned media
 
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; exiting independent market via Autodesk acquisition (close August 2026). Competitive positioning as standalone AI maintenance copilot ends at close.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Anthropic**: moved from zero video presence to full developer conference format (Code with Claude 2026). Pattern matches Stripe and Figma — conference as the primary launch vehicle once ecosystem is large enough.
