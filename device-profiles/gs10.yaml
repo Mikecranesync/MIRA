@@ -1,0 +1,65 @@
+# AutomationDirect GS10 DURApulse VFD — fieldbus profile
+# See _schema.yaml for the contract. Every fact traces to `sources`.
+
+id: gs10
+display_name: AutomationDirect GS10 DURApulse VFD
+kind: vfd
+protocols: [modbus_rtu]
+
+# How discover.py recognizes a GS10 on an RS-485 sweep: the DC-bus register
+# reads non-zero whenever the drive is powered. Read-only.
+fingerprint:
+  modbus_rtu:
+    read: { reg: 0x2105, fc: 3, count: 1 }   # DC Bus Voltage (V)
+    expect: { nonzero: true }
+
+# Known-good RS-485 settings — tried FIRST in the sweep. These are the truths we
+# kept relearning. P09.01=96 -> 9600 baud; P09.04=13 -> 8N2 RTU.
+serial_defaults:
+  baud: 9600
+  frame: 8N2
+  addr: 1
+
+# GS10 Modbus register map (RTU, slave addr from P09.00).
+registers:
+  # --- write (control) — listed for reference; discover.py NEVER writes ---
+  - { addr: 0x2000, name: control_command,     access: w, fc: 6, units: bitfield, note: "FWD+RUN=18 REV+RUN=20 STOP=1" }
+  - { addr: 0x2001, name: frequency_setpoint,  access: w, fc: 6, scale: 0.1, units: Hz, note: "0-4000 = 0.0-400.0 Hz" }
+  - { addr: 0x2002, name: control_code_2,       access: w, fc: 6, units: bitfield, note: "bit1 = Fault Reset (write 0x0002)" }
+  # --- read (monitor) ---
+  - { addr: 0x2100, name: status_monitor_1,     access: r, fc: 3, units: bitfield, note: "high byte=warning, low byte=error code" }
+  - { addr: 0x2101, name: status_monitor_2,     access: r, fc: 3, units: bitfield, note: "operation status bits" }
+  - { addr: 0x2102, name: frequency_command,    access: r, fc: 3, scale: 0.1, units: Hz, note: "what PLC commanded" }
+  - { addr: 0x2103, name: output_frequency,     access: r, fc: 3, scale: 0.1, units: Hz, note: "actual motor frequency" }
+  - { addr: 0x2104, name: output_current,       access: r, fc: 3, scale: 0.1, units: A,  note: "motor amps" }
+  - { addr: 0x2105, name: dc_bus_voltage,       access: r, fc: 3, units: V,  note: "~300-340V when powered; the fingerprint reg" }
+  - { addr: 0x2106, name: output_voltage,       access: r, fc: 3, units: V,  note: "motor voltage" }
+
+# Parameter truths (set on the keypad / via P-registers). Reference, not read by v1.
+parameters:
+  P09.00: { value: 1,  meaning: "Modbus slave address" }
+  P09.01: { value: 96, meaning: "9600 baud" }
+  P09.03: { value: 5,  meaning: "comm timeout 5s (CE10 trip if master goes silent)" }
+  P09.04: { value: 13, meaning: "8N2 RTU" }
+  P00.21: { value: 2,  meaning: "run source = RS-485" }
+
+# What bit us. Each line is a session we don't want to repeat.
+gotchas:
+  - "P09.04=13 means 8 data / No parity / 2 stop bits (8N2), NOT 8N1. RESUME_VFD_COMMISSIONING.md recorded P09.04=12 (8N1) — that was wrong; GS10_Integration_Guide.md is authoritative."
+  - "Frequency setpoint (0x2001) is Hz x10: write 300 for 30.0 Hz."
+  - "Control command 0x2000 bitfield: FWD+RUN=18, REV+RUN=20, STOP=1. Fault reset is a separate write (0x0002 -> 0x2002)."
+  - "MSG-block ErrorID=255 = the message never completed -> the CCW serial port config was never actually downloaded to the PLC (a download/sync problem, NOT wiring)."
+  - "ErrorID 55 / fault code 58 (CE10) = comm timeout, no Modbus packets received -> swap D+/D-, verify baud/parity, check P09.03."
+  - "Frequency source must be serial (or freq set via 0x2001) for RS-485 speed control; P00.20 governs the freq command source."
+
+# How a discovered GS10 maps into the UNS (consumed later by mira-crawler/ingest/uns.py).
+uns:
+  type_path_builder: model_path
+  manufacturer: AutomationDirect
+  model: GS10
+
+sources:
+  - plc/GS10_Integration_Guide.md
+  - plc/RESUME_VFD_COMMISSIONING.md   # (the 8N1 line here is the corrected error)
+  - plc/vfd_diag.py                    # ErrorID decoder
+  - plc/Micro820_v4.1.9_Program.st     # ladder header GS10 register/param notes
