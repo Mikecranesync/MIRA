@@ -1,0 +1,52 @@
+{
+  "schema": "fieldbus-inventory/1",
+  "scanned_at": "2026-05-29T09:42:00Z",
+  "scan": {
+    "subnets": ["192.168.1.0/24"],
+    "serial": null,
+    "ports": [502, 44818, 102, 4840, 47808],
+    "gentle": false
+  },
+  "devices": [
+    {
+      "transport": "ethernet",
+      "address": "192.168.1.100",
+      "tier": "device_identified",
+      "protocol": "ethernet_ip",
+      "profile": "micro820",
+      "identity": {
+        "vendor": "1",
+        "product": "2080-LC20-20QBB",
+        "serial": "D096D30C",
+        "raw": { "device_type": 14, "revision": "21.11" }
+      },
+      "evidence": [
+        "enip list-identity reply: vendor=1 product=2080-LC20-20QBB",
+        "modbus :502 exception 1 (ILLEGAL_FUNCTION)"
+      ],
+      "uns_hint": "enterprise.knowledge_base.rockwell_automation.micro820",
+      "next_actions": [
+        "Deploy the Modbus map: python plc/deploy_modbus_map.py --auto",
+        "MbSrvConf map not yet deployed (Modbus :502 returns ILLEGAL_FUNCTION)"
+      ]
+    },
+    {
+      "transport": "ethernet",
+      "address": "192.168.1.50",
+      "tier": "port_open",
+      "protocol": "modbus_tcp",
+      "profile": null,
+      "identity": {},
+      "evidence": ["tcp :502 connect ok"],
+      "uns_hint": null,
+      "next_actions": []
+    }
+  ],
+  "unknowns": [
+    {
+      "address": "192.168.1.77",
+      "open_ports": [102],
+      "note": "S7/Profinet port open, shallow probe only — no profile match"
+    }
+  ]
+}
