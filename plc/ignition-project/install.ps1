@@ -5,9 +5,10 @@ $log = Join-Path $PSScriptRoot 'install.log'
 try {
     $src = Join-Path $PSScriptRoot 'ConvSimpleLive'
     $dst = 'C:\Program Files\Inductive Automation\Ignition\data\projects\ConvSimpleLive'
-    Copy-Item -Recurse -Force $src $dst
+    if (-not (Test-Path $dst)) { New-Item -ItemType Directory -Path $dst -Force | Out-Null }
+    Copy-Item -Path (Join-Path $src '*') -Destination $dst -Recurse -Force
     $n = (Get-ChildItem $dst -Recurse -File).Count
-    "OK installed $n files to $dst at $(Get-Date -Format o)" | Out-File -Encoding utf8 $log
+    "OK synced $n files to $dst at $(Get-Date -Format o)" | Out-File -Encoding utf8 $log
 } catch {
     "ERROR: $($_.Exception.Message)" | Out-File -Encoding utf8 $log
 }
