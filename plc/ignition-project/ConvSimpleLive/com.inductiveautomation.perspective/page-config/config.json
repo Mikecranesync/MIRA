@@ -1,0 +1,9 @@
+{
+  "pages": {
+    "/": {
+      "title": "Conv_Simple Live",
+      "viewPath": "ConvSimpleLive",
+      "docks": {}
+    }
+  }
+}

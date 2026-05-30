@@ -1,0 +1,365 @@
+{
+  "custom": {},
+  "params": {},
+  "props": {
+    "defaultSize": {
+      "width": 1024,
+      "height": 768
+    }
+  },
+  "root": {
+    "type": "ia.container.flex",
+    "meta": {
+      "name": "root"
+    },
+    "props": {
+      "direction": "column",
+      "style": {
+        "padding": "20px",
+        "gap": "12px",
+        "backgroundColor": "#0d1117"
+      }
+    },
+    "children": [
+      {
+        "type": "ia.display.label",
+        "meta": {
+          "name": "title"
+        },
+        "position": {
+          "basis": "44px",
+          "shrink": 0
+        },
+        "props": {
+          "text": "Conv_Simple — Live",
+          "style": {
+            "fontSize": "26px",
+            "fontWeight": 700,
+            "color": "#e6edf3"
+          }
+        }
+      },
+      {
+        "type": "ia.display.label",
+        "meta": {
+          "name": "subtitle"
+        },
+        "position": {
+          "shrink": 0
+        },
+        "props": {
+          "text": "Micro 820 · MIRA_PLC (CIP) · live OPC tags",
+          "style": {
+            "fontSize": "13px",
+            "color": "#8b949e"
+          }
+        }
+      },
+      {
+        "type": "ia.container.flex",
+        "meta": {
+          "name": "row_heartbeat"
+        },
+        "position": {
+          "basis": "30px",
+          "shrink": 0
+        },
+        "props": {
+          "direction": "row",
+          "justify": "flex-start",
+          "style": {
+            "gap": "10px"
+          }
+        },
+        "children": [
+          {
+            "type": "ia.display.label",
+            "meta": {
+              "name": "k"
+            },
+            "position": {
+              "basis": "240px",
+              "shrink": 0
+            },
+            "props": {
+              "text": "Heartbeat (scan alive)",
+              "style": {
+                "color": "#c9d1d9",
+                "fontWeight": 600
+              }
+            }
+          },
+          {
+            "type": "ia.display.label",
+            "meta": {
+              "name": "v"
+            },
+            "props": {
+              "text": "—",
+              "style": {
+                "color": "#58a6ff",
+                "fontWeight": 700
+              }
+            },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "fallbackDelay": 2.5,
+                    "mode": "direct",
+                    "tagPath": "[default]MIRA_IOCheck/Diagnostics/heartbeat"
+                  },
+                  "type": "tag"
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "ia.container.flex",
+        "meta": {
+          "name": "row_estop"
+        },
+        "position": {
+          "basis": "30px",
+          "shrink": 0
+        },
+        "props": {
+          "direction": "row",
+          "justify": "flex-start",
+          "style": {
+            "gap": "10px"
+          }
+        },
+        "children": [
+          {
+            "type": "ia.display.label",
+            "meta": {
+              "name": "k"
+            },
+            "position": {
+              "basis": "240px",
+              "shrink": 0
+            },
+            "props": {
+              "text": "E-stop NC (healthy = 1)",
+              "style": {
+                "color": "#c9d1d9",
+                "fontWeight": 600
+              }
+            }
+          },
+          {
+            "type": "ia.display.label",
+            "meta": {
+              "name": "v"
+            },
+            "props": {
+              "text": "—",
+              "style": {
+                "color": "#58a6ff",
+                "fontWeight": 700
+              }
+            },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "fallbackDelay": 2.5,
+                    "mode": "direct",
+                    "tagPath": "[default]MIRA_IOCheck/Inputs/DI_02"
+                  },
+                  "type": "tag"
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "ia.container.flex",
+        "meta": {
+          "name": "row_pbrun"
+        },
+        "position": {
+          "basis": "30px",
+          "shrink": 0
+        },
+        "props": {
+          "direction": "row",
+          "justify": "flex-start",
+          "style": {
+            "gap": "10px"
+          }
+        },
+        "children": [
+          {
+            "type": "ia.display.label",
+            "meta": {
+              "name": "k"
+            },
+            "position": {
+              "basis": "240px",
+              "shrink": 0
+            },
+            "props": {
+              "text": "Run pushbutton (DI_04)",
+              "style": {
+                "color": "#c9d1d9",
+                "fontWeight": 600
+              }
+            }
+          },
+          {
+            "type": "ia.display.label",
+            "meta": {
+              "name": "v"
+            },
+            "props": {
+              "text": "—",
+              "style": {
+                "color": "#58a6ff",
+                "fontWeight": 700
+              }
+            },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "fallbackDelay": 2.5,
+                    "mode": "direct",
+                    "tagPath": "[default]MIRA_IOCheck/Inputs/DI_04"
+                  },
+                  "type": "tag"
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "ia.container.flex",
+        "meta": {
+          "name": "row_green"
+        },
+        "position": {
+          "basis": "30px",
+          "shrink": 0
+        },
+        "props": {
+          "direction": "row",
+          "justify": "flex-start",
+          "style": {
+            "gap": "10px"
+          }
+        },
+        "children": [
+          {
+            "type": "ia.display.label",
+            "meta": {
+              "name": "k"
+            },
+            "position": {
+              "basis": "240px",
+              "shrink": 0
+            },
+            "props": {
+              "text": "Green light (DO_00)",
+              "style": {
+                "color": "#c9d1d9",
+                "fontWeight": 600
+              }
+            }
+          },
+          {
+            "type": "ia.display.label",
+            "meta": {
+              "name": "v"
+            },
+            "props": {
+              "text": "—",
+              "style": {
+                "color": "#3fb950",
+                "fontWeight": 700
+              }
+            },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "fallbackDelay": 2.5,
+                    "mode": "direct",
+                    "tagPath": "[default]MIRA_IOCheck/Outputs/DO_00"
+                  },
+                  "type": "tag"
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "ia.container.flex",
+        "meta": {
+          "name": "row_contactor"
+        },
+        "position": {
+          "basis": "30px",
+          "shrink": 0
+        },
+        "props": {
+          "direction": "row",
+          "justify": "flex-start",
+          "style": {
+            "gap": "10px"
+          }
+        },
+        "children": [
+          {
+            "type": "ia.display.label",
+            "meta": {
+              "name": "k"
+            },
+            "position": {
+              "basis": "240px",
+              "shrink": 0
+            },
+            "props": {
+              "text": "Contactor / drive (DO_02)",
+              "style": {
+                "color": "#c9d1d9",
+                "fontWeight": 600
+              }
+            }
+          },
+          {
+            "type": "ia.display.label",
+            "meta": {
+              "name": "v"
+            },
+            "props": {
+              "text": "—",
+              "style": {
+                "color": "#3fb950",
+                "fontWeight": 700
+              }
+            },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "fallbackDelay": 2.5,
+                    "mode": "direct",
+                    "tagPath": "[default]MIRA_IOCheck/Outputs/DO_02"
+                  },
+                  "type": "tag"
+                }
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
