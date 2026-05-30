@@ -1432,7 +1432,9 @@ class Supervisor:
             # Require confidence > 0: truly vague messages (no vendor/model/fault
             # detected) should not trigger the gate — the bot asks Q1 clarifiers
             # instead. Gate fires when we have at least a partial context to confirm.
-            if uns_ctx.confidence > 0 and self._should_fire_uns_gate(_router_intent, state, message, sc):
+            if uns_ctx.confidence > 0 and self._should_fire_uns_gate(
+                _router_intent, state, message, sc
+            ):
                 return await self._handle_uns_confirmation_request(
                     chat_id,
                     message,
