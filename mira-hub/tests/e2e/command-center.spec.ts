@@ -150,6 +150,11 @@ test("command center renders — UNS tree, green live dot, framed display", asyn
   ]);
 
   // 2) Deterministic data: mock the tree fetch + the framed display.
+  // ⚠️ The display mock is SAME-ORIGIN, so this test does NOT exercise the real
+  // cross-origin frame against the CSP. The frame-src CSP regression (a HTTPS/LAN
+  // display blocked because frame-src lacked 'self' + the display host) is covered
+  // separately by the "CSP frame-src admits the display iframe" test below — keep
+  // both; this one proves the UI, that one proves the header.
   await page.route("**/api/command-center/tree*", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(TREE) }),
   );
@@ -191,4 +196,32 @@ test("command center renders — UNS tree, green live dot, framed display", asyn
     fullPage: false,
   });
   console.log(`📸 ${DATE}_command-center-tree-live_mobile.png`);
+});
+
+// Regression guard for the frame-src CSP bug: the Command Center iframe src is the
+// same-origin /api/command-center/display/[id] route, which 302-redirects to the
+// display host. CSP frame-src does NOT inherit from default-src, so it must list
+// BOTH 'self' (initial route) and the configured display host (post-redirect URL),
+// or the browser silently blocks the frame (blank viewer). The header is asserted
+// directly so CI catches this without needing a real cross-origin display.
+// See mira-hub/src/middleware.ts (DISPLAY_FRAME_SRC / CSP_FRAME_SRC_DISPLAY_HOSTS).
+test("CSP frame-src admits the display iframe ('self' + configured hosts)", async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  const trialExpiresAt = new Date(Date.now() + 30 * 86_400_000).toISOString();
+  const token = await encode({
+    token: { uid: "cc-csp-user", tid: TENANT_ID, status: "trial", trialExpiresAt, email: "cc-csp@factorylm-test.com" },
+    secret: AUTH_SECRET,
+  });
+  await context.addCookies([{ name: "next-auth.session-token", value: token, url: baseURL! }]);
+
+  const res = await page.goto("/command-center", { waitUntil: "domcontentloaded" });
+  const csp = res?.headers()["content-security-policy"] ?? "";
+  const frameSrc = (csp.split(";").find((d) => d.trim().startsWith("frame-src")) ?? "").trim();
+
+  expect(frameSrc, "frame-src directive present").not.toBe("");
+  // 'self' is required for the same-origin display route to be frameable at all.
+  expect(frameSrc, "frame-src must include 'self'").toContain("'self'");
 });

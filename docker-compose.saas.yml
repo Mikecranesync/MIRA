@@ -469,6 +469,12 @@ services:
       # Default tenant carried by lib helpers when no session is present (cron, scripts).
       # Real API requests resolve tenant from the NextAuth session.
       - HUB_TENANT_ID=${HUB_TENANT_ID:-mike}
+      # Command Center frames live HMI displays — CSP frame-src must list each
+      # display origin (exact scheme://host[:port], comma-separated). EMPTY by
+      # default so prod CSP is unchanged. Phase 2: set to the on-prem Tailscale
+      # reverse-proxy HTTPS origin (a HTTPS Hub can't frame a HTTP LAN display —
+      # mixed-content). See mira-hub/src/middleware.ts.
+      - CSP_FRAME_SRC_DISPLAY_HOSTS=${CSP_FRAME_SRC_DISPLAY_HOSTS:-}
       # Refine simple-rest data provider — must be set in prod or queries silently mock-fall-through
       - NEXT_PUBLIC_PIPELINE_API_URL=${NEXT_PUBLIC_PIPELINE_API_URL:-https://app.factorylm.com}
       # Google Workspace integration OAuth (Drive/Gmail) — distinct from sign-in client

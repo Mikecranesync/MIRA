@@ -16,6 +16,22 @@ const SECURE_NAME = "__Secure-next-auth.session-token";
 const REGULAR_NAME = "next-auth.session-token";
 const HKDF_INFO = "NextAuth.js Generated Encryption Key";
 
+// Command Center frames live HMI displays (Node-RED dashboards, web HMIs) in an
+// iframe. CSP `frame-src` is a per-document allowlist, so those display hosts must
+// be permitted here or the browser silently blocks the frame (blank viewer pane).
+// Env-driven, EMPTY BY DEFAULT — prod CSP is unchanged until an operator sets it.
+// Each entry must be an exact `scheme://host[:port]` origin (never a bare scheme or
+// wildcard). This is the same seam Phase 2 uses: point it at the on-prem Tailscale
+// reverse proxy's HTTPS origin once that lands.
+//   e.g. CSP_FRAME_SRC_DISPLAY_HOSTS="http://192.168.1.12:1880,https://hmi.example.tailnet.ts.net"
+// NOTE: a HTTPS Hub framing a HTTP display is blocked by the browser as mixed
+// active content regardless of CSP — that's the Phase-2 (TLS-terminating proxy) gap,
+// not something this allowlist can fix.
+const DISPLAY_FRAME_SRC = (process.env.CSP_FRAME_SRC_DISPLAY_HOSTS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 async function deriveKey(secret: string): Promise<Uint8Array> {
   const enc = new TextEncoder();
   const ikm = await crypto.subtle.importKey(
@@ -85,7 +101,19 @@ function buildCsp(nonce: string): string {
     `font-src 'self' https://fonts.gstatic.com`,
     `img-src 'self' data: https:`,
     `connect-src 'self' https://accounts.google.com https://api.hubapi.com https://api.stripe.com https://js.stripe.com`,
-    `frame-src https://accounts.google.com https://js.stripe.com https://hooks.stripe.com https://mikecranesync.github.io`,
+    // Command Center display hosts (DISPLAY_FRAME_SRC) are appended so the framed
+    // HMI loads. CSP checks the post-redirect URL, so even though the iframe src is
+    // the same-origin /api/command-center/display/[id] route, the display host it
+    // 302s to must be listed here.
+    // `'self'` is required: the Command Center iframe src is the same-origin
+    // /api/command-center/display/[id] route. frame-src does NOT inherit from
+    // default-src, so without 'self' the browser blocks framing our own route.
+    // The display host(s) cover the URL that route 302-redirects to (CSP
+    // re-checks frame-src against the post-redirect URL).
+    [
+      `frame-src 'self' https://accounts.google.com https://js.stripe.com https://hooks.stripe.com https://mikecranesync.github.io`,
+      ...DISPLAY_FRAME_SRC,
+    ].join(" "),
   ].join("; ");
 }
 
