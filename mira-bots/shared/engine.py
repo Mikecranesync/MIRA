@@ -1139,6 +1139,7 @@ class Supervisor:
         if _PROCEED_RE.match(_msg_stripped) and not photo_b64:
             ctx_p = state.get("context") or {}
             ctx_p.pop("awaiting_proceed", None)
+            ctx_p.pop("pending_uns_confirm", None)
             state["context"] = ctx_p
             # Advance state once (counts as a diagnostic turn) so q_rounds
             # increments and the Q-trap can fire if near threshold.
