@@ -1,4 +1,10 @@
--- Migration 009: chunk anchors + ingest-route discriminator on knowledge_entries.
+-- Migration 030: chunk anchors + ingest-route discriminator on knowledge_entries.
+--
+-- LOCATION NOTE: knowledge_entries is engine-side (docs/migrations/001), but the ONLY gated,
+-- automated apply path to staging/prod is `.github/workflows/apply-migrations.yml`, which runs
+-- `mira-hub/db/migrations/*.sql` (docs/migrations/ has no runner). So this lives here to ride
+-- that dev→staging→prod pipeline. The ALTERs run against the same NeonDB regardless of "side".
+-- (Already applied to the dev + staging Neon branches 2026-05-30 via node pg; see plan file.)
 --
 -- Spec : docs/specs/miradrop-ingest-v2-spec.md §4.2 (chunk anchors)
 --        docs/specs/uns-node-centric-knowledge-spec.md (Hub folder=brain front door)
