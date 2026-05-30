@@ -72,9 +72,28 @@ export function ensureUploadsSchema(): Promise<void> {
       ALTER TABLE hub_uploads
         ADD COLUMN IF NOT EXISTS uns_path TEXT
     `);
+    // mira-ingest-v2 (ADR-0019) / Hub folder=brain: a drop attached to a namespace node
+    // records the confirmed kg_entities node id, so retrieval resolves the chunk → node
+    // address (knowledge_entries.doc_id → hub_uploads.kg_entity_id → kg_entities.uns_path).
+    await pool.query(`
+      ALTER TABLE hub_uploads
+        ADD COLUMN IF NOT EXISTS kg_entity_id UUID
+    `);
+    // 'v2' = mira-ingest-v2 / Hub-node attachment (chunks land in knowledge_entries);
+    // NULL / 'ow' = legacy Open-WebUI-only path. Discriminator for cutover.
+    await pool.query(`
+      ALTER TABLE hub_uploads
+        ADD COLUMN IF NOT EXISTS ingest_route TEXT
+    `);
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_hub_uploads_tenant_status
         ON hub_uploads (tenant_id, status, created_at DESC)
+    `);
+    // Fetch all v2 drops bound to a node (node Documents panel + subtree retrieval join).
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_hub_uploads_kg_entity
+        ON hub_uploads (tenant_id, kg_entity_id)
+        WHERE kg_entity_id IS NOT NULL
     `);
     // Idempotency for cloud-source uploads (#700) — re-picking the same
     // Drive/Dropbox file should return the existing row, not duplicate
