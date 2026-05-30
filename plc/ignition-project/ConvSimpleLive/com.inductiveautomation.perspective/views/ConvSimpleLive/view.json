@@ -84,7 +84,7 @@
         "meta": { "name": "sel_pos" },
         "position": { "x": 335, "y": 398, "width": 142, "height": 22 },
         "props": { "text": "— OFF —", "style": { "color": "#1a1a1a", "fontWeight": 700, "textAlign": "center", "fontSize": "14px" } },
-        "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "if({[default]MIRA_IOCheck/Inputs/DI_00}, \"\\u25C0 FWD\", if({[default]MIRA_IOCheck/Inputs/DI_01}, \"REV \\u25B6\", \"\\u2014 OFF \\u2014\"))" } } } }
+        "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "if({[default]MIRA_IOCheck/Inputs/DI_00}, \"< FWD\", if({[default]MIRA_IOCheck/Inputs/DI_01}, \"REV >\", \"-- OFF --\"))" } } } }
       },
 
       {
@@ -106,7 +106,7 @@
         "position": { "x": 645, "y": 466, "width": 160, "height": 20 },
         "props": { "text": "", "style": { "textAlign": "center", "fontSize": "12px", "fontWeight": 700 } },
         "propConfig": {
-          "props.text": { "binding": { "type": "expr", "config": { "expression": "if({[default]MIRA_IOCheck/Inputs/DI_02}, \"\\u25CF ARMED / OK\", \"\\u2716 TRIPPED\")" } } },
+          "props.text": { "binding": { "type": "expr", "config": { "expression": "if({[default]MIRA_IOCheck/Inputs/DI_02}, \"ARMED / OK\", \"TRIPPED\")" } } },
           "props.style.color": { "binding": { "type": "expr", "config": { "expression": "if({[default]MIRA_IOCheck/Inputs/DI_02}, \"#1a7f37\", \"#b71c1c\")" } } }
         }
       },
