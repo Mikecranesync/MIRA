@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Conv_Simple_1.6 Modbus TCP server map.
+
+  v1.4 shipped with MbSrvConf_target.xml as an empty <modbusServer Version="2.0"/>
+  stub. v1.6 populates it so MIRA bridge / live_monitor / vfd_diag can read the
+  bench's live RS-485 state over Modbus TCP without touching CCW.
+
+  This is the *server-side* map (the Micro 820 acts as a Modbus TCP slave to
+  CHARLIE/Bravo on the LAN). It is unrelated to the *client-side* RTU work
+  Prog_init.stf does to talk to the GS10.
+
+  Map convention:
+    000001..099999 = coils (BOOL, FC01/05/15)
+    400001..499999 = holding registers (UINT/INT/WORD, FC03/06/16)
+
+  Variable names MUST match GlobalVariable.md exactly.
+
+  Coil layout (8 coils):
+    000001  VfdRunning           — drive in RUN per status word bit 0..1
+    000002  VfdAtSpeed           — drive at-speed per bit 3..4
+    000003  VfdFault             — drive fault per bit 7
+    000004  VfdCommCtrl          — run cmd controlled by comm per bit 11
+    000005  ReadOK               — last poll succeeded
+    000006  ReadError            — last poll errored
+    000007  CommFault            — > 5 s since last good read
+    000008  commissioning_mode   — write-disable feature flag
+
+  Holding-register layout (14 registers):
+    400001  PollStep             — 1=read 2=write-cmd 3=write-freq
+    400002  ReadStatusWord       — 0x2100 raw
+    400003  FreqCmdReadback      — 0x2101 (Hz × 100)
+    400004  OutputFrequency      — 0x2102 (Hz × 100)
+    400005  OutputCurrent        — 0x2103 (A × 10)
+    400006  CmdWord              — 1=stop 18=fwd 20=rev 34=reset
+    400007  FreqSetpoint         — Hz × 100
+    400008  ReadErrorID
+    400009  LastReadErrStep      — which step errored last
+    400010  LastWriteErrID
+    400011  ReadErrCount         — low word
+    400012  WriteCmdErrCount     — low word
+    400013  WriteFreqErrCount    — low word
+    400014  PollCount            — low word (rolls every ~74 hr @ 2 Hz)
+-->
+<modbusServer Version="3.0">
+  <modbusRegister name="COILS">
+    <mapping variable="VfdRunning" parent="Micro820" dataType="Bool" address="000001">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="VfdAtSpeed" parent="Micro820" dataType="Bool" address="000002">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="VfdFault" parent="Micro820" dataType="Bool" address="000003">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="VfdCommCtrl" parent="Micro820" dataType="Bool" address="000004">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="ReadOK" parent="Micro820" dataType="Bool" address="000005">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="ReadError" parent="Micro820" dataType="Bool" address="000006">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="CommFault" parent="Micro820" dataType="Bool" address="000007">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="commissioning_mode" parent="Micro820" dataType="Bool" address="000008">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+  </modbusRegister>
+  <modbusRegister name="HOLDING_REGISTERS">
+    <mapping variable="PollStep" parent="Micro820" dataType="Int" address="400001">
+      <MBVarInfo ElemType="Int" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="ReadStatusWord" parent="Micro820" dataType="Word" address="400002">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="FreqCmdReadback" parent="Micro820" dataType="Word" address="400003">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="OutputFrequency" parent="Micro820" dataType="Word" address="400004">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="OutputCurrent" parent="Micro820" dataType="Word" address="400005">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="CmdWord" parent="Micro820" dataType="Word" address="400006">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="FreqSetpoint" parent="Micro820" dataType="Word" address="400007">
+      <MBVarInfo ElemType="Word" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="ReadErrorID" parent="Micro820" dataType="Int" address="400008">
+      <MBVarInfo ElemType="Int" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="LastReadErrStep" parent="Micro820" dataType="Int" address="400009">
+      <MBVarInfo ElemType="Int" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="LastWriteErrID" parent="Micro820" dataType="Int" address="400010">
+      <MBVarInfo ElemType="Int" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="ReadErrCount" parent="Micro820" dataType="Int" address="400011">
+      <MBVarInfo ElemType="Int" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="WriteCmdErrCount" parent="Micro820" dataType="Int" address="400012">
+      <MBVarInfo ElemType="Int" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="WriteFreqErrCount" parent="Micro820" dataType="Int" address="400013">
+      <MBVarInfo ElemType="Int" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+    <mapping variable="PollCount" parent="Micro820" dataType="Int" address="400014">
+      <MBVarInfo ElemType="Int" SubElemType="Any" DataTypeSize="2" />
+    </mapping>
+  </modbusRegister>
+</modbusServer>

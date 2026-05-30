@@ -1,0 +1,253 @@
+PROGRAM Prog_init
+(* ================================================================ *)
+(*  Conv_Simple_1.6 -- Modbus RTU POU                                *)
+(*  Target:   Allen-Bradley Micro 820 (2080-LC20-20QBB)              *)
+(*  Drive:    AutomationDirect GS10 DURApulse, RTU slave 1           *)
+(*  Project:  MIRA_PLC repo, branch conv_simple_1.6                  *)
+(*  Authors:  MIRA / Claude (review of v1.4 dated 2026-05-24)        *)
+(*                                                                   *)
+(*  Phase 1 scope -- supersedes the Phase 0 v1.4 heartbeat-read.     *)
+(*    1. READ  GS10 status word + monitor block @ 0x2100..0x2106     *)
+(*       every 500 ms. Drives ReadOK / ReadStatusWord.               *)
+(*    2. WRITE GS10 command word @ 0x2000 when a write is queued.    *)
+(*    3. WRITE GS10 frequency setpoint @ 0x2001 when changed.        *)
+(*    Write side is feature-flagged off by `commissioning_mode`;     *)
+(*    default behaviour is read-only until Phase 1 verification.     *)
+(*                                                                   *)
+(*  Changelog vs Conv_Simple_1.4 (per docs/evaluations/              *)
+(*  conveyor-st-code-review-2026-05-24.md, findings F1-F9):          *)
+(*    F1 (P0): READ_mODBUS instance is now MSG_MODBUS (RTU),         *)
+(*             with MSG_MODBUS_LOCAL / MSG_MODBUS_TARGET cfg         *)
+(*             structs and Channel := 2 for the embedded RS-485     *)
+(*             port. Per Rockwell 2080-RM001 (and the 2026-05-25    *)
+(*             retraction at commit b591fe47): on the Micro 800    *)
+(*             family, MSG_MODBUS is the SERIAL/RTU FB and          *)
+(*             MSG_MODBUS2 is the TCP/Ethernet FB -- the "2"        *)
+(*             denotes TCP, not "version 2." The v1.4 binding to    *)
+(*             MSG_MODBUS was therefore already correct; v1.6's     *)
+(*             real F1 work is just to ensure the cfg structs are   *)
+(*             MSG_MODBUS_LOCAL / MSG_MODBUS_TARGET (not the TCP    *)
+(*             variant MSGMODBUSPARA_*). See GlobalVariable.md.     *)
+(*    F2 (P1): READ register is now 0x2100 (Drive Status Word).      *)
+(*             v1.4 read 0x2101 (Frequency Command read-back) and    *)
+(*             mislabelled it as status. ElementCnt raised 1->4 so   *)
+(*             we get freq / current / DC-bus in the same poll.      *)
+(*    F3 (P0): Bus framing is the documented PLC-side default.       *)
+(*             ST source CAN'T set baud / parity / stop bits --      *)
+(*             those live in CCW Project -> Micro820 -> Embedded     *)
+(*             Serial Port -> Properties. Required:                  *)
+(*               Driver = Modbus RTU Master                          *)
+(*               Baud   = 19200                                      *)
+(*               Data   = 8                                          *)
+(*               Parity = Even                                       *)
+(*               Stop   = 1                                          *)
+(*               Media  = RS-485                                     *)
+(*               Resp. Timeout = 1000 ms                             *)
+(*             GS10 must match: P09.00=1, P09.01=2, P09.04=4.        *)
+(*    F4 (P1): READDATA scalar landmine deleted from globals (see    *)
+(*             GlobalVariable.md). Only `read_data` ARRAY[1..125]    *)
+(*             OF UINT remains.                                      *)
+(*    F5 (P2): Dead instances (mb_read_status, mb_write_cmd,         *)
+(*             write_cmd_data, COP_CMD, step_*) deleted.             *)
+(*    F6 (P2): ReadLocalAddress dead-var deleted.                    *)
+(*    F7 (P2): READ_mODBUS instance renamed to mb_read_monitor       *)
+(*             (canonical from MIRA/plc v3/v4 lineage). The          *)
+(*             ALL-CAPS / lowercase-m typo is gone.                  *)
+(*    F8 (P3): MSG_MODBUS takes its timeout from the CCW serial      *)
+(*             port (1000 ms), not from a struct member. No code     *)
+(*             change needed here once F1 is applied.                *)
+(*    F9 (P3): HEARTBEATTMR all-caps duplicate dropped; consistent   *)
+(*             casing `HeartbeatTmr` throughout.                     *)
+(*                                                                   *)
+(*  GS10 Register Map (KB-canonical, verified 2026-05-24):           *)
+(*    READ  (FC03):                                                  *)
+(*      0x2100   Drive Status Word                                   *)
+(*                 bit 0..1 = run state (11=running)                 *)
+(*                 bit 3..4 = direction                              *)
+(*                 bit 7    = fault active                           *)
+(*                 bit 8    = freq controlled by comm                *)
+(*                 bit 11   = run cmd controlled by comm             *)
+(*      0x2101   Frequency Command read-back   (0.01 Hz / count)     *)
+(*      0x2102   Output Frequency              (0.01 Hz / count)     *)
+(*      0x2103   Output Current                (0.1 A / count)       *)
+(*      0x2104   DC Bus Voltage                (V)                   *)
+(*    WRITE (FC06):                                                  *)
+(*      0x2000   Control Command (bit field)                         *)
+(*                 1  = STOP                                          *)
+(*                 18 = FWD + RUN                                     *)
+(*                 20 = REV + RUN                                     *)
+(*                 34 = FAULT RESET pulse                            *)
+(*      0x2001   Frequency Setpoint            (0.01 Hz / count)     *)
+(*                 e.g. 3000 = 30.00 Hz                              *)
+(* ================================================================ *)
+
+  (* ---------------------------------------------------------------- *)
+  (* Section 1 -- HEARTBEAT TIMEBASE                                  *)
+  (* Self-retriggering TON: IN := NOT Q produces a 1-scan pulse       *)
+  (* every PT. HeartbeatTick is the single-scan trigger for the       *)
+  (* poll-step scheduler.                                             *)
+  (* ---------------------------------------------------------------- *)
+  HeartbeatTmr(IN := NOT HeartbeatTmr.Q, PT := T#500ms);
+  HeartbeatTick := HeartbeatTmr.Q;
+
+  IF HeartbeatTick THEN
+    PollCount := PollCount + 1;
+
+    (* Advance the poll-step scheduler. Skip write steps when no   *)
+    (* command is pending or when commissioning_mode locks writes. *)
+    PollStep := PollStep + 1;
+    IF PollStep > 3 THEN
+      PollStep := 1;
+    END_IF;
+
+    IF commissioning_mode THEN
+      (* Reads only. Force back to step 1. *)
+      PollStep := 1;
+    END_IF;
+
+    IF PollStep = 2 AND NOT WriteCmdPending THEN
+      PollStep := 3;
+    END_IF;
+
+    IF PollStep = 3 AND NOT WriteFreqPending THEN
+      PollStep := 1;
+    END_IF;
+  END_IF;
+
+  (* ---------------------------------------------------------------- *)
+  (* Section 2 -- READ MONITOR BLOCK CFG  (step 1, 0x2100, 4 regs)    *)
+  (* Reads Status Word + Freq Cmd RB + Output Freq + Output Current. *)
+  (* DC-bus voltage at 0x2104 is left for Phase 2 (5-reg read).      *)
+  (* ---------------------------------------------------------------- *)
+  ReadLocalParam.Channel     := 2;        (* 2 = embedded RS-485 port *)
+  ReadLocalParam.TriggerType := 0;        (* edge-trigger by IN       *)
+  ReadLocalParam.Cmd         := 3;        (* FC03 Read Holding Reg    *)
+  ReadLocalParam.ElementCnt  := 4;        (* 0x2100..0x2103           *)
+  ReadTargetParam.Node       := 1;        (* GS10 slave addr          *)
+  ReadTargetParam.Addr       := 16#2100;  (* Drive Status Word        *)
+
+  (* ---------------------------------------------------------------- *)
+  (* Section 3 -- WRITE COMMAND WORD CFG  (step 2, 0x2000)            *)
+  (* ---------------------------------------------------------------- *)
+  WriteCmdLocalParam.Channel     := 2;
+  WriteCmdLocalParam.TriggerType := 0;
+  WriteCmdLocalParam.Cmd         := 6;    (* FC06 Write Single Reg    *)
+  WriteCmdLocalParam.ElementCnt  := 1;
+  WriteCmdTargetParam.Node       := 1;
+  WriteCmdTargetParam.Addr       := 16#2000;
+
+  (* ---------------------------------------------------------------- *)
+  (* Section 4 -- WRITE FREQUENCY SETPOINT CFG (step 3, 0x2001)       *)
+  (* ---------------------------------------------------------------- *)
+  WriteFreqLocalParam.Channel     := 2;
+  WriteFreqLocalParam.TriggerType := 0;
+  WriteFreqLocalParam.Cmd         := 6;
+  WriteFreqLocalParam.ElementCnt  := 1;
+  WriteFreqTargetParam.Node       := 1;
+  WriteFreqTargetParam.Addr       := 16#2001;
+
+  (* ---------------------------------------------------------------- *)
+  (* Section 5 -- COMPOSE WRITE BUFFERS                               *)
+  (* CmdWord / FreqSetpoint are written by the ladder Prog1 (or by    *)
+  (* a future HMI). Conv_Simple_1.6 just relays them onto the bus.    *)
+  (* ---------------------------------------------------------------- *)
+  cop_cmd(Enable := TRUE,
+          Src        := CmdWord,
+          SrcOffset  := 0,
+          Dest       := write_cmd_data,
+          DestOffset := 0,
+          Length     := 1,
+          Swap       := FALSE);
+
+  cop_freq(Enable := TRUE,
+           Src        := FreqSetpoint,
+           SrcOffset  := 0,
+           Dest       := write_freq_data,
+           DestOffset := 0,
+           Length     := 1,
+           Swap       := FALSE);
+
+  (* ---------------------------------------------------------------- *)
+  (* Section 6 -- FIRE THE MSG_MODBUS INSTANCES                       *)
+  (*                                                                  *)
+  (* All three instances exist every scan. Only one has IN := TRUE    *)
+  (* at a time, gated by (PollStep = N) AND HeartbeatTick. The other  *)
+  (* two see IN := FALSE and stay idle.                               *)
+  (* ---------------------------------------------------------------- *)
+  mb_read_monitor(IN        := (PollStep = 1) AND HeartbeatTick,
+                  LocalCfg  := ReadLocalParam,
+                  TargetCfg := ReadTargetParam,
+                  LocalAddr := read_data);
+
+  mb_write_cmd(IN        := (PollStep = 2) AND HeartbeatTick
+                            AND NOT commissioning_mode,
+               LocalCfg  := WriteCmdLocalParam,
+               TargetCfg := WriteCmdTargetParam,
+               LocalAddr := write_cmd_data);
+
+  mb_write_freq(IN        := (PollStep = 3) AND HeartbeatTick
+                             AND NOT commissioning_mode,
+                LocalCfg  := WriteFreqLocalParam,
+                TargetCfg := WriteFreqTargetParam,
+                LocalAddr := write_freq_data);
+
+  (* ---------------------------------------------------------------- *)
+  (* Section 7 -- CAPTURE RESULTS                                     *)
+  (* ---------------------------------------------------------------- *)
+  IF mb_read_monitor.Q THEN
+    ReadStatusWord := read_data[1];
+    FreqCmdReadback := read_data[2];
+    OutputFrequency := read_data[3];
+    OutputCurrent   := read_data[4];
+    ReadOK     := TRUE;
+    ReadError  := FALSE;
+    LastReadOkTick := PollCount;
+
+    (* Decode the status word for HMI / Modbus TCP consumers. *)
+    VfdRunning   := (ReadStatusWord AND 16#0003) = 16#0003;
+    VfdAtSpeed   := (ReadStatusWord AND 16#000C) = 16#000C;
+    VfdFault     := (ReadStatusWord AND 16#0080) <> 0;
+    VfdCommCtrl  := (ReadStatusWord AND 16#0800) <> 0;
+  END_IF;
+
+  IF mb_read_monitor.Error THEN
+    ReadOK      := FALSE;
+    ReadError   := TRUE;
+    ReadErrorID := mb_read_monitor.ErrorID;
+    ReadErrCount := ReadErrCount + 1;
+    LastReadErrStep := 1;
+    LastReadErrTick := PollCount;
+  END_IF;
+
+  IF mb_write_cmd.Q THEN
+    WriteCmdPending := FALSE;
+    WriteCmdOkCount := WriteCmdOkCount + 1;
+  END_IF;
+  IF mb_write_cmd.Error THEN
+    WriteCmdErrCount := WriteCmdErrCount + 1;
+    LastWriteErrID := mb_write_cmd.ErrorID;
+    LastReadErrStep := 2;
+  END_IF;
+
+  IF mb_write_freq.Q THEN
+    WriteFreqPending := FALSE;
+    WriteFreqOkCount := WriteFreqOkCount + 1;
+  END_IF;
+  IF mb_write_freq.Error THEN
+    WriteFreqErrCount := WriteFreqErrCount + 1;
+    LastWriteErrID := mb_write_freq.ErrorID;
+    LastReadErrStep := 3;
+  END_IF;
+
+  (* ---------------------------------------------------------------- *)
+  (* Section 8 -- COMM WATCHDOG                                       *)
+  (* If we go more than 10 ticks (5 s @ 500 ms) without a successful  *)
+  (* read, latch CommFault for the ladder + Modbus TCP consumers.    *)
+  (* ---------------------------------------------------------------- *)
+  IF (PollCount - LastReadOkTick) > 10 THEN
+    CommFault := TRUE;
+  ELSE
+    CommFault := FALSE;
+  END_IF;
+
+END_PROGRAM
