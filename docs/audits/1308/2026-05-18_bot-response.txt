@@ -1,0 +1,16 @@
+--- raw response ---
+{"id":"chatcmpl-7691fa81c67c","object":"chat.completion","created":1779089734,"model":"mira-diagnostic","choices":[{"index":0,"message":{"role":"assistant","content":"What communication protocol is the Micro820 using to send the run command to the GS10?\n\n1. Modbus RTU\n2. EtherNet/IP\n3. None"},"finish_reason":"stop"}],"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}
+
+--- answer text ---
+What communication protocol is the Micro820 using to send the run command to the GS10?
+
+1. Modbus RTU
+2. EtherNet/IP
+3. None
+
+--- acceptance checks ---
+mentions '8192':       False
+mentions value 18:     False
+mentions GS10 or GS11: True
+has citation/source:   False
+length:                124 chars

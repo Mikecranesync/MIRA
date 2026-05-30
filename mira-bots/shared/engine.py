@@ -77,9 +77,10 @@ from .models.work_order import (
     log_uns_event,
 )
 from .nemotron import NemotronClient
-from .neon_recall import kb_has_coverage
+from .neon_recall import kb_has_coverage, kb_has_pair_coverage
 from .notifications.push import push_safety_alert, push_wo_created
 from .photo_handler import (
+    DEFAULT_PHOTO_CAPTION,
     build_print_reply,
     clear_session_photo,
     load_session_photo,
@@ -101,8 +102,9 @@ from .session_manager import (
 from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
-from .uns_resolver import resolve_uns_path
+from .uns_resolver import UNSResolution, resolve_uns_path, resolve_uns_path_multi
 from .workers.nameplate_worker import NameplateWorker
+from .workers.photo_ingest_worker import propose_from_nameplate
 from .workers.plc_worker import PLCWorker
 from .workers.print_worker import PrintWorker
 from .workers.rag_worker import RAGWorker
@@ -321,6 +323,14 @@ _TRUSTED_DISPATCH_KINDS: frozenset[str] = frozenset(
 # block falls through to the existing route_intent flow on classifier
 # failure — see `_dispatch_dialogue_turn` below.
 _DST_ENABLED = os.getenv("MIRA_USE_DST", "0") == "1"
+
+# UNS Confirmation Gate kill-switch. Default ON — the gate is the doctrinal
+# entry point of the namespace-builder product (spec §"The UNS Location-Confirmation
+# Gate"). Setting MIRA_UNS_GATE_ENABLED=0 returns the engine to pre-gate behavior
+# (treats every diagnose_equipment turn as if the asset were already confirmed).
+# Used by `_should_fire_uns_gate`; preserves the flag-off regression path called
+# out in docs/plans/2026-05-15-maintenance-namespace-builder.md Phase 1 acceptance.
+_UNS_GATE_ENABLED = os.getenv("MIRA_UNS_GATE_ENABLED", "1") == "1"
 
 # Stage 0 (2026-05-04) action-request fast-path. Catches imperative
 # work-order requests BEFORE `route_intent`, which currently sends them
@@ -597,6 +607,108 @@ class Supervisor:
 
     def _build_print_reply(self, vision_data: dict) -> str:
         return build_print_reply(vision_data)
+
+    async def _analyze_schematic_with_question(
+        self,
+        photo_b64: str,
+        question: str,
+        vision_data: dict,
+        chat_id: str,
+    ) -> str:
+        """Send schematic photo + technician question to the vision LLM and
+        return a circuit-analysis reply.
+
+        Used when the user attaches a real question to a schematic photo
+        (not the bot's default ``Analyze this equipment photo`` caption).
+        The model is asked to identify components, trace paths, and answer
+        the specific question. OCR labels already extracted by the vision
+        worker are fed in as ground-truth so the model doesn't have to
+        re-read every wire number from pixels.
+
+        Returns the empty string when the inference cascade has no vision
+        provider available or every provider failed — the caller MUST fall
+        back to ``_build_print_reply`` in that case so the user is never
+        left with nothing.
+        """
+        ocr_items = vision_data.get("ocr_items") or []
+        drawing_type = vision_data.get("drawing_type") or "electrical drawing"
+        ocr_block = (
+            "OCR labels extracted from the drawing (ground truth — use these "
+            "verbatim, do not invent new labels):\n"
+            + "\n".join(f"- {item}" for item in ocr_items[:80])
+            if ocr_items
+            else "No OCR labels were extracted; rely on the image."
+        )
+
+        system_prompt = (
+            "You are MIRA, an industrial maintenance intelligence assistant "
+            "with 30 years of experience reading electrical schematics, "
+            "wiring diagrams, PLC prints, and control-circuit drawings.\n\n"
+            "When shown a schematic or wiring diagram:\n"
+            "1. Identify the circuit type (motor control, safety circuit, "
+            "sensor circuit, communication, power distribution, etc.).\n"
+            "2. List the major components with their designations "
+            "(K10, R11, CR1, etc.) using the OCR labels when available.\n"
+            "3. Trace the signal/power paths and explain what the circuit "
+            "does.\n"
+            "4. Identify safety-critical elements (emergency stops, "
+            "interlocks, ground-fault paths).\n"
+            "5. Note component values where visible (resistance, voltage "
+            "ratings).\n"
+            "6. Answer the technician's specific question directly.\n"
+            "7. Flag any unusual configurations or potential issues.\n\n"
+            "Be specific. Use the actual designations from the drawing. "
+            "Explain in terms a maintenance technician would understand. "
+            "If you cannot read a label or value clearly, say so — do not "
+            "guess. Keep the reply under 350 words; bullet lists are fine."
+        )
+
+        user_text = (
+            f"Drawing type (auto-detected): {drawing_type}.\n\n"
+            f"{ocr_block}\n\n"
+            f"Technician's question: {question}"
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{photo_b64}",
+                        },
+                    },
+                    {"type": "text", "text": user_text},
+                ],
+            },
+        ]
+
+        try:
+            reply, usage = await self.router.complete(
+                messages,
+                max_tokens=900,
+                session_id=str(chat_id),
+            )
+        except Exception as exc:
+            logger.warning("SCHEMATIC_ANALYSIS_ROUTER_ERROR error=%s", exc)
+            return ""
+        if reply:
+            InferenceRouter.log_usage(usage)
+            logger.info(
+                "SCHEMATIC_ANALYSIS_OK chat_id=%s provider=%s tokens=%s",
+                chat_id,
+                usage.get("provider", "unknown") if isinstance(usage, dict) else "unknown",
+                usage.get("total_tokens", "?") if isinstance(usage, dict) else "?",
+            )
+        else:
+            logger.warning(
+                "SCHEMATIC_ANALYSIS_EMPTY chat_id=%s — cascade returned nothing, "
+                "falling back to OCR-only reply",
+                chat_id,
+            )
+        return reply or ""
 
     async def _extract_schematic(self, photo_b64: str) -> dict:
         """Call mira-mcp's /api/kg/schematic endpoint to run the schematic
@@ -1482,7 +1594,23 @@ class Supervisor:
                 ctx["drawing_type"] = vision_data["drawing_type"]
                 state["context"] = ctx
 
-                reply = self._build_print_reply(vision_data)
+                # If the technician sent a real question with the schematic,
+                # send image + question to the vision LLM for circuit analysis.
+                # Otherwise (just the default "Analyze this equipment photo"
+                # caption) keep the OCR-label preview + prompt-for-question.
+                has_real_question = bool(message) and message != DEFAULT_PHOTO_CAPTION
+                reply = ""
+                if has_real_question:
+                    reply = await self._analyze_schematic_with_question(
+                        photo_b64=photo_b64,
+                        question=message,
+                        vision_data=vision_data,
+                        chat_id=chat_id,
+                    )
+                if not reply:
+                    reply = self._build_print_reply(vision_data)
+                    if not has_real_question:
+                        reply += "\n\nWhat would you like to know about this circuit?"
 
                 # Phase 5 schematic intelligence — opportunistically run the
                 # IEC/ANSI symbol + connection extractor on the same photo.
@@ -2355,6 +2483,27 @@ class Supervisor:
         except Exception as e:
             logger.error("nameplate web call failed: %s", e)
 
+        # 3.5. Write a KG proposal to NeonDB so the Hub /proposals page can
+        # surface this photo for review. Closes the demo loop described in
+        # docs/specs/mira-ground-truth-architecture-investigation.md §3.1 #1.
+        # Best-effort — propose_from_nameplate returns {} on any failure and
+        # never raises into the reply path.
+        uns_ctx = ctx.get("uns_context") or {}
+        try:
+            proposal = await asyncio.to_thread(
+                propose_from_nameplate,
+                resolved_tenant,
+                fields,
+                asset_id=None,
+                uns_path=uns_ctx.get("uns_path"),
+                photo_path=None,
+                chat_id=chat_id,
+            )
+            if proposal:
+                state["last_photo_proposal"] = proposal
+        except Exception as e:
+            logger.error("photo_ingest_worker call failed: %s", e)
+
         # 4. Update session state with nameplate data
         ctx["session_context"] = {
             "equipment_type": f"{manufacturer} {model}",
@@ -2974,6 +3123,50 @@ class Supervisor:
         re.IGNORECASE,
     )
 
+    # Greetings / pleasantries that aren't really "questions" — used to gate
+    # whether the doc-lookup formatter appends its generic "Ask about..." menu.
+    _NON_QUESTION_TOKENS = frozenset(
+        {
+            "hi",
+            "hello",
+            "hey",
+            "howdy",
+            "yo",
+            "sup",
+            "thanks",
+            "thank",
+            "ok",
+            "okay",
+            "k",
+            "cool",
+            "great",
+            "nice",
+            "yes",
+            "no",
+            "y",
+            "n",
+            "?",
+            "??",
+            "help",
+        }
+    )
+
+    @classmethod
+    def _message_is_specific_question(cls, message: str) -> bool:
+        """True when the user's message looks like a real question that
+        deserves a real answer, not the generic "Ask about manuals…" menu.
+
+        Heuristic: >3 word-tokens AND not just a greeting / acknowledgement.
+        Used by the doc-lookup formatter to skip a non-responsive menu line
+        when the user clearly asked something specific.
+        """
+        if not message:
+            return False
+        tokens = re.findall(r"\w+", message.lower())
+        if len(tokens) <= 3:
+            return False
+        return any(t not in cls._NON_QUESTION_TOKENS for t in tokens)
+
     async def _handle_general_question(
         self,
         chat_id: str,
@@ -3008,11 +3201,31 @@ class Supervisor:
         # 1) Re-extract equipment from the user's recent turns + current msg.
         user_window = [h.get("content", "") for h in history[-6:] if h.get("role") == "user"]
         combined_for_resolve = " ".join([*user_window, message]).strip()
-        uns = resolve_uns_path(combined_for_resolve)
+        resolved_tenant = tenant_id or state.get("tenant_id") or ""
+
+        # Multi-candidate resolution catches cross-vendor questions (e.g.
+        # "connect Micro 820 to AutomationDirect GS11") that the single-result
+        # resolver would collapse to one vendor. Candidates are pair-validated
+        # against the KB by resolve_uns_path_multi so chimeric (vendor, model)
+        # pairings are dropped before we reach the speak path.
+        uns_resolution = resolve_uns_path_multi(combined_for_resolve, tenant_id=resolved_tenant)
+        uns = uns_resolution.primary
         mfr = uns.manufacturer or ((ctx.get("uns_context") or {}).get("manufacturer") or "")
         model = uns.model or ""
 
-        resolved_tenant = tenant_id or state.get("tenant_id") or ""
+        # Multi-vendor branch — when the user names two pieces of equipment
+        # from different OEMs, the single-vendor decision tree would pick
+        # one and ignore the other. Route to the cross-vendor handler instead.
+        if uns_resolution.has_multi_vendor:
+            return await self._handle_multi_vendor_question(
+                chat_id,
+                message,
+                state,
+                trace_id,
+                uns_resolution,
+                history,
+                resolved_tenant,
+            )
 
         kb_covered = False
         kb_reason = ""
@@ -3130,6 +3343,94 @@ class Supervisor:
             suggestions=[
                 "Diagnose a specific machine",
                 "Find documentation",
+                "Log a work order",
+            ],
+        )
+        self._record_exchange(chat_id, state, message, reply)
+        tl_flush()
+        return self._make_result(
+            reply, self._infer_confidence(raw), trace_id, state.get("state", "IDLE")
+        )
+
+    async def _handle_multi_vendor_question(
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+        uns_resolution: UNSResolution,
+        history: list[dict],
+        resolved_tenant: str,
+    ) -> dict:
+        """Cross-vendor integration question handler.
+
+        Triggered when ``resolve_uns_path_multi`` finds ≥2 distinct vendors
+        in the message after pair-coverage validation (e.g. "connect my
+        Micro 820 to an AutomationDirect GS11 over RS485 Modbus"). Each
+        candidate's (vendor, model) pair has already been validated against
+        the KB by the resolver, so the products this handler enumerates
+        are guaranteed real — no chimeras.
+
+        v1 behaviour: name all vendors explicitly in the system prompt and
+        answer from training knowledge with the conversation history. Cross-
+        vendor RAG composition (pulling chunks from both vendors' manuals
+        into one grounded reply) is a follow-up that requires RAGWorker
+        signature changes; this handler at least prevents the bot from
+        pretending one vendor's product belongs to the other.
+        """
+        candidates = uns_resolution.candidates
+        vendor_summary = ", ".join(
+            f"{c.manufacturer} {c.model}".strip() if c.model else c.manufacturer
+            for c in candidates
+            if c.manufacturer
+        )
+        vendor_names = ", ".join(uns_resolution.vendors())
+
+        logger.info(
+            "MULTI_VENDOR_QUESTION chat_id=%s vendors=%s summary=%r",
+            chat_id,
+            vendor_names,
+            vendor_summary,
+        )
+
+        # Pick the first KB-validated candidate as the "lead" asset so the
+        # session has *some* identified asset for downstream features (work
+        # orders, photo follow-ups). The other vendors stay in the system
+        # prompt context.
+        lead = candidates[0]
+        if not state.get("asset_identified") and lead.manufacturer:
+            state["asset_identified"] = (
+                f"{lead.manufacturer}, {lead.model}" if lead.model else lead.manufacturer
+            )
+
+        system = (
+            "You are MIRA, an industrial maintenance assistant. The technician "
+            f"is asking about a cross-vendor integration involving: {vendor_summary}. "
+            "Answer the question with both pieces of equipment in mind. "
+            "If the answer requires steps on both sides (e.g. wiring + parameter "
+            "setup), structure your reply so each vendor's portion is clear. "
+            "If you don't have specific documentation for the integration itself, "
+            "say so up front and then answer from general industrial knowledge. "
+            "Never invent product names — only reference the vendors and models "
+            "listed above. Keep the reply under 180 words."
+        )
+        try:
+            raw = await self._call_llm_direct(message, system=system, history=history)
+        except Exception as exc:
+            logger.warning("MULTI_VENDOR_LLM_FAILURE error=%s", exc)
+            raw = (
+                f"You're asking about an integration between {vendor_summary}. "
+                "I can pull the docs for either side — which do you want to "
+                "start with?"
+            )
+
+        reply = self._format_simple_response(
+            raw,
+            suggestions=[
+                f"Pull {candidates[0].manufacturer} docs" if candidates else "Find documentation",
+                f"Pull {candidates[1].manufacturer} docs"
+                if len(candidates) > 1
+                else "Log a work order",
                 "Log a work order",
             ],
         )
@@ -3792,15 +4093,45 @@ class Supervisor:
             # CRA-8 Cluster A: include the model token (and the literal word "manual")
             # so vendor-specific manual requests don't fall through the keyword check.
             model_hint = model_override or combined_ctx.model or ""
+
+            # Chimera guard — kb_has_coverage filters on vendor only, so a
+            # message naming two vendors (e.g. "Micro 820" + "AutomationDirect
+            # GS11") can resolve to one vendor's name paired with another's
+            # model number. Validate the pair against the KB; if zero rows
+            # have BOTH together, drop the model so the reply never speaks
+            # "AutomationDirect 820" or any other fabricated product.
+            if mfr and model_hint:
+                pair_covered, pair_count = kb_has_pair_coverage(
+                    mfr, model_hint, resolved_tenant or ""
+                )
+                if not pair_covered and pair_count >= 0:
+                    logger.info(
+                        "DOC_LOOKUP_CHIMERA_BLOCKED chat_id=%s mfr=%r model=%r "
+                        "kb_pair_count=%d — dropping model from reply",
+                        chat_id,
+                        mfr,
+                        model_hint,
+                        pair_count,
+                    )
+                    model_hint = ""
+
             if mfr and model_hint:
                 reply = f"I have the {mfr} {model_hint} manual indexed."
             elif mfr:
                 reply = f"I have {mfr} documentation indexed."
             else:
                 reply = "I already have documentation indexed for that equipment."
-            if url:
-                reply += f" Official source: {url}"
-            reply += " Ask about the manual, fault codes, specs, or wiring."
+            # The support URL is always the vendor's /support landing page
+            # (see VENDOR_SUPPORT_URLS in guardrails.py) — useful when we
+            # have NO docs, useless noise when we already do. Skip on the
+            # KB_HIT path; the crawl-pending path below still uses it.
+            #
+            # The trailing "Ask about the manual, fault codes, specs, or
+            # wiring" menu is also dropped when the user already asked a
+            # specific question (>3 words and not a greeting) — appending
+            # a menu after a real question reads as non-responsive.
+            if not self._message_is_specific_question(message):
+                reply += " Ask about the manual, fault codes, specs, or wiring."
             logger.info(
                 "KB_PRE_CHECK_HIT chat_id=%s manufacturer=%r reason=%s",
                 chat_id,
@@ -4217,15 +4548,20 @@ class Supervisor:
         """Return True when the gate should interrupt the turn with a confirm prompt.
 
         Conditions (all must hold):
+        - MIRA_UNS_GATE_ENABLED is on (default true)
         - router classified turn as diagnose_equipment
         - session has no asset_identified
-        - session is in IDLE (don't interrupt mid-FSM Q1/Q2/Q3/DIAGNOSIS)
+        - session is in IDLE (don't interrupt mid-FSM Q1/Q2/Q3/DIAGNOSIS).
+          AWAITING_UNS_CONFIRMATION is consumed earlier in `process()` via
+          `_handle_uns_confirmation_response`, so it never reaches this check.
 
         `message` and `session_context` are accepted for symmetry with other
         gate helpers and to keep the call site readable, even though the
-        current implementation only inspects intent + state.
+        current implementation only inspects intent + state + flag.
         """
         del message, session_context  # reserved for future signal expansion
+        if not _UNS_GATE_ENABLED:
+            return False
         if router_intent != "diagnose_equipment":
             return False
         if state.get("asset_identified"):
@@ -4320,6 +4656,11 @@ class Supervisor:
             )
             ctx["pending_uns_confirm"] = {"candidate": None}
 
+        # Promote to AWAITING_UNS_CONFIRMATION so downstream code paths
+        # (citation-compliance enforcement, telemetry, dialogue-state tracker)
+        # can key off a single FSM state instead of inspecting context. The
+        # response handler clears it back to IDLE on yes / no / fallthrough.
+        state["state"] = "AWAITING_UNS_CONFIRMATION"
         state["context"] = ctx
         self._save_state(chat_id, state)
         self._record_exchange(chat_id, state, message, prompt)
@@ -4334,7 +4675,7 @@ class Supervisor:
             prompt,
             "high",
             trace_id,
-            state.get("state", "IDLE"),
+            state["state"],
             dispatch_kind="uns_confirm_request",
         )
 
@@ -4368,6 +4709,10 @@ class Supervisor:
             if demo_ns:
                 ctx["confirmed_namespace"] = demo_ns
             ctx.pop("pending_uns_confirm", None)
+            # Side state cleared — normal IDLE→Q1/DIAGNOSIS flow resumes on
+            # the next turn now that asset_identified is set.
+            if state.get("state") == "AWAITING_UNS_CONFIRMATION":
+                state["state"] = "IDLE"
             state["context"] = ctx
             self._save_state(chat_id, state)
             reply = (
@@ -4391,6 +4736,8 @@ class Supervisor:
 
         if msg in _NO:
             ctx.pop("pending_uns_confirm", None)
+            if state.get("state") == "AWAITING_UNS_CONFIRMATION":
+                state["state"] = "IDLE"
             state["context"] = ctx
             self._save_state(chat_id, state)
             reply = (
@@ -4409,7 +4756,11 @@ class Supervisor:
 
         # User likely typed equipment specs or otherwise off-script. Drop
         # pending and let the normal flow run UNS resolver on the message.
+        # Returning to IDLE lets the gate re-fire with new context on the
+        # next turn if the user still hasn't given us enough.
         ctx.pop("pending_uns_confirm", None)
+        if state.get("state") == "AWAITING_UNS_CONFIRMATION":
+            state["state"] = "IDLE"
         state["context"] = ctx
         self._save_state(chat_id, state)
         logger.info("UNS_CONFIRM_FALLTHROUGH chat_id=%s msg=%r", chat_id, (message or "")[:80])

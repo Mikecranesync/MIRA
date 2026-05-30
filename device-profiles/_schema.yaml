@@ -1,0 +1,63 @@
+# device-profiles/_schema.yaml
+#
+# The contract every device profile in this directory follows. This is shared
+# data: read by plc/discover.py (to identify a found device) and, later, by
+# mira-crawler/ingest/uns.py (to map a discovered instance into the UNS).
+#
+# A profile is EVIDENCE-BASED: every fact traces to a source doc (see `sources`).
+# It pins the truths we keep relearning during commissioning so a tool — or MIRA —
+# never has to rediscover them.
+#
+# This file is documentation, not a runtime schema enforcer. discover.py validates
+# the fields it needs and ignores the rest, so profiles can carry extra context.
+
+schema: fieldbus-profile/1
+
+fields:
+  id:            "kebab-case unique id. Matches the filename stem (gs10 -> gs10.yaml)."
+  display_name:  "Human name, e.g. 'AutomationDirect GS10 DURApulse VFD'."
+  kind:          "One of: vfd | plc | sensor | gateway | hmi | meter | drive | io."
+  protocols:     "List of transports it speaks: modbus_rtu | modbus_tcp | ethernet_ip | s7 | opcua | bacnet."
+
+  fingerprint:
+    _doc: >
+      How identify() recognizes this device, keyed by protocol. ALL listed
+      checks for the matched protocol must hold. Read-only checks only.
+    modbus_tcp/modbus_rtu:
+      read:   "{ reg: <int>, fc: <3|4>, count: <int, default 1> } — a register to read."
+      expect: "{ nonzero: true } | { equals: <int> } | { in: [..] } | { mask: <int>, eq: <int> }"
+    ethernet_ip:
+      identity_contains: "substring(s) expected in the CIP product name, e.g. ['Micro820', '2080-LC20']."
+      vendor_id:         "optional CIP vendor id (Rockwell = 1)."
+
+  serial_defaults:
+    _doc: "Known-good RS-485 settings (the relearned truths). Tried FIRST in the sweep."
+    baud:  "e.g. 9600"
+    frame: "e.g. 8N2  (data bits, parity N/E/O, stop bits)"
+    addr:  "default slave address if known, e.g. 1"
+
+  registers:
+    _doc: "The codified register map. Each entry:"
+    entry:
+      addr:   "int (hex ok in YAML as 0x2103)"
+      name:   "snake_case meaning"
+      access: "r | w | rw"
+      fc:     "modbus function code for the access (3/4 read, 6/16 write). optional."
+      scale:  "multiply raw by this for engineering units (e.g. 0.1). optional."
+      units:  "Hz | A | V | RPM | enum | ... . optional."
+      note:   "free text. optional."
+
+  gotchas:
+    _doc: "What bit us during commissioning, in imperative/declarative form, so it never bites again."
+
+  uns:
+    _doc: "How a discovered instance maps into the Unified Namespace."
+    type_path_builder: "name of the mira-crawler/ingest/uns.py builder (e.g. model_path)."
+    manufacturer:      "display name, e.g. 'AutomationDirect'."
+    model:             "model token, e.g. 'GS10'."
+
+  sources:
+    _doc: "Provenance. Repo-relative paths or doc refs supporting the facts above."
+
+kinds:   [vfd, drive, plc, sensor, gateway, hmi, meter, io]
+tiers:   [port_open, protocol_confirmed, device_identified]

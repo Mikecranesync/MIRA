@@ -3,7 +3,6 @@
     "feed": "Activity Feed",
     "eventLog": "Event Log",
     "conversations": "Conversations",
-    "actions": "Actions",
     "alerts": "Alerts",
     "knowledge": "Knowledge",
     "workOrders": "Work Orders",
@@ -449,6 +448,9 @@
   },
   "admin": {
     "title": "Admin",
+    "users": {
+      "title": "Users"
+    },
     "usersTab": "Users",
     "rolesTab": "Roles & Permissions",
     "inviteUser": "Invite User",
@@ -586,13 +588,6 @@
     "today": "today",
     "live": "Live",
     "allChannels": "All channels"
-  },
-  "actions": {
-    "title": "Actions",
-    "noActions": "No actions found",
-    "synced": "Synced",
-    "pending": "Pending",
-    "today": "today"
   },
   "alerts": {
     "title": "Alerts",

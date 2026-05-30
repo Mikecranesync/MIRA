@@ -1,0 +1,61 @@
+# Allen-Bradley / Rockwell publications to chase.
+#
+# Each entry is a Rockwell publication number that the hunter will probe
+# against the literature CDN. Order matters — first 3 (after dedup) per run.
+#
+# Slice 1 picks the docs that close the bench-set gaps (Q06 + Q10) and
+# Mike's day-to-day Micro820 / GS-VFD work. Append to this file — never
+# delete (the hunter is idempotent, it skips what's already in
+# ~/MiraDrop/done/ or the KB).
+#
+# Format:
+#   - pub: "2080-UM004"           # Rockwell publication number
+#     type: "um"                  # type folder slug: um/rm/in/sg/wd/qr/qs/at/pm
+#     title: "..."                # human title for sidecar + Telegram
+#     priority: 1                 # 1 = first cohort, 2/3 = later cohorts
+#
+# Type folder slugs (the path token the Rockwell CDN uses):
+#   um — user manual          rm — reference manual
+#   in — installation         sg — selection guide
+#   wd — wiring diagrams      qr — quick reference
+#   qs — quick start          at — application/tech note
+#   pm — programming manual
+
+publications:
+  # ── Cohort 1: Micro820 core (closes bench Q06 Micro820/CCW depth gap)
+  - pub: "2080-UM004"
+    type: "um"
+    title: "Micro820 Programmable Controllers User Manual"
+    priority: 1
+  - pub: "2080-RM003"
+    type: "rm"
+    title: "Micro800 Programmable Controllers Instruction Set Reference"
+    priority: 1
+  - pub: "2080-PM001"
+    type: "pm"
+    title: "Micro800 Programmable Controllers Programming Manual"
+    priority: 1
+
+  # ── Cohort 2: CCW + MSG_MODBUS (closes bench Q10 MSG_MODBUS block gap)
+  - pub: "9328-UM001"
+    type: "um"
+    title: "Connected Components Workbench Software User Manual"
+    priority: 2
+  - pub: "2080-RM001"
+    type: "rm"
+    title: "Micro800 Discrete/Analog/Specialty I/O Modules User Manual"
+    priority: 2
+
+  # ── Cohort 3 (deferred — only un-comment after cohorts 1+2 land cleanly)
+  # - pub: "2080-WD005"
+  #   type: "wd"
+  #   title: "Micro820 Wiring Diagrams"
+  #   priority: 3
+  # - pub: "2080-IN004"
+  #   type: "in"
+  #   title: "Micro820 Installation Instructions"
+  #   priority: 3
+  # - pub: "2080-QS001"
+  #   type: "qs"
+  #   title: "Micro820 Quick Start"
+  #   priority: 3

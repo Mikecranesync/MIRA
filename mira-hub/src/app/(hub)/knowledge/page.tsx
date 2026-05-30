@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Search,
-  BookOpen,
   FileText,
   Upload,
   Clock,
@@ -493,7 +492,14 @@ export default function KnowledgePage() {
       </div>
 
       <div className="px-4 md:px-6 py-4 pb-24 max-w-5xl mx-auto">
-        {!selectedMfr && <KbGrowthDashboard />}
+        {/* KB telemetry dashboard is admin-grade and crowds the mobile viewport,
+            pushing uploads + manufacturers below the fold. Show it from md+ only.
+            See Mike's 2026-05-17 expo report. */}
+        {!selectedMfr && (
+          <div className="hidden md:block">
+            <KbGrowthDashboard />
+          </div>
+        )}
 
         {!selectedMfr && summaryUploadId && (
           <UploadSummaryCard uploadId={summaryUploadId} />
@@ -849,13 +855,33 @@ export default function KnowledgePage() {
         )}
 
         {!loading && !selectedMfr && filteredMfrs.length === 0 && uploads.length === 0 && (
-          <div className="text-center py-16">
-            <BookOpen
-              className="w-10 h-10 mx-auto mb-3"
-              style={{ color: "var(--foreground-subtle)" }}
-            />
-            <p style={{ color: "var(--foreground-muted)" }}>{t("noDocuments")}</p>
-          </div>
+          <button
+            onClick={() => setPickerOpen(true)}
+            className="w-full flex flex-col items-center justify-center text-center py-10 px-6 rounded-xl border-2 border-dashed transition-colors hover:bg-[var(--surface-1)]"
+            style={{ borderColor: "var(--border)" }}
+          >
+            <div
+              className="w-12 h-12 rounded-full flex items-center justify-center mb-3"
+              style={{ backgroundColor: "var(--surface-1)" }}
+            >
+              <Upload
+                className="w-6 h-6"
+                style={{ color: "var(--brand-blue)" }}
+              />
+            </div>
+            <p
+              className="text-sm font-semibold mb-1"
+              style={{ color: "var(--foreground)" }}
+            >
+              {t("noDocuments")}
+            </p>
+            <p
+              className="text-xs"
+              style={{ color: "var(--foreground-muted)" }}
+            >
+              Tap to upload a PDF manual or photo — PDF, JPEG, PNG up to 20 MB.
+            </p>
+          </button>
         )}
 
         {selectedMfr && !docsLoading && filteredGroups.length === 0 && (

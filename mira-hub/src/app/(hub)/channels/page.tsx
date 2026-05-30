@@ -293,7 +293,16 @@ function ChannelsInner() {
   const confluenceConn = conn("confluence");
   const maintainxConn = conn("maintainx");
 
-  const connectedCount = Object.values(connections).filter(c => c?.connected).length;
+  // Atlas CMMS is FactoryLM's built-in CMMS — always live and rendered as an
+  // info-only card (line ~414), so it never lands in the localStorage-backed
+  // `connections` map. Count it alongside the user-connected providers so the
+  // header matches what the cards show (fixes "0 connected" vs Atlas Connected).
+  // Email is a derived info card mirroring google/microsoft and is intentionally
+  // not counted here to avoid double-counting those providers.
+  const ATLAS_BUILT_IN_CONNECTIONS = 1;
+  const connectedCount =
+    Object.values(connections).filter(c => c?.connected).length +
+    ATLAS_BUILT_IN_CONNECTIONS;
 
   return (
     <div className="min-h-full" style={{ backgroundColor: "var(--background)" }}>

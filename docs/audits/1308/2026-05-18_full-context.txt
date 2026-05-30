@@ -1,0 +1,16 @@
+--- prompt ---
+Site: Mike's garage demo. I have a Micro820 PLC talking Modbus RTU to a GS10 VFD on slave ID 1, 9600 8N1. How do I send the run-forward command to the GS10? Need the Modbus register, the value, and the function code.
+
+--- answer ---
+To send the run-forward command, do you need to write to a specific coil or register on the GS10, such as 0x1000 or 0x3000?
+
+1. 0x1000
+2. 0x3000
+
+--- acceptance check ---
+  mentions '8192': False
+  mentions value 18: False
+  mentions FC06 / function code 06: False
+  mentions register 8193 (freq ref): False
+  has citation/source: False
+  length: 144 chars

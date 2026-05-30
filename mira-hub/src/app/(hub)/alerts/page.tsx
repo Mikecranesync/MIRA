@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AlertTriangle, ShieldAlert, Bot, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { LabsStub } from "@/components/labs-stub";
 
 type Severity = "critical" | "high" | "medium" | "low";
 type AlertType = "safety" | "diagnostic" | "anomaly" | "pm";
@@ -79,6 +80,10 @@ const TYPE_CFG: Record<AlertType, { Icon: React.ElementType; label: string }> = 
 };
 
 export default function AlertsPage() {
+  // Gated behind Labs flag (ADR-0014). Mock-data UI hidden on prod builds.
+  if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
+    return <LabsStub feature="Alerts" />;
+  }
   const t = useTranslations("alerts");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [acknowledged, setAcknowledged] = useState<Set<string>>(

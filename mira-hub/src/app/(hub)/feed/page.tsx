@@ -1,23 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
-  Mic, ClipboardList, Bot, ShieldAlert, Calendar,
+  ClipboardList, Bot, Calendar,
   Plus, QrCode, MessageSquarePlus, X, CheckCircle2,
   Clock, AlertTriangle, TrendingUp, Wrench, Cog,
   ChevronRight, RefreshCw, Volume2, VolumeX, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import HealthScoreWidget from "@/components/HealthScoreWidget";
+import { API_BASE } from "@/lib/config";
 
-const KPI_CARDS = [
-  { label: "Open Work Orders", value: "12", icon: ClipboardList, color: "#2563EB", bg: "#EFF6FF", href: "/workorders" },
-  { label: "Overdue PMs",      value: "3",  icon: Calendar,      color: "#DC2626", bg: "#FEF2F2", href: "/schedule" },
-  { label: "Downtime Today",   value: "2.4h", icon: AlertTriangle, color: "#EAB308", bg: "#FEF9C3", href: "/reports" },
-  { label: "Wrench Time",      value: "67%", icon: Wrench,        color: "#16A34A", bg: "#DCFCE7", href: "/reports" },
-];
+type KpiCard = {
+  label: string;
+  value: string;
+  icon: React.ElementType;
+  color: string;
+  bg: string;
+  href: string;
+};
+
+function buildKpiCards(
+  openWoCount: number | null,
+  overduePmCount: number | null,
+  totalWoCount: number | null,
+  autoPmCount: number | null,
+): KpiCard[] {
+  const fmt = (n: number | null) => (n === null ? "—" : String(n));
+  return [
+    { label: "Open Work Orders", value: fmt(openWoCount),  icon: ClipboardList, color: "#2563EB", bg: "#EFF6FF", href: "/workorders" },
+    { label: "Overdue PMs",      value: fmt(overduePmCount), icon: Calendar,      color: "#DC2626", bg: "#FEF2F2", href: "/schedule" },
+    { label: "Total Work Orders", value: fmt(totalWoCount),  icon: AlertTriangle, color: "#EAB308", bg: "#FEF9C3", href: "/workorders" },
+    { label: "Auto-Extracted PMs", value: fmt(autoPmCount), icon: Wrench,        color: "#16A34A", bg: "#DCFCE7", href: "/schedule" },
+  ];
+}
 
 type FeedItem = {
   id: number;
@@ -37,79 +56,89 @@ type FeedItem = {
   safetyAudit?: { ts: string; user: string; action: string }[];
 };
 
-const FEED_ITEMS: FeedItem[] = [
-  {
-    id: 1, type: "brief",
-    icon: Mic, iconBg: "#EFF6FF", iconColor: "#2563EB",
-    title: "MIRA Voice Brief — Morning Shift",
-    subtitle: "3 high-priority items, 2 overdue PMs, 1 critical asset",
-    fullText: "Good morning Mike. Here's your shift briefing: Conveyor Belt #3 emergency replacement is in progress — John S. is on it, ETA 2 hours. Air Compressor PM is due today; parts are in stock at A-3-1. HVAC Unit #2 has a quarterly filter change due in 3 days. Generator load test is scheduled for May 10th. Watch the CNC Mill #7 vibration alert — MIRA flagged a spindle bearing anomaly at 78% confidence. 2 overdue PMs need attention. Wrench time is at 67% this week. Have a safe shift.",
-    timestamp: "6:00 AM", asset: null,
-    actions: [{ label: "Play Brief", primary: true }, { label: "Read" }],
-    border: null,
-  },
-  {
-    id: 2, type: "safety",
-    icon: ShieldAlert, iconBg: "#FEF2F2", iconColor: "#DC2626",
-    title: "SAFETY ALERT: Arc Flash Hazard — Panel E-12",
-    subtitle: "Arc flash assessment required before any work on Panel E-12. LOTO procedure in effect.",
-    fullText: "Arc flash hazard confirmed at Electrical Panel E-12. Category 2 PPE required. LOTO procedure document LOTO-E12-2026 is in effect. No work may begin without written authorization from the site safety officer. Boundary: 4 ft restricted, 10 ft limited. Contact Ray P. (ext. 106) for LOTO coordination.",
-    timestamp: "7:15 AM", asset: "Electrical Panel E-12",
-    actions: [{ label: "View Procedure", href: "/documents/d04", primary: true }, { label: "Acknowledge" }],
-    border: "#DC2626",
-    safetyAudit: [
-      { ts: "7:15 AM", user: "MIRA System", action: "Alert issued" },
-      { ts: "7:22 AM", user: "Mike H.", action: "Viewed alert" },
+type WOApi = {
+  id: string;
+  work_order_number: string;
+  title: string;
+  asset: string;
+  status: string;
+  priority: string;
+  source: string;
+  source_label: string;
+  is_auto_pm: boolean;
+  created_at: string;
+};
+
+type PMApi = {
+  id: string;
+  task: string;
+  manufacturer: string | null;
+  model_number: string | null;
+  next_due_at: string | null;
+  auto_extracted: boolean;
+  criticality: string | null;
+};
+
+function statusToStyling(status: string, isAutoPm: boolean): {
+  icon: React.ElementType; iconBg: string; iconColor: string; border: string | null;
+} {
+  if (status === "completed") return { icon: CheckCircle2, iconBg: "#DCFCE7", iconColor: "#16A34A", border: null };
+  if (status === "in_progress") return { icon: ClipboardList, iconBg: "#FEF9C3", iconColor: "#EAB308", border: null };
+  if (status === "overdue") return { icon: AlertTriangle, iconBg: "#FEE2E2", iconColor: "#DC2626", border: "#DC2626" };
+  if (isAutoPm) return { icon: Bot, iconBg: "#F0FDF4", iconColor: "#16A34A", border: null };
+  return { icon: ClipboardList, iconBg: "#EFF6FF", iconColor: "#2563EB", border: null };
+}
+
+function formatTimestamp(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, { hour: "numeric", minute: "2-digit", month: "short", day: "numeric" });
+  } catch {
+    return iso;
+  }
+}
+
+function woToFeedItem(wo: WOApi, idx: number): FeedItem {
+  const styling = statusToStyling(wo.status, wo.is_auto_pm);
+  const statusLabel = wo.status === "in_progress" ? "In Progress" : wo.status.charAt(0).toUpperCase() + wo.status.slice(1);
+  return {
+    id: idx,
+    type: wo.is_auto_pm ? "pm_due" : "wo_update",
+    icon: styling.icon,
+    iconBg: styling.iconBg,
+    iconColor: styling.iconColor,
+    title: `${wo.work_order_number}: ${wo.title.slice(0, 60)}${wo.title.length > 60 ? "…" : ""}`,
+    subtitle: `${statusLabel} · ${wo.asset || "Unknown asset"} · Priority ${wo.priority}`,
+    timestamp: formatTimestamp(wo.created_at),
+    asset: wo.asset || null,
+    woId: wo.work_order_number,
+    actions: [
+      { label: "View WO", href: `/workorders/${wo.work_order_number}`, primary: true },
+      { label: "Ask MIRA", href: "https://t.me/FactoryLMDiagnose_bot" },
     ],
-  },
-  {
-    id: 3, type: "wo_update",
-    icon: ClipboardList, iconBg: "#FEF9C3", iconColor: "#EAB308",
-    title: "WO-2026-002: Conveyor Belt #3 — In Progress",
-    subtitle: "John S. started work. Belt tension adjusted, monitoring for 30 min before sign-off.",
-    timestamp: "8:32 AM", asset: "Conveyor Belt #3", assetId: "2", woId: "WO-2026-002",
-    actions: [{ label: "View WO", href: "/workorders/WO-2026-002", primary: true }, { label: "Add Note" }],
-    border: null,
-  },
-  {
-    id: 4, type: "mira_diagnostic",
-    icon: Bot, iconBg: "#F0FDF4", iconColor: "#16A34A",
-    title: "MIRA Diagnostic — Air Compressor #1",
-    subtitle: "Elevated bearing temp detected (82°C vs 65°C baseline). Recommend lubrication check within 48h.",
-    fullText: "MIRA detected bearing temperature 26% above baseline (82°C vs 65°C normal). Most likely cause: insufficient lubrication (confidence 84%). Recommended action: lubricate drive-end bearing per OEM spec. If temp exceeds 90°C, shut down immediately. Part FAG-6308-2RS (P-005) available at A-2-3 if replacement is needed. Check oil level as secondary step.",
-    timestamp: "9:05 AM", asset: "Air Compressor #1", assetId: "1",
-    actions: [{ label: "Ask MIRA", href: "https://t.me/FactoryLMDiagnose_bot", primary: true }, { label: "Create WO", href: "/workorders/new" }],
-    border: null,
-  },
-  {
-    id: 5, type: "pm_due",
-    icon: Calendar, iconBg: "#F5F3FF", iconColor: "#7C3AED",
-    title: "PM Due in 3 Days: HVAC Unit #2 Filter Change",
-    subtitle: "Quarterly filter change. Est. 45 min. Parts confirmed in stock: Part P-008 (3 available).",
-    timestamp: "9:30 AM", asset: "HVAC Unit #2", assetId: "4",
-    actions: [{ label: "Schedule Now", href: "/schedule", primary: true }, { label: "Defer" }],
-    border: null,
-  },
-  {
-    id: 6, type: "wo_update",
-    icon: CheckCircle2, iconBg: "#DCFCE7", iconColor: "#16A34A",
-    title: "WO-2026-005: Pump Station A — Completed",
-    subtitle: "Mechanical seal replaced. 4h total. Asset returned to service. No further issues.",
-    timestamp: "11:47 AM", asset: "Pump Station A", assetId: "5", woId: "WO-2026-005",
-    actions: [{ label: "View Report", href: "/workorders/WO-2026-005", primary: true }],
-    border: null,
-  },
-  {
-    id: 7, type: "mira_diagnostic",
-    icon: Bot, iconBg: "#FEF9C3", iconColor: "#EAB308",
-    title: "MIRA Alert — CNC Mill #7 Vibration Anomaly",
-    subtitle: "Z-axis vibration 3.2x normal. Possible spindle bearing wear. Confidence: 78%.",
-    fullText: "Z-axis vibration signature shows 3.2× deviation from baseline. Pattern consistent with angular contact bearing wear (SKF 7020, part P-012). Confidence: 78%. Recommended action: schedule inspection within 7 days. Continued operation at high speeds may accelerate wear. Ask MIRA for a complete diagnostic conversation.",
-    timestamp: "1:15 PM", asset: "CNC Mill #7", assetId: "3",
-    actions: [{ label: "Chat with MIRA", href: "https://t.me/FactoryLMDiagnose_bot", primary: true }, { label: "Create WO", href: "/workorders/new" }],
-    border: "#EAB308",
-  },
-];
+    border: styling.border,
+  };
+}
+
+function pmToFeedItem(pm: PMApi, idx: number): FeedItem {
+  const isOverdue = pm.next_due_at !== null && new Date(pm.next_due_at) < new Date();
+  return {
+    id: idx,
+    type: "pm_due",
+    icon: Calendar,
+    iconBg: isOverdue ? "#FEE2E2" : "#F5F3FF",
+    iconColor: isOverdue ? "#DC2626" : "#7C3AED",
+    title: `${isOverdue ? "Overdue PM" : "PM Due"}: ${pm.task}`,
+    subtitle: [pm.manufacturer, pm.model_number].filter(Boolean).join(" ")
+      + (pm.next_due_at ? ` · Due ${formatTimestamp(pm.next_due_at)}` : ""),
+    timestamp: pm.next_due_at ? formatTimestamp(pm.next_due_at) : "—",
+    asset: [pm.manufacturer, pm.model_number].filter(Boolean).join(" ") || null,
+    actions: [
+      { label: "Schedule", href: "/schedule", primary: true },
+    ],
+    border: isOverdue ? "#DC2626" : null,
+  };
+}
 
 function useSpeech() {
   const [speaking, setSpeaking] = useState<number | null>(null);
@@ -134,21 +163,77 @@ export default function FeedPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
   const [read, setRead] = useState<Set<number>>(new Set());
+  const [wos, setWos] = useState<WOApi[]>([]);
+  const [pms, setPms] = useState<PMApi[]>([]);
+  const [loading, setLoading] = useState(true);
   const { speaking, speak } = useSpeech();
 
   const KPI_LABEL_MAP: Record<string, string> = {
     "Open Work Orders": tFeed("kpi.openWorkOrders"),
     "Overdue PMs":      tFeed("kpi.overduePMs"),
-    "Downtime Today":   tFeed("kpi.downtimeToday"),
-    "Wrench Time":      tFeed("kpi.wrenchTime"),
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const [woRes, pmRes] = await Promise.all([
+          fetch(`${API_BASE}/api/work-orders`).then(r => r.ok ? r.json() : { work_orders: [] }),
+          fetch(`${API_BASE}/api/pm-schedules`).then(r => r.ok ? r.json() : { pm_schedules: [] }),
+        ]);
+        if (cancelled) return;
+        const woList: WOApi[] = woRes?.work_orders ?? [];
+        const pmList: PMApi[] = pmRes?.pm_schedules ?? pmRes?.schedules ?? [];
+        setWos(woList);
+        setPms(pmList);
+      } catch {
+        if (!cancelled) { setWos([]); setPms([]); }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [refreshing]);
+
+  const openWoCount = useMemo(() => wos.filter(w => w.status === "open" || w.status === "in_progress").length, [wos]);
+  const totalWoCount = wos.length;
+  const overduePmCount = useMemo(() => {
+    const now = Date.now();
+    return pms.filter(p => p.next_due_at && new Date(p.next_due_at).getTime() < now).length;
+  }, [pms]);
+  const autoPmCount = useMemo(() => pms.filter(p => p.auto_extracted).length, [pms]);
+
+  const kpiCards = buildKpiCards(
+    loading ? null : openWoCount,
+    loading ? null : overduePmCount,
+    loading ? null : totalWoCount,
+    loading ? null : autoPmCount,
+  );
+
+  const feedItems = useMemo<FeedItem[]>(() => {
+    const items: FeedItem[] = [];
+    // Most recent WOs first (top 5)
+    const recentWos = [...wos]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 5)
+      .map((wo, i) => woToFeedItem(wo, i + 1));
+    items.push(...recentWos);
+    // Upcoming PMs (top 3 by due date)
+    const upcomingPms = [...pms]
+      .filter(p => p.next_due_at)
+      .sort((a, b) => new Date(a.next_due_at!).getTime() - new Date(b.next_due_at!).getTime())
+      .slice(0, 3)
+      .map((pm, i) => pmToFeedItem(pm, 1000 + i));
+    items.push(...upcomingPms);
+    return items;
+  }, [wos, pms]);
+
   function handleRefresh() {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 800);
+    setRefreshing(prev => !prev);
   }
 
-  const visibleItems = FEED_ITEMS.filter(i => !dismissed.has(i.id));
+  const visibleItems = feedItems.filter(i => !dismissed.has(i.id));
 
   return (
     <div className="relative min-h-full" style={{ backgroundColor: "var(--background)" }}>
@@ -176,9 +261,12 @@ export default function FeedPage() {
       </div>
 
       <div className="px-4 md:px-6 py-4 pb-24 space-y-4 max-w-3xl mx-auto">
+        {/* Namespace readiness widget (Phase 2 slice 1) */}
+        <HealthScoreWidget />
+
         {/* KPI Summary Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {KPI_CARDS.map((kpi) => (
+          {kpiCards.map((kpi) => (
             <Link key={kpi.label} href={kpi.href}>
               <div className="card p-3 flex flex-col gap-1 hover:shadow-md transition-shadow cursor-pointer">
                 <div className="flex items-center justify-between">
@@ -223,7 +311,7 @@ export default function FeedPage() {
           <div className="flex flex-col items-end gap-2 mb-1 animate-in fade-in slide-in-from-bottom-2 duration-150">
             {[
               { label: tWorkorders("new"), icon: ClipboardList,     href: "/workorders/new" },
-              { label: tFeed("scanQr"),    icon: QrCode,            href: "#" },
+              { label: tFeed("scanQr"),    icon: QrCode,            href: "/scan" },
               { label: tFeed("newRequest"), icon: MessageSquarePlus, href: "/requests/new" },
               { label: "New Asset",        icon: Cog,               href: "/assets?create=1" },
             ].map((action) => (

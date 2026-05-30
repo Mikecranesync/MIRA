@@ -3,7 +3,6 @@
     "feed": "गतिविधि फ़ीड",
     "eventLog": "इवेंट लॉग",
     "conversations": "बातचीत",
-    "actions": "कार्रवाइयां",
     "alerts": "अलर्ट",
     "knowledge": "ज्ञानकोष",
     "library": "पुस्तकालय",
@@ -464,6 +463,9 @@
   },
   "admin": {
     "title": "प्रशासन",
+    "users": {
+      "title": "उपयोगकर्ता"
+    },
     "usersTab": "उपयोगकर्ता",
     "rolesTab": "भूमिकाएं और अनुमतियां",
     "inviteUser": "उपयोगकर्ता आमंत्रित करें",
@@ -602,13 +604,6 @@
     "today": "आज",
     "live": "लाइव",
     "allChannels": "सभी चैनल"
-  },
-  "actions": {
-    "title": "कार्रवाइयां",
-    "noActions": "कोई कार्रवाई नहीं",
-    "synced": "सिंक्ड",
-    "pending": "लंबित",
-    "today": "आज"
   },
   "alerts": {
     "title": "अलर्ट",

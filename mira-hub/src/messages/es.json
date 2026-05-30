@@ -3,7 +3,6 @@
     "feed": "Registro de actividad",
     "eventLog": "Registro de eventos",
     "conversations": "Conversaciones",
-    "actions": "Acciones",
     "alerts": "Alertas",
     "knowledge": "Conocimiento",
     "library": "Biblioteca",
@@ -464,6 +463,9 @@
   },
   "admin": {
     "title": "Administración",
+    "users": {
+      "title": "Usuarios"
+    },
     "usersTab": "Usuarios",
     "rolesTab": "Roles y permisos",
     "inviteUser": "Invitar usuario",
@@ -602,13 +604,6 @@
     "today": "hoy",
     "live": "En vivo",
     "allChannels": "Todos los canales"
-  },
-  "actions": {
-    "title": "Acciones",
-    "noActions": "Sin acciones",
-    "synced": "Sincronizado",
-    "pending": "Pendiente",
-    "today": "hoy"
   },
   "alerts": {
     "title": "Alertas",

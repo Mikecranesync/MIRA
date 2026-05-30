@@ -595,12 +595,32 @@ async def ingest_photo(
     # Push to Open WebUI KB (best-effort)
     await _push_to_kb(asset_tag, description)
 
+    # Phase 0 demo loop (closes investigation §3.1 #1): write an
+    # ai_suggestions row so the Hub /proposals page can surface the photo.
+    # Best-effort — returns None on any failure; SQLite remains source of
+    # truth for the local photo blob.
+    suggestion_id: str | None = None
+    if MIRA_TENANT_ID:
+        try:
+            from db.neon import insert_photo_ai_suggestion
+
+            suggestion_id = insert_photo_ai_suggestion(
+                MIRA_TENANT_ID,
+                asset_tag,
+                structured,
+                description,
+                photo_path,
+            )
+        except Exception as e:
+            logger.warning("insert_photo_ai_suggestion error (non-fatal): %s", e)
+
     return {
         "id": photo_id,
         "asset_tag": asset_tag,
         "description": description,
         "structured_description": structured,
         "photo_path": photo_path,
+        "ai_suggestion_id": suggestion_id,
     }
 
 

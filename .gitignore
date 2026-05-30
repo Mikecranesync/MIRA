@@ -6,6 +6,10 @@ mira_copy/outputs/*
 .tmp_*
 .claude/worktrees/
 .worktrees/
+.claude/scratchpad/
+
+# Auto-log target for .claude/hooks/stop.sh — per-machine session history
+docs/context/PROGRESS.local.md
 
 # Skill eval workspaces (skill-creator iteration runs; rebuilt locally per session)
 .claude/skills/*-workspace/
@@ -106,6 +110,9 @@ mira-crawler/agents/gdrive_photo_scanner_state.json
 # Test photos (real equipment photos, synced separately)
 tests/regime1_telethon/photos/
 tests/regime3_nameplate/photos/real/
+
+# QA regression run outputs (raw json + Markdown reports)
+tests/qa_regression/runs/
 
 # Local backups
 backups/
@@ -214,3 +221,10 @@ tools/monday-marketplace-setup/node_modules/
 tools/monday-marketplace-setup/playwright-report/
 tools/monday-marketplace-setup/.chrome-profile/
 .warp/mcp.json
+
+# Staging test output (regenerable; never commit result snapshots)
+staging_results.json
+tools/staging_results.json
+
+# CodeGraph local index (machine-specific, regenerable via `npx @colbymchenry/codegraph index`)
+.codegraph/

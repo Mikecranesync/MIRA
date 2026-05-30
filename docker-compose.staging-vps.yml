@@ -1,0 +1,467 @@
+# MIRA — Staging Stack (Phase 1)
+#
+# Lightweight staging environment co-tenanted on the production VPS.
+# Completely isolated from production: separate Docker network, separate
+# container names (stg-* prefix), separate volumes, offset host ports.
+#
+# Usage:
+#   doppler run --project factorylm --config stg -- \
+#     docker compose -f docker-compose.staging.yml up -d
+#
+# Phase 1 services + staging Telegram bot (@Mira_stagong_bot — separate token
+# from prod, safe to dual-deploy). Still NO Slack bot (shared token would
+# dual-poll prod), NO docling (1.7GB RAM), NO mira-core/ingest/sidecar/relay/
+# bridge. The goal is "test from phone against staging NeonDB branch" — not a
+# full replica.
+#
+# Production runs on docker-compose.saas.yml and is NEVER touched by this file.
+#
+# Ports (all on 0.0.0.0 so Mike can hit IP:port from his phone):
+#   4099 → mira-pipeline    (prod 9099)
+#   4101 → mira-hub         (prod 3101)
+#   4200 → mira-web         (prod 3200)
+#   4000 → mira-mcp MCP     (prod 8009)
+#   4001 → mira-mcp REST    (prod 8001)
+#   4088 → atlas-api        (prod 8088)
+#   4100 → atlas-frontend   (prod 3100)
+#   4433 → atlas-db         (prod 5433)
+#   4900 → atlas-minio API  (prod 9000)
+#   4901 → atlas-minio UI   (prod 9001)
+
+services:
+  # ─── Atlas CMMS — staging DB + storage ─────────────────────────────────────
+  atlas-db:
+    mem_limit: 1g
+    memswap_limit: 1g
+    image: postgres:16-alpine
+    container_name: stg-atlas-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: atlas
+      POSTGRES_USER: ${ATLAS_DB_USER:-atlas}
+      POSTGRES_PASSWORD: ${ATLAS_DB_PASSWORD}
+    ports:
+      - "0.0.0.0:4433:5432"
+    volumes:
+      - stg-atlas-pgdata:/var/lib/postgresql/data
+    networks:
+      - staging-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ATLAS_DB_USER:-atlas} -d atlas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  atlas-minio:
+    mem_limit: 512m
+    memswap_limit: 512m
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: stg-atlas-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${ATLAS_MINIO_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${ATLAS_MINIO_PASSWORD}
+    volumes:
+      - stg-atlas-minio:/data
+    ports:
+      - "0.0.0.0:4900:9000"
+      - "0.0.0.0:4901:9001"
+    networks:
+      - staging-net
+    command: server --address ":9000" --console-address ":9001" /data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  atlas-api:
+    image: intelloop/atlas-cmms-backend@sha256:21c42377dd758dbc4a9aa1676e62b01a13cf8822b0ecd3019b274b53c2369b1e
+    container_name: stg-atlas-api
+    restart: unless-stopped
+    depends_on:
+      atlas-db:
+        condition: service_healthy
+      atlas-minio:
+        condition: service_started
+    extra_hosts:
+      # Linux Docker bridge has no hairpin NAT — atlas-api's MinioService.init()
+      # connects to PUBLIC_MINIO_ENDPOINT at startup and crash-loops when that URL
+      # points at the host's public IP. Mapping host.docker.internal to the host
+      # gateway lets factorylm/stg set ATLAS_PUBLIC_MINIO_URL=http://host.docker.internal:4900.
+      # Same pattern shipped for prod in PR #1439 (mira-cmms/docker-compose.yml).
+      - "host.docker.internal:host-gateway"
+    environment:
+      DB_URL: stg-atlas-db/atlas
+      DB_USER: ${ATLAS_DB_USER:-atlas}
+      DB_PWD: ${ATLAS_DB_PASSWORD}
+      JWT_SECRET_KEY: ${ATLAS_JWT_SECRET}
+      SPRING_PROFILES_ACTIVE: ${ATLAS_SPRING_PROFILE:-prod}
+      PUBLIC_API_URL: ${ATLAS_PUBLIC_API_URL:-http://165.245.138.91:4088}
+      PUBLIC_FRONT_URL: ${ATLAS_PUBLIC_FRONT_URL:-http://165.245.138.91:4200}
+      MINIO_ENDPOINT: http://stg-atlas-minio:9000
+      MINIO_BUCKET: atlas-bucket
+      MINIO_ACCESS_KEY: ${ATLAS_MINIO_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${ATLAS_MINIO_PASSWORD}
+      STORAGE_TYPE: minio
+      PUBLIC_MINIO_ENDPOINT: ${ATLAS_PUBLIC_MINIO_URL:-http://host.docker.internal:4900}
+      INVITATION_VIA_EMAIL: "false"
+      ENABLE_EMAIL_NOTIFICATIONS: "false"
+      # Spring @Value placeholders below are required even when email is disabled —
+      # bean wiring happens before the feature flag is read. Match prod's compose
+      # (mira-cmms/docker-compose.yml) so atlas-api boots cleanly in staging.
+      SMTP_HOST: ${ATLAS_SMTP_HOST:-}
+      SMTP_PORT: ${ATLAS_SMTP_PORT:-587}
+      SMTP_USER: ${ATLAS_SMTP_USER:-}
+      SMTP_PWD: ${ATLAS_SMTP_PWD:-}
+      MAIL_RECIPIENTS: ${ATLAS_MAIL_RECIPIENTS:-}
+      KEYGEN_PRODUCT_TOKEN: ${ATLAS_KEYGEN_TOKEN:-}
+      ENABLE_SSO: "false"
+    ports:
+      - "0.0.0.0:4088:8080"
+    networks:
+      - staging-net
+    mem_limit: 1g
+    memswap_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qS -O /dev/null http://localhost:8080/ 2>&1 | grep -q 'HTTP/'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  atlas-frontend:
+    # Pre-built image from Docker Hub. Prod's mira-cmms/docker-compose.yml uses a
+    # local build context that only resolves on Bravo — won't build on the VPS.
+    # Using the published image avoids that.
+    image: intelloop/atlas-cmms-frontend@sha256:9393849caa8ff980b02cdc0836d3797da78a8a3a4672acff80206de4e11fa8de
+    container_name: stg-atlas-frontend
+    restart: unless-stopped
+    depends_on:
+      atlas-api:
+        condition: service_healthy
+    environment:
+      API_URL: ${ATLAS_PUBLIC_API_URL:-http://165.245.138.91:4088}
+      INVITATION_VIA_EMAIL: "false"
+      CLOUD_VERSION: "false"
+      NODE_ENV: production
+      ENABLE_SSO: "false"
+      GOOGLE_TRACKING_ID: "disabled"
+      GOOGLE_KEY: "disabled"
+      MUI_X_LICENSE: "disabled"
+      OAUTH2_PROVIDER: "none"
+      LOGO_PATHS: "null"
+      CUSTOM_COLORS: "null"
+      BRAND_CONFIG: "null"
+      DEMO_LINK: "none"
+      PADDLE_SECRET_TOKEN: "disabled"
+      PADDLE_ENVIRONMENT: production
+      RECAPTCHA_SITE_KEY: "disabled"
+    ports:
+      - "0.0.0.0:4100:3000"
+    networks:
+      - staging-net
+    mem_limit: 256m
+    memswap_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qS -O /dev/null http://127.0.0.1:3000/ 2>&1 | grep -q 'HTTP/'"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ─── MIRA core services (staging subset) ───────────────────────────────────
+  mira-mcp:
+    build: ./mira-mcp
+    container_name: stg-mira-mcp
+    ports:
+      - "0.0.0.0:4000:8000"
+      - "0.0.0.0:4001:8001"
+    environment:
+      - MIRA_DB_PATH=/mira-db/mira.db
+      - FASTMCP_HOST=0.0.0.0
+      - FASTMCP_PORT=8000
+      - MCP_REST_API_KEY=${MCP_REST_API_KEY}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-staging}
+      - PIPELINE_BASE_URL=http://stg-mira-pipeline:9099
+      - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - MIRA_HUB_URL=http://stg-mira-hub:3000
+      - INTERNAL_KG_API_KEY=${INTERNAL_KG_API_KEY:-}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL}
+      # Atlas CMMS — mira-mcp work-order tools call into stg-atlas-api.
+      - HUB_CMMS_API_URL=http://stg-atlas-api:8080
+      - ATLAS_API_USER=${ATLAS_API_USER:-}
+      - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
+    volumes:
+      - /opt/mira-staging/data:/mira-db
+    networks:
+      - staging-net
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 512m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  mira-pipeline:
+    build:
+      context: .
+      dockerfile: mira-pipeline/Dockerfile
+    container_name: stg-mira-pipeline
+    ports:
+      - "0.0.0.0:4099:9099"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - MIRA_DB_PATH=/mira-db/mira.db
+      # OpenWebUI is not deployed in staging — pipeline will gracefully no-op
+      # the legacy KB path. The cascade providers (Groq → Cerebras → Gemini)
+      # are the real inference path and are env-driven, so they still work.
+      - OLLAMA_BASE_URL=disabled://staging
+      - OPENWEBUI_BASE_URL=disabled://staging
+      - OPENWEBUI_API_KEY=
+      - KNOWLEDGE_COLLECTION_ID=
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-staging}
+      - VISION_MODEL=qwen2.5vl:7b
+      - INFERENCE_BACKEND=cloud
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=llama-3.3-70b-versatile
+      - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
+      - CEREBRAS_MODEL=llama3.1-8b
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
+      - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
+      - MCP_BASE_URL=http://stg-mira-mcp:8001
+      # mira-ingest not deployed in staging — leave URL unreachable on purpose
+      - INGEST_SERVICE_URL=disabled://staging
+      - EVAL_RUNS_DIR=/eval-runs
+      - SESSION_RECORDING_PATH=/data/sessions
+      - AGENT_LOG_DIR=/mira-db/agent-runs
+    volumes:
+      - /opt/mira-staging/data:/mira-db
+      - /opt/mira-staging/data/sessions:/data/sessions
+    networks:
+      - staging-net
+    restart: unless-stopped
+    mem_limit: 1g
+    memswap_limit: 1g
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9099/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  mira-hub:
+    build:
+      context: ./mira-hub
+      args:
+        NEXT_PUBLIC_BASE_PATH: ""
+        NEXT_PUBLIC_API_BASE: ""
+        NEXT_PUBLIC_PIPELINE_API_URL: ${NEXT_PUBLIC_PIPELINE_API_URL:-http://165.245.138.91:4099}
+    container_name: stg-mira-hub
+    ports:
+      - "0.0.0.0:4101:3000"
+    environment:
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:4101}
+      - OAUTH_TOKEN_ENC_KEY=${OAUTH_TOKEN_ENC_KEY:-}
+      - AUTH_SECRET=${AUTH_SECRET:-}
+      # NextAuth — staging is reached via SSH tunnel (ssh -L 4101:127.0.0.1:4101).
+      # Google OAuth client `246891599587-usbnoa7g6agveginmbb62rvi2p3rmb83…` has
+      # `http://localhost:4101/api/auth/callback/google` whitelisted (added
+      # 2026-05-22). Override NEXTAUTH_URL via Doppler if reaching staging by
+      # IP — that callback must also be added to the OAuth client.
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:4101/api/auth}
+      - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-http://165.245.138.91:4101/api/auth}
+      - HUB_AUTH_GOOGLE_CLIENT_ID=${HUB_AUTH_GOOGLE_CLIENT_ID:-}
+      - HUB_AUTH_GOOGLE_CLIENT_SECRET=${HUB_AUTH_GOOGLE_CLIENT_SECRET:-}
+      - HUB_TENANT_ID=${HUB_TENANT_ID:-mike}
+      # Public /quickstart landing — tenant whose KB corpus the anonymous
+      # ask endpoint queries (ADR-0014, Twilio moment). Doppler-injected in
+      # staging/prod; fallback below is the founder's tenant where the
+      # seeded OEM corpus currently lives.
+      - QUICKSTART_TENANT_ID=${QUICKSTART_TENANT_ID:-78917b56-f85f-43bb-9a08-1bb98a6cd6c3}
+      - NEXT_PUBLIC_PIPELINE_API_URL=${NEXT_PUBLIC_PIPELINE_API_URL:-http://165.245.138.91:4099}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - SLACK_CLIENT_ID=${SLACK_CLIENT_ID:-}
+      - SLACK_CLIENT_SECRET=${SLACK_CLIENT_SECRET:-}
+      # SLACK_BOT_TOKEN is intentionally omitted — the prod bot polls with the
+      # same token and a second connection would dual-poll. The hub status
+      # endpoint just won't show a connected Slack workspace in staging.
+      - MICROSOFT_CLIENT_ID=${MICROSOFT_CLIENT_ID:-}
+      - MICROSOFT_CLIENT_SECRET=${MICROSOFT_CLIENT_SECRET:-}
+      - DROPBOX_APP_KEY=${DROPBOX_APP_KEY:-}
+      - DROPBOX_APP_SECRET=${DROPBOX_APP_SECRET:-}
+      - ATLASSIAN_CLIENT_ID=${ATLASSIAN_CLIENT_ID:-}
+      - ATLASSIAN_CLIENT_SECRET=${ATLASSIAN_CLIENT_SECRET:-}
+      - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}
+      # mira-ingest not in staging — point at /dev/null target
+      - INGEST_URL=disabled://staging
+      - GOOGLE_PICKER_API_KEY=${GOOGLE_PICKER_API_KEY:-}
+      - GOOGLE_CLOUD_PROJECT_NUMBER=${GOOGLE_CLOUD_PROJECT_NUMBER:-}
+      - OPENWEBUI_BASE_URL=disabled://staging
+      - OPENWEBUI_API_KEY=
+      - NANGO_SERVER_URL=${NANGO_SERVER_URL:-disabled://staging}
+      - NANGO_SECRET_KEY=${NANGO_SECRET_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
+      - CEREBRAS_MODEL=${CEREBRAS_MODEL:-llama3.1-8b}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - HUB_CMMS_API_URL=http://stg-atlas-api:8080
+      - ATLAS_API_USER=${ATLAS_API_USER:-}
+      - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
+      # /hub/admin/review filesystem source root (see volume mounts).
+      - REVIEW_REPO_ROOT=${REVIEW_REPO_ROOT:-/app}
+      - ADMIN_EMAILS=${ADMIN_EMAILS:-harperhousebuyers@gmail.com,mike@cranesync.com}
+    networks:
+      - staging-net
+    volumes:
+      - ./marketing:/app/marketing:rw
+      - ./docs/promo-screenshots:/app/docs/promo-screenshots:rw
+      - ./tools/web-review-runs:/app/tools/web-review-runs:ro
+    restart: unless-stopped
+    mem_limit: 1g
+    memswap_limit: 1g
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  mira-web:
+    build: ./mira-web
+    container_name: stg-mira-web
+    ports:
+      - "0.0.0.0:4200:3000"
+    environment:
+      - PORT=3000
+      - PLG_JWT_SECRET=${PLG_JWT_SECRET}
+      - PLG_ATLAS_ADMIN_USER=${PLG_ATLAS_ADMIN_USER:-}
+      - PLG_ATLAS_ADMIN_PASSWORD=${PLG_ATLAS_ADMIN_PASSWORD:-}
+      - ATLAS_API_URL=http://stg-atlas-api:8080
+      - SIDECAR_URL=disabled://staging
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL}
+      - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
+      - PLG_DAILY_FREE_QUERIES=${PLG_DAILY_FREE_QUERIES:-5}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@factorylm.com}
+      # Stripe — staging should NOT charge cards; leave secrets empty unless
+      # the user has set test-mode keys in Doppler factorylm/stg.
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_PRICE_ID=${STRIPE_PRICE_ID:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - INBOUND_HMAC_SECRET=${INBOUND_HMAC_SECRET:-}
+      - MIRA_INGEST_URL=disabled://staging
+      - INBOX_DOMAIN=${INBOX_DOMAIN:-factorylm.com}
+    networks:
+      - staging-net
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 512m
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ─── Staging Telegram bot ──────────────────────────────────────────────────
+  # Polls @Mira_stagong_bot. MUST use TELEGRAM_BOT_TOKEN_STG (separate token
+  # from prod). Runs the Supervisor engine in-process — does not call
+  # mira-pipeline over HTTP.
+  mira-bot-telegram:
+    build:
+      context: .
+      dockerfile: mira-bots/telegram/Dockerfile
+    container_name: stg-mira-bot-telegram
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN_STG}
+      - MIRA_DB_PATH=/mira-db/mira.db
+      - OPENWEBUI_BASE_URL=disabled://staging
+      - OPENWEBUI_API_KEY=
+      - KNOWLEDGE_COLLECTION_ID=
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-staging}
+      - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS:-}
+      - VISION_MODEL=qwen2.5vl:7b
+      - OLLAMA_BASE_URL=disabled://staging
+      - INFERENCE_BACKEND=cloud
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=llama-3.3-70b-versatile
+      - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
+      - CEREBRAS_MODEL=llama3.1-8b
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
+      - MCP_BASE_URL=http://stg-mira-mcp:8001
+      - INGEST_SERVICE_URL=disabled://staging
+      - SESSION_RECORDING_PATH=/data/sessions
+      - NTFY_URL=${NTFY_URL:-https://ntfy.sh}
+      - NTFY_TOPIC=${NTFY_TOPIC:-mira-staging-alerts}
+    volumes:
+      - /opt/mira-staging/data:/mira-db
+      - /opt/mira-staging/data/sessions:/data/sessions
+    networks:
+      - staging-net
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 512m
+    healthcheck:
+      test: ["CMD", "sh", "-c", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ─── mira-cmms-sync — NeonDB ↔ Atlas sync worker (staging) ────────────────
+  # Mirrors saas.yml's mira-cmms-sync block but talks to stg-atlas-api inside
+  # staging-net. Default off (CMMS_SYNC_ENABLED=false) — staging is a clean
+  # sandbox; flip true in Doppler factorylm/stg when ready to test the loop
+  # end-to-end. Required for Hub Feed/Schedule pages to surface real Atlas
+  # work-order data instead of mock fixtures.
+  mira-cmms-sync:
+    build:
+      context: ./mira-hub
+      dockerfile: Dockerfile.sync-worker
+    container_name: stg-mira-cmms-sync
+    environment:
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-http://stg-atlas-api:8080}
+      - ATLAS_API_USER=${ATLAS_API_USER:-}
+      - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
+      - CMMS_SYNC_ENABLED=${CMMS_SYNC_ENABLED:-false}
+      - CMMS_SYNC_INTERVAL_MS=${CMMS_SYNC_INTERVAL_MS:-60000}
+    command: ["bun", "run", "scripts/cmms-sync-worker.ts", "--interval-ms", "${CMMS_SYNC_INTERVAL_MS:-60000}"]
+    networks:
+      - staging-net
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+    depends_on:
+      - mira-hub
+
+networks:
+  staging-net:
+    name: staging-net
+    driver: bridge
+
+volumes:
+  stg-atlas-pgdata:
+  stg-atlas-minio:

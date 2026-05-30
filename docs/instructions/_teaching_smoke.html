@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>__TITLE__</title>
+<style>
+  @page { size: Letter; margin: 0.45in 0.55in; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10.5pt; color: #111; line-height: 1.42; }
+  h1 { font-size: 19pt; margin: 0 0 4pt 0; border-bottom: 2pt solid #111; padding-bottom: 6pt; }
+  h2 { font-size: 14pt; margin: 18pt 0 6pt 0; padding: 6pt 10pt; background: #1f3a5f; color: #fff; }
+  h3 { font-size: 12pt; margin: 14pt 0 4pt 0; color: #1f3a5f; }
+  h4 { font-size: 11pt; margin: 10pt 0 2pt 0; color: #333; }
+  .meta { font-size: 9.5pt; color: #555; margin-bottom: 10pt; }
+  .meta strong { color: #111; }
+  ol, ul { margin: 4pt 0 6pt 22pt; }
+  li { margin-bottom: 4pt; }
+  code, pre { font-family: 'Consolas', 'Courier New', monospace; }
+  pre { background: #f4f5f7; border: 1pt solid #d0d5dc; border-radius: 3pt; padding: 8pt; font-size: 9pt; white-space: pre; overflow-x: auto; tab-size: 2; -webkit-tab-size: 2; line-height: 1.25; }
+  pre.ladder { background: #fafbfd; border: 1pt solid #1f3a5f; font-size: 9pt; line-height: 1.15; padding: 10pt 12pt; }
+  pre.wiring { background: #fff8e8; border: 1pt solid #b9882a; padding: 10pt; font-size: 9.5pt; }
+  pre.bits { background: #f0f4fa; border: 1pt solid #1f3a5f; padding: 10pt; font-size: 9.5pt; }
+  code { background: #f4f5f7; padding: 1pt 3pt; border-radius: 2pt; font-size: 10pt; }
+  table { border-collapse: collapse; width: 100%; margin: 4pt 0 8pt 0; font-size: 9.5pt; }
+  th, td { border: 1pt solid #b5bcc4; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #e8edf3; }
+  .callout { border-left: 4pt solid #d9822b; background: #fff7eb; padding: 8pt 12pt; margin: 8pt 0; }
+  .callout-title { font-weight: bold; color: #a55a14; display: block; margin-bottom: 2pt; }
+  .danger { border-left: 4pt solid #c5392c; background: #fdecea; padding: 8pt 12pt; margin: 8pt 0; }
+  .danger-title { font-weight: bold; color: #8a1a10; display: block; margin-bottom: 2pt; }
+  .ok { border-left: 4pt solid #2f8f3a; background: #ecf6ee; padding: 8pt 12pt; margin: 8pt 0; }
+  .ok-title { font-weight: bold; color: #1f5f24; display: block; margin-bottom: 2pt; }
+  .bug { border-left: 4pt solid #8a1a10; background: #fff5f3; padding: 10pt 12pt; margin: 10pt 0; }
+  .bug-title { font-weight: bold; color: #8a1a10; display: block; margin-bottom: 3pt; font-size: 11pt; }
+  .why { background: #eef2f9; padding: 6pt 10pt; margin: 4pt 0 6pt 0; border-radius: 3pt; font-size: 10pt; }
+  .why::before { content: 'Why this matters: '; font-weight: bold; color: #1f3a5f; }
+  .check { background: #f7fff8; border: 1pt dashed #2f8f3a; padding: 5pt 9pt; border-radius: 3pt; margin: 4pt 0; font-size: 10pt; }
+  .check::before { content: '\2713 You should see: '; font-weight: bold; color: #2f8f3a; }
+  .pageref { font-size: 8.5pt; color: #888; font-style: italic; }
+  hr { border: 0; border-top: 1pt solid #b5bcc4; margin: 12pt 0; }
+  .step { background: #1f3a5f; color: #fff; border-radius: 50%; display: inline-block; width: 20pt; height: 20pt; line-height: 20pt; text-align: center; font-weight: bold; margin-right: 7pt; }
+  .checkbox { display: inline-block; width: 11pt; height: 11pt; border: 1.5pt solid #111; margin-right: 6pt; vertical-align: middle; }
+  .small { font-size: 9.5pt; color: #555; }
+  .page-break { page-break-before: always; }
+  .compact td, .compact th { padding: 3pt 6pt; font-size: 9.5pt; }
+  .rung-caption { font-style: italic; color: #555; font-size: 9.5pt; margin: 2pt 0 6pt 0; }
+  .cheatsheet { background: #fffaf0; border: 2pt solid #1f3a5f; padding: 12pt 14pt; margin: 10pt 0; }
+  .cheatsheet h3 { margin-top: 8pt; color: #1f3a5f; }
+  .cheatsheet table { margin: 4pt 0; }
+  .cheatsheet th { background: #1f3a5f; color: #fff; }
+  .bit-fixed { font-family: 'Consolas', monospace; font-size: 11pt; letter-spacing: 1pt; color: #1f3a5f; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h1>__TITLE__<br/><span style="font-size:13pt;font-weight:normal;color:#555;">__SUBTITLE__</span></h1>
+<div class="meta">
+  <strong>Audience:</strong> __AUDIENCE__ &nbsp;|&nbsp;
+  <strong>PLC:</strong> __PLC_MODEL_AND_PART__<br/>
+  <strong>Drive:</strong> __DRIVE_MODEL_AND_ADDRESS__<br/>
+  <strong>Project:</strong> <code>__PROJECT_FILE__</code> &nbsp;|&nbsp;
+  <strong>IDE:</strong> __IDE_VERSION__<br/>
+  <strong>Primary reference:</strong> <em>__PRIMARY_MANUAL__</em><br/>
+  <strong>This doc supersedes:</strong> __PRIOR_DOC_OR_NONE__<br/>
+  <strong>You will understand after reading:</strong> __LEARNING_OUTCOME_ONE_SENTENCE__
+</div>
+
+<!-- ============================================================ -->
+<!-- CHEATSHEET — every safety-critical value with its citation.  -->
+<!-- ============================================================ -->
+<div class="cheatsheet">
+<h3 style="margin-top:0;">🛈 One-page cheat sheet (the values that absolutely must be right)</h3>
+<table class="compact">
+<thead><tr><th>What</th><th>Value</th><th>Source</th></tr></thead>
+<tbody>
+<tr><td>__VALUE_NAME__</td><td><code>__VALUE__</code></td><td>__SOURCE_CITATION__</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<!-- BUG BLOCK — only if this doc supersedes a prior one.         -->
+<!-- Delete entirely if not applicable.                           -->
+<!-- ============================================================ -->
+<div class="bug">
+  <span class="bug-title">⚠ __N__ bugs in the current <code>__PRIOR_ARTIFACT__</code> that this doc fixes</span>
+  <ol style="margin: 4pt 0 0 22pt;">
+    <li><strong>__BUG_HEADLINE__:</strong> __DESCRIPTION_WITH_WRONG_AND_CORRECT_VALUES__</li>
+  </ol>
+</div>
+
+<!-- ============================================================ -->
+<!-- 1. THE BIG PICTURE — plain electrician language.             -->
+<!-- ============================================================ -->
+<h2><span class="step">1</span> The Big Picture</h2>
+<p>__WHAT_WE_ARE_TRYING_TO_ACCOMPLISH_IN_PLAIN_LANGUAGE__</p>
+
+<!-- ============================================================ -->
+<!-- 2. THE REAL-WORLD PROBLEM — anchor in concrete plant.        -->
+<!-- ============================================================ -->
+<h2><span class="step">2</span> The Real-World Problem</h2>
+<p>__THE_PHYSICAL_MACHINE_SCENARIO_THE_READER_SHOULD_PICTURE__</p>
+
+<!-- ============================================================ -->
+<!-- 3. THE SIMPLE VERSION FIRST — brute force, working.          -->
+<!-- ============================================================ -->
+<h2><span class="step">3</span> The Simple Version First</h2>
+<p>__INTRO_TO_THE_DUMB_VERSION_THAT_WORKS__</p>
+
+<pre class="ladder">
+__LADDER_OR_ST_OF_THE_SIMPLE_VERSION__
+</pre>
+
+<p>__LINE_BY_LINE_WALKTHROUGH__</p>
+
+<div class="ok">
+  <span class="ok-title">If you see this, the simple version works</span>
+  __OBSERVABLE_PROOF_THE_SIMPLE_VERSION_RUNS__
+</div>
+
+<!-- ============================================================ -->
+<!-- 4. WHY THIS BECOMES A PROBLEM — make the pain concrete.      -->
+<!-- ============================================================ -->
+<h2><span class="step">4</span> Why This Becomes a Problem</h2>
+<p>__WHAT_HAPPENS_WHEN_THE_SIMPLE_VERSION_IS_COPIED_THREE_TIMES__</p>
+
+<div class="callout">
+  <span class="callout-title">The pain made concrete</span>
+  __NAMED_SCENARIO_THE_READER_SHOULD_FEEL_BAD_ABOUT__
+</div>
+
+<div class="page-break"></div>
+
+<!-- ============================================================ -->
+<!-- 5. THE BETTER PATTERN — name it, explain it, don't show code yet.
+<!-- ============================================================ -->
+<h2><span class="step">5</span> The Better Pattern</h2>
+<p>__INTRODUCE_THE_PATTERN_BY_NAME_AND_EXPLAIN_IT_IN_PLAIN_ENGLISH__</p>
+
+<div class="why">__SHORT_VIVID_ANALOGY_THAT_ANCHORS_THE_PATTERN__</div>
+
+<!-- ============================================================ -->
+<!-- 6. CCW STEP-BY-STEP WALKTHROUGH                              -->
+<!-- ============================================================ -->
+<h2><span class="step">6</span> CCW Step-by-Step Walkthrough</h2>
+<p>__INTRO_TO_THE_HANDS_ON_PART__</p>
+
+<ol>
+  <li><span class="checkbox"></span> __FIRST_CLICK_OR_ACTION_WITH_EXPECTED_RESULT__</li>
+  <li><span class="checkbox"></span> __SECOND_CLICK_OR_ACTION__</li>
+</ol>
+
+<div class="callout">
+  <span class="callout-title">The "no match" empty dropdown is fine</span>
+  __ANTICIPATE_THE_CCW_PANIC_FOR_THIS_STEP_FROM_BEGINNER_VOICE_MD__
+</div>
+
+<!-- ============================================================ -->
+<!-- 7. VARIABLE MAP — see references/variable-map.md             -->
+<!-- ============================================================ -->
+<h2><span class="step">7</span> Variable Map</h2>
+<p>Every meaningful variable used in this lesson. The "Why it belongs here" column is the teaching content — read those cells if you want to understand the design, not just memorize it.</p>
+
+<table class="compact">
+<thead>
+<tr>
+  <th>Name</th>
+  <th>Type</th>
+  <th>Direction</th>
+  <th>Scope</th>
+  <th>Purpose</th>
+  <th>Why it belongs here</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>__VAR_NAME__</code></td>
+  <td><code>__TYPE__</code></td>
+  <td>__INPUT_OR_OUTPUT_OR_DASH__</td>
+  <td>__SCOPE_FROM_VARIABLE_MAP_MD__</td>
+  <td>__PURPOSE_IN_PLAIN_ENGLISH__</td>
+  <td>__WHY_IT_IS_IN_THIS_SCOPE_NOT_ANOTHER__</td>
+</tr>
+</tbody>
+</table>
+
+<!-- ============================================================ -->
+<!-- 8. CODE WALKTHROUGH — chunked, narrated.                     -->
+<!-- ============================================================ -->
+<h2><span class="step">8</span> Code Walkthrough</h2>
+
+<h3>__CHUNK_TITLE__</h3>
+
+<pre class="ladder">
+__LADDER_OF_THIS_CHUNK__
+</pre>
+
+<p>__WHAT_THE_PLC_SEES_AND_WHAT_CHANGES_STATE_ON_THE_NEXT_SCAN__</p>
+
+<div class="why">__WHAT_THIS_CHUNK_ACCOMPLISHES_MECHANICALLY__</div>
+
+<!-- ============================================================ -->
+<!-- 9. SCAN CYCLE EXPLANATION — tie to read-execute-write.       -->
+<!-- ============================================================ -->
+<h2><span class="step">9</span> Scan Cycle Explanation</h2>
+<p>Every PLC scan is the same five-phase loop:</p>
+<ol>
+  <li>Read physical inputs.</li>
+  <li>Execute the program logic.</li>
+  <li>Update internal variables.</li>
+  <li>Write physical outputs.</li>
+  <li>Repeat.</li>
+</ol>
+<p>__APPLY_THESE_FIVE_PHASES_TO_THE_CODE_FROM_SECTION_8__</p>
+
+<!-- ============================================================ -->
+<!-- 10. TESTING PROCEDURE                                        -->
+<!-- ============================================================ -->
+<h2><span class="step">10</span> Testing Procedure</h2>
+
+<ol>
+  <li><span class="checkbox"></span> __WHAT_TO_FORCE_OR_TOGGLE_FIRST__</li>
+</ol>
+
+<div class="check">__OBSERVABLE_SIGNAL_THAT_CONFIRMS_THE_TEST_PASSED__</div>
+
+<h4>Pass / Fail summary</h4>
+<table class="compact">
+<thead><tr><th>Test</th><th>Pass</th><th>Fail</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>__TEST_DESCRIPTION__</td><td>☐</td><td>☐</td><td>&nbsp;</td></tr>
+</tbody>
+</table>
+
+<!-- ============================================================ -->
+<!-- 11. TROUBLESHOOTING GUIDE                                    -->
+<!-- ============================================================ -->
+<h2><span class="step">11</span> Troubleshooting Guide</h2>
+
+<table class="compact">
+<thead>
+<tr>
+  <th>Symptom</th>
+  <th>Likely cause</th>
+  <th>What to check</th>
+  <th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>__SYMPTOM__</td>
+  <td>__CAUSE__</td>
+  <td>__WHAT_TO_INSPECT__</td>
+  <td>__HOW_TO_RECOVER__</td>
+</tr>
+</tbody>
+</table>
+
+<!-- ============================================================ -->
+<!-- 12. MENTAL MODEL — one vivid analogy.                        -->
+<!-- ============================================================ -->
+<h2><span class="step">12</span> Mental Model</h2>
+<div class="why">__ONE_SHORT_VIVID_ANALOGY_THE_READER_WILL_REMEMBER_IN_SIX_MONTHS__</div>
+
+<!-- ============================================================ -->
+<!-- 13. WHAT YOU SHOULD UNDERSTAND NOW                           -->
+<!-- ============================================================ -->
+<h2><span class="step">13</span> What You Should Understand Now</h2>
+<ul>
+  <li>__COMPREHENSION_POINT_ONE__</li>
+  <li>__COMPREHENSION_POINT_TWO__</li>
+</ul>
+
+<!-- ============================================================ -->
+<!-- 14. NEXT STEP — name a specific next artifact.               -->
+<!-- ============================================================ -->
+<h2><span class="step">14</span> Next Step</h2>
+<p>__NEXT_GUIDE_OR_EXERCISE_BY_NAME__</p>
+
+</body>
+</html>

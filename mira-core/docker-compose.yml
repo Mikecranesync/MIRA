@@ -1,5 +1,7 @@
 services:
   open-webui:
+    mem_limit: 512m
+    memswap_limit: 512m
     image: ghcr.io/open-webui/open-webui:v0.8.10
     container_name: mira-core
     ports:
@@ -13,6 +15,11 @@ services:
       - ENABLE_COMMUNITY_SHARING=false
       - ENABLE_FORWARD_USER_INFO_HEADERS=true
       - ENABLE_API_KEYS=true
+      # OW v0.8.10 gates POST /api/v1/auths/api_key on ENABLE_API_KEYS (plural)
+      # AND has_permission(user, 'features.api_keys') — which defaults to False.
+      # USER_PERMISSIONS_FEATURES_API_KEYS=true also flips that per-user gate.
+      # Without both, you get 403 "API key creation is not allowed".
+      - USER_PERMISSIONS_FEATURES_API_KEYS=true
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:?WEBUI_SECRET_KEY must be set in .env}
       - WEBUI_ENABLE_TELEMETRY=false
       - WEBUI_CHECK_FOR_UPDATES=false
@@ -62,6 +69,8 @@ services:
       - "host.docker.internal:host-gateway"
 
   mira-mcpo:
+    mem_limit: 512m
+    memswap_limit: 512m
     image: mira-core-mira-mcpo:${MIRA_MCPO_VERSION:-3.4}
     container_name: mira-mcpo
     command: --port 8000 --api-key ${MCPO_API_KEY} --config /mcp/config.json
@@ -86,6 +95,8 @@ services:
       - "host.docker.internal:host-gateway"
 
   mira-ingest:
+    mem_limit: 512m
+    memswap_limit: 512m
     build:
       context: ./mira-ingest
     container_name: mira-ingest
@@ -122,6 +133,8 @@ services:
       - "host.docker.internal:host-gateway"
 
   mira-tika:
+    mem_limit: 512m
+    memswap_limit: 512m
     image: apache/tika:3.1.0.0
     container_name: mira-tika
     ports:
@@ -137,6 +150,8 @@ services:
       start_period: 15s
 
   mira-pipeline:
+    mem_limit: 512m
+    memswap_limit: 512m
     build:
       context: ..
       dockerfile: mira-pipeline/Dockerfile
@@ -186,6 +201,10 @@ services:
       - "host.docker.internal:host-gateway"
 
   mira-docling:
+    # Match saas.yml — docling is the known OOM victim (PR #1336). 512m WILL
+    # trip on a real PDF.
+    mem_limit: 3g
+    memswap_limit: 3g
     image: quay.io/docling-project/docling-serve:v1.16.1
     container_name: mira-docling
     ports:

@@ -1,0 +1,160 @@
+name: Diag — BM25 + tenant distribution
+
+# One-shot diagnostic workflow. Runs read-only probes against prod NeonDB
+# to root-cause why BM25 returns empty for the Slack/Telegram bots.
+#
+# Probes:
+#   1. tenant_id distribution in knowledge_entries
+#   2. BM25 ts_rank for "GS11 modbus register write"
+#   3. BM25 ts_rank for "modbus parameters word write GS11 drive"
+#   4. Schema check: tenant_id type, existence of content_tsv
+#   5. Rows tagged with the known SHARED_TENANT_ID UUID
+#
+# Read-only — no inserts, no updates, no schema changes.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prod-diag-bm25
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Run BM25 + tenant probes
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v6
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      - name: Install psql 16
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          psql --version
+
+      - name: Authenticate Doppler + resolve DATABASE_URL
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          set -euo pipefail
+          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain)"
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::NEON_DATABASE_URL empty"; exit 1
+          fi
+          echo "::add-mask::$DATABASE_URL"
+          echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
+
+      - name: Resolve MIRA_TENANT_ID for bot containers (from Doppler)
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          set -euo pipefail
+          BOT_TID="$(doppler secrets get MIRA_TENANT_ID --project factorylm --config prd --plain 2>/dev/null || true)"
+          SHARED_TID="$(doppler secrets get MIRA_SHARED_TENANT_ID --project factorylm --config prd --plain 2>/dev/null || true)"
+          echo "MIRA_TENANT_ID in Doppler: '${BOT_TID}'" >> "$GITHUB_STEP_SUMMARY"
+          echo "MIRA_SHARED_TENANT_ID in Doppler: '${SHARED_TID}'" >> "$GITHUB_STEP_SUMMARY"
+          echo "BOT_TID=${BOT_TID}" >> "$GITHUB_ENV"
+          echo "SHARED_TID=${SHARED_TID}" >> "$GITHUB_ENV"
+
+      - name: Probe — schema, tenant distribution, BM25 ts_rank
+        run: |
+          set -euo pipefail
+          cat > /tmp/probe.sql <<'SQL'
+          \echo === knowledge_entries column types ===
+          SELECT column_name, data_type, is_nullable, is_generated
+            FROM information_schema.columns
+           WHERE table_name='knowledge_entries'
+             AND column_name IN ('id','tenant_id','content','content_tsv','embedding')
+           ORDER BY ordinal_position;
+
+          \echo === top tenants by row count ===
+          SELECT tenant_id, count(*) AS rows
+            FROM knowledge_entries
+           GROUP BY tenant_id
+           ORDER BY count(*) DESC
+           LIMIT 15;
+
+          \echo === rows with content_tsv populated ===
+          SELECT count(*) AS rows_with_tsv,
+                 count(*) FILTER (WHERE content_tsv IS NULL) AS rows_null_tsv
+            FROM knowledge_entries;
+
+          \echo === BM25 probe 1: "GS11 modbus register write" (NO tenant filter) ===
+          SELECT id,
+                 tenant_id,
+                 LEFT(content, 80) AS snippet,
+                 ts_rank(content_tsv, plainto_tsquery('english', 'GS11 modbus register write')) AS rank
+            FROM knowledge_entries
+           WHERE content_tsv @@ plainto_tsquery('english', 'GS11 modbus register write')
+           ORDER BY rank DESC
+           LIMIT 5;
+
+          \echo === BM25 probe 2: "modbus parameters word write GS11 drive" (NO tenant filter) ===
+          SELECT id,
+                 tenant_id,
+                 LEFT(content, 80) AS snippet,
+                 ts_rank(content_tsv, plainto_tsquery('english', 'modbus parameters word write GS11 drive')) AS rank
+            FROM knowledge_entries
+           WHERE content_tsv @@ plainto_tsquery('english', 'modbus parameters word write GS11 drive')
+           ORDER BY rank DESC
+           LIMIT 5;
+
+          \echo === BM25 probe 3: same query but SCOPED to the prod bot tenant filter ===
+          SELECT id,
+                 tenant_id,
+                 LEFT(content, 80) AS snippet,
+                 ts_rank(content_tsv, plainto_tsquery('english', 'GS11 modbus register write')) AS rank
+            FROM knowledge_entries
+           WHERE (tenant_id = :'bot_tid' OR tenant_id = :'shared_tid')
+             AND content_tsv @@ plainto_tsquery('english', 'GS11 modbus register write')
+           ORDER BY rank DESC
+           LIMIT 5;
+
+          \echo === sample rows for hard-coded SHARED_TENANT_ID UUID 78917b56-... ===
+          SELECT count(*) AS rows_under_shared_uuid
+            FROM knowledge_entries
+           WHERE tenant_id = '78917b56-f85f-43bb-9a08-1bb98a6cd6c3';
+
+          \echo === sample rows for "mike-garage-demo" slug ===
+          SELECT count(*) AS rows_under_mike_garage_demo
+            FROM knowledge_entries
+           WHERE tenant_id = 'mike-garage-demo';
+
+          \echo === any GS11 mentions, regardless of tenant ===
+          SELECT tenant_id, count(*) AS rows_mentioning_GS11
+            FROM knowledge_entries
+           WHERE content ILIKE '%GS11%'
+           GROUP BY tenant_id
+           ORDER BY count(*) DESC
+           LIMIT 10;
+          SQL
+
+          set +e
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 \
+               -v "bot_tid=${BOT_TID:-__missing__}" \
+               -v "shared_tid=${SHARED_TID:-78917b56-f85f-43bb-9a08-1bb98a6cd6c3}" \
+               -f /tmp/probe.sql 2>&1 | tee /tmp/probe.out
+          PSQL_EXIT=${PIPESTATUS[0]}
+          set -e
+          {
+            echo "## Probe output"
+            echo ""
+            echo "Bot MIRA_TENANT_ID (from Doppler): \`${BOT_TID:-__missing__}\`"
+            echo ""
+            echo "MIRA_SHARED_TENANT_ID (from Doppler, fallback UUID 78917b56-...): \`${SHARED_TID:-78917b56-f85f-43bb-9a08-1bb98a6cd6c3}\`"
+            echo ""
+            echo '```'
+            cat /tmp/probe.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$PSQL_EXIT"

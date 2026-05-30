@@ -14,10 +14,27 @@
 #     environments to avoid noisy churn (override with FORCE_LOG=1).
 
 set -u
-PROGRESS_FILE="docs/context/PROGRESS.md"
-[ -f "$PROGRESS_FILE" ] || exit 0
+
+# Auto-log target. Gitignored — see .gitignore + docs/context/PROGRESS.local.md.
+# Previously wrote to docs/context/PROGRESS.md, which polluted git status every
+# session and blocked branch switches during merge cleanup.
+PROGRESS_FILE="docs/context/PROGRESS.local.md"
 
 cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" || exit 0
+
+if [ ! -f "$PROGRESS_FILE" ]; then
+  mkdir -p "$(dirname "$PROGRESS_FILE")"
+  cat > "$PROGRESS_FILE" <<'EOF'
+# Session auto-log (gitignored)
+
+Auto-appended by `.claude/hooks/stop.sh` on every Claude Code Stop event.
+Gitignored — never enters version control. To disable, remove the Stop entry
+from `.claude/settings.json`.
+
+<!-- BEGIN AUTOLOG -->
+<!-- END AUTOLOG -->
+EOF
+fi
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
 TS="$(date -u +'%Y-%m-%d %H:%M UTC')"

@@ -1,0 +1,99 @@
+name: Namespace inline-create E2E (post-deploy)
+
+# Runs tests/e2e/namespace-inline-create.spec.ts against the deployed hub.
+#
+# Default target is PRODUCTION (https://app.factorylm.com/hub) because the
+# DigitalOcean Cloud Firewall blocks staging :4101 from public internet —
+# only :22, :80, :443 are open, so neither GitHub Actions runners nor a
+# phone on a normal network can reach staging directly. The e2e suite
+# therefore runs after prod deploy succeeds and acts as the "verify prod
+# after deploy" gate the goal prompt calls for.
+#
+# Trigger: workflow_dispatch (any branch) OR auto-run on successful
+# Deploy to VPS workflow_run (which fires after merge to main).
+
+on:
+  workflow_dispatch:
+    inputs:
+      hub_url:
+        description: "Hub URL to test against (bare host — no /hub prefix; nginx strips it)"
+        required: false
+        default: "https://app.factorylm.com"
+      ref:
+        description: "Branch ref to checkout (default: current)"
+        required: false
+        default: ""
+  workflow_run:
+    workflows: ["Deploy to VPS"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  e2e:
+    name: 9-scenario E2E against prod
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Install mira-hub npm deps
+        working-directory: mira-hub
+        run: npm ci --ignore-scripts
+
+      - name: Install Playwright Chromium + OS deps
+        working-directory: mira-hub
+        run: npx playwright install chromium --with-deps
+
+      - name: Resolve target URL
+        id: target
+        run: |
+          # nginx strips /hub via 301, which Playwright follows as GET → 405
+          # on POST endpoints. Use the canonical bare host.
+          DEFAULT_URL="https://app.factorylm.com"
+          DISPATCH_URL="${{ github.event.inputs.hub_url }}"
+          if [ -n "$DISPATCH_URL" ]; then
+            URL="$DISPATCH_URL"
+          else
+            URL="$DEFAULT_URL"
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "::notice::Testing against $URL"
+
+      - name: Wait for target to respond
+        run: |
+          URL="${{ steps.target.outputs.url }}"
+          BASE="${URL%/hub}"
+          for i in $(seq 1 12); do
+            if curl -sf --max-time 10 -o /dev/null -w "%{http_code}" \
+              "$BASE/api/health" | grep -qE "^(200|301|302|307|308|401|404)"; then
+              echo "Target reachable"
+              exit 0
+            fi
+            echo "Attempt $i: target not ready, retrying in 10s"
+            sleep 10
+          done
+          echo "::warning::target never returned a routable status — running tests anyway"
+
+      - name: Run namespace inline-create suite
+        working-directory: mira-hub
+        env:
+          HUB_URL: ${{ steps.target.outputs.url }}
+        run: npx playwright test tests/e2e/namespace-inline-create.spec.ts --reporter=list
+
+      - name: Upload screenshots + test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: namespace-create-e2e-${{ github.run_id }}
+          path: |
+            mira-hub/test-results/
+            docs/promo-screenshots/2026-05-21_namespace-inline-create_mobile.png
+          retention-days: 7
+          if-no-files-found: warn

@@ -178,8 +178,8 @@ def run(tenant: str | None, batch_size: int, commit: bool, force: bool) -> Stats
                 c.execute(
                     text(
                         "UPDATE cmms_equipment "
-                        "   SET uns_path = :p::ltree "
-                        " WHERE id = :id::uuid"
+                        "   SET uns_path = CAST(:p AS ltree) "
+                        " WHERE id = CAST(:id AS uuid)"
                     ),
                     {"p": new_path, "id": asset_id},
                 )

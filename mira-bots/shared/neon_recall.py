@@ -444,28 +444,40 @@ def _recall_bm25(
     cosine similarity used elsewhere). BM25 scores feed RRF by rank, not by
     magnitude, so the scale mismatch is irrelevant to fusion.
 
-    Returns [] if query_text is blank or the query fails — never raises.
-    The `content_tsv @@ plainto_tsquery(...)` predicate acts as a hard gate:
-    no match → no row, so MIN_SIMILARITY filtering is not applied here.
-    Searches both the caller's tenant entries and the shared OEM pool.
+    Query construction: OR-fanout via `to_tsquery('english', 't1 | t2 | …')`.
+    plainto_tsquery ANDs every term — fatal for maintenance queries like
+    "modbus parameters word write GS11 drive" where no single doc contains
+    all six. OR-joining means a doc matches if ANY token hits; ts_rank_cd
+    still rewards docs that match MORE tokens, so multi-term matches rank
+    higher than single-term ones. Tokens are stripped to `\\w+` to keep the
+    tsquery parser-safe (no need to escape `&|!():*`).
+
+    Returns [] if query_text is blank, has no usable tokens, or the query
+    fails — never raises. The tsquery `@@` predicate is a hard gate, so
+    MIN_SIMILARITY filtering is not applied here. Searches both the caller's
+    tenant entries and the shared OEM pool.
     """
     if not query_text or not query_text.strip():
         return []
+    tokens = re.findall(r"\w+", query_text)
+    if not tokens:
+        return []
+    ts_query = " | ".join(tokens)
     try:
         rows = (
             conn.execute(
                 text_fn(
                     "SELECT content, manufacturer, model_number, equipment_type, "
                     "source_type, source_url, source_page, metadata, "
-                    "ts_rank_cd(content_tsv, plainto_tsquery('english', :q)) AS similarity "
+                    "ts_rank_cd(content_tsv, to_tsquery('english', :tsq)) AS similarity "
                     "FROM knowledge_entries "
                     "WHERE (tenant_id = :tid OR tenant_id = :shared_tid) "
-                    "  AND content_tsv @@ plainto_tsquery('english', :q) "
+                    "  AND content_tsv @@ to_tsquery('english', :tsq) "
                     "ORDER BY similarity DESC "
                     "LIMIT :lim"
                 ),
                 {
-                    "q": query_text,
+                    "tsq": ts_query,
                     "tid": tenant_id,
                     "shared_tid": SHARED_TENANT_ID,
                     "lim": limit,
@@ -513,7 +525,10 @@ def _merge_results(
     bm25_results = bm25_results or []
 
     if not like_results and not product_results and not bm25_results:
-        return vector_results, "vector_only"
+        # Tag vector-only output so the rag_worker quality gate can apply
+        # the cosine threshold without conflating non-vector scores.
+        tagged = [dict(r, retrieval_streams=["vector"]) for r in vector_results]
+        return tagged, "vector_only"
 
     # Stream priority for similarity-field tiebreak (higher = preferred source
     # for the displayed `similarity` value). Does NOT affect RRF scoring.
@@ -537,16 +552,21 @@ def _merge_results(
     }
 
     # Accumulate RRF scores keyed by content[:100]; track best-priority stream
-    # for the similarity field.
+    # for the similarity field, and which streams contributed for each row so
+    # the rag_worker quality gate can apply the cosine threshold ONLY to
+    # vector-originated chunks (BM25 ts_rank_cd and ILIKE hardcoded 0.5 are
+    # not cosine-comparable).
     scores: dict[str, float] = {}
     best_row: dict[str, dict] = {}
     best_priority: dict[str, int] = {}
+    stream_membership: dict[str, set[str]] = {}
 
     for stream_name, rows in streams.items():
         prio = _STREAM_PRIORITY[stream_name]
         for rank, row in enumerate(rows, start=1):
             key = row["content"][:100]
             scores[key] = scores.get(key, 0.0) + 1.0 / (RRF_K + rank)
+            stream_membership.setdefault(key, set()).add(stream_name)
             if key not in best_row or prio > best_priority[key]:
                 best_row[key] = row
                 best_priority[key] = prio
@@ -561,6 +581,7 @@ def _merge_results(
     for key in ordered_keys:
         row = dict(best_row[key])
         row["rrf_score"] = round(scores[key], 6)
+        row["retrieval_streams"] = sorted(stream_membership.get(key, set()))
         merged.append(row)
 
     # Decide retrieval_path label — kept shape-compatible with prior callers
@@ -583,12 +604,18 @@ def _merge_results(
 
 
 def recall_knowledge(
-    embedding: list[float],
+    embedding: list[float] | None,
     tenant_id: str,
     limit: int = 3,
     query_text: str = "",
 ) -> list[dict]:
-    """Three-stage retrieval: vector + fault code ILIKE + product name ILIKE.
+    """Hybrid retrieval: vector + fault code + product name + BM25.
+
+    When `embedding` is None or empty (e.g. Ollama embed sidecar unreachable),
+    vector and product-name stages are skipped but BM25, structured fault, and
+    ILIKE-fault stages still run. Pre-fix the function early-returned []
+    whenever the embedding was missing, which short-circuited BM25 even
+    though it doesn't need an embedding — the GS11 demo regression.
 
     Returns a list of dicts with keys:
         content, manufacturer, model_number, equipment_type, source_type, similarity
@@ -604,8 +631,15 @@ def recall_knowledge(
             )
             recall_knowledge._warned_url = True
         return []
-    if not embedding or not tenant_id:
+    if not tenant_id:
         return []
+    has_embedding: bool = bool(embedding)
+    if not has_embedding:
+        logger.info(
+            "NEON_RECALL_NO_EMBEDDING tenant=%s — vector + product stages skipped, "
+            "lexical streams (BM25/fault/structured) still run",
+            tenant_id,
+        )
 
     try:
         from sqlalchemy import create_engine, text  # noqa: PLC0415
@@ -622,37 +656,41 @@ def recall_knowledge(
             pool_pre_ping=True,
         )
         with engine.connect() as conn:
-            # Stage 1: Dense vector search — searches tenant entries + shared OEM pool
-            vector_rows = (
-                conn.execute(
-                    text("""
-                    SELECT
-                        content,
-                        manufacturer,
-                        model_number,
-                        equipment_type,
-                        source_type,
-                        source_url,
-                        source_page,
-                        metadata,
-                        1 - (embedding <=> cast(:emb AS vector)) AS similarity
-                    FROM knowledge_entries
-                    WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
-                      AND embedding IS NOT NULL
-                    ORDER BY embedding <=> cast(:emb AS vector)
-                    LIMIT :lim
-                """),
-                    {
-                        "emb": str(embedding),
-                        "tid": tenant_id,
-                        "shared_tid": SHARED_TENANT_ID,
-                        "lim": limit,
-                    },
+            # Stage 1: Dense vector search — searches tenant entries + shared OEM pool.
+            # Skipped when the embedding sidecar was unreachable (has_embedding=False);
+            # BM25 + structured-fault stages below carry the load in that case.
+            vector_results: list[dict] = []
+            if has_embedding:
+                vector_rows = (
+                    conn.execute(
+                        text("""
+                        SELECT
+                            content,
+                            manufacturer,
+                            model_number,
+                            equipment_type,
+                            source_type,
+                            source_url,
+                            source_page,
+                            metadata,
+                            1 - (embedding <=> cast(:emb AS vector)) AS similarity
+                        FROM knowledge_entries
+                        WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
+                          AND embedding IS NOT NULL
+                        ORDER BY embedding <=> cast(:emb AS vector)
+                        LIMIT :lim
+                    """),
+                        {
+                            "emb": str(embedding),
+                            "tid": tenant_id,
+                            "shared_tid": SHARED_TENANT_ID,
+                            "lim": limit,
+                        },
+                    )
+                    .mappings()
+                    .fetchall()
                 )
-                .mappings()
-                .fetchall()
-            )
-            vector_results = [dict(r) for r in vector_rows if r["similarity"] >= MIN_SIMILARITY]
+                vector_results = [dict(r) for r in vector_rows if r["similarity"] >= MIN_SIMILARITY]
 
             # Stage 2: Fault code — structured lookup first, ILIKE fallback
             fault_codes = _extract_fault_codes(query_text)
@@ -682,16 +720,19 @@ def recall_knowledge(
                                 "source_page": None,
                                 "metadata": {"section": "Fault Code Table"},
                                 "similarity": 0.95,  # high confidence — deterministic match
+                                "retrieval_streams": ["structured_fault"],
                             }
                         )
                 # ILIKE fallback for codes not in structured table
                 if not structured_fault_results:
                     like_results = _like_search(conn, text, tenant_id, fault_codes, limit)
 
-            # Stage 3: Product name search (vector-reranked within product's manual)
+            # Stage 3: Product name search (vector-reranked within product's manual).
+            # Vector-rerank requires an embedding; if none, skip — BM25 still
+            # surfaces product-matching chunks via lexical match below.
             product_names = _extract_product_names(query_text)
             product_results: list[dict] = []
-            if product_names:
+            if product_names and has_embedding:
                 product_results = _product_search(
                     conn, text, tenant_id, product_names, embedding, limit
                 )
@@ -790,6 +831,13 @@ def kb_has_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool, str]
             pool_pre_ping=True,
         )
         with engine.connect() as conn:
+            # Drop the embedding-not-null filter — a row reachable only via
+            # BM25 (content_tsv) is still KB coverage, and the pre-check
+            # otherwise misses freshly-seeded rows whose embeddings haven't
+            # been backfilled yet (the #1308 demo blocker — seeded
+            # gs10/gs11 rows had NULL embeddings and were invisible to
+            # this pre-check, so the engine routed every Modbus question
+            # to the LLM hallucination fallback).
             row = conn.execute(
                 text(
                     """
@@ -797,7 +845,6 @@ def kb_has_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool, str]
                     FROM knowledge_entries
                     WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
                       AND LOWER(manufacturer) LIKE LOWER(:vendor_pat)
-                      AND embedding IS NOT NULL
                     """
                 ),
                 {

@@ -85,6 +85,27 @@ KNOWN_EQUIPMENT: list[dict] = [
         "make": ["siemens"],
         "model": ["g120", "sinamics g120", "6sl3"],
     },
+    {
+        "asset_id": "automationdirect-gs10",
+        "label": "AutomationDirect GS10",
+        "category": "AC drive",
+        "make": ["automationdirect", "automation direct", "ad"],
+        "model": ["gs10", "gs11", "gs1-", "gs1 "],
+    },
+    {
+        "asset_id": "automationdirect-gs20",
+        "label": "AutomationDirect GS20",
+        "category": "AC drive",
+        "make": ["automationdirect", "automation direct"],
+        "model": ["gs20", "gs21", "gs2-", "gs2 "],
+    },
+    {
+        "asset_id": "automationdirect-gs4",
+        "label": "AutomationDirect GS4",
+        "category": "AC drive",
+        "make": ["automationdirect", "automation direct"],
+        "model": ["gs4", "gs-4"],
+    },
     # --- PLCs ---
     {
         "asset_id": "ab-compactlogix",

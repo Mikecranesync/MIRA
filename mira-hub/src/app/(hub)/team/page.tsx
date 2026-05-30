@@ -5,6 +5,7 @@ import { Users, CheckCircle2, Clock, XCircle, Phone, Wrench, ClipboardList } fro
 import { Badge } from "@/components/ui/badge";
 import { useTranslations } from "next-intl";
 import { API_BASE } from "@/lib/config";
+import { LabsStub } from "@/components/labs-stub";
 
 type HubTeamMember = {
   id: string;
@@ -101,6 +102,10 @@ const SHIFT_CFG_BASE: Record<ShiftStatus, { badgeVariant: "green" | "yellow" | "
 };
 
 export default function TeamPage() {
+  // Gated behind Labs flag (ADR-0014). Mock-data UI hidden on prod builds.
+  if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
+    return <LabsStub feature="Team" />;
+  }
   const t = useTranslations("team");
   const tStatus = useTranslations("status");
 

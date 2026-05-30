@@ -271,4 +271,7800 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - mira-core/mira-ingest/db/migrations/012_conversation_eval.sql
 **Working tree:** clean
 **Next:** _set by next session_
+
+### 2026-05-16 05:12 UTC — `feat/mnb-phase-1-uns-gate-state`
+**Last commit:** 961585a8 docs(wiki): eval-fixer run 2026-05-16 — duplicate of #1217 noted, scorecard still stale
+**Changed (vs. fork point):**
+- wiki/hot.md
+**Working tree:**
+- M marketing/prospects/hardening-alerts.jsonl
+-  M mira-bots/shared/engine.py
+-  M mira-bots/shared/fsm.py
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-16 08:29 UTC — `feat/mnb-phase-1-uns-gate-state`
+**Last commit:** c743cfb8 feat(uns): AWAITING_UNS_CONFIRMATION FSM state + kill-switch (Phase 1 slice 1)
+**Changed (vs. fork point):**
+- docs/HANDOFF-mnb-phase-1.md
+- docs/adr/0013-uns-namespace-builder-schema-canonicalization.md
+- docs/env-vars.md
+- docs/plans/2026-05-15-maintenance-namespace-builder.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- tests/test_uns_confirmation_gate.py
+- wiki/hot.md
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-16 11:30 UTC — `fix/oauth-redirect-canary-and-docs`
+**Last commit:** e573ebb4 fix(auth): lock down Google OAuth redirect_uri drift (canary + docs)
+**Changed (vs. fork point):**
+- .github/workflows/oauth-redirect-canary.yml
+- mira-hub/docs/auth/oauth-redirect-uris.md
+- mira-hub/scripts/verify-google-oauth-redirect.ts
+- mira-hub/src/auth.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/app/(hub)/feed/page.tsx
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? mira-hub/db/migrations/021_namespace_builder.sql
+- ?? mira-hub/src/app/(hub)/namespace/
+- ?? mira-hub/src/app/(hub)/proposals/
+- ?? mira-hub/src/app/api/namespace/
+- ?? mira-hub/src/app/api/proposals/
+- ?? mira-hub/src/app/api/readiness/
+- ?? mira-hub/src/components/HealthScoreWidget.tsx
+- ?? mira-hub/src/lib/__tests__/health-score.test.ts
+- ?? mira-hub/src/lib/health-score.ts
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-16 12:09 UTC — `feat/mnb-phase-2-hub-surfaces`
+**Last commit:** c9bae3c5 feat(hub): namespace + proposals + readiness widget (Phase 2 slice 1)
+**Changed (vs. fork point):**
+- docs/HANDOFF-mnb-phase-2.md
+- mira-hub/db/migrations/021_namespace_builder.sql
+- mira-hub/src/app/(hub)/feed/page.tsx
+- mira-hub/src/app/(hub)/namespace/page.tsx
+- mira-hub/src/app/(hub)/proposals/page.tsx
+- mira-hub/src/app/api/namespace/tree/route.ts
+- mira-hub/src/app/api/proposals/route.ts
+- mira-hub/src/app/api/readiness/route.ts
+- mira-hub/src/components/HealthScoreWidget.tsx
+- mira-hub/src/lib/__tests__/health-score.test.ts
+- mira-hub/src/lib/health-score.ts
+- mira-hub/tests/e2e/phase2-namespace-builder-proof.spec.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-16 12:13 UTC — `feat/mnb-phase-2-hub-surfaces`
+**Last commit:** c9bae3c5 feat(hub): namespace + proposals + readiness widget (Phase 2 slice 1)
+**Changed (vs. fork point):**
+- docs/HANDOFF-mnb-phase-2.md
+- mira-hub/db/migrations/021_namespace_builder.sql
+- mira-hub/src/app/(hub)/feed/page.tsx
+- mira-hub/src/app/(hub)/namespace/page.tsx
+- mira-hub/src/app/(hub)/proposals/page.tsx
+- mira-hub/src/app/api/namespace/tree/route.ts
+- mira-hub/src/app/api/proposals/route.ts
+- mira-hub/src/app/api/readiness/route.ts
+- mira-hub/src/components/HealthScoreWidget.tsx
+- mira-hub/src/lib/__tests__/health-score.test.ts
+- mira-hub/src/lib/health-score.ts
+- mira-hub/tests/e2e/phase2-namespace-builder-proof.spec.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? competitor-intelligence-2026-05-16.md
+- ?? docs/migrations/008_kg_approval_state.sql
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-16 12:36 UTC — `fix/oauth-redirect-canary-and-docs`
+**Last commit:** e573ebb4 fix(auth): lock down Google OAuth redirect_uri drift (canary + docs)
+**Changed (vs. fork point):**
+- .github/workflows/oauth-redirect-canary.yml
+- mira-hub/docs/auth/oauth-redirect-uris.md
+- mira-hub/scripts/verify-google-oauth-redirect.ts
+- mira-hub/src/auth.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? competitor-intelligence-2026-05-16.md
+- ?? docs/migrations/008_kg_approval_state.sql
+- ?? mira-bots/mira-maintenance-agent/
+- ?? mira-hub/src/app/api/namespace/
+- ?? mira-hub/src/app/api/proposals/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-16 14:04 UTC — `feat/mnb-phase-2-hub-surfaces`
+**Last commit:** a413b5c0 feat(phase2): mutations + recompute worker (slices 2 & 3)
+**Changed (vs. fork point):**
+- docs/HANDOFF-mnb-phase-2.md
+- docs/migrations/008_kg_approval_state.sql
+- mira-hub/db/migrations/021_namespace_builder.sql
+- mira-hub/package.json
+- mira-hub/scripts/health-score-worker.ts
+- mira-hub/src/app/(hub)/feed/page.tsx
+- mira-hub/src/app/(hub)/namespace/page.tsx
+- mira-hub/src/app/(hub)/proposals/page.tsx
+- mira-hub/src/app/api/namespace/node/[id]/route.ts
+- mira-hub/src/app/api/namespace/tree/route.ts
+- mira-hub/src/app/api/proposals/[id]/decide/route.ts
+- mira-hub/src/app/api/proposals/route.ts
+- mira-hub/src/app/api/readiness/recalculate/route.ts
+- mira-hub/src/app/api/readiness/route.ts
+- mira-hub/src/components/HealthScoreWidget.tsx
+- mira-hub/src/lib/__tests__/health-score.test.ts
+- mira-hub/src/lib/health-score.ts
+- mira-hub/tests/e2e/phase2-namespace-builder-proof.spec.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-16 14:56 UTC — `feat/mnb-phase-2-hub-surfaces`
+**Last commit:** a413b5c0 feat(phase2): mutations + recompute worker (slices 2 & 3)
+**Changed (vs. fork point):**
+- docs/HANDOFF-mnb-phase-2.md
+- docs/migrations/008_kg_approval_state.sql
+- mira-hub/db/migrations/021_namespace_builder.sql
+- mira-hub/package.json
+- mira-hub/scripts/health-score-worker.ts
+- mira-hub/src/app/(hub)/feed/page.tsx
+- mira-hub/src/app/(hub)/namespace/page.tsx
+- mira-hub/src/app/(hub)/proposals/page.tsx
+- mira-hub/src/app/api/namespace/node/[id]/route.ts
+- mira-hub/src/app/api/namespace/tree/route.ts
+- mira-hub/src/app/api/proposals/[id]/decide/route.ts
+- mira-hub/src/app/api/proposals/route.ts
+- mira-hub/src/app/api/readiness/recalculate/route.ts
+- mira-hub/src/app/api/readiness/route.ts
+- mira-hub/src/components/HealthScoreWidget.tsx
+- mira-hub/src/lib/__tests__/health-score.test.ts
+- mira-hub/src/lib/health-score.ts
+- mira-hub/tests/e2e/phase2-namespace-builder-proof.spec.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-16 14:59 UTC — `main`
+**Last commit:** 980db062 feat(hub): namespace + proposals + readiness — Phase 2 fully shipped (#1332)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-16 15:10 UTC — `main`
+**Last commit:** 980db062 feat(hub): namespace + proposals + readiness — Phase 2 fully shipped (#1332)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-16 17:15 UTC — `main`
+**Last commit:** 980db062 feat(hub): namespace + proposals + readiness — Phase 2 fully shipped (#1332)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-16 17:23 UTC — `main`
+**Last commit:** 980db062 feat(hub): namespace + proposals + readiness — Phase 2 fully shipped (#1332)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-16 18:19 UTC — `main`
+**Last commit:** 980db062 feat(hub): namespace + proposals + readiness — Phase 2 fully shipped (#1332)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-16 18:20 UTC — `main`
+**Last commit:** 980db062 feat(hub): namespace + proposals + readiness — Phase 2 fully shipped (#1332)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 00:05 UTC — `main`
+**Last commit:** 980db062 feat(hub): namespace + proposals + readiness — Phase 2 fully shipped (#1332)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 00:06 UTC — `main`
+**Last commit:** 980db062 feat(hub): namespace + proposals + readiness — Phase 2 fully shipped (#1332)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 00:08 UTC — `main`
+**Last commit:** 980db062 feat(hub): namespace + proposals + readiness — Phase 2 fully shipped (#1332)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 00:56 UTC — `main`
+**Last commit:** 980db062 feat(hub): namespace + proposals + readiness — Phase 2 fully shipped (#1332)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 00:57 UTC — `main`
+**Last commit:** 980db062 feat(hub): namespace + proposals + readiness — Phase 2 fully shipped (#1332)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 00:58 UTC — `main`
+**Last commit:** 980db062 feat(hub): namespace + proposals + readiness — Phase 2 fully shipped (#1332)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 02:35 UTC — `main`
+**Last commit:** 980db062 feat(hub): namespace + proposals + readiness — Phase 2 fully shipped (#1332)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 02:36 UTC — `main`
+**Last commit:** 980db062 feat(hub): namespace + proposals + readiness — Phase 2 fully shipped (#1332)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 02:58 UTC — `main`
+**Last commit:** 980db062 feat(hub): namespace + proposals + readiness — Phase 2 fully shipped (#1332)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 05:12 UTC — `main`
+**Last commit:** 00384647 docs(wiki): eval-fixer run 2026-05-17 (stale scorecard, suppressed #1337 as dup of #1217)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 07:06 UTC — `main`
+**Last commit:** 00384647 docs(wiki): eval-fixer run 2026-05-17 (stale scorecard, suppressed #1337 as dup of #1217)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 07:06 UTC — `main`
+**Last commit:** 00384647 docs(wiki): eval-fixer run 2026-05-17 (stale scorecard, suppressed #1337 as dup of #1217)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 07:07 UTC — `main`
+**Last commit:** 00384647 docs(wiki): eval-fixer run 2026-05-17 (stale scorecard, suppressed #1337 as dup of #1217)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 07:07 UTC — `main`
+**Last commit:** 00384647 docs(wiki): eval-fixer run 2026-05-17 (stale scorecard, suppressed #1337 as dup of #1217)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 07:07 UTC — `main`
+**Last commit:** 00384647 docs(wiki): eval-fixer run 2026-05-17 (stale scorecard, suppressed #1337 as dup of #1217)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 07:07 UTC — `main`
+**Last commit:** 00384647 docs(wiki): eval-fixer run 2026-05-17 (stale scorecard, suppressed #1337 as dup of #1217)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 07:09 UTC — `main`
+**Last commit:** 00384647 docs(wiki): eval-fixer run 2026-05-17 (stale scorecard, suppressed #1337 as dup of #1217)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:02 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:03 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:03 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:03 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:03 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:04 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:04 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:04 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:05 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:05 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:05 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:06 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:06 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:06 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:07 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:07 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:07 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:08 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:08 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:09 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:09 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:09 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:10 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:10 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:11 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:11 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:11 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:12 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:12 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:12 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:13 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:13 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:13 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:14 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:14 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:15 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:15 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:15 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:15 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:16 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:16 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:17 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:17 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:17 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:18 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:18 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:19 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:19 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:19 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:20 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:20 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:20 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:21 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:21 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:21 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:22 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:22 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:22 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:23 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:23 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:23 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:24 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:24 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:24 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:25 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:25 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:25 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:26 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:26 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:27 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:27 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:27 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:28 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:28 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:28 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:29 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:29 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:29 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:30 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:30 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:30 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:31 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:31 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:32 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:32 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:32 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:33 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:33 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:33 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:34 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:34 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:34 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:35 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:35 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:35 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:36 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:36 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:36 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:37 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:37 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:37 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:38 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:38 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:39 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:39 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:39 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:40 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:40 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:40 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:41 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:41 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:41 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:42 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:42 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:43 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:43 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:43 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:44 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:44 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:44 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:45 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:45 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:45 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:46 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:46 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:46 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:47 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:47 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:47 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:48 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:48 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:48 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:49 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:49 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:49 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:50 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:50 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:51 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:51 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:51 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:52 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:52 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:52 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:53 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:53 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:54 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:54 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:54 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:55 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:55 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:56 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:56 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:56 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:57 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:57 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:57 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:58 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:58 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:59 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:59 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 08:59 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:00 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:00 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:01 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:01 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:01 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:02 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:02 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:03 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:03 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:03 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:04 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:04 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:04 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:05 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:05 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:05 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:06 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:06 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:07 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:07 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:07 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:08 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:08 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:09 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:09 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:09 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:10 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:10 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:10 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:11 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:11 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:12 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:12 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:12 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:13 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:13 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:13 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:14 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:14 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:15 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:15 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:15 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:16 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:16 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:17 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:17 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:17 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:18 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:18 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:18 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:19 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:19 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:20 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:20 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:20 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:21 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:21 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:22 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:22 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:22 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:23 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:23 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:23 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:24 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:24 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:25 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:25 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:25 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:26 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:26 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:27 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:27 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:27 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:28 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:28 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:28 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:29 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:29 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:30 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:30 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:30 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:31 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:31 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:32 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:32 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:32 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:33 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:33 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:33 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:34 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:34 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:34 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:35 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:35 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:36 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:36 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:36 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:37 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:37 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:37 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:38 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:38 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:39 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:39 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:40 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:40 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:40 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:41 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:41 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:42 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:42 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:43 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:43 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:44 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:44 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:44 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:45 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:45 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:46 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:46 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:46 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:47 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:47 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:48 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:48 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:49 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:49 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:50 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:50 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:50 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:51 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:51 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:52 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:52 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:52 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:53 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:53 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:53 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:54 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:54 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:55 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:55 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:55 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:56 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:56 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:57 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:57 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:58 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:58 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:59 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:59 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 09:59 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:00 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:00 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:01 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:01 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:02 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:02 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:03 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:03 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:04 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:04 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:05 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:06 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:06 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:07 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:07 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:07 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:08 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:08 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:09 UTC — `feat/lock-in-phase-2-slice-2`
+**Last commit:** 57c40cc1 docs(spec): link ADR-0013 from namespace-builder spec header
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:11 UTC — `main`
+**Last commit:** 00384647 docs(wiki): eval-fixer run 2026-05-17 (stale scorecard, suppressed #1337 as dup of #1217)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/components/layout/sidebar.tsx
+-  M mira-hub/src/providers/access-control.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:27 UTC — `feat/hub-sidebar-namespace-proposals`
+**Last commit:** d5bd6dc9 feat(hub): wire Namespace + Proposals into sidebar nav
+**Changed (vs. fork point):**
+- docs/specs/maintenance-namespace-builder-spec.md
+- mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts
+- mira-hub/src/components/layout/sidebar.tsx
+- mira-hub/src/providers/access-control.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? docs/promo-screenshots/demo-audit-mira-chat-home.png
+- ?? docs/promo-screenshots/demo-audit-mira-chat-main.png
+- ?? docs/promo-screenshots/demo-audit-openwebui-3000.png
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:29 UTC — `main`
+**Last commit:** 00384647 docs(wiki): eval-fixer run 2026-05-17 (stale scorecard, suppressed #1337 as dup of #1217)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? docs/promo-screenshots/demo-audit-mira-chat-home.png
+- ?? docs/promo-screenshots/demo-audit-mira-chat-main.png
+- ?? docs/promo-screenshots/demo-audit-openwebui-3000.png
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:30 UTC — `main`
+**Last commit:** d07c9380 docs(wiki): eval-fixer run 2026-05-17 (stale scorecard, suppressed #1337 as dup of #1217)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? docs/promo-screenshots/demo-audit-mira-chat-home.png
+- ?? docs/promo-screenshots/demo-audit-mira-chat-main.png
+- ?? docs/promo-screenshots/demo-audit-openwebui-3000.png
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 10:31 UTC — `main`
+**Last commit:** d07c9380 docs(wiki): eval-fixer run 2026-05-17 (stale scorecard, suppressed #1337 as dup of #1217)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? docs/promo-screenshots/demo-audit-mira-chat-home.png
+- ?? docs/promo-screenshots/demo-audit-mira-chat-main.png
+- ?? docs/promo-screenshots/demo-audit-openwebui-3000.png
+- ?? mira-bots/mira-maintenance-agent/
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 12:38 UTC — `feat/mnb-phase-3-onboarding-slice-0`
+**Last commit:** 78b486c9 feat(hub): wire Namespace + Proposals into sidebar nav (#1339)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-cmms/docker-compose.yml
+-  M mira-core/docker-compose.yml
+-  M mira-hub/src/app/(hub)/namespace/page.tsx
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? docs/demo-routine.md
+- ?? docs/promo-screenshots/2026-05-17_demo-audit-atlas-login-attempt.png
+- ?? docs/promo-screenshots/2026-05-17_demo-audit-atlas-login.png
+- ?? docs/promo-screenshots/2026-05-17_demo-fix-openwebui-home-full.png
+- ?? docs/promo-screenshots/2026-05-17_demo-fix-openwebui-home.png
+- ?? docs/promo-screenshots/demo-audit-mira-chat-home.png
+- ?? docs/promo-screenshots/demo-audit-mira-chat-main.png
+- ?? docs/promo-screenshots/demo-audit-openwebui-3000.png
+- ?? mira-bots/mira-maintenance-agent/
+- ?? mira-cmms/overrides/nginx/
+- ?? mira-hub/.dockerignore
+- ?? mira-hub/src/app/(hub)/onboarding/
+- ?? mira-hub/src/app/api/wizard/
+**Next:** _set by next session_
+
+### 2026-05-17 12:42 UTC — `feat/mnb-phase-3-onboarding-slice-0`
+**Last commit:** 5b1fe3c7 feat(hub): Phase 3 slice 0 — onboarding wizard that seeds first kg_entities
+**Changed (vs. fork point):**
+- mira-hub/src/app/(hub)/namespace/page.tsx
+- mira-hub/src/app/(hub)/onboarding/page.tsx
+- mira-hub/src/app/api/wizard/[step]/__tests__/route.test.ts
+- mira-hub/src/app/api/wizard/[step]/route.ts
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-cmms/docker-compose.yml
+-  M mira-core/docker-compose.yml
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? docs/demo-routine.md
+- ?? docs/promo-screenshots/2026-05-17_demo-audit-atlas-login-attempt.png
+- ?? docs/promo-screenshots/2026-05-17_demo-audit-atlas-login.png
+- ?? docs/promo-screenshots/2026-05-17_demo-fix-openwebui-home-full.png
+- ?? docs/promo-screenshots/2026-05-17_demo-fix-openwebui-home.png
+- ?? docs/promo-screenshots/demo-audit-mira-chat-home.png
+- ?? docs/promo-screenshots/demo-audit-mira-chat-main.png
+- ?? docs/promo-screenshots/demo-audit-openwebui-3000.png
+- ?? mira-bots/mira-maintenance-agent/
+- ?? mira-cmms/overrides/nginx/
+- ?? mira-hub/.dockerignore
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 12:47 UTC — `main`
+**Last commit:** c9c10f8c docs(wiki): eval-fixer run 2026-05-17 (stale scorecard, suppressed #1337 as dup of #1217)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-cmms/docker-compose.yml
+-  M mira-core/docker-compose.yml
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? docs/demo-routine.md
+- ?? docs/promo-screenshots/2026-05-17_demo-audit-atlas-login-attempt.png
+- ?? docs/promo-screenshots/2026-05-17_demo-audit-atlas-login.png
+- ?? docs/promo-screenshots/2026-05-17_demo-fix-openwebui-home-full.png
+- ?? docs/promo-screenshots/2026-05-17_demo-fix-openwebui-home.png
+- ?? docs/promo-screenshots/demo-audit-mira-chat-home.png
+- ?? docs/promo-screenshots/demo-audit-mira-chat-main.png
+- ?? docs/promo-screenshots/demo-audit-openwebui-3000.png
+- ?? mira-bots/mira-maintenance-agent/
+- ?? mira-cmms/overrides/nginx/
+- ?? mira-hub/.dockerignore
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 14:46 UTC — `main`
+**Last commit:** c9c10f8c docs(wiki): eval-fixer run 2026-05-17 (stale scorecard, suppressed #1337 as dup of #1217)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docker-compose.hub.yml
+-  M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-cmms/docker-compose.yml
+-  M mira-core/docker-compose.yml
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? docs/demo-routine.md
+- ?? docs/promo-screenshots/2026-05-17_demo-audit-atlas-login-attempt.png
+- ?? docs/promo-screenshots/2026-05-17_demo-audit-atlas-login.png
+- ?? docs/promo-screenshots/2026-05-17_demo-fix-openwebui-home-full.png
+- ?? docs/promo-screenshots/2026-05-17_demo-fix-openwebui-home.png
+- ?? docs/promo-screenshots/2026-05-17_mira-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_mira-hub-home_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_mira-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_mira-hub-namespace-fixed_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_mira-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_mira-hub-proposals-fixed_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_mira-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/demo-audit-mira-chat-home.png
+**Next:** _set by next session_
+
+### 2026-05-17 15:18 UTC — `main`
+**Last commit:** c9c10f8c docs(wiki): eval-fixer run 2026-05-17 (stale scorecard, suppressed #1337 as dup of #1217)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docker-compose.hub.yml
+-  M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-cmms/docker-compose.yml
+-  M mira-core/docker-compose.yml
+-  M mira-mcp/docker-compose.yml
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? docs/demo-routine.md
+- ?? docs/promo-screenshots/2026-05-17_demo-audit-atlas-login-attempt.png
+- ?? docs/promo-screenshots/2026-05-17_demo-audit-atlas-login.png
+- ?? docs/promo-screenshots/2026-05-17_demo-fix-openwebui-home-full.png
+- ?? docs/promo-screenshots/2026-05-17_demo-fix-openwebui-home.png
+- ?? docs/promo-screenshots/2026-05-17_mira-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_mira-hub-home_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_mira-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_mira-hub-namespace-fixed_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_mira-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_mira-hub-proposals-fixed_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_mira-hub-proposals_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-17 15:43 UTC — `main`
+**Last commit:** 5f45f97e docs(demo): 20-min customer demo routine + proof-of-work screenshots
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? mira-bots/mira-maintenance-agent/
+- ?? slack-workspace-state.png
+- ?? tools/lead-hunter/.hourly_state.json
+**Next:** _set by next session_
+
+### 2026-05-17 16:57 UTC — `main`
+**Last commit:** 5f45f97e docs(demo): 20-min customer demo routine + proof-of-work screenshots
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/app/api/namespace/tree/route.ts
+-  M mira-hub/src/app/api/proposals/route.ts
+-  M mira-hub/src/app/api/readiness/route.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? docs/promo-screenshots/2026-05-17_hub-feed-fixed_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-feed-readiness_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_namespace-after-uuid-fix_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_namespace-expanded-line3_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_namespace-powerflex-visible_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_namespace-with-data_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_proposals-page_desktop.png
+- ?? docs/promo-screenshots/audit-hub-feed-authenticated.png
+- ?? docs/promo-screenshots/audit-hub-initial.png
+- ?? docs/promo-screenshots/audit-hub-namespace.png
+- ?? docs/promo-screenshots/audit-hub-proposals.png
+- ?? docs/promo-screenshots/audit-hub-signin.png
+- ?? mira-bots/mira-maintenance-agent/
+**Next:** _set by next session_
+
+### 2026-05-17 17:01 UTC — `main`
+**Last commit:** 5f45f97e docs(demo): 20-min customer demo routine + proof-of-work screenshots
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/app/api/namespace/tree/route.ts
+-  M mira-hub/src/app/api/proposals/route.ts
+-  M mira-hub/src/app/api/readiness/route.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? docs/promo-screenshots/2026-05-17_hub-feed-fixed_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-feed-readiness_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_namespace-after-uuid-fix_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_namespace-expanded-line3_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_namespace-powerflex-visible_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_namespace-with-data_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_proposals-page_desktop.png
+- ?? docs/promo-screenshots/audit-hub-feed-authenticated.png
+- ?? docs/promo-screenshots/audit-hub-initial.png
+- ?? docs/promo-screenshots/audit-hub-namespace.png
+- ?? docs/promo-screenshots/audit-hub-proposals.png
+- ?? docs/promo-screenshots/audit-hub-signin.png
+- ?? mira-bots/mira-maintenance-agent/
+**Next:** _set by next session_
+
+### 2026-05-17 17:14 UTC — `feat/hub-kg-sync-uns-path`
+**Last commit:** 2fd81635 chore(web-review): daily canary 2026-05-17T1622Z
+**Changed (vs. fork point):**
+- wiki/reviews/2026-05-17-factorylm.com.md
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/app/api/namespace/tree/route.ts
+-  M mira-hub/src/app/api/proposals/route.ts
+-  M mira-hub/src/app/api/readiness/route.ts
+- ?? competitor-intelligence-2026-05-16.md
+- ?? competitors-2026-05-17.md
+- ?? docs/promo-screenshots/2026-05-17_hub-feed-fixed_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_hub-feed-readiness_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_namespace-after-uuid-fix_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_namespace-expanded-line3_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_namespace-powerflex-visible_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_namespace-with-data_desktop.png
+- ?? docs/promo-screenshots/2026-05-17_proposals-page_desktop.png
+- ?? docs/promo-screenshots/audit-hub-feed-authenticated.png
+- ?? docs/promo-screenshots/audit-hub-initial.png
+- ?? docs/promo-screenshots/audit-hub-namespace.png
+- ?? docs/promo-screenshots/audit-hub-proposals.png
+- ?? docs/promo-screenshots/audit-hub-signin.png
+- ?? mira-bots/mira-maintenance-agent/
+**Next:** _set by next session_
+
+### 2026-05-19 23:56 UTC — `docs/adr-0013-empirical-column-shape`
+**Last commit:** f9bcc0d2 docs(adr-0013): empirical update — kg_entities/kg_relationships use hub-001 shape
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/db-inspect.yml
+- .github/workflows/deploy-staging.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- deployment/nginx-app-factorylm.conf
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docker-compose.staging.yml
+- docker-compose.sync.yml
+- docs/adr/0013-uns-namespace-builder-schema-canonicalization.md
+- docs/audits/2026-05-18-audit.md
+- docs/audits/2026-05-19-audit.md
+- docs/context/PROGRESS.md
+- docs/environments.md
+- docs/ideation/2026-05-17-plc-learning-guide-product.md
+**Working tree:**
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_documents_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_event-log_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_event-log_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_feed_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-19 23:59 UTC — `feat/gs11-grounding-test-surface`
+**Last commit:** a1a71987 test(grounding): GS11 regression net + agent-discovery surface
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/db-inspect.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/deploy-staging.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- deployment/nginx-app-factorylm.conf
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docker-compose.staging.yml
+- docker-compose.sync.yml
+- docs/audits/2026-05-18-audit.md
+- docs/audits/2026-05-19-audit.md
+- docs/context/PROGRESS.md
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_documents_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_event-log_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_event-log_mobile.png
+**Next:** _set by next session_
+
+### 2026-05-20 00:01 UTC — `feat/gs11-grounding-test-surface`
+**Last commit:** a1a71987 test(grounding): GS11 regression net + agent-discovery surface
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/db-inspect.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/deploy-staging.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- deployment/nginx-app-factorylm.conf
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docker-compose.staging.yml
+- docker-compose.sync.yml
+- docs/audits/2026-05-18-audit.md
+- docs/audits/2026-05-19-audit.md
+- docs/context/PROGRESS.md
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_documents_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_event-log_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_event-log_mobile.png
+**Next:** _set by next session_
+
+### 2026-05-20 00:10 UTC — `feat/gs11-grounding-test-surface`
+**Last commit:** d4d041eb ci(deepeval): install pyyaml + httpx for GS11 engine test
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/db-inspect.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/deploy-staging.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- deployment/nginx-app-factorylm.conf
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docker-compose.staging.yml
+- docker-compose.sync.yml
+- docs/audits/2026-05-18-audit.md
+- docs/audits/2026-05-19-audit.md
+- docs/context/PROGRESS.md
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_documents_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_event-log_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_event-log_mobile.png
+**Next:** _set by next session_
+
+### 2026-05-20 00:15 UTC — `feat/gs11-grounding-test-surface`
+**Last commit:** d4d041eb ci(deepeval): install pyyaml + httpx for GS11 engine test
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/db-inspect.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/deploy-staging.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- deployment/nginx-app-factorylm.conf
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docker-compose.staging.yml
+- docker-compose.sync.yml
+- docs/audits/2026-05-18-audit.md
+- docs/audits/2026-05-19-audit.md
+- docs/context/PROGRESS.md
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_documents_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_event-log_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_event-log_mobile.png
+**Next:** _set by next session_
+
+### 2026-05-20 00:40 UTC — `feat/gs11-grounding-test-surface`
+**Last commit:** d4d041eb ci(deepeval): install pyyaml + httpx for GS11 engine test
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/db-inspect.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/deploy-staging.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- deployment/nginx-app-factorylm.conf
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docker-compose.staging.yml
+- docker-compose.sync.yml
+- docs/audits/2026-05-18-audit.md
+- docs/audits/2026-05-19-audit.md
+- docs/context/PROGRESS.md
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_documents_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_event-log_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_event-log_mobile.png
+**Next:** _set by next session_
+
+### 2026-05-20 05:11 UTC — `feat/gs11-grounding-test-surface`
+**Last commit:** 6802b9d8 docs(wiki): eval-fixer run 2026-05-20
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .github/workflows/apply-ingest-migrations.yml
+- .github/workflows/apply-migrations.yml
+- .github/workflows/db-inspect.yml
+- .github/workflows/deepeval-ci.yml
+- .github/workflows/deploy-staging.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- deployment/nginx-app-factorylm.conf
+- docker-compose.hub.yml
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docker-compose.staging.yml
+- docker-compose.sync.yml
+- docs/audits/2026-05-18-audit.md
+- docs/audits/2026-05-19-audit.md
+- docs/context/PROGRESS.md
+**Working tree:**
+- M docs/context/PROGRESS.md
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_documents_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_event-log_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_event-log_mobile.png
+**Next:** _set by next session_
+
+### 2026-05-21 05:11 UTC — `feat/gs11-grounding-test-surface`
+**Last commit:** e7ba90e3 docs(wiki): eval-fixer run 2026-05-21
+**Changed (vs. fork point):**
+- .claude/commands/mira-test-bot-grounding.md
+- .claude/skills/bot-grounding-tests/SKILL.md
+- .github/workflows/deepeval-ci.yml
+- mira-bots/benchmarks/deepeval_suite.py
+- mira-bots/tests/test_engine_no_embedding_gs11.py
+- wiki/hot.md
+- wiki/references/bot-grounding-tests.md
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/competitor-research-2026-05-20.md
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_documents_mobile.png
+**Next:** _set by next session_
+
+### 2026-05-22 04:47 UTC — `main`
+**Last commit:** 4f510b8f Merge pull request #1470 from Mikecranesync/feat/staging-atlas-seed-wrapper
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/competitor-research-2026-05-20.md
+- ?? docs/competitor-research-2026-05-21.md
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-22 05:11 UTC — `main`
+**Last commit:** abdcbd87 docs(wiki): eval-fixer run 2026-05-22
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/competitor-research-2026-05-20.md
+- ?? docs/competitor-research-2026-05-21.md
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-22 05:27 UTC — `main`
+**Last commit:** abdcbd87 docs(wiki): eval-fixer run 2026-05-22
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/competitor-research-2026-05-20.md
+- ?? docs/competitor-research-2026-05-21.md
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_documents_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-22 11:07 UTC — `main`
+**Last commit:** abdcbd87 docs(wiki): eval-fixer run 2026-05-22
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/competitor-research-2026-05-20.md
+- ?? docs/competitor-research-2026-05-21.md
+- ?? docs/competitors/2026-05-22-competitor-intelligence.md
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_conversations_mobile.png
+**Next:** _set by next session_
+
+### 2026-05-23 05:11 UTC — `main`
+**Last commit:** 4eeeeeed docs(wiki): eval-fixer run 2026-05-23
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docker-compose.hub.yml
+-  M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/app/api/uploads/local/route.ts
+-  M mira-hub/src/middleware.ts
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/competitor-research-2026-05-20.md
+- ?? docs/competitor-research-2026-05-21.md
+- ?? docs/competitors/2026-05-22-competitor-intelligence.md
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-23 11:14 UTC — `main`
+**Last commit:** 4eeeeeed docs(wiki): eval-fixer run 2026-05-23
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docker-compose.hub.yml
+-  M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/app/api/uploads/local/route.ts
+-  M mira-hub/src/middleware.ts
+- ?? competitors-2026-05-23.md
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/competitor-research-2026-05-20.md
+- ?? docs/competitor-research-2026-05-21.md
+- ?? docs/competitors/2026-05-22-competitor-intelligence.md
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-staging_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-23 11:54 UTC — `main`
+**Last commit:** 4eeeeeed docs(wiki): eval-fixer run 2026-05-23
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docker-compose.hub.yml
+-  M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-hub/src/app/api/uploads/[id]/route.ts
+-  M mira-hub/src/app/api/uploads/local/route.ts
+-  M mira-hub/src/middleware.ts
+- ?? competitors-2026-05-23.md
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/competitor-research-2026-05-20.md
+- ?? docs/competitor-research-2026-05-21.md
+- ?? docs/competitors/2026-05-22-competitor-intelligence.md
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_channels_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_cmms-view-assets-prod_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-23 13:33 UTC — `main`
+**Last commit:** 4eeeeeed docs(wiki): eval-fixer run 2026-05-23
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M CLAUDE.md
+-  M docker-compose.hub.yml
+-  M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-core/docker-compose.yml
+-  M mira-hub/src/app/api/uploads/[id]/route.ts
+-  M mira-hub/src/app/api/uploads/local/route.ts
+-  M mira-hub/src/middleware.ts
+- ?? competitors-2026-05-23.md
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/competitor-research-2026-05-20.md
+- ?? docs/competitor-research-2026-05-21.md
+- ?? docs/competitors/2026-05-22-competitor-intelligence.md
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-23 15:20 UTC — `main`
+**Last commit:** 4eeeeeed docs(wiki): eval-fixer run 2026-05-23
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M CLAUDE.md
+-  M docker-compose.hub.yml
+-  M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-core/docker-compose.yml
+-  M mira-hub/src/app/api/uploads/[id]/route.ts
+-  M mira-hub/src/app/api/uploads/local/route.ts
+-  M mira-hub/src/middleware.ts
+- ?? competitors-2026-05-23.md
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/competitor-research-2026-05-20.md
+- ?? docs/competitor-research-2026-05-21.md
+- ?? docs/competitors/2026-05-22-competitor-intelligence.md
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_channels_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-23 16:07 UTC — `main`
+**Last commit:** 4eeeeeed docs(wiki): eval-fixer run 2026-05-23
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M CLAUDE.md
+-  M docker-compose.hub.yml
+-  M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M mira-core/docker-compose.yml
+-  M mira-hub/src/app/api/uploads/[id]/route.ts
+-  M mira-hub/src/app/api/uploads/local/route.ts
+-  M mira-hub/src/middleware.ts
+- ?? competitors-2026-05-23.md
+- ?? docs/competitor-research-2026-05-19.md
+- ?? docs/competitor-research-2026-05-20.md
+- ?? docs/competitor-research-2026-05-21.md
+- ?? docs/competitors/2026-05-22-competitor-intelligence.md
+- ?? docs/cowork/
+- ?? docs/promo-screenshots/2026-05-19_admin_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_admin_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_alerts_mobile.png
+- ?? docs/promo-screenshots/2026-05-19_assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-19_assets_mobile.png
+**Next:** _set by next session_
+
+### 2026-05-23 13:57 UTC — `main`
+**Last commit:** 8dff5376 feat(hub): GET /api/namespace/node/[id] + detail-pane wire-up (#1483)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:** clean
+**Next:** _set by next session_
+
+### 2026-05-23 14:25 UTC — `main`
+**Last commit:** 8dff5376 feat(hub): GET /api/namespace/node/[id] + detail-pane wire-up (#1483)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
+
+### 2026-05-23 14:58 UTC — `main`
+**Last commit:** 8dff5376 feat(hub): GET /api/namespace/node/[id] + detail-pane wire-up (#1483)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
+
+### 2026-05-23 16:56 UTC — `main`
+**Last commit:** 8dff5376 feat(hub): GET /api/namespace/node/[id] + detail-pane wire-up (#1483)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
+
+### 2026-05-24 11:17 UTC — `main`
+**Last commit:** 0892faed chore(audits): nightly hub audit 2026-05-24
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
+
+### 2026-05-24 11:26 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
+
+### 2026-05-24 11:27 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
+
+### 2026-05-24 11:34 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
+
+### 2026-05-24 12:09 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+**Next:** _set by next session_
+
+### 2026-05-24 12:43 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 12:45 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 12:51 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 12:57 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 13:00 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 13:39 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 13:56 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 14:12 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 14:19 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 14:23 UTC — `main`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+**Next:** _set by next session_
+
+### 2026-05-24 15:49 UTC — `feat/component-hierarchy-grilling-2026-05-24`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+- ?? mira-hub/db/migrations/028_drives_relationship_type.sql
+**Next:** _set by next session_
+
+### 2026-05-24 17:35 UTC — `feat/component-hierarchy-grilling-2026-05-24`
+**Last commit:** f346d15c docs(agent-skills): wire Matt Pocock skills config (#1511)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M .claude/CLAUDE.md
+-  M CONTEXT-MAP.md
+-  M docs/context/PROGRESS.md
+-  M docs/specs/maintenance-namespace-builder-spec.md
+-  M docs/specs/uns-kg-standards-compliance.md
+- ?? CONTEXT.md
+- ?? docs/adr/0017-proposal-state-machine-mapping.md
+- ?? docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- ?? mira-hub/db/migrations/028_drives_relationship_type.sql
+**Next:** _set by next session_
+
+### 2026-05-24 17:57 UTC — `feat/component-hierarchy-grilling-2026-05-24`
+**Last commit:** ce2e43e0 feat(hub): DRIVES/IS_DRIVEN_BY edge type + sibling-tree decision (ADR-0018, migration 028)
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+**Working tree:**
+- M docs/context/PROGRESS.md
+**Next:** _set by next session_
+
+### 2026-05-25 01:43 UTC — `feat/component-hierarchy-grilling-2026-05-24`
+**Last commit:** ce2e43e0 feat(hub): DRIVES/IS_DRIVEN_BY edge type + sibling-tree decision (ADR-0018, migration 028)
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+**Working tree:**
+- M .claude/commands/mira-create-demo-plant.md
+-  M docs/context/PROGRESS.md
+-  M tools/seeds/run_demo_seed.py
+- ?? mira-hub/db/migrations/029_kg_approval_state.sql
+- ?? tools/seeds/epic-universe-stardust-racers.sql
+- ?? tools/seeds/factorylm-garage-conveyor.sql
+**Next:** _set by next session_
+
+### 2026-05-25 23:35 UTC — `feat/component-hierarchy-grilling-2026-05-24`
+**Last commit:** f72534ed fix(seeds): correct ON CONFLICT key + actor_kind/created_by constraints
+**Changed (vs. fork point):**
+- .claude/CLAUDE.md
+- .claude/commands/mira-create-demo-plant.md
+- CONTEXT-MAP.md
+- CONTEXT.md
+- docs/adr/0017-proposal-state-machine-mapping.md
+- docs/adr/0018-component-hierarchy-siblings-with-control-edges.md
+- docs/context/PROGRESS.md
+- docs/specs/maintenance-namespace-builder-spec.md
+- docs/specs/uns-kg-standards-compliance.md
+- mira-hub/db/migrations/028_drives_relationship_type.sql
+- mira-hub/db/migrations/029_kg_approval_state.sql
+- tools/seeds/epic-universe-stardust-racers.sql
+- tools/seeds/factorylm-garage-conveyor.sql
+- tools/seeds/run_demo_seed.py
+**Working tree:** clean
+**Next:** _set by next session_
+
+### 2026-05-28 01:03 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** 76fb5d04 feat(demo): wire Talk-to-MIRA chat to Groq with UNS confirmation gate
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+- mira-fault-sim/pyproject.toml
+**Working tree:**
+- M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-27T1817-offline-text.md
+- ?? tests/eval/runs/2026-05-27T2234-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-28 01:14 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** 02a96609 chore(demo): ruff fixes for fault-detective scaffolding
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+- mira-fault-sim/pyproject.toml
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-27T1817-offline-text.md
+- ?? tests/eval/runs/2026-05-27T2234-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-28 03:27 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** 02a96609 chore(demo): ruff fixes for fault-detective scaffolding
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+- mira-fault-sim/pyproject.toml
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-27T1817-offline-text.md
+- ?? tests/eval/runs/2026-05-27T2234-offline-text.md
+- ?? tests/eval/runs/2026-05-28T0300-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-28 04:39 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** dabd0db4 feat(demo): add DC bus voltage gauge to fault detective dashboard
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-27T1817-offline-text.md
+- ?? tests/eval/runs/2026-05-27T2234-offline-text.md
+- ?? tests/eval/runs/2026-05-28T0300-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-28 05:11 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** 28c4dea6 docs(wiki): eval-fixer run 2026-05-28 — 35/57 regression flagged in #1576
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_mobile.png
+**Next:** _set by next session_
+
+### 2026-05-28 07:16 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** d71ed9d5 fix(demo): set sidebar to temporary mode for mobile layout
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_mobile.png
+**Next:** _set by next session_
+
+### 2026-05-28 07:17 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** d71ed9d5 fix(demo): set sidebar to temporary mode for mobile layout
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_mobile.png
+**Next:** _set by next session_
+
+### 2026-05-28 10:11 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** d71ed9d5 fix(demo): set sidebar to temporary mode for mobile layout
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 14:06 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** d71ed9d5 fix(demo): set sidebar to temporary mode for mobile layout
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+- mira-fault-detective/tests/test_rules.py
+- mira-fault-sim/Dockerfile
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 14:18 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** 2568c625 feat(demo): live PLC I/O panel + Modbus map PDF generator
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 14:19 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** ff0d478b feat(demo): live PLC I/O panel + Modbus map PDF generator
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 21:11 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** ff0d478b feat(demo): live PLC I/O panel + Modbus map PDF generator
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 21:13 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** ff0d478b feat(demo): live PLC I/O panel + Modbus map PDF generator
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 21:15 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** ff0d478b feat(demo): live PLC I/O panel + Modbus map PDF generator
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 21:27 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** a0ddf31d feat(plc): one-shot deploy of MbSrvConf into CCW project — no typing
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 21:31 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** a0ddf31d feat(plc): one-shot deploy of MbSrvConf into CCW project — no typing
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 21:37 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** a0ddf31d feat(plc): one-shot deploy of MbSrvConf into CCW project — no typing
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 21:44 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** f1baa009 feat(plc): MbSrvConf_v4 map for v4.1.9 ladder — 22 coils + 17 HRs
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 22:35 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** f1baa009 feat(plc): MbSrvConf_v4 map for v4.1.9 ladder — 22 coils + 17 HRs
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
+
+### 2026-05-28 22:36 UTC — `feat/fault-detective-scaffolding`
+**Last commit:** f1baa009 feat(plc): MbSrvConf_v4 map for v4.1.9 ladder — 22 coils + 17 HRs
+**Changed (vs. fork point):**
+- docker-compose.fault-detective.yml
+- docs/conveyor-fault-detective-demo/Micro820_v4.1.9_Modbus_Map.pdf
+- docs/conveyor-fault-detective-demo/README.md
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-f2-blown_desktop.png
+- docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
+- docs/promo-screenshots/2026-05-28_fault-detective-with-plc-io_desktop.png
+- mira-bridge/Dockerfile
+- mira-bridge/docker-compose.yml
+- mira-bridge/flows/fault-detective.json
+- mira-bridge/flows/snippets/fault-detective-dc-bus.json
+- mira-bridge/migrations/005_conveyor_events.sql
+- mira-bridge/mosquitto/mosquitto.conf
+- mira-bridge/scripts/push_flow.py
+- mira-fault-detective/Dockerfile
+- mira-fault-detective/engine.py
+- mira-fault-detective/pyproject.toml
+- mira-fault-detective/rules.py
+- mira-fault-detective/tests/__init__.py
+**Working tree:**
+- M docs/context/PROGRESS.md
+-  M marketing/prospects/hardening-alerts.jsonl
+-  M tools/lead-hunter/.hourly_state.json
+- ?? docs/competitor-intelligence-2026-05-28.md
+- ?? docs/context/PROGRESS.local.md
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-assets_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-feed_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-knowledge_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-login_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-namespace_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-proposals_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_desktop.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-quickstart_mobile.png
+- ?? docs/promo-screenshots/2026-05-28_hub-audit-hub-settings_desktop.png
+**Next:** _set by next session_
 <!-- END AUTOLOG -->

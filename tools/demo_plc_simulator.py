@@ -6,10 +6,11 @@ with ``tools/demo_plc_poller.py`` so that the rest of the stack
 the actual PLC + Factory IO.
 
 The simulator drives coils 0-6 and holding registers 100-105 to match the
-canonical address map (see CLAUDE.md "PLC / Factory IO — Modbus Address
-Map"). It owns its own register state and mutates it on a schedule:
+Micro820 map actually deployed on the PLC (``plc/MbSrvConf_v4.xml``) and the
+poller's ADDRESS_MAP. It owns its own register state and mutates it on a schedule:
 
-- ``sensor_1`` (coil 4) toggles every 5s
+- booleans (motor_running, conveyor_running, vfd_comm_ok, system_ready, dir_fwd)
+  idle steady true; ``e_stop_active`` stays clear
 - ``conveyor_speed`` (HR104) and ``motor_speed`` (HR100) ramp 0→100→0
 - ``motor_current`` (HR101) follows motor_speed * 0.1
 - ``temperature`` (HR102) idles at 25.0°C and creeps up under load
@@ -51,28 +52,38 @@ except ImportError as exc:  # pragma: no cover
 logger = logging.getLogger("mira-plc-simulator")
 
 
-# Coils and registers we expose (must match poller's ADDRESS_MAP).
-COIL_COUNT = 16
+# Coils and registers we expose — MUST match the deployed Micro820 map
+# (plc/MbSrvConf_v4.xml, 22 coils + 17 HRs) and tools/demo_plc_poller.py.
+# We size the blocks for the full v4 range so plc/live_monitor.py (reads 22
+# coils + HR 100-116) also runs against this simulator unchanged.
+COIL_COUNT = 22
 HR_BASE = 100
-HR_COUNT = 16
+HR_COUNT = 17
 
 
-# Coil indices
+# Coil indices (PDU address = MbSrvConf display address − 1, e.g. 0 = coil 000001)
 C_MOTOR_RUNNING = 0
-C_MOTOR_STOPPED = 1
+C_CONVEYOR_RUNNING = 1
 C_FAULT_ALARM = 2
-C_CONVEYOR_RUNNING = 3
-C_SENSOR_1 = 4
-C_SENSOR_2 = 5
-C_E_STOP = 6
+C_VFD_COMM_OK = 3
+C_SYSTEM_READY = 4
+C_E_STOP_ACTIVE = 5
+C_DIR_FWD = 6
+C_DIR_REV = 7
+C_HEARTBEAT = 8
 
-# Holding register indices (absolute Modbus addresses)
+# Holding register indices (absolute Modbus addresses, per MbSrvConf_v4.xml)
 HR_MOTOR_SPEED = 100
 HR_MOTOR_CURRENT = 101  # scale ÷10
 HR_TEMPERATURE = 102    # scale ÷10
 HR_PRESSURE = 103
 HR_CONVEYOR_SPEED = 104
 HR_ERROR_CODE = 105
+HR_VFD_FREQ = 106
+HR_VFD_CURRENT = 107
+HR_VFD_VOLTAGE = 108
+HR_VFD_DC_BUS = 109     # HR400110
+HR_CONV_STATE = 113     # 0=IDLE 1=STARTING 2=RUNNING 3=STOPPING 4=FAULT
 
 # pymodbus 3.x: slave id (unit) the server responds on
 SLAVE_ID = 1
@@ -103,11 +114,13 @@ class ConveyorSim:
     async def run(self, tick_hz: float = 2.0) -> None:
         """Tick the simulation at ``tick_hz`` Hz."""
         period = 1.0 / tick_hz
-        # Prime initial state
+        # Prime initial state (booleans steady; analogs ramp in _step)
         self._write_coil(C_MOTOR_RUNNING, True)
-        self._write_coil(C_MOTOR_STOPPED, False)
         self._write_coil(C_CONVEYOR_RUNNING, True)
-        self._write_coil(C_E_STOP, False)
+        self._write_coil(C_VFD_COMM_OK, True)
+        self._write_coil(C_SYSTEM_READY, True)
+        self._write_coil(C_E_STOP_ACTIVE, False)
+        self._write_coil(C_DIR_FWD, True)
         self._write_hr(HR_PRESSURE, 80)
 
         while not self._stop.is_set():
@@ -119,15 +132,9 @@ class ConveyorSim:
                 pass
 
     def _step(self) -> None:
-        # sensor_1 toggles every 5s (10 ticks at 2Hz)
-        if self._tick % 10 == 0:
-            cur = self._read_coil(C_SENSOR_1)
-            self._write_coil(C_SENSOR_1, not cur)
-
-        # sensor_2 toggles every 7s offset
-        if self._tick % 14 == 7:
-            cur = self._read_coil(C_SENSOR_2)
-            self._write_coil(C_SENSOR_2, not cur)
+        # Booleans idle steady (primed in run()); the analogs below provide the
+        # live movement, and faults pulse periodically. The v4 map has no prox
+        # sensors, so there are no per-tick coil toggles here.
 
         # Ramp motor_speed 0→100→0
         if self._tick % 6 == 0:
@@ -156,6 +163,17 @@ class ConveyorSim:
         else:
             self._temperature_x10 = max(self._temperature_x10 - 1, 250)
         self._write_hr(HR_TEMPERATURE, self._temperature_x10)
+
+        # Heartbeat toggles every tick (ladder liveness); state follows speed.
+        self._write_coil(C_HEARTBEAT, self._tick % 2 == 0)
+        self._write_hr(HR_CONV_STATE, 2 if self._speed_actual > 0 else 0)
+
+        # GS10 VFD telemetry. Frequency tracks speed (0-100% → 0-60Hz, raw ×10);
+        # DC bus ≈ 1.41·230V ≈ 325V steady with a little ripple under load.
+        self._write_hr(HR_VFD_FREQ, int(self._speed_actual * 6))      # 0-600 = 0-60.0Hz
+        self._write_hr(HR_VFD_CURRENT, self._speed_actual)            # raw, ÷10 downstream
+        self._write_hr(HR_VFD_VOLTAGE, int(self._speed_actual * 2.3))  # 0-230V
+        self._write_hr(HR_VFD_DC_BUS, 320 + (self._speed_actual % 12))  # ~320-331V
 
         # Occasional fault: ~every 60s of sim time (120 ticks), lasts ~5s
         if self._fault_ticks_left > 0:
@@ -205,11 +223,11 @@ class ConveyorSim:
 
 
 def _build_context() -> tuple[ModbusServerContext, ModbusSlaveContext]:
-    # Allocate enough room for the addresses we use.
-    # Block 1 (coils): 0..15
-    # Block 3 (holding): 0..115 (covers HR 100-105 with headroom)
-    co_block = ModbusSequentialDataBlock(0, [False] * COIL_COUNT)
-    hr_block = ModbusSequentialDataBlock(0, [0] * (HR_BASE + HR_COUNT))
+    # Allocate the full v4 address range plus headroom so reads that span the
+    # top of the map (live_monitor reads coils 0-21 and HR 100-116) don't trip
+    # pymodbus's end-of-block range check. +8 on each is slack, not magic.
+    co_block = ModbusSequentialDataBlock(0, [False] * (COIL_COUNT + 8))
+    hr_block = ModbusSequentialDataBlock(0, [0] * (HR_BASE + HR_COUNT + 8))
     slave = ModbusSlaveContext(
         co=co_block,  # discrete outputs / coils
         hr=hr_block,  # holding registers

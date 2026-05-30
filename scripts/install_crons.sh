@@ -38,6 +38,7 @@ cat > "$TMPFILE" << CRONTAB
 MIRA_DIR=$MIRA_DIR
 LOG_DIR=$LOG_DIR
 PATH=/usr/local/bin:/usr/bin:/bin
+MIRA_HEALER_ALLOW_ROOT=1
 
 # ─── DATA ENGINEERING ───────────────────────────────────────────────────────
 
@@ -59,6 +60,11 @@ PATH=/usr/local/bin:/usr/bin:/bin
 # Reads linkedin_queue.json, posts approved items via Zernio/Buffer/clipboard
 # Closes #838 — Social Media Publisher
 30 11 * * 2,4  cd \$MIRA_DIR && doppler run -- $PYTHON mira-crawler/social/publisher.py --publish >> \$LOG_DIR/social_publish.log 2>&1
+
+# Review-queue promoter: every 10 min
+# Scans marketing/cartoons + docs/promo-screenshots for *.review.json sidecars
+# written by /hub/admin/review approve actions, then git-mv + commit + push.
+*/10 * * * *  cd \$MIRA_DIR && bash tools/review-promote.sh >> \$LOG_DIR/review_promote.log 2>&1
 
 # ─── MAINTENANCE OPERATIONS (via Docker) ────────────────────────────────────
 
@@ -93,6 +99,10 @@ PATH=/usr/local/bin:/usr/bin:/bin
 # Heartbeat: every 15 min — checks containers, endpoints, NeonDB, KB cron, host
 # DOWN → exits 2; the wrapping shell triggers self_healer for the same probe.
 */15 * * * *  cd \$MIRA_DIR && doppler run -- $PYTHON mira-crawler/agents/heartbeat_monitor.py --quiet --json > /tmp/mira_heartbeat.json 2>> \$LOG_DIR/heartbeat.log; if [ \$? -eq 2 ]; then doppler run -- $PYTHON mira-crawler/agents/self_healer.py --stdin < /tmp/mira_heartbeat.json >> \$LOG_DIR/self_healer.log 2>&1; fi
+
+# External demo-surface probe: every 5 min — pings Telegram on non-200 (#1201/#1041)
+# Quiet mode only logs/alerts on failure. Keep this until Florida Expo wraps (2026-05-21).
+*/5 * * * *   cd \$MIRA_DIR && doppler run -- $PYTHON scripts/external_probe.py --quiet >> \$LOG_DIR/external_probe.log 2>&1
 
 # Daily health summary: 08:00 UTC
 0 8 * * *     cd \$MIRA_DIR && doppler run -- $PYTHON mira-crawler/agents/heartbeat_monitor.py --daily-summary >> \$LOG_DIR/heartbeat.log 2>&1

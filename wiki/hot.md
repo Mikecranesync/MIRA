@@ -1,3 +1,120 @@
+# Hot Cache — 2026-05-29 — ALPHA
+
+## Session — 2026-05-29 (printing-press toolchain bootstrap + Linear/Stripe CLIs)
+
+Work spanned 2026-05-10 → 2026-05-29; landing now as one continuity entry. Local `main` was 447 commits behind origin when commit happened — reset to origin/main, re-applied this block on top of current hot.md.
+
+- **Installed `mksglu/context-mode` Claude Code plugin** (user scope). Registers `PreToolUse`/`PostToolUse`/`PreCompact`/`SessionStart` hooks + 11 `ctx_*` MCP tools. Intercepts large-output `WebFetch`/`Bash` calls and routes through a sandbox + FTS5 KB. v1.0.111 on disk; v1.0.118+ available.
+- **Installed Go 1.26.3** via `brew install go`; added `export PATH="$HOME/go/bin:$PATH"` to `~/.zprofile`.
+- **Installed `mvanhorn/cli-printing-press` v4.2.2** generator at `~/go/bin/printing-press`. 9 skills under `~/.claude/skills/printing-press*`. Drives `/printing-press <api>` slash command. MIT.
+- **Installed `linear-pp-cli` 1.0.0** via `npx -y @mvanhorn/printing-press install linear`. Local SQLite at `~/.local/share/linear-pp-cli/data.db` — hydrated (290 items in 3.16s: 1 team `CRA` / 2 users / 11 workflow states / 6 labels / 13 projects / 0 cycles / 257 issues). `doctor` green; `me` = `mike @ Cranesync (Admin)`.
+- **Installed `stripe-pp-cli` 1.0.0** same orchestrator. Local SQLite at `~/.local/share/stripe-pp-cli/data.db` — NOT hydrated yet (recommend `sync --dry-run` first; event volume could be large). `doctor` 5/5 green via Doppler-injected `STRIPE_SECRET_KEY`; live `balance` call confirmed `meta.source: "live"`.
+- **Canonical invocation pattern**: `doppler run --project factorylm --config prd -- <api>-pp-cli <cmd>`. Both CLIs honor `auth_source: env:<KEY>` ahead of file auth — no plaintext on disk.
+- **`~/.claude/CLAUDE.md` updated**: dropped the stale "`gh` CLI auth broken" line. Verified `gh 2.87.2` logged in as `Mikecranesync` via keyring (scopes: `gist`, `read:org`, `repo`, `workflow`); auth-required API calls succeed.
+
+**Findings worth flagging:**
+
+- **Linear workspace is at its free-tier issue cap.** Tried to file the session-handoff issue via `linear-pp-cli issues create` and the Anthropic-hosted Linear MCP — both refused: *"Usage limit exceeded — please upgrade or contact sales@linear.app"*. Workspace has 257 issues. Future sessions: don't try to create new Linear issues; comment on existing ones instead.
+- **Two `linear-pp-cli` bugs for `/printing-press-retro` filing**: (1) `teams list` always calls GraphQL via GET → Linear rejects as CSRF; `--data-source local` short-circuits before fallback. Workaround: `sqlite3 ~/.local/share/linear-pp-cli/data.db`. (2) `issues create` response parser dies with `decoding graphql response: json: cannot unmarshal string into Go struct field .errors.extensions.userPresentableMessage of type bool` when Linear returns the usage-cap error — the CLI masks the real reason for failure.
+
+**Pointers for continuity:**
+
+- Plan file with full candidate analysis + tier rankings: `~/.claude/plans/polymorphic-hugging-parnas.md`
+- Auto-memory: `~/.claude/projects/-Users-factorylm-mira/memory/project_printing_press_toolchain.md`
+
+**Suggested next actions:**
+
+- [ ] Bundle install Tier 1 backlog: `npx -y @mvanhorn/printing-press install openrouter digitalocean` (~90s, both have keys in Doppler).
+- [ ] Hydrate Stripe local mirror: `doppler run … -- stripe-pp-cli sync --dry-run` (check scope first).
+- [ ] Pick a Tier 3 fresh-print candidate: NeonDB (cleanest OpenAPI), Groq, Telegram Bot API, Atlassian — 30–60 min generation each.
+- [ ] Upgrade Linear plan or archive stale issues to unblock future issue creation.
+- [ ] File `/printing-press-retro` for the two `linear-pp-cli` bugs above.
+
+---
+
+# Hot Cache — 2026-05-28 — CHARLIE
+
+## eval-fixer run — 2026-05-28
+- Scorecard: **35/57 passing (61%)** — `tests/eval/runs/2026-05-28T0300-offline-text.md` (FRESH, nightly eval job is producing scorecards again)
+- Action: filed #1576. 22 patchable failures across 3 file clusters — exceeds both single-patch hard limits (>15 failures, >1 file). No autopatch.
+- **Major regression: 48/57 → 35/57 (-13 fixtures) since the last fresh scorecard on 2026-05-06.** Three clusters:
+  - **A) UNS confirmation gate over-blocking (8 fixtures)** — fixtures stuck at `AWAITING_UNS_CONFIRMATION` when expected to progress to Q1/Q2/DIAGNOSIS. Likely caused by recent UNS-gate work (Namespace Builder Phase 1/2 — PRs #1330/#1332 and follow-ups).
+  - **B) VFD documentation-request fixtures landing in diagnostic FSM (7 fixtures)** — `find_manual` / `find_datasheet` intent not routing to IDLE.
+  - **C) Question-skip logic too conservative (5 fixtures)** — vendor+model+fault present but engine still asking Q1.
+- See #1576 for full triage and suggested remediation order (A → B → C → smaller clusters).
+
+## eval-fixer run — 2026-05-23
+- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (17 days stale, unchanged since 2026-05-06)
+- Action: filed #1506, closed as dup of still-open #1419. Same multi-cluster hard-stop (engine.py×7, guardrails.py×3, prompts/diagnose/active.yaml×3).
+- **4th consecutive run dup-closing.** Nightly eval job has not produced a fresh scorecard in 17 days. Wiring problem, not a code problem. Action: either land a fix on one of the three #1419 clusters or restart the eval cron / regenerate manually (`doppler run --project factorylm --config prd -- python3 tests/eval/offline_run.py --suite text`).
+
+## eval-fixer run — 2026-05-22
+- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (16 days stale, unchanged since 2026-05-06)
+- Action: filed #1487, closed as dup of still-open #1419. Same multi-cluster hard-stop (engine.py×7, guardrails.py×3, prompts/diagnose/active.yaml×3).
+- **Nightly eval job stalled 16 days running.** Same failure set surfacing on every run. Either land a fix on one of the three #1419 clusters or regenerate the scorecard manually (`doppler run -- python3 tests/eval/offline_run.py --suite text`) — until then every eval-fixer run will keep dup-closing.
+
+
+## 2026-05-19 — GS11 grounding test surface landed
+Three-layer regression net for "embedding sidecar down → bot must still cite KB, not 'general industrial knowledge'." Installed after the 2026-05-18 GS11 demo failure (PR #1382 + #1379 + #1385 root cause chain).
+
+- **Tests (offline, ~2s):**
+  - DB: `mira-bots/tests/test_recall_no_embedding_fallthrough.py`
+  - Gate: `tests/test_quality_gate_stream_aware.py`
+  - Engine: `mira-bots/tests/test_engine_no_embedding_gs11.py` (new)
+- **LLM judge (Groq):** `mira-bots/benchmarks/deepeval_suite.py` case `de-in-06-gs11-modbus`
+- **One-shot invocation:** `/mira-test-bot-grounding`
+- **Reference doc:** `wiki/references/bot-grounding-tests.md`
+- **Auto-loading skill:** `.claude/skills/bot-grounding-tests/SKILL.md`
+- **CI:** `.github/workflows/deepeval-ci.yml` runs all four layers on every PR touching `mira-bots/**`, `evals/**`, or `tests/golden_*.csv`.
+
+**Mandatory before pushing** any change to `mira-bots/shared/{neon_recall.py, workers/rag_worker.py, engine.py}` recall path, `mira-bots/benchmarks/deepeval_suite.py`, or `tests/golden_gs11_conveyor.csv`.
+
+Open ops follow-ups (deferred post-demo): fix Bravo Tailscale route from VPS; pull `nomic-embed-text` onto VPS localhost Ollama; migrate `evals/query_stub.py` live mode off Anthropic + onto the InferenceRouter Groq cascade.
+
+## eval-fixer run — 2026-05-20
+- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (14 days stale, unchanged since 2026-05-06)
+- Action: filed #1453, closed as dup of still-open #1419. Same multi-cluster hard-stop (engine.py×7, guardrails.py×3, prompts/diagnose/active.yaml×3).
+- **Nightly eval job stalled 14 days running.** No new signal. Action needed: either land a fix on one of the three #1419 clusters or regenerate the scorecard manually (`doppler run -- python3 tests/eval/offline_run.py --suite text`). Until then every eval-fixer run will continue to dup-close.
+
+## eval-fixer run — 2026-05-19
+- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (13 days stale, unchanged since 2026-05-06)
+- Action: filed #1419 (multi-cluster hard-stop hit: engine.py×7, guardrails.py×3, prompts/diagnose/active.yaml×3). Prior canonical #1217 is now closed, so #1419 stands open instead of being closed as a dupe.
+- **Nightly eval job still stalled — same scorecard for 13 days.** No new signal. Action needed: regenerate scorecard (`doppler run -- python3 tests/eval/offline_run.py --suite text`) or land a fix on one of the open clusters before the next eval-fixer run can produce new signal.
+
+## eval-fixer run — 2026-05-18
+- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (12 days stale, unchanged since 2026-05-06)
+- Action: filed #1373 (multi-cluster hard-stop hit), then closed as duplicate of #1217. Prior dupes: #1144, #1170, #1187, #1217, #1329.
+- **Nightly eval job still stalled** — same scorecard, same 9 fixtures, same 3 file_clusters (engine.py×7, guardrails.py×3, prompts×3). No new signal. Action needed: regenerate scorecard (`doppler run -- python3 tests/eval/offline_run.py --suite text`) or land a fix on one of the open issues before the next eval-fixer run will produce signal.
+
+## eval-fixer run — 2026-05-16
+- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (10 days stale, unchanged since 2026-05-10)
+- Action: filed #1329, then closed it as duplicate of #1217. Prior dupes: #1144, #1170, #1187, #1217, #1329.
+- **Nightly eval job is still stalled** — no new scorecard since 2026-05-06. Next eval-fixer run on this scorecard should suppress before opening an issue; today's CLI agent missed the wiki note. Action needed: regenerate the scorecard (run `doppler run -- python3 tests/eval/offline_run.py --suite text`) or land a fix on one of the open clusters in #1217.
+
+## Session — 2026-05-15 (Maintenance Namespace Builder doctrine + spec + plan landed)
+
+- **NEW PRIMARY DOCTRINE — read first for any feature work:**
+  - `docs/THEORY_OF_OPERATIONS.md` — what MIRA is, how it works, why. Establishes "MIRA turns everyday maintenance activity into an AI-ready factory namespace" as the primary product framing. Promoted above `mira-component-intelligence-architecture.md` (which is now positioned as implementation-level architecture).
+  - `docs/specs/maintenance-namespace-builder-spec.md` — technical contract for the product surface (UNS Location-Confirmation Gate, `ai_suggestions` + `approvals` queue, L0–L6 AI Readiness score, namespace tree editor, onboarding wizard, photo + tag ingestion API).
+  - `docs/plans/2026-05-15-maintenance-namespace-builder.md` — phased execution plan (Phase 0 docs done; Phases 1–6 across ≈14 weeks). Integrates with the 90-day MVP plan rather than replacing it.
+- **CLAUDE.md pointers updated** (root + `.claude/CLAUDE.md`) — North Star points to TOO doc as primary; the broken `uns-message-resolver-spec.md` reference is replaced by a pointer to the namespace-builder spec's UNS gate section.
+- **CORRECTION** (after `git fetch origin main` mid-session): the local main was 19+ commits behind. The UNS resolver + Stage-1 confirmation gate are **already merged** (PRs #1220, #1280, #1295, #1314). `mira-bots/shared/uns_resolver.py` + `uns_paths.py` exist on origin/main; `engine.py` calls `resolve_uns_path()` in 14+ places; the gate is at engine.py line 1316. The existing scope is **vendor / model / fault-code**; Phase 1 extends it to full **site / area / line / machine / asset / component** plant hierarchy. The TOO doc, spec, and plan were corrected mid-session to reflect this — they now describe an additive extension, not a from-scratch build. **Always run `git log main..origin/main --oneline` before claiming any UNS-related work.**
+- **In-flight coordination:** Phase 0 is doc-only and runs on `main`. Phases 1+ live on new `feat/mnb-phase-N-*` branches. The active 90-day MVP units (`feat/mvp-unit-4-exports`, `feat/mvp-unit-9a-landing`) are **not** paused — they fold into Phases 2 + 4 respectively.
+- **Marketing repositioning queued for Phase 4** (Weeks 7–8): new homepage H1 candidate "Turn your maintenance data into an AI-ready factory namespace." + new landing pages `/namespace-builder`, `/ignition`, `/ai-readiness-scan`. Coordinate with Unit 9a's branch before any merge to `mira-web/`.
+- **Open decision (resolve before Phase 1):** KG schema canonicalization — Hub `001_knowledge_graph.sql` vs. NeonDB `004_kg_entities.sql + 007_uns_path.sql`. The new spec assumes the latter (per CLAUDE.md).
+
+**To resume:**
+1. Read the three new docs in order (TOO → spec → plan).
+2. `git fetch origin main && git log main..origin/main --oneline` to see how far behind local is.
+3. Read `docs/specs/uns-message-resolver-spec.md` (the existing spec on origin/main — describes the Stage-1 gate that's already shipped).
+4. Read `mira-bots/shared/uns_resolver.py` and the engine.py UNS hook (line ~1316 on origin/main).
+5. Then coordinate with the 90-day plan's in-flight section before any code change.
+
+## eval-fixer run — 2026-05-15
+- Scorecard: 48/57 passing (84%) — `tests/eval/runs/2026-05-06T0833-offline-text.md` (9 days stale, unchanged since 2026-05-10)
+- Action: no-op (suppressed duplicate issue — #1217 from 2026-05-13 still covers this exact scorecard; prior dupes: #1144, #1170, #1187)
+- Same 9 fixtures, same 3 file_clusters (engine.py×7, guardrails.py×3, prompts×3). No new signal — nightly eval job is stalled. Action needed: regenerate scorecard or land a fix on one of the open issues before the next eval-fixer run will produce signal.
+
 # Hot Cache — 2026-05-14 — CHARLIE
 
 ## eval-fixer run — 2026-05-14
@@ -428,3 +545,8 @@ Yaskawa: 27 chunks (NULL model) + 1 (CIMR-AU4A0058AAA)
 Danfoss: 2 chunks (VLT FC302 only)
 Mitsubishi Electric: 16 chunks (NULL model)
 ```
+
+## eval-fixer run — 2026-05-29
+- Scorecard: 33/57 passing (58%) — `tests/eval/runs/2026-05-29T0058-offline-text.md`
+- Action: issue-filed (#1583) — autopatch skipped (24 patchable > 15 limit AND 3 file clusters)
+- Systemic FSM/UNS-gate regression band (64%→56%→58% over last 3 runs), not a single patchable cluster. Dominant symptoms: sessions stuck at AWAITING_UNS_CONFIRMATION (expect Q1/Q2/DIAGNOSIS) and find-manual fixtures landing in ASSET_IDENTIFIED instead of IDLE. NOTE: `last_response_snippet` empty for every failure — offline runner not capturing final response; fix that before diagnosing.

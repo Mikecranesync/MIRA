@@ -2,12 +2,15 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { useSession } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
 import {
   AlertCircle,
   BookOpen,
   Bot,
+  CheckCircle2,
+  ClipboardList,
   Loader2,
+  LogIn,
   MapPin,
   Package,
   Wrench,
@@ -83,17 +86,8 @@ export default function MobileAssetPage({
     }
   }, [assetTag]);
 
-  // Bounce unauthenticated visitors to the login page with a callback that
-  // brings them straight back to this asset after sign-in. NextAuth's
-  // middleware would do this for non-API page routes too, but we want the
-  // tech to land on the same /m/{tag} URL after auth so the QR scan flow
-  // is uninterrupted.
-  useEffect(() => {
-    if (sessionStatus !== "unauthenticated") return;
-    if (typeof window === "undefined") return;
-    const callbackUrl = `${window.location.pathname}${window.location.search}`;
-    window.location.replace(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
-  }, [sessionStatus]);
+  // No redirect for unauthenticated visitors — they see a guest landing
+  // with two choices: sign in (OAuth) or report an issue without an account.
 
   useEffect(() => {
     if (sessionStatus !== "authenticated") return;
@@ -139,12 +133,16 @@ export default function MobileAssetPage({
     };
   }, [isAuthed, asset?.id]);
 
-  if (sessionStatus === "loading" || sessionStatus === "unauthenticated") {
+  if (sessionStatus === "loading") {
     return (
       <div className="flex items-center justify-center min-h-screen p-6">
         <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
       </div>
     );
+  }
+
+  if (sessionStatus === "unauthenticated") {
+    return <GuestLanding assetTag={assetTag} apiBase={API_BASE} />;
   }
 
   if (loading) {
@@ -381,6 +379,152 @@ export default function MobileAssetPage({
           ← Back to dashboard
         </Link>
       </footer>
+    </div>
+  );
+}
+
+// ─── Guest landing (no session) ─────────────────────────────────────────────
+
+function GuestLanding({ assetTag, apiBase }: { assetTag: string; apiBase: string }) {
+  const [showForm, setShowForm] = useState(false);
+  const [description, setDescription] = useState("");
+  const [contactInfo, setContactInfo] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const callbackUrl = typeof window !== "undefined"
+    ? `${window.location.pathname}${window.location.search}`
+    : `/m/${assetTag}`;
+
+  async function handleReport(e: { preventDefault(): void }) {
+    e.preventDefault();
+    if (!description.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch(`${apiBase}/api/public/report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ equipmentNumber: assetTag, description, contactInfo: contactInfo || undefined }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError((data as { error?: string }).error ?? "Failed to submit — try again.");
+        return;
+      }
+      setSubmitted(true);
+    } catch {
+      setError("Network error — check your connection.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (submitted) {
+    return (
+      <div className="max-w-md mx-auto px-4 pt-16 text-center">
+        <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+          <CheckCircle2 className="h-8 w-8 text-green-600" />
+        </div>
+        <h1 className="text-xl font-semibold text-slate-900 mb-2">Report submitted</h1>
+        <p className="text-sm text-slate-600">
+          The maintenance team has been notified and will follow up.
+        </p>
+        <p className="text-xs font-mono text-slate-400 mt-4">{assetTag}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-md mx-auto px-4 pt-10 pb-16">
+      {/* Equipment tag header */}
+      <div className="mb-8 text-center">
+        <div className="text-xs font-mono uppercase tracking-widest text-slate-400 mb-1">Equipment</div>
+        <div className="text-2xl font-bold font-mono text-slate-900">{assetTag}</div>
+      </div>
+
+      {!showForm ? (
+        /* Choice screen */
+        <div className="space-y-3">
+          <Button
+            size="lg"
+            className="w-full h-14 text-base font-semibold"
+            style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)", color: "#fff" }}
+            onClick={() => signIn(undefined, { callbackUrl })}
+          >
+            <LogIn className="h-5 w-5 mr-2" />
+            Sign in to view details
+          </Button>
+          <p className="text-center text-xs text-slate-400">or</p>
+          <Button
+            size="lg"
+            variant="outline"
+            className="w-full h-14 text-base font-semibold"
+            onClick={() => setShowForm(true)}
+          >
+            <ClipboardList className="h-5 w-5 mr-2" />
+            Report an issue (no account needed)
+          </Button>
+        </div>
+      ) : (
+        /* Guest report form */
+        <form onSubmit={handleReport} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
+              What&apos;s the issue? *
+            </label>
+            <textarea
+              rows={5}
+              required
+              maxLength={2000}
+              placeholder="Describe what you observed — noises, smells, leaks, error codes, etc."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full text-sm px-3 py-2.5 rounded-lg border border-slate-200 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="text-right text-xs text-slate-400 mt-1">{description.length}/2000</div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
+              Contact info <span className="font-normal normal-case">(optional — so we can follow up)</span>
+            </label>
+            <input
+              type="text"
+              maxLength={200}
+              placeholder="Phone, email, or name"
+              value={contactInfo}
+              onChange={(e) => setContactInfo(e.target.value)}
+              className="w-full text-sm px-3 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {error ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </div>
+          ) : null}
+
+          <Button
+            type="submit"
+            size="lg"
+            className="w-full h-12 text-base font-semibold"
+            disabled={!description.trim() || submitting}
+          >
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Submit report
+          </Button>
+
+          <button
+            type="button"
+            className="w-full text-sm text-slate-500 py-2"
+            onClick={() => setShowForm(false)}
+          >
+            ← Back
+          </button>
+        </form>
+      )}
     </div>
   );
 }

@@ -1,6 +1,10 @@
 # MIRA — Product & Architecture Operating Guide
 
 > Companion to root `CLAUDE.md` (which is the **build-state + repo map**). This file is the **product rules** Claude Code must honor while editing this codebase.
+>
+> **Primary doctrine:** `docs/THEORY_OF_OPERATIONS.md` — read it first.
+> **Product-surface contract:** `docs/specs/maintenance-namespace-builder-spec.md` — the UNS gate, AI proposals, readiness levels.
+> **Phased execution:** `docs/plans/2026-05-15-maintenance-namespace-builder.md`.
 
 ## What MIRA is
 
@@ -28,7 +32,7 @@ Required flow (enforced in `mira-bots/shared/engine.py`):
 
 1. Receive technician message.
 2. Extract candidate `asset`, `area`, `line`, `machine`, `component`, `symptom`, `fault_code`.
-3. Search the UNS (`uns_resolver.resolve_uns_path()` per `docs/specs/uns-message-resolver-spec.md`).
+3. Search the UNS (`uns_resolver.resolve_uns_path()` per `docs/specs/maintenance-namespace-builder-spec.md` § "The UNS Location-Confirmation Gate").
 4. Identify candidate context(s).
 5. Gather evidence (UNS hit, work-order history, manual reference, PLC tag, prior session, technician hint).
 6. **Send a confirmation message** identifying site / area / line / machine / asset / component / fault, evidence used, confidence level, and a confirmation question.
@@ -89,6 +93,13 @@ MIRA writes to `kg_entities` and `kg_relationships` (NeonDB; see `docs/migration
 
 Promotion from `proposed` → `verified` is an admin action, not an automatic one. Code paths that auto-verify without admin review are bugs.
 
+**Glossary discipline (cross-cutting; see `CONTEXT.md`):**
+- `AISuggestion` = a row in `ai_suggestions`; the unit `/proposals` renders and what "N proposals pending" counts. Six `suggestion_type` values.
+- `RelationshipProposal` = a row in `relationship_proposals` + 1..N `relationship_evidence` rows; backs `AISuggestion` of type `kg_edge` only. Never read directly by user-facing surfaces.
+- `proposed` is a status adjective on `kg_entities` / `kg_relationships`, not a noun. Don't say "a proposed entity" — say "an `AISuggestion` of type `kg_entity`".
+- **Forbidden phrase:** "the proposal table". Always name `ai_suggestions` or `relationship_proposals` explicitly.
+- **Status transitions** on `ai_suggestions`, `relationship_proposals`, `kg_entities.approval_state`, or `kg_relationships.approval_state` follow the mapping in **ADR-0017**. Once `mira-hub/lib/proposal-transition.ts` and `mira_bots/shared/proposal_transition.py` exist, direct `UPDATE … SET status = …` on these columns is a bug — go through the helper.
+
 ## Slack technician UX
 
 Technicians read on a phone in a noisy plant. Optimize for that.
@@ -102,14 +113,41 @@ Technicians read on a phone in a noisy plant. Optimize for that.
 
 See `.claude/skills/slack-technician-ux-writer/SKILL.md` for sample message templates.
 
+## Environment boundaries (Dev / Staging / Prod)
+
+**Doctrine:** `docs/environments.md`. Three environments, promoted in order. Root `CLAUDE.md` § **Environments** is the rule card. Product-side implications:
+
+- **Never** test bot changes against the production Telegram bot (`@FactoryLM_Diagnose`). The UNS gate, citation compliance, and groundedness scorers log episodes — a feature-branch reply on the prod bot contaminates the truth set.
+- **Never** point a feature-branch engine build at the prod NeonDB. `kg_entities` / `kg_relationships` writes are append-only-with-status; a misfire pollutes the verified set and forces a manual cleanup.
+- **Never** seed the KB to prod first. BM25 retrieval quality is verified on staging-shape data (`tests/eval/`) before bulk insert — see issue #1385 (embedding-gate killed BM25 in May 2026; lesson stands: seeds reach prod only after retrieval is proven).
+- **Migrations** to `kg_entities` / `kg_relationships` / `cmms_*` / Hub schema go dev → staging → prod via `apply-migrations.yml` (`dry-run` first). The promotion-state column work (ADR-0013) assumes this discipline.
+- **Engine / RAG / FSM / classifier changes** must pass the staging gate (today: `smoke-test.yml` + the relevant `tests/eval/` regime) before merging to `main`.
+
+`tools/hooks/prod-guard.sh` enforces the obvious blast-radius cases (`PreToolUse(Bash)`). It is a floor, not a ceiling. The full rule set lives in `docs/environments.md`.
+
+## Code exploration: CodeGraph first
+
+CodeGraph is the SQLite semantic index of every symbol, edge, file, and call path in the workspace. It is wired into every Claude Code session via the `codegraph` MCP server in `.mcp.json`. Use it BEFORE grep / Read for any symbol-shaped question.
+
+- **First call for any task in indexed code:** `codegraph_context "<task>"` — composes search + node + callers + callees in one call. Cheapest possible orientation.
+- **Before editing `engine.py` or any shared module:** `codegraph_impact <symbol>` to see the blast radius. Modules in scope: `mira-bots/shared/engine.py`, `mira-bots/shared/inference/router.py`, `mira-bots/shared/uns_resolver.py`, `mira-bots/shared/citation_compliance.py`, `mira-bots/shared/guardrails.py`, `mira-crawler/ingest/uns.py`, `mira-mcp/server.py`, plus anything imported by >5 files. **Never ignore an unexpected symbol in the blast-radius output** — narrow the change first.
+- **"How does X reach Y" / call-path questions:** `codegraph_trace` — handles dynamic-dispatch hops (callbacks, async workers, FSM transitions) that grep can't follow.
+- **Multi-symbol surveys:** `codegraph_explore` — one capped call for several related symbols. Don't loop `codegraph_node` or `Read`.
+- **Do NOT re-read files CodeGraph already returned source for.** `codegraph_node` / `codegraph_explore` include the symbol body.
+- **Only fall back to `Grep` / `Read`** for plain-text matches (prompt strings, log lines, comments), file-level inspection of files CodeGraph didn't index, or details the CodeGraph response didn't cover.
+- **Index freshness:** `.githooks/post-merge` and `.githooks/post-checkout` run `codegraph sync` automatically (incremental, <1 s, no-op when codegraph isn't installed). After cherry-picks or hand-edits, run `npx -y @colbymchenry/codegraph sync` manually.
+
+Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/codegraph.md`.
+
 ## Rules for code changes
 
 - **Conventional Commits**: `feat/fix/security/docs/refactor/test/chore/BREAKING`. Scope hint: module name (`feat(slack):`, `fix(uns):`, `fix(engine):`).
 - **No LangChain, TensorFlow, n8n** — see PRD §4 in root CLAUDE.md.
-- **Doppler for secrets** — `factorylm/prd`. Never `.env` files in git.
+- **Doppler for secrets** — `factorylm/dev` (local) / `factorylm/stg` (staging) / `factorylm/prd` (production). Never `.env` files in git. Never copy `prd` values into a dev shell.
 - **Python: ruff + httpx + `Optional[X]` (3.12 target)** — see `.claude/rules/python-standards.md`.
 - **Security boundaries** — see `.claude/rules/security-boundaries.md` (PII sanitization, safety keywords, Doppler).
 - **UNS compliance** — see `.claude/rules/uns-compliance.md` (every asset row has `uns_path` or `equipment_entity_id` FK).
+- **CodeGraph-first exploration** — see `.claude/rules/codegraph-usage.md` (use `codegraph_context` / `codegraph_impact` before grep + Read for any symbol-shaped question).
 - **Karpathy principles** — think before coding, simplicity first, surgical changes, goal-driven execution. See `.claude/rules/karpathy-principles.md`.
 - **Don't break the UNS confirmation gate.** Run `mira-run-hallucination-audit` after engine/bot edits.
 
@@ -131,17 +169,24 @@ See `.claude/skills/slack-technician-ux-writer/SKILL.md` for sample message temp
 - ❌ **Add a LangChain/n8n abstraction over the LLM call** (PRD §4).
 - ❌ **Reintroduce Anthropic as a provider** — removed PR #610, never reintroduce. Cascade is Groq → Cerebras → Gemini.
 - ❌ **Skip the screenshot rule** for visible mira-web UI changes.
+- ❌ **Cross environment boundaries** — no prod `psql`, no direct VPS `docker compose`, no feature-branch traffic to `@FactoryLM_Diagnose`, no hand-edited prod schema. See `docs/environments.md`.
 
 ## Cross-references
 
 - Root `CLAUDE.md` — build state, ports, env vars, repo map
+- `docs/environments.md` — dev / staging / prod doctrine (env separation + promotion workflow)
+- `docs/THEORY_OF_OPERATIONS.md` — primary product doctrine
+- `docs/specs/maintenance-namespace-builder-spec.md` — UNS gate, AI proposals, readiness levels (subsumes the older `uns-message-resolver-spec.md` reference)
+- `docs/plans/2026-05-15-maintenance-namespace-builder.md` — phased execution
 - `.claude/rules/uns-compliance.md` — UNS data-shape enforcement
 - `.claude/rules/security-boundaries.md` — secrets, PII, safety keywords
 - `.claude/rules/python-standards.md` — ruff, httpx, NeonDB, async
 - `.claude/rules/karpathy-principles.md` — coding behavior
-- `docs/specs/uns-kg-unification-spec.md` — UNS authority (710 lines)
-- `docs/specs/mira-component-intelligence-architecture.md` — component intelligence architecture
-- `docs/specs/uns-message-resolver-spec.md` — how bot messages resolve to UNS paths
+- `.claude/rules/codegraph-usage.md` — when to use CodeGraph vs grep/Read (CodeGraph-first for symbol-shaped questions)
+- `docs/specs/uns-kg-unification-spec.md` — UNS authority (data architecture)
+- `docs/specs/mira-component-intelligence-architecture.md` — implementation-level architecture (component templates, KG mechanics)
+- `docs/specs/dialogue-state-tracker-spec.md` — FSM the UNS gate plugs into
+- `docs/specs/uns-message-resolver-spec.md` — how bot messages resolve to UNS paths (Stage-1 spec, shipped)
 - `.claude/skills/<name>/SKILL.md` — task-specific operating guides
 - `.claude/commands/<name>.md` — repeatable workflows
 - `.claude/mcp/<name>-spec.md` — MCP server contracts

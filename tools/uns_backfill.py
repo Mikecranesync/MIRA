@@ -113,7 +113,12 @@ def _apply_sql_pass(engine) -> None:
         # SQLAlchemy's transaction is the only one in play.
         cleaned = sql.replace("BEGIN;", "").replace("COMMIT;", "")
         for stmt in _split_statements(cleaned):
-            if stmt.strip():
+            # Skip pure-whitespace/comment chunks — psycopg rejects empty queries.
+            # The migration trails with rollback notes that are all '--' comments.
+            if any(
+                s and not s.startswith('--')
+                for s in (line.strip() for line in stmt.splitlines())
+            ):
                 c.execute(text(stmt))
     log.info("SQL pass complete (migration 014)")
 

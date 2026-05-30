@@ -1,5 +1,7 @@
 services:
   mira-mcp:
+    mem_limit: 512m
+    memswap_limit: 512m
     build: .
     container_name: mira-mcp
     ports:

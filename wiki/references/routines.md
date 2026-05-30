@@ -12,6 +12,12 @@ Configure at: https://code.claude.com (Routines tab)
 **Why:** Manual ingest currently relies on Mike triggering Celery tasks. This catches drift.
 **Reference:** `project_manuals_ingest.md` memory (29/47 PDFs done, 17 remaining)
 
+### Hourly — Hub KG sync per tenant
+**Trigger:** cron, hourly (`0 * * * *`)
+**Prompt:** "For each tenant in NeonDB `tenants` (or the active subset in `tenant_id` settings), POST `/hub/api/kg/sync` with the tenant session bearer. The endpoint runs `syncCmmsToKg` — idempotent, pulls cmms_equipment + work_orders + pm_schedules + Atlas parts AND mirrors knowledge_entries manufacturers/models into `kg_entities` with `uns_path` populated. Log the SyncResult per tenant. If any tenant returns 5xx, post to the ops issue tracker with the duration + error."
+**Why:** `/namespace` renders only what's in `kg_entities`. Equipment + manuals live in `cmms_equipment` and `knowledge_entries`; without this Routine the tree silently goes stale relative to Assets / Knowledge pages.
+**Reference:** `mira-hub/src/app/api/kg/sync/route.ts`, `mira-hub/src/lib/knowledge-graph/cmms-sync.ts` (extended with `uns_path` + knowledge-entries mirror in PR landing 2026-05-17).
+
 ### Daily — Lead hunter status (08:00 UTC)
 **Trigger:** cron, daily 08:00 UTC
 **Prompt:** "Read `marketing/prospects/hardening-alerts.jsonl`. Summarize last 24h of new leads. If `mira-crawler/Dockerfile.celery` still missing `tools/lead-hunter/` COPY, post a reminder to the issue tracker."

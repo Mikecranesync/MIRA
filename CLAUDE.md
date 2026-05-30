@@ -7,9 +7,12 @@
 
 ---
 
-## North Star + Strategy
-- **Technical flywheel:** `NORTH_STAR.md` — read before any feature work; every PR references which flywheel step it supports
-- **Commercial strategy:** `STRATEGY.md` — ICP, pricing tiers, GTM motion, competitive moat
+## North Star
+- **PRIMARY:** `docs/THEORY_OF_OPERATIONS.md` — what MIRA is, how it works, why. Read first before any feature work.
+- **Contract:** `docs/specs/maintenance-namespace-builder-spec.md` — the namespace-builder product surface (UNS gate, AI proposals, readiness levels).
+- **Implementation-level architecture:** `docs/specs/mira-component-intelligence-architecture.md` — component templates, KG mechanics. (Self-declared "supersedes" header is historical; the TOO doc re-layers the hierarchy.)
+- **Commercial flywheel:** `NORTH_STAR.md` (still authoritative for offers + flywheel mechanics).
+- **GTM motion:** `STRATEGY.md` (still authoritative for ICP + competitive table).
 
 ## Coding Principles → `wiki/references/coding-principles.md`
 ## KANBAN Board → `wiki/references/kanban.md`
@@ -21,9 +24,39 @@
 1. **Licenses:** Apache 2.0 or MIT ONLY.
 2. **Cloud LLMs:** Groq + Cerebras + Gemini cascade (all free-tier, OpenAI-compat). NeonDB for persistence. Doppler-managed secrets. **No Anthropic** (removed PR #610 — never reintroduce).
 3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the LLM call.
-4. **Secrets:** All via Doppler (`factorylm/prd`). Never in `.env` files committed to git.
+4. **Secrets:** All via Doppler. Config is env-scoped: `factorylm/dev` (local), `factorylm/stg` (staging), `factorylm/prd` (production). Never commit `.env` to git. Never paste prod values into a dev shell — set them in `factorylm/dev`.
 5. **Containers:** One per service. `restart: unless-stopped` + healthcheck. Pinned image versions.
 6. **Commits:** Conventional format (`feat/fix/security/docs/refactor/test/chore/BREAKING`).
+7. **UNS Compliance:** All data MUST conform to the Unified Namespace (ISA-95 ltree). See `.claude/rules/uns-compliance.md`. No free-form manufacturer/model string pairs — use UNS paths or entity FKs.
+8. **Environments:** Dev / Staging / Production are separated and promoted in that order — see § **Environments** below.
+
+---
+
+## Environments (Dev / Staging / Production)
+
+**Source of truth:** `docs/environments.md`. Read it before any infra/migration/deploy work.
+
+| | DEV | STAGING | PROD |
+|---|---|---|---|
+| Where | CHARLIE local | CHARLIE + Neon staging branch | VPS (`165.245.138.91`) |
+| Compose | `docker-compose.yml` | `docker-compose.staging.yml` *(TODO)* | `docker-compose.saas.yml` |
+| Doppler | `factorylm/dev` | `factorylm/stg` | `factorylm/prd` |
+| Telegram | `@MiraDevBot` or none | `@MiraStagingBot` *(TODO)* | `@FactoryLM_Diagnose` |
+| Safe to break | YES | YES (gate before promotion) | **NEVER** |
+
+**Hard rules (do not bypass — `prod-guard.sh` enforces #1–#3):**
+1. NEVER run `psql` / raw SQL against prod NeonDB from a code session. Use staging / dev / `db-inspect.yml`.
+2. NEVER restart, rebuild, or `docker compose` a VPS container directly. Use `deploy-vps.yml`.
+3. NEVER point a feature-branch build at `@FactoryLM_Diagnose`. Use a dev/staging/no-op adapter.
+4. ALL engine / RAG / retrieval / classifier changes MUST pass the staging gate before deploy. Today: `smoke-test.yml` + the relevant `tests/eval/` regime.
+5. Migrations: dev → staging → prod, via `apply-migrations.yml` (`dry-run` then `apply`). Never hand-edit prod schema.
+6. KB seeds: staging first, verify BM25 retrieval, then prod via `apply-seeds.yml` / `seed-oem-manuals.yml`.
+
+**Promotion workflow:** feature branch → PR → `smoke-test.yml` + reviews pass → merge to `main` → `deploy-vps.yml` (gated on smoke passing) → smoke against `factorylm.com` + `app.factorylm.com` → verify on `@FactoryLM_Diagnose`.
+
+**Hotfix bypass:** `gh workflow run deploy-vps.yml -f services="…"`. File a follow-up PR within 24h that goes through the normal gate.
+
+**Existing enforcement:** `tools/hooks/prod-guard.sh` is wired as a `PreToolUse(Bash)` hook in `.claude/settings.json`. Override (human only): `MIRA_ALLOW_PROD=1` per-shell.
 
 ---
 
@@ -136,14 +169,18 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **Ops wiki:** `wiki/` — **Session start: read `wiki/hot.md`. Session end: update it.**
 - **Wiki schema:** `wiki/SCHEMA.md`
 - **Wiki sync across nodes + `~/MiraDrop/` auto-ingest:** `wiki/nodes/wiki-sync.md`
+- **MiraDrop watcher (desktop drop folder → Hub `/api/uploads/folder`):** `tools/mira-drop-watcher/README.md`. LaunchAgent label `com.factorylm.mira-drop-watcher`. Drop a PDF in `~/MiraDrop/inbox/`, it lands chunked in OW knowledge collection "Facility Documents" within ~20 s; sidecars in `~/MiraDrop/done/`.
 - **Skills:** `.claude/skills/`
 - **Sprint state:** `.planning/STATE.md`
 - **Active 90-day MVP plan:** `docs/plans/2026-04-19-mira-90-day-mvp.md` — locked 2026-04-19 → 2026-07-19; **read its "Currently in-flight" section + run the 3-command coordination check before claiming any work**
+- **Active namespace-builder plan:** `docs/plans/2026-05-15-maintenance-namespace-builder.md` — integrates with the 90-day plan (Units 2/4/9a fold in as Phase 1/2/4 components); has its own "Currently in-flight" section — check both.
 - **Dev loop (pre-commit + watcher):** `wiki/references/dev-loop.md`
 - **Karpathy principles (behavior rules):** `.claude/rules/karpathy-principles.md`
+- **Environments doctrine (dev / staging / prod):** `docs/environments.md`
 - **Enforcement layer:** `docs/specs/enforcement-layer-spec.md` — Playwright audit, write-path round-trip, enum drift, spec staleness, PR template, NeonDB canary
 - **Claude Code v2.1+ defaults (Opus 4.7, xhigh, /effort, /autofix-pr, Routines):** `wiki/references/claude-code-v2.1.md`
 - **MIRA Routines (cloud-side scheduled work):** `wiki/references/routines.md`
+- **CodeGraph (semantic code index + MCP):** `wiki/references/codegraph.md` — usage rules in `.claude/rules/codegraph-usage.md`
 
 ---
 
@@ -195,3 +232,19 @@ This file targets **~120 lines** (map, not encyclopedia). Agent compliance drops
 - Delete rules Claude follows naturally. Audit monthly.
 - Deep content lives in: `docs/`, `wiki/references/`, `tests/eval/`.
 - Line count as of last audit: see `wc -l CLAUDE.md`
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues at `Mikecranesync/MIRA` via `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Pocock canonical names: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Multi-context. Root `CONTEXT-MAP.md` lists per-module contexts. Primary doctrine: `docs/THEORY_OF_OPERATIONS.md`. See `docs/agents/domain.md`.

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/providers/toast-provider";
 import { useTranslations } from "next-intl";
+import { LabsStub } from "@/components/labs-stub";
 
 type Request = {
   id: string;
@@ -78,6 +79,10 @@ const STATUS_FILTERS = [
 const ASSETS = ["Air Compressor #1","Conveyor Belt #3","CNC Mill #7","Pump Station A","HVAC Unit #2","Generator #1","Electrical — Bay 3"];
 
 export default function RequestsPage() {
+  // Gated behind Labs flag (ADR-0014). Mock-data UI hidden on prod builds.
+  if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
+    return <LabsStub feature="Requests" />;
+  }
   const tReq = useTranslations("requests");
   const tCommon = useTranslations("common");
   const tPriority = useTranslations("priority");

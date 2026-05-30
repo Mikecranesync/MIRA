@@ -1,20 +1,20 @@
 # MIRA Known Issues, Deferred Features, and Abandoned Approaches
 
 Extracted from CLAUDE.md to keep the build-state file lean.
-Updated: 2026-04-17
+Updated: 2026-05-26
 
 ## Known Broken / Incomplete
 
-- **Gemini key blocked** — `GEMINI_API_KEY` in Doppler returns 403 "Your project has been denied access". Get fresh key from aistudio.google.com and update Doppler `factorylm/prd`. Cascade falls through to Groq/Claude in the meantime (smoke-tested OK).
-- **Teams + WhatsApp** — Code-complete, pending cloud setup (Azure Bot Service, WhatsApp Business API)
-- **PLC at 192.168.1.100** — Unreachable from PLC laptop; needs physical check (power/switch/cable)
-- **Charlie Doppler keychain** — Same SSH keychain lock as Bravo had; needs `doppler configure set token-storage file`
-- **Charlie HUD** — Needs local terminal session to start (keychain blocks SSH start of Doppler)
-- **Reddit benchmark** — 15/16 questions hit intent guard canned responses, not real inference
-- **No CD pipeline** — CI validates but deploy to Bravo is manual (docker cp or SSH)
-- **NVIDIA NIM / Nemotron** — API key in Doppler but Regime 5 eval tests blocked on it
-- **mira-sidecar OEM migration pending** — 398 OEM chunks in `shared_oem` ChromaDB must move to Open WebUI KB before sidecar can be stopped. Script: `tools/migrate_sidecar_oem_to_owui.py`. Runbook: `docs/runbooks/sidecar-oem-migration.md`.
-- **mira-web → mira-pipeline cutover pending** — `mira-web/src/lib/mira-chat.ts` calls sidecar `:5000/rag`; must be rewritten to call pipeline `:9099/v1/chat/completions` before mira-web is publicly routed.
+- **Gemini key blocked** — `GEMINI_API_KEY` in Doppler returns 403 "Your project has been denied access". Get fresh key from aistudio.google.com and update Doppler `factorylm/prd`. Cascade falls through to Groq/Cerebras in the meantime (smoke-tested OK).
+- **Teams + WhatsApp** — Code-complete, pending **cloud setup only** (Azure Bot Service for Teams; Twilio account + public domain for WhatsApp). WhatsApp FastAPI webhook is wired (`mira-bots/whatsapp/bot.py:96-113`); it just needs Twilio to point at it.
+- **PLC at 192.168.1.100** — Unreachable from PLC laptop; needs physical check (power/switch/cable).
+- **Charlie Doppler keychain** — Same SSH keychain lock as Bravo had; needs `doppler configure set token-storage file`.
+- **Charlie HUD** — Needs local terminal session to start (keychain blocks SSH start of Doppler).
+- **Reddit benchmark** — 15/16 questions hit intent guard canned responses, not real inference. No recent work on `mira-bots/reddit/`.
+- **NVIDIA NIM / Nemotron** — Runtime code in `mira-bots/shared/nemotron.py` works (falls back gracefully when `NVIDIA_API_KEY` is unset); see "Deferred Features → Active" below. What's blocked is the **Regime 5 eval suite** specifically — it needs a working key to exercise the reranker path.
+- **VPS deploy uses `main` HEAD, not version tags** — Customer-facing components are tagged (`mira-hub/v*`, etc.) but `deploy-vps.yml` checks out `main`, so the namespaced tags are documentation only — they don't enforce reproducible deploys or give us a real rollback target. Tracked in issue [#736](https://github.com/Mikecranesync/MIRA/issues/736).
+- **DOPPLER_TOKEN drift between Doppler config and saas compose** — Secrets set in Doppler `factorylm/prd` don't reach a container unless also listed in the `env:` block of `docker-compose.saas.yml`. Edit both in the same PR.
+- **Default `deploy-vps.yml` TARGETS excludes mira-web** — Marketing-site PRs do not auto-deploy. Manual: `gh workflow run deploy-vps.yml -f services=mira-web`.
 
 ## Deferred Features
 
@@ -35,4 +35,10 @@ Updated: 2026-04-17
 | Google Photos API direct | rclone + Ollama triage | OAuth consent screen "Testing" mode returned empty results |
 | GWS CLI for Gmail | IMAP with Doppler app passwords | Scope registration issues on Windows |
 | glm-ocr model (as primary) | qwen2.5vl handles vision | Consistent 400 errors — retained as optional fallback in vision_worker.py |
-| mira-sidecar (ChromaDB RAG backend) | mira-pipeline + Open WebUI KB | ADR-0008 (Apr 2026): pipeline wraps GSDEngine directly; Open WebUI native KB (Docling) replaces ChromaDB. Sidecar still running pending OEM doc migration (398 chunks). |
+| Anthropic / Claude as cloud LLM provider | Groq → Cerebras → Gemini cascade | Removed PR #610. Do not reintroduce. |
+
+## Resolved (kept for context)
+
+- **mira-sidecar (ChromaDB RAG backend)** — Removed from `docker-compose.saas.yml` 2026-05-20 per ADR-0014. Replaced by mira-pipeline + Open WebUI native KB. OEM chunks no longer block sunset.
+- **mira-web → mira-pipeline cutover** — Done. `mira-web/src/lib/mira-chat.ts` now calls mira-pipeline `:9099/v1/chat/completions` (ADR-0008).
+- **No CD pipeline** — Resolved. `deploy-vps.yml` gates on `smoke-test.yml` success and deploys to VPS automatically on push to `main`. Manual fallback: `gh workflow run deploy-vps.yml -f services=<svc>`.

@@ -85,7 +85,7 @@ function buildCsp(nonce: string): string {
     `font-src 'self' https://fonts.gstatic.com`,
     `img-src 'self' data: https:`,
     `connect-src 'self' https://accounts.google.com https://api.hubapi.com https://api.stripe.com https://js.stripe.com`,
-    `frame-src https://accounts.google.com https://js.stripe.com https://hooks.stripe.com`,
+    `frame-src https://accounts.google.com https://js.stripe.com https://hooks.stripe.com https://mikecranesync.github.io`,
   ].join("; ");
 }
 
@@ -159,6 +159,13 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
 
 export const config = {
   matcher: [
-    "/((?!login|signup|magic|api/auth|api/health|api/scanbe/healthz|_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt).*)",
+    // `quickstart` and `api/quickstart/*` are public — the Twilio-moment landing
+    // page (ADR-0014). Excluding from the matcher prevents the middleware from
+    // bouncing anonymous visitors to /login.
+    // api/uploads/folder (POST) and api/uploads/[id] (GET, dual-auth) are the
+    // service-token ingest + status routes used by tools/mira-drop-watcher —
+    // they do their own bearer-token check, so the cookie-based middleware
+    // must not intercept them.
+    "/((?!login|signup|magic|m/|quickstart|api/auth|api/public|api/quickstart|api/health|api/scanbe/healthz|api/uploads/folder|api/uploads/[a-f0-9]|_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt).*)",
   ],
 };

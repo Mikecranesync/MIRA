@@ -1,0 +1,31 @@
+{
+  "_comment": "Locked baseline for tests/mira_bench.py. Update when an intentional regression-or-improvement lands and is reviewed. See .github/workflows/mira-benchmark-weekly.yml and scripts/check_benchmark_regression.py.",
+  "version": "v2",
+  "set_at": "2026-05-23",
+  "set_from_run": "docs/evaluations/runs/2026-05-23-v2/mira-bench-raw.json",
+  "max_total_per_question": 35,
+  "questions": 10,
+  "max_total": 350,
+  "thresholds": {
+    "mira_total_min": 260,
+    "mira_advantage_min": 15,
+    "_doc": "mira_total_min: hard floor for MIRA grounded total (baseline was 282; floor is 282 - 22 ≈ 6% buffer for run-to-run LLM-judge variance). mira_advantage_min: MIRA must beat the ungrounded baseline by at least this many points (baseline advantage was 27)."
+  },
+  "baseline_run": {
+    "mira_total": 282,
+    "baseline_total": 255,
+    "mira_minus_baseline": 27,
+    "per_question": {
+      "Q01": {"mira": 26, "baseline": 26},
+      "Q02": {"mira": 33, "baseline": 19},
+      "Q03": {"mira": 30, "baseline": 22},
+      "Q04": {"mira": 22, "baseline": 31},
+      "Q05": {"mira": 26, "baseline": 23},
+      "Q06": {"mira": 25, "baseline": 30},
+      "Q07": {"mira": 32, "baseline": 29},
+      "Q08": {"mira": 33, "baseline": 21},
+      "Q09": {"mira": 33, "baseline": 28},
+      "Q10": {"mira": 22, "baseline": 26}
+    }
+  }
+}

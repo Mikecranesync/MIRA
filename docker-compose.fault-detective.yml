@@ -1,0 +1,116 @@
+# MIRA Conveyor Fault Detective demo stack
+# Run with:  docker compose -f docker-compose.fault-detective.yml up -d
+#
+# Adds to the running mira-* stack:
+#   - mosquitto       MQTT broker for the demo UNS topics
+#   - fault-sim       Python sim publishing PE/PX/Fuse/Vision fakes
+#   - fault-detective Python rule engine subscribing to all topics
+#
+# Reuses mira-bridge (Node-RED 1880) for the HMI + Modbus TCP ingest +
+# mira-pipeline (9099) for the Talk-to-MIRA chat.
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: mira-mosquitto
+    mem_limit: 128m
+    memswap_limit: 128m
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mira-bridge/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    networks:
+      - core-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -t '$$SYS/#' -C 1 -W 2 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  fault-sim:
+    build:
+      context: ./mira-fault-sim
+    container_name: mira-fault-sim
+    mem_limit: 256m
+    memswap_limit: 256m
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      UNS_PREFIX: demo/cell1/conveyor/cv101
+      PUBLISH_INTERVAL_MS: "200"
+      LOG_LEVEL: INFO
+    ports:
+      - "8089:8089"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - core-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8089/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  fault-detective:
+    build:
+      context: ./mira-fault-detective
+    container_name: mira-fault-detective
+    mem_limit: 256m
+    memswap_limit: 256m
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      UNS_PREFIX: demo/cell1/conveyor/cv101
+      DB_PATH: /mira-db/mira.db
+      TICK_MS: "200"
+      LOG_LEVEL: INFO
+    volumes:
+      - ./mira-bridge/data:/mira-db
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - core-net
+    restart: unless-stopped
+
+  # Stream A: live Micro 820 Modbus TCP -> MQTT ingest (real bench PLC data).
+  # Publishes source-qualified _streams/bridge/* topics; the Node-RED flow runs
+  # a redundant Stream B under _streams/nr/*, and the dashboard selector picks
+  # the active one with failover. Read-only (no coil/HR writes).
+  live-plc-bridge:
+    build:
+      context: ./plc/live-plc-bridge
+    container_name: mira-live-plc-bridge
+    mem_limit: 128m
+    memswap_limit: 128m
+    environment:
+      PLC_HOST: "192.168.1.100"
+      PLC_PORT: "502"
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      UNS_PREFIX: demo/cell1/conveyor/cv101
+      STREAM: bridge
+      SOURCE: plc-bridge
+      POLL_MS: "500"
+      LOG_LEVEL: INFO
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - core-net
+    restart: unless-stopped
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:
+
+networks:
+  core-net:
+    external: true

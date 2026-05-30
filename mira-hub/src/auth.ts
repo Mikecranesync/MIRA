@@ -92,6 +92,13 @@ if (googleClientId && googleClientSecret) {
       authorization: { params: { scope: "openid email profile" } },
     }),
   );
+  // Log the exact redirect_uri NextAuth will send to Google so a drift
+  // between NEXTAUTH_URL and the URIs registered in Google Cloud Console
+  // is visible the moment the container boots, not the moment a user
+  // clicks "Continue with Google". Canonical list of authorized URIs:
+  // docs/auth/oauth-redirect-uris.md. Canary: .github/workflows/oauth-redirect-canary.yml.
+  const nextauthUrl = process.env.NEXTAUTH_URL ?? "(unset — NextAuth will infer from request)";
+  console.log(`[auth] Google sign-in enabled — redirect_uri will be ${nextauthUrl}/callback/google`);
 } else if (process.env.NODE_ENV === "production") {
   console.warn("[auth] HUB_AUTH_GOOGLE_CLIENT_ID or HUB_AUTH_GOOGLE_CLIENT_SECRET unset — Google sign-in disabled");
 }
