@@ -18,6 +18,8 @@ try {
     $projDst  = Join-Path $igData 'projects\ConvSimpleLive'
     $tagsSrc  = Join-Path $PSScriptRoot 'tags\MIRA_IOCheck\VFD'
     $tagsDst  = Join-Path $igData 'config\resources\core\ignition\tag-definition\default\MIRA_IOCheck\VFD'
+    $imgSrc   = Join-Path $PSScriptRoot 'images'
+    $imgDst   = Join-Path $igData 'config\resources\core\ignition\images'
 
     Log "Stopping Ignition service..."
     Stop-Service -Name 'Ignition' -Force
@@ -31,6 +33,12 @@ try {
     Log "Syncing VFD tags -> $tagsDst"
     if (-not (Test-Path $tagsDst)) { New-Item -ItemType Directory -Path $tagsDst -Force | Out-Null }
     Copy-Item -Path (Join-Path $tagsSrc '*') -Destination $tagsDst -Recurse -Force
+
+    Log "Syncing images -> $imgDst"
+    if (Test-Path $imgSrc) {
+        if (-not (Test-Path $imgDst)) { New-Item -ItemType Directory -Path $imgDst -Force | Out-Null }
+        Copy-Item -Path (Join-Path $imgSrc '*') -Destination $imgDst -Recurse -Force
+    }
 
     Log "Starting Ignition service..."
     Start-Service -Name 'Ignition'

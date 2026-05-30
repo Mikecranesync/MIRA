@@ -9,6 +9,8 @@
     "meta": { "name": "root" },
     "props": { "style": { "backgroundColor": "#10141a" } },
     "children": [
+      { "type": "ia.navigation.link", "meta": { "name": "nav_panel" }, "position": { "x": 24, "y": 1, "width": 120, "height": 18 }, "props": { "text": "PMC Station", "url": "/data/perspective/client/ConvSimpleLive", "target": "_self", "style": { "color": "#e6edf3", "fontSize": "12px", "fontWeight": 700, "textTransform": "uppercase", "borderBottom": "2px solid #39d353" } } },
+      { "type": "ia.navigation.link", "meta": { "name": "nav_conveyor" }, "position": { "x": 150, "y": 1, "width": 120, "height": 18 }, "props": { "text": "Conveyor", "url": "/data/perspective/client/ConvSimpleLive/conveyor", "target": "_self", "style": { "color": "#8b949e", "fontSize": "12px", "fontWeight": 600, "textTransform": "uppercase" } } },
       {
         "type": "ia.display.label",
         "meta": { "name": "panel" },
