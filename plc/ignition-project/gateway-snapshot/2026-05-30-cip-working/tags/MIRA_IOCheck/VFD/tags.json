@@ -1,0 +1,42 @@
+[
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]vfd_frequency",
+    "readOnly": true,
+    "dataType": "Int4",
+    "documentation": "GS10 output frequency, raw Hz x100 (divide by 100 for Hz). Global vfd_frequency.",
+    "name": "vfd_frequency",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]vfd_current",
+    "readOnly": true,
+    "dataType": "Int4",
+    "documentation": "GS10 output current, raw A x100 (divide by 100 for A). Global vfd_current.",
+    "name": "vfd_current",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]vfd_dc_bus",
+    "readOnly": true,
+    "dataType": "Int4",
+    "documentation": "GS10 DC bus voltage, raw V x10 (divide by 10 for V; ~327 idle). Global vfd_dc_bus.",
+    "name": "vfd_dc_bus",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]vfd_cmd_word",
+    "readOnly": true,
+    "dataType": "Int4",
+    "documentation": "GS10 command echo (1=STOP, 18=FWD+RUN, 20=REV+RUN). Global vfd_cmd_word.",
+    "name": "vfd_cmd_word",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  }
+]
