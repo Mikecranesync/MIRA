@@ -120,6 +120,10 @@ export interface CreateUploadInput {
   initialStatus?: UploadStatus;
   assetTag?: string | null;
   unsPath?: string | null;
+  /** mira-ingest-v2 / Hub folder=brain: the confirmed kg_entities node this drop is attached to. */
+  kgEntityId?: string | null;
+  /** 'v2' = chunks written to knowledge_entries; null/'ow' = legacy Open-WebUI-only path. */
+  ingestRoute?: string | null;
 }
 
 function rowToUpload(r: Record<string, unknown>): Upload {
@@ -159,8 +163,9 @@ export async function createUpload(input: CreateUploadInput): Promise<Upload> {
     `
     INSERT INTO hub_uploads
       (tenant_id, provider, kind, external_file_id, external_download_url,
-       filename, mime_type, size_bytes, external_created_at, status, asset_tag, uns_path)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       filename, mime_type, size_bytes, external_created_at, status, asset_tag, uns_path,
+       kg_entity_id, ingest_route)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     RETURNING *
   `,
     [
@@ -176,6 +181,8 @@ export async function createUpload(input: CreateUploadInput): Promise<Upload> {
       status,
       input.assetTag ?? null,
       input.unsPath ?? null,
+      input.kgEntityId ?? null,
+      input.ingestRoute ?? null,
     ],
   );
   return rowToUpload(rows[0]);
