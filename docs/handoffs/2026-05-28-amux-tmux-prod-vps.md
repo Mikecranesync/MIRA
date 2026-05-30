@@ -31,20 +31,33 @@
 | L1 (sphinx inventory, 2088 files, 225s) | PASS | self-corrected on multi-dot extension bug; output capture intact |
 | L2 (MIRA importer hunt + longest function) | **PARTIAL** — longest function `process_full` 990 lines @ L1103 was correct; importer count of 6 was wrong, real answer is 0 inside `mira-bots/shared/` (agent matched docstring text mentioning engine.py, not actual `import` statements) | **The most important failure mode found**: confidently produces plausible but wrong answers when the question has a semantic vs. text-pattern distinction. Don't delegate "find all callers/usages of X" without giving the agent codegraph or a verification step |
 | L3 (wiki/hot.md freshness check) | PASS — correctly identified 2026-05-23 as 5 days old, branched to "FRESH ENOUGH", made no edit, didn't commit | "do not modify" constraint respected |
-| L4 (real PR, do not merge) | NOT RUN — requires non-root user setup first |
+| L4 (real PR, do not merge) | NOT RUN — non-root user now exists (✅), but heavy/long runs are gated on the memory decision below |
+
+### ⚠️ Memory decision blocks the heavy runs (items 2–4)
+Prod is **prod + staging stacks co-resident on one 8GB box**. On 2026-05-29: `available` ~2.8Gi (fine for *bounded* single tasks — judge by `available`, not `free`), but **swap is exhausted (3.9/4.0Gi)**. Bounded tasks (smoke/L0/L1) are safe. *Unbounded* runs (L2 codegraph-init repo analysis, L4 real-PR edit/push, or any concurrency) risk crossing the 2.8Gi ceiling with no swap to absorb overflow → OOM killer fires hard and targets the fattest RSS, **likely a prod container**. This is a **Mike decision before L2/L4**: proceed anyway / move staging off this box / use a separate host. Don't discover it at 3am.
 
 ## Open / next session
 
-1. **Create non-root user on prod for unattended use** (~5 min). Today `claude --dangerously-skip-permissions` refuses to run as root ("cannot be used with root/sudo privileges"), so every Bash call needs `amux send "1"` to approve — defeats `--yolo` and unattended-agent use. Recipe:
+1. **Create non-root user on prod for unattended use — ✅ DONE 2026-05-29.** Created `amux` (uid **2000**, off 1001 to dodge the docling container's host-UID mapping). Seeded auth by copying ONLY `/root/.claude/.credentials.json` → `/home/amux/.claude/` — no interactive `/login` needed (auth lives in that file; the smoke test authed with nothing else present). **Did NOT add amux to docker group** (docker = root-equivalent; unattended agents must not get prod docker access).
+
+   Verified end-to-end: `sudo -iu amux claude --dangerously-skip-permissions -p "say hi"` → text; full `amux register --yolo` → start → send → real `Bash(echo …)` executed unattended with no approval prompt.
+
+   **Three first-run gates** (interactive amux sessions only; `-p` print-mode skips them). All pre-cleared durably in `/home/amux/.claude.json`:
+   | Gate | Symptom | Fix |
+   |---|---|---|
+   | theme picker | "Choose the text style…" | top-level `"hasCompletedOnboarding": true` |
+   | trust folder | "Is this a project you trust?" (NOT bypassed by `--yolo`) | per-project `projects["<dir>"]["hasTrustDialogAccepted"]: true` — **pre-seed every new working dir** or it re-prompts |
+   | bypass warning | "WARNING: Bypass Permissions mode" — default = **No, exit** | top-level `"bypassPermissionsModeAccepted": true` (interactive accept does NOT persist; set explicitly) |
+
+   With all three set, a brand-new **empty** dir launches straight to the prompt (verified with a throwaway `/home/amux/clean-test` session, since removed). **Scope caveat:** this was proven on empty dirs only. A real repo clone (e.g. `mira-amux`) contains `.mcp.json`, which triggers a **4th gate — MCP-server approval** (not pre-seeded; the trust schema shows `enabledMcpjsonServers: []`) — and spawns those MCP servers (codegraph etc.) on startup, adding unmeasured resident memory right when the L2 run needs headroom. Before L2/L4: pre-seed `projects["<repo>"]["enabledMcpjsonServers"]` for the servers in its `.mcp.json`, and take a fresh `free -h` measurement of a real-repo session's footprint.
+
+   **Quirk:** `amux send <name> "<text>"` auto-Enter is flaky — text lands unsubmitted. Follow with `amux send <name> --keys "Enter"`.
+
+   Recipe for a new unattended dir:
    ```
-   ssh prod
-   useradd -m -s /bin/bash amux
-   # If amux agents need to touch docker:
-   usermod -aG docker amux
-   sudo -iu amux                  # become amux user
-   claude                          # /login fresh as this user
-   exit
-   # Then: ssh prod 'sudo -iu amux amux register foo --dir /home/amux/foo --yolo'
+   ssh prod 'sudo -iu amux mkdir -p /home/amux/<dir>'
+   # pre-seed trust for <dir> in /home/amux/.claude.json projects map (see table)
+   ssh prod 'sudo -iu amux amux exec <name> --yolo --dir /home/amux/<dir>'
    ```
 
 2. **Re-run L2 with codegraph hints in TASK.md** (`prefer codegraph_search and codegraph_callers over grep`). Quick A/B test to see if the importer plausibility-trap goes away. Mind that the cloned `~/mira-amux/` repo doesn't have codegraph initialized — would need `npx -y @colbymchenry/codegraph init -i` first.
@@ -63,6 +76,7 @@
 - Don't run amux agents against `/opt/mira` (the live prod MIRA checkout). Use the scratch clone at `/root/mira-amux` or, post-non-root-user, `/home/amux/mira-amux`.
 - Don't expose `amux serve` publicly without auth in front. The dashboard accepts commands.
 - Don't push `feat/fault-detective-scaffolding` to remote without splitting the 3 routine commits off first (see #6 above).
+- Watch for a **stale-token 401** on amux: `/home/amux/.claude/.credentials.json` is a *copy* of root's token taken 2026-05-29. If root's OAuth token refreshes in-place, amux's copy can go stale and 401. If that happens, that's the signal amux genuinely needs its own `/login` (the Mike-dependency we sidestepped) — re-copy the file or have Mike `/login` as amux; don't paper over it.
 
 ## CLI handoff prompt — paste into a fresh Claude Code session on CHARLIE
 
@@ -71,9 +85,11 @@ Read docs/handoffs/2026-05-28-amux-tmux-prod-vps.md.
 
 Goal: stand up unattended amux use on the prod VPS by completing the next-session list.
 
-Priority order:
-1) Create non-root `amux` user on prod, /login claude as that user, verify
-   `sudo -iu amux claude --dangerously-skip-permissions -p "say hi"` returns text.
+Non-root `amux` user (uid 2000) is DONE + verified (item 1). FIRST: confirm Mike's
+call on the memory blocker (prod+staging co-resident, swap exhausted) — L2/L4 are
+unbounded runs that can OOM a prod container. Do not start them until that's settled.
+
+Priority order (after memory decision):
 2) Re-run L2 with codegraph-hinted TASK.md (init codegraph in ~/mira-amux first),
    compare against the recorded result (6 importers wrong, real=0).
 3) Run L4 — pick a small read-only issue from `gh issue list --label "good first issue"`
