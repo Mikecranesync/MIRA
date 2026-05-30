@@ -1428,7 +1428,10 @@ class Supervisor:
             # UNS Confirmation Gate — no diagnosis without confirmed equipment.
             # Telegram + Slack both go through here. Conditions extracted into
             # _should_fire_uns_gate so the bypass logic is testable directly.
-            if self._should_fire_uns_gate(_router_intent, state, message, sc):
+            # Require confidence > 0: truly vague messages (no vendor/model/fault
+            # detected) should not trigger the gate — the bot asks Q1 clarifiers
+            # instead. Gate fires when we have at least a partial context to confirm.
+            if uns_ctx.confidence > 0 and self._should_fire_uns_gate(_router_intent, state, message, sc):
                 return await self._handle_uns_confirmation_request(
                     chat_id,
                     message,
@@ -4138,6 +4141,7 @@ class Supervisor:
                 mfr,
                 kb_reason,
             )
+            state["state"] = "IDLE"
             self._record_exchange(chat_id, state, message, reply)
             tl_flush()
             return self._make_result(reply, "medium", trace_id, state["state"])
