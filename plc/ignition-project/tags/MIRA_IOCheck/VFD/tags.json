@@ -38,5 +38,15 @@
     "name": "vfd_cmd_word",
     "tagType": "AtomicTag",
     "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]vfd_comm_ok",
+    "readOnly": true,
+    "dataType": "Boolean",
+    "documentation": "GS10 Modbus comm watchdog (true = PLC<->VFD link healthy; trust gate for the VFD values). Global vfd_comm_ok.",
+    "name": "vfd_comm_ok",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
   }
 ]
