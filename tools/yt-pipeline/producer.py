@@ -154,12 +154,23 @@ def produce(
     script_path.write_text(plan["scene2_narration"])
     assets["narration_script"] = str(script_path)
 
-    # Narration (TTS) is optional; only synthesize if api_key is present
+    # Narration (TTS) is optional and best-effort. We attempt it when a key is
+    # present, but ANY failure (no quota / 429, billing, network) degrades
+    # gracefully to a silent draft — the narration script is always on disk for
+    # manual voiceover. When the OpenAI account is funded again, voiced output
+    # resumes automatically with no config change.
     if openai_api_key:
-        narration_audio = synth_narration(
-            plan["scene2_narration"], run_dir, api_key=openai_api_key
-        )
-        assets["narration_audio"] = str(narration_audio)
+        try:
+            narration_audio = synth_narration(
+                plan["scene2_narration"], run_dir, api_key=openai_api_key
+            )
+            assets["narration_audio"] = str(narration_audio)
+        except Exception as exc:  # noqa: BLE001 — any TTS failure → silent draft
+            log.warning(
+                "TTS unavailable (%s: %s) — producing a SILENT draft; "
+                "narration script saved at %s for manual voiceover.",
+                type(exc).__name__, str(exc)[:160], script_path,
+            )
 
     assets["screenshots"] = [str(s) for s in screenshots]
 

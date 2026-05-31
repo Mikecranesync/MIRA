@@ -139,6 +139,44 @@ def test_produce_skips_broll_without_byteplus_key(tmp_path):
     assert Path(narration_script_path).read_text() == plan["scene2_narration"]
 
 
+def test_produce_degrades_to_silent_when_tts_fails(tmp_path):
+    """When a key is present but TTS raises (e.g. 429 no quota), produce() degrades to a silent draft."""
+    plan = {
+        "scene1_prompt": "cinematic opening",
+        "scene3_prompt": "closing shot",
+        "scene2_narration": "Narration that cannot be voiced because the account has no quota.",
+        "scene3_screenshot_keywords": ["hub"],
+    }
+    shots_dir = tmp_path / "screenshots"
+    shots_dir.mkdir()
+    (shots_dir / "2026-04-27_hub_desktop.png").touch()
+
+    with patch("tools.yt_pipeline.producer.generate_broll"), \
+         patch(
+             "tools.yt_pipeline.producer.select_screenshots",
+             return_value=[shots_dir / "2026-04-27_hub_desktop.png"],
+         ), \
+         patch(
+             "tools.yt_pipeline.producer.synth_narration",
+             side_effect=RuntimeError("Error code: 429 - insufficient_quota"),
+         ):
+        from tools.yt_pipeline.producer import produce
+
+        # Key is present (truthy) but TTS fails — must NOT raise.
+        assets = produce(
+            plan,
+            tmp_path,
+            byteplus_api_key="",
+            openai_api_key="present-but-unfunded",
+        )
+
+    # Degraded to silent: script present, no audio, no exception propagated.
+    assert "narration_audio" not in assets
+    assert "narration_script" in assets
+    assert Path(assets["narration_script"]).read_text() == plan["scene2_narration"]
+    assert "screenshots" in assets
+
+
 def test_produce_silent_when_no_openai_key(tmp_path):
     """produce() skips narration synthesis when openai_api_key is empty; narration_script still written."""
     plan = {
