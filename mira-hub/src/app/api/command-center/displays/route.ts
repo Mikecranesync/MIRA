@@ -18,6 +18,7 @@ export const dynamic = "force-dynamic";
  * reachable through the cloud proxy — the registry is the allowlist's source.
  */
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DISPLAY_TYPES = new Set(["web_iframe", "nodered", "signals", "vnc"]);
 const SCHEMES = new Set(["http", "https"]);
 // host = LAN IP / hostname / docker service name. No scheme, path, or spaces — those
@@ -107,11 +108,14 @@ export async function POST(req: Request) {
       const ins = await c.query<{ id: string }>(
         `INSERT INTO display_endpoints
             (tenant_id, uns_path, equipment_id, display_type, scheme, host, port, path, label, enabled, created_by)
-         VALUES ($1::uuid, $2::ltree, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         VALUES ($1::uuid, $2::ltree, $3, $4, $5, $6, $7, $8, $9, $10, $11::uuid)
          RETURNING id`,
         [
           ctx.tenantId, v.uns_path, v.equipment_id, v.display_type, v.scheme,
-          v.host, v.port, v.path, v.label, v.enabled, ctx.userId,
+          // created_by is a UUID column; only pass a UUID session id, else NULL
+          // (audit-only field — don't 500 the create over it).
+          v.host, v.port, v.path, v.label, v.enabled,
+          UUID_RE.test(ctx.userId ?? "") ? ctx.userId : null,
         ],
       );
       return { kind: "ok" as const, id: ins.rows[0].id };

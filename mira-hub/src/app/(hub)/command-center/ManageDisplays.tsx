@@ -52,7 +52,13 @@ export function ManageDisplays({ onClose, onChanged }: { onClose: () => void; on
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!cancelled) await load();
+    })();
+    return () => { cancelled = true; };
+  }, [load]);
 
   const save = async () => {
     if (!draft) return;
