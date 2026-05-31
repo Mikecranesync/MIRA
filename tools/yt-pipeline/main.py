@@ -73,7 +73,8 @@ def run(dry_run: bool = False) -> None:
 
         # Secrets only needed for the full pipeline are read AFTER the dry-run
         # early-return, so a dry-run works with just GROQ_API_KEY present.
-        byteplus_key = os.environ["BYTEPLUS_API_KEY"]
+        # BytePlus is optional — empty string means screenshot-only pipeline.
+        byteplus_key = os.environ.get("BYTEPLUS_API_KEY", "")
         openai_key = os.environ["OPENAI_API_KEY"]
         yt_client_id = os.environ["YOUTUBE_CLIENT_ID"]
         yt_client_secret = os.environ["YOUTUBE_CLIENT_SECRET"]

@@ -1,6 +1,7 @@
 """Assembles B-roll, screenshots, PIL-rendered cards, and narration into final.mp4 via ffmpeg."""
 from __future__ import annotations
 
+import json
 import logging
 import subprocess
 import textwrap
@@ -68,18 +69,47 @@ def _card_clip(png: Path, seconds: int, out_mp4: Path) -> Path:
     return out_mp4
 
 
-def _slideshow(shots: list[str], run_dir: Path, per: int = 5) -> Path:
-    """Create a slideshow from PNG screenshots with zoompan effect."""
+def _probe_duration(path: str | Path) -> float:
+    """Probe a media file and return its duration in seconds."""
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v", "quiet",
+            "-show_entries", "format=duration",
+            "-of", "json",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    data = json.loads(result.stdout)
+    return float(data["format"]["duration"])
+
+
+def _slideshow(shots: list[str], run_dir: Path, per_shot_seconds: float = 5) -> Path:
+    """
+    Create a slideshow from PNG screenshots with zoompan effect.
+
+    Args:
+        shots: list of PNG file paths
+        run_dir: output directory
+        per_shot_seconds: duration of each shot in seconds (can be fractional)
+
+    Returns:
+        Path to the generated slideshow.mp4
+    """
     inputs: list[str] = []
     for s in shots:
-        inputs += ["-loop", "1", "-t", str(per), "-i", s]
+        inputs += ["-loop", "1", "-t", str(per_shot_seconds), "-i", s]
 
     # Build filter complex: scale, crop, zoompan each shot, then concat
     parts: list[str] = []
+    per_shot_frames = round(per_shot_seconds * _FPS)
     for i in range(len(shots)):
         parts.append(
             f"[{i}:v]scale={_W}:{_H}:force_original_aspect_ratio=increase,"
-            f"crop={_W}:{_H},zoompan=z='min(zoom+0.001,1.1)':d={per*_FPS}:s={_W}x{_H},"
+            f"crop={_W}:{_H},zoompan=z='min(zoom+0.001,1.1)':d={per_shot_frames}:s={_W}x{_H},"
             f"setsar=1,fps={_FPS},format=yuv420p[v{i}]"
         )
 
@@ -98,8 +128,8 @@ def assemble(plan: dict, assets: dict, run_dir: Path) -> Path:
 
     Args:
         plan: dict with at least plan["title"] (str)
-        assets: dict with keys "scene1_clip", "scene3_clip", "screenshots" (list of PNG paths),
-                and "narration_audio" (MP3 path)
+        assets: dict with keys "screenshots" (list of PNG paths) and "narration_audio" (MP3 path).
+                Optional keys: "scene1_clip", "scene3_clip" (B-roll MP4 paths, only present if generated).
         run_dir: output directory for intermediate and final files
 
     Returns:
@@ -107,9 +137,14 @@ def assemble(plan: dict, assets: dict, run_dir: Path) -> Path:
     """
     run_dir.mkdir(parents=True, exist_ok=True)
     shots = assets["screenshots"]
+    narration = assets["narration_audio"]
 
-    # Generate the slideshow from screenshots
-    slideshow = _slideshow(shots, run_dir)
+    # Probe narration duration to drive the slideshow length
+    narration_duration = _probe_duration(narration)
+    per_shot_seconds = max(2.5, narration_duration / len(shots)) if shots else 2.5
+
+    # Generate the slideshow from screenshots, scaled to match narration duration
+    slideshow = _slideshow(shots, run_dir, per_shot_seconds=per_shot_seconds)
 
     # Render and convert title card to MP4
     title_mp4 = _card_clip(_render_card(plan["title"], run_dir / "title.png"), 3, run_dir / "title.mp4")
@@ -121,9 +156,15 @@ def assemble(plan: dict, assets: dict, run_dir: Path) -> Path:
         run_dir / "outro.mp4",
     )
 
-    # List segments in order: scene1 -> title -> slideshow -> scene3 -> outro
-    segments = [assets["scene1_clip"], str(title_mp4), str(slideshow), assets["scene3_clip"], str(outro_mp4)]
-    narration = assets["narration_audio"]
+    # Build segment list in order: [scene1 if present] -> title -> slideshow -> [scene3 if present] -> outro
+    segments: list[str] = []
+    if "scene1_clip" in assets:
+        segments.append(assets["scene1_clip"])
+    segments.append(str(title_mp4))
+    segments.append(str(slideshow))
+    if "scene3_clip" in assets:
+        segments.append(assets["scene3_clip"])
+    segments.append(str(outro_mp4))
 
     # Prepare ffmpeg inputs: all video segments + the narration audio
     inputs: list[str] = []
@@ -149,7 +190,6 @@ def assemble(plan: dict, assets: dict, run_dir: Path) -> Path:
         "-crf", "23",
         "-c:a", "aac",
         "-b:a", "192k",
-        "-shortest",
         "-movflags", "+faststart",
         str(out),
     )

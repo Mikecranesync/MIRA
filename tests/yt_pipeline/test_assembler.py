@@ -12,24 +12,19 @@ import pytest
 def test_assemble_raises_on_ffmpeg_failure(tmp_path):
     """assemble() raises RuntimeError when ffmpeg returns non-zero exit code."""
     # Create minimal fake files for the assets dict
-    (tmp_path / "scene1.mp4").touch()
-    (tmp_path / "scene3.mp4").touch()
-    (tmp_path / "narration.mp3").touch()
     (tmp_path / "shot1.png").touch()
+    (tmp_path / "narration.mp3").touch()
 
     assets = {
-        "scene1_clip": str(tmp_path / "scene1.mp4"),
-        "scene3_clip": str(tmp_path / "scene3.mp4"),
         "screenshots": [str(tmp_path / "shot1.png")],
         "narration_audio": str(tmp_path / "narration.mp3"),
     }
     plan = {"title": "Test Title"}
     run_dir = tmp_path / "run"
 
-    # Mock subprocess.run to return a failure (returncode=1)
+    # Mock subprocess.run to return a failure (returncode=1) for ffmpeg,
+    # but success for ffprobe (duration probe)
     with patch("subprocess.run") as mock_run:
-        # PIL will call subprocess for the card rendering, allow that to pass.
-        # FFmpeg calls should fail.
         def side_effect(*args, **kwargs):
             cmd_args = args[0] if args else []
             if cmd_args and cmd_args[0] == "ffmpeg":
@@ -37,7 +32,12 @@ def test_assemble_raises_on_ffmpeg_failure(tmp_path):
                 result.returncode = 1
                 result.stderr = "ffmpeg boom"
                 return result
-            # For non-ffmpeg calls, return success
+            elif cmd_args and cmd_args[0] == "ffprobe":
+                # Return valid duration JSON for ffprobe
+                result = MagicMock(returncode=0, stdout='{"format": {"duration": "5.0"}}')
+                result.returncode = 0
+                return result
+            # For other calls, return success
             result = MagicMock(returncode=0, stdout="", stderr="")
             result.returncode = 0
             return result
@@ -71,13 +71,87 @@ def test_render_card_writes_png(tmp_path):
     shutil.which("ffmpeg") is None,
     reason="ffmpeg not installed"
 )
-def test_assemble_produces_playable_mp4(tmp_path):
-    """assemble() produces a valid MP4 with video and audio streams when given real inputs."""
+def test_assemble_produces_playable_mp4_screenshot_only(tmp_path):
+    """assemble() produces a valid MP4 with video and audio from screenshots + narration only (no B-roll)."""
     from PIL import Image
 
     from tools.yt_pipeline.assembler import assemble
 
-    # Create real B-roll clips with ffmpeg (720p, 24fps, 1 second each)
+    # Create 4 real PNGs of varied sizes
+    screenshots = []
+    sizes = [(800, 600), (1280, 720), (1920, 1080), (640, 480)]
+    colors = ["red", "green", "blue", "yellow"]
+    for i, (size, color) in enumerate(zip(sizes, colors)):
+        shot = tmp_path / f"shot_{i}.png"
+        img = Image.new("RGB", size, color)
+        img.save(shot)
+        screenshots.append(str(shot))
+
+    # Create a real MP3 (sine wave, 4 seconds)
+    narration_mp3 = tmp_path / "narration.mp3"
+    subprocess.run(
+        [
+            "ffmpeg", "-y",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=4",
+            str(narration_mp3),
+        ],
+        capture_output=True,
+        check=True,
+    )
+
+    # Build assets WITHOUT B-roll clips
+    assets = {
+        "screenshots": screenshots,
+        "narration_audio": str(narration_mp3),
+    }
+    plan = {"title": "Test YouTube Video"}
+    run_dir = tmp_path / "output"
+
+    # Call assemble
+    final = assemble(plan, assets, run_dir)
+
+    # Verify output file exists
+    assert final == run_dir / "final.mp4"
+    assert final.exists()
+    assert final.stat().st_size > 0
+
+    # Use ffprobe to verify video and audio streams exist
+    ffprobe_result = subprocess.run(
+        [
+            "ffprobe",
+            "-v", "quiet",
+            "-print_format", "json",
+            "-show_streams",
+            "-show_format",
+            str(final),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    info = json.loads(ffprobe_result.stdout)
+
+    # Verify streams
+    codec_types = {s["codec_type"] for s in info["streams"]}
+    assert "video" in codec_types, "Output must have a video stream"
+    assert "audio" in codec_types, "Output must have an audio stream"
+
+    # Verify format has duration >= narration (4s + title 3s + outro 5s, minus overlap from -shortest removal)
+    duration = float(info["format"]["duration"])
+    assert duration >= 4.0, f"Output duration {duration} must be >= 4.0s (narration)"
+
+
+@pytest.mark.skipif(
+    shutil.which("ffmpeg") is None,
+    reason="ffmpeg not installed"
+)
+def test_assemble_with_broll_bookends(tmp_path):
+    """assemble() produces a valid MP4 when B-roll scene1/scene3 clips are included in assets."""
+    from PIL import Image
+
+    from tools.yt_pipeline.assembler import assemble
+
+    # Create real B-roll clips with ffmpeg (720p, 1 second each)
     scene1_mp4 = tmp_path / "scene1.mp4"
     scene3_mp4 = tmp_path / "scene3.mp4"
 
@@ -103,13 +177,11 @@ def test_assemble_produces_playable_mp4(tmp_path):
         check=True,
     )
 
-    # Create 4 real PNGs of varied sizes
+    # Create 3 real PNGs
     screenshots = []
-    sizes = [(800, 600), (1280, 720), (1920, 1080), (640, 480)]
-    colors = ["red", "green", "blue", "yellow"]
-    for i, (size, color) in enumerate(zip(sizes, colors)):
+    for i, color in enumerate(["red", "green", "blue"]):
         shot = tmp_path / f"shot_{i}.png"
-        img = Image.new("RGB", size, color)
+        img = Image.new("RGB", (1280, 720), color)
         img.save(shot)
         screenshots.append(str(shot))
 
@@ -125,7 +197,7 @@ def test_assemble_produces_playable_mp4(tmp_path):
         check=True,
     )
 
-    # Build assets and plan
+    # Build assets WITH B-roll clips
     assets = {
         "scene1_clip": str(scene1_mp4),
         "scene3_clip": str(scene3_mp4),
@@ -164,5 +236,6 @@ def test_assemble_produces_playable_mp4(tmp_path):
     assert "video" in codec_types, "Output must have a video stream"
     assert "audio" in codec_types, "Output must have an audio stream"
 
-    # Verify format has duration
-    assert float(info["format"]["duration"]) > 0, "Output must have positive duration"
+    # Duration should include both B-roll clips
+    duration = float(info["format"]["duration"])
+    assert duration > 0, "Output must have positive duration"

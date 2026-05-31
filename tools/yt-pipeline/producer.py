@@ -41,8 +41,9 @@ _NARRATION_STYLE = (
 def select_screenshots(
     keywords: list[str],
     screenshots_dir: Path = _DEFAULT_SCREENSHOTS_DIR,
+    count: int = 4,
 ) -> list[Path]:
-    """Return up to 4 screenshots: keyword matches first, then most recent."""
+    """Return up to `count` screenshots: keyword matches first, then most recent."""
     all_shots = sorted(screenshots_dir.glob("*.png"), reverse=True)
     matches: list[Path] = []
     for kw in keywords:
@@ -51,11 +52,11 @@ def select_screenshots(
                 matches.append(shot)
                 break
     for shot in all_shots:
-        if len(matches) >= 4:
+        if len(matches) >= count:
             break
         if shot not in matches:
             matches.append(shot)
-    return matches[:4]
+    return matches[:count]
 
 
 def generate_broll(prompt: str, run_dir: Path, clip_name: str, api_key: str) -> Path:
@@ -124,17 +125,32 @@ def produce(
     byteplus_api_key: str,
     openai_api_key: str,
 ) -> dict:
-    """Generate all assets for a run. Returns asset path dict."""
+    """
+    Generate all assets for a run. Returns asset path dict.
+
+    If byteplus_api_key is empty/falsy, skips B-roll generation and omits
+    scene1_clip/scene3_clip from the returned dict.
+    """
     run_dir.mkdir(parents=True, exist_ok=True)
-    clip1 = generate_broll(plan["scene1_prompt"], run_dir, "scene1", byteplus_api_key)
-    clip3 = generate_broll(plan["scene3_prompt"], run_dir, "scene3", byteplus_api_key)
-    screenshots = select_screenshots(plan["scene3_screenshot_keywords"])
+
+    assets: dict = {}
+
+    # B-roll is optional; only generate if api_key is present
+    if byteplus_api_key:
+        clip1 = generate_broll(plan["scene1_prompt"], run_dir, "scene1", byteplus_api_key)
+        clip3 = generate_broll(plan["scene3_prompt"], run_dir, "scene3", byteplus_api_key)
+        assets["scene1_clip"] = str(clip1)
+        assets["scene3_clip"] = str(clip3)
+
+    # Select 12 screenshots to fill the narration slideshow
+    screenshots = select_screenshots(plan["scene3_screenshot_keywords"], count=12)
+
+    # Always synthesize narration
     narration_audio = synth_narration(
         plan["scene2_narration"], run_dir, api_key=openai_api_key
     )
-    return {
-        "scene1_clip": str(clip1),
-        "scene3_clip": str(clip3),
-        "screenshots": [str(s) for s in screenshots],
-        "narration_audio": str(narration_audio),
-    }
+
+    assets["screenshots"] = [str(s) for s in screenshots]
+    assets["narration_audio"] = str(narration_audio)
+
+    return assets
