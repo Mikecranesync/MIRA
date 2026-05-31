@@ -1,8 +1,27 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-05-31
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-05-31
+
+### Most actionable pattern for MIRA playbook
+MaintainX exits as an independent startup (Autodesk $3.575B all-cash, May 28). UpKeep is now the sole independent AI-native CMMS of scale. MIRA's "independent, focused, fast" framing gains urgency — brief window before consolidation closes the narrative. Augury's "Industrial AI Workforce" reframe is the closest competitor pivot to MIRA's diagnostic position; the "insight to action" hook is worth owning before Augury's sales team does.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — Autodesk acquisition ($3.575B all-cash, announced May 28): https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video — Bloomberg CEO interview; framing: "design → build → operate lifecycle"; M&A announcement, not a product launch
+
+**Predictive maintenance**
+- **Augury** — "Industrial AI Workforce" (May 18, 2026): https://www.augury.com/media-center/press/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce/ — style shift from "predictive maintenance" to "autonomous factory agents"; hook: "bridge the gap between insight to action"; new term: Industrial Context Graph; partners: Google Cloud Gemini + AVEVA CONNECT; no standalone YouTube video confirmed
+
+**B2B SaaS (pattern transfer)**
+- **Notion** — Developer Platform keynote (May 13, 2026): https://www.youtube.com/watch?v=rpE2rzKO6L0 — Ivan Zhao; hook: "Notion used to be a place to work in — now it's a place to build on"; platform-layer repositioning; accepts Claude Code, Cursor, Codex as native agents
+- **Stripe** — Sessions 2026 details now extracted (cache entry was blank): opening keynote https://www.youtube.com/watch?v=Nadf3MdJS-8; hook: "economic infrastructure for AI"; 288 products, 9,000 attendees; agent wallet: "authorize AI agents to make payments on your behalf"; Google AI Mode integration
 
 ---
 
@@ -86,6 +105,14 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Digitize Fast with MaintainX and AI": https://www.youtube.com/watch?v=X8cY-d-_KZM
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
+**Autodesk acquisition (announced May 28, 2026)**
+- Bloomberg CEO video: https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video
+- Deal: $3.575B all-cash; CEO Andrew Anagnost on Bloomberg Open Interest
+- Framing: "advancing unified platform in operations" — Autodesk claims the design → build → operate full lifecycle
+- Hook (search-derived): "MaintainX Acquisition Presents Exciting Opportunity" [exec sound bite, not verified]
+- CTA: none; M&A announcement
+- Market implication: MaintainX exits as an independent startup. UpKeep is now the only independent AI-native CMMS of scale. MaintainX's CMMS will compete as an Autodesk bundle, not a standalone product.
+
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
 
 ---
@@ -144,7 +171,17 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Distribution: Bloomberg Originals Genbiz Video Series — third-party credibility format
 - Footage style: real factory floor + exec interviews
 
-**Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+**Industrial AI Workforce launch (May 18, 2026)**
+- Press release: https://www.augury.com/media-center/press/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce/
+- No standalone YouTube video confirmed [transcript not verified]
+- Hook: "bridge the gap between insight to action" + "self-optimizing, adaptive production environments" [press release language]
+- New terminology: "Industrial Context Graph" — a dynamic context layer that connects machine health signals with operational, process, and environmental data; enables causal reasoning across the production system
+- Partners: Google Cloud Gemini (reasoning) + AVEVA CONNECT (operational data)
+- Role-based agents: tailored to maintenance, reliability, and operations roles
+- Showcased at AVEVA World, Milan
+- Style shift: Augury moves from "predictive maintenance" positioning to "autonomous factory agents" framing — the same agent-narrative lane UpKeep Nova entered in Sep 2025, now applied to hardware-first industrial AI
+
+**Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template. As of May 2026, a third track is emerging: analyst/press-release-first for platform positioning (Industrial AI Workforce), distinct from the YouTube demo channel.
 
 ---
 
@@ -254,9 +291,17 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026 keynote (~Apr 30, 2026)**
+- Opening keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8
+- Developer keynote: https://www.youtube.com/watch?v=m2omCJcrkE0
+- 12-min recap: https://www.youtube.com/watch?v=8F4XyWYqZi8
+- Full livestream: https://www.youtube.com/watch?v=e13-s0p1tfE
+- Hook: "economic infrastructure for AI" [newsroom language — opening hook not verified]
+- Scale: 288 new products, 9,000+ attendees at Moscone Center
+- Key launches: Link agent wallet ("authorize AI agents to make payments on your behalf"), Bridge open-issuance stablecoin platform, Google AI Mode partnership (sell to consumers inside Gemini app via Stripe)
+- VO register: founder (Collison brothers) + product exec (Will Gaybrick)
+- CTA: "available now" callouts within demo
+- Pattern note: Stripe completes the reframe from "payments infrastructure" to "AI agent financial layer" — agents are now autonomous economic actors with payment rails. Conference-as-launch-vehicle pattern continues; no standalone product ads.
 
 **Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
 
@@ -340,6 +385,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**Developer Platform launch (May 13, 2026)**
+- YouTube keynote: https://www.youtube.com/watch?v=rpE2rzKO6L0
+- Title: "Introducing Notion's Developer Platform: Keynote (Ivan Zhao)"
+- Hook: "Notion used to be a place to work in — now it's a place to build on." [search snippet — likely opening line]
+- Components: Notion Workers (hosted runtime), Notion CLI, External Agents API, Plan Mode (agent plans before acting)
+- Accepts Claude Code, Cursor, and Codex as native external agents; agents operate as visible participants in the workspace
+- VO register: founder
+- CTA: "Workers are free to try during beta; pricing begins Aug 11, 2026"
+- Pattern shift: from user-facing agent productivity (3.0: "you assign, agents do") to developer-facing orchestration platform; Notion repositions as the hub/mesh layer that coordinates AI agents, not just a beneficiary of agents
+
 ---
 
 ### Figma
@@ -385,16 +440,20 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| "From insight to action" (closes the gap between knowing and doing) | Augury Industrial AI Workforce: "bridge the gap between insight to action" | "MIRA doesn't just surface the fault — it tells you the next step while you're still on the phone" |
+| "Place to build on, not just work in" (platform-layer repositioning) | Notion Developer Platform: "place to work in → place to build on" | N/A — transferable only if MIRA opens a developer API / integration tier |
 
 ### Anti-patterns (avoid)
 
 - Corporate narration over stock footage of factories with no specific claim → forgettable (common among mid-market CMMS vendors)
 - Feature list VO without a single proof number → no hook, no memory
 - "AI-powered" as the lead without explaining what the AI specifically does → now invisible signal (every competitor uses it)
+- Partnership logo stack without a proof number or customer quote → press-release filler (emerging pattern: Augury/AVEVA/Google announcement has no named customer ROI yet)
 
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; exits as independent startup via Autodesk acquisition May 2026 ($3.575B). No longer a startup competitor — now an enterprise bundle.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience. As of May 2026, pivots again to autonomous-agent framing (Industrial AI Workforce) — third positioning layer added: platform/ecosystem rather than just hardware+AI.
+- **Notion**: pivoted from user-facing agent productivity (3.0 "you assign, agents do") to developer-facing orchestration platform (May 2026 "place to build on") — two major reframes in 8 months. Pattern: rapid narrative iteration as the agent market matures.
