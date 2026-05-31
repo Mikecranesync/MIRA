@@ -18,6 +18,17 @@ _UPLOAD_URL = (
 _CHUNK_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Prevent auto-following 3xx redirects so 308 "Resume Incomplete" raises HTTPError."""
+
+    def redirect_request(self, *args, **kwargs):  # noqa: ARG002
+        """Never auto-follow; surface 3xx as HTTPError for explicit control."""
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
 def _refresh_token(client_id: str, client_secret: str, refresh_token: str) -> str:
     """Exchange refresh token for access token via OAuth2."""
     data = urllib.parse.urlencode(
@@ -79,7 +90,7 @@ def upload(
             chunk_req.add_header("Content-Range", f"bytes {offset}-{end}/{video_size}")
             chunk_req.add_header("Content-Type", "video/mp4")
             try:
-                with urllib.request.urlopen(chunk_req) as resp:
+                with _OPENER.open(chunk_req) as resp:
                     if resp.status in (200, 201):
                         video_id = json.loads(resp.read())["id"]
                         log.info(
