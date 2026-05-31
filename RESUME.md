@@ -3,6 +3,17 @@
 **Last worked:** 2026-05-31. **Goal:** light up cloud reach so the Command Center on
 `app.factorylm.com` shows live plant HMIs (green dot + click-to-watch) for remote users.
 
+## SEE IT LIVE NOW (on CHARLIE, dev DB — verified working)
+Open **http://127.0.0.1:3991/** on CHARLIE → logs in → click Conveyor 1 (green dot) →
+live Fault Detective dashboard frames with moving values. Uses the DEV DB (tenant
+`e88bd0e8…`, display host `192.168.1.12:1880` = reachable). Verified liveCount=1 + a live
+WS frame through. These are TEMP servers (die on reboot): `:3990` hub (cc-view-worktree,
+`-c dev`, CSP_FRAME_SRC_DISPLAY_HOSTS=http://192.168.1.12:1880), `:3991` cookie-entry
+(`/tmp/cc_dev_entry.py`, token `/tmp/cc_dev_token.txt`). Restart: re-run those.
+⚠️ Do NOT use the staging `:3970/:3971` view — staging's row is `host=mira-bridge`
+(Docker-only name) → gray dot + blank frame from a standalone server.
+Cloud (`app.factorylm.com`) is NOT live yet — that's the deploy below.
+
 ## TL;DR state
 - **Code: DONE + verified** (staging/local). Phase 1 = PR **#1593** (`feat/hub-command-center` → main).
   Phase 2 = PR **#1603** (`feat/hub-command-center-phase2` → `feat/hub-command-center`, stacked).
