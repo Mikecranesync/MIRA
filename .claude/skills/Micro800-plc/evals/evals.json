@@ -1,0 +1,23 @@
+{
+  "skill_name": "Micro800-plc",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "My Micro 820 is talking to a GS10 over RS-485 but the drive never replies — the program builds fine and the PLC is in Run. I'm using a MSG_MODBUS2 block on the read. What's wrong and how do I fix it?",
+      "expected_output": "Identifies the MSG_MODBUS2 (TCP) vs MSG_MODBUS (RTU) inversion as the prime suspect for an RS-485 link, points to Channel verification (0 vs 2 / zero-TX symptom) and ErrorID 255 = config not downloaded, without re-inverting the lock-in.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Write the Structured Text for a Micro820 POU that reads the GS10 status block every 500ms and writes the command word when a direction switch changes, with a commissioning flag that disables writes while I prove comms.",
+      "expected_output": "Produces a poll loop with self-retriggering TON heartbeat, round-robin step scheduler, edge-triggered MSG_MODBUS (RTU) calls, COP into the write buffer, commissioning_mode write-disable, and an E-stop-gated command word. Uses correct GS10 registers/values and flags volatile constants to verify.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "What registers do I read on the GS10 to get output frequency and current, and what do I write to make it run forward at 30 Hz?",
+      "expected_output": "Gives the read block (output frequency 0x2103, output current 0x2104), the command word 0x2000 = 18 for FWD+RUN, and frequency setpoint 0x2001 = 300 (Hz x10), with the 'verify labels against the GS10 manual' caveat.",
+      "files": []
+    }
+  ]
+}
