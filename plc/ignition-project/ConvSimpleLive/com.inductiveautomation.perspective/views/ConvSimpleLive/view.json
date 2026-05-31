@@ -2,13 +2,15 @@
   "custom": {},
   "params": {},
   "props": {
-    "defaultSize": { "width": 960, "height": 600 }
+    "defaultSize": { "width": 960, "height": 880 }
   },
   "root": {
     "type": "ia.container.coord",
     "meta": { "name": "root" },
     "props": { "style": { "backgroundColor": "#10141a" } },
     "children": [
+      { "type": "ia.navigation.link", "meta": { "name": "nav_panel" }, "position": { "x": 24, "y": 1, "width": 120, "height": 18 }, "props": { "text": "PMC Station", "url": "/", "target": "self", "style": { "color": "#e6edf3", "fontSize": "12px", "fontWeight": 700, "textTransform": "uppercase", "borderBottom": "2px solid #39d353" } } },
+      { "type": "ia.navigation.link", "meta": { "name": "nav_conveyor" }, "position": { "x": 150, "y": 1, "width": 120, "height": 18 }, "props": { "text": "Conveyor", "url": "/conveyor", "target": "self", "style": { "color": "#8b949e", "fontSize": "12px", "fontWeight": 600, "textTransform": "uppercase" } } },
       {
         "type": "ia.display.label",
         "meta": { "name": "panel" },
@@ -111,7 +113,47 @@
         }
       },
 
-      { "type": "ia.display.label", "meta": { "name": "footer" }, "position": { "x": 60, "y": 520, "width": 840, "height": 22 }, "props": { "text": "Conv_Simple · Micro 820 · MIRA_PLC (CIP) · live OPC tags", "style": { "color": "#6b6147", "fontSize": "11px", "textAlign": "center" } } }
+      { "type": "ia.display.label", "meta": { "name": "footer" }, "position": { "x": 60, "y": 520, "width": 840, "height": 22 }, "props": { "text": "Conv_Simple · Micro 820 · MIRA_PLC (CIP) · live OPC tags", "style": { "color": "#6b6147", "fontSize": "11px", "textAlign": "center" } } },
+
+      { "type": "ia.display.label", "meta": { "name": "vfd_card" }, "position": { "x": 30, "y": 585, "width": 435, "height": 275 }, "props": { "text": "", "style": { "backgroundColor": "#161b22", "border": "1px solid #30363d", "borderRadius": "14px" } } },
+      { "type": "ia.display.label", "meta": { "name": "vfd_title" }, "position": { "x": 30, "y": 600, "width": 435, "height": 20 }, "props": { "text": "GS10 VFD", "style": { "color": "#8b949e", "fontSize": "13px", "fontWeight": 700, "textAlign": "center", "letterSpacing": "0.05em" } } },
+      { "type": "ia.display.label", "meta": { "name": "vfd_bezel" }, "position": { "x": 117, "y": 632, "width": 261, "height": 150 }, "props": { "text": "", "style": { "backgroundColor": "#1b1f24", "border": "2px solid #3a3f46", "borderRadius": "10px" } } },
+      { "type": "ia.display.label", "meta": { "name": "vfd_disp" }, "position": { "x": 135, "y": 648, "width": 225, "height": 58 }, "props": { "text": "", "style": { "backgroundColor": "#0a0a0a", "border": "1px solid #2a2a2a", "borderRadius": "5px" } } },
+      { "type": "ia.display.label", "meta": { "name": "vfd_freq" }, "position": { "x": 150, "y": 652, "width": 160, "height": 50 }, "props": { "text": "--.-", "style": { "color": "#ff3b30", "fontFamily": "Consolas, monospace", "fontSize": "40px", "fontWeight": 700, "textAlign": "right" } }, "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "numberFormat({[default]MIRA_IOCheck/VFD/vfd_frequency} / 100.0, \"0.0\")" } } } } },
+      { "type": "ia.display.label", "meta": { "name": "vfd_hz" }, "position": { "x": 315, "y": 672, "width": 40, "height": 24 }, "props": { "text": "Hz", "style": { "color": "#ff6b60", "fontFamily": "Consolas, monospace", "fontSize": "15px" } } },
+      { "type": "ia.display.label", "meta": { "name": "vfd_sub" }, "position": { "x": 135, "y": 712, "width": 225, "height": 18 }, "props": { "text": "- A   ·   - Vdc bus", "style": { "color": "#8a94a0", "fontFamily": "Consolas, monospace", "fontSize": "12px", "textAlign": "center" } }, "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "numberFormat({[default]MIRA_IOCheck/VFD/vfd_current} / 100.0, \"0.0\") + \" A   ·   \" + numberFormat({[default]MIRA_IOCheck/VFD/vfd_dc_bus} / 10.0, \"0\") + \" Vdc bus\"" } } } } },
+      { "type": "ia.display.label", "meta": { "name": "vfd_run" }, "position": { "x": 150, "y": 740, "width": 72, "height": 24 }, "props": { "text": "RUN", "style": { "backgroundColor": "#16341f", "color": "#6f9a80", "fontSize": "11px", "fontWeight": 700, "textAlign": "center", "borderRadius": "5px", "border": "1px solid #2a4d36" } }, "propConfig": { "props.style.backgroundColor": { "binding": { "type": "expr", "config": { "expression": "if(({[default]MIRA_IOCheck/VFD/vfd_frequency} / 100.0 > 0.1) || {[default]MIRA_IOCheck/VFD/vfd_cmd_word} = 18 || {[default]MIRA_IOCheck/VFD/vfd_cmd_word} = 20, \"#1a7f37\", \"#16341f\")" } } }, "props.style.color": { "binding": { "type": "expr", "config": { "expression": "if(({[default]MIRA_IOCheck/VFD/vfd_frequency} / 100.0 > 0.1) || {[default]MIRA_IOCheck/VFD/vfd_cmd_word} = 18 || {[default]MIRA_IOCheck/VFD/vfd_cmd_word} = 20, \"#ffffff\", \"#6f9a80\")" } } } } },
+      { "type": "ia.display.label", "meta": { "name": "vfd_stop" }, "position": { "x": 234, "y": 740, "width": 72, "height": 24 }, "props": { "text": "STOP", "style": { "backgroundColor": "#3a1414", "color": "#cccc99", "fontSize": "11px", "fontWeight": 700, "textAlign": "center", "borderRadius": "5px", "border": "1px solid #5a2020" } } },
+      { "type": "ia.display.label", "meta": { "name": "vfd_cmd" }, "position": { "x": 117, "y": 772, "width": 261, "height": 18 }, "props": { "text": "CMD: —", "style": { "color": "#8b949e", "fontSize": "12px", "fontWeight": 600, "textAlign": "center" } }, "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "\"CMD: \" + case({[default]MIRA_IOCheck/VFD/vfd_cmd_word}, 1, \"STOP\", 18, \"FWD · RUN\", 20, \"REV · RUN\", \"\" + {[default]MIRA_IOCheck/VFD/vfd_cmd_word})" } } } } },
+
+      { "type": "ia.display.label", "meta": { "name": "mlc_card" }, "position": { "x": 495, "y": 585, "width": 435, "height": 275 }, "props": { "text": "", "style": { "backgroundColor": "#161b22", "border": "1px solid #30363d", "borderRadius": "14px" } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_title" }, "position": { "x": 495, "y": 600, "width": 435, "height": 20 }, "props": { "text": "MLC1 — MAIN LINE CONTACTOR", "style": { "color": "#8b949e", "fontSize": "13px", "fontWeight": 700, "textAlign": "center", "letterSpacing": "0.05em" } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_body" }, "position": { "x": 620, "y": 632, "width": 185, "height": 150 }, "props": { "text": "", "style": { "backgroundColor": "#e9e9ea", "border": "2px solid #b7bbc0", "borderRadius": "9px" } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_lbl" }, "position": { "x": 620, "y": 640, "width": 185, "height": 16 }, "props": { "text": "MLC1", "style": { "color": "#1f1f22", "fontFamily": "Consolas, monospace", "fontSize": "13px", "fontWeight": 700, "textAlign": "center" } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_L1" }, "position": { "x": 636, "y": 662, "width": 14, "height": 10 }, "props": { "text": "L1", "style": { "color": "#555555", "fontSize": "8px", "textAlign": "right" } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_T1" }, "position": { "x": 636, "y": 736, "width": 14, "height": 10 }, "props": { "text": "T1", "style": { "color": "#555555", "fontSize": "8px", "textAlign": "right" } } },
+
+      { "type": "ia.display.label", "meta": { "name": "mlc_p1_top" }, "position": { "x": 657, "y": 662, "width": 10, "height": 10 }, "props": { "text": "", "style": { "backgroundColor": "#333333", "borderRadius": "50%" } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_p1_tstub" }, "position": { "x": 660, "y": 672, "width": 4, "height": 14 }, "props": { "text": "", "style": { "backgroundColor": "#333333" } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_p1_bar" }, "position": { "x": 657, "y": 686, "width": 10, "height": 36 }, "props": { "text": "", "style": { "backgroundColor": "#8a8f95", "borderRadius": "3px" } }, "propConfig": { "props.style.backgroundColor": { "binding": { "type": "expr", "config": { "expression": "if({[default]MIRA_IOCheck/Outputs/DO_02}, \"#1a9e44\", \"#8a8f95\")" } } } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_p1_bstub" }, "position": { "x": 660, "y": 722, "width": 4, "height": 14 }, "props": { "text": "", "style": { "backgroundColor": "#333333" } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_p1_bot" }, "position": { "x": 657, "y": 736, "width": 10, "height": 10 }, "props": { "text": "", "style": { "backgroundColor": "#333333", "borderRadius": "50%" } } },
+
+      { "type": "ia.display.label", "meta": { "name": "mlc_p2_top" }, "position": { "x": 707, "y": 662, "width": 10, "height": 10 }, "props": { "text": "", "style": { "backgroundColor": "#333333", "borderRadius": "50%" } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_p2_tstub" }, "position": { "x": 710, "y": 672, "width": 4, "height": 14 }, "props": { "text": "", "style": { "backgroundColor": "#333333" } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_p2_bar" }, "position": { "x": 707, "y": 686, "width": 10, "height": 36 }, "props": { "text": "", "style": { "backgroundColor": "#8a8f95", "borderRadius": "3px" } }, "propConfig": { "props.style.backgroundColor": { "binding": { "type": "expr", "config": { "expression": "if({[default]MIRA_IOCheck/Outputs/DO_02}, \"#1a9e44\", \"#8a8f95\")" } } } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_p2_bstub" }, "position": { "x": 710, "y": 722, "width": 4, "height": 14 }, "props": { "text": "", "style": { "backgroundColor": "#333333" } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_p2_bot" }, "position": { "x": 707, "y": 736, "width": 10, "height": 10 }, "props": { "text": "", "style": { "backgroundColor": "#333333", "borderRadius": "50%" } } },
+
+      { "type": "ia.display.label", "meta": { "name": "mlc_p3_top" }, "position": { "x": 757, "y": 662, "width": 10, "height": 10 }, "props": { "text": "", "style": { "backgroundColor": "#333333", "borderRadius": "50%" } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_p3_tstub" }, "position": { "x": 760, "y": 672, "width": 4, "height": 14 }, "props": { "text": "", "style": { "backgroundColor": "#333333" } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_p3_bar" }, "position": { "x": 757, "y": 686, "width": 10, "height": 36 }, "props": { "text": "", "style": { "backgroundColor": "#8a8f95", "borderRadius": "3px" } }, "propConfig": { "props.style.backgroundColor": { "binding": { "type": "expr", "config": { "expression": "if({[default]MIRA_IOCheck/Outputs/DO_02}, \"#1a9e44\", \"#8a8f95\")" } } } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_p3_bstub" }, "position": { "x": 760, "y": 722, "width": 4, "height": 14 }, "props": { "text": "", "style": { "backgroundColor": "#333333" } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_p3_bot" }, "position": { "x": 757, "y": 736, "width": 10, "height": 10 }, "props": { "text": "", "style": { "backgroundColor": "#333333", "borderRadius": "50%" } } },
+
+      { "type": "ia.display.label", "meta": { "name": "mlc_coil" }, "position": { "x": 706, "y": 752, "width": 12, "height": 12 }, "props": { "text": "", "style": { "backgroundColor": "#555555", "borderRadius": "50%", "border": "1px solid #333333" } }, "propConfig": { "props.style.backgroundColor": { "binding": { "type": "expr", "config": { "expression": "if({[default]MIRA_IOCheck/Outputs/DO_02}, \"#3fb950\", \"#555555\")" } } } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_coil_lbl" }, "position": { "x": 722, "y": 753, "width": 40, "height": 12 }, "props": { "text": "coil", "style": { "color": "#555555", "fontSize": "9px" } } },
+      { "type": "ia.display.label", "meta": { "name": "mlc_state" }, "position": { "x": 620, "y": 792, "width": 185, "height": 18 }, "props": { "text": "—", "style": { "fontSize": "13px", "fontWeight": 700, "textAlign": "center", "color": "#8b949e" } }, "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "if({[default]MIRA_IOCheck/Outputs/DO_02}, \"CLOSED · ENERGIZED\", \"OPEN · DE-ENERGIZED\")" } } }, "props.style.color": { "binding": { "type": "expr", "config": { "expression": "if({[default]MIRA_IOCheck/Outputs/DO_02}, \"#3fb950\", \"#8b949e\")" } } } } }
     ]
   }
 }

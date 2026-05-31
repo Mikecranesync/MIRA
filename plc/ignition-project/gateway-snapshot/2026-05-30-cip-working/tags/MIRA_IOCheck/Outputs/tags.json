@@ -1,0 +1,70 @@
+[
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]_IO_EM_DO_04",
+    "dataType": "Boolean",
+    "name": "DO_04",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]_IO_EM_DO_00",
+    "dataType": "Boolean",
+    "documentation": "Embedded DO-00 — green lamp (prod wiring)",
+    "name": "DO_00",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]_IO_EM_DO_01",
+    "dataType": "Boolean",
+    "documentation": "Embedded DO-01 — red lamp (prod wiring)",
+    "name": "DO_01",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]_IO_EM_DO_03",
+    "dataType": "Boolean",
+    "documentation": "Embedded DO-03 — pushbutton indicator LED",
+    "name": "DO_03",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]_IO_EM_DO_06",
+    "dataType": "Boolean",
+    "name": "DO_06",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]_IO_EM_DO_02",
+    "dataType": "Boolean",
+    "documentation": "Embedded DO-02 — SAFETY CONTACTOR Q1 (keep mains off during Step 1)",
+    "name": "DO_02",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]_IO_EM_DO_05",
+    "dataType": "Boolean",
+    "name": "DO_05",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]_IO_EM_DO_07",
+    "dataType": "Boolean",
+    "name": "DO_07",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  }
+]
