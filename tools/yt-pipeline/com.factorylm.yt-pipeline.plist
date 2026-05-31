@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  YouTube content pipeline — Bravo daily trigger.
+
+  PREREQUISITES (one-time, before loading):
+    1. ffmpeg/ffprobe installed (Homebrew, /opt/homebrew/bin) — already done.
+    2. The full pipeline needs BOTH of these in the SAME Doppler config
+       (this plist uses factorylm/prd):
+         - BYTEPLUS_API_KEY          (Seedance B-roll; present in prd)
+         - YOUTUBE_REFRESH_TOKEN_ISH (Industrial Skills Hub channel;
+                                      currently ONLY in dev — add it to prd)
+       The dry-run only needs GROQ_API_KEY (present in prd).
+    3. Uploads default to PRIVATE. To publish publicly, set AUTO_PUBLISH=true
+       in factorylm/prd (absent today → defaults to "false").
+
+  Install on BRAVO:
+    cp tools/yt-pipeline/com.factorylm.yt-pipeline.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.factorylm.yt-pipeline.plist
+
+  Verify:
+    launchctl list | grep yt-pipeline
+    tail -f /tmp/yt-pipeline-stderr.log
+
+  One-shot dry-run through launchctl (planner only — no Seedance/upload):
+    launchctl unload ~/Library/LaunchAgents/com.factorylm.yt-pipeline.plist
+    # append <string>--dry-run</string> to ProgramArguments below, reload, then:
+    launchctl start com.factorylm.yt-pipeline
+
+  Pause:  touch /tmp/yt-pipeline/PAUSED
+  Resume: rm /tmp/yt-pipeline/PAUSED
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.factorylm.yt-pipeline.plist
+    rm ~/Library/LaunchAgents/com.factorylm.yt-pipeline.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.factorylm.yt-pipeline</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-c</string>
+    <string>cd /Users/bravonode/Mira &amp;&amp; /usr/local/bin/doppler run --project factorylm --config prd -- /opt/homebrew/bin/python3.12 -m tools.yt_pipeline.main 2&gt;&gt;/tmp/yt-pipeline-stderr.log</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/bravonode/Mira</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <!-- Fire daily at 2:00 AM; main.py enforces the 48h interval internally -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>2</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/yt-pipeline-stdout.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/yt-pipeline-stderr.log</string>
+</dict>
+</plist>
