@@ -1235,3 +1235,29 @@ resolved, the pipeline runs **screenshot-only** — no Seedance dependency.
   final.mp4 has video+audio and duration ≥ narration duration.
 
 This also supersedes the earlier `-shortest` truncation note in section B.
+
+### E. Draft mode — narration optional, silent video + script for manual narration (2026-05-31)
+
+OpenAI TTS is ALSO payment-blocked (both `dev` and `prd` keys return 429
+`insufficient_quota`). Decision (user): ship a **silent** video for now and
+emit the narration **script** so the user narrates manually until voice/billing
+is fixed. Don't auto-publish silent videos.
+
+- **Narration optional, gated on `OPENAI_API_KEY`** (mirrors B-roll/BytePlus):
+  `produce()` calls `synth_narration` only when `openai_api_key` is truthy →
+  `assets["narration_audio"]`. When falsy, it skips TTS and omits that key.
+  Either way it ALWAYS writes `narration_script.txt` (= `plan["scene2_narration"]`)
+  into the run dir and returns `assets["narration_script"]`.
+- **Assembler silent path:** when `narration_audio` is absent, `assemble()`
+  builds a SILENT video (no audio map). Slideshow length is estimated from the
+  script's word count (`max(30, words/150*60)` seconds) so the silent video is
+  about as long as the user's eventual read-through. When `narration_audio` is
+  present, the narration-driven path from section D applies.
+- **main.py draft persistence:** `OPENAI_API_KEY` read becomes
+  `os.environ.get(..., "")`. After assembly, if there's no narration audio,
+  DON'T upload — copy `final.mp4`, `narration_script.txt`, and a `meta.txt`
+  (title / description / tags for manual upload) into
+  `YT_DRAFTS_DIR` (default `~/yt-pipeline-drafts/<YYYYMMDD-HHMM>_<slug>/`),
+  log the path, advance `next_angle_index`, and record a `drafts` entry in
+  calendar. Upload still runs only for voiced videos with YouTube creds present.
+  Persist BEFORE the `finally` run-dir cleanup.
