@@ -1,0 +1,36 @@
+# tools/yt-pipeline/topics.yaml
+topics:
+  vfd_troubleshooting:
+    angles:
+      - "Why your VFD keeps tripping on overcurrent — 5 causes and how to fix them"
+      - "How to set Modbus RTU parameters on a GS10 variable frequency drive"
+      - "VFD parameter backup and restore — never lose your settings after a drive replacement"
+      - "How to size a VFD for your motor — nameplate math that saves drives"
+
+  plc_basics:
+    angles:
+      - "Ladder logic rungs explained — how a PLC reads your program every scan"
+      - "How to read a Micro820 I/O map and wire your first discrete input"
+      - "Simulating a conveyor sort-by-height in Factory I/O — step by step"
+      - "Debugging a stuck output coil — the 3-minute method that finds it every time"
+
+  preventive_maintenance:
+    angles:
+      - "How to build a conveyor PM checklist that actually prevents failures"
+      - "Bearing replacement intervals — what the OEM manual doesn't tell you"
+      - "How MIRA AI auto-generates a PM schedule from your equipment manuals"
+      - "Vibration analysis basics — what your phone's accelerometer can tell you about a motor"
+
+  nameplates_manuals:
+    angles:
+      - "How to read a motor nameplate — every field explained for maintenance techs"
+      - "How to upload an OEM manual to MIRA and ask it fault code questions"
+      - "What to do when the nameplate is missing — finding specs from model number alone"
+      - "Understanding a VFD manual — the 4 sections every tech needs to know"
+
+  mira_demos:
+    angles:
+      - "MIRA AI diagnoses a VFD overcurrent fault live — watch it pull the fix in seconds"
+      - "Auto-generating a work order from a fault code with MIRA"
+      - "How MIRA uses QR codes to pull up asset history on your phone"
+      - "Uploading a wiring diagram and asking MIRA where to check first"
