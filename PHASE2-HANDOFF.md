@@ -49,9 +49,21 @@ Command Center page. Register any web HMI by host/IP.
   DELETE 200 (after migration 031). Staging left clean (1 row, the real conveyor).
 - `tsc` clean for all Phase-2 files; eslint clean.
 
+## Honest status of the cloud chain
+
+The **Charlie proxy hop** and the **Hub redirect/authz/CRUD** are independently verified
+(real WS through the proxy; CRUD on staging). The **VPS nginx leg that glues them is
+drafted + syntax-validated, NOT exercised end-to-end** — the composed cloud chain
+(VPS→Tailscale→Charlie→HMI) has never run. The diff was `nginx -t`-checked in a harness
+reproducing the prod http{} scope; that caught a real bug (missing `$connection_upgrade`
+map → reload would've failed) now folded in. "Staging-proven; cloud chain syntax-checked
+but unexercised pending the gated VPS deploy."
+
 ## NOT done (prod boundary — deliberate)
 
-- VPS nginx change is a **reviewed diff**, not live-applied. Apply via the gated deploy.
+- VPS nginx change is a **reviewed, syntax-validated diff**, not live-applied and not run
+  end-to-end. Apply via the gated deploy. It REQUIRES the `map $http_upgrade
+  $connection_upgrade` line (see the diff header — prod lacks it today).
 - Migration 031 applied to **staging** only — promote dev→staging→prod via
   `apply-migrations.yml` (dry-run first). 030 must also be on prod before this.
 - **Full cloud verification waits on the VPS nginx deploy** (the mixed-content/LAN-reach

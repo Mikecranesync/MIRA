@@ -67,8 +67,26 @@
         proxy_set_header X-Original-URI $request_uri;
     }
 
-# NB: this server block needs the WS upgrade map (already implied by the existing
-# `Connection "upgrade"` usage). If `$connection_upgrade` is not yet defined at
-# http{} scope, add once:
+# ── REQUIRED: add this once at http{} scope (NOT inside the server block) ─────────
+# The existing /__staging/ and / blocks use the LITERAL `Connection "upgrade"`, so
+# the prod nginx has NO `$connection_upgrade` map defined. Verified: without this,
+# `nginx -t` fails with [emerg] unknown "connection_upgrade" variable and the reload
+# is rejected. Add it (idempotent — skip if a later edit already added one):
+#
 #     map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+#
+# ──────────────────────────────────────────────────────────────────────────────
+#
+# VALIDATION STATUS (honest): the two location blocks + the map above PASS
+# `nginx -t` in an nginx:1.27-alpine harness that reproduces the prod http{} scope
+# (no pre-existing map). auth_request with the variable URI `/__cc_authz/$cc_id` is
+# accepted (nginx ≥1.13.10 interpolates variables there). This is a SYNTAX + variable
+# check only — the composed cloud chain (VPS→Tailscale→Charlie→HMI) has NOT been run
+# end-to-end; that requires the gated VPS deploy + mira-proxy up on Charlie. Treat
+# this diff as "drafted + syntax-validated, not exercised end-to-end."
+#
+# TUNING NOTE: auth_request fires on EVERY subrequest under /cc-display/ (each SPA
+# asset + each poll → one per-tenant NeonDB query). On an asset-heavy dashboard that's
+# many auth hits (VPS has OOM history). Consider a short auth cache or gating only the
+# top-level document at deploy time. Correctness is unaffected; this is throughput.
 # ──────────────────────────────────────────────────────────────────────────────
