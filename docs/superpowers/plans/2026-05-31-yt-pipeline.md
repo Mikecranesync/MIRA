@@ -1208,3 +1208,30 @@ output. Mocked `subprocess.run` never catches this. Corrections:
 Add `openai_key = os.environ["OPENAI_API_KEY"]` and call
 `produce(plan, run_dir, byteplus_api_key=byteplus_key, openai_api_key=openai_key)`.
 The launchd plist already runs under `doppler run`, so the key is present.
+
+### D. Seedance B-roll is OPTIONAL; slideshow length is narration-driven (2026-05-31, post-build)
+
+BytePlus rejected the account's payment ("out of region"; email sent). Until
+resolved, the pipeline runs **screenshot-only** — no Seedance dependency.
+
+- **B-roll gated on `BYTEPLUS_API_KEY`.** `produce()` treats the key as optional:
+  if truthy → generate scene1/scene3 clips as before; if falsy/absent → skip
+  them and omit `scene1_clip`/`scene3_clip` from the assets dict. This means
+  BytePlus re-enables with zero code change once the key is set. `main.py` reads
+  it with `os.environ.get("BYTEPLUS_API_KEY", "")` (no longer required).
+- **`select_screenshots` gains a `count` param** (default 4 to keep existing
+  tests valid); `produce()` requests ~12 so the slideshow can fill the narration.
+- **Assembler drives slideshow duration from narration length.** `assemble()`
+  `ffprobe`s the narration MP3 (duration D), sizes the screenshot slideshow so
+  per-shot = D / N (total slideshow ≈ D), and **drops `-shortest`** so the full
+  video (title + slideshow + optional B-roll + outro) plays and narration is no
+  longer truncated. Timeline when no B-roll: `title(3s) → slideshow(≈D) →
+  outro(5s)`, narration muxed from t=0. B-roll bookends are added only when the
+  clips are present in assets.
+- **Tests:** existing `select_screenshots` tests unchanged (count default 4);
+  add a producer test that `produce()` with a falsy byteplus key does NOT call
+  `generate_broll` and omits the clip keys; the assembler real-bytes test now
+  covers the **screenshot-only** path (PNGs + narration, no B-roll) and asserts
+  final.mp4 has video+audio and duration ≥ narration duration.
+
+This also supersedes the earlier `-shortest` truncation note in section B.
