@@ -1,0 +1,74 @@
+# Command Center cloud-reach — VPS nginx change (REVIEWED DIFF, do NOT live-edit)
+#
+# Adds the same-origin `/cc-display/{id}/…` path to the app.factorylm.com server
+# block. This is the cloud leg of Phase 2: it authorizes per-tenant via the Hub
+# (auth_request) and then WS-proxies to Charlie's mira-proxy over Tailscale.
+#
+# Apply via the gated deploy (NOT by hand on the box):
+#   - land this in deployment/nginx-app-factorylm.conf (insert the location block
+#     shown below into the `server { server_name app.factorylm.com; … }` block,
+#     ABOVE the catch-all `location / { … }`), then deploy through the normal
+#     nginx-deploy path (scp + `nginx -t && nginx -s reload`) as part of a release.
+#   - Prereqs on the box: mira-hub sets COMMAND_CENTER_CLOUD_PROXY=1 (and optionally
+#     COMMAND_CENTER_CLOUD_PROXY_PREFIX, default /cc-display); Charlie's mira-proxy
+#     is up and reachable at 100.70.49.126:8889 over Tailscale; the proxy allowlist
+#     has been generated from the PROD display_endpoints.
+#
+# Security model:
+#   - auth_request → mira-hub /api/command-center/display/$id/authz: per-tenant RLS
+#     check (200/401/403). nginx forwards the browser's session cookie so the Hub
+#     sees the real user. A 401/403 blocks the proxy_pass entirely.
+#   - Charlie's mira-proxy holds the display_endpoints host allowlist (SSRF gate):
+#     an unknown id → 404 there, never an open relay.
+#   - GET/HEAD/WS only (read-only product). The proxy also enforces this.
+#
+# WS: the Upgrade/Connection headers below are what keep the dashboard LIVE — this
+# is the make-or-break detail (a non-WS proxy renders a frozen page). The pattern
+# mirrors the existing /__staging/ and / blocks already in this file.
+
+# ── INSERT into server{ server_name app.factorylm.com } ABOVE `location / {` ──────
+
+    # Command Center live-display proxy (Phase 2 cloud reach).
+    # /cc-display/{uuid}/<rest> → authz at the Hub, then WS-proxy to Charlie.
+    location ~ "^/cc-display/(?<cc_id>[0-9a-fA-F-]+)(?<cc_rest>/.*|)$" {
+        # Per-tenant authorization happens at the Hub. The subrequest URI must be
+        # internal-only so it can't be called directly with a forged path.
+        auth_request /__cc_authz/$cc_id;
+
+        # Read-only: only GET/HEAD (WS arrives as GET + Upgrade).
+        limit_except GET HEAD { deny all; }
+
+        # Forward to Charlie's on-prem proxy over Tailscale. The proxy resolves
+        # {id} → allowlisted host:port and forwards $cc_rest unchanged.
+        set $cc_rest_fwd $cc_rest;
+        if ($cc_rest_fwd = "") { set $cc_rest_fwd /; }
+        proxy_pass http://100.70.49.126:8889/display/$cc_id$cc_rest_fwd$is_args$args;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;   # ← WS upgrade (make-or-break)
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 75s;
+        proxy_buffering off;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+    }
+
+    # Internal auth subrequest → Hub per-tenant check. Not reachable externally.
+    location ~ "^/__cc_authz/(?<authz_id>[0-9a-fA-F-]+)$" {
+        internal;
+        proxy_pass http://127.0.0.1:3101/api/command-center/display/$authz_id/authz;
+        proxy_pass_request_body off;            # authz needs no body
+        proxy_set_header Content-Length "";
+        proxy_set_header Host $host;
+        proxy_set_header Cookie $http_cookie;   # carry the session for RLS
+        proxy_set_header X-Original-URI $request_uri;
+    }
+
+# NB: this server block needs the WS upgrade map (already implied by the existing
+# `Connection "upgrade"` usage). If `$connection_upgrade` is not yet defined at
+# http{} scope, add once:
+#     map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+# ──────────────────────────────────────────────────────────────────────────────

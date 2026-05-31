@@ -1,0 +1,7 @@
+# EXAMPLE generated allowlist (real file is conf.d/allowlist.conf, gitignored).
+# Produced by: doppler run -p factorylm -c <env> -- python mira-proxy/gen_allowlist.py
+map $display_id $upstream {
+    default '';
+    "00000000-0000-0000-0000-000000000000" "192.168.1.12:1880";
+}
+# 1 display(s) allowlisted.

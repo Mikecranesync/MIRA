@@ -1,0 +1,30 @@
+# mira-proxy — Command Center on-prem display proxy (Charlie, cloud-reach phase).
+# Thin WS-capable reverse proxy with an SSRF allowlist from display_endpoints.
+# See mira-proxy/README.md. Read-only (GET/HEAD/WS only).
+#
+# Bound to Charlie's Tailscale IP so only tailnet peers (the VPS) reach it — never
+# 0.0.0.0. Mem-limited per the Charlie/VPS OOM history (docling/celery incidents).
+services:
+  mira-proxy:
+    image: nginx:1.27-alpine          # pinned (no :latest) per security-boundaries.md
+    container_name: mira-proxy
+    restart: unless-stopped
+    # Tailscale IP only. The VPS reaches this over the tailnet; nothing else can.
+    ports:
+      - "100.70.49.126:8889:8889"
+    volumes:
+      - ./mira-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./mira-proxy/conf.d:/etc/nginx/conf.d:ro
+    mem_limit: 64m
+    mem_reservation: 16m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8889/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
