@@ -550,3 +550,10 @@ Mitsubishi Electric: 16 chunks (NULL model)
 - Scorecard: 33/57 passing (58%) — `tests/eval/runs/2026-05-29T0058-offline-text.md`
 - Action: issue-filed (#1583) — autopatch skipped (24 patchable > 15 limit AND 3 file clusters)
 - Systemic FSM/UNS-gate regression band (64%→56%→58% over last 3 runs), not a single patchable cluster. Dominant symptoms: sessions stuck at AWAITING_UNS_CONFIRMATION (expect Q1/Q2/DIAGNOSIS) and find-manual fixtures landing in ASSET_IDENTIFIED instead of IDLE. NOTE: `last_response_snippet` empty for every failure — offline runner not capturing final response; fix that before diagnosing.
+
+## eval-fixer run — 2026-05-31
+- Scorecard: 34/57 passing (59%) — `tests/eval/runs/2026-05-31T0158-offline-text.md`
+- Action: issue-filed (commented on canonical #1583, no new duplicate)
+- Chronic FSM/UNS-gate regression band continues. 23 patchable failures, 3 file clusters → both autopatch hard-stops tripped (>15 failures; >1 file). Same A–E clusters as #1583.
+- Key finding: ~15pt pass-rate swing across 5 runs on 2026-05-30 (49–64%) with no code changes → eval is non-deterministic; judge fixes against a multi-run mean, not one scorecard. Empty `last_response_snippet` is a watchdog parsing artifact (no transcript column in scorecard), NOT empty responses.
+- Human decision still pending (#1583 step 1): are cluster-A/B fixtures stale vs the UNS gate, or did the gate regress?
