@@ -73,6 +73,17 @@ QUESTION_TIMEOUT_S = 60.0
 GROQ_JUDGE_MODEL = os.getenv("STAGING_JUDGE_MODEL", "llama-3.3-70b-versatile")
 GROQ_BASE = os.getenv("GROQ_API_BASE", "https://api.groq.com/openai/v1")
 
+# Judge cascade (R2). The staging-gate previously hard-coded Groq as the
+# only judge; a Groq outage halted every PR merge. We try providers in
+# order, falling through on 5xx / 429 / timeout / connect-error. A provider
+# is skipped silently if its API key is unset. Fail closed only if ALL
+# configured providers fail. The provider that scored each reply is tagged
+# in `Score.judge_reason` for PR-comment debuggability.
+CEREBRAS_JUDGE_MODEL = os.getenv("STAGING_JUDGE_CEREBRAS_MODEL", "llama-3.3-70b")
+CEREBRAS_BASE = os.getenv("CEREBRAS_API_BASE", "https://api.cerebras.ai/v1")
+GEMINI_JUDGE_MODEL = os.getenv("STAGING_JUDGE_GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_BASE = os.getenv("GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai")
+
 
 # ---------------------------------------------------------------------------
 # Data shapes
@@ -212,8 +223,16 @@ def build_supervisor() -> Supervisor:
 
 
 # ---------------------------------------------------------------------------
-# Judge — direct Groq call, OpenAI-compatible
+# Judge — cascade of OpenAI-compatible providers (Groq → Cerebras → Gemini)
 # ---------------------------------------------------------------------------
+
+
+@dataclass
+class JudgeProvider:
+    name: str
+    api_base: str
+    model: str
+    api_key_env: str
 
 
 JUDGE_SYSTEM = (
@@ -283,9 +302,29 @@ def _parse_judge(raw: str) -> Score:
     return score
 
 
+def _judge_providers() -> list[JudgeProvider]:
+    """Return providers whose API keys are set, in cascade order."""
+    candidates = [
+        JudgeProvider("groq", GROQ_BASE, GROQ_JUDGE_MODEL, "GROQ_API_KEY"),
+        JudgeProvider("cerebras", CEREBRAS_BASE, CEREBRAS_JUDGE_MODEL, "CEREBRAS_API_KEY"),
+        JudgeProvider("gemini", GEMINI_BASE, GEMINI_JUDGE_MODEL, "GEMINI_API_KEY"),
+    ]
+    return [p for p in candidates if os.environ.get(p.api_key_env, "").strip()]
+
+
+# Status codes that mean "try next provider" — transient or capacity issues.
+_RETRYABLE_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+
 async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str) -> Score:
-    body = {
-        "model": GROQ_JUDGE_MODEL,
+    providers = _judge_providers()
+    if not providers:
+        raise RuntimeError(
+            "no judge providers configured — set at least one of "
+            "GROQ_API_KEY / CEREBRAS_API_KEY / GEMINI_API_KEY"
+        )
+
+    base_body = {
         "messages": [
             {"role": "system", "content": JUDGE_SYSTEM},
             {
@@ -299,18 +338,57 @@ async def judge_reply(client: httpx.AsyncClient, question: Question, reply: str)
             },
         ],
         "temperature": 0,
-        "max_tokens": 160,
-        "response_format": {"type": "json_object"},
+        "max_tokens": 200,
     }
-    headers = {
-        "Authorization": f"Bearer {os.environ['GROQ_API_KEY']}",
-        "Content-Type": "application/json",
-    }
-    resp = await client.post(f"{GROQ_BASE}/chat/completions", json=body, headers=headers)
-    resp.raise_for_status()
-    data = resp.json()
-    raw = data["choices"][0]["message"]["content"]
-    return _parse_judge(raw)
+
+    attempts: list[str] = []
+    for provider in providers:
+        body: dict[str, object] = dict(base_body, model=provider.model)
+        # Groq strictly supports response_format=json_object; Cerebras + Gemini
+        # accept it on recent models but a stricter validator may reject it.
+        # _parse_judge() regex-extracts JSON from any wrapper, so we send the
+        # hint only to Groq and rely on parsing for the others.
+        if provider.name == "groq":
+            body["response_format"] = {"type": "json_object"}
+        headers = {
+            "Authorization": f"Bearer {os.environ[provider.api_key_env]}",
+            "Content-Type": "application/json",
+        }
+        try:
+            resp = await client.post(
+                f"{provider.api_base}/chat/completions",
+                json=body,
+                headers=headers,
+            )
+        except (httpx.TimeoutException, httpx.ConnectError, httpx.RemoteProtocolError) as exc:
+            attempts.append(f"{provider.name}={type(exc).__name__}")
+            logger.warning("judge %s transport error: %s — trying next", provider.name, exc)
+            continue
+        if resp.status_code in _RETRYABLE_STATUSES:
+            attempts.append(f"{provider.name}=HTTP{resp.status_code}")
+            logger.warning(
+                "judge %s HTTP %s — trying next", provider.name, resp.status_code
+            )
+            continue
+        try:
+            resp.raise_for_status()
+            data = resp.json()
+            raw = data["choices"][0]["message"]["content"]
+            score = _parse_judge(raw)
+        except (httpx.HTTPStatusError, KeyError, ValueError, RuntimeError) as exc:
+            attempts.append(f"{provider.name}={type(exc).__name__}")
+            logger.warning("judge %s parse/status error: %s — trying next", provider.name, exc)
+            continue
+        # Tag the winning provider on the score so the PR comment can show it.
+        tag = f"[{provider.name}]"
+        score.judge_reason = (
+            f"{tag} {score.judge_reason}".strip() if score.judge_reason else tag
+        )
+        return score
+
+    raise RuntimeError(
+        f"all judge providers failed: tried={attempts or 'none'}"
+    )
 
 
 # ---------------------------------------------------------------------------
