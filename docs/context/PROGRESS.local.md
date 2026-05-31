@@ -16,4 +16,806 @@ from `.claude/settings.json`.
 - ?? tests/eval/runs/2026-05-27T1817-offline-text.md
 - ?? tests/eval/runs/2026-05-27T2234-offline-text.md
 **Next:** _set by next session_
+
+### 2026-05-29 03:18 UTC — `main`
+**Last commit:** a14f2083 fix(hub): login form accessibility — htmlFor, method=post, min-w on submit (#1581)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- ?? wiki/reviews/2026-05-28-app.factorylm.com.md
+**Next:** _set by next session_
+
+### 2026-05-29 04:30 UTC — `fix/web-review-login-and-tooling`
+**Last commit:** bf03f6a9 feat(hub): authenticated review tooling for the auth-gated Hub
+**Changed (vs. fork point):**
+- .claude/skills/web-review/SKILL.md
+- mira-hub/docs/authenticated-review.md
+- mira-hub/scripts/capture-review-session.ts
+- mira-hub/src/app/login/login-form.tsx
+- wiki/reviews/2026-05-28-app.factorylm.com.md
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 11:20 UTC — `fix/web-review-login-and-tooling`
+**Last commit:** bf03f6a9 feat(hub): authenticated review tooling for the auth-gated Hub
+**Changed (vs. fork point):**
+- .claude/skills/web-review/SKILL.md
+- mira-hub/docs/authenticated-review.md
+- mira-hub/scripts/capture-review-session.ts
+- mira-hub/src/app/login/login-form.tsx
+- wiki/reviews/2026-05-28-app.factorylm.com.md
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 13:41 UTC — `fix/web-review-login-and-tooling`
+**Last commit:** bf03f6a9 feat(hub): authenticated review tooling for the auth-gated Hub
+**Changed (vs. fork point):**
+- .claude/skills/web-review/SKILL.md
+- mira-hub/docs/authenticated-review.md
+- mira-hub/scripts/capture-review-session.ts
+- mira-hub/src/app/login/login-form.tsx
+- wiki/reviews/2026-05-28-app.factorylm.com.md
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 13:59 UTC — `fix/web-review-login-and-tooling`
+**Last commit:** bf03f6a9 feat(hub): authenticated review tooling for the auth-gated Hub
+**Changed (vs. fork point):**
+- .claude/skills/web-review/SKILL.md
+- mira-hub/docs/authenticated-review.md
+- mira-hub/scripts/capture-review-session.ts
+- mira-hub/src/app/login/login-form.tsx
+- wiki/reviews/2026-05-28-app.factorylm.com.md
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 14:12 UTC — `fix/web-review-login-and-tooling`
+**Last commit:** bf03f6a9 feat(hub): authenticated review tooling for the auth-gated Hub
+**Changed (vs. fork point):**
+- .claude/skills/web-review/SKILL.md
+- mira-hub/docs/authenticated-review.md
+- mira-hub/scripts/capture-review-session.ts
+- mira-hub/src/app/login/login-form.tsx
+- wiki/reviews/2026-05-28-app.factorylm.com.md
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 16:32 UTC — `fix/web-review-login-and-tooling`
+**Last commit:** bf03f6a9 feat(hub): authenticated review tooling for the auth-gated Hub
+**Changed (vs. fork point):**
+- .claude/skills/web-review/SKILL.md
+- mira-hub/docs/authenticated-review.md
+- mira-hub/scripts/capture-review-session.ts
+- mira-hub/src/app/login/login-form.tsx
+- wiki/reviews/2026-05-28-app.factorylm.com.md
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-29 19:55 UTC — `fix/web-review-login-and-tooling`
+**Last commit:** 9994abdc fix(hub): address #1582 review — prod-guard precision + ARIA + secret note
+**Changed (vs. fork point):**
+- .claude/skills/web-review/SKILL.md
+- mira-hub/docs/authenticated-review.md
+- mira-hub/scripts/capture-review-session.ts
+- mira-hub/src/app/login/login-form.tsx
+- wiki/reviews/2026-05-28-app.factorylm.com.md
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-30 00:48 UTC — `fix/web-review-login-and-tooling`
+**Last commit:** 9994abdc fix(hub): address #1582 review — prod-guard precision + ARIA + secret note
+**Changed (vs. fork point):**
+- .claude/skills/web-review/SKILL.md
+- mira-hub/docs/authenticated-review.md
+- mira-hub/scripts/capture-review-session.ts
+- mira-hub/src/app/login/login-form.tsx
+- wiki/reviews/2026-05-28-app.factorylm.com.md
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-30 01:25 UTC — `main`
+**Last commit:** 09951c20 fix(hub): finish login a11y (password form + toggle) + authenticated review tooling (#1582)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-05-30 01:49 UTC — `main`
+**Last commit:** 09951c20 fix(hub): finish login a11y (password form + toggle) + authenticated review tooling (#1582)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+-  M mira-bots/shared/engine.py
+-  M mira-bots/shared/uns_resolver.py
+**Next:** _set by next session_
+
+### 2026-05-30 03:05 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 477ac6c8 fix(engine): eval hardening — alias-as-model, KB-hit IDLE reset, gate confidence guard
+**Changed (vs. fork point):**
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 03:15 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 477ac6c8 fix(engine): eval hardening — alias-as-model, KB-hit IDLE reset, gate confidence guard
+**Changed (vs. fork point):**
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 03:24 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 477ac6c8 fix(engine): eval hardening — alias-as-model, KB-hit IDLE reset, gate confidence guard
+**Changed (vs. fork point):**
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 03:56 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 477ac6c8 fix(engine): eval hardening — alias-as-model, KB-hit IDLE reset, gate confidence guard
+**Changed (vs. fork point):**
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 10:39 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 706d0e89 fix(engine): clear pending_uns_confirm on PROCEED so post-gate diagnosis unlocks
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 12:45 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 706d0e89 fix(engine): clear pending_uns_confirm on PROCEED so post-gate diagnosis unlocks
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 14:01 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 14:13 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 14:52 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 14:53 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 14:55 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 14:57 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 15:19 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docker-compose.override.yml
+-  M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 18:01 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docker-compose.override.yml
+-  M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 18:09 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docker-compose.override.yml
+-  M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 18:16 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docker-compose.override.yml
+-  M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 18:30 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docker-compose.override.yml
+-  M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 18:58 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docker-compose.override.yml
+-  M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 19:06 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docker-compose.override.yml
+-  M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 19:18 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docker-compose.override.yml
+-  M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 19:20 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docker-compose.override.yml
+-  M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 23:34 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docker-compose.override.yml
+-  M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 23:36 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docker-compose.override.yml
+-  M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 23:41 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docker-compose.override.yml
+-  M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 23:42 UTC — `fix/eval-hardening-alias-model-gate`
+**Last commit:** 4c1af3ae fix(engine): KB-hit path uses _background_state_for instead of hardcoded IDLE
+**Changed (vs. fork point):**
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docker-compose.override.yml
+-  M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 23:45 UTC — `fix/bravo-docling-mem-cap`
+**Last commit:** cd83dfe5 fix(infra): cap mira-docling at 1536m on Bravo (4GB Docker VM)
+**Changed (vs. fork point):**
+- docker-compose.override.yml
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 23:46 UTC — `fix/bravo-docling-mem-cap`
+**Last commit:** cd83dfe5 fix(infra): cap mira-docling at 1536m on Bravo (4GB Docker VM)
+**Changed (vs. fork point):**
+- docker-compose.override.yml
+- docs/audits/2026-05-30-audit.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/fsm.py
+- mira-bots/shared/uns_resolver.py
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 23:51 UTC — `main`
+**Last commit:** 368d3b4f fix(infra): cap mira-docling at 1536m on Bravo (4GB Docker VM) (#1602)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-30 23:53 UTC — `main`
+**Last commit:** 368d3b4f fix(infra): cap mira-docling at 1536m on Bravo (4GB Docker VM) (#1602)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ish_top_video.png
+- ?? ish_video2.png
+- ?? ish_video3.png
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-31 04:37 UTC — `main`
+**Last commit:** 368d3b4f fix(infra): cap mira-docling at 1536m on Bravo (4GB Docker VM) (#1602)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ish_may.png
+- ?? ish_top_video.png
+- ?? ish_v4.png
+- ?? ish_v5.png
+- ?? ish_v6.png
+- ?? ish_v7.png
+- ?? ish_video2.png
+- ?? ish_video3.png
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-31 04:45 UTC — `main`
+**Last commit:** 368d3b4f fix(infra): cap mira-docling at 1536m on Bravo (4GB Docker VM) (#1602)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ish_may.png
+- ?? ish_top_video.png
+- ?? ish_v4.png
+- ?? ish_v5.png
+- ?? ish_v6.png
+- ?? ish_v7.png
+- ?? ish_video2.png
+- ?? ish_video3.png
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-31 08:45 UTC — `main`
+**Last commit:** 267921e0 chore(audits): nightly hub audit 2026-05-31
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ish_may.png
+- ?? ish_top_video.png
+- ?? ish_v4.png
+- ?? ish_v5.png
+- ?? ish_v6.png
+- ?? ish_v7.png
+- ?? ish_video2.png
+- ?? ish_video3.png
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-31 08:46 UTC — `main`
+**Last commit:** 267921e0 chore(audits): nightly hub audit 2026-05-31
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ish_may.png
+- ?? ish_top_video.png
+- ?? ish_v4.png
+- ?? ish_v5.png
+- ?? ish_v6.png
+- ?? ish_v7.png
+- ?? ish_video2.png
+- ?? ish_video3.png
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-31 08:47 UTC — `main`
+**Last commit:** 267921e0 chore(audits): nightly hub audit 2026-05-31
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ish_may.png
+- ?? ish_top_video.png
+- ?? ish_v4.png
+- ?? ish_v5.png
+- ?? ish_v6.png
+- ?? ish_v7.png
+- ?? ish_video2.png
+- ?? ish_video3.png
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-31 08:48 UTC — `main`
+**Last commit:** 267921e0 chore(audits): nightly hub audit 2026-05-31
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ish_may.png
+- ?? ish_top_video.png
+- ?? ish_v4.png
+- ?? ish_v5.png
+- ?? ish_v6.png
+- ?? ish_v7.png
+- ?? ish_video2.png
+- ?? ish_video3.png
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-31 08:50 UTC — `main`
+**Last commit:** 267921e0 chore(audits): nightly hub audit 2026-05-31
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ish_may.png
+- ?? ish_top_video.png
+- ?? ish_v4.png
+- ?? ish_v5.png
+- ?? ish_v6.png
+- ?? ish_v7.png
+- ?? ish_video2.png
+- ?? ish_video3.png
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-31 08:51 UTC — `main`
+**Last commit:** 267921e0 chore(audits): nightly hub audit 2026-05-31
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ish_may.png
+- ?? ish_top_video.png
+- ?? ish_v4.png
+- ?? ish_v5.png
+- ?? ish_v6.png
+- ?? ish_v7.png
+- ?? ish_video2.png
+- ?? ish_video3.png
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-31 08:52 UTC — `main`
+**Last commit:** 267921e0 chore(audits): nightly hub audit 2026-05-31
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ish_may.png
+- ?? ish_top_video.png
+- ?? ish_v4.png
+- ?? ish_v5.png
+- ?? ish_v6.png
+- ?? ish_v7.png
+- ?? ish_video2.png
+- ?? ish_video3.png
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-31 09:07 UTC — `main`
+**Last commit:** 267921e0 chore(audits): nightly hub audit 2026-05-31
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ish_may.png
+- ?? ish_top_video.png
+- ?? ish_v4.png
+- ?? ish_v5.png
+- ?? ish_v6.png
+- ?? ish_v7.png
+- ?? ish_video2.png
+- ?? ish_video3.png
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
+
+### 2026-05-31 09:08 UTC — `main`
+**Last commit:** 267921e0 chore(audits): nightly hub audit 2026-05-31
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ish_may.png
+- ?? ish_top_video.png
+- ?? ish_v4.png
+- ?? ish_v5.png
+- ?? ish_v6.png
+- ?? ish_v7.png
+- ?? ish_video2.png
+- ?? ish_video3.png
+- ?? tests/eval/runs/2026-05-30.md
+- ?? tests/eval/runs/2026-05-30T0303-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0304-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0344-offline-text.md
+- ?? tests/eval/runs/2026-05-30T0347-offline-text.md
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
