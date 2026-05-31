@@ -1,0 +1,22 @@
+[
+  {"query": "My Micro 820 won't talk to the GS10 over RS-485 — it builds fine and the PLC is in Run, but the drive never answers. I think the read is using a MSG_MODBUS2 block. What's wrong?", "should_trigger": true},
+  {"query": "write me the structured text for a micro820 POU that polls the GS10 status registers every 500ms and writes the run command word, with a flag that disables the writes while i prove comms first", "should_trigger": true},
+  {"query": "what do I write to the GS10 to run it forward at 30 Hz, and which holding registers give me output frequency and output current?", "should_trigger": true},
+  {"query": "I'm getting ErrorID 55 on my MSG_MODBUS read to the drive. ElementCnt is 8 starting at 0x2103. any idea why?", "should_trigger": true},
+  {"query": "can you review this Prog_VFD.stf — is the round-robin poll scheduler and the COP into the write buffer set up correctly for a Micro820?", "should_trigger": true},
+  {"query": "how do I configure the embedded serial port on the micro 820 in CCW for modbus RTU master to the gs10 — what baud/parity/stop bits?", "should_trigger": true},
+  {"query": "my MSG_MODBUS instance never sets .Q or .Error and the whole poll loop just stalls on the micro820. how do I stop it from hanging forever?", "should_trigger": true},
+  {"query": "I need to add a fault-reset write to my GS10 control program on the micro 820 — which register and what value clears the latched fault?", "should_trigger": true},
+  {"query": "set up the modbus tcp server map on the micro820 so my live monitor can read conv_state and the vfd frequency over ethernet", "should_trigger": true},
+  {"query": "the conveyor command word should be gated by the e-stop before it gets written to the drive — show me how to structure that in the ST for the micro 820", "should_trigger": true},
+  {"query": "scan my plant network and tell me what PLCs and VFDs are on it", "should_trigger": false},
+  {"query": "is the GS10 even talking on the bus? just find it and report its baud and parity, don't change anything", "should_trigger": false},
+  {"query": "what's on this RS-485 segment? do a read-only sweep and list the device addresses", "should_trigger": false},
+  {"query": "write a python script that polls a modbus TCP device every second and logs the holding registers to a csv file", "should_trigger": false},
+  {"query": "explain how a VFD works and what PWM and V/Hz control actually do", "should_trigger": false},
+  {"query": "my Siemens S7-1200 won't connect to the HMI over Profinet, the connection keeps dropping — how do I troubleshoot it?", "should_trigger": false},
+  {"query": "configure the Ignition gateway to read tags from the micro820 over modbus tcp and show them on a dashboard", "should_trigger": false},
+  {"query": "help me wire the GS10 power terminals and the motor leads — which terminal is which?", "should_trigger": false},
+  {"query": "draft a maintenance work order for the conveyor motor bearing that's been getting hot", "should_trigger": false},
+  {"query": "what does PNP vs NPN mean for a proximity sensor input and how do I wire each?", "should_trigger": false}
+]
