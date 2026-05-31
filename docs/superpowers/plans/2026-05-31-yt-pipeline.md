@@ -1167,8 +1167,17 @@ clips, 1080p lavfi cards (25fps default), and a 30fps slideshow. The concat
 demuxer does not rescale → "Input link parameters do not match" / corrupt
 output. Mocked `subprocess.run` never catches this. Corrections:
 
-- **Title and outro cards** must be forced to `1920x1080`, `-r 30`,
-  `format=yuv420p`.
+- **Title and outro cards: render text with Pillow, NOT ffmpeg `drawtext`.**
+  The Homebrew ffmpeg on Bravo (8.1.1) is built **without libfreetype** — the
+  `drawtext` filter does not exist (verified: "No such filter: 'drawtext'").
+  Pillow 11.3.0 is installed for py3.12; `/System/Library/Fonts/Supplemental/Arial.ttf`
+  loads in PIL. So `assemble()` renders each card to a 1920x1080 PNG (black bg,
+  centered wrapped white text) via PIL `ImageDraw`/`ImageFont`, then ffmpeg loops
+  that PNG into a normalized clip (`-loop 1 -t <secs>`, scaled/padded to
+  1920x1080, `setsar=1`, `fps=30`, `format=yuv420p`) — exactly like the
+  screenshot slideshow handles its PNGs.
+- All video segments forced to `1920x1080`, fps `30`, `format=yuv420p`,
+  `setsar=1`.
 - **Final step uses the concat *filter*, not the demuxer**, normalizing every
   segment per-input before concat, then maps the narration audio. One ffmpeg
   call, e.g.:
