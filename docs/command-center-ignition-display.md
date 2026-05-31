@@ -1,6 +1,8 @@
 # Command Center → Ignition Perspective display (ConvSimpleLive)
 
-**Status:** wiring repointed (seed) + rendering path proven (local). Two items pending Mike.
+**Status:** CONNECTED + verified end-to-end on dev — the real Command Center frames
+the live `ConvSimpleLive` HMI through the origin-root proxy. One decision pending
+for prod (proxy-origin shape).
 **Date:** 2026-05-31. **Branch:** `feat/hub-command-center`.
 
 ## What the conveyor display should be
@@ -63,29 +65,43 @@ server {
 }
 ```
 
-Playwright proof (host page frames `…:8890/data/perspective/client/ConvSimpleLive`):
-all Perspective assets + the session `hello` handshake returned 200, **no XFO
-console block, no asset 404s**, the SPA booted and painted inside the iframe.
-Screenshot: `docs/promo-screenshots/2026-05-31_command-center-ConvSimpleLive-framed.png`.
+**Verified end-to-end on dev (the REAL Command Center, not an isolated frame):**
+the dev Hub (`:3990`, `CSP_FRAME_SRC_DISPLAY_HOSTS=http://127.0.0.1:8890`) with the
+dev `display_endpoints` row repointed at the proxy — clicking Conveyor 1 drives
+`iframe → /hub/api/command-center/display/{id}` (308→302) →
+`http://127.0.0.1:8890/data/perspective/client/ConvSimpleLive` (200). ALL Perspective
+assets + `/data/perspective/project/ConvSimpleLive` + components + translations
+returned 200 through the proxy; **no XFO/CSP frame-block console errors**; the SPA
+rendered the live **"PMC STATION"** HMI with real OPC tag states (GREEN·DO_00 lit,
+DRIVE·DO_02 lit, START·DI_04, "-- OFF --"; footer *"Conv_Simple · Micro 820 ·
+MIRA_PLC (CIP) · live OPC tags"*). Green dot + "1 live · 1 display" + "Live" badge.
+Screenshot: `docs/promo-screenshots/2026-05-31_command-center-ConvSimpleLive-LIVE-framed_desktop.png`.
+(WS caveat: the HTTP/asset/session-init path + initial live tag *states* are proven;
+a continuous WebSocket push frame was not separately captured — values rendered live
+but "moving values" over time depends on the conveyor actually changing state.)
 
-## Two items pending (both Mike)
+## One decision pending (Mike) — for PROD only
 
-1. **Gateway Perspective trial is expired.** The framed page rendered
-   *"Trial Expired — log into your Ignition Gateway to start a new 2-hour trial."*
-   The gateway runs Ignition Standard **trial**; reset the 2-hour Perspective trial
-   on the gateway (or license it) to get live conveyor values. This is a gateway
-   action on the PLC laptop — not doable from a code session.
-2. **Proxy architecture decision.** The per-id Phase-2 proxy can't host an
-   absolute-path SPA. The product-correct pattern is a **dedicated origin per
-   gateway** (e.g. a `cc-gw.*` subdomain / dedicated server block on the VPS,
-   reverse-proxying the gateway with XFO stripped + WS forwarded), framed
-   origin-root. Decide: add an origin-root gateway proxy alongside the per-id
-   `mira-proxy`, vs. fold gateway-origin handling into it. Until then, the
-   `display_endpoints` row should point `host:port` at an origin-root proxy, with
-   `path = /data/perspective/client/ConvSimpleLive` (see the seed).
+**Proxy-origin shape for cloud.** Dev works because the browser + Hub probe + proxy
+are all on Charlie loopback. For `app.factorylm.com` the per-id Phase-2 proxy
+(`/cc-display/{id}/<rest>`) can't host an absolute-path SPA like Perspective. The
+product-correct pattern is a **dedicated origin per gateway** (e.g. a `cc-gw.*`
+subdomain / dedicated VPS server block reverse-proxying the gateway with XFO+CSP
+stripped and WS forwarded), framed origin-root. Decide: add an origin-root gateway
+proxy alongside the per-id `mira-proxy`, vs. fold gateway-origin handling into it.
 
-## Wiring (seed)
+(Gateway Perspective trial: the gateway runs Ignition Standard *trial*; if a framed
+session shows "Trial Expired", reset the 2-hour Perspective trial on the gateway.
+Transient gateway state, not a wiring issue — it was active and rendering live this run.)
 
-`mira-hub/db/seeds/command_center_conveyor.sql` registers the conveyor display as
-`display_type='web_iframe'`, `path='/data/perspective/client/ConvSimpleLive'`, with
-`:host`/`:port` pointed at the origin-root proxy. Dev/staging only (env doctrine).
+## Wiring
+
+- **Seed** `mira-hub/db/seeds/command_center_conveyor.sql`: `display_type='web_iframe'`,
+  `path='/data/perspective/client/ConvSimpleLive'`, `:host`/`:port` → origin-root proxy.
+  Dev/staging only (env doctrine).
+- **Live dev row** (tenant `e88bd0e8…`, `enterprise.home_garage.conveyor_lab.conveyor_1`)
+  updated to `web_iframe / http / 127.0.0.1 / 8890 / /data/perspective/client/ConvSimpleLive`.
+- **Origin-root proxy (dev):** nginx container `ign-proxy-test`, `127.0.0.1:8890` →
+  `100.72.2.99:8088`, conf at `~/ign-proxy/default.conf`. Ephemeral (dies on reboot,
+  like the `:3990/:3991` dev-view servers) — `docker start ign-proxy-test` to restart.
+- **View it:** open `http://127.0.0.1:3991/` on CHARLIE → Command Center → Conveyor 1.
