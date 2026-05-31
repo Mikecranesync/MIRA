@@ -79,12 +79,37 @@ DOCKER_HOST=unix:///Users/charlienode/.colima/default/docker.sock \
   docker compose -f docker-compose.proxy.yml -f /tmp/proxy-localtest.yml up -d   # 127.0.0.1:8889
 ```
 
-## To enable cloud reach in prod (later, gated)
+## To enable cloud reach in prod — ORDERED CHAIN (gated; each step confirm-before-run)
 
-1. Land the nginx diff into `deployment/nginx-app-factorylm.conf`, deploy via the gate.
-2. Set Doppler `factorylm/prd`: `COMMAND_CENTER_CLOUD_PROXY=1`.
-3. Run `mira-proxy` always-on on Charlie (Tailscale bind `100.70.49.126:8889`),
-   allowlist generated from **prod** `display_endpoints`.
-4. Apply migrations 030 + 031 to prod.
-5. Verify: open Command Center on `app.factorylm.com` from off-LAN → green dot → click →
-   live dashboard updates (WS). The "values move" check, not a screenshot.
+Dependencies matter — out of order means a 500 (tree route LEFT JOINs display_endpoints)
+or a dead gray tab. Order:
+
+1. **db-inspect prod** (`db-inspect.yml target=prod`) — does prod have `kg_entities` for a
+   tenant + does `display_endpoints` exist? Determines if there's anything to show / what to seed.
+2. **Migrations 030 + 031 → prod** via `apply-migrations.yml` (`migrations="030,031" mode=dry-run`
+   then `mode=apply`). MUST precede any code deploy — the tree route joins the table.
+3. **Merge #1593 → main** (ships Phase 1 to prod via deploy-vps; user-accepted the
+   "tab visible, viewer not-cloud-yet" interim state).
+4. **Retarget #1603 base → main, merge** (ships Phase 2 code: /cc-display, authz, switches).
+5. **Doppler `factorylm/prd`:**
+   - `COMMAND_CENTER_CLOUD_PROXY=1`
+   - `COMMAND_CENTER_PROXY_BASE=http://100.70.49.126:8889`  ← Charlie Tailscale proxy origin
+     (the liveness probe AND, with the env switch, the watch path both go through it)
+   - confirm deploy-vps rebuilt mira-hub with these.
+6. **Seed a prod `display_endpoints` row** for a tenant that HAS namespace nodes (from step 1),
+   matching an existing `uns_path`. (Via Manage UI once deployed, or apply-seeds.)
+7. **mira-proxy always-on on Charlie** — `docker-compose.proxy.yml` (Tailscale bind
+   `100.70.49.126:8889`), allowlist generated from **prod** `display_endpoints`. Restart-unless-stopped.
+8. **VPS→Charlie hop check (NEVER TESTED):** confirm the VPS reaches
+   `http://100.70.49.126:8889/healthz` over Tailscale. The whole chain rests on this hop and
+   it's only ever been hit from localhost. If closed, nothing frames. (`! ssh prod curl …`.)
+9. **nginx leg:** fold the diff (incl. the required `$connection_upgrade` map) into
+   `deployment/nginx-app-factorylm.conf`, run `deploy-nginx-staging-passthrough.yml`
+   (the canonical gated SCP+reload — despite the name it deploys the whole app nginx conf).
+10. **Verify off-LAN (the real go/no-go, not a formality):** open Command Center on
+    `app.factorylm.com` from a non-LAN network → green dot → click → **values move** (WS).
+    Also confirm the page response CSP `frame-src` includes `'self'` (two CSP sources: nginx
+    server-scope + middleware; middleware should govern the hub location, but verify).
+
+**Honest end-state:** even done correctly, "lit up" depends on (a) prod having equipment data
+and (b) the never-tested VPS→Charlie tailnet hop. Step 10 is the real verification.

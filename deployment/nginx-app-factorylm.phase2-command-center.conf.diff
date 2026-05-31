@@ -9,10 +9,12 @@
 #     shown below into the `server { server_name app.factorylm.com; … }` block,
 #     ABOVE the catch-all `location / { … }`), then deploy through the normal
 #     nginx-deploy path (scp + `nginx -t && nginx -s reload`) as part of a release.
-#   - Prereqs on the box: mira-hub sets COMMAND_CENTER_CLOUD_PROXY=1 (and optionally
-#     COMMAND_CENTER_CLOUD_PROXY_PREFIX, default /cc-display); Charlie's mira-proxy
-#     is up and reachable at 100.70.49.126:8889 over Tailscale; the proxy allowlist
-#     has been generated from the PROD display_endpoints.
+#   - Prereqs on the box: mira-hub sets COMMAND_CENTER_CLOUD_PROXY=1 and
+#     COMMAND_CENTER_PROXY_BASE=http://100.70.49.126:8889 (the latter is what the
+#     liveness probe AND the iframe watch-path both route through — without it the
+#     green dot reads gray from the prod VPS). Optionally COMMAND_CENTER_CLOUD_PROXY_PREFIX
+#     (default /cc-display). Charlie's mira-proxy is up + reachable at
+#     100.70.49.126:8889 over Tailscale; its allowlist generated from PROD display_endpoints.
 #
 # Security model:
 #   - auth_request → mira-hub /api/command-center/display/$id/authz: per-tenant RLS
