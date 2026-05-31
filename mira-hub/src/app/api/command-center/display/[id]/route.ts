@@ -80,8 +80,10 @@ export async function GET(
       // Phase 2: 302 to a same-origin relative path that VPS nginx owns (auth_request
       // + WS-native proxy_pass to Charlie). Never expose host:port to the client.
       // The display path is preserved so the HMI's relative assets + socket resolve.
+      // Relative Location so it resolves against the request's own origin behind
+      // the VPS (https://app.factorylm.com) — no hardcoded host/scheme.
       const target = `${CLOUD_PROXY_PREFIX}/${id}${path}`;
-      return NextResponse.redirect(new URL(target, _req.url), 302);
+      return new NextResponse(null, { status: 302, headers: { Location: target } });
     }
 
     // Phase 1 (local Charlie Hub): browser is on the LAN, 302 straight to the HMI.
