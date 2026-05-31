@@ -103,14 +103,16 @@ def _slideshow(shots: list[str], run_dir: Path, per_shot_seconds: float = 5) -> 
     for s in shots:
         inputs += ["-loop", "1", "-t", str(per_shot_seconds), "-i", s]
 
-    # Build filter complex: scale, crop, zoompan each shot, then concat
+    # Build filter complex: scale + crop each shot to fill the frame, then concat.
+    # Per-shot duration comes from the `-loop 1 -t <per_shot_seconds>` inputs above.
+    # NOTE: no zoompan — the Ken Burns zoom is cosmetic and catastrophically slow over
+    # long durations (per-frame sub-pixel interpolation at 1080p), which made a ~100s
+    # narration-driven slideshow take many minutes to encode. Static frames are fast.
     parts: list[str] = []
-    per_shot_frames = round(per_shot_seconds * _FPS)
     for i in range(len(shots)):
         parts.append(
             f"[{i}:v]scale={_W}:{_H}:force_original_aspect_ratio=increase,"
-            f"crop={_W}:{_H},zoompan=z='min(zoom+0.001,1.1)':d={per_shot_frames}:s={_W}x{_H},"
-            f"setsar=1,fps={_FPS},format=yuv420p[v{i}]"
+            f"crop={_W}:{_H},setsar=1,fps={_FPS},format=yuv420p[v{i}]"
         )
 
     # Concat all the scaled/cropped shots
