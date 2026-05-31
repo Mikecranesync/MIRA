@@ -145,6 +145,75 @@ def test_assemble_produces_playable_mp4_screenshot_only(tmp_path):
     shutil.which("ffmpeg") is None,
     reason="ffmpeg not installed"
 )
+def test_assemble_silent_no_audio(tmp_path):
+    """assemble() with narration_script but NO narration_audio produces silent video (no audio stream)."""
+    from PIL import Image
+
+    from tools.yt_pipeline.assembler import assemble
+
+    # Create 3 real PNGs
+    screenshots = []
+    for i, color in enumerate(["red", "green", "blue"]):
+        shot = tmp_path / f"shot_{i}.png"
+        img = Image.new("RGB", (1280, 720), color)
+        img.save(shot)
+        screenshots.append(str(shot))
+
+    # Create narration_script file with ~30 words (estimate ~12 seconds at 150 wpm)
+    narration_script = tmp_path / "narration_script.txt"
+    script_text = (
+        "In this video we fix a VFD overcurrent fault. "
+        "First we identify the fault code on the display. "
+        "Then we check the motor load. Finally we reset and restart."
+    )
+    narration_script.write_text(script_text)
+
+    # Build assets WITH narration_script but NO narration_audio
+    assets = {
+        "screenshots": screenshots,
+        "narration_script": str(narration_script),
+    }
+    plan = {"title": "Silent Test Video"}
+    run_dir = tmp_path / "output"
+
+    # Call assemble
+    final = assemble(plan, assets, run_dir)
+
+    # Verify output file exists
+    assert final == run_dir / "final.mp4"
+    assert final.exists()
+    assert final.stat().st_size > 0
+
+    # Use ffprobe to verify video stream exists but NO audio stream
+    ffprobe_result = subprocess.run(
+        [
+            "ffprobe",
+            "-v", "quiet",
+            "-print_format", "json",
+            "-show_streams",
+            "-show_format",
+            str(final),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    info = json.loads(ffprobe_result.stdout)
+
+    # Verify streams
+    codec_types = {s["codec_type"] for s in info["streams"]}
+    assert "video" in codec_types, "Output must have a video stream"
+    assert "audio" not in codec_types, "Output must NOT have an audio stream (silent)"
+
+    # Verify duration is >= the floor (30 seconds)
+    duration = float(info["format"]["duration"])
+    assert duration >= 30.0, f"Output duration {duration} must be >= 30.0s (silent floor)"
+
+
+@pytest.mark.skipif(
+    shutil.which("ffmpeg") is None,
+    reason="ffmpeg not installed"
+)
 def test_assemble_with_broll_bookends(tmp_path):
     """assemble() produces a valid MP4 when B-roll scene1/scene3 clips are included in assets."""
     from PIL import Image

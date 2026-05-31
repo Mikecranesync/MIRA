@@ -19,6 +19,7 @@ _PIPELINE_DIR = Path(__file__).parent
 _CALENDAR_FILE = _PIPELINE_DIR / "calendar.json"
 _ERROR_LOG = Path("/tmp/yt-pipeline/errors.log")
 _PAUSE_SENTINEL = Path("/tmp/yt-pipeline/PAUSED")
+_YT_DRAFTS_DIR = Path.home() / "yt-pipeline-drafts"
 _MIN_INTERVAL_HOURS = 47  # fire if >=47h since last run (buffer for launchd jitter)
 
 
@@ -40,7 +41,8 @@ def run(dry_run: bool = False) -> None:
     1. plan_next() -> plan dict
     2. produce() -> assets dict
     3. assemble() -> final.mp4 path
-    4. upload() -> video_id
+    4a. VOICED: upload() -> video_id (requires YouTube creds)
+    4b. SILENT: save to drafts folder with narration_script + meta.txt
 
     On error: log, update consecutive_failures counter, pause after 3 failures.
     """
@@ -74,32 +76,78 @@ def run(dry_run: bool = False) -> None:
         # Secrets only needed for the full pipeline are read AFTER the dry-run
         # early-return, so a dry-run works with just GROQ_API_KEY present.
         # BytePlus is optional — empty string means screenshot-only pipeline.
+        # OpenAI is optional — empty string means silent draft (no TTS).
         byteplus_key = os.environ.get("BYTEPLUS_API_KEY", "")
-        openai_key = os.environ["OPENAI_API_KEY"]
-        yt_client_id = os.environ["YOUTUBE_CLIENT_ID"]
-        yt_client_secret = os.environ["YOUTUBE_CLIENT_SECRET"]
-        yt_refresh_token = os.environ["YOUTUBE_REFRESH_TOKEN_ISH"]
-        auto_publish = os.environ.get("AUTO_PUBLISH", "false").lower() == "true"
+        openai_key = os.environ.get("OPENAI_API_KEY", "")
 
         assets = produce(plan, run_dir, byteplus_api_key=byteplus_key, openai_api_key=openai_key)
         video_path = assemble(plan, assets, run_dir)
-        video_id = upload(
-            plan, video_path, yt_client_id, yt_client_secret, yt_refresh_token, auto_publish
-        )
 
-        cal["next_angle_index"] = plan["angle_index"] + 1
-        cal["last_run_utc"] = datetime.now(timezone.utc).isoformat()
-        cal["consecutive_failures"] = 0
-        cal.setdefault("published", []).append({
-            "video_id": video_id,
-            "title": plan["title"],
-            "topic": plan["area"],
-            "angle_index": plan["angle_index"],
-            "status": "public" if auto_publish else "private",
-            "uploaded_at": datetime.now(timezone.utc).isoformat(),
-        })
-        save_calendar(cal, _CALENDAR_FILE)
-        log.info("Run %s complete -> https://youtube.com/watch?v=%s", run_id, video_id)
+        # Determine if this is a voiced (with audio) or silent (draft) run
+        is_voiced = "narration_audio" in assets
+
+        if is_voiced:
+            # Voiced path: upload to YouTube
+            yt_client_id = os.environ["YOUTUBE_CLIENT_ID"]
+            yt_client_secret = os.environ["YOUTUBE_CLIENT_SECRET"]
+            yt_refresh_token = os.environ["YOUTUBE_REFRESH_TOKEN_ISH"]
+            auto_publish = os.environ.get("AUTO_PUBLISH", "false").lower() == "true"
+
+            video_id = upload(
+                plan, video_path, yt_client_id, yt_client_secret, yt_refresh_token, auto_publish
+            )
+
+            cal["next_angle_index"] = plan["angle_index"] + 1
+            cal["last_run_utc"] = datetime.now(timezone.utc).isoformat()
+            cal["consecutive_failures"] = 0
+            cal.setdefault("published", []).append({
+                "video_id": video_id,
+                "title": plan["title"],
+                "topic": plan["area"],
+                "angle_index": plan["angle_index"],
+                "status": "public" if auto_publish else "private",
+                "uploaded_at": datetime.now(timezone.utc).isoformat(),
+            })
+            save_calendar(cal, _CALENDAR_FILE)
+            log.info("Run %s complete -> https://youtube.com/watch?v=%s", run_id, video_id)
+        else:
+            # Silent path: save to drafts folder
+            draft_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
+            # Build slug from title: lowercase, non-alphanumeric -> dash
+            title_slug = "".join(c.lower() if c.isalnum() else "-" for c in plan["title"])
+            title_slug = "".join(c for c in title_slug if c.isalnum() or c == "-")
+            title_slug = "-".join(w for w in title_slug.split("-") if w)  # Remove empty parts
+            title_slug = title_slug[:50]  # Trim to reasonable length
+
+            draft_dir = _YT_DRAFTS_DIR / f"{draft_timestamp}_{title_slug}"
+            draft_dir.mkdir(parents=True, exist_ok=True)
+
+            # Copy final.mp4 and narration_script.txt
+            import shutil as _shutil
+            _shutil.copy2(video_path, draft_dir / "final.mp4")
+            _shutil.copy2(assets["narration_script"], draft_dir / "narration_script.txt")
+
+            # Write meta.txt with metadata for manual upload
+            meta_text = "\n".join([
+                f"title: {plan['title']}",
+                f"description: {plan['description']}",
+                f"tags: {', '.join(plan['tags'])}",
+            ])
+            (draft_dir / "meta.txt").write_text(meta_text)
+
+            # Update calendar with draft entry
+            cal["next_angle_index"] = plan["angle_index"] + 1
+            cal["last_run_utc"] = datetime.now(timezone.utc).isoformat()
+            cal["consecutive_failures"] = 0
+            cal.setdefault("drafts", []).append({
+                "title": plan["title"],
+                "topic": plan["area"],
+                "angle_index": plan["angle_index"],
+                "draft_dir": str(draft_dir),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+            save_calendar(cal, _CALENDAR_FILE)
+            log.info("Silent draft saved: %s", draft_dir)
 
     except Exception as exc:
         log.exception("Run %s failed: %s", run_id, exc)

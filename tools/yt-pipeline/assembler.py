@@ -123,13 +123,15 @@ def _slideshow(shots: list[str], run_dir: Path, per_shot_seconds: float = 5) -> 
 
 def assemble(plan: dict, assets: dict, run_dir: Path) -> Path:
     """
-    Assemble video segments, PIL-rendered cards, a screenshot slideshow, and narration
+    Assemble video segments, PIL-rendered cards, a screenshot slideshow, and optionally narration
     into a single final.mp4.
 
     Args:
         plan: dict with at least plan["title"] (str)
-        assets: dict with keys "screenshots" (list of PNG paths) and "narration_audio" (MP3 path).
-                Optional keys: "scene1_clip", "scene3_clip" (B-roll MP4 paths, only present if generated).
+        assets: dict with keys "screenshots" (list of PNG paths) and "narration_script" (text path).
+                Optional keys: "narration_audio" (MP3 path), "scene1_clip", "scene3_clip" (B-roll MP4 paths).
+                If narration_audio is present, video length is driven by audio duration.
+                If narration_audio is missing, video is silent; length is estimated from narration_script word count.
         run_dir: output directory for intermediate and final files
 
     Returns:
@@ -137,13 +139,25 @@ def assemble(plan: dict, assets: dict, run_dir: Path) -> Path:
     """
     run_dir.mkdir(parents=True, exist_ok=True)
     shots = assets["screenshots"]
-    narration = assets["narration_audio"]
 
-    # Probe narration duration to drive the slideshow length
-    narration_duration = _probe_duration(narration)
-    per_shot_seconds = max(2.5, narration_duration / len(shots)) if shots else 2.5
+    # Check if narration audio is present
+    has_audio = "narration_audio" in assets
 
-    # Generate the slideshow from screenshots, scaled to match narration duration
+    if has_audio:
+        # Voiced path: probe narration duration to drive slideshow length
+        narration = assets["narration_audio"]
+        narration_duration = _probe_duration(narration)
+        per_shot_seconds = max(2.5, narration_duration / len(shots)) if shots else 2.5
+    else:
+        # Silent path: estimate duration from narration_script word count
+        script_path = assets["narration_script"]
+        script_text = Path(script_path).read_text()
+        words = len(script_text.split())
+        # Estimate: 150 words per minute = 2.5 words per second
+        estimated_duration = max(30.0, words / 150 * 60)
+        per_shot_seconds = max(2.5, estimated_duration / len(shots)) if shots else 2.5
+
+    # Generate the slideshow from screenshots
     slideshow = _slideshow(shots, run_dir, per_shot_seconds=per_shot_seconds)
 
     # Render and convert title card to MP4
@@ -166,33 +180,48 @@ def assemble(plan: dict, assets: dict, run_dir: Path) -> Path:
         segments.append(assets["scene3_clip"])
     segments.append(str(outro_mp4))
 
-    # Prepare ffmpeg inputs: all video segments + the narration audio
+    # Prepare ffmpeg inputs: all video segments, + narration audio if present
     inputs: list[str] = []
     for seg in segments:
         inputs += ["-i", seg]
-    inputs += ["-i", narration]
 
-    # Build filter_complex:
-    # 1. Normalize each video segment to {_W}x{_H}, {_FPS}, setsar=1, yuv420p
-    # 2. Concat all normalized video segments
+    # Build filter_complex and ffmpeg args based on whether we have audio
     n = len(segments)
     norm = ";".join(f"[{i}:v]{_NORM}[v{i}]" for i in range(n))
     concat = "".join(f"[v{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=0[vout]"
 
     out = run_dir / "final.mp4"
-    _run(
-        *inputs,
-        "-filter_complex", f"{norm};{concat}",
-        "-map", "[vout]",
-        "-map", f"{n}:a",  # n is the index of the narration audio input
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "23",
-        "-c:a", "aac",
-        "-b:a", "192k",
-        "-movflags", "+faststart",
-        str(out),
-    )
+
+    if has_audio:
+        # Voiced: add narration audio input and map it
+        narration = assets["narration_audio"]
+        inputs += ["-i", narration]
+
+        _run(
+            *inputs,
+            "-filter_complex", f"{norm};{concat}",
+            "-map", "[vout]",
+            "-map", f"{n}:a",  # n is the index of the narration audio input
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-crf", "23",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-movflags", "+faststart",
+            str(out),
+        )
+    else:
+        # Silent: video-only output, no audio mapping
+        _run(
+            *inputs,
+            "-filter_complex", f"{norm};{concat}",
+            "-map", "[vout]",
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-crf", "23",
+            "-movflags", "+faststart",
+            str(out),
+        )
 
     log.info("Assembly complete: %s (%.1f MB)", out, out.stat().st_size / 1e6)
     return out

@@ -130,6 +130,10 @@ def produce(
 
     If byteplus_api_key is empty/falsy, skips B-roll generation and omits
     scene1_clip/scene3_clip from the returned dict.
+
+    If openai_api_key is empty/falsy, skips narration synthesis and omits
+    narration_audio from the returned dict. The narration_script is ALWAYS
+    written to disk and included in the returned dict.
     """
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -142,15 +146,21 @@ def produce(
         assets["scene1_clip"] = str(clip1)
         assets["scene3_clip"] = str(clip3)
 
-    # Select 12 screenshots to fill the narration slideshow
+    # Select 12 screenshots to fill the slideshow
     screenshots = select_screenshots(plan["scene3_screenshot_keywords"], count=12)
 
-    # Always synthesize narration
-    narration_audio = synth_narration(
-        plan["scene2_narration"], run_dir, api_key=openai_api_key
-    )
+    # ALWAYS write the narration script to disk, regardless of TTS availability
+    script_path = run_dir / "narration_script.txt"
+    script_path.write_text(plan["scene2_narration"])
+    assets["narration_script"] = str(script_path)
+
+    # Narration (TTS) is optional; only synthesize if api_key is present
+    if openai_api_key:
+        narration_audio = synth_narration(
+            plan["scene2_narration"], run_dir, api_key=openai_api_key
+        )
+        assets["narration_audio"] = str(narration_audio)
 
     assets["screenshots"] = [str(s) for s in screenshots]
-    assets["narration_audio"] = str(narration_audio)
 
     return assets
