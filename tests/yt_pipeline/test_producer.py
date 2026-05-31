@@ -1,6 +1,7 @@
 """Tests for yt-pipeline producer module."""
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
@@ -127,6 +128,55 @@ def test_produce_skips_broll_without_byteplus_key(tmp_path):
     # Assets dict must have screenshots and narration but NOT scene1/scene3 clips
     assert "screenshots" in assets
     assert "narration_audio" in assets
+    assert "narration_script" in assets
     assert "scene1_clip" not in assets
     assert "scene3_clip" not in assets
     assert len(assets["screenshots"]) > 0
+
+    # Verify narration_script file exists and contains the text
+    narration_script_path = assets["narration_script"]
+    assert Path(narration_script_path).exists()
+    assert Path(narration_script_path).read_text() == plan["scene2_narration"]
+
+
+def test_produce_silent_when_no_openai_key(tmp_path):
+    """produce() skips narration synthesis when openai_api_key is empty; narration_script still written."""
+    plan = {
+        "scene1_prompt": "cinematic opening",
+        "scene3_prompt": "closing shot",
+        "scene2_narration": "This is the silent narration script text.",
+        "scene3_screenshot_keywords": ["hub"],
+    }
+
+    # Create mock screenshots
+    shots_dir = tmp_path / "screenshots"
+    shots_dir.mkdir()
+    (shots_dir / "2026-04-27_hub_desktop.png").touch()
+
+    with patch("tools.yt_pipeline.producer.generate_broll") as _mock_broll, \
+         patch(
+             "tools.yt_pipeline.producer.select_screenshots",
+             return_value=[shots_dir / "2026-04-27_hub_desktop.png"],
+         ), \
+         patch("tools.yt_pipeline.producer.synth_narration") as mock_synth:
+        from tools.yt_pipeline.producer import produce
+
+        assets = produce(
+            plan,
+            tmp_path,
+            byteplus_api_key="fake-byteplus-key",
+            openai_api_key="",  # Empty key => no narration synthesis
+        )
+
+    # synth_narration should NOT have been called
+    mock_synth.assert_not_called()
+
+    # Assets dict must have narration_script but NOT narration_audio
+    assert "narration_script" in assets
+    assert "narration_audio" not in assets
+    assert "screenshots" in assets
+
+    # Verify narration_script file exists and contains the text
+    narration_script_path = assets["narration_script"]
+    assert Path(narration_script_path).exists()
+    assert Path(narration_script_path).read_text() == plan["scene2_narration"]
