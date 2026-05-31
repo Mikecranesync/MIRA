@@ -9,7 +9,15 @@ services:
     image: nginx:1.27-alpine          # pinned (no :latest) per security-boundaries.md
     container_name: mira-proxy
     restart: unless-stopped
-    # Tailscale IP only. The VPS reaches this over the tailnet; nothing else can.
+    # Tailscale IP only — the VPS reaches this over the tailnet; nothing else can.
+    # ⚠️ BLOCKER (2026-05-31): under Colima (Charlie's runtime) this exact bind FAILS
+    #   with "cannot assign requested address" — the Docker VM is NAT'd and can't see
+    #   the host's tailscale0 interface. The existing mira-bridge Node-RED on this node
+    #   uses a bind-all `1880:1880` and is already reachable on 100.70.49.126:1880 that
+    #   way (host firewall gates it). DECISION PENDING (Mike): either
+    #     (a) match that precedent → `"8889:8889"` (bind-all, same posture as Node-RED), or
+    #     (b) keep 127.0.0.1 + front with `tailscale serve` for tailnet-only exposure.
+    #   The tailnet hop (VPS→100.70.49.126:8889/healthz) is UNVERIFIED until this is set.
     ports:
       - "100.70.49.126:8889:8889"
     volumes:
