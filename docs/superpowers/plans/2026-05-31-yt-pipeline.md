@@ -1126,3 +1126,76 @@ doppler run --project factorylm --config dev -- \
 ```
 
 Expected: logs a real LLM-generated title from Groq and exits cleanly.
+
+---
+
+## Plan Amendments (2026-05-31, pre-execution)
+
+These corrections were made before execution after review surfaced plan-level
+defects that all three quality gates (mocked tests, spec review, code review)
+would have passed through. They are authoritative — they supersede the
+as-written Task 3, Task 4, and Task 6 above where they conflict.
+
+### A. Narration gets a real voiceover (Task 3)
+
+The as-written plan generates `scene2_narration` text but never turns it into
+audio — the video would ship silent. **Decision (user):** reuse MIRA's existing
+TTS engine from the comic pipeline rather than inventing a new one.
+
+- **Source of truth:** `marketing/comic-pipeline/pipeline/v2/tts.py::synth_beat`
+  — OpenAI `gpt-4o-mini-tts`, voice `onyx`, speed `1.05`, maintenance-engineer
+  style instruction. Verified importable via
+  `sys.path.insert(0, "<repo>/marketing/comic-pipeline")` →
+  `from pipeline.v2.tts import synth_beat`. `openai` 1.109.1 is installed for
+  py3.12. Requires `OPENAI_API_KEY` (Doppler). Do **not** reinvent TTS or use
+  macOS `say`.
+- **producer.py** imports `synth_beat` at module load (so tests can
+  `patch("tools.yt_pipeline.producer.synth_beat")`), adds
+  `synth_narration(text, run_dir, *, api_key) -> Path` producing
+  `narration.mp3`, and `produce(plan, run_dir, *, byteplus_api_key,
+  openai_api_key)` returns `"narration_audio": <mp3 path>` (replacing the
+  unused `narration.txt`).
+- **Tests:** add `test_synth_narration_reuses_tts` (mock `synth_beat`, assert
+  `narration.mp3` returned, no real API call). The existing
+  `test_generate_broll_polls_until_succeeded` MUST also
+  `patch("tools.yt_pipeline.producer.time.sleep")` so it doesn't really sleep.
+
+### B. Assembler normalizes before concat + muxes audio + real ffmpeg test (Task 4)
+
+The as-written assembler feeds the concat **demuxer** a mix of 720p Seedance
+clips, 1080p lavfi cards (25fps default), and a 30fps slideshow. The concat
+demuxer does not rescale → "Input link parameters do not match" / corrupt
+output. Mocked `subprocess.run` never catches this. Corrections:
+
+- **Title and outro cards** must be forced to `1920x1080`, `-r 30`,
+  `format=yuv420p`.
+- **Final step uses the concat *filter*, not the demuxer**, normalizing every
+  segment per-input before concat, then maps the narration audio. One ffmpeg
+  call, e.g.:
+  ```
+  ffmpeg -y -i scene1 -i title -i slideshow -i scene3 -i outro -i narration.mp3 \
+    -filter_complex "
+      [0:v]scale=1920:1080:force_original_aspect_ratio=decrease,
+           pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v0];
+      [1:v]...[v1];[2:v]...[v2];[3:v]...[v3];[4:v]...[v4];
+      [v0][v1][v2][v3][v4]concat=n=5:v=1:a=0[vout]" \
+    -map "[vout]" -map 5:a \
+    -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 192k \
+    -shortest -movflags +faststart final.mp4
+  ```
+  (`-shortest` trims narration to video length — acceptable for v1; matching
+  slideshow duration to narration is a noted follow-up, not in scope.)
+- **assemble(plan, assets, run_dir)** reads `assets["narration_audio"]`.
+- **Tests:** keep one mocked failure-path test (`assemble` raises
+  `RuntimeError` when ffmpeg returns non-zero). Drop the brittle
+  "calls ffmpeg N times" count assertion. **ADD a real-bytes acceptance test**
+  (`@pytest.mark.skipif(shutil.which("ffmpeg") is None)`) that builds tiny real
+  inputs (lavfi-generated 720p mp4 clips, real PNGs, a real mp3) and asserts
+  `final.mp4` exists, and `ffprobe` reports **both** a video and an audio
+  stream with duration > 0. This is the only gate that proves assembly works.
+
+### C. main.py reads OPENAI_API_KEY (Task 6)
+
+Add `openai_key = os.environ["OPENAI_API_KEY"]` and call
+`produce(plan, run_dir, byteplus_api_key=byteplus_key, openai_api_key=openai_key)`.
+The launchd plist already runs under `doppler run`, so the key is present.
