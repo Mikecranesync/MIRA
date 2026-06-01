@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 
 import httpx
@@ -49,10 +50,10 @@ def generate_script(angle: str, groq_api_key: str) -> dict:
         f"Topic: {angle}\n\n"
         f"Return a JSON object with these exact keys:\n"
         f"- title: string (YouTube title, keyword-rich, under 70 chars)\n"
-        f"- description: string (150-200 words, include timestamps at 0:00 0:45 1:30 2:15 3:00 4:30)\n"
+        f"- description: string (2-3 sentence compelling summary; do NOT add timestamps or chapter markers)\n"
         f"- tags: list of 10 strings (industrial maintenance keywords)\n"
         f"- scene1_prompt: string (Seedance AI video prompt, 8s cinematic industrial B-roll hook)\n"
-        f"- scene2_narration: string (narrator script for screen recording section, 200-300 words)\n"
+        f"- scene2_narration: string (tight voiceover script, 110-140 words, ~60 seconds when read aloud)\n"
         f"- scene3_prompt: string (Seedance AI video prompt, 8s B-roll for MIRA demo section)\n"
         f"- scene3_screenshot_keywords: list of 3 strings (filename substrings matching promo screenshots)\n\n"
         f"Return ONLY the JSON object, no markdown fences."
@@ -78,6 +79,42 @@ def generate_script(angle: str, groq_api_key: str) -> dict:
     return json.loads(content)
 
 
+def _chapter_timestamps(
+    script: str, *, words_per_second: float = 2.5, max_chapters: int = 4
+) -> str:
+    """Build honest YouTube chapter lines from the narration script's reading time.
+
+    Splits the script into sentences, groups them into up to `max_chapters`
+    chapters, and timestamps each by cumulative word count at ~150 wpm
+    (`words_per_second` = 2.5). The first chapter is forced to 0:00 and chapters
+    are kept >=10s apart (YouTube's requirement). Produces timestamps that match
+    a ~60-second video instead of fabricated multi-minute markers.
+    """
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", script.strip()) if s.strip()]
+    if len(sentences) < 2:
+        return ""
+    n = min(max_chapters, len(sentences))
+    per = max(1, len(sentences) // n)
+    chapters: list[tuple[int, str]] = []
+    cum_words = 0
+    i = 0
+    while i < len(sentences) and len(chapters) < n:
+        # Last chapter takes all remaining sentences.
+        chunk = sentences[i:] if len(chapters) == n - 1 else sentences[i : i + per]
+        start = int(cum_words / words_per_second)
+        label = " ".join(chunk[0].split()[:6]).rstrip(".,;:!?")
+        chapters.append((start, label))
+        cum_words += sum(len(s.split()) for s in chunk)
+        i += len(chunk)
+    lines: list[str] = []
+    prev = -10
+    for idx, (sec, label) in enumerate(chapters):
+        sec = 0 if idx == 0 else max(sec, prev + 10)
+        prev = sec
+        lines.append(f"{sec // 60}:{sec % 60:02d} {label}")
+    return "\n".join(lines)
+
+
 def plan_next(
     groq_api_key: str,
     topics_path: Path = _DEFAULT_TOPICS,
@@ -90,4 +127,10 @@ def plan_next(
     chosen = angles[idx]
     log.info("Planning angle %d: area=%s", idx, chosen["area"])
     script = generate_script(chosen["angle"], groq_api_key)
+    # Append honest, reading-time-based chapters to the description (used by both
+    # the draft meta.txt and the YouTube upload path).
+    chapters = _chapter_timestamps(script.get("scene2_narration", ""))
+    if chapters:
+        desc = (script.get("description") or "").strip()
+        script["description"] = f"{desc}\n\nChapters:\n{chapters}".strip()
     return {"area": chosen["area"], "angle": chosen["angle"], "angle_index": idx, **script}

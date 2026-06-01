@@ -75,3 +75,38 @@ def test_generate_script_parses_groq_response():
 
     assert result["title"] == "VFD Overcurrent Fix"
     assert result["scene3_screenshot_keywords"] == ["workorder", "hub"]
+
+
+def test_chapter_timestamps_are_short_and_honest():
+    """_chapter_timestamps() builds 0:00-anchored, increasing, sub-2-min chapters."""
+    from tools.yt_pipeline.planner import _chapter_timestamps
+
+    script = (
+        "Welcome to the Industrial Skills Hub. A VFD is a variable frequency drive. "
+        "There are five common causes of overcurrent trips. "
+        "Here is how to diagnose and fix each one. "
+        "Thanks for watching — subscribe for more."
+    )
+    out = _chapter_timestamps(script)
+    lines = out.splitlines()
+
+    assert len(lines) >= 2
+    assert lines[0].startswith("0:00 ")  # first chapter must be 0:00
+
+    def secs(line: str) -> int:
+        m, s = line.split(" ", 1)[0].split(":")
+        return int(m) * 60 + int(s)
+
+    times = [secs(line) for line in lines]
+    assert times == sorted(times)  # monotonically increasing
+    assert times[0] == 0
+    assert all(t < 120 for t in times)  # honest for a ~1-min video, no fabricated 4:30 marks
+    assert all(times[i + 1] - times[i] >= 10 for i in range(len(times) - 1))  # YouTube spacing
+
+
+def test_chapter_timestamps_empty_for_trivial_script():
+    """A one-sentence (or empty) script yields no chapters."""
+    from tools.yt_pipeline.planner import _chapter_timestamps
+
+    assert _chapter_timestamps("") == ""
+    assert _chapter_timestamps("Just one sentence here.") == ""
