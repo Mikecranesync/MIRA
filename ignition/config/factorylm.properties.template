@@ -16,18 +16,42 @@
 
 
 # =============================================================================
-# SECTION 1 — RAG SIDECAR CONNECTION
-# The Jython scripts connect to the CPython sidecar over HTTP on localhost.
-# The sidecar must NEVER be exposed on a public or plant-network interface.
+# SECTION 1 — MIRA PIPELINE CONNECTION (chat backend)
+# The chat handler connects to mira-pipeline's OpenAI-compatible
+# /v1/chat/completions endpoint on the VPS. The pipeline runs the full GSD
+# engine (intent classifier, UNS gate, hybrid RAG, citation compliance,
+# cascade providers Groq -> Cerebras -> Gemini).
+#
+# Legacy mira-sidecar (ChromaDB RAG on localhost:5000) is superseded —
+# leave SIDECAR_* values present only if you still run /ingest or /build_fsm
+# locally; chat traffic no longer hits the sidecar.
 # =============================================================================
 
-# Base URL for the RAG sidecar.
-# Default: http://localhost:5000
-# Change only if you run the sidecar on a non-standard port.
+# Base URL for mira-pipeline (must include scheme, no trailing slash).
+# Production:  https://app.factorylm.com
+# Staging:     https://staging.factorylm.com   (port 4099 if direct)
+# Default:     https://app.factorylm.com
+PIPELINE_BASE_URL=https://app.factorylm.com
+
+# Bearer token for mira-pipeline. Fetch from Doppler factorylm/prd ->
+# PIPELINE_API_KEY. Leave blank ONLY for unauthenticated local pipelines.
+PIPELINE_API_KEY=
+
+# Model identifier the pipeline exposes. Do not change unless mira-pipeline
+# /v1/models advertises a different name.
+# Default: mira-diagnostic
+PIPELINE_MODEL=mira-diagnostic
+
+# Timeout (seconds) for /v1/chat/completions calls from the chat handler.
+# Cascade providers usually return in 5-15 s; vision uploads can take longer.
+# Default: 60
+PIPELINE_TIMEOUT_SEC=60
+
+# Legacy mira-sidecar (ingest / build_fsm only — chat path no longer uses it).
+# Safe to leave at defaults unless you run a non-standard port.
 SIDECAR_BASE_URL=http://localhost:5000
 
-# Timeout (seconds) for RAG /rag endpoint calls from the chat handler.
-# Increase if your LLM backend is slow (e.g. local GPU with large context).
+# Timeout (seconds) for legacy /rag calls (kept for back-compat health probes).
 # Default: 30
 SIDECAR_RAG_TIMEOUT_SEC=30
 
