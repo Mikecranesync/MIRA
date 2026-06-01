@@ -1,0 +1,50 @@
+# Phase 5 — Video 2 (TRUTHFUL CUT): "A reference panel to a live, headless-built HMI"
+#
+# NOTE ON TRUTHFULNESS: Video 2's original script claims "I Googled a conveyor
+# image and AI generated the Perspective JSON from it." The repo evidence
+# CONTRADICTS that for ConvSimpleLive: commits 2321f50f ("headless-built") and
+# 4393de3e ("rebuild ConvSimpleLive view as PMC STATION operator-panel mockup")
+# show it was built headless as a mockup, then wired in — there is no
+# image->AI-generation step, and no stock/Google reference image or tag-binding
+# table exists in the repo. So this cut tells the REAL, defensible pipeline:
+# panel -> HMI generated as Perspective JSON (not hand-drawn in Designer) ->
+# bound to real Micro 820 / CIP tags -> live in the UNS. It does NOT claim a
+# google-image origin. To render the original "googled it" script, Mike must do
+# a real image->HMI generation run and hand over the 4 captures (image, prompt,
+# JSON, tag-binding table) — see marketing/videos/2026-05-31-phase5-demos/README.md.
+slug: phase5-video-02-reference-to-live-hmi
+output_dir: marketing/videos/2026-05-31-phase5-demos/video-02-reference-to-live-hmi
+width: 1920
+height: 1080
+zoom_amount: 0.012
+transition_duration: 0.4
+fit_mode: letterbox
+tts_voice: onyx
+tts_model: gpt-4o-mini-tts
+voiceover_style: |
+  Adult male, 40s, calm and direct. Sounds like a senior field engineer who
+  has worked in heavy manufacturing for 15 years — knowledgeable without
+  being academic, confident without being aggressive. Does not perform
+  enthusiasm. States facts and lets the listener draw conclusions.
+
+  Pacing: 130–140 words per minute. Steady. Slight pause after key claims.
+  No acceleration on product names or feature callouts.
+
+  Tone: neutral American accent, no regional markers. Clean consonants.
+  Comfortable with industrial vocabulary. Does not soften or inflate language.
+
+  Avoid: upward inflection on statements, marketing superlatives, breathless
+  pacing on product reveals, hesitation fillers, reading the style brief aloud.
+frames:
+  - image: docs/promo-screenshots/2026-05-31_pmc-station-before-real-bench_photo.jpg
+    narration: "Start with one panel — pushbuttons, a GS10 drive, a Micro 820. No HMI, no SCADA screen, nothing to look at."
+  - image: docs/promo-screenshots/2026-05-31_command-center-ConvSimpleLive-LIVE-framed_desktop.png
+    narration: "This Ignition Perspective screen wasn't drawn by hand in Designer. It was built headless — written as JSON, then wired to the live tags."
+  - image: docs/promo-screenshots/2026-05-30_command-center-LIVE-real-probe_desktop.png
+    narration: "Every control maps to a real tag — the GS10 drive, the photo-eye, the Micro 820, over CIP."
+  - image: docs/promo-screenshots/2026-05-29_command-center-tree-live_desktop.png
+    narration: "And it lands in your plant namespace — located, not floating on someone's laptop."
+  - image: docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+    narration: "Those same tags feed the diagnostics — so the screen and the troubleshooting read the exact same machine."
+  - image: docs/promo-screenshots/2026-05-31_command-center-ConvSimpleLive-LIVE-framed_desktop.png
+    narration: "Generated, wired, live. The full pipeline is in the guide — factorylm.com."
