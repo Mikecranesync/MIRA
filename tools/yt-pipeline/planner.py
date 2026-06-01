@@ -104,14 +104,18 @@ def _polish_chapter_label(beat_text: str, chapter_index: int) -> str:
     words = words[:8] if len(words) > 8 else words
     text = " ".join(words) if words else ""
 
+    def _norm(w: str) -> str:
+        # Strip leading/trailing punctuation so "So," still matches "so".
+        return re.sub(r"^[^\w']+|[^\w']+$", "", w.lower())
+
     # Strip leading filler
     filler = {
         "so", "now", "next", "then", "ok", "alright", "you", "know",
         "let's", "you'll", "you've", "we'll", "we've", "i'll", "we",
         "it's", "that's"
     }
-    words = text.lower().split()
-    while words and words[0] in filler:
+    words = text.split()
+    while words and _norm(words[0]) in filler:
         words.pop(0)
     text = " ".join(words) if words else ""
     if text and text[0] != text[0].upper():
@@ -120,12 +124,14 @@ def _polish_chapter_label(beat_text: str, chapter_index: int) -> str:
     # Strip trailing prepositions/articles and audience/channel words
     trailing = {
         "the", "a", "an", "of", "in", "on", "to", "for", "is", "are", "was",
-        "everyone", "viewers", "folks", "friends", "guys", "people", "channel", "video", "guys"
+        "everyone", "viewers", "folks", "friends", "guys", "people", "channel", "video"
     }
-    words = text.lower().split()
-    while words and words[-1] in trailing:
+    words = text.split()
+    while words and _norm(words[-1]) in trailing:
         words.pop()
     text = " ".join(words) if words else ""
+    # Strip any dangling leading/trailing punctuation left after word removal
+    text = text.strip(" ,;:—-")
     if text and text[0] != text[0].upper():
         text = text[0].upper() + text[1:]
 
