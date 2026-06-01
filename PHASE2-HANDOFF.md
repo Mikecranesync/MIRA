@@ -37,7 +37,7 @@ Command Center page. Register any web HMI by host/IP.
 | `mira-hub/.../display/[id]/route.ts` | + `COMMAND_CENTER_CLOUD_PROXY` env switch (redirect→same-origin proxy path) |
 | `mira-hub/.../displays/route.ts` + `[id]/route.ts` | registry CRUD |
 | `mira-hub/.../command-center/ManageDisplays.tsx` | CRUD drawer |
-| `mira-hub/db/migrations/031_display_endpoints_grant_delete.sql` | GRANT DELETE (030 only had S/I/U) |
+| `mira-hub/db/migrations/032_display_endpoints_grant_delete.sql` | GRANT DELETE (030 only had S/I/U); renumbered 031→032 (collision w/ ignition_audit_log) |
 | `deployment/nginx-app-factorylm.phase2-command-center.conf.diff` | **reviewed VPS nginx diff (NOT applied live)** |
 
 ## Verified (local / staging — real, no mocks)

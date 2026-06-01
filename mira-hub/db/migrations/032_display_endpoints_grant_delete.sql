@@ -1,6 +1,8 @@
 BEGIN;
 
--- Migration 031: grant DELETE on display_endpoints to the app role.
+-- Migration 032: grant DELETE on display_endpoints to the app role.
+-- (Renumbered from 031 → 032 to resolve a collision with 031_ignition_audit_log
+--  on feat/hub-command-center. See docs/ignition-integration-architecture.md §3.)
 --
 -- Migration 030 created display_endpoints with GRANT SELECT, INSERT, UPDATE (it
 -- mirrored 020's append-with-status grant). But the Command Center registry CRUD
