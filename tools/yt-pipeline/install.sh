@@ -124,9 +124,11 @@ do_install() {
     cp -f "$PLIST_FILE" "$INSTALLED_PLIST"
     print_pass "Plist copied to $INSTALLED_PLIST"
 
-    # Unload if already loaded (idempotent)
-    if launchctl list "$PLIST_NAME" &>/dev/null 2>&1; then
-        launchctl unload -w "$INSTALLED_PLIST" 2>/dev/null || true
+    # Unload if already loaded (idempotent). The list check guards the
+    # "not loaded" case so unload's real failures (permission, corrupt
+    # plist) propagate instead of being swallowed by `|| true`.
+    if launchctl list "$PLIST_NAME" &>/dev/null; then
+        launchctl unload -w "$INSTALLED_PLIST"
         print_pass "Unloaded existing instance"
     fi
 

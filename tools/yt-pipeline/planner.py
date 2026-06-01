@@ -79,6 +79,15 @@ def generate_script(angle: str, groq_api_key: str) -> dict:
     return json.loads(content)
 
 
+def _norm_word(w: str) -> str:
+    """Lowercase a word and strip leading/trailing punctuation.
+
+    Used by `_polish_chapter_label` so "So," still matches the filler set
+    entry "so". Apostrophes are preserved (for "you'll", "we've", etc.).
+    """
+    return re.sub(r"^[^\w']+|[^\w']+$", "", w.lower())
+
+
 def _polish_chapter_label(beat_text: str, chapter_index: int) -> str:
     """Polish raw script beat text into a readable chapter title.
 
@@ -104,10 +113,6 @@ def _polish_chapter_label(beat_text: str, chapter_index: int) -> str:
     words = words[:8] if len(words) > 8 else words
     text = " ".join(words) if words else ""
 
-    def _norm(w: str) -> str:
-        # Strip leading/trailing punctuation so "So," still matches "so".
-        return re.sub(r"^[^\w']+|[^\w']+$", "", w.lower())
-
     # Strip leading filler
     filler = {
         "so", "now", "next", "then", "ok", "alright", "you", "know",
@@ -115,7 +120,7 @@ def _polish_chapter_label(beat_text: str, chapter_index: int) -> str:
         "it's", "that's"
     }
     words = text.split()
-    while words and _norm(words[0]) in filler:
+    while words and _norm_word(words[0]) in filler:
         words.pop(0)
     text = " ".join(words) if words else ""
     if text and text[0] != text[0].upper():
@@ -127,7 +132,7 @@ def _polish_chapter_label(beat_text: str, chapter_index: int) -> str:
         "everyone", "viewers", "folks", "friends", "guys", "people", "channel", "video"
     }
     words = text.split()
-    while words and _norm(words[-1]) in trailing:
+    while words and _norm_word(words[-1]) in trailing:
         words.pop()
     text = " ".join(words) if words else ""
     # Strip any dangling leading/trailing punctuation left after word removal

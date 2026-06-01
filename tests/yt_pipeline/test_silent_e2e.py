@@ -6,11 +6,13 @@ Verifies three critical scenarios:
 3. Calendar advances next_angle_index and records draft entry
 """
 
+from __future__ import annotations
+
 import json
 import shutil
 import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from PIL import Image
