@@ -356,6 +356,7 @@ These deserve a Mike decision before the next planning round, but do not block t
 
 ## 12. Cross-References
 
+- [`docs/adr/0021-ignition-module-first-edge.md`](adr/0021-ignition-module-first-edge.md) — **durable record of this architecture as an ADR**
 - [`docs/THEORY_OF_OPERATIONS.md`](THEORY_OF_OPERATIONS.md) — primary product doctrine
 - [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) — layer map, dependency rules
 - [`docs/specs/maintenance-namespace-builder-spec.md`](specs/maintenance-namespace-builder-spec.md) — UNS gate, proposals, tag-import wizard

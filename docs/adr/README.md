@@ -18,3 +18,6 @@ decision, the options considered, what was chosen and why, and the consequences.
 | [0007](0007-notebook-intelligence-layer.md) | Notebook Intelligence Layer — Open WebUI + MIRA Pipeline | Accepted |
 | [0008](0008-sidecar-deprecation.md) | Deprecate mira-sidecar — Migration to mira-pipeline + Open WebUI KB | Accepted — in progress |
 | [0010](0010-karpathy-eval-alignment.md) | Full Karpathy Eval Alignment — Closing the 7 Gaps | Accepted |
+| [0021](0021-ignition-module-first-edge.md) | Ignition-Module-First Edge Architecture | Accepted — 2026-06-01 |
+
+(Index is currently incomplete — ADRs 0009, 0011–0020 exist on disk; cleanup tracked separately.)
