@@ -3,8 +3,8 @@
 # Tests the pure signing logic in isolation from all Ignition I/O.
 # Run: cd /Users/charlienode/MIRA && python3 -m pytest tests/ignition/test_chat_signing.py -v
 
-import sys
 import os
+import sys
 
 # Ensure the signing module (sibling of doPost.py) is importable from Python 3 pytest
 sys.path.insert(
@@ -17,10 +17,9 @@ sys.path.insert(
 
 import hashlib
 import hmac as hmaclib
+
 import pytest
-
-from signing import sign_request, build_headers
-
+from signing import build_headers, sign_request
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers

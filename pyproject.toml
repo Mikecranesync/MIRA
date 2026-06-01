@@ -1,16 +1,29 @@
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# Honor `exclude` even when a file is passed explicitly on the command line
+# (pre-commit / the stop-gate pass changed files by path). Without this, the
+# Ignition Jython scripts below get linted anyway and fail on `system.*`.
+force-exclude = true
 exclude = [
     "mira-bots-phase1",
     "mira-bots-phase2",
     "mira-bots-phase3",
     "archives",
+    # Jython 2.7 — runs inside the Ignition Gateway JVM, not CPython.
+    # Uses Java imports (java.io.*) and Ignition globals (system.*), which
+    # ruff cannot model. Lint these in their own Jython environment, not here.
+    "ignition/webdev",
 ]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 ignore = ["E501"]  # line length handled by formatter
+
+[tool.ruff.lint.per-file-ignores]
+# Test files commonly insert sys.path before importing the target module.
+"tests/**/*.py" = ["E402", "I001"]
+"mira-*/tests/**/*.py" = ["E402", "I001"]
 
 # mira-copy CLI: run with `python -m mira_copy` (no [project] table needed)
 

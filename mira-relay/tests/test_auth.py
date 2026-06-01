@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Tests for HMAC auth verifier (auth.py) and relay_server.py auth integration."""
+
+from __future__ import annotations
 
 import hashlib
 import hmac

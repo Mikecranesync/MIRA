@@ -7,14 +7,14 @@ import sqlite3
 import sys
 
 import httpx as _httpx
-
-logger = logging.getLogger("mira-mcp")
 from cmms.atlas import AtlasCMMS
 from cmms.factory import create_cmms_adapter
 from fastmcp import FastMCP
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from tenant_resolver import resolve_atlas_creds
+
+logger = logging.getLogger("mira-mcp")
 
 DB_PATH = os.environ.get("MIRA_DB_PATH", "/data/mira.db")
 MCP_REST_API_KEY = os.environ.get("MCP_REST_API_KEY", "")

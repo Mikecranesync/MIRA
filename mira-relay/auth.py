@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """HMAC-SHA256 verifier for mira-relay inbound requests.
 
 Contract (must match tasks 2 & 3):
@@ -26,12 +24,13 @@ could each accept the same nonce. Post-MVP: replace with Redis SETNX
 or a shared nonce store.
 """
 
+from __future__ import annotations
+
 import hashlib
 import hmac
 import time
 from collections import OrderedDict
 from typing import Optional
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Replay store — LRU dict capped at MAX_REPLAY_ENTRIES
