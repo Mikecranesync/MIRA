@@ -111,6 +111,55 @@ class QuestionResult:
     score: Score
     passed: bool
     fail_reasons: list[str] = field(default_factory=list)
+    skipped: bool = False
+    skip_reason: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Embed-sidecar failure detection (issue #1509)
+#
+# When Ollama embed is unavailable, vector retrieval is skipped and grounding
+# degrades — the per-question rubric then dips below the floor and the gate
+# hard-fails. That is a harness condition, not an engine regression. We watch
+# the engine logs for the known failure signal and mark the question skipped
+# instead of failed; the aggregator excludes skipped questions from pass/fail
+# math (with a guard against the whole run being skipped).
+# ---------------------------------------------------------------------------
+
+EMBED_FAIL_PATTERNS = (
+    "Ollama embed failed on all candidates",
+    "NEON_RECALL_NO_EMBEDDING",
+)
+MAX_SKIP_FRACTION = 0.5
+
+
+class _EmbedFailureSignal:
+    def __init__(self) -> None:
+        self.triggered = False
+        self.pattern_hit = ""
+
+    def reset(self) -> None:
+        self.triggered = False
+        self.pattern_hit = ""
+
+
+class _EmbedFailureHandler(logging.Handler):
+    def __init__(self, signal: _EmbedFailureSignal) -> None:
+        super().__init__(level=logging.INFO)
+        self.signal = signal
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if self.signal.triggered:
+            return
+        try:
+            msg = record.getMessage()
+        except Exception:
+            return
+        for pat in EMBED_FAIL_PATTERNS:
+            if pat in msg:
+                self.signal.triggered = True
+                self.signal.pattern_hit = pat
+                return
 
 
 # ---------------------------------------------------------------------------
@@ -276,48 +325,79 @@ async def run_question(
 ) -> QuestionResult:
     chat_id = f"stg-{question.id}-{uuid.uuid4().hex[:8]}"
     t0 = time.monotonic()
+    # Install a per-question log handler that watches for the embed-sidecar
+    # failure signal. Attached to the root logger so it sees records from
+    # mira-bots.shared.neon_recall and mira-bots.shared.workers.rag_worker
+    # without coupling this script to those module paths.
+    embed_signal = _EmbedFailureSignal()
+    embed_handler = _EmbedFailureHandler(embed_signal)
+    root_logger = logging.getLogger()
+    root_logger.addHandler(embed_handler)
     try:
-        reply = await asyncio.wait_for(
-            supervisor.process(chat_id=chat_id, message=question.message, platform="staging"),
-            timeout=QUESTION_TIMEOUT_S,
-        )
-    except (TimeoutError, asyncio.TimeoutError):
-        elapsed = time.monotonic() - t0
-        return QuestionResult(
-            question=question,
-            reply="<TIMEOUT>",
-            elapsed_s=elapsed,
-            score=Score(judge_reason="engine timeout"),
-            passed=False,
-            fail_reasons=["engine_timeout"],
-        )
-    except Exception as exc:  # engine should never raise, but defend the run
-        elapsed = time.monotonic() - t0
-        logger.exception("engine error on %s", question.id)
-        return QuestionResult(
-            question=question,
-            reply=f"<ENGINE_ERROR: {exc.__class__.__name__}>",
-            elapsed_s=elapsed,
-            score=Score(judge_reason=f"engine error: {exc.__class__.__name__}"),
-            passed=False,
-            fail_reasons=["engine_error"],
-        )
+        try:
+            reply = await asyncio.wait_for(
+                supervisor.process(chat_id=chat_id, message=question.message, platform="staging"),
+                timeout=QUESTION_TIMEOUT_S,
+            )
+        except (TimeoutError, asyncio.TimeoutError):
+            elapsed = time.monotonic() - t0
+            return QuestionResult(
+                question=question,
+                reply="<TIMEOUT>",
+                elapsed_s=elapsed,
+                score=Score(judge_reason="engine timeout"),
+                passed=False,
+                fail_reasons=["engine_timeout"],
+            )
+        except Exception as exc:  # engine should never raise, but defend the run
+            elapsed = time.monotonic() - t0
+            logger.exception("engine error on %s", question.id)
+            return QuestionResult(
+                question=question,
+                reply=f"<ENGINE_ERROR: {exc.__class__.__name__}>",
+                elapsed_s=elapsed,
+                score=Score(judge_reason=f"engine error: {exc.__class__.__name__}"),
+                passed=False,
+                fail_reasons=["engine_error"],
+            )
 
-    elapsed = time.monotonic() - t0
-    score = await judge_reply(judge_client, question, reply)
-    fail_reasons = []
-    if score.min_dim() < HARD_FAIL_BELOW:
-        fail_reasons.append(f"dim_below_{HARD_FAIL_BELOW}")
-    if score.safety <= SAFETY_HARD_FAIL:
-        fail_reasons.append("safety_hard_fail")
-    return QuestionResult(
-        question=question,
-        reply=reply,
-        elapsed_s=elapsed,
-        score=score,
-        passed=not fail_reasons,
-        fail_reasons=fail_reasons,
-    )
+        elapsed = time.monotonic() - t0
+
+        # If the embed sidecar failed during this question, skip the judge —
+        # the reply is degraded by harness, not by engine. Run-level guard in
+        # summarize() fails the gate if too many questions get skipped.
+        if embed_signal.triggered:
+            logger.warning(
+                "skipping %s — embed sidecar unavailable (%s)",
+                question.id,
+                embed_signal.pattern_hit,
+            )
+            return QuestionResult(
+                question=question,
+                reply=reply,
+                elapsed_s=elapsed,
+                score=Score(judge_reason=f"skipped: {embed_signal.pattern_hit}"),
+                passed=False,
+                skipped=True,
+                skip_reason=embed_signal.pattern_hit,
+            )
+
+        score = await judge_reply(judge_client, question, reply)
+        fail_reasons = []
+        if score.min_dim() < HARD_FAIL_BELOW:
+            fail_reasons.append(f"dim_below_{HARD_FAIL_BELOW}")
+        if score.safety <= SAFETY_HARD_FAIL:
+            fail_reasons.append("safety_hard_fail")
+        return QuestionResult(
+            question=question,
+            reply=reply,
+            elapsed_s=elapsed,
+            score=score,
+            passed=not fail_reasons,
+            fail_reasons=fail_reasons,
+        )
+    finally:
+        root_logger.removeHandler(embed_handler)
 
 
 # ---------------------------------------------------------------------------
@@ -329,19 +409,35 @@ async def run_question(
 class RunSummary:
     total: int
     passed: int
+    skipped: int
     mean_of_means: float
     below_3: int
     hard_fails: int
     overall_pass: bool
+    harness_degraded: bool
     per_question: list[dict]
 
 
 def summarize(results: list[QuestionResult]) -> RunSummary:
-    means = [r.score.mean() for r in results]
+    scored = [r for r in results if not r.skipped]
+    skipped = sum(1 for r in results if r.skipped)
+    means = [r.score.mean() for r in scored]
     below_3 = sum(1 for m in means if m < 3.0)
-    hard_fails = sum(1 for r in results if r.fail_reasons)
+    hard_fails = sum(1 for r in scored if r.fail_reasons)
     mean_of_means = sum(means) / len(means) if means else 0.0
-    overall_pass = hard_fails == 0 and mean_of_means >= PASS_AVG and below_3 <= MAX_BELOW_3
+    # If too many questions were skipped (embed sidecar dead, etc.), the
+    # harness itself is broken — fail closed instead of letting a tiny
+    # surviving sample fluke a green gate.
+    harness_degraded = (
+        len(results) > 0 and skipped / len(results) > MAX_SKIP_FRACTION
+    )
+    overall_pass = (
+        not harness_degraded
+        and len(scored) > 0
+        and hard_fails == 0
+        and mean_of_means >= PASS_AVG
+        and below_3 <= MAX_BELOW_3
+    )
     per_question = [
         {
             "id": r.question.id,
@@ -354,16 +450,20 @@ def summarize(results: list[QuestionResult]) -> RunSummary:
             "elapsed_s": round(r.elapsed_s, 2),
             "passed": r.passed,
             "fail_reasons": r.fail_reasons,
+            "skipped": r.skipped,
+            "skip_reason": r.skip_reason,
         }
         for r in results
     ]
     return RunSummary(
         total=len(results),
         passed=sum(1 for r in results if r.passed),
+        skipped=skipped,
         mean_of_means=round(mean_of_means, 2),
         below_3=below_3,
         hard_fails=hard_fails,
         overall_pass=overall_pass,
+        harness_degraded=harness_degraded,
         per_question=per_question,
     )
 
@@ -375,12 +475,18 @@ def print_table(summary: RunSummary) -> None:
     for q in summary.per_question:
         s = q["scores"]
         marks = f"{s['grounding']} {s['context']} {s['actionability']} {s['safety']} {s['tone']}"
-        fail_tag = ",".join(q["fail_reasons"]) if q["fail_reasons"] else ""
-        print(f"{q['id'][:32]:32} {q['category'][:14]:14} {marks}  {q['mean']:>4.2f}  {fail_tag}")
+        if q.get("skipped"):
+            tag = f"SKIP: {q.get('skip_reason', '')}"
+        else:
+            tag = ",".join(q["fail_reasons"]) if q["fail_reasons"] else ""
+        print(f"{q['id'][:32]:32} {q['category'][:14]:14} {marks}  {q['mean']:>4.2f}  {tag}")
     print("-" * 78)
     verdict = "PASS" if summary.overall_pass else "FAIL"
+    if summary.harness_degraded:
+        verdict = "FAIL (harness degraded)"
     print(
         f"{verdict}  questions={summary.total}  passed={summary.passed}  "
+        f"skipped={summary.skipped}  "
         f"mean={summary.mean_of_means:.2f}  below_3={summary.below_3}  "
         f"hard_fails={summary.hard_fails}"
     )
@@ -410,17 +516,20 @@ async def amain() -> int:
         json.dumps(
             {
                 "overall_pass": summary.overall_pass,
+                "harness_degraded": summary.harness_degraded,
                 "mean_of_means": summary.mean_of_means,
                 "below_3": summary.below_3,
                 "hard_fails": summary.hard_fails,
                 "total": summary.total,
                 "passed": summary.passed,
+                "skipped": summary.skipped,
                 "questions": summary.per_question,
                 "thresholds": {
                     "pass_avg": PASS_AVG,
                     "hard_fail_below": HARD_FAIL_BELOW,
                     "safety_hard_fail": SAFETY_HARD_FAIL,
                     "max_below_3": MAX_BELOW_3,
+                    "max_skip_fraction": MAX_SKIP_FRACTION,
                 },
             },
             indent=2,
