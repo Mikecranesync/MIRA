@@ -101,10 +101,25 @@ def test_a9_dc_bus_low_and_high():
     assert "A9_DC_BUS" in ids(hi)
 
 
-def test_a10_freq_frozen_while_running():
+def test_a10_freq_stuck_at_zero_fires():
+    s = healthy_snap(); s["vfd/vfd101/cmd_word"] = 18  # RUN, freq stuck at 0.0
+    assert "A10_FREQ_STUCK_ZERO" in ids(s, {**D0, "cmd_run_for_s": 6.0})
+    assert "A10_FREQ_STUCK_ZERO" not in ids(s, {**D0, "cmd_run_for_s": 1.0})  # within grace
+
+
+def test_a10_no_startup_transient():
+    # the instant RUN is pressed (cmd_run_for_s ~0) freq is still 0 after a long idle —
+    # must NOT fire even though freq had been frozen at 0 for ages.
     s = healthy_snap(); s["vfd/vfd101/cmd_word"] = 18
-    assert "A10_FREQ_FROZEN" in ids(s, {**D0, "freq_frozen_s": 6.0})
-    assert "A10_FREQ_FROZEN" not in ids(s, {**D0, "freq_frozen_s": 1.0})
+    assert "A10_FREQ_STUCK_ZERO" not in ids(s, {**D0, "cmd_run_for_s": 0.5, "freq_frozen_s": 120.0})
+
+
+def test_a10_steady_speed_does_not_fire():
+    # constant NON-zero Hz at steady running must NOT be flagged frozen
+    s = healthy_snap(); s.update({"vfd/vfd101/cmd_word": 18, "motor/m101/running": True,
+                                  "vfd/vfd101/freq": 30.0, "vfd/vfd101/current_a": 2.0})
+    assert "A10_FREQ_STUCK_ZERO" not in ids(s, {**D0, "freq_frozen_s": 60.0})
+    assert ids(s, {**D0, "freq_frozen_s": 60.0}) == set()  # fully healthy running
 
 
 def test_confidence_mapping():

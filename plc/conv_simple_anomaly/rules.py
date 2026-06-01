@@ -152,18 +152,24 @@ def r_a9_dcbus(snap, d, cfg):
     return None
 
 
-def r_a10_freq_frozen(snap, d, cfg):
+def r_a10_freq_stuck_zero(snap, d, cfg):
+    # Commanded RUN but output Hz stuck at ~0 -> drive not producing output.
+    # (A constant NON-zero Hz at steady speed is normal and must NOT trip this.)
+    # Gate on time SINCE the RUN command (cmd_run_for_s), not absolute freq-frozen time,
+    # so the idle period where Hz legitimately sat at 0 doesn't count (no startup transient).
+    freq = snap.get(T_FREQ)
     if (snap.get(T_CMD) in cfg["run_cmd_values"] and _vfd_trustworthy(snap)
-            and d.get("freq_frozen_s", 0.0) >= cfg["freq_frozen_s"]):
-        return Anomaly("A10_FREQ_FROZEN", MED, "Output frequency frozen",
-                       f"Commanded RUN but output Hz unchanged for {d['freq_frozen_s']:.0f}s — "
-                       "stale read or the drive is not following.",
+            and isinstance(freq, (int, float)) and freq <= 0.1
+            and d.get("cmd_run_for_s", 0.0) >= cfg["freq_frozen_s"]):
+        return Anomaly("A10_FREQ_STUCK_ZERO", MED, "Output frequency stuck at zero",
+                       f"Commanded RUN for {d['cmd_run_for_s']:.0f}s but output Hz is still 0 — "
+                       "the drive is not following the run command.",
                        _ev(snap, T_FREQ, T_CMD), ["gs10"])
     return None
 
 
 RULES = [r_a0_offline, r_a1_comm, r_a3_estop_wiring, r_a4_direction, r_a5_illegal_run,
-         r_a6_not_responding, r_a8_overcurrent, r_a9_dcbus, r_a10_freq_frozen]
+         r_a6_not_responding, r_a8_overcurrent, r_a9_dcbus, r_a10_freq_stuck_zero]
 
 
 def evaluate(snap: dict, derived: dict, cfg: dict | None = None) -> list[Anomaly]:
