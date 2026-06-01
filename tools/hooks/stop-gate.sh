@@ -42,9 +42,12 @@ CHANGED_HUB=$(echo "$CHANGED" | grep '^mira-hub/' || true)
 FAILS=()
 
 # Gate 1: ruff on changed Python files.
+# --force-exclude honours pyproject.toml's [tool.ruff] exclude list even when
+# files are passed explicitly (Jython under ignition/webdev/ would otherwise
+# be linted as if it were CPython and fail with F821 on system.*/java.io.*).
 if [ -n "$CHANGED_PY" ] && command -v ruff >/dev/null 2>&1; then
   # shellcheck disable=SC2086
-  if ! ruff check $CHANGED_PY --quiet >/tmp/mira-stop-ruff.log 2>&1; then
+  if ! ruff check --force-exclude $CHANGED_PY --quiet >/tmp/mira-stop-ruff.log 2>&1; then
     FAILS+=("ruff failed (cat /tmp/mira-stop-ruff.log)")
   fi
 fi
