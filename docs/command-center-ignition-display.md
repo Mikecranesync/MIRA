@@ -105,3 +105,56 @@ Transient gateway state, not a wiring issue — it was active and rendering live
   `100.72.2.99:8088`, conf at `~/ign-proxy/default.conf`. Ephemeral (dies on reboot,
   like the `:3990/:3991` dev-view servers) — `docker start ign-proxy-test` to restart.
 - **View it:** open `http://127.0.0.1:3991/` on CHARLIE → Command Center → Conveyor 1.
+
+## Finish-out plan (goal prompt for a fresh session)
+
+> GOAL: Finish the Command Center → Ignition `ConvSimpleLive` display feature and
+> light it up on **prod** (`app.factorylm.com`), fully QA-gated, with every piece
+> PR'd on GitHub. Read first: this doc, memory `project_command_center.md`, PRs
+> #1593 (Phase 1 + the Ignition repoint) and #1603 (Phase 2 cloud-reach proxy).
+>
+> STATE: dev-verified — the real Command Center frames the live `ConvSimpleLive`
+> HMI through an **origin-root** XFO-stripping proxy on Charlie
+> (`127.0.0.1:8890` → gateway `100.72.2.99:8088`). Seed + this doc are committed on
+> `feat/hub-command-center` (#1593, commits `b2855515`+`a6fbe44f`). **Cloud is NOT
+> connected** — the in-flight per-id `/cc-display/{id}` proxy (#1603) cannot carry
+> an absolute-path SPA like Perspective.
+>
+> DO, in order (pause for Mike before each live-prod change):
+> 1. **QA-A — deterministic proxy tests (CI, no live gateway).** Stand the
+>    origin-root proxy against a mock upstream that sets `X-Frame-Options:SAMEORIGIN`,
+>    serves an absolute-path asset (`/res/x.js`), and accepts a WS upgrade. Assert:
+>    XFO stripped, `/res/x.js` forwarded 1:1 → 200, WS → 101.
+> 2. **QA-B — un-mocked live Playwright (staging gate).** Real CC → click Conveyor 1
+>    → assert 302 chain + all Perspective assets 200 *through the proxy* + zero
+>    XFO/CSP console errors + iframe renders. Gate behind `LIVE_IGNITION=1` + a
+>    reachability pre-check; treat gateway **503 (`STARTING`) as skip/retry, not
+>    fail** (Standard trial restarts every ~2h). This replaces the current mocked
+>    e2e as the promotion gate (the mocked one stays as UI smoke — it can't catch
+>    XFO/absolute-path/proxy and would green-light a blank prod frame).
+> 3. **Cloud-proxy decision + build (Mike's call).** Per-id proxy can't host
+>    Perspective → need a **dedicated origin per gateway**: a `cc-gw.*` subdomain /
+>    dedicated VPS nginx server block reverse-proxying the gateway with XFO+CSP
+>    stripped and WS forwarded, framed origin-root. Decide: new origin-root proxy
+>    alongside `mira-proxy` vs. fold gateway-origin handling into it. Build it +
+>    the prod `display_endpoints` row pointing `host:port` at that origin.
+> 4. **Promote (env doctrine).** Migrations 030/031 already on prod. Seed **staging
+>    first** → verify QA-B on staging → prod row via `apply-seeds` → nginx leg via
+>    the gated deploy-nginx workflow (incl. the required `map $http_upgrade
+>    $connection_upgrade`). Don't query prod NeonDB / SSH prod from the session —
+>    use gated workflows; hand Mike commands.
+> 5. **QA-C — off-LAN prod smoke (GO/NO-GO).** From a non-LAN network: open
+>    `app.factorylm.com` Command Center → green dot → frame renders → response CSP
+>    `frame-src` has `'self'` → WS `101` through nginx. Only this proves
+>    mixed-content + tailnet-reach closed.
+> 6. **Optional UX.** The `ConvSimpleLive` project requires Ignition login and a
+>    gateway restart drops the session. For a watch-only display, set the project's
+>    Perspective permissions to allow anonymous/public view on the gateway.
+> 7. **PR everything.** Tests (A+B) + the origin-root proxy land in a PR — fold into
+>    #1603 or open a Phase-3 PR stacked on it. Green required checks before merge;
+>    `gh pr checks` vs main for pre-existing reds (per CI policy).
+>
+> CONSTRAINTS: env doctrine (dev→stg→prod); prod-guard (no prod NeonDB/SSH from
+> session); gateway is Ignition Standard *trial* (periodic 503 restarts);
+> commit early + pin your branch (`git branch -f`) — shared checkout, concurrent
+> writers can move HEAD ([[project_concurrent_writers]]).
