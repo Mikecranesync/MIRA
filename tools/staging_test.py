@@ -206,6 +206,12 @@ def build_supervisor() -> Supervisor:
     """
     require_env("NEON_DATABASE_URL")
     require_env("GROQ_API_KEY")
+    # MIRA_TENANT_ID must be set explicitly (R4, 2026-05-31). The previous
+    # workflow-level fallback to the prod tenant UUID created a latent
+    # cross-env-bleed risk: a missing STAGING_TENANT_ID secret silently
+    # routed gate writes through the prod tenant on the staging Neon branch.
+    # Fail closed here so a forgotten secret is loud, not silent.
+    require_env("MIRA_TENANT_ID")
     os.environ.setdefault("INFERENCE_BACKEND", "cloud")
 
     db_path = Path(tempfile.mkdtemp(prefix="mira-stg-")) / "mira.db"

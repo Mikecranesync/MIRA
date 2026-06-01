@@ -101,10 +101,12 @@ jobs:
           INFERENCE_BACKEND: cloud
           # tenant_id must be a real UUID — `kg_entities.tenant_id` is a uuid
           # column; passing the literal string "staging" trips a Postgres cast
-          # error that disables BM25 for every question. Use the prod shared
-          # tenant UUID; the staging Neon branch is forked from prod so the
-          # row exists.
-          MIRA_TENANT_ID: ${{ secrets.STAGING_TENANT_ID || '78917b56-f85f-43bb-9a08-1bb98a6cd6c3' }}
+          # error that disables BM25 for every question. The value is stored
+          # as the STAGING_TENANT_ID secret on the `staging` environment so
+          # the prod tenant UUID is not baked into the public workflow file.
+          # If unset, `tools/staging_test.py` fails closed (exit 2) before any
+          # DB write — a missing secret cannot silently target the prod tenant.
+          MIRA_TENANT_ID: ${{ secrets.STAGING_TENANT_ID }}
           # `mira-bots/shared/chat_tenant.py` reads MIRA_DB_PATH at module
           # import time and opens a SQLite file. The default `/data/mira.db`
           # does not exist on ubuntu-latest; point it at the runner temp dir.
