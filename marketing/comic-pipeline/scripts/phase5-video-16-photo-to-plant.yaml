@@ -33,7 +33,7 @@ frames:
   - image: docs/promo-screenshots/2026-05-31_pmc-station-before-real-bench_photo.jpg
     narration: "One photo. Bad lighting, off-angle, a handwritten label that reads PMC Station. Watch where this goes."
   - image: docs/promo-screenshots/2026-05-31_command-center-ConvSimpleLive-LIVE-framed_desktop.png
-    narration: "It becomes a live Ignition HMI — every button bound to a real Micro 820 tag over CIP. The handwritten label, transcribed."
+    narration: "That same panel runs as a live Ignition HMI — every button on a real Micro 820 tag over CIP, updating live."
   - image: docs/promo-screenshots/2026-05-30_command-center-LIVE-real-probe_desktop.png
     narration: "The screen becomes located assets — GS10 VFD, Micro 820 PLC, the photo-eye — all under Conveyor 1."
   - image: docs/promo-screenshots/2026-05-29_command-center-tree-live_desktop.png
