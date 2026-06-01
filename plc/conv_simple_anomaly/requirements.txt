@@ -1,0 +1,3 @@
+aiomqtt==2.3.0
+PyYAML>=6.0
+# rules.py + test_rules.py are pure stdlib (run: pytest plc/conv_simple_anomaly/)
