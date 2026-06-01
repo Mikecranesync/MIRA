@@ -17,6 +17,8 @@ import uuid
 
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
+
+from ask_api.machine_context import MACHINE_CONTEXT
 from shared.engine import Supervisor
 
 logging.basicConfig(
@@ -55,6 +57,24 @@ class AskRequest(BaseModel):
     session_id: str | None = None
 
 
+# --- GS10 decode tables (mirror MIRA_PLC/specs/CONVEYOR_MACHINE_CARD.md) ---
+# Status word (reg 0x2101) low 2 bits -> run state.
+_STATUS_BITS = {0: "STOPPED", 1: "DECEL", 2: "STANDBY", 3: "RUNNING"}
+# GS10 fault/error codes (vfd_fault_code, low byte of reg 0x2100) -> short name.
+_FAULT_CODES = {
+    0: "no active fault",
+    4: "GFF ground fault",
+    12: "Lvd undervoltage",
+    21: "oL overload",
+    49: "EF external fault",
+    54: "CE1 comm illegal cmd",
+    55: "CE2 comm illegal addr",
+    56: "CE3 comm illegal data",
+    57: "CE4 comm fail",
+    58: "CE10 modbus timeout",
+}
+
+
 def _build_status_block(tags: dict | None) -> str:
     """Decode known live conveyor/VFD tags into a human-readable status block.
 
@@ -82,9 +102,15 @@ def _build_status_block(tags: dict | None) -> str:
         elif key == "vfd_cmd_word":
             lines.append(f"Command: {cmd_word_map.get(value, f'cmd {value}')}")
         elif key == "vfd_status_word":
-            lines.append(f"status word {value}")
+            state = _STATUS_BITS.get(value & 0b11, "?")
+            lines.append(f"Drive state: {state} (status word {value})")
         elif key == "vfd_fault_code":
-            lines.append("no active fault" if value == 0 else f"FAULT CODE {value}")
+            if value == 0:
+                lines.append("no active fault")
+            elif value in _FAULT_CODES:
+                lines.append(f"FAULT: {_FAULT_CODES[value]} (code {value})")
+            else:
+                lines.append(f"FAULT code {value} (unmapped)")
         elif key == "vfd_comm_ok":
             lines.append(f"VFD comms {'OK' if value else 'LOST'}")
         elif key == "pe_latched":
@@ -119,9 +145,11 @@ async def ask(req: AskRequest, x_mira_key: str = Header(None)):
 
     try:
         status_block = _build_status_block(req.tags)
-        enriched = (
-            f"{status_block}\n\n[QUESTION]\n{req.question}" if status_block else req.question
-        )
+        parts = [MACHINE_CONTEXT]
+        if status_block:
+            parts.append(status_block)
+        parts.append("[QUESTION]\n" + req.question)
+        enriched = "\n\n".join(parts)
 
         chat_id = req.session_id or ("ignition:" + uuid.uuid4().hex)
 

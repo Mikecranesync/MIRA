@@ -373,6 +373,10 @@ services:
       - "100.68.120.99:8011:8011"
     environment:
       <<: *bot-common-env
+      # Kiosk is bolted to one machine (the garage conveyor). Skip the
+      # "which equipment?" UNS confirmation gate so MIRA answers directly.
+      # Scoped to mira-ask ONLY — the Telegram/Slack bots keep the gate.
+      MIRA_UNS_GATE_ENABLED: "0"
     volumes:
       - /opt/mira/data:/mira-db
     networks:
