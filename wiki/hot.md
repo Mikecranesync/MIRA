@@ -557,3 +557,8 @@ Mitsubishi Electric: 16 chunks (NULL model)
 - Chronic FSM/UNS-gate regression band continues. 23 patchable failures, 3 file clusters → both autopatch hard-stops tripped (>15 failures; >1 file). Same A–E clusters as #1583.
 - Key finding: ~15pt pass-rate swing across 5 runs on 2026-05-30 (49–64%) with no code changes → eval is non-deterministic; judge fixes against a multi-run mean, not one scorecard. Empty `last_response_snippet` is a watchdog parsing artifact (no transcript column in scorecard), NOT empty responses.
 - Human decision still pending (#1583 step 1): are cluster-A/B fixtures stale vs the UNS gate, or did the gate regress?
+
+## eval-fixer run — 2026-06-01
+- Scorecard: 30/57 passing (53%) — new low in the FSM/UNS-gate band
+- Action: issue-filed (commented on tracker #1583, not a duplicate)
+- 27 patchable failures but both autopatch hard-stops tripped (>15 failures; 3 file clusters). Same clusters A–E as #1583. `last_response_snippet` still empty for all — transcript capture remains the #1 blocker.
