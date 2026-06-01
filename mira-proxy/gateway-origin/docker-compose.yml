@@ -1,0 +1,26 @@
+# Origin-root proxy for the real Ignition gateway (the building block).
+#
+# Binds LOOPBACK by default (127.0.0.1:8890) — the safe posture proven on dev.
+# How this origin is EXPOSED for cloud reach (dedicated cc-gw.* subdomain + TLS,
+# or tailscale serve, or folded behind the VPS) is the open decision in
+# docs/command-center-ignition-display.md — do NOT bind it to 0.0.0.0 / a public
+# interface without that decision (it strips frame headers off a control-capable
+# HMI; see README "SAFETY").
+#
+# IGNITION_GATEWAY_IP overrides the gateway address (default = PLC laptop Tailscale).
+services:
+  gateway-origin-proxy:
+    image: nginx:1.27-alpine
+    container_name: mira-ignition-origin-proxy
+    restart: unless-stopped
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    extra_hosts:
+      - "ignition-gateway:${IGNITION_GATEWAY_IP:-100.72.2.99}"
+    ports:
+      - "127.0.0.1:8890:8890"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8890/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
