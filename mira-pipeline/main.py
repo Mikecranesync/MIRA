@@ -283,8 +283,14 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="MIRA Pipeline", docs_url=None, redoc_url=None, lifespan=lifespan)
 
 from eval_api import router as _eval_router  # noqa: E402
+from ignition_chat import build_router as _build_ignition_chat_router  # noqa: E402
 
 app.include_router(_eval_router)
+# Ignition Module → Cloud chat endpoint (HMAC-verified, NOT bearer-authed).
+# The endpoint runs the same Supervisor engine as /v1/chat/completions but
+# behind HMAC instead of the OpenAI-compat bearer. Auth bypass for this path
+# is wired into the _auth middleware below.
+app.include_router(_build_ignition_chat_router(lambda: engine))
 
 
 # ── Auth middleware ──────────────────────────────────────────────────────────
@@ -299,6 +305,8 @@ async def _auth(request: Request, call_next):
         "/eval/list",
         "/webhook/signup",
         "/api/agents/public-status",
+        # Ignition Module uses HMAC-SHA256, not bearer — enforced in the route itself.
+        "/api/v1/ignition/chat",
     ):
         return await call_next(request)
     # Localhost requests (docker-exec eval, internal health checks) skip auth
