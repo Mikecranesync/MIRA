@@ -377,6 +377,12 @@ services:
       # "which equipment?" UNS confirmation gate so MIRA answers directly.
       # Scoped to mira-ask ONLY — the Telegram/Slack bots keep the gate.
       MIRA_UNS_GATE_ENABLED: "0"
+      # Grounded diagnostic questions run the full RAG+rerank+LLM pipeline,
+      # measured ~45s on the kiosk — past the 30s default, which returns the
+      # "taking longer than usual" fallback instead of the answer. A wall-
+      # mounted kiosk can wait; raise the engine's internal process timeout.
+      # Scoped to mira-ask only.
+      MIRA_PROCESS_TIMEOUT: "90"
     volumes:
       - /opt/mira/data:/mira-db
     networks:
