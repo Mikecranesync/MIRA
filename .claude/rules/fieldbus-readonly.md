@@ -1,7 +1,20 @@
-# Fieldbus Discovery is Read-Only
+# Fieldbus Discovery is Read-Only — and customer-shipped surfaces never touch the bus
 
 `plc/discover.py` and any fieldbus *discovery* code MUST be strictly read-only.
 Discovery's job is to **see** what's on the network/bus — never to change it.
+
+**Wider scope (added 2026-06-01, audit task D5):** the read-only rule below
+governs discovery. The *customer-shipped surface* has a stricter rule:
+**no customer-shipped MIRA module ever opens a Modbus / EtherNet/IP / OPC-UA
+socket to the plant.** Customer-side PLC reads go through Ignition (or the
+future Sparkplug subscriber in `mira-connect`); customer-side PLC writes do
+not exist. The two scripts that *do* write — `plc/live_monitor.py` (GS10 F/R/S/X
+commands) and `plc/live-plc-bridge/bridge.py` (direct Modbus TCP poll from a
+MIRA-named container) — are **bench/developer tools only**. They carry
+prominent BENCH-ONLY headers, never appear in a customer-facing
+docker-compose, and never get referenced from any path that ships in the
+Ignition Module. See `docs/mira-ignition-secure-architecture.md` §8
+anti-patterns #1, #4, and #6.
 
 > **TL;DR:** Discovery never writes. The Ethernet scan is fully side-effect-free. The
 > RS-485 sweep is read-only but **not** safe on a live PLC-mastered bus (two-master
@@ -66,3 +79,22 @@ Old field devices can choke even on reads if hammered. Discovery must:
 
 Aligns with `.claude/skills/mira-industrial-safety` and the MIRA SaaS scope guard
 (no arbitrary PLC writes). Spec: `docs/specs/fieldbus-discovery-spec.md`.
+
+## Bench-only PLC tools (extended scope, 2026-06-01)
+
+These scripts write to the PLC or open Modbus sockets from a MIRA-named
+container. They are bench/developer tools only and must stay out of every
+customer-shipped surface:
+
+| File | Why bench-only |
+|---|---|
+| `plc/live_monitor.py` | F/R/S/X commands write GS10 control words. Used to drive the bench during ladder development. |
+| `plc/live-plc-bridge/bridge.py` | Direct Modbus TCP poll from a MIRA container. Right shape for the bench Fault-Detective demo; wrong shape for any customer install (would mean MIRA reaches into the plant LAN). |
+| `plc/deploy_modbus_map.py` | Writes the Modbus address-map config to the PLC. Already understood as a deliberate config-write tool, not a runtime path. |
+
+Rules for *anything new* under `plc/` or that touches a fieldbus:
+
+1. **Customer-shipped paths read through Ignition (or `mira-connect` for Sparkplug).** Never `pymodbus`, `pycomm3`, `python-snap7`, `opcua`, or any other fieldbus client in a customer container or in the Ignition Module's WebDev / gateway-script code.
+2. **Writes don't exist in the customer-shipped story.** If a future feature needs a write, it is a NEW, explicitly-gated, two-step-approved tool — not a flag on an existing module. See `docs/mira-ignition-secure-architecture.md` §4.2 "Writes require explicit two-step approval."
+3. **Bench tools carry a BENCH-ONLY banner at the top of the file** (4-line ASCII box; both `live_monitor.py` and `live-plc-bridge/bridge.py` ship the standard header). The banner names the architecture doc and this rule.
+4. **`docker-compose.fault-detective.yml` is a bench harness, not a customer architecture.** Its comments must say so; do not promote it to a customer install pattern.

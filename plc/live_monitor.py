@@ -1,6 +1,22 @@
 #!/usr/bin/env python3
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  ⚠️  BENCH / DEVELOPER TOOL — NEVER SHIPPED TO CUSTOMERS                  ║
+# ║                                                                          ║
+# ║  This script writes to the GS10 VFD (F/R/S/X commands) over Modbus TCP. ║
+# ║  It exists to instrument the development bench (Micro 820 + Conv_Simple ║
+# ║  firmware) and validate ladder logic. It is NOT part of the customer-   ║
+# ║  deployed MIRA Module, NOT in any production docker-compose, and MUST   ║
+# ║  NEVER be referenced from a customer-facing path.                       ║
+# ║                                                                          ║
+# ║  Customer-side PLC reads go through Ignition (or the future Sparkplug   ║
+# ║  bridge in mira-connect). Customer-side PLC writes do not exist —       ║
+# ║  see docs/mira-ignition-secure-architecture.md §8 anti-pattern #6.      ║
+# ║                                                                          ║
+# ║  Rules: .claude/rules/fieldbus-readonly.md                              ║
+# ║  Architecture: docs/mira-ignition-secure-architecture.md §10.2          ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
 r"""
-live_monitor.py -- MIRA PLC Live Dashboard
+live_monitor.py -- MIRA PLC Live Dashboard (BENCH-ONLY)
 Real-time Modbus TCP monitor for Micro820 + GS10 VFD conveyor system.
 
 Usage:
