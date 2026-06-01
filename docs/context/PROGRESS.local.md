@@ -818,4 +818,607 @@ from `.claude/settings.json`.
 - ?? tests/eval/runs/2026-05-30T0344-offline-text.md
 - ?? tests/eval/runs/2026-05-30T0347-offline-text.md
 **Next:** _set by next session_
+
+### 2026-05-31 09:12 UTC — `main`
+**Last commit:** 6efc7a1c chore: session catchup 2026-05-31 (eval runs, YT pipeline spec, ISH assets, progress log) (#1604)
+**Changed (vs. fork point):** (no committed diff vs. base)
+**Working tree:** clean
+**Next:** _set by next session_
+
+### 2026-05-31 09:34 UTC — `feature/yt-pipeline`
+**Last commit:** 10d7ec0c docs(yt-pipeline): implementation plan for autonomous YouTube content pipeline
+**Changed (vs. fork point):**
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-05-31 09:37 UTC — `feature/yt-pipeline`
+**Last commit:** 10d7ec0c docs(yt-pipeline): implementation plan for autonomous YouTube content pipeline
+**Changed (vs. fork point):**
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-05-31 10:35 UTC — `feature/yt-pipeline`
+**Last commit:** c2f2d91d feat(yt-pipeline): scaffold directory structure and topics.yaml
+**Changed (vs. fork point):**
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/calendar.json
+- tools/yt-pipeline/topics.yaml
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-05-31 13:21 UTC — `feature/yt-pipeline`
+**Last commit:** eeb2e156 feat(yt-pipeline): main orchestrator — 48h guard, staged sequencing, dry-run, pause sentinel
+**Changed (vs. fork point):**
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.json
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+- ?? tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+**Next:** _set by next session_
+
+### 2026-05-31 13:45 UTC — `feature/yt-pipeline`
+**Last commit:** 33076bd0 chore(yt-pipeline): untrack runtime calendar.json (mutated each run); ship calendar.example.json
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-05-31 14:06 UTC — `feature/yt-pipeline`
+**Last commit:** 33076bd0 chore(yt-pipeline): untrack runtime calendar.json (mutated each run); ship calendar.example.json
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-05-31 16:59 UTC — `feature/yt-pipeline`
+**Last commit:** 6c4ecce2 docs(yt-pipeline): amend D — Seedance optional (BytePlus blocked), screenshot-only path, narration-driven length
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+-  M tests/yt_pipeline/test_assembler.py
+-  M tests/yt_pipeline/test_producer.py
+-  M tools/yt-pipeline/assembler.py
+-  M tools/yt-pipeline/producer.py
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-05-31 21:36 UTC — `feature/yt-pipeline`
+**Last commit:** c687dfb5 docs(yt-pipeline): amend E — draft mode (OpenAI TTS blocked): optional narration, silent video + script, drafts folder, no auto-publish
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+-  M tests/yt_pipeline/test_assembler.py
+-  M tests/yt_pipeline/test_producer.py
+-  M tools/yt-pipeline/assembler.py
+-  M tools/yt-pipeline/main.py
+-  M tools/yt-pipeline/producer.py
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-05-31 21:48 UTC — `feature/yt-pipeline`
+**Last commit:** c687dfb5 docs(yt-pipeline): amend E — draft mode (OpenAI TTS blocked): optional narration, silent video + script, drafts folder, no auto-publish
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+-  M tests/yt_pipeline/test_assembler.py
+-  M tests/yt_pipeline/test_producer.py
+-  M tools/yt-pipeline/assembler.py
+-  M tools/yt-pipeline/main.py
+-  M tools/yt-pipeline/producer.py
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-05-31 21:58 UTC — `feature/yt-pipeline`
+**Last commit:** 47ba13ab fix(test): mark unused mock_broll as _mock_broll in test_producer
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+-  M tests/yt_pipeline/test_assembler.py
+-  M tools/yt-pipeline/assembler.py
+-  M tools/yt-pipeline/main.py
+-  M tools/yt-pipeline/producer.py
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-05-31 22:11 UTC — `feature/yt-pipeline`
+**Last commit:** a21d0d46 feat(yt-pipeline): draft mode — optional narration, silent video + script, drafts folder (OpenAI TTS blocked)
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-05-31 22:17 UTC — `feature/yt-pipeline`
+**Last commit:** a21d0d46 feat(yt-pipeline): draft mode — optional narration, silent video + script, drafts folder (OpenAI TTS blocked)
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-05-31 22:39 UTC — `feature/yt-pipeline`
+**Last commit:** a21d0d46 feat(yt-pipeline): draft mode — optional narration, silent video + script, drafts folder (OpenAI TTS blocked)
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+-  M tools/yt-pipeline/assembler.py
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-05-31 23:23 UTC — `feature/yt-pipeline`
+**Last commit:** 01075e99 fix(yt-pipeline): degrade to silent draft when TTS fails (key present but 429/no quota), not just when key absent
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-05-31 23:32 UTC — `feature/yt-pipeline`
+**Last commit:** 01075e99 fix(yt-pipeline): degrade to silent draft when TTS fails (key present but 429/no quota), not just when key absent
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-05-31 23:37 UTC — `feature/yt-pipeline`
+**Last commit:** 01075e99 fix(yt-pipeline): degrade to silent draft when TTS fails (key present but 429/no quota), not just when key absent
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-06-01 00:56 UTC — `feature/yt-pipeline`
+**Last commit:** 01075e99 fix(yt-pipeline): degrade to silent draft when TTS fails (key present but 429/no quota), not just when key absent
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+-  M tests/yt_pipeline/test_planner.py
+-  M tools/yt-pipeline/planner.py
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-06-01 01:10 UTC — `feature/yt-pipeline`
+**Last commit:** f52d10fc feat(yt-pipeline): planner emits short ~60s script + honest reading-time chapters (no fabricated 4:30 timestamps)
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-06-01 01:15 UTC — `feature/yt-pipeline`
+**Last commit:** f52d10fc feat(yt-pipeline): planner emits short ~60s script + honest reading-time chapters (no fabricated 4:30 timestamps)
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-06-01 02:54 UTC — `feature/yt-pipeline`
+**Last commit:** f52d10fc feat(yt-pipeline): planner emits short ~60s script + honest reading-time chapters (no fabricated 4:30 timestamps)
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-06-01 02:58 UTC — `feature/yt-pipeline`
+**Last commit:** f52d10fc feat(yt-pipeline): planner emits short ~60s script + honest reading-time chapters (no fabricated 4:30 timestamps)
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-06-01 03:01 UTC — `feature/yt-pipeline`
+**Last commit:** f52d10fc feat(yt-pipeline): planner emits short ~60s script + honest reading-time chapters (no fabricated 4:30 timestamps)
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-06-01 03:04 UTC — `feature/yt-pipeline`
+**Last commit:** f52d10fc feat(yt-pipeline): planner emits short ~60s script + honest reading-time chapters (no fabricated 4:30 timestamps)
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
+
+### 2026-06-01 03:07 UTC — `feature/yt-pipeline`
+**Last commit:** f52d10fc feat(yt-pipeline): planner emits short ~60s script + honest reading-time chapters (no fabricated 4:30 timestamps)
+**Changed (vs. fork point):**
+- .gitignore
+- docs/superpowers/plans/2026-05-31-yt-pipeline.md
+- tests/yt_pipeline/__init__.py
+- tests/yt_pipeline/test_assembler.py
+- tests/yt_pipeline/test_main.py
+- tests/yt_pipeline/test_planner.py
+- tests/yt_pipeline/test_producer.py
+- tests/yt_pipeline/test_uploader.py
+- tools/yt-pipeline/__init__.py
+- tools/yt-pipeline/assembler.py
+- tools/yt-pipeline/calendar.example.json
+- tools/yt-pipeline/com.factorylm.yt-pipeline.plist
+- tools/yt-pipeline/main.py
+- tools/yt-pipeline/planner.py
+- tools/yt-pipeline/producer.py
+- tools/yt-pipeline/topics.yaml
+- tools/yt-pipeline/uploader.py
+- tools/yt_pipeline
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+- ?? ANTIGRAVITY_INSTALL_RECOMMENDATION.md
+**Next:** _set by next session_
 <!-- END AUTOLOG -->

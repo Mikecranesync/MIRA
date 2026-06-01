@@ -79,6 +79,76 @@ def generate_script(angle: str, groq_api_key: str) -> dict:
     return json.loads(content)
 
 
+def _polish_chapter_label(beat_text: str, chapter_index: int) -> str:
+    """Polish raw script beat text into a readable chapter title.
+
+    Rules:
+    1. Take the first sentence (or first ~8 words, whichever is shorter).
+    2. Strip leading filler: "so", "now", "next", "then", "ok", "alright", "you know",
+       "let's", "you'll", "you've", "we'll", "we've", "i'll", "you", "we", "it's",
+       "that's" (case-insensitive, only at the start).
+    3. Drop trailing prepositions/articles: "the", "a", "an", "of", "in", "on", "to",
+       "for", "is", "are", "was", and audience/channel words.
+    4. Cap at 50 characters (word boundary, no ellipsis).
+    5. Capitalize first character only (not title-case).
+    6. For the FIRST chapter, if result is generic ("Hi", "Hello", "Welcome"), use "Intro".
+    7. If empty after stripping, fall back to "Chapter N".
+    """
+    # Extract first sentence or first ~8 words
+    match = re.match(r"^([^.!?]*[.!?])", beat_text.strip())
+    if match:
+        first_sent = match.group(1).rstrip(".!?")
+    else:
+        first_sent = beat_text.strip()
+    words = first_sent.split()
+    words = words[:8] if len(words) > 8 else words
+    text = " ".join(words) if words else ""
+
+    # Strip leading filler
+    filler = {
+        "so", "now", "next", "then", "ok", "alright", "you", "know",
+        "let's", "you'll", "you've", "we'll", "we've", "i'll", "we",
+        "it's", "that's"
+    }
+    words = text.lower().split()
+    while words and words[0] in filler:
+        words.pop(0)
+    text = " ".join(words) if words else ""
+    if text and text[0] != text[0].upper():
+        text = text[0].upper() + text[1:]
+
+    # Strip trailing prepositions/articles and audience/channel words
+    trailing = {
+        "the", "a", "an", "of", "in", "on", "to", "for", "is", "are", "was",
+        "everyone", "viewers", "folks", "friends", "guys", "people", "channel", "video", "guys"
+    }
+    words = text.lower().split()
+    while words and words[-1] in trailing:
+        words.pop()
+    text = " ".join(words) if words else ""
+    if text and text[0] != text[0].upper():
+        text = text[0].upper() + text[1:]
+
+    # Cap at 50 characters on word boundary
+    if len(text) > 50:
+        truncated = text[:50]
+        last_space = truncated.rfind(" ")
+        if last_space > 10:  # don't truncate too aggressively
+            text = truncated[:last_space]
+        else:
+            text = truncated.rstrip()
+
+    # For first chapter, fall back to "Intro" if generic
+    if chapter_index == 0 and text.lower() in ("hi", "hello", "welcome", "hey", "greetings"):
+        return "Intro"
+
+    # If empty after stripping, use fallback
+    if not text.strip():
+        return f"Chapter {chapter_index + 1}"
+
+    return text.strip()
+
+
 def _chapter_timestamps(
     script: str, *, words_per_second: float = 2.5, max_chapters: int = 4
 ) -> str:
@@ -102,8 +172,9 @@ def _chapter_timestamps(
         # Last chapter takes all remaining sentences.
         chunk = sentences[i:] if len(chapters) == n - 1 else sentences[i : i + per]
         start = int(cum_words / words_per_second)
-        label = " ".join(chunk[0].split()[:6]).rstrip(".,;:!?")
-        chapters.append((start, label))
+        raw_label = " ".join(chunk[0].split()[:6]).rstrip(".,;:!?")
+        polished_label = _polish_chapter_label(raw_label, len(chapters))
+        chapters.append((start, polished_label))
         cum_words += sum(len(s.split()) for s in chunk)
         i += len(chunk)
     lines: list[str] = []

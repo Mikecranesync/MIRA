@@ -110,3 +110,99 @@ def test_chapter_timestamps_empty_for_trivial_script():
 
     assert _chapter_timestamps("") == ""
     assert _chapter_timestamps("Just one sentence here.") == ""
+
+
+def test_polish_strips_leading_filler():
+    """_polish_chapter_label() removes leading filler words."""
+    from tools.yt_pipeline.planner import _polish_chapter_label
+
+    result = _polish_chapter_label("So you've got a fault code F0004", 1)
+    assert result.lower().startswith("got")
+
+    result = _polish_chapter_label("Now let's check the input power", 1)
+    assert result.lower().startswith("check")
+
+    result = _polish_chapter_label("You'll need to measure voltage", 1)
+    assert result.lower().startswith("need")
+
+
+def test_polish_strips_trailing_prepositions():
+    """_polish_chapter_label() removes trailing prepositions/articles."""
+    from tools.yt_pipeline.planner import _polish_chapter_label
+
+    result = _polish_chapter_label("The first thing to check is the", 1)
+    assert not result.lower().endswith("the")
+    assert not result.lower().endswith("is")
+
+    result = _polish_chapter_label("Decode the fault code in the", 1)
+    assert not result.lower().endswith("the")
+
+
+def test_polish_caps_at_50_chars_on_word_boundary():
+    """_polish_chapter_label() caps at 50 chars on a word boundary."""
+    from tools.yt_pipeline.planner import _polish_chapter_label
+
+    long_text = "This is a very long chapter title that exceeds fifty characters significantly and should be truncated"
+    result = _polish_chapter_label(long_text, 1)
+    assert len(result) <= 50
+    assert not result.endswith(" ")
+
+
+def test_polish_uses_intro_for_generic_greeting():
+    """_polish_chapter_label() returns 'Intro' for generic greetings in chapter 0."""
+    from tools.yt_pipeline.planner import _polish_chapter_label
+
+    assert _polish_chapter_label("Hi everyone", 0) == "Intro"
+    assert _polish_chapter_label("Hello viewers", 0) == "Intro"
+    assert _polish_chapter_label("Welcome to the channel", 0) == "Intro"
+
+    result = _polish_chapter_label("Hi everyone", 1)
+    assert result != "Intro"
+
+
+def test_polish_falls_back_when_empty():
+    """_polish_chapter_label() returns 'Chapter N' when the result is empty."""
+    from tools.yt_pipeline.planner import _polish_chapter_label
+
+    result = _polish_chapter_label("", 0)
+    assert result == "Chapter 1"
+
+    result = _polish_chapter_label("So.", 2)
+    assert result == "Chapter 3"
+
+    result = _polish_chapter_label("The a an", 1)
+    assert result == "Chapter 2"
+
+
+def test_polish_preserves_chapter_invariants():
+    """Polished labels don't break _chapter_timestamps() invariants."""
+    from tools.yt_pipeline.planner import _chapter_timestamps
+
+    script = (
+        "So you've got a fault code F0004 on your PowerFlex 525. "
+        "The first thing to check is the input power to the drive. "
+        "Measure the incoming three-phase voltage to confirm it's within spec. "
+        "If power is good, we'll look at the parameter settings. "
+        "Reset the drive and monitor the fault log. "
+        "If the problem persists, contact the OEM for warranty service."
+    )
+    out = _chapter_timestamps(script)
+    lines = out.splitlines()
+
+    assert len(lines) >= 2
+    assert lines[0].startswith("0:00 ")
+
+    def secs(line: str) -> int:
+        m, s = line.split(" ", 1)[0].split(":")
+        return int(m) * 60 + int(s)
+
+    times = [secs(line) for line in lines]
+    assert times == sorted(times)
+    assert times[0] == 0
+    assert all(t < 120 for t in times)
+    assert all(times[i + 1] - times[i] >= 10 for i in range(len(times) - 1))
+
+    for line in lines:
+        parts = line.split(" ", 1)
+        label = parts[1]
+        assert label[0].isupper() or label.startswith("Chapter")
