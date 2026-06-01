@@ -1,0 +1,44 @@
+# Phase 5 — Video 16: "From One Machine Photo to a Structured Plant"
+# Tier 3 wedge demo. 6 frames, ~50s. Opens on the REAL PMC Station bench photo
+# (2026-05-31, Photo Booth) — the literal "blurry phone photo, handwritten label"
+# the script calls for — and resolves to the live ConvSimpleLive HMI + UNS tree.
+# Source script: content_strategy/output/scripts/tier3/video-16-one-machine-photo-to-structured-plant.md
+slug: phase5-video-16-photo-to-plant
+output_dir: marketing/videos/2026-05-31-phase5-demos/video-16-photo-to-plant
+width: 1920
+height: 1080
+zoom_amount: 0.012
+transition_duration: 0.4
+fit_mode: letterbox
+tts_voice: onyx
+tts_model: gpt-4o-mini-tts
+voiceover_style: |
+  Adult male, 40s, calm and direct. Sounds like a senior field engineer who
+  has worked in heavy manufacturing for 15 years — knowledgeable without
+  being academic, confident without being aggressive. Does not perform
+  enthusiasm. States facts and lets the listener draw conclusions.
+
+  Pacing: 130–140 words per minute. Steady. Slight pause after key claims —
+  functional, not dramatic. No acceleration on product names or feature
+  callouts; treat them as nouns, not reveals.
+
+  Tone: neutral American accent, no regional markers. Clean consonants.
+  Comfortable with industrial vocabulary (fault codes, torque specs, PLC,
+  CMMS, VFD, MTBF). Does not soften or inflate language.
+
+  Avoid: upward inflection on statements, marketing superlatives, breathless
+  pacing on product reveals, hesitation fillers, reading the style brief
+  itself aloud.
+frames:
+  - image: docs/promo-screenshots/2026-05-31_pmc-station-before-real-bench_photo.jpg
+    narration: "One photo. Bad lighting, off-angle, a handwritten label that reads PMC Station. Watch where this goes."
+  - image: docs/promo-screenshots/2026-05-31_command-center-ConvSimpleLive-LIVE-framed_desktop.png
+    narration: "It becomes a live Ignition HMI — every button bound to a real Micro 820 tag over CIP. The handwritten label, transcribed."
+  - image: docs/promo-screenshots/2026-05-30_command-center-LIVE-real-probe_desktop.png
+    narration: "The screen becomes located assets — GS10 VFD, Micro 820 PLC, the photo-eye — all under Conveyor 1."
+  - image: docs/promo-screenshots/2026-05-29_command-center-tree-live_desktop.png
+    narration: "One photo started this tree. Plant, line, asset — now the structure exists, and every fault is scoped to it."
+  - image: docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+    narration: "When a fault hits CV-101, MIRA knows exactly which CV-101 you mean — and cites the evidence behind it."
+  - image: docs/promo-screenshots/2026-05-31_command-center-ConvSimpleLive-LIVE-framed_desktop.png
+    narration: "Start with one photo. End with a structured plant. Request a demo at factorylm.com."
