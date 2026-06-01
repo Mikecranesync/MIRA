@@ -33,7 +33,7 @@ def _should_run(cal: dict) -> bool:
     return hours_since >= _MIN_INTERVAL_HOURS
 
 
-def run(dry_run: bool = False) -> None:
+def run(dry_run: bool = False, force: bool = False) -> None:
     """
     Execute the pipeline orchestration.
 
@@ -45,6 +45,9 @@ def run(dry_run: bool = False) -> None:
     4b. SILENT: save to drafts folder with narration_script + meta.txt
 
     On error: log, update consecutive_failures counter, pause after 3 failures.
+
+    When `force=True`, skip the 48h "last run was recent" guard — used by
+    the publish-now/on-demand workflow.
     """
     from .assembler import assemble
     from .planner import load_calendar, plan_next, save_calendar
@@ -56,8 +59,8 @@ def run(dry_run: bool = False) -> None:
         return
 
     cal = load_calendar(_CALENDAR_FILE)
-    if not _should_run(cal):
-        log.info("Last run was recent — skipping this trigger.")
+    if not force and not _should_run(cal):
+        log.info("Last run was recent — skipping this trigger. Pass --force to override.")
         return
 
     run_id = uuid.uuid4().hex[:8]
@@ -86,31 +89,48 @@ def run(dry_run: bool = False) -> None:
         # Determine if this is a voiced (with audio) or silent (draft) run
         is_voiced = "narration_audio" in assets
 
+        upload_failed_reason = None
         if is_voiced:
-            # Voiced path: upload to YouTube
+            # Voiced path: try to upload to YouTube. If that fails (bad token,
+            # network, quota), DON'T lose the MP4 — degrade to the draft path
+            # below so the run dir gets preserved and the user can upload it
+            # manually via YouTube Studio.
             yt_client_id = os.environ["YOUTUBE_CLIENT_ID"]
             yt_client_secret = os.environ["YOUTUBE_CLIENT_SECRET"]
             yt_refresh_token = os.environ["YOUTUBE_REFRESH_TOKEN_ISH"]
             auto_publish = os.environ.get("AUTO_PUBLISH", "false").lower() == "true"
 
-            video_id = upload(
-                plan, video_path, yt_client_id, yt_client_secret, yt_refresh_token, auto_publish
-            )
+            try:
+                video_id = upload(
+                    plan, video_path, yt_client_id, yt_client_secret, yt_refresh_token, auto_publish
+                )
+                cal["next_angle_index"] = plan["angle_index"] + 1
+                cal["last_run_utc"] = datetime.now(timezone.utc).isoformat()
+                cal["consecutive_failures"] = 0
+                cal.setdefault("published", []).append({
+                    "video_id": video_id,
+                    "title": plan["title"],
+                    "topic": plan["area"],
+                    "angle_index": plan["angle_index"],
+                    "status": "public" if auto_publish else "private",
+                    "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                })
+                save_calendar(cal, _CALENDAR_FILE)
+                log.info("Run %s complete -> https://youtube.com/watch?v=%s", run_id, video_id)
+                is_voiced = False  # done; skip the draft-save block below
+            except Exception as upload_exc:
+                upload_failed_reason = f"{type(upload_exc).__name__}: {upload_exc}"
+                log.error(
+                    "YouTube upload failed (%s) — saving voiced MP4 to drafts so it isn't lost. "
+                    "Regenerate YOUTUBE_REFRESH_TOKEN_ISH and re-run.",
+                    upload_failed_reason,
+                )
+                # Fall through to the draft-save block below — but flag is_voiced
+                # False-ish so we use the draft path, AND keep the narration audio
+                # by routing it into the draft dir alongside the script.
+                is_voiced = False
 
-            cal["next_angle_index"] = plan["angle_index"] + 1
-            cal["last_run_utc"] = datetime.now(timezone.utc).isoformat()
-            cal["consecutive_failures"] = 0
-            cal.setdefault("published", []).append({
-                "video_id": video_id,
-                "title": plan["title"],
-                "topic": plan["area"],
-                "angle_index": plan["angle_index"],
-                "status": "public" if auto_publish else "private",
-                "uploaded_at": datetime.now(timezone.utc).isoformat(),
-            })
-            save_calendar(cal, _CALENDAR_FILE)
-            log.info("Run %s complete -> https://youtube.com/watch?v=%s", run_id, video_id)
-        else:
+        if not is_voiced:
             # Silent path: save to drafts folder
             draft_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
             # Build slug from title: lowercase, non-alphanumeric -> dash
@@ -126,14 +146,20 @@ def run(dry_run: bool = False) -> None:
             import shutil as _shutil
             _shutil.copy2(video_path, draft_dir / "final.mp4")
             _shutil.copy2(assets["narration_script"], draft_dir / "narration_script.txt")
+            # If this was a voiced run whose upload failed, also copy the narration.mp3
+            # so the user has the complete asset bundle for a manual upload.
+            if "narration_audio" in assets:
+                _shutil.copy2(assets["narration_audio"], draft_dir / "narration.mp3")
 
             # Write meta.txt with metadata for manual upload
-            meta_text = "\n".join([
+            meta_lines = [
                 f"title: {plan['title']}",
                 f"description: {plan['description']}",
                 f"tags: {', '.join(plan['tags'])}",
-            ])
-            (draft_dir / "meta.txt").write_text(meta_text)
+            ]
+            if upload_failed_reason:
+                meta_lines.append(f"upload_failure: {upload_failed_reason}")
+            (draft_dir / "meta.txt").write_text("\n".join(meta_lines))
 
             # Update calendar with draft entry
             cal["next_angle_index"] = plan["angle_index"] + 1
@@ -170,4 +196,5 @@ def run(dry_run: bool = False) -> None:
 
 if __name__ == "__main__":
     dry_run = "--dry-run" in sys.argv
-    run(dry_run=dry_run)
+    force = "--force" in sys.argv
+    run(dry_run=dry_run, force=force)
