@@ -63,17 +63,65 @@ def poll(client) -> dict:
     return snap
 
 
+def watch(client, secs):
+    """Continuous monitor: poll + evaluate every 0.5s, print when anomalies fire/clear,
+    with a periodic heartbeat. For tripping faults at the bench and watching live."""
+    freq_val, freq_ts, cmd_run_since, last_any = None, 0.0, 0.0, 0.0
+    prev: dict = {}
+    t_end = time.time() + secs
+    next_hb = 0.0
+    print(f"WATCHING {secs:.0f}s — trip a fault and watch (Ctrl-C to stop)\n")
+    while time.time() < t_end:
+        now = time.time()
+        try:
+            snap = poll(client); last_any = now
+        except Exception as e:
+            print(f"  {time.strftime('%H:%M:%S')}  poll error: {e}"); time.sleep(0.5); continue
+        if snap.get(rules.T_FREQ) != freq_val:
+            freq_val, freq_ts = snap.get(rules.T_FREQ), now
+        cmd_run = snap.get(rules.T_CMD) in rules.DEFAULT_CFG["run_cmd_values"]
+        cmd_run_since = (cmd_run_since or now) if cmd_run else 0.0
+        derived = {"now": now, "max_stale_s": now - last_any,
+                   "freq_frozen_s": (now - freq_ts) if freq_ts else 0.0,
+                   "cmd_run_for_s": (now - cmd_run_since) if cmd_run_since else 0.0}
+        cur = {a.rule_id: a for a in rules.evaluate(snap, derived)}
+        ts = time.strftime("%H:%M:%S")
+        for rid in cur.keys() - prev.keys():
+            a = cur[rid]; print(f"  {ts}  >>> FIRED  [{a.severity}] {rid}: {a.message}")
+        for rid in prev.keys() - cur.keys():
+            print(f"  {ts}  --- cleared {rid}")
+        if now >= next_hb:
+            print(f"  {ts}  · run={snap.get(rules.T_RUN)} cmd={snap.get(rules.T_CMD)} "
+                  f"comm={snap.get(rules.T_COMM)} estop={snap.get(rules.T_ESTOP)} "
+                  f"freq={snap.get(rules.T_FREQ)} cur={snap.get(rules.T_CUR)} "
+                  f"dcbus={snap.get(rules.T_DCBUS)} active={sorted(cur) or '[]'}")
+            next_hb = now + 5
+        prev = cur
+        time.sleep(0.5)
+    print("\nwatch done.")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="192.168.1.100")
     ap.add_argument("--port", type=int, default=502)
     ap.add_argument("--secs", type=float, default=4.0)
+    ap.add_argument("--watch", action="store_true", help="continuous live monitor")
     args = ap.parse_args()
+    if args.watch and args.secs < 30:
+        args.secs = 240.0
 
     client = ModbusTcpClient(args.host, port=args.port, timeout=2)
     if not client.connect():
         print(f"FAIL: cannot connect to PLC {args.host}:{args.port}")
         return 2
+
+    if args.watch:
+        try:
+            watch(client, args.secs)
+        finally:
+            client.close()
+        return 0
 
     last_any = 0.0
     freq_val, freq_ts = None, 0.0
