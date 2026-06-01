@@ -22,7 +22,8 @@ import time
 from collections import OrderedDict
 from typing import Any, Callable, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
+from ignition_audit import query_audit_rows, write_audit_row
 from pydantic import BaseModel
 
 logger = logging.getLogger("mira-pipeline.ignition_chat")
@@ -194,7 +195,10 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
         preamble = _format_tag_preamble(req.tag_snapshot or {}, asset_id)
         message = f"{preamble}\n\n{question}" if preamble else question
 
+        tag_reads = sorted((req.tag_snapshot or {}).keys())
+
         t0 = time.monotonic()
+        engine_error: Optional[str] = None
         try:
             reply = await engine.process(
                 chat_id=chat_id,
@@ -203,17 +207,42 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
                 platform="ignition",
             )
         except Exception as exc:
+            engine_error = str(exc)
             logger.exception("IGNITION_CHAT engine_error tenant=%s asset=%s", tenant_id, asset_id)
-            raise HTTPException(500, f"Engine error: {exc}")
+            reply = ""
 
         latency_ms = int((time.monotonic() - t0) * 1000)
+        status = "engine_error" if engine_error else "ok"
         logger.info(
-            "IGNITION_CHAT ok tenant=%s asset=%s latency_ms=%d reply_len=%d",
+            "IGNITION_CHAT %s tenant=%s asset=%s latency_ms=%d reply_len=%d",
+            status,
             tenant_id,
             asset_id,
             latency_ms,
             len(reply or ""),
         )
+
+        # Audit write is fire-and-forget — never blocks the response on DB
+        # availability. write_audit_row returns False on failure and logs it.
+        write_audit_row(
+            tenant_id=tenant_id,
+            channel="ignition",
+            user_id=None,
+            asset_id=asset_id or None,
+            chat_id=chat_id,
+            prompt=question,
+            answer=reply or "",
+            sources=[],
+            tag_reads=tag_reads,
+            llm_provider=None,
+            llm_model=None,
+            inference_run_id=None,
+            latency_ms=latency_ms,
+            status=status,
+        )
+
+        if engine_error:
+            raise HTTPException(500, f"Engine error: {engine_error}")
 
         return {
             "answer": reply or "",
@@ -225,6 +254,28 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
             "tenant_id": tenant_id,
             "asset_id": asset_id,
             "latency_ms": latency_ms,
+        }
+
+    @router.get("/api/v1/audit")
+    async def get_audit(
+        request: Request,
+        limit: int = Query(50, ge=1, le=500),
+        asset_id: Optional[str] = Query(None),
+    ) -> dict[str, Any]:
+        """Read recent audit rows for the caller's tenant.
+
+        Auth: HMAC same as /chat — tenant is read from the verified header.
+        The tenant filter is enforced both in the SQL and by RLS on the row.
+        """
+        if not MIRA_IGNITION_HMAC_KEY:
+            raise HTTPException(503, "Ignition HMAC key not configured")
+        body = await request.body()
+        tenant_id = _verify_hmac(dict(request.headers), body, MIRA_IGNITION_HMAC_KEY)
+        rows = query_audit_rows(tenant_id=tenant_id, limit=limit, asset_id=asset_id)
+        return {
+            "tenant_id": tenant_id,
+            "count": len(rows),
+            "rows": rows,
         }
 
     return router

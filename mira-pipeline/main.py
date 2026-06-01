@@ -307,6 +307,7 @@ async def _auth(request: Request, call_next):
         "/api/agents/public-status",
         # Ignition Module uses HMAC-SHA256, not bearer — enforced in the route itself.
         "/api/v1/ignition/chat",
+        "/api/v1/audit",
     ):
         return await call_next(request)
     # Localhost requests (docker-exec eval, internal health checks) skip auth
