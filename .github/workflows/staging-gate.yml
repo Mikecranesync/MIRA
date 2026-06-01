@@ -38,7 +38,19 @@ jobs:
     # as "<workflow-name> / <job-name>" = "Staging Gate / staging-gate".
     name: staging-gate
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+
+    # Ollama sidecar — provides the nomic-embed-text embeddings the engine's
+    # vector-recall stage needs. Without this, every retrieval-dependent
+    # question logs `Ollama embed failed on all candidates`, the run hits
+    # tools/staging_test.py's harness-degraded guard (>50% skipped), and the
+    # gate fails closed. With the sidecar in place all 15 questions can
+    # score. See audit doc Option A (R5 follow-up, issue #1616).
+    services:
+      ollama:
+        image: ollama/ollama:0.4.1
+        ports:
+          - 11434:11434
 
     # Secrets required (set under repo "staging" environment):
     #   NEON_STG_DATABASE_URL    — connection string to the NeonDB staging branch
@@ -91,6 +103,28 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r mira-bots/telegram/requirements.txt
 
+      - name: Wait for Ollama and pre-pull embed model
+        if: github.actor != 'dependabot[bot]'
+        run: |
+          set -euo pipefail
+          # Service container starts in parallel with steps; poll until ready.
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:11434/api/tags >/dev/null; then
+              echo "ollama up after ${i}s"
+              break
+            fi
+            sleep 2
+          done
+          # Pre-pull the embed model so the first vector query doesn't time
+          # out on a cold download. nomic-embed-text matches the engine's
+          # default (rag_worker.py:EMBED_TEXT_MODEL) and the 768-dim shape
+          # of the staging NeonDB embedding column.
+          curl -sf -X POST http://localhost:11434/api/pull \
+            -d '{"name":"nomic-embed-text:latest","stream":false}' \
+            -o /tmp/ollama-pull.json
+          # Sanity-check that the model is now resident.
+          curl -sf http://localhost:11434/api/tags | grep -q nomic-embed-text
+
       - name: Run staging gate
         if: github.actor != 'dependabot[bot]'
         env:
@@ -113,6 +147,13 @@ jobs:
           MIRA_DB_PATH: ${{ runner.temp }}/mira-stg.db
           KNOWLEDGE_COLLECTION_ID: staging-dummy
           OPENWEBUI_BASE_URL: http://localhost:11434
+          # Point the engine's vector-recall stage at the ollama service
+          # container exposed on localhost:11434. Without this override the
+          # engine tries `host.docker.internal` first (Docker-host default),
+          # logs a failed candidate, then falls back to localhost — same
+          # endpoint but with a noisy warning. Setting explicitly skips the
+          # bad first attempt.
+          OLLAMA_BASE_URL: http://localhost:11434
           MCP_BASE_URL: http://localhost:1
           QUALITY_GATE_ENABLED: "1"
           QUALITY_GATE_JUDGE: "0"
