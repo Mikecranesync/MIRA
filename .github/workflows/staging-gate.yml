@@ -40,11 +40,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-    # Secrets required (set under repo "Staging Gate" environment):
-    #   NEON_STG_DATABASE_URL   — connection string to the NeonDB staging branch
-    #   STAGING_GROQ_API_KEY    — Groq key dedicated to staging (rate-limit isolation)
-    #   STAGING_CEREBRAS_API_KEY (optional cascade fallback)
-    #   STAGING_GEMINI_API_KEY   (optional cascade fallback)
+    # Secrets required (set under repo "staging" environment):
+    #   NEON_STG_DATABASE_URL    — connection string to the NeonDB staging branch
+    #   STAGING_TENANT_ID        — UUID for kg_entities.tenant_id (fail-closed if unset; see R4)
+    #   STAGING_GROQ_API_KEY     — Groq key (rate-limit isolated from prod)
+    #   STAGING_CEREBRAS_API_KEY — used by BOTH the engine cascade (answering)
+    #                              and the judge cascade (scoring), as fallback
+    #                              for Groq under outage / 429 / 5xx
+    #   STAGING_GEMINI_API_KEY   — second fallback for the same two cascades
+    # The engine cascade lives in mira-bots/shared/inference/router.py and
+    # answers the technician's question. The judge cascade lives in
+    # tools/staging_test.py and grades the resulting reply on the 5-dim
+    # rubric. Both layers fall through Groq → Cerebras → Gemini; a Groq
+    # outage no longer halts the gate (see R2).
     environment: staging
 
     steps:
