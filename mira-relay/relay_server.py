@@ -13,10 +13,16 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket
 
+from auth import verify_hmac
+
 logger = logging.getLogger("mira-relay")
 
 DB_PATH = os.getenv("MIRA_DB_PATH", "/mira-db/mira.db")
 RELAY_API_KEY = os.getenv("RELAY_API_KEY", "")
+# Set RELAY_LEGACY_BEARER=1 to accept the old "Authorization: Bearer <key>" path.
+# Keep enabled until plc/live-plc-bridge and mira-fault-detective migrate to HMAC.
+RELAY_LEGACY_BEARER = os.getenv("RELAY_LEGACY_BEARER", "0") == "1"
+MIRA_IGNITION_HMAC_KEY = os.getenv("MIRA_IGNITION_HMAC_KEY", "")
 
 TAG_COLUMN_MAP = {
     "speed_rpm": "speed_rpm",
@@ -55,9 +61,16 @@ def _ensure_tables(conn: sqlite3.Connection) -> None:
             temperature_c REAL,
             current_amps REAL,
             pressure_psi REAL,
-            metadata TEXT
+            metadata TEXT,
+            tenant_id TEXT
         )
     """)
+    # Migrate: add tenant_id column if it doesn't exist yet (idempotent)
+    try:
+        conn.execute("ALTER TABLE equipment_status ADD COLUMN tenant_id TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     conn.execute("""
         CREATE TABLE IF NOT EXISTS faults (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,13 +81,20 @@ def _ensure_tables(conn: sqlite3.Connection) -> None:
             timestamp TEXT NOT NULL DEFAULT (datetime('now')),
             resolved INTEGER NOT NULL DEFAULT 0,
             resolved_at TEXT,
+            tenant_id TEXT,
             FOREIGN KEY (equipment_id) REFERENCES equipment_status(equipment_id)
         )
     """)
+    # Migrate: add tenant_id column to faults if missing
+    try:
+        conn.execute("ALTER TABLE faults ADD COLUMN tenant_id TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     conn.commit()
 
 
-def process_tag_payload(payload: dict) -> int:
+def process_tag_payload(payload: dict, tenant_id: str | None = None) -> int:
     """Process a tag payload and upsert into equipment_status. Returns rows upserted."""
     equipment = payload.get("equipment", {})
     if not equipment:
@@ -112,8 +132,9 @@ def process_tag_payload(payload: dict) -> int:
                 """
                 INSERT INTO equipment_status
                     (equipment_id, name, status, last_updated,
-                     speed_rpm, temperature_c, current_amps, pressure_psi, metadata)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     speed_rpm, temperature_c, current_amps, pressure_psi,
+                     metadata, tenant_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(equipment_id) DO UPDATE SET
                     status = excluded.status,
                     last_updated = excluded.last_updated,
@@ -121,13 +142,14 @@ def process_tag_payload(payload: dict) -> int:
                     temperature_c = COALESCE(excluded.temperature_c, equipment_status.temperature_c),
                     current_amps = COALESCE(excluded.current_amps, equipment_status.current_amps),
                     pressure_psi = COALESCE(excluded.pressure_psi, equipment_status.pressure_psi),
-                    metadata = excluded.metadata
+                    metadata = excluded.metadata,
+                    tenant_id = COALESCE(excluded.tenant_id, equipment_status.tenant_id)
                 """,
                 (
                     eq_id, eq_id, status, now,
                     columns["speed_rpm"], columns["temperature_c"],
                     columns["current_amps"], columns["pressure_psi"],
-                    metadata_json,
+                    metadata_json, tenant_id,
                 ),
             )
 
@@ -138,9 +160,9 @@ def process_tag_payload(payload: dict) -> int:
                 ).fetchone()
                 if not existing:
                     db.execute(
-                        "INSERT INTO faults (equipment_id, fault_code, severity, timestamp) "
-                        "VALUES (?, ?, 'warning', ?)",
-                        (eq_id, fc, now),
+                        "INSERT INTO faults (equipment_id, fault_code, severity, timestamp, tenant_id) "
+                        "VALUES (?, ?, 'warning', ?, ?)",
+                        (eq_id, fc, now, tenant_id),
                     )
 
             count += 1
@@ -151,11 +173,41 @@ def process_tag_payload(payload: dict) -> int:
         db.close()
 
 
-def _check_auth(request: Request) -> bool:
+def _check_bearer(request: Request) -> bool:
+    """Legacy bearer-token check. Only used when RELAY_LEGACY_BEARER=1."""
     if not RELAY_API_KEY:
         return True
     auth = request.headers.get("Authorization", "")
     return auth == f"Bearer {RELAY_API_KEY}"
+
+
+async def _authenticate_http(request: Request, body: bytes) -> tuple[bool, str | None, str | None]:
+    """Authenticate an HTTP request.
+
+    Returns (ok, tenant_id, error_detail).
+    - ok=True, tenant_id=str → HMAC verified.
+    - ok=True, tenant_id=None → legacy bearer verified (no tenant).
+    - ok=False → auth failed; error_detail has the reason.
+    """
+    # Try HMAC first (preferred path)
+    if MIRA_IGNITION_HMAC_KEY and request.headers.get("X-MIRA-Signature"):
+        try:
+            tenant_id = verify_hmac(dict(request.headers), body, MIRA_IGNITION_HMAC_KEY)
+            return True, tenant_id, None
+        except ValueError as exc:
+            return False, None, str(exc)
+
+    # Legacy bearer fallback
+    if RELAY_LEGACY_BEARER:
+        if _check_bearer(request):
+            return True, None, None
+        return False, None, "bearer_mismatch"
+
+    # No key configured at all → open (matches original behaviour)
+    if not RELAY_API_KEY and not MIRA_IGNITION_HMAC_KEY:
+        return True, None, None
+
+    return False, None, "auth_required"
 
 
 async def health(request: Request) -> JSONResponse:
@@ -163,11 +215,14 @@ async def health(request: Request) -> JSONResponse:
 
 
 async def ingest(request: Request) -> JSONResponse:
-    if not _check_auth(request):
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    body = await request.body()
+
+    ok, tenant_id, detail = await _authenticate_http(request, body)
+    if not ok:
+        return JSONResponse({"error": "auth_failed", "detail": detail}, status_code=401)
 
     try:
-        payload = await request.json()
+        payload = json.loads(body)
     except Exception:
         return JSONResponse({"error": "invalid json"}, status_code=400)
 
@@ -175,33 +230,92 @@ async def ingest(request: Request) -> JSONResponse:
     if msg_type != "tags":
         return JSONResponse({"error": f"unsupported type: {msg_type}"}, status_code=400)
 
-    count = process_tag_payload(payload)
-    logger.info("Ingested %d equipment rows from %s", count, payload.get("agent_id", "unknown"))
+    count = process_tag_payload(payload, tenant_id=tenant_id)
+    logger.info(
+        "Ingested %d equipment rows from %s (tenant=%s)",
+        count,
+        payload.get("agent_id", "unknown"),
+        tenant_id or "legacy",
+    )
     return JSONResponse({"status": "ok", "equipment_count": count})
 
 
 async def ws_relay(websocket: WebSocket) -> None:
     await websocket.accept()
 
-    if RELAY_API_KEY:
+    authenticated = not RELAY_API_KEY and not MIRA_IGNITION_HMAC_KEY
+    ws_tenant_id: str | None = None
+
+    if not authenticated:
         try:
             auth_msg = await asyncio.wait_for(websocket.receive_json(), timeout=10)
-            if auth_msg.get("type") != "auth" or auth_msg.get("token") != RELAY_API_KEY:
-                await websocket.send_json({"error": "unauthorized"})
-                await websocket.close(code=4001)
-                return
-            await websocket.send_json({"type": "auth_ok"})
         except Exception:
             await websocket.close(code=4001)
             return
 
-    logger.info("WebSocket client connected")
+        auth_type = auth_msg.get("type")
+
+        if auth_type == "auth_hmac":
+            # HMAC auth over WebSocket.
+            # The signed payload is the JSON auth message with the signature field removed.
+            # Build the signing body from the four required fields.
+            tenant = auth_msg.get("tenant", "")
+            nonce = auth_msg.get("nonce", "")
+            timestamp = str(auth_msg.get("timestamp", ""))
+            signature = auth_msg.get("signature", "")
+            # Re-construct the canonical signed string directly (avoids JSON serialisation drift).
+            # The body bytes are the UTF-8 encoding of the auth message body string.
+            body_for_signing = json.dumps(
+                {"type": "auth_hmac", "tenant": tenant, "nonce": nonce, "timestamp": auth_msg.get("timestamp", "")},
+                separators=(",", ":"),
+            ).encode()
+            synthetic_headers = {
+                "x-mira-tenant": tenant,
+                "x-mira-nonce": nonce,
+                "x-mira-timestamp": timestamp,
+                "x-mira-signature": signature,
+            }
+            if not MIRA_IGNITION_HMAC_KEY:
+                await websocket.send_json({"error": "hmac_not_configured"})
+                await websocket.close(code=4001)
+                return
+            try:
+                ws_tenant_id = verify_hmac(synthetic_headers, body_for_signing, MIRA_IGNITION_HMAC_KEY)
+                authenticated = True
+                await websocket.send_json({"type": "auth_ok"})
+            except ValueError as exc:
+                await websocket.send_json({"error": "unauthorized", "detail": str(exc)})
+                await websocket.close(code=4001)
+                return
+
+        elif auth_type == "auth" and RELAY_LEGACY_BEARER:
+            # Legacy token path — only allowed when RELAY_LEGACY_BEARER=1
+            if auth_msg.get("token") == RELAY_API_KEY:
+                authenticated = True
+                await websocket.send_json({"type": "auth_ok"})
+            else:
+                await websocket.send_json({"error": "unauthorized"})
+                await websocket.close(code=4001)
+                return
+
+        elif auth_type == "auth" and not RELAY_LEGACY_BEARER:
+            # Legacy path disabled
+            await websocket.send_json({"error": "unauthorized", "detail": "legacy bearer disabled"})
+            await websocket.close(code=4001)
+            return
+
+        else:
+            await websocket.send_json({"error": "unauthorized"})
+            await websocket.close(code=4001)
+            return
+
+    logger.info("WebSocket client connected (tenant=%s)", ws_tenant_id or "legacy")
     try:
         while True:
             data = await websocket.receive_json()
             msg_type = data.get("type")
             if msg_type == "tags":
-                count = process_tag_payload(data)
+                count = process_tag_payload(data, tenant_id=ws_tenant_id)
                 await websocket.send_json({"type": "ack", "equipment_count": count})
             elif msg_type == "ping":
                 await websocket.send_json({"type": "pong"})
