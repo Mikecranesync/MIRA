@@ -47,6 +47,10 @@ Adding these = a CCW `MbSrvConf.xml` change + reflash (see the `modbus-slave` sk
 # logic (no broker needed):
 pytest plc/conv_simple_anomaly/                # 15 tests
 
+# LIVE check against the real PLC (no broker / no Docker — reads 192.168.1.100:502 and runs the rules):
+python plc/conv_simple_anomaly/live_check.py --secs 4
+# (verified 2026-06-01 on the bench: correctly fired A1 when vfd_comm_ok was False)
+
 # live (needs the broker + live-plc-bridge running):
 pip install -r plc/conv_simple_anomaly/requirements.txt
 MQTT_HOST=100.68.120.99 UNS_PREFIX=demo/cell1/conveyor/cv101 \
