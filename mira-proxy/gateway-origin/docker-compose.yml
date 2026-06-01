@@ -1,11 +1,12 @@
 # Origin-root proxy for the real Ignition gateway (the building block).
 #
-# Binds LOOPBACK by default (127.0.0.1:8890) — the safe posture proven on dev.
-# How this origin is EXPOSED for cloud reach (dedicated cc-gw.* subdomain + TLS,
-# or tailscale serve, or folded behind the VPS) is the open decision in
-# docs/command-center-ignition-display.md — do NOT bind it to 0.0.0.0 / a public
-# interface without that decision (it strips frame headers off a control-capable
-# HMI; see README "SAFETY").
+# Binds ALL interfaces (8890) so the VPS can reach it over Tailscale
+# (100.70.49.126:8890) for the cc-gw.factorylm.com cloud path — the chosen
+# Option-1 exposure (DEPLOY-CLOUD.md). Matches the Node-RED precedent already on
+# this node (mira-bridge bound 0.0.0.0:1880). Authorized 2026-06-01.
+# NOTE: this strips frame headers off a control-capable HMI — keep it to the
+# private garage LAN/tailnet, and enforce a watch-only Ignition session before
+# any non-us viewer (see README "SAFETY" + DEPLOY-CLOUD.md "Watch-only").
 #
 # IGNITION_GATEWAY_IP overrides the gateway address (default = PLC laptop Tailscale).
 services:
@@ -18,7 +19,7 @@ services:
     extra_hosts:
       - "ignition-gateway:${IGNITION_GATEWAY_IP:-100.72.2.99}"
     ports:
-      - "127.0.0.1:8890:8890"
+      - "8890:8890"   # all interfaces — VPS reaches it at 100.70.49.126:8890 (Tailscale)
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8890/healthz"]
       interval: 30s
