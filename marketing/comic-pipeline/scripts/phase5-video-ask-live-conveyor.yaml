@@ -1,0 +1,45 @@
+# Phase 5 — NEW (2026-06-02): "Ask the Live Conveyor"
+# Built from the HMI walkthrough Mike captured this morning (Command Center,
+# enterprise.home_garage.conveyor_lab.conveyor_1). The standout asset is the
+# ASK MIRA grounding gate — MIRA declining to guess and asking for the fault
+# code / symptom / reading BEFORE it diagnoses. That is the "grounded, won't
+# hallucinate" differentiator and is a DIFFERENT claim than Video 13's confident
+# "BRANCH FUSE LOSS 95%" verdict, so it gets its own cut rather than being spliced
+# next to V13's diagnosis arc.
+# 5 frames, ~50s. All assets are real, current Command Center screenshots.
+slug: phase5-video-ask-live-conveyor
+output_dir: marketing/videos/2026-05-31-phase5-demos/video-ask-live-conveyor
+width: 1920
+height: 1080
+zoom_amount: 0.012
+transition_duration: 0.4
+fit_mode: letterbox
+tts_provider: groq
+tts_voice: austin
+tts_model: canopylabs/orpheus-v1-english
+tts_format: wav
+voiceover_style: |
+  Adult male, 40s, calm and direct. Sounds like a senior field engineer who
+  has worked in heavy manufacturing for 15 years — knowledgeable without
+  being academic, confident without being aggressive. Does not perform
+  enthusiasm. States facts and lets the listener draw conclusions.
+
+  Pacing: 130–140 words per minute. Steady. Slight pause after key claims.
+  No acceleration on product names or feature callouts.
+
+  Tone: neutral American accent, no regional markers. Clean consonants.
+  Comfortable with industrial vocabulary. Does not soften or inflate language.
+
+  Avoid: upward inflection on statements, marketing superlatives, breathless
+  pacing on product reveals, hesitation fillers, reading the style brief aloud.
+frames:
+  - image: docs/promo-screenshots/2026-06-02_command-center-conveyor-running-30hz_desktop.png
+    narration: "This conveyor is live. Thirty hertz, photo-eye clear, every value coming off a real Micro 820."
+  - image: docs/promo-screenshots/2026-06-02_command-center-ask-mira-prompt_desktop.png
+    narration: "When something's off, you don't dig through a manual. You ask the screen — what's going on with the conveyor?"
+  - image: docs/promo-screenshots/2026-06-02_command-center-ask-mira-grounding-gate_desktop.png
+    narration: "It won't guess. First it asks for the fault code, the symptom, the reading — grounded, not made up."
+  - image: docs/promo-screenshots/2026-06-02_command-center-conveyor-stopped-tree_desktop.png
+    narration: "Because it knows exactly which conveyor you mean. Located in your plant namespace — line, cell, asset."
+  - image: docs/promo-screenshots/2026-06-02_command-center-conveyor-render-pe-clear_desktop.png
+    narration: "Ask your equipment what's wrong. Request a demo — factorylm.com."
