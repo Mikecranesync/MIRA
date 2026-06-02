@@ -18,6 +18,7 @@ import { buildGraphPayload, type EntityRow, type RelRow } from "@/lib/knowledge-
 export const dynamic = "force-dynamic";
 
 const NODE_CAP = 5000;
+const EDGE_CAP = 20000;
 
 export async function GET(req: Request) {
   if (!process.env.NEON_DATABASE_URL) {
@@ -41,8 +42,9 @@ export async function GET(req: Request) {
       const r = await c.query<RelRow>(
         `SELECT source_id, target_id, relationship_type, confidence, approval_state
            FROM kg_relationships
-          WHERE tenant_id = $1::uuid`,
-        [ctx.tenantId],
+          WHERE tenant_id = $1::uuid
+          LIMIT $2`,
+        [ctx.tenantId, EDGE_CAP],
       );
       return { entities: e.rows, rels: r.rows };
     });
@@ -60,7 +62,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       ...payload,
-      capped: entities.length >= NODE_CAP,
+      capped: entities.length >= NODE_CAP || rels.length >= EDGE_CAP,
     });
   } catch (err) {
     return NextResponse.json(
