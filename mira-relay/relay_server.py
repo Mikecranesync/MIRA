@@ -240,6 +240,60 @@ async def ingest(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "equipment_count": count})
 
 
+def _get_tag_store():
+    """Factory for the Phase-2 tag store. Overridable in tests."""
+    from tag_ingest import NeonTagStore
+
+    return NeonTagStore(os.getenv("NEON_DATABASE_URL", ""))
+
+
+async def tags_ingest(request: Request) -> JSONResponse:
+    """POST /api/v1/tags/ingest — production tag ingestion.
+
+    The successor to /ingest: HMAC auth, approved_tags allowlist enforcement
+    (fail-closed), UNS resolution, append to tag_events + upsert
+    live_signal_cache (current_tag_state), with simulated/real provenance kept
+    strictly separated. See tag_ingest.ingest_batch.
+    """
+    from tag_ingest import IngestError, ingest_batch
+
+    body = await request.body()
+
+    ok, hmac_tenant, detail = await _authenticate_http(request, body)
+    if not ok:
+        return JSONResponse({"error": "auth_failed", "detail": detail}, status_code=401)
+
+    try:
+        payload = json.loads(body)
+    except Exception:
+        return JSONResponse({"error": "invalid json"}, status_code=400)
+
+    # HMAC tenant is authoritative; fall back to the body tenant only in the
+    # non-HMAC dev/bench path. Never trust a caller-supplied tenant over HMAC.
+    tenant_id = hmac_tenant or payload.get("tenant_id")
+    if not tenant_id:
+        return JSONResponse({"error": "tenant_required"}, status_code=400)
+
+    try:
+        result = ingest_batch(payload, tenant_id, _get_tag_store())
+    except IngestError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except Exception:
+        logger.exception("tags_ingest failed (tenant=%s)", tenant_id)
+        return JSONResponse({"error": "ingest_failed"}, status_code=500)
+
+    logger.info(
+        "tags_ingest tenant=%s source=%s accepted=%d rejected=%d cache_skipped=%d sim=%s",
+        tenant_id,
+        result.source_system,
+        result.accepted,
+        len(result.rejected),
+        result.cache_skipped,
+        result.simulated,
+    )
+    return JSONResponse(result.as_dict())
+
+
 async def ws_relay(websocket: WebSocket) -> None:
     await websocket.accept()
 
@@ -328,6 +382,7 @@ async def ws_relay(websocket: WebSocket) -> None:
 routes = [
     Route("/health", health, methods=["GET"]),
     Route("/ingest", ingest, methods=["POST"]),
+    Route("/api/v1/tags/ingest", tags_ingest, methods=["POST"]),
     WebSocketRoute("/ws", ws_relay),
 ]
 
