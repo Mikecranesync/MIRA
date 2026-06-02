@@ -21,7 +21,9 @@ import aiomqtt  # type: ignore
 
 import rules
 
-MQTT_HOST = os.environ.get("MQTT_HOST", "100.68.120.99")
+# Broker host must be set via env (MQTT_HOST) at deploy time; "localhost" is a safe
+# default that does not hardcode any specific VPS/broker IP.
+MQTT_HOST = os.environ.get("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 UNS_PREFIX = os.environ.get("UNS_PREFIX", "demo/cell1/conveyor/cv101")
 BRIDGE_SUB = f"{UNS_PREFIX}/_streams/bridge/#"
@@ -103,24 +105,45 @@ def _init_db():
 def _persist(conn, a: rules.Anomaly):
     if not conn:
         return
-    try:
-        conn.execute(
-            "INSERT INTO conveyor_events (ts, fault, confidence, evidence_json, affected_json) "
-            "VALUES (?,?,?,?,?)",
-            (time.strftime("%Y-%m-%dT%H:%M:%S"), f"{a.rule_id}: {a.title}", a.confidence,
-             json.dumps(a.evidence, default=str), json.dumps(a.components)))
-        conn.commit()
-    except Exception as e:  # pragma: no cover
-        log.warning("persist failed: %s", e)
+    # The conveyor_events table is shared with mira-fault-detective on the same SQLite
+    # WAL, so an INSERT can lose the write lock momentarily. Retry up to 5 times with a
+    # short backoff on "database is locked" (mirrors mira-fault-detective/engine.py).
+    row = (time.strftime("%Y-%m-%dT%H:%M:%S"), f"{a.rule_id}: {a.title}", a.confidence,
+           json.dumps(a.evidence, default=str), json.dumps(a.components))
+    for attempt in range(5):
+        try:
+            conn.execute(
+                "INSERT INTO conveyor_events (ts, fault, confidence, evidence_json, affected_json) "
+                "VALUES (?,?,?,?,?)", row)
+            conn.commit()
+            return
+        except sqlite3.OperationalError as e:  # pragma: no cover
+            if attempt == 4:
+                log.warning("persist failed after retries: %s", e)
+                return
+            time.sleep(0.2 * (attempt + 1))
+        except Exception as e:  # pragma: no cover
+            log.warning("persist failed: %s", e)
+            return
 
 
 def _ntfy(a: rules.Anomaly):
     if not (NTFY_URL and NTFY_TOPIC and a.severity in (rules.HIGH, rules.CRITICAL)):
         return
+    # A0_OFFLINE is an infrastructure-liveness signal that false-fires whenever the
+    # laptop bridge stops (restart/logout/network blip). De-prioritize it to "low" with
+    # an [infra] title so it does not send a spurious URGENT page; all other
+    # HIGH/CRITICAL anomalies keep "urgent".
+    if a.rule_id == "A0_OFFLINE":
+        title = f"[infra] [{a.severity}] {a.title}"
+        priority = "low"
+    else:
+        title = f"[{a.severity}] {a.title}"
+        priority = "urgent"
     try:  # pragma: no cover
         req = urllib.request.Request(
             f"{NTFY_URL.rstrip('/')}/{NTFY_TOPIC}", data=a.message.encode(),
-            headers={"Title": f"[{a.severity}] {a.title}", "Priority": "urgent",
+            headers={"Title": title, "Priority": priority,
                      "Tags": "rotating_light"})
         urllib.request.urlopen(req, timeout=5)
     except Exception as e:

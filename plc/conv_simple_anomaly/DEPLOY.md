@@ -35,6 +35,13 @@ For always-on, register it as a **Scheduled Task** (Trigger: At log on / At star
 Action: the command above; Restart on failure). The bridge auto-reconnects to both PLC and
 broker, so a task that simply keeps it running is enough.
 
+> ⚠️ **Use a boot-scoped Scheduled Task, not a Startup-folder launcher.** A Startup-folder
+> (or "At log on") launcher is **logon-scoped** — it stops the moment the user logs out, which
+> with the always-on engine produces spurious `A0_OFFLINE` alerts every time someone logs off
+> the laptop. The correct always-on mechanism is a **boot-scoped Scheduled Task**: Trigger
+> **"At startup"**, **"Run whether user is logged on or not"**, and **"Restart on failure"**.
+> Registering a task that runs whether logged on or not requires **administrator rights**.
+
 ## 2. Engine (VPS) — reversible container
 ```bash
 # stage code (any dir; does NOT touch the /opt/mira git checkout):
@@ -52,9 +59,18 @@ ssh factorylm-prod 'docker run -d --restart unless-stopped --name mira-conv-simp
   -e NTFY_URL=https://ntfy.sh -e NTFY_TOPIC=mira-factorylm-alerts \
   python:3.12-slim sh -c "pip install -q aiomqtt PyYAML && python -u engine.py"'
 ```
-- `mira-mosquitto` lives on the `mira-plc-dash_default` network (not `core-net`).
+- `mira-mosquitto` lives on the `mira-plc-dash_default` network (not `core-net`). This is
+  the network the engine `docker run` above joins and is correct for the current VPS.
+  > ⚠️ **Network-name drift:** the committed `docker-compose.fault-detective.yml` instead
+  > declares an **external `core-net`** and refers to the broker by service name
+  > **`mosquitto`** (not container `mira-mosquitto`). Both facts are accurate for their
+  > respective contexts, but a future compose-based deploy of this engine must target the
+  > network/service name that the broker actually runs on for that deploy — reconcile before
+  > switching from this `docker run` recipe to compose.
 - The shared fault DB is the host dir `/opt/mira/mira-bridge/data` → container `/mira-db`.
 - Omit `NTFY_*` to run without push (DB + diagnostics only).
+- `A0_OFFLINE` now pages at **LOW** priority by design (infrastructure-liveness signal), so a
+  brief bridge outage will **not** send an urgent page — only genuine machine faults do.
 - Roll back: `ssh factorylm-prod 'docker rm -f mira-conv-simple-anomaly'`.
 
 ## 3. Verify

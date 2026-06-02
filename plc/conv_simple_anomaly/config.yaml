@@ -5,5 +5,5 @@ dc_bus_lo_v: 250.0      # * DC-bus undervoltage (A9); idle nominal ~327 V
 dc_bus_hi_v: 410.0      # * DC-bus overvoltage (A9)
 freq_frozen_s: 5.0      # A10 — output Hz unchanged this long while commanded RUN
 cmd_run_grace_s: 3.0    # A6 — RUN commanded but motor not running this long
-offline_s: 30.0         # A0 — no fresh PLC data this long
+offline_s: 120.0        # A0 — no fresh PLC data this long; longer grace reduces spurious A0_OFFLINE pages from brief bridge/network blips
 run_cmd_values: [18, 20]  # GS10 cmd word 18=FWD+RUN, 20=REV+RUN

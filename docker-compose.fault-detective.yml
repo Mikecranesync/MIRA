@@ -80,6 +80,27 @@ services:
       - core-net
     restart: unless-stopped
 
+  conv-simple-anomaly:
+    build:
+      context: ./plc/conv_simple_anomaly
+    container_name: mira-conv-simple-anomaly
+    mem_limit: 256m
+    memswap_limit: 256m
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      UNS_PREFIX: demo/cell1/conveyor/cv101
+      DB_PATH: /mira-db/mira.db
+      LOG_LEVEL: INFO
+    volumes:
+      - ./mira-bridge/data:/mira-db
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - core-net
+    restart: unless-stopped
+
   # Stream A: live Micro 820 Modbus TCP -> MQTT ingest (real bench PLC data).
   # Publishes source-qualified _streams/bridge/* topics; the Node-RED flow runs
   # a redundant Stream B under _streams/nr/*, and the dashboard selector picks
