@@ -10,6 +10,7 @@ Connection is shared (module-level) and re-created on failure. NullPool per
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import uuid
@@ -56,6 +57,22 @@ def _get_engine():
 # ---------------------------------------------------------------------------
 
 
+insert_sql = """
+    INSERT INTO tag_events (
+        event_id, tenant_id, ts, uns_path, tag_id, event_type,
+        prev_value, new_value, delta, threshold,
+        window_start, window_end, fault_code, severity,
+        raw_quality, relay_batch_id
+    ) VALUES (
+        :event_id, :tenant_id, :ts, CAST(:uns_path AS ltree), :tag_id, :event_type,
+        CAST(:prev_value AS jsonb), CAST(:new_value AS jsonb), :delta, :threshold,
+        :window_start, :window_end, :fault_code, :severity,
+        :raw_quality, :relay_batch_id
+    )
+    ON CONFLICT (event_id) DO NOTHING
+"""
+
+
 def insert_tag_events(rows: list[dict[str, Any]]) -> int:
     """Batch-insert rows into tag_events. Returns count inserted.
 
@@ -73,21 +90,8 @@ def insert_tag_events(rows: list[dict[str, Any]]) -> int:
     if engine is None:
         return 0
 
-    # Build INSERT; cast uns_path to ltree and validate required fields.
-    insert_sql = """
-        INSERT INTO tag_events (
-            event_id, tenant_id, ts, uns_path, tag_id, event_type,
-            prev_value, new_value, delta, threshold,
-            window_start, window_end, fault_code, severity,
-            raw_quality, relay_batch_id
-        ) VALUES (
-            :event_id, :tenant_id, :ts, :uns_path::ltree, :tag_id, :event_type,
-            :prev_value, :new_value, :delta, :threshold,
-            :window_start, :window_end, :fault_code, :severity,
-            :raw_quality, :relay_batch_id
-        )
-        ON CONFLICT (event_id) DO NOTHING
-    """
+    # SQL is the module-level `insert_sql` constant (testable without a live DB
+    # — see tests/test_neon_sql.py, which guards the ltree/jsonb cast forms).
 
     # Normalise + validate each row before sending to DB.
     prepped: list[dict[str, Any]] = []
@@ -158,8 +162,11 @@ def _normalise_row(r: dict[str, Any]) -> dict[str, Any]:
         "uns_path": uns_path,
         "tag_id": r.get("tag_id"),
         "event_type": r.get("event_type"),
-        "prev_value": r.get("prev_value"),
-        "new_value": r.get("new_value"),
+        # prev/new_value land in JSONB columns — serialise to a JSON text the
+        # CAST(... AS jsonb) in insert_sql can parse (raw floats/bools/None are
+        # not jsonb-adaptable by psycopg2).
+        "prev_value": json.dumps(r.get("prev_value")),
+        "new_value": json.dumps(r.get("new_value")),
         "delta": r.get("delta"),
         "threshold": r.get("threshold"),
         "window_start": r.get("window_start"),
