@@ -83,7 +83,7 @@ def _make_request(
         "X-MIRA-Timestamp": str(timestamp),
         "X-MIRA-Signature": signature,
     }
-    for h in (missing_headers or []):
+    for h in missing_headers or []:
         headers.pop(h, None)
 
     req = MagicMock()
@@ -242,18 +242,20 @@ class TestIgnitionChatRoute:
 
             # Mock pipeline call returns mock_pipeline_response
             pipeline_data = mock_pipeline_response
-            answer = (
-                pipeline_data.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-            )
+            answer = pipeline_data.get("choices", [{}])[0].get("message", {}).get("content", "")
 
             latency_ms = int((_time.monotonic() - t0) * 1000)
 
             uns_gate_state = "confirmed"
             if any(
                 kw in answer.lower()
-                for kw in ("which conveyor", "which machine", "which asset", "can you confirm", "please confirm")
+                for kw in (
+                    "which conveyor",
+                    "which machine",
+                    "which asset",
+                    "can you confirm",
+                    "please confirm",
+                )
             ):
                 uns_gate_state = "awaiting_confirmation"
 
@@ -273,7 +275,9 @@ class TestIgnitionChatRoute:
                 }
             )
 
-        app = Starlette(routes=[Route("/api/v1/ignition/chat", rest_ignition_chat, methods=["POST"])])
+        app = Starlette(
+            routes=[Route("/api/v1/ignition/chat", rest_ignition_chat, methods=["POST"])]
+        )
         return TestClient(app, raise_server_exceptions=False)
 
     def _valid_headers(self, body: bytes, nonce: str = "nonce-route-1") -> dict:
@@ -297,7 +301,9 @@ class TestIgnitionChatRoute:
         _NONCE_STORE.clear()
 
     def test_valid_request_returns_200_with_shape(self):
-        body = json.dumps({"query": "why did the conveyor stop?", "asset_id": "[default]Conv/State"}).encode()
+        body = json.dumps(
+            {"query": "why did the conveyor stop?", "asset_id": "[default]Conv/State"}
+        ).encode()
         client = self._build_app(self._pipeline_response("Check VFD fault code F0004."))
         resp = client.post(
             "/api/v1/ignition/chat",
