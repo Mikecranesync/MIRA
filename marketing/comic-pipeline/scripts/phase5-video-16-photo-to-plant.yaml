@@ -10,8 +10,10 @@ height: 1080
 zoom_amount: 0.012
 transition_duration: 0.4
 fit_mode: letterbox
-tts_voice: onyx
-tts_model: gpt-4o-mini-tts
+tts_provider: groq
+tts_voice: austin
+tts_model: canopylabs/orpheus-v1-english
+tts_format: wav
 voiceover_style: |
   Adult male, 40s, calm and direct. Sounds like a senior field engineer who
   has worked in heavy manufacturing for 15 years — knowledgeable without
