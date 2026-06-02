@@ -156,10 +156,12 @@ class TagStore(Protocol):
         """Return {tag_path: simulated} for existing live_signal_cache rows."""
         ...
 
-    def write_tag_events(self, rows: list[TagEventRow]) -> int:
-        ...
-
-    def upsert_current_state(self, rows: list[TagEventRow]) -> int:
+    def persist_batch(
+        self, event_rows: list[TagEventRow], state_rows: list[TagEventRow]
+    ) -> tuple[int, int]:
+        """Append event_rows to tag_events AND upsert state_rows into
+        live_signal_cache in ONE atomic transaction. Returns
+        (events_written, state_upserts)."""
         ...
 
 
@@ -216,11 +218,20 @@ def ingest_batch(payload: dict, tenant_id: str, store: TagStore) -> IngestResult
         if quality not in VALID_QUALITY:
             quality = "uncertain"  # tolerate unknown quality codes, downgrade
 
+        canonical = _canonical_value(tag.get("value"))
+        if canonical is None:
+            # A reading with no value (e.g. a Bad-quality read that carries no
+            # value) is not storable: live_signal_cache requires a value, and a
+            # valueless event is noise. Reject — never store. (0 / false are
+            # valid values: _canonical_value renders them "0" / "false".)
+            result.rejected.append(RejectedTag(tag_path=tag_path, reason="null_value"))
+            continue
+
         parsed.append(
             TagEventRow(
                 tenant_id=tenant_id,
                 tag_path=tag_path,
-                value=_canonical_value(tag.get("value")),
+                value=canonical,
                 value_type=value_type,
                 quality=quality,
                 source_system=source_system,
@@ -237,10 +248,9 @@ def ingest_batch(payload: dict, tenant_id: str, store: TagStore) -> IngestResult
     if not parsed:
         return result
 
-    # tag_events records EVERY accepted reading — the append-only truth stream.
-    result.events_written = store.write_tag_events(parsed)
-
     # Cache protection: a simulated reading must not overwrite a real cache row.
+    # (Read current state first so we know which tags are real before deciding
+    # what to upsert.)
     existing_sim = store.current_state_simulated(tenant_id, [p.tag_path for p in parsed])
     state_rows: list[TagEventRow] = []
     for p in parsed:
@@ -254,7 +264,10 @@ def ingest_batch(payload: dict, tenant_id: str, store: TagStore) -> IngestResult
             continue
         state_rows.append(p)
 
-    result.state_upserts = store.upsert_current_state(state_rows) if state_rows else 0
+    # Persist events + cache in ONE transaction. If the cache write fails, the
+    # events are NOT committed either — so a 5xx + collector retry can never
+    # duplicate rows in the append-only tag_events stream.
+    result.events_written, result.state_upserts = store.persist_batch(parsed, state_rows)
     return result
 
 
@@ -322,67 +335,45 @@ class NeonTagStore:
             ).mappings().all()
         return {r["plc_tag"]: r["simulated"] for r in rows}
 
-    def write_tag_events(self, rows: list[TagEventRow]) -> int:
-        if not rows:
-            return 0
+    def persist_batch(
+        self, event_rows: list[TagEventRow], state_rows: list[TagEventRow]
+    ) -> tuple[int, int]:
+        """Append event_rows to tag_events AND upsert state_rows into
+        live_signal_cache in ONE transaction. If the cache upsert fails, the
+        events roll back too — so a 5xx + collector retry can never duplicate
+        rows in the append-only stream."""
+        if not event_rows and not state_rows:
+            return (0, 0)
         import json
 
         from sqlalchemy import text
 
-        engine = self._engine()
-        with engine.begin() as conn:
-            conn.execute(
-                text("SET LOCAL app.current_tenant_id = :tid"), {"tid": rows[0].tenant_id}
-            )
-            conn.execute(
-                text(
-                    """
-                    INSERT INTO tag_events
-                        (tenant_id, equipment_entity_id, uns_path, tag_path,
-                         value, value_type, quality, source_system,
-                         source_connection_id, simulated, event_timestamp, metadata)
-                    VALUES
-                        (:tenant_id, :equipment_entity_id,
-                         CAST(:uns_path AS LTREE), :tag_path,
-                         :value, :value_type, :quality, :source_system,
-                         :source_connection_id, :simulated,
-                         CAST(:event_timestamp AS TIMESTAMPTZ),
-                         CAST(:metadata AS JSONB))
-                    """
-                ),
-                [
-                    {
-                        "tenant_id": r.tenant_id,
-                        "equipment_entity_id": r.equipment_entity_id,
-                        "uns_path": r.uns_path,
-                        "tag_path": r.tag_path,
-                        "value": r.value,
-                        "value_type": r.value_type,
-                        "quality": r.quality,
-                        "source_system": r.source_system,
-                        "source_connection_id": r.source_connection_id,
-                        "simulated": r.simulated,
-                        "event_timestamp": r.event_timestamp,
-                        "metadata": json.dumps(r.metadata),
-                    }
-                    for r in rows
-                ],
-            )
-        return len(rows)
+        tenant_id = (event_rows or state_rows)[0].tenant_id
 
-    def upsert_current_state(self, rows: list[TagEventRow]) -> int:
-        if not rows:
-            return 0
-        import json
+        event_params = [
+            {
+                "tenant_id": r.tenant_id,
+                "equipment_entity_id": r.equipment_entity_id,
+                "uns_path": r.uns_path,
+                "tag_path": r.tag_path,
+                "value": r.value,
+                "value_type": r.value_type,
+                "quality": r.quality,
+                "source_system": r.source_system,
+                "source_connection_id": r.source_connection_id,
+                "simulated": r.simulated,
+                "event_timestamp": r.event_timestamp,
+                "metadata": json.dumps(r.metadata),
+            }
+            for r in event_rows
+        ]
 
-        from sqlalchemy import text
-
-        params = []
-        for r in rows:
+        state_params = []
+        for r in state_rows:
             # _value_columns coerces the canonical TEXT value by value_type
             # (float("8.3"), bool("true"), etc.).
             vt, vn, vb = _value_columns(r.value_type, r.value)
-            params.append(
+            state_params.append(
                 {
                     "tenant_id": r.tenant_id,
                     "plc_tag": r.tag_path,
@@ -398,17 +389,36 @@ class NeonTagStore:
                     "props": json.dumps(r.metadata),
                 }
             )
+
         with self._engine().begin() as conn:
-            conn.execute(
-                text("SET LOCAL app.current_tenant_id = :tid"), {"tid": rows[0].tenant_id}
-            )
+            conn.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id})
+            if event_params:
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO tag_events
+                            (tenant_id, equipment_entity_id, uns_path, tag_path,
+                             value, value_type, quality, source_system,
+                             source_connection_id, simulated, event_timestamp, metadata)
+                        VALUES
+                            (:tenant_id, :equipment_entity_id,
+                             CAST(:uns_path AS LTREE), :tag_path,
+                             :value, :value_type, :quality, :source_system,
+                             :source_connection_id, :simulated,
+                             CAST(:event_timestamp AS TIMESTAMPTZ),
+                             CAST(:metadata AS JSONB))
+                        """
+                    ),
+                    event_params,
+                )
             # On a value change, roll the old last_value into prev_value and
             # bump last_changed_at; otherwise keep last_changed_at. last_seen_at
             # always advances (we saw a sample). source='relay_ingest' marks the
             # production write path distinctly from the demo simulator default.
-            conn.execute(
-                text(
-                    """
+            if state_params:
+                conn.execute(
+                    text(
+                        """
                     INSERT INTO live_signal_cache
                         (tenant_id, plc_tag, uns_path,
                          last_value_text, last_value_numeric, last_value_bool,
@@ -445,7 +455,7 @@ class NeonTagStore:
                         properties = EXCLUDED.properties,
                         updated_at = NOW()
                     """
-                ),
-                params,
-            )
-        return len(rows)
+                    ),
+                    state_params,
+                )
+        return (len(event_rows), len(state_rows))

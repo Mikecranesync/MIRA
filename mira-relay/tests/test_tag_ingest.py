@@ -45,14 +45,12 @@ class InMemoryTagStore:
     def current_state_simulated(self, tenant_id: str, tag_paths: list[str]) -> dict[str, bool]:
         return {t: self.state[t].simulated for t in tag_paths if t in self.state}
 
-    def write_tag_events(self, rows: list[TagEventRow]) -> int:
-        self.events.extend(rows)
-        return len(rows)
-
-    def upsert_current_state(self, rows: list[TagEventRow]) -> int:
-        for r in rows:
+    def persist_batch(self, event_rows, state_rows):
+        # One "transaction" — mirrors NeonTagStore: events + cache together.
+        self.events.extend(event_rows)
+        for r in state_rows:
             self.state[r.tag_path] = r
-        return len(rows)
+        return (len(event_rows), len(state_rows))
 
 
 TAG = "Mira_Monitored/Conveyor/Motor_Current"
@@ -63,7 +61,7 @@ def _store_with_tag(source_system: str = "ignition", uns: str | None = UNS) -> I
     return InMemoryTagStore({source_system: {normalize_tag_path(TAG): uns}})
 
 
-def _batch(source_system: str = "ignition", value=8.3, value_type="float", tag_path=TAG):
+def _batch(source_system: str = "ignition", value: object = 8.3, value_type="float", tag_path=TAG):
     return {
         "source_system": source_system,
         "source_connection_id": "conn-1",
@@ -228,6 +226,32 @@ def test_bad_value_type_rejected():
     res = ingest_batch(_batch(value_type="blob"), "t-1", store)
     assert res.accepted == 0
     assert res.rejected[0].reason == "bad_value_type"
+
+
+def test_null_value_rejected_not_stored():
+    # A Bad-quality read with no value must be rejected — never stored. Otherwise
+    # live_signal_cache's value-present CHECK would 500, and (separate-txn) the
+    # event would commit while the cache failed → duplicate events on retry.
+    store = _store_with_tag()
+    res = ingest_batch(_batch(value=None), "t-1", store)
+    assert res.accepted == 0
+    assert res.events_written == 0
+    assert res.state_upserts == 0
+    assert res.rejected[0].reason == "null_value"
+    assert store.events == []
+
+
+def test_zero_and_false_are_valid_values():
+    # 0 and False are real values (not null) — must be accepted and stored.
+    store = _store_with_tag()
+    r0 = ingest_batch(_batch(value=0, value_type="int"), "t-1", store)
+    assert r0.accepted == 1
+    assert store.state[TAG].value == "0"
+
+    store2 = _store_with_tag()
+    rf = ingest_batch(_batch(value=False, value_type="bool"), "t-1", store2)
+    assert rf.accepted == 1
+    assert store2.state[TAG].value == "false"
 
 
 # ── endpoint level ───────────────────────────────────────────────────────────
