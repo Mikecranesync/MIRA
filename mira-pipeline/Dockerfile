@@ -12,12 +12,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy GSD engine shared code from mira-bots/ (build context is repo root)
 COPY mira-bots/shared/ ./shared/
 COPY mira-bots/prompts/ ./prompts/
-COPY mira-pipeline/main.py .
-COPY mira-pipeline/memory.py .
-COPY mira-pipeline/feedback_sync.py .
-COPY mira-pipeline/eval_api.py .
-COPY mira-pipeline/qr_bridge.py .
-COPY mira-pipeline/ignition_chat.py .
+# Copy all pipeline source modules (main + memory/feedback_sync/eval_api/qr_bridge/
+# ignition_chat/ignition_audit + any future module). Per-file COPY caused two prod
+# deploy failures when the Ignition cutover added modules the Dockerfile didn't list
+# (ModuleNotFoundError: ignition_chat, then ignition_audit). Tests live in
+# mira-pipeline/tests/ (a subdir, not matched by *.py), so this stays source-only.
+COPY mira-pipeline/*.py .
 COPY VERSION .
 
 RUN addgroup --system --gid 1001 mira && \
