@@ -1,17 +1,23 @@
-# Phase 5 — Video 2 (TRUTHFUL CUT): "A reference panel to a live, headless-built HMI"
+# Phase 5 — Video 2 (REAL pipeline): "A stock conveyor render → a live HMI"
 #
-# NOTE ON TRUTHFULNESS: Video 2's original script claims "I Googled a conveyor
-# image and AI generated the Perspective JSON from it." The repo evidence
-# CONTRADICTS that for ConvSimpleLive: commits 2321f50f ("headless-built") and
-# 4393de3e ("rebuild ConvSimpleLive view as PMC STATION operator-panel mockup")
-# show it was built headless as a mockup, then wired in — there is no
-# image->AI-generation step, and no stock/Google reference image or tag-binding
-# table exists in the repo. So this cut tells the REAL, defensible pipeline:
-# panel -> HMI generated as Perspective JSON (not hand-drawn in Designer) ->
-# bound to real Micro 820 / CIP tags -> live in the UNS. It does NOT claim a
-# google-image origin. To render the original "googled it" script, Mike must do
-# a real image->HMI generation run and hand over the 4 captures (image, prompt,
-# JSON, tag-binding table) — see marketing/videos/2026-05-31-phase5-demos/README.md.
+# UPDATED 2026-06-01: The real intermediate assets were recovered from the PLC
+# laptop (Tailscale `plc`, C:\Users\hharp\Downloads). The pipeline DID happen and
+# the before/after VISUALLY MATCH — this is no longer a reduced cut, it's the real
+# story:
+#   INPUT : Conveyor example.PNG — a stock 3D conveyor render (the reference image)
+#           -> docs/promo-screenshots/2026-05-30_conveyor-reference-stock-render_input.png
+#   OUTPUT: ConvSimpleLive CONVEYOR tab "GARAGE CONVEYOR" — the SAME render, now a
+#           live Ignition Perspective HMI with photo-eye/motor/VFD overlays on real
+#           Micro 820 (CIP) tags
+#           -> docs/promo-screenshots/2026-05-31_convsimplelive-conveyor-hmi-native_desktop.png
+#   EDIT  : hand-markup iterating sensor/E-stop placement
+#           -> docs/promo-screenshots/2026-05-31_convsimplelive-conveyor-handedits_desktop.png
+#   PANEL : PMC STATION operator panel, native full-screen, live tags
+#           -> docs/promo-screenshots/2026-05-30_convsimplelive-pmc-station-native_desktop.png
+# (The 5:47 walkthrough recording — source-walkthrough/ — shows ASK MIRA diagnosing
+#  this same conveyor with PowerFlex 525 / ABB citations.) Narration still avoids
+#  the precise "AI auto-wrote every line of JSON" mechanism; the matching visuals
+#  carry the reference->HMI claim.
 slug: phase5-video-02-reference-to-live-hmi
 output_dir: marketing/videos/2026-05-31-phase5-demos/video-02-reference-to-live-hmi
 width: 1920
@@ -36,15 +42,15 @@ voiceover_style: |
   Avoid: upward inflection on statements, marketing superlatives, breathless
   pacing on product reveals, hesitation fillers, reading the style brief aloud.
 frames:
-  - image: docs/promo-screenshots/2026-05-31_pmc-station-before-real-bench_photo.jpg
-    narration: "Start with one panel — pushbuttons, a GS10 drive, a Micro 820. No HMI, no SCADA screen, nothing to look at."
-  - image: docs/promo-screenshots/2026-05-31_command-center-ConvSimpleLive-LIVE-framed_desktop.png
-    narration: "This Ignition Perspective screen wasn't drawn by hand in Designer. It was built headless — written as JSON, then wired to the live tags."
-  - image: docs/promo-screenshots/2026-05-30_command-center-LIVE-real-probe_desktop.png
-    narration: "Every control maps to a real tag — the GS10 drive, the photo-eye, the Micro 820, over CIP."
+  - image: docs/promo-screenshots/2026-05-30_conveyor-reference-stock-render_input.png
+    narration: "I started with one stock conveyor render. A reference image — no schematic, no manual, no specs."
+  - image: docs/promo-screenshots/2026-05-31_convsimplelive-conveyor-hmi-native_desktop.png
+    narration: "It became a live Ignition Perspective screen. Same conveyor — now photo-eye states, motor, and VFD data, updating live."
+  - image: docs/promo-screenshots/2026-05-31_convsimplelive-conveyor-handedits_desktop.png
+    narration: "A few hand-edits to put the photo-eyes and the E-stop where they actually sit on the machine."
+  - image: docs/promo-screenshots/2026-05-30_convsimplelive-pmc-station-native_desktop.png
+    narration: "The operator panel came too — every button bound to a real Micro 820 tag over CIP."
   - image: docs/promo-screenshots/2026-05-29_command-center-tree-live_desktop.png
-    narration: "And it lands in your plant namespace — located, not floating on someone's laptop."
-  - image: docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
-    narration: "Those same tags feed the diagnostics — so the screen and the troubleshooting read the exact same machine."
-  - image: docs/promo-screenshots/2026-05-31_command-center-ConvSimpleLive-LIVE-framed_desktop.png
-    narration: "Generated, wired, live. The full pipeline is in the guide — factorylm.com."
+    narration: "Then it lands in your plant namespace — located and live, not floating on a laptop."
+  - image: docs/promo-screenshots/2026-05-31_convsimplelive-conveyor-hmi-native_desktop.png
+    narration: "Reference image to live HMI. The full pipeline is in the guide — factorylm.com."
