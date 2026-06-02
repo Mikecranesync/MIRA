@@ -17,6 +17,7 @@ COPY mira-pipeline/memory.py .
 COPY mira-pipeline/feedback_sync.py .
 COPY mira-pipeline/eval_api.py .
 COPY mira-pipeline/qr_bridge.py .
+COPY mira-pipeline/ignition_chat.py .
 COPY VERSION .
 
 RUN addgroup --system --gid 1001 mira && \
