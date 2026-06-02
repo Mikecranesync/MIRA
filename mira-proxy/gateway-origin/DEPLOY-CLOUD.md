@@ -42,9 +42,12 @@ session role. See `## Watch-only` below.
 
 ## VPS nginx — new server block (deploy via the gated nginx workflow)
 
-Add to `deployment/nginx-app-factorylm.conf` (TLS + the `map $http_upgrade
-$connection_upgrade` must exist — prod lacked it, see the phase2 diff), then deploy via
-`deploy-nginx-staging-passthrough.yml` (scp + `nginx -t && nginx -s reload`):
+Fold into `deployment/nginx-app-factorylm.conf` (the `map $http_upgrade
+$connection_upgrade` must exist — prod lacked it, see the phase2 diff). **Do this only
+once the cert exists** — `deploy-nginx-staging-passthrough.yml` scps that one file to
+`/etc/nginx/sites-available/mira` and runs `nginx -t && systemctl reload`; with a
+missing cert `nginx -t` fails and aborts (fails safe, but blocks the run). So: cert →
+fold block in → run the workflow.
 
 ```nginx
 server {
@@ -69,11 +72,32 @@ server {
 }
 ```
 
+## ⚠️ Prereq: the Command Center must be ON PROD first
+
+cc-gw only matters once the Command Center itself is deployed to `app.factorylm.com`.
+Today it is NOT — the stack (#1593 umbrella → #1603 → #1619) is unmerged; only `/ask`
+is in prod. So the **first** go-live step is merging the umbrella + `deploy-vps`
+(gated on Smoke). cc-gw DNS/cert/nginx is necessary but not sufficient on its own.
+
+## Cert (the one manual prod step — after the Namecheap A-record resolves)
+
+DNS for `factorylm.com` is on **Namecheap** (not DigitalOcean — `doctl` can't do it).
+Add `A  cc-gw → 165.245.138.91`, wait for `dig +short cc-gw.factorylm.com` to return it,
+then issue the cert on the box (or via a one-click cert workflow if we add one):
+
+```
+ssh prod "sudo certbot certonly --nginx -d cc-gw.factorylm.com --non-interactive --agree-tos -m harperhousebuyers@gmail.com"
+```
+
 ## Hub wiring
 
 - `display_endpoints` (prod) row for the conveyor → `scheme=https`, `host=cc-gw.factorylm.com`,
   `port=NULL`, `path=/data/perspective/client/ConvSimpleLive`, `display_type=web_iframe`.
-- Hub env: add `https://cc-gw.factorylm.com` to `CSP_FRAME_SRC_DISPLAY_HOSTS`. Leave
+  **Mechanism:** register it via the Command Center **"Manage displays"** UI as an admin
+  (the Phase-2 registry CRUD) — NOT `apply-seeds.yml` (that's knowledge seeds), and NOT
+  prod `psql` (prod-guard). The registry CRUD is exactly this affordance.
+- Hub env: add `https://cc-gw.factorylm.com` to `CSP_FRAME_SRC_DISPLAY_HOSTS` (Doppler
+  `factorylm/prd`) + restart mira-hub (`deploy-vps`). Leave
   `COMMAND_CENTER_CLOUD_PROXY` **off** for this display — the route 302s straight to the
   same `cc-gw` origin (no per-id rewrite). HTTPS Hub framing HTTPS `cc-gw` → no
   mixed-content, `frame-src 'self' https://cc-gw.factorylm.com` is enough.
