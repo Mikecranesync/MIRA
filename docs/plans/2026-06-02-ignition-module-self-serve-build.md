@@ -123,7 +123,17 @@ Truly parallel now: **A1, A2, A3** (Wave 1). Everything else gates on these.
 | 1 | A3 Tag allowlist | sonnet | ✅ **done** (bc64e8b3) | `ignition/project/approved_tags.json`, `ignition/webdev/FactoryLM/api/tags/{allowlist.py,doGet.py}`, `ignition/tests/test_allowlist.py` | self-serve trust primitive. 9/9 tests pass. Fail-closed (503 if list missing), 404 on non-allowlisted, read-only. |
 
 **Wave 1 verdict:** ✅ all three landed, verified, committed on `feat/ignition-module-self-serve` (worktree `/Users/charlienode/MIRA-ignition-build`, off origin/main).
-**Next (Wave 2, gated on Wave 1):** B1 relay allowlist enforcement → B2 diff logger (`tag_events`) → B3 HMAC; Phase C (self-serve UNS entry) can start in parallel now A3 is in.
+
+**Staging gate (between Wave 1 and 2):** ✅ migrations 032–037 dry-run + **applied to staging** via `apply-migrations.yml` (runs 26815931096 dry-run, 26815987634 apply, both success). **`ltree` confirmed working on Neon** — open-question D8 #1 answered. Branch pushed to origin.
+
+| Wave | Task | Agent | Status | Output | Notes |
+|---|---|---|---|---|---|
+| 2 | W2-A Diff logger / `tag_events` (B2 + light B1) | sonnet | ✅ **done** (26d2bd67) | `mira-relay/{neon,diff_logger,rollup_worker}.py`, `relay_server.py`, `tests/test_diff_logger.py` | 49 tests pass (22 new + 27 existing, 0 regressions). Neon write behind `RELAY_TAG_EVENTS=1` (default off — bench unaffected). Thresholds from `approved_tags`; fault-window state is in-process (restart/multi-worker caveats documented). |
+| 2 | W2-B Tag-import wizard (C1) | sonnet | ✅ **done** (26d2bd67) | `mira-hub/src/app/api/tags/import/route.ts`, `mira-hub/src/lib/tag-import.ts` + tests | 312 tests pass, tsc+eslint clean. `POST /api/tags/import`: CSV→`ai_suggestions(tag_mapping, status=pending)` via RLS; UNS via uns.ts builders; tenant from session. **status is `pending`** (CHECK constraint), not `proposed`. |
+
+**Wave 2 verdict:** ✅ both landed, committed. Current-state event stream + the self-serve tag→UNS mapping path exist (env-gated / proposal-only).
+
+**Wave 3 (next):** B3 HMAC (relay auth hardening) · C2 UNS-entry guided flow (Hub `/namespace` build-your-tree) · C3/C4 Ignition chat endpoint + Perspective ChatPanel · **D1 direct-connection source flag (MAIN checkout — codegraph required)** · E1 FlakyInputDetector · F1/F2 KG proposal loop. Integration verify: `mock_tag_stream → relay → tag_events` on staging (see W2-A caveats: seed `approved_tags` with UUID tenant first).
 
 (Updated as waves complete.)
 
