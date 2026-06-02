@@ -29,6 +29,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import time
 from typing import Optional
 
@@ -121,7 +122,17 @@ def _envelope(value, ts: Optional[float] = None) -> str:
 
 
 async def _read_block(fn, offset: int, count: int):
-    rr = await fn(offset, count=count, slave=PLC_UNIT)
+    # pymodbus renamed the unit kwarg (slave -> device_id) across 3.x; try both,
+    # then positional, so the bridge runs on whatever the bench laptop has installed.
+    rr = None
+    for kw in ({"count": count, "device_id": PLC_UNIT}, {"count": count, "slave": PLC_UNIT}):
+        try:
+            rr = await fn(offset, **kw)
+            break
+        except TypeError:
+            continue
+    if rr is None:
+        rr = await fn(offset, count)
     if rr.isError():
         raise IOError(f"modbus read error @{offset} x{count}: {rr}")
     return rr
@@ -183,4 +194,10 @@ async def run() -> None:
 
 
 if __name__ == "__main__":
+    # On Windows the default ProactorEventLoop lacks add_reader/add_writer, which
+    # pymodbus' async client + aiomqtt require. The bench bridge runs on the
+    # Windows PLC laptop (only host with a route to 192.168.1.0/24), so select the
+    # SelectorEventLoop there. No effect on the Linux container deploy.
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(run())
