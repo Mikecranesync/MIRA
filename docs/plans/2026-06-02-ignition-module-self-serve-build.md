@@ -118,9 +118,12 @@ Truly parallel now: **A1, A2, A3** (Wave 1). Everything else gates on these.
 
 | Wave | Task | Agent | Status | Output paths | Notes |
 |---|---|---|---|---|---|
-| 1 | A1 Schema | sonnet | dispatched 2026-06-02 | `mira-hub/db/migrations/032–037`, `docs/adr/0022` | — |
-| 1 | A2 Mock collector | sonnet | dispatched 2026-06-02 | `tools/mock_tag_stream.py`, `tools/scenarios/*.yaml` | — |
-| 1 | A3 Tag allowlist | sonnet | dispatched 2026-06-02 | `ignition/project/approved_tags.json`, `ignition/webdev/.../tags/doGet.py`, `ignition/tests/test_allowlist.py` | self-serve trust primitive |
+| 1 | A1 Schema | sonnet | ✅ **done** (bc64e8b3) | `mira-hub/db/migrations/032–037`, `docs/adr/0022` | FKs resolve to 019/027/018; ltree guarded; CHECK constraints added. **Not applied to any DB** — staging dry-run pending. 037 adds real `relationship_proposal_id` FK (was JSONB soft-ref). |
+| 1 | A2 Mock collector | sonnet | ✅ **done** (bc64e8b3) | `tools/mock_tag_stream.py`, `tools/scenarios/{normal,flicker,gs10_f0004}.yaml` | Verified --dry-run: 244 events, 14-edge `pe101` flaky signature, fault_window open/close. ⚠️ `print()` in --dry-run (intentional CLI output, pre-commit warns); active-high health bits need `invert:` for fault polarity. |
+| 1 | A3 Tag allowlist | sonnet | ✅ **done** (bc64e8b3) | `ignition/project/approved_tags.json`, `ignition/webdev/FactoryLM/api/tags/{allowlist.py,doGet.py}`, `ignition/tests/test_allowlist.py` | self-serve trust primitive. 9/9 tests pass. Fail-closed (503 if list missing), 404 on non-allowlisted, read-only. |
+
+**Wave 1 verdict:** ✅ all three landed, verified, committed on `feat/ignition-module-self-serve` (worktree `/Users/charlienode/MIRA-ignition-build`, off origin/main).
+**Next (Wave 2, gated on Wave 1):** B1 relay allowlist enforcement → B2 diff logger (`tag_events`) → B3 HMAC; Phase C (self-serve UNS entry) can start in parallel now A3 is in.
 
 (Updated as waves complete.)
 
