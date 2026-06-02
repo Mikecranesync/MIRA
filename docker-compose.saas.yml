@@ -345,6 +345,15 @@ services:
       - MIRA_DB_PATH=/mira-db/mira.db
       - RELAY_PORT=8765
       - RELAY_API_KEY=${RELAY_API_KEY:-}
+      # HMAC verification for the Ignition tag collector (POST /api/v1/tags/ingest)
+      # and the signed tag stream. Must match the per-tenant key the gateway signs
+      # with. Without it the relay falls back to legacy bearer / open — see
+      # docs/integrations/ignition-tag-collector.md.
+      - MIRA_IGNITION_HMAC_KEY=${MIRA_IGNITION_HMAC_KEY:-}
+      # NeonDB target for the Phase-2 tag ingest (tag_events + current_tag_state).
+      # When unset, /api/v1/tags/ingest cannot persist (the legacy /ingest SQLite
+      # path is unaffected).
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
     volumes:
       - /opt/mira/data:/mira-db
     networks:

@@ -1,25 +1,62 @@
-# Gateway Timer Script — MIRA Connect Tag Streamer
-# Schedule: Fixed Rate, 2000 ms (configurable via STREAM_INTERVAL_MS)
+# Gateway Timer Script — MIRA Connect Tag Streamer (customer-deployable collector)
+# Schedule: Fixed Rate, default 2000 ms (configurable via STREAM_INTERVAL_MS in
+#           the timer-script settings — NOT read here; it's the schedule itself).
 #
-# Reads all tags under STREAM_TAG_FOLDER, packages as JSON, and POSTs
-# to the MIRA cloud relay. This is what connects the factory floor to
-# MIRA's diagnostic AI — live tag values flow into equipment_status,
-# which the GSD Engine reads during fault diagnosis.
+# WHAT IT DOES
+#   Browses the configured tag folder, reads every leaf tag (READ-ONLY — never
+#   writes a tag), keeps only allowlisted tags, and POSTs them to the MIRA
+#   cloud tag-ingest endpoint (POST /api/v1/tags/ingest) as an HMAC-signed
+#   Phase-2 batch. The relay enforces the allowlist again (defense in depth),
+#   resolves UNS paths, appends to tag_events, and upserts current_tag_state.
 #
-# On relay failure: logs a warning and continues next cycle. No local
-# buffering — Ignition's tag history covers any gaps.
+# WHY THE CHANGE (gap-closure plan §3 G8)
+#   The previous version posted the legacy {type:"tags", equipment:{...}} shape
+#   UNSIGNED to /ingest. This version signs every request with HMAC-SHA256
+#   (X-MIRA-* headers) using the per-tenant key, enforces the allowlist
+#   gateway-side, and uses the Phase-2 contract. The cloud relay's
+#   MIRA_IGNITION_HMAC_KEY must match (see docs/integrations/ignition-tag-collector.md).
 #
-# Configuration:
-#   RELAY_URL      — MIRA relay HTTP ingest endpoint
-#   TENANT_ID      — tenant UUID from activation
-#   STREAM_TAG_FOLDER — root tag folder to stream (default: [default]Mira_Monitored)
-#   STREAM_INTERVAL_MS — poll interval in ms (default: 2000, set in timer schedule)
+# READ-ONLY GUARANTEE
+#   Only system.tag.browseTags + system.tag.readBlocking are used. No
+#   system.tag.write*, no PLC write of any kind — per ADR-0021 and
+#   .claude/rules/fieldbus-readonly.md.
 #
-# Loaded from factorylm.properties via getMiraConfig().
+# CONFIG (factorylm.properties, via getMiraConfig):
+#   INGEST_URL                 — MIRA tag-ingest endpoint
+#                                (default https://api.factorylm.com/api/v1/tags/ingest)
+#   TENANT_ID                  — tenant UUID from activation
+#   MIRA_HMAC_KEY              — per-tenant HMAC signing key (matches the relay)
+#   STREAM_TAG_FOLDER          — root tag folder (default [default]Mira_Monitored)
+#   STREAM_SOURCE_CONNECTION_ID— optional connection id stamped on every row
+#   STREAM_MAX_RETRIES         — POST retry attempts (default 3)
 #
-# Jython 2.7 — runs inside Ignition Gateway JVM.
+# DEPLOYMENT
+#   collector.py, signing.py, allowlist.py (the pure logic) must be importable.
+#   Recommended: place them in the Ignition project script library as
+#   `factorylm` so this timer does `from factorylm import collector`. The
+#   integration doc covers both that and the flat-script-path fallback.
+#
+# Jython 2.7 — runs inside the Ignition Gateway JVM.
 
 logger = system.util.getLogger("FactoryLM.Mira.TagStream")
+
+
+# ---------------------------------------------------------------------------
+# Collector core import (pure logic — see api/tags/collector.py)
+# ---------------------------------------------------------------------------
+
+try:
+    from factorylm import collector            # recommended: project script library
+except ImportError:
+    try:
+        import collector                       # flat fallback (modules on script path)
+    except ImportError:
+        collector = None
+        logger.error(
+            "MIRA collector module not importable — deploy collector.py/signing.py/"
+            "allowlist.py to the project script library. See "
+            "docs/integrations/ignition-tag-collector.md"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -54,19 +91,18 @@ def getMiraConfig(key, default_value=""):
 
 
 # ---------------------------------------------------------------------------
-# Tag reading
+# Tag reading (READ-ONLY)
 # ---------------------------------------------------------------------------
 
 def _browse_leaf_tags(folder):
-    """Browse a tag folder and return paths of all non-folder (leaf) tags."""
+    """Browse a tag folder recursively; return full paths of all leaf tags."""
     leaf_paths = []
     try:
         results = system.tag.browseTags(parentPath=folder)
         for tag in results:
             tag_type = str(tag.type).lower()
             if tag_type in ("folder", "udtinst"):
-                sub_leaves = _browse_leaf_tags(str(tag.fullPath))
-                leaf_paths.extend(sub_leaves)
+                leaf_paths.extend(_browse_leaf_tags(str(tag.fullPath)))
             else:
                 leaf_paths.append(str(tag.fullPath))
     except Exception as e:
@@ -74,88 +110,105 @@ def _browse_leaf_tags(folder):
     return leaf_paths
 
 
-def _read_all_tags(folder):
-    """Read all leaf tags under folder. Returns dict of {tag_name: {v, q, t}}."""
+def _read_readings(folder):
+    """Read all leaf tags under folder. Returns a list of Phase-2 reading dicts
+    (full tag path retained so the allowlist + relay can match)."""
     paths = _browse_leaf_tags(folder)
     if not paths:
-        return {}
+        return []
 
-    tag_data = {}
+    readings = []
     try:
         qvs = system.tag.readBlocking(paths)
         for i, path in enumerate(paths):
             qv = qvs[i]
-            tag_name = path.split("/")[-1] if "/" in path else path
-            try:
-                val = float(qv.value) if qv.value is not None else 0
-            except (TypeError, ValueError):
-                val = str(qv.value) if qv.value is not None else ""
-            tag_data[tag_name] = {
-                "v": val,
-                "q": str(qv.quality),
-                "t": str(qv.timestamp),
-                "path": path,
-            }
+            readings.append(
+                collector.build_reading(
+                    tag_path=path,
+                    value=qv.value,
+                    ignition_quality=str(qv.quality),
+                    ts=str(qv.timestamp),
+                )
+            )
     except Exception as e:
         logger.warn("Bulk tag read failed: %s" % str(e))
-
-    return tag_data
+    return readings
 
 
 # ---------------------------------------------------------------------------
-# Relay POST
+# HTTP POST adapter — wraps system.net for collector.post_with_retry
 # ---------------------------------------------------------------------------
 
-def _post_to_relay(relay_url, tenant_id, tag_data):
-    """POST tag data JSON to the MIRA relay. Returns True on success."""
+def _make_post_fn():
     import system.net
 
-    equipment_id = getMiraConfig("STREAM_EQUIPMENT_ID", "ignition-gateway")
-
-    payload = {
-        "type": "tags",
-        "tenant_id": tenant_id,
-        "agent_id": "ignition-%s" % system.net.getHostName(),
-        "equipment": {
-            equipment_id: tag_data
-        }
-    }
-
-    try:
+    def _post(url, body_bytes, headers, timeout_ms):
         client = system.net.httpClient()
-        response = client.post(
-            relay_url,
-            data=system.util.jsonEncode(payload),
-            headers={"Content-Type": "application/json"},
-            timeout=5000
+        return client.post(
+            url,
+            data=body_bytes,
+            headers=headers,
+            timeout=timeout_ms,
         )
-        if response.statusCode == 200:
-            return True
-        else:
-            logger.warn(
-                "Relay returned %d: %s" % (response.statusCode, response.text[:200])
-            )
-            return False
-    except Exception as e:
-        logger.warn("Relay POST failed: %s" % str(e))
-        return False
+
+    return _post
 
 
 # ---------------------------------------------------------------------------
 # Main timer entry point
 # ---------------------------------------------------------------------------
 
-relay_url = getMiraConfig("RELAY_URL", "")
-tenant_id = getMiraConfig("TENANT_ID", "")
-tag_folder = getMiraConfig("STREAM_TAG_FOLDER", "[default]Mira_Monitored")
+def run():
+    if collector is None:
+        return  # error already logged at import
 
-if not relay_url or not tenant_id:
-    pass
-else:
-    tag_data = _read_all_tags(tag_folder)
-    if tag_data:
-        ok = _post_to_relay(relay_url, tenant_id, tag_data)
-        if ok:
-            logger.trace("Streamed %d tags to relay" % len(tag_data))
-    else:
+    ingest_url = getMiraConfig("INGEST_URL", collector.DEFAULT_INGEST_URL)
+    tenant_id = getMiraConfig("TENANT_ID", "")
+    hmac_key = getMiraConfig("MIRA_HMAC_KEY", "")
+    tag_folder = getMiraConfig("STREAM_TAG_FOLDER", "[default]Mira_Monitored")
+    source_conn = getMiraConfig("STREAM_SOURCE_CONNECTION_ID", "") or None
+
+    if not tenant_id or not hmac_key:
+        logger.warn("MIRA tag-stream not configured (TENANT_ID / MIRA_HMAC_KEY missing)")
+        return
+
+    try:
+        max_retries = int(getMiraConfig("STREAM_MAX_RETRIES", "3"))
+    except ValueError:
+        max_retries = 3
+
+    readings = _read_readings(tag_folder)
+    if not readings:
         logger.trace("No tags found in %s" % tag_folder)
+        return
+
+    # Allowlist enforcement (fail-closed) — gateway-side filter before egress.
+    allowed = collector.filter_allowlisted(readings, collector.load_allowlist_set())
+    if not allowed:
+        logger.trace("No allowlisted tags to stream (browsed %d)" % len(readings))
+        return
+
+    payload = collector.build_payload(tenant_id, allowed, source_connection_id=source_conn)
+    result = collector.post_with_retry(
+        _make_post_fn(),
+        ingest_url,
+        hmac_key,
+        tenant_id,
+        payload,
+        max_retries=max_retries,
+        sleep_fn=lambda s: __import__("time").sleep(s),
+    )
+
+    if result["ok"]:
+        logger.trace(
+            "Streamed %d/%d allowlisted tags (attempts=%d)"
+            % (len(allowed), len(readings), result["attempts"])
+        )
+    else:
+        logger.warn(
+            "Tag ingest failed status=%s attempts=%s"
+            % (result["status"], result["attempts"])
+        )
+
+
+run()
