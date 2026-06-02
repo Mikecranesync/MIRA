@@ -41,9 +41,11 @@ export default function GraphPage() {
         .filter((n) => !q || n.label.toLowerCase().includes(q))
         .map((n) => n.id),
     );
+    const endId = (v: unknown): string =>
+      typeof v === "string" ? v : (v as { id: string }).id;
     return {
       nodes: raw.nodes.filter((n) => keep.has(n.id)),
-      links: raw.links.filter((l) => keep.has(l.source) && keep.has(l.target)),
+      links: raw.links.filter((l) => keep.has(endId(l.source)) && keep.has(endId(l.target))),
     };
   }, [raw, hiddenTypes, showOrphans, query]);
 
