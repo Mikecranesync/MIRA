@@ -20,6 +20,33 @@ admin tools) must go through these helpers so the spec's invariants hold:
 The helpers accept an optional SQLAlchemy connection so a caller running
 inside a transaction can keep the upserts in the same unit of work; if
 omitted, the helpers manage their own connection + commit.
+
+Relationship writes — ADR-0017
+-------------------------------
+upsert_relationship() routes ALL edge proposals through
+mira_bots.shared.proposal_transition.propose_relationship, which writes
+to `relationship_proposals` + `relationship_evidence` + `ai_suggestions`
+(kg_edge, status='pending').  It NEVER writes directly to `kg_relationships`.
+
+That table is written ONLY by proposal_transition.review_proposal() on
+human approval.  This means ingest-derived edges stay in `proposed` state
+until a human verifies them via the Hub /proposals UI.
+
+Consequence: graph traversal queries that filter on
+kg_relationships.approval_state='verified' will not return these edges
+until a human acts.  This is intentional per ADR-0017 §"Why this is right".
+
+Caller-type vocab map
+---------------------
+Ingest callers pass legacy lowercase rel_type values that pre-date the
+controlled vocabulary enforced by migration 018.  The map below translates
+them before calling propose_relationship:
+
+    has_manual   → HAS_DOCUMENT    (equipment → manual document)
+    has_fault    → HAS_FAILURE_MODE (equipment → fault_code entity)
+
+All other values must already be in RELATIONSHIP_TYPE_VOCAB or the call is
+silently dropped (propose_relationship enforces the CHECK constraint in Python).
 """
 
 from __future__ import annotations
@@ -36,6 +63,19 @@ from .uns import (
     is_valid_path,
     manual_path,
 )
+
+# ---------------------------------------------------------------------------
+# Caller-type vocab map
+# ---------------------------------------------------------------------------
+
+# Maps legacy lowercase relationship types (used by register_* helpers below)
+# to the controlled vocabulary enforced by migration 018/028 on
+# relationship_proposals.relationship_type.  Values not in this map and not
+# already in RELATIONSHIP_TYPE_VOCAB are rejected by propose_relationship.
+_REL_TYPE_MAP: dict[str, str] = {
+    "has_manual": "HAS_DOCUMENT",
+    "has_fault": "HAS_FAILURE_MODE",
+}
 
 logger = logging.getLogger("mira-crawler.kg_writer")
 
@@ -151,9 +191,37 @@ def upsert_relationship(
     source_chunk_id: str | UUID | None = None,
     conn=None,
 ) -> str | None:
-    """Insert (or fetch existing) a kg_relationships row. Returns the
-    relationship id as a string, or None on hard failure."""
-    from sqlalchemy import text
+    """Route relationship to proposal_transition.propose_relationship.
+
+    Returns the relationship_proposals.id as a string on success, or None
+    on hard failure.  Does NOT write to kg_relationships directly — that
+    table is written only after human approval via review_proposal().
+
+    The function signature is preserved for backwards compatibility with
+    existing callers.  The `properties` argument is ignored (not stored
+    on relationship_proposals; callers may pass it without error).
+
+    ADR-0017: direct INSERT INTO kg_relationships from ingest is a bug.
+    """
+    # Lazy import — keeps this module importable without NEON_DATABASE_URL.
+    try:
+        from shared.proposal_transition import propose_relationship
+    except ImportError:
+        # Fallback path if mira-bots is not on sys.path (e.g. standalone
+        # crawler container).  Try relative path then fail-soft.
+        try:
+            import sys
+            import os
+
+            bots_root = os.path.join(
+                os.path.dirname(__file__), "..", "..", "mira-bots"
+            )
+            if bots_root not in sys.path:
+                sys.path.insert(0, os.path.abspath(bots_root))
+            from shared.proposal_transition import propose_relationship
+        except Exception as import_err:
+            logger.error("upsert_relationship: cannot import proposal_transition: %s", import_err)
+            return None
 
     if not source_entity or not target_entity or not relation_type:
         return None
@@ -161,48 +229,50 @@ def upsert_relationship(
         logger.debug("upsert_relationship skipped self-edge %s", source_entity)
         return None
 
-    props_json = json.dumps(properties or {})
-    src_chunk = str(source_chunk_id) if source_chunk_id else None
+    # Translate legacy lowercase rel_type values to controlled vocab.
+    mapped_rel_type = _REL_TYPE_MAP.get(relation_type, relation_type)
 
-    try:
-        with _get_conn(conn) as c:
-            row = c.execute(
-                text("""
-                    INSERT INTO kg_relationships
-                        (tenant_id, source_id, target_id,
-                         relationship_type, properties, confidence,
-                         source_chunk_id)
-                    VALUES
-                        (:tenant_id, :source, :target, :rel,
-                         cast(:properties AS jsonb), :confidence,
-                         cast(:source_chunk_id AS uuid))
-                    ON CONFLICT
-                        (tenant_id, source_id, target_id, relationship_type)
-                    DO UPDATE SET
-                        confidence = GREATEST(kg_relationships.confidence,
-                                              EXCLUDED.confidence)
-                    RETURNING id
-                """),
-                {
-                    "tenant_id": tenant_id,
-                    "source": str(source_entity),
-                    "target": str(target_entity),
-                    "rel": relation_type,
-                    "properties": props_json,
-                    "confidence": confidence,
-                    "source_chunk_id": src_chunk,
-                },
-            ).first()
-            return str(row[0]) if row else None
-    except Exception as e:
-        logger.error(
-            "upsert_relationship failed %s -[%s]-> %s: %s",
+    evidence: list[dict] = []
+    if source_chunk_id:
+        evidence.append(
+            {
+                "evidence_type": "knowledge_entry",
+                "source_id": str(source_chunk_id),
+                "source_description": "ingest chunk",
+                "confidence_contribution": 0.0,
+            }
+        )
+
+    proposal_id = propose_relationship(
+        source_id=str(source_entity),
+        target_id=str(target_entity),
+        rel_type=mapped_rel_type,
+        evidence=evidence,
+        tenant_id=tenant_id,
+        confidence=confidence,
+        proposed_by="import:kg_writer",
+        conn=conn,
+    )
+
+    if proposal_id:
+        logger.debug(
+            "upsert_relationship → proposal %s (%s -[%s]-> %s)",
+            proposal_id,
             source_entity,
+            mapped_rel_type,
+            target_entity,
+        )
+    else:
+        logger.warning(
+            "upsert_relationship: propose_relationship returned None for "
+            "%s -[%s (%s)]-> %s",
+            source_entity,
+            mapped_rel_type,
             relation_type,
             target_entity,
-            e,
         )
-        return None
+
+    return proposal_id
 
 
 # ---------------------------------------------------------------------------

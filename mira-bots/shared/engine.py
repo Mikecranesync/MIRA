@@ -4468,6 +4468,43 @@ class Supervisor:
         """Persist conversation state to SQLite."""
         save_state(self.db_path, chat_id, state)
 
+    def seed_direct_connection(
+        self,
+        chat_id: str,
+        uns_path: str | None,
+        surface: str = "ignition_chat",
+    ) -> None:
+        """Pre-seed a session as UNS-certified from a direct connection.
+
+        Called by direct-connection surfaces (Ignition chat endpoint, QR
+        deep-link, MQTT bridge) BEFORE engine.process() so the UNS
+        confirmation gate is already satisfied when process_full runs.
+
+        Sets ``state["context"]["uns_source"] = "direct_connection"`` on the
+        live SQLite row.  This sibling key is NOT touched by the
+        ``resolve_uns_path()`` call at L1182 (which only overwrites the
+        ``uns_context`` sub-key), so it survives to the gate check.
+
+        Also persists the certifying surface name for groundedness audits.
+
+        Rule ref: .claude/rules/direct-connection-uns-certified.md
+        """
+        state = self._load_state(chat_id)
+        ctx = state.get("context") or {}
+        ctx["uns_source"] = "direct_connection"
+        ctx["uns_confidence_band"] = "certified"  # per rule: confidence="certified" on direct connections
+        ctx["uns_certified_surface"] = surface
+        if uns_path:
+            ctx["uns_certified_path"] = uns_path
+        state["context"] = ctx
+        self._save_state(chat_id, state)
+        logger.info(
+            "DIRECT_CONNECT_SEEDED chat_id=%s surface=%s uns_path=%r",
+            chat_id,
+            surface,
+            uns_path,
+        )
+
     @staticmethod
     def _strip_memory_block(message: str) -> str:
         """Remove injected [MIRA MEMORY...END MEMORY] prefix before storing to history."""
@@ -4570,6 +4607,13 @@ class Supervisor:
         if not _UNS_GATE_ENABLED:
             return False
         if router_intent != "diagnose_equipment":
+            return False
+        # Direct-connection surfaces (Ignition, MQTT, QR, Hub display) pre-seed
+        # state["context"]["uns_source"] = "direct_connection" before process()
+        # is called.  The connection itself certifies the UNS path — no
+        # confirmation card needed.
+        # Rule ref: .claude/rules/direct-connection-uns-certified.md
+        if (state.get("context") or {}).get("uns_source") == "direct_connection":
             return False
         if state.get("asset_identified"):
             return False

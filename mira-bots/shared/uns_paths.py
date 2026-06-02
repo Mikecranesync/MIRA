@@ -118,3 +118,43 @@ def fault_code_path(
     else:
         prefix = manufacturer_path(manufacturer)
     return _join(prefix, "fault_codes", slug(code))
+
+
+# ── Operational / plant namespace (ISA-95 ltree) ─────────────────────────────
+# These match the plant-side branch:
+#   enterprise.{company}.site.{site}.area.{area}[.line.{line}[.work_cell.{wc}]].equipment.{eq}
+# See `mira-crawler/ingest/uns.py::assigned_equipment_path` — this is the
+# dep-free counterpart for use inside mira-bots. Keep in sync with that
+# function; the crawler writes these paths, the bot reads them.
+
+
+def _ops_root(company: str) -> str:
+    return _join("enterprise", slug(company))
+
+
+def site_ops_path(company: str, site: str) -> str:
+    return _join(_ops_root(company), "site", slug(site))
+
+
+def area_ops_path(company: str, site: str, area: str) -> str:
+    return _join(site_ops_path(company, site), "area", slug(area))
+
+
+def assigned_equipment_path(
+    company: str,
+    site: str,
+    area: str,
+    equipment: str,
+    line: str | None = None,
+    work_cell: str | None = None,
+) -> str:
+    """Build `enterprise.{company}.site.{s}.area.{a}[.line.{l}[.work_cell.{c}]].equipment.{eq}`.
+
+    Mirrors ``mira-crawler/ingest/uns.py::assigned_equipment_path`` exactly.
+    """
+    prefix = area_ops_path(company, site, area)
+    if line:
+        prefix = _join(prefix, "line", slug(line))
+        if work_cell:
+            prefix = _join(prefix, "work_cell", slug(work_cell))
+    return _join(prefix, "equipment", slug(equipment))

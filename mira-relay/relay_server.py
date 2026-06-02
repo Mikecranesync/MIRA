@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
 import os
 import sqlite3
+import time
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -18,6 +22,38 @@ logger = logging.getLogger("mira-relay")
 
 DB_PATH = os.getenv("MIRA_DB_PATH", "/mira-db/mira.db")
 RELAY_API_KEY = os.getenv("RELAY_API_KEY", "")
+
+# ---------------------------------------------------------------------------
+# HMAC + nonce replay protection (§4.3 / D4 / secure-arch §10.6 task 4).
+#
+# Headers expected from signed clients:
+#   X-MIRA-Tenant    — tenant id (used to look up the signing key)
+#   X-MIRA-Nonce     — monotonic / unique per request (e.g. ms timestamp + random)
+#   X-MIRA-Signature — hex HMAC-SHA256 of (nonce.encode() + b"." + raw_body)
+#
+# Key resolution (per tenant):
+#   1. MIRA_HMAC_KEY_<TENANT>  (e.g. MIRA_HMAC_KEY_ACME_CORP) — per-tenant key
+#   2. MIRA_HMAC_KEY            — single shared fallback key
+# Per-tenant key minting / rotation is a Hub-admin follow-up (secure-arch §11 Q3).
+# Keys are Doppler-managed; never hardcode.
+#
+# BACKWARD COMPAT — RELAY_LEGACY_BEARER (default: "1"):
+#   "1" (on)  → accept EITHER a valid HMAC-signed request OR the existing bearer
+#               token — whichever the client sends.  The bench bridge + tools/
+#               demo_plc_poller continue to work unchanged.
+#   "0" (off) → require HMAC; bearer-only requests are rejected with 401.
+#
+# Cutover plan: flip RELAY_LEGACY_BEARER=0 once all clients (bench bridge +
+# tools/demo_plc_poller) have been updated to sign requests.  At that point the
+# bearer path can be removed entirely.
+# ---------------------------------------------------------------------------
+
+RELAY_LEGACY_BEARER: bool = os.getenv("RELAY_LEGACY_BEARER", "1").strip() != "0"
+
+# In-memory nonce store: (tenant_id, nonce) → seen_at_epoch_s.
+# Pruned on every verification call; 10-minute replay window.
+_NONCE_WINDOW_S: int = 600
+_seen_nonces: dict[tuple[str, str], float] = {}
 
 # ---------------------------------------------------------------------------
 # Phase 5 / §D4 — Tag diff & event stream (gated behind RELAY_TAG_EVENTS=1).
@@ -217,11 +253,93 @@ def _emit_tag_events(payload: dict, relay_batch_id: uuid.UUID) -> None:
         logger.warning("_emit_tag_events failed (batch=%s): %s", str(relay_batch_id)[:8], exc)
 
 
-def _check_auth(request: Request) -> bool:
-    if not RELAY_API_KEY:
-        return True
-    auth = request.headers.get("Authorization", "")
-    return auth == f"Bearer {RELAY_API_KEY}"
+def _resolve_hmac_key(tenant_id: str) -> Optional[str]:
+    """Return the HMAC signing key for *tenant_id*, or None if unconfigured."""
+    env_slug = tenant_id.upper().replace("-", "_").replace(" ", "_")
+    per_tenant = os.getenv(f"MIRA_HMAC_KEY_{env_slug}", "")
+    if per_tenant:
+        return per_tenant
+    return os.getenv("MIRA_HMAC_KEY", "") or None
+
+
+def _prune_nonces(now: float) -> None:
+    """Remove nonce entries older than the replay window. Call before every check."""
+    cutoff = now - _NONCE_WINDOW_S
+    stale = [k for k, ts in _seen_nonces.items() if ts < cutoff]
+    for k in stale:
+        del _seen_nonces[k]
+
+
+def _check_hmac(request: Request, body: bytes) -> tuple[bool, int]:
+    """Verify HMAC headers.  Returns (ok, http_status).
+
+    - Missing/empty signature header → (False, 401).
+    - Tenant key not configured      → (False, 401).
+    - Bad signature                  → (False, 401).
+    - Replayed nonce                 → (False, 409).
+    - Valid + fresh                  → (True,  200).
+    """
+    tenant_id = request.headers.get("X-MIRA-Tenant", "").strip()
+    nonce = request.headers.get("X-MIRA-Nonce", "").strip()
+    signature = request.headers.get("X-MIRA-Signature", "").strip()
+
+    if not signature:
+        return False, 401
+
+    key = _resolve_hmac_key(tenant_id)
+    if not key:
+        logger.warning("HMAC key not configured for tenant=%r", tenant_id)
+        return False, 401
+
+    # Signed message = nonce bytes + "." sentinel + raw body.
+    # Binding the nonce into the signature prevents body-replay with a fresh nonce.
+    message = nonce.encode() + b"." + body
+    expected = hmac.new(key.encode(), message, hashlib.sha256).hexdigest()
+
+    if not hmac.compare_digest(expected, signature):
+        logger.warning("HMAC signature mismatch for tenant=%r nonce=%r", tenant_id, nonce[:16])
+        return False, 401
+
+    # Signature valid — now check replay window (no await between check + record).
+    now = time.monotonic()
+    _prune_nonces(now)
+    nonce_key = (tenant_id, nonce)
+    if nonce_key in _seen_nonces:
+        logger.warning("Replayed nonce rejected for tenant=%r nonce=%r", tenant_id, nonce[:16])
+        return False, 409
+    _seen_nonces[nonce_key] = now
+
+    return True, 200
+
+
+def _check_auth(request: Request, body: bytes) -> tuple[bool, int]:
+    """Auth gate for the ingest endpoint.
+
+    Decision tree:
+      1. If HMAC headers present → HMAC path (strict; no bearer fallback).
+      2. No HMAC headers + RELAY_LEGACY_BEARER on → bearer path.
+      3. No HMAC headers + RELAY_LEGACY_BEARER off → 401.
+
+    Returns (ok, http_status).
+    """
+    has_sig = bool(request.headers.get("X-MIRA-Signature", "").strip())
+
+    if has_sig:
+        # HMAC path — strict; never fall back to bearer after a failed HMAC check.
+        return _check_hmac(request, body)
+
+    # No HMAC signature supplied.
+    if RELAY_LEGACY_BEARER:
+        # Legacy bearer path (backward-compat; default on).
+        if not RELAY_API_KEY:
+            return True, 200
+        auth = request.headers.get("Authorization", "")
+        ok = auth == f"Bearer {RELAY_API_KEY}"
+        return ok, 200 if ok else 401
+    else:
+        # HMAC required; unsigned requests are rejected.
+        logger.warning("Unsigned request rejected (RELAY_LEGACY_BEARER=0)")
+        return False, 401
 
 
 async def health(request: Request) -> JSONResponse:
@@ -229,11 +347,16 @@ async def health(request: Request) -> JSONResponse:
 
 
 async def ingest(request: Request) -> JSONResponse:
-    if not _check_auth(request):
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    # Read raw body first — HMAC must be verified against the exact bytes received.
+    body = await request.body()
+
+    ok, status_code = _check_auth(request, body)
+    if not ok:
+        errors = {401: "unauthorized", 409: "replayed nonce"}
+        return JSONResponse({"error": errors.get(status_code, "unauthorized")}, status_code=status_code)
 
     try:
-        payload = await request.json()
+        payload = json.loads(body)
     except Exception:
         return JSONResponse({"error": "invalid json"}, status_code=400)
 

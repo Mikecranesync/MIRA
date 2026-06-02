@@ -37,7 +37,18 @@ interface FileRecord {
 }
 
 type EditingState = { nodeId: string; value: string } | null;
-type NewFolderState = { parentId: string | null; value: string } | null;
+type NewFolderState = { parentId: string | null; value: string; kind: NodeKind } | null;
+
+// Valid structural node types (must be a subset of route.ts ENTITY_TYPES).
+// "Machine" is a user-friendly label but the schema calls it "asset".
+const NODE_KINDS = [
+  { value: "site",      label: "Site" },
+  { value: "area",      label: "Area" },
+  { value: "line",      label: "Line" },
+  { value: "asset",     label: "Machine / Asset" },
+  { value: "component", label: "Component" },
+] as const;
+type NodeKind = (typeof NODE_KINDS)[number]["value"];
 type UploadState = { nodeId: string; state: "uploading" | "done" | "error" } | null;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -199,7 +210,7 @@ export default function NamespacePage() {
 
   // ── Create folder ──────────────────────────────────────────────────────────
 
-  async function commitNewFolder(parentId: string | null, name: string) {
+  async function commitNewFolder(parentId: string | null, name: string, kind: NodeKind = "area") {
     setNewFolder(null);
     const trimmed = name.trim();
     if (!trimmed) return;
@@ -207,7 +218,7 @@ export default function NamespacePage() {
       const res = await fetch(`${API_BASE}/api/namespace/node`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ parentId: parentId ?? undefined, name: trimmed, kind: "area" }),
+        body: JSON.stringify({ parentId: parentId ?? undefined, name: trimmed, kind }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };
@@ -317,8 +328,8 @@ export default function NamespacePage() {
       <div className="flex items-center gap-1 border-b border-gray-400 bg-[#d4d0c8] p-1">
         <ToolbarButton
           icon={<FolderPlus className="h-3.5 w-3.5" />}
-          label="New Folder"
-          onClick={() => setNewFolder({ parentId: selected?.id ?? null, value: "" })}
+          label="New Node"
+          onClick={() => setNewFolder({ parentId: selected?.id ?? null, value: "", kind: selected ? "area" : "site" })}
         />
         <ToolbarButton
           icon={<Upload className="h-3.5 w-3.5" />}
@@ -374,12 +385,14 @@ export default function NamespacePage() {
             <div className="p-3 text-xs text-red-600">{error}</div>
           ) : (
             <div className="p-1">
-              {/* Root-level new folder input */}
+              {/* Root-level new node input */}
               {newFolder && newFolder.parentId === null && (
                 <NewFolderRow
                   value={newFolder.value}
-                  onChange={(v) => setNewFolder({ parentId: null, value: v })}
-                  onCommit={(v) => void commitNewFolder(null, v)}
+                  kind={newFolder.kind}
+                  onChange={(v) => setNewFolder({ parentId: null, value: v, kind: newFolder.kind })}
+                  onKindChange={(k) => setNewFolder({ parentId: null, value: newFolder.value, kind: k })}
+                  onCommit={(v) => void commitNewFolder(null, v, newFolder.kind)}
                   onCancel={() => setNewFolder(null)}
                 />
               )}
@@ -413,11 +426,12 @@ export default function NamespacePage() {
                   onEditCancel={() => setEditing(null)}
                   onDelete={handleDeleteNode}
                   onNewFolder={(parentId) => {
-                    setNewFolder({ parentId, value: "" });
+                    setNewFolder({ parentId, value: "", kind: "area" });
                     setExpandedIds((prev) => new Set([...prev, parentId]));
                   }}
                   onNewFolderChange={(v) => setNewFolder((prev) => prev ? { ...prev, value: v } : prev)}
-                  onNewFolderCommit={(parentId, v) => void commitNewFolder(parentId, v)}
+                  onNewFolderKindChange={(k) => setNewFolder((prev) => prev ? { ...prev, kind: k } : prev)}
+                  onNewFolderCommit={(parentId, v) => void commitNewFolder(parentId, v, newFolder?.kind ?? "area")}
                   onNewFolderCancel={() => setNewFolder(null)}
                   onUpload={(nodeId) => {
                     fileInputRef.current?.click();
@@ -493,7 +507,7 @@ export default function NamespacePage() {
           showCreate={!ctxMenu.node.id.startsWith("synthetic:")}
           onNewFolder={() => {
             setCtxMenu(null);
-            setNewFolder({ parentId: ctxMenu.node.id, value: "" });
+            setNewFolder({ parentId: ctxMenu.node.id, value: "", kind: "area" });
             setExpandedIds((prev) => new Set([...prev, ctxMenu.node.id]));
           }}
           onRename={() => {
@@ -526,7 +540,7 @@ function TreeNode({
   onDragStart, onDragOver, onNodeDrop,
   onFileDragOver, onFileDrop,
   onEditStart, onEditChange, onEditCommit, onEditCancel,
-  onDelete, onNewFolder, onNewFolderChange, onNewFolderCommit, onNewFolderCancel,
+  onDelete, onNewFolder, onNewFolderChange, onNewFolderKindChange, onNewFolderCommit, onNewFolderCancel,
   onUpload, onContextMenu,
 }: {
   node: NamespaceNode;
@@ -553,6 +567,7 @@ function TreeNode({
   onDelete: (nodeId: string) => void;
   onNewFolder: (parentId: string) => void;
   onNewFolderChange: (v: string) => void;
+  onNewFolderKindChange: (k: NodeKind) => void;
   onNewFolderCommit: (parentId: string, v: string) => void;
   onNewFolderCancel: () => void;
   onUpload: (nodeId: string) => void;
@@ -677,7 +692,9 @@ function TreeNode({
             <NewFolderRow
               indent={indent + 14}
               value={newFolder.value}
+              kind={newFolder.kind}
               onChange={onNewFolderChange}
+              onKindChange={onNewFolderKindChange}
               onCommit={(v) => onNewFolderCommit(node.id, v)}
               onCancel={onNewFolderCancel}
             />
@@ -709,6 +726,7 @@ function TreeNode({
               onDelete={onDelete}
               onNewFolder={onNewFolder}
               onNewFolderChange={onNewFolderChange}
+              onNewFolderKindChange={onNewFolderKindChange}
               onNewFolderCommit={onNewFolderCommit}
               onNewFolderCancel={onNewFolderCancel}
               onUpload={onUpload}
@@ -1034,22 +1052,25 @@ function ContextMenuOverlay({
 }
 
 function NewFolderRow({
-  indent = 6, value, onChange, onCommit, onCancel,
+  indent = 6, value, kind = "area", onChange, onKindChange, onCommit, onCancel,
 }: {
   indent?: number;
   value: string;
+  kind?: NodeKind;
   onChange: (v: string) => void;
+  onKindChange?: (k: NodeKind) => void;
   onCommit: (v: string) => void;
   onCancel: () => void;
 }) {
+  const Icon = KIND_ICON(kind, false);
   return (
     <div className="flex h-7 items-center gap-1" style={{ paddingLeft: `${indent}px` }}>
       <span className="h-4 w-4" />
-      <Folder className="h-3.5 w-3.5 text-gray-400" />
+      <Icon className="h-3.5 w-3.5 text-gray-400" />
       <input
         autoFocus
-        className="h-5 flex-1 rounded border border-blue-400 bg-white px-1 text-[12px] text-black"
-        placeholder="Folder name…"
+        className="h-5 w-28 rounded border border-blue-400 bg-white px-1 text-[12px] text-black"
+        placeholder="Node name…"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
@@ -1058,6 +1079,18 @@ function NewFolderRow({
         }}
         onBlur={() => { if (value.trim()) onCommit(value); else onCancel(); }}
       />
+      {onKindChange && (
+        <select
+          className="h-5 rounded border border-blue-400 bg-white px-0.5 text-[11px] text-black"
+          value={kind}
+          onChange={(e) => onKindChange(e.target.value as NodeKind)}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          {NODE_KINDS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }
@@ -1067,7 +1100,16 @@ function EmptyState() {
     <div className="text-center">
       <Layers className="mx-auto h-10 w-10 text-gray-200" />
       <p className="mt-3 text-sm text-gray-500">Your namespace is empty.</p>
-      <p className="mt-1 text-xs text-gray-400">Use &ldquo;New Folder&rdquo; in the toolbar to create your first node.</p>
+      <p className="mt-1 text-xs text-gray-400">
+        Click <strong>New Node</strong> in the toolbar to start building your hierarchy.
+      </p>
+      <div className="mt-4 inline-block text-left text-[11px] text-gray-400 font-mono">
+        <div>Site (e.g. Lake Wales Plant)</div>
+        <div className="ml-4">└ Area (e.g. Packaging)</div>
+        <div className="ml-8">└ Line (e.g. Line 1)</div>
+        <div className="ml-12">└ Machine / Asset (e.g. Conveyor CV-101)</div>
+        <div className="ml-16">└ Component (e.g. Motor)</div>
+      </div>
     </div>
   );
 }

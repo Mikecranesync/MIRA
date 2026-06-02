@@ -252,6 +252,180 @@ def test_gate_disabled_via_env_flag_does_not_fire(monkeypatch):
     importlib.reload(engine_mod)
 
 
+# ── Direct-connection UNS certification (W3-E / Phase 6) ──────────────────
+# Rule ref: .claude/rules/direct-connection-uns-certified.md
+# Golden cases: tests/golden_uns_direct_connection.csv
+
+
+def test_gate_does_not_fire_when_uns_source_direct_connection(tmp_path):
+    """Golden case (a): Ignition turn with uns_source=direct_connection pre-seeded.
+
+    _should_fire_uns_gate must return False — the connection already certified
+    the UNS path; no confirmation card should be emitted.
+    """
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("ignition:tenant1:cv_101")
+    # Simulate what ignition_chat.py / seed_direct_connection() writes.
+    state["context"]["uns_source"] = "direct_connection"
+    state["context"]["uns_certified_surface"] = "ignition_chat"
+    state["context"]["uns_certified_path"] = "enterprise.customer.site.garage.area.demo_cell.equipment.cv_101"
+
+    result = sv._should_fire_uns_gate(
+        "diagnose_equipment",
+        state,
+        "why is conveyor CV-101 stopped?",
+        {},
+    )
+    assert result is False, (
+        "Gate must NOT fire when uns_source==direct_connection — "
+        "the Ignition connection already certified the UNS path."
+    )
+
+
+def test_gate_does_not_fire_direct_connection_even_with_no_asset_identified(tmp_path):
+    """Regression guard: direct_connection skips the gate even when asset_identified
+    is still None (seed hasn't set it) — the source flag is the authority, not
+    asset_identified.
+    """
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("ignition:tenant1:cv_101")
+    assert state.get("asset_identified") is None  # precondition: asset not yet set
+    state["context"]["uns_source"] = "direct_connection"
+
+    assert sv._should_fire_uns_gate("diagnose_equipment", state, "VFD fault?", {}) is False
+
+
+def test_seed_direct_connection_persists_source_key(tmp_path):
+    """seed_direct_connection() must write uns_source=direct_connection to SQLite
+    so it survives _load_state() and is visible to _should_fire_uns_gate.
+    """
+    sv = _make_sv(str(tmp_path / "test.db"))
+    chat_id = "ignition:t:asset1"
+
+    sv.seed_direct_connection(
+        chat_id,
+        uns_path="enterprise.customer.site.garage.area.demo_cell.equipment.asset1",
+        surface="ignition_chat",
+    )
+
+    saved = sv._load_state(chat_id)
+    ctx = saved.get("context") or {}
+    assert ctx.get("uns_source") == "direct_connection"
+    assert ctx.get("uns_certified_surface") == "ignition_chat"
+    assert "enterprise" in (ctx.get("uns_certified_path") or "")
+
+
+def test_seed_direct_connection_source_survives_uns_context_overwrite(tmp_path):
+    """Regression guard against the L1182 clobber path.
+
+    The populate site at process_full L1182 does:
+        _ctx_for_uns["uns_context"] = uns_ctx.as_dict()
+    This overwrites the 'uns_context' sub-key only — NOT 'uns_source'.
+    Simulate that to confirm sibling-key survival.
+    """
+    sv = _make_sv(str(tmp_path / "test.db"))
+    chat_id = "ignition:t:asset2"
+    sv.seed_direct_connection(chat_id, uns_path="enterprise.demo.site.s.area.a.equipment.e")
+
+    # Simulate L1175–1183 overwriting uns_context (but not uns_source).
+    state = sv._load_state(chat_id)
+    ctx = state.get("context") or {}
+    ctx["uns_context"] = {"manufacturer": "Allen-Bradley", "confidence": 0.7}
+    state["context"] = ctx
+    sv._save_state(chat_id, state)
+
+    # uns_source must still be intact.
+    reloaded = sv._load_state(chat_id)
+    assert (reloaded.get("context") or {}).get("uns_source") == "direct_connection"
+
+
+def test_gate_still_fires_on_slack_chat_without_direct_connection(tmp_path):
+    """Golden case (c): regression guard — chat-surface turns without direct_connection
+    seeding must STILL trigger the confirmation gate.
+    """
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("slack:user:u1")
+    # Slack: no uns_source key, no asset_identified — gate must fire.
+    assert state.get("context", {}).get("uns_source") is None  # precondition
+
+    result = sv._should_fire_uns_gate(
+        "diagnose_equipment",
+        state,
+        "PowerFlex 525 is throwing F0004 — why?",
+        {},
+    )
+    assert result is True, "Gate must still fire for chat-surface turns without direct_connection."
+
+
+def test_seed_direct_connection_stores_confidence_band(tmp_path):
+    """Rule requires confidence='certified' alongside source='direct_connection'."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    chat_id = "ignition:t:asset3"
+    sv.seed_direct_connection(chat_id, uns_path=None, surface="ignition_chat")
+
+    saved = sv._load_state(chat_id)
+    ctx = saved.get("context") or {}
+    assert ctx.get("uns_confidence_band") == "certified"
+
+
+# ── Gap A: uns_path_from_asset_context (shared.uns_resolver, shared.uns_paths) ──
+# The canonical path builder lives in uns_resolver so it's importable from
+# inside the pipeline container without fastapi or mira_crawler dependencies.
+
+
+def test_uns_path_from_asset_context_full_payload():
+    """Full asset_context → correct ISA-95 plant-namespace UNS path."""
+    from shared.uns_resolver import uns_path_from_asset_context  # noqa: PLC0415
+
+    result = uns_path_from_asset_context({
+        "company": "Acme Corp",
+        "site": "Garage Plant",
+        "area": "Demo Cell",
+        "line": "Line 1",
+        "equipment": "CV-101",
+    })
+    assert result is not None
+    assert result.startswith("enterprise.")
+    assert "garage_plant" in result
+    assert "demo_cell" in result
+    assert "cv_101" in result
+    assert "line_1" in result
+    # Structural markers must use UNS path grammar (slug, not free text)
+    assert " " not in result
+    assert "Acme" not in result  # must be slugged
+
+
+def test_uns_path_from_asset_context_minimal_payload():
+    """Minimal asset_context with just equipment → returns a path without crashing."""
+    from shared.uns_resolver import uns_path_from_asset_context  # noqa: PLC0415
+
+    result = uns_path_from_asset_context({"equipment": "pump_01"})
+    assert result is not None
+    assert "pump_01" in result
+
+
+def test_uns_path_from_asset_context_empty_returns_none():
+    """Empty asset_context → None (not a valid UNS identifier)."""
+    from shared.uns_resolver import uns_path_from_asset_context  # noqa: PLC0415
+
+    assert uns_path_from_asset_context({}) is None
+    assert uns_path_from_asset_context(None) is None
+
+
+def test_uns_path_from_asset_context_no_mira_crawler_import():
+    """uns_path_from_asset_context must not import mira_crawler — it's not on
+    the pipeline container path. The shared.uns_paths module (dep-free copy) is
+    the only acceptable implementation.
+    """
+    import sys as _sys
+
+    # Ensure mira_crawler is not accidentally loaded
+    assert "mira_crawler" not in _sys.modules, (
+        "mira_crawler must not be imported — it's not available in the pipeline container. "
+        "Use shared.uns_paths instead."
+    )
+
+
 # ── FSM-state validity ─────────────────────────────────────────────────────
 
 

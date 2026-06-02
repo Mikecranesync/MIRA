@@ -973,3 +973,55 @@ def resolve_uns_path_multi(
         [c.manufacturer for c in candidates_list],
     )
     return UNSResolution(primary=candidates_list[0], candidates=tuple(candidates_list))
+
+
+# ---------------------------------------------------------------------------
+# Direct-connection helper (W3-E / Phase 6)
+# ---------------------------------------------------------------------------
+
+
+def uns_path_from_asset_context(asset_context: dict[str, Any] | None) -> str | None:
+    """Build a plant-namespace UNS path from a structured ``asset_context`` dict.
+
+    Used by direct-connection surfaces (Ignition chat endpoint, QR deep-link,
+    Hub Command Center) to turn the signed payload's ``{site,area,line,equipment}``
+    into an ISA-95 ltree path before pre-seeding the UNS gate.
+
+    Uses ``shared.uns_paths.assigned_equipment_path`` and ``slug`` — the dep-free
+    in-bot counterparts of ``mira-crawler/ingest/uns.py`` that are always
+    importable from within the pipeline container.
+
+    Accepted keys: company, tenant, site, area, line, work_cell, equipment,
+    asset_id, asset. At least one of site / area / equipment must be non-empty
+    or the function returns None.
+
+    Rule ref: .claude/rules/uns-compliance.md (use path builders, never hand-format)
+    Rule ref: .claude/rules/direct-connection-uns-certified.md
+    """
+    if not asset_context:
+        return None
+
+    company = str(asset_context.get("company") or asset_context.get("tenant") or "customer")
+    site = str(asset_context.get("site") or "")
+    area = str(asset_context.get("area") or "")
+    line = str(asset_context.get("line") or "") or None
+    work_cell = str(asset_context.get("work_cell") or "") or None
+    equipment = str(
+        asset_context.get("equipment")
+        or asset_context.get("asset_id")
+        or asset_context.get("asset")
+        or ""
+    )
+
+    if not (site or area or equipment):
+        return None
+
+    # _uns is the module-level alias for shared.uns_paths (imported at top of file).
+    return _uns.assigned_equipment_path(
+        company or "customer",
+        site or "default",
+        area or "default",
+        equipment or "unknown",
+        line=line,
+        work_cell=work_cell,
+    )
