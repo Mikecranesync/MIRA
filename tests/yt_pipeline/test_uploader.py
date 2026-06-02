@@ -18,7 +18,7 @@ def _plan() -> dict:
 def test_refresh_token_returns_access_token():
     """_refresh_token() exchanges refresh token for access token."""
     mock_resp = MagicMock()
-    mock_resp.read.return_value = json.dumps({"access_token": "ya29.test"}).encode()
+    mock_resp.read.return_value = json.dumps({"access_token": "fake-access-token"}).encode()
     mock_resp.__enter__ = lambda s: s
     mock_resp.__exit__ = MagicMock(return_value=False)
 
@@ -27,7 +27,7 @@ def test_refresh_token_returns_access_token():
 
         token = _refresh_token("client-id", "client-secret", "refresh-tok")
 
-    assert token == "ya29.test"
+    assert token == "fake-access-token"
 
 
 def test_upload_returns_video_id(tmp_path):
@@ -39,7 +39,7 @@ def test_upload_returns_video_id(tmp_path):
 
     # Mock 1: token refresh
     token_resp = MagicMock()
-    token_resp.read.return_value = json.dumps({"access_token": "ya29.test"}).encode()
+    token_resp.read.return_value = json.dumps({"access_token": "fake-access-token"}).encode()
     token_resp.__enter__ = lambda s: s
     token_resp.__exit__ = MagicMock(return_value=False)
 
@@ -85,7 +85,7 @@ def test_upload_resumes_across_chunks(tmp_path, monkeypatch):
 
     # Mock 1: token refresh
     token_resp = MagicMock()
-    token_resp.read.return_value = json.dumps({"access_token": "ya29.test"}).encode()
+    token_resp.read.return_value = json.dumps({"access_token": "fake-access-token"}).encode()
     token_resp.__enter__ = lambda s: s
     token_resp.__exit__ = MagicMock(return_value=False)
 
