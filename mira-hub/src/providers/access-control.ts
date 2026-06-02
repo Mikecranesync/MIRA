@@ -88,6 +88,7 @@ export const NAV_ITEMS: ReadonlyArray<{
   { key: "assets",        label: "Assets",        icon: "Wrench",        href: "/assets",        roles: [...ALL_ROLES], group: "secondary" },
   { key: "workorders",    label: "CMMS",          icon: "ClipboardList", href: "/workorders",    roles: [...ALL_ROLES], group: "secondary" },
   { key: "scan",          label: "Scan",          icon: "Cpu",           href: "/scan",          roles: [...ALL_ROLES], group: "secondary" },
+  { key: "discovery",     label: "Discovery",     icon: "Radar",         href: "/discovery",     roles: [...ALL_ROLES], group: "secondary" },
   { key: "integrations",  label: "Settings",      icon: "Settings",      href: "/integrations",  roles: [...ADMIN_ROLES], group: "secondary" },
   { key: "admin",         label: "Admin",         icon: "Users",         href: "/admin",         roles: [...ADMIN_ROLES], group: "secondary" },
   { key: "admin-review",  label: "Review queue",  icon: "Inbox",         href: "/admin/review",  roles: ["admin", "owner"], group: "secondary" },
