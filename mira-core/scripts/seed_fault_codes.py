@@ -11,6 +11,9 @@ Target families (issue #193):
   - Siemens G120 (supplement existing sparse coverage)
   - AutomationDirect GS10/GS20 (supplement existing sparse coverage)
   - Rockwell PowerFlex 525/40 (supplement existing sparse coverage)
+  - AutomationDirect DURApulse GS10 NUMERIC codes (the bench Conv_Simple machine
+    reports faults as the numeric low byte of Modbus register 0x2100, not the keypad
+    mnemonic; these rows let conv_simple_anomaly A2 faults join the KB by numeric code)
 
 Usage:
     doppler run --project factorylm --config prd -- \
@@ -1010,6 +1013,37 @@ POWERFLEX_SUPPLEMENT: list[tuple[str, str, str, str, str, str, str]] = [
 ]
 
 
+# DURApulse GS10 NUMERIC fault codes — the value of the low byte of Modbus register
+# 0x2100 (high byte = warning). This is what the Conv_Simple bench actually reports over
+# Modbus, vs. the keypad mnemonics in GS_SUPPLEMENT above. Both formats are seeded so a
+# numeric bench fault (e.g. 21) AND a keypad mnemonic (e.g. "OL") resolve for GS10.
+# Source: DURApulse GS10 User Manual, P06.17 fault-record ranges (same source as
+# conv_simple_anomaly/rules.py GS10_FAULT_CODES). description = "<mnemonic> — <meaning>".
+GS10_NUMERIC: dict[int, str] = {
+    1: "ocA — over-current during acceleration", 2: "ocd — over-current during deceleration",
+    3: "ocn — over-current at constant speed", 4: "GFF — ground fault",
+    6: "ocS — over-current at stop", 7: "ovA — over-voltage during acceleration",
+    8: "ovd — over-voltage during deceleration", 9: "ovn — over-voltage at constant speed",
+    10: "ovS — over-voltage at stop", 11: "LvA — low-voltage during acceleration",
+    12: "Lvd — low-voltage during deceleration", 13: "Lvn — low-voltage at constant speed",
+    14: "LvS — low-voltage at stop", 15: "orP — input phase loss",
+    16: "oH1 — IGBT overheating", 18: "tH1o — IGBT temperature detection failure",
+    21: "oL — overload", 22: "EoL1 — electronic thermal relay 1 protection",
+    23: "EoL2 — electronic thermal relay 2 protection", 24: "oH3 — motor PTC overheating",
+    26: "ot1 — over-torque 1", 27: "ot2 — over-torque 2", 28: "uC — under-current",
+    31: "cF2 — EEPROM read error", 33: "cd1 — U-phase error", 34: "cd2 — V-phase error",
+    35: "cd3 — W-phase error", 36: "Hd0 — cc (current clamp) hardware error",
+    37: "Hd1 — oc (over-current) hardware error", 40: "AUE — auto-tuning error",
+    41: "AFE — PID loss (AI-V)", 48: "ACE — AI-C loss", 49: "EF — external fault",
+    50: "EF1 — emergency stop", 51: "bb — external base block", 52: "Pcod — password locked",
+    54: "CE1 — illegal command", 55: "CE2 — illegal data address", 56: "CE3 — illegal data value",
+    57: "CE4 — data written to read-only address", 58: "CE10 — Modbus transmission time-out",
+    63: "oSL — over-slip error", 82: "oPL1 — output phase loss U", 83: "oPL2 — output phase loss V",
+    84: "oPL3 — output phase loss W", 87: "oL3 — low-frequency overload protection",
+    140: "Hd6 — oc hardware error", 141: "b4GF — ground fault before run", 159: "Hd7 — gate driver error",
+}
+
+
 def _insert(
     conn,
     text_fn,
@@ -1083,7 +1117,17 @@ def main() -> None:
     all_codes.extend(GS_SUPPLEMENT)
     all_codes.extend(POWERFLEX_SUPPLEMENT)
 
-    log.info("Seeding %d fault codes across 6 VFD families", len(all_codes))
+    # DURApulse GS10 numeric (Modbus 0x2100) codes — what the Conv_Simple bench reports.
+    for num, desc in sorted(GS10_NUMERIC.items()):
+        all_codes.append((
+            str(num), desc,
+            "GS10 trips and records this fault in P06.17; read over Modbus as the low byte of register 0x2100.",
+            "Identify the named condition, clear the root cause, then reset the drive. "
+            "See the DURApulse GS10 User Manual fault-code (P06.17) section.",
+            "trip", "AutomationDirect", "GS10",
+        ))
+
+    log.info("Seeding %d fault codes across 6 VFD families (+ GS10 numeric Modbus codes)", len(all_codes))
 
     if args.dry_run:
         for code, desc, cause, action, sev, mfr, model in all_codes:

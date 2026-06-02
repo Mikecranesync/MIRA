@@ -28,6 +28,13 @@ MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 UNS_PREFIX = os.environ.get("UNS_PREFIX", "demo/cell1/conveyor/cv101")
 BRIDGE_SUB = f"{UNS_PREFIX}/_streams/bridge/#"
 DIAG_TOPIC = f"{UNS_PREFIX}/diagnostics/conv_simple_anomaly"
+# Canonical ISA-95 UNS path for THIS bench machine — decoupled from UNS_PREFIX above
+# (the live MQTT topic stays demo/cell1/... so the existing dashboard keeps working).
+# Stamped onto every event + diagnostics publish so a fault is addressable to its
+# equipment node and can later join the knowledge graph (kg_entities). Override per deploy.
+UNS_EQUIPMENT_PATH = os.environ.get(
+    "UNS_EQUIPMENT_PATH",
+    "enterprise.factorylm.site.bench.area.conv_simple.equipment.cv101")
 DB_PATH = os.environ.get("MIRA_DB", "/mira-db/mira.db")
 TICK_MS = int(os.environ.get("TICK_MS", "500"))
 CLEAR_S = float(os.environ.get("CLEAR_S", "3.0"))
@@ -108,8 +115,11 @@ def _persist(conn, a: rules.Anomaly):
     # The conveyor_events table is shared with mira-fault-detective on the same SQLite
     # WAL, so an INSERT can lose the write lock momentarily. Retry up to 5 times with a
     # short backoff on "database is locked" (mirrors mira-fault-detective/engine.py).
+    # affected_json carries the canonical UNS equipment path first, so a stored fault
+    # is addressable to its namespace node (joinable to kg_entities downstream).
     row = (time.strftime("%Y-%m-%dT%H:%M:%S"), f"{a.rule_id}: {a.title}", a.confidence,
-           json.dumps(a.evidence, default=str), json.dumps(a.components))
+           json.dumps(a.evidence, default=str),
+           json.dumps([{"uns_path": UNS_EQUIPMENT_PATH}, *a.components]))
     for attempt in range(5):
         try:
             conn.execute(
@@ -185,6 +195,7 @@ async def run():  # pragma: no cover (needs a broker)
                 worst = min(found.values(), key=lambda a: order.get(a.severity, 9), default=None)
                 await client.publish(DIAG_TOPIC, json.dumps({
                     "ts": now,
+                    "uns_path": UNS_EQUIPMENT_PATH,
                     "active": [{"rule_id": a.rule_id, "severity": a.severity, "title": a.title}
                                for a in found.values()],
                     "top": None if not worst else {"rule_id": worst.rule_id, "severity": worst.severity,

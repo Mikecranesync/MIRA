@@ -90,6 +90,7 @@ services:
       MQTT_HOST: mosquitto
       MQTT_PORT: "1883"
       UNS_PREFIX: demo/cell1/conveyor/cv101
+      UNS_EQUIPMENT_PATH: enterprise.factorylm.site.bench.area.conv_simple.equipment.cv101
       DB_PATH: /mira-db/mira.db
       LOG_LEVEL: INFO
     volumes:

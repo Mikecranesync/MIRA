@@ -55,6 +55,7 @@ ssh factorylm-prod 'docker run -d --restart unless-stopped --name mira-conv-simp
   -v /opt/mira/mira-bridge/data:/mira-db \
   -e MQTT_HOST=mira-mosquitto -e MQTT_PORT=1883 \
   -e UNS_PREFIX=demo/cell1/conveyor/cv101 \
+  -e UNS_EQUIPMENT_PATH=enterprise.factorylm.site.bench.area.conv_simple.equipment.cv101 \
   -e DB_PATH=/mira-db/mira.db -e LOG_LEVEL=INFO \
   -e NTFY_URL=https://ntfy.sh -e NTFY_TOPIC=mira-factorylm-alerts \
   python:3.12-slim sh -c "pip install -q aiomqtt PyYAML && python -u engine.py"'
