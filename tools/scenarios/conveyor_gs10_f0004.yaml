@@ -1,0 +1,130 @@
+# Scenario: conveyor_gs10_f0004
+# ==============================
+# GS10 VFD communication fault simulation (CE10 / F0004).
+# Produces a fault_window_open then fault_window_close event pair, which
+# Phase 5 diff_logger and Phase 9 flaky-wire detector use for fault-window
+# analysis.
+#
+# Sequence:
+#   tick  0–29  : Conveyor running normally. motor_speed ramps 0→1500 over 30 ticks.
+#   tick  30    : error_code tag goes nonzero (value 9 = CE10 comm-fault code).
+#                 fault_alarm bool → 1 (rising_edge).
+#                 → fault_window_open emitted (fault_code=F0004, severity=warning).
+#   tick  30–59 : Fault window open. motor_speed holds at 1500 (the PLC ladder
+#                 holds last good speed; the VFD trips internally).
+#   tick  60    : error_code cleared back to 0.
+#                 fault_alarm → 0 (falling_edge).
+#                 → fault_window_close emitted with window_start from tick 30.
+#
+# The fault tag type tracks error_code (a fault-type tag); fault_alarm is a
+# bool tag that mirrors the fault state (produces its own rising/falling edges).
+#
+# Schema reference: tools/scenarios/conveyor_normal.yaml
+
+name: conveyor_gs10_f0004
+equipment_id: CONV-001
+tenant_id: garage-demo
+total_ticks: 120
+
+tags:
+  - name: motor_running
+    type: bool
+    uns_topic: demo/training/conveyor001/motor/mtr001/running
+    plc_tag: motor_running
+    nominal: 1.0
+
+  - name: conveyor_running
+    type: bool
+    uns_topic: demo/training/conveyor001/state/running
+    plc_tag: conveyor_running
+    nominal: 1.0
+
+  # fault_alarm bool — set by fault injection schedule below
+  - name: fault_alarm
+    type: bool
+    uns_topic: demo/training/conveyor001/faults/active
+    plc_tag: fault_alarm
+    nominal: 0.0
+
+  - name: vfd_comm_ok
+    type: bool
+    uns_topic: demo/training/conveyor001/vfd/vfd001/comm_ok
+    plc_tag: vfd_comm_ok
+    nominal: 1.0
+
+  - name: system_ready
+    type: bool
+    uns_topic: demo/training/conveyor001/state/ready
+    plc_tag: system_ready
+    nominal: 1.0
+
+  # Product sensor cycling normally throughout
+  - name: pe101
+    type: bool
+    uns_topic: demo/training/conveyor001/sensors/pe101
+    plc_tag: pe101
+    cycle_period_ticks: 30
+
+  # error_code — fault-type tag. Value 9 = comm fault (CE10 in GS10 terminology).
+  # The fault_code field is used for event metadata (F0004 is the Modbus-mapped
+  # alarm name; CE10 is the VFD display code for the same condition).
+  - name: error_code
+    type: fault
+    uns_topic: demo/training/conveyor001/faults/code
+    plc_tag: error_code
+    nominal: 0.0
+    fault_code: F0004
+    severity: warning
+
+  # Motor speed: full ramp initially, then will be held by fault_alarm override
+  # Note: runner computes nominal value; fault_alarm bool change is a separate
+  # bool tag, so motor_speed still ramps unless we set it via faults injection.
+  # Here we use a separate fault tag (error_code) for the fault_window pair;
+  # motor_speed is a regular float with a second ramp starting late.
+  - name: motor_speed
+    type: int
+    uns_topic: demo/training/conveyor001/motor/mtr001/speed
+    plc_tag: motor_speed
+    ramp_start: 0
+    ramp_end: 1500
+    ramp_ticks: 30
+
+  - name: motor_current
+    type: float
+    uns_topic: demo/training/conveyor001/motor/mtr001/current
+    plc_tag: motor_current
+    ramp_start: 0.0
+    ramp_end: 150.0
+    ramp_ticks: 30
+    noise_amplitude: 1.5
+
+  - name: temperature
+    type: float
+    uns_topic: demo/training/conveyor001/motor/mtr001/temperature
+    plc_tag: temperature
+    ramp_start: 22.0
+    ramp_end: 45.0
+    ramp_ticks: 80
+
+faults:
+  # error_code (fault tag): open at tick 30, close at tick 60
+  # → emits fault_window_open (tick 30) and fault_window_close (tick 60)
+  - tag: error_code
+    open_tick: 30
+    close_tick: 60
+
+  # fault_alarm (bool tag): mirrors the fault window
+  # Uses faults[] block to drive bool tag overrides (rising_edge / falling_edge
+  # events, not fault_window events — fault_alarm is type bool).
+  - tag: fault_alarm
+    open_tick: 30
+    close_tick: 60
+
+  # NOTE: vfd_comm_ok drops to 0 during the fault in a real PLC. The faults[]
+  # schedule drives nominated tags to 1 on open and 0 on close — the opposite
+  # polarity needed for an active-high health bit. For now the header narrative
+  # describes this behavior; the flicker tool can simulate a momentary drop at
+  # tick 30 if needed for a specific test. The fault_window_open/close pair from
+  # error_code alone is sufficient for Phase 5/9/12 testing.
+
+flickers: []

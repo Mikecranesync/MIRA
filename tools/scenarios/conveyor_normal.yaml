@@ -1,0 +1,141 @@
+# MIRA Mock Tag Stream — Scenario Schema
+# =========================================
+# This file is ALSO the schema reference for all mock_tag_stream scenarios.
+#
+# Top-level keys
+# --------------
+# name          string   Human-readable scenario name (shown in logs)
+# equipment_id  string   Relay equipment key (default: CONV-001)
+# tenant_id     string   Relay tenant_id (default: garage-demo)
+# total_ticks   int      Loop length (0 = infinite). With --once, runner stops at
+#                        the last scheduled event tick + 5 (min 10).
+#
+# tags[]        list     Tag definitions (each entry is one PLC data point)
+#   name          string   Unique tag identifier (used as relay tag key)
+#   type          string   bool | int | float | fault
+#   uns_topic     string   ISA-95 UNS topic for event records
+#   plc_tag       string   PLC ladder global name (defaults to name)
+#
+#   Behavior for bool tags:
+#   nominal              float  Steady state: 1.0 (on) or 0.0 (off). Default 0.
+#   cycle_period_ticks   int    Toggle on/off every N ticks (omit = static nominal)
+#
+#   Behavior for int/float tags:
+#   nominal              float  Steady-state value when no ramp is active. Default 0.
+#   ramp_start           float  Ramp from this value… (omit = static nominal)
+#   ramp_end             float  …to this value
+#   ramp_ticks           int    Ticks to complete ramp (default 50)
+#   noise_amplitude      float  ±amplitude of a sine noise wave (default 0.0)
+#
+#   Behavior for fault tags:
+#   nominal              float  Default fault-code value. Always 0 when healthy.
+#   fault_code           string The F/CE code string (e.g. F0004, CE10) for event metadata
+#   severity             string warning | alert | critical (default: warning)
+#
+# faults[]      list     Timed fault injections (for fault-type tags only)
+#   tag           string   Tag name (must be type: fault)
+#   open_tick     int      Tick at which fault becomes nonzero (→ fault_window_open event)
+#   close_tick    int      Tick at which fault clears to zero (→ fault_window_close event)
+#
+# flickers[]    list     Rapid-toggle injections (for bool-type tags)
+#   tag           string   Tag name (must be type: bool)
+#   start_tick    int      Tick of first falling edge
+#   drops         int      Number of falling edges to inject
+#   interval_ticks int     Ticks between each drop/rise pair (must be ≥2)
+#
+# Notes
+# -----
+# - Events are derived by the runner using the same diff logic as demo_plc_poller:
+#     rising_edge / falling_edge    bool tag transitions
+#     value_changed                 int/float tag any-change
+#     fault_window_open             fault tag 0→nonzero
+#     fault_window_close            fault tag nonzero→0
+# - tick 0 seeds the baseline snapshot; events begin from tick 1 onward.
+# - With --once the runner plays through the last scheduled event tick + 5.
+# =========================================
+
+name: conveyor_normal
+equipment_id: CONV-001
+tenant_id: garage-demo
+total_ticks: 200
+
+tags:
+  # --- Boolean status tags ---
+  - name: motor_running
+    type: bool
+    uns_topic: demo/training/conveyor001/motor/mtr001/running
+    plc_tag: motor_running
+    nominal: 1.0   # conveyor is running throughout this scenario
+
+  - name: conveyor_running
+    type: bool
+    uns_topic: demo/training/conveyor001/state/running
+    plc_tag: conveyor_running
+    nominal: 1.0
+
+  - name: fault_alarm
+    type: bool
+    uns_topic: demo/training/conveyor001/faults/active
+    plc_tag: fault_alarm
+    nominal: 0.0   # no faults in normal scenario
+
+  - name: vfd_comm_ok
+    type: bool
+    uns_topic: demo/training/conveyor001/vfd/vfd001/comm_ok
+    plc_tag: vfd_comm_ok
+    nominal: 1.0
+
+  - name: system_ready
+    type: bool
+    uns_topic: demo/training/conveyor001/state/ready
+    plc_tag: system_ready
+    nominal: 1.0
+
+  # Product-presence sensor — cycles at product cadence (every 30 ticks ≈ 6 s at 200 ms/tick)
+  - name: pe101
+    type: bool
+    uns_topic: demo/training/conveyor001/sensors/pe101
+    plc_tag: pe101
+    cycle_period_ticks: 30
+
+  # Part-present at discharge end — offset by half a cycle from pe101
+  - name: pe102
+    type: bool
+    uns_topic: demo/training/conveyor001/sensors/pe102
+    plc_tag: pe102
+    cycle_period_ticks: 30
+    nominal: 1.0   # starts high (part just arrived), will cycle
+
+  # --- Analog tags ---
+  # Motor speed ramps 0 → 1500 RPM over 50 ticks, then holds
+  - name: motor_speed
+    type: int
+    uns_topic: demo/training/conveyor001/motor/mtr001/speed
+    plc_tag: motor_speed
+    ramp_start: 0
+    ramp_end: 1500
+    ramp_ticks: 50
+
+  # Motor current ≈ speed * 0.1 (mirrored ramp, slight noise)
+  - name: motor_current
+    type: float
+    uns_topic: demo/training/conveyor001/motor/mtr001/current
+    plc_tag: motor_current
+    ramp_start: 0.0
+    ramp_end: 150.0
+    ramp_ticks: 50
+    noise_amplitude: 2.0
+
+  # Temperature climbs slowly then stabilises
+  - name: temperature
+    type: float
+    uns_topic: demo/training/conveyor001/motor/mtr001/temperature
+    plc_tag: temperature
+    ramp_start: 22.0
+    ramp_end: 45.0
+    ramp_ticks: 120
+    noise_amplitude: 0.3
+
+# No faults or flickers in the normal scenario
+faults: []
+flickers: []

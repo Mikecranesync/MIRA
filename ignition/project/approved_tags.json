@@ -1,0 +1,192 @@
+{
+  "_comment": "MIRA Tag Allowlist — read-only trust gate for the Ignition WebDev tag-browse endpoint. Only tags listed here are visible to MIRA. A tag NOT in this file is invisible; a direct request for a non-allowlisted path returns HTTP 404. Seed this for each customer install via the mira-connect activation wizard. tenant_hint is informational only.",
+  "_non_allowlisted_examples": [
+    "[default]Mira_Monitored/Conveyor/ConveyorSpeedCmd",
+    "[default]Mira_Monitored/Conveyor/VfdCmdWord",
+    "[default]Mira_Monitored/Conveyor/VfdFreqSetpoint"
+  ],
+  "version": 1,
+  "tenant_hint": "bench",
+  "tags": [
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/MotorRunning",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.motor_running",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/ConveyorRunning",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.conveyor_running",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/FaultAlarm",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.fault_alarm",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/VfdCommOk",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.vfd_comm_ok",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/SystemReady",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.system_ready",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/EStopActive",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.e_stop_active",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/DirFwd",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.dir_fwd",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/DirRev",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.dir_rev",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/Heartbeat",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.heartbeat",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/EstopWiringFault",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.estop_wiring_fault",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/DirFault",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.dir_fault",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/IoEmDi00",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.io.di_00_dir_fwd_wire",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/IoEmDi01",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.io.di_01_dir_rev_wire",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/IoEmDi02",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.io.di_02_estop_nc",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/IoEmDi03",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.io.di_03_estop_no",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/IoEmDi04",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.io.di_04_fault_reset_btn",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/IoEmDo00",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.io.do_00_green_led",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/IoEmDo01",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.io.do_01_red_led",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/IoEmDo02",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.io.do_02_safety_contactor_q1",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/IoEmDo03",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.io.do_03_pb_run_led",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/VfdPollActive",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.vfd_poll_active",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/VfdFaultResetPending",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.vfd_fault_reset_pending",
+      "data_type": "bool"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/MotorSpeed",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.motor_speed",
+      "data_type": "int"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/VfdCurrent",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.vfd_current",
+      "data_type": "int"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/VfdDcBus",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.vfd_dc_bus",
+      "data_type": "int"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/VfdFrequency",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.vfd_frequency",
+      "data_type": "int"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/VfdVoltage",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.vfd_voltage",
+      "data_type": "int"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/ConveyorSpeed",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.conveyor_speed",
+      "data_type": "int"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/ErrorCode",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.error_code",
+      "data_type": "int"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/ItemCount",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.item_count",
+      "data_type": "int"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/UptimeSeconds",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.uptime_seconds",
+      "data_type": "int"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/ConvState",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.conv_state",
+      "data_type": "int"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/VfdPollStep",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.vfd_poll_step",
+      "data_type": "int"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/MotorCurrent",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.motor_current",
+      "data_type": "int"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/Temperature",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.temperature",
+      "data_type": "int"
+    },
+    {
+      "tag_path": "[default]Mira_Monitored/Conveyor/Pressure",
+      "uns_path": "enterprise.garage.demo_cell.conveyor.gs10.pressure",
+      "data_type": "int"
+    }
+  ]
+}

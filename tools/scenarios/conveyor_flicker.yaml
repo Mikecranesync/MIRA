@@ -1,0 +1,101 @@
+# Scenario: conveyor_flicker
+# ==========================
+# Flaky-input signature that Phase 9 (flaky-wire detector) keys on:
+# - pe101 toggles rapidly — 7 falling edges in a short window while the
+#   conveyor is otherwise healthy and peer sensors (pe102) stay stable.
+# - This produces rising_edge / falling_edge events far above the normal
+#   product-cadence baseline, which is the _check_rapid_toggle rule trigger.
+# - All other tags behave identically to conveyor_normal (motor running,
+#   speed ramped, current scaled, temperature rising).
+#
+# Schema reference: tools/scenarios/conveyor_normal.yaml
+
+name: conveyor_flicker
+equipment_id: CONV-001
+tenant_id: garage-demo
+total_ticks: 100
+
+tags:
+  - name: motor_running
+    type: bool
+    uns_topic: demo/training/conveyor001/motor/mtr001/running
+    plc_tag: motor_running
+    nominal: 1.0
+
+  - name: conveyor_running
+    type: bool
+    uns_topic: demo/training/conveyor001/state/running
+    plc_tag: conveyor_running
+    nominal: 1.0
+
+  - name: fault_alarm
+    type: bool
+    uns_topic: demo/training/conveyor001/faults/active
+    plc_tag: fault_alarm
+    nominal: 0.0
+
+  - name: vfd_comm_ok
+    type: bool
+    uns_topic: demo/training/conveyor001/vfd/vfd001/comm_ok
+    plc_tag: vfd_comm_ok
+    nominal: 1.0
+
+  - name: system_ready
+    type: bool
+    uns_topic: demo/training/conveyor001/state/ready
+    plc_tag: system_ready
+    nominal: 1.0
+
+  # pe101 — the flaky sensor. Steady at 1 (part present), then subjected to
+  # 7 rapid drops starting at tick 20, one drop every 4 ticks (800 ms at
+  # default 200 ms/tick). Each drop/rise pair = 2 ticks, well above the
+  # 400 ms alias floor. Peer pe102 stays static — isolates the fault.
+  - name: pe101
+    type: bool
+    uns_topic: demo/training/conveyor001/sensors/pe101
+    plc_tag: pe101
+    nominal: 1.0   # starts high; flicker injection overrides below
+
+  # pe102 — stable peer (deliberately no cycle, stays on)
+  - name: pe102
+    type: bool
+    uns_topic: demo/training/conveyor001/sensors/pe102
+    plc_tag: pe102
+    nominal: 1.0
+
+  # Analog tags — same as normal
+  - name: motor_speed
+    type: int
+    uns_topic: demo/training/conveyor001/motor/mtr001/speed
+    plc_tag: motor_speed
+    ramp_start: 0
+    ramp_end: 1500
+    ramp_ticks: 50
+
+  - name: motor_current
+    type: float
+    uns_topic: demo/training/conveyor001/motor/mtr001/current
+    plc_tag: motor_current
+    ramp_start: 0.0
+    ramp_end: 150.0
+    ramp_ticks: 50
+    noise_amplitude: 2.0
+
+  - name: temperature
+    type: float
+    uns_topic: demo/training/conveyor001/motor/mtr001/temperature
+    plc_tag: temperature
+    ramp_start: 22.0
+    ramp_end: 45.0
+    ramp_ticks: 80
+
+faults: []
+
+flickers:
+  # pe101 drops 7 times starting at tick 20, every 4 ticks
+  # → 7 falling_edge + 7 rising_edge events in a 28-tick window (~5.6 s)
+  # A healthy conveyor at this cadence produces ~2 transitions/window max.
+  - tag: pe101
+    start_tick: 20
+    drops: 7
+    interval_ticks: 4
