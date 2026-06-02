@@ -197,6 +197,16 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
 
         tag_reads = sorted((req.tag_snapshot or {}).keys())
 
+        # Direct-connection provenance: an Ignition turn arriving with an asset
+        # identifier is UNS-certified by construction — the WebDev/Perspective
+        # surface already knows which machine the technician is on. Mark the
+        # turn so the engine stamps state["uns_context"]["source"] and the
+        # decision trace records it. A turn WITHOUT an asset id is treated as a
+        # plain chat turn here (the reject-on-missing-identifier contract is the
+        # broader Phase-6 gate-bypass work — see
+        # .claude/rules/direct-connection-uns-certified.md).
+        uns_source = "direct_connection" if (asset_id or req.asset_context) else None
+
         t0 = time.monotonic()
         engine_error: Optional[str] = None
         try:
@@ -205,6 +215,7 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
                 message=message,
                 photo_b64=None,
                 platform="ignition",
+                uns_source=uns_source,
             )
         except Exception as exc:
             engine_error = str(exc)
