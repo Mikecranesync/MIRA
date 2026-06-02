@@ -18,6 +18,12 @@ def healthy_snap():
         "vfd/vfd101/current_a": 0.0,
         "vfd/vfd101/dc_bus_v": 327.0,
         "vfd/vfd101/cmd_word": 1,       # STOP
+        # --- slave-map v2 signals (A2/A7/A12); healthy defaults ---
+        "vfd/vfd101/fault_code": 0,     # 0 = no fault record
+        "vfd/vfd101/warn_code": 0,
+        "vfd/vfd101/freq_setpoint": 0.0,
+        "safety/pe_latched": False,     # photo-eye soft-stop not engaged
+        "plc/di/di05_photoeye": False,  # beam clear
     }
 
 
@@ -125,3 +131,67 @@ def test_a10_steady_speed_does_not_fire():
 def test_confidence_mapping():
     a = rules.r_a1_comm({"vfd/vfd101/comm_ok": False}, D0, rules.DEFAULT_CFG)
     assert a.confidence == 1.0  # CRITICAL
+
+
+# --- A2/A7/A12: slave-map v2 signals (degrade silently when topics absent) ---
+
+def test_new_rules_silent_when_signals_absent():
+    # the currently-deployed slave does not publish these topics; rules must not
+    # fire on missing data (snap.get -> None), only on real values.
+    s = healthy_snap()
+    for k in ("vfd/vfd101/fault_code", "vfd/vfd101/warn_code",
+              "vfd/vfd101/freq_setpoint", "safety/pe_latched", "plc/di/di05_photoeye"):
+        s.pop(k, None)
+    assert {"A2_VFD_FAULT", "A7_FREQ_NOT_TRACKING", "A12_PHOTOEYE_JAM"} & ids(s) == set()
+
+
+def test_a2_vfd_fault_code_fires_and_decodes():
+    s = healthy_snap(); s["vfd/vfd101/fault_code"] = 21  # oL overload
+    got = {a.rule_id: a for a in evaluate(s, D0)}
+    assert "A2_VFD_FAULT" in got
+    assert "oL" in got["A2_VFD_FAULT"].message  # decoded from the GS10 manual table
+
+
+def test_a2_no_fault_when_zero():
+    assert "A2_VFD_FAULT" not in ids(healthy_snap())  # fault_code 0 = no fault
+
+
+def test_a2_gated_by_comm():
+    # comm down -> fault_code is stale; A2 suppressed, only A1 fires
+    s = healthy_snap(); s["vfd/vfd101/comm_ok"] = False; s["vfd/vfd101/fault_code"] = 21
+    assert "A2_VFD_FAULT" not in ids(s)
+
+
+def test_a7_freq_not_tracking_setpoint():
+    # commanded RUN, setpoint 30 Hz, output stuck at 12 Hz past the grace -> A7
+    s = healthy_snap()
+    s.update({"vfd/vfd101/cmd_word": 18, "motor/m101/running": True,
+              "vfd/vfd101/freq_setpoint": 30.0, "vfd/vfd101/freq": 12.0,
+              "vfd/vfd101/current_a": 2.0})
+    assert "A7_FREQ_NOT_TRACKING" in ids(s, {**D0, "cmd_run_for_s": 8.0})
+    # within the accel grace -> must NOT fire (ramp-up is normal)
+    assert "A7_FREQ_NOT_TRACKING" not in ids(s, {**D0, "cmd_run_for_s": 2.0})
+
+
+def test_a7_silent_when_tracking():
+    # output within tolerance of setpoint -> healthy, no A7
+    s = healthy_snap()
+    s.update({"vfd/vfd101/cmd_word": 18, "motor/m101/running": True,
+              "vfd/vfd101/freq_setpoint": 30.0, "vfd/vfd101/freq": 29.5,
+              "vfd/vfd101/current_a": 2.0})
+    assert "A7_FREQ_NOT_TRACKING" not in ids(s, {**D0, "cmd_run_for_s": 8.0})
+
+
+def test_a7_silent_when_setpoint_zero():
+    # setpoint 0 (no speed commanded) -> A7 must not fire even if output is 0
+    s = healthy_snap(); s["vfd/vfd101/cmd_word"] = 18
+    assert "A7_FREQ_NOT_TRACKING" not in ids(s, {**D0, "cmd_run_for_s": 8.0})
+
+
+def test_a12_photoeye_latched_fires():
+    s = healthy_snap(); s["safety/pe_latched"] = True
+    assert "A12_PHOTOEYE_JAM" in ids(s)
+
+
+def test_a12_silent_when_clear():
+    assert "A12_PHOTOEYE_JAM" not in ids(healthy_snap())

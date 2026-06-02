@@ -10,9 +10,10 @@ live tag stream published by `plc/live-plc-bridge` (UNS relative topics). Pure f
             {now, max_stale_s, freq_frozen_s, cmd_run_for_s}
 `cfg`     : thresholds (see DEFAULT_CFG; bench values marked CONFIRM).
 
-Covers A0,A1,A3,A4,A5,A6,A8,A9,A10. NOT covered (need a PLC Modbus-slave-map extension —
-the deployed slave does not expose these): A2 GS10 fault-code (0x2100), A7 freq setpoint,
-A12 photo-eye DI_05 / pe_latched. See README.
+Covers A0,A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A12. A2/A7/A12 read slave-map v2 signals
+(GS10 fault-code 0x2100, freq setpoint 0x2101, photo-eye DI_05 / pe_latched) that the
+currently-deployed slave does NOT yet publish — those rules degrade silently (snap.get -> None)
+until the PLC Modbus-slave-map extension is reflashed. See README + specs/CONVEYOR_MACHINE_CARD.md.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -44,7 +45,32 @@ DEFAULT_CFG = {
     "cmd_run_grace_s": 3.0,    # A6 — RUN commanded but not running this long
     "offline_s": 30.0,         # A0 — no fresh data this long
     "run_cmd_values": (18, 20),  # GS10 cmd word: 18=FWD+RUN, 20=REV+RUN (§4)
+    "freq_track_tol_hz": 3.0,  # A7 — allowed |output Hz − setpoint Hz| at steady state
+    "freq_track_grace_s": 5.0, # A7 — accel grace after RUN before A7 may fire
 }
+
+# GS10 fault/error codes — low byte of register 0x2100 (manual §P06.17 ranges,
+# DURApulse GS10 UM 1st Ed Rev B). Used by A2 to decode vfd/vfd101/fault_code.
+GS10_FAULT_CODES = {
+    1: "ocA (over-current accel)", 2: "ocd (over-current decel)", 3: "ocn (over-current run)",
+    4: "GFF (ground fault)", 6: "ocS (over-current at stop)", 7: "ovA (over-voltage accel)",
+    8: "ovd (over-voltage decel)", 9: "ovn (over-voltage run)", 10: "ovS (over-voltage stop)",
+    11: "LvA (low-voltage accel)", 12: "Lvd (low-voltage decel)", 13: "Lvn (low-voltage run)",
+    14: "LvS (low-voltage stop)", 15: "orP (phase loss)", 16: "oH1 (IGBT overheat)",
+    18: "tH1o (IGBT temp sensor)", 21: "oL (overload)", 22: "EoL1 (thermal relay 1)",
+    23: "EoL2 (thermal relay 2)", 24: "oH3 (motor PTC overheat)", 26: "ot1 (over-torque 1)",
+    27: "ot2 (over-torque 2)", 28: "uC (under-current)", 31: "cF2 (EEPROM read)",
+    33: "cd1 (U-phase)", 34: "cd2 (V-phase)", 35: "cd3 (W-phase)", 36: "Hd0 (cc hardware)",
+    37: "Hd1 (oc hardware)", 40: "AUE (auto-tune)", 41: "AFE (PID loss AI-V)", 48: "ACE (AI-C loss)",
+    49: "EF (external fault)", 50: "EF1 (emergency stop)", 51: "bb (base block)",
+    52: "Pcod (password locked)", 54: "CE1 (illegal command)", 55: "CE2 (illegal data address)",
+    56: "CE3 (illegal data value)", 57: "CE4 (write to read-only)", 58: "CE10 (Modbus timeout)",
+    63: "oSL (over-slip)", 82: "oPL1 (output phase loss U)", 83: "oPL2 (output phase loss V)",
+    84: "oPL3 (output phase loss W)", 87: "oL3 (low-freq overload)", 140: "Hd6 (oc hardware)",
+    141: "b4GF (GFF before run)", 159: "Hd7 (gate driver)",
+}
+# Codes that trip the drive hard / risk damage → CRITICAL; everything else HIGH.
+_GS10_CRITICAL = {1, 2, 3, 4, 6, 7, 8, 9, 10, 15, 16, 33, 34, 35, 36, 37, 82, 83, 84, 140, 141, 159}
 
 # bridge UNS-relative topics (from live-plc-bridge)
 T_RUN = "motor/m101/running"
@@ -56,6 +82,12 @@ T_DI00, T_DI01 = "plc/di/di00_fwd", "plc/di/di01_rev"
 T_DI02, T_DI03 = "plc/di/di02_estop_nc", "plc/di/di03_estop_no"
 T_FREQ, T_CUR, T_DCBUS, T_CMD = (
     "vfd/vfd101/freq", "vfd/vfd101/current_a", "vfd/vfd101/dc_bus_v", "vfd/vfd101/cmd_word")
+# slave-map v2 topics (A2/A7/A12) — published once the PLC slave map is extended + reflashed
+T_FAULT = "vfd/vfd101/fault_code"      # low byte of GS10 0x2100
+T_WARN = "vfd/vfd101/warn_code"        # high byte of GS10 0x2100
+T_FREQ_SP = "vfd/vfd101/freq_setpoint" # commanded Hz (GS10 0x2101)
+T_PE_LATCH = "safety/pe_latched"       # photo-eye latching soft-stop engaged
+T_DI05 = "plc/di/di05_photoeye"        # raw photo-eye beam state
 
 
 def _ev(snap, *keys):
@@ -168,8 +200,53 @@ def r_a10_freq_stuck_zero(snap, d, cfg):
     return None
 
 
-RULES = [r_a0_offline, r_a1_comm, r_a3_estop_wiring, r_a4_direction, r_a5_illegal_run,
-         r_a6_not_responding, r_a8_overcurrent, r_a9_dcbus, r_a10_freq_stuck_zero]
+def r_a2_vfd_fault(snap, d, cfg):
+    # GS10 active fault (low byte of 0x2100). Trust-gated: stale when comm is down.
+    code = snap.get(T_FAULT)
+    if _vfd_trustworthy(snap) and isinstance(code, (int, float)) and int(code) != 0:
+        code = int(code)
+        name = GS10_FAULT_CODES.get(code, "unknown")
+        sev = CRITICAL if code in _GS10_CRITICAL else HIGH
+        return Anomaly("A2_VFD_FAULT", sev, "GS10 drive fault active",
+                       f"GS10 reports fault code {code}: {name} — the drive has tripped "
+                       "(0x2100 low byte). Clear the cause and reset the drive.",
+                       _ev(snap, T_FAULT, T_WARN), ["gs10"])
+    return None
+
+
+def r_a7_freq_not_tracking(snap, d, cfg):
+    # Commanded RUN with a nonzero speed setpoint, but output Hz is not reaching it
+    # (after the accel grace). Distinct from A10 (output stuck at ~0): A7 catches
+    # "running but can't hold commanded speed" (drag / current-limit / load).
+    sp, out = snap.get(T_FREQ_SP), snap.get(T_FREQ)
+    if (snap.get(T_CMD) in cfg["run_cmd_values"] and _vfd_trustworthy(snap)
+            and isinstance(sp, (int, float)) and sp > 0.1
+            and isinstance(out, (int, float))
+            and abs(out - sp) > cfg["freq_track_tol_hz"]
+            and d.get("cmd_run_for_s", 0.0) >= cfg["freq_track_grace_s"]):
+        return Anomaly("A7_FREQ_NOT_TRACKING", MED, "Output Hz not tracking setpoint",
+                       f"Commanded {sp:.1f} Hz but output is {out:.1f} Hz "
+                       f"(off by {abs(out - sp):.1f} Hz > {cfg['freq_track_tol_hz']:.1f}) for "
+                       f"{d['cmd_run_for_s']:.0f}s — drive not reaching commanded speed "
+                       "(mechanical drag, current-limit, or load).",
+                       _ev(snap, T_FREQ_SP, T_FREQ, T_CUR), ["gs10", "motor", "belt"])
+    return None
+
+
+def r_a12_photoeye_jam(snap, d, cfg):
+    # Photo-eye latching soft-stop engaged (DI_05 beam blocked → PLC latched a STOP).
+    # The authoritative signal is pe_latched (PLC latch); DI_05 is the raw beam.
+    if snap.get(T_PE_LATCH) is True:
+        return Anomaly("A12_PHOTOEYE_JAM", HIGH, "Photo-eye soft-stop (jam/blockage)",
+                       "Photo-eye DI_05 latched a soft-stop — an object is blocking the infeed "
+                       "beam (jam/backup); the belt is held stopped until Start re-arms it.",
+                       _ev(snap, T_PE_LATCH, T_DI05), ["photoeye", "belt"])
+    return None
+
+
+RULES = [r_a0_offline, r_a1_comm, r_a2_vfd_fault, r_a3_estop_wiring, r_a4_direction,
+         r_a5_illegal_run, r_a6_not_responding, r_a7_freq_not_tracking, r_a8_overcurrent,
+         r_a9_dcbus, r_a10_freq_stuck_zero, r_a12_photoeye_jam]
 
 
 def evaluate(snap: dict, derived: dict, cfg: dict | None = None) -> list[Anomaly]:

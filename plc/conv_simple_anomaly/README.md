@@ -31,21 +31,31 @@ live-plc-bridge ──(UNS JSON)──▶ Mosquitto ──▶ conv_simple_anomal
 | A9 | DC bus out of range | `dc_bus_v` ∉ [`dc_bus_lo_v`,`dc_bus_hi_v`] |
 | A10 | Output frequency frozen | RUN ∧ `freq` unchanged ≥ `freq_frozen_s` |
 
-VFD-value rules (A6/A8/A9/A10) are gated by the §7 trust gate — suppressed when `comm_ok` is False
-(values are stale; A1 fires instead).
+VFD-value rules (A2/A6/A7/A8/A9/A10) are gated by the §7 trust gate — suppressed when `comm_ok` is
+False (values are stale; A1 fires instead).
 
-## NOT yet implemented — need a PLC Modbus-slave-map extension
-The deployed 502 slave (13 coils + 5 HRs) does **not** expose these, so the bridge can't publish them:
-- **A2** GS10 fault-code decode — needs `0x2100` low byte in the slave map (decode table = machine card §5).
-- **A7** frequency-not-tracking-setpoint — needs the freq **setpoint** (only the cmd echo is published).
-- **A12** photo-eye jam — needs `DI_05` / `pe_latched` (not in the bridge map; the demo uses vision/PE-102).
-Adding these = a CCW `MbSrvConf.xml` change + reflash (see the `modbus-slave` skill) **then** extend
-`live-plc-bridge` reads. Tracked as follow-on.
+## Rules implemented but awaiting slave-map v2 (degrade silently until reflash)
+The rule logic for these is **written and unit-tested** (`rules.py` + `test_rules.py`); they fire
+the moment the bridge publishes their topics. Until the PLC slave map is extended + reflashed, the
+deployed 502 slave (13 coils + 5 HRs) does not publish them, so `snap.get(...) -> None` and they
+stay silent (verified live 2026-06-01 — no false fires).
+
+| ID | Anomaly | New topic needed | Source register |
+|---|---|---|---|
+| A2 | GS10 drive fault active (decoded) | `vfd/vfd101/fault_code` (+`warn_code`) | `0x2100` low byte / high byte |
+| A7 | Output Hz not tracking setpoint | `vfd/vfd101/freq_setpoint` | `0x2101` (freq command) |
+| A12 | Photo-eye soft-stop (jam/blockage) | `safety/pe_latched` (+`plc/di/di05_photoeye`) | `DI_05` latch (ladder global) |
+
+To activate: **(1)** add the registers to the CCW `MbSrvConf.xml` (`modbus-slave` skill) + reflash
+(`ccw-build`); **(2)** uncomment the matching entries in `live-plc-bridge/bridge.py` (`COIL_TOPICS` /
+`HR_SPECS` + the `COIL_READS` / `HR_READS` plan) and `live_check.py`. The GS10 fault decode table
+lives in `rules.GS10_FAULT_CODES` (sourced from the DURApulse GS10 UM §P06.17) and the invariants in
+`MIRA_PLC/specs/CONVEYOR_MACHINE_CARD.md`.
 
 ## Run
 ```bash
 # logic (no broker needed):
-pytest plc/conv_simple_anomaly/                # 15 tests
+pytest plc/conv_simple_anomaly/                # 26 tests
 
 # LIVE check against the real PLC (no broker / no Docker — reads 192.168.1.100:502 and runs the rules):
 python plc/conv_simple_anomaly/live_check.py --secs 4
