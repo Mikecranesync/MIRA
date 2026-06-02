@@ -80,6 +80,7 @@ export const NAV_ITEMS: ReadonlyArray<{
   // ── PRIMARY ────────────────────────────────────────────────────────────────
   { key: "feed",          label: "Feed",          icon: "Activity",      href: "/feed",          roles: [...ALL_ROLES], group: "primary" },
   { key: "namespace",     label: "Namespace",     icon: "Layers",        href: "/namespace",     roles: [...ALL_ROLES], group: "primary" },
+  { key: "command-center", label: "Command Center", icon: "Gauge",        href: "/command-center", roles: [...ADMIN_ROLES], group: "primary" },
   { key: "channels",      label: "Channels",      icon: "Radio",         href: "/channels",      roles: [...ADMIN_ROLES, "scheduler"], group: "primary" },
   { key: "knowledge",     label: "Knowledge",     icon: "BookOpen",      href: "/knowledge",     roles: [...ALL_ROLES], group: "primary" },
   { key: "proposals",     label: "Proposals",     icon: "Sparkles",      href: "/proposals",     roles: [...ALL_ROLES], group: "primary" },

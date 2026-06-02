@@ -1,6 +1,25 @@
 #!/usr/bin/env python3
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  ⚠️  BENCH / DEVELOPER TOOL — NEVER SHIPPED TO CUSTOMERS                  ║
+# ║                                                                          ║
+# ║  This service polls Modbus TCP DIRECTLY from a MIRA-named container.    ║
+# ║  That implies an architecture (MIRA reaches into the plant LAN) we      ║
+# ║  explicitly do NOT sell — customer PLC reads go through Ignition, not   ║
+# ║  through a MIRA container. This bridge lives only on the bench, and     ║
+# ║  exists to drive the Fault-Detective demo and instrument the Micro 820 ║
+# ║  while we build out the ladder logic.                                   ║
+# ║                                                                          ║
+# ║  Do NOT reference from a customer-facing docker-compose. The customer-  ║
+# ║  facing live tag path is the Ignition Module's gateway-script           ║
+# ║  tag-stream.py → mira-relay (HMAC-signed, outbound-only TLS).           ║
+# ║                                                                          ║
+# ║  Already enforces FC3 reads only (no Modbus writes). Do not add writes. ║
+# ║                                                                          ║
+# ║  Rules: .claude/rules/fieldbus-readonly.md                              ║
+# ║  Architecture: docs/mira-ignition-secure-architecture.md §8 #4, §10.2  ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
 """
-live-plc-bridge -- Stream A of the Fault-Detective live PLC ingest.
+live-plc-bridge -- Stream A of the Fault-Detective live PLC ingest. (BENCH-ONLY)
 
 Polls the bench Micro 820 Modbus TCP slave (Conv_Simple_1.5 firmware) and
 republishes the unpacked values to MQTT so the Node-RED "PLC I/O panel" can

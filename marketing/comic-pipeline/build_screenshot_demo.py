@@ -4,8 +4,18 @@ Stitch existing screenshots into a product demo MP4.
 
 Sibling of build_video_v2.py / run_pipeline.py — but bypasses OpenAI panel
 generation. Reads a YAML manifest with literal screenshot paths + per-frame
-narration, generates a single concatenated voiceover via OpenAI tts-1-hd,
-and stitches a 16:9 MP4 via the existing multi_image_assembler.
+narration, generates a single concatenated voiceover, and stitches a 16:9 MP4
+via the existing multi_image_assembler.
+
+TTS provider is manifest-driven (`tts_provider`, default "openai"):
+  - "openai": gpt-4o-mini-tts / onyx (default), supports `instructions`.
+  - "groq":   canopylabs/orpheus-v1-english / leo (default), OpenAI-compatible
+              /audio/speech at https://api.groq.com/openai/v1. Requires a
+              one-time org-admin terms acceptance at
+              console.groq.com/playground?model=canopylabs/orpheus-v1-english
+              (returns model_terms_required until accepted — UNTESTED here).
+              Orpheus emits wav, not mp3 — groq manifests should set
+              `tts_format: wav`.
 
 Usage:
     doppler run --project factorylm --config prd -- \
@@ -48,29 +58,52 @@ def resolve(p: str) -> Path:
     return candidate
 
 
-def render_voiceover(manifest: dict, audio_path: Path) -> None:
+def _make_tts_client(manifest: dict) -> tuple[OpenAI, str]:
+    """Build the TTS client for the manifest's provider (openai|groq)."""
+    provider = (manifest.get("tts_provider") or "openai").lower()
+    if provider == "groq":
+        api_key = os.environ.get("GROQ_API_KEY")
+        if not api_key:
+            raise SystemExit("GROQ_API_KEY not set — run under `doppler run`.")
+        return OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1"), provider
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise SystemExit("OPENAI_API_KEY not set — run under `doppler run`.")
+    return OpenAI(api_key=api_key), provider
+
+
+def render_voiceover(manifest: dict, audio_path: Path) -> None:
+    client, provider = _make_tts_client(manifest)
 
     style = (manifest.get("voiceover_style") or "").strip()
     lines = [f["narration"].strip() for f in manifest["frames"]]
     text = "\n\n".join(lines)
 
-    model = manifest.get("tts_model", "gpt-4o-mini-tts")
-    voice = manifest.get("tts_voice", "onyx")
-    logger.info("Generating TTS (model=%s, voice=%s, %d chars) → %s",
-                model, voice, len(text), audio_path)
+    if provider == "groq":
+        model = manifest.get("tts_model", "canopylabs/orpheus-v1-english")
+        voice = manifest.get("tts_voice", "leo")
+    else:
+        model = manifest.get("tts_model", "gpt-4o-mini-tts")
+        voice = manifest.get("tts_voice", "onyx")
+    logger.info("Generating TTS (provider=%s, model=%s, voice=%s, %d chars) → %s",
+                provider, model, voice, len(text), audio_path)
 
-    client = OpenAI(api_key=api_key)
     audio_path.parent.mkdir(parents=True, exist_ok=True)
 
     # gpt-4o-mini-tts supports a real `instructions` param for voice direction.
-    # tts-1-hd ignores instructions; never concatenate style into `input`
+    # tts-1-hd / Orpheus ignore it; never concatenate style into `input`
     # because it gets read aloud.
     kwargs: dict = {"model": model, "voice": voice, "input": text}
     if style and "gpt-4o" in model:
         kwargs["instructions"] = style
+
+    # response_format must match the output extension. The OpenAI default is
+    # mp3; Orpheus emits wav, so for groq (or any non-mp3 output) request the
+    # format explicitly. Leaving the openai/mp3 path untouched keeps existing
+    # manifests byte-for-byte identical.
+    fmt = audio_path.suffix.lstrip(".") or "mp3"
+    if provider == "groq" or fmt != "mp3":
+        kwargs["response_format"] = fmt
 
     with client.audio.speech.with_streaming_response.create(**kwargs) as response:
         response.stream_to_file(audio_path)
@@ -91,7 +124,9 @@ def main() -> int:
     output_dir = resolve(manifest.get("output_dir", f"marketing/videos/{slug}"))
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    audio_path = output_dir / "voiceover.mp3"
+    # Orpheus emits wav; manifests can set `tts_format: wav` to match.
+    audio_ext = (manifest.get("tts_format") or "mp3").lstrip(".")
+    audio_path = output_dir / f"voiceover.{audio_ext}"
     video_path = output_dir / f"{slug}.mp4"
 
     if args.skip_tts and audio_path.exists():
