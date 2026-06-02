@@ -133,7 +133,22 @@ Truly parallel now: **A1, A2, A3** (Wave 1). Everything else gates on these.
 
 **Wave 2 verdict:** ✅ both landed, committed. Current-state event stream + the self-serve tag→UNS mapping path exist (env-gated / proposal-only).
 
-**Wave 3 (next):** B3 HMAC (relay auth hardening) · C2 UNS-entry guided flow (Hub `/namespace` build-your-tree) · C3/C4 Ignition chat endpoint + Perspective ChatPanel · **D1 direct-connection source flag (MAIN checkout — codegraph required)** · E1 FlakyInputDetector · F1/F2 KG proposal loop. Integration verify: `mock_tag_stream → relay → tag_events` on staging (see W2-A caveats: seed `approved_tags` with UUID tenant first).
+| Wave | Task | Agent | Status | Output | Notes |
+|---|---|---|---|---|---|
+| 3 | W3-A relay HMAC (B3 / D4) | sonnet | ✅ **done** (8abbe742) | `mira-relay/relay_server.py`, `ignition/gateway-scripts/tag-stream.py`, `tests/test_hmac_auth.py` | 66 relay tests. `X-MIRA-{Tenant,Nonce,Signature}` HMAC-SHA256 (nonce bound into sig), 10-min replay window. Bearer behind `RELAY_LEGACY_BEARER=1` (default on). Per-tenant key mint/rotate = Hub-admin follow-up. |
+| 3 | W3-B self-serve UNS entry (C2) | sonnet | ✅ **done** (8abbe742) | `mira-hub/src/app/(hub)/namespace/page.tsx`, `.../api/namespace/node/route.test.ts` | 25 tests. create-node API already existed; gap was UI hardcoding `kind="area"` — now site/area/line/machine/component picker. |
+| 3 | W3-C FlakyInputDetector (E1 / Phase 9) | sonnet | ✅ **done** (8abbe742) | `mira-bots/{shared/flaky_rules.py,agents/flaky_input_detector.py,tests/...}`, migration `038` | 31 tests. 4 rules + 7-day baseline + 6h dedup → `flaky_input_signals` + `ai_suggestions(flaky_signal_alert)`. **Migration 038 applied to staging.** Run worker via `cd mira-bots && python3 agents/flaky_input_detector.py` (hyphen breaks `-m`). |
+| 3 | W3-D KG proposal loop (F1/F2 / Phase 3) | sonnet | ✅ **done** (8abbe742) | `mira-bots/shared/proposal_transition.py`, `mira-hub/src/lib/proposal-transition.ts`, `mira-crawler/ingest/kg_writer.py` | 20 tests. Ingest edges → `relationship_proposals` + `ai_suggestions(kg_edge)`; verified `kg_relationships` only on human approve. ⚠️ 2 legacy direct INSERTs remain in `mira-crawler/tasks/full_ingest_pipeline.py` (follow-up). ⚠️ behavior change: ingest-derived edges return empty from verified-only KG queries until approved (correct per ADR-0017). |
+| 3 | W3-E direct-connection gate (D1 / Phase 6) | sonnet | ✅ **done** (8abbe742) | `mira-bots/shared/{engine.py,uns_paths.py,uns_resolver.py}`, `mira-pipeline/{main.py,ignition_chat.py,ignition_audit.py}`, `tests/test_uns_confirmation_gate.py`, `tests/golden_uns_direct_connection.csv` | 23 tests (12 preserved + 11 new). codegraph_impact: gate contained to engine.py (7 symbols, no external callers). **Key-path note:** flag lives at `state["context"]["uns_source"]` (rule doc's `state["uns_context"]["source"]` gets clobbered by `resolve_uns_path`; self-documented in `seed_direct_connection`). **Reconcile `.claude/rules/direct-connection-uns-certified.md` on merge** (rule not on origin/main yet). `ignition_chat.py`/`ignition_audit.py` new here — possible merge conflict with command-center branch. |
+
+**Wave 3 verdict:** ✅ all five landed, re-verified on python3.12 (66+25+31+20+23 tests), committed `8abbe742`, pushed. Migrations 032–**038** all applied to staging.
+
+**Remaining to a real bench flywheel + downloadable Module:**
+- **Integration verify** `mock_tag_stream → relay → tag_events` on staging (seed `approved_tags` with a UUID tenant first — W2-A caveat).
+- **C3/C4** Perspective ChatPanel view + repoint WebDev `/chat` (Ignition D2/D6) — the in-Ignition chat surface.
+- **G1** Ignition Exchange manifest/listing (D9) — the actual *download*.
+- **Wire physical PE-101** (hardware) — flip demo step 4 from 🟥 SIMULATED to 🟢 REAL.
+- **Cleanups:** 2 legacy KG INSERTs in `full_ingest_pipeline.py`; rule-doc reconcile; mock_tag_stream `invert:` field for active-high health bits.
 
 (Updated as waves complete.)
 
