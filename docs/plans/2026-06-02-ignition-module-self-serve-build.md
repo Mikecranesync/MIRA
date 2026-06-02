@@ -143,12 +143,28 @@ Truly parallel now: **A1, A2, A3** (Wave 1). Everything else gates on these.
 
 **Wave 3 verdict:** ✅ all five landed, re-verified on python3.12 (66+25+31+20+23 tests), committed `8abbe742`, pushed. Migrations 032–**038** all applied to staging.
 
-**Remaining to a real bench flywheel + downloadable Module:**
-- **Integration verify** `mock_tag_stream → relay → tag_events` on staging (seed `approved_tags` with a UUID tenant first — W2-A caveat).
-- **C3/C4** Perspective ChatPanel view + repoint WebDev `/chat` (Ignition D2/D6) — the in-Ignition chat surface.
-- **G1** Ignition Exchange manifest/listing (D9) — the actual *download*.
-- **Wire physical PE-101** (hardware) — flip demo step 4 from 🟥 SIMULATED to 🟢 REAL.
-- **Cleanups:** 2 legacy KG INSERTs in `full_ingest_pipeline.py`; rule-doc reconcile; mock_tag_stream `invert:` field for active-high health bits.
+**Wave 3 verdict:** ✅ all five landed, committed `8abbe742`. Migrations 032–**038** applied to staging.
+
+### Staging integration test ✅ (commit 378fce26)
+`tools/staging_tag_events_integration.py` ran the **real** path `mock_tag_stream → relay (RELAY_TAG_EVENTS=1) → staging tag_events`: **244 events landed, 14 pe101 flaky edges (7+7), correct ltree `uns_path`**, self-cleaned. **It caught two production bugs the mocked unit tests missed** — `neon.py` used `:uns_path::ltree` (SQLAlchemy can't bind before `::`) and passed raw floats into JSONB columns; both fixed + 4 regression guards added (`mira-relay/tests/test_neon_sql.py`). The current-state spine is now proven on real Neon schema.
+
+### Final wave ✅ (commit a071c103)
+| Task | Outcome |
+|---|---|
+| WF-A (D2/D6) | WebDev `/chat` repointed to cloud `/api/v1/ignition/chat` w/ HMAC; Perspective `ChatPanel` view (sibling-matched, offline-validation caveat noted). |
+| WF-B (Phase 7+8) | Citation **enforcement** (rewrite-or-admit) + `DecisionTraceWriter` → `decision_traces`, wired into `process_full`, fail-soft. 29 new tests; gate 23 + relay 70 green; UNS gate untouched. |
+| WF-C (D9) | `ignition/EXCHANGE/` listing (manifest, INSTALL, MIT LICENSE, listing copy). Honest shipped-vs-roadmap. |
+| WF-D | 2 legacy direct KG INSERTs re-routed through `propose_relationship` (0 live INSERTs left in mira-crawler); `mock_tag_stream` `invert:` for active-high health bits. |
+
+C3 (cloud chat endpoint) was already delivered by W3-E.
+
+**Still open (honest):**
+- **Wire physical PE-101** (hardware) — flip demo step 4 🟥→🟢. Code is ready.
+- **Enable `RELAY_TAG_EVENTS=1`** on a real stream (needs per-tenant UUID + seeded `approved_tags` — proven safe by the integration test).
+- **Perspective view** + **Exchange manifest** are offline-authored — need a running gateway to validate import + a signed ZIP + screenshots to actually submit.
+- **D3 sources**: `ignition_chat.py` still returns `sources: []` until the engine populates citations into the response shape (the ChatPanel renders them when present).
+- **Rule-doc reconcile**: `.claude/rules/direct-connection-uns-certified.md` (not on origin/main) must record the real key `state["context"]["uns_source"]` on merge.
+- **License harmonize**: a sibling `mira-ignition-exchange/` uses Apache-2.0; this listing uses MIT.
 
 (Updated as waves complete.)
 
