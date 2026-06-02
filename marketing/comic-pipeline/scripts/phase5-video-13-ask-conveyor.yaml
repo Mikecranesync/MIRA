@@ -33,9 +33,13 @@ voiceover_style: |
 frames:
   - image: docs/promo-screenshots/2026-05-27_fault-detective-normal_desktop.png
     narration: "Here's a conveyor running clean — every photo-eye green, status OK. Watch what happens when a twenty-four-volt branch fuse blows."
-  - image: docs/promo-screenshots/2026-05-27_fault-detective-chat-confirmation_desktop.png
+  # Hero crops (1440x780) of the full-page captures — the 1440x2200 originals
+  # letterbox to ~707px wide (proof text tiny). Crop keeps the Conveyor View
+  # diagram + "waiting on" diagnosis panel so "BRANCH FUSE LOSS (95%)" fills the
+  # frame. Re-render (without --skip-tts) to pick these up.
+  - image: docs/promo-screenshots/2026-06-01_fault-detective-confirmation-hero-crop_desktop.png
     narration: "Three photo-eyes go dark at once. MIRA calls it: branch fuse loss on F2, ninety-five percent confidence."
-  - image: docs/promo-screenshots/2026-05-27_fault-detective-chat-diagnosis_desktop.png
+  - image: docs/promo-screenshots/2026-06-01_fault-detective-diagnosis-hero-crop_desktop.png
     narration: "It shows the evidence — fuse F2 blown, all three sensors debounced false — then waits for you to confirm before it troubleshoots."
   - image: docs/promo-screenshots/2026-05-31_pmc-station-before-real-bench_photo.jpg
     narration: "This isn't a sandbox. It's a real Micro 820, a real GS10 drive, real photo-eyes on the bench."
