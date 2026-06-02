@@ -1,0 +1,117 @@
+{
+  "_schema_note": [
+    "The Ignition Exchange does not publish a versioned manifest.json schema.",
+    "This file encodes the metadata that IA's submission form accepts (as of 2026).",
+    "Fields are derived from: inductiveautomation.com/exchange/submit field labels,",
+    "the sibling listing at mira-ignition-exchange/EXCHANGE_LISTING.md, and",
+    "docs/mira-ignition-secure-architecture.md §7 (MVP scope).",
+    "A real Exchange submission requires: (a) this metadata supplied via the web form,",
+    "(b) a ZIP of ignition/project/ + ignition/webdev/ + ignition/gateway-scripts/ +",
+    "   ignition/config/factorylm.properties.template, (c) signed screenshots,",
+    "   (d) IA review (typically 1-2 weeks).",
+    "No official .modl or JAR is required for a Perspective-project/WebDev bundle.",
+    "See INSTALL.md §6 for the full submission checklist."
+  ],
+
+  "name": "MIRA Maintenance Copilot",
+  "tagline": "AI troubleshooting grounded in your real plant tags — inside Perspective.",
+  "version": "0.1.0",
+  "author": {
+    "name": "FactoryLM",
+    "email": "support@factorylm.com",
+    "website": "https://factorylm.com",
+    "github": "https://github.com/Mikecranesync/MIRA"
+  },
+
+  "ignition_version_min": "8.1.20",
+  "ignition_version_tested": "8.1.44",
+  "editions": ["Standard", "Edge Panel"],
+
+  "modules_required": [
+    "com.inductiveautomation.webdev",
+    "com.inductiveautomation.perspective"
+  ],
+  "modules_optional": [],
+
+  "category_primary": "Perspective Resources",
+  "category_secondary": "AI / Machine Learning",
+
+  "tags": [
+    "perspective", "ai", "llm", "maintenance", "troubleshooting",
+    "asset-management", "industrial", "conveyor", "opc-ua", "tag-stream",
+    "grounded-ai", "factorylm"
+  ],
+
+  "license": "MIT",
+  "license_file": "LICENSE",
+  "source_repository": "https://github.com/Mikecranesync/MIRA/tree/main/ignition",
+
+  "resources_bundled": [
+    {
+      "path": "ignition/project/",
+      "description": "Perspective project — ConveyorMIRA. Views: ConveyorStatus, FaultLog, NavBar. Plant-side HMI the technician uses."
+    },
+    {
+      "path": "ignition/webdev/FactoryLM/api/",
+      "description": "WebDev endpoint bundle: /chat (forward query to MIRA Cloud), /tags (tag-browse, folder-scoped), /status, /alerts, /connect (activation), /ingest (manual upload). All Jython 2.7."
+    },
+    {
+      "path": "ignition/gateway-scripts/tag-stream.py",
+      "description": "Gateway Timer Script (Jython 2.7). Reads leaf tags under the Mira_Monitored folder every 2 s and POSTs a JSON batch outbound to mira-relay over HTTPS."
+    },
+    {
+      "path": "ignition/gateway-scripts/tag-change-fsm-monitor.py",
+      "description": "Tag Change Script. Records state transitions; feeds the FSM anomaly detector."
+    },
+    {
+      "path": "ignition/gateway-scripts/timer-stuck-state.py",
+      "description": "10-second timer. Fires a stuck-state alert when an asset dwells in one state beyond threshold."
+    },
+    {
+      "path": "ignition/config/factorylm.properties.template",
+      "description": "All module configuration (relay URL, tenant ID, stream folder, FSM tuning). Copy to the Gateway data dir — picked up on each script tick, no restart required."
+    },
+    {
+      "path": "ignition/tags/",
+      "description": "36-tag export (Bool + Int OPC tags + derived expression tags) for the Micro820 Modbus TCP demo device."
+    },
+    {
+      "path": "ignition/deploy_ignition.ps1",
+      "description": "Idempotent PowerShell installer. Copies project + WebDev resources, triggers project rescan, and imports tags via Ignition REST API."
+    }
+  ],
+
+  "install_steps": [
+    "1. Verify Ignition Gateway 8.1.20+ is running with Perspective and WebDev modules installed.",
+    "2. Allow outbound HTTPS (port 443) to *.factorylm.com from the Gateway host. No inbound ports.",
+    "3. Run: git clone https://github.com/Mikecranesync/MIRA && cd MIRA",
+    "4. Run the installer: PowerShell -ExecutionPolicy Bypass -File ignition\\deploy_ignition.ps1",
+    "5. Copy ignition/config/factorylm.properties.template to the Gateway data directory (see INSTALL.md §3).",
+    "6. Set RELAY_URL and TENANT_ID (received from FactoryLM activation) in factorylm.properties.",
+    "7. In Ignition Designer, add the three gateway scripts (tag-stream.py, tag-change-fsm-monitor.py, timer-stuck-state.py) as Gateway Event Scripts (Timer + Tag Change).",
+    "8. Create one tag folder: [default]Mira_Monitored. Drag into it only the tags MIRA should see.",
+    "9. Open Perspective in a browser. The ConveyorStatus view should show live tag values.",
+    "10. Ask a question in the Chat panel (once D2/D3 cloud endpoint is wired — see INSTALL.md §5)."
+  ],
+
+  "security_model_summary": {
+    "network": "Outbound HTTPS (443) to *.factorylm.com only. No inbound ports, no VPN, no reverse tunnel.",
+    "tag_access": "Read-only. Folder-scoped to [default]Mira_Monitored — MIRA reads only what you place there.",
+    "plc_writes": "None. No system.tag.writeBlocking anywhere in this bundle.",
+    "auth_shipped": "Shared bearer key (RELAY_API_KEY) per tenant. Stored in factorylm.properties on the Gateway.",
+    "auth_roadmap": "Per-tenant HMAC-SHA256 + nonce replay protection (development item D4).",
+    "pii": "Engine-side PII sanitization (IP, MAC, serial scrubbing) on by default before any LLM call.",
+    "safety": "Arc-flash, LOTO, and confined-space queries trigger STOP escalation — never an auto-generated procedure."
+  },
+
+  "pricing": "Free to install. A FactoryLM tenant account is required for tag streaming and cloud AI. See factorylm.com/pricing.",
+
+  "_submission_checklist": [
+    "Replace screenshot placeholders in docs/promo-screenshots/ with real Perspective captures.",
+    "Zip ignition/project/ + ignition/webdev/ + ignition/gateway-scripts/ + ignition/config/ for the Exchange upload.",
+    "Bump version field above to 1.0.0 before first public release.",
+    "Complete development items D1-D3 (allowlist enforcement + cloud chat endpoint) before claiming grounded-answer capability to customers.",
+    "IA Exchange review typically takes 1-2 weeks after submission.",
+    "Note: this is the secure-module listing (WebDev + gateway scripts). The lightweight Perspective-widget listing lives at mira-ignition-exchange/."
+  ]
+}

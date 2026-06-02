@@ -1,0 +1,376 @@
+{
+  "custom": {
+    "answer": "",
+    "sources": [],
+    "loading": false,
+    "error": ""
+  },
+  "params": {
+    "assetId": {
+      "paramType": "value",
+      "value": ""
+    }
+  },
+  "props": {
+    "defaultSize": {
+      "height": 800,
+      "width": 1280
+    }
+  },
+  "root": {
+    "children": [
+      {
+        "meta": { "name": "Header" },
+        "position": { "basis": "48px", "shrink": 0 },
+        "children": [
+          {
+            "meta": { "name": "BrandLabel" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "color": "#00C851",
+                "fontSize": "20px",
+                "fontWeight": "bold",
+                "letterSpacing": "4px",
+                "padding": "8px 16px"
+              },
+              "text": "MIRA ASK"
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "AssetLabel" },
+            "position": { "basis": "auto" },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "expression": "if({view.params.assetId} != '', 'Asset: ' + {view.params.assetId}, 'No asset — UNS gate will prompt')"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "color": "#AAAAAA",
+                "fontSize": "13px",
+                "padding": "8px 16px"
+              },
+              "text": "No asset — UNS gate will prompt"
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "props": {
+          "align": "center",
+          "direction": "row",
+          "style": {
+            "backgroundColor": "#111111"
+          }
+        },
+        "type": "ia.container.flex"
+      },
+      {
+        "meta": { "name": "AnswerPanel" },
+        "position": { "basis": "1", "grow": 1 },
+        "children": [
+          {
+            "meta": { "name": "AnswerText" },
+            "position": { "basis": "1", "grow": 1 },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "expression": "if({view.custom.loading}, 'Thinking...', if({view.custom.error} != '', {view.custom.error}, if({view.custom.answer} != '', {view.custom.answer}, 'Ask MIRA a question about this asset.')))"
+                  },
+                  "type": "expr"
+                }
+              },
+              "props.style.color": {
+                "binding": {
+                  "config": {
+                    "expression": "if({view.custom.error} != '', '#FF4444', if({view.custom.loading}, '#888888', '#DDDDDD'))"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "color": "#DDDDDD",
+                "fontSize": "15px",
+                "lineHeight": "1.6",
+                "padding": "16px 20px",
+                "whiteSpace": "pre-wrap"
+              },
+              "text": "Ask MIRA a question about this asset."
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "CitationRow" },
+            "position": { "basis": "auto", "shrink": 0 },
+            "propConfig": {
+              "props.style.display": {
+                "binding": {
+                  "config": {
+                    "expression": "if(len({view.custom.sources}) > 0, 'flex', 'none')"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "children": [
+              {
+                "meta": { "name": "CitationLabel" },
+                "position": { "basis": "auto" },
+                "props": {
+                  "style": {
+                    "color": "#AAAAAA",
+                    "fontSize": "12px",
+                    "fontWeight": "bold",
+                    "letterSpacing": "1px",
+                    "marginRight": "8px",
+                    "padding": "4px 0"
+                  },
+                  "text": "SOURCES:"
+                },
+                "type": "ia.display.label"
+              },
+              {
+                "meta": { "name": "Source0" },
+                "position": { "basis": "auto" },
+                "propConfig": {
+                  "props.text": {
+                    "binding": {
+                      "config": {
+                        "expression": "if(len({view.custom.sources}) > 0, toStr({view.custom.sources}[0]), '')"
+                      },
+                      "type": "expr"
+                    }
+                  },
+                  "props.style.display": {
+                    "binding": {
+                      "config": {
+                        "expression": "if(len({view.custom.sources}) > 0, 'inline', 'none')"
+                      },
+                      "type": "expr"
+                    }
+                  }
+                },
+                "props": {
+                  "style": {
+                    "backgroundColor": "#2a4a7a",
+                    "borderRadius": "12px",
+                    "color": "#66AAFF",
+                    "cursor": "pointer",
+                    "display": "none",
+                    "fontSize": "12px",
+                    "margin": "2px 4px",
+                    "padding": "4px 10px"
+                  },
+                  "text": ""
+                },
+                "type": "ia.display.label"
+              },
+              {
+                "meta": { "name": "Source1" },
+                "position": { "basis": "auto" },
+                "propConfig": {
+                  "props.text": {
+                    "binding": {
+                      "config": {
+                        "expression": "if(len({view.custom.sources}) > 1, toStr({view.custom.sources}[1]), '')"
+                      },
+                      "type": "expr"
+                    }
+                  },
+                  "props.style.display": {
+                    "binding": {
+                      "config": {
+                        "expression": "if(len({view.custom.sources}) > 1, 'inline', 'none')"
+                      },
+                      "type": "expr"
+                    }
+                  }
+                },
+                "props": {
+                  "style": {
+                    "backgroundColor": "#2a4a7a",
+                    "borderRadius": "12px",
+                    "color": "#66AAFF",
+                    "cursor": "pointer",
+                    "display": "none",
+                    "fontSize": "12px",
+                    "margin": "2px 4px",
+                    "padding": "4px 10px"
+                  },
+                  "text": ""
+                },
+                "type": "ia.display.label"
+              },
+              {
+                "meta": { "name": "Source2" },
+                "position": { "basis": "auto" },
+                "propConfig": {
+                  "props.text": {
+                    "binding": {
+                      "config": {
+                        "expression": "if(len({view.custom.sources}) > 2, toStr({view.custom.sources}[2]), '')"
+                      },
+                      "type": "expr"
+                    }
+                  },
+                  "props.style.display": {
+                    "binding": {
+                      "config": {
+                        "expression": "if(len({view.custom.sources}) > 2, 'inline', 'none')"
+                      },
+                      "type": "expr"
+                    }
+                  }
+                },
+                "props": {
+                  "style": {
+                    "backgroundColor": "#2a4a7a",
+                    "borderRadius": "12px",
+                    "color": "#66AAFF",
+                    "cursor": "pointer",
+                    "display": "none",
+                    "fontSize": "12px",
+                    "margin": "2px 4px",
+                    "padding": "4px 10px"
+                  },
+                  "text": ""
+                },
+                "type": "ia.display.label"
+              }
+            ],
+            "props": {
+              "direction": "row",
+              "style": {
+                "borderTop": "1px solid #333333",
+                "display": "none",
+                "flexWrap": "wrap",
+                "padding": "8px 16px"
+              },
+              "wrap": "wrap"
+            },
+            "type": "ia.container.flex"
+          }
+        ],
+        "props": {
+          "direction": "column",
+          "style": {
+            "backgroundColor": "#1e1e1e",
+            "borderBottom": "1px solid #333333",
+            "borderRadius": "6px",
+            "margin": "8px 16px",
+            "overflow": "auto"
+          }
+        },
+        "type": "ia.container.flex"
+      },
+      {
+        "meta": { "name": "InputRow" },
+        "position": { "basis": "64px", "shrink": 0 },
+        "children": [
+          {
+            "meta": { "name": "QueryInput" },
+            "position": { "basis": "1", "grow": 1 },
+            "props": {
+              "placeholder": "Ask MIRA about this asset...",
+              "style": {
+                "backgroundColor": "#2a2a2a",
+                "border": "2px solid #444444",
+                "borderRadius": "6px",
+                "color": "#FFFFFF",
+                "fontSize": "15px",
+                "padding": "10px 14px"
+              }
+            },
+            "type": "ia.input.text-field"
+          },
+          {
+            "meta": { "name": "SendButton" },
+            "position": { "basis": "auto", "shrink": 0 },
+            "events": {
+              "dom": {
+                "onClick": {
+                  "config": {
+                    "script": "\n\timport json\n\tquery = self.getSibling('QueryInput').props.text.strip()\n\tif not query:\n\t\treturn\n\tself.view.custom.loading = True\n\tself.view.custom.error = ''\n\tself.view.custom.answer = ''\n\tself.view.custom.sources = []\n\tasset_id = self.view.params.assetId\n\ttry:\n\t\tclient = system.net.httpClient()\n\t\tpayload = system.util.jsonEncode({'query': query, 'asset_id': asset_id})\n\t\tresp = client.post(\n\t\t\t'http://localhost:8088/system/webdev/FactoryLM/api/chat',\n\t\t\tdata=payload,\n\t\t\theaders={'Content-Type': 'application/json'},\n\t\t\ttimeout=35000\n\t\t)\n\t\tresult = json.loads(resp.text)\n\t\tif resp.statusCode == 200:\n\t\t\tself.view.custom.answer = result.get('answer', '')\n\t\t\tself.view.custom.sources = result.get('sources', [])\n\t\telse:\n\t\t\tself.view.custom.error = 'Error ' + str(resp.statusCode) + ': ' + result.get('error', result.get('detail', 'Unknown error'))\n\texcept Exception as e:\n\t\tself.view.custom.error = 'Request failed: ' + str(e)\n\tfinally:\n\t\tself.view.custom.loading = False\n"
+                  },
+                  "type": "script"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "backgroundColor": "#007BFF",
+                "border": "none",
+                "borderRadius": "6px",
+                "color": "#FFFFFF",
+                "cursor": "pointer",
+                "fontSize": "15px",
+                "fontWeight": "bold",
+                "marginLeft": "8px",
+                "padding": "10px 24px",
+                "textAlign": "center",
+                "whiteSpace": "nowrap"
+              },
+              "text": "ASK"
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "props": {
+          "align": "center",
+          "direction": "row",
+          "style": {
+            "margin": "0 16px 8px 16px"
+          }
+        },
+        "type": "ia.container.flex"
+      },
+      {
+        "meta": { "name": "Footer" },
+        "position": { "basis": "40px", "shrink": 0 },
+        "children": [
+          {
+            "meta": { "name": "FooterLabel" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "color": "#666666",
+                "fontSize": "12px",
+                "padding": "8px 16px"
+              },
+              "text": "MIRA Co-Pilot — FactoryLM  |  UNS-gated, grounded answers only"
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "props": {
+          "align": "center",
+          "direction": "row",
+          "style": {
+            "borderTop": "1px solid #333333"
+          }
+        },
+        "type": "ia.container.flex"
+      }
+    ],
+    "meta": { "name": "root" },
+    "position": { "basis": "auto" },
+    "props": {
+      "direction": "column",
+      "style": {
+        "backgroundColor": "#1a1a1a",
+        "height": "100%",
+        "padding": "8px"
+      }
+    },
+    "type": "ia.container.flex"
+  }
+}

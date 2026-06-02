@@ -176,8 +176,9 @@ DB_DATASOURCE=
 
 
 # =============================================================================
-# SECTION 9 — MIRA CONNECT (Cloud Relay)
-# Streams live tag data from Ignition to MIRA cloud for AI diagnostics.
+# SECTION 9 — MIRA CONNECT (Cloud Relay + Chat)
+# Streams live tag data from Ignition to MIRA cloud for AI diagnostics, and
+# routes Perspective ChatPanel queries to the MIRA Cloud reasoning engine.
 # Set after running activation from the ConnectSetup Perspective page.
 # =============================================================================
 
@@ -200,6 +201,23 @@ STREAM_TAG_FOLDER=[default]Mira_Monitored
 # to equipment_status rows in mira.db.
 # Default: ignition-gateway
 STREAM_EQUIPMENT_ID=ignition-gateway
+
+# MIRA Cloud chat endpoint URL.
+# The WebDev /api/chat handler (doPost.py) POSTs signed requests here.
+# Override to point at staging: https://staging.factorylm.com/api/v1/ignition/chat
+# Override to point at local dev: http://localhost:9099/api/v1/ignition/chat
+# Default: https://api.factorylm.com/api/v1/ignition/chat
+MIRA_CLOUD_CHAT_URL=https://api.factorylm.com/api/v1/ignition/chat
+
+# HMAC signing key for MIRA Cloud chat and tag-stream requests.
+# Must match the MIRA_IGNITION_HMAC_KEY secret configured in Doppler
+# for the corresponding cloud pipeline service.
+# IMPORTANT: Chat requests sent without this key will be rejected by the
+# cloud endpoint with HTTP 401.  The relay falls back to unsigned POSTs
+# (with a warning) only when RELAY_LEGACY_BEARER=1 is also set.
+# Obtain this value from the MIRA Hub admin panel after activation.
+# Default: (empty — HMAC auth disabled; cloud will reject chat requests)
+MIRA_HMAC_KEY=
 
 
 # =============================================================================

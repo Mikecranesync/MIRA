@@ -380,6 +380,14 @@ def step_kg(text: str, manufacturer: str, model: str,
             report.errors.append(f"KG extractors not importable: {exc}")
             return
 
+    # propose_relationship lives in mira-bots/shared — use the same sys.path
+    # bootstrap already applied at module load (_BOTS_ROOT is on sys.path).
+    try:
+        from shared.proposal_transition import propose_relationship
+    except ImportError as exc:
+        report.errors.append(f"KG: cannot import proposal_transition: {exc}")
+        return
+
     # Run extractors on first 8000 chars (enough context, bounded cost)
     sample = text[:8000]
     equip = extract_equipment(sample)
@@ -388,6 +396,11 @@ def step_kg(text: str, manufacturer: str, model: str,
     # Use provided manufacturer/model as ground truth, extractors as enrichment
     eff_mfr = manufacturer or equip.manufacturer or "Unknown"
     eff_model = model or equip.model or "Unknown"
+
+    # Collect pending edges: (source_id, target_id, rel_type).
+    # These are proposed AFTER the psycopg2 entities are committed so that
+    # propose_relationship's SQLAlchemy transaction can see the entity rows.
+    pending_edges: list[tuple[str, str, str]] = []
 
     try:
         conn = _pg_conn()
@@ -420,22 +433,12 @@ def step_kg(text: str, manufacturer: str, model: str,
             properties={"manual_type": manual_type, "source_url": source_url},
         )
         if equip_id and manual_eid:
-            try:
-                cur.execute(
-                    """
-                    INSERT INTO kg_relationships
-                        (id, tenant_id, source_id, target_id, relationship_type, confidence)
-                    VALUES (%s, %s::uuid, %s::uuid, %s::uuid, 'documented_in', 1.0)
-                    ON CONFLICT (tenant_id, source_id, target_id, relationship_type) DO NOTHING
-                    """,
-                    (str(uuid.uuid4()), TENANT_ID, equip_id, manual_eid),
-                )
-                report.kg_relationships += 1
-                _log_triple(cur, f"{eff_mfr} {eff_model}", "documented_in",
-                            f"{eff_mfr} {eff_model} — {manual_type}")
-                report.kg_triples += 1
-            except Exception as exc:
-                logger.warning("KG relationship insert failed: %s", exc)
+            # Queue edge proposal: equipment -[HAS_DOCUMENT]-> manual
+            # (replaces direct INSERT INTO kg_relationships with 'documented_in')
+            pending_edges.append((equip_id, manual_eid, "HAS_DOCUMENT"))
+            _log_triple(cur, f"{eff_mfr} {eff_model}", "documented_in",
+                        f"{eff_mfr} {eff_model} — {manual_type}")
+            report.kg_triples += 1
 
         # --- Fault code entities ---
         for fc in fault_codes[:20]:  # cap at 20 per document
@@ -453,27 +456,18 @@ def step_kg(text: str, manufacturer: str, model: str,
             if fc_id:
                 report.kg_fault_code_entities += 1
                 if equip_id:
-                    try:
-                        cur.execute(
-                            """
-                            INSERT INTO kg_relationships
-                                (id, tenant_id, source_id, target_id,
-                                 relationship_type, confidence)
-                            VALUES (%s, %s::uuid, %s::uuid, %s::uuid, 'has_fault_code', 1.0)
-                            ON CONFLICT (tenant_id, source_id, target_id, relationship_type) DO NOTHING
-                            """,
-                            (str(uuid.uuid4()), TENANT_ID, equip_id, fc_id),
-                        )
-                        report.kg_relationships += 1
-                    except Exception as exc:
-                        logger.warning("Fault code relationship: %s", exc)
+                    # Queue edge proposal: equipment -[HAS_FAILURE_MODE]-> fault_code
+                    # (replaces direct INSERT INTO kg_relationships with 'has_fault_code')
+                    pending_edges.append((equip_id, fc_id, "HAS_FAILURE_MODE"))
                 _log_triple(cur, fc.code, "documented_in", f"{eff_mfr} {eff_model}")
                 report.kg_triples += 1
 
+        # Commit entities + triples first so propose_relationship (SQLAlchemy,
+        # separate transaction) can see the entity rows it needs to look up.
         conn.commit()
-        logger.info("KG: %d equipment, %d fault codes, %d relationships, %d triples",
+        logger.info("KG entities committed: %d equipment, %d fault codes, %d triples",
                     report.kg_equipment_entities, report.kg_fault_code_entities,
-                    report.kg_relationships, report.kg_triples)
+                    report.kg_triples)
 
     except Exception as exc:
         report.errors.append(f"KG write: {exc}")
@@ -482,11 +476,36 @@ def step_kg(text: str, manufacturer: str, model: str,
             conn.rollback()
         except Exception:
             pass
+        return
     finally:
         try:
             conn.close()
         except Exception:
             pass
+
+    # --- Edge proposals (relationship_proposals + ai_suggestions(kg_edge)) ---
+    # Runs after the psycopg2 commit so SQLAlchemy can see the entity rows.
+    # kg_relationships is NOT written here — edges stay proposed until a human
+    # approves them via the Hub /proposals UI (ADR-0017).
+    for src_id, tgt_id, rel_type in pending_edges:
+        try:
+            proposal_id = propose_relationship(
+                source_id=src_id,
+                target_id=tgt_id,
+                rel_type=rel_type,
+                evidence=[],
+                tenant_id=TENANT_ID,
+                confidence=1.0,
+                proposed_by="import:full_ingest_pipeline",
+            )
+            if proposal_id:
+                report.kg_relationships += 1
+        except Exception as exc:
+            logger.warning("Edge proposal %s→%s [%s] failed: %s", src_id, tgt_id, rel_type, exc)
+
+    logger.info("KG: %d equipment, %d fault codes, %d proposals, %d triples",
+                report.kg_equipment_entities, report.kg_fault_code_entities,
+                report.kg_relationships, report.kg_triples)
 
 
 # ---------------------------------------------------------------------------

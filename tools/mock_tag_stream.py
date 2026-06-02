@@ -39,7 +39,34 @@ Each tick POSTs one batch matching ``demo_plc_poller._build_relay_payload``:
 Events are computed locally (for dry-run output / logging).  They are NOT
 posted to /ingest — the relay derives them via Phase 5 diff_logger.
 
-Scenario schema is documented in ``tools/scenarios/conveyor_normal.yaml``.
+Scenario schema
+===============
+Documented in ``tools/scenarios/conveyor_normal.yaml``.
+
+``faults[]`` schema
+-------------------
+Each entry in the ``faults:`` list drives an override on a named tag for a
+tick range.  Standard (active-low) behavior::
+
+    faults:
+      - tag: error_code
+        open_tick: 30
+        close_tick: 60
+        # invert: false  ← default; tag goes 0→1 at open, 1→0 at close
+
+For **active-high health bits** (tags whose nominal value is 1 and whose
+"fault" condition is a drop to 0, e.g. ``vfd_comm_ok``), add ``invert: true``::
+
+    faults:
+      - tag: vfd_comm_ok
+        open_tick: 30
+        close_tick: 60
+        invert: true    # tag goes 1→0 at open_tick, 0→1 at close_tick
+
+This produces a ``falling_edge`` event at ``open_tick`` and a ``rising_edge``
+event at ``close_tick`` — the correct polarity for a health bit that drops
+during a fault window.  Only meaningful for ``type: bool`` tags (a
+``type: fault`` tag with ``nominal: 0`` will no-op under invert).
 """
 
 from __future__ import annotations
@@ -88,8 +115,9 @@ class TagDef:
 @dataclass
 class FaultInjection:
     tag: str
-    open_tick: int      # tick index when fault opens (tag → 1)
-    close_tick: int     # tick index when fault clears (tag → 0)
+    open_tick: int      # tick index when fault opens
+    close_tick: int     # tick index when fault clears
+    invert: bool = False  # True for active-high health bits: tag goes 1→0 at open, 0→1 at close
 
 
 @dataclass
@@ -149,6 +177,7 @@ def _load_scenario(path: str) -> Scenario:
             tag=f["tag"],
             open_tick=int(f["open_tick"]),
             close_tick=int(f["close_tick"]),
+            invert=bool(f.get("invert", False)),
         ))
 
     flickers: list[FlickerInjection] = []
@@ -364,11 +393,15 @@ async def _run(
 ) -> int:
     tag_by_name: dict[str, TagDef] = {td.name: td for td in scenario.tags}
 
-    # Build fault injection map: tick → {tag: 1.0 or 0.0}
+    # Build fault injection map: tick → {tag: value}
+    # Standard (active-low, invert=False): open → 1.0, close → 0.0.
+    # Active-high health bits (invert=True):  open → 0.0, close → 1.0.
     fault_schedule: dict[int, dict[str, float]] = {}
     for fi in scenario.faults:
-        fault_schedule.setdefault(fi.open_tick, {})[fi.tag] = 1.0
-        fault_schedule.setdefault(fi.close_tick, {})[fi.tag] = 0.0
+        open_val  = 0.0 if fi.invert else 1.0
+        close_val = 1.0 if fi.invert else 0.0
+        fault_schedule.setdefault(fi.open_tick, {})[fi.tag] = open_val
+        fault_schedule.setdefault(fi.close_tick, {})[fi.tag] = close_val
 
     # Build flicker injection map: tick → {tag: value}
     flicker_schedule: dict[int, dict[str, float]] = {}

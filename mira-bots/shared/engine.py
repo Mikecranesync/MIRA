@@ -16,7 +16,11 @@ import httpx
 
 from . import quality_gate
 from .chat_tenant import resolve as resolve_tenant
-from .citation_compliance import check_citation_compliance as _check_citation_compliance
+from .citation_compliance import (
+    check_citation_compliance as _check_citation_compliance,
+    enforce_citation as _enforce_citation,
+)
+from .decision_trace import DecisionTraceWriter
 from .conversation_router import route_intent
 from .detection.recurring_fault import check_recurring_and_annotate
 from .dialogue_state import (
@@ -1118,6 +1122,14 @@ class Supervisor:
         t = tl_trace("supervisor.process", user_id=chat_id)
         trace_id = t.id
 
+        # Phase 8 — decision trace writer (fail-soft: trace errors never block replies)
+        _tracer = DecisionTraceWriter()
+        _tracer.start_turn(
+            tenant_id=resolve_tenant(chat_id) or self.rag.tenant_id or "",
+            chat_id=chat_id,
+            message=message,
+        )
+
         # Preprocess: strip Slack mention tags
         message = strip_mentions(message)
 
@@ -2050,15 +2062,58 @@ class Supervisor:
         if _honest_prefix:
             formatted = _honest_prefix + formatted
 
-        # CRA-11 / Unit 2 — observational citation compliance check.
-        # Logs CITATION_COMPLIANCE_OK / _MISS so we can measure inline-cite
-        # rate over time. Never blocks the reply.
-        _check_citation_compliance(
-            formatted,
-            getattr(self.rag, "kb_status", {}),
-            fsm_state=state.get("state", ""),
-            chat_id=chat_id,
+        # Phase 7 — citation enforcement (replaces observational-only check).
+        # If the reply fails compliance, attempt ONE rewrite via the cascade
+        # router; fall back to a KB-gap admission if the rewrite also fails.
+        # Fail-soft: errors here are logged; the original formatted reply is used.
+        _kb_status = getattr(self.rag, "kb_status", {})
+        _fsm_for_cite = state.get("state", "")
+        try:
+            formatted, _cite_outcome = await _enforce_citation(
+                formatted,
+                _kb_status,
+                self.router,
+                message,
+                fsm_state=_fsm_for_cite,
+                chat_id=chat_id,
+            )
+        except Exception as _ce:
+            logger.warning("CITATION_ENFORCE_ERROR chat_id=%s error=%s", chat_id, _ce)
+            # Observational fallback so we still log the compliance result.
+            _cr = _check_citation_compliance(
+                formatted, _kb_status, fsm_state=_fsm_for_cite, chat_id=chat_id
+            )
+            _cite_outcome = "pass" if (not _cr["required"] or _cr["present"]) else "admitted_gap"
+
+        # Phase 8 — record gate outcome, UNS resolution, and final reply.
+        _ctx_for_trace = state.get("context") or {}
+        _uns_ctx_dict = _ctx_for_trace.get("uns_context") or {}
+        _gate_out = (
+            "direct_connection"
+            if _ctx_for_trace.get("uns_source") == "direct_connection"
+            else ("confirmed" if state.get("asset_identified") else "skipped")
         )
+        _tracer.record_uns_resolution(
+            uns_path=_uns_ctx_dict.get("uns_path"),
+            confidence=_uns_ctx_dict.get("confidence_band") or str(_uns_ctx_dict.get("confidence", "")),
+        )
+        _tracer.record_gate_outcome(_gate_out)
+        _tracer.record_citation_check(_cite_outcome)
+        _tracer.record_final_reply(
+            raw_reply=parsed.get("reply"),
+            final_reply=formatted,
+            next_state=state.get("state"),
+        )
+        # Retrieval set from rag worker (non-blocking attribute read)
+        try:
+            _neon_chunks = getattr(self.rag, "_last_neon_chunks", None) or []
+            if _neon_chunks:
+                _tracer.record_retrieval(_neon_chunks)
+        except Exception:
+            pass
+        # Commit is async fire-and-forget; errors never reach the caller.
+        import asyncio as _asyncio
+        _asyncio.ensure_future(_tracer.commit())
 
         tl_flush()
         return self._make_result(
@@ -2713,12 +2768,27 @@ class Supervisor:
         if honest_prefix:
             formatted = honest_prefix + formatted
 
-        _check_citation_compliance(
-            formatted,
-            getattr(self.rag, "kb_status", {}),
-            fsm_state=state.get("state", ""),
-            chat_id=chat_id,
-        )
+        # Phase 7 — citation enforcement (same contract as process_full; fail-soft).
+        _kb_status_sf = getattr(self.rag, "kb_status", {})
+        _fsm_sf = state.get("state", "")
+        try:
+            formatted, _cite_sf = await _enforce_citation(
+                formatted,
+                _kb_status_sf,
+                self.router,
+                message,
+                fsm_state=_fsm_sf,
+                chat_id=chat_id,
+            )
+        except Exception as _cse:
+            logger.warning(
+                "CITATION_ENFORCE_ERROR (session_followup) chat_id=%s error=%s",
+                chat_id,
+                _cse,
+            )
+            _check_citation_compliance(
+                formatted, _kb_status_sf, fsm_state=_fsm_sf, chat_id=chat_id
+            )
 
         return self._make_result(
             formatted,
