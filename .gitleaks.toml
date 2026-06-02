@@ -8,6 +8,9 @@ title = "MIRA gitleaks config"
     '''wiki/''',
     '''docs/''',
     '''artifacts/''',
+    # yt-pipeline unit tests contain only mock fixtures (e.g. openai_api_key="present-but-unfunded",
+    # byteplus_api_key="fake-byteplus-key") — obvious non-secrets that trip the generic-api-key rule.
+    '''tests/yt_pipeline/''',
   ]
 
 [[rules]]
