@@ -9,7 +9,7 @@ import {
   Wrench, Radio, Plug, BarChart2, Users, Settings,
   ClipboardList, CalendarDays, Inbox, Package, FileText, TrendingUp,
   Factory, ChevronLeft, ChevronRight, LogOut, Sun, Moon, HelpCircle, Cpu,
-  Layers, Sparkles,
+  Layers, Sparkles, Network,
 } from "lucide-react";
 import { restartTour } from "@/components/onboarding/tour";
 import { cn } from "@/lib/utils";
@@ -21,7 +21,7 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Activity, MessageSquare, AlertTriangle, BookOpen,
   Wrench, Radio, Plug, BarChart2, Users, Settings,
   ClipboardList, CalendarDays, Inbox, Package, FileText, TrendingUp,
-  Cpu, Layers, Sparkles,
+  Cpu, Layers, Sparkles, Network,
 };
 
 type NavItemProps = {
@@ -103,6 +103,7 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       "namespace":     "Namespace",
       "channels":      t("channels"),
       "knowledge":     t("knowledge"),
+      "graph":         "Graph",
       "proposals":     "Proposals",
       "assets":        t("assets"),
       "workorders":    "CMMS",

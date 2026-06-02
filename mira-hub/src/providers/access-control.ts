@@ -82,6 +82,7 @@ export const NAV_ITEMS: ReadonlyArray<{
   { key: "namespace",     label: "Namespace",     icon: "Layers",        href: "/namespace",     roles: [...ALL_ROLES], group: "primary" },
   { key: "channels",      label: "Channels",      icon: "Radio",         href: "/channels",      roles: [...ADMIN_ROLES, "scheduler"], group: "primary" },
   { key: "knowledge",     label: "Knowledge",     icon: "BookOpen",      href: "/knowledge",     roles: [...ALL_ROLES], group: "primary" },
+  { key: "graph",         label: "Graph",         icon: "Network",       href: "/graph",         roles: [...ALL_ROLES], group: "primary" },
   { key: "proposals",     label: "Proposals",     icon: "Sparkles",      href: "/proposals",     roles: [...ALL_ROLES], group: "primary" },
 
   // ── SECONDARY (collapsed under "More") ─────────────────────────────────────
