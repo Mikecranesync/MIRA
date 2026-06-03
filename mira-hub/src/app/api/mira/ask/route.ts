@@ -407,23 +407,41 @@ export async function POST(req: Request) {
   );
 
   // ── 5b. Capture reasoning trace (best-effort; never blocks the answer) ──
+  // The grounding's component ids are installed_component_instances ids — a
+  // different id-space than the graph (kg_entities.id). So resolve the edge
+  // endpoint NAMES that MIRA actually cited back to kg_entities.id; combined
+  // with the anchor asset, that lights up the real traversed subgraph on
+  // /graph rather than just the anchor. Name collisions can over-highlight
+  // slightly — acceptable for a reasoning overlay.
   try {
     const traced = extractTrace(
       grounding as unknown as TraceGroundingLike,
       (session.asset_id as string | null) ?? null,
     );
-    if (traced.entityIds.length > 0) {
-      await withTenantContext(ctx.tenantId, (c) =>
-        recordQueryTrace(c, ctx.tenantId, {
-          sessionId: session.id,
-          questionTurnIndex: 0,
-          rootId: (session.asset_id as string | null) ?? null,
-          question: body.question,
-          provider: result.provider,
-          extracted: traced,
-        }),
-      );
-    }
+    const rootId = (session.asset_id as string | null) ?? null;
+    const names = [
+      ...new Set(traced.edges.flatMap((e) => [e.sName, e.tName]).filter((n) => n.length > 0)),
+    ];
+    await withTenantContext(ctx.tenantId, async (c) => {
+      const entityIds = new Set<string>();
+      if (rootId) entityIds.add(rootId);
+      if (names.length > 0) {
+        const res = await c.query<{ id: string }>(
+          `SELECT id FROM kg_entities WHERE tenant_id = $1::uuid AND name = ANY($2::text[])`,
+          [ctx.tenantId, names],
+        );
+        for (const row of res.rows) entityIds.add(row.id);
+      }
+      if (entityIds.size === 0) return;
+      await recordQueryTrace(c, ctx.tenantId, {
+        sessionId: session.id,
+        questionTurnIndex: 0,
+        rootId,
+        question: body.question,
+        provider: result.provider,
+        extracted: { entityIds: [...entityIds], edges: traced.edges },
+      });
+    });
   } catch (err) {
     console.error("[mira/ask] trace capture failed (non-fatal):", err);
   }
