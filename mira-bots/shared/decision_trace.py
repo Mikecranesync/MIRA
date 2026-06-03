@@ -52,6 +52,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import struct
 import time
 import uuid
@@ -98,8 +99,6 @@ def _infer_platform(chat_id: str) -> str:
 # ---------------------------------------------------------------------------
 # Sanitisation helper (re-uses InferenceRouter patterns via simple re.sub)
 # ---------------------------------------------------------------------------
-
-import re
 
 _IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 _MAC_RE = re.compile(r"\b(?:[0-9A-Fa-f]{2}[:\-]){5}[0-9A-Fa-f]{2}\b")

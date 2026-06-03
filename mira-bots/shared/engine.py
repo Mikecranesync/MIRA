@@ -18,10 +18,12 @@ from . import quality_gate
 from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import (
     check_citation_compliance as _check_citation_compliance,
+)
+from .citation_compliance import (
     enforce_citation as _enforce_citation,
 )
-from .decision_trace import DecisionTraceWriter
 from .conversation_router import route_intent
+from .decision_trace import DecisionTraceWriter
 from .detection.recurring_fault import check_recurring_and_annotate
 from .dialogue_state import (
     DialogueState,
