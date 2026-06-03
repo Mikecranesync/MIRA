@@ -26,6 +26,41 @@ Infrastructure first. AI second. Every customer engagement starts with **"what d
 
 Everything in the repo — `mira-pipeline`, `mira-mcp`, `mira-bots`, `mira-web`, `mira-cmms`, `mira-crawler` — is supporting infrastructure for delivering and operating that namespace.
 
+## The Canonical Asset Graph (the next evolution)
+
+> Added 2026-06-02. This sharpens — does not replace — the doctrine above. The "Maintenance
+> Intelligence Namespace" and the "canonical asset graph" are the same artifact at two altitudes:
+> the namespace is what we *sell*; the asset graph is what it *is* under the hood.
+
+"AI-ready infrastructure" has a concrete shape: a **canonical industrial asset graph** that is the
+**translation layer between plant-floor OT and enterprise maintenance systems.**
+
+- **In:** semi-structured customer reality from every direction — IBM Maximo, SAP, MaintainX,
+  Fiix, Limble; Ignition, MQTT/Sparkplug B, OPC UA, historians; manuals, wiring diagrams, PLC
+  tags, nameplates, and technician knowledge.
+- **Through:** one canonical graph (`kg_entities` + `kg_relationships`, ISA-95 `uns_path`
+  addressing, `proposed → verified` approval state, confidence on every edge) — with the
+  **original source record preserved**, never normalized-and-discarded.
+- **Out:** the reasoning layer AI agents ground in, *and* a bidirectional bridge — OT signal
+  meaning flows up to enterprise CMMS/ERP; enterprise asset structure flows down to the plant
+  floor — without MIRA replacing either system or ever writing to a PLC.
+
+**The graph IS the product.** The copilot, the connectors, the Hub, the bots are how the graph
+gets built and used. Two architectural commitments make this defensible:
+
+1. **Build the canonical graph first, connectors around it.** No connector owns a shape; each maps
+   *into* the canonical model and keeps its raw record. We never hardcode around one system.
+2. **Read-only for OT by default.** MIRA observes the plant floor; it never controls it.
+
+This reframes the Knowledge Cooperative moat: every plant we structure deepens a *shared canonical
+graph* of OEM components, fault patterns, and tag-mapping heuristics — so each new plant maps onto
+existing canonical nodes instead of starting blank. The asset graph is what compounds.
+
+**Architecture docs:** `docs/mira/canonical-asset-graph.md` (the model),
+`docs/mira/source-record-preservation.md` (raw-record layer),
+`docs/mira/current-repo-inventory.md` (what's built), governed by
+`docs/plans/2026-06-01-mira-master-architecture-plan.md`.
+
 ## The Decision Filter
 
 Before building any feature, ask: **"Does this make the flywheel spin faster?"**
