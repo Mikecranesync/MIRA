@@ -14,6 +14,7 @@ exclude = [
     # Uses Java imports (java.io.*) and Ignition globals (system.*), which
     # ruff cannot model. Lint these in their own Jython environment, not here.
     "ignition/webdev",
+    "ignition/gateway-scripts",
 ]
 
 [tool.ruff.lint]
