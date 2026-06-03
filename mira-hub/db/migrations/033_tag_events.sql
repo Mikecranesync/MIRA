@@ -92,13 +92,14 @@ CREATE TABLE IF NOT EXISTS tag_events (
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
--- Idempotency: the master-plan appendix D2 originally named this column 'ts';
--- the implementation was updated to 'event_timestamp' for clarity. On the
--- staging DB the table may already exist with the old column name — rename it
--- here so subsequent index creation succeeds. Also adds the column if somehow
--- missing entirely.
+-- Idempotency block: the staging NeonDB branch accumulates schema state across
+-- CI runs. CREATE TABLE IF NOT EXISTS skips recreation, so columns added or
+-- renamed after the table was first created require explicit ALTER TABLE.
+-- Pattern: check existence → add/rename; use a temporary DEFAULT to satisfy
+-- NOT NULL when existing rows are present, then drop the default.
 DO $$
 BEGIN
+    -- ts → event_timestamp rename (master-plan appendix D2 originally used 'ts').
     IF EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = current_schema()
@@ -114,6 +115,19 @@ BEGIN
           AND column_name  = 'event_timestamp'
     ) THEN
         ALTER TABLE tag_events ADD COLUMN event_timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    END IF;
+    -- tag_path: present in the current CREATE TABLE definition but absent on
+    -- staging DBs created by an earlier version of this migration. Add with a
+    -- temporary default so the NOT NULL constraint doesn't reject existing rows,
+    -- then drop the default so new rows must supply the value explicitly.
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name   = 'tag_events'
+          AND column_name  = 'tag_path'
+    ) THEN
+        ALTER TABLE tag_events ADD COLUMN tag_path TEXT NOT NULL DEFAULT 'backfilled';
+        ALTER TABLE tag_events ALTER COLUMN tag_path DROP DEFAULT;
     END IF;
 END $$;
 
