@@ -105,10 +105,16 @@ jobs:
             echo ""
             echo "_Auto-filed by \`.github/workflows/deploy-vps.yml\` (R8, staging-gate architectural review 2026-05-31). The title carries the short SHA for cross-referencing._"
           } > bypass_issue_body.md
+          # Non-fatal: an audit-log failure must NOT block a production hotfix.
+          # The GITHUB_TOKEN may lack issues:write (GraphQL "Resource not accessible
+          # by integration") — in that case warn + record the reason in the run log,
+          # and let the deploy proceed. (Prod incident 2026-06-02: this createIssue
+          # error aborted every hotfix deploy while prod chat was down.)
           gh issue create \
             --repo "$REPO" \
             --title "staging-gate bypass: deploy by @${ACTOR} at ${SHORT_SHA}" \
-            --body-file bypass_issue_body.md
+            --body-file bypass_issue_body.md \
+            || echo "::warning::Could not auto-open the staging-gate-bypass audit issue (token may lack issues:write). Deploy continues — record the bypass manually. Reason: ${REASON}"
 
       - name: Verify Staging Gate passed
         # Refuse to deploy a commit that hasn't been graded by the staging gate.
