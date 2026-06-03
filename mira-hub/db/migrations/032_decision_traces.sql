@@ -99,6 +99,11 @@ CREATE TABLE IF NOT EXISTS decision_traces (
     ts TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Idempotent column guard: if the table existed before this migration was
+-- updated to add citations_present, ALTER TABLE brings it in line.
+ALTER TABLE decision_traces ADD COLUMN IF NOT EXISTS
+    citations_present BOOLEAN NOT NULL DEFAULT false;
+
 -- Admin tail "last N traces for tenant X" dominates the read path.
 CREATE INDEX IF NOT EXISTS decision_traces_tenant_time_idx
     ON decision_traces (tenant_id, ts DESC);
