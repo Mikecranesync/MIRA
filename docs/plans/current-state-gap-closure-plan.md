@@ -1,7 +1,7 @@
 # Current-State Gap-Closure Plan
 
 **Maintained by:** autonomous gap-closure driver (epic #1666)
-**Last updated:** 2026-06-03 (run 3 — state unchanged, no new work)
+**Last updated:** 2026-06-03 (run 4 — merge conflict resolved on PR #1657)
 **Governed by:** `docs/plans/2026-06-01-mira-master-architecture-plan.md`
 **Issues:** `Mikecranesync/MIRA` — see epic #1666 for canonical list
 
@@ -19,7 +19,7 @@ Update this file at the start of every driver run (status sync step).
 
 ## Baseline (2026-06-03)
 
-Main branch HEAD: `9282fa1` (fix(deploy): make staging-gate-bypass audit issue non-fatal #1673)
+Main branch HEAD: `596591d` (ci: add mira-pipeline docker build + import smoke-test #1675)
 Hub migrations on main: **001–031** (`031_ignition_audit_log.sql` is the last)
 Engine migrations on main: **001–008** (per docs/migrations/)
 
@@ -67,7 +67,7 @@ Engine migrations on main: **001–008** (per docs/migrations/)
 ### PR #1657 — `feat/dt2026-gap-closure` (base: `main`)
 - **Title:** feat: Walker DT-2026 gap closure — Phases 0–5 (Connect→Collect→Store→Visualize)
 - **CI:** 1 advisory check (`compose-mem-lint`) — ✅ success (no required checks)
-- **Mergeable state:** blocked (needs human review/approval; no required CI gate on this PR)
+- **Mergeable state:** blocked (needs human review/approval; merge conflict with main RESOLVED in run 4)
 - **Caveats in PR body:**
   - RLS validated structurally but not under `factorylm_app` (covered by #1674)
   - Relay needs `NEON_DATABASE_URL` + `MIRA_IGNITION_HMAC_KEY` in Doppler
@@ -127,3 +127,4 @@ Priority order:
 | 2026-06-03 | Run 1 (cloud env) | Status sync only; created this file + updated wiki/hot.md; at 2-PR limit |
 | 2026-06-03 | Run 2 (cloud env) | Status sync only; same state confirmed; no new work; added #1682 to observations |
 | 2026-06-03 | Run 3 (cloud env) | Status sync only; verified CI on #1657 (compose-mem-lint ✅) and #1674 (0 checks, stacked by design); added PR #1682 to recommended human actions |
+| 2026-06-03 | Run 4 (cloud env) | **Merge conflict resolved on PR #1657** — `wiki/hot.md` conflict (both branches prepended session entries) fixed by combining both entries, newest first. `docker-compose.saas.yml` + `engine.py` auto-merged cleanly. Pushed to `feat/dt2026-gap-closure`. PR #1657 state: dirty→blocked. Main HEAD updated to `596591d`. |

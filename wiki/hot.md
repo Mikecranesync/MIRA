@@ -1,5 +1,32 @@
 # Hot Cache — 2026-06-03 — Cloud (autonomous gap-closure driver)
 
+## gap-closure-driver run — 2026-06-03 (run 4)
+
+**Action taken: merge conflict resolved on PR #1657. No new implementation PRs (at 2-PR limit).**
+
+### What happened
+- PR #1657 (`feat/dt2026-gap-closure`) had `mergeable_state: dirty` — blocked the whole stack.
+- Three files had diverged between `feat/dt2026-gap-closure` and `main`:
+  - `wiki/hot.md` — **1 real conflict**: two sessions both prepended entries. Resolved by combining both (2026-06-03 CHARLIE first, 2026-06-02 Walker DT second).
+  - `docker-compose.saas.yml` — auto-merged cleanly (main added `x-bot-common-env` anchor + `mira-ask` service; branch added relay env vars in a different section).
+  - `mira-bots/shared/engine.py` — auto-merged cleanly (main had 3 small surgical changes; branch had 120-line DecisionTraceWriter + direct_connection additions).
+- Merge commit pushed to `feat/dt2026-gap-closure` (commit `7c89681`).
+- PR #1657 state is now `blocked` (no longer `dirty`). Awaiting human review.
+
+### PR state post-run
+| PR | Branch | What | CI | State |
+|----|--------|------|----|-------|
+| #1657 | `feat/dt2026-gap-closure` | Phases 0–5 | compose-mem-lint ✅ | **blocked** (needs review) |
+| #1674 | `feat/dt2026-rls-verification-1664` | RLS tests (#1664), stacked on #1657 | 0 checks (by design) | clean |
+
+**2 of 2 gap-closure PR slots used. Driver stopped.**
+
+### Next actions
+- **Human:** Review + approve PR #1657 → merge → unblocks #1674 and all queued issues.
+- **Driver (run 5):** If ≤1 gap-closure PR open → pick #1662 (kg_writer proposal helper, independent of migrations).
+
+---
+
 ## gap-closure-driver run — 2026-06-03 (run 3, ~09:15 UTC)
 
 **Status confirmed — same stop condition as runs 1 and 2. No new work this run.**
