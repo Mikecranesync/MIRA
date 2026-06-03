@@ -483,6 +483,10 @@ class Supervisor:
         self.vision_model = vision_model
         self.tenant_id = tenant_id or ""
 
+        # Background decision-trace tasks (Phase 9). Holding strong refs keeps
+        # fire-and-forget writes from being GC'd before they complete.
+        self._decision_trace_tasks: set = set()
+
         # Service base URLs for nameplate downstream calls and reactive ingest
         self.mcp_base_url = (
             mcp_base_url or os.getenv("MCP_BASE_URL", "http://mira-mcp:8001")
@@ -909,7 +913,72 @@ class Supervisor:
             response_time_ms=elapsed_ms,
             platform=platform,
         )
+        # Phase 9 — decision trace (observational, fire-and-forget). Scheduled
+        # AFTER the reply is built so it adds zero latency to the user response,
+        # and fully guarded so a trace failure can never affect the reply.
+        self._schedule_decision_trace(
+            chat_id=chat_id,
+            message=message,
+            reply=reply,
+            result=result,
+            platform=platform,
+            latency_ms=elapsed_ms,
+        )
         return reply
+
+    def _schedule_decision_trace(
+        self,
+        *,
+        chat_id: str,
+        message: str,
+        reply: str,
+        result: dict,
+        platform: str,
+        latency_ms: int,
+    ) -> None:
+        """Schedule a non-blocking decision_traces write for this turn.
+
+        Best-effort: gathers the evidence the engine already has on hand (UNS
+        context, RAG sources, citation presence, outcome) and fires the write as
+        a background task. Every step is guarded — a trace failure must never
+        touch the reply path. See mira-bots/shared/decision_trace.py.
+        """
+        try:
+            import asyncio
+
+            from .decision_trace import write_trace
+
+            state = self._load_state(chat_id)
+            ctx = (state.get("context") or {}) if isinstance(state, dict) else {}
+            uns_context = ctx.get("uns_context") if isinstance(ctx, dict) else None
+
+            next_state = result.get("next_state") or ""
+            if next_state == "RESOLVED" or state.get("final_state") == "RESOLVED":
+                outcome = "resolved"
+            elif ctx.get("pending_uns_confirm"):
+                outcome = "gate_fired"
+            else:
+                outcome = None
+
+            tenant_id = getattr(self, "_current_tenant_id", None) or self.tenant_id
+            manual_sources = getattr(getattr(self, "rag", None), "_last_sources", None)
+
+            coro = write_trace(
+                tenant_id=tenant_id,
+                user_question=message,
+                recommendation=reply,
+                platform=platform,
+                uns_context=uns_context,
+                manual_sources=manual_sources,
+                outcome=outcome,
+                latency_ms=latency_ms,
+            )
+            # Hold a reference so the task isn't GC'd before it runs.
+            task = asyncio.create_task(coro)
+            self._decision_trace_tasks.add(task)
+            task.add_done_callback(self._decision_trace_tasks.discard)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("decision_trace schedule skipped: %s", exc)
 
     async def _apply_quality_gate(
         self,
