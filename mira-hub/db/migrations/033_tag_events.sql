@@ -92,6 +92,31 @@ CREATE TABLE IF NOT EXISTS tag_events (
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
+-- Idempotency: the master-plan appendix D2 originally named this column 'ts';
+-- the implementation was updated to 'event_timestamp' for clarity. On the
+-- staging DB the table may already exist with the old column name — rename it
+-- here so subsequent index creation succeeds. Also adds the column if somehow
+-- missing entirely.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name   = 'tag_events'
+          AND column_name  = 'ts'
+    ) THEN
+        ALTER TABLE tag_events RENAME COLUMN ts TO event_timestamp;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name   = 'tag_events'
+          AND column_name  = 'event_timestamp'
+    ) THEN
+        ALTER TABLE tag_events ADD COLUMN event_timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    END IF;
+END $$;
+
 -- Replay / time scans dominate.
 CREATE INDEX IF NOT EXISTS tag_events_tenant_time_idx
     ON tag_events (tenant_id, event_timestamp DESC);
