@@ -1,5 +1,11 @@
 # Hot Cache — 2026-05-29 — ALPHA
 
+## Session — 2026-06-03 (CHARLIE) — prod pipeline outage + CI prevention
+
+- **Prod chat outage (2026-06-02), resolved.** Merging #1593 (Command Center + Ignition-Module umbrella) crash-looped `mira-pipeline-saas` on `ModuleNotFoundError` (the Ignition cutover added `ignition_chat.py`/`ignition_audit.py` but `mira-pipeline/Dockerfile` used per-file `COPY` and didn't list them). Fixed: `COPY mira-pipeline/*.py .` (#1667 → #1670). Prod healthy: `app.factorylm.com` 200, `/api/health` 200, pipeline Up/healthy. Full writeup: `docs/incidents/2026-06-02-prod-pipeline-deploy.md`.
+- **Deploy hotfix-bypass was itself broken** — its audit `gh issue create` failed (token lacks `issues:write`) and aborted every hotfix deploy. Fixed by making issue-creation **non-fatal** (#1673) — **not** by broadening token permissions.
+- **CI prevention (this work):** `docker-build-check` in `ci.yml` now **builds `mira-pipeline` + runs an `import main` smoke-test** (a successful build alone does NOT catch a missing imported module — it crashes at startup). Verified locally: passes on fixed main, fails (`ModuleNotFoundError`) on the pre-incident Dockerfile.
+
 ## Session — 2026-05-29 (printing-press toolchain bootstrap + Linear/Stripe CLIs)
 
 Work spanned 2026-05-10 → 2026-05-29; landing now as one continuity entry. Local `main` was 447 commits behind origin when commit happened — reset to origin/main, re-applied this block on top of current hot.md.

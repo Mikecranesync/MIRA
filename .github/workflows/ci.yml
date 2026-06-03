@@ -345,3 +345,31 @@ jobs:
 
       - name: Scan mira-mcp
         run: trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 mira-mcp:scan
+
+      # --- mira-pipeline (added 2026-06-03 after the prod-chat outage) ------------
+      # mira-pipeline was the only saas image NOT built in CI, so the Ignition
+      # cutover's missing Dockerfile COPYs slipped to prod (ModuleNotFoundError:
+      # ignition_chat, then ignition_audit -> crash-loop). See
+      # docs/incidents/2026-06-02-prod-pipeline-deploy.md.
+      - name: Build mira-pipeline
+        # Context is the repo root (.) to match docker-compose.saas.yml — the
+        # Dockerfile COPYs mira-bots/shared/, mira-pipeline/*.py, VERSION (repo root).
+        run: |
+          docker buildx build \
+            -f mira-pipeline/Dockerfile . \
+            --cache-from type=gha,scope=mira-pipeline \
+            --cache-to type=gha,mode=max,scope=mira-pipeline \
+            -t mira-pipeline:scan --load
+
+      - name: Import smoke-test mira-pipeline
+        # A successful BUILD does NOT catch a module that main.py imports but the
+        # Dockerfile forgot to COPY — that only fails at container startup
+        # (uvicorn main:app -> import main). This reproduces that import so a
+        # missing/uncopied module fails CI here instead of crash-looping prod.
+        # No secrets needed: main.py's module level only declares the app + routers
+        # (DB/engine init happens in the lifespan handler, not at import).
+        run: |
+          if ! timeout 120 docker run --rm --entrypoint python mira-pipeline:scan -c "import main"; then
+            echo "::error::mira-pipeline image failed 'import main' — a module imported by main.py is missing from the image (check Dockerfile COPYs). This is the 2026-06-02 outage class (ModuleNotFoundError at startup)."
+            exit 1
+          fi
