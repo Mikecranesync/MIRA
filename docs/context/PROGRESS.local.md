@@ -818,4 +818,57 @@ from `.claude/settings.json`.
 - ?? tests/eval/runs/2026-05-30T0344-offline-text.md
 - ?? tests/eval/runs/2026-05-30T0347-offline-text.md
 **Next:** _set by next session_
+
+### 2026-06-03 06:16 UTC — `docs/gap-closure-status-sync-2026-06-03`
+**Last commit:** ca66218 docs(ops): gap-closure driver status sync — 2026-06-03
+**Changed (vs. fork point):**
+- .claude/rules/fieldbus-readonly.md
+- .claude/skills/promo-director/SKILL.md
+- .claude/skills/promo-director/references/SCREENSHOT_DEMO_PIPELINE.md
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- content_strategy/output/PUBLISHING_CHECKLIST.md
+- docker-compose.fault-detective.yml
+- docker-compose.override.yml
+- docker-compose.saas.yml
+- docs/adr/0021-ignition-module-first-edge.md
+- docs/adr/README.md
+- docs/audits/2026-05-31-audit.md
+- docs/command-center-ignition-display.md
+- docs/context/PROGRESS.local.md
+- docs/environments.md
+- docs/instructions/Conv_Simple_Ignition_Perspective_View.html
+- docs/instructions/Conv_Simple_Ignition_Perspective_View.pdf
+- docs/known-issues.md
+- docs/mira-ignition-secure-architecture.md
+**Working tree:** clean
+**Next:** _set by next session_
+
+### 2026-06-03 06:18 UTC — `docs/gap-closure-status-sync-2026-06-03`
+**Last commit:** ca66218 docs(ops): gap-closure driver status sync — 2026-06-03
+**Changed (vs. fork point):**
+- .claude/rules/fieldbus-readonly.md
+- .claude/skills/promo-director/SKILL.md
+- .claude/skills/promo-director/references/SCREENSHOT_DEMO_PIPELINE.md
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- content_strategy/output/PUBLISHING_CHECKLIST.md
+- docker-compose.fault-detective.yml
+- docker-compose.override.yml
+- docker-compose.saas.yml
+- docs/adr/0021-ignition-module-first-edge.md
+- docs/adr/README.md
+- docs/audits/2026-05-31-audit.md
+- docs/command-center-ignition-display.md
+- docs/context/PROGRESS.local.md
+- docs/environments.md
+- docs/instructions/Conv_Simple_Ignition_Perspective_View.html
+- docs/instructions/Conv_Simple_Ignition_Perspective_View.pdf
+- docs/known-issues.md
+- docs/mira-ignition-secure-architecture.md
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
