@@ -58,6 +58,20 @@ class TestStatusHandler:
 
 class TestChatHandler:
     def test_chat_proxies_to_sidecar(self, webdev_scripts_dir):
+        import sys
+
+        # Inject a test HMAC key: make the properties file appear to exist so
+        # getMiraConfig() returns the key and the handler reaches the proxy path.
+        # The autouse mock_ignition_system fixture creates fresh Java mocks per test,
+        # so these modifications are isolated to this test.
+        sys.modules["java.io.File"].return_value.exists.return_value = True
+        sys.modules["java.util.Properties"].return_value.getProperty.side_effect = (
+            lambda key, default="": {
+                "MIRA_IGNITION_HMAC_KEY": "test-key-ci",
+                "MIRA_TENANT_ID": "00000000-0000-0000-0000-000000000001",
+            }.get(key, default)
+        )
+
         handler = load_handler(webdev_scripts_dir / "api" / "chat" / "doPost.py", "doPost")
         request = {
             "postData": {

@@ -21,12 +21,12 @@ BEGIN;
 --   distinct — see master plan D5).
 --
 -- KEYING — append-only. trace_id is a UUID PK; the logical key is
---   (tenant_id, created_at), indexed. No UPDATE / DELETE from the app role.
+--   (tenant_id, ts), indexed. No UPDATE / DELETE from the app role.
 --
 -- UUID NOTE — the master plan's first-pass SQL suggested UUIDv7 for
 --   sortability. The rest of the Hub schema uses gen_random_uuid()
 --   (Postgres-native, no extension, works on NeonDB today), so we follow
---   the house convention and rely on the (tenant_id, created_at) index for
+--   the house convention and rely on the (tenant_id, ts) index for
 --   time-ordering. Recorded in ADR-0022.
 --
 -- EVIDENCE COLUMNS — tag_evidence / manual_evidence / kg_evidence are JSONB
@@ -96,12 +96,12 @@ CREATE TABLE IF NOT EXISTS decision_traces (
     model_used TEXT,
     latency_ms INTEGER,
 
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    ts TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Admin tail "last N traces for tenant X" dominates the read path.
 CREATE INDEX IF NOT EXISTS decision_traces_tenant_time_idx
-    ON decision_traces (tenant_id, created_at DESC);
+    ON decision_traces (tenant_id, ts DESC);
 
 -- "All traces for this incident".
 CREATE INDEX IF NOT EXISTS decision_traces_session_idx
@@ -114,7 +114,7 @@ CREATE INDEX IF NOT EXISTS decision_traces_uns_path_gist
 
 -- Groundedness sweep: find ungrounded replies fast.
 CREATE INDEX IF NOT EXISTS decision_traces_uncited_idx
-    ON decision_traces (tenant_id, created_at DESC)
+    ON decision_traces (tenant_id, ts DESC)
     WHERE citations_present = false;
 
 ALTER TABLE decision_traces ENABLE ROW LEVEL SECURITY;
