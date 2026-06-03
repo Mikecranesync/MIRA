@@ -818,4 +818,84 @@ from `.claude/settings.json`.
 - ?? tests/eval/runs/2026-05-30T0344-offline-text.md
 - ?? tests/eval/runs/2026-05-30T0347-offline-text.md
 **Next:** _set by next session_
+
+### 2026-06-03 14:13 UTC — `chore/promo-director-refresh-2026-06-03`
+**Last commit:** 862a2f0 chore(promo-director): COMPETITOR_ANALYSIS.md refresh 2026-06-03
+**Changed (vs. fork point):**
+- .claude/rules/fieldbus-readonly.md
+- .claude/skills/promo-director/SKILL.md
+- .claude/skills/promo-director/references/COMPETITOR_ANALYSIS.md
+- .claude/skills/promo-director/references/SCREENSHOT_DEMO_PIPELINE.md
+- .github/workflows/ci.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- NORTH_STAR.md
+- content_strategy/output/PUBLISHING_CHECKLIST.md
+- docker-compose.fault-detective.yml
+- docker-compose.override.yml
+- docker-compose.saas.yml
+- docs/adr/0021-ignition-module-first-edge.md
+- docs/adr/README.md
+- docs/audits/2026-05-31-audit.md
+- docs/command-center-ignition-display.md
+- docs/context/PROGRESS.local.md
+- docs/environments.md
+- docs/incidents/2026-06-02-prod-pipeline-deploy.md
+**Working tree:** clean
+**Next:** _set by next session_
+
+### 2026-06-03 14:14 UTC — `chore/promo-director-refresh-2026-06-03`
+**Last commit:** 8a6d006 fix(ask_api): sort imports in app.py (ruff I001)
+**Changed (vs. fork point):**
+- .claude/rules/fieldbus-readonly.md
+- .claude/skills/promo-director/SKILL.md
+- .claude/skills/promo-director/references/COMPETITOR_ANALYSIS.md
+- .claude/skills/promo-director/references/SCREENSHOT_DEMO_PIPELINE.md
+- .github/workflows/ci.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- NORTH_STAR.md
+- content_strategy/output/PUBLISHING_CHECKLIST.md
+- docker-compose.fault-detective.yml
+- docker-compose.override.yml
+- docker-compose.saas.yml
+- docs/adr/0021-ignition-module-first-edge.md
+- docs/adr/README.md
+- docs/audits/2026-05-31-audit.md
+- docs/command-center-ignition-display.md
+- docs/context/PROGRESS.local.md
+- docs/environments.md
+- docs/incidents/2026-06-02-prod-pipeline-deploy.md
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+**Next:** _set by next session_
+
+### 2026-06-03 14:16 UTC — `chore/promo-director-refresh-2026-06-03`
+**Last commit:** 8a6d006 fix(ask_api): sort imports in app.py (ruff I001)
+**Changed (vs. fork point):**
+- .claude/rules/fieldbus-readonly.md
+- .claude/skills/promo-director/SKILL.md
+- .claude/skills/promo-director/references/COMPETITOR_ANALYSIS.md
+- .claude/skills/promo-director/references/SCREENSHOT_DEMO_PIPELINE.md
+- .github/workflows/ci.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- NORTH_STAR.md
+- content_strategy/output/PUBLISHING_CHECKLIST.md
+- docker-compose.fault-detective.yml
+- docker-compose.override.yml
+- docker-compose.saas.yml
+- docs/adr/0021-ignition-module-first-edge.md
+- docs/adr/README.md
+- docs/audits/2026-05-31-audit.md
+- docs/command-center-ignition-display.md
+- docs/context/PROGRESS.local.md
+- docs/environments.md
+- docs/incidents/2026-06-02-prod-pipeline-deploy.md
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
