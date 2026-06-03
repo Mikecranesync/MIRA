@@ -3,6 +3,7 @@ import { sessionOrDemo } from "@/lib/demo-auth";
 import { withTenantContext } from "@/lib/tenant-context";
 import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 import { countTransitions } from "@/lib/signal-recorder";
+import { extractTrace, recordQueryTrace, type TraceGroundingLike } from "@/lib/knowledge-graph/trace";
 
 export const dynamic = "force-dynamic";
 
@@ -404,6 +405,28 @@ export async function POST(req: Request) {
       [ctx.tenantId, session.id, JSON.stringify([userTurn, assistantTurn])],
     ),
   );
+
+  // ── 5b. Capture reasoning trace (best-effort; never blocks the answer) ──
+  try {
+    const traced = extractTrace(
+      grounding as unknown as TraceGroundingLike,
+      (session.asset_id as string | null) ?? null,
+    );
+    if (traced.entityIds.length > 0) {
+      await withTenantContext(ctx.tenantId, (c) =>
+        recordQueryTrace(c, ctx.tenantId, {
+          sessionId: session.id,
+          questionTurnIndex: 0,
+          rootId: (session.asset_id as string | null) ?? null,
+          question: body.question,
+          provider: result.provider,
+          extracted: traced,
+        }),
+      );
+    }
+  } catch (err) {
+    console.error("[mira/ask] trace capture failed (non-fatal):", err);
+  }
 
   // ── 6. Diagnostic trend proposal ─────────────────────────────────────
   // When the question implies a recurring fault, return a `trend_proposal`
