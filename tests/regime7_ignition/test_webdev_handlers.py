@@ -11,7 +11,6 @@ import importlib.util
 import sys
 from pathlib import Path
 
-import pytest
 
 
 def load_handler(script_path: Path, handler_name: str = "doGet"):
@@ -58,6 +57,21 @@ class TestStatusHandler:
 
 class TestChatHandler:
     def test_chat_proxies_to_sidecar(self, webdev_scripts_dir):
+        # doPost.py fails-closed without MIRA_IGNITION_HMAC_KEY; configure the
+        # Java mock so getMiraConfig() returns a non-empty test key.
+        import java.io.File
+
+        java.io.File.return_value.exists.return_value = True
+
+        import java.util.Properties
+
+        java.util.Properties.return_value.getProperty.side_effect = (
+            lambda key, default="": {
+                "MIRA_IGNITION_HMAC_KEY": "test-hmac-key-32-bytes-for-testing!",
+                "MIRA_TENANT_ID": "test-tenant",
+            }.get(key, default)
+        )
+
         handler = load_handler(webdev_scripts_dir / "api" / "chat" / "doPost.py", "doPost")
         request = {
             "postData": {
