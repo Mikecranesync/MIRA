@@ -26,8 +26,11 @@ import type { PoolClient } from "pg";
 import {
   inferSameModelPairs,
   inferCoFailedPairs,
+  inferComponentManualPairs,
   type SameModelInput,
   type CoFailEvent,
+  type ComponentInput,
+  type ManualInput,
 } from "@/lib/knowledge-graph/inference";
 import { upsertInferredProposal } from "@/lib/knowledge-graph/proposals-writer";
 
@@ -72,7 +75,7 @@ if (!process.env.NEON_DATABASE_URL) {
   process.exit(1);
 }
 
-async function run(tenant: string): Promise<{ sameModel: [number, number]; coFailed: [number, number] }> {
+async function run(tenant: string): Promise<{ sameModel: [number, number]; coFailed: [number, number]; componentManual: [number, number] }> {
   return withKgContext(tenant, async (client) => {
     // ── 1. Same-model inference ──────────────────────────────────────────
     const eqRes = await client.query<{ id: string; manufacturer: string | null; model: string | null }>(
@@ -151,9 +154,77 @@ async function run(tenant: string): Promise<{ sameModel: [number, number]; coFai
       if (id !== null) coFailedWritten++;
     }
 
+    // ── 3. Component → manual inference (HAS_DOCUMENT) ──────────────────
+    const compRes = await client.query<{
+      id: string;
+      entity_type: string;
+      manufacturer: string | null;
+      model: string | null;
+    }>(
+      `SELECT id, entity_type,
+              properties->>'manufacturer' AS manufacturer,
+              properties->>'model_number' AS model
+         FROM kg_entities
+        WHERE tenant_id = $1 AND entity_type IN ('component', 'equipment')`,
+      [tenant],
+    );
+    const entityTypeMap = new Map<string, string>(
+      compRes.rows.map((r) => [r.id, r.entity_type]),
+    );
+    const componentInputs: ComponentInput[] = compRes.rows.map((r) => ({
+      id: r.id,
+      manufacturer: r.manufacturer,
+      model: r.model,
+    }));
+
+    const manualRes = await client.query<{
+      id: string;
+      title: string | null;
+      manufacturer: string | null;
+      model: string | null;
+    }>(
+      `SELECT id, name AS title,
+              properties->>'manufacturer' AS manufacturer,
+              properties->>'model_number' AS model
+         FROM kg_entities
+        WHERE tenant_id = $1 AND entity_type = 'manual'`,
+      [tenant],
+    );
+    const manualInputs: ManualInput[] = manualRes.rows.map((r) => ({
+      id: r.id,
+      manufacturer: r.manufacturer,
+      model: r.model,
+      title: r.title,
+    }));
+
+    const componentManualMatches = inferComponentManualPairs(componentInputs, manualInputs);
+
+    let componentManualWritten = 0;
+    for (const m of componentManualMatches) {
+      const sourceEntityType = entityTypeMap.get(m.componentId) ?? "component";
+      const id = await upsertInferredProposal(client, tenant, {
+        sourceEntityId: m.componentId,
+        sourceEntityType,
+        targetEntityId: m.manualId,
+        targetEntityType: "manual",
+        relationshipType: "HAS_DOCUMENT",
+        confidence: m.confidence,
+        reasoning: m.reason,
+        evidence: [
+          {
+            evidenceType: "oem_kb",
+            sourceDescription: m.reason,
+            confidenceContribution: m.confidence,
+          },
+        ],
+      });
+      if (id !== null) componentManualWritten++;
+    }
+
     return {
       sameModel: [sameModelWritten, sameModelPairs.length],
       coFailed: [coFailedWritten, coFailedPairs.length],
+      componentManual: [componentManualWritten, componentManualMatches.length],
     };
   });
 }
@@ -162,7 +233,8 @@ try {
   const result = await run(tenantId);
   console.log(
     `[kg-infer] tenant=${tenantId} same_model: ${result.sameModel[0]}/${result.sameModel[1]}, ` +
-      `co_failed: ${result.coFailed[0]}/${result.coFailed[1]}`,
+      `co_failed: ${result.coFailed[0]}/${result.coFailed[1]}, ` +
+      `component_manual: ${result.componentManual[0]}/${result.componentManual[1]}`,
   );
   await pool.end();
   process.exit(0);
