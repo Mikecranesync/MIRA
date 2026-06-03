@@ -40,9 +40,32 @@ from mira_connectors.canonical import (
     RawRecord,
     RecordType,
 )
+from mira_connectors.confirmation_gate import (
+    ConfirmResult,
+    ConnectorConfirmationGate,
+    CorrectResult,
+    ProposeResult,
+    RejectResult,
+)
 from mira_connectors.factory import available_providers, create_connector
+from mira_connectors.service import ImportProposeResult, import_and_propose
+from mira_connectors.store import (
+    InMemoryProposalStore,
+    PostgresProposalStore,
+    ProposalStore,
+)
 
 __all__ = [
+    "ConnectorConfirmationGate",
+    "ImportProposeResult",
+    "import_and_propose",
+    "ConfirmResult",
+    "CorrectResult",
+    "ProposeResult",
+    "RejectResult",
+    "InMemoryProposalStore",
+    "PostgresProposalStore",
+    "ProposalStore",
     "BaseConnector",
     "Connector",
     "ConnectorCapabilities",
