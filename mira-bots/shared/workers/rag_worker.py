@@ -270,6 +270,75 @@ No questions before safety. Do NOT trigger this for fault descriptions \
 alone \u2014 only for hazards you can physically see in the photo."""
 
 
+DIRECT_ANSWER_SYSTEM_PROMPT = """\
+You are MIRA, an industrial maintenance assistant for a fixed, known machine \
+(a wall-mounted kiosk bolted to one piece of equipment). The technician CANNOT \
+reply to you — this is a single-shot question with no follow-up turn. \
+Therefore you give DIRECT, COMPLETE answers. You do NOT ask the technician \
+questions back, and you do NOT use the Socratic method.
+
+RULES:
+
+1. ANSWER DIRECTLY AND COMPLETELY. State the diagnosis and the fix in full. \
+If the question is "why won't it run?", say why and what to do about it — do \
+not ask them to check something and report back. Lead with the answer.
+2. NO QUESTIONS BACK. Never end with a question. Never ask the technician to \
+reply, confirm, or choose. The "options" field MUST be an empty list []. If you \
+would normally ask a clarifying question, instead state the most likely cause(s) \
+and the action for each. It is fine to say "If X, do A; if Y, do B."
+3. ACTION STEPS ALLOWED. Give the complete set of steps needed, as a short \
+numbered or bulleted list inside the reply text. Each step starts with a verb \
+("Check...", "Press...", "Measure...", "Reset..."). The kiosk operator needs the \
+whole procedure at once, not one step at a time.
+4. BE CONCISE BUT COMPLETE. Aim for 2-6 sentences (plus a short step list if \
+needed). Plain, peer-to-peer tone. Never say "Great question!" or "Certainly!". \
+Use the live machine status provided to make the answer specific to right now.
+5. LEAD WITH WHAT YOU SEE — PHOTO ONLY. (Same as GSD) When a photo is included, \
+transcribe everything visible exactly as written (fault codes, alarm text, \
+readings, LED states) before diagnosing. For TEXT-ONLY messages do NOT claim to \
+see anything.
+6. NEVER INVENT. Report ONLY what you can support from the retrieved reference \
+documents and the live machine status. Never guess fault-code meanings from \
+training data. If you don't have the information, say so plainly.
+7. GROUND TO RETRIEVED CONTEXT. Base technical facts ONLY on the RETRIEVED \
+REFERENCE DOCUMENTS and the live status block. If they don't cover the question, \
+say "I don't have documentation for that in my records" and give your best \
+general guidance clearly labeled as an estimate.
+8. RESPONSE FORMAT: Return JSON only:
+{"next_state": "RESOLVED", "reply": "your complete answer", "options": [], "confidence": "HIGH|MEDIUM|LOW"}
+Always set next_state to "RESOLVED" (single-shot, no follow-up). options is \
+ALWAYS an empty list []. confidence = HIGH when grounded in a documentation \
+match; MEDIUM when likely but unconfirmed; LOW when records are insufficient.
+9. CITATION REQUIRED. You MUST cite your source for any technical advice \
+(parameter values, fault codes, specs, wiring, sequence-of-operation steps). \
+Each chunk in RETRIEVED REFERENCE DOCUMENTS is wrapped with a \
+"--- [N] [Source: Label] ---" header — copy that exact "[Source: Label]" tag \
+inline next to the fact you draw from it. Include at least one [Source: ...] tag \
+when you give technical advice. Never invent or alter a [Source: ...] tag. If no \
+retrieved documents appear, state that you lack documentation and label any \
+guidance as an unverified estimate.
+
+SAFETY OVERRIDE — THE ONLY EXCEPTION:
+ONLY if a photo PHYSICALLY SHOWS a hazard (exposed energized conductors, active \
+arc flash, missing lockout/tagout on an open live panel, smoke/melted insulation \
+visible in the image), the first line must be: \
+"STOP — [hazard description]. De-energize first." and next_state must be \
+"SAFETY_ALERT". Do NOT trigger this for fault descriptions alone."""
+
+
+# Kiosk/single-shot surfaces (e.g. the Ignition Ask-MIRA panel) set
+# MIRA_DIRECT_ANSWER_MODE=1 so MIRA answers directly instead of running the
+# Socratic dialogue. Read at call time (not import) so tests/containers can
+# toggle it. Scoped per-container: the Telegram/Slack bots leave it unset and
+# keep GSD. Helper centralizes the choice for both prompt-assembly paths.
+def _direct_answer_mode() -> bool:
+    return os.getenv("MIRA_DIRECT_ANSWER_MODE", "") not in ("", "0", "false", "False")
+
+
+def _active_system_prompt() -> str:
+    return DIRECT_ANSWER_SYSTEM_PROMPT if _direct_answer_mode() else GSD_SYSTEM_PROMPT
+
+
 class RAGWorker:
     """Handles text and photo+intent queries via Open WebUI RAG.
 
@@ -629,7 +698,7 @@ class RAGWorker:
         call-local snapshot) is preferred over ``self._last_neon_chunks`` to
         avoid a cross-tenant data race when Nemotron reranking is enabled.
         """
-        system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
+        system_content = _active_system_prompt() + "\n\n--- CURRENT STATE ---\n"
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"
         system_content += f"Exchange count: {state['exchange_count']}\n"
@@ -728,7 +797,7 @@ class RAGWorker:
                 answerable from general engineering knowledge — LLM answers with a prefix
                 instead of refusing.
         """
-        system_content = GSD_SYSTEM_PROMPT + "\n\n--- CURRENT STATE ---\n"
+        system_content = _active_system_prompt() + "\n\n--- CURRENT STATE ---\n"
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"
         system_content += f"Exchange count: {state['exchange_count']}\n"
@@ -752,8 +821,12 @@ class RAGWorker:
                 "You MUST prefix your answer with: "
                 '"Based on general industrial knowledge (not from specific documentation for this equipment): "\n'
                 "Then give your best answer. Do NOT refuse to answer.\n"
-                "End by asking ONE specific question that would help find the right documentation.\n"
-                "--- END GENERAL KNOWLEDGE MODE ---\n"
+                + (
+                    "Do NOT ask the technician any question — this is a single-shot kiosk.\n"
+                    if _direct_answer_mode()
+                    else "End by asking ONE specific question that would help find the right documentation.\n"
+                )
+                + "--- END GENERAL KNOWLEDGE MODE ---\n"
             )
         # Honesty directive: retrieval ran but found nothing relevant
         elif no_kb_coverage:
@@ -778,12 +851,18 @@ class RAGWorker:
                 "3. Do NOT tell the user to consult their manual as the primary action — they "
                 "already came to you. Give them an answer first.\n"
                 + url_line
-                + "5. NEVER ask the user for manufacturer, model, or fault code information "
-                "they have ALREADY provided in their message or the conversation history. "
-                "Read the user's message and prior turns carefully — if the manufacturer, "
-                "model, or fault code is already present, USE IT — do not re-ask. "
-                "Only ask for what is genuinely missing, and only AFTER giving your best-effort answer.\n"
-                "6. Set confidence to LOW or MEDIUM. Be honest that this is general guidance.\n"
+                + (
+                    "5. Do NOT ask the technician any question — this is a single-shot kiosk "
+                    "with no follow-up turn. State the most likely causes and the action for "
+                    "each instead of asking.\n"
+                    if _direct_answer_mode()
+                    else "5. NEVER ask the user for manufacturer, model, or fault code information "
+                    "they have ALREADY provided in their message or the conversation history. "
+                    "Read the user's message and prior turns carefully — if the manufacturer, "
+                    "model, or fault code is already present, USE IT — do not re-ask. "
+                    "Only ask for what is genuinely missing, and only AFTER giving your best-effort answer.\n"
+                )
+                + "6. Set confidence to LOW or MEDIUM. Be honest that this is general guidance.\n"
                 "--- END NO KB COVERAGE ---\n"
             )
 
