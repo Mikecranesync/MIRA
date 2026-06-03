@@ -18,6 +18,7 @@ export interface RelRow {
   relationship_type: string;
   confidence: number | null;
   approval_state: string | null;
+  proposal_id?: string | null;
 }
 
 export interface GraphNode {
@@ -34,6 +35,7 @@ export interface GraphLink {
   type: string;
   confidence: number;
   state: string;
+  proposalId?: string;
 }
 
 export interface GraphPayload {
@@ -60,13 +62,15 @@ export function buildGraphPayload(entities: EntityRow[], rels: RelRow[]): GraphP
     if (!src || !tgt) continue; // drop dangling edges
     src.degree += 1;
     tgt.degree += 1;
-    links.push({
+    const link: GraphLink = {
       source: r.source_id,
       target: r.target_id,
       type: r.relationship_type,
       confidence: r.confidence ?? 1,
       state: r.approval_state ?? "verified",
-    });
+    };
+    if (r.proposal_id) link.proposalId = r.proposal_id;
+    links.push(link);
   }
 
   return { nodes: [...nodes.values()], links };

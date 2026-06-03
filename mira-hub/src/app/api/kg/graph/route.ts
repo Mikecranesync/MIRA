@@ -29,6 +29,7 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const typeParam = url.searchParams.get("types");
+  const includeProposals = url.searchParams.get("includeProposals") === "true";
 
   try {
     const { entities, rels } = await withTenantContext(ctx.tenantId, async (c) => {
@@ -40,10 +41,19 @@ export async function GET(req: Request) {
         [ctx.tenantId, NODE_CAP],
       );
       const r = await c.query<RelRow>(
-        `SELECT source_id, target_id, relationship_type, confidence, approval_state
-           FROM kg_relationships
-          WHERE tenant_id = $1::uuid
-          LIMIT $2`,
+        includeProposals
+          ? `SELECT source_id, target_id, relationship_type, confidence, approval_state, NULL::uuid AS proposal_id
+               FROM kg_relationships
+              WHERE tenant_id = $1::uuid
+             UNION ALL
+             SELECT source_entity_id, target_entity_id, relationship_type, confidence, 'proposed' AS approval_state, id AS proposal_id
+               FROM relationship_proposals
+              WHERE tenant_id = $1::uuid AND status = 'proposed'
+             LIMIT $2`
+          : `SELECT source_id, target_id, relationship_type, confidence, approval_state, NULL::uuid AS proposal_id
+               FROM kg_relationships
+              WHERE tenant_id = $1::uuid
+             LIMIT $2`,
         [ctx.tenantId, EDGE_CAP],
       );
       return { entities: e.rows, rels: r.rows };
