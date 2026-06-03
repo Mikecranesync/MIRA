@@ -1,7 +1,9 @@
 BEGIN;
 
--- Migration 030: Add SAME_MODEL_AS + CO_FAILED_WITH + SIMILAR_TO to
+-- Migration 032: Add SAME_MODEL_AS + CO_FAILED_WITH + SIMILAR_TO to
 -- relationship_proposals.relationship_type.
+-- (Renumbered from 030 → 032: main added 030_display_endpoints_registry and
+--  031_ignition_audit_log in parallel, so 030/031 were taken.)
 --
 -- Spec : docs/superpowers/specs/2026-06-02-kg-relationship-graph-design.md
 -- Plan : docs/superpowers/plans/2026-06-02-kg-graph-phase2-enrich.md
