@@ -332,6 +332,14 @@ _DST_ENABLED = os.getenv("MIRA_USE_DST", "0") == "1"
 # out in docs/plans/2026-05-15-maintenance-namespace-builder.md Phase 1 acceptance.
 _UNS_GATE_ENABLED = os.getenv("MIRA_UNS_GATE_ENABLED", "1") == "1"
 
+# Single-shot kiosk mode (e.g. the Ignition Ask-MIRA panel). When on, MIRA
+# answers directly (see rag_worker DIRECT_ANSWER_SYSTEM_PROMPT) AND the engine
+# suppresses interactive follow-ups that a kiosk operator can't act on: the
+# auto work-order prompt (which also arms cmms_pending and would corrupt the
+# next single-shot turn) and the recurring-fault "log a work order?" annotation.
+# Scoped per-container: bots leave it unset and keep the full interactive flow.
+_DIRECT_ANSWER_MODE = os.getenv("MIRA_DIRECT_ANSWER_MODE", "") not in ("", "0", "false", "False")
+
 # Stage 0 (2026-05-04) action-request fast-path. Catches imperative
 # work-order requests BEFORE `route_intent`, which currently sends them
 # into RAG (CRITICAL RULE 3 prefers continue_current mid-flow). Without
@@ -1986,7 +1994,9 @@ class Supervisor:
         # explicitly says "create a work order", "log this", etc.
         # We still run recurring-fault annotation on RESOLVED so persistent
         # issues are flagged, but we do not push the WO preview.
-        if state["state"] == "RESOLVED":
+        # Skip in direct-answer/kiosk mode: the annotation appends a "log a work
+        # order?" question the kiosk operator can't act on (single-shot turn).
+        if state["state"] == "RESOLVED" and not _DIRECT_ANSWER_MODE:
             try:
                 _annotated, _pushed = await check_recurring_and_annotate(
                     self.db_path, state, parsed["reply"]
@@ -2016,6 +2026,7 @@ class Supervisor:
         # say "yes" to actually create the WO; the prompt just arms cmms_pending.
         if (
             state["state"] == "RESOLVED"
+            and not _DIRECT_ANSWER_MODE  # kiosk is single-shot: no WO prompt, don't arm cmms_pending
             and state.get("asset_identified")
             and (state.get("fault_category") or state.get("exchange_count", 0) >= 3)
             and not ctx.get("cmms_pending")
