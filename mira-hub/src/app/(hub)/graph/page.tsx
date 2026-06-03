@@ -102,6 +102,7 @@ function GraphView() {
 
   const verifiedCount = useMemo(() => (raw?.links ?? []).filter((l) => l.state !== "proposed").length, [raw]);
   const proposedCount = useMemo(() => (raw?.links ?? []).filter((l) => l.state === "proposed").length, [raw]);
+  const density = Math.min(verifiedCount / 24, 1); // 0..1 → ambient glow + lattice brightness
 
   // Default "Show suggestions" ON the first time we load a graph with 0 verified
   // edges but >0 proposed — so the user isn't staring at disconnected dots.
@@ -169,7 +170,27 @@ function GraphView() {
   const showEmptyState = verifiedCount === 0 && proposedCount > 0;
 
   return (
-    <div className="relative h-[calc(100vh-4rem)] w-full">
+    <div className="relative h-[calc(100vh-4rem)] w-full overflow-hidden bg-[#05070d]">
+      {/* depth */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{ background: "radial-gradient(ellipse at 50% 45%, #0b1018 0%, #05070d 62%, #03040a 100%)" }}
+      />
+      {/* knowledge-density ambient sphere (more verified knowledge → stronger glow) */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div
+          style={{
+            width: "62vmin",
+            height: "62vmin",
+            borderRadius: "50%",
+            background:
+              "radial-gradient(circle, rgba(94,234,212,0.16) 0%, rgba(94,234,212,0.05) 46%, rgba(0,0,0,0) 70%)",
+            opacity: 0.22 + 0.6 * density,
+            filter: "blur(8px)",
+          }}
+        />
+      </div>
+
       {showEmptyState && (
         <div className="absolute left-1/2 top-4 z-20 w-[min(92vw,640px)] -translate-x-1/2 rounded-md border border-sky-500/40 bg-sky-500/10 px-4 py-2 text-center text-sm text-sky-100">
           No verified relationships yet. MIRA found <span className="font-semibold">{proposedCount}</span> suggested connection
@@ -191,7 +212,7 @@ function GraphView() {
         </div>
       )}
 
-      <div className="absolute left-4 top-4 z-10 w-64 space-y-2 rounded-md bg-slate-900/80 p-3 text-sm text-slate-200">
+      <div className="absolute left-4 top-4 z-10 w-56 max-h-[44vh] overflow-y-auto space-y-2 rounded-md bg-slate-900/80 p-3 text-sm text-slate-200 sm:w-64">
         <div className="font-semibold text-white">Relationship Graph</div>
         <div className="text-xs text-slate-400">
           {view.nodes.length}/{raw.nodes.length} nodes · {view.links.length} edges{raw.capped ? " (capped)" : ""}
@@ -240,7 +261,7 @@ function GraphView() {
           const src = nodeById.get(endId(selectedEdge.source))?.label ?? "this component";
           const tgt = nodeById.get(endId(selectedEdge.target))?.label ?? "this item";
           return (
-            <div className="absolute right-4 top-4 z-10 w-80 rounded-md bg-slate-900/95 p-4 text-sm text-slate-200">
+            <div className="absolute inset-x-2 bottom-2 z-20 w-auto rounded-xl bg-slate-900/95 p-4 text-sm text-slate-200 sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-4 sm:w-80 sm:rounded-md">
               <button onClick={() => setSelectedEdge(null)} className="float-right text-slate-500 hover:text-slate-300">
                 ✕
               </button>
@@ -277,7 +298,7 @@ function GraphView() {
         })()}
 
       {selected && !selectedEdge && (
-        <div className="absolute right-4 top-4 z-10 w-72 rounded-md bg-slate-900/90 p-4 text-sm text-slate-200">
+        <div className="absolute inset-x-2 bottom-2 z-20 w-auto rounded-xl bg-slate-900/90 p-4 text-sm text-slate-200 sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-4 sm:w-72 sm:rounded-md">
           <button onClick={() => setSelected(null)} className="float-right text-slate-500 hover:text-slate-300">
             ✕
           </button>
@@ -288,15 +309,28 @@ function GraphView() {
         </div>
       )}
 
-      <GraphCanvas
-        data={view}
-        onNodeClick={(n) => {
-          setSelected(n);
-          setSelectedEdge(null);
-        }}
-        onLinkClick={(l) => setSelectedEdge(l.proposalId ? l : null)}
-        highlightNodeIds={trace?.ids}
-      />
+      <div className="absolute inset-0">
+        <GraphCanvas
+          data={view}
+          onNodeClick={(n) => {
+            setSelected(n);
+            setSelectedEdge(null);
+          }}
+          onLinkClick={(l) => setSelectedEdge(l.proposalId ? l : null)}
+          highlightNodeIds={trace?.ids}
+          intensity={density}
+        />
+      </div>
+
+      <div className="pointer-events-none absolute bottom-3 left-3 z-10 hidden rounded-md bg-slate-900/55 px-3 py-2 text-[10px] leading-relaxed text-slate-400 backdrop-blur-sm sm:block">
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block h-px w-4" style={{ background: "rgba(94,234,212,0.7)" }} /> solid = verified
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block w-4 border-t border-dashed" style={{ borderColor: "rgba(120,150,135,0.85)" }} /> dashed = proposed by MIRA
+        </div>
+        <div className="mt-0.5 text-slate-500">green network = connected knowledge</div>
+      </div>
     </div>
   );
 }
