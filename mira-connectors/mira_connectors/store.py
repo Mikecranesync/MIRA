@@ -14,7 +14,11 @@ Two implementations:
   any offline/dev run ("offline mode is the floor", `.claude/rules/uns-compliance.md` §8).
 - ``PostgresProposalStore`` — SQLAlchemy + ``NullPool`` + ``sslmode=require``, mirroring
   ``mira-bots/shared/neon_recall.py``. Sets the RLS tenant GUC per transaction the way the
-  Hub ``withTenantContext`` does. Not exercised by the offline tests.
+  Hub ``withTenantContext`` does. **Its SQL is schema-verified against the live migrations**
+  (ai_suggestions mig 027, relationship_proposals/evidence mig 018, kg_entities mig
+  001/010/024/025/029, kg_relationships per the Hub decide route) **but is NOT executed by
+  the offline test suite** — the tests run entirely on ``InMemoryProposalStore``. Exercise it
+  against a staging NeonDB before relying on it in production (master-plan migration gate).
 
 Status transitions follow ADR-0017 exactly. When the ADR-0017 helpers
 (``mira_bots/shared/proposal_transition.py`` / ``mira-hub/lib/proposal-transition.ts``)
@@ -506,21 +510,33 @@ class PostgresProposalStore:
 
         from sqlalchemy import text  # noqa: PLC0415
 
+        # Real kg_entities columns (Hub mig 001 + 010 uns_path + 024 source_chunk_id +
+        # 029 approval_state). Natural key is UNIQUE(tenant_id, entity_type, name) per
+        # mig 025/026 — upsert on it so confirming the same entity twice is idempotent
+        # (entity_id is nullable post-025; we fill it with the source natural key, which
+        # also satisfies the pre-025 NOT NULL).
+        entity_id = str(row.properties.get("source_record_id") or row.name)
         with self._tx(row.tenant_id) as conn:
             res = conn.execute(
                 text(
                     """
                     INSERT INTO kg_entities
-                      (id, tenant_id, uns_path, entity_type, name, properties, approval_state)
+                      (id, tenant_id, entity_type, entity_id, name, uns_path,
+                       properties, approval_state)
                     VALUES
-                      (:id, :tenant_id, :uns_path, :entity_type, :name,
+                      (:id, :tenant_id, :entity_type, :entity_id, :name, :uns_path,
                        CAST(:properties AS JSONB), :approval_state)
+                    ON CONFLICT (tenant_id, entity_type, name) DO UPDATE
+                      SET uns_path = COALESCE(EXCLUDED.uns_path, kg_entities.uns_path),
+                          approval_state = EXCLUDED.approval_state,
+                          properties = kg_entities.properties || EXCLUDED.properties,
+                          updated_at = now()
                     RETURNING id
                     """
                 ),
                 {
-                    "id": row.id, "tenant_id": row.tenant_id, "uns_path": row.uns_path,
-                    "entity_type": row.entity_type, "name": row.name,
+                    "id": row.id, "tenant_id": row.tenant_id, "entity_type": row.entity_type,
+                    "entity_id": entity_id, "name": row.name, "uns_path": row.uns_path,
                     "properties": json.dumps(row.properties), "approval_state": row.approval_state,
                 },
             )

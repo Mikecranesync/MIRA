@@ -315,12 +315,15 @@ class ConnectorConfirmationGate:
 
     def _materialize_entity(self, tenant_id: str, sug: SuggestionRow) -> str:
         ed = sug.extracted_data
+        # kg_entities has no proposed_by column (only kg_relationships does, mig 029) —
+        # carry provenance in properties instead.
+        properties = {**ed.get("properties", {}), "proposed_by": sug.proposed_by}
         row = KgEntityRow(
             tenant_id=tenant_id,
-            uns_path=ed.get("uns_path"),
+            uns_path=ed.get("uns_path"),  # candidate; uns.py canonicalizes in the real wire-up
             entity_type=ed.get("entity_type", "entity"),
             name=ed.get("name", sug.id),
-            properties=ed.get("properties", {}),
+            properties=properties,
             approval_state="verified",
             proposed_by=sug.proposed_by,
         )

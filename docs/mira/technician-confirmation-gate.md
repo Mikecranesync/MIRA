@@ -135,7 +135,15 @@ the existing MCP tools and the Hub routes).
 - **`PostgresProposalStore`** — SQLAlchemy + `NullPool` + `sslmode=require`, mirroring
   `mira-bots/shared/neon_recall.py`. Every write runs inside a transaction with the RLS
   tenant GUC set (`SET app.current_tenant_id`), exactly as the Hub `withTenantContext` does.
-  The `kg_relationships` upsert mirrors the decide route's dedupe logic.
+  The `kg_relationships` upsert mirrors the decide route's dedupe logic; `create_entity`
+  upserts on the `kg_entities` natural key `(tenant_id, entity_type, name)` (mig 025/026).
+
+  > **Not executed by the test suite.** The 53 offline tests run entirely on
+  > `InMemoryProposalStore`. `PostgresProposalStore`'s SQL was **schema-verified against the
+  > live migrations** (ai_suggestions 027, relationship_proposals/evidence 018, kg_entities
+  > 001/010/024/025/029, kg_relationships per the decide route) but never run against a real
+  > DB here. Exercise it on staging NeonDB before production use — that is the natural
+  > follow-up when this gate is wired into an HTTP route.
 
 ---
 
