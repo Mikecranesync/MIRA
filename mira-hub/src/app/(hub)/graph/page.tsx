@@ -16,6 +16,36 @@ interface GraphResponse {
 const endId = (v: unknown): string =>
   typeof v === "string" ? v : (v as { id: string }).id;
 
+interface Friendly {
+  label: string;
+  lead: (src: string, tgt: string) => string;
+  confirm: string;
+  footer: string;
+  targetLabel?: string;
+}
+
+// Plain-English presentation of edge types for maintenance technicians.
+const FRIENDLY: Record<string, Friendly> = {
+  HAS_DOCUMENT: {
+    label: "User manual",
+    lead: (src) => `MIRA found a manual that looks like it belongs to ${src}.`,
+    confirm: "Link manual",
+    footer: "Linking saves this manual to the component so techs can find it later.",
+    targetLabel: "Manual",
+  },
+};
+
+function friendlyEdge(type: string): Friendly {
+  return (
+    FRIENDLY[type] ?? {
+      label: type.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase()),
+      lead: (src, tgt) => `MIRA suggests linking ${src} and ${tgt}.`,
+      confirm: "Confirm",
+      footer: "Confirm to save this connection. Reject if it's wrong.",
+    }
+  );
+}
+
 function GraphView() {
   const searchParams = useSearchParams();
   const sessionParam = searchParams.get("session");
@@ -142,8 +172,8 @@ function GraphView() {
     <div className="relative h-[calc(100vh-4rem)] w-full">
       {showEmptyState && (
         <div className="absolute left-1/2 top-4 z-20 w-[min(92vw,640px)] -translate-x-1/2 rounded-md border border-sky-500/40 bg-sky-500/10 px-4 py-2 text-center text-sm text-sky-100">
-          No verified relationships yet. MIRA found <span className="font-semibold">{proposedCount}</span> proposed relationship
-          {proposedCount === 1 ? "" : "s"}.{" "}
+          No verified relationships yet. MIRA found <span className="font-semibold">{proposedCount}</span> suggested connection
+          {proposedCount === 1 ? "" : "s"} to review.{" "}
           {showSuggestions
             ? "Tap a dashed edge to review the evidence and confirm it."
             : "Turn on Show suggestions to review them."}
@@ -204,42 +234,47 @@ function GraphView() {
         </div>
       </div>
 
-      {selectedEdge?.proposalId && (
-        <div className="absolute right-4 top-4 z-10 w-80 rounded-md bg-slate-900/95 p-4 text-sm text-slate-200">
-          <button onClick={() => setSelectedEdge(null)} className="float-right text-slate-500 hover:text-slate-300">
-            ✕
-          </button>
-          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-sky-300">Proposed by MIRA</div>
-          <div className="mb-2 font-semibold text-white">{selectedEdge.type}</div>
-          <div className="text-xs text-slate-400">
-            {nodeById.get(endId(selectedEdge.source))?.label ?? "?"} <span className="text-slate-600">→</span>{" "}
-            {nodeById.get(endId(selectedEdge.target))?.label ?? "?"}
-          </div>
-          <div className="mt-3 text-[11px] uppercase tracking-wide text-slate-500">Why MIRA thinks this</div>
-          <div className="mt-1 text-xs text-slate-300">
-            {selectedEdge.reasoning ?? "No explanation recorded for this proposal."}
-          </div>
-          <div className="mt-4 flex gap-2">
-            <button
-              disabled={busy}
-              onClick={() => decide("verify")}
-              className="flex-1 rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-            >
-              Confirm
-            </button>
-            <button
-              disabled={busy}
-              onClick={() => decide("reject")}
-              className="flex-1 rounded border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-800 disabled:opacity-50"
-            >
-              Reject
-            </button>
-          </div>
-          <div className="mt-2 text-[10px] text-slate-500">
-            Confirm makes it a verified relationship. Reject removes the suggestion.
-          </div>
-        </div>
-      )}
+      {selectedEdge?.proposalId &&
+        (() => {
+          const f = friendlyEdge(selectedEdge.type);
+          const src = nodeById.get(endId(selectedEdge.source))?.label ?? "this component";
+          const tgt = nodeById.get(endId(selectedEdge.target))?.label ?? "this item";
+          return (
+            <div className="absolute right-4 top-4 z-10 w-80 rounded-md bg-slate-900/95 p-4 text-sm text-slate-200">
+              <button onClick={() => setSelectedEdge(null)} className="float-right text-slate-500 hover:text-slate-300">
+                ✕
+              </button>
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-sky-300">Suggested by MIRA</div>
+              <div className="mb-2 text-base font-semibold text-white">{f.label}</div>
+              <div className="text-xs text-slate-300">{f.lead(src, tgt)}</div>
+              {f.targetLabel && (
+                <div className="mt-2 rounded bg-slate-800/70 px-2 py-1 text-xs text-slate-300">
+                  <span className="text-slate-500">{f.targetLabel}:</span> {tgt}
+                </div>
+              )}
+              {selectedEdge.reasoning && (
+                <div className="mt-2 text-[11px] text-slate-500">Match: {selectedEdge.reasoning}</div>
+              )}
+              <div className="mt-4 flex gap-2">
+                <button
+                  disabled={busy}
+                  onClick={() => decide("verify")}
+                  className="flex-1 rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  {f.confirm}
+                </button>
+                <button
+                  disabled={busy}
+                  onClick={() => decide("reject")}
+                  className="flex-1 rounded border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                >
+                  Not this one
+                </button>
+              </div>
+              <div className="mt-2 text-[10px] text-slate-500">{f.footer}</div>
+            </div>
+          );
+        })()}
 
       {selected && !selectedEdge && (
         <div className="absolute right-4 top-4 z-10 w-72 rounded-md bg-slate-900/90 p-4 text-sm text-slate-200">
