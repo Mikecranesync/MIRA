@@ -16,7 +16,7 @@ set -uo pipefail  # NOT -e; we want to handle errors per-iteration
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-cd "$REPO_ROOT"
+cd "$REPO_ROOT" || exit 1
 
 COUNT="${1:?usage: publish-bulk.sh <count>}"
 LOG="/tmp/yt-pipeline-bulk.log"
