@@ -1,6 +1,7 @@
 BEGIN;
 
--- Migration 031: kg_query_traces — persist the reasoning subgraph behind an answer.
+-- Migration 033: kg_query_traces — persist the reasoning subgraph behind an answer.
+-- (Renumbered from 031 → 033: main's 031_ignition_audit_log took 031.)
 --
 -- Spec : docs/superpowers/specs/2026-06-02-kg-relationship-graph-design.md
 -- Plan : docs/superpowers/plans/2026-06-02-kg-graph-phase3-reasoning-trace.md
