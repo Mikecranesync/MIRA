@@ -149,14 +149,15 @@ jobs:
         id: static_summary
         run: |
           if [ -f /tmp/shellcheck-output.txt ]; then
-            echo "has_findings=true" >> $GITHUB_OUTPUT
+            echo "has_findings=true" >> "$GITHUB_OUTPUT"
+            DELIM="ghadelim_${RANDOM}${RANDOM}"
             {
-              echo 'summary<<EOF'
+              echo "summary<<${DELIM}"
               cat /tmp/shellcheck-output.txt
-              echo 'EOF'
-            } >> $GITHUB_OUTPUT
+              echo "${DELIM}"
+            } >> "$GITHUB_OUTPUT"
           else
-            echo "has_findings=false" >> $GITHUB_OUTPUT
+            echo "has_findings=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Post static analysis findings
