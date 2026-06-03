@@ -1,8 +1,20 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-06-03
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-06-03
+
+- **MaintainX** — Autodesk $3.6B acquisition announced May 28, 2026 (https://adsknews.autodesk.com/en/news/autodesk-to-acquire-maintainx-advancing-unified-platform-in-operations/); no dedicated YouTube promo video, but Autodesk CEO Bloomberg interview (May 29): https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video — MaintainX becomes "Autodesk Operations Solutions," merging CMMS into a design-build-operate platform. Largest acquisition in Autodesk's history. MIRA competitive implication: the "independent maintenance intelligence" position opens up.
+- **Notion** — "Introducing Notion's Developer Platform: Keynote (Ivan Zhao)" (May 13, 2026): https://www.youtube.com/watch?v=rpE2rzKO6L0 — new "any data, any tool, any agent" orchestration-hub framing vs. prior "you assign / agents do". Workers (hosted code runtime), External Agents API (Claude Code, Cursor, Codex), Database Sync. Proof metric: 1M agents built since Feb 2026 launch. Pattern: from agent-as-feature → platform-as-agent-hub.
+- **Anthropic** — "Code with Claude 2026: Opening Keynote" (SF, May 6, 2026): https://www.youtube.com/watch?v=wjvESxKgqaQ — developer conference, not a product ad; introduces Claude Managed Agents + Proactive Workflows. London keynote (May 20): https://www.youtube.com/watch?v=6amLO7I9xdg. Pattern: multi-city conference-as-launch-vehicle (SF → London → Tokyo) with all sessions on YouTube.
+
+### Most actionable change for the playbook
+
+MaintainX → Autodesk acquisition changes MIRA's competitive frame. The prior position (MIRA vs. standalone CMMS) is now obsolete for MaintainX specifically. The new frame: MIRA vs. consolidated BIM/PLM mega-platforms (Autodesk AOS, Rockwell FactoryTalk/Fiix). MIRA's winning counterplay: industrial-maintenance native, not an AEC afterthought. Consider testing "independent maintenance intelligence" as explicit positioning.
 
 ---
 
@@ -87,6 +99,8 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+
+**⚠️ Acquisition (May 28, 2026):** Autodesk agreed to acquire MaintainX for ~$3.6B all-cash — largest deal in Autodesk's history. MaintainX joins "Autodesk Operations Solutions" (AOS), which merges design, make, and operate workflows. Expected to close FY2027. No standalone promo video; Autodesk CEO Bloomberg interview: https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video. MaintainX's independence narrative ends at close — MIRA counterplay: industrial-native, not tied to an AEC conglomerate.
 
 ---
 
@@ -302,7 +316,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
 - 30+ product releases in recent months per search results
-- No standalone promo video; analyst/conference appearances as primary video channel
+
+**Code with Claude 2026 — developer conference (May 2026)**
+- SF opening keynote (May 6, 2026): https://www.youtube.com/watch?v=wjvESxKgqaQ
+- London opening keynote (May 20, 2026): https://www.youtube.com/watch?v=6amLO7I9xdg
+- Announcements: Claude Managed Agents (operate in customer-controlled sandbox, connect to private MCP servers), Proactive Workflows, Capability Curve framing
+- Partners featured on stage: GitHub, Vercel, Datadog, Bun, Asana, Cursor, Replit
+- Format: multi-city developer conference (SF → London → Tokyo, June 5–6); all Day 1 sessions livestreamed to YouTube
+- VO register: Anthropic engineers + partners; no marketing polish
+- CTA: ecosystem/developer adoption, no pricing
+- Pattern note: Anthropic has graduated from analyst-interview-only video presence to a multi-city developer conference format — same vehicle as Stripe Sessions and Figma Config. Conference-as-brand-assertion, not just a product launch vehicle.
 
 ---
 
@@ -339,6 +362,17 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Music: likely ambient [not verified]
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
+
+**Notion Developer Platform (May 13, 2026)**
+- URL: https://www.youtube.com/watch?v=rpE2rzKO6L0
+- Title: "Introducing Notion's Developer Platform: Keynote (Ivan Zhao)"
+- Hook: "Any data, any tool, any agent — that's the big picture for the Notion Developer Platform." [confirmed quote from keynote]
+- Launches: Workers (hosted code runtime, free until Aug 11, 2026); External Agents API (Claude Code, Cursor, Codex, Decagon at launch); Database Sync (live pull from Salesforce, Zendesk, Postgres, etc.)
+- Footage style: livestreamed product keynote
+- VO register: founder
+- CTA: soft — Workers free through August
+- Proof metric: "more than 1 million agents" built since Custom Agents launched in Feb 2026
+- Pattern shift: Notion now positions as an **orchestration hub** for all AI agents, not just a workspace that does agent work. The "You assign / Agents do" 3.0 framing has levelled up to "Notion is where all your agents come to work." This is a meaningful evolution — competitors will follow.
 
 ---
 
@@ -385,6 +419,8 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| Platform-as-agent-hub: "any data, any tool, any agent" | Notion Developer Platform (May 2026): every external agent converges here | "MIRA connects to any data source your technicians already use" |
+| Proof metric: milestone count | Notion: "1 million agents built" since Feb 2026 | "N fault diagnoses grounded in customer OEM manuals" |
 
 ### Anti-patterns (avoid)
 
@@ -398,3 +434,5 @@ No video content surfaced for 2025–2026.
 - **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **MaintainX** (May 2026): absorbed into Autodesk. No longer producing independent CMMS positioning videos. Future content will carry Autodesk branding and AEC/PLM platform framing. Effective exit from "independent CMMS" competitive space.
+- **Anthropic** (May 2026): escalated from analyst-appearance-only video presence to a multi-city developer conference (Code with Claude) — signals investment in video as a primary developer-acquisition channel, not just earned media.
