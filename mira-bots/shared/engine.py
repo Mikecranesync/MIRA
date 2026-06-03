@@ -849,6 +849,7 @@ class Supervisor:
         tenant_id: str | None = None,
         mira_user_id: str | None = None,
         uns_source: str | None = None,
+        tag_evidence: list | None = None,
     ) -> str:
         """Main entry point. Returns reply string (backward-compatible).
 
@@ -923,6 +924,7 @@ class Supervisor:
             result=result,
             platform=platform,
             latency_ms=elapsed_ms,
+            tag_evidence=tag_evidence,
         )
         return reply
 
@@ -935,6 +937,7 @@ class Supervisor:
         result: dict,
         platform: str,
         latency_ms: int,
+        tag_evidence: list | None = None,
     ) -> None:
         """Schedule a non-blocking decision_traces write for this turn.
 
@@ -961,7 +964,14 @@ class Supervisor:
                 outcome = None
 
             tenant_id = getattr(self, "_current_tenant_id", None) or self.tenant_id
-            manual_sources = getattr(getattr(self, "rag", None), "_last_sources", None)
+
+            # Only attach RAG sources when THIS turn actually retrieved — the
+            # worker's _last_sources persists across turns, so a non-RAG turn
+            # (greeting, WO action) would otherwise inherit the prior turn's
+            # manual evidence and disagree with citations_present.
+            rag = getattr(self, "rag", None)
+            retrieved = rag is not None and not getattr(rag, "_last_no_kb", True)
+            manual_sources = getattr(rag, "_last_sources", None) if retrieved else None
 
             coro = write_trace(
                 tenant_id=tenant_id,
@@ -969,6 +979,7 @@ class Supervisor:
                 recommendation=reply,
                 platform=platform,
                 uns_context=uns_context,
+                tag_evidence=tag_evidence,
                 manual_sources=manual_sources,
                 outcome=outcome,
                 latency_ms=latency_ms,
@@ -4653,9 +4664,21 @@ class Supervisor:
         `message` and `session_context` are accepted for symmetry with other
         gate helpers and to keep the call site readable, even though the
         current implementation only inspects intent + state + flag.
+
+        Direct-connection carve-out: a turn whose UNS context was certified by
+        the connection itself (Ignition, MQTT/Sparkplug, PLC bridge, Hub
+        display, QR — source="direct_connection") MUST NOT be interrupted with a
+        "which machine?" confirmation. The connection already proved the asset;
+        asking would be the exact anti-pattern
+        .claude/rules/direct-connection-uns-certified.md forbids. We honor the
+        marker here at the chat-gate so it can never lie. (The broader
+        reject-on-missing-identifier contract for direct surfaces is still P6.)
         """
         del message, session_context  # reserved for future signal expansion
         if not _UNS_GATE_ENABLED:
+            return False
+        uns_ctx = (state.get("context") or {}).get("uns_context") or {}
+        if uns_ctx.get("source") == "direct_connection":
             return False
         if router_intent != "diagnose_equipment":
             return False

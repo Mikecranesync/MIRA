@@ -78,3 +78,26 @@ def test_no_asset_id_is_plain_chat_turn(client):
     assert resp.status_code == 200
     # No asset identifier → not a direct connection; chat gate territory.
     assert engine.process.await_args.kwargs.get("uns_source") is None
+
+
+def test_tag_snapshot_forwarded_as_tag_evidence(client):
+    tc, engine = client
+    resp = _post(
+        tc,
+        {
+            "query": "is the motor overloaded?",
+            "asset_id": "[default]Conv/State",
+            "tag_snapshot": {"Motor_Current_A": {"value": 11.2, "quality": "good"}},
+        },
+    )
+    assert resp.status_code == 200
+    ev = engine.process.await_args.kwargs.get("tag_evidence")
+    assert ev and ev[0]["tag_path"] == "Motor_Current_A"
+    assert ev[0]["value"] == 11.2 and ev[0]["quality"] == "good"
+
+
+def test_no_tag_snapshot_means_no_tag_evidence(client):
+    tc, engine = client
+    resp = _post(tc, {"query": "status?", "asset_id": "[default]Conv/State"})
+    assert resp.status_code == 200
+    assert engine.process.await_args.kwargs.get("tag_evidence") is None

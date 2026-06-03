@@ -207,6 +207,20 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
         # .claude/rules/direct-connection-uns-certified.md).
         uns_source = "direct_connection" if (asset_id or req.asset_context) else None
 
+        # Structured tag evidence for the decision trace (Phase 9). The Ignition
+        # turn already carries the live snapshot; surface it as evidence rows so
+        # the trace records WHAT live data MIRA reasoned over, not just that it
+        # had some. (The same snapshot is also rendered into the prompt preamble.)
+        tag_evidence = [
+            {
+                "tag_path": path,
+                "value": (entry.get("value") if isinstance(entry, dict) else entry),
+                "quality": (entry.get("quality") if isinstance(entry, dict) else None),
+                "source": "ignition",
+            }
+            for path, entry in sorted((req.tag_snapshot or {}).items())
+        ]
+
         t0 = time.monotonic()
         engine_error: Optional[str] = None
         try:
@@ -216,6 +230,7 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
                 photo_b64=None,
                 platform="ignition",
                 uns_source=uns_source,
+                tag_evidence=tag_evidence or None,
             )
         except Exception as exc:
             engine_error = str(exc)

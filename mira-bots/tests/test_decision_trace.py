@@ -179,6 +179,53 @@ async def test_engine_process_schedules_trace(tmp_db):
 
 
 @pytest.mark.asyncio
+async def test_engine_process_forwards_tag_evidence(tmp_db):
+    import asyncio
+
+    from shared.engine import Supervisor
+
+    sup = Supervisor(
+        db_path=tmp_db, openwebui_url="http://stub", api_key="", collection_id="", tenant_id="t"
+    )
+    recorded = {}
+
+    async def fake_write_trace(**kwargs):
+        recorded.update(kwargs)
+
+    tags = [{"tag_path": "Motor_Current_A", "value": "11.2", "quality": "good"}]
+    with (
+        patch.object(sup, "process_full", new=AsyncMock(return_value={"reply": "ok"})),
+        patch("shared.decision_trace.write_trace", new=fake_write_trace),
+    ):
+        await sup.process(chat_id="c1", message="q", tag_evidence=tags)
+        await asyncio.gather(*list(sup._decision_trace_tasks), return_exceptions=True)
+
+    assert recorded.get("tag_evidence") == tags
+
+
+# ── direct_connection gate carve-out (P6 honored at the chat gate) ───────────
+
+
+def test_gate_suppressed_for_direct_connection(tmp_db):
+    from shared.engine import Supervisor
+
+    sup = Supervisor(
+        db_path=tmp_db, openwebui_url="http://stub", api_key="", collection_id="", tenant_id="t"
+    )
+    # A diagnose turn with NO asset that WOULD normally fire the gate...
+    chat_state = {"state": "IDLE", "asset_identified": "", "context": {}}
+    assert sup._should_fire_uns_gate("diagnose_equipment", chat_state, "conveyor down", {}) is True
+
+    # ...does NOT fire once the connection certified the UNS path.
+    direct_state = {
+        "state": "IDLE",
+        "asset_identified": "",
+        "context": {"uns_context": {"source": "direct_connection"}},
+    }
+    assert sup._should_fire_uns_gate("diagnose_equipment", direct_state, "conveyor down", {}) is False
+
+
+@pytest.mark.asyncio
 async def test_engine_reply_survives_trace_failure(tmp_db):
     from shared.engine import Supervisor
 
