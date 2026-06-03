@@ -1,17 +1,20 @@
 # Hot Cache — 2026-06-03 — gap-closure driver
 
-## Autonomous run — 2026-06-03 — gap-closure driver (epic #1666) — run 2
+## Autonomous run — 2026-06-03 — gap-closure driver (epic #1666) — run 3
 
-**Status: Second CI fix pushed to #1657 — waiting for CI re-run. Stopped per protocol.**
+**Status: CI pending on #1657 (after run-2 fix commit). New failure identified but NOT pushed — stopped per pending-checks rule.**
 
 - **Open gap-closure PRs (at 2-PR limit):**
-  - `#1657` (`feat/dt2026-gap-closure`) — Phases 0–5 core spine. Failing checks being fixed.
-  - `#1674` (`feat/dt2026-rls-verification-1664`) — Phase 1 RLS tests. Stacked on #1657; `mergeable_state=dirty` until #1657 merges.
-- **This run's fix — commit `49bf0f1` on `feat/dt2026-gap-closure`:**
-  - `apply-and-verify` was failing: `033_tag_events.sql` index on `event_timestamp` fails because staging NeonDB has `tag_events` table with old `ts` column (appendix D2 of master plan used `ts`; implementation uses `event_timestamp`). `CREATE TABLE IF NOT EXISTS` skips, then index fails.
-  - Fix: DO block that renames `ts → event_timestamp` if needed, same pattern as the earlier `032_decision_traces` idempotency fix (`a4df7a3`).
-  - Comment posted on PR #1657 with root-cause + evidence.
-- **Previous run's fix — commit `43b9ae0`:** migration 032 `ts` column rename + test HMAC injection.
+  - `#1657` (`feat/dt2026-gap-closure`) — Phases 0–5 core spine. HEAD `49bf0f1`. CI pending+failing.
+  - `#1674` (`feat/dt2026-rls-verification-1664`) — Phase 1 RLS tests. Stacked on #1657; `mergeable_state=dirty` until #1657 merges. No CI runs (stacked, no trigger).
+- **Run 3 finding — NEW `apply-and-verify` failure (after run-2 fix):**
+  - `033_tag_events.sql` line 126: `ERROR: column "tag_path" does not exist`
+  - Root cause: staging NeonDB already has a `tag_events` table from an earlier version of this migration. `CREATE TABLE IF NOT EXISTS` skips it (correct). The run-2 DO block correctly renamed `ts→event_timestamp`. But that older table was also missing `tag_path`. The index `CREATE INDEX ... ON tag_events (tenant_id, tag_path, event_timestamp DESC)` then fails.
+  - **Fix ready (NOT pushed — pending checks rule):** Add `tag_path` ADD COLUMN guard to the DO block in `033_tag_events.sql`, same pattern as `event_timestamp`. Draft fix: `IF NOT EXISTS (...column_name='tag_path'...) THEN ALTER TABLE tag_events ADD COLUMN tag_path TEXT NOT NULL DEFAULT ''; END IF;`
+  - **Push this fix on the NEXT run, once pending checks clear.**
+- **Other open failure — `E2E smoke (factorylm.com)`:** pre-existing infra check on prod URLs; runs on every PR regardless of code changes. Not a regression from this branch.
+- **Run-2 fix — commit `49bf0f1` on `feat/dt2026-gap-closure`:** `033_tag_events.sql` DO block for `ts→event_timestamp`.
+- **Run-1 fix — commit `43b9ae0`:** migration 032 `ts` column rename + test HMAC injection.
 - **Other CI failure — `E2E smoke (factorylm.com)`:** Expected failure in cloud CI environment; not a regression.
 - **Pending checks on #1657 (just restarted):** `Eval Offline`, `Docker Build Check` — queued.
 - **Next run:** When CI on #1657 turns green, both gap-closure PRs will be open but not both green. Advance to: try to get #1657 merged (request merge), then address next issue **#1658** (Phase 6 direct_connection UNS bypass). If both PRs are green+unmerged: stop and wait for human review.
