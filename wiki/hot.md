@@ -1,5 +1,16 @@
 # Hot Cache — 2026-05-29 — ALPHA
 
+## Session — 2026-06-02 (Walker DT gap closure — Phases 5–9, CHARLIE)
+
+Branch `feat/dt2026-gap-closure` (worktree `/Users/charlienode/MIRA-gapclose`). Built the engine/intelligence layer on top of the Phase 0–4 storage+ingest foundation. **6 commits, 52 new tests, all green; engine changes non-regressive (18 golden + 57 eval dry-run).** Full handoff: `HANDOFF_2026-06-02_P5-9.md`.
+
+- **P5 TagDiffLogger** (`mira-relay/tag_diff_logger.py` + mig `037_tag_event_diffs.sql`) — raw `tag_events` → meaningful changes (edges / threshold crossings / quality / fault windows). Store-injection pattern.
+- **P6 UNS reconciliation** (`mira-crawler/ingest/uns_topic_map.py` + `config/bench_uns_map.json`) — flat bench/MQTT topics → ISA-95 paths via `uns.py` builders only (tests assert resolver==builder). Plus ignition_chat stamps `source="direct_connection"` and `_should_fire_uns_gate` now honors it (no "which machine?" on certified connections).
+- **P7+P8 FlakyInputDetector** (`mira-relay/flaky_detector.py` + `config/flaky_rules.json`) — real `tag_events` transition counting w/ peer isolation → `flaky_input_signals` (real `evidence_event_ids`) → `relationship_proposals`+evidence+`ai_suggestions` (status `proposed`, NEVER verified, ADR-0017).
+- **P9 DecisionTraceWriter** (`mira-bots/shared/decision_trace.py`) — `decision_traces` row per turn, fire-and-forget after reply (mirrors `conversation_logger.py`), captures uns_context/manual+tag evidence/citations; never blocks the reply.
+
+**Watch:** mig 037 + the 3 Neon store SQL paths only ran vs in-memory doubles — verify via `migration-verify.yml` on push. Runtime triggers (cron/worker calling the loggers on the live window) are documented follow-ups, not wired. Bot tests run from REPO ROOT with the 3.12 `.venv` (`mira-bots/email/` shadows stdlib `email`).
+
 ## Session — 2026-05-29 (printing-press toolchain bootstrap + Linear/Stripe CLIs)
 
 Work spanned 2026-05-10 → 2026-05-29; landing now as one continuity entry. Local `main` was 447 commits behind origin when commit happened — reset to origin/main, re-applied this block on top of current hot.md.
