@@ -20740,4 +20740,57 @@ from `.claude/settings.json`.
 **Working tree:**
 - M docs/context/PROGRESS.local.md
 **Next:** _set by next session_
+
+### 2026-06-03 18:22 UTC — `chore/promo-director-refresh-2026-06-03`
+**Last commit:** 60fb8db chore: update PROGRESS.local.md session log
+**Changed (vs. fork point):**
+- .claude/rules/fieldbus-readonly.md
+- .claude/skills/promo-director/SKILL.md
+- .claude/skills/promo-director/references/COMPETITOR_ANALYSIS.md
+- .claude/skills/promo-director/references/SCREENSHOT_DEMO_PIPELINE.md
+- .github/workflows/ci.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- NORTH_STAR.md
+- content_strategy/output/PUBLISHING_CHECKLIST.md
+- docker-compose.fault-detective.yml
+- docker-compose.override.yml
+- docker-compose.saas.yml
+- docs/adr/0021-ignition-module-first-edge.md
+- docs/adr/README.md
+- docs/audits/2026-05-31-audit.md
+- docs/command-center-ignition-display.md
+- docs/context/PROGRESS.local.md
+- docs/environments.md
+- docs/incidents/2026-06-02-prod-pipeline-deploy.md
+**Working tree:** clean
+**Next:** _set by next session_
+
+### 2026-06-03 18:22 UTC — `chore/promo-director-refresh-2026-06-03`
+**Last commit:** 60fb8db chore: update PROGRESS.local.md session log
+**Changed (vs. fork point):**
+- .claude/rules/fieldbus-readonly.md
+- .claude/skills/promo-director/SKILL.md
+- .claude/skills/promo-director/references/COMPETITOR_ANALYSIS.md
+- .claude/skills/promo-director/references/SCREENSHOT_DEMO_PIPELINE.md
+- .github/workflows/ci.yml
+- .github/workflows/deploy-vps.yml
+- .github/workflows/staging-gate.yml
+- CLAUDE.md
+- NORTH_STAR.md
+- content_strategy/output/PUBLISHING_CHECKLIST.md
+- docker-compose.fault-detective.yml
+- docker-compose.override.yml
+- docker-compose.saas.yml
+- docs/adr/0021-ignition-module-first-edge.md
+- docs/adr/README.md
+- docs/audits/2026-05-31-audit.md
+- docs/command-center-ignition-display.md
+- docs/context/PROGRESS.local.md
+- docs/environments.md
+- docs/incidents/2026-06-02-prod-pipeline-deploy.md
+**Working tree:**
+- M docs/context/PROGRESS.local.md
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
