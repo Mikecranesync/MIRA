@@ -1,6 +1,23 @@
 # Hot Cache — 2026-06-03 — Cloud (autonomous gap-closure driver)
 
-## gap-closure-driver run — 2026-06-03
+## gap-closure-driver run — 2026-06-03 (run 2, ~08:10 UTC)
+
+**Status confirmed — same stop condition as run 1.**
+
+Both gap-closure PRs remain open and green:
+- **PR #1657** (`feat/dt2026-gap-closure`): Phases 0–5; base=main; 1 advisory CI check ✅; blocked on review
+- **PR #1674** (`feat/dt2026-rls-verification-1664`): RLS tests for #1664; stacked on #1657; no CI checks (non-main target)
+
+**2 of 2 gap-closure PR slots occupied. No new work started.**
+
+Additional PRs observed open (not gap-closure per feat/dt2026 prefix rule):
+- #1679 (this docs sync, draft) · #1682 (ci staging-gate) · #1681 (kg component proposals) · #1676 (canonical asset-graph docs) · #1675 (ci pipeline build check) · #1672 (kg reasoning trace) · #1671 (kg relationship enrich) · #1668 (Ignition self-serve module)
+
+Next agent work order (unchanged): #1662 → #1658 → #1659 → #1663 (after ≥1 gap-closure PR merges).
+
+---
+
+## gap-closure-driver run — 2026-06-03 (run 1)
 
 **Epic:** #1666 (DT-2026 gap closure — North Star: grounded UNS-gated maintenance copilot to first paying customer)
 **Governed by:** `docs/plans/2026-06-01-mira-master-architecture-plan.md`
