@@ -44,4 +44,20 @@ describe("buildGraphPayload", () => {
     const p = buildGraphPayload(entities, rels);
     expect(p.links[0]).toMatchObject({ confidence: 1, state: "verified" });
   });
+
+  test("carries proposalId through when present", () => {
+    const rels: RelRow[] = [
+      { source_id: "a", target_id: "b", relationship_type: "SAME_MODEL_AS", confidence: 0.6, approval_state: "proposed", proposal_id: "prop-1" },
+    ];
+    const p = buildGraphPayload(entities, rels);
+    expect(p.links[0]).toMatchObject({ state: "proposed", proposalId: "prop-1" });
+  });
+
+  test("verified links have no proposalId", () => {
+    const rels: RelRow[] = [
+      { source_id: "a", target_id: "b", relationship_type: "has_manual", confidence: 1, approval_state: "verified" },
+    ];
+    const p = buildGraphPayload(entities, rels);
+    expect(p.links[0]).not.toHaveProperty("proposalId");
+  });
 });
