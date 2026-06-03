@@ -4,38 +4,21 @@
 # Jython 2.7 — runs inside Ignition Gateway JVM.
 # Ref: https://www.docs.inductiveautomation.com/docs/8.1/ignition-modules/web-dev
 #
-# D2: repointed from localhost:5000/rag (legacy sidecar) to MIRA Cloud
-#     POST /api/v1/ignition/chat.  URL is env-var driven via getMiraConfig
-#     so staging/dev installations can override the default.
+# Configuration (factorylm.properties or Ignition gateway environment):
+#   MIRA_CLOUD_URL         — chat endpoint (default: https://api.factorylm.com/api/v1/ignition/chat)
+#   MIRA_TENANT_ID         — tenant UUID assigned in Hub admin
+#   MIRA_IGNITION_HMAC_KEY — HMAC-SHA256 signing key (required; fail-closed if absent)
 #
-# HMAC signing: matches the contract expected by mira-pipeline/ignition_chat.py
-#   _verify_hmac().  Four required headers:
-#     X-MIRA-Tenant   — tenant UUID from factorylm.properties TENANT_ID
-#     X-MIRA-Nonce    — millisecond epoch (uniqueness token, NOT constrained)
-#     X-MIRA-Timestamp — UNIX seconds (constrained to ±300 s by cloud verifier)
-#     X-MIRA-Signature — lowercase hex HMAC-SHA256 over signed_string
-#   signed_string = tenant + "\n" + nonce + "\n" + timestamp + "\n" + sha256_hex(body_bytes)
-#   Key: getMiraConfig("MIRA_HMAC_KEY") — must equal cloud MIRA_IGNITION_HMAC_KEY
-#
-# IMPORTANT: If MIRA_HMAC_KEY is absent the request is sent WITHOUT auth headers.
-#   The current cloud endpoint (_verify_hmac) will reject unsigned requests with
-#   HTTP 401.  Configure MIRA_HMAC_KEY in factorylm.properties to enable signed
-#   chat.  The unsigned fallback is retained only so that the WebDev handler does
-#   not hard-fail on gateways that have not yet set the key — the 401 response is
-#   surfaced to the Perspective panel as a clear error rather than a silent crash.
-#
-# Response mapping:
-#   Cloud returns: {answer, sources[], citations[], confidence, suggested_actions[]}
-#   This handler passes the full dict through to the Perspective ChatPanel.
-#   sources[] is currently [] (engine returns empty list until D3 populates it).
-#   ChatPanel renders answer + sources when present; degrades cleanly when empty.
+# Config is read via getMiraConfig() which loads factorylm.properties from the
+# well-known Ignition install paths (same pattern as tag-stream.py / fsm-monitor.py).
 
 
-# ---------------------------------------------------------------------------
-# Config helper — copied verbatim from gateway-scripts/tag-stream.py
-# ---------------------------------------------------------------------------
-
-def _getMiraConfig(key, default_value=""):
+def getMiraConfig(key, default_value=""):
+    """
+    Read a property from factorylm.properties.
+    Tries Windows and Linux Ignition install paths in order.
+    Returns default_value if the file is not found or the key is absent.
+    """
     import java.io.FileInputStream as FileInputStream
     import java.util.Properties as Properties
     import java.io.File as File
@@ -55,97 +38,33 @@ def _getMiraConfig(key, default_value=""):
                 props.load(fis)
                 return props.getProperty(key, default_value)
             except Exception as load_err:
-                pass
+                pass  # try next path
             finally:
                 fis.close()
 
     return default_value
 
 
-# ---------------------------------------------------------------------------
-# HMAC signing — matches mira-pipeline/ignition_chat.py _verify_hmac exactly
-# ---------------------------------------------------------------------------
-
-def _sha256_hex(data_bytes):
-    """Return lowercase hex SHA-256 of data_bytes using javax.security."""
-    import java.security.MessageDigest as MessageDigest
-
-    md = MessageDigest.getInstance("SHA-256")
-    raw = md.digest(data_bytes)
-
-    hex_chars = "0123456789abcdef"
-    out = []
-    for b in raw:
-        b_int = b if b >= 0 else b + 256
-        out.append(hex_chars[b_int >> 4])
-        out.append(hex_chars[b_int & 0xF])
-    return "".join(out)
-
-
-def _hmac_sha256_hex(key_str, message_str):
-    """Return lowercase hex HMAC-SHA256(key_str, message_str)."""
-    import javax.crypto.Mac as Mac
-    import javax.crypto.spec.SecretKeySpec as SecretKeySpec
-
-    mac = Mac.getInstance("HmacSHA256")
-    secret = SecretKeySpec(key_str.encode("UTF-8"), "HmacSHA256")
-    mac.init(secret)
-    raw = mac.doFinal(message_str.encode("UTF-8"))
-
-    hex_chars = "0123456789abcdef"
-    out = []
-    for b in raw:
-        b_int = b if b >= 0 else b + 256
-        out.append(hex_chars[b_int >> 4])
-        out.append(hex_chars[b_int & 0xF])
-    return "".join(out)
-
-
-def _build_signed_headers(body_str, tenant_id, hmac_key, logger):
-    """Return headers dict with HMAC auth for a MIRA Cloud chat request.
-
-    signed_string = tenant + "\\n" + nonce + "\\n" + timestamp_secs + "\\n" + sha256_hex(body_bytes)
-
-    This exactly matches the _verify_hmac contract in mira-pipeline/ignition_chat.py.
-    Nonce is millisecond epoch (uniqueness only, not constrained by the verifier).
-    Timestamp is UNIX seconds (constrained to +-300 s by the verifier).
-    """
-    import java.lang.System as JSystem
-
-    millis = str(JSystem.currentTimeMillis())
-    # Timestamp must be UNIX seconds, not millis
-    timestamp_secs = str(int(JSystem.currentTimeMillis() / 1000))
-
-    body_hash = _sha256_hex(body_str.encode("UTF-8"))
-    signed_string = tenant_id + "\n" + millis + "\n" + timestamp_secs + "\n" + body_hash
-
-    try:
-        signature = _hmac_sha256_hex(hmac_key, signed_string)
-    except Exception as sign_err:
-        logger.warn(
-            "HMAC signing failed — falling back to unsigned POST (will receive 401): %s"
-            % str(sign_err)
-        )
-        return {"Content-Type": "application/json"}
-
-    return {
-        "Content-Type": "application/json",
-        "X-MIRA-Tenant": tenant_id,
-        "X-MIRA-Nonce": millis,
-        "X-MIRA-Timestamp": timestamp_secs,
-        "X-MIRA-Signature": signature,
-    }
-
-
-# ---------------------------------------------------------------------------
-# WebDev handler
-# ---------------------------------------------------------------------------
-
 def doPost(request, session):
     logger = system.util.getLogger("FactoryLM.Mira.Chat")
 
+    # --- Config: read HMAC key, tenant id, and cloud URL ---
+    hmac_key = getMiraConfig("MIRA_IGNITION_HMAC_KEY", "")
+    tenant_id = getMiraConfig("MIRA_TENANT_ID", "")
+    cloud_url = getMiraConfig(
+        "MIRA_CLOUD_URL",
+        "https://api.factorylm.com/api/v1/ignition/chat"
+    )
+
+    # Fail-fast: no unsigned requests permitted
+    if not hmac_key:
+        logger.error("MIRA_IGNITION_HMAC_KEY is not configured — refusing unsigned request")
+        return {
+            "json": {"error": "MIRA HMAC key not configured"},
+            "status": 503
+        }
+
     # --- Parse request body ---
-    # 'postData' is a dict when Content-Type is application/json
     data = request.get("postData", {})
     if data is None:
         data = {}
@@ -170,7 +89,6 @@ def doPost(request, session):
     if asset_id:
         tag_folder = "[default]Mira_Monitored/%s" % asset_id
         try:
-            # Browse all tags (OPC + Memory) in the asset folder
             tag_results = system.tag.browseTags(parentPath=tag_folder)
             tag_paths = [str(t.fullPath) for t in tag_results]
 
@@ -190,101 +108,140 @@ def doPost(request, session):
                 logger.debug("No tags found under %s" % tag_folder)
 
         except Exception as e:
-            # Non-fatal — proceed without snapshot; log for debugging
             logger.warn(
                 "Tag read failed for asset %s: %s" % (asset_id, str(e))
             )
 
-    # --- Build cloud request payload ---
-    # NOTE: D1 (allowlist enforcement) is not applied here — that is the
-    # responsibility of ignition/webdev/FactoryLM/api/tags/doGet.py.  When D1
-    # ships, snapshot will already be limited to allowlisted paths upstream.
-    # The cloud endpoint receives whatever snapshot this handler assembled.
-    cloud_payload = system.util.jsonEncode({
+    # --- Apply allowlist filter to snapshot (D1 task owns allowlist.py) ---
+    # Import defensively: if task D1 has created the allowlist module, use it;
+    # otherwise pass the snapshot through unchanged.
+    filtered_snapshot = snapshot
+    try:
+        import os.path as _osp
+        import sys as _sys
+
+        _api_dir = _osp.dirname(_osp.abspath(__file__))
+        _tags_dir = _osp.join(_osp.dirname(_api_dir), "tags")
+        if _tags_dir not in _sys.path:
+            _sys.path.insert(0, _tags_dir)
+
+        from allowlist import is_allowed_tag
+        filtered_snapshot = {
+            path: val for path, val in snapshot.items()
+            if is_allowed_tag(path)
+        }
+        if len(filtered_snapshot) < len(snapshot):
+            logger.warn(
+                "Allowlist filtered %d tag(s) from snapshot for asset %s"
+                % (len(snapshot) - len(filtered_snapshot), asset_id)
+            )
+    except ImportError:
+        # Task D1 allowlist not yet present — pass through
+        pass
+    except Exception as e:
+        logger.warn("Allowlist filter error (passing through): %s" % str(e))
+
+    # --- Build and sign the outgoing request ---
+    import urllib2
+    import json
+    import os.path as osp
+    import sys
+
+    # Ensure the signing helper (sibling module) is importable from Jython
+    _chat_dir = osp.dirname(osp.abspath(__file__))
+    if _chat_dir not in sys.path:
+        sys.path.insert(0, _chat_dir)
+
+    from signing import build_headers
+
+    cloud_payload_str = json.dumps({
         "query": query,
         "asset_id": asset_id,
-        "asset_context": {},
-        "tag_snapshot": snapshot,
-        "context": extra_context
+        "tag_snapshot": filtered_snapshot,
+        "context": extra_context,
+        "tenant_id": tenant_id,
     })
 
-    # --- Load config ---
-    tenant_id = _getMiraConfig("TENANT_ID", "")
-    hmac_key = _getMiraConfig("MIRA_HMAC_KEY", "")
-    cloud_url = _getMiraConfig(
-        "MIRA_CLOUD_CHAT_URL",
-        "https://api.factorylm.com/api/v1/ignition/chat"
-    )
-    # Timeout in ms for system.net.httpClient
-    timeout_ms = 30000
+    # Jython 2.7: json.dumps returns a unicode str; encode to bytes for HMAC
+    try:
+        cloud_payload_bytes = cloud_payload_str.encode("utf-8")
+    except AttributeError:
+        cloud_payload_bytes = cloud_payload_str  # already bytes in some Jython builds
 
-    # --- Build headers (signed if MIRA_HMAC_KEY is set) ---
-    if hmac_key and tenant_id:
-        try:
-            headers = _build_signed_headers(cloud_payload, tenant_id, hmac_key, logger)
-        except Exception as header_err:
-            logger.warn(
-                "Header build failed — sending unsigned POST (will receive 401): %s"
-                % str(header_err)
-            )
-            headers = {"Content-Type": "application/json"}
-    else:
-        if not hmac_key:
-            logger.warn(
-                "MIRA_HMAC_KEY not set in factorylm.properties — "
-                "sending unsigned POST. Cloud endpoint requires HMAC auth "
-                "and will return 401. Configure MIRA_HMAC_KEY to enable signed chat."
-            )
-        if not tenant_id:
-            logger.warn(
-                "TENANT_ID not set in factorylm.properties — "
-                "X-MIRA-Tenant header will be missing. "
-                "Run MIRA Connect activation to set it."
-            )
-        headers = {"Content-Type": "application/json"}
+    try:
+        headers = build_headers(hmac_key, tenant_id, cloud_payload_bytes)
+    except ValueError as e:
+        logger.error("HMAC signing failed: %s" % str(e))
+        return {
+            "json": {"error": "MIRA HMAC key not configured"},
+            "status": 503
+        }
 
     # --- POST to MIRA Cloud ---
     try:
-        client = system.net.httpClient()
-        response = client.post(
-            cloud_url,
-            data=cloud_payload,
-            headers=headers,
-            timeout=timeout_ms
-        )
+        req = urllib2.Request(cloud_url, cloud_payload_bytes)
+        for hdr_name, hdr_val in headers.items():
+            req.add_header(hdr_name, hdr_val)
 
-        if response.statusCode != 200:
+        response = urllib2.urlopen(req, timeout=30)
+        result = json.loads(response.read())
+
+    except urllib2.HTTPError as e:
+        body = ""
+        try:
+            body = e.read()
+        except Exception:
+            pass
+
+        if e.code == 401:
+            # Specific: auth failure — guide operator to the key config
             logger.error(
-                "MIRA Cloud returned HTTP %d: %s"
-                % (response.statusCode, (response.text or "")[:200])
+                "MIRA Cloud auth failure (HTTP 401) for asset %s "
+                "— check MIRA_IGNITION_HMAC_KEY in factorylm.properties" % asset_id
             )
             return {
                 "json": {
-                    "error": "MIRA Cloud returned error",
-                    "http_status": response.statusCode,
-                    "detail": (response.text or "")[:200]
+                    "error": "Authentication failed — check MIRA_IGNITION_HMAC_KEY",
+                    "http_status": 401
                 },
                 "status": 502
             }
 
-        import json
-        result = json.loads(response.text)
+        logger.error(
+            "MIRA Cloud returned HTTP %d: %s" % (e.code, body[:200])
+        )
+        return {
+            "json": {
+                "error": "MIRA Cloud returned error",
+                "http_status": e.code,
+                "detail": body[:200]
+            },
+            "status": 502
+        }
 
-    except Exception as e:
-        err_str = str(e)
-        logger.error("MIRA Cloud POST failed: %s" % err_str)
+    except urllib2.URLError as e:
+        logger.error("MIRA Cloud unreachable: %s" % str(e))
         return {
             "json": {
                 "error": "MIRA Cloud unreachable",
-                "detail": err_str
+                "detail": str(e)
             },
             "status": 503
         }
 
-    # --- Persist to chat history ---
+    except Exception as e:
+        logger.error("Unexpected error calling MIRA Cloud: %s" % str(e))
+        return {
+            "json": {
+                "error": "Internal error",
+                "detail": str(e)
+            },
+            "status": 500
+        }
+
+    # --- Persist to chat history (audit trail — non-critical path) ---
     try:
-        import json as _json
-        sources_json = _json.dumps(result.get("sources", []))
+        sources_json = json.dumps(result.get("sources", []))
         answer = result.get("answer", "")
 
         system.db.runPrepUpdate(

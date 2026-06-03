@@ -1,6 +1,6 @@
 ---
 name: promo-director
-description: Use this skill when the user asks to create, draft, render, or iterate a promo or product-demo video for MIRA / FactoryLM — landing-page hero, YouTube demo, ProductHunt launch reel, sales-enablement walkthrough, internal feature recap. Codifies the gold-standard director playbook (6-step Hook → Pain → Reveal → Demo → Proof → CTA, with industrial-buyer + direct-response overrides) into a runnable pipeline that emits manifest YAMLs and renders MP4s in parallel via the existing comic-pipeline. Mirrors Tyler Germain's 6-step Claude Code skill pattern, adapted for video. Trigger on phrases like "make a promo video", "render a demo", "draft a homepage hero", "produce a video for X feature", "stitch screenshots into a video", "iterate the demo", "generate a launch reel".
+description: Use this skill when the user asks to create, draft, render, or iterate a promo or product-demo video for MIRA / FactoryLM — landing-page hero, YouTube demo, ProductHunt launch reel, sales-enablement walkthrough, internal feature recap. Codifies the gold-standard director playbook (6-step Hook → Pain → Reveal → Demo → Proof → CTA, with industrial-buyer + direct-response overrides) into a runnable pipeline that emits manifest YAMLs and renders MP4s in parallel via the existing comic-pipeline. Mirrors Tyler Germain's 6-step Claude Code skill pattern, adapted for video. Trigger on phrases like "make a promo video", "render a demo", "draft a homepage hero", "produce a video for X feature", "stitch screenshots into a video", "iterate the demo", "generate a launch reel", "re-render with a real/Orpheus voice", "swap the voiceover", "the demo voice sounds wrong".
 ---
 
 # promo-director
@@ -18,12 +18,20 @@ If the user already has a manifest YAML and just wants it rendered, run `build_s
 
 ## Pre-flight
 
-- `OPENAI_API_KEY` in Doppler `factorylm/prd` (verified — used for TTS and optional gpt-image-1)
-- `ffmpeg` + `ffprobe` on PATH
-- Python venv at `.venv/Scripts/python.exe` (Windows) or `.venv/bin/python` (mac/linux) with `openai` + `pyyaml` installed
+- **Voice:** `GROQ_API_KEY` in Doppler `factorylm/prd` → Groq Orpheus is the
+  production voice. **OpenAI TTS is dead on this org (429 insufficient_quota) —
+  do not depend on it.** macOS `say` (`local_tts_say.py`) is the offline rough-cut
+  fallback only. Full voice mechanics: `references/SCREENSHOT_DEMO_PIPELINE.md` §2.
+- `ffmpeg` + `ffprobe` on PATH (`/opt/homebrew/bin` on CHARLIE — prefix the PATH)
+- Python venv at `.venv/bin/python` (CHARLIE/mac) with `openai` + `pyyaml`
+  installed. (`.venv/Scripts/python.exe` is the stale Windows path — ignore it.)
 - Playbook present at `marketing/comic-pipeline/PROMO_DIRECTOR_PLAYBOOK.md`
 
 If any of these fail, abort and surface the missing piece — never silently degrade.
+
+**The runnable how-to for everything below — render command, Orpheus voice catalog
++ terms gate, manifest schema, hero-crop recipe, and the mandatory verification —
+lives in `references/SCREENSHOT_DEMO_PIPELINE.md`. Read it before rendering.**
 
 ## The 6 steps (Tyler's pattern, our parameters)
 
@@ -133,10 +141,13 @@ height: 1080
 zoom_amount: 0.012   # playbook default — about 1.4% over 5s
 transition_duration: 0.4
 fit_mode: letterbox
-tts_voice: onyx
-tts_model: gpt-4o-mini-tts
+tts_provider: groq                          # OpenAI TTS is dead — use groq
+tts_voice: austin                           # autumn|diana|hannah|austin|daniel|troy
+tts_model: canopylabs/orpheus-v1-english
+tts_format: wav                             # Orpheus emits wav, not mp3
 voiceover_style: |
   <verbatim from playbook — see PROMO_DIRECTOR_PLAYBOOK.md "Voiceover prompt">
+  # NOTE: Orpheus ignores this; kept for docs / gpt-4o fallback only.
 frames:
   - image: <path>
     narration: <one line, ≤25 words, plain English>
@@ -146,8 +157,9 @@ frames:
 Render in parallel — kick off N background `doppler run` jobs, one per variant, watch via `BashOutput` until each finishes:
 
 ```bash
+PATH="/opt/homebrew/bin:$PATH" \
 doppler run --project factorylm --config prd -- \
-  .venv/Scripts/python.exe marketing/comic-pipeline/build_screenshot_demo.py \
+  .venv/bin/python marketing/comic-pipeline/build_screenshot_demo.py \
   --manifest <path>
 ```
 
@@ -169,6 +181,21 @@ Run summary (`README.md` per gen-id):
 - Variant table: angle, length, file path, key narration line, playbook violations (should be zero)
 - Render times + spend
 - "Next moves" section: how to share (Tailscale HTTP server URL pattern from prior runs), how to iterate (step 7), how to upload (`upload_youtube.py` if Google Cloud OAuth set up)
+
+### Step 6.5 — Verify, then deliver to phone (MANDATORY)
+
+Never hand over a render on arithmetic alone (Cluster Law 1 — evidence-only). For
+each MP4, before delivery (full commands in `references/SCREENSHOT_DEMO_PIPELINE.md` §6):
+
+1. **`ffprobe`** — confirm video `h264 1920x1080` + audio `aac`, duration ≈ audio.
+2. **Whisper transcript** — when a render is unexpectedly short, transcribe
+   `voiceover.wav` (Groq `whisper-large-v3`) and confirm the closing/CTA line is
+   present. Catches silent VO truncation. Listen for `factorylm.com` mispronunciation.
+3. **Frame extract** — after any crop/layout change, pull a frame (`ffmpeg -ss`)
+   and Read it to confirm proof text is legible at phone size.
+
+Then **deliver via `SendUserFile`** (the MP4 path[s]) — the user reviews in-thread on
+mobile. Caption with voice + per-video length + anything to listen/look for.
 
 ### Step 7 — Iteration (Tyler's "make these more creative" loop)
 
@@ -209,6 +236,11 @@ Default to action over questioning when the brief has all required fields. Tyler
 - Manifests that violate playbook rules without a `playbook_overrides` block
 - More than 3 variants (videos cost time, this isn't a static-ad variant grid)
 - Rendering before the brief validates against the playbook checklist
+- Reaching for OpenAI TTS — it's dead (429); Groq Orpheus is the voice
+- Orpheus voice `leo`/`dan` — invalid; use `autumn|diana|hannah|austin|daniel|troy`
+- Orpheus manifest without `tts_format: wav` (it emits wav, not mp3)
+- Editing a manifest to point at a crop but not re-rendering (the MP4 stays stale)
+- Delivering a render without the Step 6.5 verification (esp. the transcript check)
 
 ## Files this skill touches
 
@@ -225,7 +257,10 @@ Default to action over questioning when the brief has all required fields. Tyler
 
 **Calls:**
 - `marketing/comic-pipeline/build_screenshot_demo.py` (the renderer — already shipped)
-- OpenAI TTS via `OPENAI_API_KEY` from Doppler
+- Groq Orpheus TTS (`canopylabs/orpheus-v1-english`) via `GROQ_API_KEY` from Doppler
+- Groq Whisper (`whisper-large-v3`) for the audio-completeness verification check
+- `ffprobe` / `ffmpeg` for verification + hero crops
+- `SendUserFile` to deliver MP4s to the user's phone
 
 ## Provenance
 

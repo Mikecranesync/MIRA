@@ -8,16 +8,6 @@ compliance, cascade LLM — is unchanged.
 Auth: HMAC-SHA256 over body+nonce+timestamp+tenant. Same signing contract as
 mira-mcp/ignition_auth.py and mira-relay/auth.py. Key from MIRA_IGNITION_HMAC_KEY.
 
-UNS certification (W3-E / Phase 6):
-  Every Ignition turn must carry a resolvable asset identity — either
-  ``asset_id`` (a bare tag) or ``asset_context`` ({site,area,line,equipment}).
-  When identity is absent or unresolvable the endpoint rejects with 422
-  ``{"error":"uns_required"}`` and does NOT fall through to the chat gate.
-  When identity is present, ``engine.seed_direct_connection()`` pre-seeds
-  ``state["context"]["uns_source"] = "direct_connection"`` so the UNS
-  confirmation gate is already satisfied when process_full runs.
-  Rule ref: .claude/rules/direct-connection-uns-certified.md
-
 Ref: docs/mira-ignition-secure-architecture.md §3.2, §9 D3.
 """
 
@@ -33,10 +23,8 @@ from collections import OrderedDict
 from typing import Any, Callable, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
 from ignition_audit import query_audit_rows, write_audit_row
 from pydantic import BaseModel
-from shared.uns_resolver import uns_path_from_asset_context
 
 logger = logging.getLogger("mira-pipeline.ignition_chat")
 
@@ -165,22 +153,6 @@ def _format_tag_preamble(tag_snapshot: dict[str, Any], asset_id: str) -> str:
     return "\n".join(lines)
 
 
-# ── UNS path builder from asset_context ─────────────────────────────────────
-
-
-def _uns_path_from_context(asset_context: dict[str, Any] | None) -> Optional[str]:
-    """Build a plant-namespace UNS path from a structured asset_context dict.
-
-    Delegates to ``shared.uns_resolver.uns_path_from_asset_context`` — the
-    canonical path builder that uses ``shared.uns_paths.assigned_equipment_path``
-    and ``slug`` (dep-free, always importable from the pipeline container).
-
-    Compliant with .claude/rules/uns-compliance.md rule #1 (use shared path
-    builders, never hand-format enterprise.* strings).
-    """
-    return uns_path_from_asset_context(asset_context)
-
-
 # ── Router factory ───────────────────────────────────────────────────────────
 
 
@@ -211,48 +183,14 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
         if not question:
             raise HTTPException(400, "question (or query) is required")
 
-        # ── UNS identity check (W3-E Gap A) ──────────────────────────────────
-        # A direct connection MUST carry a resolvable asset identity.  Without
-        # one the connection cannot certify the UNS path, so we REJECT rather
-        # than downgrading to the chat gate.
-        # Rule ref: .claude/rules/direct-connection-uns-certified.md
-        asset_id = (req.asset_id or "").strip()
-        has_identity = bool(asset_id) or bool(req.asset_context)
-        if not has_identity:
-            logger.warning(
-                "IGNITION_CHAT uns_required tenant=%s — no asset_id or asset_context",
-                tenant_id,
-            )
-            # Return JSONResponse directly — FastAPI wraps HTTPException detail under
-            # {"detail": ...}, which would bury the error key the spec requires at
-            # the top level: {"error": "uns_required"}.
-            return JSONResponse(status_code=422, content={"error": "uns_required"})
-        # ── End UNS identity check ────────────────────────────────────────────
-
         engine = get_engine()
         if engine is None:
             raise HTTPException(503, "Supervisor not initialized")
 
         # The Ignition session is per-asset; if no explicit chat_id is supplied
         # use (tenant_id, asset_id) so concurrent assets keep independent FSM state.
+        asset_id = (req.asset_id or "").strip()
         chat_id = f"ignition:{tenant_id}:{asset_id or 'default'}"
-
-        # Build UNS path from asset_context (if provided), falling back to
-        # bare asset_id.  uns_path may be None for asset_id-only turns —
-        # the session key itself acts as the identity in that case.
-        uns_path: Optional[str] = None
-        if req.asset_context:
-            uns_path = _uns_path_from_context(req.asset_context)
-        if not uns_path and asset_id:
-            uns_path = asset_id  # bare tag — not a full ISA-95 path, but resolvable
-
-        # ── Seed direct-connection UNS certification (W3-E Gap A + Gap B) ────
-        # Pre-seed state["context"]["uns_source"] = "direct_connection" so that
-        # _should_fire_uns_gate() short-circuits without asking the technician
-        # to confirm the asset they're literally connected to.
-        # Rule ref: .claude/rules/direct-connection-uns-certified.md
-        engine.seed_direct_connection(chat_id, uns_path, surface="ignition_chat")
-        # ── End seed ─────────────────────────────────────────────────────────
 
         preamble = _format_tag_preamble(req.tag_snapshot or {}, asset_id)
         message = f"{preamble}\n\n{question}" if preamble else question
@@ -276,12 +214,10 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
         latency_ms = int((time.monotonic() - t0) * 1000)
         status = "engine_error" if engine_error else "ok"
         logger.info(
-            "IGNITION_CHAT %s tenant=%s asset=%s uns_path=%r surface=ignition_chat "
-            "latency_ms=%d reply_len=%d",
+            "IGNITION_CHAT %s tenant=%s asset=%s latency_ms=%d reply_len=%d",
             status,
             tenant_id,
             asset_id,
-            uns_path,
             latency_ms,
             len(reply or ""),
         )

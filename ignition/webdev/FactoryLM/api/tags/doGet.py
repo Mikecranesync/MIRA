@@ -3,78 +3,109 @@
 # Query params:
 #   folder  — tag folder path (default: "[default]Mira_Monitored")
 #   recurse — "true" to recurse one level into sub-folders (default: false)
-#   values  — "true" to attach live tag values (default: false)
+#   values  — "true" to read live tag values (default: false)
 # Returns JSON array with name, type, path, value, quality for each tag.
-#
-# SECURITY — Allowlist gate (D1):
-#   Only tags explicitly listed in approved_tags.json are returned. Any tag
-#   not on the list is invisible to MIRA. A request targeting a specific path
-#   that is not allowlisted returns HTTP 404. The allowlist is loaded from:
-#     <ignition-data>/factorylm/approved_tags.json
-#   Read-only: this handler never calls system.tag.writeBlocking.
-#
+# Only tags in approved_tags.json are visible (fail-closed: 503 if allowlist missing).
 # Jython 2.7 — runs inside Ignition Gateway JVM.
 # Ref: https://www.docs.inductiveautomation.com/docs/8.1/ignition-modules/web-dev
 
 import json
-import sys
+import os
 
 DEFAULT_FOLDER = "[default]Mira_Monitored"
 
 # Maximum tags to return in one response (avoid memory pressure)
 MAX_TAGS = 500
 
-# Candidate paths for the factorylm data directory (same roots as factorylm.properties)
-APPROVED_TAGS_PATHS = [
-    "C:/Program Files/Inductive Automation/Ignition/data/factorylm/approved_tags.json",
-    "/usr/local/bin/ignition/data/factorylm/approved_tags.json",
-    "/var/lib/ignition/data/factorylm/approved_tags.json",
-]
+# Path to the allowlist file, relative to the Ignition data/projects directory.
+# Resolved at request time so restarts pick up edits without a gateway restart.
+_ALLOWLIST_FILENAME = "approved_tags.json"
 
 
-def _load_approved_set(logger):
+def _load_allowlist():
     """
-    Load approved_tags.json from the Ignition data directory.
-    Returns a frozenset of approved tag_path strings, or None on failure.
-    Uses java.io.File to probe paths (same pattern as getMiraConfig).
+    Locate and load approved_tags.json from the project directory.
+
+    Resolution strategy (Jython 2.7, Ignition Gateway JVM):
+      1. Try the project resource path next to this script (works in dev on disk).
+      2. Try system.util.getProjectName() to build the Ignition project data path.
+      3. Try a hardcoded fallback for the standard Linux Ignition install path.
+
+    Returns a set of approved tag path strings on success.
+    Raises IOError / ValueError with a descriptive message on failure so the
+    caller can return HTTP 503 (fail-closed, never fail-open).
     """
-    import java.io.File as File
+    candidates = []
 
-    for p in APPROVED_TAGS_PATHS:
-        f = File(p)
-        if f.exists():
-            try:
-                fh = open(p, "r")
-                try:
-                    data = json.load(fh)
-                finally:
-                    fh.close()
-                entries = data.get("tags", [])
-                approved = frozenset(entry["tag_path"] for entry in entries)
-                logger.debug(
-                    "Loaded %d approved tags from %s" % (len(approved), p)
-                )
-                return approved
-            except Exception as e:
-                logger.error(
-                    "Failed to load approved_tags.json from %s: %s" % (p, str(e))
-                )
-                return None
+    # 1. Same directory as this script (works on-disk dev layout).
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        candidates.append(os.path.join(script_dir, _ALLOWLIST_FILENAME))
+    except Exception:
+        pass
 
-    logger.error("approved_tags.json not found in any candidate path")
-    return None
+    # 2. Ignition project data directory (standard runtime path).
+    try:
+        project_name = system.util.getProjectName()
+        # Standard Ignition install: /usr/local/bin/ignition/data/projects/<project>/
+        ignition_projects = "/usr/local/bin/ignition/data/projects"
+        candidates.append(
+            os.path.join(ignition_projects, project_name, _ALLOWLIST_FILENAME)
+        )
+        # Windows Ignition install fallback
+        candidates.append(
+            os.path.join(
+                "C:\\Program Files\\Inductive Automation\\Ignition\\data\\projects",
+                project_name,
+                _ALLOWLIST_FILENAME,
+            )
+        )
+    except Exception:
+        pass
+
+    # 3. Sibling to the project.json in ignition/project/ (repo layout).
+    try:
+        # Walk up from this file's directory to find ignition/project/
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        repo_root = script_dir
+        for _ in range(6):
+            candidate = os.path.join(repo_root, "ignition", "project", _ALLOWLIST_FILENAME)
+            if os.path.isfile(candidate):
+                candidates.insert(0, candidate)
+                break
+            repo_root = os.path.dirname(repo_root)
+    except Exception:
+        pass
+
+    last_error = "No candidate paths resolved"
+    for path in candidates:
+        try:
+            with open(path, "r") as fh:
+                data = json.load(fh)
+            tags = data.get("tags", None)
+            if not isinstance(tags, list):
+                raise ValueError("'tags' key missing or not a list in %s" % path)
+            return set(tags)
+        except IOError as e:
+            last_error = "IOError reading %s: %s" % (path, str(e))
+        except ValueError as e:
+            last_error = "ValueError parsing %s: %s" % (path, str(e))
+
+    raise IOError("approved_tags.json not found or unreadable. %s" % last_error)
 
 
 def doGet(request, session):
     logger = system.util.getLogger("FactoryLM.Mira.Tags")
 
-    # --- Load allowlist (fail closed: no allowlist = no tags) ---
-    approved_set = _load_approved_set(logger)
-    if approved_set is None:
+    # --- Load allowlist (fail-closed: 503 if unavailable) ---
+    try:
+        allowlist = _load_allowlist()
+    except Exception as e:
+        logger.error("Allowlist unavailable — denying all tag access: %s" % str(e))
         return {
             "json": {
-                "error": "Tag allowlist unavailable — configure approved_tags.json",
-                "detail": "File not found in any of the expected factorylm data paths"
+                "error": "allowlist unavailable",
+                "detail": str(e)
             },
             "status": 503
         }
@@ -88,29 +119,12 @@ def doGet(request, session):
     recurse = params.get("recurse", "false").strip().lower() == "true"
     read_values = params.get("values", "false").strip().lower() == "true"
 
-    # Optional: caller may request a specific single tag path
-    specific_path = params.get("path", "").strip()
-
     if not folder:
         folder = DEFAULT_FOLDER
 
-    # --- Specific-path request: enforce allowlist with 404 ---
-    if specific_path:
-        if not (specific_path in approved_set):
-            logger.warn(
-                "Rejected non-allowlisted tag path request: %s" % specific_path
-            )
-            return {
-                "json": {
-                    "error": "Tag not found",
-                    "path": specific_path
-                },
-                "status": 404
-            }
-
     logger.debug(
-        "Tags request — folder: %s, recurse: %s, read_values: %s"
-        % (folder, recurse, read_values)
+        "Tags request — folder: %s, recurse: %s, read_values: %s, allowlist_size: %d"
+        % (folder, recurse, read_values, len(allowlist))
     )
 
     # --- Browse tags ---
@@ -121,16 +135,24 @@ def doGet(request, session):
         results = system.tag.browseTags(parentPath=folder)
 
         for tag in results:
+            tag_path = str(tag.fullPath)
+            is_folder = str(tag.type).lower() in ("folder", "udtinst")
+
+            # Allowlist enforcement: folders pass through (structural);
+            # leaf tags must be in the allowlist.
+            if not is_folder and tag_path not in allowlist:
+                logger.debug("Tag blocked by allowlist: %s" % tag_path)
+                continue
+
             tag_info = {
                 "name": str(tag.name),
-                "path": str(tag.fullPath),
+                "path": tag_path,
                 "type": str(tag.type),
                 "data_type": str(tag.dataType) if hasattr(tag, "dataType") else "unknown"
             }
 
-            # Collect sub-folder names for optional recursion
-            if str(tag.type).lower() in ("folder", "udtinst"):
-                folders_found.append(str(tag.fullPath))
+            if is_folder:
+                folders_found.append(tag_path)
                 tag_info["is_folder"] = True
             else:
                 tag_info["is_folder"] = False
@@ -138,7 +160,7 @@ def doGet(request, session):
             tags.append(tag_info)
 
         logger.debug(
-            "Browsed %d tags in %s (%d sub-folders)"
+            "Browsed %d allowlisted tags in %s (%d sub-folders)"
             % (len(tags), folder, len(folders_found))
         )
 
@@ -168,38 +190,27 @@ def doGet(request, session):
                 for tag in sub_results:
                     if len(tags) >= MAX_TAGS:
                         break
+                    tag_path = str(tag.fullPath)
+                    is_folder = str(tag.type).lower() in ("folder", "udtinst")
+
+                    # Allowlist enforcement in sub-folders
+                    if not is_folder and tag_path not in allowlist:
+                        logger.debug(
+                            "Sub-folder tag blocked by allowlist: %s" % tag_path
+                        )
+                        continue
+
                     tags.append({
                         "name": str(tag.name),
-                        "path": str(tag.fullPath),
+                        "path": tag_path,
                         "type": str(tag.type),
                         "data_type": str(tag.dataType) if hasattr(tag, "dataType") else "unknown",
-                        "is_folder": str(tag.type).lower() in ("folder", "udtinst")
+                        "is_folder": is_folder
                     })
             except Exception as e:
                 logger.warn(
                     "Tag browse failed for sub-folder %s: %s" % (sub_folder, str(e))
                 )
-
-    # --- Allowlist filter: remove any tag not in approved_tags.json ---
-    # Folder entries are kept only if their path is also on the allowlist,
-    # or if they are a container for allowlisted children — for simplicity we
-    # keep folder entries unconditionally (they are never leaf reads) and only
-    # filter leaf tags. Leaf tag paths not in approved_set are dropped silently.
-    tags_before = len(tags)
-    filtered = []
-    for t in tags:
-        if t.get("is_folder", False):
-            # Keep folder entries (they are structural, not data)
-            filtered.append(t)
-        else:
-            if t.get("path", "") in approved_set:
-                filtered.append(t)
-    tags = filtered
-    dropped = tags_before - len(tags)
-    if dropped > 0:
-        logger.info(
-            "Allowlist filtered %d non-approved tag(s) from response" % dropped
-        )
 
     # --- Optionally read live values ---
     # Only read non-folder tags; batch the read for efficiency
@@ -232,7 +243,8 @@ def doGet(request, session):
                 # Non-fatal — return tags without values
 
     logger.info(
-        "Tags response — folder: %s, tag_count: %d" % (folder, len(tags))
+        "Tags response — folder: %s, tag_count: %d, allowlist_enforced: true"
+        % (folder, len(tags))
     )
 
     return {
@@ -240,6 +252,8 @@ def doGet(request, session):
             "folder": folder,
             "tags": tags,
             "count": len(tags),
-            "truncated": len(tags) >= MAX_TAGS
+            "truncated": len(tags) >= MAX_TAGS,
+            "allowlist_enforced": True,
+            "allowlist_size": len(allowlist)
         }
     }

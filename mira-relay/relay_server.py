@@ -1,16 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import hmac
 import json
 import logging
 import os
 import sqlite3
-import time
-import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -18,60 +13,16 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket
 
+from auth import verify_hmac
+
 logger = logging.getLogger("mira-relay")
 
 DB_PATH = os.getenv("MIRA_DB_PATH", "/mira-db/mira.db")
 RELAY_API_KEY = os.getenv("RELAY_API_KEY", "")
-
-# ---------------------------------------------------------------------------
-# HMAC + nonce replay protection (§4.3 / D4 / secure-arch §10.6 task 4).
-#
-# Headers expected from signed clients:
-#   X-MIRA-Tenant    — tenant id (used to look up the signing key)
-#   X-MIRA-Nonce     — monotonic / unique per request (e.g. ms timestamp + random)
-#   X-MIRA-Signature — hex HMAC-SHA256 of (nonce.encode() + b"." + raw_body)
-#
-# Key resolution (per tenant):
-#   1. MIRA_HMAC_KEY_<TENANT>  (e.g. MIRA_HMAC_KEY_ACME_CORP) — per-tenant key
-#   2. MIRA_HMAC_KEY            — single shared fallback key
-# Per-tenant key minting / rotation is a Hub-admin follow-up (secure-arch §11 Q3).
-# Keys are Doppler-managed; never hardcode.
-#
-# BACKWARD COMPAT — RELAY_LEGACY_BEARER (default: "1"):
-#   "1" (on)  → accept EITHER a valid HMAC-signed request OR the existing bearer
-#               token — whichever the client sends.  The bench bridge + tools/
-#               demo_plc_poller continue to work unchanged.
-#   "0" (off) → require HMAC; bearer-only requests are rejected with 401.
-#
-# Cutover plan: flip RELAY_LEGACY_BEARER=0 once all clients (bench bridge +
-# tools/demo_plc_poller) have been updated to sign requests.  At that point the
-# bearer path can be removed entirely.
-# ---------------------------------------------------------------------------
-
-RELAY_LEGACY_BEARER: bool = os.getenv("RELAY_LEGACY_BEARER", "1").strip() != "0"
-
-# In-memory nonce store: (tenant_id, nonce) → seen_at_epoch_s.
-# Pruned on every verification call; 10-minute replay window.
-_NONCE_WINDOW_S: int = 600
-_seen_nonces: dict[tuple[str, str], float] = {}
-
-# ---------------------------------------------------------------------------
-# Phase 5 / §D4 — Tag diff & event stream (gated behind RELAY_TAG_EVENTS=1).
-#
-# When RELAY_TAG_EVENTS is NOT set (default), the diff logger and Neon writer
-# are never imported — the bench bridge is completely unaffected.
-# ---------------------------------------------------------------------------
-RELAY_TAG_EVENTS: bool = os.getenv("RELAY_TAG_EVENTS", "0").strip() == "1"
-
-# Module-level singletons; only initialised when RELAY_TAG_EVENTS=1.
-_diff_logger = None
-if RELAY_TAG_EVENTS:
-    try:
-        from diff_logger import DiffLogger
-        _diff_logger = DiffLogger()
-        logger.info("Phase 5 tag-event stream ENABLED (RELAY_TAG_EVENTS=1)")
-    except Exception as _exc:
-        logger.warning("Failed to initialise DiffLogger — tag events disabled: %s", _exc)
+# Set RELAY_LEGACY_BEARER=1 to accept the old "Authorization: Bearer <key>" path.
+# Keep enabled until plc/live-plc-bridge and mira-fault-detective migrate to HMAC.
+RELAY_LEGACY_BEARER = os.getenv("RELAY_LEGACY_BEARER", "0") == "1"
+MIRA_IGNITION_HMAC_KEY = os.getenv("MIRA_IGNITION_HMAC_KEY", "")
 
 TAG_COLUMN_MAP = {
     "speed_rpm": "speed_rpm",
@@ -110,9 +61,16 @@ def _ensure_tables(conn: sqlite3.Connection) -> None:
             temperature_c REAL,
             current_amps REAL,
             pressure_psi REAL,
-            metadata TEXT
+            metadata TEXT,
+            tenant_id TEXT
         )
     """)
+    # Migrate: add tenant_id column if it doesn't exist yet (idempotent)
+    try:
+        conn.execute("ALTER TABLE equipment_status ADD COLUMN tenant_id TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     conn.execute("""
         CREATE TABLE IF NOT EXISTS faults (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,13 +81,20 @@ def _ensure_tables(conn: sqlite3.Connection) -> None:
             timestamp TEXT NOT NULL DEFAULT (datetime('now')),
             resolved INTEGER NOT NULL DEFAULT 0,
             resolved_at TEXT,
+            tenant_id TEXT,
             FOREIGN KEY (equipment_id) REFERENCES equipment_status(equipment_id)
         )
     """)
+    # Migrate: add tenant_id column to faults if missing
+    try:
+        conn.execute("ALTER TABLE faults ADD COLUMN tenant_id TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     conn.commit()
 
 
-def process_tag_payload(payload: dict) -> int:
+def process_tag_payload(payload: dict, tenant_id: str | None = None) -> int:
     """Process a tag payload and upsert into equipment_status. Returns rows upserted."""
     equipment = payload.get("equipment", {})
     if not equipment:
@@ -167,8 +132,9 @@ def process_tag_payload(payload: dict) -> int:
                 """
                 INSERT INTO equipment_status
                     (equipment_id, name, status, last_updated,
-                     speed_rpm, temperature_c, current_amps, pressure_psi, metadata)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     speed_rpm, temperature_c, current_amps, pressure_psi,
+                     metadata, tenant_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(equipment_id) DO UPDATE SET
                     status = excluded.status,
                     last_updated = excluded.last_updated,
@@ -176,13 +142,14 @@ def process_tag_payload(payload: dict) -> int:
                     temperature_c = COALESCE(excluded.temperature_c, equipment_status.temperature_c),
                     current_amps = COALESCE(excluded.current_amps, equipment_status.current_amps),
                     pressure_psi = COALESCE(excluded.pressure_psi, equipment_status.pressure_psi),
-                    metadata = excluded.metadata
+                    metadata = excluded.metadata,
+                    tenant_id = COALESCE(excluded.tenant_id, equipment_status.tenant_id)
                 """,
                 (
                     eq_id, eq_id, status, now,
                     columns["speed_rpm"], columns["temperature_c"],
                     columns["current_amps"], columns["pressure_psi"],
-                    metadata_json,
+                    metadata_json, tenant_id,
                 ),
             )
 
@@ -193,9 +160,9 @@ def process_tag_payload(payload: dict) -> int:
                 ).fetchone()
                 if not existing:
                     db.execute(
-                        "INSERT INTO faults (equipment_id, fault_code, severity, timestamp) "
-                        "VALUES (?, ?, 'warning', ?)",
-                        (eq_id, fc, now),
+                        "INSERT INTO faults (equipment_id, fault_code, severity, timestamp, tenant_id) "
+                        "VALUES (?, ?, 'warning', ?, ?)",
+                        (eq_id, fc, now, tenant_id),
                     )
 
             count += 1
@@ -206,140 +173,41 @@ def process_tag_payload(payload: dict) -> int:
         db.close()
 
 
-def _emit_tag_events(payload: dict, relay_batch_id: uuid.UUID) -> None:
-    """Detect diffs and write to NeonDB tag_events (Phase 5).
+def _check_bearer(request: Request) -> bool:
+    """Legacy bearer-token check. Only used when RELAY_LEGACY_BEARER=1."""
+    if not RELAY_API_KEY:
+        return True
+    auth = request.headers.get("Authorization", "")
+    return auth == f"Bearer {RELAY_API_KEY}"
 
-    Called after the SQLite upsert. Fail-soft — any exception is caught and
-    logged so the relay response is never blocked by Neon unavailability.
 
-    tag_id convention: "{equipment_id}.{tag_name}" composite key so that it
-    matches how approved_tags.tag_id should be populated (e.g., "CONV-001.motor_running").
-    This allows per-equipment-per-tag allowlist and threshold entries.
+async def _authenticate_http(request: Request, body: bytes) -> tuple[bool, str | None, str | None]:
+    """Authenticate an HTTP request.
+
+    Returns (ok, tenant_id, error_detail).
+    - ok=True, tenant_id=str → HMAC verified.
+    - ok=True, tenant_id=None → legacy bearer verified (no tenant).
+    - ok=False → auth failed; error_detail has the reason.
     """
-    try:
-        import neon as _neon
+    # Try HMAC first (preferred path)
+    if MIRA_IGNITION_HMAC_KEY and request.headers.get("X-MIRA-Signature"):
+        try:
+            tenant_id = verify_hmac(dict(request.headers), body, MIRA_IGNITION_HMAC_KEY)
+            return True, tenant_id, None
+        except ValueError as exc:
+            return False, None, str(exc)
 
-        tenant_id = payload.get("tenant_id", "")
-        equipment = payload.get("equipment", {})
-
-        # Build a flat tag dict keyed "eq_id.tag_name" for the diff logger.
-        flat_tags: dict = {}
-        for eq_id, tags in equipment.items():
-            for tag_name, tag_data in tags.items():
-                composite_id = f"{eq_id}.{tag_name}"
-                flat_tags[composite_id] = tag_data
-
-        if not flat_tags:
-            return
-
-        # Load approved_tags from NeonDB (fail-soft — returns {} if unavailable).
-        # Empty approved = pass-all (bench mode / table not yet populated).
-        approved = _neon.load_approved_tags(tenant_id) if tenant_id else {}
-
-        rows = _diff_logger.process_batch(
-            tenant_id=tenant_id,
-            approved=approved,
-            tags=flat_tags,
-            relay_batch_id=relay_batch_id,
-        )
-
-        if rows:
-            inserted = _neon.insert_tag_events(rows)
-            logger.debug(
-                "tag_events: batch=%s tenant=%s events=%d inserted=%d",
-                str(relay_batch_id)[:8], tenant_id, len(rows), inserted,
-            )
-    except Exception as exc:
-        logger.warning("_emit_tag_events failed (batch=%s): %s", str(relay_batch_id)[:8], exc)
-
-
-def _resolve_hmac_key(tenant_id: str) -> Optional[str]:
-    """Return the HMAC signing key for *tenant_id*, or None if unconfigured."""
-    env_slug = tenant_id.upper().replace("-", "_").replace(" ", "_")
-    per_tenant = os.getenv(f"MIRA_HMAC_KEY_{env_slug}", "")
-    if per_tenant:
-        return per_tenant
-    return os.getenv("MIRA_HMAC_KEY", "") or None
-
-
-def _prune_nonces(now: float) -> None:
-    """Remove nonce entries older than the replay window. Call before every check."""
-    cutoff = now - _NONCE_WINDOW_S
-    stale = [k for k, ts in _seen_nonces.items() if ts < cutoff]
-    for k in stale:
-        del _seen_nonces[k]
-
-
-def _check_hmac(request: Request, body: bytes) -> tuple[bool, int]:
-    """Verify HMAC headers.  Returns (ok, http_status).
-
-    - Missing/empty signature header → (False, 401).
-    - Tenant key not configured      → (False, 401).
-    - Bad signature                  → (False, 401).
-    - Replayed nonce                 → (False, 409).
-    - Valid + fresh                  → (True,  200).
-    """
-    tenant_id = request.headers.get("X-MIRA-Tenant", "").strip()
-    nonce = request.headers.get("X-MIRA-Nonce", "").strip()
-    signature = request.headers.get("X-MIRA-Signature", "").strip()
-
-    if not signature:
-        return False, 401
-
-    key = _resolve_hmac_key(tenant_id)
-    if not key:
-        logger.warning("HMAC key not configured for tenant=%r", tenant_id)
-        return False, 401
-
-    # Signed message = nonce bytes + "." sentinel + raw body.
-    # Binding the nonce into the signature prevents body-replay with a fresh nonce.
-    message = nonce.encode() + b"." + body
-    expected = hmac.new(key.encode(), message, hashlib.sha256).hexdigest()
-
-    if not hmac.compare_digest(expected, signature):
-        logger.warning("HMAC signature mismatch for tenant=%r nonce=%r", tenant_id, nonce[:16])
-        return False, 401
-
-    # Signature valid — now check replay window (no await between check + record).
-    now = time.monotonic()
-    _prune_nonces(now)
-    nonce_key = (tenant_id, nonce)
-    if nonce_key in _seen_nonces:
-        logger.warning("Replayed nonce rejected for tenant=%r nonce=%r", tenant_id, nonce[:16])
-        return False, 409
-    _seen_nonces[nonce_key] = now
-
-    return True, 200
-
-
-def _check_auth(request: Request, body: bytes) -> tuple[bool, int]:
-    """Auth gate for the ingest endpoint.
-
-    Decision tree:
-      1. If HMAC headers present → HMAC path (strict; no bearer fallback).
-      2. No HMAC headers + RELAY_LEGACY_BEARER on → bearer path.
-      3. No HMAC headers + RELAY_LEGACY_BEARER off → 401.
-
-    Returns (ok, http_status).
-    """
-    has_sig = bool(request.headers.get("X-MIRA-Signature", "").strip())
-
-    if has_sig:
-        # HMAC path — strict; never fall back to bearer after a failed HMAC check.
-        return _check_hmac(request, body)
-
-    # No HMAC signature supplied.
+    # Legacy bearer fallback
     if RELAY_LEGACY_BEARER:
-        # Legacy bearer path (backward-compat; default on).
-        if not RELAY_API_KEY:
-            return True, 200
-        auth = request.headers.get("Authorization", "")
-        ok = auth == f"Bearer {RELAY_API_KEY}"
-        return ok, 200 if ok else 401
-    else:
-        # HMAC required; unsigned requests are rejected.
-        logger.warning("Unsigned request rejected (RELAY_LEGACY_BEARER=0)")
-        return False, 401
+        if _check_bearer(request):
+            return True, None, None
+        return False, None, "bearer_mismatch"
+
+    # No key configured at all → open (matches original behaviour)
+    if not RELAY_API_KEY and not MIRA_IGNITION_HMAC_KEY:
+        return True, None, None
+
+    return False, None, "auth_required"
 
 
 async def health(request: Request) -> JSONResponse:
@@ -347,13 +215,11 @@ async def health(request: Request) -> JSONResponse:
 
 
 async def ingest(request: Request) -> JSONResponse:
-    # Read raw body first — HMAC must be verified against the exact bytes received.
     body = await request.body()
 
-    ok, status_code = _check_auth(request, body)
+    ok, tenant_id, detail = await _authenticate_http(request, body)
     if not ok:
-        errors = {401: "unauthorized", 409: "replayed nonce"}
-        return JSONResponse({"error": errors.get(status_code, "unauthorized")}, status_code=status_code)
+        return JSONResponse({"error": "auth_failed", "detail": detail}, status_code=401)
 
     try:
         payload = json.loads(body)
@@ -364,40 +230,92 @@ async def ingest(request: Request) -> JSONResponse:
     if msg_type != "tags":
         return JSONResponse({"error": f"unsupported type: {msg_type}"}, status_code=400)
 
-    # 1. SQLite upsert — keeps equipment_status as latest-value cache.
-    count = process_tag_payload(payload)
-    logger.info("Ingested %d equipment rows from %s", count, payload.get("agent_id", "unknown"))
-
-    # 2. Phase 5 diff stream (env-gated; fail-soft; never blocks the 200 OK).
-    if RELAY_TAG_EVENTS and _diff_logger is not None:
-        relay_batch_id = uuid.uuid4()
-        _emit_tag_events(payload, relay_batch_id)
-
+    count = process_tag_payload(payload, tenant_id=tenant_id)
+    logger.info(
+        "Ingested %d equipment rows from %s (tenant=%s)",
+        count,
+        payload.get("agent_id", "unknown"),
+        tenant_id or "legacy",
+    )
     return JSONResponse({"status": "ok", "equipment_count": count})
 
 
 async def ws_relay(websocket: WebSocket) -> None:
     await websocket.accept()
 
-    if RELAY_API_KEY:
+    authenticated = not RELAY_API_KEY and not MIRA_IGNITION_HMAC_KEY
+    ws_tenant_id: str | None = None
+
+    if not authenticated:
         try:
             auth_msg = await asyncio.wait_for(websocket.receive_json(), timeout=10)
-            if auth_msg.get("type") != "auth" or auth_msg.get("token") != RELAY_API_KEY:
-                await websocket.send_json({"error": "unauthorized"})
-                await websocket.close(code=4001)
-                return
-            await websocket.send_json({"type": "auth_ok"})
         except Exception:
             await websocket.close(code=4001)
             return
 
-    logger.info("WebSocket client connected")
+        auth_type = auth_msg.get("type")
+
+        if auth_type == "auth_hmac":
+            # HMAC auth over WebSocket.
+            # The signed payload is the JSON auth message with the signature field removed.
+            # Build the signing body from the four required fields.
+            tenant = auth_msg.get("tenant", "")
+            nonce = auth_msg.get("nonce", "")
+            timestamp = str(auth_msg.get("timestamp", ""))
+            signature = auth_msg.get("signature", "")
+            # Re-construct the canonical signed string directly (avoids JSON serialisation drift).
+            # The body bytes are the UTF-8 encoding of the auth message body string.
+            body_for_signing = json.dumps(
+                {"type": "auth_hmac", "tenant": tenant, "nonce": nonce, "timestamp": auth_msg.get("timestamp", "")},
+                separators=(",", ":"),
+            ).encode()
+            synthetic_headers = {
+                "x-mira-tenant": tenant,
+                "x-mira-nonce": nonce,
+                "x-mira-timestamp": timestamp,
+                "x-mira-signature": signature,
+            }
+            if not MIRA_IGNITION_HMAC_KEY:
+                await websocket.send_json({"error": "hmac_not_configured"})
+                await websocket.close(code=4001)
+                return
+            try:
+                ws_tenant_id = verify_hmac(synthetic_headers, body_for_signing, MIRA_IGNITION_HMAC_KEY)
+                authenticated = True
+                await websocket.send_json({"type": "auth_ok"})
+            except ValueError as exc:
+                await websocket.send_json({"error": "unauthorized", "detail": str(exc)})
+                await websocket.close(code=4001)
+                return
+
+        elif auth_type == "auth" and RELAY_LEGACY_BEARER:
+            # Legacy token path — only allowed when RELAY_LEGACY_BEARER=1
+            if auth_msg.get("token") == RELAY_API_KEY:
+                authenticated = True
+                await websocket.send_json({"type": "auth_ok"})
+            else:
+                await websocket.send_json({"error": "unauthorized"})
+                await websocket.close(code=4001)
+                return
+
+        elif auth_type == "auth" and not RELAY_LEGACY_BEARER:
+            # Legacy path disabled
+            await websocket.send_json({"error": "unauthorized", "detail": "legacy bearer disabled"})
+            await websocket.close(code=4001)
+            return
+
+        else:
+            await websocket.send_json({"error": "unauthorized"})
+            await websocket.close(code=4001)
+            return
+
+    logger.info("WebSocket client connected (tenant=%s)", ws_tenant_id or "legacy")
     try:
         while True:
             data = await websocket.receive_json()
             msg_type = data.get("type")
             if msg_type == "tags":
-                count = process_tag_payload(data)
+                count = process_tag_payload(data, tenant_id=ws_tenant_id)
                 await websocket.send_json({"type": "ack", "equipment_count": count})
             elif msg_type == "ping":
                 await websocket.send_json({"type": "pong"})
