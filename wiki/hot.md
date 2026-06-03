@@ -1,3 +1,21 @@
+# Hot Cache — 2026-06-03 — CLOUD
+
+## Session — 2026-06-03 (autonomous gap-closure driver — epic #1666)
+
+**Preflight status:**
+- `origin/main` @ `ffedb43` (no drift from local HEAD after fetch)
+- 2 open gap-closure PRs: **#1657** (`feat/dt2026-gap-closure`, Phases 0–5) and **#1674** (`feat/dt2026-rls-verification-1664`, stacked on #1657)
+- **CI gate triggered:** PR #1657 had 1 failing check — `apply-and-verify` (migration 032)
+
+**Fix applied (commit `a4df7a3` → pushed to `feat/dt2026-gap-closure`):**
+- Root cause: `032_decision_traces.sql` failed on staging with `column "citations_present" does not exist`. The staging DB already had `decision_traces` from a prior run; `CREATE TABLE IF NOT EXISTS` was skipped so the column was never added; then the partial index `WHERE citations_present = false` errored.
+- Fix: added `ALTER TABLE decision_traces ADD COLUMN IF NOT EXISTS citations_present BOOLEAN NOT NULL DEFAULT false` between `CREATE TABLE` and the index block. Idempotent — no-op on fresh deploys, additive-safe on existing tables.
+- No engine/bot/UNS-gate/KG code touched. No prod psql.
+
+**Status now:** Waiting for CI re-run on PR #1657 (`apply-and-verify`). Per CI-gate rule: stop until green. 2 PRs open, both unmerged → do not pick new work until one merges or CI confirms both green.
+
+**Next run:** If `apply-and-verify` goes green and #1657 remains the only failing PR → advance. If 2 PRs still open + green → stop (human review needed before more work). Lowest-priority ready issue is #1658 (Phase 6 direct_connection UNS bypass).
+
 # Hot Cache — 2026-05-29 — ALPHA
 
 ## Session — 2026-06-03 (CHARLIE) — prod pipeline outage + CI prevention
