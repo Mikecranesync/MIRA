@@ -1,7 +1,7 @@
 # Current-State Gap-Closure Plan
 
 **Maintained by:** autonomous gap-closure driver (epic #1666)
-**Last updated:** 2026-06-03 (run 2 — state unchanged, no new work)
+**Last updated:** 2026-06-03 (run 3 — state unchanged, no new work)
 **Governed by:** `docs/plans/2026-06-01-mira-master-architecture-plan.md`
 **Issues:** `Mikecranesync/MIRA` — see epic #1666 for canonical list
 
@@ -66,8 +66,8 @@ Engine migrations on main: **001–008** (per docs/migrations/)
 
 ### PR #1657 — `feat/dt2026-gap-closure` (base: `main`)
 - **Title:** feat: Walker DT-2026 gap closure — Phases 0–5 (Connect→Collect→Store→Visualize)
-- **CI:** 1 advisory check (`compose-mem-lint`) — ✅ success
-- **Mergeable state:** blocked (needs review)
+- **CI:** 1 advisory check (`compose-mem-lint`) — ✅ success (no required checks)
+- **Mergeable state:** blocked (needs human review/approval; no required CI gate on this PR)
 - **Caveats in PR body:**
   - RLS validated structurally but not under `factorylm_app` (covered by #1674)
   - Relay needs `NEON_DATABASE_URL` + `MIRA_IGNITION_HMAC_KEY` in Doppler
@@ -75,19 +75,26 @@ Engine migrations on main: **001–008** (per docs/migrations/)
 
 ### PR #1674 — `feat/dt2026-rls-verification-1664` (base: `feat/dt2026-gap-closure`)
 - **Title:** test(security): Phase 1 RLS integration tests for tag/trace tables (#1664)
-- **CI:** no checks run yet
-- **Mergeable state:** clean (stacked; merge #1657 first)
+- **CI:** no checks run yet (expected — migration-verify.yml only triggers on PRs targeting main)
+- **Mergeable state:** clean (stacked; merge #1657 first, then retarget #1674 to main or merge in sequence)
 - **What it adds:** 6 RLS integration tests + `migration-verify.yml` widened to cover all of `tests/integration/`
+
+### PR #1682 — `ci/staging-gate-content-scope` (base: `main`) — NOT a gap-closure PR
+- Fixes staging-gate to skip the LLM eval for docs-only/CI-only PRs
+- Needed so #1679 and future cleanup PRs don't get blocked by the flaky required gate
+- Mergeable state: blocked (needs review)
 
 ---
 
 ## Recommended next actions (for driver or human)
 
 ### Human actions (immediately actionable)
-1. Review + approve PR #1657 — the core Phase 0–5 delivery
-2. After #1657 merges: trigger `apply-migrations.yml` on staging to promote 032–037
-3. After staging verified: run `apply-migrations.yml` on prod
-4. Review + merge PR #1674 (after #1657)
+1. **Merge PR #1682** — unblocks docs/CI-only PRs from the flaky staging gate
+2. **Review + approve PR #1657** — the core Phase 0–5 delivery (37 files, 5,916 additions)
+3. After #1657 merges: trigger `apply-migrations.yml` on staging to promote 032–037
+4. After staging verified: run `apply-migrations.yml` on prod
+5. **Review + merge PR #1679** — docs status sync (this PR)
+6. After #1657 merges: merge or retarget #1674, then review
 
 ### Agent actions (next run, if ≤1 gap-closure PR remains open)
 Priority order:
@@ -117,4 +124,6 @@ Priority order:
 
 | Date | Run | Action |
 |------|-----|--------|
-| 2026-06-03 | First run (cloud env) | Status sync only; created this file + updated wiki/hot.md; at 2-PR limit |
+| 2026-06-03 | Run 1 (cloud env) | Status sync only; created this file + updated wiki/hot.md; at 2-PR limit |
+| 2026-06-03 | Run 2 (cloud env) | Status sync only; same state confirmed; no new work; added #1682 to observations |
+| 2026-06-03 | Run 3 (cloud env) | Status sync only; verified CI on #1657 (compose-mem-lint ✅) and #1674 (0 checks, stacked by design); added PR #1682 to recommended human actions |
