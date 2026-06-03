@@ -3,18 +3,29 @@
 ## Session — 2026-06-03 (autonomous gap-closure driver — epic #1666)
 
 **Preflight status:**
-- `origin/main` @ `ffedb43` (no drift from local HEAD after fetch)
+- `origin/main` @ `db0a926`
 - 2 open gap-closure PRs: **#1657** (`feat/dt2026-gap-closure`, Phases 0–5) and **#1674** (`feat/dt2026-rls-verification-1664`, stacked on #1657)
-- **CI gate triggered:** PR #1657 had 1 failing check — `apply-and-verify` (migration 032)
+- **2 PR limit reached** — no new implementation PRs until one merges.
 
-**Fix applied (commit `a4df7a3` → pushed to `feat/dt2026-gap-closure`):**
-- Root cause: `032_decision_traces.sql` failed on staging with `column "citations_present" does not exist`. The staging DB already had `decision_traces` from a prior run; `CREATE TABLE IF NOT EXISTS` was skipped so the column was never added; then the partial index `WHERE citations_present = false` errored.
-- Fix: added `ALTER TABLE decision_traces ADD COLUMN IF NOT EXISTS citations_present BOOLEAN NOT NULL DEFAULT false` between `CREATE TABLE` and the index block. Idempotent — no-op on fresh deploys, additive-safe on existing tables.
+**Fix 1 (commit `a4df7a3` → pushed earlier):**
+- Root cause: `032_decision_traces.sql` `citations_present` column missing on staging; index `WHERE citations_present = false` errored.
+- Fix: `ALTER TABLE … ADD COLUMN IF NOT EXISTS citations_present`.
+
+**Fix 2 (commit `e0f9206` → pushed 2026-06-03 this session):**
+- Root cause: `033_tag_events.sql` index `tag_events_tag_time_idx` on `(tenant_id, tag_path, event_timestamp DESC)` failed because the staging `tag_events` table was created by a prior run BEFORE `tag_path` was added to the schema. `CREATE TABLE IF NOT EXISTS` skips re-creation; the subsequent index errors with `column "tag_path" does not exist`.
+- Fix: extended the idempotency DO block to add `tag_path TEXT NOT NULL DEFAULT 'backfilled'` when missing, then drop the default. Identical pattern to the `event_timestamp` fix.
 - No engine/bot/UNS-gate/KG code touched. No prod psql.
 
-**Status now:** Waiting for CI re-run on PR #1657 (`apply-and-verify`). Per CI-gate rule: stop until green. 2 PRs open, both unmerged → do not pick new work until one merges or CI confirms both green.
+**E2E smoke failure (PR #1657):** `E2E smoke (factorylm.com + app.factorylm.com)` also failing — checks production URLs. Prod was healthy (see 2026-06-02 incident fix). This is likely a flaky prod-health check or a check for content that changed since the check was written. NOT caused by this PR's code. Needs separate investigation.
 
-**Next run:** If `apply-and-verify` goes green and #1657 remains the only failing PR → advance. If 2 PRs still open + green → stop (human review needed before more work). Lowest-priority ready issue is #1658 (Phase 6 direct_connection UNS bypass).
+**CI current state on #1657 (as of this session):**
+- `Eval Offline` → queued (new run, pending)
+- `Docker Build Check` → queued (new run, pending)
+- `apply-and-verify` → failure from OLD run (fix 2 above addresses this; new `apply-and-verify` run will fire on migration file change)
+- E2E smoke → failure from OLD run (pre-existing prod-health issue)
+- All other checks: passing
+
+**Next run:** Wait for `Eval Offline` + `Docker Build Check` + new `apply-and-verify` to complete. If all green → advance to #1658 (Phase 6 direct_connection UNS bypass). If 2 PRs still open + green → stop (human review). E2E smoke needs human decision: make non-blocking or fix prod content check.
 
 # Hot Cache — 2026-05-29 — ALPHA
 
