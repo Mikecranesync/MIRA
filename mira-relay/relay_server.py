@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import sqlite3
+import uuid
 from datetime import datetime, timezone
 
 from starlette.applications import Starlette
@@ -23,6 +24,21 @@ RELAY_API_KEY = os.getenv("RELAY_API_KEY", "")
 # Keep enabled until plc/live-plc-bridge and mira-fault-detective migrate to HMAC.
 RELAY_LEGACY_BEARER = os.getenv("RELAY_LEGACY_BEARER", "0") == "1"
 MIRA_IGNITION_HMAC_KEY = os.getenv("MIRA_IGNITION_HMAC_KEY", "")
+
+# ── Phase 5 / §D4 — Tag diff & event stream (gated behind RELAY_TAG_EVENTS=1) ──
+# Default OFF: the diff logger + Neon writer are never imported, so the bench
+# bridge and main's HMAC ingest path are completely unaffected. When enabled,
+# meaningful tag diffs are written to NeonDB tag_events after the SQLite upsert.
+RELAY_TAG_EVENTS = os.getenv("RELAY_TAG_EVENTS", "0").strip() == "1"
+_diff_logger = None
+if RELAY_TAG_EVENTS:
+    try:
+        from diff_logger import DiffLogger
+
+        _diff_logger = DiffLogger()
+        logger.info("Phase 5 tag-event stream ENABLED (RELAY_TAG_EVENTS=1)")
+    except Exception as _exc:  # pragma: no cover - import/init guard
+        logger.warning("Failed to initialise DiffLogger — tag events disabled: %s", _exc)
 
 TAG_COLUMN_MAP = {
     "speed_rpm": "speed_rpm",
@@ -214,6 +230,47 @@ async def health(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "service": "mira-relay"})
 
 
+def _emit_tag_events(payload: dict, relay_batch_id: uuid.UUID, tenant_id: str | None = None) -> None:
+    """Detect meaningful diffs and write them to NeonDB tag_events (Phase 5).
+
+    Called after the SQLite upsert. Fail-soft — any exception is caught and
+    logged so the relay response is never blocked by Neon unavailability.
+
+    tag_id convention: "{equipment_id}.{tag_name}" composite key, matching how
+    approved_tags.tag_id is populated (e.g. "CONV-001.motor_running").
+    """
+    try:
+        import neon as _neon
+
+        tenant = tenant_id or payload.get("tenant_id", "")
+        equipment = payload.get("equipment", {})
+
+        flat_tags: dict = {}
+        for eq_id, tags in equipment.items():
+            for tag_name, tag_data in tags.items():
+                flat_tags[f"{eq_id}.{tag_name}"] = tag_data
+
+        if not flat_tags:
+            return
+
+        # Empty approved set = pass-all (bench mode / table not yet populated).
+        approved = _neon.load_approved_tags(tenant) if tenant else {}
+        rows = _diff_logger.process_batch(
+            tenant_id=tenant,
+            approved=approved,
+            tags=flat_tags,
+            relay_batch_id=relay_batch_id,
+        )
+        if rows:
+            inserted = _neon.insert_tag_events(rows)
+            logger.debug(
+                "tag_events: batch=%s tenant=%s events=%d inserted=%d",
+                str(relay_batch_id)[:8], tenant, len(rows), inserted,
+            )
+    except Exception as exc:  # pragma: no cover - fail-soft guard
+        logger.warning("_emit_tag_events failed (batch=%s): %s", str(relay_batch_id)[:8], exc)
+
+
 async def ingest(request: Request) -> JSONResponse:
     body = await request.body()
 
@@ -231,6 +288,8 @@ async def ingest(request: Request) -> JSONResponse:
         return JSONResponse({"error": f"unsupported type: {msg_type}"}, status_code=400)
 
     count = process_tag_payload(payload, tenant_id=tenant_id)
+    if RELAY_TAG_EVENTS and _diff_logger is not None:
+        _emit_tag_events(payload, uuid.uuid4(), tenant_id=tenant_id)
     logger.info(
         "Ingested %d equipment rows from %s (tenant=%s)",
         count,

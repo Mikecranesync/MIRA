@@ -25,6 +25,7 @@ from typing import Any, Callable, Optional
 from fastapi import APIRouter, HTTPException, Query, Request
 from ignition_audit import query_audit_rows, write_audit_row
 from pydantic import BaseModel
+from starlette.responses import JSONResponse
 
 logger = logging.getLogger("mira-pipeline.ignition_chat")
 
@@ -161,7 +162,7 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
     router = APIRouter()
 
     @router.post("/api/v1/ignition/chat")
-    async def ignition_chat(request: Request) -> dict[str, Any]:
+    async def ignition_chat(request: Request) -> Any:
         if not MIRA_IGNITION_HMAC_KEY:
             logger.error("IGNITION_CHAT MIRA_IGNITION_HMAC_KEY not configured")
             raise HTTPException(503, "Ignition HMAC key not configured")
@@ -191,6 +192,26 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
         # use (tenant_id, asset_id) so concurrent assets keep independent FSM state.
         asset_id = (req.asset_id or "").strip()
         chat_id = f"ignition:{tenant_id}:{asset_id or 'default'}"
+
+        # Direct-connection UNS certification (Phase 6).
+        # The Ignition gateway already knows which asset the technician is on,
+        # so the UNS confirmation gate is satisfied by construction. A turn with
+        # neither asset_id nor asset_context is REJECTED (not downgraded to a
+        # chat-gate). See .claude/rules/direct-connection-uns-certified.md.
+        asset_context = req.asset_context or {}
+        if not asset_id and not asset_context:
+            return JSONResponse({"error": "uns_required"}, status_code=422)
+        _uns_path: Optional[str] = None
+        try:
+            from shared.uns_resolver import uns_path_from_asset_context
+
+            _uns_path = uns_path_from_asset_context(asset_context)
+        except Exception:  # resolver unavailable in this context — source flag still applies
+            _uns_path = None
+        try:
+            engine.seed_direct_connection(chat_id, _uns_path, surface="ignition_chat")
+        except Exception as _exc:  # fail-soft: never block the turn on seeding
+            logger.warning("IGNITION_CHAT seed_direct_connection failed: %s", _exc)
 
         preamble = _format_tag_preamble(req.tag_snapshot or {}, asset_id)
         message = f"{preamble}\n\n{question}" if preamble else question
