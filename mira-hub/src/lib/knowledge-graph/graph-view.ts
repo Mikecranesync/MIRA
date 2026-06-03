@@ -19,6 +19,7 @@ export interface RelRow {
   confidence: number | null;
   approval_state: string | null;
   proposal_id?: string | null;
+  reasoning?: string | null;
 }
 
 export interface GraphNode {
@@ -36,6 +37,7 @@ export interface GraphLink {
   confidence: number;
   state: string;
   proposalId?: string;
+  reasoning?: string;
 }
 
 export interface GraphPayload {
@@ -70,6 +72,7 @@ export function buildGraphPayload(entities: EntityRow[], rels: RelRow[]): GraphP
       state: r.approval_state ?? "verified",
     };
     if (r.proposal_id) link.proposalId = r.proposal_id;
+    if (r.reasoning) link.reasoning = r.reasoning;
     links.push(link);
   }
 
