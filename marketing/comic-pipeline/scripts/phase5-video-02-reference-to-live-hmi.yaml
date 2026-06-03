@@ -43,16 +43,25 @@ voiceover_style: |
 
   Avoid: upward inflection on statements, marketing superlatives, breathless
   pacing on product reveals, hesitation fillers, reading the style brief aloud.
+# UPDATED 2026-06-02: swapped the rough PMC capture (raw Chrome window + "null"
+# button artifacts) and the older "Lake Wales Plant" tree for the clean, current
+# Command Center captures Mike walked through this morning, and added the live
+# operation steps (operator panel -> running 30 Hz -> E-stop trip -> located in the
+# namespace). All narration is generic ("operator panel", "your plant namespace",
+# "Micro 820 tag over CIP"), so the swaps improve continuity — the new tree matches
+# the same enterprise.home_garage.conveyor_lab.conveyor_1 namespace used elsewhere.
 frames:
   - image: docs/promo-screenshots/2026-05-30_conveyor-reference-stock-render_input.png
     narration: "I started with one stock conveyor render. A reference image — no schematic, no manual, no specs."
   - image: docs/promo-screenshots/2026-05-31_convsimplelive-conveyor-hmi-native_desktop.png
-    narration: "It became a live Ignition Perspective screen. Same conveyor — now photo-eye states, motor, and VFD data, updating live."
-  - image: docs/promo-screenshots/2026-05-31_convsimplelive-conveyor-handedits_desktop.png
-    narration: "A few hand-edits to put the photo-eyes and the E-stop where they actually sit on the machine."
-  - image: docs/promo-screenshots/2026-05-30_convsimplelive-pmc-station-native_desktop.png
-    narration: "The operator panel came too — every button bound to a real Micro 820 tag over CIP."
-  - image: docs/promo-screenshots/2026-05-29_command-center-tree-live_desktop.png
-    narration: "Then it lands in your plant namespace — located and live, not floating on a laptop."
-  - image: docs/promo-screenshots/2026-05-31_convsimplelive-conveyor-hmi-native_desktop.png
-    narration: "Reference image to live HMI. The full pipeline is in the guide — factorylm.com."
+    narration: "It became a live Ignition Perspective screen. The same conveyor — now photo-eye, motor, and VFD data, updating live."
+  - image: docs/promo-screenshots/2026-06-02_command-center-pmc-panel-armed-green_desktop.png
+    narration: "The operator panel came with it. Every button bound to a real Micro 820 tag over CIP."
+  - image: docs/promo-screenshots/2026-06-02_command-center-pmc-panel-running-30hz-fwd_desktop.png
+    narration: "Hit start and it runs. Thirty hertz forward, DC bus and motor state read straight off the drive."
+  - image: docs/promo-screenshots/2026-06-02_command-center-pmc-panel-estop-tripped_desktop.png
+    narration: "Trip the E-stop and the panel knows instantly. Drive coasting, the DC bus bleeding down."
+  - image: docs/promo-screenshots/2026-06-02_command-center-conveyor-stopped-tree_desktop.png
+    narration: "And it's located in your plant namespace. Line, cell, asset — not floating on a laptop."
+  - image: docs/promo-screenshots/2026-06-02_command-center-conveyor-running-30hz_desktop.png
+    narration: "Reference image to a live, located HMI. The full pipeline is in the guide — factorylm.com."

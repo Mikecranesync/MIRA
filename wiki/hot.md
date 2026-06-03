@@ -1,5 +1,11 @@
 # Hot Cache — 2026-05-29 — ALPHA
 
+## Session — 2026-06-03 (CHARLIE) — prod pipeline outage + CI prevention
+
+- **Prod chat outage (2026-06-02), resolved.** Merging #1593 (Command Center + Ignition-Module umbrella) crash-looped `mira-pipeline-saas` on `ModuleNotFoundError` (the Ignition cutover added `ignition_chat.py`/`ignition_audit.py` but `mira-pipeline/Dockerfile` used per-file `COPY` and didn't list them). Fixed: `COPY mira-pipeline/*.py .` (#1667 → #1670). Prod healthy: `app.factorylm.com` 200, `/api/health` 200, pipeline Up/healthy. Full writeup: `docs/incidents/2026-06-02-prod-pipeline-deploy.md`.
+- **Deploy hotfix-bypass was itself broken** — its audit `gh issue create` failed (token lacks `issues:write`) and aborted every hotfix deploy. Fixed by making issue-creation **non-fatal** (#1673) — **not** by broadening token permissions.
+- **CI prevention (this work):** `docker-build-check` in `ci.yml` now **builds `mira-pipeline` + runs an `import main` smoke-test** (a successful build alone does NOT catch a missing imported module — it crashes at startup). Verified locally: passes on fixed main, fails (`ModuleNotFoundError`) on the pre-incident Dockerfile.
+
 ## Session — 2026-06-02 (Walker DT gap closure — Phases 5–9, CHARLIE)
 
 Branch `feat/dt2026-gap-closure` (worktree `/Users/charlienode/MIRA-gapclose`). Built the engine/intelligence layer on top of the Phase 0–4 storage+ingest foundation. **6 commits, 52 new tests, all green; engine changes non-regressive (18 golden + 57 eval dry-run).** Full handoff: `HANDOFF_2026-06-02_P5-9.md`.
@@ -10,6 +16,13 @@ Branch `feat/dt2026-gap-closure` (worktree `/Users/charlienode/MIRA-gapclose`). 
 - **P9 DecisionTraceWriter** (`mira-bots/shared/decision_trace.py`) — `decision_traces` row per turn, fire-and-forget after reply (mirrors `conversation_logger.py`), captures uns_context/manual+tag evidence/citations; never blocks the reply.
 
 **Watch:** mig 037 + the 3 Neon store SQL paths only ran vs in-memory doubles — verify via `migration-verify.yml` on push. Runtime triggers (cron/worker calling the loggers on the live window) are documented follow-ups, not wired. Bot tests run from REPO ROOT with the 3.12 `.venv` (`mira-bots/email/` shadows stdlib `email`).
+
+## Session — 2026-06-03 (gap-closure driver) — 2-PR limit stop + merge conflict resolution
+
+- **2 open gap-closure PRs (#1657, #1674) → at the 2-PR limit.** No new implementation PRs opened.
+- **PR #1657 had `mergeable_state=dirty`** (3-file conflict with main). Resolved: `docker-compose.saas.yml` and `mira-bots/shared/engine.py` auto-merged; `wiki/hot.md` conflict resolved by combining both prepended session entries (CHARLIE 2026-06-03 first, Walker DT 2026-06-02 second). Pushed merge commit to `feat/dt2026-gap-closure`.
+- **Status sync** `docs/plans/current-state-gap-closure-plan.md` updated to reflect main HEAD `596591d`, PR status, and next ready-for-agent issues.
+- **Next work (after ≥1 PR merges):** #1662 (kg_writer proposal helper, independent) → #1658 (direct_connection bypass) → #1659 (citation enforcement).
 
 ## Session — 2026-05-29 (printing-press toolchain bootstrap + Linear/Stripe CLIs)
 

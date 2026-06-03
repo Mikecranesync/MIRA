@@ -1,0 +1,14 @@
+{
+  "pages": {
+    "/": {
+      "title": "Conv_Simple Live",
+      "viewPath": "ConvSimpleLive",
+      "docks": {}
+    },
+    "/conveyor": {
+      "title": "Garage Conveyor",
+      "viewPath": "Conveyor",
+      "docks": {}
+    }
+  }
+}

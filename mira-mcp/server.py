@@ -1208,11 +1208,7 @@ if __name__ == "__main__":
             logger.error("IGNITION_CHAT pipeline_error tenant=%s: %s", tenant_id, exc)
             return JSONResponse({"error": "diagnostic engine unavailable"}, status_code=502)
 
-        answer: str = (
-            pipeline_data.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-        )
+        answer: str = pipeline_data.get("choices", [{}])[0].get("message", {}).get("content", "")
 
         # Build sources from tag snapshot (tag-type sources; manual/WO sources
         # would require the engine to surface citation metadata — post-MVP).
@@ -1220,7 +1216,9 @@ if __name__ == "__main__":
             {
                 "type": "tag",
                 "ref": tag_path,
-                "value": str(tag_data.get("value", "?") if isinstance(tag_data, dict) else tag_data),
+                "value": str(
+                    tag_data.get("value", "?") if isinstance(tag_data, dict) else tag_data
+                ),
             }
             for tag_path, tag_data in list(tag_snapshot.items())[:10]
         ]
@@ -1230,13 +1228,22 @@ if __name__ == "__main__":
         # Determine UNS gate state from answer content (heuristic — post-MVP
         # should come from a structured engine response field).
         uns_gate_state = "confirmed"
-        if any(kw in answer.lower() for kw in ("which conveyor", "which machine", "which asset", "can you confirm", "please confirm")):
+        if any(
+            kw in answer.lower()
+            for kw in (
+                "which conveyor",
+                "which machine",
+                "which asset",
+                "can you confirm",
+                "please confirm",
+            )
+        ):
             uns_gate_state = "awaiting_confirmation"
 
         response_payload = {
             "answer": answer,
             "sources": tag_sources,
-            "confidence": 0.0,   # post-MVP: surface from engine
+            "confidence": 0.0,  # post-MVP: surface from engine
             "suggested_actions": [],
             "uns_gate": {
                 "state": uns_gate_state,
@@ -1251,15 +1258,17 @@ if __name__ == "__main__":
         # TODO: replace with INSERT into audit_log once migration 032 is applied.
         logger.info(
             "IGNITION_AUDIT %s",
-            json.dumps({
-                "tenant_id": tenant_id,
-                "operator": operator,
-                "channel": "ignition",
-                "prompt_preview": query[:200],
-                "tag_reads_count": len(tag_snapshot),
-                "latency_ms": latency_ms,
-                "inference_run_id": inference_run_id,
-            }),
+            json.dumps(
+                {
+                    "tenant_id": tenant_id,
+                    "operator": operator,
+                    "channel": "ignition",
+                    "prompt_preview": query[:200],
+                    "tag_reads_count": len(tag_snapshot),
+                    "latency_ms": latency_ms,
+                    "inference_run_id": inference_run_id,
+                }
+            ),
         )
 
         return JSONResponse(response_payload)

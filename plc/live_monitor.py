@@ -36,6 +36,7 @@ Keyboard:
 """
 
 import argparse
+import logging
 import os
 import sys
 import threading
@@ -112,6 +113,15 @@ HR_VFD_CMD_WORD = 14    # 114
 HR_VFD_FREQ_SP = 15     # 115
 HR_VFD_POLL_STEP = 16   # 116
 
+# -- Deployed slave segments (Conv_Simple_1.5, 2026-05-28) -------------------
+# The bench slave exposes only a SUBSET of the full map above: 13 non-contiguous
+# coils + 5 HRs. Reading a contiguous block that spans an unmapped address makes
+# the Micro 820 return a Modbus exception, so we read only the mapped sub-blocks
+# and drop each into its slot in the full coils[]/regs[] arrays (unmapped slots
+# keep their False/0 default). (base, count) pairs are pymodbus 0-based.
+COIL_SEGMENTS = [(0, 1), (3, 1), (5, 1), (9, 1), (11, 5), (16, 4)]
+HR_SEGMENTS = [(106, 4), (114, 1)]
+
 # -- Lookup tables ------------------------------------------------------------
 STATE_NAMES = {0: "IDLE", 1: "STARTING", 2: "RUNNING", 3: "STOPPING", 4: "FAULT"}
 STATE_COLORS = {0: "white", 1: "yellow", 2: "green", 3: "yellow", 4: "red bold"}
@@ -162,10 +172,14 @@ class PLCMonitor:
             if self.connected:
                 self.last_error = ""
             else:
-                self.last_error = "Connection refused"
+                self.last_error = "OFFLINE - check Ethernet cable / PLC power + Run"
         except Exception as e:
             self.connected = False
-            self.last_error = str(e)[:60]
+            msg = str(e).lower()
+            if "timed out" in msg or "refused" in msg or "unreachable" in msg:
+                self.last_error = "OFFLINE - check Ethernet cable / PLC power + Run"
+            else:
+                self.last_error = str(e)[:60]
 
     def poll(self):
         if not self.connected:
@@ -174,26 +188,37 @@ class PLCMonitor:
                 return
 
         try:
-            # Read coils
-            result = self.client.read_coils(address=COIL_BASE, count=COIL_COUNT)
-            if not result.isError():
-                self.coils = list(result.bits[:COIL_COUNT])
-                # Check heartbeat toggle
-                hb = self.coils[C_HEARTBEAT]
-                self.heartbeat_ok = (hb != self.last_heartbeat)
-                self.last_heartbeat = hb
-            else:
-                self.errors += 1
-                self.last_error = f"Coil read error: {result}"
+            ok = True
 
-            # Read holding registers
-            result = self.client.read_holding_registers(address=HR_BASE, count=HR_COUNT)
-            if not result.isError():
-                self.regs = list(result.registers[:HR_COUNT])
-            else:
-                self.errors += 1
-                self.last_error = f"HR read error: {result}"
+            # Read coils — only the mapped sub-blocks (see COIL_SEGMENTS note).
+            for base, count in COIL_SEGMENTS:
+                result = self.client.read_coils(address=base, count=count)
+                if result.isError():
+                    ok = False
+                    self.errors += 1
+                    self.last_error = f"Coil {base}+{count} read error"
+                    continue
+                for i in range(count):
+                    self.coils[base + i] = bool(result.bits[i])
 
+            # Read holding registers — only the mapped sub-blocks.
+            for base, count in HR_SEGMENTS:
+                result = self.client.read_holding_registers(address=base, count=count)
+                if result.isError():
+                    ok = False
+                    self.errors += 1
+                    self.last_error = f"HR {base}+{count} read error"
+                    continue
+                for i in range(count):
+                    self.regs[base - HR_BASE + i] = result.registers[i]
+
+            # Heartbeat toggle (unmapped on this slave -> stays steady)
+            hb = self.coils[C_HEARTBEAT]
+            self.heartbeat_ok = (hb != self.last_heartbeat)
+            self.last_heartbeat = hb
+
+            if ok:
+                self.last_error = ""
             self.poll_count += 1
 
         except Exception as e:
@@ -439,6 +464,10 @@ def main():
     parser.add_argument("--port", type=int, default=502, help="Modbus TCP port")
     parser.add_argument("--poll", type=float, default=0.5, help="Poll interval (seconds)")
     args = parser.parse_args()
+
+    # Silence pymodbus's internal connect-retry spam; the dashboard surfaces a
+    # clean OFFLINE state instead.
+    logging.getLogger("pymodbus").setLevel(logging.CRITICAL)
 
     console = Console()
     monitor = PLCMonitor(args.host, args.port, args.poll)

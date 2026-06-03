@@ -24,13 +24,17 @@ on:
         required: false
         default: ""
       skip_staging_gate:
-        description: "Skip staging-gate verification (hotfix only — record reason in PR/issue)"
+        description: "Skip staging-gate verification (hotfix only — REQUIRES skip_reason)"
         required: false
         default: "false"
         type: choice
         options:
           - "false"
           - "true"
+      skip_reason:
+        description: "Why is the staging gate being skipped? (Required when skip_staging_gate=true; auto-opens an audit issue)"
+        required: false
+        default: ""
 
 concurrency:
   group: deploy-vps
@@ -50,6 +54,67 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+
+      # When the operator dispatches with skip_staging_gate=true, the gate
+      # verification is bypassed. CLAUDE.md says "file a follow-up PR within
+      # 24h" but nothing enforced it — silent bypasses leaked the rule. Now:
+      #   1. skip_reason is required (else this step fails the deploy upfront)
+      #   2. an audit issue is auto-opened so the bypass is loud, not silent
+      #   3. the issue carries the actor, SHA, services, reason, run URL,
+      #      and the 24-hour follow-up-PR expectation
+      - name: Validate + audit staging-gate bypass
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.skip_staging_gate == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          SHA: ${{ github.sha }}
+          SERVICES: ${{ github.event.inputs.services }}
+          REASON: ${{ github.event.inputs.skip_reason }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${REASON// /}" ]; then
+            echo "::error::skip_staging_gate=true requires a non-empty skip_reason. Re-dispatch with a reason (e.g., 'hotfix: prod login broken, sev-1 incident #N')."
+            exit 1
+          fi
+          SERVICES_DISPLAY="${SERVICES:-(all)}"
+          SHORT_SHA="${SHA:0:8}"
+          {
+            echo "## staging-gate bypass — audit record"
+            echo ""
+            echo "A production deploy was triggered with \`skip_staging_gate=true\`."
+            echo "The Staging Gate was NOT verified for the commit being shipped."
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Actor | @${ACTOR} |"
+            echo "| SHA | \`${SHA}\` |"
+            echo "| Services | \`${SERVICES_DISPLAY}\` |"
+            echo "| Reason | ${REASON} |"
+            echo "| Run | [${RUN_URL}](${RUN_URL}) |"
+            echo ""
+            echo "### 24-hour follow-up — required (per CLAUDE.md)"
+            echo ""
+            echo "- [ ] Open a normal PR that applies the same fix and lands via the Staging Gate. Reference this issue in the PR description."
+            echo "- [ ] Close this issue once the follow-up PR has merged green through the Staging Gate."
+            echo ""
+            echo "If the bypass hid a real regression, escalate immediately and open a SEV ticket."
+            echo ""
+            echo "---"
+            echo ""
+            echo "_Auto-filed by \`.github/workflows/deploy-vps.yml\` (R8, staging-gate architectural review 2026-05-31). The title carries the short SHA for cross-referencing._"
+          } > bypass_issue_body.md
+          # Non-fatal: an audit-log failure must NOT block a production hotfix.
+          # The GITHUB_TOKEN may lack issues:write (GraphQL "Resource not accessible
+          # by integration") — in that case warn + record the reason in the run log,
+          # and let the deploy proceed. (Prod incident 2026-06-02: this createIssue
+          # error aborted every hotfix deploy while prod chat was down.)
+          gh issue create \
+            --repo "$REPO" \
+            --title "staging-gate bypass: deploy by @${ACTOR} at ${SHORT_SHA}" \
+            --body-file bypass_issue_body.md \
+            || echo "::warning::Could not auto-open the staging-gate-bypass audit issue (token may lack issues:write). Deploy continues — record the bypass manually. Reason: ${REASON}"
 
       - name: Verify Staging Gate passed
         # Refuse to deploy a commit that hasn't been graded by the staging gate.

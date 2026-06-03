@@ -33,7 +33,7 @@ logger = logging.getLogger("mira-mcp.ignition_auth")
 # ---------------------------------------------------------------------------
 
 _TIMESTAMP_SKEW_S = 300  # ±5 minutes
-_NONCE_TTL_S = 600       # nonces expire after 10 minutes
+_NONCE_TTL_S = 600  # nonces expire after 10 minutes
 
 # ---------------------------------------------------------------------------
 # In-process nonce store
@@ -107,9 +107,7 @@ async def verify_hmac(request: Request, key: str) -> str:
 
     server_now = int(time.time())
     if abs(server_now - ts) > _TIMESTAMP_SKEW_S:
-        logger.warning(
-            "IGNITION_AUTH timestamp_skew tenant=%r skew=%ds", tenant, server_now - ts
-        )
+        logger.warning("IGNITION_AUTH timestamp_skew tenant=%r skew=%ds", tenant, server_now - ts)
         raise HTTPException(status_code=401, detail="Request timestamp outside allowed window")
 
     # 2. Read body (Starlette caches after first read)

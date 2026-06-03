@@ -1,6 +1,44 @@
 # MIRA SaaS v1 — minimal hosted stack
 # Deploy: doppler run -p factorylm -c prd -- docker compose -f docker-compose.saas.yml up -d --build
 
+# Shared bot/engine environment anchor (ported from mira-bots/docker-compose.yml
+# so saas-deployed services can reuse it via `<<: *bot-common-env`). Values are
+# adapted to saas service names/paths: db at /mira-db/mira.db (the /opt/mira/data
+# volume), core/mcp/ingest reachable by their -saas container names on mira-net.
+x-bot-common-env: &bot-common-env
+  INGEST_SERVICE_URL: ${INGEST_SERVICE_URL:-http://mira-ingest-saas:8001}
+  OPENWEBUI_BASE_URL: ${OPENWEBUI_BASE_URL:-http://mira-core-saas:8080}
+  OPENWEBUI_API_KEY: ${OPENWEBUI_API_KEY:-}
+  MCP_BASE_URL: ${MCP_BASE_URL:-http://mira-mcp-saas:8001}
+  MCP_REST_API_KEY: ${MCP_REST_API_KEY:-}
+  MIRA_DB_PATH: /mira-db/mira.db
+  KNOWLEDGE_COLLECTION_ID: ${KNOWLEDGE_COLLECTION_ID:-}
+  NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
+  MIRA_TENANT_ID: ${MIRA_TENANT_ID:-}
+  VISION_MODEL: ${VISION_MODEL:-qwen2.5vl:7b}
+  INFERENCE_BACKEND: ${INFERENCE_BACKEND:-cloud}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
+  OPENROUTER_VISION_MODEL: ${OPENROUTER_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct:free}
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
+  GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+  GROQ_VISION_MODEL: ${GROQ_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
+  CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
+  CEREBRAS_MODEL: ${CEREBRAS_MODEL:-llama3.1-8b}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-4-6}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+  GEMINI_VISION_MODEL: ${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+  LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+  LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+  LANGFUSE_PUBLIC_API_KEY: ${LANGFUSE_PUBLIC_API_KEY:-}
+  LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+  LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-}
+  # Optional shared secret for the Ask MIRA endpoint. Empty/unset => no auth
+  # required (the ask_api service treats that as open). Source from Doppler prd.
+  ASK_API_KEY: ${ASK_API_KEY:-}
+
 services:
   mira-core:
     image: ghcr.io/open-webui/open-webui:v0.8.10
@@ -311,6 +349,49 @@ services:
     memswap_limit: 512m
     healthcheck:
       test: ["CMD", "python", "-c", "import slack_bolt"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ─── mira-ask — "Ask MIRA" FastAPI endpoint for the Ignition HMI (ASK_MIRA_IGNITION A2) ───
+  # Wraps the same Supervisor engine the bots use and exposes POST /ask + GET /health.
+  # Build mirrors mira-bot-slack (context ./mira-bots) but uses ask_api/Dockerfile so
+  # ask_api/app.py + shared/ land in the image (the bot Dockerfiles do NOT copy ask_api/).
+  # Port is bound to the Tailscale interface ONLY (100.68.120.99) — NOT 0.0.0.0 and NOT
+  # 127.0.0.1 — so the Ignition gateway on another Tailnet node can egress to it while it
+  # stays off the public internet (all other saas ports sit behind nginx on 127.0.0.1).
+  mira-ask:
+    build:
+      context: ./mira-bots
+      dockerfile: ask_api/Dockerfile
+    container_name: mira-ask-saas
+    command: uvicorn ask_api.app:app --host 0.0.0.0 --port 8011
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "100.68.120.99:8011:8011"
+    environment:
+      <<: *bot-common-env
+      # Kiosk is bolted to one machine (the garage conveyor). Skip the
+      # "which equipment?" UNS confirmation gate so MIRA answers directly.
+      # Scoped to mira-ask ONLY — the Telegram/Slack bots keep the gate.
+      MIRA_UNS_GATE_ENABLED: "0"
+      # Grounded diagnostic questions run the full RAG+rerank+LLM pipeline,
+      # measured ~45s on the kiosk — past the 30s default, which returns the
+      # "taking longer than usual" fallback instead of the answer. A wall-
+      # mounted kiosk can wait; raise the engine's internal process timeout.
+      # Scoped to mira-ask only.
+      MIRA_PROCESS_TIMEOUT: "90"
+    volumes:
+      - /opt/mira/data:/mira-db
+    networks:
+      - mira-net
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 512m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8011/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
