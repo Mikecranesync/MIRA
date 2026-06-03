@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { GraphCanvas } from "@/components/kg/GraphCanvas";
 import type { GraphNode, GraphLink } from "@/lib/knowledge-graph/graph-view";
 
@@ -11,7 +13,7 @@ interface GraphResponse {
   error?: string;
 }
 
-export default function GraphPage() {
+function GraphView() {
   const [raw, setRaw] = useState<GraphResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
@@ -19,6 +21,11 @@ export default function GraphPage() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<GraphNode | null>(null);
+
+  const searchParams = useSearchParams();
+  const sessionParam = searchParams.get("session");
+  const turnParam = searchParams.get("turn");
+  const [trace, setTrace] = useState<{ ids: Set<string>; question: string | null; provider: string | null } | null>(null);
 
   const load = useCallback(() => {
     const url = showSuggestions ? "/api/kg/graph?includeProposals=true" : "/api/kg/graph";
@@ -37,6 +44,24 @@ export default function GraphPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!sessionParam) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTrace(null);
+      return;
+    }
+    const url = `/api/kg/trace?sessionId=${encodeURIComponent(sessionParam)}${
+      turnParam ? `&turn=${encodeURIComponent(turnParam)}` : ""
+    }`;
+    fetch(url)
+      .then((r) => r.json())
+      .then((j: { entityIds?: string[]; question?: string | null; provider?: string | null; error?: string }) => {
+        if (j.error || !j.entityIds) setTrace(null);
+        else setTrace({ ids: new Set(j.entityIds), question: j.question ?? null, provider: j.provider ?? null });
+      })
+      .catch(() => setTrace(null));
+  }, [sessionParam, turnParam]);
 
   const promote = useCallback(
     async (link: GraphLink) => {
@@ -91,6 +116,16 @@ export default function GraphPage() {
 
   return (
     <div className="relative h-[calc(100vh-4rem)] w-full">
+      {trace && (
+        <div className="absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-md border border-amber-500/40 bg-amber-500/15 px-4 py-2 text-sm text-amber-100">
+          <span className="font-semibold">Reasoning trace</span>
+          {trace.question ? <> — “{trace.question}”</> : null}
+          {trace.provider ? <span className="text-amber-300/70"> · {trace.provider}</span> : null}{" "}
+          <Link href="/graph" className="ml-2 text-amber-200/80 underline hover:text-amber-100">
+            Clear
+          </Link>
+        </div>
+      )}
       {/* HUD */}
       <div className="absolute left-4 top-4 z-10 w-64 space-y-2 rounded-md bg-slate-900/80 p-3 text-sm text-slate-200">
         <div className="font-semibold text-white">Relationship Graph</div>
@@ -155,7 +190,15 @@ export default function GraphPage() {
         </div>
       )}
 
-      <GraphCanvas data={view} onNodeClick={setSelected} onLinkClick={promote} />
+      <GraphCanvas data={view} onNodeClick={setSelected} onLinkClick={promote} highlightNodeIds={trace?.ids} />
     </div>
+  );
+}
+
+export default function GraphPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-slate-400">Loading relationship graph…</div>}>
+      <GraphView />
+    </Suspense>
   );
 }
