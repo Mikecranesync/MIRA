@@ -37,6 +37,8 @@
 #   integration doc covers both that and the flat-script-path fallback.
 #
 # Jython 2.7 — runs inside the Ignition Gateway JVM.
+# ruff: noqa: F821, I001  — `system` is injected by the Jython runtime; imports
+#   inside try/except blocks are intentional fallback chains, not sortable.
 
 logger = system.util.getLogger("FactoryLM.Mira.TagStream")
 

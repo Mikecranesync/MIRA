@@ -11,9 +11,6 @@ import importlib.util
 import sys
 from pathlib import Path
 
-import pytest
-
-
 def load_handler(script_path: Path, handler_name: str = "doGet"):
     """Load a Jython handler script and return the handler function.
 
