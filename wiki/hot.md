@@ -1,4 +1,17 @@
-# Hot Cache — 2026-05-29 — ALPHA
+# Hot Cache — 2026-06-03 — gap-closure driver
+
+## Autonomous run — 2026-06-03 — gap-closure driver (epic #1666)
+
+**Status: CI fix pushed to #1657 — waiting for CI re-run.**
+
+- **Open gap-closure PRs:** #1657 (feat/dt2026-gap-closure — Phases 0–5 core spine) · #1679 (docs status-sync).
+- **#1657 had 2 failing checks:**
+  1. `apply-and-verify` — migration 032_decision_traces.sql indexed `created_at` but staging DB already has the table with column `ts` (from an earlier commit on this PR). Fix: reverted all `created_at` → `ts` throughout migration 032. Master plan D2 uses `ts`; this is now consistent.
+  2. `Eval Offline` — `TestChatHandler::test_chat_proxies_to_sidecar` — doPost.py is now fail-closed on HMAC (correct security hardening), but the test's Java mock had `File.exists()=False` so `getMiraConfig` returned "" and the handler short-circuited before urllib2. Fix: inject a test HMAC key via the existing Java mock so the handler proxies to the mocked urllib2.
+- **Fix commit:** `43b9ae0` on `feat/dt2026-gap-closure`. Both fixes verified locally (test passes under uv/pytest).
+- **Next run:** When CI re-runs and both checks turn green, advance to the next issue in priority order: **#1664** (RLS verification for tag/trace tables under factorylm_app role) — lowest-numbered `ready-for-agent` issue under epic #1666. If CI still fails after this push, re-diagnose.
+- **Issues priority (epic #1666):** #1664 (RLS, P2) → #1658 (Phase 6 direct_connection UNS bypass, P1) → #1659 (Phase 7 citation enforcement, P1, depends on #1658) → #1660 (Phase 8 DecisionTraceWriter, P2) → #1661 (Phase 9 flaky-input detector, P1) → #1662 (Phase 3 kg_writer proposal helper, P1) → #1663 (/proposals ui fix, P1, depends on #1662). Skip #1665 (human: staging→prod migration).
+- **Do NOT touch:** prod psql, VPS docker compose, @FactoryLM_Diagnose. All engine/RAG changes must pass staging gate and hallucination audit.
 
 ## Session — 2026-06-03 (CHARLIE) — prod pipeline outage + CI prevention
 
