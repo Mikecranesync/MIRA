@@ -14,9 +14,11 @@ export interface GraphCanvasData {
 export function GraphCanvas({
   data,
   onNodeClick,
+  onLinkClick,
 }: {
   data: GraphCanvasData;
   onNodeClick?: (node: GraphNode) => void;
+  onLinkClick?: (link: GraphLink) => void;
 }) {
   return (
     <ForceGraph2D
@@ -34,6 +36,10 @@ export function GraphCanvas({
       linkWidth={(l: any) => ((l as GraphLink).state === "proposed" ? 0.5 : 1)}
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       onNodeClick={(n: any) => onNodeClick?.(n as GraphNode)}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      onLinkClick={(l: any) => onLinkClick?.(l as GraphLink)}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      linkLineDash={(l: any) => ((l as GraphLink).state === "proposed" ? [4, 3] : null)}
       cooldownTicks={120}
     />
   );
