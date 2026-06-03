@@ -2097,7 +2097,8 @@ class Supervisor:
         )
         _tracer.record_uns_resolution(
             uns_path=_uns_ctx_dict.get("uns_path"),
-            confidence=_uns_ctx_dict.get("confidence_band") or str(_uns_ctx_dict.get("confidence", "")),
+            confidence=_uns_ctx_dict.get("confidence_band")
+            or str(_uns_ctx_dict.get("confidence", "")),
         )
         _tracer.record_gate_outcome(_gate_out)
         _tracer.record_citation_check(_cite_outcome)
@@ -2115,6 +2116,7 @@ class Supervisor:
             pass
         # Commit is async fire-and-forget; errors never reach the caller.
         import asyncio as _asyncio
+
         _asyncio.ensure_future(_tracer.commit())
 
         tl_flush()
@@ -2788,9 +2790,7 @@ class Supervisor:
                 chat_id,
                 _cse,
             )
-            _check_citation_compliance(
-                formatted, _kb_status_sf, fsm_state=_fsm_sf, chat_id=chat_id
-            )
+            _check_citation_compliance(formatted, _kb_status_sf, fsm_state=_fsm_sf, chat_id=chat_id)
 
         return self._make_result(
             formatted,
@@ -4564,7 +4564,9 @@ class Supervisor:
         state = self._load_state(chat_id)
         ctx = state.get("context") or {}
         ctx["uns_source"] = "direct_connection"
-        ctx["uns_confidence_band"] = "certified"  # per rule: confidence="certified" on direct connections
+        ctx["uns_confidence_band"] = (
+            "certified"  # per rule: confidence="certified" on direct connections
+        )
         ctx["uns_certified_surface"] = surface
         if uns_path:
             ctx["uns_certified_path"] = uns_path

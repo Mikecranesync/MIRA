@@ -65,10 +65,11 @@ logger = logging.getLogger("mira-gsd")
 # UUIDv7 (time-ordered primary key — same pattern as flaky_input_detector.py)
 # ---------------------------------------------------------------------------
 
+
 def _uuid7() -> str:
     """Mint a UUIDv7 (time-ordered UUID per RFC 9562 draft)."""
     ts_ms = int(time.time() * 1000)
-    rand_a = struct.unpack(">H", os.urandom(2))[0] & 0x0FFF   # 12-bit random_a
+    rand_a = struct.unpack(">H", os.urandom(2))[0] & 0x0FFF  # 12-bit random_a
     rand_b = struct.unpack(">Q", os.urandom(8))[0] & 0x3FFFFFFFFFFFFFFF  # 62-bit random_b
     high = (ts_ms << 16) | (0x7 << 12) | rand_a
     low = (0b10 << 62) | rand_b
@@ -122,6 +123,7 @@ def _sanitize(text: Optional[str]) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # DecisionTraceWriter
 # ---------------------------------------------------------------------------
+
 
 class DecisionTraceWriter:
     """Accumulate turn data then flush a single INSERT to decision_traces.
@@ -402,13 +404,19 @@ class DecisionTraceWriter:
                             self._uns_path,
                             self._uns_confidence,
                             # JSONB columns — psycopg2 requires explicit json.dumps
-                            json.dumps(self._retrieval_set) if self._retrieval_set is not None else None,
+                            json.dumps(self._retrieval_set)
+                            if self._retrieval_set is not None
+                            else None,
                             json.dumps(self._kg_hops) if self._kg_hops is not None else None,
-                            json.dumps(self._tag_events_consulted) if self._tag_events_consulted is not None else None,
+                            json.dumps(self._tag_events_consulted)
+                            if self._tag_events_consulted is not None
+                            else None,
                             self._prompt,
                             self._model_used,
                             self._llm_latency_ms,
-                            json.dumps(self._cascade_failures) if self._cascade_failures is not None else None,
+                            json.dumps(self._cascade_failures)
+                            if self._cascade_failures is not None
+                            else None,
                             self._raw_reply,
                             self._citation_check,
                             self._final_reply,

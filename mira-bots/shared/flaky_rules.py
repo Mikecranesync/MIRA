@@ -28,13 +28,15 @@ logger = logging.getLogger("mira-flaky-rules")
 
 # ── Data types ────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class TagEvent:
     """Minimal event row from tag_events; worker populates from NeonDB rows."""
-    event_type: str           # rising_edge|falling_edge|value_changed|…
-    ts: object                # datetime or comparable — only used for ordering
+
+    event_type: str  # rising_edge|falling_edge|value_changed|…
+    ts: object  # datetime or comparable — only used for ordering
     delta: Optional[float] = None
-    raw_quality: Optional[str] = None   # good|bad|stale|None
+    raw_quality: Optional[str] = None  # good|bad|stale|None
     prev_value: Optional[object] = None
     new_value: Optional[object] = None
 
@@ -47,9 +49,10 @@ class TagConfig:
     historical tag_events, and constructs this object before calling
     check_flaky().  Rules stay pure — no DB leaks in.
     """
+
     tag_id: str
     tenant_id: str
-    data_type: str              # 'bool' | 'int' | 'float' | 'enum'
+    data_type: str  # 'bool' | 'int' | 'float' | 'enum'
 
     # Baseline gate — set to True once the tag has accumulated
     # >= baseline_period_days worth of events (worker responsibility).
@@ -85,15 +88,17 @@ class RuleHit:
       expected_max     → flaky_input_signals.expected_max
       Everything else  → flaky_input_signals.metadata JSONB
     """
-    rule_id: str                                 # 'rapid_toggle' | …
-    severity: str = "warning"                   # 'warning' | 'alert'
-    transitions: int = 0                         # observed count (bool: rising edges)
-    expected_max: int = 0                        # threshold that was exceeded
+
+    rule_id: str  # 'rapid_toggle' | …
+    severity: str = "warning"  # 'warning' | 'alert'
+    transitions: int = 0  # observed count (bool: rising edges)
+    expected_max: int = 0  # threshold that was exceeded
     # Extra evidence — serialised into metadata JSONB by the worker.
     extra: dict = field(default_factory=dict)
 
 
 # ── Individual rule functions ─────────────────────────────────────────────────
+
 
 def _check_rapid_toggle(events: list[TagEvent], cfg: TagConfig) -> list[RuleHit]:
     """Fire when rising-edge count exceeds learned baseline * 1.5, floor 10.
@@ -114,7 +119,10 @@ def _check_rapid_toggle(events: list[TagEvent], cfg: TagConfig) -> list[RuleHit]
     severity = "alert" if rising > expected_max_int * 2 else "warning"
     logger.debug(
         "RAPID_TOGGLE tag=%s rising=%d expected_max=%d severity=%s",
-        cfg.tag_id, rising, expected_max_int, severity,
+        cfg.tag_id,
+        rising,
+        expected_max_int,
+        severity,
     )
     return [
         RuleHit(
@@ -155,7 +163,9 @@ def _check_intermittent_disc(events: list[TagEvent], cfg: TagConfig) -> list[Rul
     transitions = runs  # use "transitions" field for the generic count
     logger.debug(
         "INTERMITTENT_DISC tag=%s bad_runs=%d min=%d",
-        cfg.tag_id, runs, cfg.bad_quality_run_min,
+        cfg.tag_id,
+        runs,
+        cfg.bad_quality_run_min,
     )
     return [
         RuleHit(
@@ -202,7 +212,9 @@ def _check_brown_out(events: list[TagEvent], cfg: TagConfig) -> list[RuleHit]:
 
     logger.debug(
         "BROWN_OUT tag=%s excursions=%d threshold=%.4f",
-        cfg.tag_id, excursions, low,
+        cfg.tag_id,
+        excursions,
+        low,
     )
     return [
         RuleHit(
@@ -238,7 +250,9 @@ def _check_value_spike(events: list[TagEvent], cfg: TagConfig) -> list[RuleHit]:
 
     logger.debug(
         "VALUE_SPIKE tag=%s max_delta=%.4f spike_threshold=%.4f",
-        cfg.tag_id, max_delta, spike_threshold,
+        cfg.tag_id,
+        max_delta,
+        spike_threshold,
     )
     return [
         RuleHit(
@@ -252,6 +266,7 @@ def _check_value_spike(events: list[TagEvent], cfg: TagConfig) -> list[RuleHit]:
 
 
 # ── Dispatcher ────────────────────────────────────────────────────────────────
+
 
 def check_flaky(events: list[TagEvent], cfg: TagConfig) -> list[RuleHit]:
     """Top-level dispatcher — run relevant rules for cfg.data_type.

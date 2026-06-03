@@ -195,10 +195,7 @@ async def enforce_citation(
             {"role": "system", "content": _REWRITE_SYSTEM},
             {
                 "role": "user",
-                "content": (
-                    f"Original reply (needs citation added):\n\n"
-                    f"{reply[:1024]}"
-                ),
+                "content": (f"Original reply (needs citation added):\n\n{reply[:1024]}"),
             },
         ]
         rewritten, _usage = await router.complete(

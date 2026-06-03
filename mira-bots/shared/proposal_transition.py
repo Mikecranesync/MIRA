@@ -436,11 +436,23 @@ def review_proposal(
             if decision == "approve":
                 # 2. Insert/update kg_relationships — ONLY path that writes 'verified'
                 (
-                    _src_id, _src_type, _tgt_id, _tgt_type,
-                    _rel_type, _conf, _created_by, _reasoning
+                    _src_id,
+                    _src_type,
+                    _tgt_id,
+                    _tgt_type,
+                    _rel_type,
+                    _conf,
+                    _created_by,
+                    _reasoning,
                 ) = (
-                    str(row[2]), row[3], str(row[4]), row[5],
-                    row[6], row[7], row[9], row[10],
+                    str(row[2]),
+                    row[3],
+                    str(row[4]),
+                    row[5],
+                    row[6],
+                    row[7],
+                    row[9],
+                    row[10],
                 )
 
                 existing_rel = c.execute(
@@ -514,7 +526,13 @@ def review_proposal(
                     )
 
             # 3. Sync ai_suggestions bridge row
-            _sync_ai_suggestion(c, proposal_id, "accepted" if decision == "approve" else "rejected", reviewed_by, review_note)
+            _sync_ai_suggestion(
+                c,
+                proposal_id,
+                "accepted" if decision == "approve" else "rejected",
+                reviewed_by,
+                review_note,
+            )
 
         logger.info(
             "review_proposal: %s → %s (kg_rel=%s)",
@@ -577,7 +595,8 @@ def _write_evidence(
     # not already in the supplied evidence list.
     if source_chunk_id:
         already = any(
-            str(r.get("source_id")) == str(source_chunk_id) and r.get("evidence_type") == "knowledge_entry"
+            str(r.get("source_id")) == str(source_chunk_id)
+            and r.get("evidence_type") == "knowledge_entry"
             for r in rows
         )
         if not already:
