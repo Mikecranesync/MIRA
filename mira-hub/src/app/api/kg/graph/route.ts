@@ -42,15 +42,15 @@ export async function GET(req: Request) {
       );
       const r = await c.query<RelRow>(
         includeProposals
-          ? `SELECT source_id, target_id, relationship_type, confidence, approval_state, NULL::uuid AS proposal_id
+          ? `SELECT source_id, target_id, relationship_type, confidence, approval_state, NULL::uuid AS proposal_id, NULL::text AS reasoning
                FROM kg_relationships
               WHERE tenant_id = $1::uuid
              UNION ALL
-             SELECT source_entity_id, target_entity_id, relationship_type, confidence, 'proposed' AS approval_state, id AS proposal_id
+             SELECT source_entity_id, target_entity_id, relationship_type, confidence, 'proposed' AS approval_state, id AS proposal_id, reasoning
                FROM relationship_proposals
               WHERE tenant_id = $1::uuid AND status = 'proposed'
              LIMIT $2`
-          : `SELECT source_id, target_id, relationship_type, confidence, approval_state, NULL::uuid AS proposal_id
+          : `SELECT source_id, target_id, relationship_type, confidence, approval_state, NULL::uuid AS proposal_id, NULL::text AS reasoning
                FROM kg_relationships
               WHERE tenant_id = $1::uuid
              LIMIT $2`,

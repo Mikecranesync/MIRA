@@ -60,4 +60,12 @@ describe("buildGraphPayload", () => {
     const p = buildGraphPayload(entities, rels);
     expect(p.links[0]).not.toHaveProperty("proposalId");
   });
+
+  test("carries proposal reasoning through when present", () => {
+    const rels: RelRow[] = [
+      { source_id: "a", target_id: "b", relationship_type: "HAS_DOCUMENT", confidence: 0.75, approval_state: "proposed", proposal_id: "p1", reasoning: "Model GS10 matches" },
+    ];
+    const p = buildGraphPayload(entities, rels);
+    expect(p.links[0]).toMatchObject({ proposalId: "p1", reasoning: "Model GS10 matches" });
+  });
 });
