@@ -562,3 +562,13 @@ Mitsubishi Electric: 16 chunks (NULL model)
 - Scorecard: 30/57 passing (53%) — new low in the FSM/UNS-gate band
 - Action: issue-filed (commented on tracker #1583, not a duplicate)
 - 27 patchable failures but both autopatch hard-stops tripped (>15 failures; 3 file clusters). Same clusters A–E as #1583. `last_response_snippet` still empty for all — transcript capture remains the #1 blocker.
+
+## eval-fixer run — 2026-06-02
+- Scorecard: 35/57 passing (61%)
+- Action: issue-filed (#1640)
+- 22 failures, all autopatch-blocked (>15 patchable AND 3 file clusters). Systemic FSM/UNS-gate regression — 21/22 point at engine.py. Clusters: gate stuck in AWAITING_UNS_CONFIRMATION, docs-requests landing in ASSET_IDENTIFIED instead of IDLE, over-qualifying (stuck Q1/Q2 vs DIAGNOSIS), CMMS WO not created, PowerFlex leaking on GS20. Needs human bisect.
+
+## eval-fixer run — 2026-06-03
+- Scorecard: 35/57 passing (61%) — runs/2026-06-03T0109-offline-text.md
+- Action: issue-filed (#1678)
+- 22 patchable failures but BOTH hard-stops tripped (>15 failures AND 3 file clusters: engine.py, guardrails.py, active.yaml). Broad FSM-routing regression — fixtures stuck in AWAITING_UNS_CONFIRMATION/Q1/IDLE or over-advancing to ASSET_IDENTIFIED. Needs human bisect of recent engine.py state-machine edits.
