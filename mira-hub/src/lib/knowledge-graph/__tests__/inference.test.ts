@@ -3,8 +3,11 @@ import { describe, test, expect } from "vitest";
 import {
   inferSameModelPairs,
   inferCoFailedPairs,
+  inferComponentManualPairs,
   type SameModelInput,
   type CoFailEvent,
+  type ComponentInput,
+  type ManualInput,
 } from "../inference";
 
 describe("inferSameModelPairs", () => {
@@ -114,5 +117,48 @@ describe("inferCoFailedPairs", () => {
       { equipmentId: "a", at: 5 },
     ];
     expect(inferCoFailedPairs(ev, 3600)).toEqual([{ sourceId: "a", targetId: "z", count: 1 }]);
+  });
+});
+
+describe("inferComponentManualPairs", () => {
+  const C = (id: string, manufacturer: string | null, model: string | null): ComponentInput => ({ id, manufacturer, model });
+  const M = (id: string, manufacturer: string | null, model: string | null, title: string | null): ManualInput => ({ id, manufacturer, model, title });
+
+  test("manufacturer + model match → 0.85 mfr_model", () => {
+    const r = inferComponentManualPairs([C("c1", "Allen-Bradley", "PowerFlex 525")], [M("m1", "Allen-Bradley", "PowerFlex 525", "PF525 Manual")]);
+    expect(r).toEqual([{ componentId: "c1", manualId: "m1", confidence: 0.85, matchType: "mfr_model", reason: expect.any(String) }]);
+  });
+
+  test("model match without manufacturer → 0.75 exact_model", () => {
+    const r = inferComponentManualPairs([C("c1", null, "GS10")], [M("m1", null, "GS10", "Drive Manual")]);
+    expect(r[0]).toMatchObject({ componentId: "c1", manualId: "m1", confidence: 0.75, matchType: "exact_model" });
+  });
+
+  test("model appears in manual title → 0.6 model_in_title", () => {
+    const r = inferComponentManualPairs([C("c1", "Baldor", "GS10")], [M("m1", null, null, "GS10 VFD User Guide")]);
+    expect(r[0]).toMatchObject({ matchType: "model_in_title", confidence: 0.6 });
+  });
+
+  test("different model and no title hit → no match", () => {
+    expect(inferComponentManualPairs([C("c1", "Baldor", "GS10")], [M("m1", "Baldor", "GS20", "GS20 Guide")])).toEqual([]);
+  });
+
+  test("component without model is skipped", () => {
+    expect(inferComponentManualPairs([C("c1", "Baldor", null)], [M("m1", "Baldor", "GS10", "GS10")])).toEqual([]);
+  });
+
+  test("short model (<3 chars) does not match by title substring", () => {
+    expect(inferComponentManualPairs([C("c1", null, "X1")], [M("m1", null, null, "Section X1 wiring")])).toEqual([]);
+  });
+
+  test("dedupes to one (highest-confidence) match per component-manual pair", () => {
+    const r = inferComponentManualPairs([C("c1", null, "GS10")], [M("m1", null, "GS10", "GS10 Manual")]);
+    expect(r).toHaveLength(1);
+    expect(r[0].confidence).toBe(0.75);
+  });
+
+  test("case- and whitespace-insensitive", () => {
+    const r = inferComponentManualPairs([C("c1", " Baldor ", "gs10")], [M("m1", "BALDOR", " GS10", "x")]);
+    expect(r[0]).toMatchObject({ matchType: "mfr_model" });
   });
 });
