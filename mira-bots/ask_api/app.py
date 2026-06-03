@@ -17,9 +17,9 @@ import uuid
 
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
+from shared.engine import Supervisor
 
 from ask_api.machine_context import MACHINE_CONTEXT
-from shared.engine import Supervisor
 
 logging.basicConfig(
     level=logging.INFO,
@@ -114,9 +114,7 @@ def _build_status_block(tags: dict | None) -> str:
         elif key == "vfd_comm_ok":
             lines.append(f"VFD comms {'OK' if value else 'LOST'}")
         elif key == "pe_latched":
-            lines.append(
-                "PHOTO-EYE JAM LATCHED (soft-stop active)" if value else "photo-eye clear"
-            )
+            lines.append("PHOTO-EYE JAM LATCHED (soft-stop active)" if value else "photo-eye clear")
         elif key in ("DI_02", "e_stop"):
             lines.append(f"E-stop {'ARMED/OK' if value else 'TRIPPED'}")
         elif key in ("DI_05", "pe_beam"):
