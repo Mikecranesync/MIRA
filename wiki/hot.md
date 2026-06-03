@@ -1,3 +1,48 @@
+# Hot Cache — 2026-06-03 — Cloud (autonomous gap-closure driver)
+
+## gap-closure-driver run — 2026-06-03
+
+**Epic:** #1666 (DT-2026 gap closure — North Star: grounded UNS-gated maintenance copilot to first paying customer)
+**Governed by:** `docs/plans/2026-06-01-mira-master-architecture-plan.md`
+
+**Result: STATUS SYNC ONLY — at 2 open gap-closure PR limit. Waiting for human review / merge.**
+
+### Open gap-closure PRs (2 of 2 — limit reached)
+
+| PR | Branch | What | Base | CI | Mergeable |
+|----|--------|------|------|----|-----------|
+| #1657 | `feat/dt2026-gap-closure` | Phases 0–5: repo audit, migrations 032–037 (`decision_traces`/`tag_events`/`flaky_input_signals`/`approved_tags`/`tag_event_diffs`), relay ingest API (HMAC+allowlist+UNS), Ignition collector, Command Center freshness (tag-based), tag-diff logger | `main` | 1 advisory check ✅ | blocked (needs human review) |
+| #1674 | `feat/dt2026-rls-verification-1664` | RLS integration tests for tag/trace tables — closes #1664 | `feat/dt2026-gap-closure` (stacked) | no checks run yet | clean (no conflicts; merge after #1657) |
+
+### Migrations on `main` (local checkout)
+Up to `031_ignition_audit_log.sql`. Migrations 032–037 are in PR #1657 — not yet on main.
+
+### Issue status (epic #1666 — preferred work order)
+
+| Issue | Labels | Status | Note |
+|-------|--------|--------|------|
+| #1665 | P1, ready-for-human | **Blocked** — env gate | Promote 032-037 to staging/prod — human must run `apply-migrations.yml` |
+| #1664 | security, P2, ready-for-agent | **IN PROGRESS** — PR #1674 | RLS verification tests stacked on #1657 |
+| #1663 | bug, P1, ready-for-agent | **Queued** — BLOCKED on #1657 merge | Hub `/proposals` reads `relationship_proposals` only, not `ai_suggestions` |
+| #1662 | P1, ready-for-agent | **Queued** | `kg_writer.py` auto-verifies edges at confidence=1.0; ADR-0017 helpers not yet created |
+| #1661 | P1, ready-for-agent | **Queued** | Flaky-input/sensor-anomaly detector missing (`FlakyInputDetector` 0 hits) |
+| #1660 | P2, ready-for-agent | **Queued** | `DecisionTraceWriter` missing; `trace_id=None` in prod |
+| #1659 | P1, ready-for-agent | **Queued** | Citation compliance observe-only; troubleshooting-session lifecycle not wired |
+| #1658 | P1, ready-for-agent | **Queued** | `direct_connection` UNS bypass: designed but not built (0 grep hits) |
+
+### Next likely issues (after #1657 + #1674 merge)
+1. **#1662** — `kg_writer` → proposal helper (Phase 3 KG — ADR-0017 — low blast radius)
+2. **#1658** — `direct_connection` UNS bypass in `ignition_chat.py` (Phase 6)
+3. **#1659** — Citation enforcement + troubleshooting session lifecycle (Phase 7)
+4. **#1663** — Hub `/proposals` surface fix (depends on migrations 032-037 on main)
+
+### Action taken this run
+- Status sync only: updated `wiki/hot.md`, created `docs/plans/current-state-gap-closure-plan.md`
+- CodeGraph sync attempted (best-effort)
+- No code changes, no new PRs (at 2-PR limit per routing rules)
+
+---
+
 # Hot Cache — 2026-05-29 — ALPHA
 
 ## Session — 2026-05-29 (printing-press toolchain bootstrap + Linear/Stripe CLIs)
