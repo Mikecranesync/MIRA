@@ -5,6 +5,9 @@ Before MIRA gives asset-specific troubleshooting guidance, live-signal interpret
 ## Hard Rule
 No confirmed namespace context, no troubleshooting.
 
+## Carve-out: direct machine connections
+This gate applies to **chat surfaces** (Slack, Telegram, email, generic web chat) where MIRA does not know which machine the technician is looking at. It does **NOT** apply to **direct machine connections** (Ignition cloud-chat endpoint, Perspective "Ask MIRA" panel, MQTT/Sparkplug B turns, PLC bridge, Hub Command Center displays, QR-scan deep-links). Direct connections are UNS-certified by construction — the connection itself is the gate. See `.claude/rules/direct-connection-uns-certified.md` for the full rule, the list of qualifying surfaces, and the rejection contract for connections that arrive without a UNS identifier.
+
 ## What requires the gate (asset-specific):
 - "Why is this conveyor stopped?"
 - "Is the PLC seeing this sensor?"
