@@ -4550,7 +4550,7 @@ class Supervisor:
                 mfr,
                 kb_reason,
             )
-            state["state"] = self._background_state_for(state)
+            state["state"] = "IDLE"
             self._record_exchange(chat_id, state, message, reply)
             tl_flush()
             return self._make_result(reply, "medium", trace_id, state["state"])
