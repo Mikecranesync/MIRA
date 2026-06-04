@@ -2,6 +2,18 @@
 
 ## Session — 2026-06-04 run 4 (autonomous gap-closure routine — epic #1666)
 
+> **Parallel stream (DT-2026 gate-monitor, 2026-06-04 ~19:35Z):** all 7 gates green
+> (#1676/#1657/#1674 merged, migs 032–037 on main, #1677 decisions explicit, head=037).
+> Phase 1 resumed → **PR #1710** opened: migrations **038** (relationship_type CHECK +4
+> asset-graph edges) + **039** (`kg_entities.source_object_id` FK-by-convention + partial idx).
+> Preserved migration 032's 3 inferred types (live=31, +4 new = 35 — doc §5's 28-value list was
+> pre-032). No prod touched; CI/`apply-migrations.yml --dry-run` must verify on staging.
+> **Next:** migrations **040–042** source-preservation layer (incl. `source_object_versions`
+> per Mike's #1677 override). **Follow-up:** MaintainX "store raw → map → remap, zero re-fetch"
+> proof. Gate-monitor routine **disabled**. Durable record: comments on #1666 + #1677.
+
+## Session — 2026-06-02→04 (promo-director: HMI walkthrough videos, private YouTube)
+
 **Status: Merge conflict resolved + CI green. PR #1657 now clean and ready for human review.**
 
 - `apply-and-verify` CI: ✅ **GREEN** (conclusion: success, completed 10:13:12Z). The `source_system` column idempotency guard fix (commits `e1951da`/`5c15048` by earlier sessions) landed and passed.
