@@ -1,3 +1,25 @@
+# Hot Cache — 2026-06-04 — CLOUD
+
+## Session — 2026-06-04 (autonomous gap-closure routine — epic #1666)
+
+**Preflight:** `origin/main` @ `1b535a7`. 2 open gap-closure PRs: **#1657** (`feat/dt2026-gap-closure`) and **#1674** (`feat/dt2026-rls-verification-1664`, stacked on #1657). 2-PR limit applies — no new PRs until one merges.
+
+**Action taken (merge conflict resolution):**
+PR #1657 was `mergeable_state: dirty` with 41 new commits on main since its last merge. Conflicts were trivial: all 4 conflicted files (ci.yml, code-review.yml, deepeval-ci.yml, smoke-test.yml) had only comment-text differences above identical `concurrency:` blocks. Took origin/main's comment text in all 4. docker-compose.saas.yml auto-merged cleanly.
+
+**Pushed:** commit `f92d6d9` on `feat/dt2026-gap-closure`. CI fired. All prior idempotency fixes intact (citations_present, event_timestamp, tag_path in migrations 032/033). No feature content changed.
+
+**Previous fix inventory (still on branch):**
+- `a4df7a3`: citations_present guard in 032_decision_traces
+- `e0f9206`: tag_path DO-block guard in 033_tag_events  
+- `49bf0f1`: event_timestamp DO-block guard in 033_tag_events
+
+**Pending (CI gate — stop condition):** Wait for Staging Gate + Migration Verify to go green on `f92d6d9`. If both green → PR #1657 ready for human review. If any fail → next routine run fixes and pushes.
+
+**Next work when unblocked:** #1658 (Phase 6 direct_connection UNS bypass on Ignition chat path). Requires reading `.claude/rules/direct-connection-uns-certified.md` + running `codegraph_impact` on `_should_fire_uns_gate` before touching engine.py.
+
+---
+
 # Hot Cache — 2026-06-03 — CLOUD
 
 ## Session — 2026-06-03 (autonomous gap-closure driver — epic #1666)
