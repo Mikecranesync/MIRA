@@ -1,0 +1,63 @@
+# tools/yt-pipeline/topics.yaml
+#
+# Channel: Industrial Skills Hub (MIRA mentioned in episode CTAs)
+# CTA target: factorylm.com/cmms
+# Calendar: 36 videos sequenced across 4 weeks (see
+#   .planning/yt-pipeline/content-calendar-2026-06.md for the strategy doc)
+# Pace: 1/day cadence; launchd nightly 2 AM as safety net, manual `--force` for
+#   on-demand publishing.
+#
+# Rotation order matches the calendar's Day 1 → Day 36 sequence. The planner
+# round-robins across angles within each topic, then advances to the next
+# topic — so listing the topics as four week-buckets in order produces the
+# calendar's intended Day 1 → Day 36 ordering when calendar.json's
+# next_angle_index is reset to 0.
+
+topics:
+  week1_fault_rescues:
+    angles:
+      - "PowerFlex 525 F004 fault — what it means and the 3-minute fix"
+      - "GS10 OC trip on a conveyor — current limit math + the actual cause"
+      - "Reset a SMC-3 soft starter overload in 30 seconds"
+      - "PowerFlex 4 F081 (control power loss) — the wiring check that fixes it"
+      - "Stuck output coil in ladder logic — the 3-minute trace method"
+      - "SEW-Eurodrive F25 fault — what the manual doesn't say"
+      - "How to silence a nuisance alarm on a Micro820 without bypassing it"
+      - "ABB ACS355 fault code lookup — the trick most techs miss"
+      - "VFD parameter backup before swapping a drive — the 90-second method"
+
+  week2_literacy_and_harder_faults:
+    angles:
+      - "Modbus RTU vs Modbus TCP — when to use which on the plant floor"
+      - "Ladder logic rungs explained — how a PLC reads your program every scan"
+      - "PowerFlex 753 F12 (heatsink overtemp) — heat math + airflow checklist"
+      - "Reading a motor nameplate — every field, what it actually tells you"
+      - "Reset a tripped GE Multilin 369 motor relay safely"
+      - "EtherNet/IP vs Modbus TCP — what the protocol actually does differently"
+      - "Yaskawa V1000 OL2 (motor overload) — the 5 root causes in order of likelihood"
+      - "What a UNS (Unified Namespace) is and why your plant probably needs one"
+      - "The 90-second prox-switch dropout diagnosis"
+
+  week3_uns_mqtt_first_mira:
+    angles:
+      - "Sparkplug B vs raw MQTT — when payload structure starts mattering"
+      - "MIRA AI reads a PowerFlex 525 manual and answers a fault question in 4 seconds"
+      - "Tag mapping basics — turning Modbus registers into named UNS paths"
+      - 'What "engine started" means inside a Yaskawa drive log'
+      - "MIRA generates a PM checklist from one PDF manual upload — live walkthrough"
+      - "Asset hierarchy 101 — site → area → line → cell → asset, with examples"
+      - "Asking MIRA AI about wiring on a CENTERLINE 2100 MCC — the citation matters"
+      - "The forgotten Modbus RS-485 wiring trick that fixes intermittent comms"
+      - "MIRA auto-creates a work order from a Telegram photo of a tripped breaker"
+
+  week4_product_proof_and_deep_demos:
+    angles:
+      - "PowerFlex 525 F94 (safety circuit open) — the LOTO-safe diagnosis path"
+      - "MIRA AI reads a wiring diagram PDF and tells you where to start measuring"
+      - 'What "groundedness" means when an AI answers a maintenance question'
+      - "Five reasons MIRA refuses to answer — and why that's the point"
+      - "The 2-minute VFD nameplate-to-parameter calculation that prevents nuisance trips"
+      - 'MIRA on Slack — diagnosing a "Line 2 grinding noise" from a phone in 3 messages'
+      - 'Why "tribal knowledge" in maintenance is a liability — and what fixes it'
+      - "MIRA vs. searching the manual yourself — a head-to-head on a real PowerFlex fault"
+      - "What we covered this month — the 5 fault codes worth knowing by heart"

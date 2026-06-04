@@ -6,7 +6,7 @@ import {
   Folder, FolderOpen,
   Cog, Factory, FileText, Layers,
   RefreshCw, FolderPlus, Upload, ChevronsDownUp, ChevronsUpDown,
-  Trash2, Pencil,
+  Trash2, Pencil, ExternalLink, HardDrive,
 } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 
@@ -88,6 +88,9 @@ export default function NamespacePage() {
   const [uploadState, setUploadState] = useState<UploadState>(null);
   const [nodeFiles, setNodeFiles] = useState<Record<string, FileRecord[]>>({});
   const [ctxMenu, setCtxMenu] = useState<{ node: NamespaceNode; x: number; y: number } | null>(null);
+  const [pageTab, setPageTab] = useState<"tree" | "connected-files">("tree");
+  const [storageDragTargetId, setStorageDragTargetId] = useState<string | null>(null);
+  const [connectedFilesKey, setConnectedFilesKey] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showToast = useCallback((msg: string) => {
@@ -270,6 +273,29 @@ export default function NamespacePage() {
     }
   }
 
+  // ── Storage file → node association (drag-drop from Connected Files panel) ──
+
+  async function handleStorageFileDrop(nodeId: string, fileId: string) {
+    showToast("Associating file…");
+    try {
+      const res = await fetch(`${API_BASE}/api/storage/files/${fileId}/associate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ nodeId }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      showToast("File associated to node");
+      setConnectedFilesKey((k) => k + 1);
+    } catch (e) {
+      showToast(`Association failed: ${(e as Error).message}`);
+    } finally {
+      setStorageDragTargetId(null);
+    }
+  }
+
   // ── File delete ────────────────────────────────────────────────────────────
 
   async function handleDeleteFile(fileId: string, nodeId: string) {
@@ -340,6 +366,12 @@ export default function NamespacePage() {
           label="Collapse All"
           onClick={collapseAll}
         />
+        <div className="mx-1 h-5 w-px bg-gray-500" />
+        <ToolbarButton
+          icon={<HardDrive className="h-3.5 w-3.5" />}
+          label="Connected Files"
+          onClick={() => setPageTab((t) => t === "connected-files" ? "tree" : "connected-files")}
+        />
         <div className="ml-auto">
           <ToolbarButton
             icon={<RefreshCw className="h-3.5 w-3.5" />}
@@ -407,6 +439,9 @@ export default function NamespacePage() {
                   onNodeDrop={handleNodeDrop}
                   onFileDragOver={setFileDropTargetId}
                   onFileDrop={(nodeId, files) => void uploadFiles(nodeId, files)}
+                  storageDragTargetId={storageDragTargetId}
+                  onStorageDragOver={setStorageDragTargetId}
+                  onStorageFileDrop={handleStorageFileDrop}
                   onEditStart={(nodeId, name) => setEditing({ nodeId, value: name })}
                   onEditChange={(v) => setEditing((prev) => prev ? { ...prev, value: v } : prev)}
                   onEditCommit={(nodeId, v) => void commitRename(nodeId, v)}
@@ -435,18 +470,23 @@ export default function NamespacePage() {
           className="flex min-w-0 flex-1 flex-col bg-white font-mono text-[13px]"
           data-testid="namespace-content-panel"
           onDragOver={(e) => {
-            if (selected && e.dataTransfer.types.includes("Files")) {
+            if (pageTab === "tree" && selected && e.dataTransfer.types.includes("Files")) {
               e.preventDefault();
             }
           }}
           onDrop={(e) => {
             e.preventDefault();
-            if (selected && e.dataTransfer.files.length > 0) {
+            if (pageTab === "tree" && selected && e.dataTransfer.files.length > 0) {
               void uploadFiles(selected.id, e.dataTransfer.files);
             }
           }}
         >
-          {selected ? (
+          {pageTab === "connected-files" ? (
+            <ConnectedFilesPanel
+              key={connectedFilesKey}
+              selectedNodeId={selected?.id ?? null}
+            />
+          ) : selected ? (
             <ContentPanel
               node={selected}
               files={nodeFiles[selected.id]}
@@ -518,13 +558,17 @@ export default function NamespacePage() {
 
 // ── TreeNode ──────────────────────────────────────────────────────────────────
 
+const STORAGE_FILE_DRAG_TYPE = "application/x-mira-storage-file";
+
 function TreeNode({
   node, depth, selectedId, expandedIds,
   draggingId, dropTargetId, fileDropTargetId,
+  storageDragTargetId,
   editing, newFolder, uploadState,
   onSelect, onExpand,
   onDragStart, onDragOver, onNodeDrop,
   onFileDragOver, onFileDrop,
+  onStorageDragOver, onStorageFileDrop,
   onEditStart, onEditChange, onEditCommit, onEditCancel,
   onDelete, onNewFolder, onNewFolderChange, onNewFolderCommit, onNewFolderCancel,
   onUpload, onContextMenu,
@@ -546,6 +590,9 @@ function TreeNode({
   onNodeDrop: (sourceId: string, targetId: string) => void;
   onFileDragOver: (id: string | null) => void;
   onFileDrop: (nodeId: string, files: FileList) => void;
+  storageDragTargetId: string | null;
+  onStorageDragOver: (id: string | null) => void;
+  onStorageFileDrop: (nodeId: string, fileId: string) => void;
   onEditStart: (nodeId: string, name: string) => void;
   onEditChange: (v: string) => void;
   onEditCommit: (nodeId: string, v: string) => void;
@@ -564,6 +611,7 @@ function TreeNode({
   const isDragging = draggingId === node.id;
   const isNodeDropTarget = dropTargetId === node.id && draggingId !== node.id;
   const isFileDropTarget = fileDropTargetId === node.id;
+  const isStorageDropTarget = storageDragTargetId === node.id;
   const isEditing = editing?.nodeId === node.id;
   const isUploading = uploadState?.nodeId === node.id && uploadState.state === "uploading";
 
@@ -589,9 +637,13 @@ function TreeNode({
           } else if (!draggingId && e.dataTransfer.types.includes("Files")) {
             e.preventDefault();
             onFileDragOver(node.id);
+          } else if (!draggingId && e.dataTransfer.types.includes(STORAGE_FILE_DRAG_TYPE)) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "link";
+            onStorageDragOver(node.id);
           }
         }}
-        onDragLeave={() => { onDragOver(null); onFileDragOver(null); }}
+        onDragLeave={() => { onDragOver(null); onFileDragOver(null); onStorageDragOver(null); }}
         onDrop={(e) => {
           e.preventDefault();
           if (draggingId) {
@@ -599,6 +651,12 @@ function TreeNode({
           } else if (e.dataTransfer.files.length > 0) {
             onFileDrop(node.id, e.dataTransfer.files);
             onFileDragOver(null);
+          } else {
+            const storageFileId = e.dataTransfer.getData(STORAGE_FILE_DRAG_TYPE);
+            if (storageFileId) {
+              onStorageFileDrop(node.id, storageFileId);
+              onStorageDragOver(null);
+            }
           }
         }}
         className={[
@@ -607,6 +665,7 @@ function TreeNode({
           isDragging ? "opacity-40" : "",
           isNodeDropTarget ? "bg-blue-200 outline-2 outline-dashed outline-blue-500" : "",
           isFileDropTarget && !isSelected ? "bg-[#c0c0ff] outline-2 outline-dashed outline-blue-600" : "",
+          isStorageDropTarget && !isSelected ? "bg-[#c0ffc0] outline-2 outline-dashed outline-green-600" : "",
         ].filter(Boolean).join(" ")}
         style={{ paddingLeft: `${indent}px` }}
         data-testid="namespace-node"
@@ -702,6 +761,9 @@ function TreeNode({
               onNodeDrop={onNodeDrop}
               onFileDragOver={onFileDragOver}
               onFileDrop={onFileDrop}
+              storageDragTargetId={storageDragTargetId}
+              onStorageDragOver={onStorageDragOver}
+              onStorageFileDrop={onStorageFileDrop}
               onEditStart={onEditStart}
               onEditChange={onEditChange}
               onEditCommit={onEditCommit}
@@ -1070,6 +1132,192 @@ function EmptyState() {
       <p className="mt-1 text-xs text-gray-400">Use &ldquo;New Folder&rdquo; in the toolbar to create your first node.</p>
     </div>
   );
+}
+
+// ── ConnectedFilesPanel ───────────────────────────────────────────────────────
+
+interface StorageProviderRow {
+  id: string;
+  provider: string;
+  display_name: string;
+  file_count: number;
+  sync_status: string;
+}
+
+interface StorageFileRow {
+  id: string;
+  filename: string;
+  external_url: string;
+  mime_type: string;
+  file_size_bytes: number;
+  index_status: string;
+  kb_entry_count: number;
+  node_associations: { nodeId: string; confirmedBy: string }[] | null;
+}
+
+function ConnectedFilesPanel({ selectedNodeId }: { selectedNodeId: string | null }) {
+  const [providers, setProviders] = useState<StorageProviderRow[]>([]);
+  const [files, setFiles] = useState<StorageFileRow[]>([]);
+  const [loadingProviders, setLoadingProviders] = useState(true);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
+  const [draggingFileId, setDraggingFileId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/storage/providers`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json() as { providers: StorageProviderRow[] };
+        setProviders(data.providers);
+        if (data.providers.length > 0) setSelectedProviderId(data.providers[0].id);
+      } finally {
+        setLoadingProviders(false);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedProviderId) return;
+    setLoadingFiles(true);
+    void (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/storage/providers/${selectedProviderId}/files`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json() as { files: StorageFileRow[] };
+        setFiles(data.files);
+      } finally {
+        setLoadingFiles(false);
+      }
+    })();
+  }, [selectedProviderId]);
+
+  if (loadingProviders) {
+    return <div className="p-4 text-xs text-gray-400">Loading…</div>;
+  }
+
+  if (providers.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
+        <HardDrive className="mb-3 h-8 w-8 text-gray-200" />
+        <p className="text-sm text-gray-500">No storage providers connected.</p>
+        <a href="/settings/storage" className="mt-2 block text-sm text-blue-600 hover:underline">
+          Connect a provider →
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col bg-white font-mono text-[13px]">
+      {/* Provider tabs */}
+      <div className="flex border-b border-gray-200 bg-[#f8f8f8] px-2 pt-1">
+        {providers.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => setSelectedProviderId(p.id)}
+            className={[
+              "px-3 py-1 text-[12px] border-t border-l border-r rounded-t",
+              selectedProviderId === p.id
+                ? "bg-white border-gray-300 text-gray-900 font-medium -mb-px"
+                : "border-transparent text-gray-500 hover:text-gray-800",
+            ].join(" ")}
+          >
+            {p.display_name}
+            <span className="ml-1 text-[10px] text-gray-400">({p.file_count})</span>
+          </button>
+        ))}
+        <div className="ml-auto flex items-end pb-1">
+          <a href="/settings/storage" className="text-[11px] text-blue-500 hover:underline">
+            Manage →
+          </a>
+        </div>
+      </div>
+
+      {/* Drag hint */}
+      <div className="border-b border-gray-100 bg-[#fffdf0] px-3 py-1.5 text-[11px] text-gray-500">
+        {selectedNodeId
+          ? "Drag a file onto a namespace node in the left panel to associate it."
+          : "Select a namespace node first, then drag a file onto it to associate."}
+      </div>
+
+      {/* Files table */}
+      <div className="flex-1 overflow-auto">
+        {loadingFiles ? (
+          <div className="p-4 text-xs text-gray-400">Loading files…</div>
+        ) : files.length === 0 ? (
+          <div className="p-4 text-xs text-gray-400">
+            No files indexed.{" "}
+            <a href="/settings/storage" className="text-blue-500 hover:underline">
+              Run a sync →
+            </a>
+          </div>
+        ) : (
+          <table className="w-full border-collapse text-[12px]">
+            <thead className="sticky top-0 bg-[#f0f0f0]">
+              <tr className="border-b border-gray-200 text-left text-[11px] text-gray-400">
+                <th className="px-3 py-1.5 font-normal">File</th>
+                <th className="px-3 py-1.5 font-normal">Status</th>
+                <th className="px-3 py-1.5 font-normal">Nodes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {files.map((f) => (
+                <tr
+                  key={f.id}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = "link";
+                    e.dataTransfer.setData(STORAGE_FILE_DRAG_TYPE, f.id);
+                    setDraggingFileId(f.id);
+                  }}
+                  onDragEnd={() => setDraggingFileId(null)}
+                  className={[
+                    "cursor-grab border-b border-gray-100 hover:bg-[#e8f4ff]",
+                    draggingFileId === f.id ? "opacity-40" : "",
+                  ].join(" ")}
+                >
+                  <td className="px-3 py-1">
+                    <a
+                      href={f.external_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1.5 text-blue-700 hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                      <span className="max-w-[220px] truncate" title={f.filename}>{f.filename}</span>
+                      <ExternalLink className="h-3 w-3 shrink-0 text-gray-300" />
+                    </a>
+                  </td>
+                  <td className="px-3 py-1 text-gray-500">
+                    <StorageStatusBadge status={f.index_status} kbCount={f.kb_entry_count} />
+                  </td>
+                  <td className="px-3 py-1">
+                    {(f.node_associations?.length ?? 0) > 0 ? (
+                      <span className="text-green-600">{f.node_associations!.length} node{f.node_associations!.length === 1 ? "" : "s"}</span>
+                    ) : (
+                      <span className="text-gray-300">none</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StorageStatusBadge({ status, kbCount }: { status: string; kbCount: number }) {
+  if (status === "indexed") return <span className="text-green-600">{kbCount} chunks</span>;
+  if (status === "indexing") return <span className="animate-pulse text-blue-500">indexing…</span>;
+  if (status === "pending") return <span className="text-gray-400">pending</span>;
+  if (status === "failed") return <span className="text-red-500">failed</span>;
+  if (status === "skipped") return <span className="text-gray-400">skipped</span>;
+  return <span className="text-gray-400">{status}</span>;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
