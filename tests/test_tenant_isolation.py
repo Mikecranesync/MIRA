@@ -176,7 +176,7 @@ async def test_supervisor_resolves_tenant_per_call(tmp_path):
     # Capture the tenant_id forwarded to RAGWorker.process()
     rag_tenant_calls: list[str | None] = []
 
-    async def fake_rag_process(message, state, photo_b64=None, vision_model=None, tenant_id=None):
+    async def fake_rag_process(message, state, photo_b64=None, vision_model=None, tenant_id=None, **kwargs):
         rag_tenant_calls.append(tenant_id)
         return '{"reply":"diagnosed","next_state":"Q1","options":[],"confidence":"MEDIUM"}'
 
@@ -227,7 +227,7 @@ async def test_supervisor_falls_back_to_env(tmp_path):
 
     rag_tenant_calls: list[str | None] = []
 
-    async def fake_rag_process(message, state, photo_b64=None, vision_model=None, tenant_id=None):
+    async def fake_rag_process(message, state, photo_b64=None, vision_model=None, tenant_id=None, **kwargs):
         rag_tenant_calls.append(tenant_id)
         return '{"reply":"ok","next_state":"Q1","options":[],"confidence":"LOW"}'
 
@@ -287,7 +287,7 @@ async def test_concurrent_supervisors_different_tenants(tmp_path):
     # Collect every (chat_id, tenant_id) pair that RAGWorker.process() receives
     rag_calls: list[dict] = []
 
-    async def fake_rag_process(message, state, photo_b64=None, vision_model=None, tenant_id=None):
+    async def fake_rag_process(message, state, photo_b64=None, vision_model=None, tenant_id=None, **kwargs):
         rag_calls.append({"tenant_id": tenant_id})
         return '{"reply":"ok","next_state":"IDLE","options":[],"confidence":"LOW"}'
 

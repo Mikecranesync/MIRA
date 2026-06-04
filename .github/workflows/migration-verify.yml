@@ -18,6 +18,7 @@ name: Migration Verify
 #   * psql fails on a malformed migration → red, blocks deploy-vps.yml
 #   * verify_phase0_deploy.py reports drift → red, blocks deploy-vps.yml
 #   * Phase 0 integration tests fail (RLS / round-trip) → red
+#   * Phase 1 RLS integration tests fail (tag/trace family, issue #1664) → red
 
 on:
   pull_request:
@@ -25,7 +26,7 @@ on:
     paths:
       - 'mira-hub/db/migrations/**'
       - 'tools/verify_phase0_deploy.py'
-      - 'tests/integration/test_phase0_schema.py'
+      - 'tests/integration/**'
       - '.github/workflows/migration-verify.yml'
   workflow_dispatch:
 
@@ -151,7 +152,7 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY" || true
           cat verify.out >> "$GITHUB_STEP_SUMMARY" || true
 
-      - name: Run Phase 0 integration tests
+      - name: Run integration tests (Phase 0 round-trip + Phase 1 RLS)
         env:
           NEON_DATABASE_URL: ${{ secrets.NEON_STG_DATABASE_URL }}
           STAGING_TENANT_ID: ${{ secrets.STAGING_TENANT_ID || '78917b56-f85f-43bb-9a08-1bb98a6cd6c3' }}
@@ -159,7 +160,13 @@ jobs:
           set -euo pipefail
           echo "### Integration tests" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          python -m pytest tests/integration/test_phase0_schema.py -v 2>&1 | tee tests.out
+          # test_phase0_schema.py  — round-trip + RLS for migrations 025-031
+          # test_rls_tag_trace_tables.py — RLS for migrations 032-036 (#1664)
+          # test_write_paths.py is excluded: it needs httpx + a live BASE_URL
+          python -m pytest \
+            tests/integration/test_phase0_schema.py \
+            tests/integration/test_rls_tag_trace_tables.py \
+            -v 2>&1 | tee tests.out
           echo '```' >> "$GITHUB_STEP_SUMMARY" || true
 
       - name: Post / update PR comment
@@ -168,10 +175,10 @@ jobs:
         with:
           header: migration-verify
           message: |
-            ### Migration Verify — Phase 0
+            ### Migration Verify — Phase 0 + Phase 1
 
             * Applied: ${{ steps.plan.outputs.files == '' && '_no migration files touched_' || 'see step summary' }}
             * Schema verification: see the **Schema verification** section of [the job summary](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
-            * Integration tests: 6 round-trip + RLS + photo→ai_suggestions tests against the staging Neon branch.
+            * Integration tests: Phase 0 round-trip + RLS (migrations 025-031) + Phase 1 RLS (migrations 032-036, issue #1664) against the staging Neon branch.
 
             Re-runs on every push to this PR. Production migrations still go through `apply-migrations.yml` (`workflow_dispatch`).
