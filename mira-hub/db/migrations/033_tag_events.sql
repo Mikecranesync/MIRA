@@ -129,6 +129,15 @@ BEGIN
         ALTER TABLE tag_events ADD COLUMN tag_path TEXT NOT NULL DEFAULT 'backfilled';
         ALTER TABLE tag_events ALTER COLUMN tag_path DROP DEFAULT;
     END IF;
+    -- simulated: absent on staging DBs created before this column was added.
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name   = 'tag_events'
+          AND column_name  = 'simulated'
+    ) THEN
+        ALTER TABLE tag_events ADD COLUMN simulated BOOLEAN NOT NULL DEFAULT false;
+    END IF;
 END $$;
 
 -- Replay / time scans dominate.
