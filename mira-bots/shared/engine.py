@@ -1372,7 +1372,9 @@ class Supervisor:
                 return await self._handle_wo_request(chat_id, message, state, trace_id)
 
             if _router_intent == "switch_asset":
-                return await self._handle_asset_switch(chat_id, message, state, trace_id)
+                return await self._handle_asset_switch(
+                    chat_id, message, state, trace_id, tenant_id=resolved_tenant
+                )
 
             if _router_intent == "check_equipment_history":
                 return await self._handle_check_equipment_history(chat_id, message, state, trace_id)
@@ -3458,7 +3460,8 @@ class Supervisor:
         )
 
     async def _handle_asset_switch(
-        self, chat_id: str, message: str, state: dict, trace_id: str
+        self, chat_id: str, message: str, state: dict, trace_id: str,
+        tenant_id: str | None = None,
     ) -> dict:
         """User wants to talk about a different asset — clear FSM, preserve session memory."""
         old_asset = state.get("asset_identified", "") or "unknown"
@@ -3466,7 +3469,8 @@ class Supervisor:
         # Try to identify the new asset from the switch message itself.
         # Fresh resolve (no prior_ctx) so we get the NEW asset, not carry-over
         # from the one the user is switching away from.
-        new_asset = resolve_uns_path(message).manufacturer or ""
+        new_ctx = resolve_uns_path(message)
+        new_asset = new_ctx.manufacturer or ""
 
         logger.info(
             "ASSET_SWITCH chat_id=%s from=%r to=%r",
@@ -3476,7 +3480,6 @@ class Supervisor:
         )
 
         state["state"] = "IDLE"
-        state["asset_identified"] = new_asset
         ctx = state.get("context") or {}
         # Clear active diagnostic context but keep session_memory for cross-session recall
         ctx.pop("session_context", None)
@@ -3488,6 +3491,24 @@ class Supervisor:
         state["final_state"] = None
         state["context"] = ctx
         self._clear_session_photo(chat_id)
+
+        # UNS gate: a deliberate switch must re-confirm the NEW asset before any
+        # troubleshooting. Don't silently adopt a freshly-resolved-but-unconfirmed
+        # asset -- the pre-gate behavior let a mis-resolved switch sail straight
+        # into diagnosis. When the gate is on and there is something to confirm,
+        # drop the stale asset and route through the same confirmation handler the
+        # diagnose path uses; the user's "yes" promotes the candidate to
+        # asset_identified via _handle_uns_confirmation_response.
+        if _UNS_GATE_ENABLED and getattr(new_ctx, "confidence", 0.0) > 0:
+            state["asset_identified"] = None
+            self._save_state(chat_id, state)
+            return await self._handle_uns_confirmation_request(
+                chat_id, message, state, new_ctx, trace_id, tenant_id=tenant_id
+            )
+
+        # Gate off, or nothing resolvable to confirm: legacy behavior -- adopt the
+        # (possibly empty) resolved asset and prompt for the fault / equipment.
+        state["asset_identified"] = new_asset
         self._save_state(chat_id, state)
 
         if new_asset:
