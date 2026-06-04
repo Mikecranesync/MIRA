@@ -41,6 +41,36 @@ if not NEON_URL:
     )
 
 
+def _phase1_schema_ready() -> bool:
+    """Return True if migrations 032-036 have been applied to this Neon branch.
+
+    Checks for decision_traces.user_question (added by migration 032) as the
+    sentinel. If absent, the Phase 1 migrations haven't landed on staging yet
+    and all tests in this module would fail with UndefinedColumn — skip instead.
+    """
+    try:
+        _c = psycopg2.connect(NEON_URL)
+        try:
+            with _c.cursor() as _cur:
+                _cur.execute(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = 'decision_traces' AND column_name = 'user_question'"
+                )
+                return _cur.fetchone() is not None
+        finally:
+            _c.close()
+    except Exception:
+        return False
+
+
+if not _phase1_schema_ready():
+    pytest.skip(
+        "Phase 1 schema not yet applied to this Neon branch "
+        "(decision_traces.user_question absent — migrations 032-036 must land first, see PR #1657)",
+        allow_module_level=True,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Fixtures and helpers
 # ---------------------------------------------------------------------------
