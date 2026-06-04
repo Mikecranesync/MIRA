@@ -11,7 +11,7 @@ detect_repo() {
   for cand in "$HOME/$name" "/Users/charlienode/$name" "/Users/$USER/$name"; do
     if [ -d "$cand/.git" ]; then echo "$cand"; return; fi
   done
-  for cand in /sessions/*/mnt/$name; do
+  for cand in /sessions/*/mnt/"$name"; do
     [ -d "$cand/.git" ] && { echo "$cand"; return; }
   done
   echo ""
