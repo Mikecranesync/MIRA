@@ -1,5 +1,11 @@
 name: Smoke Test
 
+# Auto-cancel superseded runs on the same PR/branch (CI flood guard).
+# cancel-in-progress gated to pull_request so non-PR events are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # Deploy gate: verifies factorylm.com + app.factorylm.com are healthy before
 # deploy-vps.yml is allowed to run. See issue #689.
 #

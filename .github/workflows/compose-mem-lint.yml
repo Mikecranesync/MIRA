@@ -1,5 +1,11 @@
 name: Compose mem_limit Lint
 
+# Auto-cancel superseded runs on the same PR/branch (CI flood guard).
+# cancel-in-progress gated to pull_request so non-PR events are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # Walks every docker-compose*.yml in the repo and reports services missing
 # `mem_limit:`. Catches the silently-ignored Swarm-syntax footgun
 # (`deploy.resources.limits.memory`) that took the VPS down for 8.7 hours on
