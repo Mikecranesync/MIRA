@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Capture the CONVEYOR tab inside ConvSimpleLive (sibling of PMC STATION)."""
 from pathlib import Path
+
 from playwright.sync_api import sync_playwright
 
 OUT = Path(__file__).resolve().parent.parent / "docs" / "promo-screenshots"

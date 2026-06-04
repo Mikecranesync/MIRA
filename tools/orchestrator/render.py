@@ -6,7 +6,9 @@ document that embeds the current state. The scheduled task re-runs scan + score
 + render every 4h and pushes the updated HTML via mcp__cowork__update_artifact.
 """
 from __future__ import annotations
-import html, json, os, sys
+
+import json
+import os
 from datetime import datetime
 from pathlib import Path
 

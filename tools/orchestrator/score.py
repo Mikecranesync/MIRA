@@ -9,8 +9,13 @@ Reads wiki/orchestrator/scan.json, classifies every work stream against the
 
 Decisions: SHIP / FINISH / DEFER / KILL / GATE.
 """
+
 from __future__ import annotations
-import json, os, re, sys
+
+import json
+import os
+import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,7 +32,7 @@ MONEY_PATH_POS = {
     r"\bslack\b": 2,
     r"\bbot\b": 1,
     r"\bcopilot\b": 2,
-    r"\bhub\b": 1,                   # mira-hub command center / proposals
+    r"\bhub\b": 1,  # mira-hub command center / proposals
     r"\buns\b": 2,
     r"\bnamespace[-_ ]?builder\b": 3,
     r"\bcitation\b": 2,
@@ -44,7 +49,7 @@ MONEY_PATH_POS = {
     r"\btier\b": 1,
     # Acquisition / trust
     r"\blanding\b": 1,
-    r"\bcmms\b": 1,                  # /cmms landing page
+    r"\bcmms\b": 1,  # /cmms landing page
     r"\bdemo\b": 1,
     r"\bsmoke\b": 1,
     r"\bplg\b": 2,
@@ -54,12 +59,12 @@ MONEY_PATH_POS = {
 
 # Off-path / negative weights
 MONEY_PATH_NEG = {
-    r"\bhud\b": -3,                  # archived
-    r"\bprototype\b": -3,            # archived
-    r"\bmira[-_ ]?connect\b": -2,    # deferred
+    r"\bhud\b": -3,  # archived
+    r"\bprototype\b": -3,  # archived
+    r"\bmira[-_ ]?connect\b": -2,  # deferred
     r"\bantfarm\b": -2,
     r"\bcosmos\b": -2,
-    r"\bcra[-_]?\d+\b": 0,           # internal demo branding — neutral
+    r"\bcra[-_]?\d+\b": 0,  # internal demo branding — neutral
     r"\b(archive|archived)\b": -3,
     r"\bexperiment\b": -1,
     r"\bplayground\b": -2,
@@ -73,45 +78,69 @@ BEHIND_MAIN_SUPERSEDED = 50
 
 # --- helpers ---------------------------------------------------------------
 
+
 def parse_iso(s: str) -> datetime | None:
-    if not s: return None
+    if not s:
+        return None
     s = s.replace("Z", "+00:00")
     try:
         return datetime.fromisoformat(s)
     except Exception:
         return None
 
+
 def days_since(iso: str, now: datetime) -> int:
     dt = parse_iso(iso)
-    if dt is None: return 9999
-    if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)
+    if dt is None:
+        return 9999
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
     return max(0, (now - dt).days)
+
 
 def money_score(text: str) -> int:
     """0–5 alignment. 0 = off path, 5 = direct revenue."""
-    if not text: return 0
+    if not text:
+        return 0
     lc = text.lower()
     raw = 0
     for pat, w in MONEY_PATH_POS.items():
-        if re.search(pat, lc): raw += w
+        if re.search(pat, lc):
+            raw += w
     for pat, w in MONEY_PATH_NEG.items():
-        if re.search(pat, lc): raw += w
+        if re.search(pat, lc):
+            raw += w
     # Squash to 0-5
     return max(0, min(5, raw))
 
+
 def readiness_score(age_days: int, unpushed: int, has_pr: bool, is_draft: bool) -> int:
     """0–5 readiness. 5 = ready to ship today, 0 = abandoned."""
-    if has_pr and not is_draft and age_days < 3: return 5
-    if has_pr and is_draft and age_days < 7: return 4
-    if age_days < 3: return 4
-    if age_days < 7: return 3
-    if age_days < 14: return 2
-    if age_days < 30: return 1
+    if has_pr and not is_draft and age_days < 3:
+        return 5
+    if has_pr and is_draft and age_days < 7:
+        return 4
+    if age_days < 3:
+        return 4
+    if age_days < 7:
+        return 3
+    if age_days < 14:
+        return 2
+    if age_days < 30:
+        return 1
     return 0
 
-def classify(name: str, money: int, ready: int, age_days: int,
-             has_pr: bool, is_draft: bool, has_stash: bool=False,
-             behind_main: int=0) -> tuple[str, str]:
+
+def classify(
+    name: str,
+    money: int,
+    ready: int,
+    age_days: int,
+    has_pr: bool,
+    is_draft: bool,
+    has_stash: bool = False,
+    behind_main: int = 0,
+) -> tuple[str, str]:
     """Return (decision, rationale)."""
     # Superseded before anything else: a branch far behind main with no PR is dead
     # weight no matter how money-path its name reads. This is what stops the
@@ -136,7 +165,9 @@ def classify(name: str, money: int, ready: int, age_days: int,
         return "DEFER", "Useful but off the path to first payment"
     return "FINISH", "Default — needs a time-box to advance"
 
+
 # --- main ------------------------------------------------------------------
+
 
 def main():
     mira = Path(os.environ.get("MIRA_DIR") or REPO_ROOT)
@@ -155,7 +186,8 @@ def main():
     drift_alerts = []
 
     for repo in scan["repos"]:
-        if not repo.get("present"): continue
+        if not repo.get("present"):
+            continue
         rname = repo["name"]
 
         # Index PRs by head branch
@@ -167,7 +199,8 @@ def main():
         # top-3 can't show the same commit three times under three branch names.
         by_sha: dict[str, list] = {}
         for b in repo.get("branches", []):
-            if b["name"] in ("main", "master", "develop", "dev"): continue
+            if b["name"] in ("main", "master", "develop", "dev"):
+                continue
             key = b.get("sha") or b["name"]  # fall back to name if scan predates sha capture
             by_sha.setdefault(key, []).append(b)
 
@@ -175,40 +208,45 @@ def main():
             # Primary = the twin with an open PR (the live one), else the best-scoring name.
             primary = next((bb for bb in group if pr_by_branch.get(bb["name"])), None)
             if primary is None:
-                primary = max(group, key=lambda bb: money_score(f"{bb['name']} {bb.get('subject','')}"))
+                primary = max(
+                    group, key=lambda bb: money_score(f"{bb['name']} {bb.get('subject', '')}")
+                )
             aliases = [bb["name"] for bb in group if bb["name"] != primary["name"]]
 
             name = primary["name"]
             age = days_since(primary["last_commit"], now)
-            text = f"{name} {primary.get('subject','')}"
+            text = f"{name} {primary.get('subject', '')}"
             money = money_score(text)
             pr = pr_by_branch.get(name)
             has_pr = pr is not None
             is_draft = bool(pr and pr.get("isDraft"))
             behind_main = primary.get("behind_main", 0)
             ready = readiness_score(age, 0, has_pr, is_draft)
-            decision, rationale = classify(name, money, ready, age, has_pr, is_draft,
-                                           behind_main=behind_main)
+            decision, rationale = classify(
+                name, money, ready, age, has_pr, is_draft, behind_main=behind_main
+            )
             if aliases:
                 rationale += f" · +{len(aliases)} identical twin(s): {', '.join(aliases)}"
-            streams.append({
-                "kind": "branch",
-                "repo": rname,
-                "id": name,
-                "aliases": aliases,
-                "subject": primary.get("subject", ""),
-                "author": primary.get("author", ""),
-                "age_days": age,
-                "last_commit": primary["last_commit"],
-                "behind_main": behind_main,
-                "money_path_score": money,
-                "readiness_score": ready,
-                "has_pr": has_pr,
-                "pr_number": pr.get("number") if pr else None,
-                "pr_draft": is_draft,
-                "decision": decision,
-                "rationale": rationale,
-            })
+            streams.append(
+                {
+                    "kind": "branch",
+                    "repo": rname,
+                    "id": name,
+                    "aliases": aliases,
+                    "subject": primary.get("subject", ""),
+                    "author": primary.get("author", ""),
+                    "age_days": age,
+                    "last_commit": primary["last_commit"],
+                    "behind_main": behind_main,
+                    "money_path_score": money,
+                    "readiness_score": ready,
+                    "has_pr": has_pr,
+                    "pr_number": pr.get("number") if pr else None,
+                    "pr_draft": is_draft,
+                    "decision": decision,
+                    "rationale": rationale,
+                }
+            )
 
         # Stashes
         for s in repo.get("stashes", []):
@@ -221,19 +259,21 @@ def main():
                 decision, rationale = "FINISH", "Recent stash on money-path — recover or branch it"
             else:
                 decision, rationale = "DEFER", f"Stash {age}d, not on hot path"
-            streams.append({
-                "kind": "stash",
-                "repo": rname,
-                "id": s["ref"],
-                "subject": s.get("subject", ""),
-                "age_days": age,
-                "last_commit": s["date"],
-                "money_path_score": money,
-                "readiness_score": ready,
-                "has_pr": False,
-                "decision": decision,
-                "rationale": rationale,
-            })
+            streams.append(
+                {
+                    "kind": "stash",
+                    "repo": rname,
+                    "id": s["ref"],
+                    "subject": s.get("subject", ""),
+                    "age_days": age,
+                    "last_commit": s["date"],
+                    "money_path_score": money,
+                    "readiness_score": ready,
+                    "has_pr": False,
+                    "decision": decision,
+                    "rationale": rationale,
+                }
+            )
 
         # Ready-for-agent issues (work the founder explicitly labeled for delegation)
         for iss in repo.get("ready_for_agent_issues", []):
@@ -242,63 +282,80 @@ def main():
             money = money_score(text)
             ready = 3 if age < 7 else 1
             decision = "FINISH" if money >= 2 else "DEFER"
-            streams.append({
-                "kind": "issue",
-                "repo": rname,
-                "id": f"#{iss.get('number')}",
-                "subject": text,
-                "age_days": age,
-                "last_commit": iss.get("updatedAt", ""),
-                "money_path_score": money,
-                "readiness_score": ready,
-                "has_pr": False,
-                "decision": decision,
-                "rationale": "Founder-labeled ready-for-agent",
-            })
+            streams.append(
+                {
+                    "kind": "issue",
+                    "repo": rname,
+                    "id": f"#{iss.get('number')}",
+                    "subject": text,
+                    "age_days": age,
+                    "last_commit": iss.get("updatedAt", ""),
+                    "money_path_score": money,
+                    "readiness_score": ready,
+                    "has_pr": False,
+                    "decision": decision,
+                    "rationale": "Founder-labeled ready-for-agent",
+                }
+            )
 
         # --- drift detection per repo --------------------------------------
         # Stale stashes
-        old_stash_count = sum(1 for s in repo.get("stashes", []) if days_since(s["date"], now) > STALE_DAYS)
+        old_stash_count = sum(
+            1 for s in repo.get("stashes", []) if days_since(s["date"], now) > STALE_DAYS
+        )
         if old_stash_count > 0:
-            drift_alerts.append({
-                "repo": rname,
-                "severity": "warn",
-                "message": f"{old_stash_count} stash(es) older than {STALE_DAYS}d — recommend prune",
-            })
+            drift_alerts.append(
+                {
+                    "repo": rname,
+                    "severity": "warn",
+                    "message": f"{old_stash_count} stash(es) older than {STALE_DAYS}d — recommend prune",
+                }
+            )
         # Stale branches
-        stale_branches = sum(1 for b in repo.get("branches", []) if days_since(b["last_commit"], now) > STALE_DAYS)
+        stale_branches = sum(
+            1 for b in repo.get("branches", []) if days_since(b["last_commit"], now) > STALE_DAYS
+        )
         if stale_branches > 5:
-            drift_alerts.append({
-                "repo": rname,
-                "severity": "warn",
-                "message": f"{stale_branches} branch(es) untouched >{STALE_DAYS}d — branch hygiene needed",
-            })
+            drift_alerts.append(
+                {
+                    "repo": rname,
+                    "severity": "warn",
+                    "message": f"{stale_branches} branch(es) untouched >{STALE_DAYS}d — branch hygiene needed",
+                }
+            )
         # Uncommitted churn on current branch
         if repo.get("modified", 0) + repo.get("untracked", 0) > 10:
-            drift_alerts.append({
-                "repo": rname,
-                "severity": "info",
-                "message": f"{repo.get('modified',0)} modified + {repo.get('untracked',0)} untracked files on {repo.get('current_branch')} — commit or stash",
-            })
+            drift_alerts.append(
+                {
+                    "repo": rname,
+                    "severity": "info",
+                    "message": f"{repo.get('modified', 0)} modified + {repo.get('untracked', 0)} untracked files on {repo.get('current_branch')} — commit or stash",
+                }
+            )
         # Many open PRs is itself a drift signal
         if len(repo.get("open_prs", [])) > 10:
-            drift_alerts.append({
-                "repo": rname,
-                "severity": "warn",
-                "message": f"{len(repo.get('open_prs', []))} open PRs — coordination cost is high",
-            })
+            drift_alerts.append(
+                {
+                    "repo": rname,
+                    "severity": "warn",
+                    "message": f"{len(repo.get('open_prs', []))} open PRs — coordination cost is high",
+                }
+            )
 
     # Sort streams: SHIP > FINISH > GATE > DEFER > KILL, then by money + readiness desc, then age asc
     DECISION_RANK = {"SHIP": 0, "FINISH": 1, "GATE": 2, "DEFER": 3, "KILL": 4}
-    streams.sort(key=lambda s: (
-        DECISION_RANK.get(s["decision"], 9),
-        -s["money_path_score"],
-        -s["readiness_score"],
-        s["age_days"],
-    ))
+    streams.sort(
+        key=lambda s: (
+            DECISION_RANK.get(s["decision"], 9),
+            -s["money_path_score"],
+            -s["readiness_score"],
+            s["age_days"],
+        )
+    )
 
     counts = {}
-    for s in streams: counts[s["decision"]] = counts.get(s["decision"], 0) + 1
+    for s in streams:
+        counts[s["decision"]] = counts.get(s["decision"], 0) + 1
 
     state = {
         "rendered_at": now.isoformat(timespec="seconds").replace("+00:00", "Z"),
@@ -314,9 +371,11 @@ def main():
     md = []
     md.append(f"# Orchestrator State — {now.strftime('%Y-%m-%d %H:%M UTC')}")
     md.append("")
-    md.append("**North Star:** First paying customer (Telegram bot answers w/ citations + payment lands, or Slack copilot grounds + payment lands).")
+    md.append(
+        "**North Star:** First paying customer (Telegram bot answers w/ citations + payment lands, or Slack copilot grounds + payment lands)."
+    )
     md.append("")
-    md.append(f"**Counts:** " + " · ".join(f"{k}={v}" for k, v in sorted(counts.items())))
+    md.append("**Counts:** " + " · ".join(f"{k}={v}" for k, v in sorted(counts.items())))
     md.append("")
 
     # Top 3 action list
@@ -342,19 +401,22 @@ def main():
     # By bucket
     for decision in ["SHIP", "FINISH", "GATE", "DEFER", "KILL"]:
         items = [s for s in streams if s["decision"] == decision]
-        if not items: continue
+        if not items:
+            continue
         md.append(f"## {decision} — {len(items)}")
         for s in items[:15]:
             tag = f"#{s['pr_number']}" if s.get("pr_number") else ""
-            md.append(f"- `{s['repo']}/{s['kind']}/{s['id']}` {tag} · money={s['money_path_score']}/5 ready={s['readiness_score']}/5 age={s['age_days']}d — {s['rationale']}")
+            md.append(
+                f"- `{s['repo']}/{s['kind']}/{s['id']}` {tag} · money={s['money_path_score']}/5 ready={s['readiness_score']}/5 age={s['age_days']}d — {s['rationale']}"
+            )
         if len(items) > 15:
-            md.append(f"  *(+{len(items)-15} more — see state.json)*")
+            md.append(f"  *(+{len(items) - 15} more — see state.json)*")
         md.append("")
 
     md.append("## Source")
     md.append(f"Generated from `scan.json` at {now.isoformat(timespec='seconds')}.")
-    md.append(f"State JSON: `wiki/orchestrator/state.json`.")
-    md.append(f"This file is overwritten every run; history is appended to `HISTORY.md`.")
+    md.append("State JSON: `wiki/orchestrator/state.json`.")
+    md.append("This file is overwritten every run; history is appended to `HISTORY.md`.")
     md.append("")
 
     state_md_path.write_text("\n".join(md))
@@ -367,13 +429,20 @@ def main():
         f.write(f"\n## {now.strftime('%Y-%m-%d %H:%M UTC')}\n")
         f.write(f"- Counts: {counts}\n")
         f.write(f"- Drift alerts: {len(drift_alerts)}\n")
-        if ships: f.write(f"- Top SHIP: `{ships[0]['repo']}/{ships[0]['id']}` — {ships[0]['rationale']}\n")
-        if finishes: f.write(f"- Top FINISH: `{finishes[0]['repo']}/{finishes[0]['id']}` — {finishes[0]['rationale']}\n")
+        if ships:
+            f.write(
+                f"- Top SHIP: `{ships[0]['repo']}/{ships[0]['id']}` — {ships[0]['rationale']}\n"
+            )
+        if finishes:
+            f.write(
+                f"- Top FINISH: `{finishes[0]['repo']}/{finishes[0]['id']}` — {finishes[0]['rationale']}\n"
+            )
 
     print(f"state written: {state_json_path}")
     print(f"summary       : {state_md_path}")
     print(f"counts        : {counts}")
     print(f"drift alerts  : {len(drift_alerts)}")
+
 
 if __name__ == "__main__":
     main()
