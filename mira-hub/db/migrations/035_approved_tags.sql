@@ -78,6 +78,20 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_name = 'approved_tags'
+          AND column_name = 'source_system'
+    ) THEN
+        ALTER TABLE approved_tags ADD COLUMN source_system TEXT NOT NULL DEFAULT '';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'approved_tags'
+          AND column_name = 'source_tag_path'
+    ) THEN
+        ALTER TABLE approved_tags ADD COLUMN source_tag_path TEXT NOT NULL DEFAULT '';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'approved_tags'
           AND column_name = 'normalized_tag_path'
     ) THEN
         ALTER TABLE approved_tags ADD COLUMN normalized_tag_path TEXT;
