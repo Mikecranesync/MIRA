@@ -162,7 +162,11 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           # test_phase0_schema.py  — round-trip + RLS for migrations 025-031
           # test_rls_tag_trace_tables.py — RLS for migrations 032-036 (#1664)
-          python -m pytest tests/integration/ -v 2>&1 | tee tests.out
+          # test_write_paths.py is excluded: it needs httpx + a live BASE_URL
+          python -m pytest \
+            tests/integration/test_phase0_schema.py \
+            tests/integration/test_rls_tag_trace_tables.py \
+            -v 2>&1 | tee tests.out
           echo '```' >> "$GITHUB_STEP_SUMMARY" || true
 
       - name: Post / update PR comment
