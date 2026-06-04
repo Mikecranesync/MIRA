@@ -8,7 +8,10 @@ export interface HeadOpts {
   jsonLd?: object;
 }
 
-const DEFAULT_OG_IMAGE = "https://factorylm.com/og-default.png";
+// Must match a path that is actually served (src/server.ts → /og-image.png).
+// Was "og-default.png", which 404s — breaking the default social/LLM preview
+// card on every page that doesn't pass an explicit ogImage.
+const DEFAULT_OG_IMAGE = "https://factorylm.com/og-image.png";
 const SITE_NAME = "FactoryLM";
 
 // Set GOOGLE_SITE_VERIFICATION in Doppler (factorylm/prd) after verifying in

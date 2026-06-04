@@ -1,6 +1,6 @@
 # MIRA — Current-State Gap-Closure Plan (Walker DT-2026 Alignment)
 
-**Status:** Phase 0 complete; Phase 1 RLS tests in PR #1674. PR #1657 apply-and-verify fixed (033 idempotency: simulated column guard added 2026-06-04). CI re-running.
+**Status:** Phases 0–5 + RLS tests complete (PRs #1657/#1674). apply-and-verify CI green as of 2026-06-04. Merge conflict being resolved.
 **Last updated:** 2026-06-04 (gap-closure driver session)
 **Authored:** 2026-06-02
 **Owner:** Lead systems architect (gap-closure work stream)

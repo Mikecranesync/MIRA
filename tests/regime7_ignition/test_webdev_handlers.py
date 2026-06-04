@@ -54,21 +54,9 @@ class TestStatusHandler:
 
 
 class TestChatHandler:
-    def test_chat_proxies_to_sidecar(self, webdev_scripts_dir):
-        import sys
-
-        # Inject a test HMAC key: make the properties file appear to exist so
-        # getMiraConfig() returns the key and the handler reaches the proxy path.
-        # The autouse mock_ignition_system fixture creates fresh Java mocks per test,
-        # so these modifications are isolated to this test.
-        sys.modules["java.io.File"].return_value.exists.return_value = True
-        sys.modules["java.util.Properties"].return_value.getProperty.side_effect = (
-            lambda key, default="": {
-                "MIRA_IGNITION_HMAC_KEY": "test-key-ci",
-                "MIRA_TENANT_ID": "00000000-0000-0000-0000-000000000001",
-            }.get(key, default)
-        )
-
+    def test_chat_proxies_to_sidecar(self, webdev_scripts_dir, mira_gateway_configured):
+        """A configured gateway signs the request, proxies to the sidecar (mocked via
+        the autouse `mock_urllib2`), and returns the sidecar's answer."""
         handler = load_handler(webdev_scripts_dir / "api" / "chat" / "doPost.py", "doPost")
         request = {
             "postData": {
@@ -80,17 +68,35 @@ class TestChatHandler:
 
         assert "json" in result
         data = result["json"]
-        # Should have proxied to sidecar and got back mock answer
-        assert "answer" in data or "error" not in data
+        # Proxied successfully — no error, and the sidecar's mock answer came back
+        # (mock_urllib2 returns {"answer": "Test answer about VFD faults.", ...}).
+        assert "error" not in data, "handler returned an error: %s" % data
+        assert data["answer"] == "Test answer about VFD faults."
+        assert "sources" in data
 
-    def test_chat_empty_query_rejected(self, webdev_scripts_dir):
+    def test_chat_unconfigured_hmac_fails_closed(self, webdev_scripts_dir):
+        """No HMAC key configured → fail closed with 503, never an unsigned proxy call.
+
+        This is the security contract: doPost refuses to forward unsigned requests."""
+        handler = load_handler(webdev_scripts_dir / "api" / "chat" / "doPost.py", "doPost")
+        request = {"postData": {"query": "What does OC mean?", "asset_id": "conveyor_demo"}}
+        result = handler(request, {})
+
+        assert result["status"] == 503
+        assert result["json"]["error"] == "MIRA HMAC key not configured"
+
+    def test_chat_empty_query_rejected(self, webdev_scripts_dir, mira_gateway_configured):
+        """A configured gateway still validates input: empty query → 400 'query is required'.
+
+        (Requires the gateway-configured fixture; otherwise the handler fail-closes on the
+        HMAC check before it ever reaches query validation.)"""
         handler = load_handler(webdev_scripts_dir / "api" / "chat" / "doPost.py", "doPost")
         request = {"postData": {"query": "", "asset_id": ""}}
         result = handler(request, {})
 
         assert "json" in result
-        data = result["json"]
-        assert "error" in data
+        assert result["status"] == 400
+        assert result["json"]["error"] == "query is required"
 
 
 class TestAlertsHandler:
