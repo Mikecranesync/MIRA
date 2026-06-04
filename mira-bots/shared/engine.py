@@ -3583,7 +3583,9 @@ class Supervisor:
         # clarifying ask mid-diagnostic shouldn't break the photo flow.
         # target_state="IDLE": general questions must leave the FSM at IDLE so
         # callers that return state.get("state") don't surface ASSET_IDENTIFIED.
-        state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=False, target_state="IDLE")
+        state = self._clear_diagnostic_carryover(
+            chat_id, state, clear_photo=False, target_state="IDLE"
+        )
 
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
@@ -4412,7 +4414,9 @@ class Supervisor:
         """
         # target_state="IDLE": instructional answers are background responses;
         # the FSM must return IDLE so state.get("state") doesn't surface ASSET_IDENTIFIED.
-        state = self._clear_diagnostic_carryover(chat_id, state, clear_photo=True, target_state="IDLE")
+        state = self._clear_diagnostic_carryover(
+            chat_id, state, clear_photo=True, target_state="IDLE"
+        )
         asset = state.get("asset_identified", "")
         ctx = state.get("context") or {}
         history = ctx.get("history", [])
