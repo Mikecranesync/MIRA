@@ -6330,4 +6330,30 @@ Source of truth: `docs/plans/2026-04-19-mira-90-day-mvp.md`. Read its "Currently
 - ?? docs/promo-screenshots/audit-hub-signin.png
 - ?? mira-bots/mira-maintenance-agent/
 **Next:** _set by next session_
+
+### 2026-05-21 09:01 UTC — `feat/1347-namespace-node-detail`
+**Last commit:** 968e742b feat(hub): GET /api/namespace/node/[id] + detail-pane wire-up
+**Changed (vs. fork point):**
+- .githooks/pre-commit
+- .github/workflows/migration-verify.yml
+- .github/workflows/photo-e2e-verify.yml
+- .github/workflows/staging-gate.yml
+- docker-compose.saas.yml
+- docker-compose.staging-vps.yml
+- docs/adr/0014-ai-suggestions-as-broad-work-queue.md
+- docs/adr/0015-mira-core-sunset.md
+- docs/adr/0016-mira-bridge-flowfuse.md
+- docs/audits/2026-05-21-audit.md
+- docs/plans/2026-05-20-engine-split.md
+- docs/specs/mira-ground-truth-architecture-investigation.md
+- docs/verification/2026-05-18-bm25-or-fix-staging-run.md
+- docs/verification/2026-05-19-phase0-verification.md
+- mira-bots/shared/CLAUDE.md
+- mira-bots/shared/engine.py
+- mira-bots/shared/workers/photo_ingest_worker.py
+- mira-core/mira-ingest/db/neon.py
+- mira-core/mira-ingest/main.py
+- mira-core/mira-ingest/requirements.txt
+**Working tree:** clean
+**Next:** _set by next session_
 <!-- END AUTOLOG -->
