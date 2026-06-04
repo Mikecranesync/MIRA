@@ -18,6 +18,32 @@ Configure at: https://code.claude.com (Routines tab)
 **Why:** `/namespace` renders only what's in `kg_entities`. Equipment + manuals live in `cmms_equipment` and `knowledge_entries`; without this Routine the tree silently goes stale relative to Assets / Knowledge pages.
 **Reference:** `mira-hub/src/app/api/kg/sync/route.ts`, `mira-hub/src/lib/knowledge-graph/cmms-sync.ts` (extended with `uns_path` + knowledge-entries mirror in PR landing 2026-05-17).
 
+### Daily — Adversarial review of engine.py (10:00 UTC)
+**Trigger:** cron, daily 10:00 UTC
+**Prompt outline:** "Review the current `main` HEAD of `mira-bots/shared/engine.py` against the embedded 12-question adversarial checklist (PII boundary, FSM integrity, tenant isolation, RAG prompt injection, shared mutable state, etc.). For each finding that clears the 🔴 severity bar (a tenant can read another tenant's data; PII reaches an external service; a retrieved doc controls the model; a security check silently fails), classify it under one of the known fingerprints below, then file it via `scripts/file_adversarial_finding.sh`. The script handles dedup — do NOT call `gh issue create` directly from this Routine."
+
+**Known fingerprints (use these slugs, do not invent variants):**
+
+| Slug | Cluster | Description |
+|------|---------|-------------|
+| `cross-tenant-rag-race` | A | `RAGWorker._kb_status` / `_last_neon_chunks` / `_last_sources` written before an `await`; concurrent tenants overwrite each other's citation metadata. |
+| `pii-conversation-router` | B | `conversation_router._call_router_llm` POSTs to Groq without going through `InferenceRouter.sanitize_context()`. |
+| `rag-prompt-injection` | C | `_SENTINEL_RE` in `rag_worker.py` can be bypassed by crafted chunk content; retrieved docs reach the system role. |
+
+If a new finding genuinely doesn't fit any known fingerprint, mint a kebab-case slug describing the **root cause** (not the symptom or date), add it to the table above in a follow-up PR, and use it in the Routine call.
+
+**Invocation contract:**
+```bash
+bash scripts/file_adversarial_finding.sh \
+  --fingerprint <slug> \
+  --title "Daily adversarial review findings: engine.py ($(date -u +%Y-%m-%d))" \
+  --file mira-bots/shared/engine.py \
+  --body-file /tmp/finding.md
+```
+The script applies labels (`adversarial-finding` + `adv-fp:<slug>`), embeds an HTML-comment fingerprint marker in the body, searches for matching open issues by label OR marker, and either opens a new issue or comments a recurrence on the existing one. **The Routine MUST go through this script — never call `gh issue create` directly.**
+
+**Why:** Before this gate (installed 2026-06-01) the Routine filed 11 separate open issues for 3 distinct bugs over ~5 weeks (#599, #656, #877, #889, #919, #934, #1472, #1520, #1528, #1577, #1585). The cleanup that consolidated those is on the same commit that introduced this script.
+
 ### Daily — Lead hunter status (08:00 UTC)
 **Trigger:** cron, daily 08:00 UTC
 **Prompt:** "Read `marketing/prospects/hardening-alerts.jsonl`. Summarize last 24h of new leads. If `mira-crawler/Dockerfile.celery` still missing `tools/lead-hunter/` COPY, post a reminder to the issue tracker."
