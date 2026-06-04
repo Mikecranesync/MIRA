@@ -1,3 +1,52 @@
+# Hot Cache — 2026-06-04 — CLOUD
+
+## Session — 2026-06-04 (autonomous gap-closure driver — epic #1666)
+
+**Routine run result: STATUS SYNC ONLY — CI pending, merge-conflict rebase required before any new work.**
+
+### Open gap-closure PRs (both blocked)
+
+| PR | Branch | Status | Blocker |
+|---|---|---|---|
+| **#1657** | `feat/dt2026-gap-closure` | open, CI pending | Merge conflict with main — **migration number collision** |
+| **#1674** | `feat/dt2026-rls-verification-1664` | open, CI pending, stacked on #1657 | Same — stacked, needs #1657 to resolve first |
+
+### Critical blocker: migration numbering collision
+
+Main landed PR #1688 (`feat/kg-knowledge-graph-stack`) which added Hub migrations **030, 031, 032, 033** (KG graph / proposal types / reasoning traces). The gap-closure branch (#1657) has its own migrations **032–037** (`decision_traces`, `tag_events`, `flaky_input_signals`, `approved_tags`, `current_tag_state`, `tag_event_diffs`). **Numbers 032 and 033 collide.**
+
+Resolution required before #1657 can merge:
+1. Rename gap-closure migrations to 034–039 (or whatever `ls mira-hub/db/migrations/ | tail` shows on a fresh `origin/main` checkout).
+2. Update all references to these migration numbers in the PR.
+3. Resolve `.github/workflows/ci.yml` concurrency conflict (main added concurrency guard in #1692; gap-closure branch added the same guard independently in commit `1c3310a`).
+4. Resolve `wiki/hot.md` three-way merge (main has 2026-06-03 CHARLIE session; gap-closure branch has CLOUD session entries).
+5. After rebase, push — this will trigger CI fresh.
+
+### Gap-closure issue backlog (in priority order per epic #1666)
+
+| Issue | Phase | Label | Blocker |
+|---|---|---|---|
+| #1664 | RLS verification | **done** (PR #1674) | blocked on #1657 merge |
+| #1665 | Deploy migrations to staging→prod | ready-for-human | human action needed |
+| **#1658** | Phase 6: direct_connection UNS bypass | ready-for-agent | blocked until #1657 merges |
+| **#1659** | Phase 7: citation enforcement + session lifecycle | ready-for-agent | depends on #1658 |
+| **#1662** | Phase 3: kg_writer proposal-transition helper | ready-for-agent | unblocked (no Phase 6 dep) |
+| **#1663** | /proposals must render ai_suggestions | ready-for-agent | depends on #1662 |
+| #1660 | Phase 8: DecisionTraceWriter + /decision-traces | ready-for-agent | blocked on #1657 merge |
+| #1661 | Phase 9: flaky-input detector | ready-for-agent | blocked on #1657 merge |
+
+### Next agent action
+
+Once the rebase is done and #1657 CI goes green:
+- If 2 PRs still open → stop (human review/merge needed).
+- Once 1 merges → pick **#1658** (Phase 6) or **#1662** (Phase 3 — unblocked now).
+
+### What was NOT done this run
+
+- No new implementation PRs (CI gate: both `feat/dt2026*` PRs are `state:pending`; 2-PR cap reached).
+- No engine/bot/UNS-gate/KG code touched.
+- No production systems touched.
+
 # Hot Cache — 2026-05-29 — ALPHA
 
 ## Session — 2026-06-03 (CHARLIE) — prod pipeline outage + CI prevention
