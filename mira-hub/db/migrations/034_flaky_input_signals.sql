@@ -71,6 +71,30 @@ CREATE TABLE IF NOT EXISTS flaky_input_signals (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Idempotency guard: earlier versions of this migration lacked created_at /
+-- updated_at. If the table was created from that older schema, add them now.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name   = 'flaky_input_signals'
+          AND column_name  = 'created_at'
+    ) THEN
+        ALTER TABLE flaky_input_signals
+            ADD COLUMN created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name   = 'flaky_input_signals'
+          AND column_name  = 'updated_at'
+    ) THEN
+        ALTER TABLE flaky_input_signals
+            ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS flaky_input_signals_tenant_time_idx
     ON flaky_input_signals (tenant_id, created_at DESC);
 
