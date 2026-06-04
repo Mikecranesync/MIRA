@@ -1,3 +1,49 @@
+# Hot Cache — 2026-06-04 — Remote (gap-closure driver)
+
+## gap-closure-driver run — 2026-06-04 (cloud/remote)
+
+**Routine:** autonomous gap-closure driver for epic #1666. PR-only, no deploys, no merges, no prod touch.
+
+**Preflight:** HEAD = `5b00930` (matches origin/main). Repo in sync.
+
+**CI gate result: STOP — pending state on the most recent gap-closure PR.**
+
+### Open gap-closure PRs (2 / 2 max)
+
+| PR | Branch | Status | CI | Mergeable |
+|---|---|---|---|---|
+| #1657 | feat/dt2026-gap-closure | open | all 22 checks **cancelled** (0 green statuses) | `blocked` |
+| #1674 | feat/dt2026-rls-verification-1664 | open | 0 check runs (**pending**) | `dirty` (merge conflict) |
+
+### Why CI is in this state
+
+- `#1692` merged to main (`5b00930`) added concurrency guards to CI workflows. This cancelled all in-flight CI runs on older branches, including PR #1657. PR #1657 now has 22 `cancelled` checks and 0 green combined statuses → `blocked`.
+- PR #1674 is **stacked** on PR #1657 (`base: feat/dt2026-gap-closure`, not `main`). Because #1657 has diverged from main, #1674 is in `dirty` (conflict) state and CI has never triggered on it.
+
+### What is needed to unblock (human action)
+
+1. **Re-trigger CI on #1657**: push a trivial commit to `feat/dt2026-gap-closure` (or re-run via GitHub Actions UI). Once CI passes, #1657 becomes mergeable.
+2. **Merge #1657 → main**: This is the prerequisite for everything else. Once on main, migrations 032–037 are in staging and #1674 can rebase cleanly.
+3. **After #1657 merges**: rebase `feat/dt2026-rls-verification-1664` onto main → CI runs → #1674 is mergeable.
+4. **After #1674 merges**: this routine can advance to the next issue (#1658 → Phase 6).
+
+### Issue queue (epic #1666)
+
+| # | Issue | Status | Labels |
+|---|---|---|---|
+| #1664 | RLS verification for tag/trace tables | PR #1674 open (blocked) | security, P2, ready-for-agent |
+| #1658 | Phase 6 direct_connection UNS bypass | not started | P1, ready-for-agent |
+| #1659 | Phase 7 citation enforcement + session lifecycle | not started (depends #1658) | P1, ready-for-agent |
+| #1660 | Phase 8 DecisionTraceWriter | not started | P2, ready-for-agent |
+| #1661 | Phase 9 flaky-input detector | not started | P1, ready-for-agent |
+| #1662 | Phase 3 kg_writer proposal-transition helper | not started | P1, ready-for-agent |
+| #1663 | /proposals render ai_suggestions | not started (depends #1662) | P1, ready-for-agent (bug) |
+| #1665 | Promote migrations staging→prod | human only | needs-human |
+
+**Next issue for agent (once unblocked):** #1658 (Phase 6 direct_connection bypass) — P1, clear acceptance criteria, no other dependencies.
+
+---
+
 # Hot Cache — 2026-05-29 — ALPHA
 
 ## Session — 2026-06-03 (CHARLIE) — prod pipeline outage + CI prevention
