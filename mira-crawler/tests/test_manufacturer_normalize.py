@@ -147,3 +147,56 @@ class TestKgWriterWiring:
         assert fault["properties"]["manufacturer"] == "Coffing"
         assert fault["name"].startswith("Coffing /")
         assert "coffing" in fault["uns_path"]
+
+
+class TestInsertChunkWiring:
+    """The Hub KB manufacturer catalog GROUPs BY knowledge_entries.manufacturer.
+    That column is written by insert_chunk, which has callers beyond
+    store_chunks (tasks/ingest.py), so normalization lives at this write
+    boundary — not the orchestrator — or those callers still pollute (#1596)."""
+
+    def test_insert_chunk_normalizes_manufacturer_in_sql_params(self, monkeypatch):
+        import sys
+        import types
+
+        from ingest import store
+
+        # Stub the sqlalchemy I/O boundary so the test is hermetic — we only
+        # care that the normalized manufacturer reaches the INSERT params.
+        fake_sa = types.ModuleType("sqlalchemy")
+        fake_sa.text = lambda s: s
+        monkeypatch.setitem(sys.modules, "sqlalchemy", fake_sa)
+
+        captured: dict = {}
+
+        class _FakeConn:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, _stmt, params):
+                captured.update(params)
+
+            def commit(self):
+                pass
+
+        class _FakeEngine:
+            def connect(self):
+                return _FakeConn()
+
+        monkeypatch.setattr(store, "_engine", lambda: _FakeEngine())
+
+        entry_id = store.insert_chunk(
+            tenant_id="t1",
+            content="x",
+            embedding=[0.1],
+            source_url="u",
+            manufacturer="Alien-Bradley",
+            model_number="MR-2000",
+            chunk_index=0,
+        )
+
+        assert entry_id  # write path completed
+        assert captured["manufacturer"] == "Allen-Bradley"
