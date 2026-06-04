@@ -88,6 +88,49 @@ CREATE TABLE IF NOT EXISTS tag_event_diffs (
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
+-- Idempotency guard: if an earlier version of this migration created
+-- tag_event_diffs with a narrower column set, the CREATE TABLE above is skipped
+-- (IF NOT EXISTS) on a persistent staging DB and the indexes below would fail
+-- against the stale table. Backfill the columns the indexes reference.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tag_event_diffs'
+          AND column_name = 'event_timestamp'
+    ) THEN
+        ALTER TABLE tag_event_diffs ADD COLUMN event_timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tag_event_diffs'
+          AND column_name = 'tag_path'
+    ) THEN
+        ALTER TABLE tag_event_diffs ADD COLUMN tag_path TEXT NOT NULL DEFAULT '';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tag_event_diffs'
+          AND column_name = 'uns_path'
+    ) THEN
+        ALTER TABLE tag_event_diffs ADD COLUMN uns_path LTREE;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tag_event_diffs'
+          AND column_name = 'fault_window_id'
+    ) THEN
+        ALTER TABLE tag_event_diffs ADD COLUMN fault_window_id UUID;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tag_event_diffs'
+          AND column_name = 'simulated'
+    ) THEN
+        ALTER TABLE tag_event_diffs ADD COLUMN simulated BOOLEAN NOT NULL DEFAULT false;
+    END IF;
+END $$;
+
 -- Time scans dominate ("recent changes for tenant").
 CREATE INDEX IF NOT EXISTS tag_event_diffs_tenant_time_idx
     ON tag_event_diffs (tenant_id, event_timestamp DESC);

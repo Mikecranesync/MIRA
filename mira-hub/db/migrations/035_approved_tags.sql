@@ -69,6 +69,35 @@ CREATE TABLE IF NOT EXISTS approved_tags (
     PRIMARY KEY (tenant_id, source_system, source_tag_path)
 );
 
+-- Idempotency guard: earlier versions of this migration created approved_tags
+-- without these columns, so on a persistent staging DB the CREATE TABLE above
+-- is skipped (IF NOT EXISTS) and the indexes/policy below would fail against
+-- the stale table. Backfill the columns the rest of this migration references.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'approved_tags'
+          AND column_name = 'normalized_tag_path'
+    ) THEN
+        ALTER TABLE approved_tags ADD COLUMN normalized_tag_path TEXT;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'approved_tags'
+          AND column_name = 'uns_path'
+    ) THEN
+        ALTER TABLE approved_tags ADD COLUMN uns_path LTREE;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'approved_tags'
+          AND column_name = 'enabled'
+    ) THEN
+        ALTER TABLE approved_tags ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT true;
+    END IF;
+END $$;
+
 -- The relay's hot path: "is (tenant, source_system, normalized_path) allowed?"
 CREATE INDEX IF NOT EXISTS approved_tags_normalized_idx
     ON approved_tags (tenant_id, source_system, normalized_tag_path)
