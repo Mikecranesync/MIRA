@@ -23,6 +23,9 @@ interface CCNode {
   displayId: string | null;
   displayType: string | null;
   displayLabel: string | null;
+  // PRIMARY "live" status = real telemetry freshness for this subtree.
+  tagFreshness: "live" | "stale" | "simulated" | "unknown";
+  // SECONDARY = registered HMI display URL reachable over HTTP.
   live: boolean;
   children: CCNode[];
 }
@@ -31,7 +34,8 @@ interface TreeResponse {
   nodes: CCNode[];
   total: number;
   displaysTotal: number;
-  liveCount: number;
+  liveCount: number; // display-reachability count (secondary)
+  freshnessCounts: { live: number; stale: number; simulated: number };
 }
 
 const POLL_MS = 10_000;
@@ -112,20 +116,8 @@ export default function CommandCenterPage() {
         <div className="flex items-center gap-2.5">
           <Radio className="h-5 w-5" style={{ color: "#2563EB" }} />
           <h1 className="text-lg font-bold tracking-tight">Command Center</h1>
-          {data && (
-            <span className="ml-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium"
-              style={{ backgroundColor: "#16a34a1a", color: "#16a34a" }}>
-              <span className="relative flex h-2 w-2">
-                {data.liveCount > 0 && (
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
-                    style={{ backgroundColor: "#16a34a" }} />
-                )}
-                <span className="relative inline-flex h-2 w-2 rounded-full"
-                  style={{ backgroundColor: data.liveCount > 0 ? "#16a34a" : "#94a3b8" }} />
-              </span>
-              {data.liveCount} live · {data.displaysTotal} display{data.displaysTotal === 1 ? "" : "s"}
-            </span>
-          )}
+          {data && <FreshnessSummary counts={data.freshnessCounts}
+            displaysTotal={data.displaysTotal} reachable={data.liveCount} />}
         </div>
         <button onClick={() => refresh()}
           className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium hover:bg-black/5"
@@ -196,6 +188,8 @@ function TreeRow({
         )}
         <KindIcon kind={node.kind} open={isOpen} className="h-4 w-4 flex-shrink-0 text-slate-500" />
         <span className="truncate">{node.name}</span>
+        {/* PRIMARY: telemetry freshness. SECONDARY: display reachability. */}
+        <FreshnessDot freshness={node.tagFreshness} />
         {node.hasLiveDisplay && <DisplayDot live={node.live} />}
       </div>
       {isOpen && node.children.map((c) => (
@@ -207,17 +201,79 @@ function TreeRow({
   );
 }
 
-/** Green pulsing dot = a live, watchable display. Gray = registered but stale. */
+/** Green dot (open ring) = a registered HMI display URL reachable over HTTP.
+ * SECONDARY status — reachability, NOT telemetry freshness. */
 function DisplayDot({ live }: { live: boolean }) {
   return (
-    <span className="relative ml-1.5 flex h-2.5 w-2.5 flex-shrink-0"
-      title={live ? "Live display — click to watch" : "Display registered (no live signal)"}>
-      {live && (
+    <span className="relative ml-1 flex h-2.5 w-2.5 flex-shrink-0"
+      title={live ? "Display URL reachable (HTTP) — click to watch" : "Display registered but unreachable"}>
+      <span className="relative inline-flex h-2.5 w-2.5 rounded-full border-2"
+        style={{ borderColor: live ? "#16a34a" : "#cbd5e1", backgroundColor: "transparent" }} />
+    </span>
+  );
+}
+
+// ── Freshness (PRIMARY "live" status = telemetry freshness) ───────────────────
+
+type Freshness = CCNode["tagFreshness"];
+
+const FRESHNESS_COLOR: Record<Freshness, string> = {
+  live: "#16a34a",       // green — fresh real telemetry
+  stale: "#d97706",      // amber — real, but no recent update
+  simulated: "#2563eb",  // blue — only simulated data available
+  unknown: "#94a3b8",    // gray — no mapped tags
+};
+
+const FRESHNESS_LABEL: Record<Freshness, string> = {
+  live: "Live",
+  stale: "Stale",
+  simulated: "Simulated",
+  unknown: "No tags",
+};
+
+const FRESHNESS_TITLE: Record<Freshness, string> = {
+  live: "Live telemetry — a mapped tag updated within its freshness window",
+  stale: "Stale — mapped tags exist but none updated recently",
+  simulated: "Simulated data only — no real telemetry for this asset",
+  unknown: "No mapped tags under this node",
+};
+
+/** Filled dot for telemetry freshness. Hidden for 'unknown' unless forceShow
+ * (the viewer header always shows the explicit status). Live pulses. */
+function FreshnessDot({ freshness, forceShow = false }: { freshness: Freshness; forceShow?: boolean }) {
+  if (freshness === "unknown" && !forceShow) return null;
+  const color = FRESHNESS_COLOR[freshness];
+  return (
+    <span className="relative ml-1.5 flex h-2.5 w-2.5 flex-shrink-0" title={FRESHNESS_TITLE[freshness]}>
+      {freshness === "live" && (
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75"
-          style={{ backgroundColor: "#16a34a" }} />
+          style={{ backgroundColor: color }} />
       )}
-      <span className="relative inline-flex h-2.5 w-2.5 rounded-full"
-        style={{ backgroundColor: live ? "#16a34a" : "#cbd5e1" }} />
+      <span className="relative inline-flex h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+    </span>
+  );
+}
+
+/** Header summary — freshness counts are the PRIMARY headline; display
+ * reachability is shown as a secondary clause. */
+function FreshnessSummary({
+  counts, displaysTotal, reachable,
+}: {
+  counts: { live: number; stale: number; simulated: number };
+  displaysTotal: number;
+  reachable: number;
+}) {
+  const headline: Freshness =
+    counts.live > 0 ? "live" : counts.stale > 0 ? "stale" : counts.simulated > 0 ? "simulated" : "unknown";
+  const color = FRESHNESS_COLOR[headline];
+  return (
+    <span className="ml-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium"
+      style={{ backgroundColor: `${color}1a`, color }}>
+      <FreshnessDot freshness={headline} forceShow />
+      {counts.live} live · {counts.stale} stale · {counts.simulated} sim
+      <span className="text-slate-400">
+        · {reachable}/{displaysTotal} display{displaysTotal === 1 ? "" : "s"} up
+      </span>
     </span>
   );
 }
@@ -248,11 +304,19 @@ function Viewer({ node }: { node: CCNode | null }) {
           <p className="truncate text-sm font-semibold">{node.displayLabel ?? node.name}</p>
           {node.unsPath && <p className="truncate font-mono text-[11px] text-slate-400">{node.unsPath}</p>}
         </div>
-        <span className="flex flex-shrink-0 items-center gap-1.5 text-xs font-medium"
-          style={{ color: node.live ? "#16a34a" : "#64748b" }}>
-          <DisplayDot live={node.live} />
-          {node.live ? "Live" : "No live signal"}
-        </span>
+        <div className="flex flex-shrink-0 items-center gap-3 text-xs font-medium">
+          {/* PRIMARY: telemetry freshness */}
+          <span className="flex items-center gap-1.5"
+            style={{ color: FRESHNESS_COLOR[node.tagFreshness] }}>
+            <FreshnessDot freshness={node.tagFreshness} forceShow />
+            {FRESHNESS_LABEL[node.tagFreshness]}
+          </span>
+          {/* SECONDARY: display reachability */}
+          <span className="flex items-center gap-1.5 text-slate-400" title="HTTP reachability of the display URL">
+            <DisplayDot live={node.live} />
+            {node.live ? "display up" : "display down"}
+          </span>
+        </div>
       </div>
       <iframe
         // Browser is redirected straight to the HMI (WebSockets intact). No

@@ -8,12 +8,35 @@ import type { FaultCode } from "../data/fault-codes.js";
 import type { BlogPost, BlogSection } from "../data/blog-posts.js";
 
 const BASE_URL = "https://factorylm.com";
-const TODAY = new Date().toISOString().split("T")[0];
+
+// Stable fallback date for content that has no per-entry publish/update date
+// (the fault-code library). Using the render date here made every page report
+// datePublished/dateModified === "today" on each crawl — a churn/freshness
+// anti-signal. Bump this only when the library is substantively rewritten;
+// prefer setting a per-entry `updated` field for incremental edits.
+const CONTENT_EPOCH = "2026-04-28";
 
 // SVG logo (exact copy from index.html)
 const LOGO_SVG = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#f0a000"/><path d="M6 17V8l3.5 5 2.5-3.5L14.5 13 18 8v9" stroke="#000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 const ARROW_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 7h8M8 4l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+// ── Structured-data helpers ──
+
+/** Builds a schema.org BreadcrumbList node for the page's position in the
+ *  Home › Blog › … hierarchy. Returned as a plain object for inclusion in a
+ *  JSON-LD `@graph`. */
+function breadcrumbLd(trail: { name: string; url: string }[]): object {
+  return {
+    "@type": "BreadcrumbList",
+    itemListElement: trail.map((item, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      name: item.name,
+      item: item.url,
+    })),
+  };
+}
 
 // ── Shared HTML head ──
 
@@ -139,22 +162,37 @@ export function renderBlogPost(
     .filter(Boolean) as FaultCode[];
 
   const jsonLd = `<script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "Article",
-    "headline": ${JSON.stringify(post.title)},
-    "description": ${JSON.stringify(post.description)},
-    "url": ${JSON.stringify(canonical)},
-    "datePublished": "${post.date}",
-    "dateModified": "${TODAY}",
-    "author": { "@type": "Organization", "name": "FactoryLM" },
-    "publisher": {
-      "@type": "Organization",
-      "name": "FactoryLM",
-      "logo": { "@type": "ImageObject", "url": "${BASE_URL}/public/icons/mira-512.png" }
+  ${JSON.stringify(
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Article",
+          headline: post.title,
+          description: post.description,
+          url: canonical,
+          datePublished: post.date,
+          // Stable: actual last-edit date, NOT the render date. Falls back to
+          // the publish date when the post hasn't been revised.
+          dateModified: post.updated ?? post.date,
+          author: { "@type": "Organization", name: "FactoryLM" },
+          publisher: {
+            "@type": "Organization",
+            name: "FactoryLM",
+            logo: { "@type": "ImageObject", url: `${BASE_URL}/public/icons/mira-512.png` },
+          },
+          mainEntityOfPage: { "@type": "WebPage", "@id": canonical },
+        },
+        breadcrumbLd([
+          { name: "Home", url: `${BASE_URL}/` },
+          { name: "Blog", url: `${BASE_URL}/blog` },
+          { name: post.title, url: canonical },
+        ]),
+      ],
     },
-    "mainEntityOfPage": { "@type": "WebPage", "@id": ${JSON.stringify(canonical)} }
-  }
+    null,
+    2,
+  )}
   </script>`;
 
   return `${htmlHead({ title: `${post.title} | FactoryLM`, description: post.description, canonical, jsonLd })}
@@ -245,8 +283,10 @@ ${related.map((r) => `      <li><a href="/blog/${r.slug}">${escHtml(r.title)}</a
         name: fc.title,
         description: fc.metaDescription,
         url: canonical,
-        datePublished: TODAY,
-        dateModified: TODAY,
+        // Stable dates — see CONTENT_EPOCH. Previously the render date, which
+        // made every fault-code page look modified on every crawl.
+        datePublished: CONTENT_EPOCH,
+        dateModified: fc.updated ?? CONTENT_EPOCH,
         author: { "@type": "Organization", name: "FactoryLM", url: BASE_URL },
         publisher: {
           "@type": "Organization",
@@ -283,6 +323,12 @@ ${related.map((r) => `      <li><a href="/blog/${r.slug}">${escHtml(r.title)}</a
           ],
         },
       },
+      breadcrumbLd([
+        { name: "Home", url: `${BASE_URL}/` },
+        { name: "Blog", url: `${BASE_URL}/blog` },
+        { name: "Fault Codes", url: `${BASE_URL}/blog/fault-codes` },
+        { name: fc.faultCode, url: canonical },
+      ]),
     ],
   }, null, 2)}
   </script>`;

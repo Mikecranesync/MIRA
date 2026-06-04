@@ -197,6 +197,30 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
 
         tag_reads = sorted((req.tag_snapshot or {}).keys())
 
+        # Direct-connection provenance: an Ignition turn arriving with an asset
+        # identifier is UNS-certified by construction — the WebDev/Perspective
+        # surface already knows which machine the technician is on. Mark the
+        # turn so the engine stamps state["uns_context"]["source"] and the
+        # decision trace records it. A turn WITHOUT an asset id is treated as a
+        # plain chat turn here (the reject-on-missing-identifier contract is the
+        # broader Phase-6 gate-bypass work — see
+        # .claude/rules/direct-connection-uns-certified.md).
+        uns_source = "direct_connection" if (asset_id or req.asset_context) else None
+
+        # Structured tag evidence for the decision trace (Phase 9). The Ignition
+        # turn already carries the live snapshot; surface it as evidence rows so
+        # the trace records WHAT live data MIRA reasoned over, not just that it
+        # had some. (The same snapshot is also rendered into the prompt preamble.)
+        tag_evidence = [
+            {
+                "tag_path": path,
+                "value": (entry.get("value") if isinstance(entry, dict) else entry),
+                "quality": (entry.get("quality") if isinstance(entry, dict) else None),
+                "source": "ignition",
+            }
+            for path, entry in sorted((req.tag_snapshot or {}).items())
+        ]
+
         t0 = time.monotonic()
         engine_error: Optional[str] = None
         try:
@@ -205,6 +229,8 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
                 message=message,
                 photo_b64=None,
                 platform="ignition",
+                uns_source=uns_source,
+                tag_evidence=tag_evidence or None,
             )
         except Exception as exc:
             engine_error = str(exc)

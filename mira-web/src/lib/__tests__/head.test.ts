@@ -39,6 +39,20 @@ describe("head()", () => {
     expect(out).not.toContain('type="application/ld+json"');
   });
 
+  it("defaults og:image and twitter:image to the served og-image.png", () => {
+    const out = head({ title: "T", description: "D" });
+    // The default must be a path the server actually serves (server.ts → /og-image.png),
+    // not the old og-default.png which 404'd and broke social/LLM preview cards.
+    expect(out).toContain('property="og:image" content="https://factorylm.com/og-image.png"');
+    expect(out).toContain('name="twitter:image" content="https://factorylm.com/og-image.png"');
+    expect(out).not.toContain("og-default.png");
+  });
+
+  it("uses an explicit ogImage when provided", () => {
+    const out = head({ title: "T", description: "D", ogImage: "https://factorylm.com/blog/x.png" });
+    expect(out).toContain('property="og:image" content="https://factorylm.com/blog/x.png"');
+  });
+
   it("includes token and component stylesheets", () => {
     const out = head({ title: "T", description: "D" });
     expect(out).toContain('href="/_tokens.css"');

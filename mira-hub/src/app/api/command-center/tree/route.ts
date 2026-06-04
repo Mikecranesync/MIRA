@@ -2,6 +2,14 @@ import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { buildTree, type NamespaceNode } from "@/app/api/namespace/tree/route";
+import {
+  freshnessCounts,
+  type FreshnessTagRow,
+  type PathStatus,
+  rollupFreshness,
+  type TagFreshness,
+  tagStatuses,
+} from "@/lib/command-center-freshness";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +67,12 @@ export interface CommandCenterNode extends NamespaceNode {
   displayId: string | null;
   displayType: string | null;
   displayLabel: string | null;
+  // PRIMARY "live" semantic: is real telemetry arriving for this subtree?
+  // live | stale | unknown | simulated — derived from current_tag_state
+  // (live_signal_cache) freshness. See lib/command-center-freshness.ts.
+  tagFreshness: TagFreshness;
+  // SECONDARY: is the registered HMI display URL reachable over HTTP? This is
+  // NOT telemetry freshness — a screen can be reachable while the PLC is silent.
   live: boolean;
   children: CommandCenterNode[];
 }
@@ -124,6 +138,27 @@ export async function GET() {
       }),
     );
 
+    // Tag freshness (the PRIMARY "live" semantic) from current_tag_state
+    // (live_signal_cache, extended by migration 036). Fetched SEPARATELY and
+    // guarded so that if migration 036 hasn't applied yet (deploy lag), the
+    // Command Center still renders with every node degraded to 'unknown'
+    // rather than 500-ing the whole page.
+    let freshness: PathStatus[] = [];
+    try {
+      const freshRows = await withTenantContext(ctx.tenantId, async (c) => {
+        const res = await c.query<FreshnessTagRow>(
+          `SELECT uns_path::text AS uns_path, last_seen_at, simulated, expected_freshness_seconds
+             FROM live_signal_cache
+            WHERE tenant_id = $1::uuid AND uns_path IS NOT NULL`,
+          [ctx.tenantId],
+        );
+        return res.rows;
+      });
+      freshness = tagStatuses(freshRows, Date.now());
+    } catch (err) {
+      console.warn("[api/command-center/tree] freshness unavailable (migration 036?)", err);
+    }
+
     const baseNodes = buildTree(result.entities, result.proposals);
 
     const displaysByPath = new Map<string, DisplayRow>();
@@ -131,14 +166,15 @@ export async function GET() {
       if (d.uns_path) displaysByPath.set(d.uns_path, d);
     }
 
-    const nodes = baseNodes.map((n) => annotate(n, displaysByPath, liveness));
+    const nodes = baseNodes.map((n) => annotate(n, displaysByPath, liveness, freshness));
     const liveCount = [...liveness.values()].filter(Boolean).length;
 
     return NextResponse.json({
       nodes,
       total: result.entities.length,
       displaysTotal: result.displays.length,
-      liveCount,
+      liveCount, // display-reachability count (secondary)
+      freshnessCounts: freshnessCounts(freshness), // {live, stale, simulated} tag counts (primary)
     });
   } catch (err) {
     console.error("[api/command-center/tree GET]", err);
@@ -150,6 +186,7 @@ function annotate(
   node: NamespaceNode,
   displaysByPath: Map<string, DisplayRow>,
   liveness: Map<string, boolean>,
+  freshness: PathStatus[],
 ): CommandCenterNode {
   const d = node.unsPath ? displaysByPath.get(node.unsPath) : undefined;
   return {
@@ -158,8 +195,9 @@ function annotate(
     displayId: d?.id ?? null,
     displayType: d?.display_type ?? null,
     displayLabel: d?.label ?? null,
+    tagFreshness: rollupFreshness(node.unsPath, freshness),
     live: d ? (liveness.get(d.id) ?? false) : false,
-    children: node.children.map((c) => annotate(c, displaysByPath, liveness)),
+    children: node.children.map((c) => annotate(c, displaysByPath, liveness, freshness)),
   };
 }
 

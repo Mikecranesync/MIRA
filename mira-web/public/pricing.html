@@ -270,6 +270,54 @@
   </style>
   <!-- PostHog analytics (closes #618) — server injects PLG_POSTHOG_KEY; no-op stub if unset -->
   <script src="/posthog-init.js" defer></script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "FactoryLM — Maintenance Digital Transformation",
+    "url": "https://factorylm.com/pricing",
+    "description": "FactoryLM organizes manuals, sensors, and work orders into one Project per asset and answers maintenance questions with cited OEM sources. Engaged as a service + SaaS hybrid.",
+    "brand": { "@type": "Organization", "name": "FactoryLM" },
+    "offers": [
+      {
+        "@type": "Offer",
+        "name": "Assessment",
+        "description": "One-time maintenance AI readiness assessment.",
+        "price": "500",
+        "priceCurrency": "USD",
+        "url": "https://factorylm.com/pricing"
+      },
+      {
+        "@type": "Offer",
+        "name": "Pilot",
+        "description": "3-month minimum pilot engagement.",
+        "priceCurrency": "USD",
+        "priceSpecification": {
+          "@type": "PriceSpecification",
+          "minPrice": "2000",
+          "maxPrice": "5000",
+          "priceCurrency": "USD",
+          "unitText": "MONTH"
+        },
+        "url": "https://factorylm.com/pricing"
+      },
+      {
+        "@type": "Offer",
+        "name": "Operating Layer",
+        "description": "Ongoing per-plant site license — MIRA running on the plant floor.",
+        "price": "499",
+        "priceCurrency": "USD",
+        "priceSpecification": {
+          "@type": "UnitPriceSpecification",
+          "price": "499",
+          "priceCurrency": "USD",
+          "unitText": "MONTH"
+        },
+        "url": "https://factorylm.com/cmms"
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
 

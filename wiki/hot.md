@@ -1,3 +1,128 @@
+# Hot Cache — 2026-06-04 — CLOUD
+
+## Session — 2026-06-04 run 4 (autonomous gap-closure routine — epic #1666)
+
+**Status: Merge conflict resolved + CI green. PR #1657 now clean and ready for human review.**
+
+- `apply-and-verify` CI: ✅ **GREEN** (conclusion: success, completed 10:13:12Z). The `source_system` column idempotency guard fix (commits `e1951da`/`5c15048` by earlier sessions) landed and passed.
+- Merge conflict in PR #1657: resolved in this session. 3 files conflicted (`docs/plans/current-state-gap-closure-plan.md`, `tests/regime7_ignition/test_webdev_handlers.py`, `wiki/hot.md`). Resolutions: full audit plan (branch version), `mira_gateway_configured` fixture (main version), wiki merged both sessions.
+- 2-PR cap: still at limit. PR #1657 + PR #1674 both open. No new PRs opened.
+- **Next action (human):** Review and merge PR #1657. Once merged, PR #1674 needs base changed to `main` → rebase → CI → merge. After both merged, agent can start #1658 (Phase 6) or #1662 (Phase 3).
+
+---
+
+## Session — 2026-06-04 (autonomous gap-closure routine — epic #1666)
+
+**Preflight:** `origin/main` @ `1b535a7`. 2 open gap-closure PRs: **#1657** (`feat/dt2026-gap-closure`) and **#1674** (`feat/dt2026-rls-verification-1664`, stacked on #1657). 2-PR limit applies — no new PRs until one merges.
+
+**Action taken (merge conflict resolution):**
+PR #1657 was `mergeable_state: dirty` with 41 new commits on main since its last merge. Conflicts were trivial: all 4 conflicted files (ci.yml, code-review.yml, deepeval-ci.yml, smoke-test.yml) had only comment-text differences above identical `concurrency:` blocks. Took origin/main's comment text in all 4. docker-compose.saas.yml auto-merged cleanly.
+
+**Pushed:** commit `f92d6d9` on `feat/dt2026-gap-closure`. CI fired. All prior idempotency fixes intact (citations_present, event_timestamp, tag_path in migrations 032/033). No feature content changed.
+
+**Previous fix inventory (still on branch):**
+- `a4df7a3`: citations_present guard in 032_decision_traces
+- `e0f9206`: tag_path DO-block guard in 033_tag_events  
+- `49bf0f1`: event_timestamp DO-block guard in 033_tag_events
+
+**Pending (CI gate — stop condition):** Wait for Staging Gate + Migration Verify to go green on `f92d6d9`. If both green → PR #1657 ready for human review. If any fail → next routine run fixes and pushes.
+
+**Next work when unblocked:** #1658 (Phase 6 direct_connection UNS bypass on Ignition chat path). Requires reading `.claude/rules/direct-connection-uns-certified.md` + running `codegraph_impact` on `_should_fire_uns_gate` before touching engine.py.
+
+---
+
+## Session — 2026-06-04 run 2 (autonomous gap-closure routine — epic #1666)
+
+**CI failure found on PR #1657:** `apply-and-verify` failing — migration 033 `tag_events_real_idx` at line 149 uses `WHERE simulated = false` but the `simulated` column didn't exist in the idempotency `DO $$` block. On staging NeonDB branches where `tag_events` was created by a prior CI run (before `simulated` was added), `CREATE TABLE IF NOT EXISTS` skips recreation → column never added → partial index creation fails.
+
+**Fix pushed:** commit `455e443` on `feat/dt2026-gap-closure`. Added `simulated` column existence guard to the `DO $$` block, matching the pattern of the existing `tag_path` and `event_timestamp` guards.
+
+**E2E smoke failure:** `app.factorylm.com/api/health` returning 502 in CI. This is a production infra issue independent of the PR content. Not fixable from this PR.
+
+**CI now pending** on commit `455e443`. Stop condition per routine.
+
+**Status sync:** `docs/plans/current-state-gap-closure-plan.md` Status header updated to reflect 2026-06-04 fix.
+
+---
+
+# Hot Cache — 2026-06-03 — CLOUD
+
+## Session — 2026-06-03 (autonomous gap-closure driver — epic #1666)
+
+**Preflight status:**
+- `origin/main` @ `db0a926`
+- 2 open gap-closure PRs: **#1657** (`feat/dt2026-gap-closure`, Phases 0–5) and **#1674** (`feat/dt2026-rls-verification-1664`, stacked on #1657)
+- **2 PR limit reached** — no new implementation PRs until one merges.
+
+**Fix 1 (commit `a4df7a3` → pushed earlier):**
+- Root cause: `032_decision_traces.sql` `citations_present` column missing on staging; index `WHERE citations_present = false` errored.
+- Fix: `ALTER TABLE … ADD COLUMN IF NOT EXISTS citations_present`.
+
+**Fix 2 (commit `e0f9206` → pushed 2026-06-03 this session):**
+- Root cause: `033_tag_events.sql` index `tag_events_tag_time_idx` on `(tenant_id, tag_path, event_timestamp DESC)` failed because the staging `tag_events` table was created by a prior run BEFORE `tag_path` was added to the schema. `CREATE TABLE IF NOT EXISTS` skips re-creation; the subsequent index errors with `column "tag_path" does not exist`.
+- Fix: extended the idempotency DO block to add `tag_path TEXT NOT NULL DEFAULT 'backfilled'` when missing, then drop the default. Identical pattern to the `event_timestamp` fix.
+- No engine/bot/UNS-gate/KG code touched. No prod psql.
+
+**E2E smoke failure (PR #1657):** `E2E smoke (factorylm.com + app.factorylm.com)` also failing — checks production URLs. Prod was healthy (see 2026-06-02 incident fix). This is likely a flaky prod-health check or a check for content that changed since the check was written. NOT caused by this PR's code. Needs separate investigation.
+
+**CI current state on #1657 (as of this session):**
+- `Eval Offline` → queued (new run, pending)
+- `Docker Build Check` → queued (new run, pending)
+- `apply-and-verify` → failure from OLD run (fix 2 above addresses this; new `apply-and-verify` run will fire on migration file change)
+- E2E smoke → failure from OLD run (pre-existing prod-health issue)
+- All other checks: passing
+
+**Next run:** Wait for `Eval Offline` + `Docker Build Check` + new `apply-and-verify` to complete. If all green → advance to #1658 (Phase 6 direct_connection UNS bypass). If 2 PRs still open + green → stop (human review). E2E smoke needs human decision: make non-blocking or fix prod content check.
+---
+
+## Session — 2026-06-04 (autonomous gap-closure driver — epic #1666)
+
+**Routine run result: STATUS SYNC ONLY — CI pending, merge-conflict rebase required before any new work.**
+
+### Open gap-closure PRs (both blocked)
+
+| PR | Branch | Status | Blocker |
+|---|---|---|---|
+| **#1657** | `feat/dt2026-gap-closure` | open, CI pending | Merge conflict with main — **migration number collision** |
+| **#1674** | `feat/dt2026-rls-verification-1664` | open, CI pending, stacked on #1657 | Same — stacked, needs #1657 to resolve first |
+
+### Critical blocker: migration numbering collision
+
+Main landed PR #1688 (`feat/kg-knowledge-graph-stack`) which added Hub migrations **030, 031, 032, 033** (KG graph / proposal types / reasoning traces). The gap-closure branch (#1657) has its own migrations **032–037** (`decision_traces`, `tag_events`, `flaky_input_signals`, `approved_tags`, `current_tag_state`, `tag_event_diffs`). **Numbers 032 and 033 collide.**
+
+Resolution required before #1657 can merge:
+1. Rename gap-closure migrations to 034–039 (or whatever `ls mira-hub/db/migrations/ | tail` shows on a fresh `origin/main` checkout).
+2. Update all references to these migration numbers in the PR.
+3. Resolve `.github/workflows/ci.yml` concurrency conflict (main added concurrency guard in #1692; gap-closure branch added the same guard independently in commit `1c3310a`).
+4. Resolve `wiki/hot.md` three-way merge (main has 2026-06-03 CHARLIE session; gap-closure branch has CLOUD session entries).
+5. After rebase, push — this will trigger CI fresh.
+
+### Gap-closure issue backlog (in priority order per epic #1666)
+
+| Issue | Phase | Label | Blocker |
+|---|---|---|---|
+| #1664 | RLS verification | **done** (PR #1674) | blocked on #1657 merge |
+| #1665 | Deploy migrations to staging→prod | ready-for-human | human action needed |
+| **#1658** | Phase 6: direct_connection UNS bypass | ready-for-agent | blocked until #1657 merges |
+| **#1659** | Phase 7: citation enforcement + session lifecycle | ready-for-agent | depends on #1658 |
+| **#1662** | Phase 3: kg_writer proposal-transition helper | ready-for-agent | unblocked (no Phase 6 dep) |
+| **#1663** | /proposals must render ai_suggestions | ready-for-agent | depends on #1662 |
+| #1660 | Phase 8: DecisionTraceWriter + /decision-traces | ready-for-agent | blocked on #1657 merge |
+| #1661 | Phase 9: flaky-input detector | ready-for-agent | blocked on #1657 merge |
+
+### Next agent action
+
+Once the rebase is done and #1657 CI goes green:
+- If 2 PRs still open → stop (human review/merge needed).
+- Once 1 merges → pick **#1658** (Phase 6) or **#1662** (Phase 3 — unblocked now).
+
+### What was NOT done this run
+
+- No new implementation PRs (CI gate: both `feat/dt2026*` PRs are `state:pending`; 2-PR cap reached).
+- No engine/bot/UNS-gate/KG code touched.
+- No production systems touched.
+
+
 # Hot Cache — 2026-05-29 — ALPHA
 
 ## Session — 2026-06-03 (CHARLIE) — prod pipeline outage + CI prevention
@@ -5,6 +130,24 @@
 - **Prod chat outage (2026-06-02), resolved.** Merging #1593 (Command Center + Ignition-Module umbrella) crash-looped `mira-pipeline-saas` on `ModuleNotFoundError` (the Ignition cutover added `ignition_chat.py`/`ignition_audit.py` but `mira-pipeline/Dockerfile` used per-file `COPY` and didn't list them). Fixed: `COPY mira-pipeline/*.py .` (#1667 → #1670). Prod healthy: `app.factorylm.com` 200, `/api/health` 200, pipeline Up/healthy. Full writeup: `docs/incidents/2026-06-02-prod-pipeline-deploy.md`.
 - **Deploy hotfix-bypass was itself broken** — its audit `gh issue create` failed (token lacks `issues:write`) and aborted every hotfix deploy. Fixed by making issue-creation **non-fatal** (#1673) — **not** by broadening token permissions.
 - **CI prevention (this work):** `docker-build-check` in `ci.yml` now **builds `mira-pipeline` + runs an `import main` smoke-test** (a successful build alone does NOT catch a missing imported module — it crashes at startup). Verified locally: passes on fixed main, fails (`ModuleNotFoundError`) on the pre-incident Dockerfile.
+
+## Session — 2026-06-02 (Walker DT gap closure — Phases 5–9, CHARLIE)
+
+Branch `feat/dt2026-gap-closure` (worktree `/Users/charlienode/MIRA-gapclose`). Built the engine/intelligence layer on top of the Phase 0–4 storage+ingest foundation. **6 commits, 52 new tests, all green; engine changes non-regressive (18 golden + 57 eval dry-run).** Full handoff: `HANDOFF_2026-06-02_P5-9.md`.
+
+- **P5 TagDiffLogger** (`mira-relay/tag_diff_logger.py` + mig `037_tag_event_diffs.sql`) — raw `tag_events` → meaningful changes (edges / threshold crossings / quality / fault windows). Store-injection pattern.
+- **P6 UNS reconciliation** (`mira-crawler/ingest/uns_topic_map.py` + `config/bench_uns_map.json`) — flat bench/MQTT topics → ISA-95 paths via `uns.py` builders only (tests assert resolver==builder). Plus ignition_chat stamps `source="direct_connection"` and `_should_fire_uns_gate` now honors it (no "which machine?" on certified connections).
+- **P7+P8 FlakyInputDetector** (`mira-relay/flaky_detector.py` + `config/flaky_rules.json`) — real `tag_events` transition counting w/ peer isolation → `flaky_input_signals` (real `evidence_event_ids`) → `relationship_proposals`+evidence+`ai_suggestions` (status `proposed`, NEVER verified, ADR-0017).
+- **P9 DecisionTraceWriter** (`mira-bots/shared/decision_trace.py`) — `decision_traces` row per turn, fire-and-forget after reply (mirrors `conversation_logger.py`), captures uns_context/manual+tag evidence/citations; never blocks the reply.
+
+**Watch:** mig 037 + the 3 Neon store SQL paths only ran vs in-memory doubles — verify via `migration-verify.yml` on push. Runtime triggers (cron/worker calling the loggers on the live window) are documented follow-ups, not wired. Bot tests run from REPO ROOT with the 3.12 `.venv` (`mira-bots/email/` shadows stdlib `email`).
+
+## Session — 2026-06-03 (gap-closure driver) — 2-PR limit stop + merge conflict resolution
+
+- **2 open gap-closure PRs (#1657, #1674) → at the 2-PR limit.** No new implementation PRs opened.
+- **PR #1657 had `mergeable_state=dirty`** (3-file conflict with main). Resolved: `docker-compose.saas.yml` and `mira-bots/shared/engine.py` auto-merged; `wiki/hot.md` conflict resolved by combining both prepended session entries (CHARLIE 2026-06-03 first, Walker DT 2026-06-02 second). Pushed merge commit to `feat/dt2026-gap-closure`.
+- **Status sync** `docs/plans/current-state-gap-closure-plan.md` updated to reflect main HEAD `596591d`, PR status, and next ready-for-agent issues.
+- **Next work (after ≥1 PR merges):** #1662 (kg_writer proposal helper, independent) → #1658 (direct_connection bypass) → #1659 (citation enforcement).
 
 ## Session — 2026-05-29 (printing-press toolchain bootstrap + Linear/Stripe CLIs)
 

@@ -1,5 +1,12 @@
 name: CI
 
+# Auto-cancel superseded runs on the same PR/branch. A push to a PR cancels its
+# own in-flight runs (prevents runaway-commit floods); push-to-main is never
+# cancelled, so the post-merge safety net and deploy gates are preserved.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # paths-ignore: docs-only changes skip the whole workflow.
 # The list below covers prose (markdown, wiki), the .claude config tree, and
 # image-only changes. Any PR or push that also touches code outside these
@@ -89,7 +96,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}

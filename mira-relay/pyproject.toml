@@ -5,6 +5,11 @@ requires-python = ">=3.12"
 dependencies = [
     "starlette>=0.45,<1",
     "uvicorn[standard]>=0.34,<1",
+    # NeonDB writes for POST /api/v1/tags/ingest (tag_events + live_signal_cache).
+    # Same SQLAlchemy NullPool pattern as mira-pipeline. Imported lazily inside
+    # NeonTagStore, so the in-memory test path does not require them.
+    "sqlalchemy>=2,<3",
+    "psycopg2-binary>=2.9,<3",
 ]
 
 [dependency-groups]
