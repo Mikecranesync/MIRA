@@ -186,6 +186,13 @@ jobs:
         # clarification invariants. Hermetic, no LLM, runs in <1s.
         run: pytest tests/bot_regression.py -v
 
+      - name: Connector framework tests
+        # mira-connectors/ is a sys.path root (its conftest injects itself +
+        # mira-crawler). Hermetic mock connectors, no network/DB/LLM, <1s.
+        # Per-module invocation keeps its `cmms` package from colliding with
+        # mira-mcp/cmms. See docs/mira/connector-framework.md §7.
+        run: pytest mira-connectors/tests/ -v
+
   architecture-check:
     name: Architecture Check
     runs-on: ubuntu-latest
