@@ -82,8 +82,9 @@ export const NAV_ITEMS: ReadonlyArray<{
   { key: "namespace",     label: "Namespace",     icon: "Layers",        href: "/namespace",     roles: [...ALL_ROLES], group: "primary" },
   { key: "command-center", label: "Command Center", icon: "Gauge",        href: "/command-center", roles: [...ADMIN_ROLES], group: "primary" },
   { key: "channels",      label: "Channels",      icon: "Radio",         href: "/channels",      roles: [...ADMIN_ROLES, "scheduler"], group: "primary" },
+  // Knowledge is one section with sub-tabs: Manuals (KB) · Map (relationship
+  // graph) · Suggestions (propose/verify queue). /graph and /proposals redirect in.
   { key: "knowledge",     label: "Knowledge",     icon: "BookOpen",      href: "/knowledge",     roles: [...ALL_ROLES], group: "primary" },
-  { key: "proposals",     label: "Proposals",     icon: "Sparkles",      href: "/proposals",     roles: [...ALL_ROLES], group: "primary" },
 
   // ── SECONDARY (collapsed under "More") ─────────────────────────────────────
   { key: "assets",        label: "Assets",        icon: "Wrench",        href: "/assets",        roles: [...ALL_ROLES], group: "secondary" },
