@@ -193,6 +193,13 @@ jobs:
         # clarification invariants. Hermetic, no LLM, runs in <1s.
         run: pytest tests/bot_regression.py -v
 
+      - name: Connector framework tests
+        # mira-connectors/ is its own package (pyproject pythonpath=["."]) — run from
+        # inside it. Hermetic mock connectors (Maximo/Ignition/SAP/MaintainX/PI), no
+        # network/DB/LLM, <1s. Guards the whole framework, not just the new connectors.
+        working-directory: mira-connectors
+        run: pytest tests/ -v
+
   architecture-check:
     name: Architecture Check
     runs-on: ubuntu-latest

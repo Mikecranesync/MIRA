@@ -12,7 +12,10 @@ from typing import Callable
 
 from mira_connectors.base import Connector, ConnectorConfig
 from mira_connectors.mocks.ignition_mock import IgnitionMockConnector
+from mira_connectors.mocks.maintainx_mock import MaintainXMockConnector
 from mira_connectors.mocks.maximo_mock import MaximoMockConnector
+from mira_connectors.mocks.pi_mock import PIMockConnector
+from mira_connectors.mocks.sap_mock import SAPMockConnector
 
 logger = logging.getLogger("mira-connectors")
 
@@ -20,10 +23,14 @@ logger = logging.getLogger("mira-connectors")
 _REGISTRY: dict[str, Callable[[ConnectorConfig], Connector]] = {
     "maximo_mock": MaximoMockConnector,
     "ignition_mock": IgnitionMockConnector,
-    # Real connectors (future):
+    "sap_mock": SAPMockConnector,
+    "maintainx_mock": MaintainXMockConnector,
+    "pi_mock": PIMockConnector,
+    # Real connectors (future) — swap _load() for the live client, keep normalize():
     # "maximo": MaximoConnector,
     # "ignition": IgnitionConnector,
-    # "pi": PIHistorianConnector,
+    # "sap": SAPConnector,
+    # "pi": PIConnector,
     # "maintainx": MaintainXConnector,  # wraps mira-mcp/cmms/maintainx.py
 }
 

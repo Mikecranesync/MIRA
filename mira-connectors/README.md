@@ -16,7 +16,7 @@ mira_connectors/
 ├── base.py               # Connector ABC + BaseConnector (the 10 capabilities)
 ├── factory.py            # create_connector(provider, config)
 ├── types/                # CMMS / SCADA / Historian / Document / MQTT type bases
-├── mocks/                # MaximoMockConnector + IgnitionMockConnector + fixtures
+├── mocks/                # Maximo + Ignition + SAP + MaintainX + PI mock connectors + fixtures
 ├── store.py              # ProposalStore (InMemory + Postgres) — existing tables only
 ├── confirmation_gate.py  # ConnectorConfirmationGate — propose/confirm/correct/reject (ADR-0017)
 └── service.py            # import_and_propose(connector, gate, ...) — one-call wiring
@@ -30,6 +30,6 @@ mira_connectors/
 ## Test
 
 ```bash
-cd mira-connectors && pytest        # 53 offline tests, no DB / network
+cd mira-connectors && pytest        # 79 offline tests, no DB / network
 ruff check mira_connectors tests
 ```
