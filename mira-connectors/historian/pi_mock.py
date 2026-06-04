@@ -60,7 +60,11 @@ class PIMockConnector(Connector):
     async def discover(self) -> Capability:
         data = self._load()
         schema = {}
-        for ot, key in (("af_element", "af_elements"), ("pi_point", "pi_points"), ("event_frame", "event_frames")):
+        for ot, key in (
+            ("af_element", "af_elements"),
+            ("pi_point", "pi_points"),
+            ("event_frame", "event_frames"),
+        ):
             rows = data.get(key, [])
             if rows:
                 schema[ot] = sorted({k for r in rows for k in r.keys()})
@@ -74,9 +78,7 @@ class PIMockConnector(Connector):
             notes=f"AF database '{data.get('af_database')}'. AF element Path → ISA-95 by depth (heuristic).",
         )
 
-    async def import_records(
-        self, config: Optional[dict[str, Any]] = None
-    ) -> list[RawRecord]:
+    async def import_records(self, config: Optional[dict[str, Any]] = None) -> list[RawRecord]:
         data = self._load()
         out: list[RawRecord] = []
         for el in data.get("af_elements", []):
@@ -94,7 +96,9 @@ class PIMockConnector(Connector):
             by_type.setdefault(r.object_type, []).append(r)
 
         company = uns.slug(self._load().get("af_database") or "historian")
-        archived = {a["pi_point"]: a.get("values", []) for a in self._load().get("archived_values", [])}
+        archived = {
+            a["pi_point"]: a.get("values", []) for a in self._load().get("archived_values", [])
+        }
 
         elem_uns = self._normalize_elements(g, company, by_type.get("af_element", []))
         self._normalize_points(g, by_type.get("pi_point", []), elem_uns, archived)
@@ -143,15 +147,34 @@ class PIMockConnector(Connector):
                 etype, path = "area", uns.area_path(company, site, name)
             elif d == 2:
                 etype = "asset"
-                path = uns.assigned_equipment_path(company, site, ctx.get("area", "unassigned"), name)
+                path = uns.assigned_equipment_path(
+                    company, site, ctx.get("area", "unassigned"), name
+                )
             else:
                 etype = "component"
-                parent_path = g.get(parent_key).uns_path if parent_key and g.get(parent_key) else None
-                path = uns.equipment_subnode_path(parent_path, "component", name) if parent_path else None
+                parent_path = (
+                    g.get(parent_key).uns_path if parent_key and g.get(parent_key) else None
+                )
+                path = (
+                    uns.equipment_subnode_path(parent_path, "component", name)
+                    if parent_path
+                    else None
+                )
             ent = self._emit(
-                g, etype, f"af:{el['Path']}", "af_element", el["Path"],
-                {"af_name": name, "template": el.get("Template"), "af_path": el["Path"], "attributes": el.get("attributes", [])},
-                path, 0.6, raw=el,  # AF→ISA-95 is a heuristic → modest confidence
+                g,
+                etype,
+                f"af:{el['Path']}",
+                "af_element",
+                el["Path"],
+                {
+                    "af_name": name,
+                    "template": el.get("Template"),
+                    "af_path": el["Path"],
+                    "attributes": el.get("attributes", []),
+                },
+                path,
+                0.6,
+                raw=el,  # AF→ISA-95 is a heuristic → modest confidence
             )
             elem_key[el["Path"]] = ent.key
             if parent_key:
@@ -159,8 +182,10 @@ class PIMockConnector(Connector):
                     # parent asset HAS_COMPONENT child (canonical parent→child)
                     g.add_relationship(
                         CanonicalRelationship(
-                            source_key=parent_key, target_key=ent.key,
-                            relationship_type="HAS_COMPONENT", confidence=0.6,
+                            source_key=parent_key,
+                            target_key=ent.key,
+                            relationship_type="HAS_COMPONENT",
+                            confidence=0.6,
                             evidence=[{"kind": "af_element", "ref": el["Path"]}],
                         )
                     )
@@ -168,15 +193,21 @@ class PIMockConnector(Connector):
                     # area/asset LOCATED_IN its parent (child→parent)
                     g.add_relationship(
                         CanonicalRelationship(
-                            source_key=ent.key, target_key=parent_key,
-                            relationship_type="LOCATED_IN", confidence=0.6,
+                            source_key=ent.key,
+                            target_key=parent_key,
+                            relationship_type="LOCATED_IN",
+                            confidence=0.6,
                             evidence=[{"kind": "af_element", "ref": el["Path"]}],
                         )
                     )
         return elem_key
 
     def _normalize_points(
-        self, g: NormalizedGraph, rows: list[RawRecord], elem_uns: dict[str, str], archived: dict[str, list]
+        self,
+        g: NormalizedGraph,
+        rows: list[RawRecord],
+        elem_uns: dict[str, str],
+        archived: dict[str, list],
     ) -> None:
         for r in rows:
             pt = r.payload
@@ -190,7 +221,11 @@ class PIMockConnector(Connector):
             )
             samples = archived.get(pt["Name"], [])
             ent = self._emit(
-                g, "tag", pt["Name"], "pi_point", pt["Name"],
+                g,
+                "tag",
+                pt["Name"],
+                "pi_point",
+                pt["Name"],
                 {
                     "tag_kind": "historian",
                     "pi_point": pt["Name"],
@@ -200,13 +235,18 @@ class PIMockConnector(Connector):
                     "sample_count": len(samples),
                     "last_value": samples[-1]["Value"] if samples else None,
                 },
-                uns_path, 0.7, raw={**pt, "_archived_values": samples},
+                uns_path,
+                0.7,
+                raw={**pt, "_archived_values": samples},
             )
             if anchor:
                 g.add_relationship(
                     CanonicalRelationship(
-                        source_key=anchor.key, target_key=ent.key, relationship_type="HAS_SIGNAL",
-                        confidence=0.7, evidence=[{"kind": "pi_point", "ref": pt["Name"], "detail": elem_path}],
+                        source_key=anchor.key,
+                        target_key=ent.key,
+                        relationship_type="HAS_SIGNAL",
+                        confidence=0.7,
+                        evidence=[{"kind": "pi_point", "ref": pt["Name"], "detail": elem_path}],
                     )
                 )
 
@@ -216,9 +256,15 @@ class PIMockConnector(Connector):
         for r in rows:
             ef = r.payload
             template = (ef.get("Template") or "").lower()
-            is_safety = any(s in template or s in ef.get("Name", "").lower() for s in _SAFETY_TEMPLATES)
+            is_safety = any(
+                s in template or s in ef.get("Name", "").lower() for s in _SAFETY_TEMPLATES
+            )
             ent = self._emit(
-                g, "fault_event", ef["Name"], "event_frame", ef["Name"],
+                g,
+                "fault_event",
+                ef["Name"],
+                "event_frame",
+                ef["Name"],
                 {
                     "template": ef.get("Template"),
                     "start": ef.get("StartTime"),
@@ -226,15 +272,20 @@ class PIMockConnector(Connector):
                     "attributes": ef.get("attributes", []),
                     "is_safety": is_safety,
                 },
-                None, 0.75, raw=ef,
+                None,
+                0.75,
+                raw=ef,
             )
             anchor_key = elem_uns.get(ef.get("element_path", ""))
             anchor = g.get(anchor_key) if anchor_key else None
             if anchor:
                 g.add_relationship(
                     CanonicalRelationship(
-                        source_key=ent.key, target_key=anchor.key, relationship_type="OCCURS_ON",
-                        confidence=0.75, evidence=[{"kind": "event_frame", "ref": ef["Name"]}],
+                        source_key=ent.key,
+                        target_key=anchor.key,
+                        relationship_type="OCCURS_ON",
+                        confidence=0.75,
+                        evidence=[{"kind": "event_frame", "ref": ef["Name"]}],
                     )
                 )
             if is_safety:
@@ -246,7 +297,10 @@ class PIMockConnector(Connector):
                             f"Event frame '{ef['Name']}' (template {ef.get('Template')}) is a safety "
                             "event. Review before MIRA reasons over it in a technician-facing answer."
                         ),
-                        extracted_data={"event_frame": ef["Name"], "element_path": ef.get("element_path")},
+                        extracted_data={
+                            "event_frame": ef["Name"],
+                            "element_path": ef.get("element_path"),
+                        },
                         confidence=0.7,
                         risk_level="safety_critical",
                         proposed_by=f"import:{self.name}",
@@ -255,21 +309,39 @@ class PIMockConnector(Connector):
                 )
 
     def _emit(
-        self, g: NormalizedGraph, entity_type: str, name: str, object_type: str, external_id: str,
-        properties: dict[str, Any], uns_path: Optional[str], confidence: float, raw: dict[str, Any],
+        self,
+        g: NormalizedGraph,
+        entity_type: str,
+        name: str,
+        object_type: str,
+        external_id: str,
+        properties: dict[str, Any],
+        uns_path: Optional[str],
+        confidence: float,
+        raw: dict[str, Any],
     ) -> CanonicalEntity:
         ent = g.add_entity(
             CanonicalEntity(
-                entity_type=entity_type, name=name, uns_path=uns_path, properties=properties,
-                confidence=confidence, source_system=self.system_kind, object_type=object_type,
-                external_object_id=external_id, source_payload=dict(raw),
+                entity_type=entity_type,
+                name=name,
+                uns_path=uns_path,
+                properties=properties,
+                confidence=confidence,
+                source_system=self.system_kind,
+                object_type=object_type,
+                external_object_id=external_id,
+                source_payload=dict(raw),
             )
         )
         g.add_source_object(
             SourceObject(
-                system_kind=self.system_kind, object_type=object_type, external_object_id=external_id,
-                raw_payload=dict(raw), connector_version=self.connector_version,
-                mapping_status="mapped", mapped_entity_key=ent.key,
+                system_kind=self.system_kind,
+                object_type=object_type,
+                external_object_id=external_id,
+                raw_payload=dict(raw),
+                connector_version=self.connector_version,
+                mapping_status="mapped",
+                mapped_entity_key=ent.key,
             )
         )
         return ent
@@ -287,19 +359,40 @@ class PIMockConnector(Connector):
         for rel in graph.relationships:
             for endpoint in (rel.source_key, rel.target_key):
                 if endpoint not in keys:
-                    report.add("warning", "orphan_relationship", f"{rel.relationship_type}: {endpoint}")
+                    report.add(
+                        "warning", "orphan_relationship", f"{rel.relationship_type}: {endpoint}"
+                    )
         return report
 
     async def export_enriched(self, graph_context: dict[str, Any]) -> ExportResult:
         return ExportResult(
-            supported=False, written=False, payloads=[],
+            supported=False,
+            written=False,
+            payloads=[],
             note="PI is read-only telemetry; MIRA does not write enriched payloads back to a historian.",
         )
 
     def get_config_schema(self) -> dict[str, Any]:
         return {
-            "piwebapi_url": {"type": "string", "required": True, "description": "PI Web API base URL"},
-            "af_database": {"type": "string", "required": True, "description": "AF database name (→ company UNS root)"},
-            "auth": {"type": "string", "required": True, "secret": True, "description": "Kerberos/Basic token (Doppler-managed)"},
-            "fixture_path": {"type": "string", "required": False, "description": "Mock only: path to fixture JSON"},
+            "piwebapi_url": {
+                "type": "string",
+                "required": True,
+                "description": "PI Web API base URL",
+            },
+            "af_database": {
+                "type": "string",
+                "required": True,
+                "description": "AF database name (→ company UNS root)",
+            },
+            "auth": {
+                "type": "string",
+                "required": True,
+                "secret": True,
+                "description": "Kerberos/Basic token (Doppler-managed)",
+            },
+            "fixture_path": {
+                "type": "string",
+                "required": False,
+                "description": "Mock only: path to fixture JSON",
+            },
         }

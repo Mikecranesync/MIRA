@@ -62,7 +62,12 @@ class MaintainXMockConnector(Connector):
     async def discover(self) -> Capability:
         data = self._load()
         schema = {}
-        for ot, key in (("asset", "assets"), ("work_order", "workOrders"), ("location", "locations"), ("part", "parts")):
+        for ot, key in (
+            ("asset", "assets"),
+            ("work_order", "workOrders"),
+            ("location", "locations"),
+            ("part", "parts"),
+        ):
             rows = data.get(key, [])
             if rows:
                 schema[ot] = sorted({k for r in rows for k in r.keys()})
@@ -76,9 +81,7 @@ class MaintainXMockConnector(Connector):
             notes="REST response shape mirrors mira-mcp/cmms/maintainx.py. Flat location tree (parentId).",
         )
 
-    async def import_records(
-        self, config: Optional[dict[str, Any]] = None
-    ) -> list[RawRecord]:
+    async def import_records(self, config: Optional[dict[str, Any]] = None) -> list[RawRecord]:
         data = self._load()
         out: list[RawRecord] = []
         for loc in data.get("locations", []):
@@ -125,7 +128,17 @@ class MaintainXMockConnector(Connector):
         for lid, loc in locs.items():
             if loc.get("parentId") is None:
                 site_label = uns.slug(loc["name"])
-                self._emit(g, "site", site_label, "location", str(lid), {"description": loc.get("description")}, uns.site_path(company, site_label), 0.9, raw=loc)
+                self._emit(
+                    g,
+                    "site",
+                    site_label,
+                    "location",
+                    str(lid),
+                    {"description": loc.get("description")},
+                    uns.site_path(company, site_label),
+                    0.9,
+                    raw=loc,
+                )
         site_label = site_label or "site"
         for lid, loc in locs.items():
             d = self._depth(lid, locs)
@@ -135,15 +148,38 @@ class MaintainXMockConnector(Connector):
             chain = self._loc_chain(lid, locs)
             label = uns.slug(loc["name"])
             if d == 1:
-                path, parent, etype = uns.area_path(company, site_label, label), f"site:{site_label}", "area"
+                path, parent, etype = (
+                    uns.area_path(company, site_label, label),
+                    f"site:{site_label}",
+                    "area",
+                )
             elif d == 2:
                 path = uns.line_path(company, site_label, chain.get("area", "area"), label)
                 parent, etype = f"area:{chain.get('area')}", "line"
             else:
-                path = uns.work_cell_path(company, site_label, chain.get("area", "area"), chain.get("line", "line"), label)
+                path = uns.work_cell_path(
+                    company, site_label, chain.get("area", "area"), chain.get("line", "line"), label
+                )
                 parent, etype = f"line:{chain.get('line')}", "cell"
-            ent = self._emit(g, etype, label, "location", str(lid), {"description": loc.get("description")}, path, 0.88, raw=loc)
-            g.add_relationship(CanonicalRelationship(source_key=ent.key, target_key=parent, relationship_type="LOCATED_IN", confidence=0.88))
+            ent = self._emit(
+                g,
+                etype,
+                label,
+                "location",
+                str(lid),
+                {"description": loc.get("description")},
+                path,
+                0.88,
+                raw=loc,
+            )
+            g.add_relationship(
+                CanonicalRelationship(
+                    source_key=ent.key,
+                    target_key=parent,
+                    relationship_type="LOCATED_IN",
+                    confidence=0.88,
+                )
+            )
             ctx[lid] = label
         return ctx
 
@@ -163,7 +199,9 @@ class MaintainXMockConnector(Connector):
         self, g: NormalizedGraph, rows: list[RawRecord], locs: dict[Any, dict]
     ) -> dict[Any, str]:
         company = uns.slug(self._load().get("company") or self._company)
-        site_label = next((uns.slug(loc["name"]) for loc in locs.values() if loc.get("parentId") is None), "site")
+        site_label = next(
+            (uns.slug(loc["name"]) for loc in locs.values() if loc.get("parentId") is None), "site"
+        )
         eq_path: dict[Any, str] = {}
         for r in rows:
             a = r.payload
@@ -171,8 +209,12 @@ class MaintainXMockConnector(Connector):
                 continue
             chain = self._loc_chain(a.get("locationId"), locs)
             path = uns.assigned_equipment_path(
-                company, site_label, chain.get("area", "unassigned"), a["name"],
-                line=chain.get("line"), work_cell=chain.get("work_cell"),
+                company,
+                site_label,
+                chain.get("area", "unassigned"),
+                a["name"],
+                line=chain.get("line"),
+                work_cell=chain.get("work_cell"),
             )
             eq_path[a["id"]] = path
             self._emit_asset(g, a, "asset", path)
@@ -187,8 +229,10 @@ class MaintainXMockConnector(Connector):
             if ppath:
                 g.add_relationship(
                     CanonicalRelationship(
-                        source_key=f"asset:{self._asset_name(rows, parent)}", target_key=ent.key,
-                        relationship_type="HAS_COMPONENT", confidence=0.95,
+                        source_key=f"asset:{self._asset_name(rows, parent)}",
+                        target_key=ent.key,
+                        relationship_type="HAS_COMPONENT",
+                        confidence=0.95,
                         evidence=[{"kind": "maintainx_parent", "ref": a["name"], "detail": parent}],
                     )
                 )
@@ -201,23 +245,54 @@ class MaintainXMockConnector(Connector):
                 return r.payload["name"]
         return str(asset_id)
 
-    def _emit_asset(self, g: NormalizedGraph, a: dict, etype: str, path: Optional[str]) -> CanonicalEntity:
+    def _emit_asset(
+        self, g: NormalizedGraph, a: dict, etype: str, path: Optional[str]
+    ) -> CanonicalEntity:
         return self._emit(
-            g, etype, a["name"], "asset", str(a["id"]),
-            {"description": a.get("description"), "manufacturer": a.get("manufacturer"), "model": a.get("model"), "serial": a.get("serialNumber"), "maintainx_id": a["id"], "status": a.get("status")},
-            path, 0.9, raw=a,
+            g,
+            etype,
+            a["name"],
+            "asset",
+            str(a["id"]),
+            {
+                "description": a.get("description"),
+                "manufacturer": a.get("manufacturer"),
+                "model": a.get("model"),
+                "serial": a.get("serialNumber"),
+                "maintainx_id": a["id"],
+                "status": a.get("status"),
+            },
+            path,
+            0.9,
+            raw=a,
         )
 
     def _normalize_work_orders(self, g: NormalizedGraph, rows: list[RawRecord]) -> None:
         # need asset id → name; build from the asset entities already in graph
-        id_to_name = {e.properties.get("maintainx_id"): e.name for e in g.entities.values() if e.properties.get("maintainx_id")}
+        id_to_name = {
+            e.properties.get("maintainx_id"): e.name
+            for e in g.entities.values()
+            if e.properties.get("maintainx_id")
+        }
         for r in rows:
             wo = r.payload
             cats = wo.get("categories", [])
             ent = self._emit(
-                g, "work_order", str(wo["id"]), "work_order", str(wo["id"]),
-                {"title": wo.get("title"), "status": wo.get("status"), "priority": wo.get("priority"), "categories": cats, "is_preventive": "PREVENTIVE" in cats},
-                uns.work_order_path(str(wo["id"])), 0.9, raw=wo,
+                g,
+                "work_order",
+                str(wo["id"]),
+                "work_order",
+                str(wo["id"]),
+                {
+                    "title": wo.get("title"),
+                    "status": wo.get("status"),
+                    "priority": wo.get("priority"),
+                    "categories": cats,
+                    "is_preventive": "PREVENTIVE" in cats,
+                },
+                uns.work_order_path(str(wo["id"])),
+                0.9,
+                raw=wo,
             )
             aid = wo.get("assetId")
             aname = id_to_name.get(aid)
@@ -225,19 +300,36 @@ class MaintainXMockConnector(Connector):
                 src = f"component:{aname}" if g.get(f"component:{aname}") else f"asset:{aname}"
                 g.add_relationship(
                     CanonicalRelationship(
-                        source_key=src, target_key=ent.key, relationship_type="HAS_WORK_ORDER",
-                        confidence=0.95, evidence=[{"kind": "maintainx_wo", "ref": str(wo["id"]), "detail": aid}],
+                        source_key=src,
+                        target_key=ent.key,
+                        relationship_type="HAS_WORK_ORDER",
+                        confidence=0.95,
+                        evidence=[{"kind": "maintainx_wo", "ref": str(wo["id"]), "detail": aid}],
                     )
                 )
 
     def _normalize_parts(self, g: NormalizedGraph, rows: list[RawRecord]) -> None:
-        id_to_name = {e.properties.get("maintainx_id"): e.name for e in g.entities.values() if e.properties.get("maintainx_id")}
+        id_to_name = {
+            e.properties.get("maintainx_id"): e.name
+            for e in g.entities.values()
+            if e.properties.get("maintainx_id")
+        }
         for r in rows:
             p = r.payload
             part = self._emit(
-                g, "part", p.get("partNumber") or str(p["id"]), "part", str(p["id"]),
-                {"description": p.get("name"), "manufacturer_part_number": p.get("partNumber"), "qty_in_stock": p.get("quantityInStock")},
-                None, 0.85, raw=p,
+                g,
+                "part",
+                p.get("partNumber") or str(p["id"]),
+                "part",
+                str(p["id"]),
+                {
+                    "description": p.get("name"),
+                    "manufacturer_part_number": p.get("partNumber"),
+                    "qty_in_stock": p.get("quantityInStock"),
+                },
+                None,
+                0.85,
+                raw=p,
             )
             for aid in p.get("assetIds", []):
                 aname = id_to_name.get(aid)
@@ -245,27 +337,50 @@ class MaintainXMockConnector(Connector):
                     src = f"component:{aname}" if g.get(f"component:{aname}") else f"asset:{aname}"
                     g.add_relationship(
                         CanonicalRelationship(
-                            source_key=src, target_key=part.key, relationship_type="HAS_PART",
-                            confidence=0.8, evidence=[{"kind": "maintainx_part", "ref": str(p["id"]), "detail": aid}],
+                            source_key=src,
+                            target_key=part.key,
+                            relationship_type="HAS_PART",
+                            confidence=0.8,
+                            evidence=[
+                                {"kind": "maintainx_part", "ref": str(p["id"]), "detail": aid}
+                            ],
                         )
                     )
 
     def _emit(
-        self, g: NormalizedGraph, entity_type: str, name: str, object_type: str, external_id: str,
-        properties: dict[str, Any], uns_path: Optional[str], confidence: float, raw: dict[str, Any],
+        self,
+        g: NormalizedGraph,
+        entity_type: str,
+        name: str,
+        object_type: str,
+        external_id: str,
+        properties: dict[str, Any],
+        uns_path: Optional[str],
+        confidence: float,
+        raw: dict[str, Any],
     ) -> CanonicalEntity:
         ent = g.add_entity(
             CanonicalEntity(
-                entity_type=entity_type, name=name, uns_path=uns_path, properties=properties,
-                confidence=confidence, source_system=self.system_kind, object_type=object_type,
-                external_object_id=external_id, source_payload=dict(raw),
+                entity_type=entity_type,
+                name=name,
+                uns_path=uns_path,
+                properties=properties,
+                confidence=confidence,
+                source_system=self.system_kind,
+                object_type=object_type,
+                external_object_id=external_id,
+                source_payload=dict(raw),
             )
         )
         g.add_source_object(
             SourceObject(
-                system_kind=self.system_kind, object_type=object_type, external_object_id=external_id,
-                raw_payload=dict(raw), connector_version=self.connector_version,
-                mapping_status="mapped", mapped_entity_key=ent.key,
+                system_kind=self.system_kind,
+                object_type=object_type,
+                external_object_id=external_id,
+                raw_payload=dict(raw),
+                connector_version=self.connector_version,
+                mapping_status="mapped",
+                mapped_entity_key=ent.key,
             )
         )
         return ent
@@ -283,7 +398,9 @@ class MaintainXMockConnector(Connector):
         for rel in graph.relationships:
             for endpoint in (rel.source_key, rel.target_key):
                 if endpoint not in keys:
-                    report.add("warning", "orphan_relationship", f"{rel.relationship_type}: {endpoint}")
+                    report.add(
+                        "warning", "orphan_relationship", f"{rel.relationship_type}: {endpoint}"
+                    )
         return report
 
     async def export_enriched(self, graph_context: dict[str, Any]) -> ExportResult:
@@ -296,13 +413,31 @@ class MaintainXMockConnector(Connector):
         }
         written = self._may_write_source()
         return ExportResult(
-            supported=True, written=written, payloads=[payload],
-            note="patched MaintainX work order" if written else "read_only/dry_run — payload built but NOT pushed",
+            supported=True,
+            written=written,
+            payloads=[payload],
+            note="patched MaintainX work order"
+            if written
+            else "read_only/dry_run — payload built but NOT pushed",
         )
 
     def get_config_schema(self) -> dict[str, Any]:
         return {
-            "api_key": {"type": "string", "required": True, "secret": True, "description": "MAINTAINX_API_KEY (Doppler-managed)"},
-            "company": {"type": "string", "required": False, "default": "acme", "description": "Company/enterprise UNS root"},
-            "fixture_path": {"type": "string", "required": False, "description": "Mock only: path to fixture JSON"},
+            "api_key": {
+                "type": "string",
+                "required": True,
+                "secret": True,
+                "description": "MAINTAINX_API_KEY (Doppler-managed)",
+            },
+            "company": {
+                "type": "string",
+                "required": False,
+                "default": "acme",
+                "description": "Company/enterprise UNS root",
+            },
+            "fixture_path": {
+                "type": "string",
+                "required": False,
+                "description": "Mock only: path to fixture JSON",
+            },
         }

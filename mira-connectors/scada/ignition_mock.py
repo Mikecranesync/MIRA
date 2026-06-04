@@ -90,9 +90,7 @@ class IgnitionMockConnector(Connector):
 
     # ── import ──────────────────────────────────────────────────────
 
-    async def import_records(
-        self, config: Optional[dict[str, Any]] = None
-    ) -> list[RawRecord]:
+    async def import_records(self, config: Optional[dict[str, Any]] = None) -> list[RawRecord]:
         config = config or {}
         folder_filter = config.get("folder")
         data = self._load()
@@ -125,7 +123,10 @@ class IgnitionMockConnector(Connector):
                     name=f"scada:{equipment_name}",
                     object_type="folder",
                     external_id=equipment_name,
-                    raw={"folder": equipment_name, "gateway": self._load().get("_meta", {}).get("gateway")},
+                    raw={
+                        "folder": equipment_name,
+                        "gateway": self._load().get("_meta", {}).get("gateway"),
+                    },
                     confidence=0.5,
                     properties={"scada_root": equipment_name, "provisional": True},
                 )
@@ -272,7 +273,9 @@ class IgnitionMockConnector(Connector):
         for tag in all_tags:
             if tag.key in matched_tag_keys:
                 continue
-            folders.setdefault(tag.properties.get("scada_path", "").rsplit("/", 1)[0], []).append(tag)
+            folders.setdefault(tag.properties.get("scada_path", "").rsplit("/", 1)[0], []).append(
+                tag
+            )
 
         for folder, tags in folders.items():
             device_leaf = folder.rsplit("/", 1)[-1]
@@ -286,8 +289,10 @@ class IgnitionMockConnector(Connector):
         self, target: CanonicalEntity, tags: list[CanonicalEntity], *, basis: str, score: float
     ) -> Proposal:
         is_safety = any(t.properties.get("is_safety") for t in tags)
-        label = tags[0].properties.get("tag_name") if len(tags) == 1 else (
-            tags[0].properties.get("scada_path", "").rsplit("/", 1)[0].rsplit("/", 1)[-1]
+        label = (
+            tags[0].properties.get("tag_name")
+            if len(tags) == 1
+            else (tags[0].properties.get("scada_path", "").rsplit("/", 1)[0].rsplit("/", 1)[-1])
         )
         return Proposal(
             suggestion_type="kg_edge",
@@ -349,7 +354,9 @@ class IgnitionMockConnector(Connector):
             if ent.approval_state != "proposed":
                 report.add("error", "auto_verified", f"{ent.key} is {ent.approval_state}", ent.key)
             if not ent.source_payload:
-                report.add("error", "missing_source_payload", f"{ent.key} lost its raw record", ent.key)
+                report.add(
+                    "error", "missing_source_payload", f"{ent.key} lost its raw record", ent.key
+                )
             if ent.entity_type == "tag" and ent.uns_path is not None:
                 report.add(
                     "warning",
@@ -360,7 +367,9 @@ class IgnitionMockConnector(Connector):
         for rel in graph.relationships:
             for endpoint in (rel.source_key, rel.target_key):
                 if endpoint not in keys:
-                    report.add("warning", "orphan_relationship", f"{rel.relationship_type}: {endpoint}")
+                    report.add(
+                        "warning", "orphan_relationship", f"{rel.relationship_type}: {endpoint}"
+                    )
         return report
 
     # ── export (unsupported for SCADA) ──────────────────────────────
@@ -378,11 +387,33 @@ class IgnitionMockConnector(Connector):
 
     def get_config_schema(self) -> dict[str, Any]:
         return {
-            "gateway_url": {"type": "string", "required": True, "description": "Ignition gateway base URL"},
-            "provider": {"type": "string", "required": False, "default": "default", "description": "Tag provider"},
-            "folder": {"type": "string", "required": False, "description": "Browse root folder filter"},
-            "api_key": {"type": "string", "required": True, "secret": True, "description": "WebDev/API key (Doppler-managed)"},
-            "fixture_path": {"type": "string", "required": False, "description": "Mock only: path to fixture JSON"},
+            "gateway_url": {
+                "type": "string",
+                "required": True,
+                "description": "Ignition gateway base URL",
+            },
+            "provider": {
+                "type": "string",
+                "required": False,
+                "default": "default",
+                "description": "Tag provider",
+            },
+            "folder": {
+                "type": "string",
+                "required": False,
+                "description": "Browse root folder filter",
+            },
+            "api_key": {
+                "type": "string",
+                "required": True,
+                "secret": True,
+                "description": "WebDev/API key (Doppler-managed)",
+            },
+            "fixture_path": {
+                "type": "string",
+                "required": False,
+                "description": "Mock only: path to fixture JSON",
+            },
         }
 
 

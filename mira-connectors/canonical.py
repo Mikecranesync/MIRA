@@ -284,9 +284,7 @@ class ValidationIssue:
 class ValidationReport:
     issues: list[ValidationIssue] = field(default_factory=list)
 
-    def add(
-        self, severity: str, code: str, message: str, entity_key: Optional[str] = None
-    ) -> None:
+    def add(self, severity: str, code: str, message: str, entity_key: Optional[str] = None) -> None:
         self.issues.append(ValidationIssue(severity, code, message, entity_key))
 
     @property
@@ -362,9 +360,7 @@ class NormalizedGraph:
         self.source_objects.extend(other.source_objects)
 
     def summary(self) -> dict[str, int]:
-        proposed_edges = sum(
-            1 for r in self.relationships if r.approval_state == APPROVAL_PROPOSED
-        )
+        proposed_edges = sum(1 for r in self.relationships if r.approval_state == APPROVAL_PROPOSED)
         return {
             "entities": len(self.entities),
             "relationships": len(self.relationships),

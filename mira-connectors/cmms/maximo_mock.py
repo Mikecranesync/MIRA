@@ -110,9 +110,7 @@ class MaximoMockConnector(Connector):
 
     # ── import ──────────────────────────────────────────────────────
 
-    async def import_records(
-        self, config: Optional[dict[str, Any]] = None
-    ) -> list[RawRecord]:
+    async def import_records(self, config: Optional[dict[str, Any]] = None) -> list[RawRecord]:
         """Read-only pull. ``config`` may carry ``site`` (SITEID filter) and
         ``object_types`` (subset). Importing never mutates Maximo."""
         config = config or {}
@@ -144,9 +142,7 @@ class MaximoMockConnector(Connector):
         # meters/doclinks have no single natural id → synthesize a stable one
         if not wanted or "meter" in wanted:
             for m in data.get("meters", []):
-                records.append(
-                    RawRecord("meter", f"{m['ASSETNUM']}.{m['METERNAME']}", m)
-                )
+                records.append(RawRecord("meter", f"{m['ASSETNUM']}.{m['METERNAME']}", m))
         if not wanted or "doclink" in wanted:
             for d in data.get("doclinks", []):
                 records.append(RawRecord("doclink", str(d["DOCINFOID"]), d))
@@ -248,9 +244,7 @@ class MaximoMockConnector(Connector):
             return "work_cell"
         return "area"  # default: treat unknown intermediate as an area
 
-    def _normalize_locations(
-        self, g: NormalizedGraph, company: str, rows: list[RawRecord]
-    ) -> None:
+    def _normalize_locations(self, g: NormalizedGraph, company: str, rows: list[RawRecord]) -> None:
         # sites first (so site entities exist before areas reference them)
         seen_sites: set[str] = set()
         for r in rows:
@@ -311,9 +305,7 @@ class MaximoMockConnector(Connector):
                 uns_path = uns.line_path(company, site, area or "area", name)
                 parent_key = f"area:{area}" if area else f"site:{site}"
             else:  # work_cell
-                uns_path = uns.work_cell_path(
-                    company, site, area or "area", line or "line", name
-                )
+                uns_path = uns.work_cell_path(company, site, area or "area", line or "line", name)
                 parent_key = f"line:{line}" if line else f"site:{site}"
 
             entity_type = {"area": "area", "line": "line", "work_cell": "cell"}[level]
@@ -334,7 +326,9 @@ class MaximoMockConnector(Connector):
                     target_key=parent_key,
                     relationship_type="LOCATED_IN",
                     confidence=0.9,
-                    evidence=[{"kind": "maximo_location", "ref": name, "detail": loc.get("PARENT")}],
+                    evidence=[
+                        {"kind": "maximo_location", "ref": name, "detail": loc.get("PARENT")}
+                    ],
                 )
             )
 
@@ -380,9 +374,7 @@ class MaximoMockConnector(Connector):
             site = a["SITEID"]
             loc_name = a.get("LOCATION")
             area, line, cell = (
-                self._location_isa95_chain(loc_name, loc_rows)
-                if loc_name
-                else (None, None, None)
+                self._location_isa95_chain(loc_name, loc_rows) if loc_name else (None, None, None)
             )
             eq_path = uns.assigned_equipment_path(
                 company, site, area or "unassigned", a["ASSETNUM"], line=line, work_cell=cell
@@ -409,7 +401,9 @@ class MaximoMockConnector(Connector):
                         target_key=ent.key,
                         relationship_type="HAS_COMPONENT",  # parent→child canonical
                         confidence=0.95,
-                        evidence=[{"kind": "maximo_parent", "ref": a["ASSETNUM"], "detail": parent}],
+                        evidence=[
+                            {"kind": "maximo_parent", "ref": a["ASSETNUM"], "detail": parent}
+                        ],
                     )
                 )
 
@@ -447,7 +441,11 @@ class MaximoMockConnector(Connector):
                         f"Maximo custom field MIRA_UNS_PATH='{stored}' differs from "
                         f"the connector-generated path '{uns_path}'. Confirm which is correct."
                     ),
-                    extracted_data={"assetnum": a["ASSETNUM"], "stored": stored, "generated": uns_path},
+                    extracted_data={
+                        "assetnum": a["ASSETNUM"],
+                        "stored": stored,
+                        "generated": uns_path,
+                    },
                     confidence=0.5,
                     proposed_by=f"import:{self.name}",
                     source_kind="manual_entry",
@@ -619,7 +617,10 @@ class MaximoMockConnector(Connector):
                     raw=mat,
                     uns_path=None,
                     confidence=0.85,
-                    properties={"description": mat.get("DESCRIPTION"), "manufacturer_part_number": mat["ITEMNUM"]},
+                    properties={
+                        "description": mat.get("DESCRIPTION"),
+                        "manufacturer_part_number": mat["ITEMNUM"],
+                    },
                 )
                 g.add_relationship(
                     CanonicalRelationship(
@@ -716,7 +717,9 @@ class MaximoMockConnector(Connector):
             anchor = g.get(self._anchor_key(g, assetnum)) if assetnum else None
             subfolder = "schematics" if is_wiring else "manuals"
             uns_path = (
-                uns.equipment_subnode_path(anchor.uns_path, "documentation", subfolder, d["DOCUMENT"])
+                uns.equipment_subnode_path(
+                    anchor.uns_path, "documentation", subfolder, d["DOCUMENT"]
+                )
                 if anchor and anchor.uns_path
                 else None
             )
@@ -742,7 +745,13 @@ class MaximoMockConnector(Connector):
                         target_key=ent.key,
                         relationship_type="HAS_DOCUMENT",
                         confidence=0.85,
-                        evidence=[{"kind": "maximo_doclink", "ref": str(d["DOCINFOID"]), "detail": assetnum}],
+                        evidence=[
+                            {
+                                "kind": "maximo_doclink",
+                                "ref": str(d["DOCINFOID"]),
+                                "detail": assetnum,
+                            }
+                        ],
                     )
                 )
 
@@ -756,11 +765,17 @@ class MaximoMockConnector(Connector):
             if ent.approval_state != "proposed":
                 report.add("error", "auto_verified", f"{ent.key} is {ent.approval_state}", ent.key)
             if not ent.source_payload:
-                report.add("error", "missing_source_payload", f"{ent.key} lost its raw record", ent.key)
+                report.add(
+                    "error", "missing_source_payload", f"{ent.key} lost its raw record", ent.key
+                )
         keys = set(graph.entities.keys())
         for rel in graph.relationships:
             if rel.approval_state != "proposed":
-                report.add("error", "auto_verified_edge", f"{rel.relationship_type} {rel.source_key}->{rel.target_key}")
+                report.add(
+                    "error",
+                    "auto_verified_edge",
+                    f"{rel.relationship_type} {rel.source_key}->{rel.target_key}",
+                )
             for endpoint in (rel.source_key, rel.target_key):
                 if endpoint not in keys:
                     report.add(
@@ -795,17 +810,37 @@ class MaximoMockConnector(Connector):
             supported=True,
             written=written,
             payloads=[payload],
-            note="pushed to Maximo" if written else "read_only/dry_run — payload built but NOT pushed",
+            note="pushed to Maximo"
+            if written
+            else "read_only/dry_run — payload built but NOT pushed",
         )
 
     # ── config ──────────────────────────────────────────────────────
 
     def get_config_schema(self) -> dict[str, Any]:
         return {
-            "base_url": {"type": "string", "required": True, "description": "Maximo Manage REST base, e.g. https://maximo.example.com/maximo"},
-            "api_key": {"type": "string", "required": True, "secret": True, "description": "maxauth/apikey (Doppler-managed; never in config)"},
+            "base_url": {
+                "type": "string",
+                "required": True,
+                "description": "Maximo Manage REST base, e.g. https://maximo.example.com/maximo",
+            },
+            "api_key": {
+                "type": "string",
+                "required": True,
+                "secret": True,
+                "description": "maxauth/apikey (Doppler-managed; never in config)",
+            },
             "orgid": {"type": "string", "required": False, "description": "Org filter (ORGID)"},
             "site": {"type": "string", "required": False, "description": "SITEID filter"},
-            "object_types": {"type": "array", "required": False, "description": "Subset to import", "default": []},
-            "fixture_path": {"type": "string", "required": False, "description": "Mock only: path to fixture JSON"},
+            "object_types": {
+                "type": "array",
+                "required": False,
+                "description": "Subset to import",
+                "default": [],
+            },
+            "fixture_path": {
+                "type": "string",
+                "required": False,
+                "description": "Mock only: path to fixture JSON",
+            },
         }

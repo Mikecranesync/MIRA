@@ -83,9 +83,7 @@ class SAPMockConnector(Connector):
             notes="Hierarchy = functional-location TPLNR tree (TPLMA = superior FL).",
         )
 
-    async def import_records(
-        self, config: Optional[dict[str, Any]] = None
-    ) -> list[RawRecord]:
+    async def import_records(self, config: Optional[dict[str, Any]] = None) -> list[RawRecord]:
         data = self._load()
         out: list[RawRecord] = []
         for fl in data.get("functional_locations", []):
@@ -159,8 +157,14 @@ class SAPMockConnector(Connector):
             if site not in seen_site:
                 seen_site.add(site)
                 self._emit(
-                    g, "site", site, "functional_location", site, {"derived_from": fl["TPLNR"]},
-                    uns.site_path(company, site), 0.9,
+                    g,
+                    "site",
+                    site,
+                    "functional_location",
+                    site,
+                    {"derived_from": fl["TPLNR"]},
+                    uns.site_path(company, site),
+                    0.9,
                 )
             if level == "plant":
                 g.add_proposal(
@@ -188,12 +192,22 @@ class SAPMockConnector(Connector):
                 )
                 parent, etype = f"line:{chain.get('line')}", "cell"
             ent = self._emit(
-                g, etype, label, "functional_location", fl["TPLNR"],
-                {"description": fl.get("PLTXT"), "tplnr": fl["TPLNR"]}, path, 0.9, raw=fl,
+                g,
+                etype,
+                label,
+                "functional_location",
+                fl["TPLNR"],
+                {"description": fl.get("PLTXT"), "tplnr": fl["TPLNR"]},
+                path,
+                0.9,
+                raw=fl,
             )
             g.add_relationship(
                 CanonicalRelationship(
-                    source_key=ent.key, target_key=parent, relationship_type="LOCATED_IN", confidence=0.9
+                    source_key=ent.key,
+                    target_key=parent,
+                    relationship_type="LOCATED_IN",
+                    confidence=0.9,
                 )
             )
 
@@ -209,8 +223,12 @@ class SAPMockConnector(Connector):
             chain = self._fl_chain(eq.get("TPLNR", ""), fls)
             site = uns.slug(fls.get(eq.get("TPLNR", ""), {}).get("STORT") or "site")
             path = uns.assigned_equipment_path(
-                company, site, chain.get("area", "unassigned"), eq["EQUNR"],
-                line=chain.get("line"), work_cell=chain.get("work_cell"),
+                company,
+                site,
+                chain.get("area", "unassigned"),
+                eq["EQUNR"],
+                line=chain.get("line"),
+                work_cell=chain.get("work_cell"),
             )
             eq_path_by_equnr[eq["EQUNR"]] = path
             self._emit_eq(g, eq, "asset", path)
@@ -226,16 +244,24 @@ class SAPMockConnector(Connector):
             if ppath:
                 g.add_relationship(
                     CanonicalRelationship(
-                        source_key=f"asset:{parent}", target_key=ent.key,
-                        relationship_type="HAS_COMPONENT", confidence=0.95,
+                        source_key=f"asset:{parent}",
+                        target_key=ent.key,
+                        relationship_type="HAS_COMPONENT",
+                        confidence=0.95,
                         evidence=[{"kind": "sap_hequi", "ref": eq["EQUNR"], "detail": parent}],
                     )
                 )
         return eq_path_by_equnr
 
-    def _emit_eq(self, g: NormalizedGraph, eq: dict, etype: str, path: Optional[str]) -> CanonicalEntity:
+    def _emit_eq(
+        self, g: NormalizedGraph, eq: dict, etype: str, path: Optional[str]
+    ) -> CanonicalEntity:
         return self._emit(
-            g, etype, eq["EQUNR"], "equipment", eq["EQUNR"],
+            g,
+            etype,
+            eq["EQUNR"],
+            "equipment",
+            eq["EQUNR"],
             {
                 "description": eq.get("EQKTX"),
                 "manufacturer": eq.get("HERST"),
@@ -243,24 +269,39 @@ class SAPMockConnector(Connector):
                 "serial": eq.get("SERGE"),
                 "tplnr": eq.get("TPLNR"),
             },
-            path, 0.9, raw=eq,
+            path,
+            0.9,
+            raw=eq,
         )
 
     def _normalize_orders(self, g: NormalizedGraph, rows: list[RawRecord]) -> None:
         for r in rows:
             mo = r.payload
             ent = self._emit(
-                g, "work_order", mo["AUFNR"], "work_order", mo["AUFNR"],
-                {"description": mo.get("KTEXT"), "order_type": mo.get("AUART"), "status": mo.get("ANLZU")},
-                uns.work_order_path(mo["AUFNR"]), 0.9, raw=mo,
+                g,
+                "work_order",
+                mo["AUFNR"],
+                "work_order",
+                mo["AUFNR"],
+                {
+                    "description": mo.get("KTEXT"),
+                    "order_type": mo.get("AUART"),
+                    "status": mo.get("ANLZU"),
+                },
+                uns.work_order_path(mo["AUFNR"]),
+                0.9,
+                raw=mo,
             )
             equnr = mo.get("EQUNR")
             if equnr:
                 src = f"component:{equnr}" if g.get(f"component:{equnr}") else f"asset:{equnr}"
                 g.add_relationship(
                     CanonicalRelationship(
-                        source_key=src, target_key=ent.key, relationship_type="HAS_WORK_ORDER",
-                        confidence=0.95, evidence=[{"kind": "sap_order", "ref": mo["AUFNR"], "detail": equnr}],
+                        source_key=src,
+                        target_key=ent.key,
+                        relationship_type="HAS_WORK_ORDER",
+                        confidence=0.95,
+                        evidence=[{"kind": "sap_order", "ref": mo["AUFNR"], "detail": equnr}],
                     )
                 )
 
@@ -271,19 +312,31 @@ class SAPMockConnector(Connector):
             equnr = tl.get("EQUNR")
             anchor = g.get(f"component:{equnr}") or g.get(f"asset:{equnr}")
             path = (
-                uns.equipment_subnode_path(anchor.uns_path, "maintenance", "pm_schedule", tl["PLNNR"])
+                uns.equipment_subnode_path(
+                    anchor.uns_path, "maintenance", "pm_schedule", tl["PLNNR"]
+                )
                 if anchor and anchor.uns_path
                 else None
             )
             ent = self._emit(
-                g, "pm_task", tlid, "task_list", tlid,
-                {"description": tl.get("KTEXT"), "strategy": tl.get("STRAT")}, path, 0.88, raw=tl,
+                g,
+                "pm_task",
+                tlid,
+                "task_list",
+                tlid,
+                {"description": tl.get("KTEXT"), "strategy": tl.get("STRAT")},
+                path,
+                0.88,
+                raw=tl,
             )
             if equnr and anchor:
                 g.add_relationship(
                     CanonicalRelationship(
-                        source_key=anchor.key, target_key=ent.key, relationship_type="HAS_PM_TASK",
-                        confidence=0.9, evidence=[{"kind": "sap_tasklist", "ref": tlid, "detail": equnr}],
+                        source_key=anchor.key,
+                        target_key=ent.key,
+                        relationship_type="HAS_PM_TASK",
+                        confidence=0.9,
+                        evidence=[{"kind": "sap_tasklist", "ref": tlid, "detail": equnr}],
                     )
                 )
 
@@ -291,9 +344,19 @@ class SAPMockConnector(Connector):
         for r in rows:
             b = r.payload
             part = self._emit(
-                g, "part", b["MATNR"], "bom", b["MATNR"],
-                {"description": b.get("MAKTX"), "manufacturer_part_number": b["MATNR"], "uom": b.get("MEINS")},
-                None, 0.85, raw=b,
+                g,
+                "part",
+                b["MATNR"],
+                "bom",
+                b["MATNR"],
+                {
+                    "description": b.get("MAKTX"),
+                    "manufacturer_part_number": b["MATNR"],
+                    "uom": b.get("MEINS"),
+                },
+                None,
+                0.85,
+                raw=b,
             )
             equnr = b.get("EQUNR")
             if equnr:
@@ -301,8 +364,11 @@ class SAPMockConnector(Connector):
                 if anchor:
                     g.add_relationship(
                         CanonicalRelationship(
-                            source_key=anchor.key, target_key=part.key, relationship_type="HAS_PART",
-                            confidence=0.85, properties={"qty": b.get("MENGE")},
+                            source_key=anchor.key,
+                            target_key=part.key,
+                            relationship_type="HAS_PART",
+                            confidence=0.85,
+                            properties={"qty": b.get("MENGE")},
                             evidence=[{"kind": "sap_bom", "ref": b["MATNR"], "detail": equnr}],
                         )
                     )
@@ -322,16 +388,26 @@ class SAPMockConnector(Connector):
         payload = dict(raw) if raw is not None else dict(properties)
         ent = g.add_entity(
             CanonicalEntity(
-                entity_type=entity_type, name=name, uns_path=uns_path, properties=properties,
-                confidence=confidence, source_system=self.system_kind, object_type=object_type,
-                external_object_id=external_id, source_payload=payload,
+                entity_type=entity_type,
+                name=name,
+                uns_path=uns_path,
+                properties=properties,
+                confidence=confidence,
+                source_system=self.system_kind,
+                object_type=object_type,
+                external_object_id=external_id,
+                source_payload=payload,
             )
         )
         g.add_source_object(
             SourceObject(
-                system_kind=self.system_kind, object_type=object_type, external_object_id=external_id,
-                raw_payload=payload, connector_version=self.connector_version,
-                mapping_status="mapped", mapped_entity_key=ent.key,
+                system_kind=self.system_kind,
+                object_type=object_type,
+                external_object_id=external_id,
+                raw_payload=payload,
+                connector_version=self.connector_version,
+                mapping_status="mapped",
+                mapped_entity_key=ent.key,
             )
         )
         return ent
@@ -349,7 +425,9 @@ class SAPMockConnector(Connector):
         for rel in graph.relationships:
             for endpoint in (rel.source_key, rel.target_key):
                 if endpoint not in keys:
-                    report.add("warning", "orphan_relationship", f"{rel.relationship_type}: {endpoint}")
+                    report.add(
+                        "warning", "orphan_relationship", f"{rel.relationship_type}: {endpoint}"
+                    )
         return report
 
     async def export_enriched(self, graph_context: dict[str, Any]) -> ExportResult:
@@ -362,15 +440,35 @@ class SAPMockConnector(Connector):
         }
         written = self._may_write_source()
         return ExportResult(
-            supported=True, written=written, payloads=[payload],
+            supported=True,
+            written=written,
+            payloads=[payload],
             note="pushed to SAP" if written else "read_only/dry_run — payload built but NOT pushed",
         )
 
     def get_config_schema(self) -> dict[str, Any]:
         return {
-            "odata_url": {"type": "string", "required": True, "description": "S/4HANA OData base URL"},
-            "client": {"type": "string", "required": False, "default": "100", "description": "SAP client (MANDT)"},
+            "odata_url": {
+                "type": "string",
+                "required": True,
+                "description": "S/4HANA OData base URL",
+            },
+            "client": {
+                "type": "string",
+                "required": False,
+                "default": "100",
+                "description": "SAP client (MANDT)",
+            },
             "username": {"type": "string", "required": True, "description": "SAP service user"},
-            "password": {"type": "string", "required": True, "secret": True, "description": "Doppler-managed"},
-            "fixture_path": {"type": "string", "required": False, "description": "Mock only: path to fixture JSON"},
+            "password": {
+                "type": "string",
+                "required": True,
+                "secret": True,
+                "description": "Doppler-managed",
+            },
+            "fixture_path": {
+                "type": "string",
+                "required": False,
+                "description": "Mock only: path to fixture JSON",
+            },
         }
