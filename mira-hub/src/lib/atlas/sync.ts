@@ -80,6 +80,61 @@ async function withWorkerClient<T>(fn: (c: PoolClient) => Promise<T>): Promise<T
   }
 }
 
+// ─── Atlas free-tier quota breaker ────────────────────────────────────────────
+// Atlas rejects new work orders past the free-tier cap ("You need a license to
+// add a new work order. Free Limit of 30 incomplete work orders reached") with a
+// 4xx. That is a standing condition, not a transient error — retrying the whole
+// backlog every tick floods both this worker's log and the Atlas backend's
+// stack-trace log (the May 2026 9.8 GB-log / 37 %-CPU incident). We detect it,
+// stop the batch, and skip forward WO push for an exponentially-growing cooldown
+// until incomplete-WO capacity frees up.
+
+const QUOTA_ERROR_RE = /licen[cs]e|free limit|incomplete work orders/i;
+
+export function isQuotaError(err: unknown): err is AtlasHttpError {
+  return (
+    err instanceof AtlasHttpError &&
+    err.status >= 400 &&
+    err.status < 500 &&
+    QUOTA_ERROR_RE.test(err.body)
+  );
+}
+
+const WO_BREAKER_BASE_COOLDOWN_MS = 5 * 60_000; // first trip pauses 5 min
+const WO_BREAKER_MAX_COOLDOWN_MS = 60 * 60_000; // cap the backoff at 1 h
+
+// Exponential-backoff breaker. `now` is injected so it is deterministically
+// testable; callers pass Date.now().
+export function createCooldownBreaker(
+  baseMs = WO_BREAKER_BASE_COOLDOWN_MS,
+  maxMs = WO_BREAKER_MAX_COOLDOWN_MS,
+) {
+  let trips = 0;
+  let skipUntil = 0;
+  return {
+    isOpen: (now: number) => now < skipUntil,
+    remainingMs: (now: number) => Math.max(0, skipUntil - now),
+    /** Trip the breaker; returns the cooldown applied, in ms. */
+    trip: (now: number) => {
+      trips += 1;
+      skipUntil = now + Math.min(baseMs * 2 ** (trips - 1), maxMs);
+      return skipUntil - now;
+    },
+    reset: () => {
+      trips = 0;
+      skipUntil = 0;
+    },
+  };
+}
+
+// Module-level breaker shared across ticks (the worker calls runForwardSync once
+// per tick inside one long-lived process).
+// TODO(per-tenant): key woBreaker by Atlas base URL once per-tenant Atlas
+// provisioning ships — today all tenants share one Atlas instance (one quota),
+// so a single global breaker is correct; after that, one tenant hitting its cap
+// would wrongly pause forward WO push for every tenant.
+const woBreaker = createCooldownBreaker();
+
 // ─── Forward sync: Assets (NeonDB → Atlas) ────────────────────────────────────
 // Assets MUST be pushed before WOs because a WO's `asset.id` reference is the
 // Atlas-side numeric ID, only known after the asset's first push.
@@ -140,6 +195,10 @@ async function pushPendingAssets(c: PoolClient, atlas: AtlasClient): Promise<Syn
       );
     } catch (err) {
       stats.errors++;
+      if (isQuotaError(err)) {
+        console.warn(`[cmms-sync] asset push stopped — Atlas quota/license limit: ${(err as AtlasHttpError).message}`);
+        break;
+      }
       console.error(`[cmms-sync] asset push failed id=${row.id}:`, err instanceof Error ? err.message : err);
       if (err instanceof AtlasHttpError && err.status >= 500) break; // back off on Atlas down
     }
@@ -165,6 +224,13 @@ interface PendingWorkOrder {
 
 async function pushPendingWorkOrders(c: PoolClient, atlas: AtlasClient): Promise<SyncStats> {
   const stats = { ...ZERO_STATS };
+  if (woBreaker.isOpen(Date.now())) {
+    console.warn(
+      `[cmms-sync] forward WO push paused (Atlas free-tier quota) — retrying in ` +
+        `${Math.ceil(woBreaker.remainingMs(Date.now()) / 60_000)}m.`,
+    );
+    return stats;
+  }
   const { rows } = await c.query<PendingWorkOrder>(
     `SELECT wo.id, wo.tenant_id, wo.atlas_id,
             wo.title, wo.description, wo.fault_description, wo.resolution,
@@ -218,8 +284,17 @@ async function pushPendingWorkOrders(c: PoolClient, atlas: AtlasClient): Promise
          WHERE id = $3 AND tenant_id = $4`,
         [atlasId, etag, row.id, row.tenant_id],
       );
+      woBreaker.reset(); // capacity confirmed — clear any prior quota cooldown
     } catch (err) {
       stats.errors++;
+      if (isQuotaError(err)) {
+        const pausedMs = woBreaker.trip(Date.now());
+        console.warn(
+          `[cmms-sync] Atlas free-tier WO quota reached — pausing forward WO push for ` +
+            `${Math.ceil(pausedMs / 60_000)}m. (${(err as AtlasHttpError).message})`,
+        );
+        break;
+      }
       console.error(`[cmms-sync] wo push failed id=${row.id}:`, err instanceof Error ? err.message : err);
       if (err instanceof AtlasHttpError && err.status >= 500) break;
     }
@@ -295,6 +370,10 @@ async function pushPendingPMs(c: PoolClient, atlas: AtlasClient): Promise<SyncSt
       );
     } catch (err) {
       stats.errors++;
+      if (isQuotaError(err)) {
+        console.warn(`[cmms-sync] pm push stopped — Atlas quota/license limit: ${(err as AtlasHttpError).message}`);
+        break;
+      }
       console.error(`[cmms-sync] pm push failed id=${row.id}:`, err instanceof Error ? err.message : err);
       if (err instanceof AtlasHttpError && err.status >= 500) break;
     }
