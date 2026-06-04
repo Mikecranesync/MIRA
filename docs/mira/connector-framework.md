@@ -161,6 +161,37 @@ folder hierarchy, OPC tags bound to a Modbus device (`Mira_PLC`, register map mi
 `CanonicalTag` rows; derives `HAS_SIGNAL` (asset folder → tags) and `LOCATED_IN` (folder
 hierarchy). Read-only — `export_records` refuses.
 
+### `SAPMockConnector` — `mocks/sap_mock.py` + `fixtures/sap.json`
+
+A second CMMS provider (`provider="sap"`). Native SAP PM field names: functional locations
+`TPLNR` (with `TPLMA` = superior FL, `FLTYP`), equipment masters `EQUNR` (`EQKTX`, `HERST`,
+`TYPBZ`, `SERGE`, `HEQUI` parent, `ABCKZ` criticality), maintenance orders `AUFNR`
+(`AUART`→work_type, `ANLZU`→status), task lists `PLNNR`/`PLNAL`→PM, and BOM lines `MATNR`.
+Hierarchy walks the `TPLNR` functional-location tree. Derived edges: `HAS_COMPONENT`
+(`HEQUI`), `LOCATED_IN` (`TPLNR`), `HAS_PART` (BOM/STPO). Write-back (maintenance orders)
+targets the SAP API, gated read-only by default.
+
+### `MaintainXMockConnector` — `mocks/maintainx_mock.py` + `fixtures/maintainx.json`
+
+`provider="maintainx"`, in MaintainX's REST response shape — the same `assets` /
+`workOrders` / `locations` / `parts` envelopes the live `mira-mcp/cmms/maintainx.py` adapter
+already parses. Numeric ids, `parentId`/`locationId`, `categories[]` (REACTIVE→corrective,
+PREVENTIVE→preventive), `status` (DONE→COMPLETE). The factory registry comments anticipate a
+real `MaintainXConnector` that simply wraps `MaintainXCMMS`. Derived edges: `HAS_COMPONENT`,
+`LOCATED_IN`, `HAS_PART` (`part.assetIds`).
+
+### `PIMockConnector` — `mocks/pi_mock.py` + `fixtures/pi.json`
+
+Reference **historian** connector (`provider="pi"`, `ConnectorKind.HISTORIAN`). AVEVA PI / AF
+data: AF element hierarchy (`Path`/`Parent`/`Template`) → `CanonicalAsset`; PI points
+(`\\server\tag`, `PointType`, `EngUnits`) → `CanonicalTag` (`history_enabled=True`,
+archived-value summary in `attributes`); archived values roll up into `CanonicalMeter`. Event
+frames are preserved on the owning element's `attributes` and surfaced in `discover()`; a
+safety-template event frame (E-stop) flags the element `criticality="safety_critical"`.
+Derived edges: `HAS_COMPONENT` (AF hierarchy), `HAS_SIGNAL` (element → point). **Read-only by
+construction** — historian `export_records` refuses regardless of mode (the high-frequency
+sample firehose belongs to the relay/event-stream layer, Phase 5 — not this connector).
+
 ---
 
 ## 7. Adding a real connector
@@ -180,15 +211,16 @@ hierarchy). Read-only — `export_records` refuses.
 
 ## 8. Testing
 
-`mira-connectors/tests/` — 37 tests, offline (in-memory, no DB, no network):
+`mira-connectors/tests/` — 79 tests, offline (in-memory, no DB, no network):
 
 - `test_canonical.py` — relationship/evidence validation (self-loop with kind-awareness,
   unknown type, missing evidence, confidence bounds).
 - `test_base_connector.py` — read-only refusal, dry-run planning, READ_WRITE export,
   SCADA refusal even in READ_WRITE, `sync()` structured result, validation errors/warnings.
-- `test_maximo_mock.py` / `test_ignition_mock.py` — full import→normalize→derive→export
-  lifecycle per connector.
-- `test_factory.py` — provider registry.
+- `test_maximo_mock.py` / `test_ignition_mock.py` / `test_sap_mock.py` /
+  `test_maintainx_mock.py` / `test_pi_mock.py` — full import→normalize→derive→export
+  lifecycle per connector (CMMS write-back gating; historian/SCADA read-only by construction).
+- `test_factory.py` — provider registry (all five mock providers).
 
 Run: `cd mira-connectors && pytest` (asyncio auto-mode from `pyproject.toml`).
 

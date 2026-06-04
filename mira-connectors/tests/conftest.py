@@ -12,7 +12,13 @@ if str(_PKG_ROOT) not in sys.path:
     sys.path.insert(0, str(_PKG_ROOT))
 
 from mira_connectors.base import ConnectorConfig, ConnectorMode  # noqa: E402
-from mira_connectors.mocks import IgnitionMockConnector, MaximoMockConnector  # noqa: E402
+from mira_connectors.mocks import (  # noqa: E402
+    IgnitionMockConnector,
+    MaintainXMockConnector,
+    MaximoMockConnector,
+    PIMockConnector,
+    SAPMockConnector,
+)
 
 
 @pytest.fixture
@@ -38,3 +44,18 @@ def maximo(ro_config: ConnectorConfig) -> MaximoMockConnector:
 @pytest.fixture
 def ignition(ro_config: ConnectorConfig) -> IgnitionMockConnector:
     return IgnitionMockConnector(ro_config)
+
+
+@pytest.fixture
+def sap(ro_config: ConnectorConfig) -> SAPMockConnector:
+    return SAPMockConnector(ro_config)
+
+
+@pytest.fixture
+def maintainx(ro_config: ConnectorConfig) -> MaintainXMockConnector:
+    return MaintainXMockConnector(ro_config)
+
+
+@pytest.fixture
+def pi(ro_config: ConnectorConfig) -> PIMockConnector:
+    return PIMockConnector(ro_config)
