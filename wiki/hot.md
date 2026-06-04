@@ -20,6 +20,20 @@ PR #1657 was `mergeable_state: dirty` with 41 new commits on main since its last
 
 ---
 
+## Session — 2026-06-04 run 2 (autonomous gap-closure routine — epic #1666)
+
+**CI failure found on PR #1657:** `apply-and-verify` failing — migration 033 `tag_events_real_idx` at line 149 uses `WHERE simulated = false` but the `simulated` column didn't exist in the idempotency `DO $$` block. On staging NeonDB branches where `tag_events` was created by a prior CI run (before `simulated` was added), `CREATE TABLE IF NOT EXISTS` skips recreation → column never added → partial index creation fails.
+
+**Fix pushed:** commit `455e443` on `feat/dt2026-gap-closure`. Added `simulated` column existence guard to the `DO $$` block, matching the pattern of the existing `tag_path` and `event_timestamp` guards.
+
+**E2E smoke failure:** `app.factorylm.com/api/health` returning 502 in CI. This is a production infra issue independent of the PR content. Not fixable from this PR.
+
+**CI now pending** on commit `455e443`. Stop condition per routine.
+
+**Status sync:** `docs/plans/current-state-gap-closure-plan.md` Status header updated to reflect 2026-06-04 fix.
+
+---
+
 # Hot Cache — 2026-06-03 — CLOUD
 
 ## Session — 2026-06-03 (autonomous gap-closure driver — epic #1666)
