@@ -1,114 +1,108 @@
-# PLAN — claude/upbeat-banach-4bb1d5 (hub-overhaul)
+# PLAN — feat/dt2026-gap-closure (Phases 5–9: engine/intelligence layer)
 
-**Status:** Active (2026-05-20)
-**Branch:** `claude/upbeat-banach-4bb1d5` (off `origin/main` after rebase to `09786be3`)
-**Worktree:** `.claude/worktrees/upbeat-banach-4bb1d5/`
-**Task source:** Mike's hub-overhaul brief, 2026-05-20
+**Status:** Active (2026-06-02)
+**Branch:** `feat/dt2026-gap-closure` (worktree `/Users/charlienode/MIRA-gapclose`, off `feat/hub-command-center` @ `80d5c624`)
+**Task source:** Mike's "continue Walker DT gap closure, build Phases 5–9" brief, 2026-06-02
+**Companion docs:** `docs/plans/current-state-gap-closure-plan.md` (Phase 0 truth audit),
+`docs/plans/2026-06-01-mira-master-architecture-plan.md` (master plan).
 
-> Previous PLAN.md (May-21 demo branch) is overwritten — that scope shipped on
-> a different branch. This file is THIS branch's scope contract.
-
----
-
-## In-scope (this session)
-
-### Phase 1 — File GitHub issues (no code yet)
-
-1. **Create `hub-overhaul` label** on the repo.
-2. **File 12 issues** under that label, in priority order P0 → P1 → P2:
-   - P0: ADR-0014 product-led decision · remove mira-sidecar from saas.yml ·
-     hide mock Hub pages behind Labs flag · reorder Hub sidebar · build
-     `/quickstart` page.
-   - P1: extend onboarding wizard step 5 · self-serve signup CTA on
-     marketing homepage · fix pricing inconsistency · remove /plc GitHub
-     Pages iframe.
-   - P2: evaluate sunsetting mira-core · split engine.py god-class ·
-     evaluate replacing mira-bridge with FlowFuse.
-
-### Phase 2 — Implement P0 items A–E on this branch
-
-A. **ADR-0014** — `docs/adr/0014-product-led-wedge.md` (status: accepted).
-B. **Remove `mira-sidecar` service block** from `docker-compose.saas.yml`
-   (the block at line 56 + the `SIDECAR_URL=…` env reference at line 175).
-C. **Sidebar reorder** — rewrite `NAV_ITEMS` in
-   `mira-hub/src/providers/access-control.ts`:
-   - Primary: Feed, Namespace, Channels, Knowledge, Proposals
-   - Secondary (collapsed): Assets, CMMS (Work Orders), Scan, Settings, Admin
-   - Labs-gated: Conversations, Alerts, Requests, Parts, Reports, Team,
-     Documents
-   - Sidebar reads `NEXT_PUBLIC_LABS_ENABLED` to include Labs items.
-D. **Hide mock pages** — wrap the route components (or layout) for
-   `/conversations`, `/alerts`, `/requests`, `/parts`, `/reports`, `/team`,
-   `/documents` so that when `NEXT_PUBLIC_LABS_ENABLED !== "true"` they
-   show a "Coming soon — turn on Labs to preview" stub (do NOT delete).
-E. **`/quickstart` public page** — `mira-hub/src/app/quickstart/page.tsx`
-   (NOT inside `(hub)`, no auth):
-   - Manufacturer dropdown sourced from a new `GET /api/quickstart/manufacturers`
-     route that queries distinct manufacturers from `kg_entities` /
-     `knowledge_entries`.
-   - Symptom / fault-code text input.
-   - "Ask MIRA" button → `POST /api/quickstart/ask` → forwards to the
-     existing pipeline answer endpoint (re-use mira-pipeline if reachable;
-     otherwise stub with a clear "wire me up" comment).
-   - Renders the answer with citation chips.
-   - "Sign up to save" CTA → `/signup`.
-   - Mobile-friendly. Uses existing Hub design tokens.
-
-### Phase 3 — Playwright verification (local `bun run dev`; no VPS deploy)
-
-Playwright spec under `mira-hub/tests/e2e/audit-hub-overhaul.spec.ts`:
-- Sidebar order matches the spec (primary vs secondary).
-- Mock pages redirect / show "Coming soon" when Labs flag off; render real
-  page when Labs flag on.
-- `/quickstart` loads without auth.
-- `/quickstart` submits a query and renders an answer block.
-
-Screenshots into `docs/promo-screenshots/2026-05-20_hub-overhaul_*.png`.
-
-### Phase 4 — Push branch, open ONE PR
-
-Title: `feat(hub): hub-overhaul P0 (ADR-0014 + saas.yml + sidebar + Labs gate + /quickstart)`.
-
-### Phase 5 — HANDOFF + stop
-
-Write `HANDOFF_2026-05-20.md` row-by-row, then stop. P1/P2 are filed as
-issues only — implementation NOT in this session.
+> Phases 0–4 already shipped on this branch (7 commits, migrations 032–036,
+> `POST /api/v1/tags/ingest`, Ignition collector, Command Center freshness).
+> This PLAN is THIS session's scope contract: Phases 5–9, the intelligence
+> layer that reads the Phase-1 tables.
 
 ---
 
-## Out-of-scope (HANDOFF to operator — Mike). Editing these = STOP.
+## In-scope (this session) — numbered
 
-| Item | Why deferred |
+### P5 — Tag diff / event-stream logger
+1. `mira-relay/tag_diff_logger.py` — `compute_diffs()` pure fn + store-agnostic
+   `TagDiffLogger` (same store-injection pattern as `tag_ingest.py`).
+   Transitions: digital 0→1 / 1→0, analog threshold crossings (configurable),
+   quality good→bad, fault windows (group events ±N s around a fault trigger).
+2. `mira-hub/db/migrations/037_tag_event_diffs.sql` — NET-NEW sink table for the
+   meaningful-diff stream (plan §4.1 anticipated "its own `tag_event_diffs`
+   table later"). RLS, append-only, provenance (`simulated`) carried through.
+3. `mira-relay/tests/test_tag_diff_logger.py` — fixture-driven, in-memory store.
+
+### P6 — Reconcile bench MQTT/demo namespace → ISA-95 UNS
+4. `mira-relay/uns_topic_map.py` — mapping config loader + `resolve_topic_to_uns()`
+   that builds paths via `mira-crawler/ingest/uns.py` builders (NOT hand-formatted).
+5. `mira-relay/config/bench_uns_map.json` — seed mapping for the garage bench
+   (Micro820 tags, GS10 tags, sensor tags) as structured UNS components.
+6. `mira-relay/tests/test_uns_topic_map.py` — proves demo topics resolve to
+   `enterprise.*` builder output.
+7. `mira-pipeline/ignition_chat.py` + minimal additive engine hook: stamp
+   `state["context"]["uns_context"]["source"]="direct_connection"` for Ignition
+   turns. **Scope guard:** this marks + records the source (so Phase 9 traces it
+   and the rule's audit can see it); it does NOT change gate-firing — the full
+   gate bypass is master-plan **P6**, explicitly out of this work stream
+   (gap plan §2.4). Additive optional kwarg only; default behavior unchanged.
+
+### P7 — Flaky-input detector on real `tag_events`
+8. `mira-relay/flaky_detector.py` — `FlakyInputDetector` reads real `tag_events`,
+   counts transitions per configured digital tag in a window, compares stable
+   peers, writes `flaky_input_signals` with `evidence_event_ids` → real
+   `tag_events.event_id`. Simulated alerts marked `simulated`. NEVER auto-verify.
+9. `mira-relay/config/flaky_rules.json` — bench config (PE-101/PE-102/PX-101).
+10. `mira-relay/tests/test_flaky_detector.py` — stable→no alert, chatter→alert
+    with evidence, simulated→marked, proposal created NOT verified.
+
+### P8 — KG proposal loop from live evidence
+11. In the detector's bridge step: create a `relationship_proposals` row
+    (status `proposed`, `created_by='rule'`) linking the flaky signal's tag
+    entity → asset/component, plus `relationship_evidence` rows
+    (`evidence_type='live_data'`) pointing at `tag_events` + `flaky_input_signals`,
+    and an `ai_suggestions` `kg_edge` header. Respect ADR-0017 (proposed only).
+12. Document Hub `/proposals` wiring (route reads `relationship_proposals` +
+    counts `relationship_evidence` — already surfaces; record what shows).
+
+### P9 — Decision-trace writer
+13. `mira-bots/shared/decision_trace.py` — `DecisionTraceWriter` writes a
+    `decision_traces` row (PII-sanitized question/recommendation).
+14. Wire into `mira-bots/shared/engine.py` `process()` after `_log_interaction`,
+    before `return reply`. Captures uns_context (path/source/confidence),
+    tag/manual/kg evidence, recommendation, citations_present, technician_confirmed
+    (nullable), outcome (nullable). **CRITICAL:** trace write wrapped in
+    try/except — never blocks or fails the user response.
+15. `mira-bots/tests/test_decision_trace.py` — trace written, tag evidence when
+    available, citations when present, failed write doesn't block response.
+
+### Wrap
+16. Run gates (ruff, pytest relay + bots, any TS build if touched), update
+    `wiki/hot.md`, write `HANDOFF_2026-06-02_P5-9.md`, final commit, push.
+
+---
+
+## Out-of-scope (HANDOFF to operator). Editing these = STOP.
+
+| Item | Why |
 |---|---|
-| VPS staging deploy / stg-mira-hub rebuild | SSH to VPS; prod-guard blocks. Mike's brief asked for staging verification; verify LOCALLY, hand off the VPS deploy. |
-| P1 items (#6–#9) | Filed as issues only |
-| P2 items (#10–#12) | Same |
-| Any change to `mira-bots/`, `mira-mcp/`, `engine.py` | Not in this scope |
-| Any prod NeonDB or prod docker compose | Always |
+| Full `direct_connection` gate **bypass** in `engine.py` (skip steps 6–7) | Master-plan **P6**; large engine blast radius; gap plan §2.4 defers it. P6 here only sets the source marker. |
+| Citation **enforcement** (make compliance block) | Master-plan P7 |
+| `kg_writer.py` re-route + proposal-transition helper | Master-plan P3; not flaky-loop |
+| Hub `/proposals` rendering `ai_suggestions` (non-edge types) | Solve-stage gap, separate |
+| `mock_tag_stream.py` / scenarios | Master-plan P4 (engine-side), separate |
+| Any prod NeonDB / prod docker / VPS SSH / `@FactoryLM_Diagnose` | Always |
+| Migration renumber vs origin/main 030+ collision | Handle at merge time, operator |
 
 ---
 
 ## Stop conditions
-
-- All 5 phases complete → write HANDOFF, stop.
-- Token usage > 70% / turn count > 200 → stop, HANDOFF.
-- Edit would touch OUT-of-scope path → STOP.
-- Pipeline / `/api/ask` doesn't exist → stub with TODO + a passing
-  Playwright assertion on the form path, then continue. Don't spend > 5
-  turns wiring the pipeline.
-- `bun run build` fails and isn't fixed in 5 turns → STOP, HANDOFF.
+- All 16 items complete → run gates, write HANDOFF, stop.
+- Token > 70% / turns > 200 → stop, HANDOFF.
+- Edit would touch an OUT-of-scope path → STOP.
+- 5 consecutive turns on one failing test → STOP, HANDOFF.
+- `codegraph_impact` on `engine.py` shows unexpected blast radius → narrow, surface.
 
 ---
 
 ## Verification gates
-
-| Step | Gate |
+| Item | Gate |
 |---|---|
-| A | `docs/adr/0014-product-led-wedge.md` exists, references 0008 |
-| B | `grep -c mira-sidecar docker-compose.saas.yml` returns 0 |
-| C | `bun run build` in `mira-hub` passes; sidebar tests pass |
-| D | Labs-off render shows "Coming soon"; Labs-on renders real page |
-| E | `/quickstart` loads (200) without auth; submit returns an answer block |
-| All | Playwright `audit-hub-overhaul.spec.ts` green; screenshots committed |
-
-`tools/hooks/stop-gate.sh` will fire — don't bypass.
+| P5 | `pytest mira-relay/tests/test_tag_diff_logger.py -q` green; migration parses |
+| P6 | `pytest mira-relay/tests/test_uns_topic_map.py -q` green; paths match `uns.*` builder output; ignition_chat source set |
+| P7 | `pytest mira-relay/tests/test_flaky_detector.py -q` green; no auto-verify |
+| P8 | proposal row `status='proposed'`, evidence rows present, never `verified` |
+| P9 | `pytest mira-bots/tests/test_decision_trace.py -q` green; failed-write non-blocking |
+| All | `ruff check` clean on changed `.py`; relay + bots suites pass |

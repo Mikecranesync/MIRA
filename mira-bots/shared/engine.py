@@ -483,6 +483,10 @@ class Supervisor:
         self.vision_model = vision_model
         self.tenant_id = tenant_id or ""
 
+        # Background decision-trace tasks (Phase 9). Holding strong refs keeps
+        # fire-and-forget writes from being GC'd before they complete.
+        self._decision_trace_tasks: set = set()
+
         # Service base URLs for nameplate downstream calls and reactive ingest
         self.mcp_base_url = (
             mcp_base_url or os.getenv("MCP_BASE_URL", "http://mira-mcp:8001")
@@ -844,12 +848,24 @@ class Supervisor:
         platform: str = "telegram",
         tenant_id: str | None = None,
         mira_user_id: str | None = None,
+        uns_source: str | None = None,
+        tag_evidence: list | None = None,
     ) -> str:
         """Main entry point. Returns reply string (backward-compatible).
 
         Wraps process_full() with a configurable timeout (MIRA_PROCESS_TIMEOUT,
         default 30s) and a top-level exception guard so every call returns a
         user-facing string — never raises to the adapter.
+
+        ``uns_source`` marks the provenance of the UNS context for this turn.
+        A direct-connection surface (Ignition cloud-chat, Perspective panel,
+        MQTT/Sparkplug, PLC bridge, Hub display, QR) passes
+        ``uns_source="direct_connection"`` — the connection itself certifies the
+        UNS path (see .claude/rules/direct-connection-uns-certified.md). Default
+        None = a chat surface; the chat UNS gate applies unchanged. This marker
+        is recorded on ``state["context"]["uns_context"]["source"]`` and surfaced
+        in the decision trace; it does NOT by itself alter gate firing (the full
+        gate bypass is master-plan Phase 6).
         """
         # Per-call tenant overrides constructor default. Stash on self so workers
         # can reach the current request's tenant via self._current_tenant_id.
@@ -861,7 +877,7 @@ class Supervisor:
         t0 = time.monotonic()
         try:
             result = await asyncio.wait_for(
-                self.process_full(chat_id, message, photo_b64),
+                self.process_full(chat_id, message, photo_b64, uns_source=uns_source),
                 timeout=_PROCESS_TIMEOUT,
             )
         except asyncio.TimeoutError:
@@ -898,7 +914,82 @@ class Supervisor:
             response_time_ms=elapsed_ms,
             platform=platform,
         )
+        # Phase 9 — decision trace (observational, fire-and-forget). Scheduled
+        # AFTER the reply is built so it adds zero latency to the user response,
+        # and fully guarded so a trace failure can never affect the reply.
+        self._schedule_decision_trace(
+            chat_id=chat_id,
+            message=message,
+            reply=reply,
+            result=result,
+            platform=platform,
+            latency_ms=elapsed_ms,
+            tag_evidence=tag_evidence,
+        )
         return reply
+
+    def _schedule_decision_trace(
+        self,
+        *,
+        chat_id: str,
+        message: str,
+        reply: str,
+        result: dict,
+        platform: str,
+        latency_ms: int,
+        tag_evidence: list | None = None,
+    ) -> None:
+        """Schedule a non-blocking decision_traces write for this turn.
+
+        Best-effort: gathers the evidence the engine already has on hand (UNS
+        context, RAG sources, citation presence, outcome) and fires the write as
+        a background task. Every step is guarded — a trace failure must never
+        touch the reply path. See mira-bots/shared/decision_trace.py.
+        """
+        try:
+            import asyncio
+
+            from .decision_trace import write_trace
+
+            state = self._load_state(chat_id)
+            ctx = (state.get("context") or {}) if isinstance(state, dict) else {}
+            uns_context = ctx.get("uns_context") if isinstance(ctx, dict) else None
+
+            next_state = result.get("next_state") or ""
+            if next_state == "RESOLVED" or state.get("final_state") == "RESOLVED":
+                outcome = "resolved"
+            elif ctx.get("pending_uns_confirm"):
+                outcome = "gate_fired"
+            else:
+                outcome = None
+
+            tenant_id = getattr(self, "_current_tenant_id", None) or self.tenant_id
+
+            # Only attach RAG sources when THIS turn actually retrieved — the
+            # worker's _last_sources persists across turns, so a non-RAG turn
+            # (greeting, WO action) would otherwise inherit the prior turn's
+            # manual evidence and disagree with citations_present.
+            rag = getattr(self, "rag", None)
+            retrieved = rag is not None and not getattr(rag, "_last_no_kb", True)
+            manual_sources = getattr(rag, "_last_sources", None) if retrieved else None
+
+            coro = write_trace(
+                tenant_id=tenant_id,
+                user_question=message,
+                recommendation=reply,
+                platform=platform,
+                uns_context=uns_context,
+                tag_evidence=tag_evidence,
+                manual_sources=manual_sources,
+                outcome=outcome,
+                latency_ms=latency_ms,
+            )
+            # Hold a reference so the task isn't GC'd before it runs.
+            task = asyncio.create_task(coro)
+            self._decision_trace_tasks.add(task)
+            task.add_done_callback(self._decision_trace_tasks.discard)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("decision_trace schedule skipped: %s", exc)
 
     async def _apply_quality_gate(
         self,
@@ -1105,11 +1196,17 @@ class Supervisor:
         chat_id: str,
         message: str,
         photo_b64: str = None,
+        *,
+        uns_source: str | None = None,
     ) -> dict:
         """Full entry point. Returns {"reply", "confidence", "trace_id", "next_state"}.
 
         Same logic as process(), but preserves structured metadata for
         benchmark and telemetry consumers.
+
+        ``uns_source`` (e.g. "direct_connection") is stamped onto the resolved
+        ``state["context"]["uns_context"]["source"]`` so downstream consumers
+        (decision trace, audits) can see the turn's provenance. See process().
         """
         # Resolve tenant per call — chat_tenant LRU cache makes this cheap
         resolved_tenant = resolve_tenant(chat_id) or self.rag.tenant_id
@@ -1179,7 +1276,16 @@ class Supervisor:
             tenant_id=resolved_tenant,
             prior_ctx=prior_uns,
         )
-        _ctx_for_uns["uns_context"] = uns_ctx.as_dict()
+        _uns_ctx_dict = uns_ctx.as_dict()
+        # Direct-connection provenance: a surface that already knows which
+        # machine the technician is on (Ignition, MQTT, PLC bridge, Hub display,
+        # QR) certifies the UNS path by construction. We stamp the source so the
+        # decision trace + hallucination audit can see it. Recorded only; the
+        # gate-firing change is master-plan Phase 6. See
+        # .claude/rules/direct-connection-uns-certified.md.
+        if uns_source:
+            _uns_ctx_dict["source"] = uns_source
+        _ctx_for_uns["uns_context"] = _uns_ctx_dict
         state["context"] = _ctx_for_uns
         if uns_ctx.manufacturer and uns_ctx.confidence >= 0.7 and not state.get("asset_identified"):
             label = uns_ctx.manufacturer
@@ -4565,9 +4671,21 @@ class Supervisor:
         `message` and `session_context` are accepted for symmetry with other
         gate helpers and to keep the call site readable, even though the
         current implementation only inspects intent + state + flag.
+
+        Direct-connection carve-out: a turn whose UNS context was certified by
+        the connection itself (Ignition, MQTT/Sparkplug, PLC bridge, Hub
+        display, QR — source="direct_connection") MUST NOT be interrupted with a
+        "which machine?" confirmation. The connection already proved the asset;
+        asking would be the exact anti-pattern
+        .claude/rules/direct-connection-uns-certified.md forbids. We honor the
+        marker here at the chat-gate so it can never lie. (The broader
+        reject-on-missing-identifier contract for direct surfaces is still P6.)
         """
         del message, session_context  # reserved for future signal expansion
         if not _UNS_GATE_ENABLED:
+            return False
+        uns_ctx = (state.get("context") or {}).get("uns_context") or {}
+        if uns_ctx.get("source") == "direct_connection":
             return False
         if router_intent != "diagnose_equipment":
             return False
