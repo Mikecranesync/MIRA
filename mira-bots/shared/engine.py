@@ -350,6 +350,15 @@ _KG_CONTEXT_ENABLED = os.getenv("MIRA_KG_CONTEXT_ENABLED", "0") == "1"
 _KG_CONTEXT_TIMEOUT_S = float(os.getenv("MIRA_KG_CONTEXT_TIMEOUT_S", "3.0"))
 _MIRA_HUB_URL = os.getenv("MIRA_HUB_URL", "http://mira-hub:3000")
 
+# Live equipment-status enrichment (additive, OFF by default). When on, the
+# diagnosis path pulls the latest diagnosis from mira-fault-detective's read-only
+# HTTP API and injects a [LIVE EQUIPMENT STATUS] block. Best-effort: any miss
+# (flag off, service down, timeout, bad payload) returns "" and the flow is
+# byte-for-byte unchanged. Same wrap-don't-rewrite pattern as the KG block.
+_LIVE_DATA_ENABLED = os.getenv("MIRA_LIVE_DATA_ENABLED", "0") == "1"
+_FAULT_DETECTIVE_URL = os.getenv("FAULT_DETECTIVE_URL", "http://mira-fault-detective:8077")
+_LIVE_DATA_TIMEOUT_S = float(os.getenv("MIRA_LIVE_DATA_TIMEOUT_S", "2.0"))
+
 # Single-shot kiosk mode (e.g. the Ignition Ask-MIRA panel). When on, MIRA
 # answers directly (see rag_worker DIRECT_ANSWER_SYSTEM_PROMPT) AND the engine
 # suppresses interactive follow-ups that a kiosk operator can't act on: the
@@ -2759,6 +2768,64 @@ class Supervisor:
             f"citable source) ---\n{body_text}\n---\n"
         )
 
+    # ------------------------------------------------------------------
+    # Live equipment-status enrichment (additive, flag-gated)
+    # ------------------------------------------------------------------
+    async def _build_live_data_context(self, state: dict) -> str:
+        """Best-effort live equipment status from mira-fault-detective's HTTP API.
+
+        Returns a [LIVE EQUIPMENT STATUS] block or "" on any miss (flag off,
+        service down, timeout, bad payload). Never raises.
+        """
+        if not _LIVE_DATA_ENABLED:
+            return ""
+        try:
+            data = await asyncio.wait_for(
+                self._fetch_live_status(), timeout=_LIVE_DATA_TIMEOUT_S
+            )
+            return self._format_live_data(data) if data else ""
+        except Exception as exc:  # noqa: BLE001 -- enrichment must never block diagnosis
+            logger.debug("LIVE_DATA miss: %s", exc)
+            return ""
+
+    async def _fetch_live_status(self) -> dict | None:
+        """GET mira-fault-detective /current_fault. None on any non-ok response."""
+        token = os.getenv("FAULT_DETECTIVE_HTTP_TOKEN", "")
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        async with httpx.AsyncClient(
+            base_url=_FAULT_DETECTIVE_URL, timeout=_LIVE_DATA_TIMEOUT_S, headers=headers
+        ) as client:
+            resp = await client.get("/current_fault")
+        if resp.status_code >= 400:
+            return None
+        return resp.json()
+
+    @staticmethod
+    def _format_live_data(d: dict | None) -> str:
+        """Render a /current_fault payload as a compact prompt block. Never raises."""
+        if not isinstance(d, dict):
+            return ""
+        fault = str(d.get("fault") or "").strip()
+        asset = str(d.get("asset_prefix") or "").strip()
+        where = f" on {asset}" if asset else ""
+        if not fault or fault == "ok":
+            return f"\n--- LIVE EQUIPMENT STATUS ---\nNo active fault detected{where}.\n---\n"
+        head = f"Active fault{where}: {fault}"
+        conf = d.get("confidence")
+        if isinstance(conf, (int, float)):
+            head += f" (confidence {int(round(conf * 100))}%)"
+        lines = [head]
+        comps = [str(c) for c in (d.get("affected_components") or []) if c]
+        if comps:
+            lines.append("Affected: " + ", ".join(comps[:8]))
+        chk = str(d.get("recommended_first_check") or "").strip()
+        if chk:
+            lines.append("First check: " + chk)
+        safety = str(d.get("safety_note") or "").strip()
+        if safety:
+            lines.append("Safety: " + safety)
+        return "\n--- LIVE EQUIPMENT STATUS ---\n" + "\n".join(lines) + "\n---\n"
+
     async def _call_with_correction(
         self,
         message: str,
@@ -2777,9 +2844,12 @@ class Supervisor:
         """
         max_attempts = 1 if photo_b64 else (2 if self.nemotron.enabled else 1)
         query = message
-        # Fetch KG maintenance context once (best-effort, "" when disabled/absent)
-        # and reuse it across self-correction retries.
+        # Fetch KG + live-equipment context once (both best-effort, "" when
+        # disabled/absent) and reuse across self-correction retries. They are
+        # pre-formatted, self-labeled blocks; concatenate and inject as one.
         kg_context = await self._build_kg_context(state, tenant_id)
+        live_context = await self._build_live_data_context(state)
+        extra_context = kg_context + live_context
 
         for attempt in range(max_attempts):
             try:
@@ -2789,7 +2859,7 @@ class Supervisor:
                     photo_b64=photo_b64,
                     vision_model=self.vision_model,
                     tenant_id=tenant_id,
-                    kg_context=kg_context,
+                    kg_context=extra_context,
                 )
             except Exception as e:
                 logger.error("LLM call failed (rag worker): %s", e)
