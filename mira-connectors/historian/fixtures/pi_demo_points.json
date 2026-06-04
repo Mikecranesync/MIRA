@@ -1,0 +1,30 @@
+{
+  "_meta": {
+    "source": "AVEVA PI / OSIsoft PI System",
+    "api_hint": "PI Web API (/piwebapi/assetdatabases, /elements, /points, /streams, /eventframes) or AF SDK",
+    "note": "Mock fixture. PI Point names use the \\\\server\\tag convention; AF element Paths use backslash separators. Archived values are time-series; event frames are time windows of events (faults, downtime)."
+  },
+  "af_database": "Acme-Garage",
+  "af_elements": [
+    { "Path": "Bedford", "Name": "Bedford", "Template": "Site", "Parent": null },
+    { "Path": "Bedford\\Packaging", "Name": "Packaging", "Template": "Area", "Parent": "Bedford" },
+    { "Path": "Bedford\\Packaging\\Conveyor", "Name": "Conveyor", "Template": "Conveyor", "Parent": "Bedford\\Packaging", "attributes": [ {"Name": "Manufacturer", "Value": "Dorner"}, {"Name": "AssetTag", "Value": "CONV-001"} ] },
+    { "Path": "Bedford\\Packaging\\Conveyor\\Motor", "Name": "Motor", "Template": "Motor", "Parent": "Bedford\\Packaging\\Conveyor", "attributes": [ {"Name": "AssetTag", "Value": "MOTOR-001"} ] },
+    { "Path": "Bedford\\Packaging\\Conveyor\\VFD", "Name": "VFD", "Template": "VFD", "Parent": "Bedford\\Packaging\\Conveyor", "attributes": [ {"Name": "AssetTag", "Value": "VFD-001"} ] }
+  ],
+  "pi_points": [
+    { "Name": "\\\\PISRV01\\Conv.Motor.Current", "PointType": "Float32", "EngUnits": "A", "Descriptor": "Motor current", "element_path": "Bedford\\Packaging\\Conveyor\\Motor" },
+    { "Name": "\\\\PISRV01\\Conv.Motor.Speed", "PointType": "Float32", "EngUnits": "RPM", "Descriptor": "Motor speed", "element_path": "Bedford\\Packaging\\Conveyor\\Motor" },
+    { "Name": "\\\\PISRV01\\Conv.VFD.DcBus", "PointType": "Float32", "EngUnits": "V", "Descriptor": "VFD DC bus voltage", "element_path": "Bedford\\Packaging\\Conveyor\\VFD" },
+    { "Name": "\\\\PISRV01\\Conv.VFD.FaultCode", "PointType": "Int32", "EngUnits": "", "Descriptor": "VFD fault code", "element_path": "Bedford\\Packaging\\Conveyor\\VFD" }
+  ],
+  "archived_values": [
+    { "pi_point": "\\\\PISRV01\\Conv.Motor.Current", "values": [ {"Timestamp": "2026-06-03T22:45:00Z", "Value": 0.0, "Good": true}, {"Timestamp": "2026-06-03T22:50:00Z", "Value": 3.6, "Good": true}, {"Timestamp": "2026-06-03T22:59:00Z", "Value": 3.4, "Good": true} ] },
+    { "pi_point": "\\\\PISRV01\\Conv.VFD.DcBus", "values": [ {"Timestamp": "2026-06-03T22:50:00Z", "Value": 324.0, "Good": true}, {"Timestamp": "2026-06-03T22:59:00Z", "Value": 325.0, "Good": true} ] },
+    { "pi_point": "\\\\PISRV01\\Conv.VFD.FaultCode", "values": [ {"Timestamp": "2026-05-18T06:29:00Z", "Value": 4, "Good": true}, {"Timestamp": "2026-05-18T06:31:00Z", "Value": 0, "Good": true} ] }
+  ],
+  "event_frames": [
+    { "Name": "VFD Fault F0004", "Template": "Equipment Downtime", "element_path": "Bedford\\Packaging\\Conveyor\\VFD", "StartTime": "2026-05-18T06:29:00Z", "EndTime": "2026-05-18T06:31:00Z", "attributes": [ {"Name": "FaultCode", "Value": "F0004"}, {"Name": "Severity", "Value": "Trip"} ] },
+    { "Name": "Infeed E-Stop Pressed", "Template": "Safety Event", "element_path": "Bedford\\Packaging\\Conveyor", "StartTime": "2026-04-12T11:02:00Z", "EndTime": "2026-04-12T11:09:00Z", "attributes": [ {"Name": "Cause", "Value": "Operator E-stop"} ] }
+  ]
+}

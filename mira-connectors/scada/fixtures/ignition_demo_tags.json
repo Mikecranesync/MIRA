@@ -1,0 +1,32 @@
+{
+  "_meta": {
+    "source": "Inductive Automation Ignition",
+    "api_hint": "Tag browse via system.tag.browse / WebDev; values via system.tag.readBlocking",
+    "gateway": "ignition-edge-garage",
+    "provider": "default",
+    "note": "Mock fixture. Ignition tag paths use [provider]Folder/Sub/Tag. Sample values cover the last hour. SCADA tags do not carry a UNS site path until linked to a CMMS asset — that link is a proposal a technician confirms.",
+    "window_start": "2026-06-03T22:00:00Z",
+    "window_end": "2026-06-03T23:00:00Z"
+  },
+  "tags": [
+    { "path": "[default]Conv_Simple/Motor/RunCmd", "folder": "Conv_Simple/Motor", "name": "RunCmd", "dataType": "Boolean", "engUnit": "", "quality": "Good", "value": true, "timestamp": "2026-06-03T22:59:55Z", "samples": [ {"t": "2026-06-03T22:30:00Z", "v": false, "q": "Good"}, {"t": "2026-06-03T22:45:00Z", "v": true, "q": "Good"} ] },
+    { "path": "[default]Conv_Simple/Motor/RunFbk", "folder": "Conv_Simple/Motor", "name": "RunFbk", "dataType": "Boolean", "engUnit": "", "quality": "Good", "value": true, "timestamp": "2026-06-03T22:59:55Z", "samples": [ {"t": "2026-06-03T22:45:02Z", "v": true, "q": "Good"} ] },
+    { "path": "[default]Conv_Simple/Motor/FaultBit", "folder": "Conv_Simple/Motor", "name": "FaultBit", "dataType": "Boolean", "engUnit": "", "quality": "Good", "value": false, "timestamp": "2026-06-03T22:59:55Z", "samples": [ {"t": "2026-06-03T22:10:00Z", "v": true, "q": "Good"}, {"t": "2026-06-03T22:12:00Z", "v": false, "q": "Good"} ] },
+    { "path": "[default]Conv_Simple/Motor/Current", "folder": "Conv_Simple/Motor", "name": "Current", "dataType": "Float4", "engUnit": "A", "quality": "Good", "value": 3.4, "timestamp": "2026-06-03T22:59:55Z", "samples": [ {"t": "2026-06-03T22:45:00Z", "v": 0.0, "q": "Good"}, {"t": "2026-06-03T22:50:00Z", "v": 3.6, "q": "Good"}, {"t": "2026-06-03T22:59:00Z", "v": 3.4, "q": "Good"} ] },
+    { "path": "[default]Conv_Simple/Motor/Speed", "folder": "Conv_Simple/Motor", "name": "Speed", "dataType": "Float4", "engUnit": "RPM", "quality": "Good", "value": 1725.0, "timestamp": "2026-06-03T22:59:55Z", "samples": [ {"t": "2026-06-03T22:50:00Z", "v": 1725.0, "q": "Good"} ] },
+
+    { "path": "[default]Conv_Simple/VFD_GS10/FreqCmd", "folder": "Conv_Simple/VFD_GS10", "name": "FreqCmd", "dataType": "Float4", "engUnit": "Hz", "quality": "Good", "value": 60.0, "timestamp": "2026-06-03T22:59:55Z", "samples": [ {"t": "2026-06-03T22:45:00Z", "v": 60.0, "q": "Good"} ] },
+    { "path": "[default]Conv_Simple/VFD_GS10/FreqFbk", "folder": "Conv_Simple/VFD_GS10", "name": "FreqFbk", "dataType": "Float4", "engUnit": "Hz", "quality": "Good", "value": 59.9, "timestamp": "2026-06-03T22:59:55Z", "samples": [ {"t": "2026-06-03T22:50:00Z", "v": 59.9, "q": "Good"} ] },
+    { "path": "[default]Conv_Simple/VFD_GS10/DcBusVoltage", "folder": "Conv_Simple/VFD_GS10", "name": "DcBusVoltage", "dataType": "Float4", "engUnit": "V", "quality": "Good", "value": 325.0, "timestamp": "2026-06-03T22:59:55Z", "samples": [ {"t": "2026-06-03T22:50:00Z", "v": 324.0, "q": "Good"}, {"t": "2026-06-03T22:59:00Z", "v": 325.0, "q": "Good"} ] },
+    { "path": "[default]Conv_Simple/VFD_GS10/OutputCurrent", "folder": "Conv_Simple/VFD_GS10", "name": "OutputCurrent", "dataType": "Float4", "engUnit": "A", "quality": "Good", "value": 3.5, "timestamp": "2026-06-03T22:59:55Z", "samples": [ {"t": "2026-06-03T22:59:00Z", "v": 3.5, "q": "Good"} ] },
+    { "path": "[default]Conv_Simple/VFD_GS10/FaultCode", "folder": "Conv_Simple/VFD_GS10", "name": "FaultCode", "dataType": "Int4", "engUnit": "", "quality": "Good", "value": 0, "timestamp": "2026-06-03T22:59:55Z", "samples": [ {"t": "2026-06-03T22:10:00Z", "v": 4, "q": "Good"}, {"t": "2026-06-03T22:12:00Z", "v": 0, "q": "Good"} ] },
+
+    { "path": "[default]Conv_Simple/Sensors/PE_101", "folder": "Conv_Simple/Sensors", "name": "PE_101", "dataType": "Boolean", "engUnit": "", "quality": "Good", "value": true, "timestamp": "2026-06-03T22:59:55Z", "samples": [ {"t": "2026-06-03T22:59:50Z", "v": true, "q": "Good"} ] },
+    { "path": "[default]Conv_Simple/Sensors/PE_102", "folder": "Conv_Simple/Sensors", "name": "PE_102", "dataType": "Boolean", "engUnit": "", "quality": "Good", "value": false, "timestamp": "2026-06-03T22:59:55Z", "samples": [ {"t": "2026-06-03T22:59:50Z", "v": false, "q": "Good"} ] },
+    { "path": "[default]Conv_Simple/Sensors/PX_101", "folder": "Conv_Simple/Sensors", "name": "PX_101", "dataType": "Boolean", "engUnit": "", "quality": "Uncertain", "value": true, "timestamp": "2026-06-03T22:59:55Z", "samples": [ {"t": "2026-06-03T22:58:00Z", "v": true, "q": "Uncertain"} ] },
+
+    { "path": "[default]Conv_Simple/Conveyor/ConvState", "folder": "Conv_Simple/Conveyor", "name": "ConvState", "dataType": "Int4", "engUnit": "", "quality": "Good", "value": 2, "timestamp": "2026-06-03T22:59:55Z", "samples": [ {"t": "2026-06-03T22:10:00Z", "v": 9, "q": "Good"}, {"t": "2026-06-03T22:45:00Z", "v": 2, "q": "Good"} ] },
+    { "path": "[default]Conv_Simple/Conveyor/EStop", "folder": "Conv_Simple/Conveyor", "name": "EStop", "dataType": "Boolean", "engUnit": "", "quality": "Good", "value": false, "timestamp": "2026-06-03T22:59:55Z", "samples": [ {"t": "2026-06-03T22:59:50Z", "v": false, "q": "Good"} ] },
+    { "path": "[default]Conv_Simple/Conveyor/StartBtn", "folder": "Conv_Simple/Conveyor", "name": "StartBtn", "dataType": "Boolean", "engUnit": "", "quality": "Good", "value": false, "timestamp": "2026-06-03T22:59:55Z", "samples": [ {"t": "2026-06-03T22:44:58Z", "v": true, "q": "Good"}, {"t": "2026-06-03T22:45:00Z", "v": false, "q": "Good"} ] }
+  ]
+}
