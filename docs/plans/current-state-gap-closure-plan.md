@@ -1,6 +1,6 @@
 # MIRA — Current-State Gap-Closure Plan (Walker DT-2026 Alignment)
 
-**Status:** Phases 0–5 + RLS tests complete (PRs #1657/#1674). apply-and-verify CI green as of 2026-06-04. Merge conflict being resolved.
+**Status:** Phases 0–5 + RLS tests complete (PRs #1657/#1674). Merge conflict resolved 2026-06-04 (merge commit 8e1bc01). 19 CI checks in-progress on new commit.
 **Last updated:** 2026-06-04 (gap-closure driver session)
 **Authored:** 2026-06-02
 **Owner:** Lead systems architect (gap-closure work stream)
