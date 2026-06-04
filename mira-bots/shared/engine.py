@@ -1280,11 +1280,13 @@ class Supervisor:
         # Direct-connection provenance: a surface that already knows which
         # machine the technician is on (Ignition, MQTT, PLC bridge, Hub display,
         # QR) certifies the UNS path by construction. We stamp the source so the
-        # decision trace + hallucination audit can see it. Recorded only; the
-        # gate-firing change is master-plan Phase 6. See
-        # .claude/rules/direct-connection-uns-certified.md.
+        # decision trace + hallucination audit can see it.
+        # direct_connection surfaces certify the UNS path by construction, so
+        # confidence is set to 1.0 — the connection itself is the authority.
         if uns_source:
             _uns_ctx_dict["source"] = uns_source
+            if uns_source == "direct_connection":
+                _uns_ctx_dict["confidence"] = 1.0
         _ctx_for_uns["uns_context"] = _uns_ctx_dict
         state["context"] = _ctx_for_uns
         if uns_ctx.manufacturer and uns_ctx.confidence >= 0.7 and not state.get("asset_identified"):
