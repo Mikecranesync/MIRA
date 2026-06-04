@@ -14,12 +14,14 @@ Run: uvicorn ask_api.app:app --host 0.0.0.0 --port 8011
 import logging
 import os
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
+from shared.engine import Supervisor
+from shared.live_snapshot import normalize, render_status_block
 
 from ask_api.machine_context import MACHINE_CONTEXT
-from shared.engine import Supervisor
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,79 +59,17 @@ class AskRequest(BaseModel):
     session_id: str | None = None
 
 
-# --- GS10 decode tables (mirror MIRA_PLC/specs/CONVEYOR_MACHINE_CARD.md) ---
-# Status word (reg 0x2101) low 2 bits -> run state.
-_STATUS_BITS = {0: "STOPPED", 1: "DECEL", 2: "STANDBY", 3: "RUNNING"}
-# GS10 fault/error codes (vfd_fault_code, low byte of reg 0x2100) -> short name.
-_FAULT_CODES = {
-    0: "no active fault",
-    4: "GFF ground fault",
-    12: "Lvd undervoltage",
-    21: "oL overload",
-    49: "EF external fault",
-    54: "CE1 comm illegal cmd",
-    55: "CE2 comm illegal addr",
-    56: "CE3 comm illegal data",
-    57: "CE4 comm fail",
-    58: "CE10 modbus timeout",
-}
-
-
 def _build_status_block(tags: dict | None) -> str:
-    """Decode known live conveyor/VFD tags into a human-readable status block.
+    """Decode live conveyor/VFD tags into a human-readable status block.
 
-    Unknown keys are passed through raw. Missing/None values are skipped.
-    Returns "" when there is nothing to report.
+    Thin wrapper over ``shared.live_snapshot`` (the single source of the
+    GS10/Micro820 decode tables, mirroring the machine card) so this kiosk and
+    the engine share one decoder. Kept as a function so the /ask call site is
+    unchanged. Adds ``[STALE]`` markers when ``vfd_comm_ok`` is false. Returns
+    "" when there is nothing to report.
     """
-    if not tags:
-        return ""
-
-    lines: list[str] = []
-    cmd_word_map = {1: "STOP", 18: "FWD+RUN", 20: "REV+RUN"}
-
-    for key, value in tags.items():
-        if value is None:
-            continue
-
-        if key == "vfd_frequency":
-            lines.append(f"VFD output: {value / 100:.1f} Hz")
-        elif key == "vfd_freq_sp":
-            lines.append(f"Freq setpoint: {value / 100:.1f} Hz")
-        elif key == "vfd_current":
-            lines.append(f"Current: {value / 100:.1f} A")
-        elif key == "vfd_dc_bus":
-            lines.append(f"DC bus: {value / 10:.1f} V")
-        elif key == "vfd_cmd_word":
-            lines.append(f"Command: {cmd_word_map.get(value, f'cmd {value}')}")
-        elif key == "vfd_status_word":
-            state = _STATUS_BITS.get(value & 0b11, "?")
-            lines.append(f"Drive state: {state} (status word {value})")
-        elif key == "vfd_fault_code":
-            if value == 0:
-                lines.append("no active fault")
-            elif value in _FAULT_CODES:
-                lines.append(f"FAULT: {_FAULT_CODES[value]} (code {value})")
-            else:
-                lines.append(f"FAULT code {value} (unmapped)")
-        elif key == "vfd_comm_ok":
-            lines.append(f"VFD comms {'OK' if value else 'LOST'}")
-        elif key == "pe_latched":
-            lines.append(
-                "PHOTO-EYE JAM LATCHED (soft-stop active)" if value else "photo-eye clear"
-            )
-        elif key in ("DI_02", "e_stop"):
-            lines.append(f"E-stop {'ARMED/OK' if value else 'TRIPPED'}")
-        elif key in ("DI_05", "pe_beam"):
-            lines.append(f"PE-01 beam {'BLOCKED' if value else 'clear'}")
-        elif key in ("DO_02", "mlc"):
-            lines.append(f"Main line contactor {'CLOSED/energized' if value else 'OPEN'}")
-        else:
-            lines.append(f"{key}: {value}")
-
-    if not lines:
-        return ""
-
-    return "[LIVE CONVEYOR STATUS]\n" + "\n".join(lines)
+    snaps = normalize(tags, "", source="ignition", ts=datetime.now(timezone.utc).isoformat())
+    return render_status_block(snaps)
 
 
 @app.get("/health")
