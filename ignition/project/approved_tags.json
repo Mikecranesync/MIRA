@@ -47,6 +47,18 @@
     "[default]Conveyor/VFD_Hz",
     "[default]Conveyor/VFD_Amps",
     "[default]Conveyor/VFD_DCBus_V",
-    "[default]Conveyor/VFD_Setpoint_Hz"
+    "[default]Conveyor/VFD_Setpoint_Hz",
+    "[default]MIRA_IOCheck/Inputs/DI_02",
+    "[default]MIRA_IOCheck/Inputs/DI_05",
+    "[default]MIRA_IOCheck/Outputs/DO_02",
+    "[default]MIRA_IOCheck/VFD/pe_latched",
+    "[default]MIRA_IOCheck/VFD/vfd_cmd_word",
+    "[default]MIRA_IOCheck/VFD/vfd_comm_ok",
+    "[default]MIRA_IOCheck/VFD/vfd_current",
+    "[default]MIRA_IOCheck/VFD/vfd_dc_bus",
+    "[default]MIRA_IOCheck/VFD/vfd_fault_code",
+    "[default]MIRA_IOCheck/VFD/vfd_freq_sp",
+    "[default]MIRA_IOCheck/VFD/vfd_frequency",
+    "[default]MIRA_IOCheck/VFD/vfd_status_word"
   ]
 }
