@@ -332,6 +332,41 @@ _DST_ENABLED = os.getenv("MIRA_USE_DST", "0") == "1"
 # out in docs/plans/2026-05-15-maintenance-namespace-builder.md Phase 1 acceptance.
 _UNS_GATE_ENABLED = os.getenv("MIRA_UNS_GATE_ENABLED", "1") == "1"
 
+# Router intents that require a CONFIRMED asset before MIRA acts on it: diagnosing
+# a fault and scheduling asset-specific maintenance. (log_work_order /
+# check_equipment_history / switch_asset have their own dedicated handlers that run
+# before the gate.) Keep this narrow -- general questions, doc fetches, and
+# chitchat must NOT be gated.
+_GATED_INTENTS = frozenset({"diagnose_equipment", "schedule_maintenance"})
+
+# KG maintenance-context enrichment (additive, OFF by default). When on AND
+# INTERNAL_KG_API_KEY is configured, the diagnosis path fetches knowledge-graph
+# context (equipment hierarchy, components, recent faults + work orders) for the
+# confirmed asset from mira-hub's internal KG API and injects it into the RAG
+# prompt. Best-effort: any miss (flag off, no key, hub down, no KG entity) yields
+# "" and leaves the existing diagnosis flow untouched. Default off so it stays
+# dark until validated against a live hub. See specs/MIRA_LANGGRAPH_ARCHITECTURE.md.
+_KG_CONTEXT_ENABLED = os.getenv("MIRA_KG_CONTEXT_ENABLED", "0") == "1"
+_KG_CONTEXT_TIMEOUT_S = float(os.getenv("MIRA_KG_CONTEXT_TIMEOUT_S", "3.0"))
+_MIRA_HUB_URL = os.getenv("MIRA_HUB_URL", "http://mira-hub:3000")
+
+# Live equipment-status enrichment (additive, OFF by default). When on, the
+# diagnosis path pulls the latest diagnosis from mira-fault-detective's read-only
+# HTTP API and injects a [LIVE EQUIPMENT STATUS] block. Best-effort: any miss
+# (flag off, service down, timeout, bad payload) returns "" and the flow is
+# byte-for-byte unchanged. Same wrap-don't-rewrite pattern as the KG block.
+_LIVE_DATA_ENABLED = os.getenv("MIRA_LIVE_DATA_ENABLED", "0") == "1"
+_FAULT_DETECTIVE_URL = os.getenv("FAULT_DETECTIVE_URL", "http://mira-fault-detective:8077")
+_LIVE_DATA_TIMEOUT_S = float(os.getenv("MIRA_LIVE_DATA_TIMEOUT_S", "2.0"))
+
+# Single-shot kiosk mode (e.g. the Ignition Ask-MIRA panel). When on, MIRA
+# answers directly (see rag_worker DIRECT_ANSWER_SYSTEM_PROMPT) AND the engine
+# suppresses interactive follow-ups that a kiosk operator can't act on: the
+# auto work-order prompt (which also arms cmms_pending and would corrupt the
+# next single-shot turn) and the recurring-fault "log a work order?" annotation.
+# Scoped per-container: bots leave it unset and keep the full interactive flow.
+_DIRECT_ANSWER_MODE = os.getenv("MIRA_DIRECT_ANSWER_MODE", "") not in ("", "0", "false", "False")
+
 # Stage 0 (2026-05-04) action-request fast-path. Catches imperative
 # work-order requests BEFORE `route_intent`, which currently sends them
 # into RAG (CRITICAL RULE 3 prefers continue_current mid-flow). Without
@@ -1470,7 +1505,9 @@ class Supervisor:
                 return await self._handle_wo_request(chat_id, message, state, trace_id)
 
             if _router_intent == "switch_asset":
-                return await self._handle_asset_switch(chat_id, message, state, trace_id)
+                return await self._handle_asset_switch(
+                    chat_id, message, state, trace_id, tenant_id=resolved_tenant
+                )
 
             if _router_intent == "check_equipment_history":
                 return await self._handle_check_equipment_history(chat_id, message, state, trace_id)
@@ -2092,7 +2129,9 @@ class Supervisor:
         # explicitly says "create a work order", "log this", etc.
         # We still run recurring-fault annotation on RESOLVED so persistent
         # issues are flagged, but we do not push the WO preview.
-        if state["state"] == "RESOLVED":
+        # Skip in direct-answer/kiosk mode: the annotation appends a "log a work
+        # order?" question the kiosk operator can't act on (single-shot turn).
+        if state["state"] == "RESOLVED" and not _DIRECT_ANSWER_MODE:
             try:
                 _annotated, _pushed = await check_recurring_and_annotate(
                     self.db_path, state, parsed["reply"]
@@ -2122,6 +2161,7 @@ class Supervisor:
         # say "yes" to actually create the WO; the prompt just arms cmms_pending.
         if (
             state["state"] == "RESOLVED"
+            and not _DIRECT_ANSWER_MODE  # kiosk is single-shot: no WO prompt, don't arm cmms_pending
             and state.get("asset_identified")
             and (state.get("fault_category") or state.get("exchange_count", 0) >= 3)
             and not ctx.get("cmms_pending")
@@ -2725,6 +2765,169 @@ class Supervisor:
             )
             return {}
 
+    # ------------------------------------------------------------------
+    # KG maintenance-context enrichment (additive, flag-gated)
+    # ------------------------------------------------------------------
+    async def _build_kg_context(self, state: dict, tenant_id: str | None) -> str:
+        """Best-effort knowledge-graph maintenance context for the confirmed asset.
+
+        Returns a labeled text block for prompt injection, or "" on any miss
+        (flag off, no asset/tenant, no API key, hub unreachable, no KG entity).
+        Never raises -- the diagnosis path must be unaffected when KG is absent.
+        """
+        if not _KG_CONTEXT_ENABLED:
+            return ""
+        asset = (state.get("asset_identified") or "").strip()
+        if not asset or not tenant_id:
+            return ""
+        if not os.getenv("INTERNAL_KG_API_KEY"):
+            return ""  # hub auth unset -> internal KG API disabled
+        try:
+            uns_path = resolve_uns_path(asset).uns_path
+            if not uns_path:
+                return ""
+            data = await asyncio.wait_for(
+                self._fetch_kg_maintenance_context(tenant_id, uns_path),
+                timeout=_KG_CONTEXT_TIMEOUT_S,
+            )
+            return self._format_kg_context(data) if data else ""
+        except Exception as exc:  # noqa: BLE001 -- enrichment must never block diagnosis
+            logger.debug("KG_CONTEXT miss asset=%r: %s", asset, exc)
+            return ""
+
+    async def _fetch_kg_maintenance_context(self, tenant_id: str, uns_path: str) -> dict | None:
+        """POST the maintenance_context op to mira-hub's internal KG API.
+
+        Mirrors mira-mcp/kg_client.py's contract (that hyphenated package isn't
+        importable from mira-bots). Returns the result dict, or None on any
+        non-ok response.
+        """
+        body = {
+            "op": "maintenance_context",
+            "tenantId": tenant_id,
+            "args": {"unsPath": uns_path, "maxWorkOrders": 3},
+        }
+        headers = {
+            "Authorization": f"Bearer {os.getenv('INTERNAL_KG_API_KEY', '')}",
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient(
+            base_url=_MIRA_HUB_URL, timeout=_KG_CONTEXT_TIMEOUT_S, headers=headers
+        ) as client:
+            resp = await client.post("/api/internal/kg", json=body)
+        if resp.status_code >= 400:
+            return None
+        data = resp.json()
+        return data.get("result") if data.get("ok") else None
+
+    @staticmethod
+    def _format_kg_context(mc: dict | None) -> str:
+        """Render a maintenanceContext payload as a compact prompt block.
+
+        Defensive: tolerates missing/extra keys and never raises. Empty input or
+        a payload with no usable signal returns "".
+        """
+        if not isinstance(mc, dict):
+            return ""
+
+        def _name(obj) -> str:
+            return (obj.get("name") or "").strip() if isinstance(obj, dict) else ""
+
+        lines: list[str] = []
+        eq_name = _name(mc.get("equipment"))
+        h = mc.get("hierarchy") or {}
+        loc = " / ".join(
+            f"{lbl} {_name(h.get(key))}"
+            for lbl, key in (("Line", "line"), ("Area", "area"), ("Plant", "plant"))
+            if _name(h.get(key))
+        )
+        if eq_name:
+            lines.append(f"Equipment: {eq_name}" + (f"  ({loc})" if loc else ""))
+
+        comps = [c for c in (_name(x) for x in (mc.get("components") or [])) if c]
+        if comps:
+            lines.append("Known components: " + ", ".join(comps[:8]))
+
+        fault_strs: list[str] = []
+        for f in (mc.get("recentFaults") or [])[:6]:
+            if not isinstance(f, dict):
+                continue
+            code = str(f.get("code") or "").strip()
+            if not code:
+                continue
+            cnt = f.get("count")
+            fault_strs.append(f"{code} x{cnt}" if cnt else code)
+        if fault_strs:
+            lines.append("Recent faults: " + ", ".join(fault_strs))
+
+        wos = [w for w in (_name(x) for x in (mc.get("recentWorkOrders") or [])) if w]
+        if wos:
+            lines.append("Recent work orders: " + "; ".join(wos[:5]))
+
+        if not lines:
+            return ""
+        body_text = "\n".join(lines)
+        return (
+            "\n--- KNOWN ASSET CONTEXT (knowledge graph; context only, not a "
+            f"citable source) ---\n{body_text}\n---\n"
+        )
+
+    # ------------------------------------------------------------------
+    # Live equipment-status enrichment (additive, flag-gated)
+    # ------------------------------------------------------------------
+    async def _build_live_data_context(self, state: dict) -> str:
+        """Best-effort live equipment status from mira-fault-detective's HTTP API.
+
+        Returns a [LIVE EQUIPMENT STATUS] block or "" on any miss (flag off,
+        service down, timeout, bad payload). Never raises.
+        """
+        if not _LIVE_DATA_ENABLED:
+            return ""
+        try:
+            data = await asyncio.wait_for(self._fetch_live_status(), timeout=_LIVE_DATA_TIMEOUT_S)
+            return self._format_live_data(data) if data else ""
+        except Exception as exc:  # noqa: BLE001 -- enrichment must never block diagnosis
+            logger.debug("LIVE_DATA miss: %s", exc)
+            return ""
+
+    async def _fetch_live_status(self) -> dict | None:
+        """GET mira-fault-detective /current_fault. None on any non-ok response."""
+        token = os.getenv("FAULT_DETECTIVE_HTTP_TOKEN", "")
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        async with httpx.AsyncClient(
+            base_url=_FAULT_DETECTIVE_URL, timeout=_LIVE_DATA_TIMEOUT_S, headers=headers
+        ) as client:
+            resp = await client.get("/current_fault")
+        if resp.status_code >= 400:
+            return None
+        return resp.json()
+
+    @staticmethod
+    def _format_live_data(d: dict | None) -> str:
+        """Render a /current_fault payload as a compact prompt block. Never raises."""
+        if not isinstance(d, dict):
+            return ""
+        fault = str(d.get("fault") or "").strip()
+        asset = str(d.get("asset_prefix") or "").strip()
+        where = f" on {asset}" if asset else ""
+        if not fault or fault == "ok":
+            return f"\n--- LIVE EQUIPMENT STATUS ---\nNo active fault detected{where}.\n---\n"
+        head = f"Active fault{where}: {fault}"
+        conf = d.get("confidence")
+        if isinstance(conf, (int, float)):
+            head += f" (confidence {int(round(conf * 100))}%)"
+        lines = [head]
+        comps = [str(c) for c in (d.get("affected_components") or []) if c]
+        if comps:
+            lines.append("Affected: " + ", ".join(comps[:8]))
+        chk = str(d.get("recommended_first_check") or "").strip()
+        if chk:
+            lines.append("First check: " + chk)
+        safety = str(d.get("safety_note") or "").strip()
+        if safety:
+            lines.append("Safety: " + safety)
+        return "\n--- LIVE EQUIPMENT STATUS ---\n" + "\n".join(lines) + "\n---\n"
+
     async def _call_with_correction(
         self,
         message: str,
@@ -2743,6 +2946,12 @@ class Supervisor:
         """
         max_attempts = 1 if photo_b64 else (2 if self.nemotron.enabled else 1)
         query = message
+        # Fetch KG + live-equipment context once (both best-effort, "" when
+        # disabled/absent) and reuse across self-correction retries. They are
+        # pre-formatted, self-labeled blocks; concatenate and inject as one.
+        kg_context = await self._build_kg_context(state, tenant_id)
+        live_context = await self._build_live_data_context(state)
+        extra_context = kg_context + live_context
 
         for attempt in range(max_attempts):
             try:
@@ -2752,6 +2961,7 @@ class Supervisor:
                     photo_b64=photo_b64,
                     vision_model=self.vision_model,
                     tenant_id=tenant_id,
+                    kg_context=extra_context,
                 )
             except Exception as e:
                 logger.error("LLM call failed (rag worker): %s", e)
@@ -3553,7 +3763,12 @@ class Supervisor:
         )
 
     async def _handle_asset_switch(
-        self, chat_id: str, message: str, state: dict, trace_id: str
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
+        tenant_id: str | None = None,
     ) -> dict:
         """User wants to talk about a different asset — clear FSM, preserve session memory."""
         old_asset = state.get("asset_identified", "") or "unknown"
@@ -3561,7 +3776,8 @@ class Supervisor:
         # Try to identify the new asset from the switch message itself.
         # Fresh resolve (no prior_ctx) so we get the NEW asset, not carry-over
         # from the one the user is switching away from.
-        new_asset = resolve_uns_path(message).manufacturer or ""
+        new_ctx = resolve_uns_path(message)
+        new_asset = new_ctx.manufacturer or ""
 
         logger.info(
             "ASSET_SWITCH chat_id=%s from=%r to=%r",
@@ -3571,7 +3787,6 @@ class Supervisor:
         )
 
         state["state"] = "IDLE"
-        state["asset_identified"] = new_asset
         ctx = state.get("context") or {}
         # Clear active diagnostic context but keep session_memory for cross-session recall
         ctx.pop("session_context", None)
@@ -3583,6 +3798,24 @@ class Supervisor:
         state["final_state"] = None
         state["context"] = ctx
         self._clear_session_photo(chat_id)
+
+        # UNS gate: a deliberate switch must re-confirm the NEW asset before any
+        # troubleshooting. Don't silently adopt a freshly-resolved-but-unconfirmed
+        # asset -- the pre-gate behavior let a mis-resolved switch sail straight
+        # into diagnosis. When the gate is on and there is something to confirm,
+        # drop the stale asset and route through the same confirmation handler the
+        # diagnose path uses; the user's "yes" promotes the candidate to
+        # asset_identified via _handle_uns_confirmation_response.
+        if _UNS_GATE_ENABLED and getattr(new_ctx, "confidence", 0.0) > 0:
+            state["asset_identified"] = None
+            self._save_state(chat_id, state)
+            return await self._handle_uns_confirmation_request(
+                chat_id, message, state, new_ctx, trace_id, tenant_id=tenant_id
+            )
+
+        # Gate off, or nothing resolvable to confirm: legacy behavior -- adopt the
+        # (possibly empty) resolved asset and prompt for the fault / equipment.
+        state["asset_identified"] = new_asset
         self._save_state(chat_id, state)
 
         if new_asset:
@@ -4662,7 +4895,8 @@ class Supervisor:
 
         Conditions (all must hold):
         - MIRA_UNS_GATE_ENABLED is on (default true)
-        - router classified turn as diagnose_equipment
+        - router classified the turn as a gated intent (see _GATED_INTENTS:
+          diagnose_equipment or schedule_maintenance)
         - session has no asset_identified
         - session is in IDLE (don't interrupt mid-FSM Q1/Q2/Q3/DIAGNOSIS).
           AWAITING_UNS_CONFIRMATION is consumed earlier in `process()` via
@@ -4687,7 +4921,7 @@ class Supervisor:
         uns_ctx = (state.get("context") or {}).get("uns_context") or {}
         if uns_ctx.get("source") == "direct_connection":
             return False
-        if router_intent != "diagnose_equipment":
+        if router_intent not in _GATED_INTENTS:
             return False
         if state.get("asset_identified"):
             return False

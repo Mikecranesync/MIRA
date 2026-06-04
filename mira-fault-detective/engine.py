@@ -34,6 +34,14 @@ UNS_PREFIX = os.getenv("UNS_PREFIX", "demo/cell1/conveyor/cv101").rstrip("/")
 DB_PATH = os.getenv("DB_PATH", "/mira-db/mira.db")
 TICK_MS = int(os.getenv("TICK_MS", "200"))
 
+# Read-only HTTP API exposing the latest diagnosis (off by default so the running
+# service is unchanged until ops opts in). Consumed by the chat engine's
+# _build_live_data_context. Optional bearer token for internal-network auth.
+HTTP_ENABLED = os.getenv("FAULT_DETECTIVE_HTTP_ENABLED", "0") == "1"
+HTTP_HOST = os.getenv("FAULT_DETECTIVE_HTTP_HOST", "0.0.0.0")
+HTTP_PORT = int(os.getenv("FAULT_DETECTIVE_HTTP_PORT", "8077"))
+HTTP_TOKEN = os.getenv("FAULT_DETECTIVE_HTTP_TOKEN", "")
+
 
 def _open_db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, timeout=5.0, isolation_level=None)
@@ -206,9 +214,10 @@ class State:
         s.px101_dropouts = self.px101_dropouts_window
 
 
-def _diagnosis_payload(diag: Optional[rules.Diagnosis]) -> str:
+def _diagnosis_dict(diag: Optional[rules.Diagnosis]) -> dict:
+    """Structured current-diagnosis payload. `None` diag == healthy/no fault."""
     if diag is None:
-        return json.dumps({
+        return {
             "fault": "ok",
             "confidence": 1.0,
             "evidence": [],
@@ -216,8 +225,8 @@ def _diagnosis_payload(diag: Optional[rules.Diagnosis]) -> str:
             "recommended_first_check": "",
             "safety_note": "",
             "ts": time.time(),
-        })
-    return json.dumps({
+        }
+    return {
         "fault": diag.fault,
         "confidence": diag.confidence,
         "evidence": [dataclasses.asdict(e) for e in diag.evidence],
@@ -225,7 +234,17 @@ def _diagnosis_payload(diag: Optional[rules.Diagnosis]) -> str:
         "recommended_first_check": diag.recommended_first_check,
         "safety_note": diag.safety_note,
         "ts": time.time(),
-    }, default=str)
+    }
+
+
+def _diagnosis_payload(diag: Optional[rules.Diagnosis]) -> str:
+    return json.dumps(_diagnosis_dict(diag), default=str)
+
+
+# Latest diagnosis, updated every tick. Served read-only over HTTP (when
+# FAULT_DETECTIVE_HTTP_ENABLED=1) so the chat engine can pull live equipment
+# status without subscribing to MQTT itself.
+_LATEST_DIAGNOSIS: dict = _diagnosis_dict(None)
 
 
 async def run() -> None:
@@ -247,9 +266,14 @@ async def run() -> None:
                     while True:
                         state.refresh_dropout_windows()
                         diag = rules.evaluate(state.snap)
+                        payload_dict = _diagnosis_dict(diag)
+                        # Refresh the HTTP-served snapshot in place (same object the
+                        # web handler reads — single event loop, no lock needed).
+                        _LATEST_DIAGNOSIS.clear()
+                        _LATEST_DIAGNOSIS.update(payload_dict)
                         await client.publish(
                             f"{UNS_PREFIX}/diagnostics/current_fault",
-                            _diagnosis_payload(diag),
+                            json.dumps(payload_dict, default=str),
                             qos=0,
                             retain=True,
                         )
@@ -285,5 +309,51 @@ async def run() -> None:
             await asyncio.sleep(2.0)
 
 
+def _http_unauthorized(request) -> bool:
+    """True when a token is configured and the request doesn't present it."""
+    if not HTTP_TOKEN:
+        return False
+    return request.headers.get("Authorization") != f"Bearer {HTTP_TOKEN}"
+
+
+async def _http_health(_request):
+    from aiohttp import web
+
+    return web.json_response({"ok": True})
+
+
+async def _http_current_fault(request):
+    """Serve the latest diagnosis snapshot (+ the monitored asset prefix)."""
+    from aiohttp import web
+
+    if _http_unauthorized(request):
+        return web.json_response({"error": "unauthorized"}, status=401)
+    return web.json_response({"asset_prefix": UNS_PREFIX, **_LATEST_DIAGNOSIS})
+
+
+async def serve_http() -> None:
+    """Read-only HTTP API: GET /health and GET /current_fault (latest diagnosis)."""
+    from aiohttp import web
+
+    app = web.Application()
+    app.add_routes(
+        [web.get("/health", _http_health), web.get("/current_fault", _http_current_fault)]
+    )
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, HTTP_HOST, HTTP_PORT)
+    await site.start()
+    log.info("http api listening on %s:%d", HTTP_HOST, HTTP_PORT)
+    while True:  # keep the task alive alongside the MQTT loop
+        await asyncio.sleep(3600)
+
+
+async def main() -> None:
+    tasks = [run()]
+    if HTTP_ENABLED:
+        tasks.append(serve_http())
+    await asyncio.gather(*tasks)
+
+
 if __name__ == "__main__":
-    asyncio.run(run())
+    asyncio.run(main())
