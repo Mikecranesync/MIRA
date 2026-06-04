@@ -3866,14 +3866,14 @@ class Supervisor:
         state["context"] = ctx
         self._clear_session_photo(chat_id)
 
-        # UNS gate: a deliberate switch must re-confirm the NEW asset before any
-        # troubleshooting. Don't silently adopt a freshly-resolved-but-unconfirmed
-        # asset -- the pre-gate behavior let a mis-resolved switch sail straight
-        # into diagnosis. When the gate is on and there is something to confirm,
-        # drop the stale asset and route through the same confirmation handler the
-        # diagnose path uses; the user's "yes" promotes the candidate to
-        # asset_identified via _handle_uns_confirmation_response.
-        if _UNS_GATE_ENABLED and getattr(new_ctx, "confidence", 0.0) > 0:
+        # UNS gate: a deliberate switch FROM a confirmed asset must re-confirm the NEW
+        # asset before troubleshooting. Guard: only clear + re-gate when there was
+        # already a confirmed asset to switch away from. If no prior asset_identified
+        # (LLM mis-routed a first-mention as switch_asset), adopt directly so the
+        # session doesn't get trapped in AWAITING_UNS_CONFIRMATION — the normal
+        # diagnose_equipment gate handles first-mention confirmation via line 1392+gate.
+        current_asset = state.get("asset_identified") or ""
+        if _UNS_GATE_ENABLED and current_asset and getattr(new_ctx, "confidence", 0.0) > 0:
             state["asset_identified"] = None
             self._save_state(chat_id, state)
             return await self._handle_uns_confirmation_request(
