@@ -65,9 +65,14 @@ def main() -> int:
     print("Sign in as the YouTube account that should host the uploaded videos.", file=sys.stderr)
     print("", file=sys.stderr)
 
+    # prompt="consent select_account" forces Google to show BOTH the consent
+    # screen AND the account picker — even when the user is already signed
+    # in as another account. Without `select_account`, an already-signed-in
+    # session silently picks that account and uploads land in the wrong
+    # channel (bit us once already).
     creds = flow.run_local_server(
         port=0,
-        prompt="consent",
+        prompt="consent select_account",
         access_type="offline",
         open_browser=True,
         authorization_prompt_message=(
