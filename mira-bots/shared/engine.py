@@ -69,6 +69,8 @@ from .integrations.pm_suggestions import (
     is_pm_acceptance,
     suggest_followup_pm,
 )
+from .live_snapshot import STALE, render_status_block
+from .live_snapshot import normalize as normalize_live_tags
 from .models.work_order import (
     UNSWorkOrder,
     apply_wo_edit,
@@ -885,6 +887,7 @@ class Supervisor:
         mira_user_id: str | None = None,
         uns_source: str | None = None,
         tag_evidence: list | None = None,
+        live_tags: dict | None = None,
     ) -> str:
         """Main entry point. Returns reply string (backward-compatible).
 
@@ -901,6 +904,11 @@ class Supervisor:
         is recorded on ``state["context"]["uns_context"]["source"]`` and surfaced
         in the decision trace; it does NOT by itself alter gate firing (the full
         gate bypass is master-plan Phase 6).
+
+        ``live_tags`` (optional) is a raw read-only PLC/VFD tag dict. It is
+        attached to the message ONLY after the UNS confirmation gate has passed
+        (see ``_maybe_attach_live_snapshot``) — never before — so live data can
+        never bypass the gate. Callers that don't pass it are unaffected.
         """
         # Per-call tenant overrides constructor default. Stash on self so workers
         # can reach the current request's tenant via self._current_tenant_id.
@@ -908,6 +916,9 @@ class Supervisor:
         # from __init__ (set as the fallback below).
         self._current_tenant_id = tenant_id or self.tenant_id
         self._current_mira_user_id = mira_user_id or ""
+
+        # Read-only live-tag snapshot — gated on a confirmed asset (see helper).
+        message = self._maybe_attach_live_snapshot(chat_id, message, live_tags, platform)
 
         t0 = time.monotonic()
         try:
@@ -1025,6 +1036,62 @@ class Supervisor:
             task.add_done_callback(self._decision_trace_tasks.discard)
         except Exception as exc:  # noqa: BLE001
             logger.debug("decision_trace schedule skipped: %s", exc)
+
+    def _maybe_attach_live_snapshot(
+        self,
+        chat_id: str,
+        message: str,
+        live_tags: dict | None,
+        platform: str,
+    ) -> str:
+        """Prefix ``message`` with a read-only live-tag status block, gated.
+
+        Returns ``message`` unchanged unless ALL hold:
+          * ``live_tags`` was provided, and
+          * the conversation has already passed the UNS confirmation gate — the
+            pre-turn FSM state is an active diagnostic state AND an asset is
+            confirmed (``asset_identified``).
+
+        This is the gate-safety guarantee: live machine data is never attached
+        before the technician's asset context is confirmed, so it cannot drive a
+        troubleshooting answer ahead of the gate. Each attached snapshot is
+        logged (``LIVE_SNAPSHOT``) for traceability. Best-effort: any failure
+        falls back to the original message so a snapshot bug never breaks chat.
+        """
+        if not live_tags:
+            return message
+        try:
+            state = self._load_state(chat_id)
+            fsm_state = state.get("state", "IDLE")
+            if fsm_state not in ACTIVE_DIAGNOSTIC_STATES or not state.get("asset_identified"):
+                logger.info(
+                    "LIVE_SNAPSHOT_WITHHELD chat_id=%s reason=gate_not_passed state=%s",
+                    chat_id,
+                    fsm_state,
+                )
+                return message
+            uns_ctx = (state.get("context") or {}).get("uns_context") or {}
+            uns_base = uns_ctx.get("uns_path") or ""
+            ts = datetime.now(timezone.utc).isoformat()
+            snapshots = normalize_live_tags(live_tags, uns_base, source=platform, ts=ts)
+            block = render_status_block(snapshots)
+            if not block:
+                return message
+            n_stale = sum(1 for s in snapshots if s.quality == STALE)
+            logger.info(
+                "LIVE_SNAPSHOT chat_id=%s uns=%s source=%s ts=%s n=%d stale=%d datapoints=%s",
+                chat_id,
+                uns_base or "-",
+                platform,
+                ts,
+                len(snapshots),
+                n_stale,
+                ",".join(s.datapoint for s in snapshots),
+            )
+            return f"{block}\n\n{message}"
+        except Exception as exc:
+            logger.warning("LIVE_SNAPSHOT_ERROR chat_id=%s err=%s", chat_id, exc)
+            return message
 
     async def _apply_quality_gate(
         self,
