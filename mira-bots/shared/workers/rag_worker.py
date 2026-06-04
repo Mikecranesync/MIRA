@@ -705,7 +705,9 @@ class RAGWorker:
         avoid a cross-tenant data race when Nemotron reranking is enabled.
         """
         system_content = (
-            _active_system_prompt() + getattr(self, "_kg_context", "") + "\n\n--- CURRENT STATE ---\n"
+            _active_system_prompt()
+            + getattr(self, "_kg_context", "")
+            + "\n\n--- CURRENT STATE ---\n"
         )
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"
@@ -806,7 +808,9 @@ class RAGWorker:
                 instead of refusing.
         """
         system_content = (
-            _active_system_prompt() + getattr(self, "_kg_context", "") + "\n\n--- CURRENT STATE ---\n"
+            _active_system_prompt()
+            + getattr(self, "_kg_context", "")
+            + "\n\n--- CURRENT STATE ---\n"
         )
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"

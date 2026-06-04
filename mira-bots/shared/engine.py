@@ -2689,9 +2689,7 @@ class Supervisor:
             logger.debug("KG_CONTEXT miss asset=%r: %s", asset, exc)
             return ""
 
-    async def _fetch_kg_maintenance_context(
-        self, tenant_id: str, uns_path: str
-    ) -> dict | None:
+    async def _fetch_kg_maintenance_context(self, tenant_id: str, uns_path: str) -> dict | None:
         """POST the maintenance_context op to mira-hub's internal KG API.
 
         Mirrors mira-mcp/kg_client.py's contract (that hyphenated package isn't
@@ -2780,9 +2778,7 @@ class Supervisor:
         if not _LIVE_DATA_ENABLED:
             return ""
         try:
-            data = await asyncio.wait_for(
-                self._fetch_live_status(), timeout=_LIVE_DATA_TIMEOUT_S
-            )
+            data = await asyncio.wait_for(self._fetch_live_status(), timeout=_LIVE_DATA_TIMEOUT_S)
             return self._format_live_data(data) if data else ""
         except Exception as exc:  # noqa: BLE001 -- enrichment must never block diagnosis
             logger.debug("LIVE_DATA miss: %s", exc)
@@ -3661,7 +3657,11 @@ class Supervisor:
         )
 
     async def _handle_asset_switch(
-        self, chat_id: str, message: str, state: dict, trace_id: str,
+        self,
+        chat_id: str,
+        message: str,
+        state: dict,
+        trace_id: str,
         tenant_id: str | None = None,
     ) -> dict:
         """User wants to talk about a different asset — clear FSM, preserve session memory."""
