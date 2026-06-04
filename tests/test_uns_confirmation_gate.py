@@ -186,6 +186,14 @@ def test_gate_fires_on_diagnose_idle_no_asset(tmp_path):
     assert sv._should_fire_uns_gate("diagnose_equipment", state, "why is conveyor stopped", {}) is True
 
 
+def test_gate_fires_on_schedule_maintenance(tmp_path):
+    """PM scheduling is asset-specific — require a confirmed asset, same as diagnose.
+    schedule_maintenance has no dedicated pre-gate handler, so it reaches the gate."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("u")
+    assert sv._should_fire_uns_gate("schedule_maintenance", state, "schedule a PM", {}) is True
+
+
 def test_gate_does_not_fire_on_general_question(tmp_path):
     """'What is MQTT?' routes to general_question — gate never sees it. But even
     if it did, the gate must refuse to fire on non-diagnose intents."""

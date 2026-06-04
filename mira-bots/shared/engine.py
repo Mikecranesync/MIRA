@@ -332,6 +332,13 @@ _DST_ENABLED = os.getenv("MIRA_USE_DST", "0") == "1"
 # out in docs/plans/2026-05-15-maintenance-namespace-builder.md Phase 1 acceptance.
 _UNS_GATE_ENABLED = os.getenv("MIRA_UNS_GATE_ENABLED", "1") == "1"
 
+# Router intents that require a CONFIRMED asset before MIRA acts on it: diagnosing
+# a fault and scheduling asset-specific maintenance. (log_work_order /
+# check_equipment_history / switch_asset have their own dedicated handlers that run
+# before the gate.) Keep this narrow -- general questions, doc fetches, and
+# chitchat must NOT be gated.
+_GATED_INTENTS = frozenset({"diagnose_equipment", "schedule_maintenance"})
+
 # KG maintenance-context enrichment (additive, OFF by default). When on AND
 # INTERNAL_KG_API_KEY is configured, the diagnosis path fetches knowledge-graph
 # context (equipment hierarchy, components, recent faults + work orders) for the
@@ -4712,7 +4719,8 @@ class Supervisor:
 
         Conditions (all must hold):
         - MIRA_UNS_GATE_ENABLED is on (default true)
-        - router classified turn as diagnose_equipment
+        - router classified the turn as a gated intent (see _GATED_INTENTS:
+          diagnose_equipment or schedule_maintenance)
         - session has no asset_identified
         - session is in IDLE (don't interrupt mid-FSM Q1/Q2/Q3/DIAGNOSIS).
           AWAITING_UNS_CONFIRMATION is consumed earlier in `process()` via
@@ -4725,7 +4733,7 @@ class Supervisor:
         del message, session_context  # reserved for future signal expansion
         if not _UNS_GATE_ENABLED:
             return False
-        if router_intent != "diagnose_equipment":
+        if router_intent not in _GATED_INTENTS:
             return False
         if state.get("asset_identified"):
             return False
