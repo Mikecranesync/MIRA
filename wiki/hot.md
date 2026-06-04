@@ -1,4 +1,13 @@
-# Hot Cache — 2026-05-29 — ALPHA
+# Hot Cache — 2026-06-04 — CLOUD
+
+## Gap-closure driver run — 2026-06-04 (run 3)
+
+- **PR #1657** (`feat/dt2026-gap-closure`) — 2 of 22 CI checks failing:
+  - `apply-and-verify` **fixed**: migration `034_flaky_input_signals.sql` index referenced `created_at` but CI's existing table (from an older schema run) lacked the column. Added `DO $$ ADD COLUMN IF NOT EXISTS created_at/updated_at $$` idempotency guard (same pattern as 033). Fix pushed.
+  - `E2E smoke (factorylm.com + app.factorylm.com)` **needs human**: prod hub returning 502 on `/api/health` + `/login`; root redirects to `/feed/` instead of `/login` (auth middleware regression?). Unrelated to migration changes. Was healthy 2026-06-03 per prior session note. **Human action required on VPS.**
+- **PR #1674** (`feat/dt2026-rls-verification-1664`) — stacked on #1657; 0 check runs (stacked PRs don't trigger CI independently). Will auto-validate once #1657 merges.
+- **Open gap-closure PRs**: 2 (#1657, #1674) — at the 2-PR limit. Stopped per routine rule.
+- **Next on resume** (after CI green + human review): issue #1664 is already addressed by #1674. Next unblocked issue is #1658 (Phase 6 direct_connection UNS bypass, P1, ready-for-agent) — but requires #1657 to merge first.
 
 ## Session — 2026-06-03 (CHARLIE) — prod pipeline outage + CI prevention
 
