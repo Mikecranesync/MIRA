@@ -381,6 +381,7 @@ class RAGWorker:
         photo_b64: str = None,
         vision_model: str = None,
         tenant_id: str | None = None,
+        kg_context: str | None = None,
     ) -> str:
         """3-stage RAG pipeline. Returns raw LLM response string.
 
@@ -391,8 +392,13 @@ class RAGWorker:
             vision_model: Optional vision model override.
             tenant_id: Per-call tenant override. When provided, takes precedence
                 over the constructor-level ``self.tenant_id`` fallback.
+            kg_context: Optional pre-formatted knowledge-graph context block,
+                injected into the system prompt by the prompt builders. "" / None
+                = no KG block (the default; enrichment is engine-side + flag-gated).
         """
         effective_tenant = tenant_id or self.tenant_id
+        # Stash for the prompt builders (_build_prompt / _build_prompt_with_chunks).
+        self._kg_context = kg_context or ""
         # Track whether retrieval was attempted so we can inject the honesty
         # directive when it ran but returned zero useful chunks.
         retrieval_attempted = bool(effective_tenant)
@@ -698,7 +704,9 @@ class RAGWorker:
         call-local snapshot) is preferred over ``self._last_neon_chunks`` to
         avoid a cross-tenant data race when Nemotron reranking is enabled.
         """
-        system_content = _active_system_prompt() + "\n\n--- CURRENT STATE ---\n"
+        system_content = (
+            _active_system_prompt() + getattr(self, "_kg_context", "") + "\n\n--- CURRENT STATE ---\n"
+        )
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"
         system_content += f"Exchange count: {state['exchange_count']}\n"
@@ -797,7 +805,9 @@ class RAGWorker:
                 answerable from general engineering knowledge — LLM answers with a prefix
                 instead of refusing.
         """
-        system_content = _active_system_prompt() + "\n\n--- CURRENT STATE ---\n"
+        system_content = (
+            _active_system_prompt() + getattr(self, "_kg_context", "") + "\n\n--- CURRENT STATE ---\n"
+        )
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"
         system_content += f"Exchange count: {state['exchange_count']}\n"
