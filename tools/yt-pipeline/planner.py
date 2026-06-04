@@ -54,8 +54,7 @@ def generate_script(angle: str, groq_api_key: str) -> dict:
         f"- tags: list of 10 strings (industrial maintenance keywords)\n"
         f"- scene1_prompt: string (Seedance AI video prompt, 8s cinematic industrial B-roll hook)\n"
         f"- scene2_narration: string (tight voiceover script, 110-140 words, ~60 seconds when read aloud)\n"
-        f"- scene3_prompt: string (Seedance AI video prompt, 8s B-roll for MIRA demo section)\n"
-        f"- scene3_screenshot_keywords: list of 3 strings (filename substrings matching promo screenshots)\n\n"
+        f"- scene3_prompt: string (Seedance AI video prompt, 8s B-roll for MIRA demo section)\n\n"
         f"Return ONLY the JSON object, no markdown fences."
     )
     resp = httpx.post(

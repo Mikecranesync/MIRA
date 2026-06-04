@@ -191,7 +191,6 @@ def test_run_silent_path_integration_with_mocks(tmp_path, monkeypatch):
         "scene2_narration": "Some narration",
         "scene1_prompt": "Generate scene 1",
         "scene3_prompt": "Generate scene 3",
-        "scene3_screenshot_keywords": "keywords",
     }
 
     # assets WITHOUT narration_audio key (silent path)

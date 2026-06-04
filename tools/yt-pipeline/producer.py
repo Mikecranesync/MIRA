@@ -1,17 +1,21 @@
-"""Generates Seedance B-roll clips, selects promo screenshots, synthesizes narration audio."""
+"""Generates Seedance B-roll clips, selects topic-relevant slideshow visuals, synthesizes narration audio."""
 from __future__ import annotations
 
 import logging
+import random
 import sys
 import time
 from pathlib import Path
 
 import httpx
+import yaml
 
 log = logging.getLogger("yt-pipeline.producer")
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _DEFAULT_SCREENSHOTS_DIR = _REPO_ROOT / "docs" / "promo-screenshots"
+_VISUALS_MANIFEST = Path(__file__).parent / "visuals.yaml"
+_visuals_cache: dict | None = None
 
 # Reuse MIRA's existing TTS engine from the comic pipeline (single source of truth).
 _COMIC_ROOT = _REPO_ROOT / "marketing" / "comic-pipeline"
@@ -38,12 +42,150 @@ _NARRATION_STYLE = (
 )
 
 
+def _load_visuals_config(manifest_path: Path = _VISUALS_MANIFEST) -> dict:
+    """Load visuals.yaml once and cache the parsed dict."""
+    global _visuals_cache
+    if _visuals_cache is None:
+        loaded = yaml.safe_load(manifest_path.read_text())
+        _visuals_cache = loaded
+        return loaded
+    return _visuals_cache
+
+
+def _industrial_pool(tags: list[str], base_dir: Path, pattern: str) -> list[Path]:
+    """Glob the regime3 photo dir for every requested tag and return the combined pool."""
+    pool: list[Path] = []
+    for tag in tags:
+        glob_pat = pattern.replace("{tag}", tag)
+        pool.extend(sorted(base_dir.glob(glob_pat)))
+    return pool
+
+
+def _product_pool(base_dir: Path, globs: list[str]) -> list[Path]:
+    """Collect product screenshots matching any of the configured glob patterns."""
+    pool: list[Path] = []
+    for g in globs:
+        pool.extend(sorted(base_dir.glob(g)))
+    # De-dup while preserving order.
+    seen: set[Path] = set()
+    uniq: list[Path] = []
+    for p in pool:
+        if p not in seen:
+            seen.add(p)
+            uniq.append(p)
+    return uniq
+
+
+def _interleave(industrial: list[Path], product: list[Path]) -> list[Path]:
+    """Round-robin merge so the slideshow alternates hardware → UI → hardware."""
+    out: list[Path] = []
+    i = j = 0
+    while i < len(industrial) or j < len(product):
+        if i < len(industrial):
+            out.append(industrial[i])
+            i += 1
+        if j < len(product):
+            out.append(product[j])
+            j += 1
+    return out
+
+
+def select_visuals(
+    area: str,
+    run_seed: int = 0,
+    count: int = 12,
+    *,
+    manifest_path: Path = _VISUALS_MANIFEST,
+    repo_root: Path = _REPO_ROOT,
+) -> list[Path]:
+    """Pick `count` topic-relevant slideshow paths for the given topics.yaml area.
+
+    Uses visuals.yaml to map area → industrial-hardware tags + optional
+    MIRA-product-screenshot fraction. Shuffle is deterministic per
+    (area, run_seed) so each angle gets a stable but distinct slideshow.
+    """
+    cfg = _load_visuals_config(manifest_path)
+    topic_cfg = cfg["topics"].get(area)
+    if topic_cfg is None:
+        # Unknown area — fall back to all industrial tags so we still ship
+        # topical industrial imagery instead of MIRA UI.
+        log.warning("Unknown area %r — falling back to all industrial tags", area)
+        topic_cfg = {
+            "industrial_tags": ["vfd", "motor", "contactor", "breaker", "starter", "plc", "panel", "sensor"],
+            "product_fraction": 0.0,
+        }
+
+    pools = cfg["pools"]
+    ind_pool = _industrial_pool(
+        topic_cfg.get("industrial_tags", []),
+        repo_root / pools["industrial_hardware"]["base_dir"],
+        pools["industrial_hardware"]["filename_pattern"],
+    )
+    prod_pool = _product_pool(
+        repo_root / pools["mira_product"]["base_dir"],
+        pools["mira_product"]["filename_globs"],
+    )
+
+    if not ind_pool and not prod_pool:
+        raise RuntimeError(
+            f"select_visuals: both asset pools empty for area={area!r}. "
+            f"Check {pools['industrial_hardware']['base_dir']} and "
+            f"{pools['mira_product']['base_dir']}."
+        )
+    if not ind_pool:
+        log.warning("Industrial pool empty for area=%r — using product pool only", area)
+        topic_cfg = {**topic_cfg, "product_fraction": 1.0}
+
+    rng = random.Random(hash((area, run_seed)) & 0xFFFFFFFF)
+
+    product_fraction = float(topic_cfg.get("product_fraction", 0.0))
+    n_product = int(round(count * product_fraction))
+    n_industrial = count - n_product
+
+    # Bound by what's actually available.
+    n_industrial = min(n_industrial, len(ind_pool))
+    n_product = min(n_product, len(prod_pool))
+    # Top up from the other pool if one is exhausted, to keep the slideshow full.
+    if n_industrial + n_product < count:
+        deficit = count - n_industrial - n_product
+        if len(ind_pool) - n_industrial >= deficit:
+            n_industrial += deficit
+        else:
+            n_product += min(deficit, len(prod_pool) - n_product)
+
+    if n_industrial > 0:
+        ind_shuffled = ind_pool.copy()
+        rng.shuffle(ind_shuffled)
+        ind_pick = ind_shuffled[:n_industrial]
+    else:
+        ind_pick = []
+
+    if n_product > 0:
+        prod_shuffled = prod_pool.copy()
+        rng.shuffle(prod_shuffled)
+        prod_pick = prod_shuffled[:n_product]
+    else:
+        prod_pick = []
+
+    if not prod_pick:
+        return ind_pick[:count]
+    if not ind_pick:
+        return prod_pick[:count]
+    return _interleave(ind_pick, prod_pick)[:count]
+
+
 def select_screenshots(
     keywords: list[str],
     screenshots_dir: Path = _DEFAULT_SCREENSHOTS_DIR,
     count: int = 4,
 ) -> list[Path]:
-    """Return up to `count` screenshots: keyword matches first, then most recent."""
+    """Legacy keyword-match selector (deprecated — see select_visuals).
+
+    Still callable for any external consumer, but the main pipeline routes
+    through `select_visuals` now. This function was the source of the
+    script-vs-visuals mismatch (Groq guessed keywords blind against a
+    SaaS-UI-only screenshot pool → unrelated stills in fault-rescue videos).
+    """
     all_shots = sorted(screenshots_dir.glob("*.png"), reverse=True)
     matches: list[Path] = []
     for kw in keywords:
@@ -146,8 +288,10 @@ def produce(
         assets["scene1_clip"] = str(clip1)
         assets["scene3_clip"] = str(clip3)
 
-    # Select 12 screenshots to fill the slideshow
-    screenshots = select_screenshots(plan["scene3_screenshot_keywords"], count=12)
+    # Select 12 topic-relevant visuals to fill the slideshow.
+    # Drives off plan["area"] (the topics.yaml bucket) + plan["angle_index"]
+    # so each angle gets a stable but distinct slideshow.
+    screenshots = select_visuals(plan["area"], run_seed=plan["angle_index"], count=12)
 
     # ALWAYS write the narration script to disk, regardless of TTS availability
     script_path = run_dir / "narration_script.txt"

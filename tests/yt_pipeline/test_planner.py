@@ -43,7 +43,6 @@ topics:
         "scene1_prompt": "scene1",
         "scene2_narration": "narration",
         "scene3_prompt": "scene3",
-        "scene3_screenshot_keywords": ["workorder"],
     }
     with patch("tools.yt_pipeline.planner.generate_script", return_value=mock_script):
         from tools.yt_pipeline.planner import plan_next
@@ -61,7 +60,6 @@ def test_generate_script_parses_groq_response():
         "scene1_prompt": "cinematic broll",
         "scene2_narration": "In this video...",
         "scene3_prompt": "mira demo",
-        "scene3_screenshot_keywords": ["workorder", "hub"],
     }
     mock_resp = MagicMock()
     mock_resp.json.return_value = {
@@ -74,7 +72,7 @@ def test_generate_script_parses_groq_response():
         result = generate_script("VFD overcurrent", "fake-groq-key")
 
     assert result["title"] == "VFD Overcurrent Fix"
-    assert result["scene3_screenshot_keywords"] == ["workorder", "hub"]
+    assert result["scene3_prompt"] == "mira demo"
 
 
 def test_chapter_timestamps_are_short_and_honest():

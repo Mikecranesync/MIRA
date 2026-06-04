@@ -1,0 +1,53 @@
+# tools/yt-pipeline/visuals.yaml
+#
+# Topic → asset-pool manifest. The pipeline reads this in producer.select_visuals()
+# to choose slideshow images that actually match the script topic.
+#
+# Pools point at existing directories — nothing is copied. Industrial hardware
+# photos come from tests/regime3_nameplate/photos/real/ (the same 745-photo
+# trove the nameplate-recognition regime uses); the MIRA product subset is a
+# curated slice of docs/promo-screenshots/ (recent demo captures only — older
+# pricing-page/login-screen stills are skipped because they were the source of
+# the original mismatch bug).
+#
+# Per-topic config:
+#   industrial_tags     — filename-prefix tags to draw from in industrial_hardware
+#                         (gp_<tag>_*.jpg). Filtered against the "tag whitelist"
+#                         to avoid the "other" bucket bleeding in.
+#   product_fraction    — fraction of slideshow slots filled from mira_product
+#                         (0.0 = all hardware; 0.6 = mostly product UI, for
+#                         MIRA-demo-heavy weeks).
+
+pools:
+  industrial_hardware:
+    base_dir: tests/regime3_nameplate/photos/real
+    filename_pattern: "gp_{tag}_*.jpg"
+
+  mira_product:
+    base_dir: docs/promo-screenshots
+    # Only the recent demo captures. Older marketing/pricing stills are NOT
+    # included — they're what caused the original SaaS-UI-in-fault-video bug.
+    filename_globs:
+      - "2026-05-2*_*.png"
+      - "2026-05-3*_*.png"
+
+topics:
+  week1_fault_rescues:
+    # Mostly VFD/starter/PLC content. Pool widened to include all faulting
+    # hardware classes so the slideshow doesn't repeat the same 8 VFD photos.
+    industrial_tags: [vfd, motor, contactor, breaker, starter, plc, relay, panel]
+    product_fraction: 0.0
+
+  week2_literacy_and_harder_faults:
+    industrial_tags: [vfd, motor, contactor, breaker, plc, panel, sensor, starter, relay]
+    product_fraction: 0.0
+
+  week3_uns_mqtt_first_mira:
+    # MIRA appears in roughly half the angles; blend hardware + product UI.
+    industrial_tags: [vfd, motor, panel, plc, sensor]
+    product_fraction: 0.4
+
+  week4_product_proof_and_deep_demos:
+    # Product-proof week; product UI dominates.
+    industrial_tags: [vfd, motor, panel, plc]
+    product_fraction: 0.6
