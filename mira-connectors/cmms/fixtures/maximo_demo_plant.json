@@ -1,0 +1,157 @@
+{
+  "_meta": {
+    "source": "IBM Maximo EAM",
+    "api_hint": "MAS Maximo Manage REST (oslc/os/mxapiasset, mxapiwodetail, mxapipm, ...)",
+    "note": "Mock fixture. Real Maximo field names (ASSETNUM, SITEID, LOCATION, PARENT, ...). The two MIRA_* fields on assets show how MIRA-written custom fields survive a round-trip.",
+    "orgid": "ACME"
+  },
+  "orgs": [
+    { "ORGID": "ACME", "DESCRIPTION": "Acme Manufacturing", "BASECURRENCY1": "USD", "ACTIVE": true }
+  ],
+  "sites": [
+    { "SITEID": "BEDFORD", "ORGID": "ACME", "DESCRIPTION": "Bedford Plant", "ACTIVE": true, "CONTACT": "J. Reyes" },
+    { "SITEID": "NASHUA", "ORGID": "ACME", "DESCRIPTION": "Nashua Plant", "ACTIVE": true, "CONTACT": "K. Owens" }
+  ],
+  "locations": [
+    { "LOCATION": "PLANT-A", "DESCRIPTION": "Bedford Plant Building A", "SITEID": "BEDFORD", "ORGID": "ACME", "PARENT": null, "TYPE": "OPERATING", "STATUS": "OPERATING", "LOCHIERARCHY": "PLANT-A", "CHANGEDATE": "2025-11-03T08:12:00Z" },
+    { "LOCATION": "AREA-1", "DESCRIPTION": "Packaging Area", "SITEID": "BEDFORD", "ORGID": "ACME", "PARENT": "PLANT-A", "TYPE": "OPERATING", "STATUS": "OPERATING", "LOCHIERARCHY": "PLANT-A \\ AREA-1", "CHANGEDATE": "2025-11-03T08:14:00Z" },
+    { "LOCATION": "LINE-1", "DESCRIPTION": "Bottling Line 1", "SITEID": "BEDFORD", "ORGID": "ACME", "PARENT": "AREA-1", "TYPE": "OPERATING", "STATUS": "OPERATING", "LOCHIERARCHY": "PLANT-A \\ AREA-1 \\ LINE-1", "CHANGEDATE": "2025-11-03T08:15:00Z" },
+    { "LOCATION": "CELL-1", "DESCRIPTION": "Infeed Conveyor Cell", "SITEID": "BEDFORD", "ORGID": "ACME", "PARENT": "LINE-1", "TYPE": "OPERATING", "STATUS": "OPERATING", "LOCHIERARCHY": "PLANT-A \\ AREA-1 \\ LINE-1 \\ CELL-1", "CHANGEDATE": "2025-11-03T08:16:00Z" },
+    { "LOCATION": "PLANT-B", "DESCRIPTION": "Nashua Plant Building B", "SITEID": "NASHUA", "ORGID": "ACME", "PARENT": null, "TYPE": "OPERATING", "STATUS": "OPERATING", "LOCHIERARCHY": "PLANT-B", "CHANGEDATE": "2025-11-04T09:00:00Z" },
+    { "LOCATION": "AREA-7", "DESCRIPTION": "Receiving Area", "SITEID": "NASHUA", "ORGID": "ACME", "PARENT": "PLANT-B", "TYPE": "OPERATING", "STATUS": "OPERATING", "LOCHIERARCHY": "PLANT-B \\ AREA-7", "CHANGEDATE": "2025-11-04T09:02:00Z" }
+  ],
+  "assets": [
+    {
+      "ASSETNUM": "CONV-001", "SITEID": "BEDFORD", "ORGID": "ACME", "LOCATION": "CELL-1",
+      "PARENT": null, "DESCRIPTION": "Infeed Belt Conveyor", "STATUS": "OPERATING",
+      "ASSETTYPE": "PRODUCTION", "SERIALNUM": "CNV-2021-4471", "MANUFACTURER": "Dorner",
+      "VENDOR": "Dorner", "INSTALLDATE": "2021-06-15", "PRIORITY": 2,
+      "CHANGEDATE": "2026-05-20T14:03:00Z", "CHANGEBY": "MAXADMIN",
+      "MIRA_UNS_PATH": "enterprise.acme.site.bedford.area.area_1.line.line_1.work_cell.cell_1.equipment.conv_001",
+      "MIRA_CONFIDENCE": "high"
+    },
+    {
+      "ASSETNUM": "MOTOR-001", "SITEID": "BEDFORD", "ORGID": "ACME", "LOCATION": "CELL-1",
+      "PARENT": "CONV-001", "DESCRIPTION": "Conveyor Drive Motor 2HP", "STATUS": "OPERATING",
+      "ASSETTYPE": "ROTATING", "SERIALNUM": "WEG-9931", "MANUFACTURER": "WEG", "VENDOR": "WEG",
+      "INSTALLDATE": "2021-06-15", "PRIORITY": 2, "CHANGEDATE": "2026-05-20T14:03:10Z", "CHANGEBY": "MAXADMIN",
+      "MIRA_UNS_PATH": null, "MIRA_CONFIDENCE": null
+    },
+    {
+      "ASSETNUM": "VFD-001", "SITEID": "BEDFORD", "ORGID": "ACME", "LOCATION": "CELL-1",
+      "PARENT": "CONV-001", "DESCRIPTION": "Variable Frequency Drive GS10 1HP", "STATUS": "OPERATING",
+      "ASSETTYPE": "ELECTRICAL", "SERIALNUM": "GS10-55120", "MANUFACTURER": "AutomationDirect", "VENDOR": "AutomationDirect",
+      "INSTALLDATE": "2021-06-15", "PRIORITY": 1, "CHANGEDATE": "2026-05-21T11:20:00Z", "CHANGEBY": "MAXADMIN",
+      "MIRA_UNS_PATH": null, "MIRA_CONFIDENCE": null
+    },
+    {
+      "ASSETNUM": "PE-101", "SITEID": "BEDFORD", "ORGID": "ACME", "LOCATION": "CELL-1",
+      "PARENT": "CONV-001", "DESCRIPTION": "Photoeye Infeed Present", "STATUS": "OPERATING",
+      "ASSETTYPE": "INSTRUMENT", "SERIALNUM": "BJ-PE101", "MANUFACTURER": "Banner", "VENDOR": "Banner",
+      "INSTALLDATE": "2021-06-15", "PRIORITY": 3, "CHANGEDATE": "2026-05-19T07:45:00Z", "CHANGEBY": "MAXADMIN",
+      "MIRA_UNS_PATH": null, "MIRA_CONFIDENCE": null
+    },
+    {
+      "ASSETNUM": "PE-102", "SITEID": "BEDFORD", "ORGID": "ACME", "LOCATION": "CELL-1",
+      "PARENT": "CONV-001", "DESCRIPTION": "Photoeye Discharge Clear", "STATUS": "OPERATING",
+      "ASSETTYPE": "INSTRUMENT", "SERIALNUM": "BJ-PE102", "MANUFACTURER": "Banner", "VENDOR": "Banner",
+      "INSTALLDATE": "2021-06-15", "PRIORITY": 3, "CHANGEDATE": "2026-05-19T07:46:00Z", "CHANGEBY": "MAXADMIN",
+      "MIRA_UNS_PATH": null, "MIRA_CONFIDENCE": null
+    },
+    {
+      "ASSETNUM": "PX-101", "SITEID": "BEDFORD", "ORGID": "ACME", "LOCATION": "CELL-1",
+      "PARENT": "CONV-001", "DESCRIPTION": "Proximity Switch Belt Index", "STATUS": "OPERATING",
+      "ASSETTYPE": "INSTRUMENT", "SERIALNUM": "IFM-PX101", "MANUFACTURER": "ifm", "VENDOR": "ifm",
+      "INSTALLDATE": "2021-06-15", "PRIORITY": 3, "CHANGEDATE": "2026-05-19T07:47:00Z", "CHANGEBY": "MAXADMIN",
+      "MIRA_UNS_PATH": null, "MIRA_CONFIDENCE": null
+    },
+    {
+      "ASSETNUM": "PUMP-220", "SITEID": "NASHUA", "ORGID": "ACME", "LOCATION": "AREA-7",
+      "PARENT": null, "DESCRIPTION": "Transfer Pump", "STATUS": "OPERATING",
+      "ASSETTYPE": "ROTATING", "SERIALNUM": "GRF-220-77", "MANUFACTURER": "Grundfos", "VENDOR": "Grundfos",
+      "INSTALLDATE": "2022-02-01", "PRIORITY": 2, "CHANGEDATE": "2026-05-10T10:00:00Z", "CHANGEBY": "MAXADMIN",
+      "MIRA_UNS_PATH": null, "MIRA_CONFIDENCE": null
+    }
+  ],
+  "failurecodes": [
+    {
+      "FAILURECODE": "CONVEYOR", "DESCRIPTION": "Conveyor System Failures", "ORGID": "ACME",
+      "children": [
+        {
+          "PROBLEMCODE": "NORUN", "DESCRIPTION": "Conveyor will not run",
+          "children": [
+            {
+              "CAUSECODE": "VFDFAULT", "DESCRIPTION": "VFD in fault state",
+              "children": [
+                { "REMEDYCODE": "RSTVFD", "DESCRIPTION": "Clear fault and restart VFD" },
+                { "REMEDYCODE": "RPLVFD", "DESCRIPTION": "Replace VFD module" }
+              ]
+            },
+            {
+              "CAUSECODE": "ESTOP", "DESCRIPTION": "E-stop engaged",
+              "children": [
+                { "REMEDYCODE": "RSTEST", "DESCRIPTION": "Reset E-stop and verify safety circuit" }
+              ]
+            }
+          ]
+        },
+        {
+          "PROBLEMCODE": "BELTSLIP", "DESCRIPTION": "Belt slipping / mistracking",
+          "children": [
+            {
+              "CAUSECODE": "TENSION", "DESCRIPTION": "Improper belt tension",
+              "children": [
+                { "REMEDYCODE": "ADJTEN", "DESCRIPTION": "Adjust take-up tension" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "workorders": [
+    {
+      "WONUM": "WO-10231", "DESCRIPTION": "Conveyor tripped on VFD fault F0004", "SITEID": "BEDFORD", "ORGID": "ACME",
+      "ASSETNUM": "CONV-001", "LOCATION": "CELL-1", "STATUS": "COMP", "WORKTYPE": "CM",
+      "REPORTDATE": "2026-05-18T06:30:00Z", "ACTFINISH": "2026-05-18T08:10:00Z",
+      "FAILURECODE": "CONVEYOR", "PROBLEMCODE": "NORUN", "CAUSECODE": "VFDFAULT", "REMEDYCODE": "RSTVFD",
+      "ACTLABHRS": 1.5, "LEADCRAFT": "ELECT", "REPORTEDBY": "operator_lopez",
+      "matusetrans": [
+        { "ITEMNUM": "FUSE-10A", "DESCRIPTION": "10A class CC fuse", "QTY": 2, "UNITCOST": 4.25 }
+      ],
+      "CHANGEDATE": "2026-05-18T08:11:00Z"
+    },
+    {
+      "WONUM": "WO-10198", "DESCRIPTION": "Belt mistracking on infeed", "SITEID": "BEDFORD", "ORGID": "ACME",
+      "ASSETNUM": "CONV-001", "LOCATION": "CELL-1", "STATUS": "COMP", "WORKTYPE": "CM",
+      "REPORTDATE": "2026-04-29T13:00:00Z", "ACTFINISH": "2026-04-29T14:20:00Z",
+      "FAILURECODE": "CONVEYOR", "PROBLEMCODE": "BELTSLIP", "CAUSECODE": "TENSION", "REMEDYCODE": "ADJTEN",
+      "ACTLABHRS": 1.0, "LEADCRAFT": "MECH", "REPORTEDBY": "operator_lopez",
+      "matusetrans": [],
+      "CHANGEDATE": "2026-04-29T14:21:00Z"
+    },
+    {
+      "WONUM": "WO-10302", "DESCRIPTION": "Monthly motor lubrication", "SITEID": "BEDFORD", "ORGID": "ACME",
+      "ASSETNUM": "MOTOR-001", "LOCATION": "CELL-1", "STATUS": "WAPPR", "WORKTYPE": "PM",
+      "REPORTDATE": "2026-06-01T05:00:00Z", "ACTFINISH": null,
+      "FAILURECODE": null, "PROBLEMCODE": null, "CAUSECODE": null, "REMEDYCODE": null,
+      "ACTLABHRS": 0.0, "LEADCRAFT": "MECH", "REPORTEDBY": "pm_scheduler", "PMNUM": "PM-MOTOR-LUBE",
+      "matusetrans": [],
+      "CHANGEDATE": "2026-06-01T05:00:00Z"
+    }
+  ],
+  "pmschedules": [
+    { "PMNUM": "PM-MOTOR-LUBE", "DESCRIPTION": "Motor bearing lubrication", "ASSETNUM": "MOTOR-001", "SITEID": "BEDFORD", "ORGID": "ACME", "FREQUENCY": 1, "FREQUNIT": "MONTHS", "LEADCRAFT": "MECH", "STATUS": "ACTIVE", "CHANGEDATE": "2026-01-05T00:00:00Z" },
+    { "PMNUM": "PM-BELT-INSPECT", "DESCRIPTION": "Belt tension & tracking inspection", "ASSETNUM": "CONV-001", "SITEID": "BEDFORD", "ORGID": "ACME", "FREQUENCY": 2, "FREQUNIT": "WEEKS", "LEADCRAFT": "MECH", "STATUS": "ACTIVE", "CHANGEDATE": "2026-01-05T00:00:00Z" },
+    { "PMNUM": "PM-VFD-ANNUAL", "DESCRIPTION": "VFD annual inspection & firmware check", "ASSETNUM": "VFD-001", "SITEID": "BEDFORD", "ORGID": "ACME", "FREQUENCY": 12, "FREQUNIT": "MONTHS", "LEADCRAFT": "ELECT", "STATUS": "ACTIVE", "CHANGEDATE": "2026-01-05T00:00:00Z" }
+  ],
+  "meters": [
+    { "ASSETNUM": "MOTOR-001", "METERNAME": "MOTOR_HOURS", "METERTYPE": "CONTINUOUS", "UOM": "HOURS", "LASTREADING": 8421.5, "MEASUREDATE": "2026-06-02T23:00:00Z" },
+    { "ASSETNUM": "MOTOR-001", "METERNAME": "VIBRATION_LEVEL", "METERTYPE": "GAUGE", "UOM": "MM/S", "LASTREADING": 2.8, "MEASUREDATE": "2026-06-02T23:00:00Z" }
+  ],
+  "doclinks": [
+    { "DOCINFOID": 90011, "DOCUMENT": "GS10_user_manual_v3.pdf", "DESCRIPTION": "AutomationDirect GS10 VFD User Manual", "URLTYPE": "FILE", "URLNAME": "doclinks/GS10_user_manual_v3.pdf", "ADDINFO": "MANUAL", "ASSETNUM": "VFD-001", "SITEID": "BEDFORD" },
+    { "DOCINFOID": 90012, "DOCUMENT": "CONV-001_wiring.pdf", "DESCRIPTION": "Infeed conveyor wiring diagram rev B", "URLTYPE": "FILE", "URLNAME": "doclinks/CONV-001_wiring.pdf", "ADDINFO": "WIRING", "ASSETNUM": "CONV-001", "SITEID": "BEDFORD" },
+    { "DOCINFOID": 90013, "DOCUMENT": "WEG_motor_datasheet.pdf", "DESCRIPTION": "WEG W22 motor datasheet", "URLTYPE": "FILE", "URLNAME": "doclinks/WEG_motor_datasheet.pdf", "ADDINFO": "MANUAL", "ASSETNUM": "MOTOR-001", "SITEID": "BEDFORD" }
+  ]
+}
