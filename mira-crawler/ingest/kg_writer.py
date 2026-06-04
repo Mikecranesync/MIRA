@@ -151,9 +151,20 @@ def upsert_relationship(
     source_chunk_id: str | UUID | None = None,
     conn=None,
 ) -> str | None:
-    """Insert (or fetch existing) a kg_relationships row. Returns the
-    relationship id as a string, or None on hard failure."""
-    from sqlalchemy import text
+    """Propose an ingest-derived edge instead of writing it as a verified
+    fact. Per the "never auto-verify" doctrine (.claude/CLAUDE.md, ADR-0017)
+    this no longer touches `kg_relationships` directly — it routes through
+    `proposal_writer.propose_relationship`, which lands the edge in
+    `relationship_proposals` + `ai_suggestions(kg_edge)` for human review.
+    The verified `kg_relationships` row is written only on admin approval
+    (mira-hub `.../proposals/[id]/decide`).
+
+    Returns the `relationship_proposals` id as a string, or None when
+    nothing was proposed (self-edge, unmapped type, already-present edge,
+    or hard failure). `properties` is accepted for backwards compatibility;
+    its `reasoning`/`note` keys (if any) become the proposal rationale, but
+    it is otherwise not persisted at propose time."""
+    from .proposal_writer import propose_relationship
 
     if not source_entity or not target_entity or not relation_type:
         return None
@@ -161,42 +172,26 @@ def upsert_relationship(
         logger.debug("upsert_relationship skipped self-edge %s", source_entity)
         return None
 
-    props_json = json.dumps(properties or {})
+    reasoning = None
+    if properties:
+        reasoning = (properties.get("reasoning") or properties.get("note")) or None
     src_chunk = str(source_chunk_id) if source_chunk_id else None
 
     try:
         with _get_conn(conn) as c:
-            row = c.execute(
-                text("""
-                    INSERT INTO kg_relationships
-                        (tenant_id, source_id, target_id,
-                         relationship_type, properties, confidence,
-                         source_chunk_id)
-                    VALUES
-                        (:tenant_id, :source, :target, :rel,
-                         cast(:properties AS jsonb), :confidence,
-                         cast(:source_chunk_id AS uuid))
-                    ON CONFLICT
-                        (tenant_id, source_id, target_id, relationship_type)
-                    DO UPDATE SET
-                        confidence = GREATEST(kg_relationships.confidence,
-                                              EXCLUDED.confidence)
-                    RETURNING id
-                """),
-                {
-                    "tenant_id": tenant_id,
-                    "source": str(source_entity),
-                    "target": str(target_entity),
-                    "rel": relation_type,
-                    "properties": props_json,
-                    "confidence": confidence,
-                    "source_chunk_id": src_chunk,
-                },
-            ).first()
-            return str(row[0]) if row else None
+            return propose_relationship(
+                c,
+                tenant_id=tenant_id,
+                source_entity=source_entity,
+                target_entity=target_entity,
+                relation_type=relation_type,
+                confidence=confidence,
+                reasoning=reasoning,
+                source_chunk_id=src_chunk,
+            )
     except Exception as e:
         logger.error(
-            "upsert_relationship failed %s -[%s]-> %s: %s",
+            "upsert_relationship (propose) failed %s -[%s]-> %s: %s",
             source_entity,
             relation_type,
             target_entity,

@@ -1,0 +1,186 @@
+"""Tests for the create-path proposer (issue #1662, ADR-0017).
+
+Invariant under test: an ingest-derived edge lands as a *proposal*
+(`relationship_proposals` + `ai_suggestions(kg_edge)`), never as a
+verified `kg_relationships` row. Verification happens only on admin
+approval in the Hub.
+
+These are pure-Python unit tests — no DB. A `FakeConn` records the SQL
+each call would execute and returns programmable `.first()` results, so we
+can assert *which tables get written* without a live NeonDB.
+"""
+
+from __future__ import annotations
+
+import json
+
+from ingest.proposal_writer import canonical_relation_type, propose_relationship
+
+PROPOSAL_ID = "11111111-1111-1111-1111-111111111111"
+
+
+class _FakeResult:
+    def __init__(self, row):
+        self._row = row
+
+    def first(self):
+        return self._row
+
+
+class _FakeConn:
+    """Records executed SQL + params; answers the queries propose_relationship
+    issues. Configure `existing_proposal_id` / `already_verified` to exercise
+    the idempotency branches."""
+
+    def __init__(self, existing_proposal_id=None, already_verified=False):
+        self.existing_proposal_id = existing_proposal_id
+        self.already_verified = already_verified
+        self.executed: list[tuple[str, dict]] = []
+
+    def execute(self, clause, params=None):
+        sql = str(clause)
+        self.executed.append((sql, params or {}))
+        if "FROM kg_entities" in sql:
+            return _FakeResult(("equipment",))
+        if "FROM relationship_proposals" in sql and "SELECT id" in sql:
+            return _FakeResult(
+                (self.existing_proposal_id,) if self.existing_proposal_id else None
+            )
+        if "FROM kg_relationships" in sql:
+            return _FakeResult((1,) if self.already_verified else None)
+        if "INSERT INTO relationship_proposals" in sql:
+            return _FakeResult((PROPOSAL_ID,))
+        return _FakeResult(None)
+
+    # convenience accessors -------------------------------------------------
+    def sql_blob(self) -> str:
+        return "\n".join(sql for sql, _ in self.executed)
+
+    def params_for(self, needle: str) -> dict:
+        for sql, params in self.executed:
+            if needle in sql:
+                return params
+        raise AssertionError(f"no executed statement matched {needle!r}")
+
+
+TENANT = "22222222-2222-2222-2222-222222222222"
+SRC = "33333333-3333-3333-3333-333333333333"
+TGT = "44444444-4444-4444-4444-444444444444"
+CHUNK = "55555555-5555-5555-5555-555555555555"
+
+
+class TestCanonicalMapping:
+    def test_known_types_map_to_canonical(self):
+        assert canonical_relation_type("has_manual") == "HAS_DOCUMENT"
+        assert canonical_relation_type("documented_in") == "HAS_DOCUMENT"
+        assert canonical_relation_type("has_fault") == "HAS_FAILURE_MODE"
+        assert canonical_relation_type("has_fault_code") == "HAS_FAILURE_MODE"
+
+    def test_case_insensitive(self):
+        assert canonical_relation_type("HAS_MANUAL") == "HAS_DOCUMENT"
+
+    def test_unknown_type_returns_none(self):
+        assert canonical_relation_type("frobnicate") is None
+        assert canonical_relation_type("") is None
+
+
+class TestProposeRelationship:
+    def test_writes_proposal_and_suggestion_not_kg_relationships(self):
+        """The core acceptance: fresh ingest edge → relationship_proposals,
+        NOT kg_relationships."""
+        c = _FakeConn()
+        rid = propose_relationship(
+            c,
+            tenant_id=TENANT,
+            source_entity=SRC,
+            target_entity=TGT,
+            relation_type="has_manual",
+            confidence=0.95,
+            source_chunk_id=CHUNK,
+        )
+        assert rid == PROPOSAL_ID
+        blob = c.sql_blob()
+        assert "INSERT INTO relationship_proposals" in blob
+        assert "INSERT INTO ai_suggestions" in blob
+        assert "INSERT INTO relationship_evidence" in blob
+        # The invariant: nothing is written to kg_relationships here.
+        assert "INSERT INTO kg_relationships" not in blob
+
+    def test_sets_rls_tenant_context(self):
+        """RLS-enforced tables (relationship_proposals / ai_suggestions) need
+        app.current_tenant_id set on the transaction, or inserts get filtered
+        under the factorylm_app role."""
+        c = _FakeConn()
+        propose_relationship(
+            c, tenant_id=TENANT, source_entity=SRC, target_entity=TGT,
+            relation_type="has_manual", confidence=0.95, source_chunk_id=CHUNK,
+        )
+        sc_params = c.params_for("set_config('app.current_tenant_id'")
+        assert sc_params["tid"] == TENANT
+
+    def test_proposal_uses_canonical_type(self):
+        c = _FakeConn()
+        propose_relationship(
+            c, tenant_id=TENANT, source_entity=SRC, target_entity=TGT,
+            relation_type="has_fault", confidence=0.85, source_chunk_id=CHUNK,
+        )
+        prop_params = c.params_for("INSERT INTO relationship_proposals")
+        assert prop_params["rel"] == "HAS_FAILURE_MODE"
+
+    def test_ai_suggestion_bridges_proposal_id(self):
+        c = _FakeConn()
+        propose_relationship(
+            c, tenant_id=TENANT, source_entity=SRC, target_entity=TGT,
+            relation_type="has_manual", confidence=0.95, source_chunk_id=CHUNK,
+        )
+        sug_params = c.params_for("INSERT INTO ai_suggestions")
+        extracted = json.loads(sug_params["extracted"])
+        assert extracted["relationship_proposal_id"] == PROPOSAL_ID
+        assert extracted["relationship_type"] == "HAS_DOCUMENT"
+        assert extracted["original_relation_type"] == "has_manual"
+
+    def test_unmapped_type_is_not_proposed(self):
+        c = _FakeConn()
+        rid = propose_relationship(
+            c, tenant_id=TENANT, source_entity=SRC, target_entity=TGT,
+            relation_type="frobnicate",
+        )
+        assert rid is None
+        assert "INSERT INTO relationship_proposals" not in c.sql_blob()
+
+    def test_self_edge_skipped(self):
+        c = _FakeConn()
+        rid = propose_relationship(
+            c, tenant_id=TENANT, source_entity=SRC, target_entity=SRC,
+            relation_type="has_manual",
+        )
+        assert rid is None
+        assert c.executed == []
+
+    def test_idempotent_when_open_proposal_exists(self):
+        c = _FakeConn(existing_proposal_id=PROPOSAL_ID)
+        rid = propose_relationship(
+            c, tenant_id=TENANT, source_entity=SRC, target_entity=TGT,
+            relation_type="has_manual", confidence=0.95, source_chunk_id=CHUNK,
+        )
+        assert rid == PROPOSAL_ID
+        assert "INSERT INTO relationship_proposals" not in c.sql_blob()
+
+    def test_skips_when_edge_already_verified(self):
+        c = _FakeConn(already_verified=True)
+        rid = propose_relationship(
+            c, tenant_id=TENANT, source_entity=SRC, target_entity=TGT,
+            relation_type="has_manual", confidence=0.95, source_chunk_id=CHUNK,
+        )
+        assert rid is None
+        assert "INSERT INTO relationship_proposals" not in c.sql_blob()
+
+    def test_evidence_skipped_without_source_chunk(self):
+        c = _FakeConn()
+        propose_relationship(
+            c, tenant_id=TENANT, source_entity=SRC, target_entity=TGT,
+            relation_type="has_manual", confidence=0.95,
+        )
+        assert "INSERT INTO relationship_evidence" not in c.sql_blob()
+        # proposal + suggestion still written
+        assert "INSERT INTO relationship_proposals" in c.sql_blob()
