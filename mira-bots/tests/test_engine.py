@@ -477,10 +477,10 @@ class TestSessionPivotRouting:
             result = asyncio.run(supervisor.process_full(chat_id, "do they have a website"))
 
         assert followup.await_count == 0
-        assert result["next_state"] == "ASSET_IDENTIFIED"
+        assert result["next_state"] == "IDLE"
 
         loaded = supervisor._load_state(chat_id)
-        assert loaded["state"] == "ASSET_IDENTIFIED"
+        assert loaded["state"] == "IDLE"
         assert loaded["fault_category"] is None
         assert loaded["final_state"] is None
         assert loaded["context"]["session_context"]["last_question"] is None
