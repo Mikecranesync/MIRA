@@ -148,19 +148,21 @@ class TestClassifyIntent:
         assert classify_intent("the manual reset switch is stuck") == "industrial"
         assert classify_intent("pulled the plug, fault still showing") == "industrial"
 
-    def test_parameter_lookup_returns_instructional(self):
-        # vfd_mitsu_03_a700_parameter regression — "parameter" is in INTENT_KEYWORDS
-        # but parameter lookup questions are informational, not fault diagnosis.
-        assert classify_intent("what's parameter Pr.7 on a Mitsubishi A700?") == "instructional"
-        assert classify_intent("what is parameter C1-01 on this drive") == "instructional"
-        assert classify_intent("what does parameter F7-01 do") == "instructional"
+    def test_parameter_lookup_lookup_phrase_returns_instructional(self):
+        # vfd_mitsu_03_a700_parameter regression — turn 2 "just looking up the default
+        # value and range for deceleration time, no fault" was hitting INTENT_KEYWORDS
+        # ("decel") and returning "industrial". "looking up the default" phrase intercepts it.
         assert (
             classify_intent("just looking up the default value and range for deceleration time, no fault")
             == "instructional"
         )
+        assert classify_intent("looking up the default setting for this parameter") == "instructional"
 
     def test_parameter_lookup_does_not_overmatch(self):
-        # A message mentioning "parameter" alongside fault evidence stays industrial.
+        # Bare "what is parameter X?" stays industrial — could be fault-context query.
+        # See bot_regression.py::powerflex_parameter_q.
+        assert classify_intent("what is parameter P044 on PowerFlex 525?") == "industrial"
+        assert classify_intent("what's parameter Pr.7 on a Mitsubishi A700?") == "industrial"
         assert classify_intent("parameter Pr.7 shows fault on screen") == "industrial"
         assert classify_intent("checked parameters, OL fault still active") == "industrial"
 

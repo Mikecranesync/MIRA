@@ -587,11 +587,10 @@ _INSTRUCTIONAL_PHRASES = (
     "give me the steps",
     "walk me through",
     "what are the steps",
-    # Parameter lookup queries — informational, not fault diagnosis.
-    # Checked before INTENT_KEYWORDS so "parameter"/"decel" don't route to industrial.
-    "what's parameter",
-    "what is parameter",
-    "what does parameter",
+    # Informational lookup phrasing — "looking up the default value/range" is clearly
+    # not fault diagnosis. Checked before INTENT_KEYWORDS so "decel" doesn't route to industrial.
+    # "what is/what's parameter X?" is intentionally NOT here — bare parameter questions
+    # can be fault-context queries (see bot_regression.py::powerflex_parameter_q).
     "looking up the default",
 )
 
