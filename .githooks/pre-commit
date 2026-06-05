@@ -190,7 +190,7 @@ fi
 #    Embedded shellcheck is disabled (-shellcheck=) so pre-existing run-block
 #    style nits don't block edits; .sh files are shellchecked in section 1.
 #    NOTE: skip-if-missing means this only protects machines that have
-#    actionlint installed — a non-skippable CI job is the real gate (see #1726).
+#    actionlint installed — the non-skippable CI gate is .github/workflows/actionlint.yml.
 # ------------------------------------------------------------------
 STAGED_WORKFLOWS=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^\.github/workflows/.*\.ya?ml$' || true)
 if [ -n "$STAGED_WORKFLOWS" ]; then
