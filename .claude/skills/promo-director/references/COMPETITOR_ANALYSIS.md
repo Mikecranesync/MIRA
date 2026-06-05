@@ -1,8 +1,29 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-06-05
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-06-05
+
+### Most actionable change for MIRA playbook
+
+Autodesk acquiring MaintainX at $3.6B (May 28) removes MIRA's most directly adjacent CMMS competitor from the independent market. Validates maintenance ops TAM; signals "standalone CMMS" vendors are now exit candidates. MIRA's counterplay: pure-play industrial diagnostic intelligence vs. a PLM suite's bolt-on. Secondary pattern: Notion Plan Mode (May 13) operationalizes the same principle as MIRA's UNS confirmation gate — agents confirm intent before acting. As this lands in a 100M-user product, the gate is industry-standard UX, not overhead.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — Autodesk CEO Bloomberg interview (May 29): https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video — $3.6B acquisition; "design-to-operate lifecycle" frame; corporate exec VO; no CTA [transcript not verified]
+- **MaintainX** — "What's New: May 2026" (product blog; no video): AI Procedure Recommendations, Sub Work Orders
+
+**Automation / SCADA**
+- **Rockwell Automation** — ROKStudios Interpack 2026 season (June 4): https://www.rockwellautomation.com/en-fi/company/news/presentations/rokstudios/ — theme narrowed from "automation to autonomy" → "OEM machine lifecycle innovation"; exec interview format; no YouTube URL confirmed
+
+**B2B SaaS / dev-tools**
+- **Notion** — "Make with Notion: Developer Platform" keynote (May 13): https://www.youtube.com/live/rpE2rzKO6L0 — Ivan Zhao; hook: "Any data, any tool, any agent"; Plan Mode confirmation gate before autonomous action; ~1h live [opening 5s not verified]
+- **Anthropic** — "Code with Claude" opening keynote (May 6, SF): https://www.youtube.com/watch?v=GMIWm5y90xA — first full developer conference; Managed Agents + Claude Design launches; format shift from analyst appearances to conference video library
 
 ---
 
@@ -87,6 +108,16 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+
+**Autodesk acquisition (announced May 28, 2026)**
+- Bloomberg CEO video: https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video
+- $3.6B all-cash; largest acquisition in Autodesk history; Autodesk CEO Andrew Anagnost on Bloomberg Open Interest
+- MaintainX ARR $135M+, growing >50%; Autodesk creating "Autodesk Operations Solutions" (AOS) for design-to-operate lifecycle
+- VO register: corporate executive
+- CTA: none — M&A announcement video [transcript not verified]
+- May 2026 product update pre-close: AI Procedure Recommendations, Sub Work Orders (product blog; no video)
+
+**Competitive signal:** MaintainX exits the independent CMMS market. Gains Autodesk distribution; loses independent roadmap. Acquisition integration creates a window for pure-play industrial diagnostic intelligence.
 
 ---
 
@@ -200,6 +231,14 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - VO register: corporate executive
 - CTA: soft brand / thought leadership
 
+**ROKStudios Interpack 2026 season (launched June 4, 2026)**
+- Portal: https://www.rockwellautomation.com/en-fi/company/news/presentations/rokstudios/
+- Recorded at Interpack 2026, Düsseldorf (global packaging trade show)
+- Theme: "OEM machine lifecycle innovation" — narrows prior season's "journey from automation to autonomy" to a practical OEM commercial frame
+- Topics: lifecycle-driven OEM strategies, OT/IT cybersecurity, long-term service models; 150+ total recordings in library
+- Format: exec interview series; no standalone YouTube URL confirmed
+- **Theme drift note:** Big-vision "autonomy" narrative is transitioning to "how OEMs deliver lifecycle value" — the sell-it-to-customers phase.
+
 **Automation Fair 2025 (Nov 17–20, Chicago)**
 - 30+ new products: ControlLogix 5590 (integrated functional safety), OptixEdge gateway, Armor PowerFlex 330, Asset+ managed service
 - NVIDIA NeMoTron partnership: edge-based generative AI for industrial intelligence
@@ -254,9 +293,15 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026 (April 29–30, 2026 — San Francisco, 10,000+ attendees)**
+- Opening keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8 (Patrick Collison + Will Gaybrick)
+- 12-minute summary: https://www.youtube.com/watch?v=8F4XyWYqZi8
+- Developer keynote: https://www.youtube.com/watch?v=NCw4TWMfV-k
+- Opening hook: Patrick Collison: "Day 119 of the singularity." [from attendee write-ups; transcript not verified]
+- Defining theme: "Agentic Commerce" — AI agents as economic actors initiating transactions
+- Scope: 288 product launches (vs. ~50 in 2025); Google partnership for agentic commerce infrastructure
+- VO register: founder (Collison) + product executive (Gaybrick)
+- CTA: soft — availabilities announced within demos
 
 **Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
 
@@ -302,7 +347,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
 - 30+ product releases in recent months per search results
-- No standalone promo video; analyst/conference appearances as primary video channel
+
+**"Code with Claude" developer conference (May 6, 2026 — San Francisco)**
+- Opening keynote: https://www.youtube.com/watch?v=GMIWm5y90xA
+- Full playlist: https://www.youtube.com/playlist?list=PLmWCw1CzcFim2obQ-w3ohbULOfwp5lApR
+- Lead presenters: CPO Ami Vora (opening); Dario Amodei fireside ("bottom of the ninth, bases loaded")
+- Format: full developer conference; keynote + breakout sessions; London follow-up May 19; Tokyo scheduled June 10
+- Key launches: Managed Agents (dreaming, outcomes, multiagent orchestration); doubled Claude Code + Opus rate limits; Claude Design (visual collaboration tool)
+- VO register: product-engineer hybrid; peer-to-peer, not corporate
+- CTA: hard — "available now" callouts throughout
+- **Format shift:** Prior entry noted "no standalone promo video; analyst appearances primary." Code with Claude is now a full conference with a growing video library — format on par with Stripe Sessions / Figma Config.
 
 ---
 
@@ -339,6 +393,17 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Music: likely ambient [not verified]
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
+
+**Notion 3.5 / "Make with Notion: Developer Platform" (May 13, 2026)**
+- URL: https://www.youtube.com/live/rpE2rzKO6L0
+- Presenter: Ivan Zhao (co-founder/CEO)
+- Opening hook: "Any data, any tool, any agent — that's the big picture for the Notion Developer Platform." [search-verified quote]
+- Footage style: live keynote + screen demo [not verified]
+- VO register: founder / peer
+- Key launches: Notion Workers (serverless sandbox), CLI, database sync (Salesforce/Zendesk), native external agent integration (Claude Code, Cursor, Codex as workspace agents)
+- **Plan Mode:** agents ask clarifying questions and build a detailed plan BEFORE executing multi-step changes — "fewer surprises, more confidence"
+- CTA: soft — "available now"
+- Pattern note (playbook-relevant): Plan Mode is the same principle as MIRA's UNS confirmation gate in a 100M-user product. Confirmation before autonomous action is becoming standard UX. Worth naming explicitly in MIRA positioning: the gate is what trustworthy industrial AI does.
 
 ---
 
@@ -385,6 +450,7 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| "Plan before acting" confirmation gate | Notion 3.5 Plan Mode: agents draft plan + ask clarifying Qs before executing; "fewer surprises" | MIRA UNS gate is this pattern for industrial context — name it explicitly in positioning, not as friction but as standard trusted-AI behavior |
 
 ### Anti-patterns (avoid)
 
@@ -398,3 +464,6 @@ No video content surfaced for 2025–2026.
 - **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **MaintainX**: acquired by Autodesk ($3.6B, May 2026). No longer an independent CMMS competitor — now a piece of Autodesk's design-to-operate lifecycle suite. Signals that standalone CMMS is an acquisition target, not a durable independent category.
+- **Rockwell Automation**: ROKStudios theme shifted from sweeping "journey from automation to autonomy" (Apr 2026) to practical "OEM machine lifecycle innovation" (Jun 2026 Interpack season). Big-vision autonomy narrative entering the OEM commercialization phase.
+- **Anthropic**: format shifted from analyst/podcast appearances to full developer conference with video library (Code with Claude, May 2026). Now has comparable video presence to Stripe Sessions and Figma Config.
