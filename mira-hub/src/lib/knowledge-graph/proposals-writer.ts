@@ -8,6 +8,39 @@
  */
 import type { PoolClient } from "pg";
 
+/**
+ * Canonical relationship-type vocabulary accepted by the
+ * `relationship_proposals.relationship_type` CHECK (migrations 018 → 028 →
+ * 032). Every inferred proposal MUST use one of these; a non-canonical type
+ * would violate the CHECK and throw, dropping the edge. Single source of
+ * truth on the TS side — keep in lockstep with the latest
+ * `*_relationship_type_check` migration.
+ */
+export const CANONICAL_PROPOSAL_RELATIONSHIP_TYPES = new Set<string>([
+  // Hierarchy
+  "HAS_COMPONENT", "INSTANCE_OF", "LOCATED_IN", "HAS_PART",
+  // Documentation
+  "HAS_DOCUMENT", "HAS_CHUNK", "REFERENCES", "HAS_PROCEDURE",
+  // Wiring & power
+  "WIRED_TO", "POWERED_BY", "MAPS_TO", "PUBLISHED_AS",
+  // Logic & control
+  "USED_IN_LOGIC", "TRIGGERS", "CAUSES", "DRIVES", "IS_DRIVEN_BY",
+  // Faults & resolution
+  "OCCURS_ON", "RESOLVED_BY", "HAS_FAILURE_MODE",
+  // Signals
+  "HAS_SIGNAL", "HAS_ALIAS",
+  // Topology
+  "DEPENDS_ON", "UPSTREAM_OF", "DOWNSTREAM_OF", "REPLACES",
+  // Evidence meta
+  "CONFIRMED_BY", "CONTRADICTED_BY",
+  // Inferred / similarity
+  "SAME_MODEL_AS", "CO_FAILED_WITH", "SIMILAR_TO",
+]);
+
+export function isCanonicalProposalRelationshipType(t: string): boolean {
+  return CANONICAL_PROPOSAL_RELATIONSHIP_TYPES.has(t);
+}
+
 export interface InferredEvidence {
   evidenceType: string; // must be in relationship_evidence CHECK (e.g. 'manifest','work_order')
   sourceDescription?: string;
@@ -32,6 +65,19 @@ export async function upsertInferredProposal(
   tenantId: string,
   p: InferredProposalInput,
 ): Promise<string | null> {
+  // Central guard: a non-canonical type would violate the
+  // relationship_proposals CHECK and throw. Skip (don't drop the run) and
+  // warn so the caller's mapping gap is visible. Every existing caller
+  // already passes canonical types.
+  if (!isCanonicalProposalRelationshipType(p.relationshipType)) {
+    console.warn(
+      `upsertInferredProposal: non-canonical relationship_type ${JSON.stringify(
+        p.relationshipType,
+      )} — proposal skipped (${p.sourceEntityId} -> ${p.targetEntityId})`,
+    );
+    return null;
+  }
+
   const relExists = await client.query(
     `SELECT 1 FROM kg_relationships
       WHERE tenant_id = $1 AND relationship_type = $2
