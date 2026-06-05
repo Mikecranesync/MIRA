@@ -10,16 +10,17 @@ Each variant mints its own ``enterprise.knowledge_base.<slug>`` node, which
 inflates the manufacturer count and scatters chunks/manuals across spurious
 vendors, hurting retrieval grouping.
 
-Scope (deliberately narrow)
----------------------------
-This module does **OCR/typo collapse only** — it maps misspellings toward
-the cleanest observed spelling. It does NOT do brand→corporate-parent
-canonicalization (e.g. ``Allen-Bradley`` → ``Rockwell Automation``). That
-brand-vs-parent question is a *separate, pre-existing* split between the KB
-catalog (which stores ``Allen-Bradley``) and the query-side resolver
-(``mira-bots/shared/uns_resolver.py`` ``VENDOR_ALIASES``, which maps to
-``Rockwell Automation``). Resolving it changes both surfaces and is carved
-out of #1596 as an open product decision — see the issue.
+Scope
+-----
+This module maps a raw manufacturer string to its canonical catalog name:
+- **Known vendors** (those the query-side resolver's ``VENDOR_ALIASES`` in
+  ``mira-bots/shared/uns_resolver.py`` recognizes) use the resolver's
+  canonical so the catalog and the query side group identically.
+  ``Allen-Bradley`` → ``Rockwell Automation`` (the corporate parent), per
+  the #1596 brand-vs-parent decision. A cross-surface consistency test
+  guards this agreement against drift.
+- **Long-tail vendors** the resolver has no opinion on (rigging / hoist
+  OEMs) get OCR/typo collapse toward the cleanest observed spelling.
 
 Divergence safety
 -----------------
@@ -60,16 +61,30 @@ logger = logging.getLogger("mira-crawler.manufacturer_normalize")
 # (Deshazoo/Deshazo ~0.93) clear it.
 FUZZY_THRESHOLD = 0.88
 
-# Curated OCR / extraction-variant → cleanest-observed-spelling map.
+# Curated manufacturer-variant → canonical map.
 # Keys are matched case-insensitively with internal whitespace collapsed
 # (see ``_norm_key``). Seeded from the cases named in issue #1596; extend as
-# new variants surface in QA. NOTE: keep canonical *brands* here, never
-# corporate parents (see module docstring "Scope").
+# new variants surface in QA.
+#
+# Canonical rule:
+#   - For a vendor the query-side resolver KNOWS (VENDOR_ALIASES in
+#     mira-bots/shared/uns_resolver.py), use the resolver's canonical so the
+#     catalog and the query side group the same way. Allen-Bradley → the
+#     corporate parent "Rockwell Automation" per the #1596 brand-vs-parent
+#     decision. A consistency test guards this agreement against drift.
+#   - For a vendor the resolver has NO opinion on (the long-tail rigging /
+#     hoist OEMs), collapse OCR/typo variants toward the cleanest observed
+#     spelling. The resolver passes these through to uns.slug() unchanged, so
+#     this stays divergence-free.
 OCR_VARIANT_ALIASES: dict[str, str] = {
-    # Allen-Bradley (the brand spelling — NOT "Rockwell Automation")
-    "alien-bradley": "Allen-Bradley",
-    "alien bradley": "Allen-Bradley",
-    # Coffing (hoists)
+    # Allen-Bradley → Rockwell Automation (corporate parent; matches the
+    # resolver's VENDOR_ALIASES). Clean brand spelling AND OCR variants
+    # collapse to the single catalog node.
+    "allen-bradley": "Rockwell Automation",
+    "allen bradley": "Rockwell Automation",
+    "alien-bradley": "Rockwell Automation",
+    "alien bradley": "Rockwell Automation",
+    # Coffing (hoists) — no resolver opinion; collapse to cleanest spelling
     "cofemo": "Coffing",
     "cofing": "Coffing",
     "cottins": "Coffing",

@@ -23,8 +23,9 @@ class TestNormalizeManufacturerAliases:
     """The curated OCR-variant seed map collapses the issue's named cases."""
 
     def test_allen_bradley_ocr_variant(self):
+        # AB → corporate parent per the #1596 brand-vs-parent decision.
         r = normalize_manufacturer("Alien-Bradley")
-        assert r.canonical == "Allen-Bradley"
+        assert r.canonical == "Rockwell Automation"
         assert r.method == "alias"
         assert r.confidence == 1.0
 
@@ -40,7 +41,7 @@ class TestNormalizeManufacturerAliases:
             assert normalize_manufacturer(variant).canonical == "Deshazo", variant
 
     def test_alias_lookup_is_case_insensitive(self):
-        assert normalize_manufacturer("alien-bradley").canonical == "Allen-Bradley"
+        assert normalize_manufacturer("alien-bradley").canonical == "Rockwell Automation"
         assert normalize_manufacturer("DESHACO").canonical == "Deshazo"
 
 
@@ -66,15 +67,15 @@ class TestNormalizeManufacturerIdentity:
             assert r.method == "identity"
 
 
-class TestBrandParentCarveOut:
-    """#1596 carve-out: do NOT collapse the AB brand to its corporate parent.
-    The resolver maps query-side 'allen-bradley'→'Rockwell Automation'; that
-    split is pre-existing and out of scope for this OCR-cleanup pass."""
+class TestBrandParentReconciled:
+    """#1596 decision: AB canonicalizes to the corporate parent 'Rockwell
+    Automation', matching the query-side resolver's VENDOR_ALIASES so the
+    catalog and the query side group identically."""
 
-    def test_clean_allen_bradley_is_not_rebranded(self):
-        assert normalize_manufacturer("Allen-Bradley").canonical == "Allen-Bradley"
+    def test_clean_allen_bradley_maps_to_parent(self):
+        assert normalize_manufacturer("Allen-Bradley").canonical == "Rockwell Automation"
 
-    def test_rockwell_is_not_rewritten(self):
+    def test_rockwell_is_idempotent(self):
         assert normalize_manufacturer("Rockwell Automation").canonical == "Rockwell Automation"
 
 
@@ -133,8 +134,8 @@ class TestKgWriterWiring:
         )
         equipment = calls[0]
         assert equipment["entity_type"] == "equipment"
-        assert equipment["properties"]["manufacturer"] == "Allen-Bradley"
-        assert "allen_bradley" in equipment["uns_path"]
+        assert equipment["properties"]["manufacturer"] == "Rockwell Automation"
+        assert "rockwell_automation" in equipment["uns_path"]
         assert "alien" not in equipment["uns_path"]
 
     def test_register_fault_code_normalizes_manufacturer(self, monkeypatch):
@@ -199,4 +200,4 @@ class TestInsertChunkWiring:
         )
 
         assert entry_id  # write path completed
-        assert captured["manufacturer"] == "Allen-Bradley"
+        assert captured["manufacturer"] == "Rockwell Automation"
