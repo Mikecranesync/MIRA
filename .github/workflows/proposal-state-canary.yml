@@ -1,0 +1,45 @@
+name: Proposal State Canary
+
+# ADR-0017 nightly drift canary (#1723). Read-only queries against STAGING:
+# fails if any proposal / suggestion / kg_relationships status triple is
+# inconsistent. A failed scheduled run notifies via GitHub's workflow-failure
+# email. Static counterpart: scripts/kg_write_guard.py (#1722, CI-time writes).
+
+on:
+  schedule:
+    - cron: "0 7 * * *" # nightly 07:00 UTC
+  workflow_dispatch: {}
+  pull_request:
+    branches: [main, develop, dev]
+    paths:
+      - "tests/canary/**"
+      - ".github/workflows/proposal-state-canary.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  # Pure unit test of the runner (no DB) — always runs.
+  parse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python3 -m pytest tests/canary/test_proposal_canary.py -q
+
+  # Drift check against staging — needs the staging DB secret.
+  drift:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install "psycopg2-binary>=2.9"
+      - name: Proposal-state drift canary (staging)
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_STG_DATABASE_URL }}
+        run: python3 tests/canary/run_proposal_canary.py
