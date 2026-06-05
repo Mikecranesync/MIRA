@@ -183,6 +183,40 @@ if [ -n "$STAGED_API" ]; then
 fi
 
 # ------------------------------------------------------------------
+# 5. actionlint — GitHub Actions workflow validation on staged workflow
+#    files. Catches the duplicate-key / schema / expression errors that
+#    GitHub rejects at parse time (e.g. the duplicate `concurrency:` key
+#    that broke compose-mem-lint.yml — #1725 — failing in 0s with no logs).
+#    Embedded shellcheck is disabled (-shellcheck=) so pre-existing run-block
+#    style nits don't block edits; .sh files are shellchecked in section 1.
+#    NOTE: skip-if-missing means this only protects machines that have
+#    actionlint installed — a non-skippable CI job is the real gate (see #1726).
+# ------------------------------------------------------------------
+STAGED_WORKFLOWS=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^\.github/workflows/.*\.ya?ml$' || true)
+if [ -n "$STAGED_WORKFLOWS" ]; then
+  bold "Checking GitHub Actions workflows (actionlint)..."
+  ACTIONLINT_BIN=$(command -v actionlint 2>/dev/null || echo "/opt/homebrew/bin/actionlint")
+  if [ ! -x "$ACTIONLINT_BIN" ]; then
+    yellow "  actionlint not found — skipping (install: brew install actionlint)"
+    WARNINGS=$((WARNINGS + 1))
+  else
+    for f in $STAGED_WORKFLOWS; do
+      if [ -f "$f" ]; then
+        if "$ACTIONLINT_BIN" -shellcheck= "$f" 2>&1; then
+          green "  ✓ $f"
+          PASS=$((PASS + 1))
+        else
+          red "  ✗ $f — actionlint failed (GitHub would reject this workflow at parse time)"
+          FAIL=$((FAIL + 1))
+        fi
+      fi
+    done
+  fi
+else
+  echo "  No GitHub workflow files staged."
+fi
+
+# ------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------
 bold ""
