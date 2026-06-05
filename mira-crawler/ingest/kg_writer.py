@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from collections.abc import Generator
 from contextlib import contextmanager
 from uuid import UUID
@@ -38,6 +39,23 @@ from .uns import (
 )
 
 logger = logging.getLogger("mira-crawler.kg_writer")
+
+
+# ---------------------------------------------------------------------------
+# Ingest write mode (issue #1662 / ADR-0017)
+# ---------------------------------------------------------------------------
+# Default everywhere is the PROPOSAL path: ingest never silently verifies an
+# edge — it proposes, a human confirms. The legacy auto-verify path (direct
+# kg_relationships insert at confidence 1.0) is available ONLY behind an
+# explicit, deliberate opt-in for a one-time bulk migration / debug run.
+# dev / staging: leave unset → proposals mode.
+# production / bulk import: requires MIRA_KG_INGEST_AUTOVERIFY=1 to auto-verify.
+_AUTOVERIFY_ENV = "MIRA_KG_INGEST_AUTOVERIFY"
+
+
+def _autoverify_enabled() -> bool:
+    """True only when the legacy auto-verify path is deliberately enabled."""
+    return os.getenv(_AUTOVERIFY_ENV, "").strip().lower() in ("1", "true", "yes", "on")
 
 
 # ---------------------------------------------------------------------------
@@ -153,17 +171,21 @@ def upsert_relationship(
 ) -> str | None:
     """Propose an ingest-derived edge instead of writing it as a verified
     fact. Per the "never auto-verify" doctrine (.claude/CLAUDE.md, ADR-0017)
-    this no longer touches `kg_relationships` directly — it routes through
-    `proposal_writer.propose_relationship`, which lands the edge in
-    `relationship_proposals` + `ai_suggestions(kg_edge)` for human review.
-    The verified `kg_relationships` row is written only on admin approval
-    (mira-hub `.../proposals/[id]/decide`).
+    this routes through `proposal_writer.propose_relationship` by default —
+    the edge lands in `relationship_proposals` + `ai_suggestions(kg_edge)`
+    for human review, and the verified `kg_relationships` row is written
+    only on admin approval (mira-hub `.../proposals/[id]/decide`).
 
-    Returns the `relationship_proposals` id as a string, or None when
-    nothing was proposed (self-edge, unmapped type, already-present edge,
-    or hard failure). `properties` is accepted for backwards compatibility;
-    its `reasoning`/`note` keys (if any) become the proposal rationale, but
-    it is otherwise not persisted at propose time."""
+    The legacy direct-to-`kg_relationships` auto-verify path remains
+    available ONLY when `MIRA_KG_INGEST_AUTOVERIFY` is deliberately set
+    (one-time bulk migration / debug). Default (unset) is the proposal path.
+
+    Returns the `relationship_proposals` id (proposal mode) or the
+    `kg_relationships` id (auto-verify mode), or None when nothing was
+    written (self-edge, unmapped type, already-present edge, or hard
+    failure). `properties` is accepted for backwards compatibility; in
+    proposal mode its `reasoning`/`note` keys become the proposal rationale
+    but it is not otherwise persisted at propose time."""
     from .proposal_writer import propose_relationship
 
     if not source_entity or not target_entity or not relation_type:
@@ -172,10 +194,17 @@ def upsert_relationship(
         logger.debug("upsert_relationship skipped self-edge %s", source_entity)
         return None
 
+    src_chunk = str(source_chunk_id) if source_chunk_id else None
+
+    if _autoverify_enabled():
+        return _autoverify_relationship(
+            tenant_id, source_entity, target_entity, relation_type,
+            confidence, properties, src_chunk, conn,
+        )
+
     reasoning = None
     if properties:
         reasoning = (properties.get("reasoning") or properties.get("note")) or None
-    src_chunk = str(source_chunk_id) if source_chunk_id else None
 
     try:
         with _get_conn(conn) as c:
@@ -196,6 +225,67 @@ def upsert_relationship(
             relation_type,
             target_entity,
             e,
+        )
+        return None
+
+
+def _autoverify_relationship(
+    tenant_id: str,
+    source_entity: str | UUID,
+    target_entity: str | UUID,
+    relation_type: str,
+    confidence: float,
+    properties: dict | None,
+    src_chunk: str | None,
+    conn=None,
+) -> str | None:
+    """LEGACY auto-verify path — DELIBERATE OPT-IN ONLY (`MIRA_KG_INGEST_AUTOVERIFY`).
+    Writes the edge straight into `kg_relationships` as a verified fact,
+    bypassing human review. Retained for one-time bulk migration / debug;
+    NOT the default. Do not call directly — go through `upsert_relationship`,
+    which gates this behind the env flag."""
+    from sqlalchemy import text
+
+    props_json = json.dumps(properties or {})
+    try:
+        with _get_conn(conn) as c:
+            row = c.execute(
+                text("""
+                    INSERT INTO kg_relationships
+                        (tenant_id, source_id, target_id,
+                         relationship_type, properties, confidence,
+                         source_chunk_id)
+                    VALUES
+                        (:tenant_id, :source, :target, :rel,
+                         cast(:properties AS jsonb), :confidence,
+                         cast(:source_chunk_id AS uuid))
+                    ON CONFLICT
+                        (tenant_id, source_id, target_id, relationship_type)
+                    DO UPDATE SET
+                        confidence = GREATEST(kg_relationships.confidence,
+                                              EXCLUDED.confidence)
+                    RETURNING id
+                """),
+                {
+                    "tenant_id": tenant_id,
+                    "source": str(source_entity),
+                    "target": str(target_entity),
+                    "rel": relation_type,
+                    "properties": props_json,
+                    "confidence": confidence,
+                    "source_chunk_id": src_chunk,
+                },
+            ).first()
+            logger.warning(
+                "kg_writer AUTO-VERIFY (legacy opt-in): wrote verified edge "
+                "%s -[%s]-> %s straight to kg_relationships",
+                source_entity, relation_type, target_entity,
+            )
+            return str(row[0]) if row else None
+    except Exception as e:
+        logger.error(
+            "upsert_relationship (auto-verify) failed %s -[%s]-> %s: %s",
+            source_entity, relation_type, target_entity, e,
         )
         return None
 

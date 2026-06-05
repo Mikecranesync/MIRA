@@ -184,3 +184,69 @@ class TestProposeRelationship:
         assert "INSERT INTO relationship_evidence" not in c.sql_blob()
         # proposal + suggestion still written
         assert "INSERT INTO relationship_proposals" in c.sql_blob()
+
+
+class TestAutoVerifyFlag:
+    """The MIRA_KG_INGEST_AUTOVERIFY flag (issue #1662): proposals by default,
+    legacy auto-verify only on deliberate opt-in."""
+
+    def test_flag_defaults_off(self, monkeypatch):
+        from ingest import kg_writer
+
+        monkeypatch.delenv("MIRA_KG_INGEST_AUTOVERIFY", raising=False)
+        assert kg_writer._autoverify_enabled() is False
+
+    def test_flag_truthy_values_enable(self, monkeypatch):
+        from ingest import kg_writer
+
+        for val in ("1", "true", "YES", "On"):
+            monkeypatch.setenv("MIRA_KG_INGEST_AUTOVERIFY", val)
+            assert kg_writer._autoverify_enabled() is True
+
+    def test_flag_falsey_values_stay_off(self, monkeypatch):
+        from ingest import kg_writer
+
+        for val in ("", "0", "false", "no"):
+            monkeypatch.setenv("MIRA_KG_INGEST_AUTOVERIFY", val)
+            assert kg_writer._autoverify_enabled() is False
+
+    def test_default_path_proposes_not_verifies(self, monkeypatch):
+        """With the flag unset, upsert_relationship routes to the proposer and
+        never inserts kg_relationships."""
+        from ingest import kg_writer
+
+        monkeypatch.delenv("MIRA_KG_INGEST_AUTOVERIFY", raising=False)
+        c = _FakeConn()
+        monkeypatch.setattr(kg_writer, "_get_conn", _passthrough_conn(c))
+        kg_writer.upsert_relationship(
+            tenant_id=TENANT, source_entity=SRC, target_entity=TGT,
+            relation_type="has_manual", confidence=0.95, source_chunk_id=CHUNK,
+        )
+        assert "INSERT INTO relationship_proposals" in c.sql_blob()
+        assert "INSERT INTO kg_relationships" not in c.sql_blob()
+
+    def test_optin_path_auto_verifies(self, monkeypatch):
+        """With the flag set, the legacy path writes kg_relationships directly."""
+        from ingest import kg_writer
+
+        monkeypatch.setenv("MIRA_KG_INGEST_AUTOVERIFY", "1")
+        c = _FakeConn()
+        monkeypatch.setattr(kg_writer, "_get_conn", _passthrough_conn(c))
+        kg_writer.upsert_relationship(
+            tenant_id=TENANT, source_entity=SRC, target_entity=TGT,
+            relation_type="has_manual", confidence=1.0, source_chunk_id=CHUNK,
+        )
+        assert "INSERT INTO kg_relationships" in c.sql_blob()
+        assert "INSERT INTO relationship_proposals" not in c.sql_blob()
+
+
+def _passthrough_conn(fake):
+    """Build a contextmanager that yields the given FakeConn, matching
+    kg_writer._get_conn's signature (conn=None)."""
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _cm(*_args, **_kwargs):
+        yield fake
+
+    return _cm

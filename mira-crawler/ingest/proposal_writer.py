@@ -87,7 +87,7 @@ def propose_relationship(
     relation_type: str,
     confidence: float = 0.5,
     reasoning: str | None = None,
-    created_by: str = "ingest:kg_writer",
+    proposed_by: str = "import:kg_writer",
     source_chunk_id: str | UUID | None = None,
 ) -> str | None:
     """Propose an ingest-derived edge instead of verifying it.
@@ -210,7 +210,11 @@ def propose_relationship(
             "source_type": src_type,
             "target_type": tgt_type,
             "confidence": confidence,
-            "created_by": created_by,
+            # relationship_proposals.created_by is CHECK-constrained to
+            # ('llm','human','import','rule'); ingest is 'import' (matches
+            # tools/load_manifest_to_kg.py). The descriptive actor label
+            # lives on ai_suggestions.proposed_by below.
+            "created_by": "import",
             "reasoning": reasoning,
         },
     ).first()
@@ -271,7 +275,7 @@ def propose_relationship(
             "source_id": str(source_chunk_id) if source_chunk_id else None,
             "extracted": json.dumps(extracted),
             "confidence": confidence,
-            "proposed_by": created_by,
+            "proposed_by": proposed_by,
             "title": title,
             "body": body,
         },
