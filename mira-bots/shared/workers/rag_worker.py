@@ -105,9 +105,9 @@ def _build_clarification_request(message: str, asset_identified: str) -> str | N
     fires instead.
 
     REGRESSION GUARD (2026-05-12): When the user's message ALREADY contains a
-    recognizable manufacturer (e.g. "PowerFlex" → Rockwell) AND a fault code,
-    return None so the LLM answers from general engineering knowledge with the
-    no_kb_coverage disclaimer — never re-ask for info the user just provided.
+    recognizable manufacturer AND a fault code, return None so the LLM answers
+    from general engineering knowledge with the no_kb_coverage disclaimer —
+    never re-ask for info the user just provided.
     """
     has_fault_mention = bool(_FAULT_MENTION_RE.search(message))
     # Use the same extractor the recall path used — what it found is what failed
@@ -138,10 +138,10 @@ def _build_clarification_request(message: str, asset_identified: str) -> str | N
 
     if not asset_identified:
         parts.append(
-            "1. **Manufacturer** — who made the equipment? (e.g. AutomationDirect, Yaskawa, Rockwell)"
+            "1. **Manufacturer** — who made the equipment? (e.g. AutomationDirect, Yaskawa, Danfoss)"
         )
         parts.append(
-            "2. **Model number** — shown on the nameplate or display (e.g. GS20, PowerFlex 40)"
+            "2. **Model number** — shown on the nameplate or display (e.g. GS20, V1000)"
         )
         parts.append("3. **Exact code** — copy it exactly as it appears on the screen")
     else:
