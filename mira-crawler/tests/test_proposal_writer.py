@@ -14,7 +14,11 @@ from __future__ import annotations
 
 import json
 
-from ingest.proposal_writer import canonical_relation_type, propose_relationship
+from ingest.proposal_writer import (
+    canonical_relation_type,
+    propose_relationship,
+    propose_relationship_cursor,
+)
 
 PROPOSAL_ID = "11111111-1111-1111-1111-111111111111"
 
@@ -238,6 +242,99 @@ class TestAutoVerifyFlag:
         )
         assert "INSERT INTO kg_relationships" in c.sql_blob()
         assert "INSERT INTO relationship_proposals" not in c.sql_blob()
+
+
+class _FakeCursor:
+    """psycopg2-cursor analogue of _FakeConn: records executed SQL + params,
+    answers the queries propose_relationship_cursor issues via fetchone()."""
+
+    def __init__(self, existing_proposal_id=None, already_verified=False):
+        self.existing_proposal_id = existing_proposal_id
+        self.already_verified = already_verified
+        self.executed: list[tuple[str, tuple]] = []
+        self._pending = None
+
+    def execute(self, sql, params=None):
+        self.executed.append((sql, tuple(params or ())))
+        if "FROM kg_entities" in sql:
+            self._pending = ("equipment",)
+        elif "FROM relationship_proposals" in sql and "SELECT id" in sql:
+            self._pending = (
+                (self.existing_proposal_id,) if self.existing_proposal_id else None
+            )
+        elif "FROM kg_relationships" in sql:
+            self._pending = (1,) if self.already_verified else None
+        elif "INSERT INTO relationship_proposals" in sql:
+            self._pending = (PROPOSAL_ID,)
+        else:
+            self._pending = None
+
+    def fetchone(self):
+        return self._pending
+
+    def sql_blob(self) -> str:
+        return "\n".join(sql for sql, _ in self.executed)
+
+    def params_for(self, needle: str) -> tuple:
+        for sql, params in self.executed:
+            if needle in sql:
+                return params
+        raise AssertionError(f"no executed statement matched {needle!r}")
+
+
+class TestProposeRelationshipCursor:
+    """The psycopg2-cursor variant (Path B / full_ingest_pipeline) holds the
+    same invariants as the SQLAlchemy variant."""
+
+    def test_proposes_not_verifies(self):
+        cur = _FakeCursor()
+        rid = propose_relationship_cursor(
+            cur, tenant_id=TENANT, source_entity=SRC, target_entity=TGT,
+            relation_type="documented_in", confidence=1.0, source_chunk_id=CHUNK,
+        )
+        assert rid == PROPOSAL_ID
+        blob = cur.sql_blob()
+        assert "INSERT INTO relationship_proposals" in blob
+        assert "INSERT INTO ai_suggestions" in blob
+        assert "INSERT INTO relationship_evidence" in blob
+        assert "INSERT INTO kg_relationships" not in blob
+
+    def test_canonical_type(self):
+        cur = _FakeCursor()
+        propose_relationship_cursor(
+            cur, tenant_id=TENANT, source_entity=SRC, target_entity=TGT,
+            relation_type="has_fault_code", confidence=1.0, source_chunk_id=CHUNK,
+        )
+        prop_params = cur.params_for("INSERT INTO relationship_proposals")
+        # order: (tenant, source, src_type, target, tgt_type, canonical, ...)
+        assert prop_params[5] == "HAS_FAILURE_MODE"
+
+    def test_unmapped_skipped(self):
+        cur = _FakeCursor()
+        rid = propose_relationship_cursor(
+            cur, tenant_id=TENANT, source_entity=SRC, target_entity=TGT,
+            relation_type="frobnicate",
+        )
+        assert rid is None
+        assert "INSERT INTO relationship_proposals" not in cur.sql_blob()
+
+    def test_idempotent_existing(self):
+        cur = _FakeCursor(existing_proposal_id=PROPOSAL_ID)
+        rid = propose_relationship_cursor(
+            cur, tenant_id=TENANT, source_entity=SRC, target_entity=TGT,
+            relation_type="documented_in", confidence=1.0,
+        )
+        assert rid == PROPOSAL_ID
+        assert "INSERT INTO relationship_proposals" not in cur.sql_blob()
+
+    def test_skips_already_verified(self):
+        cur = _FakeCursor(already_verified=True)
+        rid = propose_relationship_cursor(
+            cur, tenant_id=TENANT, source_entity=SRC, target_entity=TGT,
+            relation_type="documented_in", confidence=1.0,
+        )
+        assert rid is None
+        assert "INSERT INTO relationship_proposals" not in cur.sql_blob()
 
 
 def _passthrough_conn(fake):

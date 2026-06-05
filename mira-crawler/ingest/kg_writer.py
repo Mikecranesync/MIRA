@@ -26,11 +26,11 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from collections.abc import Generator
 from contextlib import contextmanager
 from uuid import UUID
 
+from .proposal_writer import autoverify_enabled as _autoverify_enabled
 from .uns import (
     equipment_unassigned_path,
     fault_code_path,
@@ -40,22 +40,9 @@ from .uns import (
 
 logger = logging.getLogger("mira-crawler.kg_writer")
 
-
-# ---------------------------------------------------------------------------
-# Ingest write mode (issue #1662 / ADR-0017)
-# ---------------------------------------------------------------------------
-# Default everywhere is the PROPOSAL path: ingest never silently verifies an
-# edge — it proposes, a human confirms. The legacy auto-verify path (direct
-# kg_relationships insert at confidence 1.0) is available ONLY behind an
-# explicit, deliberate opt-in for a one-time bulk migration / debug run.
-# dev / staging: leave unset → proposals mode.
-# production / bulk import: requires MIRA_KG_INGEST_AUTOVERIFY=1 to auto-verify.
-_AUTOVERIFY_ENV = "MIRA_KG_INGEST_AUTOVERIFY"
-
-
-def _autoverify_enabled() -> bool:
-    """True only when the legacy auto-verify path is deliberately enabled."""
-    return os.getenv(_AUTOVERIFY_ENV, "").strip().lower() in ("1", "true", "yes", "on")
+# Ingest write mode (issue #1662 / ADR-0017): proposals by default; the legacy
+# auto-verify path is gated behind MIRA_KG_INGEST_AUTOVERIFY. The flag lives in
+# proposal_writer (single source of truth, shared with full_ingest_pipeline).
 
 
 # ---------------------------------------------------------------------------

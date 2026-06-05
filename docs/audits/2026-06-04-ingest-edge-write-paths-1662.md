@@ -11,7 +11,7 @@ Every place in the codebase that can create a knowledge-graph edge, classified s
 | `mira-crawler/ingest/kg_writer.py:254` (`_autoverify_relationship`) | **gated opt-in** ✅ | This PR. Default = proposal path; legacy auto-verify only when `MIRA_KG_INGEST_AUTOVERIFY` is set (one-time bulk migration / debug). |
 | `mira-hub/.../proposals/[id]/decide/route.ts:115` | **safe** ✅ | The Hub admin-approval path. Writes the verified edge **on approve only**. This is the intended single verified-write door. |
 | `mira-connectors/mira_connectors/store.py:573` | **safe** ✅ | Called from `confirmation_gate.py:370` on **technician confirmation** (`evidence_type='human_observation'`). Approval-gated, like decide route. (Also proposes first at `store.py:415`.) |
-| `mira-crawler/tasks/full_ingest_pipeline.py:426, 459` | **still auto-verifies** ⛔ | **Path B** — the cron bulk OEM loader (`kb_growth_cron` 06:00 UTC). Inline psycopg2, `confidence 1.0`. Highest-value remaining target. Reroute through `proposal_writer.propose_relationship` (same as Path A) + add the `MIRA_KG_INGEST_AUTOVERIFY` gate. |
+| `mira-crawler/tasks/full_ingest_pipeline.py` (`_write_kg_edge`) | **gated opt-in** ✅ | **Path B** done (PR #1716). The cron bulk OEM loader (`kb_growth_cron` 06:00 UTC) now proposes via `propose_relationship_cursor` (psycopg2 sibling, same transaction as entity creation); legacy auto-verify only behind `MIRA_KG_INGEST_AUTOVERIFY`. Staging-smoke proven. |
 | `mira-hub/src/lib/knowledge-graph/queries.ts:57, 280` | **still auto-verifies** ⛔ | Includes `upsertSchematicComponents()` (`confidence 1.0`) — explicitly named in #1662 as a bypass. TS side. |
 | `mira-hub/src/lib/knowledge-graph/relationship-extractor.ts:270` | **still auto-verifies** ⛔ | Conversation-extracted edges (`source_conversation_id`). TS side. |
 | `mira-hub/src/lib/knowledge-graph/extractor.ts:141` | **still auto-verifies** ⛔ | Conversation-extracted edges. TS side. |
@@ -30,7 +30,7 @@ Every place in the codebase that can create a knowledge-graph edge, classified s
 
 ## Checklist to close #1662
 
-1. **Path B** — reroute `full_ingest_pipeline.py` (cron bulk OEM) through `propose_relationship` + the `MIRA_KG_INGEST_AUTOVERIFY` gate. *(Python, Bravo-finishable.)*
+1. ~~**Path B** — reroute `full_ingest_pipeline.py` (cron bulk OEM) through the proposer + the `MIRA_KG_INGEST_AUTOVERIFY` gate.~~ ✅ **Done** (PR #1716, `propose_relationship_cursor`, staging-smoke proven).
 2. **TS write paths** — `queries.ts` (incl. `upsertSchematicComponents`), `relationship-extractor.ts`, `extractor.ts`, `cmms-sync.ts`: route through `mira-hub/lib/proposal-transition.ts` (still to be created) so they propose, not auto-verify. *(Hub build required — not Bravo-finishable.)*
 3. **`hierarchy-backfill.ts`** — read & decide: deliberate structural backfill (leave) vs inferred (proposalize).
 4. **ADR-0017 canary** — add `tests/canary/proposal_state_drift.sql` + the nightly workflow.

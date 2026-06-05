@@ -38,11 +38,28 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from uuid import UUID
 
 from sqlalchemy import text
 
 logger = logging.getLogger("mira-crawler.proposal_writer")
+
+
+# ---------------------------------------------------------------------------
+# Ingest write-mode flag (issue #1662 / ADR-0017) — single source of truth.
+# ---------------------------------------------------------------------------
+# Default everywhere is the PROPOSAL path: ingest never silently verifies an
+# edge. The legacy auto-verify path (direct kg_relationships insert at
+# confidence 1.0) is available ONLY behind this explicit, deliberate opt-in
+# for a one-time bulk migration / debug run. Both ingest paths read it
+# (kg_writer.upsert_relationship and tasks/full_ingest_pipeline.py).
+AUTOVERIFY_ENV = "MIRA_KG_INGEST_AUTOVERIFY"
+
+
+def autoverify_enabled() -> bool:
+    """True only when the legacy auto-verify path is deliberately enabled."""
+    return os.getenv(AUTOVERIFY_ENV, "").strip().lower() in ("1", "true", "yes", "on")
 
 
 # Lowercase ingest edge type -> UPPERCASE canonical relationship_proposals
@@ -244,18 +261,10 @@ def propose_relationship(
         )
 
     # Bridge an ai_suggestions header so the Hub /proposals queue renders it.
-    title = f"Propose edge: {src_type} —[{canonical}]→ {tgt_type}"
-    body = reasoning or (
-        f"Manual ingest proposes a {canonical} relationship "
-        f"({src_type} → {tgt_type}). Review and verify or reject."
+    title, body, extracted_json = _kg_edge_suggestion_fields(
+        proposal_id, source_entity, target_entity,
+        canonical, relation_type, reasoning, src_type, tgt_type,
     )
-    extracted = {
-        "relationship_proposal_id": proposal_id,
-        "source_entity_id": str(source_entity),
-        "target_entity_id": str(target_entity),
-        "relationship_type": canonical,
-        "original_relation_type": relation_type,
-    }
     c.execute(
         text(
             """
@@ -273,7 +282,7 @@ def propose_relationship(
             "tenant_id": tenant_id,
             "source_kind": "knowledge_entry" if source_chunk_id else None,
             "source_id": str(source_chunk_id) if source_chunk_id else None,
-            "extracted": json.dumps(extracted),
+            "extracted": extracted_json,
             "confidence": confidence,
             "proposed_by": proposed_by,
             "title": title,
@@ -288,5 +297,179 @@ def propose_relationship(
         target_entity,
         proposal_id,
         relation_type,
+    )
+    return proposal_id
+
+
+def _kg_edge_suggestion_fields(
+    proposal_id: str,
+    source_entity: str | UUID,
+    target_entity: str | UUID,
+    canonical: str,
+    relation_type: str,
+    reasoning: str | None,
+    src_type: str,
+    tgt_type: str,
+) -> tuple[str, str, str]:
+    """Build the (title, body, extracted_data JSON) for the bridging
+    ai_suggestions(kg_edge) row. Shared by both the SQLAlchemy and
+    psycopg2-cursor proposers so they can't drift."""
+    title = f"Propose edge: {src_type} —[{canonical}]→ {tgt_type}"
+    body = reasoning or (
+        f"Manual ingest proposes a {canonical} relationship "
+        f"({src_type} → {tgt_type}). Review and verify or reject."
+    )
+    extracted = {
+        "relationship_proposal_id": proposal_id,
+        "source_entity_id": str(source_entity),
+        "target_entity_id": str(target_entity),
+        "relationship_type": canonical,
+        "original_relation_type": relation_type,
+    }
+    return title, body, json.dumps(extracted)
+
+
+def _entity_type_cursor(cur, entity_id: str | UUID) -> str:
+    """psycopg2-cursor variant of `_entity_type`."""
+    cur.execute(
+        "SELECT entity_type FROM kg_entities WHERE id = %s::uuid LIMIT 1",
+        (str(entity_id),),
+    )
+    row = cur.fetchone()
+    return row[0] if row and row[0] else "entity"
+
+
+def propose_relationship_cursor(
+    cur,
+    tenant_id: str,
+    source_entity: str | UUID,
+    target_entity: str | UUID,
+    relation_type: str,
+    confidence: float = 0.5,
+    reasoning: str | None = None,
+    proposed_by: str = "import:full_ingest",
+    source_chunk_id: str | UUID | None = None,
+) -> str | None:
+    """psycopg2-cursor variant of `propose_relationship` for callers that run
+    inside a raw psycopg2 transaction (`tasks/full_ingest_pipeline.py`).
+
+    Same contract and invariants as `propose_relationship`, but uses `%s`
+    paramstyle and the caller's `cur` — so it reads the entities created
+    (uncommitted) earlier in the same transaction. Returns the
+    relationship_proposals id, or None when nothing was proposed (self-edge,
+    unmapped type, or already-present edge)."""
+    if not source_entity or not target_entity or not relation_type:
+        return None
+    if str(source_entity) == str(target_entity):
+        return None
+
+    canonical = canonical_relation_type(relation_type)
+    if canonical is None:
+        logger.warning(
+            "propose_relationship_cursor: no canonical mapping for ingest edge "
+            "type %r — edge %s -> %s NOT proposed",
+            relation_type, source_entity, target_entity,
+        )
+        return None
+
+    if tenant_id:
+        cur.execute(
+            "SELECT set_config('app.current_tenant_id', %s, true)",
+            (str(tenant_id),),
+        )
+
+    # Idempotency: open proposal already covering this edge?
+    cur.execute(
+        """
+        SELECT id FROM relationship_proposals
+         WHERE tenant_id = %s::uuid AND source_entity_id = %s::uuid
+           AND target_entity_id = %s::uuid AND relationship_type = %s
+           AND status IN ('proposed', 'reviewed', 'verified')
+         LIMIT 1
+        """,
+        (tenant_id, str(source_entity), str(target_entity), canonical),
+    )
+    row = cur.fetchone()
+    if row:
+        return str(row[0])
+
+    # ... or the edge is already verified in kg_relationships?
+    cur.execute(
+        """
+        SELECT 1 FROM kg_relationships
+         WHERE tenant_id = %s::uuid AND source_id = %s::uuid
+           AND target_id = %s::uuid AND relationship_type = %s
+         LIMIT 1
+        """,
+        (tenant_id, str(source_entity), str(target_entity), canonical),
+    )
+    if cur.fetchone():
+        return None
+
+    src_type = _entity_type_cursor(cur, source_entity)
+    tgt_type = _entity_type_cursor(cur, target_entity)
+
+    cur.execute(
+        """
+        INSERT INTO relationship_proposals
+            (tenant_id, source_entity_id, source_entity_type,
+             target_entity_id, target_entity_type, relationship_type,
+             confidence, created_by, risk_level,
+             requires_human_review, reasoning)
+        VALUES
+            (%s::uuid, %s::uuid, %s, %s::uuid, %s, %s,
+             %s, 'import', 'low', true, %s)
+        RETURNING id
+        """,
+        (tenant_id, str(source_entity), src_type, str(target_entity),
+         tgt_type, canonical, confidence, reasoning),
+    )
+    prow = cur.fetchone()
+    if not prow:
+        return None
+    proposal_id = str(prow[0])
+
+    if source_chunk_id:
+        cur.execute(
+            """
+            INSERT INTO relationship_evidence
+                (proposal_id, evidence_type, source_id,
+                 source_description, confidence_contribution)
+            VALUES
+                (%s::uuid, 'document_page', %s::uuid, %s, %s)
+            """,
+            (proposal_id, str(source_chunk_id),
+             f"Extracted from manual chunk {source_chunk_id}", confidence),
+        )
+
+    title, body, extracted_json = _kg_edge_suggestion_fields(
+        proposal_id, source_entity, target_entity,
+        canonical, relation_type, reasoning, src_type, tgt_type,
+    )
+    cur.execute(
+        """
+        INSERT INTO ai_suggestions
+            (tenant_id, suggestion_type, source_kind, source_id,
+             extracted_data, confidence, status, risk_level,
+             proposed_by, title, body)
+        VALUES
+            (%s::uuid, 'kg_edge', %s, %s, %s::jsonb, %s, 'pending', 'low',
+             %s, %s, %s)
+        """,
+        (
+            tenant_id,
+            "knowledge_entry" if source_chunk_id else None,
+            str(source_chunk_id) if source_chunk_id else None,
+            extracted_json,
+            confidence,
+            proposed_by,
+            title,
+            body,
+        ),
+    )
+
+    logger.info(
+        "proposed edge (cursor) %s -[%s]-> %s (proposal=%s, from %r)",
+        source_entity, canonical, target_entity, proposal_id, relation_type,
     )
     return proposal_id
