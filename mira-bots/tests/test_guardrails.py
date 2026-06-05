@@ -148,6 +148,22 @@ class TestClassifyIntent:
         assert classify_intent("the manual reset switch is stuck") == "industrial"
         assert classify_intent("pulled the plug, fault still showing") == "industrial"
 
+    def test_parameter_lookup_returns_instructional(self):
+        # vfd_mitsu_03_a700_parameter regression — "parameter" is in INTENT_KEYWORDS
+        # but parameter lookup questions are informational, not fault diagnosis.
+        assert classify_intent("what's parameter Pr.7 on a Mitsubishi A700?") == "instructional"
+        assert classify_intent("what is parameter C1-01 on this drive") == "instructional"
+        assert classify_intent("what does parameter F7-01 do") == "instructional"
+        assert (
+            classify_intent("just looking up the default value and range for deceleration time, no fault")
+            == "instructional"
+        )
+
+    def test_parameter_lookup_does_not_overmatch(self):
+        # A message mentioning "parameter" alongside fault evidence stays industrial.
+        assert classify_intent("parameter Pr.7 shows fault on screen") == "industrial"
+        assert classify_intent("checked parameters, OL fault still active") == "industrial"
+
     def test_depth_request_detector(self):
         from shared.guardrails import detect_depth_request
 

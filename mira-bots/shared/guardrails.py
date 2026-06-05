@@ -587,6 +587,12 @@ _INSTRUCTIONAL_PHRASES = (
     "give me the steps",
     "walk me through",
     "what are the steps",
+    # Parameter lookup queries — informational, not fault diagnosis.
+    # Checked before INTENT_KEYWORDS so "parameter"/"decel" don't route to industrial.
+    "what's parameter",
+    "what is parameter",
+    "what does parameter",
+    "looking up the default",
 )
 
 # Signals that the technician is under time or job pressure.
