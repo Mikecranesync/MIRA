@@ -25,8 +25,6 @@ import re
 import sys
 from pathlib import Path
 
-import psycopg2
-
 SQL_PATH = Path(__file__).resolve().parent / "proposal_state_drift.sql"
 _CHECK_RE = re.compile(r"--\s*@check:\s*(\S+)\s*\n(.*?)(?=\n--\s*@check:|\Z)", re.DOTALL)
 
@@ -46,6 +44,8 @@ def parse_checks(sql_text: str) -> list[tuple[str, str]]:
 
 
 def main() -> int:
+    import psycopg2  # lazy — the pure parse path (and its unit test) needs no DB driver
+
     url = os.environ.get("NEON_DATABASE_URL")
     if not url:
         print("NEON_DATABASE_URL not set", file=sys.stderr)
