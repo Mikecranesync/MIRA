@@ -41,6 +41,56 @@ export function isCanonicalProposalRelationshipType(t: string): boolean {
   return CANONICAL_PROPOSAL_RELATIONSHIP_TYPES.has(t);
 }
 
+/**
+ * Maps the hub's lowercase `kg_relationships` vocabulary (`types.ts`
+ * RELATIONSHIP_TYPES — emitted by the LLM extractor, CMMS sync, hierarchy
+ * backfill, etc.) to the UPPERCASE canonical vocabulary the
+ * `relationship_proposals` CHECK accepts. The TS analogue of the Python
+ * `_CANONICAL_RELATION_TYPE` map (mira-crawler/ingest/proposal_writer.py).
+ *
+ * `flip` means the canonical edge runs the opposite direction from the
+ * lowercase one (e.g. `A caused_by B` → `B CAUSES A`), so the caller must
+ * swap source/target. Types with no clean canonical equivalent are omitted
+ * → `mapToCanonicalEdge` returns null and the caller skips the edge rather
+ * than emit a wrong type. Extend deliberately as the vocabularies converge.
+ */
+const LOWERCASE_TO_CANONICAL_EDGE: Record<string, { type: string; flip: boolean }> = {
+  // LLM relationship-extractor (EXTRACTOR_ALLOWLIST)
+  caused_by: { type: "CAUSES", flip: true },
+  resolved_by: { type: "RESOLVED_BY", flip: false },
+  feeds: { type: "UPSTREAM_OF", flip: false },
+  requires_part: { type: "HAS_PART", flip: false },
+  triggered_pm: { type: "TRIGGERS", flip: false },
+  had_fault: { type: "HAS_FAILURE_MODE", flip: false },
+  // conversation extractor
+  mentioned_tag: { type: "HAS_SIGNAL", flip: false },
+  exhibited_fault: { type: "HAS_FAILURE_MODE", flip: false },
+  // CMMS sync
+  located_at: { type: "LOCATED_IN", flip: false },
+  has_pm: { type: "HAS_PROCEDURE", flip: false },
+  // hierarchy backfill (area → equipment: the parent HAS_COMPONENT the child)
+  parent_of: { type: "HAS_COMPONENT", flip: false },
+  // other types.ts vocabulary
+  has_component: { type: "HAS_COMPONENT", flip: false },
+  electrically_connected: { type: "WIRED_TO", flip: false },
+  references_drawing: { type: "REFERENCES", flip: false },
+  similar_to: { type: "SIMILAR_TO", flip: false },
+  // No clean canonical equivalent yet (skip + warn until added to the CHECK):
+  //   has_work_order, controls, protects, maintained_by
+};
+
+/**
+ * Resolve any relationship type to a canonical proposal edge. Already-canonical
+ * types pass through unflipped; known lowercase types map; everything else
+ * returns null (caller skips).
+ */
+export function mapToCanonicalEdge(
+  rawType: string,
+): { type: string; flip: boolean } | null {
+  if (isCanonicalProposalRelationshipType(rawType)) return { type: rawType, flip: false };
+  return LOWERCASE_TO_CANONICAL_EDGE[rawType] ?? null;
+}
+
 export interface InferredEvidence {
   evidenceType: string; // must be in relationship_evidence CHECK (e.g. 'manifest','work_order')
   sourceDescription?: string;

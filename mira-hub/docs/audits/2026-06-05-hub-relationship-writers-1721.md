@@ -12,13 +12,15 @@ Unlike the Python ingest path, the hub has **no `autoverify` escape hatch** for 
 
 **Central enforcement (this PR):** `upsertInferredProposal` now guards on `CANONICAL_PROPOSAL_RELATIONSHIP_TYPES` (the `relationship_proposals.relationship_type` CHECK vocabulary, migrations 018→028→032). A non-canonical type is skipped with a warning instead of throwing a CHECK violation that would silently drop the edge.
 
+**Shared vocabulary map (this PR):** `mapToCanonicalEdge(rawType)` (proposals-writer.ts) maps the hub's lowercase `kg_relationships` vocabulary → canonical, returning `{type, flip}` (`flip` = the canonical edge runs the opposite direction, e.g. `caused_by` → `CAUSES` reversed). The TS analogue of Python's `_CANONICAL_RELATION_TYPE`. Unmapped types (`has_work_order`, `controls`, `protects`, `maintained_by`) return null → caller skips. This is the foundation every remaining writer migrates onto.
+
 ## Writer classification
 
 | Writer | Class | Status |
 |---|---|---|
 | `queries.ts::upsertSchematicComponents` | **inferred** (schematic intelligence extracts components + wiring) | ✅ **migrated** (this PR) → proposes via `upsertInferredProposal`. Entity nodes still upserted; edges propose. |
 | `proposals/[id]/decide/route.ts` | **safe** | Human-approval verified write — the one legitimate door. Unchanged. |
-| `relationship-extractor.ts` (LLM, `confidence ≥ HIGH_CONFIDENCE_THRESHOLD → INSERT`) | **inferred** — the literal "confidence > X → verify" anti-pattern | ⛔ TODO: route through `upsertInferredProposal`. Predicates already validated by `isRelationshipType`; map/validate to canonical. |
+| `relationship-extractor.ts` (LLM, `confidence ≥ HIGH_CONFIDENCE_THRESHOLD → INSERT`) | **inferred** — the literal "confidence > X → verify" anti-pattern | ✅ **migrated** (this PR) → above-threshold edges propose via `upsertInferredProposal` (predicate mapped through `mapToCanonicalEdge`, incl. `caused_by`→`CAUSES` flip); below-threshold stays triple-only. |
 | `extractor.ts::upsertRelationship` (conversation extraction, conf 1.0) | **inferred** | ⛔ TODO: propose. |
 | `cmms-sync.ts::upsertRelationship` (conf 1.0) | **inferred** (mirrors CMMS structural data — still a proposal per Iron Rule) | ⛔ TODO + **blocker**: emits `has_work_order` (lowercase) which is **not in the proposals CHECK**. Needs a CHECK migration (`HAS_WORK_ORDER`) or a canonical map first. |
 | `hierarchy-backfill.ts::createParentOf` | **decision → inferred** | ⛔ TODO + **blocker**: it's a *heuristic* location-string match (`entity_id = $2 OR name = $2`), so it is **inferred, not deliberate structure → must propose**. Blocker: `parent_of` is **not** in the proposals CHECK; map to `LOCATED_IN` (equipment → area/line) or add to the CHECK. Decision recorded: **propose**, not auto-verify. |
