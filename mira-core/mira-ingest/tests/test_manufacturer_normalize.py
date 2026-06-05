@@ -4,14 +4,34 @@ mira-core/mira-ingest mirrors the crawler's normalizer at its own DB write
 boundary so the Hub KB manufacturer catalog (GROUP BY
 knowledge_entries.manufacturer) doesn't fragment one real vendor into several
 rows when chunks arrive through this service.
+
+Lives under tests/ (not db/) so the CI step `pytest mira-core/mira-ingest/tests/`
+actually collects it. Adds mira-ingest/ to sys.path the same way the sibling
+tests do (see test_ingest.py) so `db.*` imports resolve.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 import types
 
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
 from db.manufacturer_normalize import NormalizedManufacturer, normalize_manufacturer
+
+
+@pytest.fixture
+def _isolate_neon():
+    """Drop any cached ``db.neon`` before and after, so the sqlalchemy-stubbed
+    import in the wiring tests below can't leak a stub-bound module to sibling
+    tests (e.g. test_ingest.py) that import the same module under the real
+    sqlalchemy — and vice-versa — when pytest-xdist co-schedules them."""
+    sys.modules.pop("db.neon", None)
+    yield
+    sys.modules.pop("db.neon", None)
 
 
 class TestNormalizeManufacturerAliases:
@@ -100,7 +120,7 @@ class TestInsertKnowledgeEntryWiring:
     """insert_knowledge_entry normalizes manufacturer before binding the SQL
     params — hermetic via a stubbed sqlalchemy boundary."""
 
-    def test_insert_knowledge_entry_normalizes_manufacturer(self, monkeypatch):
+    def test_insert_knowledge_entry_normalizes_manufacturer(self, monkeypatch, _isolate_neon):
         _stub_sqlalchemy(monkeypatch)
         from db import neon
 
@@ -126,7 +146,7 @@ class TestInsertKnowledgeEntryWiring:
 class TestInsertKnowledgeEntriesBatchWiring:
     """insert_knowledge_entries_batch normalizes each entry's manufacturer."""
 
-    def test_batch_insert_normalizes_manufacturer(self, monkeypatch):
+    def test_batch_insert_normalizes_manufacturer(self, monkeypatch, _isolate_neon):
         _stub_sqlalchemy(monkeypatch)
         from db import neon
 
