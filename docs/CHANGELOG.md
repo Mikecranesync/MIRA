@@ -3,6 +3,11 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### ops/kiosk-runbook (2026-06-06) — AskMira / mira-ask deploy + prod verify runbook + close `services` gap
+- **`docs/runbooks/kiosk-askmira-deploy-and-verify.md`** — new dedicated runbook covering when this routine applies (`mira-bots/ask_api/`, kiosk engine fast-paths, AskMira view), the required deploy dispatch (`services=mira-ask`), verification sequence (Mode A bake + Mode B browser drive), guardrails (no scorer/golden weakening, no `mira-pipeline /v1/chat/completions`, no Anthropic, kiosk-scoped), and the known Q1 length caveat as a separate-PR follow-up. Created because the 2026-06-06 PR #1754 / #1755 / MIRA_PLC#25 cycle surfaced no existing doctrine for this path.
+- **`.github/workflows/deploy-vps.yml` line 199** — added `mira-ask` to default `TARGETS`. Auto-deploys triggered by Smoke Test no longer skip the kiosk path. Engine changes shipping to Telegram / Slack will also rebuild `mira-ask-saas`. Closes the gap recorded in the 2026-06-06 fix cycle (auto-deploy after PR #1754 left `mira-ask` on its 47-hour-old image; manual `services=mira-ask` dispatch was required as a workaround).
+- **`CLAUDE.md` Pointers** — added a link to the runbook.
+
 ### mira-hub/v1.5.3 (2026-05-09) — Allow /pricing in robots.txt + nginx HTTP/2 (closes #1104, #1106)
 - **`mira-hub/src/app/robots.ts`** — Added `/pricing` to allow list so crawlers can index the pricing/conversion page.
 - **`nginx-phase2-live.conf`** — Added `http2` to both `listen 443 ssl` directives (app.factorylm.com + chat.factorylm.com). Estimated 1,440ms savings on login page LCP.
