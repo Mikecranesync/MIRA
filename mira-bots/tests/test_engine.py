@@ -506,7 +506,10 @@ class TestSessionPivotRouting:
                     }
                 ),
             ),
-            patch("shared.engine.classify_intent", return_value="industrial"),
+            # "where did you get that information" is a meta/source question, not
+            # an industrial fault query. "industrial" + Q2 activates
+            # _router_industrial_override, bypassing _handle_session_followup.
+            patch("shared.engine.classify_intent", return_value="off_topic"),
             patch.object(
                 supervisor,
                 "_handle_session_followup",
