@@ -277,23 +277,23 @@ function ProposalCard({
       data-testid="proposal-card"
       data-proposal-id={proposal.id}
     >
-      <div className="flex items-center gap-2 text-sm">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
         {proposal.riskLevel === "safety_critical" && (
-          <Shield className="h-4 w-4 text-red-500" aria-label="safety-critical" />
+          <Shield className="h-4 w-4 shrink-0 text-red-500" aria-label="safety-critical" />
         )}
         {proposal.requiresHumanReview && proposal.riskLevel !== "safety_critical" && (
-          <AlertTriangle className="h-4 w-4 text-amber-500" aria-label="needs review" />
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" aria-label="needs review" />
         )}
-        <span className="font-semibold text-slate-900">
+        <span className="min-w-0 break-words font-semibold text-slate-900">
           {proposal.source.name ?? proposal.source.entityType}
         </span>
-        <ArrowRight className="h-4 w-4 text-slate-400" />
+        <ArrowRight className="h-4 w-4 shrink-0 text-slate-400" />
         <span className="font-mono text-xs text-slate-500">{proposal.relationshipType}</span>
-        <ArrowRight className="h-4 w-4 text-slate-400" />
-        <span className="font-semibold text-slate-900">
+        <ArrowRight className="h-4 w-4 shrink-0 text-slate-400" />
+        <span className="min-w-0 break-words font-semibold text-slate-900">
           {proposal.target.name ?? proposal.target.entityType}
         </span>
-        <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+        <span className="ml-auto shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
           {confidencePct}% confidence
         </span>
       </div>
@@ -302,7 +302,7 @@ function ProposalCard({
         <p className="mt-3 text-sm text-slate-600">{proposal.reasoning}</p>
       )}
 
-      <footer className="mt-3 flex items-center gap-3 text-xs text-slate-400">
+      <footer className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-slate-400">
         <span className="rounded bg-slate-100 px-2 py-0.5 text-slate-600">
           {proposal.status}
         </span>
@@ -314,7 +314,7 @@ function ProposalCard({
           {new Date(proposal.createdAt).toLocaleDateString()}
         </time>
         {canDecide && (
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             <button
               type="button"
               disabled={busy}
