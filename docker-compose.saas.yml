@@ -599,6 +599,11 @@ services:
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}
       # mira-ingest target for Knowledge upload pipeline
       - INGEST_URL=${INGEST_URL:-http://mira-ingest-saas:8001}
+      # Where local-upload bytes are persisted so a FAILED local upload can be
+      # retried without the user re-picking the file from disk (2026-06-06).
+      # Buffers are deleted on success; a sweep prunes stragglers. Volume-backed
+      # so the failed->retry window survives a container restart.
+      - UPLOAD_BUFFER_DIR=/app/.upload-buffers
       # Google Picker API key (distinct from OAuth client secret) + project number
       - GOOGLE_PICKER_API_KEY=${GOOGLE_PICKER_API_KEY:-}
       - GOOGLE_CLOUD_PROJECT_NUMBER=${GOOGLE_CLOUD_PROJECT_NUMBER:-}
@@ -640,6 +645,8 @@ services:
       - ./docs/promo-screenshots:/app/docs/promo-screenshots:rw
       # Web-review findings — read-only, the cron only deletes its own files.
       - ./tools/web-review-runs:/app/tools/web-review-runs:ro
+      # Persisted local-upload buffers for failed-upload retry (see UPLOAD_BUFFER_DIR).
+      - /opt/mira/data/upload-buffers:/app/.upload-buffers:rw
     restart: unless-stopped
     mem_limit: 1g
     memswap_limit: 1g
