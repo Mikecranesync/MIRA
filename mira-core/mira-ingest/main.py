@@ -451,10 +451,14 @@ async def _ow_upload_file(
         except _TRANSIENT_HTTPX as e:
             last_err = f"{type(e).__name__}: {e}"
         if attempt < max_attempts:
-            backoff = 2 ** attempt
+            backoff = 2**attempt
             logger.warning(
                 "OW upload transient failure for %s (attempt %d/%d): %s — retrying in %ds",
-                fname, attempt, max_attempts, last_err, backoff,
+                fname,
+                attempt,
+                max_attempts,
+                last_err,
+                backoff,
             )
             await asyncio.sleep(backoff)
     raise HTTPException(
@@ -1054,7 +1058,8 @@ async def ingest_document_kb(
         logger.warning(
             "Extraction still processing past poll window for %s (file_id=%s) — "
             "attaching best-effort; retrieval may lag until OW finishes",
-            fname, file_id,
+            fname,
+            file_id,
         )
 
     # Attach to knowledge collection (extraction complete or timed-out best-effort)

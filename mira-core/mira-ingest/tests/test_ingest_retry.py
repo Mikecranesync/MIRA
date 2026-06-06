@@ -52,7 +52,8 @@ def _bypass_gates():
         patch("db.neon.check_tier_limit", return_value=(True, "")),
         patch("db.neon.tenant_ingested_files_record", return_value=None),
         patch.object(
-            ingest_main, "_get_or_create_kb_collection",
+            ingest_main,
+            "_get_or_create_kb_collection",
             new=AsyncMock(return_value="col-fake-uuid"),
         ),
     ):
@@ -63,7 +64,7 @@ def _resp(status_code: int, *, body: dict | None = None, text: str = "") -> Magi
     r = MagicMock()
     r.status_code = status_code
     r.text = text
-    r.json = lambda: (body or {})
+    r.json = lambda: body or {}
     r.request = MagicMock()
     return r
 
