@@ -233,19 +233,28 @@ async function fillKindAndName(
 // When false, the seed-dependent scenarios (1-5, 7, 10, 11 — which need a
 // logged-in browser session against a non-empty tenant) skip cleanly instead
 // of producing locator timeouts that masquerade as feature failures. The
-// always-run regression/auth canaries (6, 8, 9) still run on a NON-transient
-// failure so a real regression fails clearly; they are skipped only when the
-// failure was transient/env-not-ready (see SETUP_ENV_NOT_READY below).
+// always-run regression/auth canaries (6, 8, 9) still run on a NON-5xx setup
+// failure so a real regression fails clearly; they are skipped only on a
+// 5xx-after-retries (env-not-ready) signature — see SETUP_ENV_NOT_READY below
+// for the precise dividing line and its one known blind spot.
 let SETUP_OK = false;
 
-// True when beforeAll's auth+seed failed *specifically* because the deployed
-// environment returned transient 5xx after retries — a readiness/infra failure,
-// NOT a product regression. retry5xx throws "<label> transient <code>" once it
-// exhausts its attempts on 5xx; we match that signature so the whole suite
-// skips (environment-not-ready) instead of emitting locator timeouts / 5xx
-// assertions that masquerade as namespace-feature regressions. A NON-transient
-// setup failure (e.g. a real 4xx, an empty tree after a 2xx finish, DNS) leaves
-// this false so dependent scenarios still run and fail clearly.
+// True when beforeAll's auth+seed failed with a 5xx-after-retries signature —
+// treated as a readiness/infra failure, NOT a product regression. retry5xx
+// throws "<label> transient <code>" once it exhausts its attempts on 5xx; we
+// match that signature so the whole suite skips (environment-not-ready) instead
+// of emitting locator timeouts / 5xx assertions that masquerade as
+// namespace-feature regressions. A NON-5xx setup failure (a real 4xx, an empty
+// tree after a 2xx finish, a DNS/connection error) leaves this false so
+// dependent scenarios still run and fail clearly.
+//
+// Known blind spot (by design): this matches ANY 5xx-after-retries on a SETUP
+// endpoint (csrf / signin / wizard / tree) — including a *persistent* 5xx
+// regression there, not just a transient blip — so a genuine break of those
+// endpoints would skip silently. The guard against that is (a) the loud
+// "ENVIRONMENT NOT READY" beforeAll log below, and (b) a CI alert on the
+// skip-count. A regression in the create flow itself (POST /api/namespace/node,
+// exercised only inside the tests) is NOT in this blind spot and still fails.
 let SETUP_ENV_NOT_READY = false;
 
 test.beforeAll(async ({ request }) => {
