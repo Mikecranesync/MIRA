@@ -32,3 +32,12 @@ def test_each_query_is_a_clean_select():
 
 def test_parse_checks_handles_no_blocks():
     assert parse_checks("-- just a comment, no @check markers\n") == []
+
+
+if __name__ == "__main__":
+    # Runnable without pytest (the canary workflow has no pytest/conftest deps).
+    fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
+    for fn in fns:
+        fn()
+        print(f"ok  {fn.__name__}")
+    print(f"\n{len(fns)} checks passed")

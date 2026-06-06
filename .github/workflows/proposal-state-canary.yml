@@ -27,8 +27,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - run: pip install pytest
-      - run: python3 -m pytest tests/canary/test_proposal_canary.py -q
+      # Run as a plain script — no pytest/conftest deps needed for this pure test.
+      - run: python3 tests/canary/test_proposal_canary.py
 
   # Drift check against staging — needs the staging DB secret.
   drift:
