@@ -1642,7 +1642,7 @@ class Supervisor:
                 _question_only = message
                 _q_marker = "\n[QUESTION]\n"
                 if _q_marker in message:
-                    _question_only = message[message.index(_q_marker) + len(_q_marker):]
+                    _question_only = message[message.index(_q_marker) + len(_q_marker) :]
                 if _TAG_QUERY_RE.search(_question_only) and _TAG_QUESTION_RE.search(_question_only):
                     logger.info(
                         "TAG_QUERY_FAST_PATH chat_id=%s match=%r",
@@ -4448,7 +4448,9 @@ class Supervisor:
 
         self._record_exchange(chat_id, state, message, reply)
         tl_flush()
-        return self._make_result(reply, "high", trace_id, state.get("state", "IDLE"), dispatch_kind="tag_query")
+        return self._make_result(
+            reply, "high", trace_id, state.get("state", "IDLE"), dispatch_kind="tag_query"
+        )
 
     async def _handle_store_documentation(
         self,

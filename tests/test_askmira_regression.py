@@ -15,14 +15,14 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 # Add mira-bots to path (mirrors tests/test_edge_cases.py pattern)
 sys.path.insert(0, str(Path(__file__).parent.parent / "mira-bots"))
 
-from shared.engine import Supervisor, enforce_citation_or_gap_admission, _LIVE_STATUS_HEADER
+from shared.engine import Supervisor, enforce_citation_or_gap_admission
 from shared.quality_gate import GRACEFUL_FALLBACK
 
 
@@ -47,18 +47,13 @@ PLC: Allen-Bradley Micro820
 
 def _make_enriched_message(question: str, status_block: str = _NO_FAULT_STATUS_BLOCK) -> str:
     """Mirror what ask_api.app._build_status_block + /ask produces."""
-    return (
-        _MACHINE_CONTEXT_STUB
-        + "\n\n"
-        + status_block.strip()
-        + "\n\n[QUESTION]\n"
-        + question
-    )
+    return _MACHINE_CONTEXT_STUB + "\n\n" + status_block.strip() + "\n\n[QUESTION]\n" + question
 
 
 # ---------------------------------------------------------------------------
 # Offline Supervisor fixture — mocks all I/O
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def sv(tmp_path):
@@ -80,7 +75,7 @@ def sv(tmp_path):
             "INFERENCE_BACKEND": "local",
             "MIRA_UNS_GATE_ENABLED": "0",  # skip UNS gate — tests single-turn paths
             "QUALITY_GATE_ENABLED": "1",
-            "QUALITY_GATE_JUDGE": "0",      # heuristics only, no LLM judge
+            "QUALITY_GATE_JUDGE": "0",  # heuristics only, no LLM judge
         },
     ):
         with (
@@ -96,7 +91,10 @@ def sv(tmp_path):
             mock_router_inst = MockRouter.return_value
             mock_router_inst.enabled = True
             mock_router_inst.complete = AsyncMock(
-                return_value=(_CANNED_LLM_REPLY, {"provider": "mock", "tokens_in": 0, "tokens_out": 80})
+                return_value=(
+                    _CANNED_LLM_REPLY,
+                    {"provider": "mock", "tokens_in": 0, "tokens_out": 80},
+                )
             )
             mock_router_inst.sanitize_context = lambda msgs: msgs
 
@@ -120,6 +118,7 @@ def sv(tmp_path):
 # ---------------------------------------------------------------------------
 # Q1: status query must NOT produce GRACEFUL_FALLBACK
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_q1_status_no_fault_does_not_punt(sv, tmp_path):
@@ -150,6 +149,7 @@ async def test_q1_status_no_fault_does_not_punt(sv, tmp_path):
 # ---------------------------------------------------------------------------
 # Q2: e-stop query must read the live tag, not history DB
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_q2_estop_query_reads_tag(sv, tmp_path):
@@ -183,14 +183,13 @@ async def test_q2_estop_query_reads_tag(sv, tmp_path):
     # Reply should reference the live block or e-stop state
     good_keywords = ["e-stop", "estop", "armed", "live", "tag", "conveyor status", "ok"]
     found = any(kw.lower() in reply.lower() for kw in good_keywords)
-    assert found, (
-        f"Q2: reply doesn't mention e-stop state or live data.\nReply: {reply!r}"
-    )
+    assert found, f"Q2: reply doesn't mention e-stop state or live data.\nReply: {reply!r}"
 
 
 # ---------------------------------------------------------------------------
 # Q5: lubrication schedule query must be a KB-gap admission (>30 words)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_q5_lube_gap_is_explicit(sv, tmp_path):
@@ -200,9 +199,7 @@ async def test_q5_lube_gap_is_explicit(sv, tmp_path):
     reply from the KB-hit fast-path. After the fix the maintenance-gap regex
     routes to a detailed gap-admission reply.
     """
-    enriched = _make_enriched_message(
-        "Show me the lubrication schedule for this conveyor."
-    )
+    enriched = _make_enriched_message("Show me the lubrication schedule for this conveyor.")
     with patch("shared.engine.route_intent") as mock_route:
         mock_route.return_value = {
             "intent": "find_documentation",
@@ -210,8 +207,10 @@ async def test_q5_lube_gap_is_explicit(sv, tmp_path):
             "reasoning": "asking for lubrication schedule doc",
         }
         # Stub KB coverage check to return True (AutomationDirect is indexed)
-        with patch("shared.engine.kb_has_coverage", return_value=(True, "vendor_match")), \
-             patch("shared.engine.kb_has_pair_coverage", return_value=(False, 0)):
+        with (
+            patch("shared.engine.kb_has_coverage", return_value=(True, "vendor_match")),
+            patch("shared.engine.kb_has_pair_coverage", return_value=(False, 0)),
+        ):
             reply = await sv.process(chat_id="test-q5", message=enriched, platform="ignition")
 
     # Must be longer than 30 words
@@ -234,6 +233,7 @@ async def test_q5_lube_gap_is_explicit(sv, tmp_path):
 # Q7: motor frequency query must carry [Source:] or gap admission
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_q7_freq_has_citation_or_admission(sv, tmp_path):
     """Q7 regression: motor frequency query reply must contain [Source:] or a KB-gap phrase.
@@ -241,9 +241,7 @@ async def test_q7_freq_has_citation_or_admission(sv, tmp_path):
     H4 enforcer is applied in process() after the quality gate. If neither
     is present in the raw reply, the stock [KB-gap: ...] line is appended.
     """
-    enriched = _make_enriched_message(
-        "What is the normal-running frequency for the motor?"
-    )
+    enriched = _make_enriched_message("What is the normal-running frequency for the motor?")
     with patch("shared.engine.route_intent") as mock_route:
         mock_route.return_value = {
             "intent": "answer_question",
@@ -266,6 +264,7 @@ async def test_q7_freq_has_citation_or_admission(sv, tmp_path):
 # ---------------------------------------------------------------------------
 # H4: enforce_citation_or_gap_admission unit tests
 # ---------------------------------------------------------------------------
+
 
 def test_h4_enforcer_appends_when_missing():
     """H4 pure unit test: a reply with no source or gap phrase gets the stock admission."""
