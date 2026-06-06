@@ -31,17 +31,21 @@ describe("mapToCanonicalEdge", () => {
     expect(mapToCanonicalEdge("resolved_by")).toEqual({ type: "RESOLVED_BY", flip: false });
     expect(mapToCanonicalEdge("triggered_pm")).toEqual({ type: "TRIGGERS", flip: false });
     expect(mapToCanonicalEdge("located_at")).toEqual({ type: "LOCATED_IN", flip: false });
-    expect(mapToCanonicalEdge("parent_of")).toEqual({ type: "HAS_COMPONENT", flip: false });
     expect(mapToCanonicalEdge("electrically_connected")).toEqual({ type: "WIRED_TO", flip: false });
-    expect(mapToCanonicalEdge("mentioned_tag")).toEqual({ type: "HAS_SIGNAL", flip: false });
+    // dedicated CMMS / tag types (migration 043)
+    expect(mapToCanonicalEdge("has_work_order")).toEqual({ type: "HAS_WORK_ORDER", flip: false });
+    expect(mapToCanonicalEdge("has_pm")).toEqual({ type: "HAS_PM_SCHEDULE", flip: false });
+    expect(mapToCanonicalEdge("mentioned_tag")).toEqual({ type: "HAS_TAG", flip: false });
   });
 
-  test("caused_by flips direction (A caused_by B → B CAUSES A)", () => {
+  test("flipped mappings swap source/target", () => {
     expect(mapToCanonicalEdge("caused_by")).toEqual({ type: "CAUSES", flip: true });
+    // parent_of (area → equipment) becomes equipment LOCATED_IN area
+    expect(mapToCanonicalEdge("parent_of")).toEqual({ type: "LOCATED_IN", flip: true });
   });
 
   test("types with no clean canonical equivalent return null (caller skips)", () => {
-    for (const t of ["has_work_order", "controls", "protects", "maintained_by", "frobnicate"]) {
+    for (const t of ["controls", "protects", "maintained_by", "frobnicate"]) {
       expect(mapToCanonicalEdge(t)).toBeNull();
     }
   });
@@ -49,8 +53,8 @@ describe("mapToCanonicalEdge", () => {
   test("every mapped target is itself canonical (round-trip safety)", () => {
     for (const raw of [
       "caused_by", "resolved_by", "feeds", "requires_part", "triggered_pm", "had_fault",
-      "mentioned_tag", "exhibited_fault", "located_at", "has_pm", "parent_of",
-      "has_component", "electrically_connected", "references_drawing", "similar_to",
+      "mentioned_tag", "exhibited_fault", "located_at", "has_pm", "has_work_order",
+      "parent_of", "has_component", "electrically_connected", "references_drawing", "similar_to",
     ]) {
       const edge = mapToCanonicalEdge(raw);
       expect(edge).not.toBeNull();

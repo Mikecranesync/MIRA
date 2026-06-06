@@ -35,6 +35,8 @@ export const CANONICAL_PROPOSAL_RELATIONSHIP_TYPES = new Set<string>([
   "CONFIRMED_BY", "CONTRADICTED_BY",
   // Inferred / similarity
   "SAME_MODEL_AS", "CO_FAILED_WITH", "SIMILAR_TO",
+  // CMMS / tags (migration 043)
+  "HAS_WORK_ORDER", "HAS_PM_SCHEDULE", "HAS_TAG",
 ]);
 
 export function isCanonicalProposalRelationshipType(t: string): boolean {
@@ -63,20 +65,22 @@ const LOWERCASE_TO_CANONICAL_EDGE: Record<string, { type: string; flip: boolean 
   triggered_pm: { type: "TRIGGERS", flip: false },
   had_fault: { type: "HAS_FAILURE_MODE", flip: false },
   // conversation extractor
-  mentioned_tag: { type: "HAS_SIGNAL", flip: false },
+  mentioned_tag: { type: "HAS_TAG", flip: false },
   exhibited_fault: { type: "HAS_FAILURE_MODE", flip: false },
   // CMMS sync
   located_at: { type: "LOCATED_IN", flip: false },
-  has_pm: { type: "HAS_PROCEDURE", flip: false },
-  // hierarchy backfill (area → equipment: the parent HAS_COMPONENT the child)
-  parent_of: { type: "HAS_COMPONENT", flip: false },
+  has_work_order: { type: "HAS_WORK_ORDER", flip: false },
+  has_pm: { type: "HAS_PM_SCHEDULE", flip: false },
+  // hierarchy backfill (area/line → equipment): the equipment is LOCATED_IN
+  // the area, so flip source/target on propose.
+  parent_of: { type: "LOCATED_IN", flip: true },
   // other types.ts vocabulary
   has_component: { type: "HAS_COMPONENT", flip: false },
   electrically_connected: { type: "WIRED_TO", flip: false },
   references_drawing: { type: "REFERENCES", flip: false },
   similar_to: { type: "SIMILAR_TO", flip: false },
   // No clean canonical equivalent yet (skip + warn until added to the CHECK):
-  //   has_work_order, controls, protects, maintained_by
+  //   controls, protects, maintained_by
 };
 
 /**
