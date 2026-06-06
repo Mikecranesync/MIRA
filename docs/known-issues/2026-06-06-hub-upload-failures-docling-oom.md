@@ -68,6 +68,25 @@ Tailscale) is **currently unreachable** from prod (verified 2026-06-06 — match
 Dropping Docling frees ~3 GB, so the in-container embedder has ample headroom for now. Revisit once the
 prod→Bravo embedder path is fixed.
 
-## Deploy discipline
-Engine/ingest change → staging gate → `deploy-vps.yml` (no direct VPS compose). After deploy, once
-`mira-tika-saas` is healthy, run `set-ow-extraction-engine.sh` against the prod OW once to flip the DB value.
+## Deploy discipline + the cutover risk (READ BEFORE DEPLOYING)
+Engine/ingest change → staging gate → `deploy-vps.yml` (no direct VPS compose).
+
+**The cutover is the risky part, not the code.** `CONTENT_EXTRACTION_ENGINE` is OW PersistentConfig, so
+the prod DB value (`docling`) wins over the new compose env until it's flipped. But the prod 8 GB box is
+RAM-critical (344 MB free) and **cannot run Docling (2.87 GB) and Tika simultaneously** — so the deploy
+*must* remove Docling. That creates a window where OW's DB still points extraction at the now-deleted
+`mira-docling-saas` → uploads hard-fail (connection refused) until the engine is flipped to Tika.
+
+Two ways to close that window — pick ONE at deploy time:
+
+- **Option A (recommended, no window): `ENABLE_PERSISTENT_CONFIG=False` on mira-core.** Makes compose env
+  authoritative → on restart OW immediately uses `CONTENT_EXTRACTION_ENGINE=tika` from env, no flip script,
+  no dead window. **Caveat:** any OW setting tuned only via the admin UI (not in compose env) reverts to
+  env/OW-default on restart. Safe ONLY if OW's RAG settings were never hand-tuned in the UI (MIRA treats OW
+  as headless/config-as-code, and prod's persisted `rag` config subtree read empty on 2026-06-06 — but this
+  was not fully verifiable from a code session; confirm with the operator).
+- **Option B (flip script): keep `ENABLE_PERSISTENT_CONFIG` default.** Immediately after `up -d` and once
+  `mira-tika-saas` is healthy, run `scripts/set-ow-extraction-engine.sh`. There is a brief dead window
+  between container start and the flip — run it as the very next step, do not defer. Fragile if forgotten.
+
+Either way, after cutover verify a real PDF upload returns `processing_status=completed` before declaring done.

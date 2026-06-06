@@ -38,6 +38,8 @@ services:
       # DB run scripts/set-ow-extraction-engine.sh once to flip the DB value.
       - CONTENT_EXTRACTION_ENGINE=tika
       - TIKA_SERVER_URL=http://mira-tika:9998
+      # Admin key for entrypoint-mira.sh self-heal of the persisted engine.
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
       # KB status indicator — red outline by default (unknown = caution).
       # Per-turn 🟢/🟡/🔴 banners in pipeline responses provide the live signal.
       # CRA-24: also enforce 44x44 minimum tap target on mobile widths so the
