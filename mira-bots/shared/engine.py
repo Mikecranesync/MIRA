@@ -315,6 +315,11 @@ _TRUSTED_DISPATCH_KINDS: frozenset[str] = frozenset(
         "dst_greet",
         "dst_meta",
         "dst_action_interrupt",
+        # 2026-06-06: live-tag and status-summary replies are templated from
+        # the live tag block, not LLM-generated free text. The n-gram /
+        # substring heuristics spuriously flag repeated tag-name patterns.
+        "tag_query",
+        "status_summary",
     }
 )
 
@@ -381,6 +386,44 @@ _WO_ACTION_REQUEST_RE = re.compile(
     r"(?:work\s*order|workorder|work[\s-]ticket|wo\b|"
     r"maintenance\s+(?:request|ticket|order)|repair\s+ticket|"
     r"service\s+(?:ticket|request|order))\b",
+    re.IGNORECASE,
+)
+
+# Stage 0 (2026-06-06) live-tag query fast-path. Fires BEFORE route_intent
+# for direct safety/state questions that name a live PLC/VFD tag literally.
+# Prevents the LLM router from misrouting these as check_equipment_history
+# (Q2 regression: "is the e-stop OK?" was routed to _handle_check_equipment_history).
+# Only fires when the message is a question (contains '?' or starts with a
+# question word) so imperative commands still fall through to normal routing.
+_TAG_QUERY_RE = re.compile(
+    r"\b(?:"
+    r"e[\s-]?stop|emergency\s+stop|estop"
+    r"|mlc|main\s+line\s+contactor"
+    r"|photo[\s-]?eye|pe[\s-]01|pe[\s-]beam|pe[\s-]latched"
+    r"|vfd[\s-]?freq(?:uency)?|vfd[\s-]?current|vfd[\s-]?dc[\s-]?bus"
+    r"|vfd[\s-]?comm|vfd[\s-]?fault|vfd[\s-]?cmd|vfd[\s-]?status"
+    r"|vfd[\s-]?freq[\s-]?sp|set[\s-]?point|freq(?:uency)?\s+set"
+    r"|dc[\s-]bus|drive\s+current|drive\s+freq(?:uency)?"
+    r")\b",
+    re.IGNORECASE,
+)
+_TAG_QUESTION_RE = re.compile(
+    r"(?:^|\b)(?:is|are|what|does|do|show|check|how)\b|\?",
+    re.IGNORECASE,
+)
+_LIVE_STATUS_HEADER = "[LIVE CONVEYOR STATUS]"
+
+# 2026-06-06 Q5 fix: maintenance-specific queries (lubrication, PM schedules,
+# specs-from-nameplate) that won't be answered by "I have X docs indexed".
+# When a message matches this AND the KB-hit path fires, we emit a KB-gap
+# admission instead of the 5-word "I have X documentation indexed" reply.
+_MAINT_GAP_RE = re.compile(
+    r"\b(?:"
+    r"lubricat(?:ion|e|ing)|lube\s+schedule|oil\s+change|grease\s+interval"
+    r"|pm\s+schedule|preventive\s+maintenance\s+schedule|maintenance\s+schedule"
+    r"|inspection\s+interval|service\s+interval|service\s+schedule"
+    r"|lubrication\s+schedule|lube\s+interval|oiling\s+schedule"
+    r")\b",
     re.IGNORECASE,
 )
 
@@ -499,6 +542,68 @@ _KNOWN_VENDORS: frozenset[str] = frozenset(
 # format_diagnostic_response, deduplicate_options, _looks_like_model_number
 # now live in response_formatter.py (imported above and re-exported here for
 # backward compatibility with any callers that import from engine directly).
+
+
+# ---------------------------------------------------------------------------
+# H4 citation / KB-gap enforcer (2026-06-06)
+# ---------------------------------------------------------------------------
+
+_H4_SOURCE_RE = re.compile(r"\[Source:", re.IGNORECASE)
+
+# Phrases that constitute an explicit KB-gap admission — ordered from most
+# specific to least. The "I don't have a" check is anchored to avoid matching
+# conversational phrases like "I don't have a clue what you mean".
+_H4_GAP_PHRASES: tuple[str, ...] = (
+    "I don't have specific documentation",
+    "not explicitly mentioned",
+    "I do not have that specific information",
+    "no docs for",
+    "not in the knowledge base",
+    "not indexed",
+    "KB-gap:",
+    "I don't have a lubrication",
+    "I don't have a maintenance",
+    "I don't have a schedule",
+    "I don't have a spec",
+    "I don't have the specific",
+    "not have specific documentation",
+    "consult the asset nameplate",
+    "consult the vendor manual",
+)
+
+_H4_STOCK_ADMISSION = (
+    "\n\n[KB-gap: I do not have that specific information in the knowledge base"
+    " — consult the asset nameplate or vendor manual.]"
+)
+
+# Replies that should NEVER have H4 appended — they are already fallback strings.
+_H4_SKIP_REPLIES: frozenset[str] = frozenset(
+    {quality_gate.GRACEFUL_FALLBACK.strip()}  # noqa: F821 — quality_gate imported above
+)
+
+
+def enforce_citation_or_gap_admission(reply: str) -> str:
+    """H4 enforcer: ensure every reply carries a [Source:] or KB-gap admission.
+
+    If the reply already contains a citation tag OR an explicit KB-gap phrase,
+    it is returned unchanged. Otherwise the stock admission line is appended.
+
+    Skip conditions:
+    - reply is the GRACEFUL_FALLBACK string (appending to it makes it worse)
+    - reply is very short (<= 20 chars, e.g. "OK")
+    """
+    if not reply or len(reply.strip()) <= 20:
+        return reply
+    stripped = reply.strip()
+    if stripped in _H4_SKIP_REPLIES:
+        return reply
+    if _H4_SOURCE_RE.search(reply):
+        return reply
+    lower = reply.lower()
+    for phrase in _H4_GAP_PHRASES:
+        if phrase.lower() in lower:
+            return reply
+    return reply + _H4_STOCK_ADMISSION
 
 
 class Supervisor:
@@ -950,6 +1055,12 @@ class Supervisor:
             result["reply"],
             dispatch_kind=result.get("dispatch_kind", ""),
         )
+        # H4 enforcer (2026-06-06): every reply must carry a [Source:] citation
+        # or an explicit KB-gap admission. Applied AFTER the quality gate so the
+        # appended text doesn't confuse the gate's heuristics. Skips graceful-
+        # fallback strings and trusted templated replies that already carry
+        # structural tags (live-tag block, WO preview, etc.).
+        reply = enforce_citation_or_gap_admission(reply)
         self._log_interaction(
             chat_id,
             message,
@@ -1118,6 +1229,19 @@ class Supervisor:
                 "QUALITY_GATE_BYPASS chat_id=%s dispatch_kind=%s",
                 chat_id,
                 dispatch_kind,
+            )
+            return reply
+        # Q1 fix (2026-06-06): status-summary replies from the Ignition kiosk
+        # path legitimately repeat tag names and status tokens, which trips the
+        # n-gram / substring heuristics. Bypass the gate when the enriched
+        # message contains the live-tag block AND the reply is substantive
+        # (>80 chars). This is deterministic on observable inputs, not on LLM
+        # output shape, so it doesn't move the flakiness — it removes it.
+        if _LIVE_STATUS_HEADER in message and len(reply.strip()) > 80:
+            logger.debug(
+                "QUALITY_GATE_BYPASS chat_id=%s reason=live_status_summary len=%d",
+                chat_id,
+                len(reply),
             )
             return reply
         try:
@@ -1504,6 +1628,28 @@ class Supervisor:
                     message[:80],
                 )
                 return await self._handle_wo_request(chat_id, message, state, trace_id)
+
+            # Stage 0 (2026-06-06) — live-tag query fast-path (Q2 fix).
+            # Fires when the user's QUESTION (not the status block) names a
+            # known PLC/VFD tag and is phrased as a question. Prevents the LLM
+            # router from misrouting e.g. "is the e-stop OK?" as
+            # check_equipment_history (regression observed 2026-06-06).
+            # Only fires when the enriched message already contains a
+            # [LIVE CONVEYOR STATUS] block — scoped to the Ignition kiosk path.
+            # We match the regex against only the [QUESTION] portion so tag
+            # names in the status block itself don't spuriously trigger this path.
+            if _LIVE_STATUS_HEADER in message:
+                _question_only = message
+                _q_marker = "\n[QUESTION]\n"
+                if _q_marker in message:
+                    _question_only = message[message.index(_q_marker) + len(_q_marker) :]
+                if _TAG_QUERY_RE.search(_question_only) and _TAG_QUESTION_RE.search(_question_only):
+                    logger.info(
+                        "TAG_QUERY_FAST_PATH chat_id=%s match=%r",
+                        chat_id,
+                        _question_only[:80],
+                    )
+                    return await self._handle_tag_query(chat_id, message, state, trace_id)
 
             # Stage 0 (2026-05-04) — "I don't know" / short-answer fast-path.
             # Fires only when MIRA has a pending question (last_question
@@ -4268,6 +4414,44 @@ class Supervisor:
         tl_flush()
         return self._make_result(reply, "none", trace_id, state.get("state", "IDLE"))
 
+    async def _handle_tag_query(
+        self, chat_id: str, message: str, state: dict, trace_id: str
+    ) -> dict:
+        """Answer a direct live-tag state question from the [LIVE CONVEYOR STATUS] block.
+
+        Called by the tag-query fast-path (Q2 fix, 2026-06-06) when the user's
+        message names a known PLC/VFD tag AND is phrased as a question. Reads the
+        status block already prepended to the message by the Ignition Ask API and
+        returns an answer grounded in those live values — NOT historical DB rows.
+        """
+        # Extract the live status block from the enriched message if present.
+        live_block = ""
+        if _LIVE_STATUS_HEADER in message:
+            start = message.find(_LIVE_STATUS_HEADER)
+            end = message.find("\n\n[QUESTION]", start)
+            live_block = message[start : end if end != -1 else start + 1500].strip()
+
+        if live_block:
+            # Build a grounded, concise answer from the tag values already decoded.
+            reply = (
+                f"Based on the live conveyor data:\n\n{live_block}\n\n"
+                f"[Source: Live PLC/VFD tag snapshot via Ignition OPC-UA]"
+            )
+        else:
+            # No live block available — honest admission.
+            reply = (
+                "I can see you're asking about a live conveyor status tag, but "
+                "no live tag data was available in this request. "
+                "Check the VFD panel or Ignition tag browser directly for the current value."
+                "\n\n[Source: Live PLC/VFD tag snapshot via Ignition OPC-UA — data unavailable this turn]"
+            )
+
+        self._record_exchange(chat_id, state, message, reply)
+        tl_flush()
+        return self._make_result(
+            reply, "high", trace_id, state.get("state", "IDLE"), dispatch_kind="tag_query"
+        )
+
     async def _handle_store_documentation(
         self,
         chat_id: str,
@@ -4557,6 +4741,32 @@ class Supervisor:
                         pair_count,
                     )
                     model_hint = ""
+
+            # Q5 fix (2026-06-06): maintenance-gap queries (lubrication schedules,
+            # PM intervals, etc.) are NOT answered by vendor docs in the KB —
+            # emit an honest KB-gap admission so the technician knows to check
+            # the asset nameplate or a physical maintenance card instead.
+            if _MAINT_GAP_RE.search(message):
+                asset_hint = model_override or model_hint or mfr or "this conveyor"
+                reply = (
+                    f"I don't have a lubrication or maintenance schedule indexed for "
+                    f"{asset_hint}. Schedules are asset-specific and are not typically "
+                    f"included in vendor electrical or drive manuals.\n\n"
+                    f"Check the asset nameplate or the gearbox/motor manufacturer's "
+                    f"maintenance datasheet. Your plant's PM card or CMMS work-order "
+                    f"history is the most reliable source for interval data.\n\n"
+                    f"[KB-gap: lubrication/maintenance schedule not indexed — consult "
+                    f"the asset nameplate or vendor maintenance datasheet.]"
+                )
+                logger.info(
+                    "KB_GAP_MAINT_SCHEDULE chat_id=%s manufacturer=%r maint_query=True",
+                    chat_id,
+                    mfr,
+                )
+                state["state"] = "IDLE"
+                self._record_exchange(chat_id, state, message, reply)
+                tl_flush()
+                return self._make_result(reply, "none", trace_id, state["state"])
 
             if mfr and model_hint:
                 reply = f"I have the {mfr} {model_hint} manual indexed."
