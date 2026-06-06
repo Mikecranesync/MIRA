@@ -18,9 +18,28 @@ services:
       # `doppler run -- docker compose up` interpolates these from the
       # shell env at compose-up time. env_file (above) covers local dev
       # where Mike hand-edits .env; this block covers production deploys.
-      MONDAY_OAUTH_CLIENT_ID: ${MONDAY_OAUTH_CLIENT_ID:-}
-      MONDAY_OAUTH_CLIENT_SECRET: ${MONDAY_OAUTH_CLIENT_SECRET:-}
-      MONDAY_WEBHOOK_SIGNING_SECRET: ${MONDAY_WEBHOOK_SIGNING_SECRET:-}
+      #
+      # The MONDAY_* aliases below cover the case where Doppler holds the
+      # value under a legacy name (e.g. MONDAY_CLIENT_SECRETS predates the
+      # _OAUTH_ prefix the code now reads). The fallback chain is:
+      # explicit-target → legacy-Doppler-name → empty.
+      MONDAY_OAUTH_CLIENT_ID: ${MONDAY_OAUTH_CLIENT_ID:-${MONDAY_CLIENT_ID:-}}
+      MONDAY_OAUTH_CLIENT_SECRET: ${MONDAY_OAUTH_CLIENT_SECRET:-${MONDAY_CLIENT_SECRETS:-}}
+      MONDAY_OAUTH_REDIRECT_URI: ${MONDAY_OAUTH_REDIRECT_URI:-}
+      MONDAY_OAUTH_SCOPES: ${MONDAY_OAUTH_SCOPES:-me:read boards:read boards:write}
+      MONDAY_SIGNING_SECRET: ${MONDAY_SIGNING_SECRET:-${MONDAY_CLIENT_SECRETS:-}}
+      MONDAY_WEBHOOK_SIGNING_SECRET: ${MONDAY_WEBHOOK_SIGNING_SECRET:-${MONDAY_CLIENT_SECRETS:-}}
+      MONDAY_API_TOKEN: ${MONDAY_API_TOKEN:-${MONDAY_API_KEY:-}}
+      # Vision + KB plumbing — also Doppler-managed, also previously
+      # missing from the env block (default empty meant the container
+      # silently degraded to standalone-fallback paths).
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      VISION_MODEL: ${VISION_MODEL:-gpt-4o}
+      MIRA_KB_BASE_URL: ${MIRA_KB_BASE_URL:-}
+      MIRA_KB_API_KEY: ${MIRA_KB_API_KEY:-}
+      NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
+      SERPER_API_KEY: ${SERPER_API_KEY:-}
       # Manufacturer-scoped RAG (vendor_rag.py) — direct LLM cascade.
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}

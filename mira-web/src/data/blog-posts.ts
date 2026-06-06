@@ -17,6 +17,10 @@ export interface BlogPost {
   title: string;
   description: string;
   date: string;
+  /** ISO date of last substantive content edit. Falls back to `date` for the
+   *  sitemap <lastmod> and the Article `dateModified`. Set this when you
+   *  meaningfully revise a post — do NOT use the render date. */
+  updated?: string;
   author: string;
   category: string;
   readingTime: string;

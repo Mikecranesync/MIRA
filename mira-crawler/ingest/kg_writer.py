@@ -30,6 +30,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from uuid import UUID
 
+from .manufacturer_normalize import normalize_manufacturer
 from .uns import (
     equipment_unassigned_path,
     fault_code_path,
@@ -232,6 +233,11 @@ def register_equipment_and_manual(
     the user assigns the model to a physical location.
     """
 
+    # Collapse OCR/extraction manufacturer variants before any UNS path is
+    # built, so misspellings ("Alien-Bradley", "Cofemo") don't mint
+    # duplicate catalog nodes. See ingest/manufacturer_normalize.py (#1596).
+    manufacturer = normalize_manufacturer(manufacturer).canonical
+
     eq_path = equipment_unassigned_path(manufacturer, model, family=family)
     eq_id = upsert_entity(
         tenant_id=tenant_id,
@@ -306,6 +312,9 @@ def register_fault_code(
     equipment entity that was the carrier of this extraction so the bot
     can ask "what faults exist on PowerFlex 525?" via graph traversal.
     """
+    # Same OCR-variant collapse as register_equipment_and_manual so a fault
+    # node anchors under the canonical manufacturer (#1596).
+    manufacturer = normalize_manufacturer(manufacturer).canonical
     name = f"{manufacturer} / {fault_code}".strip(" /")
     fc_id = upsert_entity(
         tenant_id=tenant_id,

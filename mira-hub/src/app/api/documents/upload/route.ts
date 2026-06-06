@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sessionOrDemo } from "@/lib/demo-auth";
 import { withTenantContext } from "@/lib/tenant-context";
+import { normalizeManufacturer } from "@/lib/manufacturerNormalize";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,9 @@ export async function POST(req: Request) {
 
   const excerpt = (body.excerpt ?? "").slice(0, 2000);
   const sourceUrl = body.source_url ?? `demo://upload/${encodeURIComponent(body.filename)}`;
+  // Collapse OCR/extraction manufacturer variants to the canonical catalog name
+  // before insert (issue #1596). Empty → null preserves the existing behavior.
+  const manufacturer = normalizeManufacturer(body.manufacturer).canonical || null;
 
   try {
     const id = await withTenantContext<string>(ctx.tenantId, async (c) => {
@@ -68,7 +72,7 @@ export async function POST(req: Request) {
         [
           ctx.tenantId,
           sourceUrl,
-          body.manufacturer ?? null,
+          manufacturer,
           body.model ?? null,
           null,
           excerpt || `[Demo placeholder — ${body.filename}]`,

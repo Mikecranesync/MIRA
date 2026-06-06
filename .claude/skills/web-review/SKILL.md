@@ -161,7 +161,12 @@ If the user passes a sitemap or asks to "audit the whole site":
 
 ## What this skill does NOT do (yet)
 
-- **Auth'd routes** — no cookie injection in v1
+- **Auth'd routes** — no cookie injection built into the passes. For the
+  auth-gated Hub (`app.factorylm.com`), capture a real **staging** session first
+  via `mira-hub/scripts/capture-review-session.ts`, then open the Playwright
+  context with `{ storageState: "tests/e2e/.state/review-session.json" }` to
+  review authed routes (feed, namespace, proposals, assets, admin) instead of
+  bouncing to `/login`. See `mira-hub/docs/authenticated-review.md`.
 - **Form submission / fuzzing** — destructive; would need explicit `--aggressive` and target allowlist
 - **DAST / OWASP ZAP** — heavy, gated for v2 (`--security` flag)
 - **Persona journeys via browser-use** — gated for v2 (`--persona`)

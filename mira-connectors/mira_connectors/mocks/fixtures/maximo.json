@@ -1,0 +1,110 @@
+{
+  "_comment": "Realistic IBM Maximo (MAS 8 / MXASSET, LOCATIONS, WORKORDER, PM, METER, INVENTORY, FAILURELIST, DOCLINKS) sample. Native field names preserved. Models the Bedford packaging plant: Line 16 conveyor with a DuraPulse GS10 VFD, 1HP motor, and a PE proximity sensor — mirroring MIRA's Lake Wales bench so the demo flywheel lines up.",
+  "sites": [
+    { "SITEID": "BEDFORD", "ORGID": "ACME", "DESCRIPTION": "Bedford Packaging Plant", "ACTIVE": true }
+  ],
+  "locations": [
+    { "LOCATION": "BEDFORD", "DESCRIPTION": "Bedford Packaging Plant", "SITEID": "BEDFORD", "ORGID": "ACME", "TYPE": "OPERATING", "STATUS": "OPERATING", "PARENT": null, "SYSTEMID": "PRIMARY" },
+    { "LOCATION": "PACK", "DESCRIPTION": "Packaging Area", "SITEID": "BEDFORD", "ORGID": "ACME", "TYPE": "OPERATING", "STATUS": "OPERATING", "PARENT": "BEDFORD", "SYSTEMID": "PRIMARY" },
+    { "LOCATION": "LINE16", "DESCRIPTION": "Packaging Line 16", "SITEID": "BEDFORD", "ORGID": "ACME", "TYPE": "OPERATING", "STATUS": "OPERATING", "PARENT": "PACK", "SYSTEMID": "PRIMARY" },
+    { "LOCATION": "CONV16", "DESCRIPTION": "Line 16 Infeed Conveyor", "SITEID": "BEDFORD", "ORGID": "ACME", "TYPE": "OPERATING", "STATUS": "OPERATING", "PARENT": "LINE16", "SYSTEMID": "PRIMARY" }
+  ],
+  "assets": [
+    {
+      "ASSETNUM": "CONV16",
+      "DESCRIPTION": "Line 16 Infeed Conveyor",
+      "SITEID": "BEDFORD", "ORGID": "ACME",
+      "LOCATION": "CONV16", "PARENT": null,
+      "ASSETTYPE": "PRODUCTION", "STATUS": "OPERATING",
+      "PRIORITY": 2, "MANUFACTURER": "DORNER", "VENDOR": "DORNER",
+      "SERIALNUM": "DRN-2200-44817", "INSTALLDATE": "2021-03-14T00:00:00Z",
+      "ISRUNNING": true, "FAILURECODE": "CONVEYOR",
+      "CUSTOM": { "MODELNUM": "2200 Series", "ASSETSPEC_CRITICALITY": "MEDIUM" }
+    },
+    {
+      "ASSETNUM": "VFD-16-1",
+      "DESCRIPTION": "Conveyor 16 VFD (DuraPulse GS10)",
+      "SITEID": "BEDFORD", "ORGID": "ACME",
+      "LOCATION": "CONV16", "PARENT": "CONV16",
+      "ASSETTYPE": "PRODUCTION", "STATUS": "OPERATING",
+      "PRIORITY": 1, "MANUFACTURER": "AUTOMATIONDIRECT", "VENDOR": "AUTOMATIONDIRECT",
+      "SERIALNUM": "GS10-1P-220-9931", "INSTALLDATE": "2021-03-14T00:00:00Z",
+      "ISRUNNING": true, "FAILURECODE": "VFD",
+      "CUSTOM": { "MODELNUM": "GS11-10P2", "ASSETSPEC_VOLTAGE": "230", "ASSETSPEC_HP": "1", "ASSETSPEC_CRITICALITY": "HIGH" }
+    },
+    {
+      "ASSETNUM": "MTR-16-1",
+      "DESCRIPTION": "Conveyor 16 Drive Motor 1HP",
+      "SITEID": "BEDFORD", "ORGID": "ACME",
+      "LOCATION": "CONV16", "PARENT": "CONV16",
+      "ASSETTYPE": "PRODUCTION", "STATUS": "OPERATING",
+      "PRIORITY": 2, "MANUFACTURER": "MARATHON", "VENDOR": "MARATHON",
+      "SERIALNUM": "MAR-56C-1HP-7741", "INSTALLDATE": "2021-03-14T00:00:00Z",
+      "ISRUNNING": true, "FAILURECODE": "MOTOR",
+      "CUSTOM": { "MODELNUM": "5K49MN4115", "ASSETSPEC_FLA": "3.6", "ASSETSPEC_CRITICALITY": "MEDIUM" }
+    },
+    {
+      "ASSETNUM": "PE-B16-2",
+      "DESCRIPTION": "Conveyor 16 Infeed Photo-Eye (occupancy)",
+      "SITEID": "BEDFORD", "ORGID": "ACME",
+      "LOCATION": "CONV16", "PARENT": "CONV16",
+      "ASSETTYPE": "PRODUCTION", "STATUS": "OPERATING",
+      "PRIORITY": 2, "MANUFACTURER": "BANNER", "VENDOR": "BANNER",
+      "SERIALNUM": "BNR-QS18VN6D-5523", "INSTALLDATE": "2021-03-14T00:00:00Z",
+      "ISRUNNING": true, "FAILURECODE": "SENSOR",
+      "CUSTOM": { "MODELNUM": "QS18VN6D", "ASSETSPEC_OUTPUT": "PNP", "ASSETSPEC_CRITICALITY": "MEDIUM" }
+    }
+  ],
+  "workorders": [
+    {
+      "WONUM": "1048817", "DESCRIPTION": "Conveyor 16 tripped on VFD comm fault CE10",
+      "ASSETNUM": "VFD-16-1", "LOCATION": "CONV16", "SITEID": "BEDFORD",
+      "STATUS": "COMP", "WORKTYPE": "CM", "WOPRIORITY": 1,
+      "REPORTEDBY": "JSMITH", "REPORTDATE": "2026-05-29T13:42:00Z",
+      "ACTSTART": "2026-05-29T14:05:00Z", "ACTFINISH": "2026-05-29T15:10:00Z",
+      "FAILUREREPORT": { "FAILURECODE": "VFD", "PROBLEMCODE": "COMMFAULT", "CAUSE": "LOOSEWIRE", "REMEDY": "RETERMINATE" }
+    },
+    {
+      "WONUM": "1048903", "DESCRIPTION": "Photo-eye intermittent at infeed — packages double-counting",
+      "ASSETNUM": "PE-B16-2", "LOCATION": "CONV16", "SITEID": "BEDFORD",
+      "STATUS": "INPRG", "WORKTYPE": "CM", "WOPRIORITY": 2,
+      "REPORTEDBY": "MGARCIA", "REPORTDATE": "2026-06-01T09:18:00Z",
+      "ACTSTART": "2026-06-01T10:00:00Z", "ACTFINISH": null,
+      "FAILUREREPORT": { "FAILURECODE": "SENSOR", "PROBLEMCODE": "INTERMITTENT", "CAUSE": "LOOSEWIRE", "REMEDY": null }
+    },
+    {
+      "WONUM": "1047221", "DESCRIPTION": "PM - Quarterly conveyor belt + bearing inspection",
+      "ASSETNUM": "CONV16", "LOCATION": "CONV16", "SITEID": "BEDFORD",
+      "STATUS": "CLOSE", "WORKTYPE": "PM", "WOPRIORITY": 3,
+      "REPORTEDBY": "PMGEN", "REPORTDATE": "2026-04-01T06:00:00Z",
+      "ACTSTART": "2026-04-02T07:30:00Z", "ACTFINISH": "2026-04-02T09:00:00Z",
+      "FAILUREREPORT": null
+    }
+  ],
+  "pmtasks": [
+    { "PMNUM": "PM-CONV16-Q", "DESCRIPTION": "Quarterly conveyor belt + bearing inspection", "ASSETNUM": "CONV16", "LOCATION": "CONV16", "FREQUENCY": 3, "FREQUNIT": "MONTHS", "JPNUM": "JP-CONV-INSP", "NEXTDATE": "2026-07-02T00:00:00Z", "STATUS": "ACTIVE", "LEADTIME": 7 },
+    { "PMNUM": "PM-VFD16-A", "DESCRIPTION": "Annual VFD cooling-fan + terminal-torque check", "ASSETNUM": "VFD-16-1", "LOCATION": "CONV16", "FREQUENCY": 12, "FREQUNIT": "MONTHS", "JPNUM": "JP-VFD-CHK", "NEXTDATE": "2026-03-14T00:00:00Z", "STATUS": "ACTIVE", "LEADTIME": 14 }
+  ],
+  "failurecodes": [
+    { "FAILURECODE": "VFD", "DESCRIPTION": "Variable Frequency Drive", "TYPE": "FAILURECLASS", "PARENT": null },
+    { "FAILURECODE": "COMMFAULT", "DESCRIPTION": "Communication fault", "TYPE": "PROBLEM", "PARENT": "VFD" },
+    { "FAILURECODE": "LOOSEWIRE", "DESCRIPTION": "Loose or back-out wire termination", "TYPE": "CAUSE", "PARENT": "COMMFAULT" },
+    { "FAILURECODE": "RETERMINATE", "DESCRIPTION": "Re-terminate and torque to spec", "TYPE": "REMEDY", "PARENT": "LOOSEWIRE" },
+    { "FAILURECODE": "SENSOR", "DESCRIPTION": "Discrete sensor / photo-eye", "TYPE": "FAILURECLASS", "PARENT": null },
+    { "FAILURECODE": "INTERMITTENT", "DESCRIPTION": "Intermittent / flickering signal", "TYPE": "PROBLEM", "PARENT": "SENSOR" }
+  ],
+  "meters": [
+    { "METERNAME": "RUNHOURS", "ASSETNUM": "MTR-16-1", "LASTREADING": 14820.5, "LASTREADINGDATE": "2026-06-01T00:00:00Z", "MEASUREUNITID": "HOURS", "METERTYPE": "CONTINUOUS" },
+    { "METERNAME": "VFD-OUTPUT-HZ", "ASSETNUM": "VFD-16-1", "LASTREADING": 48.2, "LASTREADINGDATE": "2026-06-01T11:59:00Z", "MEASUREUNITID": "HZ", "METERTYPE": "GAUGE" },
+    { "METERNAME": "MOTOR-AMPS", "ASSETNUM": "MTR-16-1", "LASTREADING": 3.1, "LASTREADINGDATE": "2026-06-01T11:59:00Z", "MEASUREUNITID": "AMPS", "METERTYPE": "GAUGE" }
+  ],
+  "parts": [
+    { "ITEMNUM": "GS11-10P2", "DESCRIPTION": "DuraPulse GS11 1HP 230V VFD", "ISSUEUNIT": "EA", "STORELOC": "CENTRAL", "CURBALTOTAL": 2, "SPAREPART_ASSETNUM": "VFD-16-1", "QUANTITY": 1 },
+    { "ITEMNUM": "QS18VN6D", "DESCRIPTION": "Banner QS18 PNP photo-eye", "ISSUEUNIT": "EA", "STORELOC": "CENTRAL", "CURBALTOTAL": 5, "SPAREPART_ASSETNUM": "PE-B16-2", "QUANTITY": 2 },
+    { "ITEMNUM": "BELT-2200-1200", "DESCRIPTION": "Dorner 2200 belt 1200mm", "ISSUEUNIT": "EA", "STORELOC": "LINE16-CRIB", "CURBALTOTAL": 1, "SPAREPART_ASSETNUM": "CONV16", "QUANTITY": 1 }
+  ],
+  "doclinks": [
+    { "DOCUMENT": "GS10-GS11-USERMANUAL", "DESCRIPTION": "DuraPulse GS10/GS11 User Manual", "URLNAME": "https://cdn.automationdirect.com/static/manuals/gs10m/gs10m.pdf", "URLTYPE": "URL", "OWNERTABLE": "ASSET", "OWNERID": "VFD-16-1" },
+    { "DOCUMENT": "QS18-DATASHEET", "DESCRIPTION": "Banner QS18 Datasheet", "URLNAME": "https://info.bannerengineering.com/cs/groups/public/documents/literature/qs18.pdf", "URLTYPE": "URL", "OWNERTABLE": "ASSET", "OWNERID": "PE-B16-2" }
+  ]
+}

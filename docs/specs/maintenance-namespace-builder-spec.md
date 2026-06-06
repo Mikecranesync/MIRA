@@ -223,6 +223,131 @@ If `resolve_uns_path` raises or returns no candidates AND the engine would other
 5. **Stale resume:** previous session asked about B16, new message says "still broken" → reuse prior context, single-line ack.
 6. **Safety override:** "arc flash on line 5" — safety branch fires; gate bypassed.
 
+## Component hierarchy — physical tree + control relationships
+
+> **Decision lock:** ADR-0018. Standards alignment: IEC 81346-1:2022, OPC UA Robotics (OPC 40010-1), OPC UA FX (OPC 10000-81), ISA-95 spirit, MIRA `docs/specs/uns-kg-standards-compliance.md`.
+
+### Two facts every customer's plant has
+
+1. **Physical containment** — a motor lives inside the drive section of a conveyor, which lives inside Line 2, which lives inside the Packaging area, which lives at the Lake Wales site. The UNS path and `cmms_equipment.parent_asset_id` chain capture this. Each internal tree node is an Asset; each leaf is either an Instance (serialized component) or an end device (unserialized, identified by UNS path).
+2. **Control relationships** — a VFD drives a motor. A PLC reads from a photo eye. A contactor switches power to a heater. These are typed semantic edges between sibling components, NOT containment. The KG (`relationship_proposals` / `kg_relationships`) captures these via the `DRIVES` / `IS_DRIVEN_BY` / `WIRED_TO` / `POWERED_BY` / `TRIGGERS` etc. relationship types.
+
+Mixing them in one tree produces the trap the original namespace-builder grilling surfaced: the tech wants to *see* the motor under the VFD (because that's the troubleshooting pair), but the *data* must keep them as siblings (because IEC 81346 and every vendor tool model them that way, and any other shape breaks vendor interop).
+
+### How the UI delivers both
+
+Hub `/assets` renders the asset tree in one of two modes, session-sticky toggle:
+
+- **Physical view (default):** tree literally mirrors the UNS path + `parent_asset_id` chain. Matches what the tech sees on a QR sticker.
+- **Control view:** motors render as indented children of the VFD that `DRIVES` them. Orphan motors (no `IS_DRIVEN_BY` edge — across-the-line started) stay at their physical-tree position. Orphan VFDs (no motor downstream — spare drive) stay at their physical-tree position.
+
+The two views read identical underlying data — only the render walks differently.
+
+### Worked examples
+
+#### Example A — Single VFD-motor pair on a conveyor
+
+**Assets** (parent_asset_id chain): `Site → Packaging → Line 2 → Conveyor A → drive_end`
+
+**Leaves under `drive_end`:** GS10 VFD (Instance, SN 4427), Motor (Instance, SN ABB-220117), coupling (end device).
+
+**KG edges:** `DRIVES(gs10_4427 → motor_abb_220117)` and inverse `IS_DRIVEN_BY(motor_abb_220117 → gs10_4427)`.
+
+**UNS paths:**
+```
+enterprise.lakewales.packaging.line2.conveyor_a.drive_end.gs10.4427
+enterprise.lakewales.packaging.line2.conveyor_a.drive_end.motor.abb_220117
+enterprise.lakewales.packaging.line2.conveyor_a.drive_end.coupling
+```
+
+**Render (Physical):**
+```
+Conveyor A
+└── drive_end
+    ├── GS10 VFD (SN 4427)
+    ├── Motor (SN ABB-220117)
+    └── coupling
+```
+
+**Render (Control):**
+```
+Conveyor A
+└── drive_end
+    ├── GS10 VFD (SN 4427)
+    │   └── Motor (SN ABB-220117)   ← nested via DRIVES edge
+    └── coupling
+```
+
+#### Example B — Two-motor VFD (rare: parallel pumps on one drive)
+
+**Assets:** same chain to `drive_end`.
+
+**Leaves:** PowerFlex 525 VFD, Pump Motor A, Pump Motor B.
+
+**KG edges:** `DRIVES(pf525 → pump_motor_a)` AND `DRIVES(pf525 → pump_motor_b)`.
+
+**Render (Control):**
+```
+drive_end
+└── PowerFlex 525
+    ├── Pump Motor A
+    └── Pump Motor B
+```
+
+#### Example C — Common DC bus, multiple inverter modules
+
+**Assets:** chain to `cabinet`.
+
+**Leaves:** Active Front End (Instance), DC bus (end device — `enterprise.…cabinet.dc_bus`), Inverter Module 1 (Instance), Inverter Module 2 (Instance), Motor 1, Motor 2.
+
+**KG edges:**
+- `POWERED_BY(inverter_1 → dc_bus)`, `POWERED_BY(inverter_2 → dc_bus)`
+- `POWERED_BY(dc_bus → afe)`
+- `DRIVES(inverter_1 → motor_1)`, `DRIVES(inverter_2 → motor_2)`
+
+**Render (Control):**
+```
+cabinet
+└── Active Front End
+    └── DC bus
+        ├── Inverter Module 1
+        │   └── Motor 1
+        └── Inverter Module 2
+            └── Motor 2
+```
+
+(The `POWERED_BY` edges drive the AFE → bus → inverter nesting; the `DRIVES` edges drive the inverter → motor nesting. Same render helper.)
+
+#### Example D — MCC bucket
+
+**Assets:** `Site → Electrical Room → MCC-1 → Bucket-07`.
+
+**Leaves under `Bucket-07`:** PowerFlex 525 (Instance), Motor (Instance), overload relay (end device), contactor (end device).
+
+**KG edges:** `DRIVES(pf525 → motor)`, `WIRED_TO(motor → overload)`, `WIRED_TO(contactor → pf525)`.
+
+**Render (Control):**
+```
+MCC-1
+└── Bucket-07
+    ├── PowerFlex 525
+    │   └── Motor
+    ├── overload relay
+    └── contactor
+```
+
+### Orphan cases (first-class, not error states)
+
+- **Across-the-line motor** — started by a contactor + overload, no VFD. No `IS_DRIVEN_BY` edge. Renders at its physical-tree position in both views.
+- **Spare VFD in inventory** — Asset row with no motor target. No `DRIVES` edge. Renders at its physical-tree position in both views.
+- **VFD with motor swapped out** — old `DRIVES` edge marked `status='superseded'` (per ADR-0017); new `DRIVES` edge for the replacement motor in `status='proposed'` until admin accepts.
+
+### What this section does NOT cover
+
+- PLC ↔ I/O module nesting, sensor ↔ analog-input wiring, contactor ↔ overload nesting — same pattern likely (sibling + typed edge) but each needs its own decision when the use case arrives.
+- IEC 81346 reference-designation syntax (`=function+location-product`) — MIRA's UNS path is the designation system; no second one needed.
+- The Drive-Composer-style parameter-set viewer that a future Control view UI could surface — out of scope; tree toggle only.
+
 ## Data Model
 
 ### New tables (`docs/migrations/008_namespace_builder.sql`)

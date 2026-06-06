@@ -145,10 +145,11 @@ function LoginFormInner() {
               </button>
             </div>
           ) : (
-            <form onSubmit={handleMagicLink} className="mb-4">
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">Email magic link</label>
+            <form onSubmit={handleMagicLink} method="post" className="mb-4">
+              <label htmlFor="magic-email" className="block text-xs font-medium text-slate-400 mb-1.5">Email magic link</label>
               <div className="flex gap-2">
                 <Input
+                  id="magic-email"
                   type="email"
                   value={magicEmail}
                   onChange={(e) => setMagicEmail(e.target.value)}
@@ -161,7 +162,7 @@ function LoginFormInner() {
                   type="submit"
                   aria-label="Send magic link"
                   disabled={magicLoading || !magicEmail}
-                  className="px-4 h-11 rounded-md font-medium text-white text-sm disabled:opacity-50 flex items-center gap-1.5"
+                  className="px-4 h-11 min-w-[44px] rounded-md font-medium text-white text-sm disabled:opacity-50 flex items-center justify-center gap-1.5"
                   style={{ background: "linear-gradient(135deg,#2563EB,#0891B2)" }}
                 >
                   {magicLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
@@ -180,17 +181,20 @@ function LoginFormInner() {
           <button
             type="button"
             onClick={() => setShowPasswordForm(v => !v)}
-            className="w-full flex items-center justify-between text-xs text-slate-400 hover:text-slate-200 transition-colors mb-3"
+            aria-expanded={showPasswordForm}
+            aria-controls="password-signin-form"
+            className="w-full flex items-center justify-between min-h-[44px] py-2 text-xs text-slate-400 hover:text-slate-200 transition-colors mb-3"
           >
             <span>Sign in with password</span>
             <ChevronDown className={`w-4 h-4 transition-transform ${showPasswordForm ? "rotate-180" : ""}`} />
           </button>
 
           {showPasswordForm && (
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form id="password-signin-form" onSubmit={handleSubmit} method="post" className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5">Email</label>
+                <label htmlFor="login-email" className="block text-xs font-medium text-slate-400 mb-1.5">Email</label>
                 <Input
+                  id="login-email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -202,9 +206,10 @@ function LoginFormInner() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5">Password</label>
+                <label htmlFor="login-password" className="block text-xs font-medium text-slate-400 mb-1.5">Password</label>
                 <div className="relative">
                   <Input
+                    id="login-password"
                     type={showPw ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}

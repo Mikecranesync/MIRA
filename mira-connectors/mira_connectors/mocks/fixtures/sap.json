@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "source": "SAP Plant Maintenance (PM)",
+    "api_hint": "S/4HANA OData (API_FUNCTIONALLOCATION, API_EQUIPMENT, API_MAINTENANCEORDER) or BAPI_EQUI_GETDETAIL",
+    "note": "Mock fixture. Real SAP PM field names (EQUNR, TPLNR, AUFNR, MATNR, HERST, ...). Functional-location TPLNR is the SAP hierarchy; TPLMA points at the superior FL.",
+    "client": "100"
+  },
+  "functional_locations": [
+    { "TPLNR": "ACME-BED", "PLTXT": "Bedford Plant", "TPLMA": null, "FLTYP": "PLANT", "SWERK": "BED1", "STORT": "BED" },
+    { "TPLNR": "ACME-BED-PKG", "PLTXT": "Packaging Area", "TPLMA": "ACME-BED", "FLTYP": "AREA", "SWERK": "BED1", "STORT": "BED" },
+    { "TPLNR": "ACME-BED-PKG-L1", "PLTXT": "Bottling Line 1", "TPLMA": "ACME-BED-PKG", "FLTYP": "LINE", "SWERK": "BED1", "STORT": "BED" },
+    { "TPLNR": "ACME-BED-PKG-L1-C1", "PLTXT": "Infeed Conveyor Cell", "TPLMA": "ACME-BED-PKG-L1", "FLTYP": "CELL", "SWERK": "BED1", "STORT": "BED" }
+  ],
+  "equipment": [
+    { "EQUNR": "10000455", "EQKTX": "Infeed Belt Conveyor", "TPLNR": "ACME-BED-PKG-L1-C1", "HEQUI": null, "EQTYP": "M", "HERST": "Dorner", "TYPBZ": "2200-Series", "SERGE": "CNV-2021-4471", "SWERK": "BED1", "DATAB": "2021-06-15", "ELIEF": "Dorner", "ABCKZ": "A" },
+    { "EQUNR": "10000456", "EQKTX": "Conveyor Drive Motor 2HP", "TPLNR": "ACME-BED-PKG-L1-C1", "HEQUI": "10000455", "EQTYP": "M", "HERST": "WEG", "TYPBZ": "W22", "SERGE": "WEG-9931", "SWERK": "BED1", "DATAB": "2021-06-15", "ELIEF": "WEG", "ABCKZ": "B" },
+    { "EQUNR": "10000457", "EQKTX": "VFD GS10 1HP", "TPLNR": "ACME-BED-PKG-L1-C1", "HEQUI": "10000455", "EQTYP": "E", "HERST": "AutomationDirect", "TYPBZ": "GS10-11P5", "SERGE": "GS10-55120", "SWERK": "BED1", "DATAB": "2021-06-15", "ELIEF": "AutomationDirect", "ABCKZ": "A" }
+  ],
+  "maintenance_orders": [
+    { "AUFNR": "4000123", "KTEXT": "Conveyor VFD fault investigation", "EQUNR": "10000455", "TPLNR": "ACME-BED-PKG-L1-C1", "AUART": "PM02", "GSTRP": "2026-05-18", "GLTRP": "2026-05-18", "IWERK": "BED1", "PRIOK": "2", "ANLZU": "TECO", "QMNUM": "10004521" },
+    { "AUFNR": "4000130", "KTEXT": "Motor lubrication (preventive)", "EQUNR": "10000456", "TPLNR": "ACME-BED-PKG-L1-C1", "AUART": "PM01", "GSTRP": "2026-06-05", "GLTRP": "2026-06-05", "IWERK": "BED1", "PRIOK": "3", "ANLZU": "REL", "QMNUM": null }
+  ],
+  "task_lists": [
+    { "PLNNR": "TL-MOTOR-LUBE", "PLNAL": "01", "KTEXT": "Motor bearing lubrication", "EQUNR": "10000456", "STRAT": "MONTHLY", "ZYKL1": 1, "ZEIEH": "MON", "WERKS": "BED1" },
+    { "PLNNR": "TL-VFD-INSP", "PLNAL": "01", "KTEXT": "VFD annual inspection", "EQUNR": "10000457", "STRAT": "ANNUAL", "ZYKL1": 12, "ZEIEH": "MON", "WERKS": "BED1" }
+  ],
+  "bom": [
+    { "EQUNR": "10000457", "MATNR": "FUSE-10A-CC", "MAKTX": "10A class CC fuse", "MENGE": 3, "MEINS": "EA", "POSNR": "0010", "LGORT": "0001" },
+    { "EQUNR": "10000456", "MATNR": "BRG-6204-2RS", "MAKTX": "Bearing 6204-2RS", "MENGE": 2, "MEINS": "EA", "POSNR": "0010", "LGORT": "0001" }
+  ]
+}

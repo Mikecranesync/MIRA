@@ -1,6 +1,22 @@
 #!/usr/bin/env python3
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  ⚠️  BENCH / DEVELOPER TOOL — NEVER SHIPPED TO CUSTOMERS                  ║
+# ║                                                                          ║
+# ║  This script writes to the GS10 VFD (F/R/S/X commands) over Modbus TCP. ║
+# ║  It exists to instrument the development bench (Micro 820 + Conv_Simple ║
+# ║  firmware) and validate ladder logic. It is NOT part of the customer-   ║
+# ║  deployed MIRA Module, NOT in any production docker-compose, and MUST   ║
+# ║  NEVER be referenced from a customer-facing path.                       ║
+# ║                                                                          ║
+# ║  Customer-side PLC reads go through Ignition (or the future Sparkplug   ║
+# ║  bridge in mira-connect). Customer-side PLC writes do not exist —       ║
+# ║  see docs/mira-ignition-secure-architecture.md §8 anti-pattern #6.      ║
+# ║                                                                          ║
+# ║  Rules: .claude/rules/fieldbus-readonly.md                              ║
+# ║  Architecture: docs/mira-ignition-secure-architecture.md §10.2          ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
 r"""
-live_monitor.py -- MIRA PLC Live Dashboard
+live_monitor.py -- MIRA PLC Live Dashboard (BENCH-ONLY)
 Real-time Modbus TCP monitor for Micro820 + GS10 VFD conveyor system.
 
 Usage:
@@ -20,22 +36,24 @@ Keyboard:
 """
 
 import argparse
+import logging
+import os
 import sys
-import time
 import threading
+import time
 
 try:
     from pymodbus.client import ModbusTcpClient
 except ImportError:
     from pymodbus.client.sync import ModbusTcpClient
 
-from rich.console import Console
-from rich.live import Live
-from rich.table import Table
-from rich.panel import Panel
-from rich.layout import Layout
-from rich.text import Text
 from rich import box
+from rich.console import Console
+from rich.layout import Layout
+from rich.live import Live
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 # -- Modbus addresses (zero-indexed) -----------------------------------------
 # Coils: C1-C22 → address 0-21
@@ -95,6 +113,15 @@ HR_VFD_CMD_WORD = 14    # 114
 HR_VFD_FREQ_SP = 15     # 115
 HR_VFD_POLL_STEP = 16   # 116
 
+# -- Deployed slave segments (Conv_Simple_1.5, 2026-05-28) -------------------
+# The bench slave exposes only a SUBSET of the full map above: 13 non-contiguous
+# coils + 5 HRs. Reading a contiguous block that spans an unmapped address makes
+# the Micro 820 return a Modbus exception, so we read only the mapped sub-blocks
+# and drop each into its slot in the full coils[]/regs[] arrays (unmapped slots
+# keep their False/0 default). (base, count) pairs are pymodbus 0-based.
+COIL_SEGMENTS = [(0, 1), (3, 1), (5, 1), (9, 1), (11, 5), (16, 4)]
+HR_SEGMENTS = [(106, 4), (114, 1)]
+
 # -- Lookup tables ------------------------------------------------------------
 STATE_NAMES = {0: "IDLE", 1: "STARTING", 2: "RUNNING", 3: "STOPPING", 4: "FAULT"}
 STATE_COLORS = {0: "white", 1: "yellow", 2: "green", 3: "yellow", 4: "red bold"}
@@ -117,7 +144,7 @@ def bool_text(val, true_color="green", false_color="dim"):
 def alarm_text(val, label=""):
     if val:
         return Text(f"TRUE  {label}", style="red bold")
-    return Text(f"FALSE", style="green")
+    return Text("FALSE", style="green")
 
 
 class PLCMonitor:
@@ -145,10 +172,14 @@ class PLCMonitor:
             if self.connected:
                 self.last_error = ""
             else:
-                self.last_error = "Connection refused"
+                self.last_error = "OFFLINE - check Ethernet cable / PLC power + Run"
         except Exception as e:
             self.connected = False
-            self.last_error = str(e)[:60]
+            msg = str(e).lower()
+            if "timed out" in msg or "refused" in msg or "unreachable" in msg:
+                self.last_error = "OFFLINE - check Ethernet cable / PLC power + Run"
+            else:
+                self.last_error = str(e)[:60]
 
     def poll(self):
         if not self.connected:
@@ -157,26 +188,37 @@ class PLCMonitor:
                 return
 
         try:
-            # Read coils
-            result = self.client.read_coils(address=COIL_BASE, count=COIL_COUNT)
-            if not result.isError():
-                self.coils = list(result.bits[:COIL_COUNT])
-                # Check heartbeat toggle
-                hb = self.coils[C_HEARTBEAT]
-                self.heartbeat_ok = (hb != self.last_heartbeat)
-                self.last_heartbeat = hb
-            else:
-                self.errors += 1
-                self.last_error = f"Coil read error: {result}"
+            ok = True
 
-            # Read holding registers
-            result = self.client.read_holding_registers(address=HR_BASE, count=HR_COUNT)
-            if not result.isError():
-                self.regs = list(result.registers[:HR_COUNT])
-            else:
-                self.errors += 1
-                self.last_error = f"HR read error: {result}"
+            # Read coils — only the mapped sub-blocks (see COIL_SEGMENTS note).
+            for base, count in COIL_SEGMENTS:
+                result = self.client.read_coils(address=base, count=count)
+                if result.isError():
+                    ok = False
+                    self.errors += 1
+                    self.last_error = f"Coil {base}+{count} read error"
+                    continue
+                for i in range(count):
+                    self.coils[base + i] = bool(result.bits[i])
 
+            # Read holding registers — only the mapped sub-blocks.
+            for base, count in HR_SEGMENTS:
+                result = self.client.read_holding_registers(address=base, count=count)
+                if result.isError():
+                    ok = False
+                    self.errors += 1
+                    self.last_error = f"HR {base}+{count} read error"
+                    continue
+                for i in range(count):
+                    self.regs[base - HR_BASE + i] = result.registers[i]
+
+            # Heartbeat toggle (unmapped on this slave -> stays steady)
+            hb = self.coils[C_HEARTBEAT]
+            self.heartbeat_ok = (hb != self.last_heartbeat)
+            self.last_heartbeat = hb
+
+            if ok:
+                self.last_error = ""
             self.poll_count += 1
 
         except Exception as e:
@@ -234,7 +276,7 @@ class PLCMonitor:
         if self.last_command:
             header.append(f"\n  Last cmd: {self.last_command}")
         if self.last_error and not self.connected:
-            header.append(f"\n  ")
+            header.append("\n  ")
             header.append(Text(self.last_error, style="red"))
 
         # -- State Machine table ----------------------------------------------
@@ -350,41 +392,82 @@ class PLCMonitor:
         return layout
 
 
-def key_listener(monitor):
-    """Non-blocking keyboard listener (Windows msvcrt)."""
+def _handle_key(monitor, key):
+    if key == "q":
+        monitor.running = False
+    elif key == "f":
+        monitor.write_vfd_cmd(18)  # GS10 FWD+RUN
+    elif key == "r":
+        monitor.write_vfd_cmd(20)  # GS10 REV+RUN
+    elif key == "s":
+        monitor.write_vfd_cmd(1)   # GS10 STOP
+    elif key == "x":
+        monitor.write_vfd_cmd(7)   # Fault reset
+    elif key == "+":
+        monitor.write_speed(monitor.speed_setpoint + 200)
+    elif key == "-":
+        monitor.write_speed(monitor.speed_setpoint - 200)
+    elif key == "0":
+        monitor.write_speed(0)
+
+
+def _key_listener_windows(monitor):
     import msvcrt
     while monitor.running:
-        if msvcrt.kbhit():
-            ch = msvcrt.getch()
+        if msvcrt.kbhit():  # type: ignore[attr-defined]
+            ch = msvcrt.getch()  # type: ignore[attr-defined]
             try:
                 key = ch.decode("utf-8", errors="ignore").lower()
             except Exception:
                 key = ""
-            if key == "q":
-                monitor.running = False
-            elif key == "f":
-                monitor.write_vfd_cmd(18)  # GS10 FWD+RUN
-            elif key == "r":
-                monitor.write_vfd_cmd(20)  # GS10 REV+RUN
-            elif key == "s":
-                monitor.write_vfd_cmd(1)   # GS10 STOP
-            elif key == "x":
-                monitor.write_vfd_cmd(7)   # Fault reset
-            elif key == "+":
-                monitor.write_speed(monitor.speed_setpoint + 200)
-            elif key == "-":
-                monitor.write_speed(monitor.speed_setpoint - 200)
-            elif key == "0":
-                monitor.write_speed(0)
+            if key:
+                _handle_key(monitor, key)
         time.sleep(0.05)
+
+
+def _key_listener_posix(monitor):
+    import select
+    import termios
+    import tty
+
+    fd = sys.stdin.fileno()
+    try:
+        old = termios.tcgetattr(fd)
+    except termios.error:
+        return  # Not a real TTY.
+
+    try:
+        tty.setcbreak(fd)
+        while monitor.running:
+            r, _, _ = select.select([sys.stdin], [], [], 0.05)
+            if not r:
+                continue
+            ch = sys.stdin.read(1)
+            if ch:
+                _handle_key(monitor, ch.lower())
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+def key_listener(monitor):
+    """Non-blocking keyboard listener (Windows msvcrt / POSIX termios)."""
+    if os.name == "nt":
+        _key_listener_windows(monitor)
+    elif sys.stdin.isatty():
+        _key_listener_posix(monitor)
+    # else: not a TTY — keyboard control silently disabled.
 
 
 def main():
     parser = argparse.ArgumentParser(description="MIRA PLC Live Monitor")
-    parser.add_argument("--host", default="169.254.32.93", help="PLC IP address")
+    parser.add_argument("--host", default=os.getenv("DEMO_PLC_IP", "192.168.1.100"), help="PLC IP address")
     parser.add_argument("--port", type=int, default=502, help="Modbus TCP port")
     parser.add_argument("--poll", type=float, default=0.5, help="Poll interval (seconds)")
     args = parser.parse_args()
+
+    # Silence pymodbus's internal connect-retry spam; the dashboard surfaces a
+    # clean OFFLINE state instead.
+    logging.getLogger("pymodbus").setLevel(logging.CRITICAL)
 
     console = Console()
     monitor = PLCMonitor(args.host, args.port, args.poll)

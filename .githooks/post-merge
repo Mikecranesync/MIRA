@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# MIRA post-merge hook — refresh CodeGraph index after merges and pulls.
+# Installed via: git config core.hooksPath .githooks
+#
+# Runs `codegraph sync` quietly. Sync is incremental (<1 s on the current
+# ~1,200-file index) and a no-op when nothing changed. The hook never
+# blocks the merge — codegraph missing, npx offline, or sync failure all
+# degrade to a single warning line and exit 0.
+
+set -u
+
+# Skip when CodeGraph isn't installed in this checkout (e.g. fresh clone
+# before `npx -y @colbymchenry/codegraph init -i`, or a worktree that
+# was created before install).
+if [ ! -d ".codegraph" ]; then
+  exit 0
+fi
+
+# Skip when npx is unavailable (CI minimal images, restricted shells).
+if ! command -v npx >/dev/null 2>&1; then
+  exit 0
+fi
+
+# Background + detached so a slow npm cache check never delays the merge.
+# Output is silenced; the next `codegraph status` call surfaces health.
+(
+  npx -y @colbymchenry/codegraph sync >/dev/null 2>&1 || true
+) &
+disown 2>/dev/null || true
+
+exit 0

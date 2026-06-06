@@ -39,6 +39,17 @@
         "--headless"
       ],
       "env": {}
+    },
+    "codegraph": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@colbymchenry/codegraph",
+        "serve",
+        "--mcp"
+      ],
+      "env": {}
     }
   }
 }

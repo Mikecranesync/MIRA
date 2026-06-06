@@ -133,6 +133,7 @@ export function UploadPicker({
   const [assets, setAssets] = useState<Asset[]>([]);
   const [assetSearch, setAssetSearch] = useState("");
   const [selectedAsset, setSelectedAsset] = useState<string | null>(defaultAssetTag);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   // Re-sync when the consumer opens the picker for a different asset.
   useEffect(() => {
@@ -395,8 +396,28 @@ export function UploadPicker({
           <label
             className="flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl px-4 py-8 cursor-pointer transition-colors hover:bg-[var(--surface-1)]"
             style={{
-              borderColor: uploading ? "var(--brand-blue)" : "var(--border)",
+              borderColor: uploading || isDragOver ? "var(--brand-blue)" : "var(--border)",
+              backgroundColor: isDragOver ? "var(--surface-1)" : undefined,
               opacity: uploading ? 0.8 : 1,
+            }}
+            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+            onDragEnter={(e) => { e.preventDefault(); setIsDragOver(true); }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={async (e) => {
+              e.preventDefault();
+              setIsDragOver(false);
+              const files = Array.from(e.dataTransfer.files);
+              if (!files.length || uploading) return;
+              setUploading(true);
+              setError(null);
+              try {
+                await onLocalFiles(files, selectedAsset);
+                onClose();
+              } catch (err) {
+                setError((err as Error).message);
+              } finally {
+                setUploading(false);
+              }
             }}
           >
             {uploading ? (

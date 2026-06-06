@@ -1,5 +1,11 @@
 # MIRA — Ignition ConveyorMIRA Dashboard
 
+> **Note (2026-06-04):** This page documents the original bench deploy. The platform's Ignition 8.3
+> alignment direction — architecture, deployment modes, the UNS-gate Perspective surface, and the
+> phased plan — lives in [`docs/ignition-8.3-alignment-plan.md`](../docs/ignition-8.3-alignment-plan.md)
+> and [`docs/architecture/mira-ignition-module-architecture.md`](../docs/architecture/mira-ignition-module-architecture.md).
+> The running bench gateway is **8.3.4**; `deploy_ignition.ps1` still references 8.1 paths (Phase 1 cleanup).
+
 **Target:** PLC Laptop (Windows, Ignition 8.1 Standard trial, `http://localhost:8088`)
 **PLC:** Micro820 at `192.168.1.100:502` (Modbus TCP)
 

@@ -412,6 +412,13 @@ def write_offline_scorecard(
                     lines.append(f"- **{cp.name}** FAILED: {cp.reason}")
             if g.error:
                 lines.append(f"- Photo extraction: {g.error}")
+            # Record what MIRA actually said so the eval watchdog's
+            # last_response_snippet (parsed from this line) is populated —
+            # otherwise failures are diagnosed blind (#1583). Mirrors
+            # run_eval.py's scorecard writer.
+            if g.last_response:
+                preview = g.last_response[:200].replace("\n", " ")
+                lines.append(f"- Last response: `{preview}...`")
             lines.append("")
 
     # Judge summary

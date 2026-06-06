@@ -1,20 +1,21 @@
 # MIRA Known Issues, Deferred Features, and Abandoned Approaches
 
 Extracted from CLAUDE.md to keep the build-state file lean.
-Updated: 2026-05-23
+Updated: 2026-05-26
 
 ## Known Broken / Incomplete
 
 - **Gemini key blocked** — `GEMINI_API_KEY` in Doppler returns 403 "Your project has been denied access". Get fresh key from aistudio.google.com and update Doppler `factorylm/prd`. Cascade falls through to Groq/Cerebras in the meantime (smoke-tested OK).
-- **Teams + WhatsApp** — Code-complete, pending cloud setup (Azure Bot Service, WhatsApp Business API). WhatsApp adapter shared-deps fixed 2026-05-22 (#1482) but webhook wiring still TODO.
+- **Teams + WhatsApp** — Code-complete, pending **cloud setup only** (Azure Bot Service for Teams; Twilio account + public domain for WhatsApp). WhatsApp FastAPI webhook is wired (`mira-bots/whatsapp/bot.py:96-113`); it just needs Twilio to point at it.
 - **PLC at 192.168.1.100** — Unreachable from PLC laptop; needs physical check (power/switch/cable).
 - **Charlie Doppler keychain** — Same SSH keychain lock as Bravo had; needs `doppler configure set token-storage file`.
 - **Charlie HUD** — Needs local terminal session to start (keychain blocks SSH start of Doppler).
 - **Reddit benchmark** — 15/16 questions hit intent guard canned responses, not real inference. No recent work on `mira-bots/reddit/`.
-- **NVIDIA NIM / Nemotron** — API key in Doppler but Regime 5 eval tests blocked on it.
-- **VPS deploy uses `main` HEAD, not version tags** — Customer-facing components are tagged (`mira-hub/v*`, etc.) but `deploy-vps.yml` checks out `main`, so the namespaced tags are documentation only — they don't enforce reproducible deploys or give us a real rollback target. See `feedback_versioning_discipline_global.md`.
+- **NVIDIA NIM / Nemotron** — Runtime code in `mira-bots/shared/nemotron.py` works (falls back gracefully when `NVIDIA_API_KEY` is unset); see "Deferred Features → Active" below. What's blocked is the **Regime 5 eval suite** specifically — it needs a working key to exercise the reranker path.
+- **VPS deploy uses `main` HEAD, not version tags** — Customer-facing components are tagged (`mira-hub/v*`, etc.) but `deploy-vps.yml` checks out `main`, so the namespaced tags are documentation only — they don't enforce reproducible deploys or give us a real rollback target. Tracked in issue [#736](https://github.com/Mikecranesync/MIRA/issues/736).
 - **DOPPLER_TOKEN drift between Doppler config and saas compose** — Secrets set in Doppler `factorylm/prd` don't reach a container unless also listed in the `env:` block of `docker-compose.saas.yml`. Edit both in the same PR.
 - **Default `deploy-vps.yml` TARGETS excludes mira-web** — Marketing-site PRs do not auto-deploy. Manual: `gh workflow run deploy-vps.yml -f services=mira-web`.
+- **`tools/demo_plc_poller.py` ships a colliding `live_signal_cache` DDL** — the poller's embedded `SCHEMA_DDL` creates a `live_signal_cache` shaped `(topic, plc_tag, equipment_id, name, value, quality, updated_at)` keyed on `topic`, which does NOT match Hub migration `020`'s `(tenant_id, plc_tag, …, last_seen_at)`. Against a migrated NeonDB the poller's `CREATE TABLE IF NOT EXISTS` no-ops and its INSERT fails on missing columns. Pre-existing; surfaced 2026-05-29 while building Command Center (which deliberately does NOT read this table — liveness is a reachability probe). Fix the poller to UPSERT the migration-020 shape (with `tenant_id`) before relying on it to feed the Hub.
 
 ## Deferred Features
 

@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
-"""Run the demo Conveyor 001 seed against NeonDB.
+"""Run a namespace seed against NeonDB.
 
-Plan: docs/plans/2026-05-14-demo-backend-plan.md (Phase 2)
-Seed:  tools/seeds/demo-conveyor-001.sql
-
-Usage (dry-run prints the SQL it would execute):
+Usage — original demo (fixed tenant UUID):
   doppler run --project factorylm --config prd -- python3 tools/seeds/run_demo_seed.py --dry-run
-
-Apply for real (Conveyor 001 only — won't touch other tenants):
   doppler run --project factorylm --config prd -- python3 tools/seeds/run_demo_seed.py --commit
-
-Verification only (read counts, no writes):
   doppler run --project factorylm --config prd -- python3 tools/seeds/run_demo_seed.py --verify
+
+Usage — real projects (provide your tenant UUID from the Hub):
+  doppler run --project factorylm --config prd -- \
+    python3 tools/seeds/run_demo_seed.py \
+      --tenant epic-universe --tenant-id <UUID> --commit
+
+  doppler run --project factorylm --config prd -- \
+    python3 tools/seeds/run_demo_seed.py \
+      --tenant garage-conveyor --tenant-id <UUID> --commit
+
+Find your tenant UUID:
+  doppler run --project factorylm --config prd -- \
+    psql "$DATABASE_URL" -c "SELECT id, name FROM hub_tenants ORDER BY created_at DESC LIMIT 5;"
 """
 from __future__ import annotations
 
@@ -25,8 +31,36 @@ from pathlib import Path
 import psycopg
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-SEED_FILE = REPO_ROOT / "tools" / "seeds" / "demo-conveyor-001.sql"
 DEMO_TENANT_ID = "00000000-0000-0000-0000-0000000000d1"
+
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+TENANTS: dict[str, dict] = {
+    "demo": {
+        "seed_file": REPO_ROOT / "tools" / "seeds" / "demo-conveyor-001.sql",
+        "tenant_id": DEMO_TENANT_ID,
+        "verify_entities": [],  # legacy verify() handles this
+    },
+    "epic-universe": {
+        "seed_file": REPO_ROOT / "tools" / "seeds" / "epic-universe-stardust-racers.sql",
+        "tenant_id": None,  # must be supplied via --tenant-id
+        "verify_entities": [
+            "celestial_park", "stardust_racers", "launch_1", "launch_2",
+            "station_load", "station_unload",
+        ],
+    },
+    "garage-conveyor": {
+        "seed_file": REPO_ROOT / "tools" / "seeds" / "factorylm-garage-conveyor.sql",
+        "tenant_id": None,  # must be supplied via --tenant-id
+        "verify_entities": [
+            "home_garage", "conveyor_lab", "conveyor_1",
+            "micro820_plc", "gs10_vfd", "photoeye_1",
+        ],
+    },
+}
+
+# Kept for reference — used by the old SEED_FILE path
+SEED_FILE = TENANTS["demo"]["seed_file"]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("demo-seed")
@@ -61,15 +95,22 @@ def _strip_outer_tx(sql: str) -> str:
     return stripped
 
 
-def run_seed(commit: bool) -> None:
-    raw_sql = SEED_FILE.read_text(encoding="utf-8")
+def run_seed(commit: bool, seed_file: Path = SEED_FILE, tenant_id: str = DEMO_TENANT_ID) -> None:
+    raw_sql = seed_file.read_text(encoding="utf-8")
+    # Substitute tenant placeholder for real-project seeds.
+    if "__TENANT_ID__" in raw_sql:
+        if not _UUID_RE.match(tenant_id):
+            log.error("--tenant-id must be a valid UUID; got: %s", tenant_id)
+            sys.exit(2)
+        raw_sql = raw_sql.replace("__TENANT_ID__", tenant_id)
+        log.info("Substituted tenant_id=%s into seed.", tenant_id)
     sql = _strip_outer_tx(raw_sql)
     log.info("Connecting to NeonDB...")
     notices: list[str] = []
     with psycopg.connect(get_database_url(), autocommit=False) as conn:
         conn.add_notice_handler(lambda diag: notices.append(diag.message_primary or ""))
         with conn.cursor() as cur:
-            log.info("Applying %s (%d bytes, outer BEGIN/COMMIT stripped)...", SEED_FILE.name, len(sql))
+            log.info("Applying %s (%d bytes, outer BEGIN/COMMIT stripped)...", seed_file.name, len(sql))
             cur.execute(sql)
             for msg in notices:
                 log.info("PG NOTICE: %s", msg.strip())
@@ -115,22 +156,63 @@ def verify() -> None:
                 log.info("  %s %-50s %d", marker, label, n)
 
 
+def verify_real(tenant_id: str, entity_ids: list[str]) -> None:
+    log.info("Verifying tenant %s...", tenant_id)
+    with psycopg.connect(get_database_url(), autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"SET app.current_tenant_id = '{tenant_id}'")
+            for eid in entity_ids:
+                cur.execute(
+                    "SELECT COUNT(*) FROM kg_entities WHERE tenant_id = %s AND entity_id = %s",
+                    (tenant_id, eid),
+                )
+                (n,) = cur.fetchone()
+                log.info("  %s kg_entities[%s]  %d", "✔" if n > 0 else "✗", eid, n)
+            cur.execute(
+                "SELECT COUNT(*) FROM relationship_proposals WHERE tenant_id = %s AND status = 'proposed'",
+                (tenant_id,),
+            )
+            (n,) = cur.fetchone()
+            log.info("  %s relationship_proposals pending  %d", "✔" if n > 0 else "✗", n)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--tenant",
+        choices=list(TENANTS),
+        default="demo",
+        help="Which seed to run (default: demo).",
+    )
+    ap.add_argument(
+        "--tenant-id",
+        metavar="UUID",
+        help="Tenant UUID to inject into real-project seeds (required for epic-universe, garage-conveyor).",
+    )
     g = ap.add_mutually_exclusive_group(required=True)
-    g.add_argument("--dry-run", action="store_true", help="Apply the seed in a transaction, then rollback.")
-    g.add_argument("--commit", action="store_true", help="Apply the seed and commit.")
-    g.add_argument("--verify", action="store_true", help="Read-only count check against the demo tenant.")
+    g.add_argument("--dry-run", action="store_true", help="Apply in a transaction, then rollback.")
+    g.add_argument("--commit", action="store_true", help="Apply and commit.")
+    g.add_argument("--verify", action="store_true", help="Read-only count check.")
     args = ap.parse_args()
 
-    if not SEED_FILE.exists():
-        log.error("Seed file missing: %s", SEED_FILE)
+    cfg = TENANTS[args.tenant]
+    seed_file: Path = cfg["seed_file"]
+    tenant_id: str = args.tenant_id or cfg["tenant_id"] or ""
+
+    if args.tenant != "demo" and not tenant_id:
+        ap.error(f"--tenant-id UUID is required for --tenant {args.tenant}")
+
+    if not seed_file.exists():
+        log.error("Seed file missing: %s", seed_file)
         return 2
 
     if args.verify:
-        verify()
+        if args.tenant == "demo":
+            verify()
+        else:
+            verify_real(tenant_id, cfg["verify_entities"])
     else:
-        run_seed(commit=args.commit)
+        run_seed(commit=args.commit, seed_file=seed_file, tenant_id=tenant_id)
     return 0
 
 

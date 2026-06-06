@@ -30,8 +30,8 @@ Honest snapshot for the monday.com marketplace review board. Done 2026-05-05 aga
 ### ✅ Monday-side authentication
 
 **OAuth install flow (Phase 1A, in this PR):**
-- `GET /oauth/monday/install` redirects to Monday's standard authorize endpoint with our `client_id`, our static `redirect_uri`, and the requested scopes (`me:read boards:read boards:write`).
-- `GET /oauth/monday/callback` exchanges the auth code for a long-lived access token, calls Monday's `me { account { id slug } }` query to identify the installing account, and persists `(account_id, access_token)` keyed by the Monday account id.
+- `GET /api/scanbe/oauth/monday/install` redirects to Monday's standard authorize endpoint with our `client_id`, our static `redirect_uri`, and the requested scopes (`me:read boards:read boards:write`). The `/api/scanbe/` prefix is the nginx route to the scan-backend container on the prod VPS — Monday Developer Center must register the redirect URI accordingly: `https://app.factorylm.com/api/scanbe/oauth/monday/callback`.
+- `GET /api/scanbe/oauth/monday/callback` exchanges the auth code for a long-lived access token, calls Monday's `me { account { id slug } }` query to identify the installing account, and persists `(account_id, access_token)` keyed by the Monday account id.
 - A 401 from any subsequent Monday GraphQL call marks the install revoked and surfaces a clean "please reinstall" state to the iframe (no 500-class leakage to the user).
 
 **SessionToken (JWT) verification (Phase 1B, in this PR):**
@@ -79,7 +79,7 @@ Both are bounded by our budget alarms (set on the Doppler-issued API keys at the
 
 ### ⚠️  OAuth `state` parameter
 
-Our `/oauth/monday/install` accepts a `state` parameter and forwards it to Monday's authorize URL. Our `/oauth/monday/callback` accepts the round-tripped `state` but does **not** verify it against a stored value (CSRF defense in depth).
+Our `/api/scanbe/oauth/monday/install` accepts a `state` parameter and forwards it to Monday's authorize URL. Our `/api/scanbe/oauth/monday/callback` accepts the round-tripped `state` but does **not** verify it against a stored value (CSRF defense in depth).
 
 **Why it's acceptable for now:**
 - Monday originates the authorize flow from inside the marketplace UI; an attacker can't easily trick a user into starting a flow on a different account.

@@ -1,4 +1,5 @@
 import { withTenantContext } from "@/lib/tenant-context";
+import { upsertInferredProposal } from "./proposals-writer";
 import type { KGEntity, KGRelationship, KGTriple } from "./types";
 
 function rowToEntity(row: Record<string, unknown>): KGEntity {
@@ -229,16 +230,24 @@ export interface SchematicUpsertPayload {
 
 export interface SchematicUpsertResult {
   entities_upserted: number;
+  /** Kept for API back-compat. Schematic edges are now proposed, not verified — always 0. See relationships_proposed. */
   relationships_inserted: number;
+  /** Number of inferred relationship_proposals created (pending human review). */
+  relationships_proposed: number;
   parent_equipment_id: string | null;
   schematic_type: string;
 }
 
 /**
- * Bulk-upsert the entities + relationships produced by the schematic
- * intelligence pipeline (mira-mcp/schematic_intelligence.py). Idempotent on
- * entities (ON CONFLICT updates) and best-effort dedup on relationships
- * (skip when an identical source/target/type triple already exists).
+ * Bulk-upsert the entities produced by the schematic intelligence pipeline
+ * (mira-mcp/schematic_intelligence.py), and PROPOSE its relationships.
+ *
+ * Per the Iron Rule (.claude/skills/managing-the-knowledge-graph, ADR-0017),
+ * a schematic-extracted edge is INFERRED by MIRA — it is never written
+ * straight to kg_relationships as a verified fact. Each edge lands as a
+ * `relationship_proposals` row (via upsertInferredProposal) for human review;
+ * the verified edge is written only on admin approval (proposals/[id]/decide).
+ * Entity upserts are unchanged (nodes), and proposal writes are idempotent.
  */
 export async function upsertSchematicComponents(
   tenantId: string,
@@ -246,6 +255,7 @@ export async function upsertSchematicComponents(
 ): Promise<SchematicUpsertResult> {
   return withTenantContext(tenantId, async (client) => {
     const idByEntityId = new Map<string, string>();
+    const typeByEntityId = new Map<string, string>();
     let entitiesUpserted = 0;
 
     for (const ent of payload.entities) {
@@ -268,39 +278,46 @@ export async function upsertSchematicComponents(
       );
       const internalId = (rows[0] as Record<string, unknown>).id as string;
       idByEntityId.set(ent.entity_id, internalId);
+      typeByEntityId.set(ent.entity_id, ent.entity_type);
       entitiesUpserted++;
     }
 
-    let relationshipsInserted = 0;
+    const schematicLabel = payload.schematic_type ?? "schematic";
+    let relationshipsProposed = 0;
     for (const rel of payload.relationships) {
       const sourceInternalId = idByEntityId.get(rel.source_entity_id);
       const targetInternalId = idByEntityId.get(rel.target_entity_id);
       if (!sourceInternalId || !targetInternalId) continue;
-      const { rowCount } = await client.query(
-        `INSERT INTO kg_relationships
-           (tenant_id, source_id, target_id, relationship_type, properties, confidence)
-         SELECT $1, $2, $3, $4, $5, 1.0
-         WHERE NOT EXISTS (
-           SELECT 1 FROM kg_relationships
-           WHERE tenant_id = $1
-             AND source_id = $2
-             AND target_id = $3
-             AND relationship_type = $4
-         )`,
-        [
-          tenantId,
-          sourceInternalId,
-          targetInternalId,
-          rel.relationship_type,
-          JSON.stringify(rel.properties ?? {}),
+
+      const rawConfidence = Number((rel.properties as Record<string, unknown>)?.confidence);
+      const confidence =
+        Number.isFinite(rawConfidence) && rawConfidence > 0 && rawConfidence <= 1
+          ? rawConfidence
+          : 0.8;
+
+      const proposalId = await upsertInferredProposal(client, tenantId, {
+        sourceEntityId: sourceInternalId,
+        sourceEntityType: typeByEntityId.get(rel.source_entity_id) ?? "entity",
+        targetEntityId: targetInternalId,
+        targetEntityType: typeByEntityId.get(rel.target_entity_id) ?? "entity",
+        relationshipType: rel.relationship_type,
+        confidence,
+        reasoning: `Inferred from ${schematicLabel} (schematic intelligence pipeline).`,
+        evidence: [
+          {
+            evidenceType: "document_page",
+            sourceDescription: `${schematicLabel} schematic`,
+            confidenceContribution: confidence,
+          },
         ],
-      );
-      if (rowCount && rowCount > 0) relationshipsInserted++;
+      });
+      if (proposalId) relationshipsProposed++;
     }
 
     return {
       entities_upserted: entitiesUpserted,
-      relationships_inserted: relationshipsInserted,
+      relationships_inserted: 0,
+      relationships_proposed: relationshipsProposed,
       parent_equipment_id: payload.parent_equipment_id ?? null,
       schematic_type: payload.schematic_type ?? "unknown",
     };

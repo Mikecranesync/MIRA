@@ -41,6 +41,8 @@ Required flow (enforced in `mira-bots/shared/engine.py`):
 
 A code path that begins troubleshooting before step 7 is a **bug**. The `mira-run-hallucination-audit` command exists to find such paths.
 
+**Carve-out — direct machine connections are UNS-certified by construction.** The flow above (and the chat-gate in `.claude/rules/uns-confirmation-gate.md`) applies to chat surfaces (Slack/Telegram/email/generic web). When a turn arrives over a surface that already knows which machine the technician is on — Ignition cloud-chat (`mira-pipeline /api/v1/ignition/chat`), a Perspective "Ask MIRA" panel, an MQTT/Sparkplug B turn from `mira-bridge`/`mira-relay`, a PLC bridge tag-snapshot, a Hub Command Center display, a QR-scan deep-link — the connection itself certifies the UNS path. The engine MUST skip steps 6–7 and treat `state["uns_context"]["source"]=="direct_connection"` as already confirmed. A direct-connection surface that lacks a UNS identifier on its payload must **reject** the turn (`{"error":"uns_required"}`), NOT downgrade to a chat-gate. Full rule + surface list + rejection contract: `.claude/rules/direct-connection-uns-certified.md`.
+
 ## Grounded troubleshooting
 
 MIRA must ground every claim in at least one of:
@@ -93,6 +95,13 @@ MIRA writes to `kg_entities` and `kg_relationships` (NeonDB; see `docs/migration
 
 Promotion from `proposed` → `verified` is an admin action, not an automatic one. Code paths that auto-verify without admin review are bugs.
 
+**Glossary discipline (cross-cutting; see `CONTEXT.md`):**
+- `AISuggestion` = a row in `ai_suggestions`; the unit `/proposals` renders and what "N proposals pending" counts. Six `suggestion_type` values.
+- `RelationshipProposal` = a row in `relationship_proposals` + 1..N `relationship_evidence` rows; backs `AISuggestion` of type `kg_edge` only. Never read directly by user-facing surfaces.
+- `proposed` is a status adjective on `kg_entities` / `kg_relationships`, not a noun. Don't say "a proposed entity" — say "an `AISuggestion` of type `kg_entity`".
+- **Forbidden phrase:** "the proposal table". Always name `ai_suggestions` or `relationship_proposals` explicitly.
+- **Status transitions** on `ai_suggestions`, `relationship_proposals`, `kg_entities.approval_state`, or `kg_relationships.approval_state` follow the mapping in **ADR-0017**. Once `mira-hub/lib/proposal-transition.ts` and `mira_bots/shared/proposal_transition.py` exist, direct `UPDATE … SET status = …` on these columns is a bug — go through the helper.
+
 ## Slack technician UX
 
 Technicians read on a phone in a noisy plant. Optimize for that.
@@ -118,6 +127,20 @@ See `.claude/skills/slack-technician-ux-writer/SKILL.md` for sample message temp
 
 `tools/hooks/prod-guard.sh` enforces the obvious blast-radius cases (`PreToolUse(Bash)`). It is a floor, not a ceiling. The full rule set lives in `docs/environments.md`.
 
+## Code exploration: CodeGraph first
+
+CodeGraph is the SQLite semantic index of every symbol, edge, file, and call path in the workspace. It is wired into every Claude Code session via the `codegraph` MCP server in `.mcp.json`. Use it BEFORE grep / Read for any symbol-shaped question.
+
+- **First call for any task in indexed code:** `codegraph_context "<task>"` — composes search + node + callers + callees in one call. Cheapest possible orientation.
+- **Before editing `engine.py` or any shared module:** `codegraph_impact <symbol>` to see the blast radius. Modules in scope: `mira-bots/shared/engine.py`, `mira-bots/shared/inference/router.py`, `mira-bots/shared/uns_resolver.py`, `mira-bots/shared/citation_compliance.py`, `mira-bots/shared/guardrails.py`, `mira-crawler/ingest/uns.py`, `mira-mcp/server.py`, plus anything imported by >5 files. **Never ignore an unexpected symbol in the blast-radius output** — narrow the change first.
+- **"How does X reach Y" / call-path questions:** `codegraph_trace` — handles dynamic-dispatch hops (callbacks, async workers, FSM transitions) that grep can't follow.
+- **Multi-symbol surveys:** `codegraph_explore` — one capped call for several related symbols. Don't loop `codegraph_node` or `Read`.
+- **Do NOT re-read files CodeGraph already returned source for.** `codegraph_node` / `codegraph_explore` include the symbol body.
+- **Only fall back to `Grep` / `Read`** for plain-text matches (prompt strings, log lines, comments), file-level inspection of files CodeGraph didn't index, or details the CodeGraph response didn't cover.
+- **Index freshness:** `.githooks/post-merge` and `.githooks/post-checkout` run `codegraph sync` automatically (incremental, <1 s, no-op when codegraph isn't installed). After cherry-picks or hand-edits, run `npx -y @colbymchenry/codegraph sync` manually.
+
+Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/codegraph.md`.
+
 ## Rules for code changes
 
 - **Conventional Commits**: `feat/fix/security/docs/refactor/test/chore/BREAKING`. Scope hint: module name (`feat(slack):`, `fix(uns):`, `fix(engine):`).
@@ -126,6 +149,8 @@ See `.claude/skills/slack-technician-ux-writer/SKILL.md` for sample message temp
 - **Python: ruff + httpx + `Optional[X]` (3.12 target)** — see `.claude/rules/python-standards.md`.
 - **Security boundaries** — see `.claude/rules/security-boundaries.md` (PII sanitization, safety keywords, Doppler).
 - **UNS compliance** — see `.claude/rules/uns-compliance.md` (every asset row has `uns_path` or `equipment_entity_id` FK).
+- **Direct-connection UNS certification** — see `.claude/rules/direct-connection-uns-certified.md` (Ignition/MQTT/PLC/Hub/QR surfaces carry a UNS identifier on every turn or are rejected; engine skips the chat-gate on `source="direct_connection"`).
+- **CodeGraph-first exploration** — see `.claude/rules/codegraph-usage.md` (use `codegraph_context` / `codegraph_impact` before grep + Read for any symbol-shaped question).
 - **Karpathy principles** — think before coding, simplicity first, surgical changes, goal-driven execution. See `.claude/rules/karpathy-principles.md`.
 - **Don't break the UNS confirmation gate.** Run `mira-run-hallucination-audit` after engine/bot edits.
 
@@ -140,7 +165,9 @@ See `.claude/skills/slack-technician-ux-writer/SKILL.md` for sample message temp
 ## Do not do
 
 - ❌ **Build a generic chatbot.** MIRA answers grounded maintenance questions, nothing else.
-- ❌ **Begin troubleshooting before the UNS gate confirms.**
+- ❌ **Begin troubleshooting before the UNS gate confirms.** (Chat surfaces only — direct connections are certified by construction; see `.claude/rules/direct-connection-uns-certified.md`.)
+- ❌ **Ask a direct-connection turn "are you sure you're looking at X?"** If the connection didn't carry a UNS identifier, REJECT it — don't downgrade to a chat-gate.
+- ❌ **Add a new direct-connection surface (Ignition, MQTT, PLC, Hub display, QR) without declaring its UNS-identity source.** Every direct surface must populate `state["uns_context"]["source"]="direct_connection"` and supply a resolvable identifier on every turn.
 - ❌ **Invent plant data, PLC tag meaning, work-order history, fault codes, or manual references.** Always cite.
 - ❌ **Auto-promote `proposed` → `verified`** in the knowledge graph.
 - ❌ **Replace SCADA, replace CMMS, or expose arbitrary PLC writes.** That's out of scope. See `.claude/skills/mira-saas-scope-guard/SKILL.md`.
@@ -157,9 +184,12 @@ See `.claude/skills/slack-technician-ux-writer/SKILL.md` for sample message temp
 - `docs/specs/maintenance-namespace-builder-spec.md` — UNS gate, AI proposals, readiness levels (subsumes the older `uns-message-resolver-spec.md` reference)
 - `docs/plans/2026-05-15-maintenance-namespace-builder.md` — phased execution
 - `.claude/rules/uns-compliance.md` — UNS data-shape enforcement
+- `.claude/rules/uns-confirmation-gate.md` — chat-surface UNS gate (Slack/Telegram/email/web)
+- `.claude/rules/direct-connection-uns-certified.md` — direct-connection UNS certification (Ignition/MQTT/PLC/Hub/QR)
 - `.claude/rules/security-boundaries.md` — secrets, PII, safety keywords
 - `.claude/rules/python-standards.md` — ruff, httpx, NeonDB, async
 - `.claude/rules/karpathy-principles.md` — coding behavior
+- `.claude/rules/codegraph-usage.md` — when to use CodeGraph vs grep/Read (CodeGraph-first for symbol-shaped questions)
 - `docs/specs/uns-kg-unification-spec.md` — UNS authority (data architecture)
 - `docs/specs/mira-component-intelligence-architecture.md` — implementation-level architecture (component templates, KG mechanics)
 - `docs/specs/dialogue-state-tracker-spec.md` — FSM the UNS gate plugs into

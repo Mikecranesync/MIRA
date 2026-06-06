@@ -186,6 +186,14 @@ def test_gate_fires_on_diagnose_idle_no_asset(tmp_path):
     assert sv._should_fire_uns_gate("diagnose_equipment", state, "why is conveyor stopped", {}) is True
 
 
+def test_gate_fires_on_schedule_maintenance(tmp_path):
+    """PM scheduling is asset-specific — require a confirmed asset, same as diagnose.
+    schedule_maintenance has no dedicated pre-gate handler, so it reaches the gate."""
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("u")
+    assert sv._should_fire_uns_gate("schedule_maintenance", state, "schedule a PM", {}) is True
+
+
 def test_gate_does_not_fire_on_general_question(tmp_path):
     """'What is MQTT?' routes to general_question — gate never sees it. But even
     if it did, the gate must refuse to fire on non-diagnose intents."""
@@ -250,6 +258,76 @@ def test_gate_disabled_via_env_flag_does_not_fire(monkeypatch):
     # Restore default for the rest of the suite.
     monkeypatch.setenv("MIRA_UNS_GATE_ENABLED", "1")
     importlib.reload(engine_mod)
+
+
+# ── Asset switch routes through the confirmation gate ──────────────────────
+# A deliberate asset switch ("now help me with the pump") must NOT silently
+# adopt a freshly-resolved-but-unconfirmed asset and let troubleshooting
+# proceed against it. With the gate on, the switch is re-confirmed; the stale
+# asset is dropped and the new one is only adopted on a "yes".
+
+
+@pytest.mark.asyncio
+async def test_switch_asset_with_candidate_fires_confirmation(tmp_path):
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("sw1")
+    state["asset_identified"] = "Allen-Bradley, PowerFlex 525"  # the OLD asset
+    state["state"] = "DIAGNOSIS"  # mid-flow on the old asset
+    sv._save_state("sw1", state)
+
+    new_ctx = SimpleNamespace(manufacturer="Siemens", model="SINAMICS S120", confidence=0.6)
+    with patch("shared.engine.resolve_uns_path", return_value=new_ctx):
+        result = await sv._handle_asset_switch("sw1", "now the Siemens S120 drive", state, "tr-sw1")
+
+    # The turn is interrupted with a confirm prompt for the NEW asset.
+    assert result["dispatch_kind"] == "uns_confirm_request"
+    assert result["next_state"] == "AWAITING_UNS_CONFIRMATION"
+    assert "Siemens" in result["reply"]
+
+    saved = sv._load_state("sw1")
+    # Stale asset dropped; new asset NOT adopted until confirmed.
+    assert not saved.get("asset_identified")
+    assert saved["state"] == "AWAITING_UNS_CONFIRMATION"
+    pending = (saved.get("context") or {}).get("pending_uns_confirm")
+    assert pending and "Siemens" in (pending.get("candidate") or "")
+
+
+@pytest.mark.asyncio
+async def test_switch_asset_no_candidate_clears_and_asks(tmp_path):
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("sw2")
+    state["asset_identified"] = "Allen-Bradley, PowerFlex 525"
+    sv._save_state("sw2", state)
+
+    new_ctx = SimpleNamespace(manufacturer="", model=None, confidence=0.0)
+    with patch("shared.engine.resolve_uns_path", return_value=new_ctx):
+        result = await sv._handle_asset_switch("sw2", "let's switch machines", state, "tr-sw2")
+
+    # Nothing to confirm yet — clarify, don't park in AWAITING.
+    assert result["dispatch_kind"] != "uns_confirm_request"
+    saved = sv._load_state("sw2")
+    assert not saved.get("asset_identified")  # stale dropped
+    assert saved["state"] == "IDLE"
+    assert "pending_uns_confirm" not in (saved.get("context") or {})
+
+
+@pytest.mark.asyncio
+async def test_switch_asset_legacy_when_gate_disabled(tmp_path, monkeypatch):
+    """MIRA_UNS_GATE_ENABLED=0 keeps the pre-gate behavior: adopt the new asset
+    directly and prompt, no confirmation interrupt."""
+    monkeypatch.setattr("shared.engine._UNS_GATE_ENABLED", False)
+    sv = _make_sv(str(tmp_path / "test.db"))
+    state = _fresh_state("sw3")
+    sv._save_state("sw3", state)
+
+    new_ctx = SimpleNamespace(manufacturer="Mitsubishi", model="FR-D700", confidence=0.6)
+    with patch("shared.engine.resolve_uns_path", return_value=new_ctx):
+        result = await sv._handle_asset_switch("sw3", "now the Mitsubishi", state, "tr-sw3")
+
+    assert result["dispatch_kind"] != "uns_confirm_request"
+    saved = sv._load_state("sw3")
+    assert saved["asset_identified"] == "Mitsubishi"  # legacy direct-adopt
+    assert saved["state"] == "IDLE"
 
 
 # ── FSM-state validity ─────────────────────────────────────────────────────

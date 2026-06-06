@@ -1,5 +1,12 @@
 name: Smoke Test
 
+# Auto-cancel superseded runs on the same PR/branch. cancel-in-progress is gated
+# to pull_request only: a push to main (the deploy gate that deploy-vps.yml waits
+# on via workflow_run) is NEVER cancelled — only redundant PR re-pushes are.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # Deploy gate: verifies factorylm.com + app.factorylm.com are healthy before
 # deploy-vps.yml is allowed to run. See issue #689.
 #

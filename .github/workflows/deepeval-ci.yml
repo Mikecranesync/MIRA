@@ -1,5 +1,10 @@
 name: DeepEval Quality Gate
 
+# Auto-cancel superseded runs on the same PR (prevents runaway-commit floods).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 on:
   pull_request:
     paths:

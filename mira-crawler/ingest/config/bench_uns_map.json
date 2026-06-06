@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "_comment": "Garage bench source-topic -> ISA-95 UNS placement map (Phase 6). Resolved exclusively through mira-crawler/ingest/uns.py builders by uns_topic_map.resolve_topic_to_uns. company/site/area/line/work_cell match the existing enterprise.home_garage convention in the repo. Tag names are the real bench tags from the Ignition collector (Mira_Monitored/conveyor_demo/*) plus the fault-detective sensor topics and the demo MQTT namespace.",
+  "defaults": {
+    "company": "home_garage",
+    "site": "lake_wales",
+    "area": "conveyor_lab",
+    "line": "line_1",
+    "work_cell": "conveyor_cell"
+  },
+  "topics": [
+    {
+      "match": "Mira_Monitored/conveyor_demo/Motor_Current_A",
+      "equipment": "gs10_vfd",
+      "subnode": ["datapoint", "motor_current"]
+    },
+    {
+      "match": "Mira_Monitored/conveyor_demo/VFD_Hz",
+      "equipment": "gs10_vfd",
+      "subnode": ["datapoint", "vfd_hz"]
+    },
+    {
+      "match": "Mira_Monitored/conveyor_demo/Motor_Running",
+      "equipment": "gs10_vfd",
+      "subnode": ["datapoint", "motor_running"]
+    },
+    {
+      "match": "Mira_Monitored/conveyor_demo/State",
+      "equipment": "micro820_plc",
+      "subnode": ["datapoint", "state"]
+    },
+    {
+      "match": "Mira_Monitored/conveyor_demo/Cycle_Counter",
+      "equipment": "micro820_plc",
+      "subnode": ["datapoint", "cycle_counter"]
+    },
+    {
+      "match": "Mira_Monitored/conveyor_demo/EStop_Active",
+      "equipment": "micro820_plc",
+      "subnode": ["datapoint", "estop_active"]
+    },
+    {
+      "match": "Mira_Monitored/conveyor_demo/Fault_Alarm",
+      "equipment": "micro820_plc",
+      "subnode": ["datapoint", "fault_alarm"]
+    },
+    {
+      "match": "sensors/pe101/debounced",
+      "equipment": "conveyor_1",
+      "subnode": ["datapoint", "pe_101"]
+    },
+    {
+      "match": "sensors/pe102/debounced",
+      "equipment": "conveyor_1",
+      "subnode": ["datapoint", "pe_102"]
+    },
+    {
+      "match": "sensors/px101/debounced",
+      "equipment": "conveyor_1",
+      "subnode": ["datapoint", "px_101"]
+    },
+    {
+      "match_prefix": "demo/cell1/conveyor/cv101",
+      "equipment": "conveyor_1",
+      "subnode_prefix": ["datapoint"]
+    },
+    {
+      "match_prefix": "Mira_Monitored/conveyor_3",
+      "equipment": "conveyor_1",
+      "subnode_prefix": ["datapoint"]
+    }
+  ]
+}

@@ -17,6 +17,7 @@ from . import (
     mira_rag,
     monday_api,
     oauth,
+    rate_limit,
     scan_queue,
     session,
     usage,
@@ -72,6 +73,37 @@ app.add_middleware(
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/readyz")
+async def readyz() -> dict[str, Any]:
+    """Config-state probe — never returns secret values, only boolean
+    "did this env var get populated?" flags.
+
+    Used to verify the docker-compose env-plumbing fix (PR #1557) landed
+    correctly without having to dump live container env (which would
+    leak production secrets into a transcript). Read post-deploy:
+
+        curl -s https://app.factorylm.com/api/scanbe/readyz | jq
+
+    Any `false` here is a deploy-config bug, not a code bug.
+    """
+    return {
+        "status": "ok",
+        "monday_oauth_configured": oauth.configured(),
+        "monday_signing_secret_present": bool(session.MONDAY_SIGNING_SECRET),
+        "monday_webhook_secret_present": bool(webhooks.MONDAY_WEBHOOK_SIGNING_SECRET),
+        "monday_api_token_fallback_present": bool(monday_api.MONDAY_API_TOKEN),
+        "monday_oauth_redirect_uri": oauth.MONDAY_OAUTH_REDIRECT_URI,
+        "neon_database_url_present": bool(os.getenv("NEON_DATABASE_URL", "")),
+        "openai_api_key_present": bool(os.getenv("OPENAI_API_KEY", "")),
+        "serper_api_key_present": bool(os.getenv("SERPER_API_KEY", "")),
+        "mira_kb_base_url_present": bool(os.getenv("MIRA_KB_BASE_URL", "")),
+        "free_tier_monthly_cap": usage.FREE_TIER_MONTHLY_CAP,
+        "free_tier_monthly_chat_cap": usage.FREE_TIER_MONTHLY_CHAT_CAP,
+        "chat_rate_limit_per_window": rate_limit.CHAT_RATE_LIMIT_PER_WINDOW,
+        "chat_rate_limit_window_seconds": rate_limit.CHAT_RATE_LIMIT_WINDOW_SECONDS,
+    }
 
 
 # ── OAuth install flow ─────────────────────────────────────────────────────
@@ -331,6 +363,23 @@ async def chat_message(req: ChatMessageRequest, request: Request) -> ChatMessage
     # Chat is downstream of scan — bump last_seen so we know the install
     # is active, but don't bump scan_count (that would double-count).
     account_id = session.account_id_from_headers(request.headers)
+    rate = await rate_limit.check_and_record(account_id)
+    if not rate.allowed:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "rate_limit_exceeded",
+                "used": rate.used,
+                "limit": rate.limit,
+                "window_seconds": rate.window_seconds,
+                "retry_after": rate.retry_after,
+                "message": (
+                    f"Too many requests — limit is {rate.limit} per "
+                    f"{rate.window_seconds}s. Retry in {rate.retry_after}s."
+                ),
+            },
+            headers={"Retry-After": str(rate.retry_after)},
+        )
     if account_id:
         await oauth.touch_last_seen(account_id)
         used = await usage.month_chat_count(account_id)

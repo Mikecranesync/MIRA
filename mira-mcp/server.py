@@ -1,6 +1,7 @@
 """MIRA MCP Server — equipment diagnostics + CMMS integration."""
 
 import asyncio
+import logging
 import os
 import sqlite3
 import sys
@@ -13,12 +14,16 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from tenant_resolver import resolve_atlas_creds
 
+logger = logging.getLogger("mira-mcp")
+
 DB_PATH = os.environ.get("MIRA_DB_PATH", "/data/mira.db")
 MCP_REST_API_KEY = os.environ.get("MCP_REST_API_KEY", "")
 RETRIEVAL_BACKEND = os.environ.get("RETRIEVAL_BACKEND", "openwebui")
 MIRA_TENANT_ID = os.environ.get("MIRA_TENANT_ID", "")
 PIPELINE_BASE_URL = os.environ.get("PIPELINE_BASE_URL", "http://mira-pipeline-saas:9099")
 PIPELINE_API_KEY = os.environ.get("PIPELINE_API_KEY", "")
+# HMAC key for Ignition WebDev chat authentication.  Never logged.
+MIRA_IGNITION_HMAC_KEY = os.environ.get("MIRA_IGNITION_HMAC_KEY", "")
 
 # Internal Atlas adapter — always-on for diagnostic case recording
 _atlas_internal: AtlasCMMS | None = None
@@ -861,6 +866,9 @@ if __name__ == "__main__":
                 return await call_next(request)
             if request.url.path.startswith(_EXPORT_PATH_PREFIX):
                 return await call_next(request)
+            # Ignition chat uses HMAC auth — skip Bearer check; handler verifies its own token.
+            if request.url.path == "/api/v1/ignition/chat":
+                return await call_next(request)
             auth = request.headers.get("Authorization", "")
             if not MCP_REST_API_KEY or auth != f"Bearer {MCP_REST_API_KEY}":
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -1088,6 +1096,183 @@ if __name__ == "__main__":
 
         return JSONResponse({"ok": True, "result": payload})
 
+    # ── Ignition WebDev Chat ─────────────────────────────────────────────────
+
+    async def rest_ignition_chat(request):
+        """POST /api/v1/ignition/chat — receive Ignition WebDev diagnostic queries.
+
+        Auth: HMAC-SHA256 via X-MIRA-Signature (see ignition_auth.verify_hmac).
+        Engine: calls mira-pipeline /v1/chat/completions (OpenAI-compat) which
+        wraps the shared GSDEngine Supervisor.process().
+
+        Audit: no audit_log table exists in NeonDB migrations as of 2026-05-31.
+        # TODO: create audit_log migration and switch this to NeonDB INSERT.
+        # Tracked: add a GitHub issue for mira-hub/db/migrations/032_ignition_audit_log.sql
+        # Fields to persist: tenant_id, operator, channel, prompt, sources_json,
+        #   tag_reads_count, latency_ms, inference_run_id, created_at
+        Interim: structured JSON log line to stdout via logger.
+        """
+        import json
+        import time as _time
+        import uuid as _uuid
+
+        from ignition_auth import verify_hmac
+
+        t0 = _time.monotonic()
+        inference_run_id = str(_uuid.uuid4())
+
+        # Reject immediately if key not configured
+        if not MIRA_IGNITION_HMAC_KEY:
+            sys.stderr.write("ERROR: MIRA_IGNITION_HMAC_KEY not set — rejecting ignition chat\n")
+            return JSONResponse({"error": "MIRA_IGNITION_HMAC_KEY not configured"}, status_code=503)
+
+        # HMAC verification — raises HTTPException(401) on failure
+        try:
+            tenant_id = await verify_hmac(request, MIRA_IGNITION_HMAC_KEY)
+        except Exception as exc:
+            # Re-raise HTTPExceptions; wrap unexpected errors as 500
+            if hasattr(exc, "status_code"):
+                raise
+            logger.error("IGNITION_CHAT auth_error: %s", exc)
+            return JSONResponse({"error": "authentication error"}, status_code=500)
+
+        # Parse body
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+
+        query: str = body.get("query", "").strip()
+        if not query:
+            return JSONResponse({"error": "query is required"}, status_code=400)
+
+        asset_id: str = body.get("asset_id", "")
+        tag_snapshot: dict = body.get("tag_snapshot", {})
+        operator: str = body.get("operator", "unknown")
+        session_id: str = body.get("session_id") or f"ignition-{tenant_id}"
+
+        # Build enriched message: prepend asset + tag context so the engine
+        # receives structured factory context alongside the free-text query.
+        tag_lines = []
+        for tag_path, tag_data in list(tag_snapshot.items())[:20]:  # cap to 20 tags
+            val = tag_data.get("value", "?") if isinstance(tag_data, dict) else tag_data
+            quality = tag_data.get("quality", "") if isinstance(tag_data, dict) else ""
+            tag_lines.append(f"  {tag_path} = {val}" + (f" [{quality}]" if quality else ""))
+
+        tag_block = "\n".join(tag_lines)
+        effective_message = query
+        if asset_id:
+            effective_message = f"[Asset: {asset_id}]\n{query}"
+        if tag_block:
+            effective_message = f"{effective_message}\n\nLive tag snapshot:\n{tag_block}"
+
+        # Call mira-pipeline /v1/chat/completions — the OpenAI-compat wrapper
+        # around GSDEngine Supervisor.process().  Pass channel='ignition' in
+        # metadata so future pipeline versions can enforce citation-compliance
+        # in stricter mode for this path (per architecture doc §3.2 step 4).
+        pipeline_payload = {
+            "model": "mira-diagnostic",
+            "messages": [{"role": "user", "content": effective_message}],
+            "stream": False,
+            "user": session_id,
+            "metadata": {
+                "channel": "ignition",
+                "tenant_id": tenant_id,
+                "operator": operator,
+                "asset_id": asset_id,
+                "inference_run_id": inference_run_id,
+            },
+        }
+
+        try:
+            async with _httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(
+                    f"{PIPELINE_BASE_URL}/v1/chat/completions",
+                    headers=_pipeline_headers(),
+                    json=pipeline_payload,
+                )
+                resp.raise_for_status()
+                pipeline_data = resp.json()
+        except _httpx.HTTPStatusError as exc:
+            logger.error(
+                "IGNITION_CHAT pipeline_error status=%d tenant=%s: %s",
+                exc.response.status_code,
+                tenant_id,
+                exc.response.text[:300],
+            )
+            return JSONResponse(
+                {"error": "diagnostic engine unavailable"},
+                status_code=502,
+            )
+        except Exception as exc:
+            logger.error("IGNITION_CHAT pipeline_error tenant=%s: %s", tenant_id, exc)
+            return JSONResponse({"error": "diagnostic engine unavailable"}, status_code=502)
+
+        answer: str = pipeline_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+        # Build sources from tag snapshot (tag-type sources; manual/WO sources
+        # would require the engine to surface citation metadata — post-MVP).
+        tag_sources = [
+            {
+                "type": "tag",
+                "ref": tag_path,
+                "value": str(
+                    tag_data.get("value", "?") if isinstance(tag_data, dict) else tag_data
+                ),
+            }
+            for tag_path, tag_data in list(tag_snapshot.items())[:10]
+        ]
+
+        latency_ms = int((_time.monotonic() - t0) * 1000)
+
+        # Determine UNS gate state from answer content (heuristic — post-MVP
+        # should come from a structured engine response field).
+        uns_gate_state = "confirmed"
+        if any(
+            kw in answer.lower()
+            for kw in (
+                "which conveyor",
+                "which machine",
+                "which asset",
+                "can you confirm",
+                "please confirm",
+            )
+        ):
+            uns_gate_state = "awaiting_confirmation"
+
+        response_payload = {
+            "answer": answer,
+            "sources": tag_sources,
+            "confidence": 0.0,  # post-MVP: surface from engine
+            "suggested_actions": [],
+            "uns_gate": {
+                "state": uns_gate_state,
+                "asset": asset_id,
+                "evidence": [],
+            },
+            "latency_ms": latency_ms,
+            "inference_run_id": inference_run_id,
+        }
+
+        # Audit log — structured stdout (no audit_log table in NeonDB yet).
+        # TODO: replace with INSERT into audit_log once migration 032 is applied.
+        logger.info(
+            "IGNITION_AUDIT %s",
+            json.dumps(
+                {
+                    "tenant_id": tenant_id,
+                    "operator": operator,
+                    "channel": "ignition",
+                    "prompt_preview": query[:200],
+                    "tag_reads_count": len(tag_snapshot),
+                    "latency_ms": latency_ms,
+                    "inference_run_id": inference_run_id,
+                }
+            ),
+        )
+
+        return JSONResponse(response_payload)
+
     async def health(request):
         return JSONResponse({"status": "ok"})
 
@@ -1116,6 +1301,8 @@ if __name__ == "__main__":
             # Unit 4 — Excel/CSV live export (PLG-JWT-authed, no MCP_REST_API_KEY needed)
             Route("/api/v1/exports/assets.xlsx", export_assets),
             Route("/api/v1/exports/work-orders.xlsx", export_work_orders),
+            # Ignition WebDev chat — HMAC-authed, exempt from BearerAuthMiddleware
+            Route("/api/v1/ignition/chat", rest_ignition_chat, methods=["POST"]),
         ],
         exception_handlers={404: _not_found},
     )
