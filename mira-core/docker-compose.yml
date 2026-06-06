@@ -32,9 +32,12 @@ services:
       # Pipeline connection — MIRA Diagnostic model via mira-pipeline
       - OPENAI_API_BASE_URLS=http://mira-pipeline:9099/v1
       - OPENAI_API_KEYS=${PIPELINE_API_KEY:-}
-      # Docling for industrial-grade PDF extraction
-      - DOCLING_SERVER_URL=http://mira-docling:5001
-      - PDF_EXTRACT_IMAGES=true
+      # Content extraction: Apache Tika (replaced Docling 2026-06-06 — see
+      # docs/known-issues/2026-06-06-hub-upload-failures-docling-oom.md).
+      # CONTENT_EXTRACTION_ENGINE is a PersistentConfig var; on an existing OW
+      # DB run scripts/set-ow-extraction-engine.sh once to flip the DB value.
+      - CONTENT_EXTRACTION_ENGINE=tika
+      - TIKA_SERVER_URL=http://mira-tika:9998
       # KB status indicator — red outline by default (unknown = caution).
       # Per-turn 🟢/🟡/🔴 banners in pipeline responses provide the live signal.
       # CRA-24: also enforce 44x44 minimum tap target on mobile widths so the
@@ -133,9 +136,11 @@ services:
       - "host.docker.internal:host-gateway"
 
   mira-tika:
-    mem_limit: 512m
-    memswap_limit: 512m
-    image: apache/tika:3.1.0.0
+    # `-full` bundles Tesseract OCR for scanned PDFs. 1 GB gives OCR headroom
+    # (512m can trip on large scanned docs); still ~1/3 of Docling's 3 GB.
+    mem_limit: 1g
+    memswap_limit: 1g
+    image: apache/tika:3.1.0.0-full
     container_name: mira-tika
     ports:
       - "127.0.0.1:${TIKA_PORT:-9998}:9998"
@@ -200,26 +205,11 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  mira-docling:
-    # Match saas.yml — docling is the known OOM victim (PR #1336). 512m WILL
-    # trip on a real PDF.
-    mem_limit: 3g
-    memswap_limit: 3g
-    image: quay.io/docling-project/docling-serve:v1.16.1
-    container_name: mira-docling
-    ports:
-      - "127.0.0.1:${DOCLING_PORT:-5001}:5001"
-    environment:
-      - DOCLING_SERVE_PORT=5001
-    networks:
-      - core-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    restart: unless-stopped
+  # mira-docling removed 2026-06-06 — replaced by mira-tika (above). Docling's
+  # 3 GB PyTorch stack chronically OOM'd/504-timed-out on the prod 8 GB box and
+  # failed every PDF extraction. See docs/known-issues/2026-06-06-hub-upload-
+  # failures-docling-oom.md. docker-compose.override.yml may still define a
+  # mira-docling override for bench experiments; it is no longer wired to OW.
 
 volumes:
   open-webui-data:
