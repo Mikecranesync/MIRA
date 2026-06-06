@@ -1,0 +1,37 @@
+# kg-write-guard allowlist — repo-relative paths permitted to contain a direct
+# `INSERT INTO kg_relationships`. Everything else must PROPOSE (ADR-0017).
+# A new entry needs a one-line reason reviewers can see in the diff.
+#
+# Baseline captured 2026-06-05 (#1722). As writers migrate to the propose
+# path (#1721), their inserts disappear — leaving an allowlisted file with no
+# insert is harmless; prune opportunistically.
+
+# --- The one legitimate verified write: human approval on the Hub ---
+mira-hub/src/app/api/proposals/[id]/decide/route.ts        # admin "verify" decision writes the verified edge
+
+# --- Flag-gated legacy auto-verify (default OFF, MIRA_KG_INGEST_AUTOVERIFY) ---
+mira-crawler/ingest/kg_writer.py                            # _autoverify_relationship — gated opt-in (#1716)
+mira-crawler/tasks/full_ingest_pipeline.py                 # _write_kg_edge — gated opt-in (#1716)
+
+# --- Technician-confirmation path (human-gated, mira-connect) ---
+mira-connectors/mira_connectors/store.py                   # confirmation_gate verified write on technician confirm
+
+# --- Not-yet-migrated hub writers (tracked by #1721; migrate → remove) ---
+mira-hub/src/lib/knowledge-graph/cmms-sync.ts              # TODO #1721 (blocked: has_work_order not in CHECK)
+mira-hub/src/lib/knowledge-graph/extractor.ts              # TODO #1721 (conversation extractor)
+mira-hub/src/lib/knowledge-graph/hierarchy-backfill.ts     # TODO #1721 (parent_of → LOCATED_IN decision)
+
+# --- Migrated in #1729; inserts removed once merged (allow until then) ---
+mira-hub/src/lib/knowledge-graph/queries.ts                # upsertSchematicComponents now proposes (#1729)
+mira-hub/src/lib/knowledge-graph/relationship-extractor.ts # now proposes (#1729)
+
+# --- The guard itself (contains the pattern as a regex / fixtures) ---
+scripts/kg_write_guard.py                                  # the guard's own matcher
+tests/test_kg_write_guard.py                               # the guard's own fixtures
+
+# --- Seeds + tests (not runtime inference) ---
+mira-hub/scripts/seed-synthetic-users.ts                   # synthetic seed data
+mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts  # asserts the decide route's insert
+mira-hub/src/lib/knowledge-graph/__tests__/queries-schematic.test.ts        # asserts schematic writer does NOT insert kg_relationships (#1729)
+mira-hub/src/lib/knowledge-graph/__tests__/relationship-extractor-store.test.ts  # asserts extractor does NOT insert kg_relationships (#1729)
+tools/seeds/demo-conveyor-001.sql                          # demo seed (commented inserts)
