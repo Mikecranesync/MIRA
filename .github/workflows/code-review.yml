@@ -174,9 +174,15 @@ jobs:
       - name: Post static analysis findings
         if: steps.static_summary.outputs.has_findings == 'true'
         uses: actions/github-script@v9
+        env:
+          # Pass via env, NOT `${{ }}` interpolation into the script body —
+          # findings contain backticks/newlines that, injected into JS source,
+          # produce `SyntaxError: Unexpected identifier` and crash the job
+          # (and are an injection vector). process.env keeps it a runtime value.
+          FINDINGS_SUMMARY: ${{ steps.static_summary.outputs.summary }}
         with:
           script: |
-            const summary = `## 🔍 Static Analysis Findings\n\n${{ steps.static_summary.outputs.summary }}`;
+            const summary = `## 🔍 Static Analysis Findings\n\n${process.env.FINDINGS_SUMMARY}`;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
