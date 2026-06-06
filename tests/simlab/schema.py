@@ -31,6 +31,7 @@ class Component:
 @dataclass
 class MachineContext:
     """Physical machine setup at fault time."""
+
     site: str
     uns_path: str
     components: list[Component]
@@ -55,6 +56,7 @@ class FaultSpec:
 @dataclass
 class BehaviorCheckpoint:
     """Machine-behavior-specific checkpoint (applied across all turns)."""
+
     name: str
     params: dict[str, Any]
     reason: str = ""
@@ -63,6 +65,7 @@ class BehaviorCheckpoint:
 @dataclass
 class SimLabScenario:
     """A complete machine-behavior scenario."""
+
     id: str
     name: str
     tier: int

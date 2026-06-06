@@ -112,7 +112,14 @@ def cp_no_cross_component_confusion(
     the tech to replace the VFD.
     """
     combined = " ".join(replies).lower()
-    confused = [c for c in forbidden_blame if re.search(rf"\breplace\b.*\b{re.escape(c.lower())}\b|\bfaulty\b.*\b{re.escape(c.lower())}\b", combined)]
+    confused = [
+        c
+        for c in forbidden_blame
+        if re.search(
+            rf"\breplace\b.*\b{re.escape(c.lower())}\b|\bfaulty\b.*\b{re.escape(c.lower())}\b",
+            combined,
+        )
+    ]
     if confused:
         return BehaviorCheckResult(
             name="cp_no_cross_component_confusion",
@@ -137,25 +144,33 @@ def evaluate_behavior_checkpoints(
     results = []
     for cp in scenario.behavior_checkpoints:
         if cp.name == "cp_no_premature_blame":
-            results.append(cp_no_premature_blame(
-                replies=bot_replies,
-                forbidden_components=cp.params.get("forbidden_components", []),
-                until_turn=cp.params.get("until_turn", 99),
-            ))
+            results.append(
+                cp_no_premature_blame(
+                    replies=bot_replies,
+                    forbidden_components=cp.params.get("forbidden_components", []),
+                    until_turn=cp.params.get("until_turn", 99),
+                )
+            )
         elif cp.name == "cp_isolation_evidence":
-            results.append(cp_isolation_evidence(
-                replies=bot_replies,
-                required_measurements=cp.params.get("required_measurements", []),
-            ))
+            results.append(
+                cp_isolation_evidence(
+                    replies=bot_replies,
+                    required_measurements=cp.params.get("required_measurements", []),
+                )
+            )
         elif cp.name == "cp_subsystem_identified":
-            results.append(cp_subsystem_identified(
-                replies=bot_replies,
-                expected_subsystem=cp.params.get("expected_subsystem", ""),
-                aliases=cp.params.get("aliases", []),
-            ))
+            results.append(
+                cp_subsystem_identified(
+                    replies=bot_replies,
+                    expected_subsystem=cp.params.get("expected_subsystem", ""),
+                    aliases=cp.params.get("aliases", []),
+                )
+            )
         elif cp.name == "cp_no_cross_component_confusion":
-            results.append(cp_no_cross_component_confusion(
-                replies=bot_replies,
-                forbidden_blame=cp.params.get("forbidden_blame", []),
-            ))
+            results.append(
+                cp_no_cross_component_confusion(
+                    replies=bot_replies,
+                    forbidden_blame=cp.params.get("forbidden_blame", []),
+                )
+            )
     return results

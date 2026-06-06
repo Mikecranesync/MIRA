@@ -65,12 +65,8 @@ def _build_initial_state(scenario: SimLabScenario) -> dict:
             "confidence": "certified",
             "uns_path": ctx.uns_path,
             "site": ctx.site,
-            "manufacturer": next(
-                (c.manufacturer for c in ctx.components if c.manufacturer), ""
-            ),
-            "model": next(
-                (c.model for c in ctx.components if c.model), ""
-            ),
+            "manufacturer": next((c.manufacturer for c in ctx.components if c.manufacturer), ""),
+            "model": next((c.model for c in ctx.components if c.model), ""),
         },
         "context": {
             "session_context": {
@@ -122,7 +118,7 @@ async def run_scenario(
             "error": None,
         }
 
-    for turn in user_turns[:scenario.max_turns]:
+    for turn in user_turns[: scenario.max_turns]:
         message = turn.get("content", "")
         try:
             result = await supervisor.process_full(chat_id, message, photo_b64=None)
@@ -138,7 +134,11 @@ async def run_scenario(
 
     # ── Standard checkpoints (keyword + state) ────────────────────────────────
     combined_text = " ".join(bot_replies).lower()
-    kw_pass = any(kw.lower() in combined_text for kw in scenario.expected_keywords) if scenario.expected_keywords else True
+    kw_pass = (
+        any(kw.lower() in combined_text for kw in scenario.expected_keywords)
+        if scenario.expected_keywords
+        else True
+    )
     forbidden_hit = [kw for kw in scenario.forbidden_keywords if kw.lower() in combined_text]
     kw_fail_reason = f"Forbidden keywords: {forbidden_hit}" if forbidden_hit else None
     if kw_fail_reason:
@@ -146,7 +146,11 @@ async def run_scenario(
     state_pass = final_state == scenario.expected_final_state
 
     standard_results = {
-        "cp_reached_state": {"passed": state_pass, "actual": final_state, "expected": scenario.expected_final_state},
+        "cp_reached_state": {
+            "passed": state_pass,
+            "actual": final_state,
+            "expected": scenario.expected_final_state,
+        },
         "cp_keyword_match": {"passed": kw_pass, "reason": kw_fail_reason or "OK"},
         "cp_turn_budget": {"passed": len(user_turns) <= scenario.max_turns},
         "cp_no_error": {"passed": error is None, "error": error},
@@ -199,7 +203,7 @@ def _write_scorecard(results: list[dict], output_path: Path) -> None:
     lines = [
         f"# MIRA SimLab — Machine Behavior Eval — {ts}",
         "",
-        f"**Scenarios:** {total}  |  **Pass rate:** {passed}/{total} ({100*passed//total if total else 0}%)",
+        f"**Scenarios:** {total}  |  **Pass rate:** {passed}/{total} ({100 * passed // total if total else 0}%)",
         "",
         "## Results",
         "",
@@ -232,7 +236,9 @@ def _write_scorecard(results: list[dict], output_path: Path) -> None:
             if not sr.get("cp_reached_state", {}).get("passed"):
                 actual = sr["cp_reached_state"]["actual"]
                 expected = sr["cp_reached_state"]["expected"]
-                lines.append(f"- **cp_reached_state** FAILED: State='{actual}', expected='{expected}'")
+                lines.append(
+                    f"- **cp_reached_state** FAILED: State='{actual}', expected='{expected}'"
+                )
             if not sr.get("cp_keyword_match", {}).get("passed"):
                 lines.append(f"- **cp_keyword_match** FAILED: {sr['cp_keyword_match']['reason']}")
             for b in r["behavior_results"]:

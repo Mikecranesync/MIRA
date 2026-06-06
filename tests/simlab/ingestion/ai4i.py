@@ -82,6 +82,7 @@ def _percentile_row(rows: list[dict], feature: str, pct: float) -> dict | None:
 
 def _extract_tags(row: dict) -> dict[str, Any]:
     """Build a realistic tag_state dict from an AI4I dataset row."""
+
     def fval(col: str, default: float = 0.0) -> float:
         try:
             return round(float(row.get(col, default)), 2)
@@ -163,9 +164,18 @@ _TEMPLATES: dict[str, ScenarioTemplate] = {
         forbidden_keywords=[],
         tags=["thermal", "coolant", "cnc", "heat-dissipation"],
         turns=[
-            {"role": "user", "content": "Machine stopped on thermal fault. Air temp is 25C, process temp showing 35C on the display."},
-            {"role": "user", "content": "RPM was at setpoint before the fault. VFD shows no fault code."},
-            {"role": "user", "content": "Coolant filter was completely plugged. Replaced it and machine is running normally."},
+            {
+                "role": "user",
+                "content": "Machine stopped on thermal fault. Air temp is 25C, process temp showing 35C on the display.",
+            },
+            {
+                "role": "user",
+                "content": "RPM was at setpoint before the fault. VFD shows no fault code.",
+            },
+            {
+                "role": "user",
+                "content": "Coolant filter was completely plugged. Replaced it and machine is running normally.",
+            },
         ],
     ),
     "PWF": ScenarioTemplate(
@@ -187,9 +197,7 @@ _TEMPLATES: dict[str, ScenarioTemplate] = {
         ],
         behavior_checkpoints={
             "cp_isolation_evidence": {
-                "params": {
-                    "required_measurements": ["torque", "rpm", "power", "load", "tool"]
-                },
+                "params": {"required_measurements": ["torque", "rpm", "power", "load", "tool"]},
                 "reason": "Power fault requires citing torque and RPM measurements",
             },
             "cp_subsystem_identified": {
@@ -204,9 +212,18 @@ _TEMPLATES: dict[str, ScenarioTemplate] = {
         forbidden_keywords=[],
         tags=["power", "torque", "tooling", "cnc"],
         turns=[
-            {"role": "user", "content": "Machine faulted mid-cycle. Torque reading was high — around 65 Nm. RPM was 1400."},
-            {"role": "user", "content": "This is the third time this week. Tool wear counter shows 210 minutes on this insert."},
-            {"role": "user", "content": "Replaced the cutting insert. Torque back to normal range (40 Nm)."},
+            {
+                "role": "user",
+                "content": "Machine faulted mid-cycle. Torque reading was high — around 65 Nm. RPM was 1400.",
+            },
+            {
+                "role": "user",
+                "content": "This is the third time this week. Tool wear counter shows 210 minutes on this insert.",
+            },
+            {
+                "role": "user",
+                "content": "Replaced the cutting insert. Torque back to normal range (40 Nm).",
+            },
         ],
     ),
     "TWF": ScenarioTemplate(
@@ -236,9 +253,18 @@ _TEMPLATES: dict[str, ScenarioTemplate] = {
         forbidden_keywords=[],
         tags=["tool-wear", "pm", "cnc"],
         turns=[
-            {"role": "user", "content": "Machine stopped with a tool wear alarm. Wear counter shows 224 minutes."},
-            {"role": "user", "content": "Temperatures and torque all look normal. Just the wear counter."},
-            {"role": "user", "content": "Replaced the insert. Counter reset to zero and machine running normally."},
+            {
+                "role": "user",
+                "content": "Machine stopped with a tool wear alarm. Wear counter shows 224 minutes.",
+            },
+            {
+                "role": "user",
+                "content": "Temperatures and torque all look normal. Just the wear counter.",
+            },
+            {
+                "role": "user",
+                "content": "Replaced the insert. Counter reset to zero and machine running normally.",
+            },
         ],
     ),
     "OSF": ScenarioTemplate(
@@ -281,9 +307,18 @@ _TEMPLATES: dict[str, ScenarioTemplate] = {
         forbidden_keywords=[],
         tags=["overstrain", "torque", "tool-wear", "cnc"],
         turns=[
-            {"role": "user", "content": "Machine tripped on overstrain fault. Torque was 72 Nm at the time. Tool wear counter at 185 min."},
-            {"role": "user", "content": "This is a roughing pass on steel. No motor faults or drive faults, just the overstrain."},
-            {"role": "user", "content": "Reduced depth of cut and replaced the tool. No more overstrain trips."},
+            {
+                "role": "user",
+                "content": "Machine tripped on overstrain fault. Torque was 72 Nm at the time. Tool wear counter at 185 min.",
+            },
+            {
+                "role": "user",
+                "content": "This is a roughing pass on steel. No motor faults or drive faults, just the overstrain.",
+            },
+            {
+                "role": "user",
+                "content": "Reduced depth of cut and replaced the tool. No more overstrain trips.",
+            },
         ],
     ),
 }
@@ -359,9 +394,11 @@ def _main(args: argparse.Namespace) -> None:
             continue
 
         # Produce one scenario per percentile (median by default; p25/p75 for Tier 1)
-        percentiles = [(0.50, "median")] if template.tier == 2 else [
-            (0.25, "p25"), (0.50, "median"), (0.75, "p75")
-        ]
+        percentiles = (
+            [(0.50, "median")]
+            if template.tier == 2
+            else [(0.25, "p25"), (0.50, "median"), (0.75, "p75")]
+        )
 
         for pct, label in percentiles:
             pivot_feature = "Torque [Nm]"
@@ -377,7 +414,9 @@ def _main(args: argparse.Namespace) -> None:
                 continue
 
             with open(out_path, "w") as f:
-                yaml.dump(scenario, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                yaml.dump(
+                    scenario, f, default_flow_style=False, allow_unicode=True, sort_keys=False
+                )
             print(f"  Wrote {out_path.name}")
             generated += 1
 
