@@ -124,6 +124,7 @@ describe("POST /api/proposals/[id]/decide", () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
     let updateProposalArgs: unknown[] = [];
     let insertSql = "";
+    let insertArgs: unknown[] = [];
     let insertCalls = 0;
     let updateKgCalls = 0;
 
@@ -142,6 +143,7 @@ describe("POST /api/proposals/[id]/decide", () => {
           }
           if (sql.includes("INSERT INTO kg_relationships")) {
             insertSql = sql;
+            insertArgs = args;
             insertCalls++;
             return { rows: [] };
           }
@@ -171,6 +173,9 @@ describe("POST /api/proposals/[id]/decide", () => {
     expect(updateKgCalls).toBe(0);
     expect(insertSql).toContain("INSERT INTO kg_relationships");
     expect(insertSql).toContain("'verified'");
+    // Provenance: the verified edge records which proposal verified it (#1723).
+    expect(insertSql).toContain("relationship_proposal_id");
+    expect(insertArgs).toContain(VALID_UUID);
   });
 
   it("verify when kg_relationships row already exists → UPDATE not INSERT, confidence GREATEST", async () => {
@@ -214,6 +219,8 @@ describe("POST /api/proposals/[id]/decide", () => {
     expect(updateKgConfidence).toBe(baseProposal.confidence);
     expect(updateKgSql).toContain("approval_state = 'verified'");
     expect(updateKgSql).toContain("GREATEST(confidence");
+    // Provenance: link the existing edge to the verifying proposal, keep first (#1723).
+    expect(updateKgSql).toContain("relationship_proposal_id = COALESCE");
   });
 
   it("reject → flips status to 'rejected' with no kg_relationships write", async () => {
