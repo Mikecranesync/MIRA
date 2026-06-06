@@ -83,6 +83,10 @@ export function GraphCanvas({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, scale: number) => {
         const n = node as GraphNode & { x: number; y: number };
+        // d3-force can emit a non-finite x/y on the first tick before positions
+        // settle; createRadialGradient throws on NaN/Infinity and crashes the
+        // whole page (React error boundary). Skip painting until coords are real.
+        if (!Number.isFinite(n.x) || !Number.isFinite(n.y)) return;
         const r = nodeRadius(n.degree ?? 0);
         const isHi = hasHighlight && highlightNodeIds!.has(n.id);
         const dim = hasHighlight && !isHi;
@@ -126,6 +130,7 @@ export function GraphCanvas({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
         const n = node as GraphNode & { x: number; y: number };
+        if (!Number.isFinite(n.x) || !Number.isFinite(n.y)) return;
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.arc(n.x, n.y, nodeRadius(n.degree ?? 0) + 2, 0, 2 * Math.PI);
