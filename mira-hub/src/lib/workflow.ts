@@ -219,9 +219,19 @@ export interface WorkflowRunOptions {
   logger?: Pick<Console, "info" | "warn" | "error">;
 }
 
+/** A JSON-able artifact summary — deliberately not `unknown` so the callback
+ *  form keeps its parameter type (a union containing `unknown` collapses). */
+export type ArtifactValue =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: unknown }
+  | unknown[];
+
 export interface StepOptions<R> {
   tolerate?: boolean;
-  artifact?: unknown | ((result: R) => unknown);
+  artifact?: ArtifactValue | ((result: R) => ArtifactValue);
 }
 
 function randomUuid(): string {
@@ -264,14 +274,18 @@ export class WorkflowRun {
     this.output = value;
   }
 
-  /** Run `fn` as a recorded step; return its result. See module docstring. */
+  /** Run `fn` as a recorded step; return its result. See module docstring.
+   *  Not tolerated → resolves to `R` (and re-throws on failure); `tolerate:true`
+   *  → resolves to `R | null` (null when the step failed and was swallowed). */
+  step<R>(name: string, fn: () => Promise<R> | R, opts?: Omit<StepOptions<R>, "tolerate"> & { tolerate?: false }): Promise<R>;
+  step<R>(name: string, fn: () => Promise<R> | R, opts: Omit<StepOptions<R>, "tolerate"> & { tolerate: true }): Promise<R | null>;
   async step<R>(name: string, fn: () => Promise<R> | R, opts: StepOptions<R> = {}): Promise<R | null> {
     const started = new Date();
     try {
       const result = await fn();
       const artifact =
         typeof opts.artifact === "function"
-          ? (opts.artifact as (r: R) => unknown)(result)
+          ? (opts.artifact as (r: R) => ArtifactValue)(result)
           : opts.artifact;
       this.steps.push(
         buildStepRecord({ stepName: name, status: "ok", startedAt: started, finishedAt: new Date(), artifact }),
