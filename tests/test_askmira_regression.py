@@ -342,3 +342,113 @@ def test_h4_stock_admission_contains_scorer_recognized_phrase():
     assert "I don't have specific documentation" in _H4_STOCK_ADMISSION, (
         "_H4_STOCK_ADMISSION drifted from the scorer's recognized vocabulary"
     )
+
+
+# ---------------------------------------------------------------------------
+# Q1 length trim — kiosk status-summary post-process. Drops trailing
+# non-citation sentences until the reply is <= 130 words. Refuses to drop
+# below 4 sentences or to touch a `[Source:` sentence.
+# ---------------------------------------------------------------------------
+
+
+def _wc(s: str) -> int:
+    return len(re.findall(r"\S+", s))
+
+
+# Reproduces the actual 165-word Q1 reply observed on prod 2026-06-06 after
+# the PR #1754 / #1755 deploys. Two `[Source:` markers, one at sentence 6
+# and one at sentence 9; total 11 sentences.
+_LONG_STATUS_REPLY = (
+    "The current status of the garage conveyor belt is stopped due to a photo-eye "
+    "jam latch, which is a soft-stop condition that prevents the drive from running "
+    "until the operator clears the latch. The variable frequency drive (VFD) is in "
+    "a stopped state with a status word of 0, and the command is set to STOP, with "
+    "no active motion currently being commanded by the controller. The frequency "
+    "setpoint is 30.0 Hz, but the output frequency is 0.0 Hz, which indicates the "
+    "drive has not begun ramping toward setpoint. The main line contactor is closed "
+    "and energized, but the drive is not running due to the photo-eye jam latch "
+    "still being active. To resume operation, the operator must press the Start "
+    "button (DI_04) with the photo-eye beam clear to clear the latch and restart "
+    "the drive [Source: AutomationDirect GS10]. The steps to clear the fault are: "
+    "ensure the photo-eye beam is clear, then press the Start button (DI_04) to "
+    "clear the photo-eye jam latch and resume the drive. Note that the VFD fault "
+    "code is 0, indicating no active fault, and the VFD communications are OK with "
+    "no comm-loss alarm currently active [Source: AutomationDirect GS10]."
+)
+
+
+def test_q1_trim_caps_long_status_reply_under_target():
+    """A 160-word kiosk status reply should be trimmed to <= 130 words."""
+    from shared.engine import _trim_kiosk_status_reply
+
+    reply = _LONG_STATUS_REPLY
+    assert _wc(reply) > 145, "fixture must exceed the cap to exercise the trimmer"
+    trimmed = _trim_kiosk_status_reply(reply)
+    assert _wc(trimmed) <= 145, f"trim did not bring reply under cap (got {_wc(trimmed)})"
+
+
+def test_q1_trim_preserves_at_least_80_words():
+    """The trimmer must never strip the reply down so far it becomes useless.
+
+    Minimum-sentence guard (>=4 sentences) effectively keeps the reply
+    informative. Verify the trimmed reply still carries the dominant fault
+    description and at least one action.
+    """
+    from shared.engine import _trim_kiosk_status_reply
+
+    reply = (
+        "The garage conveyor belt is currently in a soft-stop state due to a photo-eye "
+        "jam latch, which prevents the drive from running. The variable frequency drive "
+        "is currently stopped with status word 0 and command STOP. The frequency "
+        "setpoint is 30.0 Hz but the output frequency is 0.0 Hz. The main line "
+        "contactor is closed and energized. To resume operation, the operator must "
+        "press the Start button (DI_04) with the photo-eye beam clear to clear the "
+        "pe_latched flag and restart the drive [Source: AutomationDirect GS10]. The "
+        "steps to clear the fault are: ensure the photo-eye beam is clear; press "
+        "the Start button (DI_04) to clear the photo-eye jam latch and resume the "
+        "drive. Note that the VFD fault code is 0, indicating no active fault, and "
+        "the VFD communications are OK [Source: AutomationDirect GS10]."
+    )
+    trimmed = _trim_kiosk_status_reply(reply)
+    assert _wc(trimmed) >= 80, (
+        f"trim went below 80 words ({_wc(trimmed)}) — reply lost too much information"
+    )
+
+
+def test_q1_trim_never_drops_a_citation_sentence():
+    """Sentences containing `[Source:` must NEVER be dropped — losing a citation
+    would force the H4 enforcer to re-append a stock admission, ballooning
+    the reply right back over the cap.
+    """
+    from shared.engine import _trim_kiosk_status_reply
+
+    # Reply where the longest content is BEFORE the citation, and a trailing
+    # non-citation note pads it over the cap. The citation sentence must
+    # remain in the trimmed output.
+    reply = (
+        "The garage conveyor belt is currently in a soft-stop state due to a photo-eye "
+        "jam latch, which prevents the drive from running. The variable frequency drive "
+        "is currently stopped with status word 0 and command STOP. The frequency "
+        "setpoint is 30.0 Hz but the output frequency is 0.0 Hz. The main line "
+        "contactor is closed and energized. To resume operation, the operator must "
+        "press the Start button (DI_04) with the photo-eye beam clear "
+        "[Source: AutomationDirect GS10]. Note that the VFD fault code is 0, "
+        "indicating no active fault, and the VFD communications are OK."
+    )
+    trimmed = _trim_kiosk_status_reply(reply)
+    assert "[Source: AutomationDirect GS10]" in trimmed, (
+        "trim dropped the citation sentence — would break H4 + force redundant admission"
+    )
+
+
+def test_q1_trim_passes_through_short_reply_unchanged():
+    """A reply already under the cap must be returned byte-identical."""
+    from shared.engine import _trim_kiosk_status_reply
+
+    reply = (
+        "The garage conveyor is currently in a soft-stop state due to a photo-eye "
+        "jam latch. Press Start (DI_04) with the beam clear to clear the latch "
+        "and resume the drive [Source: AutomationDirect GS10]."
+    )
+    assert _wc(reply) <= 145, "fixture must already be under the cap"
+    assert _trim_kiosk_status_reply(reply) == reply

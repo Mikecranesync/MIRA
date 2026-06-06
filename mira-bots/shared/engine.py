@@ -413,6 +413,66 @@ _TAG_QUESTION_RE = re.compile(
 )
 _LIVE_STATUS_HEADER = "[LIVE CONVEYOR STATUS]"
 
+# Q1 length trim (2026-06-06 follow-up to PR #1754 / #1755). The gate-bypass
+# at _apply_quality_gate trusts the LLM output for any reply > 80 chars that
+# carries the live-tag header. That landed Q1 grounded but at ~165 words,
+# 20 over the askmira-tester rubric's 145-word style ceiling. The golden
+# reference is 145 words; the engine's job is to meet or beat it, not be
+# verbose. Strategy: drop trailing sentences from the reply until at or
+# below the soft target. NEVER drop a sentence containing a `[Source:`
+# citation (would break H4 and force a redundant stock admission to be
+# appended). Refuse to go below a minimum sentence count so we don't
+# butcher the reply on edge cases. Only fires on the kiosk path because
+# the trim is wired into the gate-bypass site at line ~1270.
+_KIOSK_STATUS_WORD_CAP = 145
+_KIOSK_STATUS_WORD_TARGET = 130
+_KIOSK_STATUS_MIN_SENTENCES = 4
+_KIOSK_TRIM_SOURCE_MARKER = "[Source:"
+# Sentence boundary: end-of-sentence punctuation followed by whitespace then
+# capital letter OR `[` (handles `[Source:` openings). Conservative — if the
+# reply uses lowercase sentence starts, the split misses them and the trim
+# bails out by retaining everything.
+_KIOSK_SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z\[])")
+
+
+def _trim_kiosk_status_reply(reply: str) -> str:
+    """Deterministic post-process trim for kiosk Q1 status-summary replies.
+
+    Fires only when the reply exceeds `_KIOSK_STATUS_WORD_CAP`. Walks from
+    the end and drops the first non-citation sentence found; repeats until
+    the reply is at or below `_KIOSK_STATUS_WORD_TARGET`, OR until no
+    non-citation sentence is left to drop, OR until removing one more would
+    take us below `_KIOSK_STATUS_MIN_SENTENCES`. Citation-carrying sentences
+    are never dropped.
+    """
+    if not reply:
+        return reply
+    if len(re.findall(r"\S+", reply)) <= _KIOSK_STATUS_WORD_CAP:
+        return reply
+    sentences = _KIOSK_SENTENCE_END_RE.split(reply.strip())
+    if len(sentences) <= _KIOSK_STATUS_MIN_SENTENCES:
+        return reply
+
+    def _wc(parts: list[str]) -> int:
+        return len(re.findall(r"\S+", " ".join(parts)))
+
+    # Walk from the end looking for the first non-citation sentence we can drop
+    # without violating the floor.
+    while _wc(sentences) > _KIOSK_STATUS_WORD_TARGET:
+        if len(sentences) <= _KIOSK_STATUS_MIN_SENTENCES:
+            break
+        drop_idx = None
+        for i in range(len(sentences) - 1, -1, -1):
+            if _KIOSK_TRIM_SOURCE_MARKER not in sentences[i]:
+                drop_idx = i
+                break
+        if drop_idx is None:
+            # Every remaining sentence has a citation — leave them all.
+            break
+        sentences.pop(drop_idx)
+    return " ".join(sentences)
+
+
 # 2026-06-06 Q5 fix: maintenance-specific queries (lubrication, PM schedules,
 # specs-from-nameplate) that won't be answered by "I have X docs indexed".
 # When a message matches this AND the KB-hit path fires, we emit a KB-gap
@@ -1268,12 +1328,23 @@ class Supervisor:
         # (>80 chars). This is deterministic on observable inputs, not on LLM
         # output shape, so it doesn't move the flakiness — it removes it.
         if _LIVE_STATUS_HEADER in message and len(reply.strip()) > 80:
+            # Q1 length trim (follow-up to PR #1754): kiosk status-summary
+            # replies were landing ~165 words against the 145 ceiling. Drop
+            # trailing non-citation sentences in-place.
+            trimmed = _trim_kiosk_status_reply(reply)
+            if trimmed != reply:
+                logger.info(
+                    "KIOSK_REPLY_TRIMMED chat_id=%s before_words=%d after_words=%d",
+                    chat_id,
+                    len(re.findall(r"\S+", reply)),
+                    len(re.findall(r"\S+", trimmed)),
+                )
             logger.debug(
                 "QUALITY_GATE_BYPASS chat_id=%s reason=live_status_summary len=%d",
                 chat_id,
-                len(reply),
+                len(trimmed),
             )
-            return reply
+            return trimmed
         try:
             gate = await quality_gate.evaluate(
                 reply,
