@@ -40,4 +40,13 @@ Implication: schematic edges were already canonical (clean migration, no remap).
 
 ## Remaining for #1721
 
-`relationship-extractor.ts`, `extractor.ts`, then `cmms-sync.ts` + `hierarchy-backfill.ts` (after the CHECK/mapping decision). #1721 stays open until all are propose-by-default or explicitly justified. CI guard for unguarded inserts = #1722; canary = #1723.
+`relationship-extractor.ts` ✅ migrated. `extractor.ts`, `cmms-sync.ts`, `hierarchy-backfill.ts` remain — now fully **map-ready**:
+
+**Vocabulary decided (migration 043).** The CHECK gains dedicated CMMS/tag types and the map covers every emitted type:
+- `has_work_order` → `HAS_WORK_ORDER` (new), `has_pm` → `HAS_PM_SCHEDULE` (new), `mentioned_tag` → `HAS_TAG` (new)
+- `parent_of` → `LOCATED_IN` **flipped** (equipment LOCATED_IN area)
+- `located_at`→`LOCATED_IN`, `exhibited_fault`→`HAS_FAILURE_MODE`, `requires_part`→`HAS_PART` (existing)
+
+**Ordering constraint:** migration 043 must be applied (dev → staging → prod via `apply-migrations.yml`) **before** the `cmms-sync`/`extractor` writer-migration PRs deploy, or a proposal carrying a new type would fail the prod CHECK. The TS map/CANONICAL set already include the new types, but no migrated writer emits them yet, so landing them ahead of the apply is safe.
+
+The three writer migrations stay deferred until 043 is applied **and** their competing PRs (#1030/#1263/#1710/#642) settle. CI guard for unguarded inserts = #1722 (merged); canary = #1723 (merged).
