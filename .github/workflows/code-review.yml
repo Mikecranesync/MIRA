@@ -153,15 +153,22 @@ jobs:
       - name: Collect static analysis summary
         id: static_summary
         run: |
-          if [ -f /tmp/shellcheck-output.txt ]; then
-            echo "has_findings=true" >> $GITHUB_OUTPUT
+          if [ -s /tmp/shellcheck-output.txt ]; then
+            echo "has_findings=true" >> "$GITHUB_OUTPUT"
+            # The findings file is written with `printf '%s'` (no trailing
+            # newline), so a plain `cat … ; echo 'EOF'` glues the closing EOF
+            # onto the last line → GitHub fails with "Matching delimiter not
+            # found 'EOF'" for ANY non-empty findings. Force a trailing newline
+            # and use a collision-proof delimiter (content can't contain it).
+            DELIM="STATIC_SUMMARY_EOF_$(date +%s)_${RANDOM}"
             {
-              echo 'summary<<EOF'
+              echo "summary<<${DELIM}"
               cat /tmp/shellcheck-output.txt
-              echo 'EOF'
-            } >> $GITHUB_OUTPUT
+              echo ""
+              echo "${DELIM}"
+            } >> "$GITHUB_OUTPUT"
           else
-            echo "has_findings=false" >> $GITHUB_OUTPUT
+            echo "has_findings=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Post static analysis findings
