@@ -230,10 +230,12 @@ async function fillKindAndName(
 }
 
 // Module-level flag: did beforeAll complete a working auth + seed?
-// When false, scenarios 1-8 (which depend on a logged-in browser session
-// against a non-empty tenant) skip cleanly instead of producing locator
-// timeouts that masquerade as feature failures. Scenario 9 (regression
-// + API tree shape) always runs since it doesn't need auth.
+// When false, the seed-dependent scenarios (1-5, 7, 10, 11 — which need a
+// logged-in browser session against a non-empty tenant) skip cleanly instead
+// of producing locator timeouts that masquerade as feature failures. The
+// always-run regression/auth canaries (6, 8, 9) still run on a NON-transient
+// failure so a real regression fails clearly; they are skipped only when the
+// failure was transient/env-not-ready (see SETUP_ENV_NOT_READY below).
 let SETUP_OK = false;
 
 // True when beforeAll's auth+seed failed *specifically* because the deployed
