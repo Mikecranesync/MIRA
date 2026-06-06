@@ -3,6 +3,14 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### askmira-ignition/v1.0.0 (2026-06-06) — Ignition AskMira deploy lands on PMC Gateway
+- **Cutover from sidecar to ask_api** — Ignition "Ask MIRA" panel on the PMC-station Garage Conveyor now routes Tailscale-direct from the Gateway-scope script to `mira-bots/ask_api/app.py` on `factorylm-prod` (`100.68.120.99:8011`), wrapping `Supervisor.process()`. PR Mikecranesync/MIRA#1620 (wrong-stack `/v1/chat/completions` cutover) closed; the official path is `feat/ask-mira-ignition-hmi` (MIRA_PLC) + the merged `/ask` endpoint chain (#1615 + #1629 + #1700).
+- **Deploy mechanism** — Web UI Project Import after adding a `/AskMira` page entry to `com.inductiveautomation.perspective/page-config/config.json`. The AskMira `view.json` was already on disk; only the page-route mapping was missing.
+- **Auth** — `ASK_API_KEY` optional gate intentionally off (`X-Mira-Key:""` both ends per view.json inline comment). PR #1746 audit's `MIRA_IGNITION_HMAC_KEY` claim is stale vs current code.
+- **Re-test verdict** — R1 (CoT leak), R2 (multi-vendor citation salad), R3 (fault tunnel-vision), R4 (E-stop awareness) all FIXED vs 2026-06-01 baseline. R5 bimodal (2 s instructional / 45 s grounded). R6 sources populated on grounded replies. Single-shot per Perspective session works grounded answers from live PLC tags.
+- **NEW follow-up** — view textarea→`view.custom.question` binding race causes follow-up clicks to send the previous question. Workaround: reload page between Q's. Fix is view-side (change propagation to immediate OR read text-area `.props.text` in the Gateway script).
+- **Evidence:** `docs/demos/_audit/askmira-{deploy-session,rerun-engine-prebake,rerun}-2026-06-06.md`. Screenshots: `docs/promo-screenshots/2026-06-06_askmira-{gate3-deployed,q01-grounded-answer}_desktop.png`.
+
 ### mira-hub/v1.5.3 (2026-05-09) — Allow /pricing in robots.txt + nginx HTTP/2 (closes #1104, #1106)
 - **`mira-hub/src/app/robots.ts`** — Added `/pricing` to allow list so crawlers can index the pricing/conversion page.
 - **`nginx-phase2-live.conf`** — Added `http2` to both `listen 443 ssl` directives (app.factorylm.com + chat.factorylm.com). Estimated 1,440ms savings on login page LCP.
