@@ -84,6 +84,13 @@ The OFFICIAL stack is:
 5. RDP (`mstsc /v:100.72.2.99`) launches a window but requires the forgotten Windows password.
 6. PR #1746's audit names `MIRA_IGNITION_HMAC_KEY` as the missing Doppler secret. Current `mira-bots/ask_api/app.py:32` on `main` reads `ASK_API_KEY` via `X-Mira-Key`. The active backend branch may have renamed/HMAC-wrapped it — verify from item #8 in the reading list before setting the Doppler value.
 
+7. **Resolved 2026-06-06 (session: `docs/askmira-ignition-deploy-handoff-2026-06-06`):**
+   - **Open Q1:** PR #1711 lands AFTER deploy. View.json on `feat/ask-mira-ignition-hmi` does not bind to `uns_gate_state`/`candidate_asset`/`confirmed_asset` — safe to deploy independently.
+   - **Open Q3:** Current code (both `main` and PR #1711) uses `ASK_API_KEY` + `X-Mira-Key`. Gate is OPTIONAL. View.json intentionally sends empty key per inline comment. No Doppler change needed. PR #1746's `MIRA_IGNITION_HMAC_KEY` claim is stale.
+   - **Endpoint correction:** view.json POSTs Tailscale-direct to `http://100.68.120.99:8011/ask` (`factorylm-prod` VPS), NOT through Gateway WebDev `/system/webdev/ConvSimpleLive/ask`. Gate 4 smoke uses this URL.
+   - **APPLY.ps1 correction:** the canonical deploy script is `APPLY.ps1` (not `APPLY_ASKMIRA.ps1`) and on its current `feat/ask-mira-ignition-hmi` HEAD it did NOT deploy AskMira. Closed by MIRA_PLC#24 (adds AskMira pair + resource.json; replaces skip-if-missing with create-parent-and-copy).
+   - **Webwright:** Phase 0 install completed via OS CLI (`claude plugin marketplace add` / `claude plugin install`) — works without needing slash commands in chat. Plugin enabled under user scope; skills load on next session start.
+
 ---
 
 ## Known Blockers (Operational, Not Code)

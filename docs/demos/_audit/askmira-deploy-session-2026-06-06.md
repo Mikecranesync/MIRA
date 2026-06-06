@@ -7,12 +7,13 @@
 
 | Gate | Status | Evidence |
 |---|---|---|
+| Phase 0 — Webwright install | GREEN (CLI) | `claude plugin marketplace add microsoft/Webwright` + `claude plugin install webwright@webwright` ran from OS shell. `claude plugin list` shows `webwright@webwright v0.1.0 scope:user status:enabled`. `claude plugin details` shows 3 skills (craft, run, webwright). F4-F6 smoke deferred per goal — skills load on next Claude Code session. |
 | 1 — Close PR #1620 | GREEN | `gh pr close 1620` — "✓ Closed pull request Mikecranesync/MIRA#1620". 14:14 UTC. |
 | 2 — Auth contract + Doppler | GREEN | `ASK_API_KEY` + `X-Mira-Key` confirmed on `main` and `feat/ask-uns-gate-state` branches. Gate is OPTIONAL (only enforced when env set). AskMira `view.json` Gateway script sends `X-Mira-Key:""` intentionally per inline comment "set ASK_API_KEY both ends to enable". No Doppler change required for demo. PR #1746 audit's `MIRA_IGNITION_HMAC_KEY` claim is stale vs current code. |
-| 3 — Deploy to Gateway | PENDING | Blocker: `APPLY.ps1` does NOT include AskMira view in its `$pairs` array. Project import zip `ConvSimpleLive_PE01_import.zip` lacks AskMira/ subdir. Agent-side fix in progress. |
+| 3 — Deploy to Gateway | PENDING | Needs Mike's hands — Designer Launcher login OR PR #24 merge + elevated APPLY.ps1 at bench. MIRA_PLC#24 patched APPLY.ps1 + added resource.json to close the script gap. |
 | 4 — Backend smoke `POST /ask` | GREEN | See § Smoke Run below. |
-| 5 — 10-question re-test, R1-R6 | PENDING | Requires Gate 3 + Webwright install. |
-| 6 — CHANGELOG entry | PENDING | After Gate 5. |
+| 5 — 10-question re-test, R1-R6 | PARTIAL (pre-bake) | `askmira-rerun-engine-prebake-2026-06-06.md` — 10 representative diagnostic questions hit `/ask` directly. R1/R2/R3/R4 FIXED vs 2026-06-01 baseline; R5 bimodal (2 s instructional / 50 s grounded); R6 6/6 grounded with sources, 0/4 instructional fallbacks (KB-gap admissions). Official Gate 5 awaits Mike's verbatim 10 Q via Webwright + view. |
+| 6 — CHANGELOG entry | PENDING | After Gate 5 official. |
 
 ## Smoke Run (Gate 4)
 
