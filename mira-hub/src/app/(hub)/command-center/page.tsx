@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronDown, ChevronRight,
   Folder, FolderOpen, Cog, Factory, FileText, Layers,
-  RefreshCw, MonitorPlay, MonitorOff, Radio,
+  RefreshCw, MonitorPlay, MonitorOff, Radio, Settings,
 } from "lucide-react";
 import { API_BASE } from "@/lib/config";
+import { ManageDisplays } from "./ManageDisplays";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 // Mirrors CommandCenterNode in /api/command-center/tree/route.ts.
@@ -58,6 +59,7 @@ export default function CommandCenterPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<CCNode | null>(null);
+  const [managing, setManaging] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -119,12 +121,23 @@ export default function CommandCenterPage() {
           {data && <FreshnessSummary counts={data.freshnessCounts}
             displaysTotal={data.displaysTotal} reachable={data.liveCount} />}
         </div>
-        <button onClick={() => refresh()}
-          className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium hover:bg-black/5"
-          title="Refresh">
-          <RefreshCw className="h-3.5 w-3.5" /> Refresh
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => setManaging(true)}
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium hover:bg-black/5"
+            title="Manage displays">
+            <Settings className="h-3.5 w-3.5" /> Manage
+          </button>
+          <button onClick={() => refresh()}
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium hover:bg-black/5"
+            title="Refresh">
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh
+          </button>
+        </div>
       </div>
+
+      {managing && (
+        <ManageDisplays onClose={() => setManaging(false)} onChanged={() => refresh()} />
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left: UNS tree */}

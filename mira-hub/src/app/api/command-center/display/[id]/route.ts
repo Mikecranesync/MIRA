@@ -17,15 +17,21 @@ export const dynamic = "force-dynamic";
  * proxy (route handlers don't handle WS upgrades; a fetch-and-stream proxy would
  * render a frozen page). See the goal prompt's "transparent + WS-capable" note.
  *
- * CLOUD-REACH PHASE (later): the cloud Hub's browser can't reach a LAN HMI, so
- * this route's redirect target changes to the on-prem WS-capable reverse proxy
- * on Charlie (nginx, over Tailscale) — same route contract, no client rework.
- * (Also handle http→https mixed-content there: a https Hub can't frame a http
- * HMI; the proxy terminates TLS.)
+ * CLOUD-REACH PHASE (Phase 2): the cloud Hub's browser can't reach a LAN HMI or
+ * Charlie's Tailscale IP, so a 302 to host:port is useless. When
+ * COMMAND_CENTER_CLOUD_PROXY is set, this route instead 302s to a SAME-ORIGIN
+ * relative path `${CLOUD_PROXY_PREFIX}/{id}/{path}` (default `/cc-display`). VPS
+ * nginx owns that prefix: it `auth_request`s `…/display/{id}/authz` (per-tenant)
+ * then proxy_passes (HTTP+WS) to Charlie's mira-proxy over Tailscale, which holds
+ * the display_endpoints host allowlist. Everything the browser sees is same-origin
+ * HTTPS → no mixed-content, frame-src 'self' suffices, WS works (nginx, not this
+ * route, carries the upgrade). Same route contract + same iframe src, no client rework.
  *
  * READ-ONLY: only GET is exported. POST/PUT/PATCH/DELETE → 405. This route never
  * forwards a control action to a panel (.claude/rules/fieldbus-readonly.md).
  */
+const CLOUD_PROXY = process.env.COMMAND_CENTER_CLOUD_PROXY === "1";
+const CLOUD_PROXY_PREFIX = process.env.COMMAND_CENTER_CLOUD_PROXY_PREFIX ?? "/cc-display";
 
 interface DisplayEndpointRow {
   scheme: string;
@@ -68,10 +74,21 @@ export async function GET(
       return NextResponse.json({ error: "Display disabled" }, { status: 404 });
     }
 
-    const portPart = row.port ? `:${row.port}` : "";
     const path = row.path.startsWith("/") ? row.path : `/${row.path}`;
-    const target = `${row.scheme}://${row.host}${portPart}${path}`;
 
+    if (CLOUD_PROXY) {
+      // Phase 2: 302 to a same-origin relative path that VPS nginx owns (auth_request
+      // + WS-native proxy_pass to Charlie). Never expose host:port to the client.
+      // The display path is preserved so the HMI's relative assets + socket resolve.
+      // Relative Location so it resolves against the request's own origin behind
+      // the VPS (https://app.factorylm.com) — no hardcoded host/scheme.
+      const target = `${CLOUD_PROXY_PREFIX}/${id}${path}`;
+      return new NextResponse(null, { status: 302, headers: { Location: target } });
+    }
+
+    // Phase 1 (local Charlie Hub): browser is on the LAN, 302 straight to the HMI.
+    const portPart = row.port ? `:${row.port}` : "";
+    const target = `${row.scheme}://${row.host}${portPart}${path}`;
     return NextResponse.redirect(target, 302);
   } catch (err) {
     console.error("[api/command-center/display GET]", err);

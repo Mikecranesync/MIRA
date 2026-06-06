@@ -1,0 +1,3 @@
+# allowlist.conf is GENERATED from display_endpoints by gen_allowlist.py at deploy
+# time (env-specific display IDs). Do not commit it.
+allowlist.conf

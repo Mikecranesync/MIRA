@@ -34,6 +34,15 @@ export const dynamic = "force-dynamic";
 const PROBE_TIMEOUT_MS = 2_000;
 const PROBE_CACHE_MS = 10_000;
 
+// Cloud-reach phase: the Hub server (prod VPS) cannot reach a plant-LAN HMI directly
+// (RFC1918, no accept-routes), so probing the raw host:port always reads gray there.
+// When CLOUD_PROXY is on, probe THROUGH Charlie's on-prem proxy over Tailscale — the
+// SAME hop the iframe uses — so liveness reflects the real watch path. Symmetric with
+// the display/[id] redirect switch. CC_PROXY_BASE is Charlie's Tailscale proxy origin
+// (e.g. http://100.70.49.126:8889); the proxy resolves {displayId} via its allowlist.
+const CLOUD_PROXY = process.env.COMMAND_CENTER_CLOUD_PROXY === "1";
+const CC_PROXY_BASE = (process.env.COMMAND_CENTER_PROXY_BASE ?? "").replace(/\/$/, "");
+
 interface KgEntityRow {
   id: string;
   entity_type: string;
@@ -211,9 +220,18 @@ function annotate(
 const probeCache = new Map<string, { at: number; url: string; live: boolean }>();
 
 async function probe(d: DisplayRow): Promise<boolean> {
-  const portPart = d.port ? `:${d.port}` : "";
   const path = d.path.startsWith("/") ? d.path : `/${d.path}`;
-  const url = `${d.scheme}://${d.host}${portPart}${path}`;
+
+  // Cloud mode: probe THROUGH the proxy (the same hop the iframe uses), since the
+  // raw LAN host is unreachable from the prod Hub server. Falls back to the direct
+  // host if the proxy base isn't configured (so a misconfig reads gray, not green).
+  let url: string;
+  if (CLOUD_PROXY && CC_PROXY_BASE) {
+    url = `${CC_PROXY_BASE}/display/${d.id}${path}`;
+  } else {
+    const portPart = d.port ? `:${d.port}` : "";
+    url = `${d.scheme}://${d.host}${portPart}${path}`;
+  }
 
   const now = Date.now();
   const cached = probeCache.get(d.id);
