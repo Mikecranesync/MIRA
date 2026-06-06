@@ -140,9 +140,7 @@ def _build_clarification_request(message: str, asset_identified: str) -> str | N
         parts.append(
             "1. **Manufacturer** — who made the equipment? (e.g. AutomationDirect, Yaskawa, Danfoss)"
         )
-        parts.append(
-            "2. **Model number** — shown on the nameplate or display (e.g. GS20, V1000)"
-        )
+        parts.append("2. **Model number** — shown on the nameplate or display (e.g. GS20, V1000)")
         parts.append("3. **Exact code** — copy it exactly as it appears on the screen")
     else:
         parts.append(f"Equipment: {asset_identified}")
