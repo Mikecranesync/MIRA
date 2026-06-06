@@ -2,6 +2,18 @@
 
 ## Session — 2026-06-04 run 4 (autonomous gap-closure routine — epic #1666)
 
+> **Parallel stream (DT-2026 gate-monitor, 2026-06-04 ~19:35Z):** all 7 gates green
+> (#1676/#1657/#1674 merged, migs 032–037 on main, #1677 decisions explicit, head=037).
+> Phase 1 resumed → **PR #1710** opened: migrations **038** (relationship_type CHECK +4
+> asset-graph edges) + **039** (`kg_entities.source_object_id` FK-by-convention + partial idx).
+> Preserved migration 032's 3 inferred types (live=31, +4 new = 35 — doc §5's 28-value list was
+> pre-032). No prod touched; CI/`apply-migrations.yml --dry-run` must verify on staging.
+> **Next:** migrations **040–042** source-preservation layer (incl. `source_object_versions`
+> per Mike's #1677 override). **Follow-up:** MaintainX "store raw → map → remap, zero re-fetch"
+> proof. Gate-monitor routine **disabled**. Durable record: comments on #1666 + #1677.
+
+## Session — 2026-06-02→04 (promo-director: HMI walkthrough videos, private YouTube)
+
 **Status: Merge conflict resolved + CI green. PR #1657 now clean and ready for human review.**
 
 - `apply-and-verify` CI: ✅ **GREEN** (conclusion: success, completed 10:13:12Z). The `source_system` column idempotency guard fix (commits `e1951da`/`5c15048` by earlier sessions) landed and passed.
@@ -711,3 +723,13 @@ Mitsubishi Electric: 16 chunks (NULL model)
 - Scorecard: 30/57 passing (53%) — new low in the FSM/UNS-gate band
 - Action: issue-filed (commented on tracker #1583, not a duplicate)
 - 27 patchable failures but both autopatch hard-stops tripped (>15 failures; 3 file clusters). Same clusters A–E as #1583. `last_response_snippet` still empty for all — transcript capture remains the #1 blocker.
+
+## eval-fixer run — 2026-06-02
+- Scorecard: 35/57 passing (61%)
+- Action: issue-filed (#1640)
+- 22 failures, all autopatch-blocked (>15 patchable AND 3 file clusters). Systemic FSM/UNS-gate regression — 21/22 point at engine.py. Clusters: gate stuck in AWAITING_UNS_CONFIRMATION, docs-requests landing in ASSET_IDENTIFIED instead of IDLE, over-qualifying (stuck Q1/Q2 vs DIAGNOSIS), CMMS WO not created, PowerFlex leaking on GS20. Needs human bisect.
+
+## eval-fixer run — 2026-06-03
+- Scorecard: 35/57 passing (61%) — runs/2026-06-03T0109-offline-text.md
+- Action: issue-filed (#1678)
+- 22 patchable failures but BOTH hard-stops tripped (>15 failures AND 3 file clusters: engine.py, guardrails.py, active.yaml). Broad FSM-routing regression — fixtures stuck in AWAITING_UNS_CONFIRMATION/Q1/IDLE or over-advancing to ASSET_IDENTIFIED. Needs human bisect of recent engine.py state-machine edits.

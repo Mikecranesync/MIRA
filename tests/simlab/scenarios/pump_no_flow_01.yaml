@@ -1,0 +1,96 @@
+id: pump_no_flow_01
+name: "Pump running, no flow — cavitation vs closed valve vs impeller wear"
+tier: 1
+machine_type: centrifugal_pump
+source: hand_crafted
+tags: [pump, cavitation, valve, impeller, flow, multi-component]
+description: >
+  Centrifugal pump is running (motor on, 60Hz VFD output, normal current),
+  but the process flow meter reads zero. Inlet isolation valve is partially
+  closed — the root cause. MIRA must not immediately blame the impeller or
+  pump internals without checking process conditions (inlet pressure, valve
+  position). Cavitation indicators (low current, noise) are a red herring trap.
+
+machine_context:
+  site: "enterprise.plant1.utilities"
+  uns_path: "enterprise.plant1.utilities.cooling_loop"
+  components:
+    - id: pump_01
+      type: centrifugal_pump
+      description: "3in centrifugal coolant circulation pump"
+      manufacturer: Grundfos
+      model: CM5-4
+    - id: motor_pump_01
+      type: ac_motor
+      description: "1.5HP TEFC motor, pump-mounted"
+    - id: vfd_pump_01
+      type: vfd
+      manufacturer: Danfoss
+      model: VLT AQUA
+    - id: valve_inlet
+      type: gate_valve
+      description: "Manual isolation valve, pump inlet"
+    - id: valve_outlet
+      type: check_valve
+      description: "Spring-loaded check valve, pump outlet"
+    - id: flow_meter_01
+      type: flow_meter
+      description: "Insertion turbine flow meter, outlet header"
+  tag_state:
+    "vfd_pump_01.output_hz": 60.0
+    "vfd_pump_01.output_amps": 2.1
+    "vfd_pump_01.fault_code": null
+    "pump_01.inlet_pressure_psi": 1.2
+    "pump_01.outlet_pressure_psi": 14.0
+    "pump_01.differential_pressure_psi": 12.8
+    "flow_meter_01.gpm": 0.0
+    "valve_inlet.position_feedback": null
+
+fault:
+  root_cause: inlet_valve_partially_closed
+  root_cause_component: valve_inlet
+  red_herrings:
+    - pump_01
+    - flow_meter_01
+  correct_isolation_steps:
+    - "VFD is running at commanded setpoint — drive not at fault"
+    - "Low inlet pressure (1.2 PSI) indicates flow restriction upstream — check inlet valve"
+    - "Differential pressure is present — pump is developing head but not delivering flow"
+    - "Inspect and fully open inlet isolation valve"
+  precursors:
+    - "Maintenance performed on inlet piping yesterday"
+
+behavior_checkpoints:
+  cp_no_premature_blame:
+    params:
+      forbidden_components: ["impeller", "pump", "flow meter"]
+      until_turn: 2
+    reason: "Impeller wear diagnosis requires ruling out process conditions first"
+  cp_isolation_evidence:
+    params:
+      required_measurements: ["pressure", "inlet", "differential", "hz", "amps"]
+    reason: "Process pressures must be cited before pump mechanical diagnosis"
+  cp_subsystem_identified:
+    params:
+      expected_subsystem: "valve"
+      aliases: ["inlet", "isolation", "valve", "restriction"]
+    reason: "Root cause is closed inlet isolation valve, not pump fault"
+
+expected_final_state: DIAGNOSIS
+max_turns: 6
+expected_keywords: [valve, inlet, pressure, flow, restriction]
+forbidden_keywords: []
+
+turns:
+  - role: user
+    content: >
+      Cooling pump is running but the flow meter shows zero GPM. The VFD
+      shows 60Hz and the motor is pulling about 2 amps. No fault codes.
+  - role: user
+    content: >
+      Inlet pressure is reading 1.2 PSI. Outlet pressure is 14 PSI.
+      The pump seems to be developing pressure but nothing is flowing.
+  - role: user
+    content: >
+      Found it — the inlet isolation valve was only about 20% open.
+      Maintenance must have left it partially closed after work yesterday.

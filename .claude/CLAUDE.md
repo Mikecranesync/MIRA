@@ -41,6 +41,8 @@ Required flow (enforced in `mira-bots/shared/engine.py`):
 
 A code path that begins troubleshooting before step 7 is a **bug**. The `mira-run-hallucination-audit` command exists to find such paths.
 
+**Carve-out — direct machine connections are UNS-certified by construction.** The flow above (and the chat-gate in `.claude/rules/uns-confirmation-gate.md`) applies to chat surfaces (Slack/Telegram/email/generic web). When a turn arrives over a surface that already knows which machine the technician is on — Ignition cloud-chat (`mira-pipeline /api/v1/ignition/chat`), a Perspective "Ask MIRA" panel, an MQTT/Sparkplug B turn from `mira-bridge`/`mira-relay`, a PLC bridge tag-snapshot, a Hub Command Center display, a QR-scan deep-link — the connection itself certifies the UNS path. The engine MUST skip steps 6–7 and treat `state["uns_context"]["source"]=="direct_connection"` as already confirmed. A direct-connection surface that lacks a UNS identifier on its payload must **reject** the turn (`{"error":"uns_required"}`), NOT downgrade to a chat-gate. Full rule + surface list + rejection contract: `.claude/rules/direct-connection-uns-certified.md`.
+
 ## Grounded troubleshooting
 
 MIRA must ground every claim in at least one of:
@@ -147,6 +149,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - **Python: ruff + httpx + `Optional[X]` (3.12 target)** — see `.claude/rules/python-standards.md`.
 - **Security boundaries** — see `.claude/rules/security-boundaries.md` (PII sanitization, safety keywords, Doppler).
 - **UNS compliance** — see `.claude/rules/uns-compliance.md` (every asset row has `uns_path` or `equipment_entity_id` FK).
+- **Direct-connection UNS certification** — see `.claude/rules/direct-connection-uns-certified.md` (Ignition/MQTT/PLC/Hub/QR surfaces carry a UNS identifier on every turn or are rejected; engine skips the chat-gate on `source="direct_connection"`).
 - **CodeGraph-first exploration** — see `.claude/rules/codegraph-usage.md` (use `codegraph_context` / `codegraph_impact` before grep + Read for any symbol-shaped question).
 - **Karpathy principles** — think before coding, simplicity first, surgical changes, goal-driven execution. See `.claude/rules/karpathy-principles.md`.
 - **Don't break the UNS confirmation gate.** Run `mira-run-hallucination-audit` after engine/bot edits.
@@ -162,7 +165,9 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 ## Do not do
 
 - ❌ **Build a generic chatbot.** MIRA answers grounded maintenance questions, nothing else.
-- ❌ **Begin troubleshooting before the UNS gate confirms.**
+- ❌ **Begin troubleshooting before the UNS gate confirms.** (Chat surfaces only — direct connections are certified by construction; see `.claude/rules/direct-connection-uns-certified.md`.)
+- ❌ **Ask a direct-connection turn "are you sure you're looking at X?"** If the connection didn't carry a UNS identifier, REJECT it — don't downgrade to a chat-gate.
+- ❌ **Add a new direct-connection surface (Ignition, MQTT, PLC, Hub display, QR) without declaring its UNS-identity source.** Every direct surface must populate `state["uns_context"]["source"]="direct_connection"` and supply a resolvable identifier on every turn.
 - ❌ **Invent plant data, PLC tag meaning, work-order history, fault codes, or manual references.** Always cite.
 - ❌ **Auto-promote `proposed` → `verified`** in the knowledge graph.
 - ❌ **Replace SCADA, replace CMMS, or expose arbitrary PLC writes.** That's out of scope. See `.claude/skills/mira-saas-scope-guard/SKILL.md`.
@@ -179,6 +184,8 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - `docs/specs/maintenance-namespace-builder-spec.md` — UNS gate, AI proposals, readiness levels (subsumes the older `uns-message-resolver-spec.md` reference)
 - `docs/plans/2026-05-15-maintenance-namespace-builder.md` — phased execution
 - `.claude/rules/uns-compliance.md` — UNS data-shape enforcement
+- `.claude/rules/uns-confirmation-gate.md` — chat-surface UNS gate (Slack/Telegram/email/web)
+- `.claude/rules/direct-connection-uns-certified.md` — direct-connection UNS certification (Ignition/MQTT/PLC/Hub/QR)
 - `.claude/rules/security-boundaries.md` — secrets, PII, safety keywords
 - `.claude/rules/python-standards.md` — ruff, httpx, NeonDB, async
 - `.claude/rules/karpathy-principles.md` — coding behavior
