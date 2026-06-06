@@ -217,12 +217,12 @@ Installed 2026-04-20. Triggers on every PR to `main`/`develop`/`dev`.
 | ast-grep rules | `.ast-grep-rules/` | Hardcoded IPs, secrets, missing socket error handling, raw FastAPI body |
 | ast-grep config | `sgconfig.yml` | Rule discovery (replaces diffray — diffray v0.5.4 requires OpenAI) |
 | Self-fix script | `scripts/pr_self_fix.sh` | Reads 🔴 IMPORTANT review comments, asks the LLM cascade for patches, applies + pushes (up to 3 loops) |
-| Pre-commit hook | `.githooks/pre-commit` | shellcheck + rg credential scan + debug artifact scan on staged files |
+| Pre-commit hook | `.githooks/pre-commit` | shellcheck + rg credential scan + debug artifact scan + actionlint (workflows) on staged files |
 
 **To trigger manually:** `gh workflow run code-review.yml`
 **To run self-fix:** `bash scripts/pr_self_fix.sh <PR_NUMBER>`
 **Hook active:** `git config core.hooksPath .githooks` (already set in this repo)
-**Tools required locally:** `shellcheck`, `rg`, `sg` (ast-grep), `scc`, `difft`
+**Tools required locally:** `shellcheck`, `rg`, `sg` (ast-grep), `scc`, `difft`, `actionlint`
 
 ---
 
