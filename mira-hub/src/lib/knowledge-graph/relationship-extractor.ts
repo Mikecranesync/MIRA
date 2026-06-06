@@ -11,8 +11,10 @@
  *  - Endpoints must reference an entity from the supplied list. Any
  *    relationship referencing an unknown entity is dropped.
  *  - confidence < HIGH_CONFIDENCE_THRESHOLD goes to triples log only.
- *  - confidence >= HIGH_CONFIDENCE_THRESHOLD is also written as a structured
- *    relationship (kg_relationships).
+ *  - confidence >= HIGH_CONFIDENCE_THRESHOLD is PROPOSED for human review
+ *    (relationship_proposals via upsertInferredProposal) — never written
+ *    directly to kg_relationships (Iron Rule, ADR-0017). The lowercase
+ *    predicate is mapped to canonical first.
  *
  * Cost: per-conversation, fire-and-forget after the diagnostic conversation
  * closes (resolved decision §12 #5). Uses the same cascade as chat.
@@ -21,6 +23,7 @@
 import pool from "@/lib/db";
 import type { PoolClient } from "pg";
 import { cascadeComplete } from "@/lib/llm/cascade";
+import { mapToCanonicalEdge, upsertInferredProposal } from "./proposals-writer";
 import { isRelationshipType } from "./types";
 
 // Subset of relationship types the LLM is allowed to emit. We deliberately
@@ -263,26 +266,34 @@ export async function extractRelationships(
         );
         storedTriples++;
 
-        // Promote to structured relationship only above the threshold AND
-        // when both endpoints actually exist in the KG.
+        // Above the threshold AND with both endpoints in the KG, PROPOSE the
+        // edge for human review (Iron Rule: an LLM-inferred edge is never an
+        // auto-verified kg_relationships row). The lowercase predicate is
+        // mapped to canonical; unmapped types are skipped (mapToCanonicalEdge
+        // returns null). Below threshold stays triple-only.
         if (v.confidence >= HIGH_CONFIDENCE_THRESHOLD && src && tgt) {
-          await client.query(
-            `INSERT INTO kg_relationships
-               (tenant_id, source_id, target_id, relationship_type,
-                confidence, source_conversation_id, properties)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             ON CONFLICT DO NOTHING`,
-            [
-              tenantId,
-              src.id,
-              tgt.id,
-              v.predicate,
-              v.confidence,
-              conversationId,
-              JSON.stringify({ extractor: "llm", llm_provider: result.provider }),
-            ],
-          );
-          storedRelationships++;
+          const edge = mapToCanonicalEdge(v.predicate);
+          if (edge) {
+            const source = edge.flip ? tgt : src;
+            const target = edge.flip ? src : tgt;
+            const proposalId = await upsertInferredProposal(client, tenantId, {
+              sourceEntityId: source.id,
+              sourceEntityType: source.entity_type,
+              targetEntityId: target.id,
+              targetEntityType: target.entity_type,
+              relationshipType: edge.type,
+              confidence: v.confidence,
+              reasoning: `LLM relationship extraction (${result.provider}) from conversation ${conversationId ?? "?"} — original predicate "${v.predicate}".`,
+              evidence: [
+                {
+                  evidenceType: "technician_note",
+                  sourceDescription: `Diagnostic conversation ${conversationId ?? "(none)"}`,
+                  confidenceContribution: v.confidence,
+                },
+              ],
+            });
+            if (proposalId) storedRelationships++;
+          }
         }
       }
     });

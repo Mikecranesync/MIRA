@@ -1595,9 +1595,19 @@ class Supervisor:
                     chat_id, message, state, trace_id, _target
                 )
 
-            if _router_intent == "general_question" and _keyword_intent not in (
-                "safety",
-                "documentation",
+            # Guard: when already in an active diagnostic session and the keyword
+            # classifier sees industrial intent, don't pull the turn out to a
+            # generic/instructional handler — fall through to the RAG diagnostic
+            # path instead. This prevents the LLM router from forcing IDLE on
+            # diagnostic follow-ups like "what should I check first?" that lack
+            # explicit session-followup signals ("you said", "earlier", etc.).
+            _in_active_diagnostic = state["state"] in ACTIVE_DIAGNOSTIC_STATES
+            _router_industrial_override = _in_active_diagnostic and _keyword_intent == "industrial"
+
+            if (
+                _router_intent == "general_question"
+                and _keyword_intent not in ("safety", "documentation")
+                and not _router_industrial_override
             ):
                 return await self._handle_general_question(
                     chat_id, message, state, trace_id, tenant_id=resolved_tenant
@@ -1608,7 +1618,10 @@ class Supervisor:
 
             # Procedural how-to questions: answer from knowledge, skip doc crawl.
             # Keyword "instructional" also routes here via the fallback mapping above.
-            if _router_intent == "answer_question" or _keyword_intent == "instructional":
+            # Guard: same override — industrial turns in active sessions fall through to RAG.
+            if (
+                _router_intent == "answer_question" or _keyword_intent == "instructional"
+            ) and not _router_industrial_override:
                 if detect_session_followup(message, sc, state["state"]):
                     return await self._handle_session_followup(
                         message,
@@ -4159,9 +4172,19 @@ class Supervisor:
                 return None
 
         # Priority 6 — questions
+        # Guard: when the FSM is in any active diagnostic state (Q1+), don't pull
+        # the turn out to an instructional/general handler that resets FSM to IDLE.
+        # Fall through to None so the legacy RAG path continues the session.
+        # This mirrors the _router_industrial_override guard in the LLM router
+        # block — DST can intercept before that guard fires when MIRA_USE_DST=1.
+        _dst_in_active = state.get("state") in ACTIVE_DIAGNOSTIC_STATES
         if kind == DISPATCH_ASK_PROCEDURAL:
+            if _dst_in_active:
+                return None
             return await self._handle_instructional_question(chat_id, message, state, trace_id)
         if kind == DISPATCH_ASK_GENERAL:
+            if _dst_in_active:
+                return None
             return await self._handle_general_question(
                 chat_id, message, state, trace_id, tenant_id=resolved_tenant
             )
