@@ -572,9 +572,36 @@ _H4_GAP_PHRASES: tuple[str, ...] = (
 )
 
 _H4_STOCK_ADMISSION = (
-    "\n\n[KB-gap: I do not have that specific information in the knowledge base"
-    " — consult the asset nameplate or vendor manual.]"
+    "\n\nI don't have specific documentation indexed for this — consult the asset"
+    " nameplate or vendor manual. [KB-gap: I do not have that specific information"
+    " in the knowledge base — consult the asset nameplate or vendor manual.]"
 )
+
+# 2026-06-06 followup: some LLM cascade replies emit citations as a
+# `--- Sources ---\n[1] vendor` block instead of inline `[Source: vendor]`.
+# Normalize to the inline format so downstream scoring + AskMira view rendering
+# treat them identically. The original block is preserved AFTER the inline
+# markers for human readability.
+_H4_SOURCES_BLOCK_RE = re.compile(
+    r"---\s*Sources\s*---\s*\n((?:\s*\[\d+\]\s+[^\n]+\n?)+)",
+    re.IGNORECASE,
+)
+
+
+def _normalize_sources_block(reply: str) -> str:
+    m = _H4_SOURCES_BLOCK_RE.search(reply)
+    if not m:
+        return reply
+    entries = [
+        line.split("]", 1)[1].strip() for line in m.group(1).strip().splitlines() if "]" in line
+    ]
+    if not entries:
+        return reply
+    inline = " ".join(f"[Source: {e}]" for e in entries)
+    # Insert inline markers BEFORE the original block so the block can stay for
+    # readability; the inline tokens are what the scorer + H4 enforcer match.
+    return reply[: m.start()] + inline + "\n\n" + reply[m.start() :]
+
 
 # Replies that should NEVER have H4 appended — they are already fallback strings.
 _H4_SKIP_REPLIES: frozenset[str] = frozenset(
@@ -597,6 +624,9 @@ def enforce_citation_or_gap_admission(reply: str) -> str:
     stripped = reply.strip()
     if stripped in _H4_SKIP_REPLIES:
         return reply
+    # Normalize `--- Sources ---` blocks to inline `[Source: ...]` markers so
+    # downstream scoring + view rendering see a single citation format.
+    reply = _normalize_sources_block(reply)
     if _H4_SOURCE_RE.search(reply):
         return reply
     lower = reply.lower()
@@ -4749,9 +4779,10 @@ class Supervisor:
             if _MAINT_GAP_RE.search(message):
                 asset_hint = model_override or model_hint or mfr or "this conveyor"
                 reply = (
-                    f"I don't have a lubrication or maintenance schedule indexed for "
-                    f"{asset_hint}. Schedules are asset-specific and are not typically "
-                    f"included in vendor electrical or drive manuals.\n\n"
+                    f"I don't have specific documentation indexed for the lubrication "
+                    f"or maintenance schedule on {asset_hint}. Schedules are "
+                    f"asset-specific and are not typically included in vendor "
+                    f"electrical or drive manuals.\n\n"
                     f"Check the asset nameplate or the gearbox/motor manufacturer's "
                     f"maintenance datasheet. Your plant's PM card or CMMS work-order "
                     f"history is the most reliable source for interval data.\n\n"

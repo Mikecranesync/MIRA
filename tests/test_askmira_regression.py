@@ -301,3 +301,44 @@ def test_h4_enforcer_skips_short_reply():
     for short in ["OK", "Yes.", "No fault."]:
         result = enforce_citation_or_gap_admission(short)
         assert result == short, f"H4: modified short reply {short!r}"
+
+
+def test_h4_normalizes_sources_block_to_inline():
+    """H4 normalizer: `--- Sources ---\\n[1] Vendor` → `[Source: Vendor]` inline.
+
+    Some LLM cascade replies emit a sources block instead of inline tags. The
+    enforcer must normalize so the scorer + view both see canonical inline
+    markers. The original block stays in the reply for human readability.
+    """
+    reply = (
+        "The motor is not running because PE-01 is latched.\n\n"
+        "--- Sources ---\n"
+        "[1] AutomationDirect GS10\n"
+        "[2] AutomationDirect — Fault Code Table\n"
+    )
+    result = enforce_citation_or_gap_admission(reply)
+    assert "[Source: AutomationDirect GS10]" in result, (
+        "normalizer missed first sources-block entry"
+    )
+    assert "[Source: AutomationDirect — Fault Code Table]" in result, (
+        "normalizer missed second sources-block entry"
+    )
+    # Original block stays for readability.
+    assert "--- Sources ---" in result
+    # No stock admission appended — citations are now present.
+    assert "[KB-gap:" not in result, (
+        "H4: stock admission appended even though sources block was present"
+    )
+
+
+def test_h4_stock_admission_contains_scorer_recognized_phrase():
+    """The stock admission must include the phrase the askmira-tester scorer
+    matches ("I don't have specific documentation"). Keeping these in sync
+    avoids a sterile fail where the engine IS H4-compliant but the scorer
+    cannot recognize the admission.
+    """
+    from shared.engine import _H4_STOCK_ADMISSION
+
+    assert "I don't have specific documentation" in _H4_STOCK_ADMISSION, (
+        "_H4_STOCK_ADMISSION drifted from the scorer's recognized vocabulary"
+    )
