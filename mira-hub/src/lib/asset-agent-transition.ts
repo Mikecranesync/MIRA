@@ -44,6 +44,39 @@ const ACTIVE_STATES: AssetAgentState[] = [
   "deployed",
 ];
 
+// §5 approval thresholds (spec defaults; configurable per tenant later).
+export const MIN_VALIDATION_QUESTIONS = 5;
+export const MIN_GROUNDEDNESS = 4;
+
+export interface ApprovalSignals {
+  citationCoverage: number; // # validation Q with verdict='good' AND ≥1 citation
+  minGroundedness: number | null; // lowest groundedness across the good answers
+  openSafetyCritical?: number; // pending safety_critical ai_suggestions on the asset
+}
+
+/**
+ * The spec §5 gate for advancing an asset agent to `approved`. Pure.
+ * Returns the decision plus the specific reasons it isn't met (for the UI).
+ */
+export function meetsApprovalCriteria(s: ApprovalSignals): {
+  ok: boolean;
+  reasons: string[];
+} {
+  const reasons: string[] = [];
+  if (s.citationCoverage < MIN_VALIDATION_QUESTIONS) {
+    reasons.push(
+      `need ≥${MIN_VALIDATION_QUESTIONS} good, cited answers (have ${s.citationCoverage})`,
+    );
+  }
+  if (s.minGroundedness == null || s.minGroundedness < MIN_GROUNDEDNESS) {
+    reasons.push(`every approved answer needs groundedness ≥${MIN_GROUNDEDNESS}`);
+  }
+  if ((s.openSafetyCritical ?? 0) > 0) {
+    reasons.push("resolve open safety-critical proposals first");
+  }
+  return { ok: reasons.length === 0, reasons };
+}
+
 export class IllegalTransitionError extends Error {
   constructor(from: string, to: string) {
     super(`Illegal asset-agent transition: ${from} → ${to}`);

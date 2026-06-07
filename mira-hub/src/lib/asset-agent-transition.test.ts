@@ -11,6 +11,8 @@ import { describe, it, expect } from "vitest";
 import {
   ASSET_AGENT_STATES,
   validateTransition,
+  meetsApprovalCriteria,
+  MIN_VALIDATION_QUESTIONS,
   IllegalTransitionError,
   MissingActorError,
 } from "./asset-agent-transition";
@@ -81,6 +83,43 @@ describe("validateTransition — illegal transitions throw", () => {
   });
   it("unknown state throws", () => {
     expect(() => validateTransition("bogus", "draft")).toThrow(IllegalTransitionError);
+  });
+});
+
+describe("meetsApprovalCriteria — spec §5 gate", () => {
+  it("passes with enough cited good answers and groundedness ≥4", () => {
+    const r = meetsApprovalCriteria({
+      citationCoverage: MIN_VALIDATION_QUESTIONS,
+      minGroundedness: 4,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.reasons).toEqual([]);
+  });
+  it("fails when too few cited good answers", () => {
+    const r = meetsApprovalCriteria({ citationCoverage: 2, minGroundedness: 5 });
+    expect(r.ok).toBe(false);
+    expect(r.reasons.join(" ")).toMatch(/≥5/);
+  });
+  it("fails when a good answer is poorly grounded", () => {
+    const r = meetsApprovalCriteria({
+      citationCoverage: MIN_VALIDATION_QUESTIONS,
+      minGroundedness: 3,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.reasons.join(" ")).toMatch(/groundedness/);
+  });
+  it("fails when no answers counted (null groundedness)", () => {
+    const r = meetsApprovalCriteria({ citationCoverage: 0, minGroundedness: null });
+    expect(r.ok).toBe(false);
+  });
+  it("blocks on open safety-critical proposals", () => {
+    const r = meetsApprovalCriteria({
+      citationCoverage: MIN_VALIDATION_QUESTIONS,
+      minGroundedness: 5,
+      openSafetyCritical: 1,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.reasons.join(" ")).toMatch(/safety/);
   });
 });
 
