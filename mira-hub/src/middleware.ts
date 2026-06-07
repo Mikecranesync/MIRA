@@ -145,7 +145,15 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
   const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET ?? "";
 
   // No cookie or no secret configured → bounce to /login with callback.
+  // EXCEPT for /api/* which must return 401 JSON (matches sessionOr401() in
+  // lib/session.ts) so non-browser consumers (curl, SDK, canary) don't get
+  // an HTML redirect they can't interpret. See #1764.
   if (!cookieValue || !secret) {
+    if (pathname.startsWith("/api/")) {
+      const resp = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      resp.headers.set("Content-Security-Policy", csp);
+      return resp;
+    }
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
@@ -157,6 +165,11 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
 
   const token = await decodeSessionJwt(cookieValue, secret);
   if (!token) {
+    if (pathname.startsWith("/api/")) {
+      const resp = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      resp.headers.set("Content-Security-Policy", csp);
+      return resp;
+    }
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
