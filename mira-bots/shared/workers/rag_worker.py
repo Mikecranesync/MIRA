@@ -458,17 +458,24 @@ class RAGWorker:
                                 len(neon_chunks),
                             )
                         else:
+                            # Embed the CLEAN recall_query, not the enriched blob
+                            # (#1766 follow-up). Prod RAG_STAGE_TIMING showed the
+                            # embed of the ~2760-char /ask MACHINE_CONTEXT card was
+                            # 3-5s on CPU Ollama — the dominant latency after the
+                            # recall fix. recall_query is the trimmed question+status
+                            # (~200 chars) → embed drops to <1s, and the vector is
+                            # question-focused rather than blurred by the static card.
+                            # For chat surfaces recall_query == message, so their
+                            # embedding is unchanged (only the /ask kiosk sets
+                            # state["retrieval_query"]).
                             _t_emb = time.monotonic()
-                            embedding = await self._embed_ollama(embed_query)
+                            embedding = await self._embed_ollama(recall_query)
                             _embed_ms = int((time.monotonic() - _t_emb) * 1000)
                             # Call recall_knowledge unconditionally — it now
                             # falls through to lexical streams when embedding
                             # is None (Ollama sidecar down). Pre-fix this gate
                             # short-circuited BM25 and produced NO_KB_COVERAGE
                             # despite KB rows being lexically retrievable.
-                            # query_text = recall_query (clean) so fault/product/
-                            # BM25 extraction doesn't key off the static context
-                            # card (#1766); embedding still uses embed_query.
                             _t_rec = time.monotonic()
                             neon_chunks = _neon_recall.recall_knowledge(
                                 embedding,
@@ -481,7 +488,7 @@ class RAGWorker:
                                 "recall_chars=%d n_chunks=%d",
                                 _embed_ms,
                                 _recall_ms,
-                                len(embed_query),
+                                len(recall_query),
                                 len(recall_query),
                                 len(neon_chunks),
                             )
