@@ -1,4 +1,7 @@
--- Migration 030: chunk anchors + ingest-route discriminator on knowledge_entries.
+-- Migration 045: chunk anchors + ingest-route discriminator on knowledge_entries.
+-- (Renumbered from 030 on rebase 2026-06-07 — main reached 044; 030 is now display_endpoints.
+--  Idempotent ADD COLUMN IF NOT EXISTS, so re-applying under the new number is a no-op on the
+--  dev/staging branches where the 030-numbered version already landed 2026-05-30.)
 --
 -- LOCATION NOTE: knowledge_entries is engine-side (docs/migrations/001), but the ONLY gated,
 -- automated apply path to staging/prod is `.github/workflows/apply-migrations.yml`, which runs
