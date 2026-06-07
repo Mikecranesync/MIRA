@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.2.0 — 2026-06-07
+- fix(hub): Command Center selecting a node with a live display renders **"Open Live View"** button (target=`_blank`, rel=`noopener noreferrer`) instead of an embedded iframe. Iframe was XFO=SAMEORIGIN blocked. Top-level navigation ignores XFO; matches direct-connection handoff model. (#1765)
+
 ## v2.1.4 — 2026-06-07
 - security(hub): HSTS + X-Frame-Options + remove X-Powered-By; /scan CSP frame-ancestors *.monday.com (#1762)
 
