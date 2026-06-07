@@ -195,3 +195,39 @@ jobs:
           GROUP BY relationship_type
           ORDER BY 2 DESC;
           SQL
+
+      - name: Recall latency diagnostic (knowledge_entries) — #1766
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \timing on
+          \echo === knowledge_entries indexes (look for *embedding* + content_tsv GIN) ===
+          SELECT indexname, indexdef FROM pg_indexes
+          WHERE schemaname='public' AND tablename='knowledge_entries'
+          ORDER BY indexname;
+
+          \echo
+          \echo === row counts ===
+          SELECT count(*) AS total_rows, count(embedding) AS rows_with_embedding
+          FROM knowledge_entries;
+
+          \echo
+          \echo === VECTOR stream EXPLAIN (Seq Scan = no usable vector index -> HNSW) ===
+          EXPLAIN (ANALYZE, BUFFERS, TIMING)
+          SELECT 1
+          FROM knowledge_entries
+          WHERE embedding IS NOT NULL
+          ORDER BY embedding <=> (SELECT embedding FROM knowledge_entries WHERE embedding IS NOT NULL LIMIT 1)
+          LIMIT 6;
+
+          \echo
+          \echo === BM25 stream EXPLAIN (Seq Scan on content_tsv = missing GIN) ===
+          EXPLAIN (ANALYZE, BUFFERS, TIMING)
+          SELECT 1
+          FROM knowledge_entries
+          WHERE content_tsv @@ to_tsquery('english','conveyor | fault | CE10')
+          ORDER BY ts_rank_cd(content_tsv, to_tsquery('english','conveyor | fault | CE10')) DESC
+          LIMIT 6;
+          SQL
