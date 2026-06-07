@@ -1,8 +1,28 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-06-07
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-06-07
+
+### Most actionable change for the MIRA playbook
+
+Autodesk's $3.6B acquisition of MaintainX (May 28, 2026) re-frames the CMMS category. MaintainX is now Autodesk's maintenance arm inside a "design-to-operate" lifecycle platform — no longer an independent product. MIRA's counterplay: industrial-native, OEM-manual-grounded diagnostic AI vs. a CAD-company bolt-on chasing operations. First "big platform acquires CMMS" precedent; watch for Autodesk to push a design→build→operate lifecycle narrative in future video content.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX → Autodesk** — acquisition announced May 28, 2026 ($3.6B all-cash): https://adsknews.autodesk.com/en/news/autodesk-to-acquire-maintainx-advancing-unified-platform-in-operations/ — Autodesk CEO Bloomberg interview (Bloomberg-hosted): https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video — "Unified platform in operations" framing; new Autodesk Operations Solutions (AOS) brand. MaintainX's last independent feature: AI Procedure Recommendations (auto-attaches procedure at work-order creation moment). No standalone YouTube announcement video confirmed.
+
+**Automation / SCADA**
+- **Rockwell ROKStudios** — new season launched June 4, 2026, recorded at Interpack 2026 (Düsseldorf): https://www.prnewswire.co.uk/news-releases/rockwell-automation-launches-new-season-of-rokstudios-video-series-highlighting-oem-leaders-on-machine-lifecycle-innovation-302788178.html — OEM leaders on machine lifecycle innovation across packaging and manufacturing ecosystem; 150+ recordings total in series. Executive interview register; soft CTA. New angle vs. prior EMEA season: customer/machine-builder perspective rather than internal Rockwell leadership.
+
+**B2B SaaS (pattern transfer)**
+- **Notion 3.5: Developer Platform keynote** (May 13, 2026): https://www.youtube.com/watch?v=rpE2rzKO6L0 — Ivan Zhao on stage; hook: "from a place to work in to a place to build on" [search-derived]; External Agents API (Claude, Codex, Decagon), Notion Workers (hosted code runtime), CLI. Pattern shift: B2B SaaS moving from workflow tool → agent-first developer platform. Extends Notion 3.0's "you assign, agents do" into "build your own agent stack on Notion."
+- **Figma "Release Notes 2026: May Edition"** (May 28, 2026): https://www.youtube.com/watch?v=11mdb7lLclM — Figma Make extended beta: code-connected canvas AI agent that edits code and creates PRs from within Figma. Pattern: single-surface design→code→PR loop. Proof of "product-demo-inside-the-product" approach Replit pioneered; now at Figma scale.
 
 ---
 
@@ -86,7 +106,9 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Digitize Fast with MaintainX and AI": https://www.youtube.com/watch?v=X8cY-d-_KZM
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
-**Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+**Market position (as of May 2026):** 13,000+ companies; Deloitte Technology Fast 500 2025 winner; $135M+ ARR growing 50%+.
+
+**Acquisition (May 28, 2026):** Autodesk acquires MaintainX for $3.6B all-cash. New entity: Autodesk Operations Solutions (AOS). Acquisition framing: "unified platform in operations" — design→build→operate lifecycle play. MaintainX is no longer an independent CMMS competitor; it is now a component of Autodesk's full-product ecosystem. Final independent feature release: AI Procedure Recommendations (May 2026) — auto-attaches correct maintenance procedure at work-order creation. No post-acquisition product video confirmed yet.
 
 ---
 
@@ -205,6 +227,13 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - NVIDIA NeMoTron partnership: edge-based generative AI for industrial intelligence
 - No standalone launch video URL confirmed
 
+**ROKStudios Interpack 2026 season (June 4, 2026)**
+- Source: https://www.prnewswire.co.uk/news-releases/rockwell-automation-launches-new-season-of-rokstudios-video-series-highlighting-oem-leaders-on-machine-lifecycle-innovation-302788178.html
+- Recorded at Interpack 2026 (Düsseldorf); joins 150+ previous recordings in the series
+- Theme: OEM leaders on machine lifecycle innovation — packaging and manufacturing ecosystem perspective
+- Shift from prior EMEA season (internal Rockwell executives) to external OEM/machine-builder voice
+- Register: executive interview; soft CTA; thought leadership
+
 ---
 
 ### Siemens
@@ -254,9 +283,17 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026 opening keynote (Apr 29, 2026)**
+- URL: https://www.youtube.com/watch?v=Nadf3MdJS-8
+- Summary cut (12 min): https://www.youtube.com/watch?v=8F4XyWYqZi8
+- Developer keynote: https://www.youtube.com/watch?v=m2omCJcrkE0
+- Venue: Moscone Center; Presenters: Patrick Collison (opening), Will Gaybrick (product), John Collison (economy), Sam Altman (guest)
+- Hook: "economic infrastructure for the AI era"; "in the not-too-distant future, agents will account for most transactions online" [search-derived]
+- Key launches: Agentic Commerce Suite (Meta + Google partnerships), Link agent wallet (agents can pay), Checkout Studio (AI-optimized checkout builder); 288 products/features total
+- Footage style: on-stage keynote, polished production
+- VO register: founder + guest CEO
+- CTA: none explicit; ecosystem/brand
+- Pattern note: Stripe is the clearest example of "conference as entire video strategy." No standalone ads anywhere; all production budget goes to 90-minute annual event that lives on YouTube indefinitely.
 
 **Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
 
@@ -340,6 +377,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**Notion 3.5: Developer Platform (May 13, 2026)**
+- URL: https://www.youtube.com/watch?v=rpE2rzKO6L0
+- Title: "Introducing Notion's Developer Platform: Keynote (Ivan Zhao)"
+- Hook: "from a place to work in to a place to build on" [search-derived]
+- Key launches: External Agents API (connect Claude, Codex, Decagon, or custom agents into Notion), Notion Workers (hosted code runtime — write, deploy, run code in a secure sandbox without managing infra), CLI for developers and coding agents
+- Event: "Make with Notion: Developer Platform" livestreamed product event; live.makewithnotion.com
+- Footage style: on-stage keynote [not verified]
+- CTA: soft — Workers free during beta; pricing starts August 11, 2026
+- Pattern note: evolution from 3.0 "agent-as-tool" to "workspace-as-agent-platform." B2B SaaS now offering hosted execution runtime — not just an integration hub but a deployable agent substrate. Transfer to MIRA: "not just where your techs ask questions — where your maintenance agents run."
+
 ---
 
 ### Figma
@@ -354,6 +401,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**"Release Notes 2026: May Edition" + Figma Make extended beta (May 28, 2026)**
+- URL: https://www.youtube.com/watch?v=11mdb7lLclM
+- Title: "Release Notes 2026: May Edition | Figma"
+- Key feature: Figma Make extended beta — code-connected canvas AI agent; connects to local codebase, edits code, creates PRs from within Figma canvas; closed beta at launch
+- Additional: Figma MCP integration; chat-driven code edits; branch/PR workflow without terminal
+- Footage style: release notes demo format [not verified]
+- Pattern note: single-surface design→code→PR agent loop. "Product demo inside the product" pattern Replit pioneered is now at Figma's scale. Transfer to MIRA: one surface from fault→work-order→resolution without switching tools.
 
 ---
 
@@ -395,6 +450,7 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach. As of May 28, 2026: acquired by Autodesk for $3.6B — positioning shifts from independent CMMS to Autodesk Operations Solutions "design-to-operate" lifecycle. Video style will likely shift toward Autodesk's enterprise/AEC production register.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Notion**: shifted from "agent-as-tool" (3.0, Sep 2025) to "workspace-as-agent-platform" (3.5, May 2026) — now offering a hosted code runtime alongside its agent API. B2B SaaS evolution from productivity tool → developer substrate. Watch for CMMS/EAM players to follow this pattern (platform lock-in via hosted execution, not just workflow UI).
