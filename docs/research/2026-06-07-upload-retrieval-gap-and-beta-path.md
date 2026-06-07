@@ -19,11 +19,22 @@ exact gap, is PR #1592 the right fix, and what's the minimal path to close it?
 | `documents/upload/route.ts` | ✅ **Demo shim** — registers the file as a **single chunk** in `knowledge_entries` so it shows on a library card. Its own header says: *"This is NOT the full ingest pipeline… production uploads still go through /api/uploads which kicks off OCR + chunk + embed + verify."* | `knowledge_entries` (1 chunk, no real chunking/embedding) |
 | `uploads/route.ts`, `uploads/folder/route.ts`, `uploads/local/route.ts` | ✅ **Production path** — hand the file to the *"downstream pipeline (mira-ingest → KB)"* (the folder route is what the MiraDrop desktop watcher calls). | 📝 Open WebUI KB (the `document-kb` collection) |
 
-### 1b. Ingest
-- The production upload path flows to **mira-ingest** (`mira-core/mira-ingest/`) and ultimately the
-  **Open WebUI knowledge base** (chunk + embed there). 📝
-- There are effectively **two knowledge stores**: the Open WebUI KB (where Hub *document* uploads
-  land) and the NeonDB **`knowledge_entries`** table (where the bot engine retrieves). ✅
+### 1b. Ingest — VERIFIED this session ✅
+The Hub document-upload client (`mira-hub/src/lib/mira-ingest-client.ts:94`) POSTs to
+**mira-ingest `/ingest/document-kb`** (`mira-core/mira-ingest/main.py:818`). That handler uploads
+the file to **Open WebUI** (`POST {OPENWEBUI_URL}/api/v1/files/` at main.py:963, then
+`/api/v1/knowledge/{collection}/file/add` at main.py:991). It does **NOT** call
+`insert_knowledge_entries_batch` — so a **manual/document upload writes the Open WebUI KB, never
+`knowledge_entries`.** ✅
+
+Important nuance: `insert_knowledge_entries_batch` (`mira-core/mira-ingest/db/neon.py:411` →
+`INSERT INTO knowledge_entries`) **does** exist and **does** write `knowledge_entries` — but it's
+the **photo / nameplate** path (`/ingest/photo`, main.py:492), not the document-kb path. So
+"uploads write OW KB only" is precisely true for **document/manual** uploads (the beta-relevant
+case); the photo path is a separate pipeline that already reaches `knowledge_entries`.
+
+There are effectively **two knowledge stores**: the Open WebUI KB (where Hub *document* uploads
+land) and the NeonDB **`knowledge_entries`** table (where the bot engine retrieves). ✅
 
 ### 1c. Retrieval + citation
 - Bot/engine chat retrieval is `mira-bots/shared/neon_recall.py :: recall_knowledge` ✅ — verified
@@ -115,6 +126,8 @@ Week-1 deliverable in `docs/plans/2026-06-07-path-to-beta.md`.
 - ✅ Runnable anchor test proving retrieval reads `knowledge_entries`.
 - ❌ The gap itself is **NOT closed** here (out of scope — that's PR #1592's job; engine/ingest
   rewrites were explicitly out of scope for this session).
-- ⚠️ Open verification: confirm whether the production `/api/uploads` path writes *any*
-  `knowledge_entries` today (the demo shim does; the production path is believed OW-KB-only per
-  prior memory but was not line-traced end-to-end this session).
+- ✅ Resolved (was an open item earlier in this doc): the production document-upload path
+  (`mira-ingest-client.ts:94` → `/ingest/document-kb` → `main.py:963/991`) writes the **Open WebUI
+  KB**, not `knowledge_entries`. The `insert_knowledge_entries_batch` writer is the **photo/nameplate**
+  path only. So the gap is confirmed for manual uploads; `#1592` (writing chunked `knowledge_entries`
+  for uploaded manuals) is the right fix.
