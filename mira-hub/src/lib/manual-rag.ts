@@ -102,6 +102,92 @@ async function runBm25Query(
 }
 
 /**
+ * Subtree-scoped BM25 retrieval for the Hub "folder = brain" node chat.
+ *
+ * The unit of knowledge is a namespace node (kg_entities). Asking at a node
+ * grounds the answer in documents attached to that node AND every node beneath
+ * it in the UNS tree. The chunk → node address is read from
+ * `knowledge_entries.metadata->>'node_id'` (stamped atomically at ingest in
+ * lib/node-knowledge-ingest.ts) rather than the `doc_id → hub_uploads.kg_entity_id`
+ * write-path chain: `hub_uploads` carries no RLS policy/grant, so under the
+ * `factorylm_app` role of withTenantContext a join to it returns nothing (or
+ * leaks) — the chunk-side copy is RLS-visible and equally reparent-safe
+ * (node_id is the stable node id; uns_path on kg_entities recomputes on drag).
+ *
+ * Unlike retrieveManualChunks there is NO tenant-wide fallback: if the subtree
+ * has no matching chunks we return [] ("no coverage for this node"), never the
+ * whole-corpus widening that would cite unrelated docs and break the
+ * "your docs on your node" grounding contract.
+ *
+ * Caller MUST run this inside `withTenantContext` so RLS scopes kg_entities and
+ * knowledge_entries to the current tenant.
+ */
+export async function retrieveNodeChunks(
+  client: PoolClient,
+  tenantId: string,
+  query: string,
+  opts: { nodeId: string; unsPath: string | null; topK?: number },
+): Promise<ManualChunk[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const topK = opts.topK ?? 6;
+
+  // In-scope node ids = the node itself + every descendant (uns_path <@ nodePath,
+  // which is ancestor-or-equal so it includes the node). `<@ NULL` matches nothing,
+  // so a node with no uns_path falls back to just its own directly-attached docs.
+  let nodeIds: string[];
+  if (opts.unsPath) {
+    const { rows } = await client.query(
+      `SELECT id::text AS id
+         FROM kg_entities
+        WHERE tenant_id = $1
+          AND uns_path <@ $2::ltree`,
+      [tenantId, opts.unsPath],
+    );
+    nodeIds = rows.map((r: Record<string, unknown>) => String(r.id));
+    if (!nodeIds.includes(opts.nodeId)) nodeIds.push(opts.nodeId);
+  } else {
+    nodeIds = [opts.nodeId];
+  }
+  if (nodeIds.length === 0) return [];
+
+  const { rows } = await client.query(
+    `SELECT
+        content,
+        source_url,
+        source_page,
+        page_start,
+        section_path,
+        metadata->>'filename' AS filename,
+        ts_rank_cd(content_tsv, plainto_tsquery('english', $2)) AS rank
+      FROM knowledge_entries
+      WHERE tenant_id = $1
+        AND ingest_route = 'v2'
+        AND (metadata->>'node_id') = ANY($3::text[])
+        AND content_tsv @@ plainto_tsquery('english', $2)
+      ORDER BY rank DESC
+      LIMIT $4`,
+    [tenantId, q, nodeIds, topK],
+  );
+
+  return rows.map((r: Record<string, unknown>) => ({
+    content: String(r.content ?? ""),
+    // Node attachments have no manufacturer/model — the filename is the citable title.
+    manufacturer: "",
+    modelNumber: "",
+    sourceUrl: String(r.source_url ?? ""),
+    sourcePage:
+      r.page_start != null
+        ? Number(r.page_start)
+        : r.source_page == null
+          ? null
+          : Number(r.source_page),
+    title: String(r.filename ?? r.section_path ?? "Attached document"),
+    rank: Number(r.rank ?? 0),
+  }));
+}
+
+/**
  * Build the grounded context block for the system prompt. Chunks are
  * numbered so the model can cite with `[n]` markers.
  */

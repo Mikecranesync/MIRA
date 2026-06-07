@@ -72,9 +72,28 @@ export function ensureUploadsSchema(): Promise<void> {
       ALTER TABLE hub_uploads
         ADD COLUMN IF NOT EXISTS uns_path TEXT
     `);
+    // mira-ingest-v2 (ADR-0019) / Hub folder=brain: a drop attached to a namespace node
+    // records the confirmed kg_entities node id, so retrieval resolves the chunk → node
+    // address (knowledge_entries.doc_id → hub_uploads.kg_entity_id → kg_entities.uns_path).
+    await pool.query(`
+      ALTER TABLE hub_uploads
+        ADD COLUMN IF NOT EXISTS kg_entity_id UUID
+    `);
+    // 'v2' = mira-ingest-v2 / Hub-node attachment (chunks land in knowledge_entries);
+    // NULL / 'ow' = legacy Open-WebUI-only path. Discriminator for cutover.
+    await pool.query(`
+      ALTER TABLE hub_uploads
+        ADD COLUMN IF NOT EXISTS ingest_route TEXT
+    `);
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_hub_uploads_tenant_status
         ON hub_uploads (tenant_id, status, created_at DESC)
+    `);
+    // Fetch all v2 drops bound to a node (node Documents panel + subtree retrieval join).
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_hub_uploads_kg_entity
+        ON hub_uploads (tenant_id, kg_entity_id)
+        WHERE kg_entity_id IS NOT NULL
     `);
     // Idempotency for cloud-source uploads (#700) — re-picking the same
     // Drive/Dropbox file should return the existing row, not duplicate
@@ -101,6 +120,10 @@ export interface CreateUploadInput {
   initialStatus?: UploadStatus;
   assetTag?: string | null;
   unsPath?: string | null;
+  /** mira-ingest-v2 / Hub folder=brain: the confirmed kg_entities node this drop is attached to. */
+  kgEntityId?: string | null;
+  /** 'v2' = chunks written to knowledge_entries; null/'ow' = legacy Open-WebUI-only path. */
+  ingestRoute?: string | null;
 }
 
 function rowToUpload(r: Record<string, unknown>): Upload {
@@ -140,8 +163,9 @@ export async function createUpload(input: CreateUploadInput): Promise<Upload> {
     `
     INSERT INTO hub_uploads
       (tenant_id, provider, kind, external_file_id, external_download_url,
-       filename, mime_type, size_bytes, external_created_at, status, asset_tag, uns_path)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       filename, mime_type, size_bytes, external_created_at, status, asset_tag, uns_path,
+       kg_entity_id, ingest_route)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     RETURNING *
   `,
     [
@@ -157,6 +181,8 @@ export async function createUpload(input: CreateUploadInput): Promise<Upload> {
       status,
       input.assetTag ?? null,
       input.unsPath ?? null,
+      input.kgEntityId ?? null,
+      input.ingestRoute ?? null,
     ],
   );
   return rowToUpload(rows[0]);
