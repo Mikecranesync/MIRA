@@ -17,14 +17,16 @@ describe("SyncResult shape", () => {
       locations: 2,
       manufacturers: 6,
       models: 9,
-      relationships: 8,
+      relationships: 0,
+      relationshipsProposed: 8,
       triples: 12,
       durationMs: 150,
     };
     expect(result.equipment).toBe(3);
     expect(result.manufacturers).toBe(6);
     expect(result.models).toBe(9);
-    expect(result.relationships).toBe(8);
+    expect(result.relationships).toBe(0);
+    expect(result.relationshipsProposed).toBe(8);
     expect(result.triples).toBe(12);
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
   });
