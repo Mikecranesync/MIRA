@@ -26,6 +26,8 @@ features that route around this gap — close the gap. See `NORTH_STAR.md` § "P
 
 It is **not** a generic chatbot. It is **not** a SCADA or CMMS replacement. It is a focused, grounded troubleshooting and ingestion assistant for plant maintenance technicians.
 
+**Train before deploy (product direction).** FactoryLM Command Center (`mira-hub`, `app.factorylm.com`) is where customers build the namespace, upload documentation, train/validate asset-specific MIRA agents, and approve them. Ignition/HMI "Ask MIRA" is a **deployment surface for approved agents**, not the primary onboarding system. No HMI deployment until the asset agent has grounded docs, validation questions, and approved cited answers. MIRA is **read-only troubleshooting intelligence first — no control writes in beta.** Full rule: `.claude/rules/train-before-deploy.md`; per-asset lifecycle + deployment gate: `docs/specs/asset-agent-validation-spec.md`.
+
 ## North Star architecture
 
 | Layer | Role | Lives in |
@@ -165,6 +167,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - **UNS compliance** — see `.claude/rules/uns-compliance.md` (every asset row has `uns_path` or `equipment_entity_id` FK).
 - **Direct-connection UNS certification** — see `.claude/rules/direct-connection-uns-certified.md` (Ignition/MQTT/PLC/Hub/QR surfaces carry a UNS identifier on every turn or are rejected; engine skips the chat-gate on `source="direct_connection"`).
 - **CodeGraph-first exploration** — see `.claude/rules/codegraph-usage.md` (use `codegraph_context` / `codegraph_impact` before grep + Read for any symbol-shaped question).
+- **Train before deploy** — see `.claude/rules/train-before-deploy.md` (Command Center builds+validates; Ignition/HMI deploys approved asset agents only; no HMI deployment without grounded docs + validation questions + approved cited answers; read-only in beta).
 - **Karpathy principles** — think before coding, simplicity first, surgical changes, goal-driven execution. See `.claude/rules/karpathy-principles.md`.
 - **Don't break the UNS confirmation gate.** Run `mira-run-hallucination-audit` after engine/bot edits.
 
@@ -200,6 +203,8 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - `.claude/rules/uns-compliance.md` — UNS data-shape enforcement
 - `.claude/rules/uns-confirmation-gate.md` — chat-surface UNS gate (Slack/Telegram/email/web)
 - `.claude/rules/direct-connection-uns-certified.md` — direct-connection UNS certification (Ignition/MQTT/PLC/Hub/QR)
+- `.claude/rules/train-before-deploy.md` — Command Center trains/validates; Ignition/HMI deploys approved asset agents only
+- `docs/specs/asset-agent-validation-spec.md` — per-asset agent lifecycle (draft→…→approved→deployed) + HMI deployment gate
 - `.claude/rules/security-boundaries.md` — secrets, PII, safety keywords
 - `.claude/rules/python-standards.md` — ruff, httpx, NeonDB, async
 - `.claude/rules/karpathy-principles.md` — coding behavior
