@@ -93,7 +93,12 @@ function gateRedirect(req: NextRequest, status: string, trialExpiresAt: unknown)
   return null;
 }
 
-function buildCsp(nonce: string): string {
+function buildCsp(nonce: string, pathname: string): string {
+  // `/scan` is the monday.com marketplace iframe — it must be framable by
+  // monday's marketplace shell. Every other path stays self-only.
+  const frameAncestors = pathname.startsWith("/scan")
+    ? `frame-ancestors 'self' https://*.monday.com`
+    : `frame-ancestors 'self'`;
   return [
     `default-src 'self'`,
     `script-src 'self' 'nonce-${nonce}' https://accounts.google.com https://apis.google.com https://js.stripe.com`,
@@ -114,7 +119,28 @@ function buildCsp(nonce: string): string {
       `frame-src 'self' https://accounts.google.com https://js.stripe.com https://hooks.stripe.com https://mikecranesync.github.io`,
       ...DISPLAY_FRAME_SRC,
     ].join(" "),
+    frameAncestors,
   ].join("; ");
+}
+
+// Apply HSTS + XFO + CSP to every response in one place. `/scan` is the
+// monday.com marketplace iframe — it must NOT have X-Frame-Options: DENY
+// (which would block ALL framing); the CSP `frame-ancestors` directive
+// (set by buildCsp) is the modern equivalent and already allows monday.
+function applySecurityHeaders(
+  resp: NextResponse,
+  pathname: string,
+  csp: string,
+): NextResponse {
+  resp.headers.set("Content-Security-Policy", csp);
+  resp.headers.set(
+    "Strict-Transport-Security",
+    "max-age=63072000; includeSubDomains; preload",
+  );
+  if (!pathname.startsWith("/scan")) {
+    resp.headers.set("X-Frame-Options", "DENY");
+  }
+  return resp;
 }
 
 // btoa is a global in the edge runtime; use it instead of Buffer for nonce encoding.
@@ -125,6 +151,11 @@ function b64Nonce(raw: string): string {
 export default async function middleware(req: NextRequest, _ev: NextFetchEvent) {
   const pathname = req.nextUrl.pathname;
 
+  // Per-request nonce for script-src CSP — removes unsafe-inline/unsafe-eval.
+  // Forwarded as x-nonce request header so RootLayout can attach it to <Script>.
+  const nonce = b64Nonce(crypto.randomUUID());
+  const csp = buildCsp(nonce, pathname);
+
   // Basepath root → /feed. `redirect()` from a Server Component is silently
   // swallowed in Next.js 16.2.4 standalone + basePath (response comes back
   // chunked, 0 bytes, no Location header), so the redirect has to live here.
@@ -132,13 +163,8 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
     const url = req.nextUrl.clone();
     url.pathname = "/feed";
     url.search = "";
-    return NextResponse.redirect(url);
+    return applySecurityHeaders(NextResponse.redirect(url), pathname, csp);
   }
-
-  // Per-request nonce for script-src CSP — removes unsafe-inline/unsafe-eval.
-  // Forwarded as x-nonce request header so RootLayout can attach it to <Script>.
-  const nonce = b64Nonce(crypto.randomUUID());
-  const csp = buildCsp(nonce);
 
   const cookieValue =
     req.cookies.get(SECURE_NAME)?.value ?? req.cookies.get(REGULAR_NAME)?.value;
@@ -150,33 +176,33 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
   // an HTML redirect they can't interpret. See #1764.
   if (!cookieValue || !secret) {
     if (pathname.startsWith("/api/")) {
-      const resp = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      resp.headers.set("Content-Security-Policy", csp);
-      return resp;
+      return applySecurityHeaders(
+        NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+        pathname,
+        csp,
+      );
     }
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
     url.searchParams.set("callbackUrl", pathname);
-    const resp = NextResponse.redirect(url);
-    resp.headers.set("Content-Security-Policy", csp);
-    return resp;
+    return applySecurityHeaders(NextResponse.redirect(url), pathname, csp);
   }
 
   const token = await decodeSessionJwt(cookieValue, secret);
   if (!token) {
     if (pathname.startsWith("/api/")) {
-      const resp = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      resp.headers.set("Content-Security-Policy", csp);
-      return resp;
+      return applySecurityHeaders(
+        NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+        pathname,
+        csp,
+      );
     }
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
     url.searchParams.set("callbackUrl", pathname);
-    const resp = NextResponse.redirect(url);
-    resp.headers.set("Content-Security-Policy", csp);
-    return resp;
+    return applySecurityHeaders(NextResponse.redirect(url), pathname, csp);
   }
 
   // Already on a gate page — let it render so the user can act.
@@ -184,9 +210,11 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
     const status = String(token.status ?? "trial");
     const redirectUrl = gateRedirect(req, status, token.trialExpiresAt);
     if (redirectUrl) {
-      const resp = NextResponse.redirect(redirectUrl);
-      resp.headers.set("Content-Security-Policy", csp);
-      return resp;
+      return applySecurityHeaders(
+        NextResponse.redirect(redirectUrl),
+        pathname,
+        csp,
+      );
     }
   }
 
@@ -194,8 +222,7 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-nonce", nonce);
   const response = NextResponse.next({ request: { headers: requestHeaders } });
-  response.headers.set("Content-Security-Policy", csp);
-  return response;
+  return applySecurityHeaders(response, pathname, csp);
 }
 
 export const config = {

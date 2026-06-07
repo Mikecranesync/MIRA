@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.1.4 — 2026-06-07
+- security(hub): HSTS + X-Frame-Options + remove X-Powered-By; /scan CSP frame-ancestors *.monday.com (#1762)
+
 ## v2.1.3 — 2026-06-07
 - fix(hub): unauth /api/* returns 401 JSON instead of 308→/login HTML (#1764)
 
