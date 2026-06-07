@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.1.2 — 2026-06-07
+- fix(hub): /scan 412px mobile overflow (#1763)
+
 ## v2.1.1 — 2026-06-06
 - fix(hub): /api/usage KB Chunks tile now returns total knowledge_entries (#1761)
 
