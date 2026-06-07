@@ -91,6 +91,21 @@ async def ask(req: AskRequest, x_mira_key: str = Header(None)):
         parts.append("[QUESTION]\n" + req.question)
         enriched = "\n\n".join(parts)
 
+        # Clean retrieval query (#1766 follow-up): keyword/BM25/fault-code/product
+        # extraction must key off the QUESTION + decoded live-status block, NOT the
+        # static ~440-token MACHINE_CONTEXT card. Otherwise every token of the card
+        # feeds _extract_fault_codes / _extract_product_names / _recall_bm25 — the
+        # card alone yields ~12 fault codes + 3 product names, firing ~9 sequential
+        # NeonDB round-trips per /ask (the ~10s recall block). The embedding still
+        # uses the full enriched text (semantic context); only the lexical streams
+        # use this trimmed query. The fault code lives in the status block
+        # (vfd_fault_code → CExx), so it MUST be included here, not just the question.
+        retrieval_parts = []
+        if status_block:
+            retrieval_parts.append(status_block)
+        retrieval_parts.append(req.question)
+        retrieval_query = "\n".join(retrieval_parts)
+
         chat_id = req.session_id or ("ignition:" + uuid.uuid4().hex)
 
         # platform="ignition": process() accepts platform as a plain str and only
@@ -103,6 +118,7 @@ async def ask(req: AskRequest, x_mira_key: str = Header(None)):
             platform="ignition",
             tenant_id=engine.tenant_id or os.getenv("MIRA_TENANT_ID", ""),
             mira_user_id="ignition:kiosk",
+            retrieval_query=retrieval_query,
         )
         return {"answer": reply}
     except Exception as e:  # always return 200 so the HMI shows something
