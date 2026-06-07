@@ -8,6 +8,7 @@
 ---
 
 ## North Star
+- **🚦 BETA GATE — No beta until a stranger can upload their own equipment manual and get a cited answer without Mike manually fixing anything.** This is the release gate for the "Path to Beta Testers" phase. Tracked by `tests/beta/beta_ready_upload_retrieval_citation.py` (xfail until the gap closes) and `docs/plans/2026-06-07-path-to-beta.md`. Current blocker: upload→retrieval gap (uploads land in Open WebUI KB, chat retrieval reads only `knowledge_entries`) — see PR #1592.
 - **PRIMARY FOCUS — Master implementation plan:** `docs/plans/2026-06-01-mira-master-architecture-plan.md` — 14-phase build plan governing all current development. Every session must align to this plan. No unrelated dev projects until all phases are complete.
 - **PRIMARY:** `docs/THEORY_OF_OPERATIONS.md` — what MIRA is, how it works, why. Read first before any feature work.
 - **Contract:** `docs/specs/maintenance-namespace-builder-spec.md` — the namespace-builder product surface (UNS gate, AI proposals, readiness levels).
