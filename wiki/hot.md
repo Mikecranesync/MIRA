@@ -1,5 +1,31 @@
 # Hot Cache — 2026-06-04 — CLOUD
 
+## Session — 2026-06-07 (Path to Beta Testers — phase opened, 6 lanes)
+
+New official phase: **Path to Beta Testers** (`docs/plans/2026-06-07-path-to-beta.md`).
+Branch `feat/path-to-beta` (worktree `.claude/worktrees/path-to-beta`, off origin/main `4b9778c8`).
+
+**🚦 BETA GATE:** stranger uploads their own manual → asks → gets a cited answer, with **no
+manual fix**. Enforced by `tests/beta/beta_ready_upload_retrieval_citation.py` (xfail until met).
+
+**Blockers (what stands between us and beta):**
+1. **Upload→retrieval gap (THE blocker).** Hub/web uploads write the Open WebUI KB; chat
+   retrieval (`neon_recall.recall_knowledge`) reads only `knowledge_entries`. Uploaded manuals
+   are not citable. Fix = **PR #1592 `feat/hub-folder-brain` — still DRAFT** (18 files, +2037).
+   Trace + minimal-close path: `docs/research/2026-06-07-upload-retrieval-gap-and-beta-path.md`.
+2. **Graph stability — RESOLVED.** #1742 (`63c9b8e1`) merged to main (NaN-coord guard on
+   GraphCanvas painters). Regression test added this session (`mira-hub/src/components/kg/__tests__/GraphCanvas.test.ts`, 4/4 pass). **Open: confirm it's deployed to prod.**
+3. **Ignition Ask MIRA** — see Lane 5 status in HANDOFF; runbook at
+   `docs/runbooks/activate-ignition-ask-mira.md`. (HMAC key presence + WebDev deploy = ops.)
+
+**Reuse-before-build finds:** demo seeds already exist (`tools/seeds/` — `factorylm-garage-conveyor.sql`,
+`gs10-vfd-knowledge.sql`, `demo-conveyor-001.sql`, `run_demo_seed.py`, commit `68574f1d`). Lane 3
+extends, does not rebuild.
+
+**Readiness:** internal demo ✅ (pre-seeded tenant) · design partner ❌ (gap #1) · public beta ❌ (gate red).
+
+---
+
 ## Session — 2026-06-06 (AskMira / kiosk fix cycle + runbook)
 
 PR #1620 closed (wrong stack). MIRA_PLC#25 merged (`f67adb43`) — AskMira view textarea race + per-click `session_id` ms suffix. PR #1754 merged (`e5dabe7f`) — engine Q1/Q2/Q5/Q7 + H4 enforcer + `tests/test_askmira_regression.py` (9 tests). PR #1755 merged — H4 stock admission uses scorer-recognized phrase + `--- Sources ---` block normalizer (+2 tests = 11). Two `deploy-vps.yml -f services=mira-ask` dispatches; auto-deploy default `TARGETS` did NOT include `mira-ask` — surfaced + closed in this session.

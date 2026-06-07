@@ -6,6 +6,20 @@
 > **Product-surface contract:** `docs/specs/maintenance-namespace-builder-spec.md` — the UNS gate, AI proposals, readiness levels.
 > **Phased execution:** `docs/plans/2026-05-15-maintenance-namespace-builder.md`.
 
+## 🚦 Primary product focus: Beta readiness
+
+The current execution phase is **Path to Beta Testers** (`docs/plans/2026-06-07-path-to-beta.md`).
+Until the beta gate is met, every product change is judged against one question:
+
+> **Does this get us closer to: a stranger uploads their own equipment manual, asks a real
+> troubleshooting question, and gets a grounded answer with citations from that manual —
+> without Mike manually fixing anything?**
+
+The gate is enforced by `tests/beta/beta_ready_upload_retrieval_citation.py` (xfail until it's
+met). The known blocker is the **upload→retrieval gap**: uploads land in the Open WebUI KB but
+chat retrieval reads only `knowledge_entries` (PR #1592 closes it). Don't build beta-adjacent
+features that route around this gap — close the gap. See `NORTH_STAR.md` § "Path to Beta Testers".
+
 ## What MIRA is
 
 **MIRA** (Maintenance Intelligence Resource Agent) is an industrial maintenance intelligence system. The product wedge is a **Slack-first maintenance copilot** that grounds every answer in the customer's real factory context.

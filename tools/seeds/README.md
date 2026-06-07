@@ -7,6 +7,7 @@ tenant UUID so it can be applied to dev or prod without touching real customers.
 |---|---|---|---|
 | `demo-conveyor-001.sql` | `00000000-0000-0000-0000-0000000000d1` ("demo") | Conveyor 001 (`CV-001`) | 5 components (PE/MTR/VFD/PLC/PANEL), PE-001 full template, ISA-95 UNS paths, PLC tag bindings (4 entities), 12 verified relationship proposals + evidence, promoted into `kg_relationships` |
 | `run_demo_seed.py` | — | — | Python runner: `--dry-run` (rollback), `--commit`, `--verify` |
+| `beta-demo-tenant.md` | `…d1` ("demo") | Garage conveyor (CV-101) | **Manifest** — how to stand up the full beta demo tenant from the seeds above (apply order, known-good GS10 `oC` Q/A, first-run empty-state design). Start here for "Path to Beta". |
 
 ## Prerequisites
 
