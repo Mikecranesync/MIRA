@@ -60,3 +60,22 @@ curl -sL -c $JAR -b $JAR -X POST "$BASE/api/auth/callback/credentials/" \
   --data-urlencode "password=<pw>" --data-urlencode "json=true"
 curl -sL -b $JAR "$BASE/api/auth/session"   # confirm user/tenant
 ```
+
+---
+
+## Run 2 — 2026-06-06 — AskMira answer latency
+
+Tool: `askmira-tester` skill (Mode A direct `/ask`) + prod `mira-ask-saas` logs + in-container endpoint timing.
+
+| ID | Severity | Status | Finding |
+|----|----------|--------|---------|
+| L1 | P1 | FILED #1766 | AskMira grounded answers ~45–54s. Bottleneck = NeonDB `recall_knowledge` (~45s). LLM=1.8s (Groq), embed=0.66s (Ollama). Hypothesis: missing/unused pgvector+tsvector index → brute scan over 83K rows. Links #739, #80. |
+
+**Proven (logs + timing):**
+- Latency is path-dependent: safety 0.17s · edu (no retrieval) 2s · grounded 45s · "hello" 47s (misrouted into grounded).
+- Stage split on a 54s call: classify ~1s → `NEON_RECALL` ~45.7s → Groq LLM 1.8s → trim. Embedding timed separately at 0.66s.
+- Consistent ~45s across 4 calls → systematic, not Neon cold-start.
+
+**Could not verify (prod-guard blocks prod-DB query):** whether the embedding/tsvector indexes are applied on prod. Verify via `db-inspect.yml` EXPLAIN ANALYZE (look for `Seq Scan on knowledge_entries`).
+
+**Fix path:** apply `mira-core/scripts/migrate_to_hnsw.sql` + confirm `content_tsv` GIN; set `hnsw.ef_search`/`ivfflat.probes` in `neon_recall.py`; re-bake (target <5s). Secondary: keep greetings out of grounded path; gate `decompose`/`self_eval` off until recall is fast. Report: `~/.claude/skills/askmira-tester/runs/2026-06-06-latency/report.md`.
