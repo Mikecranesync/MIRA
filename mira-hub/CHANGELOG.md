@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.1.1 — 2026-06-06
+- fix(hub): /api/usage KB Chunks tile now returns total knowledge_entries (#1761)
+
 ## [1.9.1] - 2026-05-22
 ### Fixed
 - `/hub/namespace` — clicking `+` on a synthesized parent row (kind=`namespace`, id prefixed `synthetic:`) returned `400 parentId required (uuid)` with no way to recover, because POST `/api/namespace/node` requires a UUID and synthesized nodes have no kg_entities row. Hide the `+` button on synthesized rows and show a short hint ("run onboarding to add") so the user is steered to the wizard that materializes a real parent. Inline-create remains available on every real (UUID-id) row.
