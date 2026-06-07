@@ -31,10 +31,12 @@ const DISPLAY_ID = "11111111-1111-1111-1111-111111111111";
 const UNS = "enterprise.home_garage.conveyor_lab.conveyor_1";
 
 // Deterministic tree: a site → area → two assets, one with a LIVE display.
+// Schema mirrors TreeResponse + CCNode in src/app/api/command-center/tree/route.ts.
 const TREE = {
   total: 4,
   displaysTotal: 1,
   liveCount: 1,
+  freshnessCounts: { live: 1, stale: 0, simulated: 0 },
   nodes: [
     {
       id: "site-1",
@@ -48,6 +50,7 @@ const TREE = {
       displayId: null,
       displayType: null,
       displayLabel: null,
+      tagFreshness: "unknown",
       live: false,
       children: [
         {
@@ -62,6 +65,7 @@ const TREE = {
           displayId: null,
           displayType: null,
           displayLabel: null,
+          tagFreshness: "unknown",
           live: false,
           children: [
             {
@@ -76,6 +80,7 @@ const TREE = {
               displayId: DISPLAY_ID,
               displayType: "nodered",
               displayLabel: "Conveyor 1 — Fault Detective",
+              tagFreshness: "live",
               live: true,
               children: [],
             },
@@ -91,6 +96,7 @@ const TREE = {
               displayId: null,
               displayType: null,
               displayLabel: null,
+              tagFreshness: "unknown",
               live: false,
               children: [],
             },
@@ -110,7 +116,7 @@ test.beforeAll(() => {
   fs.mkdirSync(OUT, { recursive: true });
 });
 
-test("command center renders — UNS tree, green live dot, framed display", async ({
+test("command center renders — UNS tree, freshness summary, Open Live View handoff", async ({
   page,
   context,
   baseURL,
@@ -144,8 +150,11 @@ test("command center renders — UNS tree, green live dot, framed display", asyn
   await page.goto("/command-center", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByRole("heading", { name: "Command Center" })).toBeVisible();
-  // Live badge ("1 live · 1 display") confirms the tree + dot logic ran.
-  await expect(page.getByText(/1 live · 1 display/)).toBeVisible({ timeout: 15_000 });
+  // Freshness summary "1 live · 0 stale · 0 sim · 1/1 display up" confirms tree
+  // + freshnessCounts + display-reachability logic ran. Match the substring so
+  // whitespace / dot punctuation doesn't break the assertion.
+  await expect(page.getByText(/1 live · 0 stale · 0 sim/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/1\/1 display.*up/)).toBeVisible();
   // The conveyor row with its live dot.
   await expect(page.getByText("Conveyor 1")).toBeVisible();
 
