@@ -82,15 +82,54 @@ export function AssetValidateTab({ assetId }: { assetId: string }) {
     void refresh();
   }, [refresh]);
 
+  // Ask the question through the existing grounded asset chat (so the recorded
+  // answer carries real citations), then persist the turn for review. Spec §8.
   const askQuestion = async () => {
-    if (!question.trim()) return;
+    const q = question.trim();
+    if (!q) return;
     setBusy(true);
     setError(null);
     try {
+      let answer = "";
+      let citations: unknown[] = [];
+      const chatRes = await fetch(`/hub/api/assets/${assetId}/chat`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messages: [{ role: "user", content: q }] }),
+      });
+      if (chatRes.ok && chatRes.body) {
+        const reader = chatRes.body.getReader();
+        const dec = new TextDecoder();
+        let buf = "";
+        let finished = false;
+        while (!finished) {
+          const r = await reader.read();
+          if (r.done) break;
+          buf += dec.decode(r.value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() ?? "";
+          for (const line of lines) {
+            const t = line.trim();
+            if (!t.startsWith("data:")) continue;
+            const data = t.slice(5).trim();
+            if (data === "[DONE]") {
+              finished = true;
+              break;
+            }
+            try {
+              const parsed = JSON.parse(data) as { content?: string; sources?: unknown[] };
+              if (Array.isArray(parsed.sources)) citations = parsed.sources;
+              if (parsed.content) answer += parsed.content;
+            } catch {
+              /* skip malformed chunk */
+            }
+          }
+        }
+      }
       const res = await fetch(`/api/assets/${assetId}/validation-qa`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question: q, miraAnswer: answer || null, citations }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Failed to record question");
       setQuestion("");
@@ -213,7 +252,7 @@ export function AssetValidateTab({ assetId }: { assetId: string }) {
           }}
         />
         <button onClick={askQuestion} disabled={busy || !question.trim()} style={primaryBtn}>
-          Record
+          {busy ? "Asking…" : "Ask MIRA"}
         </button>
       </div>
 

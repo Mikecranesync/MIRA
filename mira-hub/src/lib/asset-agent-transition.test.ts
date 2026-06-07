@@ -100,15 +100,23 @@ describe("meetsApprovalCriteria — spec §5 gate", () => {
     expect(r.ok).toBe(false);
     expect(r.reasons.join(" ")).toMatch(/≥5/);
   });
-  it("fails when a good answer is poorly grounded", () => {
+  it("fails when a recorded groundedness is below threshold", () => {
     const r = meetsApprovalCriteria({
       citationCoverage: MIN_VALIDATION_QUESTIONS,
       minGroundedness: 3,
     });
     expect(r.ok).toBe(false);
-    expect(r.reasons.join(" ")).toMatch(/groundedness/);
+    expect(r.reasons.join(" ")).toMatch(/grounded/);
   });
-  it("fails when no answers counted (null groundedness)", () => {
+  it("passes with sufficient citations when groundedness is unscored (Hub surface)", () => {
+    // The Hub LLM-cascade chat emits citations but no 1–5 score; null must not block.
+    const r = meetsApprovalCriteria({
+      citationCoverage: MIN_VALIDATION_QUESTIONS,
+      minGroundedness: null,
+    });
+    expect(r.ok).toBe(true);
+  });
+  it("fails when no answers counted", () => {
     const r = meetsApprovalCriteria({ citationCoverage: 0, minGroundedness: null });
     expect(r.ok).toBe(false);
   });

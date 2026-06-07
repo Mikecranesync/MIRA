@@ -57,6 +57,14 @@ export interface ApprovalSignals {
 /**
  * The spec §5 gate for advancing an asset agent to `approved`. Pure.
  * Returns the decision plus the specific reasons it isn't met (for the UI).
+ *
+ * Grounding bar: `citationCoverage` (good answers WITH a citation) is the
+ * primary, always-enforced requirement — that's grounded-by-citation + human
+ * verdict. The engine 1–5 groundedness is ADVISORY here: the Hub validation
+ * surface (LLM-cascade asset chat) doesn't emit a 1–5 score, so a null score
+ * does NOT block; a *recorded* score below threshold does. The hard engine
+ * groundedness gate applies at the deployment-gate phase, where the Python
+ * engine produces the turn (spec §2, §7).
  */
 export function meetsApprovalCriteria(s: ApprovalSignals): {
   ok: boolean;
@@ -68,8 +76,8 @@ export function meetsApprovalCriteria(s: ApprovalSignals): {
       `need ≥${MIN_VALIDATION_QUESTIONS} good, cited answers (have ${s.citationCoverage})`,
     );
   }
-  if (s.minGroundedness == null || s.minGroundedness < MIN_GROUNDEDNESS) {
-    reasons.push(`every approved answer needs groundedness ≥${MIN_GROUNDEDNESS}`);
+  if (s.minGroundedness != null && s.minGroundedness < MIN_GROUNDEDNESS) {
+    reasons.push(`an approved answer is poorly grounded (needs ≥${MIN_GROUNDEDNESS})`);
   }
   if ((s.openSafetyCritical ?? 0) > 0) {
     reasons.push("resolve open safety-critical proposals first");
