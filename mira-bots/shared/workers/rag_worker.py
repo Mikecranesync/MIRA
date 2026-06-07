@@ -421,6 +421,15 @@ class RAGWorker:
                         if photo_b64 and state.get("asset_identified"):
                             embed_query = f"{state['asset_identified']} {message}"
 
+                        # Clean lexical-recall query (#1766). The engine stashes a
+                        # trimmed question+status string on state for direct-
+                        # connection surfaces (the /ask kiosk) whose `message` is a
+                        # large static context card. BM25 / fault-code / product-name
+                        # extraction key off this; the EMBEDDING still uses
+                        # embed_query (full semantic context). Falls back to message
+                        # for chat surfaces that don't set it.
+                        recall_query = state.get("retrieval_query") or message
+
                         sub_queries: list[str] = [embed_query]
                         if is_decompose_enabled():
                             try:
@@ -449,16 +458,32 @@ class RAGWorker:
                                 len(neon_chunks),
                             )
                         else:
+                            _t_emb = time.monotonic()
                             embedding = await self._embed_ollama(embed_query)
+                            _embed_ms = int((time.monotonic() - _t_emb) * 1000)
                             # Call recall_knowledge unconditionally — it now
                             # falls through to lexical streams when embedding
                             # is None (Ollama sidecar down). Pre-fix this gate
                             # short-circuited BM25 and produced NO_KB_COVERAGE
                             # despite KB rows being lexically retrievable.
+                            # query_text = recall_query (clean) so fault/product/
+                            # BM25 extraction doesn't key off the static context
+                            # card (#1766); embedding still uses embed_query.
+                            _t_rec = time.monotonic()
                             neon_chunks = _neon_recall.recall_knowledge(
                                 embedding,
                                 effective_tenant,
-                                query_text=embed_query,
+                                query_text=recall_query,
+                            )
+                            _recall_ms = int((time.monotonic() - _t_rec) * 1000)
+                            logger.info(
+                                "RAG_STAGE_TIMING embed_ms=%d recall_ms=%d embed_chars=%d "
+                                "recall_chars=%d n_chunks=%d",
+                                _embed_ms,
+                                _recall_ms,
+                                len(embed_query),
+                                len(recall_query),
+                                len(neon_chunks),
                             )
 
                         if is_self_eval_enabled() and neon_chunks:
