@@ -2,6 +2,21 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.2.0 — 2026-06-07
+- fix(hub): Command Center selecting a node with a live display renders **"Open Live View"** button (target=`_blank`, rel=`noopener noreferrer`) instead of an embedded iframe. Iframe was XFO=SAMEORIGIN blocked. Top-level navigation ignores XFO; matches direct-connection handoff model. (#1765)
+
+## v2.1.4 — 2026-06-07
+- security(hub): HSTS + X-Frame-Options + remove X-Powered-By; /scan CSP frame-ancestors *.monday.com (#1762)
+
+## v2.1.3 — 2026-06-07
+- fix(hub): unauth /api/* returns 401 JSON instead of 308→/login HTML (#1764)
+
+## v2.1.2 — 2026-06-07
+- fix(hub): /scan 412px mobile overflow (#1763)
+
+## v2.1.1 — 2026-06-06
+- fix(hub): /api/usage KB Chunks tile now returns total knowledge_entries (#1761)
+
 ## [1.9.1] - 2026-05-22
 ### Fixed
 - `/hub/namespace` — clicking `+` on a synthesized parent row (kind=`namespace`, id prefixed `synthetic:`) returned `400 parentId required (uuid)` with no way to recover, because POST `/api/namespace/node` requires a UUID and synthesized nodes have no kg_entities row. Hide the `+` button on synthesized rows and show a short hint ("run onboarding to add") so the user is steered to the wizard that materializes a real parent. Inline-create remains available on every real (UUID-id) row.

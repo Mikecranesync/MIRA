@@ -4,7 +4,7 @@
 
 This doctrine is referenced from `CLAUDE.md` and `.claude/CLAUDE.md`. Every Claude Code session is expected to honor it.
 
-> **Honesty note:** as of 2026-05-18, **only Dev and Production are mechanical**. Doppler `factorylm/stg` exists; everything else listed under STAGING below is target state, captured as Gap-1..Gap-4. The doctrine defines the destination and locks the rules now so that future infra work (the staging compose file, the staging Neon branch, the staging bot, the staging-gate workflow) plugs into a frame that already exists rather than the other way around. Until Gaps 1–4 close, "staging" means: local Charlie boot with `doppler run -p factorylm -c stg`, against a non-prod NeonDB target, with bot traffic routed to a personal/dev bot — *never* `@FactoryLM_Diagnose`.
+> **Status note (last refreshed 2026-05-31):** Staging is mostly mechanical as a CI gate — Doppler `factorylm/stg`, the NeonDB staging branch (closed Gap-2), and `.github/workflows/staging-gate.yml` (closed Gap-4) all exist and run on every PR. The two remaining gaps are local-development conveniences: `docker-compose.staging.yml` (Gap-1, makes interactive local staging easier) and `@MiraStagingBot` (Gap-3, makes interactive local Telegram probing possible). Neither blocks the CI gate. Locally-run staging today = Charlie boot with `doppler run -p factorylm -c stg`, against the staging Neon branch, with bot traffic routed to a personal/dev bot — *never* `@FactoryLM_Diagnose`.
 
 ---
 
@@ -21,10 +21,10 @@ The three environments below are not aspirational — they are how every code ch
 | | **DEV** | **STAGING** | **PRODUCTION** |
 |---|---|---|---|
 | **Where** | CHARLIE local (`~/MIRA`) | CHARLIE + NeonDB staging branch | VPS (`165.245.138.91`) |
-| **Compose** | `docker-compose.yml` | `docker-compose.staging.yml` *(TODO — see Gap-1)* | `docker-compose.saas.yml` |
+| **Compose** | `docker-compose.yml` | `docker-compose.staging.yml` *(TODO — open Gap-1, local-dev only; CI gate runs Supervisor in-process)* | `docker-compose.saas.yml` |
 | **Doppler config** | `factorylm/dev` | `factorylm/stg` | `factorylm/prd` |
-| **NeonDB** | dev branch (or local Postgres) | staging branch (zero-copy clone of prod) *(TODO — Gap-2)* | main branch |
-| **Telegram** | `@MiraDevBot` *(if created)* or skip | `@MiraStagingBot` *(TODO — Gap-3)* | `@FactoryLM_Diagnose` |
+| **NeonDB** | dev branch (or local Postgres) | staging branch (zero-copy clone of prod) — `br-small-term-ahtkz61d` | main branch — `br-lively-bread-ahoa86se` |
+| **Telegram** | `@MiraDevBot` *(if created)* or skip | `@MiraStagingBot` *(TODO — open Gap-3, local-probing only; CI gate calls Supervisor directly)* | `@FactoryLM_Diagnose` |
 | **Purpose** | Write code, run unit/eval tests, iterate fast | Test against real-shape data; final gate before prod | Customer surface |
 | **Safe to break** | YES | YES (but must pass gate before promotion) | **NEVER** |
 | **Gate to enter** | none | local tests pass | staging gate passes (see below) |
@@ -33,18 +33,27 @@ The three environments below are not aspirational — they are how every code ch
 ### Existing infrastructure (what's wired today)
 
 - **prod-guard** — `tools/hooks/prod-guard.sh` is registered as a `PreToolUse(Bash)` hook in `.claude/settings.json`. It blocks SSH to `*.factorylm.com` / `factorylm-prod`, `docker restart|stop|down|kill` of prod services, `nginx -s reload`, `systemctl restart|stop|reload mira-*|nginx|atlas-*`, `kubectl apply|delete|rollout`, and prod-targeted `scp`/`rsync`. Override: `MIRA_ALLOW_PROD=1` (human-only, per-shell).
-- **smoke test** — `.github/workflows/smoke-test.yml` runs on PR and on push to main. Pings `factorylm.com` + `app.factorylm.com`. Required check for branch protection.
-- **deploy-vps** — `.github/workflows/deploy-vps.yml` listens for `workflow_run: ["Smoke Test"] conclusion: success` on `main`. Hotfix bypass via `workflow_dispatch`. Concurrency-locked (no parallel deploys).
+- **smoke test** — `.github/workflows/smoke-test.yml` runs on PR and on push to main. Pings `factorylm.com` + `app.factorylm.com`. Path-filtered (skips docs/wiki/markdown/.claude).
+- **staging gate** — `.github/workflows/staging-gate.yml` (PR #1386, active since 2026-05-18). Instantiates Supervisor in-process against the NeonDB staging branch, runs the question bank in `tools/staging_questions.yaml` through the Groq→Cerebras→Gemini judge cascade, grades replies on the 5-dimension rubric in `docs/specs/mira-answer-quality-standard.md`. No path filter — runs on every PR to main. `deploy-vps.yml` refuses to deploy any commit whose Staging Gate run was not `completed:success`.
+- **deploy-vps** — `.github/workflows/deploy-vps.yml` listens for `workflow_run: ["Smoke Test"] conclusion: success` on `main` and additionally verifies the Staging Gate run on the PR head SHA before deploying. Hotfix bypass via `workflow_dispatch` with `skip_staging_gate=true` (honor-system; record the reason in a PR/issue). Concurrency-locked (no parallel deploys).
+- **NeonDB staging branch** — `br-small-term-ahtkz61d` ("staging"), zero-copy fork of `br-lively-bread-ahoa86se` ("production") under project `divine-heart-77277150`. Endpoint `ep-polished-hall-ahcqtcxe-pooler`. URL stored as `NEON_STG_DATABASE_URL` secret on the `staging` GitHub environment.
 - **apply-migrations** — `.github/workflows/apply-migrations.yml` runs Hub migrations against prod NeonDB. Manual dispatch, `dry-run` mode default, `production` environment gate for audit + approval.
 
-### Known gaps (target state, not yet shipped)
+### Known gaps
 
-- **Gap-1** — `docker-compose.staging.yml` does not exist. Today, "staging" is whatever you `docker compose up` locally with `--config stg`. Until the file lands, "staging" = local Charlie boot with `doppler run -p factorylm -c stg`.
-- **Gap-2** — A NeonDB staging branch (zero-copy clone of prod) is not standing. Use prod read-only or a hand-snapshotted clone until provisioned.
-- **Gap-3** — `@MiraStagingBot` does not exist. Until it does, do **not** point a staging build at `@FactoryLM_Diagnose`. Use a no-op adapter or a personal test bot.
-- **Gap-4** — A `staging-gate.yml` workflow (10-question rubric, score ≥ 3.5) is not built. Today, the gate is `smoke-test.yml` + local evals (`tests/eval/`). Promote the gate when the rubric exists.
+Numbering is stable — closed gaps keep their original number so cross-references in older PRs / specs / issues still resolve.
 
-Track these as issues, not assumptions. Closing them is what hardens this doctrine into mechanism. **No "staging-guard" hook is planned** — staging is safe-to-break by design; the guard exists for production.
+**Open:**
+
+- **Gap-1** — `docker-compose.staging.yml` does not exist. Today, "staging" is whatever you `docker compose up` locally with `--config stg`. Until the file lands, locally-running staging = Charlie boot with `doppler run -p factorylm -c stg`. (The CI `staging-gate.yml` does NOT need this file — it instantiates Supervisor in-process.)
+- **Gap-3** — `@MiraStagingBot` does not exist. Until it does, do **not** point a staging build at `@FactoryLM_Diagnose`. Use a no-op adapter or a personal test bot. The CI `staging-gate.yml` calls Supervisor directly with `platform="staging"`, so no Telegram bot is needed for the gate; this gap matters only for interactive local probing.
+
+**Closed (kept here for history):**
+
+- ~~Gap-2~~ — NeonDB staging branch — **closed 2026-05-18** (PR #1386). Branch `br-small-term-ahtkz61d` zero-copy-forked from prod. See "Existing infrastructure" above.
+- ~~Gap-4~~ — `staging-gate.yml` workflow — **closed 2026-05-18** (PR #1386). Workflow active continuously since then; do not treat the gate as aspirational. See "Existing infrastructure" above.
+
+Track open gaps as issues, not assumptions. Closing them is what hardens this doctrine into mechanism. **No "staging-guard" hook is planned** — staging is safe-to-break by design; the guard exists for production.
 
 ---
 

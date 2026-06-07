@@ -13,7 +13,13 @@ export interface FaultCode {
   commonCauses: string[];
   recommendedFix: string;
   relatedCodes: string[];
+  /** Slugs of blog posts that cover this fault's equipment/topic. Renders an
+   *  "Related guides" block and closes the fault-code ↔ blog cluster loop. */
+  relatedPosts?: string[];
   metaDescription: string;
+  /** ISO date of last substantive content edit. Used for sitemap <lastmod>
+   *  and the TroubleshootingGuide `dateModified` — never the render date. */
+  updated?: string;
 }
 
 export const FAULT_CODES: FaultCode[] = [

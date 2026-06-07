@@ -11,9 +11,6 @@ import importlib.util
 import sys
 from pathlib import Path
 
-import pytest
-
-
 def load_handler(script_path: Path, handler_name: str = "doGet"):
     """Load a Jython handler script and return the handler function.
 
@@ -57,7 +54,9 @@ class TestStatusHandler:
 
 
 class TestChatHandler:
-    def test_chat_proxies_to_sidecar(self, webdev_scripts_dir):
+    def test_chat_proxies_to_sidecar(self, webdev_scripts_dir, mira_gateway_configured):
+        """A configured gateway signs the request, proxies to the sidecar (mocked via
+        the autouse `mock_urllib2`), and returns the sidecar's answer."""
         handler = load_handler(webdev_scripts_dir / "api" / "chat" / "doPost.py", "doPost")
         request = {
             "postData": {
@@ -69,17 +68,35 @@ class TestChatHandler:
 
         assert "json" in result
         data = result["json"]
-        # Should have proxied to sidecar and got back mock answer
-        assert "answer" in data or "error" not in data
+        # Proxied successfully — no error, and the sidecar's mock answer came back
+        # (mock_urllib2 returns {"answer": "Test answer about VFD faults.", ...}).
+        assert "error" not in data, "handler returned an error: %s" % data
+        assert data["answer"] == "Test answer about VFD faults."
+        assert "sources" in data
 
-    def test_chat_empty_query_rejected(self, webdev_scripts_dir):
+    def test_chat_unconfigured_hmac_fails_closed(self, webdev_scripts_dir):
+        """No HMAC key configured → fail closed with 503, never an unsigned proxy call.
+
+        This is the security contract: doPost refuses to forward unsigned requests."""
+        handler = load_handler(webdev_scripts_dir / "api" / "chat" / "doPost.py", "doPost")
+        request = {"postData": {"query": "What does OC mean?", "asset_id": "conveyor_demo"}}
+        result = handler(request, {})
+
+        assert result["status"] == 503
+        assert result["json"]["error"] == "MIRA HMAC key not configured"
+
+    def test_chat_empty_query_rejected(self, webdev_scripts_dir, mira_gateway_configured):
+        """A configured gateway still validates input: empty query → 400 'query is required'.
+
+        (Requires the gateway-configured fixture; otherwise the handler fail-closes on the
+        HMAC check before it ever reaches query validation.)"""
         handler = load_handler(webdev_scripts_dir / "api" / "chat" / "doPost.py", "doPost")
         request = {"postData": {"query": "", "asset_id": ""}}
         result = handler(request, {})
 
         assert "json" in result
-        data = result["json"]
-        assert "error" in data
+        assert result["status"] == 400
+        assert result["json"]["error"] == "query is required"
 
 
 class TestAlertsHandler:

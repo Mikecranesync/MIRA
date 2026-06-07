@@ -8,6 +8,7 @@
 ---
 
 ## North Star
+- **PRIMARY FOCUS — Master implementation plan:** `docs/plans/2026-06-01-mira-master-architecture-plan.md` — 14-phase build plan governing all current development. Every session must align to this plan. No unrelated dev projects until all phases are complete.
 - **PRIMARY:** `docs/THEORY_OF_OPERATIONS.md` — what MIRA is, how it works, why. Read first before any feature work.
 - **Contract:** `docs/specs/maintenance-namespace-builder-spec.md` — the namespace-builder product surface (UNS gate, AI proposals, readiness levels).
 - **Implementation-level architecture:** `docs/specs/mira-component-intelligence-architecture.md` — component templates, KG mechanics. (Self-declared "supersedes" header is historical; the TOO doc re-layers the hierarchy.)
@@ -163,6 +164,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **Quality score (domain grades):** `docs/QUALITY_SCORE.md`
 - **Harness plan (security/measurement/arch phases):** `docs/superpowers/plans/2026-04-17-harness-engineering-industrial-grade.md`
 - **Release notes:** `docs/CHANGELOG.md`
+- **Kiosk / AskMira deploy + prod verify runbook:** `docs/runbooks/kiosk-askmira-deploy-and-verify.md` — read BEFORE shipping any `mira-bots/ask_api/`, kiosk-scoped engine fast-path, or AskMira `view.json` change. Documents the **`services=mira-ask`** dispatch + 9/10 Mode A hard-pass + Mode B browser verify.
 - **All env vars:** `docs/env-vars.md`
 - **Known issues / deferred / abandoned:** `docs/known-issues.md`
 - **ADRs:** `docs/adr/`
@@ -216,12 +218,12 @@ Installed 2026-04-20. Triggers on every PR to `main`/`develop`/`dev`.
 | ast-grep rules | `.ast-grep-rules/` | Hardcoded IPs, secrets, missing socket error handling, raw FastAPI body |
 | ast-grep config | `sgconfig.yml` | Rule discovery (replaces diffray — diffray v0.5.4 requires OpenAI) |
 | Self-fix script | `scripts/pr_self_fix.sh` | Reads 🔴 IMPORTANT review comments, asks the LLM cascade for patches, applies + pushes (up to 3 loops) |
-| Pre-commit hook | `.githooks/pre-commit` | shellcheck + rg credential scan + debug artifact scan on staged files |
+| Pre-commit hook | `.githooks/pre-commit` | shellcheck + rg credential scan + debug artifact scan + actionlint (workflows) on staged files |
 
 **To trigger manually:** `gh workflow run code-review.yml`
 **To run self-fix:** `bash scripts/pr_self_fix.sh <PR_NUMBER>`
 **Hook active:** `git config core.hooksPath .githooks` (already set in this repo)
-**Tools required locally:** `shellcheck`, `rg`, `sg` (ast-grep), `scc`, `difft`
+**Tools required locally:** `shellcheck`, `rg`, `sg` (ast-grep), `scc`, `difft`, `actionlint`
 
 ---
 

@@ -30,6 +30,8 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from uuid import UUID
 
+from .manufacturer_normalize import normalize_manufacturer
+from .proposal_writer import autoverify_enabled as _autoverify_enabled
 from .uns import (
     equipment_unassigned_path,
     fault_code_path,
@@ -38,6 +40,10 @@ from .uns import (
 )
 
 logger = logging.getLogger("mira-crawler.kg_writer")
+
+# Ingest write mode (issue #1662 / ADR-0017): proposals by default; the legacy
+# auto-verify path is gated behind MIRA_KG_INGEST_AUTOVERIFY. The flag lives in
+# proposal_writer (single source of truth, shared with full_ingest_pipeline).
 
 
 # ---------------------------------------------------------------------------
@@ -151,9 +157,24 @@ def upsert_relationship(
     source_chunk_id: str | UUID | None = None,
     conn=None,
 ) -> str | None:
-    """Insert (or fetch existing) a kg_relationships row. Returns the
-    relationship id as a string, or None on hard failure."""
-    from sqlalchemy import text
+    """Propose an ingest-derived edge instead of writing it as a verified
+    fact. Per the "never auto-verify" doctrine (.claude/CLAUDE.md, ADR-0017)
+    this routes through `proposal_writer.propose_relationship` by default —
+    the edge lands in `relationship_proposals` + `ai_suggestions(kg_edge)`
+    for human review, and the verified `kg_relationships` row is written
+    only on admin approval (mira-hub `.../proposals/[id]/decide`).
+
+    The legacy direct-to-`kg_relationships` auto-verify path remains
+    available ONLY when `MIRA_KG_INGEST_AUTOVERIFY` is deliberately set
+    (one-time bulk migration / debug). Default (unset) is the proposal path.
+
+    Returns the `relationship_proposals` id (proposal mode) or the
+    `kg_relationships` id (auto-verify mode), or None when nothing was
+    written (self-edge, unmapped type, already-present edge, or hard
+    failure). `properties` is accepted for backwards compatibility; in
+    proposal mode its `reasoning`/`note` keys become the proposal rationale
+    but it is not otherwise persisted at propose time."""
+    from .proposal_writer import propose_relationship
 
     if not source_entity or not target_entity or not relation_type:
         return None
@@ -161,9 +182,59 @@ def upsert_relationship(
         logger.debug("upsert_relationship skipped self-edge %s", source_entity)
         return None
 
-    props_json = json.dumps(properties or {})
     src_chunk = str(source_chunk_id) if source_chunk_id else None
 
+    if _autoverify_enabled():
+        return _autoverify_relationship(
+            tenant_id, source_entity, target_entity, relation_type,
+            confidence, properties, src_chunk, conn,
+        )
+
+    reasoning = None
+    if properties:
+        reasoning = (properties.get("reasoning") or properties.get("note")) or None
+
+    try:
+        with _get_conn(conn) as c:
+            return propose_relationship(
+                c,
+                tenant_id=tenant_id,
+                source_entity=source_entity,
+                target_entity=target_entity,
+                relation_type=relation_type,
+                confidence=confidence,
+                reasoning=reasoning,
+                source_chunk_id=src_chunk,
+            )
+    except Exception as e:
+        logger.error(
+            "upsert_relationship (propose) failed %s -[%s]-> %s: %s",
+            source_entity,
+            relation_type,
+            target_entity,
+            e,
+        )
+        return None
+
+
+def _autoverify_relationship(
+    tenant_id: str,
+    source_entity: str | UUID,
+    target_entity: str | UUID,
+    relation_type: str,
+    confidence: float,
+    properties: dict | None,
+    src_chunk: str | None,
+    conn=None,
+) -> str | None:
+    """LEGACY auto-verify path — DELIBERATE OPT-IN ONLY (`MIRA_KG_INGEST_AUTOVERIFY`).
+    Writes the edge straight into `kg_relationships` as a verified fact,
+    bypassing human review. Retained for one-time bulk migration / debug;
+    NOT the default. Do not call directly — go through `upsert_relationship`,
+    which gates this behind the env flag."""
+    from sqlalchemy import text
+
+    props_json = json.dumps(properties or {})
     try:
         with _get_conn(conn) as c:
             row = c.execute(
@@ -193,14 +264,16 @@ def upsert_relationship(
                     "source_chunk_id": src_chunk,
                 },
             ).first()
+            logger.warning(
+                "kg_writer AUTO-VERIFY (legacy opt-in): wrote verified edge "
+                "%s -[%s]-> %s straight to kg_relationships",
+                source_entity, relation_type, target_entity,
+            )
             return str(row[0]) if row else None
     except Exception as e:
         logger.error(
-            "upsert_relationship failed %s -[%s]-> %s: %s",
-            source_entity,
-            relation_type,
-            target_entity,
-            e,
+            "upsert_relationship (auto-verify) failed %s -[%s]-> %s: %s",
+            source_entity, relation_type, target_entity, e,
         )
         return None
 
@@ -231,6 +304,11 @@ def register_equipment_and_manual(
     instances are linked back to this catalog node via INSTANCE_OF when
     the user assigns the model to a physical location.
     """
+
+    # Collapse OCR/extraction manufacturer variants before any UNS path is
+    # built, so misspellings ("Alien-Bradley", "Cofemo") don't mint
+    # duplicate catalog nodes. See ingest/manufacturer_normalize.py (#1596).
+    manufacturer = normalize_manufacturer(manufacturer).canonical
 
     eq_path = equipment_unassigned_path(manufacturer, model, family=family)
     eq_id = upsert_entity(
@@ -306,6 +384,9 @@ def register_fault_code(
     equipment entity that was the carrier of this extraction so the bot
     can ask "what faults exist on PowerFlex 525?" via graph traversal.
     """
+    # Same OCR-variant collapse as register_equipment_and_manual so a fault
+    # node anchors under the canonical manufacturer (#1596).
+    manufacturer = normalize_manufacturer(manufacturer).canonical
     name = f"{manufacturer} / {fault_code}".strip(" /")
     fc_id = upsert_entity(
         tenant_id=tenant_id,

@@ -101,6 +101,7 @@ import {
 } from "./lib/hub-user-activation.js";
 import { FAULT_CODES } from "./data/fault-codes.js";
 import { BLOG_POSTS } from "./data/blog-posts.js";
+import { buildSitemapXml } from "./lib/sitemap.js";
 import {
   renderBlogPost,
   renderFaultCodePage,
@@ -322,48 +323,11 @@ app.use("/posthog-init.js", serveStatic({ path: "./public/posthog-init.js" }));
 app.use("/pwa-install.js", serveStatic({ path: "./public/pwa-install.js" }));
 app.use("/status", serveStatic({ path: "./public/status.html" }));
 
-// Dynamic sitemap (replaces static file)
+// Dynamic sitemap (replaces static file). URL set + <lastmod> logic lives in
+// the pure, unit-tested buildSitemapXml() helper.
 app.get("/sitemap.xml", (c) => {
-  const baseUrl = "https://factorylm.com";
   const today = new Date().toISOString().split("T")[0];
-
-  const pages = [
-    { loc: "/", priority: "1.0", freq: "weekly" },
-    { loc: "/cmms", priority: "1.0", freq: "weekly" },
-    { loc: "/blog", priority: "0.9", freq: "weekly" },
-    { loc: "/blog/fault-codes", priority: "0.8", freq: "weekly" },
-    ...allBlogPosts.map((p) => ({
-      loc: `/blog/${p.slug}`,
-      priority: "0.8",
-      freq: "monthly" as const,
-    })),
-    ...allFaultCodes.map((fc) => ({
-      loc: `/blog/${fc.slug}`,
-      priority: "0.7",
-      freq: "monthly" as const,
-    })),
-    { loc: "/limitations", priority: "0.5", freq: "monthly" },
-    { loc: "/security", priority: "0.5", freq: "monthly" },
-    { loc: "/privacy", priority: "0.3", freq: "yearly" },
-    { loc: "/terms", priority: "0.3", freq: "yearly" },
-    { loc: "/trust", priority: "0.4", freq: "monthly" },
-    { loc: "/legal/dpa", priority: "0.3", freq: "yearly" },
-  ];
-
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${pages
-  .map(
-    (p) => `  <url>
-    <loc>${baseUrl}${p.loc}</loc>
-    <lastmod>${today}</lastmod>
-    <changefreq>${p.freq}</changefreq>
-    <priority>${p.priority}</priority>
-  </url>`,
-  )
-  .join("\n")}
-</urlset>`;
-
+  const xml = buildSitemapXml("https://factorylm.com", today, allBlogPosts, allFaultCodes);
   return new Response(xml, {
     headers: { "Content-Type": "application/xml; charset=utf-8" },
   });

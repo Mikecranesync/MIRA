@@ -13,30 +13,48 @@ from pathlib import Path
 
 
 def render(results: dict, run_url: str) -> str:
-    overall = "✅ PASS" if results["overall_pass"] else "❌ FAIL"
+    if results.get("harness_degraded"):
+        overall = "❌ FAIL (harness degraded)"
+    elif results["overall_pass"]:
+        overall = "✅ PASS"
+    else:
+        overall = "❌ FAIL"
+    skipped = results.get("skipped", 0)
+    total = results["total"]
     lines = [
         f"### MIRA staging gate — {overall}",
         "",
-        "_Engine + NeonDB staging branch + Groq cascade against 10 fixed questions, graded on the 5-dimension rubric in `docs/specs/mira-answer-quality-standard.md`._",
+        "_Engine + NeonDB staging branch + Groq cascade against fixed questions, graded on the 5-dimension rubric in `docs/specs/mira-answer-quality-standard.md`. Skipped questions (embed sidecar unavailable, etc.) are excluded from pass/fail math; the run fails closed if >50% are skipped._",
         "",
-        f"- mean of means: **{results['mean_of_means']:.2f}** (pass threshold: {results['thresholds']['pass_avg']})",
-        f"- questions passed: **{results['passed']} / {results['total']}**",
+        f"- mean of means: **{results['mean_of_means']:.2f}** (pass threshold: {results['thresholds']['pass_avg']}, scored over {total - skipped}/{total})",
+        f"- questions passed: **{results['passed']} / {total}**",
+        f"- skipped (harness): **{skipped}** (issue #1509: embed sidecar unavailable)" if skipped else "- skipped (harness): **0**",
         f"- below mean 3.0: **{results['below_3']}** (max allowed: {results['thresholds']['max_below_3']})",
         f"- hard fails: **{results['hard_fails']}**",
         f"- [full run logs]({run_url})",
         "",
-        "| id | category | g | c | a | s | t | mean | fail |",
+        "| id | category | g | c | a | s | t | mean | note |",
         "|---|---|---|---|---|---|---|---|---|",
     ]
     for q in results["questions"]:
         s = q["scores"]
-        fail = ", ".join(q["fail_reasons"]) if q["fail_reasons"] else ""
-        emoji = "❌" if q["fail_reasons"] else ("⚠️" if q["mean"] < 3.0 else "✅")
+        if q.get("skipped"):
+            emoji = "⏸"
+            note = f"skip: {q.get('skip_reason', 'harness')}"
+        elif q["fail_reasons"]:
+            emoji = "❌"
+            note = ", ".join(q["fail_reasons"])
+        elif q["mean"] < 3.0:
+            emoji = "⚠️"
+            note = ""
+        else:
+            emoji = "✅"
+            note = ""
         lines.append(
             f"| {emoji} `{q['id']}` | {q['category']} | {s['grounding']} | {s['context']} | "
-            f"{s['actionability']} | {s['safety']} | {s['tone']} | **{q['mean']:.2f}** | {fail} |"
+            f"{s['actionability']} | {s['safety']} | {s['tone']} | **{q['mean']:.2f}** | {note} |"
         )
-    failing = [q for q in results["questions"] if q["fail_reasons"]]
+    failing = [q for q in results["questions"] if q["fail_reasons"] and not q.get("skipped")]
     if failing:
         lines.extend(["", "<details><summary>Failing question replies (truncated)</summary>", ""])
         for q in failing:

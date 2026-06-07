@@ -214,6 +214,35 @@ def mock_urllib2():
 
 
 @pytest.fixture
+def mira_gateway_configured(mock_ignition_system):
+    """Simulate a configured Ignition gateway.
+
+    The chat handler (`api/chat/doPost.py`) reads MIRA_IGNITION_HMAC_KEY / MIRA_TENANT_ID /
+    MIRA_CLOUD_URL from `factorylm.properties` via `getMiraConfig()`, and **fail-closes with
+    503 when the HMAC key is absent** (no unsigned requests). The default java mocks report
+    the properties file as missing, so without this fixture every chat request hits that
+    fail-closed branch.
+
+    This fixture flips the mocked `java.io.File` to report the properties file present and
+    makes `java.util.Properties.getProperty` return real config — so the handler proceeds to
+    the (mocked) sidecar proxy path, exactly as a configured gateway would. Returns the config
+    dict so tests can assert against it.
+    """
+    config = {
+        "MIRA_IGNITION_HMAC_KEY": "test-hmac-key-0123456789abcdef",
+        "MIRA_TENANT_ID": "00000000-0000-0000-0000-0000000000aa",
+        "MIRA_CLOUD_URL": "https://api.example.test/api/v1/ignition/chat",
+    }
+    file_mock = sys.modules["java.io.File"]
+    file_mock.return_value.exists.return_value = True
+    props_mock = sys.modules["java.util.Properties"]
+    props_mock.return_value.getProperty.side_effect = (
+        lambda key, default="": config.get(key, default)
+    )
+    return config
+
+
+@pytest.fixture
 def webdev_scripts_dir() -> Path:
     """Path to the Web Dev handler scripts."""
     return Path(__file__).parent.parent.parent / "ignition" / "webdev" / "FactoryLM"

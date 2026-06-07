@@ -1,0 +1,67 @@
+# Phase 5 — Video 2 (REAL pipeline): "A stock conveyor render → a live HMI"
+#
+# UPDATED 2026-06-01: The real intermediate assets were recovered from the PLC
+# laptop (Tailscale `plc`, C:\Users\hharp\Downloads). The pipeline DID happen and
+# the before/after VISUALLY MATCH — this is no longer a reduced cut, it's the real
+# story:
+#   INPUT : Conveyor example.PNG — a stock 3D conveyor render (the reference image)
+#           -> docs/promo-screenshots/2026-05-30_conveyor-reference-stock-render_input.png
+#   OUTPUT: ConvSimpleLive CONVEYOR tab "GARAGE CONVEYOR" — the SAME render, now a
+#           live Ignition Perspective HMI with photo-eye/motor/VFD overlays on real
+#           Micro 820 (CIP) tags
+#           -> docs/promo-screenshots/2026-05-31_convsimplelive-conveyor-hmi-native_desktop.png
+#   EDIT  : hand-markup iterating sensor/E-stop placement
+#           -> docs/promo-screenshots/2026-05-31_convsimplelive-conveyor-handedits_desktop.png
+#   PANEL : PMC STATION operator panel, native full-screen, live tags
+#           -> docs/promo-screenshots/2026-05-30_convsimplelive-pmc-station-native_desktop.png
+# (The 5:47 walkthrough recording — source-walkthrough/ — shows ASK MIRA diagnosing
+#  this same conveyor with PowerFlex 525 / ABB citations.) Narration still avoids
+#  the precise "AI auto-wrote every line of JSON" mechanism; the matching visuals
+#  carry the reference->HMI claim.
+slug: phase5-video-02-reference-to-live-hmi
+output_dir: marketing/videos/2026-05-31-phase5-demos/video-02-reference-to-live-hmi
+width: 1920
+height: 1080
+zoom_amount: 0.012
+transition_duration: 0.4
+fit_mode: letterbox
+tts_provider: groq
+tts_voice: austin
+tts_model: canopylabs/orpheus-v1-english
+tts_format: wav
+voiceover_style: |
+  Adult male, 40s, calm and direct. Sounds like a senior field engineer who
+  has worked in heavy manufacturing for 15 years — knowledgeable without
+  being academic, confident without being aggressive. Does not perform
+  enthusiasm. States facts and lets the listener draw conclusions.
+
+  Pacing: 130–140 words per minute. Steady. Slight pause after key claims.
+  No acceleration on product names or feature callouts.
+
+  Tone: neutral American accent, no regional markers. Clean consonants.
+  Comfortable with industrial vocabulary. Does not soften or inflate language.
+
+  Avoid: upward inflection on statements, marketing superlatives, breathless
+  pacing on product reveals, hesitation fillers, reading the style brief aloud.
+# UPDATED 2026-06-02: swapped the rough PMC capture (raw Chrome window + "null"
+# button artifacts) and the older "Lake Wales Plant" tree for the clean, current
+# Command Center captures Mike walked through this morning, and added the live
+# operation steps (operator panel -> running 30 Hz -> E-stop trip -> located in the
+# namespace). All narration is generic ("operator panel", "your plant namespace",
+# "Micro 820 tag over CIP"), so the swaps improve continuity — the new tree matches
+# the same enterprise.home_garage.conveyor_lab.conveyor_1 namespace used elsewhere.
+frames:
+  - image: docs/promo-screenshots/2026-05-30_conveyor-reference-stock-render_input.png
+    narration: "I started with one stock conveyor render. A reference image — no schematic, no manual, no specs."
+  - image: docs/promo-screenshots/2026-05-31_convsimplelive-conveyor-hmi-native_desktop.png
+    narration: "It became a live Ignition Perspective screen. The same conveyor — now photo-eye, motor, and VFD data, updating live."
+  - image: docs/promo-screenshots/2026-06-02_command-center-pmc-panel-armed-green_desktop.png
+    narration: "The operator panel came with it. Every button bound to a real Micro 820 tag over CIP."
+  - image: docs/promo-screenshots/2026-06-02_command-center-pmc-panel-running-30hz-fwd_desktop.png
+    narration: "Hit start and it runs. Thirty hertz forward, DC bus and motor state read straight off the drive."
+  - image: docs/promo-screenshots/2026-06-02_command-center-pmc-panel-estop-tripped_desktop.png
+    narration: "Trip the E-stop and the panel knows instantly. Drive coasting, the DC bus bleeding down."
+  - image: docs/promo-screenshots/2026-06-02_command-center-conveyor-stopped-tree_desktop.png
+    narration: "And it's located in your plant namespace. Line, cell, asset — not floating on a laptop."
+  - image: docs/promo-screenshots/2026-06-02_command-center-conveyor-running-30hz_desktop.png
+    narration: "Reference image to a live, located HMI. The full pipeline is in the guide — factorylm.com."

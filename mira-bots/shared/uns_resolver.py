@@ -49,6 +49,16 @@ VENDOR_ALIASES: dict[str, str] = {
     # AutomationDirect family
     "gs10": "AutomationDirect",
     "gs20": "AutomationDirect",
+    # GS1/GS2/GS3/GS4 are out-of-KB but still AutomationDirect; no FAMILY_FROM_ALIAS
+    # entry so confidence stays at 0.5 (manufacturer only) and the UNS gate fires,
+    # giving the bot a chance to confirm context before the out-of-KB path handles it.
+    "gs1": "AutomationDirect",
+    "gs2": "AutomationDirect",
+    "gs3": "AutomationDirect",
+    "gs4": "AutomationDirect",
+    "gs4p": "AutomationDirect",
+    "gs11": "AutomationDirect",
+    "gs21": "AutomationDirect",
     "automationdirect": "AutomationDirect",
     "automation direct": "AutomationDirect",
     # Siemens family
@@ -71,6 +81,27 @@ VENDOR_ALIASES: dict[str, str] = {
     # Bosch Rexroth
     "bosch rexroth": "Bosch Rexroth",
     "rexroth": "Bosch Rexroth",
+    # Rockwell specific models (alias resolves both brand AND model)
+    "pf525": "Rockwell Automation",
+    "pf527": "Rockwell Automation",
+    "pf520": "Rockwell Automation",
+    "pf40": "Rockwell Automation",
+    "pf70": "Rockwell Automation",
+    "pf753": "Rockwell Automation",
+    "pf755": "Rockwell Automation",
+    # SEW-Eurodrive
+    "sew-eurodrive": "SEW-Eurodrive",
+    "sew": "SEW-Eurodrive",
+    "movitrac": "SEW-Eurodrive",
+    "movidrive": "SEW-Eurodrive",
+    # Yaskawa specific model families
+    "a1000": "Yaskawa",
+    "v1000": "Yaskawa",
+    "j1000": "Yaskawa",
+    "ga500": "Yaskawa",
+    "ga700": "Yaskawa",
+    "p1000": "Yaskawa",
+    "e1000": "Yaskawa",
     # Singletons
     "yaskawa": "Yaskawa",
     "abb": "ABB",
@@ -96,6 +127,25 @@ FAMILY_FROM_ALIAS: dict[str, str] = {
     "aqua drive": "AquaDrive",
     "gs10": "GS10",
     "gs20": "GS20",
+    # Rockwell PowerFlex model-specific aliases
+    "pf525": "PowerFlex 525",
+    "pf527": "PowerFlex 527",
+    "pf520": "PowerFlex 520",
+    "pf40": "PowerFlex 40",
+    "pf70": "PowerFlex 70",
+    "pf753": "PowerFlex 753",
+    "pf755": "PowerFlex 755",
+    # SEW-Eurodrive
+    "movitrac": "MOVITRAC",
+    "movidrive": "MOVIDRIVE",
+    # Yaskawa model families
+    "a1000": "A1000",
+    "v1000": "V1000",
+    "j1000": "J1000",
+    "ga500": "GA500",
+    "ga700": "GA700",
+    "p1000": "P1000",
+    "e1000": "E1000",
 }
 
 
@@ -769,6 +819,13 @@ def resolve_uns_path(
         a_compact = re.sub(r"[^A-Za-z0-9]", "", alias_lower).lower()
         if m_compact == a_compact:
             model = None
+
+    # Alias-as-model promotion: when the alias IS a specific product (e.g.
+    # "gs10", "pf525", "a1000"), the alias slug is both brand and model. If no
+    # separate model token was found, promote the family_token to model so the
+    # confidence reaches 0.7 (manufacturer+model) and the UNS gate doesn't fire.
+    if model is None and family_token:
+        model = family_token
 
     category = _detect_category(message, has_fault=fault_code is not None)
     product_family = family_token

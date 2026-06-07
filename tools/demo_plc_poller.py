@@ -69,8 +69,17 @@ logger = logging.getLogger("mira-plc-poller")
 # ---------------------------------------------------------------------------
 # Address map — single source of truth for the garage demo conveyor.
 #
-# Reflects /Users/charlienode/factorylm/CLAUDE.md (PLC / Factory IO section)
-# and research/variable-manifest.json. Do not edit without updating both.
+# MUST match the Micro820 Modbus server map actually deployed on the PLC:
+# `plc/MbSrvConf_v4.xml` (22 coils + 17 HRs, v4.1.9 ladder). Modbus PDU address
+# = CCW display address − 1, so read_coils(address=0) → coil 000001 = motor_running.
+# The variable names below are the ladder globals (also used by the Node-RED
+# fault-detective flow), NOT the old "Conveyor.MTR001_*" CCW aliases.
+#
+# We read the first 7 coils (000001-000007) and HR 100-105 (400101-400106) — the
+# subset the live dashboard needs. The v4 map also exposes coils 8-22 and
+# HR 107-117 (VFD freq/current/voltage/dc-bus, conv_state, poll-state); surfacing
+# those is a follow-up that needs the ladder's scaling documented first.
+# Do not edit without updating `plc/MbSrvConf_v4.xml` and `tools/demo_plc_simulator.py`.
 # ---------------------------------------------------------------------------
 
 
@@ -85,31 +94,35 @@ class PLCPoint:
     address: int
     scale: float         # raw → engineering value (raw / scale, or 1 = passthrough)
     uns_topic: str       # ISA-95 style UNS topic
-    plc_tag: str         # symbolic CCW tag name
+    plc_tag: str         # ladder global / MbSrvConf variable name
     relay_tag: str | None = None  # name to use in relay payload (uses tag-column map)
 
 
 ADDRESS_MAP: list[PLCPoint] = [
-    # Coils 0-6 — boolean I/O
-    PLCPoint("motor_running",    COIL, 0, 1, "demo/training/conveyor001/motor/mtr001/running",  "Conveyor.MTR001_RunFb",      "motor_running"),
-    PLCPoint("motor_stopped",    COIL, 1, 1, "demo/training/conveyor001/motor/mtr001/stopped",  "Conveyor.MTR001_StopFb",     "motor_stopped"),
-    PLCPoint("fault_alarm",      COIL, 2, 1, "demo/training/conveyor001/faults/active",         "Conveyor.FaultAlarm",        "fault_alarm"),
-    PLCPoint("conveyor_running", COIL, 3, 1, "demo/training/conveyor001/state/running",         "Conveyor.RunFb",             "conveyor_running"),
-    PLCPoint("sensor_1",         COIL, 4, 1, "demo/training/conveyor001/prox/pe001/state",      "Conveyor.PE001_State",       "sensor_1"),
-    PLCPoint("sensor_2",         COIL, 5, 1, "demo/training/conveyor001/prox/pe002/state",      "Conveyor.PE002_State",       "sensor_2"),
-    PLCPoint("e_stop",           COIL, 6, 1, "demo/training/conveyor001/safety/estop",          "Conveyor.EStop_Active",      "e_stop"),
-    # Holding 100-105 — analog values
-    PLCPoint("motor_speed",      HOLDING, 100, 1.0,  "demo/training/conveyor001/motor/mtr001/speed",       "Conveyor.MTR001_Speed",       "speed_rpm"),
-    PLCPoint("motor_current",    HOLDING, 101, 10.0, "demo/training/conveyor001/motor/mtr001/current",     "Conveyor.MTR001_Current",     "current_amps"),
-    PLCPoint("temperature",      HOLDING, 102, 10.0, "demo/training/conveyor001/motor/mtr001/temperature", "Conveyor.MTR001_Temperature", "temperature_c"),
-    PLCPoint("pressure",         HOLDING, 103, 1.0,  "demo/training/conveyor001/pneumatic/pressure",       "Conveyor.Pressure",           "pressure_psi"),
-    PLCPoint("conveyor_speed",   HOLDING, 104, 1.0,  "demo/training/conveyor001/state/speed",              "Conveyor.Speed",              "conveyor_speed"),
-    PLCPoint("error_code",       HOLDING, 105, 1.0,  "demo/training/conveyor001/faults/code",              "Conveyor.ErrorCode",          "faultCode"),
+    # Coils 000001-000007 (read as PDU address 0-6) — booleans, per MbSrvConf_v4.xml
+    PLCPoint("motor_running",    COIL, 0, 1, "demo/training/conveyor001/motor/mtr001/running",  "motor_running",    "motor_running"),
+    PLCPoint("conveyor_running", COIL, 1, 1, "demo/training/conveyor001/state/running",         "conveyor_running", "conveyor_running"),
+    PLCPoint("fault_alarm",      COIL, 2, 1, "demo/training/conveyor001/faults/active",         "fault_alarm",      "fault_alarm"),
+    PLCPoint("vfd_comm_ok",      COIL, 3, 1, "demo/training/conveyor001/vfd/vfd001/comm_ok",     "vfd_comm_ok",      "vfd_comm_ok"),
+    PLCPoint("system_ready",     COIL, 4, 1, "demo/training/conveyor001/state/ready",           "system_ready",     "system_ready"),
+    PLCPoint("e_stop_active",    COIL, 5, 1, "demo/training/conveyor001/safety/estop",          "e_stop_active",    "e_stop_active"),
+    PLCPoint("dir_fwd",          COIL, 6, 1, "demo/training/conveyor001/motor/mtr001/dir_fwd",  "dir_fwd",          "dir_fwd"),
+    # Holding 400101-400106 (read as PDU address 100-105) — analog, per MbSrvConf_v4.xml
+    PLCPoint("motor_speed",      HOLDING, 100, 1.0,  "demo/training/conveyor001/motor/mtr001/speed",       "motor_speed",    "motor_speed"),
+    PLCPoint("motor_current",    HOLDING, 101, 10.0, "demo/training/conveyor001/motor/mtr001/current",     "motor_current",  "motor_current"),
+    PLCPoint("temperature",      HOLDING, 102, 10.0, "demo/training/conveyor001/motor/mtr001/temperature", "temperature",    "temperature"),
+    PLCPoint("pressure",         HOLDING, 103, 1.0,  "demo/training/conveyor001/pneumatic/pressure",       "pressure",       "pressure"),
+    PLCPoint("conveyor_speed",   HOLDING, 104, 1.0,  "demo/training/conveyor001/state/speed",              "conveyor_speed", "conveyor_speed"),
+    PLCPoint("error_code",       HOLDING, 105, 1.0,  "demo/training/conveyor001/faults/code",              "error_code",     "error_code"),
 ]
 
 EQUIPMENT_ID = "CONV-001"
 DEFAULT_TENANT_ID = "garage-demo"
 AGENT_ID = "demo-plc-poller"
+
+# Resilience tuning for the poll loop.
+FEED_DOWN_THRESHOLD = 5   # consecutive failures before one loud, actionable warning
+ERROR_LOG_EVERY = 30      # after the first, log a one-line error every Nth failure
 
 
 # ---------------------------------------------------------------------------
@@ -267,8 +280,9 @@ class DemoPLCPoller:
 
     async def run(self) -> None:
         assert self._modbus is not None
+        consecutive_failures = 0
         while not self._stop.is_set():
-            cycle_start = asyncio.get_event_loop().time()
+            cycle_start = asyncio.get_running_loop().time()
             try:
                 snapshot = await self._poll_once()
                 events = detect_events(self._prev, snapshot)
@@ -280,19 +294,49 @@ class DemoPLCPoller:
                     return_exceptions=False,
                 )
 
+                if consecutive_failures:
+                    logger.info("PLC feed RECOVERED after %d failed cycle(s)", consecutive_failures)
+                consecutive_failures = 0
                 logger.debug(
                     "Cycle ok values=%d events=%d",
                     len(snapshot.values), len(events),
                 )
-            except Exception:
-                logger.exception("Poll cycle failed; will retry next tick")
+            except Exception as exc:
+                consecutive_failures += 1
+                await self._handle_poll_failure(consecutive_failures, exc)
 
-            elapsed = asyncio.get_event_loop().time() - cycle_start
+            elapsed = asyncio.get_running_loop().time() - cycle_start
             sleep_for = max(0.0, self.poll_interval - elapsed)
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=sleep_for)
             except asyncio.TimeoutError:
                 pass
+
+    async def _handle_poll_failure(self, n: int, exc: Exception) -> None:
+        """Rate-limited logging + best-effort reconnect on a failed poll.
+
+        We deliberately do NOT write anything to the relay / cache on failure, so
+        downstream freshness (``live_signal_cache.last_seen_at``) decays and the UI
+        can flag the feed as stale instead of showing stale data as live.
+        """
+        # First failure + every Nth after: one clear line, not a traceback-per-tick.
+        if n == 1 or n % ERROR_LOG_EVERY == 0:
+            logger.error("Poll cycle failed (%d in a row): %s", n, exc)
+        # One loud, actionable warning when the feed is clearly down.
+        if n == FEED_DOWN_THRESHOLD:
+            logger.warning(
+                "PLC FEED DOWN — %d consecutive Modbus failures. If these are "
+                "ILLEGAL_FUNCTION (exception 1), the Micro820 Modbus map is not "
+                "deployed: run `python plc/deploy_modbus_map.py --auto`, then download "
+                "to the PLC in CCW and set RUN.",
+                n,
+            )
+        # Reconnect in case the socket dropped (AsyncModbusTcpClient may not auto-heal).
+        try:
+            if self._modbus is not None and not self._modbus.connected:
+                await self._modbus.connect()
+        except Exception as reconnect_exc:  # pragma: no cover - best effort
+            logger.debug("Reconnect attempt failed: %s", reconnect_exc)
 
     # -- read path ----------------------------------------------------------
 
@@ -305,6 +349,12 @@ class DemoPLCPoller:
         hregs_resp = await self._modbus.read_holding_registers(address=100, count=6)
         if hregs_resp.isError():
             raise RuntimeError(f"read_holding_registers failed: {hregs_resp}")
+
+        if len(coils_resp.bits) < 7 or len(hregs_resp.registers) < 6:
+            raise RuntimeError(
+                f"short Modbus read: {len(coils_resp.bits)} coils / "
+                f"{len(hregs_resp.registers)} registers (expected ≥7 / ≥6)"
+            )
 
         values: dict[str, float] = {}
         for p in ADDRESS_MAP:

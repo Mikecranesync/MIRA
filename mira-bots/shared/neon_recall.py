@@ -113,6 +113,14 @@ HYBRID_ENABLED = os.getenv("MIRA_RETRIEVAL_HYBRID_ENABLED", "true").lower() == "
 # agreements across streams still contribute.
 RRF_K = int(os.getenv("MIRA_RRF_K", "60"))
 
+# Max distinct OR-terms in a BM25 tsquery. Direct-connection surfaces (the
+# Ignition /ask kiosk) prepend a ~440-token MACHINE_CONTEXT block to every
+# question, so an unbounded OR-fanout unions hundreds of GIN posting lists and
+# ts_rank_cd scores most of the 83K-row table (31-45s observed, #1766). Capping
+# the term count keeps the lexical safety net while collapsing latency. 32 is
+# wide enough that an ordinary maintenance question loses nothing.
+BM25_MAX_TERMS = int(os.getenv("MIRA_BM25_MAX_TERMS", "32"))
+
 
 _COMMON_WORDS = frozenset(
     {
@@ -452,6 +460,16 @@ def _recall_bm25(
     higher than single-term ones. Tokens are stripped to `\\w+` to keep the
     tsquery parser-safe (no need to escape `&|!():*`).
 
+    Term bounding (#1766): the query is built from at most BM25_MAX_TERMS
+    distinct tokens, dropping pure-digit and ≤2-char tokens (IP/port/register
+    fragments like "192", "502", "1" have huge GIN posting lists that match
+    most of the table) and the local stopword list. Postgres' 'english' config
+    already strips English stopwords inside to_tsquery, so dedupe + drop-noise
+    + cap are the levers that matter. Without this, the /ask kiosk's ~440-token
+    MACHINE_CONTEXT prefix produced a ~438-term OR-fanout → 31-45s. Selective
+    technical terms (gs10, ce10, modbus, undervoltage) survive, so the lexical
+    safety net — and embed-down grounding — is preserved.
+
     Returns [] if query_text is blank, has no usable tokens, or the query
     fails — never raises. The tsquery `@@` predicate is a hard gate, so
     MIN_SIMILARITY filtering is not applied here. Searches both the caller's
@@ -459,9 +477,25 @@ def _recall_bm25(
     """
     if not query_text or not query_text.strip():
         return []
-    tokens = re.findall(r"\w+", query_text)
-    if not tokens:
+    raw_tokens = re.findall(r"\w+", query_text.lower())
+    if not raw_tokens:
         return []
+    seen_tok: set[str] = set()
+    tokens: list[str] = []
+    for tok in raw_tokens:
+        if tok in seen_tok:
+            continue
+        seen_tok.add(tok)
+        if len(tok) <= 2 or tok.isdigit() or tok in _COMMON_WORDS:
+            continue
+        tokens.append(tok)
+        if len(tokens) >= BM25_MAX_TERMS:
+            break
+    # Never-empty fallback: a terse query ("OC", "F4", "oC1") can have every
+    # token filtered out. Fall back to the deduped raw tokens (capped) so the
+    # lexical stream still runs rather than silently returning [].
+    if not tokens:
+        tokens = list(dict.fromkeys(raw_tokens))[:BM25_MAX_TERMS]
     ts_query = " | ".join(tokens)
     try:
         rows = (

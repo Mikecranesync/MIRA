@@ -19,6 +19,13 @@ on:
       - ".github/workflows/compose-mem-lint.yml"
   workflow_dispatch:
 
+# Auto-cancel superseded runs on the same PR/branch. cancel-in-progress is gated
+# to pull_request so a redundant PR re-push cancels its prior run (flood guard),
+# while non-PR events are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 

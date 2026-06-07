@@ -71,10 +71,12 @@ export function navbar(opts: TopbarOpts = {}): string {
 }
 
 const FOOTER_LINKS = [
+  { href: `${APEX}/assess`, label: "Assessment", slug: "assess" },
   { href: `${APEX}/limitations`, label: "Limitations", slug: "limitations" },
   { href: `${APEX}/trust`, label: "Trust", slug: "trust" },
   { href: `${APEX}/privacy`, label: "Privacy", slug: "privacy" },
   { href: `${APEX}/terms`, label: "Terms", slug: "terms" },
+  { href: `${APEX}/status`, label: "Status", slug: "status" },
 ];
 
 export function footer(opts: TopbarOpts = {}): string {

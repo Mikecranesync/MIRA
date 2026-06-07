@@ -1,10 +1,28 @@
-# MIRA Conveyor Fault Detective demo stack
+# ╔════════════════════════════════════════════════════════════════════════╗
+# ║  BENCH HARNESS — NOT a customer architecture.                          ║
+# ║                                                                        ║
+# ║  This compose runs a local MQTT broker (mosquitto) and a Modbus poller ║
+# ║  (live-plc-bridge → PLC). It exists to drive the Fault-Detective       ║
+# ║  rule-engine demo on the bench. The customer-shipped path is the       ║
+# ║  Ignition Module (Perspective + WebDev + gateway-script tag-stream)    ║
+# ║  posting outbound to mira-relay over HMAC+TLS — see                    ║
+# ║  docs/mira-ignition-secure-architecture.md.                            ║
+# ║                                                                        ║
+# ║  Anti-patterns this compose makes look real but which we do NOT ship:  ║
+# ║    - MIRA-hosted local MQTT broker (§8 #3)                             ║
+# ║    - MIRA container polling Modbus on the plant LAN (§8 #1, §8 #4)     ║
+# ║                                                                        ║
+# ║  Reuse the rule-engine code (mira-fault-detective/) in the cloud       ║
+# ║  deployment shape; do NOT promote this compose to a customer install.  ║
+# ╚════════════════════════════════════════════════════════════════════════╝
+# MIRA Conveyor Fault Detective demo stack — BENCH HARNESS ONLY
 # Run with:  docker compose -f docker-compose.fault-detective.yml up -d
 #
 # Adds to the running mira-* stack:
-#   - mosquitto       MQTT broker for the demo UNS topics
+#   - mosquitto       MQTT broker for the demo UNS topics (BENCH-ONLY)
 #   - fault-sim       Python sim publishing PE/PX/Fuse/Vision fakes
 #   - fault-detective Python rule engine subscribing to all topics
+#   - live-plc-bridge Direct Modbus TCP poll → MQTT (BENCH-ONLY; see file header)
 #
 # Reuses mira-bridge (Node-RED 1880) for the HMI + Modbus TCP ingest +
 # mira-pipeline (9099) for the Talk-to-MIRA chat.

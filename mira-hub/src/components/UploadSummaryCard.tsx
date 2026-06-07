@@ -191,7 +191,7 @@ export function UploadSummaryCard({ uploadId }: { uploadId: string }) {
             </Link>
           </Button>
           <Button asChild size="sm" variant="outline" className="flex-1 text-xs gap-1.5">
-            <Link href="/knowledge">
+            <Link href="/knowledge/manuals">
               <BookOpen className="w-3.5 h-3.5" />
               View Knowledge Base
             </Link>

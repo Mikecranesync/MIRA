@@ -21,6 +21,7 @@ Installs `pre-commit` + `watchdog` and registers the git hook. Works on Windows 
 | `pyright` | type check | catches type mismatches CI would catch | 5-15s |
 | `bandit` | security scan | mirrors CI (`.bandit.yml`, severity high) | 2-5s |
 | `gitleaks` | secret scan | mirrors CI (`.gitleaks.toml`) | <1s |
+| `actionlint` | GitHub Actions workflow lint | catches the duplicate-key / schema / parse errors GitHub rejects at load time (e.g. #1725); runs on staged `.github/workflows/*.yml` only. Needs `brew install actionlint`. | <1s |
 | `fsm-smoke` | engine + Q-trap + guardrails unit tests | catches the regression class PR #411 fixed | 5-30s |
 
 Total budget: **<60s** on a typical commit.

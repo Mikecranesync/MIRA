@@ -47,7 +47,7 @@ DEFAULT_TENANT = "78917b56-f85f-43bb-9a08-1bb98a6cd6c3"
 DEFAULT_OLLAMA = "http://192.168.1.11:11434"
 EMBED_MODEL = "nomic-embed-text"
 EMBED_DIM = 768
-CHUNKS_PATH = Path(__file__).parent / "chunks.jsonl"
+DEFAULT_CHUNKS_PATH = Path(__file__).parent / "chunks.jsonl"
 
 
 def neon_engine() -> Any:
@@ -219,11 +219,11 @@ def insert_new_chunks(
     return inserted, skipped
 
 
-def load_chunks() -> list[dict]:
-    if not CHUNKS_PATH.exists():
-        raise SystemExit(f"chunks file missing: {CHUNKS_PATH}")
+def load_chunks(chunks_path: Path = DEFAULT_CHUNKS_PATH) -> list[dict]:
+    if not chunks_path.exists():
+        raise SystemExit(f"chunks file missing: {chunks_path}")
     chunks = []
-    with CHUNKS_PATH.open() as f:
+    with chunks_path.open(encoding="utf-8") as f:
         for ln, line in enumerate(f, 1):
             line = line.strip()
             if not line:
@@ -243,12 +243,15 @@ def main() -> int:
     ap.add_argument("--ollama-url", default=os.environ.get("OLLAMA_URL", DEFAULT_OLLAMA),
                     help="Ollama base URL (default: Bravo LAN)")
     ap.add_argument("--tenant-id", default=os.environ.get("MIRA_TENANT_ID", DEFAULT_TENANT))
+    ap.add_argument("--chunks", default=str(DEFAULT_CHUNKS_PATH),
+                    help="path to chunks.jsonl (default: this script's directory)")
     args = ap.parse_args()
 
     log.info("ollama: %s  tenant: %s  dry_run: %s", args.ollama_url, args.tenant_id, args.dry_run)
 
-    chunks = load_chunks()
-    log.info("loaded %d chunks from %s", len(chunks), CHUNKS_PATH)
+    chunks_path = Path(args.chunks)
+    chunks = load_chunks(chunks_path)
+    log.info("loaded %d chunks from %s", len(chunks), chunks_path)
 
     if not args.dry_run:
         try:

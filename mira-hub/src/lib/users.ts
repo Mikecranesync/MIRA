@@ -128,6 +128,29 @@ export async function listAllUsers(): Promise<HubUser[]> {
   return rows.map(rowToUser);
 }
 
+// Synthetic accounts created by Playwright probes, e2e suites, and DB canaries.
+// They pollute the admin user list (Hub QA 2026-05-28 #8). The admin route hides
+// them by default and exposes them via ?includeSystem=1, so nothing is lost — the
+// classifier only decides default visibility, never deletes.
+const SYSTEM_ACCOUNT_EMAIL_PATTERNS: RegExp[] = [
+  /playwright/i, // playwright-probe@…, playwright@…
+  /\be2e[-_]/i, // e2e-trial-*, e2e_audit@…
+  /(^|[-_.+])test[-_.@]/i, // drawer-test-*, *-test@, +test@
+  /\bprobe\b/i, // *-probe@…
+];
+const SYSTEM_ACCOUNT_NAME_PATTERNS: RegExp[] = [
+  /\bplaywright\b/i,
+  /\be2e\b/i,
+  /^neondb proof$/i,
+  /^e2e audit$/i,
+];
+
+export function isSystemAccount(user: { email: string; name: string | null }): boolean {
+  if (SYSTEM_ACCOUNT_EMAIL_PATTERNS.some((re) => re.test(user.email ?? ""))) return true;
+  const name = user.name ?? "";
+  return name !== "" && SYSTEM_ACCOUNT_NAME_PATTERNS.some((re) => re.test(name));
+}
+
 export async function updateUserStatus(id: string, status: UserStatus): Promise<void> {
   await ensureSchema();
   await pool.query(
