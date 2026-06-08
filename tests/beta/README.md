@@ -40,11 +40,18 @@ The harness speaks both the NodeChat contract (`messages` body + SSE response) a
 JSON engine/pipeline surfaces — see `_gate._ask`.
 
 **Status (post-#1592, 2026-06-08):** PR #1592 (`folder = brain`) **merged** to main
-(`6758e7e6`) and closed the upload→retrieval gap **on the NodeChat surface**: a PDF
-attached to a `/namespace` node is chunked into `knowledge_entries` (`ingest_route='v2'`,
+(`6758e7e6`) and wired the upload→retrieval **write + plumbing** **on the NodeChat surface**:
+a PDF attached to a `/namespace` node is chunked into `knowledge_entries` (`ingest_route='v2'`,
 generated `content_tsv`) and `retrieveNodeChunks` reads exactly those rows, subtree-scoped,
 into a cited NodeChat answer. The full stranger flow exists in the UI (empty tenant →
 "New Folder" → attach manual → ask).
+
+**Caveat (found + fixed 2026-06-08):** an ephemeral-pg replay of the literal INSERT+SELECT
+against the real schema showed the gate's own question returned **0 rows** — `retrieveNodeChunks`
+used `plainto_tsquery` (AND-combines every term), so "what does oC **mean**?" injected an
+off-vocabulary word no chunk contains → empty retrieval. Fixed in `mira-hub/src/lib/manual-rag.ts`
+(precise AND first, OR fallback when empty). So "wired" became "actually retrieves" only with that
+fix — a reminder that inspection ≠ execution for BM25 query semantics.
 
 The gate is **still RED** until it's actually run green against a provisioned **dev/staging**
 node + tenant (the gate excludes hand-seeded assets — it must be an *unseen* manual on a

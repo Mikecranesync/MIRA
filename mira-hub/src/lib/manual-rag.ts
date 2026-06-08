@@ -151,24 +151,47 @@ export async function retrieveNodeChunks(
   }
   if (nodeIds.length === 0) return [];
 
-  const { rows } = await client.query(
-    `SELECT
-        content,
-        source_url,
-        source_page,
-        page_start,
-        section_path,
-        metadata->>'filename' AS filename,
-        ts_rank_cd(content_tsv, plainto_tsquery('english', $2)) AS rank
-      FROM knowledge_entries
-      WHERE tenant_id = $1
-        AND ingest_route = 'v2'
-        AND (metadata->>'node_id') = ANY($3::text[])
-        AND content_tsv @@ plainto_tsquery('english', $2)
-      ORDER BY rank DESC
-      LIMIT $4`,
-    [tenantId, q, nodeIds, topK],
-  );
+  // Two tsquery shapes, both derived from plainto_tsquery so the user's text is
+  // sanitized (no to_tsquery injection):
+  //   AND — `plainto_tsquery('english', $2)` ("gs10 & fault & oc & mean"): precise,
+  //         but a single off-vocabulary word (e.g. the interrogative "mean" in
+  //         "what does oC mean?") that no manual chunk contains zeroes the whole
+  //         match. Natural questions hit this constantly.
+  //   OR  — the same lexemes joined with `|` ("gs10 | fault | oc | mean"): recall,
+  //         ranked by ts_rank_cd so the best chunk still sorts first.
+  // Run AND first (precision); fall back to OR only when AND finds nothing — so a
+  // precise query keeps its tight result, and a conversational one still grounds
+  // instead of returning "no coverage" for a manual that IS attached.
+  const AND_TSQUERY = "plainto_tsquery('english', $2)";
+  const OR_TSQUERY =
+    "to_tsquery('english', replace(plainto_tsquery('english', $2)::text, ' & ', ' | '))";
+
+  const runRetrieval = async (tsquery: string) => {
+    const res = await client.query(
+      `SELECT
+          content,
+          source_url,
+          source_page,
+          page_start,
+          section_path,
+          metadata->>'filename' AS filename,
+          ts_rank_cd(content_tsv, ${tsquery}) AS rank
+        FROM knowledge_entries
+        WHERE tenant_id = $1
+          AND ingest_route = 'v2'
+          AND (metadata->>'node_id') = ANY($3::text[])
+          AND content_tsv @@ ${tsquery}
+        ORDER BY rank DESC
+        LIMIT $4`,
+      [tenantId, q, nodeIds, topK],
+    );
+    return res.rows;
+  };
+
+  let rows = await runRetrieval(AND_TSQUERY);
+  if (rows.length === 0) {
+    rows = await runRetrieval(OR_TSQUERY);
+  }
 
   return rows.map((r: Record<string, unknown>) => ({
     content: String(r.content ?? ""),

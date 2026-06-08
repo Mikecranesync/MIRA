@@ -4,7 +4,8 @@
 
 **Drift corrected:** PR #1592 (`feat(hub): folder = brain`) is **MERGED** to main
 (`6758e7e6`, Slices 1–4 + e2e proof) — earlier hot.md/path-to-beta notes calling it
-"DRAFT" are stale. It closed the upload→retrieval gap **on the Hub NodeChat surface**:
+"DRAFT" are stale. It wired the upload→retrieval **write + plumbing** **on the Hub NodeChat
+surface** (but the retrieval *query semantics* had a bug — found + fixed this session, below):
 
 - `/api/namespace/node/[id]/files` POST → `ingestPdfToNode` (`mira-hub/src/lib/node-knowledge-ingest.ts`)
   chunks an attached PDF into `knowledge_entries` (`ingest_route='v2'`, generated `content_tsv`
@@ -17,12 +18,25 @@
 - Full stranger flow EXISTS in UI: empty tenant → `EmptyState` "New Folder" → attach manual
   (`/namespace` page.tsx:251) → ask via `NodeChat`.
 
+**🔴 Retrieval-semantics bug — found via execution proof, FIXED this session.** Inspection said
+write↔read aligned; running the literal INSERT+SELECT against the real schema (ephemeral pg,
+migrations 001/003/006/045 + kg_entities) showed the gate's OWN question returns **0 rows**:
+`retrieveNodeChunks` used `plainto_tsquery`, which **AND-combines every term**, so a natural
+question ("what does oC **mean**?") injects an off-vocabulary word no manual chunk contains →
+empty retrieval → no citation. Proven: `plainto`(AND)=false, `websearch`=false (also ANDs),
+OR-joined `to_tsquery`=true. **Fix:** `manual-rag.ts::retrieveNodeChunks` now runs the precise AND
+query first, then falls back to an OR query (`' & '→' | '` rewrite of the sanitized plainto output)
+only when AND returns nothing — precision kept, recall restored. Proven at SQL level + 4 vitest
+tests (`mira-hub/src/lib/__tests__/manual-rag.test.ts`, 13/13 pass). **Follow-up (NOT fixed):
+`retrieveManualChunks` + `mira-bots/shared/workers/rag_worker.py` use the same `plainto` AND —
+likely the same natural-question miss on Telegram/scan; needs eval coverage before changing.**
+
 **Gate still RED (do not declare beta-ready):** the gate is "an *unseen* manual on a *self-served*
-node, zero Mike seeding" — a pre-seeded pass doesn't count. Two blockers to a green run:
-1. **Harness contract (FIXED this session):** `tests/beta/_gate.py::_ask` posted JSON `{question}`
-   but NodeChat needs a `messages` array + returns **SSE**. Added messages-body + SSE accumulation
-   (back-compat with JSON surfaces) + `tests/beta/test_gate_harness.py` (7 unit tests, no env).
-   Did NOT remove the `xfail(strict)` marker (gate not yet proven met).
+node, zero Mike seeding" — a pre-seeded pass doesn't count. Remaining blockers to a green run:
+1. **Harness contract (FIXED):** `tests/beta/_gate.py::_ask` posted JSON `{question}` but NodeChat
+   needs a `messages` array + returns **SSE**. Added messages-body + SSE accumulation (back-compat
+   with JSON surfaces) + `tests/beta/test_gate_harness.py` (7 unit tests, no env). Did NOT remove
+   the `xfail(strict)` marker (gate not yet proven met end-to-end).
 2. **Provisioning:** needs a dev/staging run with a real tenant + node. Hub auth is a **next-auth
    session cookie**, not the `BETA_GATE_API_KEY` bearer — provisioner must supply working auth.
 

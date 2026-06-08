@@ -7,14 +7,20 @@ exact gap, is PR #1592 the right fix, and what's the minimal path to close it?
 > **Confidence key:** ✅ confirmed in code this session · 📝 from prior session memory
 > (`project_upload_retrieval_gap`, `project_hub_uploads_no_rls`, `project_miradrop_ingest_v2`).
 
-> **⚑ POST-MERGE UPDATE (2026-06-08):** PR #1592 is **MERGED** (`6758e7e6`). It closed the gap
-> **on the Hub NodeChat surface** (steps 1–3 of §4 below are done; the node-attach door
+> **⚑ POST-MERGE UPDATE (2026-06-08):** PR #1592 is **MERGED** (`6758e7e6`). It wired the
+> **write + plumbing on the Hub NodeChat surface** (steps 1–3 of §4 below: node-attach door
 > `/api/namespace/node/[id]/files` → `node-knowledge-ingest.ts` → `knowledge_entries` ↔
-> `retrieveNodeChunks` ↔ NodeChat are all wired + UI-reachable). **Step 4 — wiring the *blind*
-> `/api/uploads*` doors — is NOT done and is filed as a separate follow-up (not a beta blocker;
-> the node-attach door is the beta surface).** The beta GATE is still RED until run green on a
-> provisioned dev/staging tenant. The gate harness was updated this session to speak NodeChat's
-> `messages`+SSE contract (`tests/beta/_gate.py`). Sections below describe the pre-merge state.
+> `retrieveNodeChunks` ↔ NodeChat, all UI-reachable).
+> **But an ephemeral-pg execution proof found a retrieval-semantics bug** (inspection missed it):
+> `retrieveNodeChunks` used `plainto_tsquery` (AND over all terms), so the gate's own natural
+> question returned **0 rows** — fixed this session via an AND-first / OR-fallback in
+> `mira-hub/src/lib/manual-rag.ts` (proven: SQL replay + 4 vitest tests). The same `plainto` AND
+> lives in `retrieveManualChunks` + `rag_worker.py` (Telegram/scan) — **likely the same
+> natural-question miss; left as a follow-up (needs eval coverage).**
+> **Step 4 — wiring the *blind* `/api/uploads*` doors — is NOT done; filed #1806** (not a beta
+> blocker; node-attach is the beta surface). The beta GATE is still RED until run green on a
+> provisioned dev/staging tenant; the gate harness now speaks NodeChat's `messages`+SSE contract
+> (`tests/beta/_gate.py`). Sections below describe the pre-merge state.
 
 ---
 
