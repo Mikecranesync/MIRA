@@ -1,8 +1,14 @@
 # Asset Agent Validation Spec
 
-**Status:** DRAFT — spec only, no implementation
+**Status:** PARTIAL — read-path spine implemented (migration + state machine + Ignition gate); write-path (Validate UI + approve endpoint) pending
 **Authored:** 2026-06-07
 **Owner:** Mike Harper
+**Implementation status (2026-06-07):**
+- ✅ Migration `mira-hub/db/migrations/046_asset_agent_status.sql` (both tables + RLS) — *written, not yet applied to any DB.*
+- ✅ State machine + gate logic `mira-bots/shared/asset_agent_transition.py` (+ `mira-bots/tests/test_asset_agent_transition.py`, 27 passing).
+- ✅ HMI deployment gate wired in `mira-pipeline/ignition_chat.py` behind `ENFORCE_ASSET_AGENT_GATE` (default OFF) (+ `mira-pipeline/tests/test_ignition_chat_gate.py`, 10 passing).
+- 🔲 Validate UI (`/assets/[id]` tab), approve endpoint, TS transition twin — next PR (where the write-path gets its first caller).
+- 🔲 Migrations applied dev→staging→prod; golden/e2e case; `mira-run-hallucination-audit` extension.
 **Parent doctrine:** `docs/THEORY_OF_OPERATIONS.md` · `.claude/rules/train-before-deploy.md`
 **Phase fit:** sits under `docs/plans/2026-06-07-path-to-beta.md` (the beta gate) and the master plan `docs/plans/2026-06-01-mira-master-architecture-plan.md`.
 

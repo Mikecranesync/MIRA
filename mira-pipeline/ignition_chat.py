@@ -37,6 +37,34 @@ _NONCE_TTL_S = 600            # nonces expire after 10 minutes
 _NONCE_MAX_ENTRIES = 10_000
 
 
+def _envflag(name: str) -> bool:
+    return os.getenv(name, "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Train-before-deploy HMI gate (docs/specs/asset-agent-validation-spec.md §7,
+# .claude/rules/train-before-deploy.md). DEFAULT OFF — the existing endpoint
+# behavior is byte-identical until a tenant populates asset_agent_status and
+# flips this on. When on, only 'approved'/'deployed' assets get answered.
+def _enforce_asset_agent_gate() -> bool:
+    return _envflag("ENFORCE_ASSET_AGENT_GATE")
+
+
+def _asset_agent_auto_deploy() -> bool:
+    return _envflag("ASSET_AGENT_AUTO_DEPLOY")
+
+
+# Defensive import — the gate stays disabled if shared/ isn't mounted (the flag
+# defaults off anyway, so this never changes default behavior).
+try:
+    from shared.asset_agent_transition import GATE_REFUSAL_MESSAGE, gate_decision
+except Exception:  # pragma: no cover - shared not importable in this context
+    gate_decision = None  # type: ignore[assignment]
+    GATE_REFUSAL_MESSAGE = (
+        "This asset hasn't been validated for MIRA yet. An admin needs to "
+        "approve it in the Command Center before it can answer here."
+    )
+
+
 # ── Nonce replay store (in-process LRU) ──────────────────────────────────────
 
 _nonce_store: "OrderedDict[tuple[str, str], float]" = OrderedDict()
@@ -153,6 +181,91 @@ def _format_tag_preamble(tag_snapshot: dict[str, Any], asset_id: str) -> str:
     return "\n".join(lines)
 
 
+# ── Asset-agent deployment gate (train-before-deploy) ────────────────────────
+
+
+def _lookup_agent_state(tenant_id: str, asset_id: str) -> Optional[str]:
+    """Return the asset's lifecycle state from `asset_agent_status`, or None.
+
+    Resolves the Ignition `asset_id` onto a `kg_entities` row by the common
+    natural keys (entity_id / uns_path / raw uuid), then reads the agent state.
+    Returns None when there is no agent row (legitimately not onboarded → the
+    gate refuses). Raises on DB error so the caller can fail OPEN — a Neon blip
+    must not brick a previously-working HMI.
+    """
+    neon_url = os.getenv("NEON_DATABASE_URL", "")
+    if not neon_url:
+        raise RuntimeError("NEON_DATABASE_URL not set")
+
+    from sqlalchemy import NullPool, create_engine, text
+
+    engine = create_engine(
+        neon_url,
+        poolclass=NullPool,
+        connect_args={"sslmode": "require"},
+        pool_pre_ping=True,
+    )
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT aas.state "
+                    "FROM asset_agent_status aas "
+                    "JOIN kg_entities ke ON ke.id = aas.kg_entity_id "
+                    "WHERE aas.tenant_id = :tid "
+                    "  AND (ke.entity_id = :asset OR ke.uns_path = :asset "
+                    "       OR ke.id::text = :asset) "
+                    "LIMIT 1"
+                ),
+                {"tid": tenant_id, "asset": asset_id},
+            ).fetchone()
+    finally:
+        engine.dispose()
+    return row[0] if row else None
+
+
+def _mark_deployed(tenant_id: str, asset_id: str) -> bool:
+    """Best-effort: flip an approved agent to 'deployed' on first live turn.
+
+    Fire-and-forget — returns False and logs on any failure; never raises into
+    the request path.
+    """
+    neon_url = os.getenv("NEON_DATABASE_URL", "")
+    if not neon_url:
+        return False
+    try:
+        from sqlalchemy import NullPool, create_engine, text
+
+        engine = create_engine(
+            neon_url,
+            poolclass=NullPool,
+            connect_args={"sslmode": "require"},
+            pool_pre_ping=True,
+        )
+        try:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "UPDATE asset_agent_status aas "
+                        "SET state = 'deployed', deployed_at = now(), "
+                        "    deploy_surface = COALESCE(deploy_surface, 'ignition'), "
+                        "    updated_at = now() "
+                        "FROM kg_entities ke "
+                        "WHERE ke.id = aas.kg_entity_id "
+                        "  AND aas.tenant_id = :tid AND aas.state = 'approved' "
+                        "  AND (ke.entity_id = :asset OR ke.uns_path = :asset "
+                        "       OR ke.id::text = :asset)"
+                    ),
+                    {"tid": tenant_id, "asset": asset_id},
+                )
+        finally:
+            engine.dispose()
+        return True
+    except Exception:
+        logger.warning("IGNITION_CHAT mark_deployed_failed tenant=%s asset=%s", tenant_id, asset_id)
+        return False
+
+
 # ── Router factory ───────────────────────────────────────────────────────────
 
 
@@ -220,6 +333,65 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
             }
             for path, entry in sorted((req.tag_snapshot or {}).items())
         ]
+
+        # ── Train-before-deploy gate ─────────────────────────────────────────
+        # When ENFORCE_ASSET_AGENT_GATE is on, only answer for an asset whose
+        # agent is 'approved'/'deployed'. Default-off → this block is skipped
+        # and behavior is unchanged. A non-ready asset gets a clean refusal
+        # (NOT a chat-gate question — the connection is certified; the *agent*
+        # isn't ready). DB errors fail OPEN so a Neon blip can't brick the HMI.
+        if _enforce_asset_agent_gate() and asset_id and gate_decision is not None:
+            try:
+                agent_state = _lookup_agent_state(tenant_id, asset_id)
+                gate_db_ok = True
+            except Exception:
+                logger.warning(
+                    "IGNITION_CHAT gate_lookup_failed tenant=%s asset=%s — failing open",
+                    tenant_id,
+                    asset_id,
+                )
+                agent_state, gate_db_ok = None, False
+            if gate_db_ok:
+                decision = gate_decision(
+                    agent_state, enforce=True, auto_deploy=_asset_agent_auto_deploy()
+                )
+                if not decision.allow:
+                    logger.info(
+                        "IGNITION_CHAT gate_refused tenant=%s asset=%s reason=%s",
+                        tenant_id,
+                        asset_id,
+                        decision.reason,
+                    )
+                    write_audit_row(
+                        tenant_id=tenant_id,
+                        channel="ignition",
+                        user_id=None,
+                        asset_id=asset_id or None,
+                        chat_id=chat_id,
+                        prompt=question,
+                        answer=GATE_REFUSAL_MESSAGE,
+                        sources=[],
+                        tag_reads=tag_reads,
+                        llm_provider=None,
+                        llm_model=None,
+                        inference_run_id=None,
+                        latency_ms=0,
+                        status=f"gate_refused:{decision.reason}",
+                    )
+                    return {
+                        "answer": GATE_REFUSAL_MESSAGE,
+                        "sources": [],
+                        "citations": [],
+                        "evidence": [],
+                        "confidence": None,
+                        "suggested_actions": [],
+                        "tenant_id": tenant_id,
+                        "asset_id": asset_id,
+                        "latency_ms": 0,
+                        "gate": decision.reason,
+                    }
+                if decision.deploy_now:
+                    _mark_deployed(tenant_id, asset_id)
 
         t0 = time.monotonic()
         engine_error: Optional[str] = None
