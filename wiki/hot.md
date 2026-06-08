@@ -20,7 +20,17 @@ namespace; Ignition/HMI deploys *approved* asset agents). Branch `feat/train-bef
   `ignition_chat.py` answers any asset-bound HMAC turn regardless of readiness. No "mark good/bad"
   in the Hub. No `asset_agent_status`.
 
-**Shipped this session (docs/doctrine only, no code):**
+**Shipped this session — CODE (read-path spine, commit `607a3cd6`):**
+- `mira-hub/db/migrations/046_asset_agent_status.sql` — `asset_agent_status` + `asset_validation_qa`,
+  RLS mirroring mig 027. NOT applied to any DB yet.
+- `mira-bots/shared/asset_agent_transition.py` — pure state machine + `gate_decision()` (27 tests ✅).
+- `mira-pipeline/ignition_chat.py` — HMI gate behind `ENFORCE_ASSET_AGENT_GATE` (default OFF; non-ready
+  → clean refusal, audited, no engine call; DB error fails OPEN). 10 tests ✅; direct-connection 16/16 ✅.
+- ⚠️ `_lookup_agent_state` resolver join (asset_id→kg_entities) is plausible but UNTESTED vs real schema
+  (gate default-off; tests monkeypatch the lookup). Verify before enabling.
+- Next PR: Validate UI (`/assets/[id]`) + approve endpoint + TS twin (write-path, where the helper gets a caller).
+
+**Shipped this session — docs/doctrine:**
 - `docs/specs/asset-agent-validation-spec.md` (LANE 4) — per-`kg_entity` lifecycle
   `draft→training→validating→approved→deployed`, two new tables (`asset_agent_status`,
   `asset_validation_qa`), composes `kg_entities.approval_state` + `ai_suggestions` + engine 1–5
