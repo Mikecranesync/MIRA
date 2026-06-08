@@ -121,6 +121,30 @@ def test_gate_db_error_fails_open(make_client, monkeypatch):
     engine.process.assert_awaited_once()  # failed open → answered
 
 
+def test_gate_on_asset_context_only_is_gated_not_bypassed(make_client, monkeypatch):
+    # A Perspective turn with asset_context but no flat asset_id is a direct
+    # connection and MUST go through the gate (spec §7 — no silent bypass).
+    tc, engine = make_client(enforce=True)
+    seen = {}
+
+    def _lookup(t, a):
+        seen["token"] = a
+        return "draft"  # not ready → must refuse
+
+    monkeypatch.setattr(ignition_chat, "_lookup_agent_state", _lookup)
+    resp = tc.post(
+        "/api/v1/ignition/chat",
+        content=json.dumps(
+            {"query": "is it faulted?", "asset_context": {"equipment": "gs10_vfd", "line": "l1"}}
+        ).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    assert resp.status_code == 200
+    engine.process.assert_not_awaited()
+    assert resp.json()["gate"].startswith("not_ready:")
+    assert seen["token"] == "gs10_vfd"  # resolved the most-specific context field
+
+
 def test_gate_on_no_asset_id_is_plain_chat(make_client, monkeypatch):
     tc, engine = make_client(enforce=True)
     monkeypatch.setattr(ignition_chat, "_lookup_agent_state", lambda t, a: (_ for _ in ()).throw(AssertionError))

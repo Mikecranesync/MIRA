@@ -184,14 +184,37 @@ def _format_tag_preamble(tag_snapshot: dict[str, Any], asset_id: str) -> str:
 # ── Asset-agent deployment gate (train-before-deploy) ────────────────────────
 
 
+def _asset_context_token(asset_context: Optional[dict[str, Any]]) -> str:
+    """Best-effort single identifier from an asset_context object.
+
+    A Perspective panel may send `{site,area,line,equipment,component?}` with no
+    flat asset_id. Return the most specific field present so the gate has SOME
+    token to resolve. Empty string if nothing usable.
+    """
+    if not asset_context:
+        return ""
+    for key in ("component", "equipment", "machine", "asset", "line"):
+        val = asset_context.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return ""
+
+
 def _lookup_agent_state(tenant_id: str, asset_id: str) -> Optional[str]:
     """Return the asset's lifecycle state from `asset_agent_status`, or None.
 
-    Resolves the Ignition `asset_id` onto a `kg_entities` row by the common
+    Resolves the caller's asset identifier onto a `kg_entities` row by the common
     natural keys (entity_id / uns_path / raw uuid), then reads the agent state.
-    Returns None when there is no agent row (legitimately not onboarded → the
-    gate refuses). Raises on DB error so the caller can fail OPEN — a Neon blip
-    must not brick a previously-working HMI.
+    Returns None when there is no agent row (→ the gate refuses). Raises on DB
+    error so the caller can fail OPEN — a Neon blip must not brick a working HMI.
+
+    NOTE — NON-FUNCTIONAL until an explicit Ignition-tag → kg_entity mapping
+    exists. An Ignition asset_id is a tag path ("[default]Conv/State") and
+    asset_context fields are display names; neither matches `entity_id` /
+    `uns_path` (ltree) / `id` today, so with the gate ON this returns None for
+    essentially every asset → refuse-all. Do NOT enable ENFORCE_ASSET_AGENT_GATE
+    until that mapping ships (next PR, alongside the Validate UI). See
+    docs/specs/asset-agent-validation-spec.md §7.
     """
     neon_url = os.getenv("NEON_DATABASE_URL", "")
     if not neon_url:
@@ -340,9 +363,14 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
         # and behavior is unchanged. A non-ready asset gets a clean refusal
         # (NOT a chat-gate question — the connection is certified; the *agent*
         # isn't ready). DB errors fail OPEN so a Neon blip can't brick the HMI.
-        if _enforce_asset_agent_gate() and asset_id and gate_decision is not None:
+        #
+        # Covers EVERY direct-connection turn — both a flat asset_id and an
+        # asset_context-only Perspective turn — so enabling the gate has no
+        # silent bypass (spec §7). gate_asset is the resolution token.
+        gate_asset = asset_id or _asset_context_token(req.asset_context)
+        if _enforce_asset_agent_gate() and (asset_id or req.asset_context) and gate_decision is not None:
             try:
-                agent_state = _lookup_agent_state(tenant_id, asset_id)
+                agent_state = _lookup_agent_state(tenant_id, gate_asset)
                 gate_db_ok = True
             except Exception:
                 logger.warning(
@@ -391,7 +419,7 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
                         "gate": decision.reason,
                     }
                 if decision.deploy_now:
-                    _mark_deployed(tenant_id, asset_id)
+                    _mark_deployed(tenant_id, gate_asset)
 
         t0 = time.monotonic()
         engine_error: Optional[str] = None
