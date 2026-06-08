@@ -7,6 +7,7 @@
 // Spec: docs/specs/asset-agent-validation-spec.md §8
 
 import { useCallback, useEffect, useState } from "react";
+import { API_BASE } from "@/lib/config";
 
 type State =
   | "draft"
@@ -63,12 +64,12 @@ export function AssetValidateTab({ assetId }: { assetId: string }) {
 
   const refresh = useCallback(async () => {
     try {
-      const sRes = await fetch(`/api/assets/${assetId}/agent-status`);
+      const sRes = await fetch(`${API_BASE}/api/assets/${assetId}/agent-status/`);
       if (sRes.ok) {
         const s = (await sRes.json()) as AgentStatus;
         setStatus(s);
       }
-      const qRes = await fetch(`/api/assets/${assetId}/validation-qa`);
+      const qRes = await fetch(`${API_BASE}/api/assets/${assetId}/validation-qa/`);
       if (qRes.ok) {
         const q = await qRes.json();
         if (Array.isArray(q)) setQa(q);
@@ -92,7 +93,7 @@ export function AssetValidateTab({ assetId }: { assetId: string }) {
     try {
       let answer = "";
       let citations: unknown[] = [];
-      const chatRes = await fetch(`/hub/api/assets/${assetId}/chat`, {
+      const chatRes = await fetch(`${API_BASE}/api/assets/${assetId}/chat/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ messages: [{ role: "user", content: q }] }),
@@ -126,7 +127,7 @@ export function AssetValidateTab({ assetId }: { assetId: string }) {
           }
         }
       }
-      const res = await fetch(`/api/assets/${assetId}/validation-qa`, {
+      const res = await fetch(`${API_BASE}/api/assets/${assetId}/validation-qa/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ question: q, miraAnswer: answer || null, citations }),
@@ -142,7 +143,7 @@ export function AssetValidateTab({ assetId }: { assetId: string }) {
   };
 
   const setVerdict = async (qaId: string, verdict: "good" | "bad") => {
-    await fetch(`/api/assets/${assetId}/validation-qa/${qaId}/verdict`, {
+    await fetch(`${API_BASE}/api/assets/${assetId}/validation-qa/${qaId}/verdict/`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ verdict }),
@@ -154,7 +155,7 @@ export function AssetValidateTab({ assetId }: { assetId: string }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/assets/${assetId}/agent-status/transition`, {
+      const res = await fetch(`${API_BASE}/api/assets/${assetId}/agent-status/transition/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ to }),
