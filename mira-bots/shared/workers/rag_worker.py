@@ -468,8 +468,18 @@ class RAGWorker:
                             # For chat surfaces recall_query == message, so their
                             # embedding is unchanged (only the /ask kiosk sets
                             # state["retrieval_query"]).
+                            # Photo turns embed the asset-enriched CLEAN query so
+                            # the vector carries equipment context ("GS10 VFD Help"),
+                            # matching the rerank (640) and decompose (446) paths.
+                            # #1784 embeds recall_query for the /ask kiosk to drop the
+                            # 2760-char MACHINE_CONTEXT card; we enrich recall_query
+                            # (not message) so that latency win is preserved even if a
+                            # kiosk turn ever carries photo+asset.
+                            embed_target = recall_query
+                            if photo_b64 and state.get("asset_identified"):
+                                embed_target = f"{state['asset_identified']} {recall_query}"
                             _t_emb = time.monotonic()
-                            embedding = await self._embed_ollama(recall_query)
+                            embedding = await self._embed_ollama(embed_target)
                             _embed_ms = int((time.monotonic() - _t_emb) * 1000)
                             # Call recall_knowledge unconditionally — it now
                             # falls through to lexical streams when embedding
