@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 from shared.engine import Supervisor
-from shared.live_snapshot import normalize, render_status_block
+from shared.live_snapshot import _FAULT_CODES, normalize, render_status_block
 
 from ask_api.machine_context import MACHINE_CONTEXT
 
@@ -91,19 +91,25 @@ async def ask(req: AskRequest, x_mira_key: str = Header(None)):
         parts.append("[QUESTION]\n" + req.question)
         enriched = "\n\n".join(parts)
 
-        # Clean retrieval query (#1766 follow-up): keyword/BM25/fault-code/product
-        # extraction must key off the QUESTION + decoded live-status block, NOT the
-        # static ~440-token MACHINE_CONTEXT card. Otherwise every token of the card
-        # feeds _extract_fault_codes / _extract_product_names / _recall_bm25 — the
-        # card alone yields ~12 fault codes + 3 product names, firing ~9 sequential
-        # NeonDB round-trips per /ask (the ~10s recall block). The embedding still
-        # uses the full enriched text (semantic context); only the lexical streams
-        # use this trimmed query. The fault code lives in the status block
-        # (vfd_fault_code → CExx), so it MUST be included here, not just the question.
-        retrieval_parts = []
-        if status_block:
-            retrieval_parts.append(status_block)
-        retrieval_parts.append(req.question)
+        # Clean retrieval query (#1766): the lexical streams (BM25 / fault-code /
+        # product-name extraction) and the embedding key off this, NOT the static
+        # ~440-token MACHINE_CONTEXT card. Feed it the QUESTION plus the ACTIVE
+        # fault code only — never the full human-readable status block. The block
+        # contains tokens like "PE-01 beam clear" / "A-DC" that _extract_fault_codes
+        # mis-reads as fault codes; none hit the structured fault table, so recall
+        # falls through to an ILIKE %pattern% seq-scan over 83K rows (~+2s on every
+        # status turn — RAG_STAGE_TIMING showed recall_ms 4323 vs 2161). Including
+        # only the real decoded fault code (e.g. "CE10 modbus timeout" when
+        # vfd_fault_code != 0) preserves CE10/fault grounding without the junk
+        # tokens. Status turns (vfd_fault_code == 0) then carry no fake codes → no
+        # ILIKE. The LLM still sees the full status block via `enriched`.
+        retrieval_parts = [req.question]
+        try:
+            fault_raw = int((req.tags or {}).get("vfd_fault_code") or 0)
+        except (TypeError, ValueError):
+            fault_raw = 0
+        if fault_raw and fault_raw in _FAULT_CODES:
+            retrieval_parts.append(_FAULT_CODES[fault_raw])
         retrieval_query = "\n".join(retrieval_parts)
 
         chat_id = req.session_id or ("ignition:" + uuid.uuid4().hex)
