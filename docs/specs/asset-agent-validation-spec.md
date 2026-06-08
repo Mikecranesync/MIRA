@@ -1,15 +1,37 @@
 # Asset Agent Validation Spec
 
-**Status:** PARTIAL — read-path spine implemented (migration + state machine + Ignition gate); write-path (Validate UI + approve endpoint) pending
+**Status:** PARTIAL — built across two complementary PRs (#1783 write-path + #1781 doctrine/gate)
 **Authored:** 2026-06-07
 **Owner:** Mike Harper
-**Implementation status (2026-06-07):**
-- ✅ Migration `mira-hub/db/migrations/046_asset_agent_status.sql` (both tables + RLS) — *written, not yet applied to any DB.*
-- ✅ State machine + gate logic `mira-bots/shared/asset_agent_transition.py` (+ `mira-bots/tests/test_asset_agent_transition.py`, 27 passing).
-- ✅ HMI deployment gate wired in `mira-pipeline/ignition_chat.py` behind `ENFORCE_ASSET_AGENT_GATE` (default OFF), covering both `asset_id` and `asset_context`-only turns — no bypass (+ `mira-pipeline/tests/test_ignition_chat_gate.py`, 11 passing).
-- ⚠️ **`_lookup_agent_state` is NON-FUNCTIONAL until an Ignition-tag/asset_context → `kg_entity` mapping exists.** An Ignition asset_id is a tag path and asset_context fields are display names; neither matches `entity_id`/`uns_path`(ltree)/`id` today, so with the gate ON it returns None for every asset → refuse-all. **Do not enable `ENFORCE_ASSET_AGENT_GATE` until that mapping ships (next PR).**
-- 🔲 Ignition-tag → `kg_entity` resolver, Validate UI (`/assets/[id]` tab), approve endpoint, TS transition twin — next PR (where the write-path gets its first caller).
-- 🔲 Migrations applied dev→staging→prod; golden/e2e case; `mira-run-hallucination-audit` extension.
+**Implementation status (2026-06-07) — TWO PRs, complementary:**
+
+The write-path and the engine-side gate were built in parallel by two sessions. They compose:
+
+- **PR #1783 `feat/asset-agent-validation` (write-path — owns the schema):** migrations
+  `046_asset_agent_status.sql` + `047_asset_validation_qa.sql`, the TS transition helper, the
+  asset-agent API routes, and the `/assets/[id]` **Validate** tab (lifecycle + Q&A verdicts +
+  approve). **Keying decision (authoritative, supersedes §3/§6 below):** the lifecycle row is keyed
+  on **`equipment_id`** (= `cmms_equipment.id`, the asset the Hub UI operates on) with a carried
+  **`uns_path` (LTREE)** as the deployment-gate key — *not* `kg_entity_id`, because not every asset
+  has a `kg_entities` node and the Hub asset surface is cmms_equipment-keyed. Soft link (no hard FK),
+  same dual-lineage pattern as `wiring_connections` (026) / `tag_events` (033).
+- **PR #1781 `feat/train-before-deploy` (this branch — doctrine + engine-side gate):** this spec,
+  `.claude/rules/train-before-deploy.md` (which #1783's migration already references), the
+  `CLAUDE.md` framing, the Python state machine + `gate_decision()`
+  (`mira-bots/shared/asset_agent_transition.py`, 27 tests), and the HMI deployment gate in
+  `mira-pipeline/ignition_chat.py` behind `ENFORCE_ASSET_AGENT_GATE` (default OFF; the "later
+  beta-gated phase" #1783's migration defers to). The gate reads #1783's `asset_agent_status` by
+  `uns_path`/`equipment_id`. 11 gate tests; direct-connection suite still green (16/16).
+
+> **§3/§6 below name `kg_entity_id` for the spec's original framing; the AS-BUILT key is
+> `equipment_id` + `uns_path` per #1783. Treat #1783's migration as canonical.**
+
+- ⚠️ **The gate's `_lookup_agent_state` is NON-FUNCTIONAL until an asset_context/asset_id →
+  (`uns_path` | `equipment_id`) resolver lands.** An Ignition asset_id is a tag path and
+  asset_context fields are display names; neither equals a stored `uns_path`/`equipment_id` today,
+  so with the gate ON it refuses-all. **Do not enable `ENFORCE_ASSET_AGENT_GATE` until that resolver
+  ships.** This is the one remaining slice.
+- 🔲 Migrations applied dev→staging→prod (via #1783); golden/e2e case; `mira-run-hallucination-audit` extension.
 **Parent doctrine:** `docs/THEORY_OF_OPERATIONS.md` · `.claude/rules/train-before-deploy.md`
 **Phase fit:** sits under `docs/plans/2026-06-07-path-to-beta.md` (the beta gate) and the master plan `docs/plans/2026-06-01-mira-master-architecture-plan.md`.
 

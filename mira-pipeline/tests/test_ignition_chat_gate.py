@@ -63,7 +63,9 @@ def _post(tc, payload: dict):
 
 
 def _ask(tc, **extra):
-    return _post(tc, {"query": "why did the conveyor stop?", "asset_id": "[default]Conv/State", **extra})
+    return _post(
+        tc, {"query": "why did the conveyor stop?", "asset_id": "[default]Conv/State", **extra}
+    )
 
 
 def test_gate_off_is_unchanged(make_client, monkeypatch):
@@ -147,7 +149,9 @@ def test_gate_on_asset_context_only_is_gated_not_bypassed(make_client, monkeypat
 
 def test_gate_on_no_asset_id_is_plain_chat(make_client, monkeypatch):
     tc, engine = make_client(enforce=True)
-    monkeypatch.setattr(ignition_chat, "_lookup_agent_state", lambda t, a: (_ for _ in ()).throw(AssertionError))
+    monkeypatch.setattr(
+        ignition_chat, "_lookup_agent_state", lambda t, a: (_ for _ in ()).throw(AssertionError)
+    )
     resp = _post(tc, {"query": "what is a VFD?"})  # no asset_id
     assert resp.status_code == 200
     engine.process.assert_awaited_once()  # gate only applies to asset-bound turns

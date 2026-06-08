@@ -37,12 +37,12 @@ def test_states_match_migration():
     [
         ("draft", "training"),
         ("training", "validating"),
-        ("validating", "approved"),   # actor supplied below
+        ("validating", "approved"),  # actor supplied below
         ("approved", "deployed"),
-        ("deployed", "approved"),     # undeploy
-        ("validating", "training"),   # fail back
-        ("rejected", "draft"),        # restart
-        ("deprecated", "draft"),      # reactivate
+        ("deployed", "approved"),  # undeploy
+        ("validating", "training"),  # fail back
+        ("rejected", "draft"),  # restart
+        ("deprecated", "draft"),  # reactivate
     ],
 )
 def test_legal_forward_transitions(frm, to):
@@ -53,8 +53,8 @@ def test_legal_forward_transitions(frm, to):
 @pytest.mark.parametrize(
     "frm,to",
     [
-        ("draft", "approved"),     # can't skip validation
-        ("draft", "deployed"),     # can't skip everything
+        ("draft", "approved"),  # can't skip validation
+        ("draft", "deployed"),  # can't skip everything
         ("training", "deployed"),
         ("deprecated", "deployed"),
         ("validating", "deployed"),  # must be approved first
@@ -113,7 +113,9 @@ def test_gate_approved_allows_and_respects_auto_deploy():
     assert off.allow is True and off.deploy_now is False
 
 
-@pytest.mark.parametrize("state", ["draft", "training", "validating", "rejected", "deprecated", None])
+@pytest.mark.parametrize(
+    "state", ["draft", "training", "validating", "rejected", "deprecated", None]
+)
 def test_gate_refuses_not_ready(state):
     d = gate_decision(state, enforce=True, auto_deploy=True)
     assert d.allow is False

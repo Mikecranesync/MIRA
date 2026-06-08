@@ -33,21 +33,19 @@ STATES: frozenset[str] = frozenset(
 # and are added to every entry below.
 _FORWARD: dict[str, set[str]] = {
     "draft": {"training"},
-    "training": {"validating", "draft"},          # back to draft if docs pulled
-    "validating": {"approved", "training"},        # fail back to training
-    "approved": {"deployed", "validating"},        # re-validate, or go live
-    "deployed": {"approved"},                      # undeploy → back to approved
-    "rejected": {"draft"},                         # restart from scratch
-    "deprecated": set(),                           # terminal (except reactivate below)
+    "training": {"validating", "draft"},  # back to draft if docs pulled
+    "validating": {"approved", "training"},  # fail back to training
+    "approved": {"deployed", "validating"},  # re-validate, or go live
+    "deployed": {"approved"},  # undeploy → back to approved
+    "rejected": {"draft"},  # restart from scratch
+    "deprecated": set(),  # terminal (except reactivate below)
 }
 
 # Universal escapes available from every non-terminal state.
 _ESCAPES: set[str] = {"rejected", "deprecated"}
 
 LEGAL_TRANSITIONS: dict[str, frozenset[str]] = {
-    state: frozenset(
-        targets | (_ESCAPES if state not in {"deprecated"} else set())
-    )
+    state: frozenset(targets | (_ESCAPES if state not in {"deprecated"} else set()))
     for state, targets in _FORWARD.items()
 }
 # Allow reactivating a deprecated asset back to draft (re-onboarding).
@@ -83,9 +81,9 @@ def validate_transition(
 
 
 class GateDecision(NamedTuple):
-    allow: bool          # may the surface answer for this asset?
-    deploy_now: bool     # should the caller flip approved → deployed as a side effect?
-    reason: str          # short machine/audit reason
+    allow: bool  # may the surface answer for this asset?
+    deploy_now: bool  # should the caller flip approved → deployed as a side effect?
+    reason: str  # short machine/audit reason
 
 
 # A clean, technician-facing refusal — NOT a chat-gate question. The connection

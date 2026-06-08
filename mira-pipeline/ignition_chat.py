@@ -32,8 +32,8 @@ logger = logging.getLogger("mira-pipeline.ignition_chat")
 
 MIRA_IGNITION_HMAC_KEY = os.getenv("MIRA_IGNITION_HMAC_KEY", "")
 
-_TIMESTAMP_SKEW_S = 300       # ±5 minutes
-_NONCE_TTL_S = 600            # nonces expire after 10 minutes
+_TIMESTAMP_SKEW_S = 300  # ±5 minutes
+_NONCE_TTL_S = 600  # nonces expire after 10 minutes
 _NONCE_MAX_ENTRIES = 10_000
 
 
@@ -203,18 +203,21 @@ def _asset_context_token(asset_context: Optional[dict[str, Any]]) -> str:
 def _lookup_agent_state(tenant_id: str, asset_id: str) -> Optional[str]:
     """Return the asset's lifecycle state from `asset_agent_status`, or None.
 
-    Resolves the caller's asset identifier onto a `kg_entities` row by the common
-    natural keys (entity_id / uns_path / raw uuid), then reads the agent state.
-    Returns None when there is no agent row (→ the gate refuses). Raises on DB
-    error so the caller can fail OPEN — a Neon blip must not brick a working HMI.
+    Reads the table owned by PR #1783 (migrations 046/047): rows are keyed on
+    `equipment_id` (= cmms_equipment.id) with a carried `uns_path` (LTREE) that
+    that migration designates as the deployment-gate key. We match the caller's
+    token against either, as text (no ltree cast → never errors on a non-ltree
+    token). Returns None when there's no matching agent row (→ the gate refuses).
+    Raises on DB error so the caller can fail OPEN — a Neon blip must not brick
+    a working HMI.
 
-    NOTE — NON-FUNCTIONAL until an explicit Ignition-tag → kg_entity mapping
-    exists. An Ignition asset_id is a tag path ("[default]Conv/State") and
-    asset_context fields are display names; neither matches `entity_id` /
-    `uns_path` (ltree) / `id` today, so with the gate ON this returns None for
-    essentially every asset → refuse-all. Do NOT enable ENFORCE_ASSET_AGENT_GATE
-    until that mapping ships (next PR, alongside the Validate UI). See
-    docs/specs/asset-agent-validation-spec.md §7.
+    NOTE — NON-FUNCTIONAL until an asset_context/asset_id → (uns_path | equipment_id)
+    resolver lands. An Ignition asset_id is a tag path ("[default]Conv/State")
+    and asset_context fields are display names; neither equals a stored
+    `uns_path` or `equipment_id` UUID today, so with the gate ON this returns
+    None for essentially every asset → refuse-all. Do NOT enable
+    ENFORCE_ASSET_AGENT_GATE until that resolver ships. See
+    docs/specs/asset-agent-validation-spec.md §7 and PR #1783.
     """
     neon_url = os.getenv("NEON_DATABASE_URL", "")
     if not neon_url:
@@ -232,15 +235,12 @@ def _lookup_agent_state(tenant_id: str, asset_id: str) -> Optional[str]:
         with engine.connect() as conn:
             row = conn.execute(
                 text(
-                    "SELECT aas.state "
-                    "FROM asset_agent_status aas "
-                    "JOIN kg_entities ke ON ke.id = aas.kg_entity_id "
-                    "WHERE aas.tenant_id = :tid "
-                    "  AND (ke.entity_id = :asset OR ke.uns_path = :asset "
-                    "       OR ke.id::text = :asset) "
+                    "SELECT state FROM asset_agent_status "
+                    "WHERE tenant_id = :tid "
+                    "  AND (uns_path::text = :token OR equipment_id::text = :token) "
                     "LIMIT 1"
                 ),
-                {"tid": tenant_id, "asset": asset_id},
+                {"tid": tenant_id, "token": asset_id},
             ).fetchone()
     finally:
         engine.dispose()
@@ -269,17 +269,14 @@ def _mark_deployed(tenant_id: str, asset_id: str) -> bool:
             with engine.begin() as conn:
                 conn.execute(
                     text(
-                        "UPDATE asset_agent_status aas "
+                        "UPDATE asset_agent_status "
                         "SET state = 'deployed', deployed_at = now(), "
                         "    deploy_surface = COALESCE(deploy_surface, 'ignition'), "
                         "    updated_at = now() "
-                        "FROM kg_entities ke "
-                        "WHERE ke.id = aas.kg_entity_id "
-                        "  AND aas.tenant_id = :tid AND aas.state = 'approved' "
-                        "  AND (ke.entity_id = :asset OR ke.uns_path = :asset "
-                        "       OR ke.id::text = :asset)"
+                        "WHERE tenant_id = :tid AND state = 'approved' "
+                        "  AND (uns_path::text = :token OR equipment_id::text = :token)"
                     ),
-                    {"tid": tenant_id, "asset": asset_id},
+                    {"tid": tenant_id, "token": asset_id},
                 )
         finally:
             engine.dispose()
@@ -368,7 +365,11 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
         # asset_context-only Perspective turn — so enabling the gate has no
         # silent bypass (spec §7). gate_asset is the resolution token.
         gate_asset = asset_id or _asset_context_token(req.asset_context)
-        if _enforce_asset_agent_gate() and (asset_id or req.asset_context) and gate_decision is not None:
+        if (
+            _enforce_asset_agent_gate()
+            and (asset_id or req.asset_context)
+            and gate_decision is not None
+        ):
             try:
                 agent_state = _lookup_agent_state(tenant_id, gate_asset)
                 gate_db_ok = True
