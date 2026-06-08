@@ -5,11 +5,16 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { GraphCanvas } from "@/components/kg/GraphCanvas";
 import type { GraphNode, GraphLink } from "@/lib/knowledge-graph/graph-view";
+import type { GraphAnalysis } from "@/lib/knowledge-graph/analysis";
+
+// Route folds per-node stats into nodes and returns the rest as `analysis`.
+type AnalysisSummary = Omit<GraphAnalysis, "stats">;
 
 interface GraphResponse {
   nodes: GraphNode[];
   links: GraphLink[];
   capped?: boolean;
+  analysis?: AnalysisSummary;
   error?: string;
 }
 
@@ -61,12 +66,21 @@ function GraphView() {
   const [selectedEdge, setSelectedEdge] = useState<GraphLink | null>(null);
   const [busy, setBusy] = useState(false);
   const [trace, setTrace] = useState<{ ids: Set<string>; question: string | null; provider: string | null } | null>(null);
+  // Analysis layer (opt-in): influence sizing + cluster coloring. Either toggle
+  // ON triggers a lazy refetch with ?analysis=true (PageRank + Louvain).
+  const [sizeByInfluence, setSizeByInfluence] = useState(false);
+  const [colorByCluster, setColorByCluster] = useState(false);
+  const wantAnalysis = sizeByInfluence || colorByCluster;
   const autoToggled = useRef(false);
 
   const load = useCallback(() => {
     // Always fetch proposals so we can show the suggestion count + empty state;
-    // the toggle filters them client-side.
-    fetch("/api/kg/graph?includeProposals=true")
+    // the toggle filters them client-side. Analysis is only requested when a
+    // toggle is on, so the common load stays cheap.
+    const url = wantAnalysis
+      ? "/api/kg/graph?includeProposals=true&analysis=true"
+      : "/api/kg/graph?includeProposals=true";
+    fetch(url)
       .then((r) => r.json())
       .then((j: GraphResponse) => {
         if (j.error) setError(j.error);
@@ -76,7 +90,7 @@ function GraphView() {
         }
       })
       .catch((e) => setError(String(e)));
-  }, []);
+  }, [wantAnalysis]);
 
   useEffect(() => {
     load();
@@ -253,6 +267,49 @@ function GraphView() {
             </label>
           ))}
         </div>
+
+        {/* Analysis layer — PageRank influence + Louvain clusters (lazy fetch) */}
+        <div className="space-y-1 border-t border-slate-700/60 pt-2">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Analysis</div>
+          <label className="flex items-center gap-2 text-xs">
+            <input type="checkbox" checked={sizeByInfluence} onChange={(e) => setSizeByInfluence(e.target.checked)} />
+            Size by influence
+          </label>
+          <label className="flex items-center gap-2 text-xs">
+            <input type="checkbox" checked={colorByCluster} onChange={(e) => setColorByCluster(e.target.checked)} />
+            Color by cluster
+          </label>
+          {wantAnalysis && raw.analysis && !raw.analysis.available && (
+            <div className="rounded bg-amber-500/10 px-2 py-1 text-[11px] leading-snug text-amber-200/90">
+              Not enough connected data for analysis yet — {raw.analysis.edgeCount} edge
+              {raw.analysis.edgeCount === 1 ? "" : "s"}, need ~{raw.analysis.minEdges}.
+            </div>
+          )}
+          {wantAnalysis && raw.analysis?.available && (
+            <>
+              <div className="text-[11px] text-slate-500">{raw.analysis.communityCount} clusters</div>
+              <div className="pt-0.5 text-[11px] font-medium text-slate-400">Key assets</div>
+              <div className="space-y-0.5">
+                {raw.analysis.godNodes.map((gn) => (
+                  <button
+                    key={gn.id}
+                    onClick={() => {
+                      const n = nodeById.get(gn.id);
+                      if (n) {
+                        setSelected(n);
+                        setSelectedEdge(null);
+                      }
+                    }}
+                    className="block w-full truncate text-left text-[11px] text-sky-300/90 hover:text-sky-200"
+                    title={gn.label}
+                  >
+                    {gn.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {selectedEdge?.proposalId &&
@@ -305,6 +362,12 @@ function GraphView() {
           <div className="mb-1 font-semibold text-white">{selected.label}</div>
           <div className="text-xs text-slate-400">type: {selected.type}</div>
           <div className="text-xs text-slate-400">degree: {selected.degree}</div>
+          {typeof selected.centrality === "number" && (
+            <div className="text-xs text-slate-400">influence: {(selected.centrality * 100).toFixed(0)}%</div>
+          )}
+          {typeof selected.community === "number" && (
+            <div className="text-xs text-slate-400">cluster: #{selected.community}</div>
+          )}
           {selected.unsPath && <div className="mt-2 break-words text-xs text-slate-400">{selected.unsPath}</div>}
         </div>
       )}
@@ -319,6 +382,8 @@ function GraphView() {
           onLinkClick={(l) => setSelectedEdge(l.proposalId ? l : null)}
           highlightNodeIds={trace?.ids}
           intensity={density}
+          sizeBy={sizeByInfluence ? "centrality" : "degree"}
+          colorBy={colorByCluster ? "community" : "type"}
         />
       </div>
 
