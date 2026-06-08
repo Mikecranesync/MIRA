@@ -72,23 +72,40 @@ async function runBm25Query(
   params.push(topK);
   const limitParam = `$${params.length}`;
 
-  const { rows } = await client.query(
-    `SELECT
-        content,
-        manufacturer,
-        model_number,
-        source_url,
-        source_page,
-        metadata->>'title' AS title,
-        ts_rank_cd(content_tsv, plainto_tsquery('english', $2)) AS rank
-      FROM knowledge_entries
-      WHERE tenant_id = $1
-        ${mfrClause}
-        AND content_tsv @@ plainto_tsquery('english', $2)
-      ORDER BY rank DESC
-      LIMIT ${limitParam}`,
-    params,
-  );
+  // plainto_tsquery ANDs every term, so a conversational query ("what does oC
+  // mean?") whose off-vocabulary words ("mean") aren't in the corpus matches
+  // nothing. Try the precise AND first; fall back to an OR query (the sanitized
+  // plainto lexemes rejoined with `|`) only when AND finds nothing — precision
+  // when it works, recall for natural questions. Mirrors retrieveNodeChunks.
+  const AND_TSQUERY = "plainto_tsquery('english', $2)";
+  const OR_TSQUERY =
+    "to_tsquery('english', replace(plainto_tsquery('english', $2)::text, ' & ', ' | '))";
+
+  const run = async (tsquery: string) => {
+    const res = await client.query(
+      `SELECT
+          content,
+          manufacturer,
+          model_number,
+          source_url,
+          source_page,
+          metadata->>'title' AS title,
+          ts_rank_cd(content_tsv, ${tsquery}) AS rank
+        FROM knowledge_entries
+        WHERE tenant_id = $1
+          ${mfrClause}
+          AND content_tsv @@ ${tsquery}
+        ORDER BY rank DESC
+        LIMIT ${limitParam}`,
+      params,
+    );
+    return res.rows;
+  };
+
+  let rows = await run(AND_TSQUERY);
+  if (rows.length === 0) {
+    rows = await run(OR_TSQUERY);
+  }
 
   return rows.map((r: Record<string, unknown>) => ({
     content: String(r.content ?? ""),

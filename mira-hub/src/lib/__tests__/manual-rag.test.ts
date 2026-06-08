@@ -61,15 +61,36 @@ describe("retrieveManualChunks", () => {
     ]);
   });
 
-  it("falls back to tenant-only retrieval when manufacturer-scoped query is empty", async () => {
-    const { client, calls } = makeClient([[], [row({ manufacturer: "Generic" })]]);
+  it("falls back to tenant-only retrieval when the manufacturer scope is fully empty", async () => {
+    // Each scope now tries AND then OR, so the mfr scope must exhaust both
+    // (AND empty, OR empty) before the tenant-only query runs.
+    const { client, calls } = makeClient([[], [], [row({ manufacturer: "Generic" })]]);
     const out = await retrieveManualChunks(client, "tenant-1", "torque", {
       manufacturer: "Allen-Bradley",
     });
     expect(out).toHaveLength(1);
+    expect(calls).toHaveLength(3);
+    expect(calls[0].sql).toContain("manufacturer ILIKE"); // mfr AND
+    expect(calls[1].sql).toContain("manufacturer ILIKE"); // mfr OR
+    expect(calls[2].sql).not.toContain("manufacturer ILIKE"); // tenant-only
+  });
+
+  it("falls back to an OR tsquery when the precise AND query is empty (no mfr)", async () => {
+    const { client, calls } = makeClient([[], [row()]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "what does oC mean");
+    expect(out).toHaveLength(1);
     expect(calls).toHaveLength(2);
-    expect(calls[0].sql).toContain("manufacturer ILIKE");
-    expect(calls[1].sql).not.toContain("manufacturer ILIKE");
+    expect(calls[0].sql).toContain("plainto_tsquery('english', $2)");
+    expect(calls[0].sql).not.toContain("replace(");
+    expect(calls[1].sql).toContain("replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')");
+  });
+
+  it("keeps the precise AND result and does NOT run the OR fallback when AND matches", async () => {
+    const { client, calls } = makeClient([[row()]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "torque spec PowerFlex");
+    expect(out).toHaveLength(1);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].sql).not.toContain("replace(");
   });
 
   it("skips manufacturer filter entirely when none provided", async () => {

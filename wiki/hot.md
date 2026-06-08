@@ -27,9 +27,13 @@ empty retrieval → no citation. Proven: `plainto`(AND)=false, `websearch`=false
 OR-joined `to_tsquery`=true. **Fix:** `manual-rag.ts::retrieveNodeChunks` now runs the precise AND
 query first, then falls back to an OR query (`' & '→' | '` rewrite of the sanitized plainto output)
 only when AND returns nothing — precision kept, recall restored. Proven at SQL level + 4 vitest
-tests (`mira-hub/src/lib/__tests__/manual-rag.test.ts`, 13/13 pass). **Follow-up (NOT fixed):
-`retrieveManualChunks` + `mira-bots/shared/workers/rag_worker.py` use the same `plainto` AND —
-likely the same natural-question miss on Telegram/scan; needs eval coverage before changing.**
+tests (`mira-hub/src/lib/__tests__/manual-rag.test.ts`). **Sibling sweep (reuse-before-build):**
+the **bot/engine path was already fixed** — `neon_recall.py::_recall_bm25` is OR-fanout
+(`to_tsquery('t1 | t2 | …')`, bounded; PR #1382) and `rag_worker.py` just calls `recall_knowledge`,
+so Telegram/scan/pipeline have **no** plainto AND bug (eval regime NOT needed). **`retrieveManualChunks`**
+(Hub asset-chat + quickstart-ask, natural questions) DID have it → **fixed this PR** (same AND→OR
+fallback). 15/15 vitest now. Out of scope, noted on #1808: `asset-intelligence.ts` (enrichment
+*fallback*, keyword query — AND defensible) + `mira-scan-monday/vendor_rag.py` (legacy, not in compose).
 
 **Gate still RED (do not declare beta-ready):** the gate is "an *unseen* manual on a *self-served*
 node, zero Mike seeding" — a pre-seeded pass doesn't count. Remaining blockers to a green run:
