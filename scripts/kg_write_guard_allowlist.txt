@@ -35,3 +35,4 @@ mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts  # asserts th
 mira-hub/src/lib/knowledge-graph/__tests__/queries-schematic.test.ts        # asserts schematic writer does NOT insert kg_relationships (#1729)
 mira-hub/src/lib/knowledge-graph/__tests__/relationship-extractor-store.test.ts  # asserts extractor does NOT insert kg_relationships (#1729)
 tools/seeds/demo-conveyor-001.sql                          # demo seed (commented inserts)
+tools/seeds/demo-hub-tenant.sql                            # demo seed — ground-truth garage-cell topology (PLC CONTROLS VFD, VFD DRIVES conveyor), not MIRA-inferred
