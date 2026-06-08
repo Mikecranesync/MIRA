@@ -193,9 +193,8 @@ async function finishWizard(tenantId: string, userId: string) {
       const siteRes = await c.query<{ id: string }>(
         `INSERT INTO kg_entities (tenant_id, entity_type, entity_id, name, properties, uns_path)
          VALUES ($1, 'site', $2, $3, $4::jsonb, $5::ltree)
-         ON CONFLICT (tenant_id, entity_type, entity_id) DO UPDATE
-            SET name = EXCLUDED.name,
-                uns_path = EXCLUDED.uns_path,
+         ON CONFLICT (tenant_id, entity_type, name) DO UPDATE
+            SET uns_path = EXCLUDED.uns_path,
                 updated_at = now()
          RETURNING id`,
         [tenantId, siteSlug, site.name, JSON.stringify({ location: site.location ?? null, source: "onboarding_wizard" }), sitePathStr],
@@ -205,9 +204,8 @@ async function finishWizard(tenantId: string, userId: string) {
       const lineRes = await c.query<{ id: string }>(
         `INSERT INTO kg_entities (tenant_id, entity_type, entity_id, name, properties, uns_path)
          VALUES ($1, 'line', $2, $3, $4::jsonb, $5::ltree)
-         ON CONFLICT (tenant_id, entity_type, entity_id) DO UPDATE
-            SET name = EXCLUDED.name,
-                uns_path = EXCLUDED.uns_path,
+         ON CONFLICT (tenant_id, entity_type, name) DO UPDATE
+            SET uns_path = EXCLUDED.uns_path,
                 updated_at = now()
          RETURNING id`,
         [tenantId, lineSlug, line.name, JSON.stringify({ description: line.description ?? null, source: "onboarding_wizard" }), linePathStr],
