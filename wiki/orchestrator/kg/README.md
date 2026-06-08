@@ -88,3 +88,5 @@ After code changes you can refresh AST-only edges with **no API cost**:
   already-extracted graph (`json` node-drop on `source_file` under
   `mira-hub/src/messages/`) rather than re-running the LLM. For a clean from-scratch
   rebuild, wait for the throttle to clear and add `--exclude messages` to the rsync.
+
+> 2026-06-08 (orchestrator, Lens B): +8 hand-extracted nodes / +6 edges appended to graph.json (`_origin: hand-extracted`, `lens: B`) — proposal-queue canonical-source drift, missing ADR-0017 helper, Playwright config map. Sandbox has no LLM key; next CHARLIE regen will rebuild from AST and these annotations should be re-checked.

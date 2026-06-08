@@ -1,14 +1,9 @@
 # Hot Cache — 2026-06-04 — CLOUD
 
-## Session — 2026-06-06 (AskMira / kiosk fix cycle + runbook)
-
-PR #1620 closed (wrong stack). MIRA_PLC#25 merged (`f67adb43`) — AskMira view textarea race + per-click `session_id` ms suffix. PR #1754 merged (`e5dabe7f`) — engine Q1/Q2/Q5/Q7 + H4 enforcer + `tests/test_askmira_regression.py` (9 tests). PR #1755 merged — H4 stock admission uses scorer-recognized phrase + `--- Sources ---` block normalizer (+2 tests = 11). Two `deploy-vps.yml -f services=mira-ask` dispatches; auto-deploy default `TARGETS` did NOT include `mira-ask` — surfaced + closed in this session.
-
-**Prod after 3rd bake:** 9/10 hard pass. Remaining RED is Q1 length (165w > 145 cap) — content correct, verbosity only. Recommended next: prompt-engineering pass or kiosk-scoped post-process trim. Separate focused PR.
-
-**New runbook:** `docs/runbooks/kiosk-askmira-deploy-and-verify.md`. CLAUDE.md Pointers updated. CHANGELOG entry `ops/kiosk-runbook (2026-06-06)`. `.github/workflows/deploy-vps.yml` line 199 — added `mira-ask` to default TARGETS so future Smoke Test → auto-deploy includes the kiosk path.
-
-**Tester skill** (user-scope) `~/.claude/skills/askmira-tester/` — Mode A direct `/ask` bake + Mode B Playwright MCP view drive + scorer + PDF builder. Triggers on "test AskMira", "rerun the 10 questions", "regression check the conveyor chat".
+## eval-fixer run — 2026-06-07
+- Scorecard: 46/57 passing (81%)
+- Action: issue-filed (#1773) — no patch
+- 11 failures, all autopatch-eligible, but spanned 3 file clusters (engine.py ×7 FSM `cp_reached_state`, guardrails.py+active.yaml ×4 `cp_keyword_match`) → hard-stop on multi-cluster. Cluster B includes the known danfoss_02/siemens_02 manual-URL truncation; gs10_overcurrent_01 is a timeout artifact, re-run before treating as real.
 
 ## Session — 2026-06-04 run 4 (autonomous gap-closure routine — epic #1666)
 
@@ -743,3 +738,8 @@ Mitsubishi Electric: 16 chunks (NULL model)
 - Scorecard: 35/57 passing (61%) — runs/2026-06-03T0109-offline-text.md
 - Action: issue-filed (#1678)
 - 22 patchable failures but BOTH hard-stops tripped (>15 failures AND 3 file clusters: engine.py, guardrails.py, active.yaml). Broad FSM-routing regression — fixtures stuck in AWAITING_UNS_CONFIRMATION/Q1/IDLE or over-advancing to ASSET_IDENTIFIED. Needs human bisect of recent engine.py state-machine edits.
+
+## eval-fixer run — 2026-06-06
+- Scorecard: 18/57 passing (32%) — regression from 45/57 (2026-06-05)
+- Action: issue-filed (#1744)
+- 25 of 39 failures are the async "taking longer than usual" holding message → inference-latency/timeout signature, not a fixture-logic bug. Hard-stopped autopatch (39 > 15 patchable, 3 file clusters). Remaining 14 are pre-existing tier-2 long-tail.
