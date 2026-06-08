@@ -120,7 +120,10 @@ def _scenario_a() -> Scenario:
             ),
         ],
         alarms_at_tick={
-            61: ["F-LOW-BOWL"],
+            # Bowl pressure ramps smoothly 12→5.2 psi after fault_onset (tick 30);
+            # it crosses the <8 psi F-LOW-BOWL threshold ~tick 63 and is decisively
+            # below it (≈6.0 psi, margin ≫ ripple) by tick 75 — the robust upper bound.
+            75: ["F-LOW-BOWL"],
             110: ["F-UNDERFILL"],
         },
         expected_root_cause="Low filler bowl pressure causing underfill",

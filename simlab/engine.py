@@ -18,6 +18,7 @@ BASE_EPOCH is 2025-01-01 00:00:00 UTC == 1735689600.
 from __future__ import annotations
 
 import logging
+import random
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -207,12 +208,14 @@ class SimEngine:
     def _rng_value(self, tick: int, tag_idx: int) -> float:
         """Deterministic float in [0, 1) for the given tick + tag position.
 
-        Uses a seeded ``random.Random`` instance built from ``(self._seed, tick, tag_idx)``
-        so the value is tick-indexed rather than draw-order-indexed.
+        Mixes ``(self._seed, tick, tag_idx)`` into a single INT seed so the value
+        is tick-indexed (not draw-order-indexed) and deterministic across Python
+        versions. (Tuple seeds are deprecated in 3.9 and removal-tracked, and would
+        spam DeprecationWarning on every draw — int seeding avoids that.)
         """
-        import random
-
-        r = random.Random((self._seed, tick, tag_idx))
+        seed_int = (self._seed & 0xFFFFFFFF) * 1_000_003
+        seed_int = (seed_int + tick) * 1_000_003 + tag_idx
+        r = random.Random(seed_int & 0xFFFFFFFFFFFF)
         return r.random()
 
     def _apply_ripple(self) -> None:

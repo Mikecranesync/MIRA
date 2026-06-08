@@ -178,51 +178,51 @@ pip install -e ".[dev]"    # or: uv pip install -e ".[dev]"
 python -m simlab
 ```
 
-This starts a uvicorn server (default port 8765) with the juice bottling line loaded and
+This starts a uvicorn server (default port 8099) with the juice bottling line loaded and
 the underfill scenario (A) armed but not started. The startup banner prints local URLs and sample cURL commands.
 
 ### Start the Underfill Scenario (Scenario A)
 
 ```bash
 # Arm and start
-curl -X POST http://localhost:8765/simlab/scenario/filler_underfill_low_bowl_pressure/start
+curl -X POST http://localhost:8099/simlab/scenario/filler_underfill_low_bowl_pressure/start
 
 # Advance 30 ticks (= 30 seconds of sim time)
-curl -X POST "http://localhost:8765/simlab/scenario/tick?n=30"
+curl -X POST "http://localhost:8099/simlab/scenario/tick?n=30"
 
 # Inspect current snapshot (all tags)
-curl http://localhost:8765/simlab/snapshot
+curl http://localhost:8099/simlab/snapshot
 
 # Inspect evidence packet (abnormal tags + candidate docs)
-curl http://localhost:8765/simlab/evidence/filler_underfill_low_bowl_pressure
+curl http://localhost:8099/simlab/evidence/filler_underfill_low_bowl_pressure
 
 # Check rubric (ground-truth expected answer)
-curl http://localhost:8765/simlab/scenario/filler_underfill_low_bowl_pressure/rubric
+curl http://localhost:8099/simlab/scenario/filler_underfill_low_bowl_pressure/rubric
 
 # Reset to clean state
-curl -X POST http://localhost:8765/simlab/scenario/reset
+curl -X POST http://localhost:8099/simlab/scenario/reset
 ```
 
 ### Other useful API calls
 
 ```bash
 # List all assets on the line
-curl http://localhost:8765/simlab/lines/line01/assets
+curl http://localhost:8099/simlab/lines/line01/assets
 
 # Get a specific asset's tags
-curl http://localhost:8765/simlab/assets/filler01/tags
+curl http://localhost:8099/simlab/assets/filler01/tags
 
 # Get active alarms
-curl http://localhost:8765/simlab/alarms
+curl http://localhost:8099/simlab/alarms
 
 # Serve a doc fixture
-curl http://localhost:8765/simlab/docs/filler01/troubleshooting.md
+curl http://localhost:8099/simlab/docs/filler01/troubleshooting.md
 
 # Deterministic replay: replay scenario A from tick 0, advance 60 ticks
-curl -X POST "http://localhost:8765/simlab/scenario/filler_underfill_low_bowl_pressure/replay?ticks=60"
+curl -X POST "http://localhost:8099/simlab/scenario/filler_underfill_low_bowl_pressure/replay?ticks=60"
 
 # Health check
-curl http://localhost:8765/simlab/healthz
+curl http://localhost:8099/simlab/healthz
 ```
 
 ---

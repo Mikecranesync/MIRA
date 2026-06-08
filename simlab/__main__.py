@@ -6,7 +6,7 @@ underfill scenario armed (but not started).
 Usage
 -----
     python -m simlab
-    python -m simlab --host 0.0.0.0 --port 8765
+    python -m simlab --host 0.0.0.0 --port 8099
 
 Sample curl commands are printed on startup.
 """
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 
 logging.basicConfig(
@@ -27,7 +28,12 @@ logger = logging.getLogger("simlab.__main__")
 def main() -> None:
     parser = argparse.ArgumentParser(description="MIRA SimLab — Juice Bottling Demo")
     parser.add_argument("--host", default="127.0.0.1", help="Bind host")
-    parser.add_argument("--port", type=int, default=8765, help="Bind port")
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("SIMLAB_PORT", "8099")),
+        help="Bind port (env SIMLAB_PORT)",
+    )
     parser.add_argument("--reload", action="store_true", help="Auto-reload on code change")
     args = parser.parse_args()
 
