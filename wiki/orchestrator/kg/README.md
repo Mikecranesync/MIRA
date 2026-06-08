@@ -13,6 +13,49 @@ semantic extraction). Consumed by the **orchestrator-pulse** scheduled task
 | `graph.html` | Interactive vis-network visualization (open in a browser). |
 | `GRAPH_REPORT.md` | Human report — God Nodes, surprising connections, import cycles, communities, knowledge gaps. |
 
+## Querying (stdlib — no LLM key)
+
+`graphify query/path/explain` needs the graphify CLI **and** a Gemini key. The
+orchestrator-pulse sandbox has neither, so the pulse instead **shells out** to
+`tools/orchestrator/kg_query.py` — a standalone, stdlib-only reader over
+`graph.json` (no networkx, no pip installs). `render.py` calls its `insights`
+command to embed the KG section in `artifact.html`.
+
+```bash
+# search nodes by name/type   (--type code|rationale|concept|document)
+python3 tools/orchestrator/kg_query.py search engine --type code --limit 10
+
+# one node's callers + callees (direction: in | out | both)
+python3 tools/orchestrator/kg_query.py neighbors engine_py --direction in
+
+# shortest path between two node ids (BFS, undirected, with each hop's relation)
+python3 tools/orchestrator/kg_query.py path engine_py mira_mcp_server
+
+# god nodes (highest degree — architectural load-bearers)
+python3 tools/orchestrator/kg_query.py god --limit 10 --type code
+
+# orphan nodes (degree 0 — unreferenced symbols / dead code)
+python3 tools/orchestrator/kg_query.py orphans --type code
+
+# route files / HTTP-method handlers (--orphans-only = degree-0 routes only)
+python3 tools/orchestrator/kg_query.py routes --orphans-only
+
+# composite the pulse uses: god nodes + latest-lens subgraph + orphan routes.
+# Lens is auto-read from the newest "## YYYY-MM-DD (Lens X — …)" heading in
+# ../HISTORY.md; override with --lens "<label>".
+python3 tools/orchestrator/kg_query.py insights --lens "hub functional readiness"
+```
+
+Add `--json` (AFTER the subcommand) to any command for machine-readable output;
+the default is a human table. `--graph PATH` points at a different `graph.json`.
+The module is also importable (`from kg_query import Graph, god_nodes, insights, …`)
+for use inside Python, but the CLI is the contract the pulse depends on.
+
+**Pulse step 4 ("USE the graph"):** run `kg_query.py insights` (or a targeted
+`search`/`neighbors`/`path` for the active lens), cite at least one node id +
+its `source_file:source_location` in the audit, and let `render.py` carry the
+god-node / lens-subgraph / orphan-route block into the artifact automatically.
+
 ## Current build
 
 - **Tool:** graphify `0.8.35` (PyPI package `graphifyy`, **install the `[gemini]` extra**)

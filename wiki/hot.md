@@ -1,5 +1,11 @@
 # Hot Cache — 2026-06-04 — CLOUD
 
+## eval-fixer run — 2026-06-08
+- Scorecard: 50/57 passing (88%) — up from 46/57 (#1773)
+- Action: issue-filed (#1788) — no patch
+- 7 failures, all per-fixture autopatch-eligible, but span 3 file clusters → multi-cluster hard-stop. Cluster A = engine.py FSM over-qualification (×6, incl. a false SAFETY_ALERT on vfd_abb_03 + a Mitsubishi doc-request landing in FSM vs IDLE). Cluster B = gs3_ground_fault_14 guardrails/active.yaml keyword miss.
+
+
 ## eval-fixer run — 2026-06-07
 - Scorecard: 46/57 passing (81%)
 - Action: issue-filed (#1773) — no patch
