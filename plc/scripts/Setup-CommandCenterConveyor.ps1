@@ -83,13 +83,15 @@ function Assert-Admin {
 }
 
 function ConvertTo-PlainHmac {
-    param([Parameter(Mandatory)] [object] $Input)
-    if ($Input -is [SecureString]) {
-        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Input)
+    # NOTE: param must NOT be named $Input — that collides with PowerShell's
+    # automatic pipeline-enumerator variable and silently yields an empty string.
+    param([Parameter(Mandatory)] [object] $Secret)
+    if ($Secret -is [SecureString]) {
+        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secret)
         try   { return [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
         finally { [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
     }
-    return [string] $Input
+    return [string] $Secret
 }
 
 function Mask-Secret {
@@ -219,13 +221,19 @@ function Start-TailscaleFunnel {
         return $null
     }
 
-    # Reset any existing funnel on this port before re-binding (idempotent).
-    & $exe funnel --bg $Port off 2>$null | Out-Null
+    # Tailscale 1.50+ changed the funnel CLI: clear prior config with
+    # `funnel reset` (the legacy `funnel <port> off` now errors out).
+    # Do NOT redirect native stderr here — under PS 5.1 + ErrorActionPreference=Stop
+    # that wraps stderr in a terminating NativeCommandError. Relax EAP locally instead.
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    & $exe funnel reset | Out-Null
     Write-Log "Enabling Tailscale Funnel on port $Port..."
-    & $exe funnel --bg $Port
+    & $exe funnel --bg $Port | Out-Null
 
     # Get the tailnet hostname so we can build the public URL.
-    $statusJson = & $exe status --json 2>$null
+    $statusJson = & $exe status --json
+    $ErrorActionPreference = $prevEAP
     if (-not $statusJson) {
         Write-Log 'tailscale status --json returned nothing. Is Tailscale signed in?' 'WARN'
         return $null
@@ -266,7 +274,7 @@ try {
         $HmacKey = Read-Host -Prompt 'Paste MIRA_IGNITION_HMAC_KEY (hex from Doppler factorylm/prd)' -AsSecureString
     }
 
-    $hmacPlain = if ($HmacKey) { ConvertTo-PlainHmac -Input $HmacKey } else { '' }
+    $hmacPlain = if ($HmacKey) { ConvertTo-PlainHmac -Secret $HmacKey } else { '' }
     if (-not $VerifyOnly -and ($hmacPlain.Length -lt 32 -or $hmacPlain -notmatch '^[0-9a-fA-F]+$')) {
         throw 'HmacKey must be a hex string of at least 32 characters. Re-run with the value from Doppler.'
     }
