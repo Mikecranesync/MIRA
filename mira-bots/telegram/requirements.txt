@@ -2,7 +2,7 @@ python-telegram-bot==21.*
 httpx==0.28.*
 Pillow>=12.2.0
 pytesseract>=0.3.13
-anthropic>=0.97.0
+anthropic>=0.107.1
 PyYAML==6.0.3
 langfuse>=4.7.1,<5.0.0
 sqlalchemy>=2.0.50
