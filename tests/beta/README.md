@@ -20,14 +20,36 @@ One question decides beta readiness:
 # Anchor + xfail (no env needed — proves the suite is wired):
 pytest tests/beta/test_upload_retrieval_citation.py -v
 
+# Harness protocol unit tests (no env — pin the NodeChat SSE/messages contract):
+pytest tests/beta/test_gate_harness.py -v
+
 # The real gate (DEV/STAGING only — NEVER point at prod):
-BETA_GATE_UPLOAD_URL=https://<staging>/api/uploads/folder \
+#   Point BOTH urls at the folder=brain NodeChat surface (PR #1592) — the surface
+#   that actually makes an uploaded manual citable. The <id> is a UNS node the
+#   stranger created ("New Folder" in /namespace) and attached the manual to.
+#   Do NOT use /api/uploads/folder — that door writes only the Open WebUI KB and
+#   can never cite (it's the gap, not the fix).
+BETA_GATE_UPLOAD_URL=https://<staging>/api/namespace/node/<id>/files \
 BETA_GATE_CHAT_URL=https://<staging>/api/namespace/node/<id>/chat \
-BETA_GATE_TENANT=<demo-tenant-uuid> \
+BETA_GATE_TENANT=<tenant-uuid> \
 BETA_GATE_API_KEY=<token> \
 pytest tests/beta/beta_ready_upload_retrieval_citation.py -v
 ```
 
-Today: anchor **passes**, gates **xfail** (gap open — PR #1592). When the gate passes,
-`xfail(strict=True)` turns the run **red** — that's the signal to remove the marker and declare
-the gate met. See `docs/research/2026-06-07-upload-retrieval-gap-and-beta-path.md`.
+The harness speaks both the NodeChat contract (`messages` body + SSE response) and
+JSON engine/pipeline surfaces — see `_gate._ask`.
+
+**Status (post-#1592, 2026-06-08):** PR #1592 (`folder = brain`) **merged** to main
+(`6758e7e6`) and closed the upload→retrieval gap **on the NodeChat surface**: a PDF
+attached to a `/namespace` node is chunked into `knowledge_entries` (`ingest_route='v2'`,
+generated `content_tsv`) and `retrieveNodeChunks` reads exactly those rows, subtree-scoped,
+into a cited NodeChat answer. The full stranger flow exists in the UI (empty tenant →
+"New Folder" → attach manual → ask).
+
+The gate is **still RED** until it's actually run green against a provisioned **dev/staging**
+node + tenant (the gate excludes hand-seeded assets — it must be an *unseen* manual on a
+*self-served* node). Note Hub routes authenticate via a **next-auth session cookie**, not the
+`BETA_GATE_API_KEY` bearer — whoever provisions the run must supply working auth (e.g. a
+session cookie or an auth-shimmed dev instance). When the gate passes, `xfail(strict=True)`
+turns the run **red** — that's the signal to remove the marker and declare the gate met.
+See `docs/research/2026-06-07-upload-retrieval-gap-and-beta-path.md`.
