@@ -67,6 +67,44 @@ cp $RUN/build/graphify-out/{graph.json,graph.html,GRAPH_REPORT.md} wiki/orchestr
 After code changes you can refresh AST-only edges with **no API cost**:
 `graphify update <path>` (semantic edges go stale until the next full extract).
 
+## Using it while coding
+
+The graphify skill is published into Claude Code on CHARLIE
+(`graphify install --platform claude` → `~/.claude/skills/graphify/`). In a
+Claude Code session, `/graphify` activates it. The graphify CLI is a uv tool
+(`graphifyy` 0.8.35) on `~/.local/bin`.
+
+Because this repo's graph lives at `wiki/orchestrator/kg/graph.json` (not the
+default `graphify-out/graph.json`), pass `--graph` to query it directly:
+
+```bash
+G=wiki/orchestrator/kg/graph.json
+graphify explain  "resolve_uns_path"      --graph "$G"   # node + neighbors
+graphify affected "engine.py" --depth 1   --graph "$G"   # reverse-impact / blast radius
+graphify path     "engine.py" "router.py" --graph "$G"   # shortest path between two nodes
+graphify query    "how does a turn reach the cascade?"   --graph "$G"
+```
+
+## graph.json merge-driver (devops)
+
+`graph.json` is ~91k lines, so two branches that both refresh it textually
+conflict on nearly every merge. A git **union merge-driver** (graphify's own)
+resolves that automatically — it takes the union of nodes/edges from both sides
+instead of a line conflict.
+
+- **Committed:** `.gitattributes` maps `wiki/orchestrator/kg/graph.json → merge=graphify`.
+- **One-time per clone** (the driver definition is *not* committable — it lives in
+  local git config):
+
+  ```bash
+  git config merge.graphify.driver "graphify merge-driver %O %A %B"
+  git config merge.graphify.name   "graphify graph.json union merge"
+  ```
+
+  Without it, git ignores the attribute and falls back to the default merge with a
+  harmless warning — nothing breaks, you just get textual conflicts on `graph.json`.
+  Already configured on CHARLIE.
+
 ## Known limitations
 
 - **Community names are `Community N` placeholders.** Graphify labels all 344
