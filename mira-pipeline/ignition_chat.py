@@ -32,9 +32,37 @@ logger = logging.getLogger("mira-pipeline.ignition_chat")
 
 MIRA_IGNITION_HMAC_KEY = os.getenv("MIRA_IGNITION_HMAC_KEY", "")
 
-_TIMESTAMP_SKEW_S = 300       # ±5 minutes
-_NONCE_TTL_S = 600            # nonces expire after 10 minutes
+_TIMESTAMP_SKEW_S = 300  # ±5 minutes
+_NONCE_TTL_S = 600  # nonces expire after 10 minutes
 _NONCE_MAX_ENTRIES = 10_000
+
+
+def _envflag(name: str) -> bool:
+    return os.getenv(name, "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Train-before-deploy HMI gate (docs/specs/asset-agent-validation-spec.md §7,
+# .claude/rules/train-before-deploy.md). DEFAULT OFF — the existing endpoint
+# behavior is byte-identical until a tenant populates asset_agent_status and
+# flips this on. When on, only 'approved'/'deployed' assets get answered.
+def _enforce_asset_agent_gate() -> bool:
+    return _envflag("ENFORCE_ASSET_AGENT_GATE")
+
+
+def _asset_agent_auto_deploy() -> bool:
+    return _envflag("ASSET_AGENT_AUTO_DEPLOY")
+
+
+# Defensive import — the gate stays disabled if shared/ isn't mounted (the flag
+# defaults off anyway, so this never changes default behavior).
+try:
+    from shared.asset_agent_transition import GATE_REFUSAL_MESSAGE, gate_decision
+except Exception:  # pragma: no cover - shared not importable in this context
+    gate_decision = None  # type: ignore[assignment]
+    GATE_REFUSAL_MESSAGE = (
+        "This asset hasn't been validated for MIRA yet. An admin needs to "
+        "approve it in the Command Center before it can answer here."
+    )
 
 
 # ── Nonce replay store (in-process LRU) ──────────────────────────────────────
@@ -153,6 +181,111 @@ def _format_tag_preamble(tag_snapshot: dict[str, Any], asset_id: str) -> str:
     return "\n".join(lines)
 
 
+# ── Asset-agent deployment gate (train-before-deploy) ────────────────────────
+
+
+def _asset_context_token(asset_context: Optional[dict[str, Any]]) -> str:
+    """Best-effort single identifier from an asset_context object.
+
+    A Perspective panel may send `{site,area,line,equipment,component?}` with no
+    flat asset_id. Return the most specific field present so the gate has SOME
+    token to resolve. Empty string if nothing usable.
+    """
+    if not asset_context:
+        return ""
+    for key in ("component", "equipment", "machine", "asset", "line"):
+        val = asset_context.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return ""
+
+
+def _lookup_agent_state(tenant_id: str, asset_id: str) -> Optional[str]:
+    """Return the asset's lifecycle state from `asset_agent_status`, or None.
+
+    Reads the table owned by PR #1783 (migrations 046/047): rows are keyed on
+    `equipment_id` (= cmms_equipment.id) with a carried `uns_path` (LTREE) that
+    that migration designates as the deployment-gate key. We match the caller's
+    token against either, as text (no ltree cast → never errors on a non-ltree
+    token). Returns None when there's no matching agent row (→ the gate refuses).
+    Raises on DB error so the caller can fail OPEN — a Neon blip must not brick
+    a working HMI.
+
+    NOTE — NON-FUNCTIONAL until an asset_context/asset_id → (uns_path | equipment_id)
+    resolver lands. An Ignition asset_id is a tag path ("[default]Conv/State")
+    and asset_context fields are display names; neither equals a stored
+    `uns_path` or `equipment_id` UUID today, so with the gate ON this returns
+    None for essentially every asset → refuse-all. Do NOT enable
+    ENFORCE_ASSET_AGENT_GATE until that resolver ships. See
+    docs/specs/asset-agent-validation-spec.md §7 and PR #1783.
+    """
+    neon_url = os.getenv("NEON_DATABASE_URL", "")
+    if not neon_url:
+        raise RuntimeError("NEON_DATABASE_URL not set")
+
+    from sqlalchemy import NullPool, create_engine, text
+
+    engine = create_engine(
+        neon_url,
+        poolclass=NullPool,
+        connect_args={"sslmode": "require"},
+        pool_pre_ping=True,
+    )
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT state FROM asset_agent_status "
+                    "WHERE tenant_id = :tid "
+                    "  AND (uns_path::text = :token OR equipment_id::text = :token) "
+                    "LIMIT 1"
+                ),
+                {"tid": tenant_id, "token": asset_id},
+            ).fetchone()
+    finally:
+        engine.dispose()
+    return row[0] if row else None
+
+
+def _mark_deployed(tenant_id: str, asset_id: str) -> bool:
+    """Best-effort: flip an approved agent to 'deployed' on first live turn.
+
+    Fire-and-forget — returns False and logs on any failure; never raises into
+    the request path.
+    """
+    neon_url = os.getenv("NEON_DATABASE_URL", "")
+    if not neon_url:
+        return False
+    try:
+        from sqlalchemy import NullPool, create_engine, text
+
+        engine = create_engine(
+            neon_url,
+            poolclass=NullPool,
+            connect_args={"sslmode": "require"},
+            pool_pre_ping=True,
+        )
+        try:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "UPDATE asset_agent_status "
+                        "SET state = 'deployed', deployed_at = now(), "
+                        "    deploy_surface = COALESCE(deploy_surface, 'ignition'), "
+                        "    updated_at = now() "
+                        "WHERE tenant_id = :tid AND state = 'approved' "
+                        "  AND (uns_path::text = :token OR equipment_id::text = :token)"
+                    ),
+                    {"tid": tenant_id, "token": asset_id},
+                )
+        finally:
+            engine.dispose()
+        return True
+    except Exception:
+        logger.warning("IGNITION_CHAT mark_deployed_failed tenant=%s asset=%s", tenant_id, asset_id)
+        return False
+
+
 # ── Router factory ───────────────────────────────────────────────────────────
 
 
@@ -220,6 +353,74 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
             }
             for path, entry in sorted((req.tag_snapshot or {}).items())
         ]
+
+        # ── Train-before-deploy gate ─────────────────────────────────────────
+        # When ENFORCE_ASSET_AGENT_GATE is on, only answer for an asset whose
+        # agent is 'approved'/'deployed'. Default-off → this block is skipped
+        # and behavior is unchanged. A non-ready asset gets a clean refusal
+        # (NOT a chat-gate question — the connection is certified; the *agent*
+        # isn't ready). DB errors fail OPEN so a Neon blip can't brick the HMI.
+        #
+        # Covers EVERY direct-connection turn — both a flat asset_id and an
+        # asset_context-only Perspective turn — so enabling the gate has no
+        # silent bypass (spec §7). gate_asset is the resolution token.
+        gate_asset = asset_id or _asset_context_token(req.asset_context)
+        if (
+            _enforce_asset_agent_gate()
+            and (asset_id or req.asset_context)
+            and gate_decision is not None
+        ):
+            try:
+                agent_state = _lookup_agent_state(tenant_id, gate_asset)
+                gate_db_ok = True
+            except Exception:
+                logger.warning(
+                    "IGNITION_CHAT gate_lookup_failed tenant=%s asset=%s — failing open",
+                    tenant_id,
+                    asset_id,
+                )
+                agent_state, gate_db_ok = None, False
+            if gate_db_ok:
+                decision = gate_decision(
+                    agent_state, enforce=True, auto_deploy=_asset_agent_auto_deploy()
+                )
+                if not decision.allow:
+                    logger.info(
+                        "IGNITION_CHAT gate_refused tenant=%s asset=%s reason=%s",
+                        tenant_id,
+                        asset_id,
+                        decision.reason,
+                    )
+                    write_audit_row(
+                        tenant_id=tenant_id,
+                        channel="ignition",
+                        user_id=None,
+                        asset_id=asset_id or None,
+                        chat_id=chat_id,
+                        prompt=question,
+                        answer=GATE_REFUSAL_MESSAGE,
+                        sources=[],
+                        tag_reads=tag_reads,
+                        llm_provider=None,
+                        llm_model=None,
+                        inference_run_id=None,
+                        latency_ms=0,
+                        status=f"gate_refused:{decision.reason}",
+                    )
+                    return {
+                        "answer": GATE_REFUSAL_MESSAGE,
+                        "sources": [],
+                        "citations": [],
+                        "evidence": [],
+                        "confidence": None,
+                        "suggested_actions": [],
+                        "tenant_id": tenant_id,
+                        "asset_id": asset_id,
+                        "latency_ms": 0,
+                        "gate": decision.reason,
+                    }
+                if decision.deploy_now:
+                    _mark_deployed(tenant_id, gate_asset)
 
         t0 = time.monotonic()
         engine_error: Optional[str] = None
