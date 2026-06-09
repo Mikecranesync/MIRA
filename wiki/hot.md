@@ -1,6 +1,107 @@
 # Hot Cache — 2026-06-04 — CLOUD
 
+## Session — 2026-06-07 (Train-before-deploy audit — 7 lanes)
+
+Verified whether MIRA supports **train before deploy** (Command Center builds+validates the
+namespace; Ignition/HMI deploys *approved* asset agents). Branch `feat/train-before-deploy`
+(worktree `/tmp/mira-tbd`, off `origin/feat/path-to-beta` so doctrine edits stack on that PR).
+
+**Verdict: PARTIALLY ALIGNED.** The build half exists; the validate→approve→deploy half does not.
+
+- ✅ **Command Center training surfaces all exist**: self-serve tenant create (`/api/auth/register`
+  → `ensureUserAndTenant`), wizard (`/api/wizard/[step]` company/site/line), `/namespace`,
+  `/assets/[id]` with `AssetChat.tsx` ("Ask MIRA" on an asset), `/proposals` (`ai_suggestions`),
+  citation rendering, `/command-center` tree+display.
+- ✅ **Retrieval is tenant-scoped** — `neon_recall.recall_knowledge` filters
+  `WHERE tenant_id = :tid OR tenant_id = :shared_tid` (the shared OEM pool is the intentional
+  Knowledge Cooperative; customer manuals do NOT leak cross-tenant). De-risks design-partner beta.
+- ❌ **Gap 1 — upload→retrieval** (THE blocker, PR #1592 DRAFT): uploaded manuals not citable.
+- ❌ **Gap 2 — no validation/approval loop, no per-asset agent lifecycle, no HMI deploy gate.**
+  `ignition_chat.py` answers any asset-bound HMAC turn regardless of readiness. No "mark good/bad"
+  in the Hub. No `asset_agent_status`.
+
+**Shipped this session — CODE (read-path spine, commit `607a3cd6`):**
+- `mira-hub/db/migrations/046_asset_agent_status.sql` — `asset_agent_status` + `asset_validation_qa`,
+  RLS mirroring mig 027. NOT applied to any DB yet.
+- `mira-bots/shared/asset_agent_transition.py` — pure state machine + `gate_decision()` (27 tests ✅).
+- `mira-pipeline/ignition_chat.py` — HMI gate behind `ENFORCE_ASSET_AGENT_GATE` (default OFF; non-ready
+  → clean refusal, audited, no engine call; DB error fails OPEN). 10 tests ✅; direct-connection 16/16 ✅.
+- ⚠️ `_lookup_agent_state` resolver join (asset_id→kg_entities) is plausible but UNTESTED vs real schema
+  (gate default-off; tests monkeypatch the lookup). Verify before enabling.
+- Next PR: Validate UI (`/assets/[id]`) + approve endpoint + TS twin (write-path, where the helper gets a caller).
+
+**Shipped this session — docs/doctrine:**
+- `docs/specs/asset-agent-validation-spec.md` (LANE 4) — per-`kg_entity` lifecycle
+  `draft→training→validating→approved→deployed`, two new tables (`asset_agent_status`,
+  `asset_validation_qa`), composes `kg_entities.approval_state` + `ai_suggestions` + engine 1–5
+  groundedness + `evidence_utilization`; HMI deploy gate `ignition_chat.py` consults behind
+  `ENFORCE_ASSET_AGENT_GATE`. **Distinct from** namespace-level L0–L6 `health-score.ts`.
+- `.claude/rules/train-before-deploy.md` (LANE 6) — the doctrine + the one new HMI-readiness rule
+  (beta-gate + read-only already exist → cross-referenced, not restated).
+- Root `CLAUDE.md` North Star + `.claude/CLAUDE.md` "What MIRA is" + rule/cross-ref lists.
+
+**Already done by the path-to-beta session (verified, NOT rebuilt):** beta gate test
+`tests/beta/beta_ready_upload_retrieval_citation.py`, Ignition runbook
+`docs/runbooks/activate-ignition-ask-mira.md`, beta-gate doctrine in CLAUDE.md/NORTH_STAR.
+
+**LANE 7 naming:** clean — no "generic chatbot/ChatGPT" copy in `mira-hub`/`mira-web` UI (only
+test + blog files matched). `.claude/CLAUDE.md` already states "not a generic chatbot."
+
+**Next 3 PRs:** (1) land #1592 (close upload→retrieval); (2) implement asset-agent-validation
+spec (migrations + transition helpers + `/assets/[id]` Validate tab); (3) wire `ignition_chat.py`
+deploy gate behind `ENFORCE_ASSET_AGENT_GATE` + hallucination-audit check.
+
+---
+
+## Session — 2026-06-07 (Path to Beta Testers — phase opened, 6 lanes)
+
+New official phase: **Path to Beta Testers** (`docs/plans/2026-06-07-path-to-beta.md`).
+Branch `feat/path-to-beta` (worktree `.claude/worktrees/path-to-beta`, off origin/main `4b9778c8`).
+
+**🚦 BETA GATE:** stranger uploads their own manual → asks → gets a cited answer, with **no
+manual fix**. Enforced by `tests/beta/beta_ready_upload_retrieval_citation.py` (xfail until met).
+
+**Blockers (what stands between us and beta):**
+1. **Upload→retrieval gap (THE blocker).** Hub/web uploads write the Open WebUI KB; chat
+   retrieval (`neon_recall.recall_knowledge`) reads only `knowledge_entries`. Uploaded manuals
+   are not citable. Fix = **PR #1592 `feat/hub-folder-brain` — still DRAFT** (18 files, +2037).
+   Trace + minimal-close path: `docs/research/2026-06-07-upload-retrieval-gap-and-beta-path.md`.
+2. **Graph stability — RESOLVED.** #1742 (`63c9b8e1`) merged to main (NaN-coord guard on
+   GraphCanvas painters). Regression test added this session (`mira-hub/src/components/kg/__tests__/GraphCanvas.test.ts`, 4/4 pass). **Open: confirm it's deployed to prod.**
+3. **Ignition Ask MIRA** — see Lane 5 status in HANDOFF; runbook at
+   `docs/runbooks/activate-ignition-ask-mira.md`. (HMAC key presence + WebDev deploy = ops.)
+
+**Reuse-before-build finds:** demo seeds already exist (`tools/seeds/` — `factorylm-garage-conveyor.sql`,
+`gs10-vfd-knowledge.sql`, `demo-conveyor-001.sql`, `run_demo_seed.py`, commit `68574f1d`). Lane 3
+extends, does not rebuild.
+
+**Readiness:** internal demo ✅ (pre-seeded tenant) · design partner ❌ (gap #1) · public beta ❌ (gate red).
+
+---
+
+## Session — 2026-06-06 (AskMira / kiosk fix cycle + runbook)
+
+PR #1620 closed (wrong stack). MIRA_PLC#25 merged (`f67adb43`) — AskMira view textarea race + per-click `session_id` ms suffix. PR #1754 merged (`e5dabe7f`) — engine Q1/Q2/Q5/Q7 + H4 enforcer + `tests/test_askmira_regression.py` (9 tests). PR #1755 merged — H4 stock admission uses scorer-recognized phrase + `--- Sources ---` block normalizer (+2 tests = 11). Two `deploy-vps.yml -f services=mira-ask` dispatches; auto-deploy default `TARGETS` did NOT include `mira-ask` — surfaced + closed in this session.
+
+**Prod after 3rd bake:** 9/10 hard pass. Remaining RED is Q1 length (165w > 145 cap) — content correct, verbosity only. Recommended next: prompt-engineering pass or kiosk-scoped post-process trim. Separate focused PR.
+
+**New runbook:** `docs/runbooks/kiosk-askmira-deploy-and-verify.md`. CLAUDE.md Pointers updated. CHANGELOG entry `ops/kiosk-runbook (2026-06-06)`. `.github/workflows/deploy-vps.yml` line 199 — added `mira-ask` to default TARGETS so future Smoke Test → auto-deploy includes the kiosk path.
+
+**Tester skill** (user-scope) `~/.claude/skills/askmira-tester/` — Mode A direct `/ask` bake + Mode B Playwright MCP view drive + scorer + PDF builder. Triggers on "test AskMira", "rerun the 10 questions", "regression check the conveyor chat".
+
 ## Session — 2026-06-04 run 4 (autonomous gap-closure routine — epic #1666)
+
+> **Parallel stream (DT-2026 gate-monitor, 2026-06-04 ~19:35Z):** all 7 gates green
+> (#1676/#1657/#1674 merged, migs 032–037 on main, #1677 decisions explicit, head=037).
+> Phase 1 resumed → **PR #1710** opened: migrations **038** (relationship_type CHECK +4
+> asset-graph edges) + **039** (`kg_entities.source_object_id` FK-by-convention + partial idx).
+> Preserved migration 032's 3 inferred types (live=31, +4 new = 35 — doc §5's 28-value list was
+> pre-032). No prod touched; CI/`apply-migrations.yml --dry-run` must verify on staging.
+> **Next:** migrations **040–042** source-preservation layer (incl. `source_object_versions`
+> per Mike's #1677 override). **Follow-up:** MaintainX "store raw → map → remap, zero re-fetch"
+> proof. Gate-monitor routine **disabled**. Durable record: comments on #1666 + #1677.
+
+## Session — 2026-06-02→04 (promo-director: HMI walkthrough videos, private YouTube)
 
 **Status: Merge conflict resolved + CI green. PR #1657 now clean and ready for human review.**
 
@@ -711,3 +812,13 @@ Mitsubishi Electric: 16 chunks (NULL model)
 - Scorecard: 30/57 passing (53%) — new low in the FSM/UNS-gate band
 - Action: issue-filed (commented on tracker #1583, not a duplicate)
 - 27 patchable failures but both autopatch hard-stops tripped (>15 failures; 3 file clusters). Same clusters A–E as #1583. `last_response_snippet` still empty for all — transcript capture remains the #1 blocker.
+
+## eval-fixer run — 2026-06-02
+- Scorecard: 35/57 passing (61%)
+- Action: issue-filed (#1640)
+- 22 failures, all autopatch-blocked (>15 patchable AND 3 file clusters). Systemic FSM/UNS-gate regression — 21/22 point at engine.py. Clusters: gate stuck in AWAITING_UNS_CONFIRMATION, docs-requests landing in ASSET_IDENTIFIED instead of IDLE, over-qualifying (stuck Q1/Q2 vs DIAGNOSIS), CMMS WO not created, PowerFlex leaking on GS20. Needs human bisect.
+
+## eval-fixer run — 2026-06-03
+- Scorecard: 35/57 passing (61%) — runs/2026-06-03T0109-offline-text.md
+- Action: issue-filed (#1678)
+- 22 patchable failures but BOTH hard-stops tripped (>15 failures AND 3 file clusters: engine.py, guardrails.py, active.yaml). Broad FSM-routing regression — fixtures stuck in AWAITING_UNS_CONFIRMATION/Q1/IDLE or over-advancing to ASSET_IDENTIFIED. Needs human bisect of recent engine.py state-machine edits.

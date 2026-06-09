@@ -9,10 +9,14 @@ import sys
 
 sys.path.insert(0, "mira-bots")
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from shared.engine import _FAULT_INFO_RE, _STATE_ALIASES, Supervisor
+from shared.dialogue_tracker import (
+    DISPATCH_ASK_GENERAL,
+    DISPATCH_ASK_PROCEDURAL,
+)
 
 # ---------------------------------------------------------------------------
 # Fixture: minimal Supervisor with mocked workers
@@ -477,10 +481,10 @@ class TestSessionPivotRouting:
             result = asyncio.run(supervisor.process_full(chat_id, "do they have a website"))
 
         assert followup.await_count == 0
-        assert result["next_state"] == "ASSET_IDENTIFIED"
+        assert result["next_state"] == "IDLE"
 
         loaded = supervisor._load_state(chat_id)
-        assert loaded["state"] == "ASSET_IDENTIFIED"
+        assert loaded["state"] == "IDLE"
         assert loaded["fault_category"] is None
         assert loaded["final_state"] is None
         assert loaded["context"]["session_context"]["last_question"] is None
@@ -502,7 +506,10 @@ class TestSessionPivotRouting:
                     }
                 ),
             ),
-            patch("shared.engine.classify_intent", return_value="industrial"),
+            # "where did you get that information" is a meta/source question, not
+            # an industrial fault query. "industrial" + Q2 activates
+            # _router_industrial_override, bypassing _handle_session_followup.
+            patch("shared.engine.classify_intent", return_value="off_topic"),
             patch.object(
                 supervisor,
                 "_handle_session_followup",
@@ -865,3 +872,67 @@ class TestResetWipesAllChatKeys:
         supervisor.reset("legacy_chat_id")
         reloaded = supervisor._load_state("legacy_chat_id")
         assert reloaded.get("asset_identified") in (None, "")
+
+
+# ---------------------------------------------------------------------------
+# DST guard — active-session ASK_PROCEDURAL/GENERAL must not reset FSM
+# ---------------------------------------------------------------------------
+
+
+class TestDSTActiveSessionGuard:
+    """Regression guard for the DST-bypass bug (MIRA_USE_DST=1).
+
+    When DISPATCH_ASK_PROCEDURAL or DISPATCH_ASK_GENERAL fires while the
+    FSM is in {Q2, Q3, DIAGNOSIS, FIX_STEP}, _maybe_dispatch_via_dst must
+    return None so the legacy RAG path continues the in-progress session.
+    Calling _handle_instructional_question/_handle_general_question from
+    those states resets the FSM to IDLE (via _clear_diagnostic_carryover),
+    which caused gs3_ground_fault_14 and self_critique_low_instruction_35
+    to land in IDLE instead of DIAGNOSIS in the eval.
+    """
+
+    def _state(self, fsm_state: str) -> dict:
+        return {
+            "state": fsm_state,
+            "exchange_count": 1,
+            "final_state": None,
+            "fault_category": None,
+            "asset_identified": "AutomationDirect GS3",
+            "context": {"session_context": {"last_question": "Check the insulation?"}},
+        }
+
+    def _mock_plan(self, kind: str):
+        plan = MagicMock()
+        plan.kind = kind
+        return plan
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("fsm_state", ["Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"])
+    @pytest.mark.parametrize(
+        "dispatch_kind", [DISPATCH_ASK_PROCEDURAL, DISPATCH_ASK_GENERAL]
+    )
+    async def test_active_session_returns_none(
+        self, supervisor, fsm_state, dispatch_kind
+    ):
+        """All active diagnostic states (Q1+) must return None, not call an IDLE-resetting handler."""
+        from shared.dialogue_state import DialogueState
+        from unittest.mock import MagicMock
+
+        state = self._state(fsm_state)
+        ds = MagicMock(spec=DialogueState)
+        new_ds = MagicMock(spec=DialogueState)
+        new_ds.write_to_engine_state = MagicMock()
+        plan = self._mock_plan(dispatch_kind)
+
+        with patch("shared.engine.DialogueState") as mock_ds_cls, patch(
+            "shared.engine.track_turn", new=AsyncMock(return_value=(new_ds, plan))
+        ):
+            mock_ds_cls.from_engine_state.return_value = ds
+            result = await supervisor._maybe_dispatch_via_dst(
+                "chat1", "what should I check?", state, "trace1", {}, None
+            )
+
+        assert result is None, (
+            f"DST returned a non-None result for {dispatch_kind} in {fsm_state} — "
+            "this would reset FSM to IDLE via _handle_instructional_question"
+        )

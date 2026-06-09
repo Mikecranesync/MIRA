@@ -228,3 +228,10 @@ tools/staging_results.json
 
 # CodeGraph local index (machine-specific, regenerable via `npx @colbymchenry/codegraph index`)
 .codegraph/
+
+# Product Orchestrator generated output (regenerated every run by tools/orchestrator/).
+# Track the tooling + HISTORY.md + hand-authored plans; never the generated state.
+wiki/orchestrator/scan.json
+wiki/orchestrator/state.json
+wiki/orchestrator/artifact.html
+wiki/orchestrator/STATE.md

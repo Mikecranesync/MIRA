@@ -45,6 +45,25 @@ interface ProposalRow {
   created_at: string;
 }
 
+// ai_suggestions rows (mig 027). The 5 non-edge suggestion types — `kg_edge` is
+// the header-on-a-relationship_proposals row already covered above, so it is
+// excluded here to avoid double-rendering. ADR-0014 supersedes ADR-0013:
+// /proposals MUST surface these. See issue #1663.
+interface SuggestionRow {
+  id: string;
+  suggestion_type: string;
+  title: string | null;
+  body: string | null;
+  confidence: number;
+  status: string;
+  risk_level: string;
+  proposed_by: string;
+  source_kind: string | null;
+  source_document_id: string | null;
+  source_page: number | null;
+  created_at: string;
+}
+
 const DEFAULT_LIMIT = 100;
 const HARD_LIMIT = 500;
 const ALLOWED_STATUS = new Set([
@@ -55,6 +74,18 @@ const ALLOWED_STATUS = new Set([
   "deprecated",
   "contradicted",
 ]);
+
+// relationship_proposals status vocab → ai_suggestions status vocab (mig 027
+// CHECK: pending|accepted|rejected|deferred|superseded). Lets one `status`
+// query param drive both stores.
+const PROPOSAL_TO_SUGGESTION_STATUS: Record<string, string> = {
+  proposed: "pending",
+  reviewed: "deferred",
+  verified: "accepted",
+  rejected: "rejected",
+  deprecated: "superseded",
+  contradicted: "superseded",
+};
 
 export async function GET(req: Request) {
   if (!process.env.NEON_DATABASE_URL) {
@@ -142,9 +173,76 @@ export async function GET(req: Request) {
         .then((r) => r.rows),
     );
 
+    // ai_suggestions (mig 027) — the 5 non-edge suggestion types. Fetched in a
+    // separate tenant context and fail-soft: if the table is absent (mig 027 not
+    // applied to this DB) or the query errors, return [] rather than 500 the
+    // whole page — the edge-proposals path above must keep working. See #1663.
+    const sugFilters: string[] = [
+      "s.tenant_id = $1::uuid",
+      "s.suggestion_type <> 'kg_edge'",
+    ];
+    const sugParams: unknown[] = [ctx.tenantId];
+    if (statusParam !== "all") {
+      const sugStatuses = Array.from(
+        new Set(
+          statusParam
+            .split(",")
+            .map((s) => s.trim().toLowerCase())
+            .filter((s) => ALLOWED_STATUS.has(s))
+            .map((s) => PROPOSAL_TO_SUGGESTION_STATUS[s])
+            .filter(Boolean),
+        ),
+      );
+      // statusParam was validated non-empty above and the mapping is total, so
+      // sugStatuses is always non-empty here.
+      sugParams.push(sugStatuses);
+      sugFilters.push(`s.status = ANY($${sugParams.length})`);
+    }
+    sugParams.push(limit);
+    const sugLimitPlaceholder = `$${sugParams.length}`;
+
+    const suggestionRows: SuggestionRow[] = await withTenantContext(
+      ctx.tenantId,
+      (c) =>
+        c
+          .query<SuggestionRow>(
+            `SELECT
+                s.id,
+                s.suggestion_type,
+                s.title,
+                s.body,
+                s.confidence,
+                s.status,
+                s.risk_level,
+                s.proposed_by,
+                s.source_kind,
+                s.source_document_id::text AS source_document_id,
+                s.source_page,
+                s.created_at
+             FROM ai_suggestions s
+             WHERE ${sugFilters.join(" AND ")}
+             ORDER BY
+                CASE s.risk_level
+                  WHEN 'safety_critical' THEN 0
+                  WHEN 'high' THEN 1
+                  WHEN 'medium' THEN 2
+                  ELSE 3
+                END,
+                s.created_at DESC
+             LIMIT ${sugLimitPlaceholder}`,
+            sugParams,
+          )
+          .then((r) => r.rows),
+    ).catch((err) => {
+      console.error("[api/proposals GET] ai_suggestions query failed (soft)", err);
+      return [];
+    });
+
     return NextResponse.json({
       proposals: rows.map(rowToProposal),
       total: rows.length,
+      suggestions: suggestionRows.map(rowToSuggestion),
+      suggestionsTotal: suggestionRows.length,
       filters: { status: statusParam, type: typeParam, limit },
     });
   } catch (err) {
@@ -176,6 +274,23 @@ function rowToProposal(r: ProposalRow) {
     requiresHumanReview: r.requires_human_review,
     reasoning: r.reasoning,
     evidenceCount: Number(r.evidence_count) || 0,
+    createdAt: r.created_at,
+  };
+}
+
+function rowToSuggestion(r: SuggestionRow) {
+  return {
+    id: r.id,
+    suggestionType: r.suggestion_type,
+    title: r.title,
+    body: r.body,
+    confidence: r.confidence,
+    status: r.status,
+    riskLevel: r.risk_level,
+    createdBy: r.proposed_by,
+    sourceKind: r.source_kind,
+    sourceDocumentId: r.source_document_id,
+    sourcePage: r.source_page,
     createdAt: r.created_at,
   };
 }
