@@ -217,6 +217,43 @@ else
 fi
 
 # ------------------------------------------------------------------
+# 6. Scope guard — warn (never block) when a commit looks like it swept in
+#    foreign WIP / out-of-scope files. Mirrors .claude/rules/session-discipline.md
+#    §3 ("stage only files your change touched"). Warn-only by design: a broad
+#    commit is sometimes correct, so this nudges, it does not block.
+# ------------------------------------------------------------------
+STAGED_ALL=$(git diff --cached --name-only --diff-filter=ACM || true)
+if [ -n "$STAGED_ALL" ]; then
+  bold "Checking commit scope..."
+
+  # 6a. Known foreign-WIP / noise patterns that should rarely be committed.
+  NOISE=$(echo "$STAGED_ALL" | grep -E '(^|/)tools/__init__\.py$|(^|/)ANTIGRAVITY_.*\.md$|(^|/)yt-pipeline/|\.orig$|\.rej$' || true)
+  if [ -n "$NOISE" ]; then
+    yellow "  ⚠️  Staged files look like foreign WIP / noise (session-discipline §3):"
+    echo "$NOISE" | sed 's/^/      /'
+    yellow "      If you didn't mean these: git restore --staged <file>"
+    WARNINGS=$((WARNINGS + 1))
+  fi
+
+  # 6b. Untracked files present alongside a staged commit — did you `git add -A`
+  #     over someone else's WIP? Informational; the files are NOT being committed.
+  UNTRACKED=$(git ls-files --others --exclude-standard || true)
+  if [ -n "$UNTRACKED" ]; then
+    UNTRACKED_COUNT=$(printf '%s\n' "$UNTRACKED" | grep -c . || true)
+    yellow "  ⚠️  ${UNTRACKED_COUNT} untracked file(s) in the tree (not staged — confirm none belong here):"
+    printf '%s\n' "$UNTRACKED" | head -5 | sed 's/^/      /'
+    [ "$UNTRACKED_COUNT" -gt 5 ] && echo "      ... and $((UNTRACKED_COUNT - 5)) more"
+    yellow "      Never 'git add -A' over foreign WIP — stage explicit paths."
+    WARNINGS=$((WARNINGS + 1))
+  fi
+
+  if [ -z "$NOISE" ] && [ -z "$UNTRACKED" ]; then
+    green "  ✓ Commit scope clean (no foreign WIP / noise staged or loose)"
+    PASS=$((PASS + 1))
+  fi
+fi
+
+# ------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------
 bold ""

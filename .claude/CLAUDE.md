@@ -170,6 +170,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - **Train before deploy** — see `.claude/rules/train-before-deploy.md` (Command Center builds+validates; Ignition/HMI deploys approved asset agents only; no HMI deployment without grounded docs + validation questions + approved cited answers; read-only in beta).
 - **Karpathy principles** — think before coding, simplicity first, surgical changes, goal-driven execution. See `.claude/rules/karpathy-principles.md`.
 - **Debugging & verification** — perf problems are multi-cause (re-measure after each fix); verify exact table/column names + API auth paths from the codebase before guessing. See `.claude/rules/debugging-conventions.md`.
+- **Session discipline** — verify stated premises against the codebase + `git log` before building; re-run the full suite before reporting eval gains; stage only files your change touched (never `git add -A` over foreign WIP); validate migration/seed prerequisites + schema constraints; checkpoint long tasks to `.planning/STATE.md` early. See `.claude/rules/session-discipline.md`.
 - **Don't break the UNS confirmation gate.** Run `mira-run-hallucination-audit` after engine/bot edits.
 
 ## Testing expectations
@@ -210,6 +211,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - `.claude/rules/python-standards.md` — ruff, httpx, NeonDB, async
 - `.claude/rules/karpathy-principles.md` — coding behavior
 - `.claude/rules/debugging-conventions.md` — multi-cause perf debugging + verify schema/API paths before guessing
+- `.claude/rules/session-discipline.md` — premise-verify, regression-recheck, scoped-commits, migration-safety, long-task checkpointing
 - `.claude/rules/codegraph-usage.md` — when to use CodeGraph vs grep/Read (CodeGraph-first for symbol-shaped questions)
 - `docs/specs/uns-kg-unification-spec.md` — UNS authority (data architecture)
 - `docs/specs/mira-component-intelligence-architecture.md` — implementation-level architecture (component templates, KG mechanics)
