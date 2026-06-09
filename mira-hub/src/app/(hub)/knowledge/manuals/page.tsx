@@ -368,6 +368,18 @@ export default function KnowledgePage() {
     await fetchUploads();
   }
 
+  async function handleRetryUpload(id: string) {
+    const res = await fetch(`${API_BASE}/api/uploads/${id}/retry`, { method: "POST" });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      // Local buffer expired/lost — the only case where retry can't proceed.
+      if (body.error === "local_retry_requires_re_upload") {
+        alert("This file's saved copy has expired — please upload it again from disk.");
+      }
+    }
+    await fetchUploads();
+  }
+
   const filteredMfrs = manufacturers.filter(
     (m) => search === "" || m.name.toLowerCase().includes(search.toLowerCase()),
   );
@@ -508,7 +520,12 @@ export default function KnowledgePage() {
         {!selectedMfr && (
           <div className="space-y-2 mb-4">
             {uploads.map((u) => (
-              <UploadBlock key={u.id} upload={u} onDelete={handleDeleteUpload} />
+              <UploadBlock
+                key={u.id}
+                upload={u}
+                onDelete={handleDeleteUpload}
+                onRetry={handleRetryUpload}
+              />
             ))}
           </div>
         )}

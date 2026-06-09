@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronDown, ChevronRight,
   Folder, FolderOpen, Cog, Factory, FileText, Layers,
-  RefreshCw, MonitorPlay, MonitorOff, Radio,
+  RefreshCw, MonitorPlay, MonitorOff, Radio, ExternalLink,
 } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 
@@ -296,6 +296,15 @@ function Viewer({ node }: { node: CCNode | null }) {
     );
   }
 
+  // Open-in-new-tab handoff. Iframing third-party HMIs (Ignition Perspective,
+  // Node-RED) is fragile: X-Frame-Options/CSP block the frame, the SPA loads
+  // assets at origin-root absolute paths that bypass per-id sub-path proxies,
+  // and the embedded panel still wants its own login. Top-level navigation
+  // ignores XFO and matches the direct-connection model in
+  // .claude/rules/direct-connection-uns-certified.md — the Hub hands off, the
+  // HMI runs in its own tab.
+  const displayHref = `${API_BASE}/api/command-center/display/${node.displayId}`;
+
   return (
     <>
       <div className="flex items-center justify-between border-b bg-white px-4 py-2"
@@ -318,15 +327,32 @@ function Viewer({ node }: { node: CCNode | null }) {
           </span>
         </div>
       </div>
-      <iframe
-        // Browser is redirected straight to the HMI (WebSockets intact). No
-        // allow-forms / allow-top-navigation: the embedded screen is watch-only.
-        key={node.displayId}
-        src={`${API_BASE}/api/command-center/display/${node.displayId}`}
-        title={node.displayLabel ?? node.name}
-        className="flex-1 border-0"
-        sandbox="allow-same-origin allow-scripts allow-popups"
-      />
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+        <MonitorPlay className="h-12 w-12 text-slate-300" />
+        <div>
+          <p className="text-base font-semibold text-slate-700">
+            {node.displayLabel ?? node.name}
+          </p>
+          <p className="mt-1 max-w-md text-xs text-slate-500">
+            Live HMIs open in a new tab so they keep their own session and
+            WebSocket connection. Click below to view the screen.
+          </p>
+        </div>
+        <a
+          href={displayHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+        >
+          <ExternalLink className="h-4 w-4" />
+          Open Live View
+        </a>
+        {!node.live && (
+          <p className="text-xs text-amber-600">
+            Display is currently unreachable over HTTP — the new tab may not load.
+          </p>
+        )}
+      </div>
     </>
   );
 }

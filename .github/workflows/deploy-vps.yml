@@ -196,7 +196,11 @@ jobs:
           bash scripts/host_perm_setup.sh
 
           # Resolve the rebuild list once so cleanup + build + up all agree.
-          TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub mira-cmms-sync mira-bot-telegram mira-bot-slack}"
+          # mira-ask added 2026-06-06 (closes ops gap surfaced by AskMira P0 fix
+          # cycle — engine changes shipped to telegram/slack but mira-ask-saas
+          # stayed on the old image because it was missing from this default
+          # list). See docs/runbooks/kiosk-askmira-deploy-and-verify.md.
+          TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub mira-cmms-sync mira-bot-telegram mira-bot-slack mira-ask}"
           echo "Rebuild targets: $TARGETS"
 
           echo "=== Pre-deploy cleanup: remove any stale containers blocking recreate ==="
