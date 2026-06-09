@@ -65,6 +65,7 @@ Everything else is OFF path until first payment lands.
 
 ## Execution flow (every run)
 
+0. **Freshness gate (run FIRST — before any audit).** Beta-readiness == production == `origin/main` (`deploy-vps.yml` checks out `main`), **never** the working tree a session happens to sit on. Run `bash wiki/orchestrator/freshness-guard.sh <paths-this-run-will-audit>`. If it exits **3 (STALE)**, this run audits **`origin/main`**: read every audited file via `git show origin/main:<path>` (or a detached `origin/main` worktree), not the working tree — and put a one-line `⚠️ audited origin/main (HEAD was N behind)` banner at the top of `STATE.md` / the scorecard. Exit **0** means the tree matches `origin/main` and auditing it is safe. **A blocker/work-stream is "open" only if it is open on `origin/main`; the branch a code session sits on is irrelevant to beta-readiness.** (Root cause of the 2026-06-09 false RED: a run on a branch 51 commits behind `main` reported six already-merged blockers as open. Full write-up: `wiki/orchestrator/FRESHNESS_FIX.md`.)
 1. **Scan** — `tools/orchestrator/scan.sh` inventories: active branches (both repos), open PRs, ready-for-agent issues, stashes, recent commits on main, sessions referenced in `wiki/orchestrator/sessions.json`. Emits `wiki/orchestrator/scan.json`.
 2. **Score** — `tools/orchestrator/score.py` scores each work stream on money-path alignment (0–5), readiness (0–5), age (days), blast radius (files / loc), and emits a decision tag. Output: `wiki/orchestrator/state.json` + `wiki/orchestrator/STATE.md`.
 3. **Detect drift** — flag any of:
@@ -105,6 +106,7 @@ Never dispatch to a sub-agent for KILL or DEFER work — that's pure waste.
 | Path | Purpose |
 |---|---|
 | `.claude/skills/product-orchestrator/SKILL.md` | This doctrine |
+| `wiki/orchestrator/freshness-guard.sh` | Freshness gate — fails STALE when the working tree is behind `origin/main`, so audits judge the deploy truth, not a stale branch (step 0). |
 | `tools/orchestrator/scan.sh` | Inventory script |
 | `tools/orchestrator/score.py` | Scoring + decision logic |
 | `tools/orchestrator/render.py` | Renders STATE.md + the artifact HTML |
@@ -129,6 +131,7 @@ Never dispatch to a sub-agent for KILL or DEFER work — that's pure waste.
 - ❌ Dropping stashes without logging rationale
 - ❌ Modifying code outside the listed file paths
 - ❌ Ignoring the Active Focus Window or 90-day MVP scope to "be helpful"
+- ❌ Auditing the working tree without running the freshness gate first — a stale branch reports already-merged work as open (the 2026-06-09 false RED)
 - ❌ Producing reports without a top-3 action list — every report ends with three concrete moves the founder can make in the next hour
 
 ## The one-screen test
