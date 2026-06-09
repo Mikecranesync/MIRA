@@ -4,14 +4,28 @@ This module is intentionally small and dependency-free so it can be imported
 by both the engine and offline tests without dragging in psycopg2, sqlalchemy,
 or the rest of the bot stack.
 
-The check is **observational only** — it never blocks a response. It writes
-a structured log line so we can track citation-compliance rate over time and
-feed the 90-day MVP success metric (≥9/10 technical replies cite a source).
+Two checks live here:
+
+  1. **Presence** (CRA-11, observational): does a technical reply that had KB
+     coverage include a ``[Source: ...]`` tag at all? Logged, never blocks.
+  2. **Relevance** (beta-readiness P0-3 — "stop the lie"): does the cited
+     vendor actually match the resolved ``uns_context`` manufacturer? A Siemens
+     breaker cited on a Danfoss VLT question is a confidently-wrong source —
+     presence alone reads it green. Relevance is **alias-aware** (Allen-Bradley
+     / PowerFlex / Rockwell all canonicalize to "Rockwell Automation") and
+     **fail-open**: if either side is an unrecognized vendor, we do NOT flag a
+     miss, so a correct-but-unusual citation is never suppressed.
+
+When ``enforce=True`` and a reply's cited sources ALL conflict with the
+resolved manufacturer, the conflicting ``[Source: ...]`` tags are stripped and
+a short honesty note is appended — the engine uses this so a false attribution
+never reaches the technician.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import re
 from collections import Counter
 from collections.abc import Awaitable, Callable
@@ -19,6 +33,111 @@ from collections.abc import Awaitable, Callable
 from .workers.rag_worker import CITATION_TAG_RE, format_source_label
 
 logger = logging.getLogger("mira-gsd")
+
+
+def citation_enforce_enabled() -> bool:
+    """Runtime kill-switch for the P0-3 citation-strip. Default ON; set
+    MIRA_CITATION_ENFORCE=0 to disable (detection still logs) without a deploy
+    if a false-positive ever surfaces in prod."""
+    return os.getenv("MIRA_CITATION_ENFORCE", "1") != "0"
+
+# Lazy, cached, fail-open import of the canonical vendor-alias table so this
+# module stays import-light (uns_resolver pulls neon_recall / DB deps).
+_VENDOR_ALIASES: dict[str, str] | None = None
+
+
+def _vendor_aliases() -> dict[str, str]:
+    global _VENDOR_ALIASES
+    if _VENDOR_ALIASES is None:
+        try:
+            from .uns_resolver import VENDOR_ALIASES
+
+            _VENDOR_ALIASES = {k.lower(): v for k, v in VENDOR_ALIASES.items()}
+        except Exception:  # pragma: no cover - only when resolver unimportable
+            _VENDOR_ALIASES = {}
+    return _VENDOR_ALIASES
+
+
+def _canonical_vendor(text: str) -> str | None:
+    """Canonical manufacturer for a vendor/alias/label string, or None if no
+    known vendor is named. Scans longest aliases first so 'rockwell automation'
+    wins over 'rockwell'."""
+    if not text:
+        return None
+    low = text.strip().lower()
+    aliases = _vendor_aliases()
+    if low in aliases:
+        return aliases[low]
+    for alias in sorted(aliases, key=len, reverse=True):
+        if alias in low:
+            return aliases[alias]
+    return None
+
+
+def _tag_label(tag: str) -> str:
+    """Extract the label text from a '[Source: <label>]' tag."""
+    inner = tag[1:-1] if tag.startswith("[") and tag.endswith("]") else tag
+    return re.sub(r"(?i)^\s*source:\s*", "", inner).strip()
+
+
+def evaluate_citation_relevance(reply: str, expected_manufacturer: str | None) -> dict:
+    """Pure, alias-aware citation-relevance check (no I/O).
+
+    Returns::
+
+        {
+          "relevant":         bool,   # False only on an UNAMBIGUOUS conflict
+          "expected_vendor":  str | None,   # canonical, when recognized
+          "cited_vendors":    list[str],    # canonical vendors named in tags
+          "conflicting_tags": list[str],    # tags whose vendor conflicts
+        }
+
+    Conservative / fail-open. A miss is flagged ONLY when ALL of:
+      * the expected manufacturer canonicalizes to a recognized vendor, AND
+      * the reply names ≥1 recognized cited vendor, AND
+      * none of those recognized cited vendors equals the expected one.
+    If a correct citation is present alongside a wrong one, it is NOT a miss.
+    """
+    expected = _canonical_vendor(expected_manufacturer or "")
+    tags = CITATION_TAG_RE.findall(reply or "")
+    cited: list[str] = []
+    for tag in tags:
+        cv = _canonical_vendor(_tag_label(tag))
+        if cv:
+            cited.append(cv)
+
+    relevant = True
+    conflicting: list[str] = []
+    if expected and cited and expected not in cited:
+        relevant = False
+        conflicting = [
+            t for t in tags if (_canonical_vendor(_tag_label(t)) not in (None, expected))
+        ]
+
+    return {
+        "relevant": relevant,
+        "expected_vendor": expected,
+        "cited_vendors": cited,
+        "conflicting_tags": conflicting,
+    }
+
+
+def strip_conflicting_citations(
+    reply: str, conflicting_tags: list[str], expected_vendor: str | None
+) -> str:
+    """Remove wrong-vendor ``[Source: ...]`` tags and append a brief honesty
+    note so a false attribution never reaches the technician."""
+    out = reply or ""
+    for tag in conflicting_tags:
+        out = out.replace(tag, "")
+    out = re.sub(r"[ \t]{2,}", " ", out).rstrip()
+    who = f"a verified {expected_vendor}" if expected_vendor else "a verified manufacturer"
+    out += (
+        f"\n\n_(Note: I removed a citation that pointed to a different manufacturer's "
+        f"manual — the guidance above is not drawn from {who} source. Confirm against "
+        f"your equipment's documentation before acting.)_"
+    )
+    return out
 
 
 # Phrases that mean "this answer is technical and a citation is owed".
@@ -42,6 +161,8 @@ def check_citation_compliance(
     *,
     fsm_state: str = "",
     chat_id: str = "",
+    uns_context: dict | None = None,
+    enforce: bool = False,
 ) -> dict:
     """Inspect a final LLM reply for inline ``[Source: ...]`` citations.
 
@@ -71,11 +192,22 @@ def check_citation_compliance(
 
     tags = CITATION_TAG_RE.findall(reply or "")
     present = bool(tags)
+
+    # Relevance: is the cited vendor the resolved manufacturer? (P0-3)
+    expected_mfr = (
+        (uns_context or {}).get("manufacturer") if isinstance(uns_context, dict) else None
+    )
+    rel = evaluate_citation_relevance(reply or "", expected_mfr)
+
     result = {
         "required": required,
         "present": present,
         "tag_count": len(tags),
         "kb_status": status,
+        "relevant": rel["relevant"],
+        "expected_vendor": rel["expected_vendor"],
+        "cited_vendors": rel["cited_vendors"],
+        "sanitized_reply": None,
     }
 
     if required and not present:
@@ -95,6 +227,20 @@ def check_citation_compliance(
             fsm_state,
             len(tags),
         )
+
+    if not rel["relevant"]:
+        logger.warning(
+            "CITATION_RELEVANCE_MISS chat_id=%s expected=%s cited=%s — "
+            "cited source(s) name a different manufacturer than the resolved asset",
+            chat_id,
+            rel["expected_vendor"],
+            rel["cited_vendors"],
+        )
+        if enforce:
+            result["sanitized_reply"] = strip_conflicting_citations(
+                reply or "", rel["conflicting_tags"], rel["expected_vendor"]
+            )
+
     return result
 
 

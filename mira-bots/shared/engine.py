@@ -17,6 +17,7 @@ import httpx
 from . import quality_gate
 from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
+from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
 from .conversation_router import route_intent
 from .detection.recurring_fault import check_recurring_and_annotate
@@ -2587,15 +2588,21 @@ class Supervisor:
         if _honest_prefix:
             formatted = _honest_prefix + formatted
 
-        # CRA-11 / Unit 2 — observational citation compliance check.
-        # Logs CITATION_COMPLIANCE_OK / _MISS so we can measure inline-cite
-        # rate over time. Never blocks the reply.
-        _check_citation_compliance(
+        # CRA-11 / Unit 2 — citation presence (observational) + P0-3 relevance.
+        # Presence logs OK/MISS for the inline-cite rate metric. Relevance (the
+        # "stop the lie" gate) strips a cited source that names a DIFFERENT
+        # manufacturer than the resolved asset (alias-aware, fail-open) so a
+        # confidently-wrong attribution never reaches the technician.
+        _cc = _check_citation_compliance(
             formatted,
             getattr(self.rag, "kb_status", {}),
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
+            uns_context=(state.get("context") or {}).get("uns_context"),
+            enforce=_citation_enforce_enabled(),
         )
+        if _cc.get("sanitized_reply"):
+            formatted = _cc["sanitized_reply"]
 
         tl_flush()
         return self._make_result(
@@ -3420,12 +3427,16 @@ class Supervisor:
         if honest_prefix:
             formatted = honest_prefix + formatted
 
-        _check_citation_compliance(
+        _cc = _check_citation_compliance(
             formatted,
             getattr(self.rag, "kb_status", {}),
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
+            uns_context=ctx.get("uns_context"),
+            enforce=_citation_enforce_enabled(),
         )
+        if _cc.get("sanitized_reply"):
+            formatted = _cc["sanitized_reply"]
 
         return self._make_result(
             formatted,
