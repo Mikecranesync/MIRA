@@ -135,6 +135,12 @@ bash install/smoke_test.sh
 
 ## Where to Resume → `wiki/hot.md`
 ## Offline Testing → `tests/eval/README.md`
+## SimLab (ProveIt-style simulated factory benchmark) → `docs/simlab/README.md`
+The flagship is a deterministic, headless **juice bottling line** (`simlab/` package): 8 machines
++ utilities, PackML states, PLC-style tags, UNS, 6 replayable fault scenarios, simulated docs,
+MIRA diagnostic (evidence + rubric), train-before-deploy approval. `python -m simlab` runs it
+locally. NOT a toy conveyor — the headless simulator is the source of truth; Factory I/O is an
+optional visual layer only. Eval scenarios run against the real Supervisor via `tests/simlab/runner.py`.
 
 ---
 

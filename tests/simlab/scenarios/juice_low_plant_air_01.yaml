@@ -1,0 +1,87 @@
+id: juice_low_plant_air_01
+name: "Air System 01 — Low Plant Air Causes Multi-Machine Symptoms"
+tier: 1
+machine_type: air_system
+source: hand_crafted
+tags: [plant_air, air_pressure, utility, multi_machine, root_cause_upstream, juice_bottling]
+description: >
+  Plant compressed-air header pressure has dropped to 55 PSI (normal 90 PSI).
+  low_air_alarm is active on AirSystem01. Multiple machines show secondary
+  symptoms simultaneously: Filler 01 bowl pressure low (underfill starting),
+  Depalletizer 01 vacuum low (pick cycle unreliable). MIRA must identify
+  the single root cause — AirSystem01 — rather than treating each machine
+  fault independently.
+
+simlab_scenario_id: low_plant_air_multi_machine
+simlab_asset_id: airsystem01
+
+machine_context:
+  site: "enterprise.florida_natural_demo.plant1.juice_bottling"
+  uns_path: "enterprise.florida_natural_demo.plant1.juice_bottling.line01"
+  components:
+    - id: airsystem01
+      type: air_system
+      description: "Plant compressed-air utility skid"
+      manufacturer: ""
+      model: ""
+      uns_path: "enterprise.florida_natural_demo.plant1.juice_bottling.line01.airsystem01"
+    - id: filler01
+      type: rotary_filler
+      description: "20-valve rotary filler — secondary symptom (low bowl pressure)"
+      uns_path: "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01"
+    - id: depalletizer01
+      type: pick_place_depalletizer
+      description: "Depalletizer — secondary symptom (low vacuum)"
+      uns_path: "enterprise.florida_natural_demo.plant1.juice_bottling.line01.depalletizer01"
+  tag_state:
+    "airsystem01.header_pressure_psi": 55.0
+    "airsystem01.low_air_alarm": true
+    "airsystem01.compressor_running": true
+    "filler01.filler_bowl_pressure": 7.5
+    "filler01.fill_level_oz": 14.8
+    "filler01.underfill_reject_count": 3
+    "depalletizer01.vacuum_pressure": 14.0
+
+fault:
+  root_cause: low_plant_compressed_air_pressure
+  root_cause_component: airsystem01
+  red_herrings:
+    - filler01
+    - depalletizer01
+  correct_isolation_steps:
+    - "Multiple machines showing air-related faults simultaneously"
+    - "Check AirSystem01 header_pressure_psi = 55 PSI (normal 90 PSI)"
+    - "low_air_alarm = TRUE confirms system-wide air problem"
+    - "compressor_running = TRUE — compressor is on, but pressure is still low"
+    - "Root cause: air leak in distribution OR excessive demand — walk headers"
+    - "Secondary: filler01 and depalletizer01 symptoms will clear once air is restored"
+  precursors:
+    - "header_pressure_psi dropping for 20+ ticks before alarm"
+
+behavior_checkpoints:
+  cp_utility_first:
+    params:
+      expected_component: ["airsystem", "air system", "plant air", "compressor"]
+      by_turn: 3
+    reason: "Must identify AirSystem01 as root cause before addressing machine symptoms"
+  cp_common_cause:
+    params:
+      required_reasoning: ["common", "same cause", "air", "utility", "both"]
+    reason: "Must reason that multiple machines have a single common cause"
+
+expected_final_state: DIAGNOSIS
+max_turns: 6
+expected_keywords: [air, pressure, header, compressor, common, utility, airsystem]
+forbidden_keywords: []
+
+turns:
+  - role: user
+    content: >
+      Multiple machines are faulting simultaneously — is there a common cause?
+  - role: user
+    content: >
+      Filler bowl pressure is low and the depalletizer vacuum is low too. Could it be the air system?
+  - role: user
+    content: >
+      The air header pressure is reading 55 PSI. The low_air_alarm is on but the compressor is running.
+      What should I do?
