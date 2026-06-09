@@ -23,6 +23,7 @@ from collections import OrderedDict
 from typing import Any, Callable, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from ignition_audit import query_audit_rows, write_audit_row
 from pydantic import BaseModel
 
@@ -323,6 +324,15 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
         # The Ignition session is per-asset; if no explicit chat_id is supplied
         # use (tenant_id, asset_id) so concurrent assets keep independent FSM state.
         asset_id = (req.asset_id or "").strip()
+
+        # Phase 6 gate: a direct-connection surface MUST carry a resolvable UNS
+        # identifier. Downgrading to the chat-gate would ask "which machine?" on
+        # a surface that already knows — the rule that's forbidden. Return 422 so
+        # the Ignition WebDev handler can surface the error clearly.
+        if not asset_id and not req.asset_context:
+            logger.warning("IGNITION_CHAT uns_required tenant=%s", tenant_id)
+            return JSONResponse(status_code=422, content={"error": "uns_required"})
+
         chat_id = f"ignition:{tenant_id}:{asset_id or 'default'}"
 
         preamble = _format_tag_preamble(req.tag_snapshot or {}, asset_id)
@@ -330,15 +340,10 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
 
         tag_reads = sorted((req.tag_snapshot or {}).keys())
 
-        # Direct-connection provenance: an Ignition turn arriving with an asset
-        # identifier is UNS-certified by construction — the WebDev/Perspective
-        # surface already knows which machine the technician is on. Mark the
-        # turn so the engine stamps state["uns_context"]["source"] and the
-        # decision trace records it. A turn WITHOUT an asset id is treated as a
-        # plain chat turn here (the reject-on-missing-identifier contract is the
-        # broader Phase-6 gate-bypass work — see
-        # .claude/rules/direct-connection-uns-certified.md).
-        uns_source = "direct_connection" if (asset_id or req.asset_context) else None
+        # Direct-connection provenance: the Ignition surface already knows which
+        # machine the technician is on. The engine stamps source="direct_connection"
+        # on state["uns_context"] so the gate is bypassed and confidence=1.0.
+        uns_source = "direct_connection"
 
         # Structured tag evidence for the decision trace (Phase 9). The Ignition
         # turn already carries the live snapshot; surface it as evidence rows so
