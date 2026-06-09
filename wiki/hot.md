@@ -749,3 +749,8 @@ Mitsubishi Electric: 16 chunks (NULL model)
 - Scorecard: 18/57 passing (32%) — regression from 45/57 (2026-06-05)
 - Action: issue-filed (#1744)
 - 25 of 39 failures are the async "taking longer than usual" holding message → inference-latency/timeout signature, not a fixture-logic bug. Hard-stopped autopatch (39 > 15 patchable, 3 file clusters). Remaining 14 are pre-existing tier-2 long-tail.
+
+## eval-fixer run — 2026-06-09
+- Scorecard: 48/57 passing (84%)
+- Action: issue-filed (#1843)
+- 9 failures span 3 file clusters (engine.py ×7, guardrails.py ×2, active.yaml ×2) → hard-stop, no single-file patch. FSM failures are directionally contradictory (under-progression cluster A vs over-progression cluster B); vfd_abb_03 is a live-LLM timeout flake. No regressions vs prior scorecard.
