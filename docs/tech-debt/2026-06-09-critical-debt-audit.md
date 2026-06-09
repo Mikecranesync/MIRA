@@ -16,7 +16,8 @@
 | 4 | Safety-keyword detection (#1839, closes #1834) | P1 | ✅ Merged 2026-06-09 |
 | 5 | `com.factorylm.health-monitor` launchd job exits **127** every run | P2 (ops/host) | 🔧 Issue filed — points at a missing script |
 | 6 | `mira-hub` TS errors (9) | P3 | ⏭️ Skipped — all in `.test.ts`, none in routes |
-| 7 | Migration numbering gap 040–042 on `origin/main` | P3 | ⏭️ Noted — planned layer never built |
+| 7a | Migration numbering gap 040–042 on `origin/main` | P3 | ⏭️ Noted — planned layer never built |
+| 7b | **Dev NeonDB ~13 migrations behind (applied through 030; 031–047 missing)** | P2 (dev-env) | 🔧 Verified — run `apply-migrations.yml` on dev |
 | 8 | Git hygiene (144 stale `.git` locks, 3 stashes, 12 worktrees) | P3 | ⏭️ Reported, **not** auto-cleaned (concurrent-writer hazard) |
 
 **No P0s found.** With the correct interpreter, every critical import on `origin/main` passes; no hardcoded secrets; no container restart loops.
@@ -94,9 +95,26 @@ No finding.
 
 - **`origin/main` migration set (mira-hub/db/migrations):** … 037, 038, 039, **[gap 040–042]**, 043, 044, 045, 046, 047.
 - The 040–042 gap is **not** missing-but-needed migrations — per `wiki/hot.md`, a "040–042 source-preservation layer" was *planned* after #1710 but never built under those numbers. `apply-migrations.yml` runs files that exist, so a numbering gap is cosmetic. **P3, noted.**
-- **Applied-state to dev NeonDB: UNVERIFIED from CHARLIE.** `psql` is not installed here (per project memory) and `gtimeout`/a pg client weren't available in-session; querying prod is forbidden by `prod-guard`. Verify via `apply-migrations.yml` (dry-run) on staging, or from the mira-hub node's `pg`.
 
-No drift-induced failure found; flag for ops verification rather than a code fix.
+### Finding 4 (verified): dev NeonDB is ~13 migrations behind `origin/main` — **P2 (dev-env)**
+
+Queried the dev branch directly (`doppler -c dev`, host `ep-lingering-salad-…` = the dev endpoint, **not** prod, via `docker run postgres:16 psql`). The hub has **no single version-table** for these migrations — `schema_migrations` is legacy (stops at `002`) and `migrations` is a different app's TypeORM table (n8n/Paperclip-style). The hub migrations are **applied idempotently** (re-run every deploy, no version row — which is exactly why 032/033 needed idempotency guards, per `wiki/hot.md`). So applied-state is verified by checking for the actual schema objects:
+
+| Migration | Object | In dev? |
+|---|---|---|
+| 016 component_templates | `component_templates` | ✅ |
+| 027 ai_suggestions | `ai_suggestions` | ✅ |
+| 030 display_endpoints | `display_endpoints` | ✅ |
+| **031 ignition_audit_log** | `ignition_audit_log` | ❌ |
+| **032 decision_traces** | `decision_traces` | ❌ |
+| **033 tag_events** | `tag_events` | ❌ |
+| **035 approved_tags** | `approved_tags` | ❌ |
+| **044 workflow_runs** | `workflow_runs` | ❌ |
+| **046/047 asset-agent** | `asset_agent_status`, `asset_validation_runs` | ❌ |
+
+**Cutoff: dev is applied through 030; migrations 031–047 are in code but NOT in the dev DB.** Anyone running a feature locally against dev that touches Command Center / decision-traces / tag ingest / workflow-runs / asset-agent validation will hit missing-table errors. Not customer-facing (dev is "safe to break" and gets reset from prod periodically — see memory `project_neon_env_state`), but it's real dev-env hygiene drift.
+
+**Fix (ops, not in this PR):** run `apply-migrations.yml` against dev (`dry-run` then `apply`) — the 031+ migrations are idempotent, so this is low-risk. **PROD state was NOT checked** (forbidden by `prod-guard`); verify prod separately via `apply-migrations.yml --dry-run`.
 
 ---
 
