@@ -104,6 +104,15 @@ re-baseline. Stores are gitignored until then.
 6. **Final orchestrator audit.** Re-run the Lens-F beta-readiness audit; expect 0 stranger-reachable
    blockers → F flips RED→GREEN.
 
+## Decisions for Mike (product/copy calls I won't guess)
+- **Pricing CTA drift.** `signup-flow.spec.ts:32` expects the featured-plan CTA "Start Free Trial",
+  but prod now renders **"Book Your Assessment →"**. The Stripe checkout-303 still works (verified
+  green by `money-path.spec.ts` #6 and `signup-flow.spec.ts:53`), so this is a *copy/flow* change,
+  not a broken money path. I scoped the smoke gate to `smoke + money-path` and **left signup-flow
+  out** rather than enshrine copy whose intent I can't confirm. **Is the free trial still the primary
+  pricing CTA, or has it pivoted to assessment-booking?** Once decided, fix `signup-flow.spec.ts:32`
+  and re-add it to `playwright.smoke.config.ts` testMatch.
+
 ## Optional follow-ups (noted, not blocking)
 - ~~`MIRA_CITATION_ENFORCE` kill-switch~~ — **DONE** (`citation_enforce_enabled()`, default ON).
 - **Drive #1841 to merge** — this is what actually closes P0-2.
