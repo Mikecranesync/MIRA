@@ -66,13 +66,13 @@ DOCS_ROOT = REPO_ROOT / "simlab" / "docs"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from simlab import SIMLAB_TENANT_ID  # noqa: E402 — single source of truth
 from simlab.lines.juice_bottling import build_line  # noqa: E402
 from simlab.uns import LINE, SITE, asset_path  # noqa: E402
 
-# Fixed, well-known tenant for the SimLab Florida-Natural juice-bottling demo.
-# (Same pattern as the other demo seeds — a reserved 0-prefixed UUID so it can
-# be applied to dev or prod without colliding with a real customer.)
-SIMLAB_TENANT_ID = "00000000-0000-0000-0000-000000515ab1"
+# SIMLAB_TENANT_ID (the fixed Florida-Natural demo tenant) is defined once in
+# simlab/__init__.py and imported here so the seed and the scenario runner can
+# never drift to different tenants.
 
 # filename stem (under simlab/docs/<asset>/) -> source_type label. Mirrors the
 # existing source_type convention in sibling seeds (e.g. 'fault_code_table').

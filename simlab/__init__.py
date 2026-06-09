@@ -35,6 +35,14 @@ customer PLC code and no confidential plant data is used. Every reading carries
 
 from __future__ import annotations
 
-__all__ = ["__version__"]
+__all__ = ["SIMLAB_TENANT_ID", "__version__"]
 
 __version__ = "0.1.0"
+
+# Fixed, well-known tenant for the SimLab Florida-Natural juice-bottling demo.
+# A reserved 0-prefixed UUID so it can be seeded to dev or prod without colliding
+# with a real customer. Single source of truth: the doc-seed
+# (tools/seeds/seed-simlab-docs.py) ingests knowledge_entries under it, and the
+# scenario runner (tests/simlab/runner.py) binds the Supervisor to it so recall
+# actually surfaces those docs at scenario runtime. Both import from here.
+SIMLAB_TENANT_ID = "00000000-0000-0000-0000-000000515ab1"
