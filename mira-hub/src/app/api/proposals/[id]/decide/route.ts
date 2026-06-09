@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+import { applyHubProposalTransition } from "@/lib/proposal-transition";
 
 export const dynamic = "force-dynamic";
 
@@ -89,15 +90,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const newStatus = decision === "verify" ? "verified" : "rejected";
       const reviewerLabel = `human:${ctx.userId ?? ctx.tenantId}`;
 
-      await c.query(
-        `UPDATE relationship_proposals
-           SET status = $1,
-               reviewed_at = now(),
-               reviewed_by = $2,
-               reasoning = COALESCE(NULLIF($3, ''), reasoning)
-         WHERE id = $4`,
-        [newStatus, reviewerLabel, reason, id],
-      );
+      // ADR-0017: route the Hub-side projections through the single helper so
+      // the paired ai_suggestions(kg_edge) row transitions in lockstep with
+      // relationship_proposals (the drift the proposal-state canary detects).
+      // kg_relationships (engine projection) is still mirrored below.
+      await applyHubProposalTransition(c, {
+        trigger: decision === "verify" ? "accept" : "reject",
+        relationshipProposalId: id,
+        reviewerLabel,
+        reason,
+      });
 
       if (decision === "verify") {
         // Engine-side mirror in kg_relationships. Insert if missing, else
