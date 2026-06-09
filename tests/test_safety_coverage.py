@@ -13,7 +13,7 @@ sys.path.insert(0, "mira-bots")
 
 import pytest
 
-from shared.guardrails import SAFETY_KEYWORDS, classify_intent, strip_mentions, _EDUCATIONAL_QUESTION_RE
+from shared.guardrails import SAFETY_KEYWORDS, classify_intent
 
 # ── Every keyword in SAFETY_KEYWORDS must fire ────────────────────────────────
 
