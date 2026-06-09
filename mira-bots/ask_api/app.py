@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from shared.engine import Supervisor
 from shared.live_snapshot import _FAULT_CODES, normalize, render_status_block
 
+from ask_api.gate_state import derive_uns_gate
 from ask_api.machine_context import MACHINE_CONTEXT
 
 logging.basicConfig(
@@ -126,7 +127,15 @@ async def ask(req: AskRequest, x_mira_key: str = Header(None)):
             mira_user_id="ignition:kiosk",
             retrieval_query=retrieval_query,
         )
-        return {"answer": reply}
+        # Surface the UNS confirmation-gate state so the Perspective HMI can render
+        # a distinct Yes/No confirm panel + location breadcrumb instead of treating
+        # the gate prompt as a plain answer. Best-effort: never break the response.
+        gate = {"uns_gate_state": "answered", "candidate_asset": "", "confirmed_asset": ""}
+        try:
+            gate = derive_uns_gate(engine._load_state(chat_id))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("ASK_GATE_STATE_MISS error=%s", exc)
+        return {"answer": reply, "session_id": chat_id, **gate}
     except Exception as e:  # always return 200 so the HMI shows something
         logger.error("ASK_ERROR error=%s", e, exc_info=True)
         return {"answer": "MIRA error: " + str(e)}
