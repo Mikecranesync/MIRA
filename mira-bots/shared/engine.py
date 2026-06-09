@@ -1068,9 +1068,7 @@ class Supervisor:
             "dispatch_kind": dispatch_kind,
         }
 
-    async def _enforce_citation_rewrite(
-        self, reply: str, *, chat_id: str, fsm_state: str
-    ) -> str:
+    async def _enforce_citation_rewrite(self, reply: str, *, chat_id: str, fsm_state: str) -> str:
         """#1659 enforce-mode bridge: connect the insertion-only citation rewrite
         to this turn's retrieval set + the inference router.
 
