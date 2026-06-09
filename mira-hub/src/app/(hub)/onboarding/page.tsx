@@ -18,10 +18,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Building2, Factory, Loader2, MapPin, MessageSquare, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Building2, Factory, Loader2, MapPin, MessageSquare, ShieldCheck, Sparkles } from "lucide-react";
 import { API_BASE } from "@/lib/config";
+import { AssetValidateTab } from "@/components/AssetValidateTab";
 
-type StepId = "company" | "site" | "line" | "review" | "try";
+type StepId = "company" | "site" | "line" | "review" | "try" | "validate";
 
 interface CompanyPayload { name: string }
 interface SitePayload    { name: string; location?: string }
@@ -38,6 +39,7 @@ const STEPS: { id: StepId; label: string; icon: React.ElementType }[] = [
   { id: "line",    label: "First line",     icon: Factory },
   { id: "review",  label: "Review & finish", icon: Sparkles },
   { id: "try",     label: "Try MIRA",        icon: MessageSquare },
+  { id: "validate", label: "Train & approve", icon: ShieldCheck },
 ];
 
 export default function OnboardingPage() {
@@ -198,7 +200,14 @@ export default function OnboardingPage() {
           <TryStep
             payloads={payloads}
             onTry={() => router.push("/quickstart")}
+            onValidate={() => advance("validate")}
             onSkip={() => router.replace("/namespace")}
+          />
+        )}
+        {activeStep === "validate" && (
+          <ValidateStep
+            onBack={() => advance("try")}
+            onDone={() => router.replace("/namespace")}
           />
         )}
       </div>
@@ -452,10 +461,12 @@ function ReviewStep({
 function TryStep({
   payloads,
   onTry,
+  onValidate,
   onSkip,
 }: {
   payloads: AllPayloads;
   onTry: () => void;
+  onValidate: () => void;
   onSkip: () => void;
 }) {
   const lineName = payloads.line?.name ?? "your line";
@@ -491,15 +502,135 @@ function TryStep({
         >
           Skip to namespace
         </button>
-        <button
-          type="button"
-          onClick={onTry}
-          className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
-          data-testid="onboarding-try-mira"
-        >
-          <MessageSquare className="h-4 w-4" /> Try MIRA now <ArrowRight className="h-4 w-4" />
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <button
+            type="button"
+            onClick={onTry}
+            className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            data-testid="onboarding-try-mira"
+          >
+            <MessageSquare className="h-4 w-4" /> Try MIRA now
+          </button>
+          <button
+            type="button"
+            onClick={onValidate}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+            data-testid="onboarding-train-approve"
+          >
+            <ShieldCheck className="h-4 w-4" /> Train &amp; approve <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Train-before-deploy wizard step. Pick an asset, then drive the asset-agent
+ * lifecycle (validate Q&A → approve) via the AssetValidateTab from #1783. Only
+ * approved assets answer on the Ignition/HMI surface — the Command Center is
+ * where you train MIRA before deploying it. See
+ * docs/specs/asset-agent-validation-spec.md §8 and .claude/rules/train-before-deploy.md.
+ */
+function ValidateStep({ onBack, onDone }: { onBack: () => void; onDone: () => void }) {
+  const [assets, setAssets] = useState<{ id: string; tag: string; name: string }[]>([]);
+  const [selectedId, setSelectedId] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/assets`, { cache: "no-store" });
+        if (cancelled) return;
+        if (!res.ok) throw new Error(`Failed to load assets: HTTP ${res.status}`);
+        const data = (await res.json()) as Array<{ id?: unknown; tag?: unknown; name?: unknown }>;
+        if (cancelled) return;
+        const list = (Array.isArray(data) ? data : []).map((a) => ({
+          id: String(a.id ?? ""),
+          tag: String(a.tag ?? a.id ?? ""),
+          name: String(a.name ?? a.tag ?? a.id ?? ""),
+        })).filter((a) => a.id);
+        setAssets(list);
+        if (list.length === 1) setSelectedId(list[0].id);
+      } catch (e) {
+        if (!cancelled) setError((e as Error).message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <div className="space-y-5" data-testid="step-validate">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-600">
+          <ShieldCheck className="h-5 w-5" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Train &amp; approve before deploy</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Pick an asset, ask MIRA real questions, mark the cited answers good or bad, and
+            approve it. Only <span className="font-medium text-slate-900">approved</span> assets
+            answer on the Ignition / HMI surface — you train MIRA here, then deploy.
+          </p>
+        </div>
+      </div>
+
+      {error && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700" data-testid="validate-error">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading assets…
+        </div>
+      ) : assets.length === 0 ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" data-testid="validate-no-assets">
+          No assets yet. Add one from the{" "}
+          <a className="font-medium underline" href={`${API_BASE}/assets`}>Assets tab</a>, then come
+          back to validate it. (The wizard created your site and line; assets, docs, and tags fill in
+          from there — you can always reach this from an asset&apos;s <strong>Validate</strong> tab later.)
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <Field label="Asset to validate" hint="MIRA validates and approves one asset agent at a time.">
+            <select
+              value={selectedId}
+              onChange={(e) => setSelectedId(e.target.value)}
+              data-testid="validate-asset-select"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">Select an asset…</option>
+              {assets.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                  {a.tag && a.tag !== a.name ? ` (${a.tag})` : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {selectedId && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4" data-testid="validate-tab-host">
+              <AssetValidateTab assetId={selectedId} />
+            </div>
+          )}
+        </div>
+      )}
+
+      <NavButtons
+        leftLabel="Back"
+        onLeft={onBack}
+        rightLabel="Finish"
+        onRight={onDone}
+        rightTestId="onboarding-validate-done"
+      />
     </div>
   );
 }

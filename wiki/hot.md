@@ -1,5 +1,58 @@
 # Hot Cache — 2026-06-04 — CLOUD
 
+## Session — 2026-06-07 (Train-before-deploy audit — 7 lanes)
+
+Verified whether MIRA supports **train before deploy** (Command Center builds+validates the
+namespace; Ignition/HMI deploys *approved* asset agents). Branch `feat/train-before-deploy`
+(worktree `/tmp/mira-tbd`, off `origin/feat/path-to-beta` so doctrine edits stack on that PR).
+
+**Verdict: PARTIALLY ALIGNED.** The build half exists; the validate→approve→deploy half does not.
+
+- ✅ **Command Center training surfaces all exist**: self-serve tenant create (`/api/auth/register`
+  → `ensureUserAndTenant`), wizard (`/api/wizard/[step]` company/site/line), `/namespace`,
+  `/assets/[id]` with `AssetChat.tsx` ("Ask MIRA" on an asset), `/proposals` (`ai_suggestions`),
+  citation rendering, `/command-center` tree+display.
+- ✅ **Retrieval is tenant-scoped** — `neon_recall.recall_knowledge` filters
+  `WHERE tenant_id = :tid OR tenant_id = :shared_tid` (the shared OEM pool is the intentional
+  Knowledge Cooperative; customer manuals do NOT leak cross-tenant). De-risks design-partner beta.
+- ❌ **Gap 1 — upload→retrieval** (THE blocker, PR #1592 DRAFT): uploaded manuals not citable.
+- ❌ **Gap 2 — no validation/approval loop, no per-asset agent lifecycle, no HMI deploy gate.**
+  `ignition_chat.py` answers any asset-bound HMAC turn regardless of readiness. No "mark good/bad"
+  in the Hub. No `asset_agent_status`.
+
+**Shipped this session — CODE (read-path spine, commit `607a3cd6`):**
+- `mira-hub/db/migrations/046_asset_agent_status.sql` — `asset_agent_status` + `asset_validation_qa`,
+  RLS mirroring mig 027. NOT applied to any DB yet.
+- `mira-bots/shared/asset_agent_transition.py` — pure state machine + `gate_decision()` (27 tests ✅).
+- `mira-pipeline/ignition_chat.py` — HMI gate behind `ENFORCE_ASSET_AGENT_GATE` (default OFF; non-ready
+  → clean refusal, audited, no engine call; DB error fails OPEN). 10 tests ✅; direct-connection 16/16 ✅.
+- ⚠️ `_lookup_agent_state` resolver join (asset_id→kg_entities) is plausible but UNTESTED vs real schema
+  (gate default-off; tests monkeypatch the lookup). Verify before enabling.
+- Next PR: Validate UI (`/assets/[id]`) + approve endpoint + TS twin (write-path, where the helper gets a caller).
+
+**Shipped this session — docs/doctrine:**
+- `docs/specs/asset-agent-validation-spec.md` (LANE 4) — per-`kg_entity` lifecycle
+  `draft→training→validating→approved→deployed`, two new tables (`asset_agent_status`,
+  `asset_validation_qa`), composes `kg_entities.approval_state` + `ai_suggestions` + engine 1–5
+  groundedness + `evidence_utilization`; HMI deploy gate `ignition_chat.py` consults behind
+  `ENFORCE_ASSET_AGENT_GATE`. **Distinct from** namespace-level L0–L6 `health-score.ts`.
+- `.claude/rules/train-before-deploy.md` (LANE 6) — the doctrine + the one new HMI-readiness rule
+  (beta-gate + read-only already exist → cross-referenced, not restated).
+- Root `CLAUDE.md` North Star + `.claude/CLAUDE.md` "What MIRA is" + rule/cross-ref lists.
+
+**Already done by the path-to-beta session (verified, NOT rebuilt):** beta gate test
+`tests/beta/beta_ready_upload_retrieval_citation.py`, Ignition runbook
+`docs/runbooks/activate-ignition-ask-mira.md`, beta-gate doctrine in CLAUDE.md/NORTH_STAR.
+
+**LANE 7 naming:** clean — no "generic chatbot/ChatGPT" copy in `mira-hub`/`mira-web` UI (only
+test + blog files matched). `.claude/CLAUDE.md` already states "not a generic chatbot."
+
+**Next 3 PRs:** (1) land #1592 (close upload→retrieval); (2) implement asset-agent-validation
+spec (migrations + transition helpers + `/assets/[id]` Validate tab); (3) wire `ignition_chat.py`
+deploy gate behind `ENFORCE_ASSET_AGENT_GATE` + hallucination-audit check.
+
+---
+
 ## Session — 2026-06-07 (Path to Beta Testers — phase opened, 6 lanes)
 
 New official phase: **Path to Beta Testers** (`docs/plans/2026-06-07-path-to-beta.md`).

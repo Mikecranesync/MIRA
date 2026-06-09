@@ -38,9 +38,39 @@ interface Proposal {
   createdAt: string;
 }
 
+// ai_suggestions (mig 027) — the 5 non-edge suggestion types the photo→KG
+// flywheel writes (kg_entity / tag_mapping / component_profile /
+// uns_confirmation / namespace_move). Rendered read-only via the precomputed
+// title/body until the proposal-transition helper (#1662) wires approve/reject.
+// See #1663.
+interface Suggestion {
+  id: string;
+  suggestionType: string;
+  title: string | null;
+  body: string | null;
+  confidence: number;
+  status: string;
+  riskLevel: string;
+  createdBy: string;
+  sourceKind: string | null;
+  sourceDocumentId: string | null;
+  sourcePage: number | null;
+  createdAt: string;
+}
+
+const SUGGESTION_TYPE_LABELS: Record<string, string> = {
+  kg_entity: "New entity",
+  tag_mapping: "Tag mapping",
+  component_profile: "Component profile",
+  uns_confirmation: "UNS confirmation",
+  namespace_move: "Namespace change",
+};
+
 interface ProposalsResponse {
   proposals: Proposal[];
   total: number;
+  suggestions?: Suggestion[];
+  suggestionsTotal?: number;
 }
 
 const STATUS_TABS: Array<{ key: string; label: string }> = [
@@ -52,6 +82,7 @@ const STATUS_TABS: Array<{ key: string; label: string }> = [
 
 export default function ProposalsPage() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("proposed");
@@ -99,6 +130,7 @@ export default function ProposalsPage() {
         const data = (await res.json()) as ProposalsResponse;
         if (cancelled) return;
         setProposals(data.proposals);
+        setSuggestions(data.suggestions ?? []);
         setError(null);
       } catch (e) {
         if (cancelled) return;
@@ -153,7 +185,7 @@ export default function ProposalsPage() {
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           Failed to load: {error}
         </div>
-      ) : proposals.length === 0 ? (
+      ) : proposals.length === 0 && suggestions.length === 0 ? (
         <EmptyState statusFilter={statusFilter} />
       ) : (
         <div className="space-y-6" data-testid="proposals-list">
@@ -197,6 +229,7 @@ export default function ProposalsPage() {
               onDecide={decide}
             />
           )}
+          {suggestions.length > 0 && <SuggestionSection suggestions={suggestions} />}
         </div>
       )}
 
@@ -378,4 +411,82 @@ function groupByRiskLevel(proposals: Proposal[]): {
     medium: proposals.filter((p) => p.riskLevel === "medium"),
     low: proposals.filter((p) => p.riskLevel === "low" || !p.riskLevel),
   };
+}
+
+// Non-edge ai_suggestions render read-only here — the precomputed title/body
+// carry the human-readable content (mig 027). Approve/reject lands once the
+// proposal-transition helper (#1662) ships; until then the technician reviews
+// these in context. See #1663.
+function SuggestionSection({ suggestions }: { suggestions: Suggestion[] }) {
+  return (
+    <section data-testid="suggestions-section">
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Suggestions ({suggestions.length})
+      </h2>
+      <p className="mb-3 text-xs text-slate-400">
+        Entity, tag, component, UNS, and namespace proposals from ingestion and photo
+        scans. Approve/reject is coming with the transition helper (#1662).
+      </p>
+      <div className="space-y-2">
+        {suggestions.map((s) => (
+          <SuggestionCard key={s.id} suggestion={s} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
+  const confidencePct = Math.round(suggestion.confidence * 100);
+  const accent =
+    suggestion.riskLevel === "safety_critical"
+      ? "border-l-red-500"
+      : suggestion.riskLevel === "high"
+        ? "border-l-amber-500"
+        : suggestion.riskLevel === "medium"
+          ? "border-l-blue-500"
+          : "border-l-slate-300";
+  const typeLabel =
+    SUGGESTION_TYPE_LABELS[suggestion.suggestionType] ?? suggestion.suggestionType;
+  return (
+    <article
+      className={`rounded-lg border border-slate-200 ${accent} border-l-4 bg-white p-4 shadow-sm`}
+      data-testid="suggestion-card"
+      data-suggestion-id={suggestion.id}
+      data-suggestion-type={suggestion.suggestionType}
+    >
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+        {suggestion.riskLevel === "safety_critical" && (
+          <Shield className="h-4 w-4 shrink-0 text-red-500" aria-label="safety-critical" />
+        )}
+        <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+          {typeLabel}
+        </span>
+        <span className="min-w-0 break-words font-semibold text-slate-900">
+          {suggestion.title ?? typeLabel}
+        </span>
+        <span className="ml-auto shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+          {confidencePct}% confidence
+        </span>
+      </div>
+
+      {suggestion.body && <p className="mt-3 text-sm text-slate-600">{suggestion.body}</p>}
+
+      <footer className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-slate-400">
+        <span className="rounded bg-slate-100 px-2 py-0.5 text-slate-600">
+          {suggestion.status}
+        </span>
+        <span>by {suggestion.createdBy}</span>
+        {suggestion.sourceKind && (
+          <span className="flex items-center gap-1">
+            <FileText className="h-3 w-3" /> {suggestion.sourceKind}
+            {suggestion.sourcePage != null ? ` p.${suggestion.sourcePage}` : ""}
+          </span>
+        )}
+        <time className="ml-2" dateTime={suggestion.createdAt}>
+          {new Date(suggestion.createdAt).toLocaleDateString()}
+        </time>
+      </footer>
+    </article>
+  );
 }
