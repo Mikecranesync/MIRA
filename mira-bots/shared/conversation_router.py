@@ -129,6 +129,15 @@ async def _call_router_llm(messages: list[dict]) -> str:
             }
         )
 
+    # PII scrub before the message ever leaves the process (#1528 adversarial
+    # triage). This path POSTs straight to Groq and bypasses
+    # InferenceRouter.complete()'s default-on sanitize, so the raw user message
+    # (IPs, MACs, serials) would otherwise leak. sanitize_context is a pure
+    # staticmethod — reuse it rather than re-implementing the regexes.
+    from .inference.router import InferenceRouter
+
+    messages = InferenceRouter.sanitize_context(messages)
+
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             resp = await client.post(
