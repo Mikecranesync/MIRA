@@ -72,6 +72,14 @@
           {
             "type": "command",
             "command": "echo \"$CLAUDE_TOOL_INPUT\" | grep -qE 'git commit|git push' && gitleaks protect --staged --config .gitleaks.toml 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "command": "bash tools/hooks/git-state-guard.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash tools/hooks/prod-guard.sh"
           }
         ]
       }
@@ -82,6 +90,10 @@
           {
             "type": "command",
             "command": "echo '--- MIRA v2.0 ---' && git log --oneline -5 && echo '--- Skills ---' && ls .claude/skills/*.md 2>/dev/null | xargs -I{} basename {} .md | tr '\\n' ' ' && echo && echo '--- Effort ---' && echo \"CLAUDE_CODE_EFFORT_LEVEL=${CLAUDE_CODE_EFFORT_LEVEL:-default} (use /effort to change; xhigh recommended for engine.py / shared/inference work)\""
+          },
+          {
+            "type": "command",
+            "command": "touch /tmp/mira-claude-active.lock 2>/dev/null || true"
           }
         ]
       }

@@ -114,7 +114,7 @@ export default function ScanPage() {
   const showCamera = state === "starting" || state === "scanning";
 
   return (
-    <div className="max-w-md mx-auto px-4 py-6">
+    <div className="w-full max-w-md mx-auto px-4 py-6">
       <h1 className="text-2xl font-semibold mb-1" style={{ color: "var(--foreground)" }}>
         Scan an asset
       </h1>
