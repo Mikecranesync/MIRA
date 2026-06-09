@@ -1,8 +1,30 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-06-09
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-06-09
+
+### Most actionable change for the playbook
+
+MaintainX was acquired by Autodesk for $3.6B (May 28). It is no longer a scrappy CMMS startup — it is Autodesk's operations module, bundled with Tandem digital twin + Fusion + FlexSim. MIRA's counter-narrative: independent, plant-floor-native, not locked inside a $50B CAD suite that your facilities team never bought. This is a direct positioning opportunity.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — acquired by Autodesk for $3.6B (May 28, 2026): https://adsknews.autodesk.com/en/news/autodesk-to-acquire-maintainx-advancing-unified-platform-in-operations/ — no standalone launch video; Bloomberg CEO interview at https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video — major vendor position flip: MaintainX is now Autodesk Operations Solutions
+
+**B2B SaaS / dev-tools**
+- **Anthropic** — "Code with Claude 2026" developer conference (SF May 6, London May 19): SF keynote https://www.youtube.com/watch?v=wjvESxKgqaQ; London keynote https://www.youtube.com/watch?v=6amLO7I9xdg — Anthropic has its own annual developer conference now; conference-as-launch-vehicle pattern previously seen only with Stripe Sessions and Figma Config. Announces: Multiagent Orchestration, Outcomes, Dreaming. Claude Opus 4.8 shipped May 28.
+- **Figma** — AI agent beta launch (May 20, 2026): product guide video https://www.youtube.com/watch?v=PJEfCwKpRP0; May release notes https://www.youtube.com/watch?v=11mdb7lLclM — "Your Agent handles it" framing (same compression as Notion 3.0 from the May cache). Config 2026 (SF June 23–25) will have a full keynote — not yet published.
+- **Cursor** — 3.7 Design Mode (June 5, 2026): community demo https://www.youtube.com/watch?v=Yh6vlU02OhE — new UX register: click UI elements, speak the change, agent rewrites code in browser. First developer tool to combine point + voice + live edit; pattern transfer for MIRA: "point at the fault, say what you see, MIRA pulls the manual section."
+
+### Scan notes
+
+Tractian, Augury, Inductive Automation, Rockwell, Siemens, Fluke, Snap-on, Klein, Milwaukee, Vercel, Supabase, Linear, Loom, Plaid, Replit, Limble, Fiix, Brightly, eMaint: no new promo/launch video content found for the May 4–June 9 window. OpenAI shipped several models (Opus 4.8 analogue in their stack; life-sciences GPT-Rosalind) but no video launch format found.
 
 ---
 
@@ -86,7 +108,7 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Digitize Fast with MaintainX and AI": https://www.youtube.com/watch?v=X8cY-d-_KZM
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
-**Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+**Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner. **Acquired by Autodesk** (May 28, 2026) for $3.6B all-cash; folded into Autodesk Operations Solutions alongside Tandem digital twin, FlexSim, Fusion Operations. ARR >$135M at time of acquisition, growing >50% YoY. This removes MaintainX from the independent CMMS competitive set — it is now Autodesk's operations module.
 
 ---
 
@@ -301,21 +323,38 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
-- 30+ product releases in recent months per search results
-- No standalone promo video; analyst/conference appearances as primary video channel
+
+**Code with Claude 2026 — developer conference (May 6 SF / May 19 London)**
+- SF opening keynote: https://www.youtube.com/watch?v=wjvESxKgqaQ
+- London opening keynote: https://www.youtube.com/watch?v=6amLO7I9xdg
+- Full playlist: https://www.youtube.com/playlist?list=PLf2m23nhTg1P5BsOHUOXyQz5RhfUSSVUi
+- Announces: Multiagent Orchestration (fleet of agents for complex tasks), Outcomes (success criteria for iterative agents), Dreaming (recall + build on prior sessions)
+- VO register: product/engineering leads; peer-to-peer technical
+- CTA: developer sign-up, Claude Code adoption
+- Pattern: Anthropic now runs an annual developer conference (same playbook as Stripe Sessions, Figma Config). Videos published same day as keynote.
+
+**Claude Opus 4.8** — shipped May 28, 2026; improves on 4.7 across benchmarks; "more effective collaborator" framing. No standalone launch video; announcement post only.
 
 ---
 
 ### Cursor
 
-**Product trajectory (all video-light)**
+**Product trajectory**
 - Channel: https://www.youtube.com/@cursor_ai
 - Cursor 2.0 (Oct 29, 2025): Composer → proprietary coding model
 - Cursor 3.0 (Apr 2, 2026): Agents Window
 - Cursor 3.1 (Apr 13, 2026): Tiled Layout
+- Cursor 3.7 (June 5, 2026): Design Mode improvements — see below
 - 30+ integrations (Mar 2026): Atlassian, Datadog, GitLab, Linear, PagerDuty
 - ARR: $1B (late 2025) → $2B (Q1 2026, doubled again)
-- No standalone promo video found; growth is organic/word-of-mouth, changelog-driven
+
+**Cursor 3.7 Design Mode (June 5, 2026)**
+- Community demo: https://www.youtube.com/watch?v=Yh6vlU02OhE — "Cursor's New Design Mode Just Changed Web Design Forever" [transcript not verified; unofficial community video, high views ~3 days post-launch]
+- Feature: click 2+ UI elements in browser → agent sees selected elements + surrounding layout → speak the change → code rewritten live. Voice queue stays open while agent runs.
+- Hook: "point at it, say what you want, watch it rewrite" — new UX register not yet claimed by any competitor in developer tools
+- Footage style: screen capture + voice-over narration
+- CTA: soft / organic — no hard URL
+- **Pattern note:** First developer tool to combine point-select + voice + live browser edit in one gesture. Pattern transfer for MIRA: "point at the fault code on the HMI, speak what you're seeing, MIRA locates the manual section" — this UX gesture now has a market reference point for the pitch.
 
 ---
 
@@ -354,6 +393,18 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**Figma AI agent beta (May 20, 2026)**
+- Product guide video: https://www.youtube.com/watch?v=PJEfCwKpRP0 — "A product designer's guide to the Figma agent" [transcript not verified]
+- May release notes video: https://www.youtube.com/watch?v=11mdb7lLclM
+- Feature: AI agent inside Figma canvas; natural language → design create/edit/automate; multiple simultaneous agents
+- Integrations: Claude Code + OpenAI Codex via MCP wired into design-to-dev pipeline
+- VO register: peer/product [not verified]
+- Key business context: $333.4M revenue Q1 2026, +46% YoY; framing the agent as proof of platform openness
+- Hook pattern: "Your Agent handles it" — same compression as Notion 3.0 ("You assign. Agents do."); confirms the framing has reached saturation across B2B SaaS
+- CTA: "rolling out in beta" / AI credits at GA
+
+**Config 2026** — scheduled June 23–25, Moscone Center SF. Keynotes will be published to YouTube same day; not yet available as of 2026-06-09.
 
 ---
 
@@ -395,6 +446,8 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: acquired by Autodesk ($3.6B, May 28, 2026) — removed from independent CMMS competitive set. Now Autodesk Operations Solutions. MIRA's narrative counter: independent, plant-floor-native, not bundled inside a CAD suite.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Anthropic**: launched annual developer conference (Code with Claude 2026, May 6 SF / May 19 London). Now uses conference-as-launch-vehicle alongside keynotes published to YouTube — same playbook as Stripe Sessions and Figma Config. Conference is a peer-engineer register, not corporate.
+- **Figma**: "Your Agent handles it" framing adopted (May 2026 AI agent launch) — same compression as Notion's "You assign. Agents do." This agent-value-compression hook is now saturated across B2B SaaS. MIRA needs a more specific, industrial framing to differentiate.
