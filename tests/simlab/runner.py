@@ -181,14 +181,23 @@ async def run_scenario(
 
 
 def _build_supervisor():
+    from simlab import SIMLAB_TENANT_ID
     from shared.engine import Supervisor
 
     db_path = os.getenv("SIMLAB_DB_PATH", "/tmp/mira_simlab.db")
+    # Bind the Supervisor to the SimLab demo tenant so KB recall surfaces the
+    # ingested juice-bottling docs (seeded under SIMLAB_TENANT_ID by
+    # tools/seeds/seed-simlab-docs.py). run_scenario calls process_full directly
+    # (it pre-seeds the direct_connection UNS context), so the per-call tenant is
+    # never set by process(); recall falls back to self.rag.tenant_id, which this
+    # constructor arg populates. Without it, scenarios recall under the empty
+    # tenant and can never cite the SimLab corpus. (#1816 follow-up to #1835.)
     return Supervisor(
         db_path=db_path,
         openwebui_url=os.getenv("OPENWEBUI_URL", "http://localhost:3000"),
         api_key=os.getenv("OPENWEBUI_API_KEY", ""),
         collection_id=os.getenv("OPENWEBUI_COLLECTION_ID", ""),
+        tenant_id=SIMLAB_TENANT_ID,
     )
 
 

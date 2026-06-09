@@ -33,3 +33,4 @@ mira-hub/src/lib/knowledge-graph/__tests__/cmms-sync-propose.test.ts        # as
 mira-hub/src/lib/knowledge-graph/__tests__/extractor-propose.test.ts        # asserts conversation extractor does NOT insert kg_relationships (#1721)
 mira-hub/src/lib/knowledge-graph/__tests__/hierarchy-backfill-propose.test.ts  # asserts hierarchy backfill does NOT insert kg_relationships (#1721)
 tools/seeds/demo-conveyor-001.sql                          # demo seed (commented inserts)
+tools/seeds/demo-hub-tenant.sql                            # demo seed — ground-truth garage-cell topology (PLC CONTROLS VFD, VFD DRIVES conveyor), not MIRA-inferred

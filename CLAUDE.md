@@ -135,6 +135,12 @@ bash install/smoke_test.sh
 
 ## Where to Resume → `wiki/hot.md`
 ## Offline Testing → `tests/eval/README.md`
+## SimLab (ProveIt-style simulated factory benchmark) → `docs/simlab/README.md`
+The flagship is a deterministic, headless **juice bottling line** (`simlab/` package): 8 machines
++ utilities, PackML states, PLC-style tags, UNS, 6 replayable fault scenarios, simulated docs,
+MIRA diagnostic (evidence + rubric), train-before-deploy approval. `python -m simlab` runs it
+locally. NOT a toy conveyor — the headless simulator is the source of truth; Factory I/O is an
+optional visual layer only. Eval scenarios run against the real Supervisor via `tests/simlab/runner.py`.
 
 ---
 
@@ -180,6 +186,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **Active namespace-builder plan:** `docs/plans/2026-05-15-maintenance-namespace-builder.md` — integrates with the 90-day plan (Units 2/4/9a fold in as Phase 1/2/4 components); has its own "Currently in-flight" section — check both.
 - **Dev loop (pre-commit + watcher):** `wiki/references/dev-loop.md`
 - **Karpathy principles (behavior rules):** `.claude/rules/karpathy-principles.md`
+- **Debugging & verification conventions:** `.claude/rules/debugging-conventions.md` — multi-cause perf debugging; verify schema/API paths before guessing
 - **Environments doctrine (dev / staging / prod):** `docs/environments.md`
 - **Enforcement layer:** `docs/specs/enforcement-layer-spec.md` — Playwright audit, write-path round-trip, enum drift, spec staleness, PR template, NeonDB canary
 - **Claude Code v2.1+ defaults (Opus 4.7, xhigh, /effort, /autofix-pr, Routines):** `wiki/references/claude-code-v2.1.md`

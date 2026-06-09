@@ -23,6 +23,7 @@ from collections import OrderedDict
 from typing import Any, Callable, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from ignition_audit import query_audit_rows, write_audit_row
 from pydantic import BaseModel
 
@@ -63,6 +64,45 @@ except Exception:  # pragma: no cover - shared not importable in this context
         "This asset hasn't been validated for MIRA yet. An admin needs to "
         "approve it in the Command Center before it can answer here."
     )
+
+
+# ── Direct-connection reject-on-missing-UNS contract (Phase 6) ───────────────
+# A direct-connection surface (this Ignition endpoint) that receives a turn with
+# NO UNS identifier must REJECT it (422 uns_required), NOT downgrade to a chat-
+# gate — see .claude/rules/direct-connection-uns-certified.md. The rule carves
+# out general/educational questions ("what is a VFD?"), which need no gate on any
+# surface; only asset-specific troubleshooting is rejected. We tell them apart
+# with the engine's own intent classifier so the endpoint and the engine's UNS
+# gate never disagree.
+#
+# `_ASSET_SPECIFIC_INTENTS` mirrors `engine._GATED_INTENTS` (the intents the UNS
+# gate fires on). Kept as a small local literal so importing this module never
+# drags in the full engine; the values are stable. If engine._GATED_INTENTS
+# changes, update this set too.
+_ASSET_SPECIFIC_INTENTS = frozenset({"diagnose_equipment", "schedule_maintenance"})
+
+try:
+    from shared.conversation_router import route_intent as _route_intent
+except Exception:  # pragma: no cover - shared not importable in this context
+    _route_intent = None  # type: ignore[assignment]
+
+
+async def _is_asset_specific(question: str) -> bool:
+    """True when ``question`` is asset-specific troubleshooting (so a turn with
+    no UNS identifier must be rejected). Uses the engine's own intent classifier.
+
+    Fails OPEN — returns False (→ treat as a general chat turn, do NOT reject) —
+    when the classifier is unavailable or errors, so a Neon/LLM blip can never
+    brick a working HMI.
+    """
+    if _route_intent is None:
+        return False
+    try:
+        result = await _route_intent(question, [])
+        return result.get("intent") in _ASSET_SPECIFIC_INTENTS
+    except Exception:
+        logger.warning("IGNITION_CHAT uns_required_classify_failed — failing open to plain chat")
+        return False
 
 
 # ── Nonce replay store (in-process LRU) ──────────────────────────────────────
@@ -293,8 +333,8 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
     """Build the APIRouter. Caller injects a getter for the live Supervisor instance."""
     router = APIRouter()
 
-    @router.post("/api/v1/ignition/chat")
-    async def ignition_chat(request: Request) -> dict[str, Any]:
+    @router.post("/api/v1/ignition/chat", response_model=None)
+    async def ignition_chat(request: Request) -> dict[str, Any] | JSONResponse:
         if not MIRA_IGNITION_HMAC_KEY:
             logger.error("IGNITION_CHAT MIRA_IGNITION_HMAC_KEY not configured")
             raise HTTPException(503, "Ignition HMAC key not configured")
@@ -330,15 +370,28 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
 
         tag_reads = sorted((req.tag_snapshot or {}).keys())
 
-        # Direct-connection provenance: an Ignition turn arriving with an asset
-        # identifier is UNS-certified by construction — the WebDev/Perspective
-        # surface already knows which machine the technician is on. Mark the
-        # turn so the engine stamps state["uns_context"]["source"] and the
-        # decision trace records it. A turn WITHOUT an asset id is treated as a
-        # plain chat turn here (the reject-on-missing-identifier contract is the
-        # broader Phase-6 gate-bypass work — see
-        # .claude/rules/direct-connection-uns-certified.md).
-        uns_source = "direct_connection" if (asset_id or req.asset_context) else None
+        # Direct-connection provenance + reject-on-missing-identifier contract
+        # (Phase 6; .claude/rules/direct-connection-uns-certified.md).
+        #   - WITH an asset identifier → UNS-certified by construction: mark the
+        #     turn direct_connection so the engine stamps
+        #     state["uns_context"]["source"] and skips the chat-gate.
+        #   - WITHOUT an identifier → the rule forbids downgrading to a chat-gate.
+        #     If the turn is asset-specific troubleshooting, REJECT it
+        #     (422 uns_required). General/educational questions need no gate on
+        #     any surface, so they pass through as a plain chat turn. The
+        #     classifier fails open (treated as general) so a blip never bricks
+        #     the HMI.
+        if asset_id or req.asset_context:
+            uns_source = "direct_connection"
+        else:
+            uns_source = None
+            if await _is_asset_specific(question):
+                logger.info(
+                    "IGNITION_CHAT uns_required tenant=%s — asset-specific turn with no "
+                    "UNS identifier; rejecting (not downgrading to chat-gate)",
+                    tenant_id,
+                )
+                return JSONResponse(status_code=422, content={"error": "uns_required"})
 
         # Structured tag evidence for the decision trace (Phase 9). The Ignition
         # turn already carries the live snapshot; surface it as evidence rows so

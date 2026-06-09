@@ -34,10 +34,15 @@ export async function GET(req: Request) {
     let mfr = mfrFilter;
     let model = "";
     if (assetId) {
+      // cmms_equipment is pure-tenant data — scope by tenant so a stranger
+      // can't resolve another tenant's asset by guessing its id (the IDOR half
+      // of #1833). Explicit tenant_id, not RLS. (The deeper hybrid-corpus
+      // read-filter on knowledge_entries lands separately in #1841.)
       const asset = await pool
         .query(
-          `SELECT manufacturer, model_number FROM cmms_equipment WHERE id = $1 LIMIT 1`,
-          [assetId],
+          `SELECT manufacturer, model_number FROM cmms_equipment
+            WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+          [assetId, ctx.tenantId],
         )
         .then((r: { rows: Record<string, unknown>[] }) => r.rows[0] ?? null);
       if (asset) {

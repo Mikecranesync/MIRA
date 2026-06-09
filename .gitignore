@@ -235,3 +235,7 @@ wiki/orchestrator/scan.json
 wiki/orchestrator/state.json
 wiki/orchestrator/artifact.html
 wiki/orchestrator/STATE.md
+
+# Eval record/replay stores — record locally (MIRA_EVAL_REPLAY=record); not a
+# bit-stable baseline yet (engine has residual nondeterminism — see HANDOFF).
+tests/eval/fixtures/llm_replay/*.json

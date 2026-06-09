@@ -17,6 +17,8 @@ import httpx
 from . import quality_gate
 from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
+from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
+from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
 from .conversation_router import route_intent
 from .detection.recurring_fault import check_recurring_and_annotate
 from .dialogue_state import (
@@ -1067,6 +1069,38 @@ class Supervisor:
             "dispatch_kind": dispatch_kind,
         }
 
+    async def _enforce_citation_rewrite(self, reply: str, *, chat_id: str, fsm_state: str) -> str:
+        """#1659 enforce-mode bridge: connect the insertion-only citation rewrite
+        to this turn's retrieval set + the inference router.
+
+        Returns ``reply`` unchanged unless it owes a citation, had retrieval
+        chunks, and dropped the ``[Source:]`` tag — in which case one
+        insertion-only second pass salvages it (validated for content
+        preservation + real labels by the helper). Kill-switch
+        ``MIRA_CITATION_REWRITE=0`` disables it; any error falls open.
+        """
+        if os.getenv("MIRA_CITATION_REWRITE", "1") != "1":
+            return reply
+        rag = getattr(self, "rag", None)
+        if rag is None:
+            return reply
+        try:
+            return await _enforce_citation_via_rewrite(
+                reply,
+                getattr(rag, "last_chunks", None),
+                getattr(rag, "kb_status", None),
+                fsm_state=fsm_state,
+                chat_id=chat_id,
+                llm_call=rag._call_llm,
+            )
+        except Exception:
+            logger.warning(
+                "CITATION_REWRITE_BRIDGE_ERROR chat_id=%s — keeping original reply",
+                chat_id,
+                exc_info=True,
+            )
+            return reply
+
     # ------------------------------------------------------------------
     # Entry points
     # ------------------------------------------------------------------
@@ -1159,6 +1193,14 @@ class Supervisor:
             message,
             result["reply"],
             dispatch_kind=result.get("dispatch_kind", ""),
+        )
+        # #1659 enforce-mode: if the reply owes a citation and the KB returned
+        # chunks but the LLM dropped the [Source:] tag, salvage it with one
+        # insertion-only rewrite BEFORE H4 falls back to a (misleading) KB-gap
+        # admission. Runs post-quality-gate so the injected tag can't perturb
+        # the gate; gated + fail-open inside the bridge.
+        reply = await self._enforce_citation_rewrite(
+            reply, chat_id=chat_id, fsm_state=result.get("next_state", "")
         )
         # H4 enforcer (2026-06-06): every reply must carry a [Source:] citation
         # or an explicit KB-gap admission. Applied AFTER the quality gate so the
@@ -2546,15 +2588,21 @@ class Supervisor:
         if _honest_prefix:
             formatted = _honest_prefix + formatted
 
-        # CRA-11 / Unit 2 — observational citation compliance check.
-        # Logs CITATION_COMPLIANCE_OK / _MISS so we can measure inline-cite
-        # rate over time. Never blocks the reply.
-        _check_citation_compliance(
+        # CRA-11 / Unit 2 — citation presence (observational) + P0-3 relevance.
+        # Presence logs OK/MISS for the inline-cite rate metric. Relevance (the
+        # "stop the lie" gate) strips a cited source that names a DIFFERENT
+        # manufacturer than the resolved asset (alias-aware, fail-open) so a
+        # confidently-wrong attribution never reaches the technician.
+        _cc = _check_citation_compliance(
             formatted,
             getattr(self.rag, "kb_status", {}),
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
+            uns_context=(state.get("context") or {}).get("uns_context"),
+            enforce=_citation_enforce_enabled(),
         )
+        if _cc.get("sanitized_reply"):
+            formatted = _cc["sanitized_reply"]
 
         tl_flush()
         return self._make_result(
@@ -3379,12 +3427,16 @@ class Supervisor:
         if honest_prefix:
             formatted = honest_prefix + formatted
 
-        _check_citation_compliance(
+        _cc = _check_citation_compliance(
             formatted,
             getattr(self.rag, "kb_status", {}),
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
+            uns_context=ctx.get("uns_context"),
+            enforce=_citation_enforce_enabled(),
         )
+        if _cc.get("sanitized_reply"):
+            formatted = _cc["sanitized_reply"]
 
         return self._make_result(
             formatted,
