@@ -28,6 +28,10 @@ export interface GraphNode {
   label: string;
   degree: number;
   unsPath: string | null;
+  /** PageRank influence (0..1), attached only when ?analysis=true. */
+  centrality?: number;
+  /** Louvain community id, attached only when ?analysis=true. */
+  community?: number;
 }
 
 export interface GraphLink {
