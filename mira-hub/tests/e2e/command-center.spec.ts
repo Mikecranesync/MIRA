@@ -31,10 +31,12 @@ const DISPLAY_ID = "11111111-1111-1111-1111-111111111111";
 const UNS = "enterprise.home_garage.conveyor_lab.conveyor_1";
 
 // Deterministic tree: a site → area → two assets, one with a LIVE display.
+// Schema mirrors TreeResponse + CCNode in src/app/api/command-center/tree/route.ts.
 const TREE = {
   total: 4,
   displaysTotal: 1,
   liveCount: 1,
+  freshnessCounts: { live: 1, stale: 0, simulated: 0 },
   nodes: [
     {
       id: "site-1",
@@ -48,6 +50,7 @@ const TREE = {
       displayId: null,
       displayType: null,
       displayLabel: null,
+      tagFreshness: "unknown",
       live: false,
       children: [
         {
@@ -62,6 +65,7 @@ const TREE = {
           displayId: null,
           displayType: null,
           displayLabel: null,
+          tagFreshness: "unknown",
           live: false,
           children: [
             {
@@ -76,6 +80,7 @@ const TREE = {
               displayId: DISPLAY_ID,
               displayType: "nodered",
               displayLabel: "Conveyor 1 — Fault Detective",
+              tagFreshness: "live",
               live: true,
               children: [],
             },
@@ -91,6 +96,7 @@ const TREE = {
               displayId: null,
               displayType: null,
               displayLabel: null,
+              tagFreshness: "unknown",
               live: false,
               children: [],
             },
@@ -101,34 +107,16 @@ const TREE = {
   ],
 };
 
-// A small stand-in for the framed HMI so the viewer iframe shows a live screen
-// instead of a failed cross-origin load.
-const FAKE_HMI = `<!doctype html><html><head><meta charset="utf-8"><style>
-  body{margin:0;font-family:system-ui,sans-serif;background:#0b1220;color:#e2e8f0;height:100vh;display:flex;flex-direction:column}
-  .bar{padding:10px 16px;background:#111c33;border-bottom:1px solid #1e293b;display:flex;align-items:center;gap:10px;font-size:13px}
-  .dot{width:9px;height:9px;border-radius:50%;background:#16a34a;box-shadow:0 0 0 4px #16a34a33}
-  .grid{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:24px}
-  .card{background:#111c33;border:1px solid #1e293b;border-radius:10px;padding:18px}
-  .k{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em}
-  .v{font-size:28px;font-weight:700;margin-top:6px}
-  .ok{color:#22c55e}.warn{color:#f59e0b}
-</style></head><body>
-  <div class="bar"><span class="dot"></span> Fault Detective — Conveyor 1 · Node-RED · live</div>
-  <div class="grid">
-    <div class="card"><div class="k">Motor Speed</div><div class="v ok">1,180 rpm</div></div>
-    <div class="card"><div class="k">Current</div><div class="v">4.2 A</div></div>
-    <div class="card"><div class="k">Temp</div><div class="v ok">38 °C</div></div>
-    <div class="card"><div class="k">State</div><div class="v ok">RUNNING</div></div>
-    <div class="card"><div class="k">Photo Eye</div><div class="v">CLEAR</div></div>
-    <div class="card"><div class="k">Faults (24h)</div><div class="v warn">1</div></div>
-  </div>
-</body></html>`;
+// The viewer no longer iframes the HMI — it hands off via "Open Live View" in a
+// new tab. Mocking the display route is still useful so a stray top-level click
+// during the test never reaches a real LAN host.
+const FAKE_HMI_REDIRECT_BODY = "<!doctype html><html><body>handoff</body></html>";
 
 test.beforeAll(() => {
   fs.mkdirSync(OUT, { recursive: true });
 });
 
-test("command center renders — UNS tree, green live dot, framed display", async ({
+test("command center renders — UNS tree, freshness summary, Open Live View handoff", async ({
   page,
   context,
   baseURL,
@@ -149,17 +137,12 @@ test("command center renders — UNS tree, green live dot, framed display", asyn
     { name: "next-auth.session-token", value: token, url: baseURL! },
   ]);
 
-  // 2) Deterministic data: mock the tree fetch + the framed display.
-  // ⚠️ The display mock is SAME-ORIGIN, so this test does NOT exercise the real
-  // cross-origin frame against the CSP. The frame-src CSP regression (a HTTPS/LAN
-  // display blocked because frame-src lacked 'self' + the display host) is covered
-  // separately by the "CSP frame-src admits the display iframe" test below — keep
-  // both; this one proves the UI, that one proves the header.
+  // 2) Deterministic data: mock the tree fetch + the handoff route.
   await page.route("**/api/command-center/tree*", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(TREE) }),
   );
   await page.route("**/api/command-center/display/**", (route) =>
-    route.fulfill({ contentType: "text/html", body: FAKE_HMI }),
+    route.fulfill({ contentType: "text/html", body: FAKE_HMI_REDIRECT_BODY }),
   );
 
   // 3) Desktop render.
@@ -167,8 +150,11 @@ test("command center renders — UNS tree, green live dot, framed display", asyn
   await page.goto("/command-center", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByRole("heading", { name: "Command Center" })).toBeVisible();
-  // Live badge ("1 live · 1 display") confirms the tree + dot logic ran.
-  await expect(page.getByText(/1 live · 1 display/)).toBeVisible({ timeout: 15_000 });
+  // Freshness summary "1 live · 0 stale · 0 sim · 1/1 display up" confirms tree
+  // + freshnessCounts + display-reachability logic ran. Match the substring so
+  // whitespace / dot punctuation doesn't break the assertion.
+  await expect(page.getByText(/1 live · 0 stale · 0 sim/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/1\/1 display.*up/)).toBeVisible();
   // The conveyor row with its live dot.
   await expect(page.getByText("Conveyor 1")).toBeVisible();
 
@@ -178,10 +164,14 @@ test("command center renders — UNS tree, green live dot, framed display", asyn
   });
   console.log(`📸 ${DATE}_command-center-tree-live_desktop.png`);
 
-  // 4) Select the live asset → viewer frames the (mocked) live HMI.
+  // 4) Select the live asset → viewer offers an "Open Live View" handoff link.
   await page.getByText("Conveyor 1").click();
   await expect(page.getByText(/^Live$/)).toBeVisible({ timeout: 10_000 });
-  await page.waitForTimeout(600); // let the iframe paint
+  const openLink = page.getByRole("link", { name: /Open Live View/i });
+  await expect(openLink).toBeVisible();
+  await expect(openLink).toHaveAttribute("target", "_blank");
+  await expect(openLink).toHaveAttribute("rel", /noopener/);
+  await expect(openLink).toHaveAttribute("href", /\/api\/command-center\/display\//);
   await page.screenshot({
     path: path.join(OUT, `${DATE}_command-center-watching-display_desktop.png`),
     fullPage: false,
@@ -198,12 +188,10 @@ test("command center renders — UNS tree, green live dot, framed display", asyn
   console.log(`📸 ${DATE}_command-center-tree-live_mobile.png`);
 });
 
-// Regression guard for the frame-src CSP bug: the Command Center iframe src is the
-// same-origin /api/command-center/display/[id] route, which 302-redirects to the
-// display host. CSP frame-src does NOT inherit from default-src, so it must list
-// BOTH 'self' (initial route) and the configured display host (post-redirect URL),
-// or the browser silently blocks the frame (blank viewer). The header is asserted
-// directly so CI catches this without needing a real cross-origin display.
+// Defense-in-depth CSP guard. The viewer no longer iframes the HMI (it hands off
+// in a new tab — see Open Live View), so frame-src is no longer load-bearing for
+// the Command Center. The directive is still enforced site-wide and 'self' must
+// stay listed for any future framed surface; assert that minimum here.
 // See mira-hub/src/middleware.ts (DISPLAY_FRAME_SRC / CSP_FRAME_SRC_DISPLAY_HOSTS).
 test("CSP frame-src admits the display iframe ('self' + configured hosts)", async ({
   page,

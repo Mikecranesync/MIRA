@@ -6,9 +6,10 @@ import {
   Folder, FolderOpen,
   Cog, Factory, FileText, Layers,
   RefreshCw, FolderPlus, Upload, ChevronsDownUp, ChevronsUpDown,
-  Trash2, Pencil,
+  Trash2, Pencil, Bot,
 } from "lucide-react";
 import { API_BASE } from "@/lib/config";
+import { NodeChat } from "@/components/namespace/NodeChat";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -744,23 +745,42 @@ function ContentPanel({
 
   const isEquipment = EQUIPMENT_KINDS.has(node.kind);
   const [activeTab, setActiveTab] = useState<"children" | "files" | "proposals" | "details" | "workorders">("children");
+  // folder=brain: "Ask MIRA" is available at every node — the answer is grounded in
+  // the docs attached to this node and everything beneath it (subtree retrieval).
+  const [showChat, setShowChat] = useState(false);
 
   return (
     <div className="flex flex-col h-full">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-1 border-b border-gray-200 px-3 py-1.5 text-[12px] text-gray-600">
-        {breadcrumbs.map((crumb, i) => (
-          <span key={crumb.path ?? crumb.label} className="flex items-center gap-1">
-            {i > 0 && <ChevronRight className="h-3 w-3 text-gray-400" />}
-            <span className={i === breadcrumbs.length - 1 ? "font-semibold text-gray-900" : "cursor-default"}>
-              {crumb.label}
+      <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-1.5 text-[12px] text-gray-600">
+        <div className="flex min-w-0 items-center gap-1 overflow-hidden">
+          {breadcrumbs.map((crumb, i) => (
+            <span key={crumb.path ?? crumb.label} className="flex items-center gap-1">
+              {i > 0 && <ChevronRight className="h-3 w-3 text-gray-400" />}
+              <span className={i === breadcrumbs.length - 1 ? "font-semibold text-gray-900" : "cursor-default"}>
+                {crumb.label}
+              </span>
             </span>
-          </span>
-        ))}
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowChat((v) => !v)}
+          data-testid="namespace-ask-mira"
+          className={[
+            "flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors",
+            showChat
+              ? "bg-[#0000c0] text-white"
+              : "border border-[#0000c0] text-[#0000c0] hover:bg-[#e8e8f8]",
+          ].join(" ")}
+        >
+          <Bot className="h-3 w-3" />
+          {showChat ? "Close MIRA" : "Ask MIRA"}
+        </button>
       </div>
 
       {/* Tabs for equipment nodes */}
-      {isEquipment && (
+      {isEquipment && !showChat && (
         <div className="flex gap-0 border-b border-gray-200 bg-[#f8f8f8] px-2 pt-1">
           {(["children", "files", "proposals", "details", "workorders"] as const).map((tab) => (
             <button
@@ -780,6 +800,11 @@ function ContentPanel({
         </div>
       )}
 
+      {showChat ? (
+        <div className="min-h-0 flex-1">
+          <NodeChat key={node.id} nodeId={node.id} nodeName={node.name} unsPath={node.unsPath} />
+        </div>
+      ) : (
       <div className="flex-1 overflow-auto p-3">
         {/* Children section (always shown for non-equipment, or when on children tab) */}
         {(!isEquipment || activeTab === "children") && (
@@ -816,6 +841,7 @@ function ContentPanel({
           <div className="text-sm text-gray-500 pt-4">Work order view coming soon.</div>
         )}
       </div>
+      )}
     </div>
   );
 }

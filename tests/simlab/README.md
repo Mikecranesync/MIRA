@@ -1,5 +1,12 @@
 # SimLab — Machine Behavior Scenario Evaluation
 
+> **SimLab is now two layers.** This directory is the **eval harness** (YAML scenarios →
+> real Supervisor → behavior checkpoints). The **runtime simulator** — a deterministic,
+> headless juice-bottling factory MIRA can monitor live (tags, UNS, alarms, docs,
+> train-before-deploy) — lives in the top-level **`simlab/`** package. See
+> `docs/simlab/README.md` for the North Star. The `juice_*.yaml` scenarios here mirror the
+> runtime simulator's six fault scenarios so this harness can grade the real engine on them.
+
 SimLab tests **cross-component diagnostic reasoning** — whether MIRA correctly isolates
 a fault across a multi-component machine, not just whether it knows a device's fault codes.
 

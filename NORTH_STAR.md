@@ -85,6 +85,31 @@ Status: PARTIALLY BUILT. This is what every pilot produces.
 | Tribal knowledge → structured notes | 🔲 NOT BUILT | Voice memo → structured RCA |
 | CMMS write-back | ✅ Partial | Atlas integration; MaintainX via Nango next |
 
+## Path to Beta Testers (current execution phase — opened 2026-06-07)
+
+The next official development phase. Everything routes through one gate.
+
+> **🚦 BETA GATE:** No beta until a stranger can **upload their own equipment manual, ask
+> a real troubleshooting question, and get a grounded answer with citations from that
+> manual — without Mike manually fixing anything.** This is a harder bar than "the demo
+> works": it must work for a manual we've never seen, on a tenant we didn't hand-seed.
+
+Release-gate test: `tests/beta/beta_ready_upload_retrieval_citation.py` (expected to FAIL
+until the upload→retrieval gap closes — see `docs/plans/2026-06-07-path-to-beta.md` and
+`docs/research/2026-06-07-upload-retrieval-gap-and-beta-path.md`).
+
+**4-week plan:**
+
+| Week | Focus | Concrete deliverables |
+|---|---|---|
+| **1 — Make it real** | Close the product gap | Fix upload→retrieval (PR #1592 path: uploads write `knowledge_entries`, not just OW KB); confirm the `/knowledge/map` graph fix (#1742) is deployed to prod; seed the demo tenant (reuse `tools/seeds/` — garage conveyor + GS10/Micro820 knowledge already exist); record a 3-min "upload → ask → cited answer" video |
+| **2 — Open the channel** | Warm reactivation | LinkedIn reactivation (per `STRATEGY.md` GTM motion) + 20 personal DMs to maintenance/reliability contacts |
+| **3 — Land partners** | Design-partner cohort | 5–10 design partners onboarded with **90-day free access**; each gets their own tenant + their own manuals ingested |
+| **4 — Go to the floor** | In-person proof | 3–5 local plant visits sourced from HubSpot leads; walk the floor, run the Assessment offer ($500) live |
+
+**Gate before Week 2:** the Week-1 video must show the beta-gate flow on a *fresh* upload,
+not a pre-seeded asset. If it requires a manual fix, the gate is not met — stay in Week 1.
+
 ## The Knowledge Cooperative (long-term moat)
 
 Operating-Layer plants who opt in share anonymized PM patterns and fault-resolution traces. A plant that pilots a Yaskawa GA500 — every subsequent plant with a GA500 starts ~80% structured for free. The more plants on the operating layer, the lower the structuring cost per new plant. **This is the network effect that makes the firm defensible.**

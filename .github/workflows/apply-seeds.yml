@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       seeds:
-        description: 'Seeds to apply (comma-separated basenames without .sql, or "all"). Choices: gs10-vfd-knowledge, gs11-field-guide-knowledge, demo-conveyor-001, all.'
+        description: 'Seeds to apply (comma-separated basenames without .sql, or "all"). Choices: gs10-vfd-knowledge, gs11-field-guide-knowledge, demo-conveyor-001, simlab-docs, all. NOTE: simlab-docs is a Python seed (tools/seeds/seed-simlab-docs.py) with its own fixed SimLab tenant — it ignores the tenant_id input and only runs once PR #1816 (simlab/docs/) is on the checked-out ref.'
         required: true
         default: 'all'
         type: string
@@ -139,6 +139,9 @@ jobs:
           fi
           REQUESTED="${{ inputs.seeds }}"
           FILES=()
+          # simlab-docs is a Python seed, not a .sql file — it's resolved into
+          # its own apply step, never the psql plan. Track it separately.
+          RUN_SIMLAB=false
           if [ "$REQUESTED" = "all" ]; then
             for f in "$SEED_DIR/gs10-vfd-knowledge.sql" \
                      "$SEED_DIR/gs11-field-guide-knowledge.sql" \
@@ -149,10 +152,15 @@ jobs:
                 echo "::warning::expected seed missing: $f"
               fi
             done
+            RUN_SIMLAB=true
           else
             IFS=',' read -ra NAMES <<< "$REQUESTED"
             for n in "${NAMES[@]}"; do
               n_trimmed="$(echo "$n" | xargs)"
+              if [ "$n_trimmed" = "simlab-docs" ]; then
+                RUN_SIMLAB=true
+                continue
+              fi
               candidate="$SEED_DIR/${n_trimmed}.sql"
               if [ ! -f "$candidate" ]; then
                 echo "::error::No seed file matched: $candidate"
@@ -161,13 +169,21 @@ jobs:
               FILES+=("$candidate")
             done
           fi
-          if [ "${#FILES[@]}" -eq 0 ]; then
-            echo "::error::Resolved zero seed files."
+          echo "run_simlab=$RUN_SIMLAB" >> "$GITHUB_OUTPUT"
+          if [ "${#FILES[@]}" -eq 0 ] && [ "$RUN_SIMLAB" != "true" ]; then
+            echo "::error::Resolved zero seeds (no .sql files and no simlab-docs)."
             exit 1
           fi
-          printf '%s\n' "${FILES[@]}" > .seed_plan
-          echo "Plan:"
+          # .seed_plan may be empty when only simlab-docs was requested — the
+          # psql steps below loop over zero files, which is a safe no-op. Write a
+          # truly-empty file (no blank line) so `while read` reads nothing.
+          : > .seed_plan
+          if [ "${#FILES[@]}" -gt 0 ]; then
+            printf '%s\n' "${FILES[@]}" > .seed_plan
+          fi
+          echo "Plan (.sql):"
           cat .seed_plan
+          echo "Run SimLab Python seed: $RUN_SIMLAB"
 
       - name: Summarise plan
         run: |
@@ -286,4 +302,48 @@ jobs:
           if [ "$PSQL_EXIT" -ne 0 ]; then
             echo "::error::psql post-check failed with exit $PSQL_EXIT"
             exit "$PSQL_EXIT"
+          fi
+
+      # ── SimLab doc seed (Python) ───────────────────────────────────────────
+      # Separate from the psql plan: reads the 77 markdown fixtures under
+      # simlab/docs/, chunks them, and inserts under its OWN fixed SimLab tenant
+      # (ignores inputs.tenant_id). Guarded — no-ops with a warning until PR
+      # #1816 (simlab/docs/) is on the checked-out ref.
+      - name: Apply SimLab doc seed (Python)
+        if: steps.resolve.outputs.run_simlab == 'true'
+        run: |
+          set -euo pipefail
+          SEED_PY="tools/seeds/seed-simlab-docs.py"
+          if [ ! -f "$SEED_PY" ] || [ ! -d "simlab/docs" ]; then
+            echo "::warning::SimLab seed skipped — $SEED_PY or simlab/docs/ not on this ref (merge PR #1816 first)."
+            echo "### SimLab doc seed: SKIPPED (simlab/docs not present on ref)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          python3 -m pip install --quiet 'psycopg[binary]==3.*'
+          export NEON_DATABASE_URL="$DATABASE_URL"
+          if [ "${{ inputs.mode }}" = "apply" ]; then
+            echo "::group::SimLab seed --commit"
+            python3 "$SEED_PY" --commit
+            echo "::endgroup::"
+            echo "::group::SimLab seed --verify (BM25 retrievability proof)"
+            python3 "$SEED_PY" --verify | tee /tmp/simlab_verify.out
+            echo "::endgroup::"
+            {
+              echo ""
+              echo "### SimLab doc seed (Python) — applied + verified"
+              echo '```'
+              cat /tmp/simlab_verify.out
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::group::SimLab seed --dry-run"
+            python3 "$SEED_PY" --dry-run | tee /tmp/simlab_dry.out
+            echo "::endgroup::"
+            {
+              echo ""
+              echo "### SimLab doc seed (Python) — dry-run (rolled back)"
+              echo '```'
+              cat /tmp/simlab_dry.out
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
