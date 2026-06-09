@@ -147,6 +147,21 @@ jobs:
           UNION ALL SELECT 'knowledge_entries', COUNT(*)::text FROM knowledge_entries;
 
           \echo
+          \echo === knowledge_entries.tenant_id type + format (#1841 schema-drift check) ===
+          SELECT column_name, data_type
+          FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='knowledge_entries'
+            AND column_name IN ('tenant_id','is_private')
+          ORDER BY column_name;
+          SELECT
+            CASE WHEN tenant_id::text ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+                 THEN 'uuid-format' ELSE 'non-uuid-slug' END AS fmt,
+            COUNT(*)::text AS n,
+            COUNT(*) FILTER (WHERE is_private)::text AS private_n
+          FROM knowledge_entries
+          GROUP BY 1 ORDER BY 1;
+
+          \echo
           \echo === kg_entities columns ===
           SELECT column_name, data_type
           FROM information_schema.columns
