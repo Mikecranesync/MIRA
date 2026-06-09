@@ -41,6 +41,7 @@ def citation_enforce_enabled() -> bool:
     if a false-positive ever surfaces in prod."""
     return os.getenv("MIRA_CITATION_ENFORCE", "1") != "0"
 
+
 # Lazy, cached, fail-open import of the canonical vendor-alias table so this
 # module stays import-light (uns_resolver pulls neon_recall / DB deps).
 _VENDOR_ALIASES: dict[str, str] | None = None
