@@ -397,6 +397,76 @@ async def _poll_file_status(file_id: str, timeout_s: int = 300) -> str:
     return "timeout"
 
 
+# Transient transport signals worth retrying. A deterministic 4xx (bad/oversized/
+# rejected file) is NOT here — retrying it just burns a starved box (see
+# docs/known-issues/2026-06-06-hub-upload-failures-docling-oom.md).
+_TRANSIENT_HTTPX = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.ReadTimeout,
+    httpx.ReadError,
+    httpx.WriteError,
+    httpx.PoolTimeout,
+    httpx.RemoteProtocolError,
+)
+
+
+async def _ow_upload_file(
+    raw: bytes,
+    fname: str,
+    headers: dict,
+    *,
+    max_attempts: int = 3,
+) -> str:
+    """POST the PDF to Open WebUI ``/api/v1/files/`` and return its file_id.
+
+    Retries only TRANSIENT failures (connection errors, 5xx) with exponential
+    backoff (2s, 4s). A 4xx is deterministic — surfaced immediately as a 422,
+    never retried. Raises HTTPException on terminal failure.
+    """
+    last_err = "unknown"
+    for attempt in range(1, max_attempts + 1):
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(
+                    f"{OPENWEBUI_URL}/api/v1/files/",
+                    headers=headers,
+                    files={"file": (fname, raw, "application/pdf")},
+                )
+            if resp.status_code >= 500:
+                last_err = f"OW {resp.status_code}: {resp.text[:160]}"
+                raise httpx.HTTPStatusError(last_err, request=resp.request, response=resp)
+            if resp.status_code >= 400:
+                # Deterministic client error — do not retry.
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Open WebUI rejected the file ({resp.status_code}): {resp.text[:160]}",
+                )
+            file_id = resp.json().get("id")
+            if not file_id:
+                raise HTTPException(status_code=502, detail="Open WebUI did not return a file_id")
+            return file_id
+        except httpx.HTTPStatusError as e:  # 5xx only (4xx raised HTTPException above)
+            last_err = str(e)
+        except _TRANSIENT_HTTPX as e:
+            last_err = f"{type(e).__name__}: {e}"
+        if attempt < max_attempts:
+            backoff = 2**attempt
+            logger.warning(
+                "OW upload transient failure for %s (attempt %d/%d): %s — retrying in %ds",
+                fname,
+                attempt,
+                max_attempts,
+                last_err,
+                backoff,
+            )
+            await asyncio.sleep(backoff)
+    raise HTTPException(
+        status_code=503,
+        detail=f"Open WebUI upload failed after {max_attempts} attempts (transient): {last_err}",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------------
@@ -957,21 +1027,9 @@ async def ingest_document_kb(
     if OPENWEBUI_API_KEY:
         headers["Authorization"] = f"Bearer {OPENWEBUI_API_KEY}"
 
-    try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                f"{OPENWEBUI_URL}/api/v1/files/",
-                headers=headers,
-                files={"file": (fname, raw, "application/pdf")},
-            )
-            resp.raise_for_status()
-            file_id = resp.json().get("id")
-    except Exception as e:
-        logger.error("Open WebUI file upload failed: %s", e)
-        raise HTTPException(status_code=422, detail=f"File upload failed: {e}")
-
-    if not file_id:
-        raise HTTPException(status_code=422, detail="Open WebUI did not return a file_id")
+    # Upload with transient-failure retry (connection errors / 5xx). A 4xx or a
+    # missing file_id is terminal — _ow_upload_file raises HTTPException itself.
+    file_id = await _ow_upload_file(raw, fname, headers)
 
     logger.info("File uploaded to Open WebUI: file_id=%s, polling for extraction...", file_id)
 
@@ -979,9 +1037,29 @@ async def ingest_document_kb(
     processing_status = await _poll_file_status(file_id, timeout_s=300)
 
     if processing_status == "failed":
+        # OW accepted the file but its extractor returned failed/error. This is
+        # deterministic for a given file (corrupt / password-protected / no
+        # extractable content), so we do NOT auto-retry the extraction here —
+        # retrying a doc that reliably fails just loads a memory-starved box.
+        # The Hub-level retry affordance lets a human/worker retry later (e.g.
+        # after an extractor blip clears). Reason is explicit, not "try again".
         raise HTTPException(
             status_code=422,
-            detail=f"Open WebUI extraction failed for {fname}. Try re-uploading.",
+            detail=(
+                f"Open WebUI could not extract '{fname}'. The PDF may be corrupt, "
+                f"password-protected, or have no extractable text/images. If the "
+                f"file is valid, retry from the uploads list — the extractor may "
+                f"have hit a transient error."
+            ),
+        )
+    if processing_status == "timeout":
+        # Extraction still running past the poll window — proceed best-effort
+        # (the file is uploaded; chunks/embeddings may lag) but make it visible.
+        logger.warning(
+            "Extraction still processing past poll window for %s (file_id=%s) — "
+            "attaching best-effort; retrieval may lag until OW finishes",
+            fname,
+            file_id,
         )
 
     # Attach to knowledge collection (extraction complete or timed-out best-effort)

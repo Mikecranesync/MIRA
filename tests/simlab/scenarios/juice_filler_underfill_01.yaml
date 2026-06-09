@@ -1,0 +1,93 @@
+id: juice_filler_underfill_01
+name: "Filler 01 — Underfill from Low Bowl Pressure"
+tier: 1
+machine_type: rotary_filler
+source: hand_crafted
+tags: [underfill, bowl_pressure, air_supply, fill_level, juice_bottling]
+description: >
+  Filler 01 is producing bottles below the target fill level (16 oz).
+  underfill_reject_count is rising. Root cause is low filler bowl pressure
+  caused by a degraded compressed-air supply or regulator fault.
+  MIRA must identify the bowl-pressure root cause, not blame the nozzles or
+  VFD first. Expected citations from filler01/troubleshooting.md.
+
+# SimLab extension fields (OPTIONAL — runner.py ignores unknown fields)
+simlab_scenario_id: filler_underfill_low_bowl_pressure
+simlab_asset_id: filler01
+
+machine_context:
+  site: "enterprise.florida_natural_demo.plant1.juice_bottling"
+  uns_path: "enterprise.florida_natural_demo.plant1.juice_bottling.line01"
+  components:
+    - id: filler01
+      type: rotary_filler
+      description: "20-valve rotary volumetric filler, Line 01 Station 4"
+      manufacturer: ""
+      model: ""
+      uns_path: "enterprise.florida_natural_demo.plant1.juice_bottling.line01.filler01"
+    - id: airsystem01
+      type: air_system
+      description: "Plant compressed-air utility skid"
+      uns_path: "enterprise.florida_natural_demo.plant1.juice_bottling.line01.airsystem01"
+  tag_state:
+    "filler01.filler_bowl_pressure": 5.2
+    "filler01.fill_level_oz": 13.5
+    "filler01.fill_level_target_oz": 16.0
+    "filler01.fill_level_variance": 0.6
+    "filler01.underfill_reject_count": 8
+    "filler01.fault_code": "F010"
+    "filler01.run_state": "Running"
+    "airsystem01.header_pressure_psi": 90.0
+    "airsystem01.low_air_alarm": false
+
+fault:
+  root_cause: low_filler_bowl_pressure
+  root_cause_component: filler01
+  red_herrings:
+    - nozzle_fault_count
+    - vfd_speed_hz
+  correct_isolation_steps:
+    - "Read filler_bowl_pressure — 5.2 PSI vs 12 PSI normal"
+    - "Bowl pressure low is the proximate cause of underfill"
+    - "Check AirSystem01 header pressure — normal at 90 PSI, so root cause is local"
+    - "Inspect and adjust filler bowl pressure regulator"
+    - "Check fill-valve air supply manifold for blockage"
+    - "Inspect nozzles for clogging if problem persists after pressure fix"
+  precursors:
+    - "Gradual bowl pressure decay over 30 ticks before underfill started"
+
+behavior_checkpoints:
+  cp_bowl_pressure_cited:
+    params:
+      required_tags: ["filler_bowl_pressure", "bowl pressure", "bowl_pressure"]
+    reason: "Must reference the bowl pressure as the degraded parameter"
+  cp_no_nozzle_blame_first:
+    params:
+      forbidden_first_cause: ["nozzle", "valve timing"]
+      until_turn: 2
+    reason: "Nozzles are a red herring; bowl pressure is the primary cause"
+  cp_air_supply_check:
+    params:
+      required_references: ["air", "pressure", "regulator", "supply"]
+    reason: "Correct isolation path requires checking air supply and regulator"
+  cp_citation_expected:
+    params:
+      expected_files: ["troubleshooting.md", "fault_code_table.md"]
+    reason: "MIRA should cite filler01 troubleshooting docs"
+
+expected_final_state: DIAGNOSIS
+max_turns: 6
+expected_keywords: [bowl, pressure, underfill, regulator, air, filler]
+forbidden_keywords: []
+
+turns:
+  - role: user
+    content: >
+      Why is Line 1 making bad bottles?
+  - role: user
+    content: >
+      The fill level is reading 13.5 oz instead of 16. The reject count is climbing.
+      What should I check first?
+  - role: user
+    content: >
+      The bowl pressure is reading 5.2 PSI. Is that the problem?
