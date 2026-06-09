@@ -162,6 +162,17 @@ jobs:
           GROUP BY 1 ORDER BY 1;
 
           \echo
+          \echo === knowledge_entries top tenants by row count (#1841 — find shared OEM owner) ===
+          SELECT tenant_id::text AS tenant,
+                 COUNT(*)::text AS rows,
+                 COUNT(*) FILTER (WHERE is_private)::text AS private_rows,
+                 COUNT(*) FILTER (WHERE NOT is_private)::text AS public_rows
+          FROM knowledge_entries
+          GROUP BY tenant_id
+          ORDER BY COUNT(*) DESC
+          LIMIT 15;
+
+          \echo
           \echo === kg_entities columns ===
           SELECT column_name, data_type
           FROM information_schema.columns
