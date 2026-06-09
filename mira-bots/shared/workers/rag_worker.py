@@ -717,6 +717,16 @@ class RAGWorker:
         """Current KB coverage status set during the last process() call."""
         return self._kb_status
 
+    @property
+    def last_chunks(self) -> list[dict]:
+        """Retrieved NeonDB chunks from the last process() call.
+
+        Public accessor for the citation enforce-mode rewrite (#1659) so the
+        engine can build valid `[Source:]` labels without reaching into a
+        private attribute. Empty when the last turn retrieved nothing.
+        """
+        return self._last_neon_chunks
+
     def _build_prompt_with_chunks(
         self,
         state: dict,
