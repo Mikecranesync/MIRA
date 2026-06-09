@@ -421,14 +421,18 @@ class RAGWorker:
                         if photo_b64 and state.get("asset_identified"):
                             embed_query = f"{state['asset_identified']} {message}"
 
-                        # Clean lexical-recall query (#1766). The engine stashes a
-                        # trimmed question+status string on state for direct-
-                        # connection surfaces (the /ask kiosk) whose `message` is a
-                        # large static context card. BM25 / fault-code / product-name
-                        # extraction key off this; the EMBEDDING still uses
-                        # embed_query (full semantic context). Falls back to message
-                        # for chat surfaces that don't set it.
-                        recall_query = state.get("retrieval_query") or message
+                        # Clean recall query (#1766). The engine stashes a trimmed
+                        # question+status string on state for direct-connection
+                        # surfaces (the /ask kiosk) whose `message` is a large static
+                        # context card. When set, it drives BOTH the embedding and the
+                        # lexical streams (BM25 / fault-code / product-name). When NOT
+                        # set (chat / photo surfaces), fall back to embed_query — which
+                        # is the bare message for text chat and the asset-enriched
+                        # "{asset} {message}" for photo queries. Falling back to the
+                        # raw `message` here would silently drop the photo asset
+                        # context from the embedding (regressed test_photo_query_
+                        # embeds_with_asset_context); embed_query keeps it.
+                        recall_query = state.get("retrieval_query") or embed_query
 
                         sub_queries: list[str] = [embed_query]
                         if is_decompose_enabled():
@@ -462,12 +466,13 @@ class RAGWorker:
                             # (#1766 follow-up). Prod RAG_STAGE_TIMING showed the
                             # embed of the ~2760-char /ask MACHINE_CONTEXT card was
                             # 3-5s on CPU Ollama — the dominant latency after the
-                            # recall fix. recall_query is the trimmed question+status
-                            # (~200 chars) → embed drops to <1s, and the vector is
-                            # question-focused rather than blurred by the static card.
-                            # For chat surfaces recall_query == message, so their
-                            # embedding is unchanged (only the /ask kiosk sets
-                            # state["retrieval_query"]).
+                            # recall fix. On the /ask kiosk recall_query is the
+                            # trimmed question+status (~200 chars) → embed drops to
+                            # <1s, and the vector is question-focused rather than
+                            # blurred by the static card. On chat/photo surfaces the
+                            # kiosk key isn't set, so recall_query == embed_query:
+                            # bare message for text chat (unchanged), asset-enriched
+                            # for photo (asset context preserved in the embedding).
                             _t_emb = time.monotonic()
                             embedding = await self._embed_ollama(recall_query)
                             _embed_ms = int((time.monotonic() - _t_emb) * 1000)
