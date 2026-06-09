@@ -8,14 +8,20 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+# mira-bots/ on path so the shared relevance helper imports (else the P0-3
+# vendor-relevance checkpoint fail-opens and the lie-tests would falsely pass).
+_MIRA_BOTS = REPO_ROOT / "mira-bots"
+if str(_MIRA_BOTS) not in sys.path:
+    sys.path.insert(0, str(_MIRA_BOTS))
 
-from tests.eval.grader import (
+from shared.citation_compliance import evaluate_citation_relevance  # noqa: E402
+from tests.eval.grader import (  # noqa: E402
     cp_citation_groundedness,
+    cp_citation_vendor_relevance,
     grade_scenario,
 )
 
@@ -144,7 +150,7 @@ class TestCitationGroundedness:
 class TestGradeScenarioIntegration:
 
     def test_grade_scenario_includes_citation_check(self):
-        """grade_scenario now returns 6 checkpoints by default."""
+        """grade_scenario returns 7 checkpoints (incl. vendor relevance, P0-3)."""
         fixture = {
             "id": "test_sc",
             "expected_final_state": "Q1",
@@ -161,7 +167,8 @@ class TestGradeScenarioIntegration:
         )
         checkpoint_names = [c.name for c in grade.checkpoints]
         assert "cp_citation_groundedness" in checkpoint_names
-        assert len(grade.checkpoints) == 6
+        assert "cp_citation_vendor_relevance" in checkpoint_names
+        assert len(grade.checkpoints) == 7
 
     def test_grade_scenario_backward_compat_no_chunks(self):
         """Without retrieved_chunks, citation check passes (legacy callers)."""
@@ -202,3 +209,71 @@ class TestGradeScenarioIntegration:
         )
         cp = next(c for c in grade.checkpoints if c.name == "cp_citation_groundedness")
         assert cp.passed is False
+
+
+# ── P0-3: citation vendor relevance (alias-aware, fail-open) ─────────────────
+
+
+class TestCitationVendorRelevance:
+    """evaluate_citation_relevance — the 'stop the lie' core (beta P0-3)."""
+
+    def test_wrong_vendor_is_caught(self):
+        # The plan's canonical lie: Siemens cited on a Danfoss question.
+        reply = "Check alarm A17. [Source: Siemens SINAMICS G120 — Faults]"
+        rel = evaluate_citation_relevance(reply, "Danfoss")
+        assert rel["relevant"] is False
+        assert rel["expected_vendor"] == "Danfoss"
+        assert "Siemens" in rel["cited_vendors"]
+        assert rel["conflicting_tags"]
+
+    def test_matching_vendor_is_relevant(self):
+        reply = "Set P1-01. [Source: Danfoss VLT FC 302 — Parameters]"
+        rel = evaluate_citation_relevance(reply, "Danfoss")
+        assert rel["relevant"] is True
+
+    def test_alias_match_not_suppressed(self):
+        # Allen-Bradley / PowerFlex both canonicalize to Rockwell — must NOT flag.
+        reply = "Clear F004. [Source: Allen-Bradley PowerFlex 525 — Ch.5]"
+        rel = evaluate_citation_relevance(reply, "Rockwell Automation")
+        assert rel["relevant"] is True
+
+    def test_correct_citation_alongside_wrong_is_not_a_miss(self):
+        # Conservative: a correct citation present means no miss, even if a
+        # second tag names another vendor.
+        reply = (
+            "Do X. [Source: Danfoss VLT FC 302 — A] and [Source: Siemens G120 — B]"
+        )
+        rel = evaluate_citation_relevance(reply, "Danfoss")
+        assert rel["relevant"] is True
+
+    def test_unknown_expected_vendor_fails_open(self):
+        reply = "Do X. [Source: Siemens SINAMICS — A]"
+        rel = evaluate_citation_relevance(reply, "Acme Nonexistent Corp")
+        assert rel["relevant"] is True  # can't judge → don't suppress
+
+    def test_no_recognized_citation_fails_open(self):
+        reply = "Do X. [Source: Generic Field Manual — A]"
+        rel = evaluate_citation_relevance(reply, "Danfoss")
+        assert rel["relevant"] is True
+
+
+class TestCheckpointVendorRelevance:
+    """cp_citation_vendor_relevance grader checkpoint (P0-3)."""
+
+    def test_checkpoint_fails_on_wrong_vendor(self):
+        fixture = {"id": "t", "expected_vendor": "Danfoss"}
+        cp = cp_citation_vendor_relevance(
+            fixture, "Alarm A17. [Source: Siemens SINAMICS G120 — Faults]"
+        )
+        assert cp.passed is False
+
+    def test_checkpoint_passes_on_right_vendor(self):
+        fixture = {"id": "t", "expected_vendor": "Danfoss"}
+        cp = cp_citation_vendor_relevance(
+            fixture, "Set P1-01. [Source: Danfoss VLT FC 302 — Parameters]"
+        )
+        assert cp.passed is True
+
+    def test_checkpoint_no_expected_vendor_passes(self):
+        cp = cp_citation_vendor_relevance({"id": "t"}, "anything")
+        assert cp.passed is True
