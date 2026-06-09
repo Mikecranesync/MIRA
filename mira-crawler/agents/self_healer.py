@@ -9,7 +9,10 @@ Safety
 ------
 The healer's blast radius is *deliberately tiny*:
 
-  * Container restart only — never `docker rm`, never image rebuild.
+  * Container restart, or recreate-from-existing-image via
+    `docker compose up -d --no-deps` when the container is gone — never
+    `docker rm`, never `--build` / image rebuild, never a registry pull of a
+    new tag.
   * Disk cleanup is `docker system prune -f` and rotated log trim — never
     arbitrary `rm`.
   * **Never** touches nginx, NeonDB schema, or any persistent volume.
@@ -48,6 +51,13 @@ logging.basicConfig(
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
 logger = logging.getLogger("self_healer")
+
+# Where the prod compose project lives — the healer cron runs from here, and
+# the VPS deploy keeps it at origin/main. Mirror infra_guardian's env var so a
+# single override moves both. Used to recreate a *removed* container (which
+# `docker restart` cannot do — it errors "No such container").
+MIRA_DIR = os.environ.get("MIRA_DIR", "/opt/mira")
+COMPOSE_FILE = os.environ.get("COMPOSE_FILE", "docker-compose.saas.yml")
 
 
 def _load_notify():
@@ -98,9 +108,9 @@ class HealAction:
     escalated: bool = False
 
 
-def _run(cmd: list[str], timeout: int = 60) -> tuple[int, str, str]:
+def _run(cmd: list[str], timeout: int = 60, cwd: str | None = None) -> tuple[int, str, str]:
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd)
         return proc.returncode, proc.stdout, proc.stderr
     except subprocess.TimeoutExpired:
         return 124, "", f"timeout after {timeout}s"
@@ -114,12 +124,86 @@ def _run(cmd: list[str], timeout: int = 60) -> tuple[int, str, str]:
 # Each playbook returns a HealAction. They MUST be idempotent and bounded.
 
 
+def _container_exists(service: str) -> bool:
+    """True if a container with this exact name exists in ANY state.
+
+    `docker restart` only works on a container that exists; a *removed*
+    container (the 2026-06-04 + 2026-06-06 incidents) makes it error
+    "No such container". Detect that up front and recreate instead.
+    """
+    rc, out, _ = _run(
+        ["docker", "ps", "-a", "--filter", f"name=^{service}$", "--format", "{{.Names}}"],
+        timeout=10,
+    )
+    return rc == 0 and bool(out.strip())
+
+
+def _compose_up(service: str) -> tuple[int, str, str]:
+    """(Re)create or start ONE service from its existing image.
+
+    `--no-deps` so we don't churn dependencies; no `--build` so we never
+    rebuild (stays inside the healer's blast-radius contract). Runs from
+    MIRA_DIR with the relative compose file — the same invocation the VPS
+    deploy uses — so the new container joins the same compose project and
+    networks (a container created on the wrong network comes up "healthy"
+    but the edge still 502s).
+    """
+    return _run(
+        ["docker", "compose", "-f", COMPOSE_FILE, "up", "-d", "--no-deps", service],
+        timeout=180,
+        cwd=MIRA_DIR,
+    )
+
+
+def _await_container_health(service: str, attempts: int = 12, delay: int = 5) -> str:
+    """Poll until the container's own healthcheck reports healthy (or we give
+    up after ~60s). A container's `(healthy)` status means its healthcheck —
+    which hits the service's real endpoint — passed, so this verifies the app
+    actually serves, not merely that a container is running."""
+    import time
+
+    last = "unknown"
+    for _ in range(attempts):
+        chk = hb.check_container(service)
+        last = chk.status
+        if chk.status == hb.STATUS_HEALTHY:
+            return last
+        time.sleep(delay)
+    return last
+
+
+def recreate_container(service: str, hint: str) -> HealAction:
+    """Recreate a missing/stopped container, then wait for it to go healthy.
+
+    This is the fix for `container_missing` — `docker restart` cannot bring
+    back a removed container, but `docker compose up -d` recreates it from the
+    existing image and also starts a merely-stopped one, so it covers both
+    cases `container_missing` can mean.
+    """
+    action = f"docker compose up -d --no-deps {service}"
+    rc, out, err = _compose_up(service)
+    if rc != 0:
+        return HealAction(
+            service, hint, action, False, (err or out).strip()[:200] or "compose up failed"
+        )
+    status = _await_container_health(service)
+    ok = status == hb.STATUS_HEALTHY
+    return HealAction(service, hint, action, ok, f"recreated → {status}")
+
+
 def restart_container(service: str, hint: str) -> HealAction:
+    # A removed container can't be restarted — recreate it from the image.
+    if not _container_exists(service):
+        return recreate_container(service, hint)
     rc, out, err = _run(["docker", "restart", service], timeout=60)
     if rc == 0:
         return HealAction(
             service, hint, f"docker restart {service}", True, out.strip()[:200] or "ok"
         )
+    # Lost a race (container removed between the existence check and now), or
+    # any other "no such container" — fall back to a recreate before failing.
+    if "no such container" in (err or "").lower():
+        return recreate_container(service, hint)
     return HealAction(
         service, hint, f"docker restart {service}", False, err.strip()[:200] or out.strip()[:200]
     )
@@ -185,7 +269,7 @@ def noop_escalate(service: str, hint: str) -> HealAction:
 # ── Hint → playbook routing ──────────────────────────────────────────────────
 
 PLAYBOOKS: dict[str, Callable[[str, str], HealAction]] = {
-    "container_missing": restart_container,
+    "container_missing": recreate_container,  # removed OR stopped → compose up (restart can't recreate)
     "container_exited": restart_container,
     "container_unhealthy": restart_container,
     "container_restarting": restart_container,  # may be flapping; restart resets

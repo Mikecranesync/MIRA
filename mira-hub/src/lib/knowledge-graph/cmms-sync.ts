@@ -12,6 +12,13 @@
 import pool from "@/lib/db";
 import type { PoolClient } from "pg";
 import { equipmentPath, manufacturerPath, modelPath } from "@/lib/uns";
+import { mapToCanonicalEdge, upsertInferredProposal } from "./proposals-writer";
+
+// CMMS-sync edges mirror real CMMS records (a work order, a PM schedule, a
+// location) so they carry high confidence — but per the Iron Rule (ADR-0017)
+// they are still PROPOSED for human review, never auto-verified into
+// kg_relationships. The hub has no autoverify escape hatch.
+const CMMS_RELATIONSHIP_CONFIDENCE = 0.9;
 
 export interface SyncResult {
   tenantId: string;
@@ -22,7 +29,14 @@ export interface SyncResult {
   locations: number;
   manufacturers: number;
   models: number;
+  /**
+   * Kept for API back-compat. CMMS edges are now PROPOSED for human review
+   * (Iron Rule, ADR-0017), never written directly to kg_relationships —
+   * always 0. See relationshipsProposed.
+   */
   relationships: number;
+  /** New (#1721): edges proposed this sync (located_at / work-order / PM). */
+  relationshipsProposed: number;
   triples: number;
   durationMs: number;
 }
@@ -263,21 +277,41 @@ async function mirrorKnowledgeEntities(
   return { manufacturers: mfrSet.size, models: modelEntries.length };
 }
 
-async function upsertRelationship(
+/**
+ * Propose a CMMS-sync edge for human review instead of writing it straight to
+ * kg_relationships (Iron Rule, ADR-0017). The lowercase predicate is mapped to
+ * canonical via mapToCanonicalEdge; unmapped types are skipped. Returns true
+ * when a new proposal was written (false = unmapped or deduped).
+ */
+async function proposeCmmsEdge(
   client: PoolClient,
   tenantId: string,
-  sourceId: string,
-  targetId: string,
-  relType: string,
-  convId?: string,
-): Promise<void> {
-  await client.query(
-    `INSERT INTO kg_relationships
-       (tenant_id, source_id, target_id, relationship_type, confidence, source_conversation_id)
-     VALUES ($1, $2, $3, $4, 1.0, $5)
-     ON CONFLICT DO NOTHING`,
-    [tenantId, sourceId, targetId, relType, convId ?? null],
-  );
+  src: { id: string; type: string },
+  tgt: { id: string; type: string },
+  rawType: string,
+  evidenceType: string,
+): Promise<boolean> {
+  const edge = mapToCanonicalEdge(rawType);
+  if (!edge) return false;
+  const source = edge.flip ? tgt : src;
+  const target = edge.flip ? src : tgt;
+  const proposalId = await upsertInferredProposal(client, tenantId, {
+    sourceEntityId: source.id,
+    sourceEntityType: source.type,
+    targetEntityId: target.id,
+    targetEntityType: target.type,
+    relationshipType: edge.type,
+    confidence: CMMS_RELATIONSHIP_CONFIDENCE,
+    reasoning: `CMMS → KG batch sync — original predicate "${rawType}".`,
+    evidence: [
+      {
+        evidenceType,
+        sourceDescription: "CMMS batch sync (cmms-sync)",
+        confidenceContribution: CMMS_RELATIONSHIP_CONFIDENCE,
+      },
+    ],
+  });
+  return proposalId !== null;
 }
 
 async function logTriple(
@@ -422,7 +456,7 @@ export async function syncCmmsToKg(tenantId: string): Promise<SyncResult> {
     const pmById = new Map(pmInserted.map((r) => [r.entity_id, r.id]));
     const locByName = new Map(locRows.map((r) => [r.entity_id, r.id]));
 
-    // equipment → located_at → location
+    // equipment → located_at → location  (proposes LOCATED_IN)
     for (const r of equipmentRows) {
       const locRaw = String(r.location ?? "");
       if (!locRaw) continue;
@@ -430,35 +464,47 @@ export async function syncCmmsToKg(tenantId: string): Promise<SyncResult> {
       const eqKgId = eqById.get(String(r.id));
       const locKgId = locByName.get(locSlug);
       if (eqKgId && locKgId) {
-        await upsertRelationship(client, tenantId, eqKgId, locKgId, "located_at");
+        const proposed = await proposeCmmsEdge(
+          client, tenantId, { id: eqKgId, type: "equipment" }, { id: locKgId, type: "location" },
+          "located_at", "manifest",
+        );
         await logTriple(client, tenantId, String(r.description || r.id), "located_at", locRaw);
-        relCount++; tripleCount++;
+        if (proposed) relCount++;
+        tripleCount++;
       }
     }
 
-    // equipment → has_work_order → work_order
+    // equipment → has_work_order → work_order  (proposes HAS_WORK_ORDER)
     for (const r of workOrderRows) {
       const eqId = String(r.equipment_id ?? "");
       if (!eqId) continue;
       const eqKgId = eqById.get(eqId);
       const woKgId = woById.get(String(r.id));
       if (eqKgId && woKgId) {
-        await upsertRelationship(client, tenantId, eqKgId, woKgId, "has_work_order");
+        const proposed = await proposeCmmsEdge(
+          client, tenantId, { id: eqKgId, type: "equipment" }, { id: woKgId, type: "work_order" },
+          "has_work_order", "work_order",
+        );
         await logTriple(client, tenantId, String(r.equipment_id), "has_work_order", String(r.title || r.id));
-        relCount++; tripleCount++;
+        if (proposed) relCount++;
+        tripleCount++;
       }
     }
 
-    // equipment → has_pm → pm_schedule
+    // equipment → has_pm → pm_schedule  (proposes HAS_PM_SCHEDULE)
     for (const r of pmRows) {
       const eqId = String(r.equipment_id ?? "");
       if (!eqId) continue;
       const eqKgId = eqById.get(eqId);
       const pmKgId = pmById.get(String(r.id));
       if (eqKgId && pmKgId) {
-        await upsertRelationship(client, tenantId, eqKgId, pmKgId, "has_pm");
+        const proposed = await proposeCmmsEdge(
+          client, tenantId, { id: eqKgId, type: "equipment" }, { id: pmKgId, type: "pm_schedule" },
+          "has_pm", "manifest",
+        );
         await logTriple(client, tenantId, String(r.equipment_id), "has_pm", String(r.task || r.id));
-        relCount++; tripleCount++;
+        if (proposed) relCount++;
+        tripleCount++;
       }
     }
 
@@ -500,7 +546,8 @@ export async function syncCmmsToKg(tenantId: string): Promise<SyncResult> {
     locations: locationEntities.length,
     manufacturers: mirrorCounts.manufacturers,
     models: mirrorCounts.models,
-    relationships: relCount,
+    relationships: 0,
+    relationshipsProposed: relCount,
     triples: tripleCount,
     durationMs: Date.now() - t0,
   };

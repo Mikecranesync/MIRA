@@ -10,10 +10,17 @@ name: oauth-redirect canary
 # sign-in. The canonical list lives in
 # mira-hub/docs/auth/oauth-redirect-uris.md.
 #
-# This workflow runs the probe script, which hits Google's authorize
-# endpoint with our exact redirect_uri and fails on a 302 → /signin/oauth/error
-# carrying redirect_uri_mismatch. Failure means: re-add the URI in
-# Google Cloud Console; see the script's stderr for the exact value.
+# This workflow runs the probe script, which drives the app's REAL signin
+# flow (GET csrf → POST signin/google) to obtain the exact Google authorize
+# URL the app sends, then follows it to Google. No secret needed — client_id
+# and redirect_uri are public values the app already emits. Exit codes are
+# distinct so the failure is never mislabelled:
+#   1 = redirect_uri_mismatch (REAL — re-add the URI in Google Cloud Console)
+#   2 = probe could not run (app unreachable / signin shape changed) — NOT a
+#       Google rejection; investigate the probe/deploy, not the Console
+#   3 = inconclusive. The script emits the matching ::error::/::warning::
+# annotation itself, so there is no separate (and previously misleading)
+# "on failure" step. Canonical URI list: mira-hub/docs/auth/oauth-redirect-uris.md.
 
 on:
   schedule:
@@ -46,20 +53,10 @@ jobs:
 
       - name: Run canary
         env:
-          HUB_AUTH_GOOGLE_CLIENT_ID: ${{ secrets.HUB_AUTH_GOOGLE_CLIENT_ID }}
-          # Override-able so the same script can verify per-env URIs
-          # (preview / staging) by passing OAUTH_REDIRECT_URI_TO_VERIFY.
+          # No secret needed — the probe derives the public client_id from the
+          # live signin flow. HUB_URL selects which deployment to verify;
+          # OAUTH_REDIRECT_URI_TO_VERIFY is the documented URI to assert against
+          # (override both to check preview / staging).
+          HUB_URL: "https://app.factorylm.com"
           OAUTH_REDIRECT_URI_TO_VERIFY: "https://app.factorylm.com/api/auth/callback/google"
         run: bun run mira-hub/scripts/verify-google-oauth-redirect.ts
-
-      - name: On failure, point reader at the fix
-        if: failure()
-        run: |
-          echo "::error title=Google OAuth redirect URI not authorized::"
-          echo "Google rejected mira-hub's redirect_uri. Fix:"
-          echo "  1. Open Google Cloud Console → APIs & Services → Credentials"
-          echo "  2. Edit OAuth 2.0 Client ID 246891599587-…"
-          echo "  3. Under 'Authorized redirect URIs' add the URI from the"
-          echo "     stderr above (or the canonical list in"
-          echo "     mira-hub/docs/auth/oauth-redirect-uris.md)"
-          echo "  4. Save. Wait ~30s. Re-run this workflow."

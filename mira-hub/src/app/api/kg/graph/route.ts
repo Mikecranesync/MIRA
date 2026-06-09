@@ -14,6 +14,7 @@ import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { buildGraphPayload, type EntityRow, type RelRow } from "@/lib/knowledge-graph/graph-view";
+import { analyzeGraph } from "@/lib/knowledge-graph/analysis";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const typeParam = url.searchParams.get("types");
   const includeProposals = url.searchParams.get("includeProposals") === "true";
+  const withAnalysis = url.searchParams.get("analysis") === "true";
 
   try {
     const { entities, rels } = await withTenantContext(ctx.tenantId, async (c) => {
@@ -70,9 +72,33 @@ export async function GET(req: Request) {
       };
     }
 
+    // Opt-in analysis: PageRank influence + Louvain clusters on the (possibly
+    // type-filtered) graph the client will actually render. Folded into nodes;
+    // summary returned separately. Skipped entirely on the default load.
+    let analysis;
+    if (withAnalysis) {
+      const a = analyzeGraph(payload);
+      if (a.available) {
+        const byId = a.stats;
+        payload = {
+          ...payload,
+          nodes: payload.nodes.map((n) => ({
+            ...n,
+            centrality: byId[n.id]?.centrality,
+            community: byId[n.id]?.community,
+          })),
+        };
+      }
+      // strip per-node stats from the summary (already folded into nodes)
+      const { stats: _stats, ...summary } = a;
+      void _stats;
+      analysis = summary;
+    }
+
     return NextResponse.json({
       ...payload,
       capped: entities.length >= NODE_CAP || rels.length >= EDGE_CAP,
+      ...(analysis ? { analysis } : {}),
     });
   } catch (err) {
     return NextResponse.json(

@@ -87,6 +87,12 @@ class SimLabScenario:
     dataset_reference: str = ""
     description: str = ""
 
+    # SimLab engine extension fields (OPTIONAL — populated by juice_*.yaml scenarios)
+    simlab_scenario_id: str = ""
+    """The SimLab Scenario.id from simlab/scenarios.py, e.g. filler_underfill_low_bowl_pressure."""
+    simlab_asset_id: str = ""
+    """The primary asset_id in the SimLab line model, e.g. filler01."""
+
 
 def load_scenario(path: str | Path) -> SimLabScenario:
     """Load a SimLab scenario from a YAML file."""
@@ -135,6 +141,8 @@ def load_scenario(path: str | Path) -> SimLabScenario:
         safety_expected=data.get("safety_expected", False),
         dataset_reference=data.get("dataset_reference", ""),
         description=data.get("description", ""),
+        simlab_scenario_id=data.get("simlab_scenario_id", ""),
+        simlab_asset_id=data.get("simlab_asset_id", ""),
     )
 
 
