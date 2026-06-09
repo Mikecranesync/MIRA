@@ -63,9 +63,21 @@ services:
       - OPENAI_API_BASE_URLS=http://mira-pipeline-saas:9099/v1
       - OPENAI_API_KEYS=${PIPELINE_API_KEY:-}
       - DEFAULT_MODELS=mira-diagnostic
-      # Docling for industrial-grade PDF extraction
-      - DOCLING_SERVER_URL=http://mira-docling-saas:5001
-      - PDF_EXTRACT_IMAGES=true
+      # Content extraction: Apache Tika (OW-endorsed for production). Replaced
+      # Docling 2026-06-06 — Docling pinned at 95%+ of its 3 GB cap on this
+      # 8 GB box and chronically 504-timed-out on /v1/convert/file, failing
+      # every PDF extraction (see docs/known-issues/2026-06-06-hub-upload-
+      # failures-docling-oom.md). Tika is ~0.6-1 GB (JVM + Tesseract OCR),
+      # Apache 2.0, and handles scanned PDFs. NOTE: CONTENT_EXTRACTION_ENGINE
+      # is a PersistentConfig var — on an EXISTING OW DB the persisted value
+      # (docling) wins over this env. Run scripts/set-ow-extraction-engine.sh
+      # once after deploy to flip the DB value. Fresh DBs seed from env.
+      - CONTENT_EXTRACTION_ENGINE=tika
+      - TIKA_SERVER_URL=http://mira-tika-saas:9998
+      # Admin key — used by entrypoint-mira.sh to self-heal the persisted
+      # extraction engine to tika on boot (PersistentConfig DB value otherwise
+      # wins over the env above). Same key mira-ingest uses.
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
       # STT — Groq Whisper free tier (voice-to-text)
       - AUDIO_STT_ENGINE=openai
       - AUDIO_STT_OPENAI_API_BASE_URL=https://api.groq.com/openai/v1
@@ -402,20 +414,24 @@ services:
       retries: 3
       start_period: 15s
 
-  mira-docling:
-    image: quay.io/docling-project/docling-serve:v1.16.1
-    container_name: mira-docling-saas
-    mem_limit: 3g
-    memswap_limit: 3g
+  # Apache Tika — content-extraction engine for Open WebUI (replaced Docling
+  # 2026-06-06; see mira-core env above + docs/known-issues/2026-06-06-hub-
+  # upload-failures-docling-oom.md). The `-full` image bundles Tesseract OCR
+  # for scanned PDFs. ~0.6-1 GB resident vs Docling's 3 GB. Apache 2.0.
+  # Pinned to the same version already used by the local stack (mira-core/
+  # docker-compose.yml).
+  mira-tika:
+    image: apache/tika:3.1.0.0-full
+    container_name: mira-tika-saas
+    mem_limit: 1g
+    memswap_limit: 1g
     ports:
-      - "127.0.0.1:5001:5001"
-    environment:
-      - DOCLING_SERVE_PORT=5001
+      - "127.0.0.1:9998:9998"
     networks:
       - mira-net
-    restart: on-failure:5
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:9998/tika"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -587,6 +603,11 @@ services:
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}
       # mira-ingest target for Knowledge upload pipeline
       - INGEST_URL=${INGEST_URL:-http://mira-ingest-saas:8001}
+      # Where local-upload bytes are persisted so a FAILED local upload can be
+      # retried without the user re-picking the file from disk (2026-06-06).
+      # Buffers are deleted on success; a sweep prunes stragglers. Volume-backed
+      # so the failed->retry window survives a container restart.
+      - UPLOAD_BUFFER_DIR=/app/.upload-buffers
       # Google Picker API key (distinct from OAuth client secret) + project number
       - GOOGLE_PICKER_API_KEY=${GOOGLE_PICKER_API_KEY:-}
       - GOOGLE_CLOUD_PROJECT_NUMBER=${GOOGLE_CLOUD_PROJECT_NUMBER:-}
@@ -628,6 +649,8 @@ services:
       - ./docs/promo-screenshots:/app/docs/promo-screenshots:rw
       # Web-review findings — read-only, the cron only deletes its own files.
       - ./tools/web-review-runs:/app/tools/web-review-runs:ro
+      # Persisted local-upload buffers for failed-upload retry (see UPLOAD_BUFFER_DIR).
+      - /opt/mira/data/upload-buffers:/app/.upload-buffers:rw
     restart: unless-stopped
     mem_limit: 1g
     memswap_limit: 1g

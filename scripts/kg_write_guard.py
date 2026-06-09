@@ -36,6 +36,14 @@ from pathlib import Path
 # and case. The table name + INSERT INTO sit on one line in every real site.
 _INSERT_RE = re.compile(r"insert\s+into\s+kg_relationships\b", re.IGNORECASE)
 
+# A real INSERT continues with a column list / VALUES / SELECT after the table
+# name. When the phrase is instead immediately closed by a string terminator,
+# it's a complete quoted string literal — a *mention* of the phrase, not a
+# write (e.g. a test asserting `not.toContain("INSERT INTO kg_relationships")`,
+# #1729/#1734). Skipping those can never miss a genuine insert, because a real
+# insert never closes a quote right after the table name.
+_STRING_TERMINATORS = ("'", '"', "`")
+
 _SCAN_SUFFIXES = {".py", ".ts", ".tsx", ".sql"}
 _SKIP_DIRS = {
     "node_modules", ".git", ".next", "dist", "build", ".venv", "venv",
@@ -64,7 +72,13 @@ def _scan_file(p: Path) -> bool:
         text = p.read_text(errors="ignore")
     except OSError:
         return False
-    return bool(_INSERT_RE.search(text))
+    for m in _INSERT_RE.finditer(text):
+        # Skip the phrase when it's a complete quoted string literal (the next
+        # non-whitespace char closes a quote) — a mention, not a real write.
+        if text[m.end():].lstrip()[:1] in _STRING_TERMINATORS:
+            continue
+        return True
+    return False
 
 
 def find_insert_sites(root: Path = REPO_ROOT) -> list[str]:

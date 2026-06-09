@@ -21,9 +21,9 @@ Unlike the Python ingest path, the hub has **no `autoverify` escape hatch** for 
 | `queries.ts::upsertSchematicComponents` | **inferred** (schematic intelligence extracts components + wiring) | ✅ **migrated** (this PR) → proposes via `upsertInferredProposal`. Entity nodes still upserted; edges propose. |
 | `proposals/[id]/decide/route.ts` | **safe** | Human-approval verified write — the one legitimate door. Unchanged. |
 | `relationship-extractor.ts` (LLM, `confidence ≥ HIGH_CONFIDENCE_THRESHOLD → INSERT`) | **inferred** — the literal "confidence > X → verify" anti-pattern | ✅ **migrated** (this PR) → above-threshold edges propose via `upsertInferredProposal` (predicate mapped through `mapToCanonicalEdge`, incl. `caused_by`→`CAUSES` flip); below-threshold stays triple-only. |
-| `extractor.ts::upsertRelationship` (conversation extraction, conf 1.0) | **inferred** | ⛔ TODO: propose. |
-| `cmms-sync.ts::upsertRelationship` (conf 1.0) | **inferred** (mirrors CMMS structural data — still a proposal per Iron Rule) | ⛔ TODO + **blocker**: emits `has_work_order` (lowercase) which is **not in the proposals CHECK**. Needs a CHECK migration (`HAS_WORK_ORDER`) or a canonical map first. |
-| `hierarchy-backfill.ts::createParentOf` | **decision → inferred** | ⛔ TODO + **blocker**: it's a *heuristic* location-string match (`entity_id = $2 OR name = $2`), so it is **inferred, not deliberate structure → must propose**. Blocker: `parent_of` is **not** in the proposals CHECK; map to `LOCATED_IN` (equipment → area/line) or add to the CHECK. Decision recorded: **propose**, not auto-verify. |
+| `extractor.ts::proposeConversationEdge` (conversation extraction) | **inferred** | ✅ **migrated** (#1721 final slice) → mentioned_tag→HAS_TAG, exhibited_fault→HAS_FAILURE_MODE, requires_part→HAS_PART propose via `upsertInferredProposal`. Proposed at a moderate fixed confidence (0.7), not the old auto-verified 1.0. |
+| `cmms-sync.ts::proposeCmmsEdge` | **inferred** (mirrors CMMS structural data — still a proposal per Iron Rule) | ✅ **migrated** (#1721 final slice) → located_at→LOCATED_IN, has_work_order→HAS_WORK_ORDER, has_pm→HAS_PM_SCHEDULE propose (conf 0.9, evidence `work_order`/`manifest`). Unblocked by migration 043. |
+| `hierarchy-backfill.ts::proposeLocatedIn` | **decision → inferred** | ✅ **migrated** (#1721 final slice) → heuristic location match proposes `equipment LOCATED_IN area/line` (parent_of mapped to LOCATED_IN **flipped**). Dropped the dead `parent_of` existence pre-check (nothing writes parent_of post-migration); dedup now via `upsertInferredProposal`. `if (!dryRun)` guard preserved. |
 | `queries.ts::createRelationship` | **dead code** (0 callers in `src/`) | Leave as-is; remove in a follow-up (out of scope here — surgical). |
 
 ## Vocabulary note (load-bearing)
@@ -38,15 +38,21 @@ Implication: schematic edges were already canonical (clean migration, no remap).
 - `eslint` clean on changed files; `tsc` clean on changed files (pre-existing unrelated typecheck errors in `namespace/tree`, `rls-deny`, `command-center-freshness` are not touched here).
 - Staging smoke on `factorylm/stg`: `proposals=1 evidence=1 kg_relationships=0`, idempotent, guard skips non-canonical.
 
-## Remaining for #1721
+## Final slice (2026-06-07) — #1721 closed
 
-`relationship-extractor.ts` ✅ migrated. `extractor.ts`, `cmms-sync.ts`, `hierarchy-backfill.ts` remain — now fully **map-ready**:
+All three remaining writers migrated onto the propose path. Migration 043 was applied to staging + prod ahead of this, and the competing PRs (#1030/#1263/#1710/#642) settled with **no file overlap** with the target writers.
 
-**Vocabulary decided (migration 043).** The CHECK gains dedicated CMMS/tag types and the map covers every emitted type:
-- `has_work_order` → `HAS_WORK_ORDER` (new), `has_pm` → `HAS_PM_SCHEDULE` (new), `mentioned_tag` → `HAS_TAG` (new)
-- `parent_of` → `LOCATED_IN` **flipped** (equipment LOCATED_IN area)
-- `located_at`→`LOCATED_IN`, `exhibited_fault`→`HAS_FAILURE_MODE`, `requires_part`→`HAS_PART` (existing)
+**Migrated this slice:**
+- `extractor.ts` — `upsertRelationship` → `proposeConversationEdge` (regex pass). `mentioned_tag`/`exhibited_fault`/`requires_part` propose; `relationshipsProposed` added to `ExtractionResult` (back-compat `relationships`=0).
+- `cmms-sync.ts` — `upsertRelationship` → `proposeCmmsEdge`. `located_at`/`has_work_order`/`has_pm` propose; `relationshipsProposed` added to `SyncResult` (back-compat `relationships`=0).
+- `hierarchy-backfill.ts` — `createParentOf` → `proposeLocatedIn` (`parent_of`→`LOCATED_IN` flipped). Dropped the dead `parent_of` existence pre-check; dedup via `upsertInferredProposal`; `if (!dryRun)` guard preserved; `relationshipsProposed` added (back-compat `relationshipsCreated`=0).
 
-**Ordering constraint:** migration 043 must be applied (dev → staging → prod via `apply-migrations.yml`) **before** the `cmms-sync`/`extractor` writer-migration PRs deploy, or a proposal carrying a new type would fail the prod CHECK. The TS map/CANONICAL set already include the new types, but no migrated writer emits them yet, so landing them ahead of the apply is safe.
+**Behavioral note (flood):** the extractor regex pass now proposes on every mentioned tag/fault/part for every asset-chat turn — a real jump in proposal volume (the hub analogue of the #1716 Python "behavioral flood" note). `upsertInferredProposal` dedup caps repeats, but the `/proposals` queue will see more rows.
 
-The three writer migrations stay deferred until 043 is applied **and** their competing PRs (#1030/#1263/#1710/#642) settle. CI guard for unguarded inserts = #1722 (merged); canary = #1723 (merged).
+**Verification (this slice):**
+- `vitest` — 8 new propose tests (`cmms-sync-propose`, `extractor-propose`, `hierarchy-backfill-propose`): each writer proposes (relationship_proposals) and does NOT insert `kg_relationships`; canonical types + flip asserted. 35/35 in affected suites.
+- `eslint` + `tsc` clean on changed files (pre-existing unrelated typecheck errors in `namespace/tree`, `rls-deny`, `command-center-freshness` untouched).
+- `kg-write-guard` green (8 sites, all allowlisted; the 3 migrated sources pruned, 3 new test files added).
+- Staging smoke on `factorylm/stg` (throwaway tenant, real CHECK): confirmed 043 live, all six emitted canonical types accepted — `proposals=6 evidence=6 kg_relationships=0`, idempotent, self-cleaned.
+
+`createRelationship` dead code in `queries.ts` remains out of scope (0 callers; separate surgical follow-up). CI guard = #1722 (merged); canary = #1723 (merged).

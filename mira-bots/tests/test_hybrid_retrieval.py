@@ -148,3 +148,78 @@ class TestBM25StreamGuard:
             conn=None, text_fn=None, tenant_id="t", query_text="   \n\t  ", limit=5
         )
         assert rows == []
+
+
+class _CapturingConn:
+    """Fake conn that records the bound params and returns zero rows."""
+
+    def __init__(self) -> None:
+        self.params: dict = {}
+
+    def execute(self, _sql, params):  # noqa: ANN001
+        self.params = params
+
+        class _Result:
+            def mappings(self):  # noqa: ANN001
+                class _Mappings:
+                    def fetchall(self):  # noqa: ANN001
+                        return []
+
+                return _Mappings()
+
+        return _Result()
+
+
+def _bm25_terms(query_text: str) -> list[str]:
+    """Run _recall_bm25 with a capturing conn; return the tsquery OR-terms."""
+    conn = _CapturingConn()
+    neon_recall._recall_bm25(
+        conn=conn, text_fn=lambda s: s, tenant_id="t", query_text=query_text, limit=5
+    )
+    return conn.params["tsq"].split(" | ")
+
+
+class TestBM25TermBounding:
+    """Regression #1766 — the /ask kiosk's ~440-token MACHINE_CONTEXT prefix
+    must not produce a 438-term OR-fanout (31-45s). Bound: dedupe, drop
+    pure-digit/≤2-char/stopword tokens, cap at BM25_MAX_TERMS, never-empty."""
+
+    def test_long_blob_capped_at_max_terms(self):
+        blob = (
+            "Garage conveyor belt. PLC Allen-Bradley Micro820 2080-LC20-20QBB "
+            "192.168.1.100 EtherNet/IP 44818 Modbus TCP slave 502 unit 1 "
+            "VFD AutomationDirect GS10 DURApulse RS-485 RTU 9600 8N1 "
+            "undervoltage overload ground fault CE10 timeout wiring photo-eye "
+            "contactor estop direction frequency setpoint command status register "
+            "decel standby running keypad reset powercycle inverter setpoint scaling "
+            "permit latched sensors buttons writes decides reads master slave config"
+        )
+        terms = _bm25_terms(blob)
+        assert len(terms) <= neon_recall.BM25_MAX_TERMS
+
+    def test_pure_digits_and_short_tokens_dropped(self):
+        terms = _bm25_terms("GS10 fault 192 168 1 502 9600 OC at on")
+        assert "gs10" in terms
+        assert "fault" in terms
+        # pure-digit + ≤2-char tokens are noise (huge posting lists / stopwords)
+        for noise in ("192", "168", "1", "502", "9600", "oc", "at", "on"):
+            assert noise not in terms
+
+    def test_tokens_deduped(self):
+        terms = _bm25_terms("modbus modbus drive drive modbus gs10")
+        assert terms.count("modbus") == 1
+        assert sorted(terms) == ["drive", "gs10", "modbus"]
+
+    def test_terse_code_query_never_empty_fallback(self):
+        # Every token filtered (len<=2) → fallback keeps the raw deduped tokens
+        # so the lexical stream still runs instead of silently returning [].
+        terms = _bm25_terms("OC")
+        assert terms == ["oc"]
+
+    def test_grounding_terms_survive_bounding(self):
+        # The equipment identity a maintenance answer must cite stays in-query.
+        terms = _bm25_terms(
+            "What are the modbus parameters for the GS10 conveyor drive fault"
+        )
+        for keep in ("modbus", "parameters", "gs10", "conveyor", "drive", "fault"):
+            assert keep in terms
