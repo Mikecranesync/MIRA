@@ -11,8 +11,10 @@ import sqlite3
 import time
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import httpx
+import yaml
 
 from . import quality_gate
 from .chat_tenant import resolve as resolve_tenant
@@ -53,9 +55,11 @@ from .fsm import (
 )
 from .guardrails import (
     INTENT_KEYWORDS,
+    LAYER1_INTENTS,
     SAFETY_KEYWORDS,
     check_output,
     classify_intent,
+    classify_intent_v2,
     detect_session_followup,
     resolve_option_selection,
     strip_mentions,
@@ -127,6 +131,63 @@ _LOW_CONF_SIGNALS = re.compile(
 )
 
 _JSON_RE = re.compile(r'\{[^{}]*"reply"[^{}]*\}', re.DOTALL)
+
+# Conversational engine v2 — Layer 1 feature flag and prompt cache.
+# Spec: docs/specs/conversational-engine-upgrade-spec.md §7.5.
+# Default-on on staging via factorylm/stg Doppler; the prod cutover happens
+# once the QA regression routine has been green for 7 consecutive runs.
+_LAYER1_ENABLED = os.getenv("MIRA_CONVERSATIONAL_LAYER_ENABLED", "true").lower() not in (
+    "false",
+    "0",
+    "no",
+    "off",
+)
+
+_LAYER1_PROMPT_DIR = Path(__file__).parent.parent / "prompts" / "conversational"
+_LAYER1_MAX_TOKENS = int(os.getenv("MIRA_LAYER1_MAX_TOKENS", "300"))
+_LAYER1_TIMEOUT_SEC = float(os.getenv("MIRA_LAYER1_TIMEOUT_SEC", "4.0"))
+_LAYER1_PROMPT_CACHE: dict[str, tuple[str, float]] = {}
+_LAYER1_PROMPT_TTL = float(os.getenv("MIRA_PROMPT_CACHE_TTL", "60"))
+
+# Fault-code / brand patterns the Layer 1 claim-stripper checks against
+# `uns_context` and `vision_ocr_cache`. A match that does NOT appear in
+# those fields is treated as an invented claim and stripped per spec §10.1.
+_LAYER1_FAULT_CODE_RE = re.compile(
+    r"\b(?:F|E|A|AL|OC|OL|UV|OV|GF|SC|UF|CE|HF)[\- ]?\d{2,4}\b",
+    re.IGNORECASE,
+)
+_LAYER1_BRAND_TOKENS = frozenset(
+    {
+        "powerflex",
+        "kinetix",
+        "logix",
+        "compactlogix",
+        "controllogix",
+        "siemens",
+        "sinamics",
+        "abb",
+        "schneider",
+        "altivar",
+        "yaskawa",
+        "danfoss",
+        "vacon",
+        "mitsubishi",
+        "fanuc",
+        "lenze",
+        "wago",
+        "phoenix",
+        "balluff",
+        "banner",
+        "turck",
+        "sick",
+        "ifm",
+        "keyence",
+        "weidmuller",
+        "murr",
+        "idec",
+    }
+)
+
 
 _PADDING_OPTION_RE = re.compile(
     r"^(i'?m not sure|not sure|not applicable|n/?a|unknown|other|unsure"
@@ -1836,6 +1897,30 @@ class Supervisor:
                 asset = state.get("asset_identified") or "Unknown equipment"
                 asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
                 return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
+
+            # Layer 1 — conversational front-desk routing (spec §3, §7.2).
+            # Runs after safety so the safety bypass always wins. Gated by
+            # MIRA_CONVERSATIONAL_LAYER_ENABLED. v2 classifier reads
+            # uns_confidence + asset state to decide whether equipment-adjacent
+            # intent has enough context to enter Layer 3, or should be
+            # clarified by Layer 1 first.
+            if _LAYER1_ENABLED:
+                _uns_dict = (state.get("context") or {}).get("uns_context") or {}
+                _v2_intent = classify_intent_v2(
+                    message,
+                    photo_present=bool(photo_b64),
+                    uns_confidence=float(_uns_dict.get("confidence") or 0.0),
+                    fsm_state=state.get("state", "IDLE"),
+                    session_followup=detect_session_followup(message, sc, state["state"]),
+                    has_session_asset=bool(state.get("asset_identified")),
+                )
+                if _v2_intent in LAYER1_INTENTS:
+                    _layer1_result = await self._layer1_reply(
+                        chat_id, state, message, _v2_intent, trace_id, photo_b64=photo_b64
+                    )
+                    if _layer1_result is not None:
+                        return _layer1_result
+                    # Layer 1 declined (empty cascade) — fall through to v1 routing.
 
             # Router-exclusive dispatches — intents the keyword classifier doesn't handle
             if _router_intent == "log_work_order":
@@ -3779,6 +3864,186 @@ class Supervisor:
         self._record_exchange(chat_id, state, "", reply)
         tl_flush()
         return self._make_result(reply, "none", trace_id, fsm)
+
+    # ------------------------------------------------------------------
+    # Conversational engine v2 — Layer 1 (front desk) reply path.
+    # Spec: docs/specs/conversational-engine-upgrade-spec.md §3, §7.2
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _load_layer1_prompt(prompt_key: str) -> str:
+        """Load and cache a Layer 1 system prompt by key (general/clarify/attachment)."""
+        now = time.monotonic()
+        cached = _LAYER1_PROMPT_CACHE.get(prompt_key)
+        if cached is not None and (now - cached[1]) < _LAYER1_PROMPT_TTL:
+            return cached[0]
+        path = _LAYER1_PROMPT_DIR / f"{prompt_key}.yaml"
+        try:
+            with open(path) as f:
+                data = yaml.safe_load(f) or {}
+            prompt = (data.get("system_prompt") or "").strip()
+        except FileNotFoundError:
+            logger.warning("LAYER1 prompt not found: %s", path)
+            prompt = ""
+        except Exception as exc:
+            logger.error("LAYER1 prompt load failed: %s — %s", path, exc)
+            prompt = cached[0] if cached else ""
+        _LAYER1_PROMPT_CACHE[prompt_key] = (prompt, now)
+        return prompt
+
+    @staticmethod
+    def _strip_layer1_claims(reply: str, uns_ctx: dict, vision_ocr: str) -> str:
+        """Enforce echo-vs-claim rule (spec §4.0.1, §10.1).
+
+        Any fault-code pattern or known brand token in the reply must already
+        appear in `uns_ctx` (manufacturer / model / fault_code / aliases) or
+        in `vision_ocr`. Tokens that do not are stripped to a deflection.
+        """
+        if not reply:
+            return reply
+        haystack_parts = [
+            (uns_ctx.get("manufacturer") or ""),
+            (uns_ctx.get("manufacturer_alias") or ""),
+            (uns_ctx.get("product_family") or ""),
+            (uns_ctx.get("model") or ""),
+            (uns_ctx.get("fault_code") or ""),
+            (uns_ctx.get("fault_code_raw") or ""),
+            vision_ocr or "",
+        ]
+        haystack = " ".join(str(p) for p in haystack_parts).lower()
+
+        # Strip invented fault codes.
+        def _fault_repl(match: re.Match) -> str:
+            tok = match.group(0)
+            return tok if tok.lower() in haystack else "[that code]"
+
+        cleaned = _LAYER1_FAULT_CODE_RE.sub(_fault_repl, reply)
+
+        # Strip invented brand tokens (case-insensitive whole-word).
+        for brand in _LAYER1_BRAND_TOKENS:
+            if brand in haystack:
+                continue
+            pattern = re.compile(rf"\b{re.escape(brand)}\b", re.IGNORECASE)
+            if pattern.search(cleaned):
+                logger.info("LAYER1_CLAIM_STRIPPED brand=%s", brand)
+                cleaned = pattern.sub("that equipment", cleaned)
+        return cleaned
+
+    async def _layer1_reply(
+        self,
+        chat_id: str,
+        state: dict,
+        message: str,
+        intent: str,
+        trace_id: str,
+        *,
+        photo_b64: str | None = None,
+    ) -> dict | None:
+        """Layer 1 — conversational front desk.
+
+        Routes general_knowledge / small_talk / greeting / help / disengage /
+        off_topic / clarification_needed / attachment_only intents to one of
+        three small system prompts (general / clarify / attachment) and runs
+        a single cascade call. Never claims specifics about equipment.
+
+        Returns None on cascade failure so the caller can fall through to the
+        existing v1 routing (preserves identical behavior when the flag is on
+        but the cascade is unavailable).
+        """
+        prompt_key_map = {
+            "general_knowledge": "general",
+            "small_talk": "general",
+            "greeting": "general",
+            "help": "general",
+            "disengage": "general",
+            "off_topic": "general",
+            "clarification_needed": "clarify",
+            "attachment_only": "attachment",
+        }
+        prompt_key = prompt_key_map.get(intent, "general")
+        system_prompt = self._load_layer1_prompt(prompt_key)
+        if not system_prompt:
+            return None  # prompt missing — fall through to v1
+
+        ctx = state.get("context") or {}
+        uns_dict = ctx.get("uns_context") or {}
+        vision_ocr = ctx.get("vision_ocr_cache") or ""
+
+        # Build the user-facing message with context fields. Models see
+        # the same uns_context dict the resolver populated, so they can
+        # only echo (per the prompt's echo-vs-claim rule).
+        ctx_lines = [
+            f"uns_context: {json.dumps(uns_dict, default=str)}",
+            f"vision_ocr_cache: {vision_ocr[:500] if vision_ocr else '(empty)'}",
+        ]
+        if intent == "attachment_only":
+            ctx_lines.append(f"caption: {message or '(empty)'}")
+            user_content = "\n".join(ctx_lines)
+        else:
+            ctx_lines.append(f"technician_message: {message}")
+            user_content = "\n".join(ctx_lines)
+
+        # Short recent history for continuity (capped to keep latency low).
+        history = ctx.get("history") or []
+        recent = history[-4:]
+        messages: list[dict] = [{"role": "system", "content": system_prompt}]
+        for turn in recent:
+            if not isinstance(turn, dict):
+                continue
+            u = turn.get("user")
+            a = turn.get("assistant")
+            if u:
+                messages.append({"role": "user", "content": str(u)[:500]})
+            if a:
+                messages.append({"role": "assistant", "content": str(a)[:500]})
+        messages.append({"role": "user", "content": user_content})
+
+        try:
+            reply_text, _usage = await asyncio.wait_for(
+                self.router.complete(
+                    messages,
+                    max_tokens=_LAYER1_MAX_TOKENS,
+                    session_id=f"{chat_id}_layer1_{intent}",
+                ),
+                timeout=_LAYER1_TIMEOUT_SEC,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("LAYER1_TIMEOUT chat_id=%s intent=%s", chat_id, intent)
+            return None
+        except Exception as exc:
+            logger.warning(
+                "LAYER1_CASCADE_FAILURE chat_id=%s intent=%s error=%s",
+                chat_id,
+                intent,
+                exc,
+            )
+            return None
+
+        if not reply_text or not reply_text.strip():
+            return None
+
+        reply = self._strip_layer1_claims(reply_text.strip(), uns_dict, vision_ocr)
+
+        # State transition: clarification/attachment park in AWAITING_CLARIFICATION.
+        # Other Layer 1 intents leave the state untouched (IDLE stays IDLE; an
+        # active diagnostic state is unreachable here because session_followup
+        # already routed industrial).
+        next_state = state.get("state", "IDLE")
+        if intent in ("clarification_needed", "attachment_only"):
+            state["state"] = "AWAITING_CLARIFICATION"
+            next_state = "AWAITING_CLARIFICATION"
+
+        self._record_exchange(chat_id, state, message, reply)
+        self._save_state(chat_id, state)
+        tl_flush()
+        logger.info(
+            "LAYER1_REPLY chat_id=%s intent=%s next_state=%s len=%d",
+            chat_id,
+            intent,
+            next_state,
+            len(reply),
+        )
+        return self._make_result(reply, "none", trace_id, next_state, dispatch_kind="layer1")
 
     # Keywords that suggest the question needs equipment-specific RAG lookup
     _SPEC_KEYWORDS = frozenset(
