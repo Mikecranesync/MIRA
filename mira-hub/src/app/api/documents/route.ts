@@ -7,16 +7,25 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/documents?asset_id=&manufacturer=&limit=
  *
- * Returns the document list (one row per source_url) for the tenant — manuals,
- * datasheets, prints already ingested into knowledge_entries. Filters:
+ * Returns the document list (one row per source_url) visible to the caller —
+ * manuals, datasheets, prints ingested into knowledge_entries. Filters:
  *   - asset_id: scope to docs matching the asset's manufacturer/model
  *   - manufacturer: scope to a specific manufacturer
  *   - limit (default 50, max 200)
  *
- * Matches the rollup pattern in /api/library/documents but joins through
- * cmms_equipment when asset_id is supplied. Unlike /api/knowledge (cross-
- * tenant universal corpus), this endpoint stays scoped to the caller's
- * tenant so the tablet sees only the demo customer's library.
+ * Tenant scoping — see `.claude/rules/knowledge-entries-tenant-scoping.md` (the
+ * law) and #1833. `knowledge_entries` is a HYBRID corpus, so neither pure
+ * tenant-scoping nor pure-universal is correct:
+ *   - shared OEM corpus (`is_private = false`, legacy non-UUID tenant) → visible
+ *     to everyone. Pure `tenant_id = $caller` returns ~0 of it (the #1761 bug).
+ *   - per-tenant uploads (`is_private = true`, written by /api/documents/upload
+ *     and the folder=brain ingest path) → visible only to the owning tenant.
+ *     Leaving them universal leaks tenant A's manual to tenant B (#1833).
+ * Canonical read filter: `(is_private = false OR tenant_id = $caller)`. It runs
+ * on the raw owner pool (BYPASSRLS) on purpose — withTenantContext's RLS policy
+ * is pure `tenant_id = app.tenant_id` and would hide the shared OEM corpus, so it
+ * cannot express the hybrid. The cmms_equipment lookup IS pure-tenant data, so it
+ * carries an explicit `AND tenant_id = $2` instead (matches /api/assets/[id]).
  */
 export async function GET(req: Request) {
   if (!process.env.NEON_DATABASE_URL) {
@@ -34,10 +43,13 @@ export async function GET(req: Request) {
     let mfr = mfrFilter;
     let model = "";
     if (assetId) {
+      // cmms_equipment is pure-tenant data — never resolve another tenant's
+      // asset by id (the IDOR half of #1833). Explicit tenant_id, not RLS.
       const asset = await pool
         .query(
-          `SELECT manufacturer, model_number FROM cmms_equipment WHERE id = $1 LIMIT 1`,
-          [assetId],
+          `SELECT manufacturer, model_number FROM cmms_equipment
+            WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+          [assetId, ctx.tenantId],
         )
         .then((r: { rows: Record<string, unknown>[] }) => r.rows[0] ?? null);
       if (asset) {
@@ -46,8 +58,10 @@ export async function GET(req: Request) {
       }
     }
 
-    const where: string[] = [];
-    const params: unknown[] = [];
+    // Hybrid corpus filter is ALWAYS first: shared OEM rows (is_private=false)
+    // plus the caller's own private uploads, never another tenant's uploads.
+    const params: unknown[] = [ctx.tenantId];
+    const where: string[] = ["(is_private = false OR tenant_id = $1)"];
     if (mfr) {
       params.push(mfr);
       where.push(`LOWER(manufacturer) = LOWER($${params.length})`);
@@ -66,7 +80,7 @@ export async function GET(req: Request) {
              MAX(created_at)     AS last_indexed,
              BOOL_OR(verified)   AS verified
         FROM knowledge_entries
-        ${where.length ? "WHERE " + where.join(" AND ") : ""}
+       WHERE ${where.join(" AND ")}
        GROUP BY source_url
        ORDER BY MAX(created_at) DESC NULLS LAST
        LIMIT ${limit}`;
