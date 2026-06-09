@@ -102,6 +102,12 @@ _STATE_ALIASES: dict[str, str] = {
     "CLARIFY": "Q1",
     "GATHER": "Q1",
     "ESCALATE": "SAFETY_ALERT",
+    # LLM-invented states observed in benchmark v1.2.0 (issue #867)
+    "DEBUG": "DIAGNOSIS",
+    "TEST_PREP": "Q2",
+    "TRIP_CLASS_INQUIRY": "DIAGNOSIS",
+    "CHECKING_CONTACTOR": "DIAGNOSIS",
+    "INSPECTION": "Q3",
 }
 
 import re  # noqa: E402
