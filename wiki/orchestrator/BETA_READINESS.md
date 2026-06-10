@@ -108,10 +108,17 @@ low-groundedness episode tracking intact on the RAG path.
 
 ## Lens D — Eval & test health (#1827): **YELLOW — safety is clean; FSM/retrieval eval cluster needs live-key verification**
 
-**Premise correction:** the issue cites "46/57 (81%)". The latest **measured**
-offline scorecard is **38/57 (66%)** (`tests/eval/runs/2026-06-04T1221-offline-text.md`,
-2026-06-04); recent runs oscillate 50–67% (LLM temperature variance). The 46/57
-number is stale.
+**Premise correction (eval health is NOT declining):** the issue cites a single
+"46/57 (81%)". In reality the offline scorecard **oscillates 38–50/57 across
+recent nights** under live-inference variance — it is not a fixed number:
+- 2026-06-08 → **50/57** (`tests/eval/runs/2026-06-08T0229-offline-text.md`, per #1788)
+- 2026-06-09 → **48/57** (latest reported; `2026-06-09T0045-offline-text.md`, per #1843)
+- 2026-06-04 → 38/57 (`2026-06-04T1221-offline-text.md`, the low end)
+
+So the **latest reported pass rate is 48/57** — ~the same band as the issue's 46/57,
+i.e. normal oscillation, **not a regression**. (Local `main` tree only has runs
+through 2026-06-04 committed; the 06-08/06-09 numbers are the authoritative ones in
+#1788/#1843.)
 
 **Safety-keyword question — ANSWERED: no real gap.** The "4 safety failures" from
 the adversarial-review triage were **LLM-router false positives** (the
@@ -165,8 +172,10 @@ Each has an exact next action. "Owned" = an open PR or session already on it.
 - Verified the gate code path is complete end-to-end (Lens A).
 - Refuted two engine "citation bypass" P1s as false positives (Lens C) — saved an
   unnecessary edit to the most sensitive shared module.
-- Corrected the scorecard premise (46/57 → 38/57) and confirmed safety has **no
-  real gap** (Lens D).
+- Corrected the scorecard premise: eval health oscillates 38–50/57 (latest
+  reported 48/57, 2026-06-09) — **not declining**; and spot-confirmed safety has
+  **no real gap** (`tests/test_safety_coverage.py` 94/94; fix commits
+  f59bce64/e97fa8b3 verified to exist) (Lens D).
 - Confirmed onboarding persistence + the blind-door reality (#1806 needs a
   decision, not a wire).
 - Produced this ledger (Lens F).
