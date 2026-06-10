@@ -30,6 +30,7 @@ Env contract (all dev/staging — NEVER point this at prod):
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from dataclasses import dataclass
@@ -110,15 +111,68 @@ def _headers(cfg: GateConfig) -> dict[str, str]:
     return h
 
 
+def _parse_sse_answer(text: str) -> str:
+    """Accumulate the answer from an SSE stream.
+
+    The Hub NodeChat surface (`/api/namespace/node/<id>/chat`) streams
+    `text/event-stream` lines of the form `data: {"content": "..."}` (token
+    deltas), plus a leading `data: {"sources": [...]}` and a terminating
+    `data: [DONE]`. We concatenate the `content` deltas — the assembled string
+    is the answer the human reads.
+    """
+    parts: list[str] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+        payload = line[len("data:"):].strip()
+        if not payload or payload == "[DONE]":
+            continue
+        try:
+            obj = json.loads(payload)
+        except (ValueError, TypeError):
+            continue
+        if isinstance(obj, dict) and isinstance(obj.get("content"), str):
+            parts.append(obj["content"])
+    return "".join(parts)
+
+
 def _ask(cfg: GateConfig, client: httpx.Client) -> str:
-    """Ask the question through the real chat endpoint; return the answer text."""
-    payload = {"question": QUESTION, "query": QUESTION, "tenant_id": cfg.tenant}
+    """Ask the question through the real chat endpoint; return the answer text.
+
+    Supports two contracts so the same gate runs against either beta surface:
+      * Hub **NodeChat** (`/api/namespace/node/<id>/chat`): body is a `messages`
+        array, response is an **SSE** stream of `content` deltas. This is the
+        surface PR #1592 grounds (uploads → `knowledge_entries` → cited answer).
+      * Engine / pipeline / OpenAI-compat: JSON body, JSON response
+        (`reply` / `answer` / `choices[].message.content`).
+
+    We always send both `messages` and the legacy `question`/`query` keys, then
+    branch on the response: SSE (event-stream) is accumulated; otherwise parsed
+    as JSON. This keeps one gate working across surfaces without a mode flag.
+    """
+    payload: dict[str, object] = {
+        "messages": [{"role": "user", "content": QUESTION}],
+        "question": QUESTION,
+        "query": QUESTION,
+        "tenant_id": cfg.tenant,
+    }
     if cfg.asset:
         payload["asset_id"] = cfg.asset
     resp = client.post(cfg.chat_url, json=payload, headers=_headers(cfg))
     resp.raise_for_status()
-    data = resp.json()
-    # Accept a few common response shapes (engine/pipeline/OpenAI-compat).
+
+    # SSE surface (NodeChat) — accumulate the streamed content deltas.
+    ctype = resp.headers.get("content-type", "")
+    body = resp.text
+    if "text/event-stream" in ctype or body.lstrip().startswith("data:"):
+        return _parse_sse_answer(body)
+
+    # JSON surfaces (engine / pipeline / OpenAI-compat).
+    try:
+        data = resp.json()
+    except (ValueError, TypeError):
+        return body
     if isinstance(data, dict):
         if "reply" in data:
             return str(data["reply"])
