@@ -5,6 +5,7 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 import {
   retrieveManualChunks,
+  filterCitationsByRelevance,
   buildGroundedContext,
   type ManualChunk,
   type ManualSource,
@@ -140,6 +141,13 @@ export async function POST(req: Request) {
     console.error("[quickstart/ask] retrieval failed:", err);
     // Continue — the model can still refuse with no context.
   }
+
+  // Drop chunks whose manufacturer is irrelevant to what was asked (the
+  // tenant-wide retrieval fallback can surface e.g. a Siemens manual for a
+  // Danfoss question). Filter BEFORE building context so the model never
+  // grounds on the wrong vendor and the [n] markers stay aligned with the
+  // returned citations. If this empties the set, cite-or-refuse kicks in.
+  chunks = filterCitationsByRelevance(chunks, manufacturer);
 
   const context = buildGroundedContext(chunks);
   const userMsg = context

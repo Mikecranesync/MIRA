@@ -246,6 +246,57 @@ export function buildGroundedContext(chunks: ManualChunk[]): string {
 }
 
 /**
+ * Drop chunks whose manufacturer is plainly irrelevant to what the user asked.
+ *
+ * The public quickstart endpoint is anonymous — there is no UNS context, so the
+ * only relevance signal is the manufacturer the user picked. `retrieveManualChunks`
+ * falls back to a tenant-wide query when the manufacturer-scoped query returns
+ * nothing, which can surface e.g. a Siemens chunk for a Danfoss question. Citing
+ * the wrong vendor makes a correct answer look hallucinated, so we drop mismatched
+ * chunks here — BEFORE `buildGroundedContext`, so the model never grounds on them
+ * and the returned `[n]` markers stay aligned with the citation list.
+ *
+ * Lightweight string match only — no LLM call, no `uns_resolver` (this surface
+ * has no `state["uns_context"]`).
+ *
+ * Rules:
+ *  - No manufacturer asked → no signal to filter on → pass through unchanged.
+ *  - Manufacturer asked → keep a chunk when its manufacturer, model number, or
+ *    source URL mentions that manufacturer (normalized, either-direction match).
+ *  - Keep chunks with NO manufacturer — generic / educational, not vendor-specific.
+ *  - Drop chunks whose manufacturer is set but doesn't match.
+ */
+export function filterCitationsByRelevance(
+  chunks: ManualChunk[],
+  manufacturer: string | null | undefined,
+): ManualChunk[] {
+  const asked = normalizeVendor(manufacturer);
+  if (!asked) return chunks; // no manufacturer signal — nothing to filter on
+
+  return chunks.filter((c) => {
+    const chunkMfr = normalizeVendor(c.manufacturer);
+    if (!chunkMfr) return true; // generic / educational chunk — keep (carve-out)
+    if (vendorMatches(asked, chunkMfr)) return true;
+    // Some corpora leave manufacturer blank but encode the vendor in the model
+    // number or source URL — check those before dropping.
+    if (vendorMatches(asked, normalizeVendor(c.modelNumber))) return true;
+    if (normalizeVendor(c.sourceUrl).includes(asked)) return true;
+    return false;
+  });
+}
+
+/** Lowercase + strip every non-alphanumeric char (so URLs and spaced names compare cleanly). */
+function normalizeVendor(s: string | null | undefined): string {
+  return (s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+/** Substring match either direction — "danfoss" matches "danfossvlt" and vice versa. */
+function vendorMatches(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  return a.includes(b) || b.includes(a);
+}
+
+/**
  * Append the retrieval block to an existing system prompt. Adds the
  * citation rule so the model uses `[n]` markers.
  */
