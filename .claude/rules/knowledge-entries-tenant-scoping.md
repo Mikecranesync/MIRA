@@ -13,6 +13,15 @@ right; the law is the hybrid below.
 
 ## The two kinds of rows
 
+> **CORRECTION (2026-06-09, verified vs PROD via `db-inspect`):** the "non-UUID slug
+> (`'mike'`)" model below is **NOT the prod reality**. `knowledge_entries.tenant_id` is type
+> **`uuid`**; all 83,553 rows are uuid-format and owned by a **single system tenant**
+> (`78917b56-…`, 83,543 public + 10 private). The OEM corpus is that system tenant's rows kept
+> public via `is_private = false` — there is **no `'mike'` text slug**. ⇒ you **cannot** tell
+> OEM-corpus from per-tenant uploads by tenant_id format (both uuid); the discriminator is
+> `is_private` + system-tenant ownership. The read-filter `(is_private = false OR tenant_id = $caller)`
+> below remains correct. Full proof: `docs/xprize/2026-06-09-1841-schema-drift-resolution.md`.
+
 | Class | `is_private` | `tenant_id` | Who may see it | Written by |
 |---|---|---|---|---|
 | **Shared OEM corpus** | `false` | legacy non-UUID slug (`'mike'`, `MIRA_TENANT_ID`) | **everyone** | bulk OEM ingest, seeds, public crawls (`mira-crawler` OEM tasks, `tools/seeds/*`, `mira-core/scripts/ingest_manuals.py`) |
@@ -86,16 +95,19 @@ and takes the read law above instead.
 
 - ✅ `/api/documents` — hybrid read filter + `cmms_equipment` tenant scope (#1833).
 - ✅ `/api/documents/upload` — writes `is_private = true`.
-- ✅ Migration 045 — backfills existing UUID-tenant rows to `is_private = true`.
+- ❌ Migration 045 — **DROPPED (Option A, 2026-06-09).** The backfill was unnecessary and
+  unsafe: prod has a single system tenant owning every row (no leaked uploads to backfill),
+  and `tenant_id ~ uuid-regex` would have privatized the entire shared OEM corpus. Future
+  cross-tenant leaks are prevented by the `is_private = true` write path, not a backfill. See
+  `docs/xprize/2026-06-09-1841-schema-drift-resolution.md`.
 - ⏳ **Follow-up (tracked):** apply the hybrid read filter to the remaining
   per-tenant document/RAG surfaces (`/api/assets/[id]/documents`,
   `mira-hub/src/lib/manual-rag.ts`, `mira-hub/src/lib/agents/asset-intelligence.ts`)
   and set `is_private = true` in the production upload write path
   (`mira-crawler/ingest/store.py` + the folder=brain ingest task, which must
   distinguish customer-upload ingest from OEM/public crawl). Until that ships,
-  NEW production (folder=brain) uploads land `is_private = false`; migration 045
-  protects all rows existing at apply time, and `/api/documents/upload` is
-  already correct.
+  NEW production (folder=brain) uploads land `is_private = false`; `/api/documents/upload`
+  is already correct.
 
 ## When this applies
 
@@ -112,7 +124,7 @@ and takes the read law above instead.
 ## Cross-references
 
 - `mira-hub/src/app/api/documents/route.ts` — reference implementation.
-- `mira-hub/db/migrations/045_knowledge_entries_private_uploads.sql` — backfill.
+- ~~`mira-hub/db/migrations/045_…sql` — backfill~~ — **dropped (Option A, see above).**
 - `mira-hub/db/migrations/011_grant_app_kb_access.sql` — the RLS policy that makes
   `withTenantContext` pure-tenant-scope (why hybrid reads use the raw pool).
 - `docs/migrations/001_knowledge_entries.sql` — the `is_private` column.

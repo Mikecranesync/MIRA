@@ -7,6 +7,8 @@ tenant UUID so it can be applied to dev or prod without touching real customers.
 |---|---|---|---|
 | `demo-conveyor-001.sql` | `00000000-0000-0000-0000-0000000000d1` ("demo") | Conveyor 001 (`CV-001`) | 5 components (PE/MTR/VFD/PLC/PANEL), PE-001 full template, ISA-95 UNS paths, PLC tag bindings (4 entities), 12 verified relationship proposals + evidence, promoted into `kg_relationships` |
 | `run_demo_seed.py` | — | — | Python runner: `--dry-run` (rollback), `--commit`, `--verify` |
+| `beta-demo-tenant.md` | `…d1` ("demo") | Garage conveyor (CV-101) | **Manifest** — how to stand up the full beta demo tenant from the seeds above (apply order, known-good GS10 `oC` Q/A, first-run empty-state design). Start here for "Path to Beta". |
+| `seed-simlab-docs.py` | `00000000-0000-0000-0000-000000515ab1` ("SimLab") | Juice bottling line (11 assets) | Ingests the 77 synthetic maintenance markdown fixtures under `simlab/docs/<asset_id>/` (7 doc types × 11 assets) into `knowledge_entries`, chunked for BM25, UNS-tagged in `isa95_path` via `simlab.uns.asset_path`, `source_system="simulator"`/`simulated=true` in metadata. Closes #1835. Requires PR #1816's `simlab/docs/`. |
 
 ## Prerequisites
 
@@ -71,4 +73,47 @@ Query the demo subtree:
 SELECT entity_type, entity_id, name FROM kg_entities
 WHERE uns_path <@ 'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001'::ltree
 ORDER BY uns_path;
+```
+
+## SimLab doc seed (`seed-simlab-docs.py`)
+
+Ingests the SimLab juice-bottling maintenance docs so the engine can **cite**
+them during SimLab scenarios. Reads `simlab/docs/<asset_id>/*.md` (7 doc types ×
+11 assets = 77 files), chunks each on `##` sections (H1 title prepended for
+context; oversize sections soft-split at ~1800 chars), and inserts into
+`knowledge_entries` under the fixed SimLab tenant.
+
+```bash
+# Local — DEV ONLY (the docs are synthetic; never seed prod from a code shell)
+doppler run --project factorylm --config dev -- \
+  .venv/bin/python tools/seeds/seed-simlab-docs.py --dry-run   # validate, rollback
+doppler run --project factorylm --config dev -- \
+  .venv/bin/python tools/seeds/seed-simlab-docs.py --commit    # apply (242 chunks)
+doppler run --project factorylm --config dev -- \
+  .venv/bin/python tools/seeds/seed-simlab-docs.py --verify    # counts + BM25 proof
+```
+
+- **Schema facts:** `knowledge_entries.tenant_id` is **UUID** (FK → `tenants.id`;
+  the seed inserts an idempotent `tenants` row first). `source_system`/`simulated`
+  live in `metadata` JSONB (no dedicated columns). UNS path → `isa95_path`.
+- **Idempotency:** `ON CONFLICT` on the partial unique index `idx_ke_chunk_dedup`
+  `(tenant_id, source_url, (metadata->>'chunk_index')::int)`. Re-running inserts 0.
+  `DO NOTHING` → edits to a doc are **not** re-synced (clear the tenant to reload).
+- **`--verify` proves citability, not just row count:** it replays the engine's
+  OR-fanout BM25 query (`mira-bots/shared/neon_recall.py::_recall_bm25`) for canned
+  probes and asserts the expected asset is in the top-K candidate set. It does
+  **not** assert rank-#1: `_recall_bm25` is tenant-wide (no asset scoping), so
+  vocabulary-sharing siblings (filler/rinser both "nozzle/pressure") can outrank
+  the target on a generic query. At runtime the engine disambiguates via the
+  SimLab `direct_connection` `asset_id` + RRF fusion — wiring that asset scope
+  into `tests/simlab/runner.py` (which binds no tenant today) is the #1816
+  follow-up, **not** this ingestion PR.
+- **Via workflow:** `apply-seeds.yml` with `seeds=simlab-docs` (or `all`) runs this
+  as a dedicated Python step — `dry-run` rolls back, `apply` commits + verifies.
+  It ignores the `tenant_id` input (own fixed tenant) and no-ops until `simlab/`
+  is on the checked-out ref.
+
+UNS subtree (canonical lowercase ltree, built by `simlab.uns.asset_path`):
+```
+enterprise.florida_natural_demo.plant1.juice_bottling.line01.{depalletizer01|conveyorzone01|conveyorzone02|rinser01|filler01|capper01|labeler01|casepacker01|palletizer01|airsystem01|cipskid01}
 ```

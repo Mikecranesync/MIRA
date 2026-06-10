@@ -16,11 +16,6 @@ mira-crawler/tasks/full_ingest_pipeline.py                 # _write_kg_edge — 
 # --- Technician-confirmation path (human-gated, mira-connect) ---
 mira-connectors/mira_connectors/store.py                   # confirmation_gate verified write on technician confirm
 
-# --- Not-yet-migrated hub writers (tracked by #1721; migrate → remove) ---
-mira-hub/src/lib/knowledge-graph/cmms-sync.ts              # TODO #1721 (blocked: has_work_order not in CHECK)
-mira-hub/src/lib/knowledge-graph/extractor.ts              # TODO #1721 (conversation extractor)
-mira-hub/src/lib/knowledge-graph/hierarchy-backfill.ts     # TODO #1721 (parent_of → LOCATED_IN decision)
-
 # --- Migrated in #1729; inserts removed once merged (allow until then) ---
 mira-hub/src/lib/knowledge-graph/queries.ts                # upsertSchematicComponents now proposes (#1729)
 mira-hub/src/lib/knowledge-graph/relationship-extractor.ts # now proposes (#1729)
@@ -34,4 +29,8 @@ mira-hub/scripts/seed-synthetic-users.ts                   # synthetic seed data
 mira-hub/src/app/api/proposals/[id]/decide/__tests__/route.test.ts  # asserts the decide route's insert
 mira-hub/src/lib/knowledge-graph/__tests__/queries-schematic.test.ts        # asserts schematic writer does NOT insert kg_relationships (#1729)
 mira-hub/src/lib/knowledge-graph/__tests__/relationship-extractor-store.test.ts  # asserts extractor does NOT insert kg_relationships (#1729)
+mira-hub/src/lib/knowledge-graph/__tests__/cmms-sync-propose.test.ts        # asserts cmms-sync does NOT insert kg_relationships (#1721)
+mira-hub/src/lib/knowledge-graph/__tests__/extractor-propose.test.ts        # asserts conversation extractor does NOT insert kg_relationships (#1721)
+mira-hub/src/lib/knowledge-graph/__tests__/hierarchy-backfill-propose.test.ts  # asserts hierarchy backfill does NOT insert kg_relationships (#1721)
 tools/seeds/demo-conveyor-001.sql                          # demo seed (commented inserts)
+tools/seeds/demo-hub-tenant.sql                            # demo seed — ground-truth garage-cell topology (PLC CONTROLS VFD, VFD DRIVES conveyor), not MIRA-inferred

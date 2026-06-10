@@ -6,11 +6,27 @@
 > **Product-surface contract:** `docs/specs/maintenance-namespace-builder-spec.md` — the UNS gate, AI proposals, readiness levels.
 > **Phased execution:** `docs/plans/2026-05-15-maintenance-namespace-builder.md`.
 
+## 🚦 Primary product focus: Beta readiness
+
+The current execution phase is **Path to Beta Testers** (`docs/plans/2026-06-07-path-to-beta.md`).
+Until the beta gate is met, every product change is judged against one question:
+
+> **Does this get us closer to: a stranger uploads their own equipment manual, asks a real
+> troubleshooting question, and gets a grounded answer with citations from that manual —
+> without Mike manually fixing anything?**
+
+The gate is enforced by `tests/beta/beta_ready_upload_retrieval_citation.py` (xfail until it's
+met). The known blocker is the **upload→retrieval gap**: uploads land in the Open WebUI KB but
+chat retrieval reads only `knowledge_entries` (PR #1592 closes it). Don't build beta-adjacent
+features that route around this gap — close the gap. See `NORTH_STAR.md` § "Path to Beta Testers".
+
 ## What MIRA is
 
 **MIRA** (Maintenance Intelligence Resource Agent) is an industrial maintenance intelligence system. The product wedge is a **Slack-first maintenance copilot** that grounds every answer in the customer's real factory context.
 
 It is **not** a generic chatbot. It is **not** a SCADA or CMMS replacement. It is a focused, grounded troubleshooting and ingestion assistant for plant maintenance technicians.
+
+**Train before deploy (product direction).** FactoryLM Command Center (`mira-hub`, `app.factorylm.com`) is where customers build the namespace, upload documentation, train/validate asset-specific MIRA agents, and approve them. Ignition/HMI "Ask MIRA" is a **deployment surface for approved agents**, not the primary onboarding system. No HMI deployment until the asset agent has grounded docs, validation questions, and approved cited answers. MIRA is **read-only troubleshooting intelligence first — no control writes in beta.** Full rule: `.claude/rules/train-before-deploy.md`; per-asset lifecycle + deployment gate: `docs/specs/asset-agent-validation-spec.md`.
 
 ## North Star architecture
 
@@ -151,7 +167,10 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - **UNS compliance** — see `.claude/rules/uns-compliance.md` (every asset row has `uns_path` or `equipment_entity_id` FK).
 - **Direct-connection UNS certification** — see `.claude/rules/direct-connection-uns-certified.md` (Ignition/MQTT/PLC/Hub/QR surfaces carry a UNS identifier on every turn or are rejected; engine skips the chat-gate on `source="direct_connection"`).
 - **CodeGraph-first exploration** — see `.claude/rules/codegraph-usage.md` (use `codegraph_context` / `codegraph_impact` before grep + Read for any symbol-shaped question).
+- **Train before deploy** — see `.claude/rules/train-before-deploy.md` (Command Center builds+validates; Ignition/HMI deploys approved asset agents only; no HMI deployment without grounded docs + validation questions + approved cited answers; read-only in beta).
 - **Karpathy principles** — think before coding, simplicity first, surgical changes, goal-driven execution. See `.claude/rules/karpathy-principles.md`.
+- **Debugging & verification** — perf problems are multi-cause (re-measure after each fix); verify exact table/column names + API auth paths from the codebase before guessing. See `.claude/rules/debugging-conventions.md`.
+- **Session discipline** — verify stated premises against the codebase + `git log` before building; re-run the full suite before reporting eval gains; stage only files your change touched (never `git add -A` over foreign WIP); validate migration/seed prerequisites + schema constraints; checkpoint long tasks to `.planning/STATE.md` early. See `.claude/rules/session-discipline.md`.
 - **Don't break the UNS confirmation gate.** Run `mira-run-hallucination-audit` after engine/bot edits.
 
 ## Testing expectations
@@ -186,9 +205,13 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - `.claude/rules/uns-compliance.md` — UNS data-shape enforcement
 - `.claude/rules/uns-confirmation-gate.md` — chat-surface UNS gate (Slack/Telegram/email/web)
 - `.claude/rules/direct-connection-uns-certified.md` — direct-connection UNS certification (Ignition/MQTT/PLC/Hub/QR)
+- `.claude/rules/train-before-deploy.md` — Command Center trains/validates; Ignition/HMI deploys approved asset agents only
+- `docs/specs/asset-agent-validation-spec.md` — per-asset agent lifecycle (draft→…→approved→deployed) + HMI deployment gate
 - `.claude/rules/security-boundaries.md` — secrets, PII, safety keywords
 - `.claude/rules/python-standards.md` — ruff, httpx, NeonDB, async
 - `.claude/rules/karpathy-principles.md` — coding behavior
+- `.claude/rules/debugging-conventions.md` — multi-cause perf debugging + verify schema/API paths before guessing
+- `.claude/rules/session-discipline.md` — premise-verify, regression-recheck, scoped-commits, migration-safety, long-task checkpointing
 - `.claude/rules/codegraph-usage.md` — when to use CodeGraph vs grep/Read (CodeGraph-first for symbol-shaped questions)
 - `docs/specs/uns-kg-unification-spec.md` — UNS authority (data architecture)
 - `docs/specs/mira-component-intelligence-architecture.md` — implementation-level architecture (component templates, KG mechanics)

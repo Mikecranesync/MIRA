@@ -8,6 +8,12 @@
 import pool from "@/lib/db";
 import type { PoolClient } from "pg";
 import { extractRelationships, type EntityRef, type ExtractionStats } from "./relationship-extractor";
+import { mapToCanonicalEdge, upsertInferredProposal } from "./proposals-writer";
+
+// Regex-extracted conversation edges are co-occurrence inferences (the asset
+// and the tag/fault/part appeared together), not certainties. Propose them at
+// a moderate fixed confidence rather than the old auto-verified 1.0.
+const REGEX_RELATIONSHIP_CONFIDENCE = 0.7;
 
 // ── Regex patterns ─────────────────────────────────────────────────────────
 
@@ -129,21 +135,41 @@ async function upsertEntity(
   return rows[0]!.id;
 }
 
-async function upsertRelationship(
+/**
+ * Propose a conversation-extracted edge for human review instead of writing it
+ * straight to kg_relationships (Iron Rule, ADR-0017). The lowercase predicate
+ * is mapped to canonical via mapToCanonicalEdge; unmapped types are skipped.
+ * Returns true when a new proposal was written (false = unmapped or deduped).
+ */
+async function proposeConversationEdge(
   client: PoolClient,
   tenantId: string,
-  sourceId: string,
-  targetId: string,
-  relType: string,
-  convId: string | null,
-): Promise<void> {
-  await client.query(
-    `INSERT INTO kg_relationships
-       (tenant_id, source_id, target_id, relationship_type, confidence, source_conversation_id)
-     VALUES ($1, $2, $3, $4, 1.0, $5)
-     ON CONFLICT DO NOTHING`,
-    [tenantId, sourceId, targetId, relType, convId],
-  );
+  src: { id: string; type: string },
+  tgt: { id: string; type: string },
+  rawType: string,
+  conversationId: string | null,
+): Promise<boolean> {
+  const edge = mapToCanonicalEdge(rawType);
+  if (!edge) return false;
+  const source = edge.flip ? tgt : src;
+  const target = edge.flip ? src : tgt;
+  const proposalId = await upsertInferredProposal(client, tenantId, {
+    sourceEntityId: source.id,
+    sourceEntityType: source.type,
+    targetEntityId: target.id,
+    targetEntityType: target.type,
+    relationshipType: edge.type,
+    confidence: REGEX_RELATIONSHIP_CONFIDENCE,
+    reasoning: `Conversation entity extraction (regex) from conversation ${conversationId ?? "?"} — original predicate "${rawType}".`,
+    evidence: [
+      {
+        evidenceType: "technician_note",
+        sourceDescription: `Diagnostic conversation ${conversationId ?? "(none)"}`,
+        confidenceContribution: REGEX_RELATIONSHIP_CONFIDENCE,
+      },
+    ],
+  });
+  return proposalId !== null;
 }
 
 async function logTriple(
@@ -169,7 +195,14 @@ export interface ExtractionResult {
   faultCodes: number;
   parts: number;
   actions: number;
+  /**
+   * Kept for API back-compat. Conversation edges are now PROPOSED for human
+   * review (Iron Rule, ADR-0017), never written directly to kg_relationships —
+   * always 0. See relationshipsProposed.
+   */
   relationships: number;
+  /** New (#1721): edges proposed this pass (regex + LLM Pass 2 combined). */
+  relationshipsProposed: number;
   triples: number;
   /** Phase 3: stats from the LLM relationship extractor pass. null if disabled. */
   llmRelationships: ExtractionStats | null;
@@ -202,28 +235,39 @@ export async function extractAndStore(
       client, tenantId, "equipment", assetId, `Asset ${assetId}`, { asset_id: assetId },
     );
 
+    const asset = { id: assetKgId, type: "equipment" };
+
     // Equipment tags mentioned in conversation
     for (const tag of extracted.equipment) {
       const tagKgId = await upsertEntity(client, tenantId, "equipment_tag", tag, tag, { source: "conversation" });
-      await upsertRelationship(client, tenantId, assetKgId, tagKgId, "mentioned_tag", conversationId);
+      const proposed = await proposeConversationEdge(
+        client, tenantId, asset, { id: tagKgId, type: "equipment_tag" }, "mentioned_tag", conversationId,
+      );
       await logTriple(client, tenantId, conversationId, `Asset ${assetId}`, "mentioned_tag", tag);
-      relCount++; tripleCount++;
+      if (proposed) relCount++;
+      tripleCount++;
     }
 
     // Fault codes
     for (const code of extracted.faultCodes) {
       const codeKgId = await upsertEntity(client, tenantId, "fault_code", code, code, { source: "conversation" });
-      await upsertRelationship(client, tenantId, assetKgId, codeKgId, "exhibited_fault", conversationId);
+      const proposed = await proposeConversationEdge(
+        client, tenantId, asset, { id: codeKgId, type: "fault_code" }, "exhibited_fault", conversationId,
+      );
       await logTriple(client, tenantId, conversationId, `Asset ${assetId}`, "exhibited_fault", code);
-      relCount++; tripleCount++;
+      if (proposed) relCount++;
+      tripleCount++;
     }
 
     // Parts
     for (const pn of extracted.parts) {
       const partKgId = await upsertEntity(client, tenantId, "part", pn, pn, { source: "conversation" });
-      await upsertRelationship(client, tenantId, assetKgId, partKgId, "requires_part", conversationId);
+      const proposed = await proposeConversationEdge(
+        client, tenantId, asset, { id: partKgId, type: "part" }, "requires_part", conversationId,
+      );
       await logTriple(client, tenantId, conversationId, `Asset ${assetId}`, "requires_part", pn);
-      relCount++; tripleCount++;
+      if (proposed) relCount++;
+      tripleCount++;
     }
 
     // Actions — logged as triples only (verbs don't need entity nodes)
@@ -259,7 +303,8 @@ export async function extractAndStore(
     faultCodes: extracted.faultCodes.length,
     parts: extracted.parts.length,
     actions: extracted.actions.length,
-    relationships: relCount + (llmStats?.storedRelationships ?? 0),
+    relationships: 0,
+    relationshipsProposed: relCount + (llmStats?.storedRelationships ?? 0),
     triples: tripleCount + (llmStats?.storedTriples ?? 0),
     llmRelationships: llmStats,
   };

@@ -17,6 +17,8 @@ import httpx
 from . import quality_gate
 from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
+from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
+from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
 from .conversation_router import route_intent
 from .detection.recurring_fault import check_recurring_and_annotate
 from .dialogue_state import (
@@ -1067,6 +1069,38 @@ class Supervisor:
             "dispatch_kind": dispatch_kind,
         }
 
+    async def _enforce_citation_rewrite(self, reply: str, *, chat_id: str, fsm_state: str) -> str:
+        """#1659 enforce-mode bridge: connect the insertion-only citation rewrite
+        to this turn's retrieval set + the inference router.
+
+        Returns ``reply`` unchanged unless it owes a citation, had retrieval
+        chunks, and dropped the ``[Source:]`` tag — in which case one
+        insertion-only second pass salvages it (validated for content
+        preservation + real labels by the helper). Kill-switch
+        ``MIRA_CITATION_REWRITE=0`` disables it; any error falls open.
+        """
+        if os.getenv("MIRA_CITATION_REWRITE", "1") != "1":
+            return reply
+        rag = getattr(self, "rag", None)
+        if rag is None:
+            return reply
+        try:
+            return await _enforce_citation_via_rewrite(
+                reply,
+                getattr(rag, "last_chunks", None),
+                getattr(rag, "kb_status", None),
+                fsm_state=fsm_state,
+                chat_id=chat_id,
+                llm_call=rag._call_llm,
+            )
+        except Exception:
+            logger.warning(
+                "CITATION_REWRITE_BRIDGE_ERROR chat_id=%s — keeping original reply",
+                chat_id,
+                exc_info=True,
+            )
+            return reply
+
     # ------------------------------------------------------------------
     # Entry points
     # ------------------------------------------------------------------
@@ -1083,6 +1117,7 @@ class Supervisor:
         uns_source: str | None = None,
         tag_evidence: list | None = None,
         live_tags: dict | None = None,
+        retrieval_query: str | None = None,
     ) -> str:
         """Main entry point. Returns reply string (backward-compatible).
 
@@ -1104,6 +1139,14 @@ class Supervisor:
         attached to the message ONLY after the UNS confirmation gate has passed
         (see ``_maybe_attach_live_snapshot``) — never before — so live data can
         never bypass the gate. Callers that don't pass it are unaffected.
+
+        ``retrieval_query`` (optional) overrides the text used for LEXICAL recall
+        only — BM25, fault-code extraction, product-name extraction. Direct-
+        connection surfaces (the Ignition /ask kiosk) prepend a large static
+        context card to ``message``; passing the trimmed question+status here
+        keeps the lexical streams from keying off that boilerplate (#1766). The
+        EMBEDDING still uses the full ``message`` for semantic context. Default
+        None = use ``message`` (chat surfaces unchanged).
         """
         # Per-call tenant overrides constructor default. Stash on self so workers
         # can reach the current request's tenant via self._current_tenant_id.
@@ -1118,7 +1161,13 @@ class Supervisor:
         t0 = time.monotonic()
         try:
             result = await asyncio.wait_for(
-                self.process_full(chat_id, message, photo_b64, uns_source=uns_source),
+                self.process_full(
+                    chat_id,
+                    message,
+                    photo_b64,
+                    uns_source=uns_source,
+                    retrieval_query=retrieval_query,
+                ),
                 timeout=_PROCESS_TIMEOUT,
             )
         except asyncio.TimeoutError:
@@ -1144,6 +1193,14 @@ class Supervisor:
             message,
             result["reply"],
             dispatch_kind=result.get("dispatch_kind", ""),
+        )
+        # #1659 enforce-mode: if the reply owes a citation and the KB returned
+        # chunks but the LLM dropped the [Source:] tag, salvage it with one
+        # insertion-only rewrite BEFORE H4 falls back to a (misleading) KB-gap
+        # admission. Runs post-quality-gate so the injected tag can't perturb
+        # the gate; gated + fail-open inside the bridge.
+        reply = await self._enforce_citation_rewrite(
+            reply, chat_id=chat_id, fsm_state=result.get("next_state", "")
         )
         # H4 enforcer (2026-06-06): every reply must carry a [Source:] citation
         # or an explicit KB-gap admission. Applied AFTER the quality gate so the
@@ -1525,6 +1582,7 @@ class Supervisor:
         photo_b64: str = None,
         *,
         uns_source: str | None = None,
+        retrieval_query: str | None = None,
     ) -> dict:
         """Full entry point. Returns {"reply", "confidence", "trace_id", "next_state"}.
 
@@ -1559,6 +1617,13 @@ class Supervisor:
             return self._make_result(reply, "none", trace_id, "IDLE")
 
         state = self._load_state(chat_id)
+
+        # Per-turn clean lexical-recall query (#1766). Stashed on state so the
+        # RAGWorker uses it for BM25/fault/product extraction without threading a
+        # new arg through the two self.rag.process() call sites. Set every turn
+        # (incl. None) so a value never persists stale across turns. The embedding
+        # path still uses the full message; only lexical recall reads this.
+        state["retrieval_query"] = retrieval_query
 
         if _PROCEED_RE.match(_msg_stripped) and not photo_b64:
             ctx_p = state.get("context") or {}
@@ -2523,15 +2588,21 @@ class Supervisor:
         if _honest_prefix:
             formatted = _honest_prefix + formatted
 
-        # CRA-11 / Unit 2 — observational citation compliance check.
-        # Logs CITATION_COMPLIANCE_OK / _MISS so we can measure inline-cite
-        # rate over time. Never blocks the reply.
-        _check_citation_compliance(
+        # CRA-11 / Unit 2 — citation presence (observational) + P0-3 relevance.
+        # Presence logs OK/MISS for the inline-cite rate metric. Relevance (the
+        # "stop the lie" gate) strips a cited source that names a DIFFERENT
+        # manufacturer than the resolved asset (alias-aware, fail-open) so a
+        # confidently-wrong attribution never reaches the technician.
+        _cc = _check_citation_compliance(
             formatted,
             getattr(self.rag, "kb_status", {}),
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
+            uns_context=(state.get("context") or {}).get("uns_context"),
+            enforce=_citation_enforce_enabled(),
         )
+        if _cc.get("sanitized_reply"):
+            formatted = _cc["sanitized_reply"]
 
         tl_flush()
         return self._make_result(
@@ -3356,12 +3427,16 @@ class Supervisor:
         if honest_prefix:
             formatted = honest_prefix + formatted
 
-        _check_citation_compliance(
+        _cc = _check_citation_compliance(
             formatted,
             getattr(self.rag, "kb_status", {}),
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
+            uns_context=ctx.get("uns_context"),
+            enforce=_citation_enforce_enabled(),
         )
+        if _cc.get("sanitized_reply"):
+            formatted = _cc["sanitized_reply"]
 
         return self._make_result(
             formatted,

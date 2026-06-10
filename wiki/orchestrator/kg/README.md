@@ -13,49 +13,6 @@ semantic extraction). Consumed by the **orchestrator-pulse** scheduled task
 | `graph.html` | Interactive vis-network visualization (open in a browser). |
 | `GRAPH_REPORT.md` | Human report — God Nodes, surprising connections, import cycles, communities, knowledge gaps. |
 
-## Querying (stdlib — no LLM key)
-
-`graphify query/path/explain` needs the graphify CLI **and** a Gemini key. The
-orchestrator-pulse sandbox has neither, so the pulse instead **shells out** to
-`tools/orchestrator/kg_query.py` — a standalone, stdlib-only reader over
-`graph.json` (no networkx, no pip installs). `render.py` calls its `insights`
-command to embed the KG section in `artifact.html`.
-
-```bash
-# search nodes by name/type   (--type code|rationale|concept|document)
-python3 tools/orchestrator/kg_query.py search engine --type code --limit 10
-
-# one node's callers + callees (direction: in | out | both)
-python3 tools/orchestrator/kg_query.py neighbors engine_py --direction in
-
-# shortest path between two node ids (BFS, undirected, with each hop's relation)
-python3 tools/orchestrator/kg_query.py path engine_py mira_mcp_server
-
-# god nodes (highest degree — architectural load-bearers)
-python3 tools/orchestrator/kg_query.py god --limit 10 --type code
-
-# orphan nodes (degree 0 — unreferenced symbols / dead code)
-python3 tools/orchestrator/kg_query.py orphans --type code
-
-# route files / HTTP-method handlers (--orphans-only = degree-0 routes only)
-python3 tools/orchestrator/kg_query.py routes --orphans-only
-
-# composite the pulse uses: god nodes + latest-lens subgraph + orphan routes.
-# Lens is auto-read from the newest "## YYYY-MM-DD (Lens X — …)" heading in
-# ../HISTORY.md; override with --lens "<label>".
-python3 tools/orchestrator/kg_query.py insights --lens "hub functional readiness"
-```
-
-Add `--json` (AFTER the subcommand) to any command for machine-readable output;
-the default is a human table. `--graph PATH` points at a different `graph.json`.
-The module is also importable (`from kg_query import Graph, god_nodes, insights, …`)
-for use inside Python, but the CLI is the contract the pulse depends on.
-
-**Pulse step 4 ("USE the graph"):** run `kg_query.py insights` (or a targeted
-`search`/`neighbors`/`path` for the active lens), cite at least one node id +
-its `source_file:source_location` in the audit, and let `render.py` carry the
-god-node / lens-subgraph / orphan-route block into the artifact automatically.
-
 ## Current build
 
 - **Tool:** graphify `0.8.35` (PyPI package `graphifyy`, **install the `[gemini]` extra**)
@@ -110,6 +67,44 @@ cp $RUN/build/graphify-out/{graph.json,graph.html,GRAPH_REPORT.md} wiki/orchestr
 After code changes you can refresh AST-only edges with **no API cost**:
 `graphify update <path>` (semantic edges go stale until the next full extract).
 
+## Using it while coding
+
+The graphify skill is published into Claude Code on CHARLIE
+(`graphify install --platform claude` → `~/.claude/skills/graphify/`). In a
+Claude Code session, `/graphify` activates it. The graphify CLI is a uv tool
+(`graphifyy` 0.8.35) on `~/.local/bin`.
+
+Because this repo's graph lives at `wiki/orchestrator/kg/graph.json` (not the
+default `graphify-out/graph.json`), pass `--graph` to query it directly:
+
+```bash
+G=wiki/orchestrator/kg/graph.json
+graphify explain  "resolve_uns_path"      --graph "$G"   # node + neighbors
+graphify affected "engine.py" --depth 1   --graph "$G"   # reverse-impact / blast radius
+graphify path     "engine.py" "router.py" --graph "$G"   # shortest path between two nodes
+graphify query    "how does a turn reach the cascade?"   --graph "$G"
+```
+
+## graph.json merge-driver (devops)
+
+`graph.json` is ~91k lines, so two branches that both refresh it textually
+conflict on nearly every merge. A git **union merge-driver** (graphify's own)
+resolves that automatically — it takes the union of nodes/edges from both sides
+instead of a line conflict.
+
+- **Committed:** `.gitattributes` maps `wiki/orchestrator/kg/graph.json → merge=graphify`.
+- **One-time per clone** (the driver definition is *not* committable — it lives in
+  local git config):
+
+  ```bash
+  git config merge.graphify.driver "graphify merge-driver %O %A %B"
+  git config merge.graphify.name   "graphify graph.json union merge"
+  ```
+
+  Without it, git ignores the attribute and falls back to the default merge with a
+  harmless warning — nothing breaks, you just get textual conflicts on `graph.json`.
+  Already configured on CHARLIE.
+
 ## Known limitations
 
 - **Community names are `Community N` placeholders.** Graphify labels all 344
@@ -131,5 +126,3 @@ After code changes you can refresh AST-only edges with **no API cost**:
   already-extracted graph (`json` node-drop on `source_file` under
   `mira-hub/src/messages/`) rather than re-running the LLM. For a clean from-scratch
   rebuild, wait for the throttle to clear and add `--exclude messages` to the rsync.
-
-> 2026-06-08 (orchestrator, Lens B): +8 hand-extracted nodes / +6 edges appended to graph.json (`_origin: hand-extracted`, `lens: B`) — proposal-queue canonical-source drift, missing ADR-0017 helper, Playwright config map. Sandbox has no LLM key; next CHARLIE regen will rebuild from AST and these annotations should be re-checked.

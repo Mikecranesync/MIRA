@@ -133,7 +133,11 @@ export function UploadBlock({
       </div>
 
       <div className="flex items-center gap-1 flex-shrink-0">
-        {failed && onRetry && upload.provider !== "local" && (
+        {/* Retry is now available for local uploads too — the bytes are
+            persisted server-side (2026-06-06), so a failed local upload can be
+            retried without re-picking the file. If the buffer has expired the
+            retry endpoint returns local_retry_requires_re_upload (400). */}
+        {failed && onRetry && (
           <button
             onClick={async () => {
               setRetrying(true);

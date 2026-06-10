@@ -421,6 +421,19 @@ class RAGWorker:
                         if photo_b64 and state.get("asset_identified"):
                             embed_query = f"{state['asset_identified']} {message}"
 
+                        # Clean recall query (#1766). The engine stashes a trimmed
+                        # question+status string on state for direct-connection
+                        # surfaces (the /ask kiosk) whose `message` is a large static
+                        # context card. When set, it drives BOTH the embedding and the
+                        # lexical streams (BM25 / fault-code / product-name). When NOT
+                        # set (chat / photo surfaces), fall back to embed_query — which
+                        # is the bare message for text chat and the asset-enriched
+                        # "{asset} {message}" for photo queries. Falling back to the
+                        # raw `message` here would silently drop the photo asset
+                        # context from the embedding (regressed test_photo_query_
+                        # embeds_with_asset_context); embed_query keeps it.
+                        recall_query = state.get("retrieval_query") or embed_query
+
                         sub_queries: list[str] = [embed_query]
                         if is_decompose_enabled():
                             try:
@@ -449,16 +462,40 @@ class RAGWorker:
                                 len(neon_chunks),
                             )
                         else:
-                            embedding = await self._embed_ollama(embed_query)
+                            # Embed the CLEAN recall_query, not the enriched blob
+                            # (#1766 follow-up). Prod RAG_STAGE_TIMING showed the
+                            # embed of the ~2760-char /ask MACHINE_CONTEXT card was
+                            # 3-5s on CPU Ollama — the dominant latency after the
+                            # recall fix. On the /ask kiosk recall_query is the
+                            # trimmed question+status (~200 chars) → embed drops to
+                            # <1s, and the vector is question-focused rather than
+                            # blurred by the static card. On chat/photo surfaces the
+                            # kiosk key isn't set, so recall_query == embed_query:
+                            # bare message for text chat (unchanged), asset-enriched
+                            # for photo (asset context preserved in the embedding).
+                            _t_emb = time.monotonic()
+                            embedding = await self._embed_ollama(recall_query)
+                            _embed_ms = int((time.monotonic() - _t_emb) * 1000)
                             # Call recall_knowledge unconditionally — it now
                             # falls through to lexical streams when embedding
                             # is None (Ollama sidecar down). Pre-fix this gate
                             # short-circuited BM25 and produced NO_KB_COVERAGE
                             # despite KB rows being lexically retrievable.
+                            _t_rec = time.monotonic()
                             neon_chunks = _neon_recall.recall_knowledge(
                                 embedding,
                                 effective_tenant,
-                                query_text=embed_query,
+                                query_text=recall_query,
+                            )
+                            _recall_ms = int((time.monotonic() - _t_rec) * 1000)
+                            logger.info(
+                                "RAG_STAGE_TIMING embed_ms=%d recall_ms=%d embed_chars=%d "
+                                "recall_chars=%d n_chunks=%d",
+                                _embed_ms,
+                                _recall_ms,
+                                len(recall_query),
+                                len(recall_query),
+                                len(neon_chunks),
                             )
 
                         if is_self_eval_enabled() and neon_chunks:
@@ -684,6 +721,16 @@ class RAGWorker:
     def kb_status(self) -> dict:
         """Current KB coverage status set during the last process() call."""
         return self._kb_status
+
+    @property
+    def last_chunks(self) -> list[dict]:
+        """Retrieved NeonDB chunks from the last process() call.
+
+        Public accessor for the citation enforce-mode rewrite (#1659) so the
+        engine can build valid `[Source:]` labels without reaching into a
+        private attribute. Empty when the last turn retrieved nothing.
+        """
+        return self._last_neon_chunks
 
     def _build_prompt_with_chunks(
         self,

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { headers } from "next/headers";
+import { createHash } from "crypto";
 import { withTenantContext } from "@/lib/tenant-context";
 import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 import {
@@ -9,6 +11,29 @@ import {
 } from "@/lib/manual-rag";
 
 export const dynamic = "force-dynamic";
+
+// Per-IP-hash rate limit for this public, unauthenticated LLM endpoint.
+// In-memory (per-instance) — sufficient while the hub runs as a single
+// container (see root CLAUDE.md Container Map). Mirrors the intent of
+// /api/public/report's DB-backed IP-hash limiter. If the hub scales
+// horizontally, port to a shared store / quickstart_rate table.
+const QUICKSTART_MAX_PER_MIN = 20;
+const QUICKSTART_WINDOW_MS = 60_000;
+const quickstartHits = new Map<string, number[]>();
+
+function quickstartRateLimited(ipHash: string): boolean {
+  const now = Date.now();
+  const cutoff = now - QUICKSTART_WINDOW_MS;
+  const hits = (quickstartHits.get(ipHash) ?? []).filter((t) => t > cutoff);
+  hits.push(now);
+  quickstartHits.set(ipHash, hits);
+  if (quickstartHits.size > 5000) {
+    for (const [k, v] of quickstartHits) {
+      if (v.every((t) => t <= cutoff)) quickstartHits.delete(k);
+    }
+  }
+  return hits.length > QUICKSTART_MAX_PER_MIN;
+}
 
 // See /api/quickstart/manufacturers/route.ts for the rationale on
 // QUICKSTART_TENANT_ID. Production sets it via Doppler / docker-compose;
@@ -67,6 +92,20 @@ const SYSTEM_PROMPT = [
 export async function POST(req: Request) {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+  }
+
+  // Rate limit before any work — we never store raw IPs.
+  const rlHdrs = await headers();
+  const rawIp =
+    rlHdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    rlHdrs.get("x-real-ip") ??
+    "unknown";
+  const ipHash = createHash("sha256").update(rawIp).digest("hex");
+  if (quickstartRateLimited(ipHash)) {
+    return NextResponse.json(
+      { error: "Too many requests — slow down and try again in a minute." },
+      { status: 429 },
+    );
   }
 
   let body: AskPayload;

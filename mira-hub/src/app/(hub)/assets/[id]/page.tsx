@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { AssetChat } from "@/components/AssetChat";
 import { AssetIntelligencePanel } from "@/components/AssetIntelligencePanel";
+import { AssetValidateTab } from "@/components/AssetValidateTab";
 import { QrCodeModal } from "@/components/qr-code-modal";
 import { UploadPicker, type PickResult } from "@/components/UploadPicker";
 import { Badge } from "@/components/ui/badge";
@@ -207,7 +208,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
 
           {/* Tabs */}
           <div className="flex gap-0 overflow-x-auto scrollbar-none -mb-px">
-            {["overview", "ask", "activity", "workorders", "documents", "parts", "intelligence"].map((tab) => (
+            {["overview", "ask", "activity", "workorders", "documents", "parts", "intelligence", "validate"].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -230,6 +231,10 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
                    <span className="flex items-center gap-1">
                      <Brain className="w-3 h-3" /> Intel
                    </span>
+                 ) : tab === "validate" ? (
+                   <span className="flex items-center gap-1">
+                     <CheckCircle2 className="w-3 h-3" /> Validate
+                   </span>
                  ) : tab}
               </button>
             ))}
@@ -250,6 +255,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
           {activeTab === "documents"     && <DocumentsTab assetId={id} assetTag={asset.tag} />}
           {activeTab === "parts"         && <PartsTab />}
           {activeTab === "intelligence"  && <AssetIntelligencePanel assetId={id} />}
+          {activeTab === "validate"      && <AssetValidateTab assetId={id} />}
         </div>
       )}
 

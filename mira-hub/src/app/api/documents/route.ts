@@ -43,8 +43,10 @@ export async function GET(req: Request) {
     let mfr = mfrFilter;
     let model = "";
     if (assetId) {
-      // cmms_equipment is pure-tenant data — never resolve another tenant's
-      // asset by id (the IDOR half of #1833). Explicit tenant_id, not RLS.
+      // cmms_equipment is pure-tenant data — scope by tenant so a stranger
+      // can't resolve another tenant's asset by guessing its id (the IDOR half
+      // of #1833). Explicit tenant_id, not RLS. The hybrid-corpus read-filter
+      // on knowledge_entries (below) is the other half of #1833.
       const asset = await pool
         .query(
           `SELECT manufacturer, model_number FROM cmms_equipment
