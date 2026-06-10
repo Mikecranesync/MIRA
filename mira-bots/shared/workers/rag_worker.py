@@ -395,8 +395,10 @@ class RAGWorker:
                 = no KG block (the default; enrichment is engine-side + flag-gated).
         """
         effective_tenant = tenant_id or self.tenant_id
-        # Stash for the prompt builders (_build_prompt / _build_prompt_with_chunks).
-        self._kg_context = kg_context or ""
+        # Snapshot before any await so concurrent sessions can't overwrite this
+        # call's KG context (cross-tenant data race — mirrors the local_neon_chunks
+        # fix in #1082). Passed as a param to the prompt builders, never via self.
+        local_kg_context = kg_context or ""
         # Track whether retrieval was attempted so we can inject the honesty
         # directive when it ran but returned zero useful chunks.
         retrieval_attempted = bool(effective_tenant)
@@ -660,6 +662,7 @@ class RAGWorker:
                     chunk_texts,
                     photo_b64=photo_b64,
                     neon_chunks_meta=local_neon_chunks,
+                    kg_context=local_kg_context,
                 )
             else:
                 no_kb = retrieval_attempted and not photo_b64
@@ -672,7 +675,11 @@ class RAGWorker:
                     triage_data = (state.get("context") or {}).get("triage_result", {})
                     if triage_data.get("is_answerable_from_general_knowledge"):
                         messages = self._build_prompt(
-                            state, rewritten, photo_b64, no_kb_coverage="general_knowledge"
+                            state,
+                            rewritten,
+                            photo_b64,
+                            no_kb_coverage="general_knowledge",
+                            kg_context=local_kg_context,
                         )
                     else:
                         clarification = _build_clarification_request(
@@ -681,10 +688,16 @@ class RAGWorker:
                         if clarification:
                             return clarification
                         messages = self._build_prompt(
-                            state, rewritten, photo_b64, no_kb_coverage=True
+                            state,
+                            rewritten,
+                            photo_b64,
+                            no_kb_coverage=True,
+                            kg_context=local_kg_context,
                         )
                 else:
-                    messages = self._build_prompt(state, rewritten, photo_b64)
+                    messages = self._build_prompt(
+                        state, rewritten, photo_b64, kg_context=local_kg_context
+                    )
             t0 = time.monotonic()
             raw = await self._call_llm(messages, model=model)
             elapsed_ms = int((time.monotonic() - t0) * 1000)
@@ -739,6 +752,7 @@ class RAGWorker:
         chunks: list,
         photo_b64: str = None,
         neon_chunks_meta: list[dict] | None = None,
+        kg_context: str = "",
     ) -> list[dict]:
         """Build prompt with explicitly injected reranked chunks.
 
@@ -748,12 +762,10 @@ class RAGWorker:
         with text. When a string is passed, ``neon_chunks_meta`` (a
         call-local snapshot) is preferred over ``self._last_neon_chunks`` to
         avoid a cross-tenant data race when Nemotron reranking is enabled.
+        ``kg_context`` is a call-local snapshot for the same reason — never
+        read it from ``self`` (see #1846).
         """
-        system_content = (
-            _active_system_prompt()
-            + getattr(self, "_kg_context", "")
-            + "\n\n--- CURRENT STATE ---\n"
-        )
+        system_content = _active_system_prompt() + kg_context + "\n\n--- CURRENT STATE ---\n"
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"
         system_content += f"Exchange count: {state['exchange_count']}\n"
@@ -843,6 +855,7 @@ class RAGWorker:
         photo_b64: str = None,
         neon_chunks: list[dict] = None,
         no_kb_coverage: bool | str = False,
+        kg_context: str = "",
     ) -> list[dict]:
         """Build message list for LLM with GSD system prompt and state context.
 
@@ -852,11 +865,7 @@ class RAGWorker:
                 answerable from general engineering knowledge — LLM answers with a prefix
                 instead of refusing.
         """
-        system_content = (
-            _active_system_prompt()
-            + getattr(self, "_kg_context", "")
-            + "\n\n--- CURRENT STATE ---\n"
-        )
+        system_content = _active_system_prompt() + kg_context + "\n\n--- CURRENT STATE ---\n"
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"
         system_content += f"Exchange count: {state['exchange_count']}\n"
