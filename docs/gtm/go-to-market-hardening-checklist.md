@@ -33,6 +33,12 @@ BM25 chunks.
   **chunks** (before `buildGroundedContext`), so the LLM never sees the
   irrelevant content and `[n]` markers stay consistent. → `filterCitationsByRelevance()`
   in `manual-rag.ts`, wired into `quickstart/ask/route.ts`.
+  **Scope:** fires off the **picked manufacturer** (the request's `manufacturer`
+  field — exactly the fallback case where the bug bites). A stranger who picks
+  no manufacturer and types a free-text vendor mention ("my Danfoss VFD…") gets
+  `manufacturer=null` → passthrough; BM25 query-text ranking is the only defense
+  there. Free-text vendor extraction is out of scope on this surface. **Test the
+  Danfoss case via the manufacturer picker.**
 - [x] **RED #3 — Quickstart smoke gate.** End-to-end check on every deploy:
   POST a real maintenance question, assert non-empty answer + citations-or-
   explicit-refusal + no error status; assert 429 on the 21st rapid request
