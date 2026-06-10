@@ -75,10 +75,16 @@ test.describe("money path — public grounded chat (P1-1)", () => {
     });
     expect(r.status()).toBe(200); // not 5xx, not a drained cascade
     const body = await r.json();
-    // Grounding contract: a non-empty answer + a citations array (cite-or-refuse).
+    // Grounding contract: a non-empty answer + a citations array.
     expect(typeof body.answer).toBe("string");
     expect(body.answer.trim().length).toBeGreaterThan(20);
     expect(Array.isArray(body.citations)).toBe(true);
+    // Cite-or-refuse (P0-3 / GTM RED #2): the reply must EITHER carry a citation
+    // OR be an explicit no-docs refusal — never a confident answer with zero
+    // grounding. This also guards the citation-relevance filter: if it drops all
+    // wrong-vendor chunks, the answer must fall through to a refusal, not bluff.
+    const refused = /don't have manuals|no manuals|sign up to upload/i.test(body.answer);
+    expect(body.citations.length > 0 || refused).toBe(true);
   });
 
   test("flooding /api/quickstart/ask returns 429 (P0-1, no break)", async ({ request }) => {

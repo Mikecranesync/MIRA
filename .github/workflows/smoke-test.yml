@@ -63,6 +63,17 @@ jobs:
           HUB_URL: https://app.factorylm.com
         run: npx playwright test --config playwright.smoke.config.ts
 
+      # Quickstart money-path smoke (GTM RED #3) — stdlib-only Python, no pip
+      # install. Belt-and-suspenders to the Playwright gate above: asserts
+      # /api/quickstart/ask returns a grounded answer OR an explicit refusal.
+      # The 429 flood is self-gated (SMOKE_RATE_LIMIT_CHECK) so we never hammer
+      # prod on every PR. Runnable by hand against localhost or prod; see the
+      # module docstring.
+      - name: Quickstart E2E smoke (Python, stdlib)
+        env:
+          QUICKSTART_SMOKE_URL: https://app.factorylm.com
+        run: python3 tests/smoke/test_quickstart_e2e.py
+
       - name: Upload failure screenshots
         if: failure()
         uses: actions/upload-artifact@v7
