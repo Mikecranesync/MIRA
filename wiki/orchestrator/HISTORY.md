@@ -250,3 +250,90 @@ Append-only log of orchestrator runs.
 - Counts: {'DEFER': 58, 'KILL': 124}
 - Drift alerts: 4
 - **16:11 UTC (orchestrator-pulse — automated decision layer):** Δ vs 12:11: DEFER 58 / KILL 124 / 182 total / 4 drift — completely FLAT. `gh` ABSENT again → branch/stash-only scan (prs=0, issues=0), so SHIP/FINISH/GATE can't form. **Sub-agents dispatched: 0 (correct no-op)** — zero FINISH items; doctrine forbids dispatch to KILL/DEFER. Highest money-path stream = `feat/agents-celery-routines` (money 5/ready 3) tagged KILL: "158 behind main" — **but local `main` is 153 behind `origin/main` (0 ahead/153 behind)**, so the behind-counts inflating every KILL tag are measured against a stale local ref. Active money-path branch `feat/hub-command-center` got a commit **20h ago** (60427eb3, YouTube uploader) — it is being worked, not dead; shows KILL only b/c gh-absent + stale-main. Real lever unchanged: a gh-enabled scan would re-surface the `feat/hub-command-center-phase2` PR (last seen as SHIP "merge today" @ 01:50). KILL≥60d (5, founder-decides, NOT dropped): ops/charlie-node-setup 94d, feat/open-brain 93d (verify — likely already merged), stash@{0} 91d, chore/arrested-development-foundation 89d, fix/ci-watchdog 87d. Top drift: 45 MIRA branches + 11 MIRA stashes >30d; 12 factorylm branches + 1 stash. Artifact (86,000 B) re-rendered + pushed to live `mira-orchestrator`.
+
+## 2026-06-06 04:12 UTC
+- Counts: {'FINISH': 2, 'DEFER': 11, 'KILL': 108}
+- Drift alerts: 3
+- Top FINISH: `MIRA/feat/hub-command-center` — On money-path, advanceable — invest the hours
+
+## 2026-06-06 04:12 UTC (orchestrator-pulse — automated decision layer)
+- Δ vs 06-04 16:11 (last run; no pulse fired 06-05): DEFER 58→11 (−47), KILL 124→108 (−16), FINISH 0→2 (+2), SHIP 0; total 182→121 (−61); drift 4→3. Two drivers: (1) MIRA stash cleanup 64→3 (−61) cleared most DEFER + the MIRA-stash drift line; (2) `tools/orchestrator/scan.sh` rebuilt 02:38 UTC (scan.sh.bak = May 31) — fixes the stale-local-main behind-count bug flagged at 06-04 16:11, so `feat/hub-command-center` now scores FINISH not KILL. gh still absent (prs=0/issues=0) → branch/stash-only.
+- **Sub-agents dispatched: 0 (correct no-op).** Both FINISH items score money 3 (`feat/hub-command-center` money3/ready4 1d; `stash@{2}` money3/ready1 1d) — neither clears the money≥4 ∧ ready≥3 auto-dispatch gate. Canonical money-path branch → founder time-box, not a sub-agent. Blocker unchanged: zero tests on Command Center routes + Ignition `X-Frame-Options: SAMEORIGIN` blanks the Phase-1 iframe (needs origin-root XFO-stripping proxy). Plan persists at `wiki/orchestrator/finish-plan-command-center.md`.
+- KILL≥60d (5, all off-path, founder-decides — NOT dropped): ops/charlie-node-setup 95d, feat/open-brain 94d (verify — likely already merged), stash@{0} 93d, chore/arrested-development-foundation 91d, fix/ci-watchdog 88d.
+- Top drift: 46 MIRA branches >30d; 12 factorylm branches + 1 factorylm stash >30d. Artifact re-rendered (65,270 B) + pushed to live `mira-orchestrator`.
+
+## 2026-06-06 08:18 UTC
+- Counts: {'FINISH': 2, 'DEFER': 11, 'KILL': 108}
+- Drift alerts: 3
+- Top FINISH: `MIRA/feat/hub-command-center` — On money-path, advanceable — invest the hours
+
+## 2026-06-06 08:18 UTC (orchestrator-pulse — automated decision layer)
+- Δ vs 04:12 (last run): tag counts FLAT — FINISH 2 / DEFER 11 / KILL 108 / SHIP 0, 121 total; drift count 3 flat but the stale-MIRA-branch line moved 46→47 (one branch aged past 30d). `gh` neutralized this run (network hang → fast stub) so scan is branch/stash-only (prs=0/issues=0); a gh-enabled scan would re-surface the `feat/hub-command-center-phase2` PR last seen as SHIP "merge today" @ 06-04 01:50.
+- **Sub-agents dispatched: 0 (correct no-op).** Both FINISH items score money 3 — `feat/hub-command-center` (money3/ready4, 1d; tip commit is a CI shellcheck fix) and `stash@{2}` (money3/ready1, 1d, promo-session auto-stash) — neither clears the money≥4 ∧ ready≥3 auto-dispatch gate. Canonical money-path branch → founder time-box, not a sub-agent. Blocker unchanged: zero tests on Command Center routes + Ignition `X-Frame-Options: SAMEORIGIN` blanks the Phase-1 iframe (needs origin-root XFO-stripping proxy). Plan persists at `wiki/orchestrator/finish-plan-command-center.md`.
+- KILL≥60d (5, all off-path factorylm, founder-decides — NOT dropped): ops/charlie-node-setup 95d, feat/open-brain 94d (verify — likely already merged), stash@{0} 93d, chore/arrested-development-foundation 91d, fix/ci-watchdog 88d.
+- Top drift: 47 MIRA branches >30d; 12 factorylm branches + 1 factorylm stash >30d. Artifact re-rendered (65,270 B) + pushed to live `mira-orchestrator`.
+
+## 2026-06-06 12:25 UTC
+- Counts: {'FINISH': 2, 'DEFER': 11, 'KILL': 108}
+- Drift alerts: 3
+- Top FINISH: `MIRA/feat/hub-command-center` — On money-path, advanceable — invest the hours
+- 2026-06-06 12:27 UTC (orchestrator-pulse): Δ FLAT — SHIP0/FINISH2/DEFER11/KILL108 (121). Scan NOT refreshed (mount git too slow this run — single `git status` >44s); reused 08:17 scan.json, re-scored+rendered 12:25, artifact pushed (65,270 B). Sub-agents 0 (correct: both FINISH score money3 — feat/hub-command-center m3/r4, stash@{2} m3/r1 — neither clears money≥4∧ready≥3). KILL≥60d=5 (all off-path factorylm: open-brain 95d, charlie-node-setup 95d, stash@{0} 93d, arrested-dev 91d, ci-watchdog 89d) — surfaced, not dropped. Top drift: 47 stale MIRA branches.
+
+## 2026-06-06 16:29 UTC
+- Counts: {'FINISH': 2, 'DEFER': 11, 'KILL': 108}
+- Drift alerts: 3
+- Top FINISH: `MIRA/feat/hub-command-center` — On money-path, advanceable — invest the hours
+
+## 2026-06-06 16:30 UTC
+- Counts: {'FINISH': 2, 'DEFER': 11, 'KILL': 108}
+- Drift alerts: 3
+- Top FINISH: `MIRA/feat/hub-command-center` — On money-path, advanceable — invest the hours
+- 2026-06-06 16:30 UTC (orchestrator-pulse): Δ FLAT vs 12:25 — SHIP0/FINISH2/DEFER11/KILL108 (121 total, 3 drift). Scan jammed the single-slot VM executor (mount git too slow — same condition as 08:18 + 12:25); reused 08:17 scan.json, re-scored+rendered 16:30, artifact pushed (65,270 B). Sub-agents 0 (correct: both FINISH score money3 — feat/hub-command-center m3/r4, stash@{2} m3/r1 — neither clears money≥4∧ready≥3; top KILL feat/agents-celery-routines is money5 but superseded→KILL, ineligible for dispatch). KILL≥60d=5 (all off-path factorylm: open-brain 95d, charlie-node-setup 95d, stash@{0} 93d, arrested-dev 91d, ci-watchdog 89d) — surfaced, not dropped. Top drift: 47 stale MIRA branches, 12 factorylm branches, 1 factorylm stash >30d. (Note: score+render each auto-append a stub → 16:29/16:30 pair is expected.)
+
+## 2026-06-06 20:17 UTC
+- Counts: {'FINISH': 2, 'DEFER': 17, 'KILL': 108}
+- Drift alerts: 3
+- Top FINISH: `MIRA/feat/hub-command-center` — On money-path, advanceable — invest the hours
+- 2026-06-06 20:17 UTC (orchestrator-pulse): FRESH scan (20:16Z) — first non-stale since 08:17; background-launch (nohup + 40s poll) beat the slow-mount git that jammed 08:18/12:25/16:30. Δ vs 16:30: DEFER 11→17 (+6), FINISH2/KILL108/SHIP0/drift3 FLAT; total 121→127. The +6 DEFER are last-12h active branches (chore/demo-hub-seed, fix/self-healer-recreate-and-alerts, fix/cluster-e-doc-intent-idle-state, chore/demo-readiness-docs, fix/web-demo-blockers, fix/docling-to-tika-upload-recovery) — all money0-2/ready4, off the money path. gh still absent (prs0/issues0) → branch/stash-only, no SHIP can form. Sub-agents 0 (correct: feat/hub-command-center m3/r4 + stash@{2} m3/r1 — neither clears money≥4∧ready≥3; top KILL feat/agents-celery-routines m5 but superseded 186-behind→KILL, ineligible). KILL≥60d=5 (off-path factorylm, money0: charlie-node-setup 96d, open-brain 95d, stash@{0} 93d, arrested-dev 91d, ci-watchdog 89d) — surfaced, NOT dropped. Top drift: 47 stale MIRA branches, 12 factorylm branches, 1 factorylm stash >30d. Artifact re-rendered (68,009 B) + pushed to live mira-orchestrator.
+
+## 2026-06-07 00:10 UTC
+- Counts: {'FINISH': 2, 'DEFER': 18, 'KILL': 107}
+- Drift alerts: 3
+- Top FINISH: `MIRA/feat/hub-command-center` — On money-path, advanceable — invest the hours
+- 2026-06-07 00:11 UTC (orchestrator-pulse): FRESH scan (00:10Z). Δ vs 20:17: DEFER 17→18 (+1), KILL 108→107 (−1), FINISH2/SHIP0/drift3 FLAT; total 127. gh still absent (prs0/issues0) → no SHIP can form. Sub-agents 0 (correct: feat/hub-command-center m3/r4 + stash@{2} m3/r1 — neither clears money≥4∧ready≥3). KILL≥60d=5 (off-path factorylm, money0: charlie-node-setup 96d, open-brain 95d, stash@{0} 94d, arrested-dev 91d, ci-watchdog 89d) — surfaced, NOT dropped. Top drift: 48 stale MIRA branches (47→48), 12 factorylm branches, 1 factorylm stash >30d. Artifact pushed (67,994 B). Founder play: time-box feat/hub-command-center to a draft PR.
+
+## 2026-06-07 04:10 UTC
+- Counts: {'FINISH': 2, 'DEFER': 19, 'KILL': 107}
+- Drift alerts: 3
+- Top FINISH: `MIRA/feat/hub-command-center` — On money-path, advanceable — invest the hours
+- 2026-06-07 04:12 UTC (orchestrator-pulse): FRESH scan (04:10Z). Δ vs 00:10: DEFER 18→19 (+1, new 0d branch), FINISH2/KILL107/SHIP0/drift3 FLAT; total 128. gh still absent (prs0/issues0) → no SHIP can form. Sub-agents 0 (correct: feat/hub-command-center m3/r4 + stash@{2} m3/r1 — neither clears money≥4∧ready≥3). KILL≥60d=5 (off-path factorylm, money0: charlie-node-setup 96d, open-brain 95d, stash@{0} 94d, arrested-dev 92d, ci-watchdog 89d) — surfaced, NOT dropped. Top drift: 48 stale MIRA branches, 12 factorylm branches, 1 factorylm stash >30d. Artifact pushed (68,436 B). Founder play: time-box feat/hub-command-center to a draft PR.
+
+## 2026-06-07 08:10 UTC
+- Counts: {'FINISH': 2, 'DEFER': 19, 'KILL': 107}
+- Drift alerts: 3
+- Top FINISH: `MIRA/feat/hub-command-center` — On money-path, advanceable — invest the hours
+- 08:14 UTC pulse: counts unchanged (F2/D19/K107, drift 3); no SHIPs; no sub-agents dispatched (no FINISH met money>=4 & ready>=3); flagged 5 factorylm KILLs >60d for founder review.
+
+## 2026-06-07 12:10 UTC
+- Counts: {'FINISH': 2, 'DEFER': 19, 'KILL': 107}
+- Drift alerts: 3
+- Top FINISH: `MIRA/feat/hub-command-center` — On money-path, advanceable — invest the hours
+- Pulse 12:10: steady state (Δ0/Δ0/Δ0 vs 08:10). No SHIPs; no sub-agents dispatched (top FINISH feat/hub-command-center money=3<4 threshold). Artifact updated. Kill-review recommended: 5 factorylm streams >60d (feat/open-brain 96d, ops/charlie-node-setup 96d, stash@{0} 94d, chore/arrested-development-foundation 92d, fix/ci-watchdog 90d) — founder decision.
+
+## 2026-06-07 16:10 UTC
+- Counts: {'FINISH': 2, 'DEFER': 19, 'KILL': 108}
+- Drift alerts: 3
+- Top FINISH: `MIRA/feat/hub-command-center` — On money-path, advanceable — invest the hours
+- Orchestrator pulse: no SHIPs; FINISH below dispatch bar (money 3/5) — no sub-agents; surfaced 5 factorylm kills >=60d (charlie-node-setup 97d, open-brain 96d, stash@{0} 94d, arrested-development-foundation 92d, ci-watchdog 90d) for founder review
+
+## 2026-06-07 20:10 UTC
+- Counts: {'FINISH': 2, 'DEFER': 22, 'KILL': 107}
+- Drift alerts: 3
+- Top FINISH: `MIRA/feat/hub-command-center` — On money-path, advanceable — invest the hours
+- Orchestrator pulse: no SHIPs; no dispatch (FINISH items below money>=4 bar); 5 KILL candidates >60d surfaced for founder review (factorylm: ops/charlie-node-setup 97d, feat/open-brain 96d, stash@{0} 94d, chore/arrested-development-foundation 92d, fix/ci-watchdog 90d); artifact updated.
+
+## 2026-06-07 (Lens A — hub security & auth)
+- Status: A UNKNOWN→YELLOW. Top finding: /api/quickstart/ask is public + unauthenticated LLM with NO rate limit (cascade-drain vector); core authz (sessionOr401 + withTenantContext RLS) sound, secrets scan clean. Patch filed: patches/2026-06-07-quickstart-rate-limit.patch. KG delta: +147 nodes/+326 edges (Lens A bootstrap, hand-extracted — graphify needs an LLM key, unavailable in sandbox).
+
+## 2026-06-08 (Lens B — hub functional readiness)
+- Status: B UNKNOWN→YELLOW. Top finding: /api/proposals reads relationship_proposals directly while spec §357 + glossary + shipped mig 027 crown ai_suggestions (event-driven readiness recalc can't fire); prod tsc CLEAN (9 errors, all test files); ADR-0017 helper still missing; default Playwright baseURL=prod. KG delta: +8 nodes/+6 edges (hand-extracted Lens B annotations on graphify build; insight: 0/106 orphaned hub routes, ai_suggestions has 1 referencing symbol in src — write-only infra).

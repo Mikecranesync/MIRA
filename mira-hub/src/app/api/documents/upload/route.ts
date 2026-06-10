@@ -64,10 +64,14 @@ export async function POST(req: Request) {
 
   try {
     const id = await withTenantContext<string>(ctx.tenantId, async (c) => {
+      // is_private = true: this is a per-tenant upload, not shared OEM corpus.
+      // The canonical read filter `(is_private = false OR tenant_id = $caller)`
+      // relies on this so /api/documents never leaks it to another tenant.
+      // See `.claude/rules/knowledge-entries-tenant-scoping.md` (#1833).
       const result = await c.query(
         `INSERT INTO knowledge_entries
-           (tenant_id, source_url, manufacturer, model_number, equipment_type, content)
-         VALUES ($1, $2, $3, $4, $5, $6)
+           (tenant_id, source_url, manufacturer, model_number, equipment_type, content, is_private)
+         VALUES ($1, $2, $3, $4, $5, $6, true)
          RETURNING id`,
         [
           ctx.tenantId,
