@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { PoolClient } from "pg";
 import {
   appendManualContext,
+  boundBm25Query,
   buildGroundedContext,
   chunksToSources,
   retrieveManualChunks,
@@ -228,5 +229,69 @@ describe("chunksToSources", () => {
     expect(sources).toHaveLength(2);
     expect(sources[0].title).toBe("AB PF525");
     expect(sources[1].page).toBe(8);
+  });
+});
+
+const tokenCount = (s: string) => s.split(/\s+/).filter(Boolean).length;
+
+describe("boundBm25Query (#1766)", () => {
+  it("passes a normal-length query through verbatim (no grounding regression)", () => {
+    // Short technical tokens like "oC" MUST survive — the AND→OR fallback
+    // relies on them. Bounding is a no-op below the cap.
+    expect(boundBm25Query("what does oC mean?")).toBe("what does oC mean?");
+    expect(boundBm25Query("PowerFlex 525 fault F004 troubleshooting")).toBe(
+      "PowerFlex 525 fault F004 troubleshooting",
+    );
+  });
+
+  it("caps a pathologically long query to <= 32 tokens", () => {
+    const longQuery = Array.from({ length: 250 }, (_, i) => `signal${i}`).join(" ");
+    const bounded = boundBm25Query(longQuery);
+    expect(tokenCount(bounded)).toBeLessThanOrEqual(32);
+    expect(tokenCount(bounded)).toBe(32);
+  });
+
+  it("drops pure-digit, <=2-char, and stopword tokens when bounding a long query", () => {
+    // 40 tokens so the cap engages; mix in noise that must be dropped.
+    const noise = ["the", "and", "is", "it", "192", "502", "42", "to", "of"];
+    const useful = Array.from({ length: 31 }, (_, i) => `vfd${i}`);
+    const bounded = boundBm25Query([...noise, ...useful].join(" "));
+    const toks = bounded.split(/\s+/);
+    expect(toks).not.toContain("the");
+    expect(toks).not.toContain("192");
+    expect(toks).not.toContain("is");
+    expect(toks.every((t) => t.startsWith("vfd"))).toBe(true);
+  });
+
+  it("dedupes repeated tokens", () => {
+    const q = Array.from({ length: 40 }, () => "overcurrent").join(" ");
+    expect(boundBm25Query(q)).toBe("overcurrent");
+  });
+
+  it("never returns empty: a long all-noise query falls back to deduped raw tokens", () => {
+    const q = Array.from({ length: 40 }, (_, i) => (i % 2 ? "the" : "is")).join(" ");
+    const bounded = boundBm25Query(q);
+    expect(bounded.length).toBeGreaterThan(0);
+    expect(tokenCount(bounded)).toBeLessThanOrEqual(32);
+  });
+});
+
+describe("retrieveManualChunks term bounding (#1766)", () => {
+  it("sends a bounded (<= 32-term) tsquery param for a >200-token query", async () => {
+    // The OR fallback rewrites plainto's lexemes to `|`; bounding the $2 text
+    // caps that fanout, which is what turns the 31-45s query fast. We assert the
+    // cause (bounded param) rather than wall-clock, since the suite mocks pg.
+    const longQuery = Array.from({ length: 220 }, (_, i) => `term${i}`).join(" ");
+    const { client, calls } = makeClient([[row()]]);
+    await retrieveManualChunks(client, "tenant-1", longQuery);
+    expect(calls).toHaveLength(1);
+    const tsqueryParam = calls[0].params[1] as string;
+    expect(tokenCount(tsqueryParam)).toBeLessThanOrEqual(32);
+  });
+
+  it("leaves a normal query's tsquery param untouched", async () => {
+    const { client, calls } = makeClient([[row()]]);
+    await retrieveManualChunks(client, "tenant-1", "what is the torque spec");
+    expect(calls[0].params[1]).toBe("what is the torque spec");
   });
 });
