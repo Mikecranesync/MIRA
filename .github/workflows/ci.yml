@@ -200,6 +200,46 @@ jobs:
         working-directory: mira-connectors
         run: pytest tests/ -v
 
+  mira-hub-unit:
+    name: Hub Unit Tests
+    runs-on: ubuntu-latest
+    # Path-filtered guard for the mira-hub vitest suite (#1809). The hub's unit
+    # tests — incl. manual-rag.test.ts, which pins BM25 retrieval grounding —
+    # previously never ran in CI, so regressions shipped unguarded.
+    #
+    # Designed to be SAFE as a required status check: the job ALWAYS runs and
+    # reports a status, but only installs deps + runs vitest when mira-hub
+    # actually changed (dorny/paths-filter). On PRs that don't touch mira-hub the
+    # filter short-circuits to a trivially-green job, so a required check never
+    # blocks unrelated PRs. (Docs-only PRs are already skipped at the workflow
+    # `paths-ignore` level, same as every other ci.yml job.)
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            hub:
+              - 'mira-hub/**'
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.changes.outputs.hub == 'true'
+        with:
+          bun-version: latest
+
+      - name: Install mira-hub dependencies
+        if: steps.changes.outputs.hub == 'true'
+        working-directory: mira-hub
+        run: bun install --frozen-lockfile
+
+      - name: Run vitest unit suite
+        # `bun run test` == `vitest run`; the include glob (src/**/*.test.ts)
+        # covers manual-rag.test.ts and the rest of the hub unit suite.
+        if: steps.changes.outputs.hub == 'true'
+        working-directory: mira-hub
+        run: bun run test
+
   architecture-check:
     name: Architecture Check
     runs-on: ubuntu-latest
