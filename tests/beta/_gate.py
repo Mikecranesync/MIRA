@@ -24,6 +24,12 @@ Env contract (all dev/staging — NEVER point this at prod):
   BETA_GATE_CHAT_URL     POST → ask a question, get an answer (engine/pipeline).
   BETA_GATE_TENANT       tenant id the upload + chat share.
   BETA_GATE_API_KEY      bearer token for both endpoints (optional).
+  BETA_GATE_COOKIE       raw Cookie header for both endpoints (optional). Hub
+                         NodeChat routes authenticate via a next-auth
+                         `next-auth.session-token` cookie, NOT a bearer — set
+                         this to the session cookie when pointing the gate at a
+                         Hub surface (`/api/namespace/node/<id>/{files,chat}`).
+                         See tests/beta/README.md for how to mint it.
   BETA_GATE_ASSET        asset / UNS hint sent with the question (optional).
   BETA_GATE_POLL_SECONDS ingestion poll budget (default 90).
 """
@@ -65,6 +71,7 @@ class GateConfig:
     api_key: str | None
     asset: str | None
     poll_seconds: int
+    cookie: str | None = None
 
 
 @dataclass
@@ -101,6 +108,7 @@ def load_gate_config() -> GateConfig:
         api_key=os.getenv("BETA_GATE_API_KEY") or None,
         asset=os.getenv("BETA_GATE_ASSET") or None,
         poll_seconds=int(os.getenv("BETA_GATE_POLL_SECONDS", "90")),
+        cookie=os.getenv("BETA_GATE_COOKIE") or None,
     )
 
 
@@ -108,6 +116,11 @@ def _headers(cfg: GateConfig) -> dict[str, str]:
     h = {"X-Tenant-Id": cfg.tenant}
     if cfg.api_key:
         h["Authorization"] = f"Bearer {cfg.api_key}"
+    # Hub NodeChat routes (sessionOr401) authenticate via a next-auth session
+    # cookie, not a bearer. Forward the raw Cookie header when provided so the
+    # gate can drive the real /api/namespace/node/<id>/{files,chat} doors.
+    if cfg.cookie:
+        h["Cookie"] = cfg.cookie
     return h
 
 

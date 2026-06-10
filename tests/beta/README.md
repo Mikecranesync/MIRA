@@ -32,9 +32,20 @@ pytest tests/beta/test_gate_harness.py -v
 BETA_GATE_UPLOAD_URL=https://<staging>/api/namespace/node/<id>/files \
 BETA_GATE_CHAT_URL=https://<staging>/api/namespace/node/<id>/chat \
 BETA_GATE_TENANT=<tenant-uuid> \
-BETA_GATE_API_KEY=<token> \
+BETA_GATE_COOKIE='next-auth.session-token=<jwe>' \
 pytest tests/beta/beta_ready_upload_retrieval_citation.py -v
 ```
+
+`BETA_GATE_COOKIE` (added 2026-06-09) is the auth the Hub NodeChat routes
+actually require — they gate on a next-auth session cookie (`sessionOr401`), not
+the `BETA_GATE_API_KEY` bearer. Mint the cookie the same way
+`mira-hub/tests/e2e/folder-brain-proof.spec.ts` does: `POST /api/auth/register`
+→ `GET /api/auth/csrf` → `POST /api/auth/callback/credentials` and read the
+`next-auth.session-token` from the `Set-Cookie` response. (The bearer env still
+works for JSON engine/pipeline surfaces.) The provisioner must also mirror the
+auth-side tenant id into the data-side `tenants` table — see the
+`folder-brain-proof` `seedFixture` note — so the upload's chunk INSERTs satisfy
+the `knowledge_entries.tenant_id` FK.
 
 The harness speaks both the NodeChat contract (`messages` body + SSE response) and
 JSON engine/pipeline surfaces — see `_gate._ask`.
