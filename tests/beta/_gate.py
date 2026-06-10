@@ -206,7 +206,11 @@ def run_beta_gate() -> GateResult:
     if not FIXTURE.exists():
         raise GateUnavailable(f"fixture missing: {FIXTURE}")
 
-    with httpx.Client(timeout=60) as client:
+    # follow_redirects: Hub runs with Next.js `trailingSlash: true`, so the
+    # canonical doors are `/files/` and `/chat/` and a slash-less URL 308s.
+    # httpx preserves method + body across a 308, so following it reaches the
+    # real door instead of erroring on the redirect.
+    with httpx.Client(timeout=60, follow_redirects=True) as client:
         # 1. Upload through the REAL door (multipart form). No direct DB writes.
         with FIXTURE.open("rb") as fh:
             files = {"file": (FIXTURE.name, fh, "application/pdf")}
