@@ -286,3 +286,40 @@ class TestRerankingIntegration:
             await worker.process("What causes F004?", _base_state())
 
         worker.nemotron.rerank.assert_not_called()
+
+
+# -- kb_status snapshot stash (#1704 cross-tenant citation race) ---------------
+
+
+class TestKbStatusStash:
+    """process() must stash its per-call kb_status snapshot on the call's own
+    ``state`` dict (before the LLM await), so the engine threads THIS turn's
+    citations to the footer instead of the shared self._kb_status a concurrent
+    tenant can overwrite (#1704)."""
+
+    @pytest.mark.asyncio
+    async def test_process_stashes_kb_status_on_state(self):
+        worker = _make_rag_worker()
+        worker._call_llm = AsyncMock(return_value='{"reply": "ok", "next_state": "Q1"}')
+        worker._embed_ollama = AsyncMock(return_value=[0.1] * 768)
+        chunks = [
+            {
+                "content": "PowerFlex 525 fault F004 overcurrent",
+                "similarity": 0.9,
+                "manufacturer": "Rockwell",
+                "model_number": "PowerFlex 525",
+                "equipment_type": "",
+                "source_type": "",
+                "metadata": {},
+            },
+        ]
+        state = _base_state()
+        with patch("shared.workers.rag_worker._neon_recall") as mock_neon:
+            mock_neon.recall_knowledge.return_value = chunks
+            await worker.process("What causes F004?", state)
+
+        snap = state.get("_rag_kb_status")
+        assert snap is not None
+        assert snap is worker._kb_status  # the call-local snapshot, same object
+        assert snap.get("citations")  # carries this turn's citations
+        assert snap["citations"][0]["manufacturer"] == "Rockwell"
