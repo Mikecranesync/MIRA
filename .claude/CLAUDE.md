@@ -145,15 +145,17 @@ See `.claude/skills/slack-technician-ux-writer/SKILL.md` for sample message temp
 
 ## Code exploration: CodeGraph first
 
-CodeGraph is the SQLite semantic index of every symbol, edge, file, and call path in the workspace. It is wired into every Claude Code session via the `codegraph` MCP server in `.mcp.json`. Use it BEFORE grep / Read for any symbol-shaped question.
+CodeGraph is the SQLite semantic index of every symbol, edge, file, and call path in the workspace. It is wired into every Claude Code session via the `codegraph` MCP server in `.mcp.json`. Use it BEFORE grep / Read for any symbol-shaped question. **It is the only code-navigation graph for this repo — Graphify is excluded from code navigation (`.claude/rules/graphify-excluded.md`).**
 
+- **Preflight BEFORE any non-doc coding task:** `tools/codegraph-preflight.sh ["task"]` — verifies install / MCP / index presence / freshness / canary and prints a markdown report for the PR (verdict **READY / STALE / BROKEN**). **If STALE or BROKEN, `sync` / `index --force` and re-run before trusting call edges.** Trust is earned, not assumed: the call-graph (`callers`/`callees`/`trace`/`impact`) is only reliable after freshness + health pass — symbol *lookup* is reliable on any non-broken index. Periodic fail-loud check: `tools/codegraph-benchmark.sh`.
+- **Known blind spots (verify with grep):** class instantiation `ClassName()` isn't a caller edge; `impact <Class>` returns containment not dependents; import-alias calls and same-name symbols don't resolve. Full list: `.claude/rules/codegraph-usage.md`.
 - **First call for any task in indexed code:** `codegraph_context "<task>"` — composes search + node + callers + callees in one call. Cheapest possible orientation.
 - **Before editing `engine.py` or any shared module:** `codegraph_impact <symbol>` to see the blast radius. Modules in scope: `mira-bots/shared/engine.py`, `mira-bots/shared/inference/router.py`, `mira-bots/shared/uns_resolver.py`, `mira-bots/shared/citation_compliance.py`, `mira-bots/shared/guardrails.py`, `mira-crawler/ingest/uns.py`, `mira-mcp/server.py`, plus anything imported by >5 files. **Never ignore an unexpected symbol in the blast-radius output** — narrow the change first.
 - **"How does X reach Y" / call-path questions:** `codegraph_trace` — handles dynamic-dispatch hops (callbacks, async workers, FSM transitions) that grep can't follow.
 - **Multi-symbol surveys:** `codegraph_explore` — one capped call for several related symbols. Don't loop `codegraph_node` or `Read`.
 - **Do NOT re-read files CodeGraph already returned source for.** `codegraph_node` / `codegraph_explore` include the symbol body.
 - **Only fall back to `Grep` / `Read`** for plain-text matches (prompt strings, log lines, comments), file-level inspection of files CodeGraph didn't index, or details the CodeGraph response didn't cover.
-- **Index freshness:** `.githooks/post-merge` and `.githooks/post-checkout` run `codegraph sync` automatically (incremental, <1 s, no-op when codegraph isn't installed). After cherry-picks or hand-edits, run `npx -y @colbymchenry/codegraph sync` manually.
+- **Index freshness:** `.githooks/post-merge` and `.githooks/post-checkout` run `codegraph sync` → corruption canary → write a `.codegraph/.last-sync` marker (sync alone can't repair dropped call edges; the canary `index --force`s if they collapsed). A daily `index --force` launchd job (`tools/codegraph-force-reindex.sh`) bounds drift. After cherry-picks or hand-edits, run `npx -y @colbymchenry/codegraph sync` (or the preflight) manually.
 
 Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/codegraph.md`.
 
@@ -166,7 +168,8 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - **Security boundaries** — see `.claude/rules/security-boundaries.md` (PII sanitization, safety keywords, Doppler).
 - **UNS compliance** — see `.claude/rules/uns-compliance.md` (every asset row has `uns_path` or `equipment_entity_id` FK).
 - **Direct-connection UNS certification** — see `.claude/rules/direct-connection-uns-certified.md` (Ignition/MQTT/PLC/Hub/QR surfaces carry a UNS identifier on every turn or are rejected; engine skips the chat-gate on `source="direct_connection"`).
-- **CodeGraph-first exploration** — see `.claude/rules/codegraph-usage.md` (use `codegraph_context` / `codegraph_impact` before grep + Read for any symbol-shaped question).
+- **CodeGraph-first exploration** — see `.claude/rules/codegraph-usage.md` (run `tools/codegraph-preflight.sh` before non-doc code work; `codegraph_context` / `codegraph_impact` before grep + Read; trust the call-graph only after freshness passes).
+- **Graphify excluded from code navigation** — see `.claude/rules/graphify-excluded.md` (CodeGraph is the single code-nav graph; the orchestrator-pulse product KG is a separate, allowed artifact).
 - **Train before deploy** — see `.claude/rules/train-before-deploy.md` (Command Center builds+validates; Ignition/HMI deploys approved asset agents only; no HMI deployment without grounded docs + validation questions + approved cited answers; read-only in beta).
 - **Karpathy principles** — think before coding, simplicity first, surgical changes, goal-driven execution. See `.claude/rules/karpathy-principles.md`.
 - **Debugging & verification** — perf problems are multi-cause (re-measure after each fix); verify exact table/column names + API auth paths from the codebase before guessing. See `.claude/rules/debugging-conventions.md`.
@@ -212,7 +215,8 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - `.claude/rules/karpathy-principles.md` — coding behavior
 - `.claude/rules/debugging-conventions.md` — multi-cause perf debugging + verify schema/API paths before guessing
 - `.claude/rules/session-discipline.md` — premise-verify, regression-recheck, scoped-commits, migration-safety, long-task checkpointing
-- `.claude/rules/codegraph-usage.md` — when to use CodeGraph vs grep/Read (CodeGraph-first for symbol-shaped questions)
+- `.claude/rules/codegraph-usage.md` — when to use CodeGraph vs grep/Read + trust model + preflight + blind spots
+- `.claude/rules/graphify-excluded.md` — Graphify excluded from code navigation (CodeGraph is the single code-nav graph)
 - `docs/specs/uns-kg-unification-spec.md` — UNS authority (data architecture)
 - `docs/specs/mira-component-intelligence-architecture.md` — implementation-level architecture (component templates, KG mechanics)
 - `docs/specs/dialogue-state-tracker-spec.md` — FSM the UNS gate plugs into

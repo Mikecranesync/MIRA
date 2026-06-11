@@ -32,6 +32,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 # merge. All output goes to the hook log; the next query surfaces health.
 (
   LOG="$REPO_ROOT/.codegraph/hook.log"
+  CANARY=skipped
   {
     echo "[$(date '+%Y-%m-%dT%H:%M:%S')] post-merge: codegraph sync"
     npx -y @colbymchenry/codegraph sync >/dev/null 2>&1 || true
@@ -41,13 +42,24 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
     if [ -x "$REPO_ROOT/tools/codegraph-canary.sh" ]; then
       "$REPO_ROOT/tools/codegraph-canary.sh"
       case $? in
-        0) echo "post-merge: canary healthy" ;;
-        1) echo "post-merge: canary detected corruption and repaired via index --force" ;;
-        *) echo "post-merge: canary FAILED to repair — run tools/codegraph-force-reindex.sh by hand" ;;
+        0) CANARY=healthy; echo "post-merge: canary healthy" ;;
+        1) CANARY=repaired; echo "post-merge: canary detected corruption and repaired via index --force" ;;
+        *) CANARY=failed; echo "post-merge: canary FAILED to repair — run tools/codegraph-force-reindex.sh by hand" ;;
       esac
     else
       echo "post-merge: canary script absent — skipped corruption check"
     fi
+
+    # Freshness marker — lets the next AI task / preflight detect staleness or
+    # a failed sync without re-deriving it. Read by tools/codegraph-preflight.sh.
+    {
+      echo "ts=$(date '+%Y-%m-%dT%H:%M:%S')"
+      echo "head=$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null)"
+      echo "event=post-merge"
+      echo "npx=ok"
+      echo "index=present"
+      echo "canary=$CANARY"
+    } > "$REPO_ROOT/.codegraph/.last-sync" 2>/dev/null || true
   } >>"$LOG" 2>&1
 ) &
 disown 2>/dev/null || true
