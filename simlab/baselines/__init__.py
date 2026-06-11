@@ -19,7 +19,7 @@ rinser, air_system, cip_skid
 
 from __future__ import annotations
 
-from simlab.models import TagCategory, TagDef, ValueType
+from simlab.models import NamespaceType, TagCategory, TagDef, ValueType
 
 
 def packml_status_tags() -> dict[str, TagDef]:
@@ -39,6 +39,28 @@ def packml_status_tags() -> dict[str, TagDef]:
     }
 
 
+def controller_clock_tags() -> dict[str, TagDef]:
+    """PLC/controller clock tags — the Walker REALTIME live-state branch.
+
+    These carry the controller's own wall-clock so the relay can timestamp
+    events from the source clock (mira-relay/clock_resolver) rather than the
+    server-receive time. The bare names match clock_resolver.CLOCK_TAG_SOURCES
+    (controller_time / plc_time → plc_clock). Merge into at least one asset so
+    end-to-end timestamp behaviour is exercisable; namespace_type is REALTIME
+    (NOT implied by the STATUS category, hence the explicit override).
+    """
+    return {
+        "controller_time": TagDef(
+            name="controller_time",
+            category=TagCategory.STATUS,
+            value_type=ValueType.STRING,
+            default="1970-01-01T00:00:00+00:00",
+            description="Controller wall-clock (ISO-8601 UTC). Source clock for event timestamps.",
+            namespace_type=NamespaceType.REALTIME,
+        ),
+    }
+
+
 from simlab.baselines.air_system import air_system_tags  # noqa: E402
 from simlab.baselines.bottle_filler import bottle_filler_tags  # noqa: E402
 from simlab.baselines.capper import capper_tags  # noqa: E402
@@ -53,6 +75,7 @@ from simlab.baselines.vfd_motor import vfd_motor_tags  # noqa: E402
 
 __all__ = [
     "packml_status_tags",
+    "controller_clock_tags",
     "bottle_filler_tags",
     "conveyor_zone_tags",
     "capper_tags",

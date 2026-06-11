@@ -18,6 +18,7 @@ from simlab.baselines import (
     capper_tags,
     case_packer_tags,
     cip_skid_tags,
+    controller_clock_tags,
     conveyor_zone_tags,
     labeler_tags,
     palletizer_tags,
@@ -284,7 +285,9 @@ def _filler01() -> AssetModel:
         asset_type="rotary_filler",
         display_name="Filler 01",
         baseline="bottle_filler",
-        tags=bottle_filler_tags(),
+        # Flagship asset carries a controller clock (REALTIME) so the relay can
+        # timestamp events from the PLC clock rather than server-receive time.
+        tags={**bottle_filler_tags(), **controller_clock_tags()},
         fault_codes=[
             FaultCode(
                 code="F010",

@@ -173,6 +173,7 @@ class SimEngine:
                         ts=ts,
                         quality="good",
                         simulated=True,
+                        namespace_type=tag_def.resolved_namespace_type.value,
                     )
                 )
         return readings

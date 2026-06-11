@@ -40,6 +40,48 @@ class TagCategory(str, Enum):
     TRAINING = "training"
 
 
+class NamespaceType(str, Enum):
+    """Walker-Reynolds namespace classification, layered over MIRA's maintenance
+    ``TagCategory`` axis (see docs/research/2026-06-10-walker-uns-alignment.md).
+
+    - DESCRIPTIVE: static asset metadata (mfr/model/serial). Lives on the asset,
+      not usually a per-tag category — included for completeness.
+    - FUNCTIONAL: real-time operational data (status/process/motor/production).
+    - INFORMATIVE: derived/aggregated consumer data (quality, OEE inputs).
+    - MAINTENANCE: durable maintenance knowledge (faults/alarms/PMs/docs/training)
+      — MIRA's wedge; no Walker equivalent.
+    - REALTIME: live datapoints and clock/heartbeat tags that carry current state
+      + time, not process meaning. The Walker "current state" UNS branch.
+    """
+
+    DESCRIPTIVE = "descriptive"
+    FUNCTIONAL = "functional"
+    INFORMATIVE = "informative"
+    MAINTENANCE = "maintenance"
+    REALTIME = "realtime"
+
+
+# Default mapping: each maintenance-axis TagCategory → its Walker namespace type.
+# A TagDef may override via TagDef.namespace_type (e.g. clock tags → REALTIME).
+CATEGORY_NAMESPACE_TYPE: dict[TagCategory, NamespaceType] = {
+    TagCategory.STATUS: NamespaceType.FUNCTIONAL,
+    TagCategory.PROCESS: NamespaceType.FUNCTIONAL,
+    TagCategory.MOTOR: NamespaceType.FUNCTIONAL,
+    TagCategory.PRODUCTION: NamespaceType.FUNCTIONAL,
+    TagCategory.QUALITY: NamespaceType.INFORMATIVE,
+    TagCategory.FAULTS: NamespaceType.MAINTENANCE,
+    TagCategory.ALARMS: NamespaceType.MAINTENANCE,
+    TagCategory.MAINTENANCE: NamespaceType.MAINTENANCE,
+    TagCategory.DOCS: NamespaceType.MAINTENANCE,
+    TagCategory.TRAINING: NamespaceType.MAINTENANCE,
+}
+
+
+def namespace_type_for(category: TagCategory) -> NamespaceType:
+    """Walker namespace type for a category (defaults to FUNCTIONAL if unmapped)."""
+    return CATEGORY_NAMESPACE_TYPE.get(category, NamespaceType.FUNCTIONAL)
+
+
 class ValueType(str, Enum):
     """Maps onto mira-relay tag_ingest VALID_VALUE_TYPES."""
 
@@ -69,6 +111,15 @@ class TagDef:
     description: str = ""
     # writable HMI/command tags vs read-only telemetry/derived tags
     writable: bool = False
+    # Walker namespace classification. None → derived from `category` via
+    # namespace_type_for(); set explicitly to override (e.g. clock tags →
+    # NamespaceType.REALTIME, which is not implied by any category).
+    namespace_type: Optional[NamespaceType] = None
+
+    @property
+    def resolved_namespace_type(self) -> NamespaceType:
+        """The effective Walker namespace type (override, else category default)."""
+        return self.namespace_type or namespace_type_for(self.category)
 
 
 @dataclass(frozen=True)
@@ -178,13 +229,22 @@ class Reading:
     ts: str  # ISO-8601
     quality: str = "good"
     simulated: bool = True
+    # Walker namespace type for this reading (string form, e.g. "realtime").
+    namespace_type: Optional[str] = None
 
     def to_ingest_tag(self) -> dict[str, Any]:
-        """Render as a mira-relay ``/api/v1/tags/ingest`` tag entry."""
-        return {
+        """Render as a mira-relay ``/api/v1/tags/ingest`` tag entry.
+
+        ``namespace_type`` (when set) rides in ``metadata`` so the relay /
+        Command Center can classify a live datapoint without re-deriving it.
+        """
+        tag: dict[str, Any] = {
             "tag_path": self.uns_path,
             "value": self.value,
             "value_type": self.value_type.value,
             "quality": self.quality,
             "ts": self.ts,
         }
+        if self.namespace_type is not None:
+            tag["metadata"] = {"namespace_type": self.namespace_type}
+        return tag
