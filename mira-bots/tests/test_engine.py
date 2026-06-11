@@ -908,12 +908,8 @@ class TestDSTActiveSessionGuard:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("fsm_state", ["Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"])
-    @pytest.mark.parametrize(
-        "dispatch_kind", [DISPATCH_ASK_PROCEDURAL, DISPATCH_ASK_GENERAL]
-    )
-    async def test_active_session_returns_none(
-        self, supervisor, fsm_state, dispatch_kind
-    ):
+    @pytest.mark.parametrize("dispatch_kind", [DISPATCH_ASK_PROCEDURAL, DISPATCH_ASK_GENERAL])
+    async def test_active_session_returns_none(self, supervisor, fsm_state, dispatch_kind):
         """All active diagnostic states (Q1+) must return None, not call an IDLE-resetting handler."""
         from shared.dialogue_state import DialogueState
         from unittest.mock import MagicMock
@@ -924,8 +920,9 @@ class TestDSTActiveSessionGuard:
         new_ds.write_to_engine_state = MagicMock()
         plan = self._mock_plan(dispatch_kind)
 
-        with patch("shared.engine.DialogueState") as mock_ds_cls, patch(
-            "shared.engine.track_turn", new=AsyncMock(return_value=(new_ds, plan))
+        with (
+            patch("shared.engine.DialogueState") as mock_ds_cls,
+            patch("shared.engine.track_turn", new=AsyncMock(return_value=(new_ds, plan))),
         ):
             mock_ds_cls.from_engine_state.return_value = ds
             result = await supervisor._maybe_dispatch_via_dst(
@@ -936,3 +933,77 @@ class TestDSTActiveSessionGuard:
             f"DST returned a non-None result for {dispatch_kind} in {fsm_state} — "
             "this would reset FSM to IDLE via _handle_instructional_question"
         )
+
+
+# ---------------------------------------------------------------------------
+# kb_status isolation (#1704 cross-tenant citation race)
+# ---------------------------------------------------------------------------
+
+
+class TestKbStatusIsolation:
+    """The citation footer + relevance-strip must read THIS turn's kb_status
+    snapshot (threaded on ``parsed``), never the shared ``self.rag.kb_status``
+    attribute a concurrent tenant can overwrite mid-await (#1704).
+    """
+
+    _X = {
+        "status": "covered",
+        "citations": [
+            {
+                "manufacturer": "Rockwell",
+                "model_number": "PowerFlex 525",
+                "source_url": "",
+                "section": "Fault Codes",
+                "page_num": None,
+            }
+        ],
+    }
+    _Y = {
+        "status": "covered",
+        "citations": [
+            {
+                "manufacturer": "Danfoss",
+                "model_number": "FC 202",
+                "source_url": "",
+                "section": "Wiring",
+                "page_num": None,
+            }
+        ],
+    }
+
+    def test_format_reply_uses_parsed_snapshot_not_self(self, supervisor):
+        # Poison the shared attribute with tenant Y; this turn's parsed carries X.
+        supervisor.rag.kb_status = self._Y
+        parsed = {"reply": "Check the drive.", "_kb_status": self._X}
+        out = supervisor._format_reply(parsed, user_message="why is it faulted?")
+        assert "Rockwell" in out  # this turn's citation rendered
+        assert "Danfoss" not in out  # concurrent tenant's poison NOT leaked
+
+    def test_format_reply_no_snapshot_means_no_footer(self, supervisor):
+        # A non-RAG reply carries no _kb_status → no footer, even if the shared
+        # attribute holds a stale (possibly other-tenant) value.
+        supervisor.rag.kb_status = self._Y
+        parsed = {"reply": "Hi there, how can I help?"}
+        out = supervisor._format_reply(parsed, user_message="hi")
+        assert "--- Sources ---" not in out
+        assert "Danfoss" not in out
+
+    @pytest.mark.asyncio
+    async def test_call_with_correction_promotes_state_snapshot(self, supervisor):
+        # rag.process() stashes the pre-await snapshot on the call's state dict;
+        # _call_with_correction must promote it onto parsed so it survives later
+        # state mutation and reaches _format_reply / the relevance strip.
+        async def fake_process(query, state, **kw):
+            state["_rag_kb_status"] = self._X  # mimic process() pre-await stash
+            return '{"reply": "ok", "next_state": "Q1"}'
+
+        supervisor.rag.process = AsyncMock(side_effect=fake_process)
+        supervisor.rag._last_sources = []
+        supervisor.nemotron.enabled = False
+        supervisor._build_kg_context = AsyncMock(return_value="")
+        supervisor._build_live_data_context = AsyncMock(return_value="")
+
+        _raw, parsed = await supervisor._call_with_correction(
+            "why faulted?", {"state": "Q1", "asset_identified": ""}
+        )
+        assert parsed["_kb_status"] == self._X

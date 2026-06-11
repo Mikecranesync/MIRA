@@ -631,7 +631,16 @@ class RAGWorker:
             # this call's metadata (fixes #1082 Nemotron rerank race).
             local_neon_chunks = list(neon_chunks)
             self._last_neon_chunks = local_neon_chunks
-            self._kb_status = self._compute_kb_status(neon_chunks, bool(chunk_texts))
+            # Snapshot kb_status before the LLM await too (#1704): the citation
+            # footer + relevance-strip read it back user-facing in engine.py
+            # after this call's await, so a concurrent tenant overwriting
+            # self._kb_status would bleed its citations into this reply. Stash
+            # the per-call snapshot on this call's own ``state`` dict; the engine
+            # promotes it to ``parsed["_kb_status"]`` in _call_with_correction.
+            local_kb_status = self._compute_kb_status(neon_chunks, bool(chunk_texts))
+            self._kb_status = local_kb_status
+            if isinstance(state, dict):
+                state["_rag_kb_status"] = local_kb_status
 
             async with spans.vector_search(
                 rewritten, self._last_sources[:5], self._last_distances[:5]

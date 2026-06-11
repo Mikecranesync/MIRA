@@ -2595,7 +2595,7 @@ class Supervisor:
         # confidently-wrong attribution never reaches the technician.
         _cc = _check_citation_compliance(
             formatted,
-            getattr(self.rag, "kb_status", {}),
+            parsed.get("_kb_status") or {},
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
             uns_context=(state.get("context") or {}).get("uns_context"),
@@ -3366,6 +3366,13 @@ class Supervisor:
                 return None, {"reply": f"MIRA error: {e}"}
 
             parsed = self._parse_response(raw)
+            # Promote this call's kb_status snapshot (stashed on ``state`` by
+            # rag.process() before its LLM await) onto ``parsed`` — the durable
+            # per-turn carrier the citation footer + relevance-strip read,
+            # instead of the shared self.rag.kb_status attribute a concurrent
+            # tenant can overwrite (#1704). Set on every attempt so the last
+            # one wins; survives _advance_state swapping the state dict.
+            parsed["_kb_status"] = state.get("_rag_kb_status") or {}
 
             # Check grounding: did we get sources and does response reference them?
             if self._is_grounded(parsed, self.rag._last_sources):
@@ -3429,7 +3436,7 @@ class Supervisor:
 
         _cc = _check_citation_compliance(
             formatted,
-            getattr(self.rag, "kb_status", {}),
+            parsed.get("_kb_status") or {},
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
             uns_context=ctx.get("uns_context"),
@@ -5356,8 +5363,15 @@ class Supervisor:
         return advance_state(state, parsed)
 
     def _format_reply(self, parsed: dict, user_message: str = "") -> str:
-        """Format parsed response for display. Delegates to response_formatter.format_reply."""
-        kb_status = getattr(self.rag, "kb_status", None) or {}
+        """Format parsed response for display. Delegates to response_formatter.format_reply.
+
+        Reads kb_status from this turn's ``parsed`` (the per-call snapshot
+        threaded by _call_with_correction), NOT the shared self.rag.kb_status
+        attribute a concurrent tenant can overwrite (#1704). A reply that did
+        not run RAG retrieval carries no snapshot → no citation footer, which
+        is correct (it had nothing to cite).
+        """
+        kb_status = parsed.get("_kb_status") or {}
         return format_reply(parsed, user_message, kb_status)
 
     # ------------------------------------------------------------------
