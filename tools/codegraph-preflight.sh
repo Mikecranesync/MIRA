@@ -93,8 +93,17 @@ else
   echo "- **Sync marker:** none yet (hooks not run on this checkout, or first run)"
 fi
 # (c) uncommitted code edits the watcher may not have indexed
-DIRTY="$(git diff --name-only -- '*.py' '*.ts' '*.tsx' 2>/dev/null | wc -l | tr -d ' ')"
-[ "${DIRTY:-0}" -gt 0 ] && echo "- **Uncommitted code files:** $DIRTY changed — re-query after the watcher settles (~1s) or \`sync\`"
+DIRTY_FILES="$(git diff --name-only -- '*.py' '*.ts' '*.tsx' 2>/dev/null)"
+DIRTY="$(printf '%s\n' "$DIRTY_FILES" | grep -c .)"
+if [ "${DIRTY:-0}" -gt 0 ]; then
+  echo "- **Uncommitted code files:** $DIRTY changed — re-query after the watcher settles (~1s) or \`sync\`"
+  # Affected tests for the changed files (codegraph affected <files...>). The
+  # unquoted expansion is intentional: each path becomes a separate CLI arg.
+  # shellcheck disable=SC2086
+  AFF="$( "${CG[@]}" affected $DIRTY_FILES 2>/dev/null | strip \
+    | grep -oE '[A-Za-z0-9_./-]*test[A-Za-z0-9_./-]*\.(py|ts|tsx)' | sort -u | head -8 )"
+  [ -n "$AFF" ] && echo "- **Affected tests** (\`codegraph affected\`): $(printf '%s' "$AFF" | tr '\n' ' ')"
+fi
 
 # ---- Health canary --------------------------------------------------------
 CANOUT="$("$SCRIPT_DIR/codegraph-canary.sh" 2>&1)"; CRC=$?
