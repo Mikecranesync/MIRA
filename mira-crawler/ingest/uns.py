@@ -324,6 +324,24 @@ def equipment_subnode_path(equipment_path_value: str, *segments: str) -> str:
     return _join(equipment_path_value, *(slug(s) for s in segments))
 
 
+def datapoint_path(equipment_path_value: str, tag_name: str) -> str:
+    """Address for a live current-value datapoint under an equipment instance:
+
+        ...equipment.{eq}.datapoint.{tag_name}
+
+    This is the Walker-style real-time LIVE-STATE branch — it holds *current
+    state only* (a tag's latest value + clock provenance). It is deliberately
+    SEPARATE from the maintenance/history branch built by
+    ``equipment_subnode_path(eq, "maintenance", …)`` (fault_history, work_orders,
+    pm_schedules): durable maintenance knowledge lives in the KG under
+    ``.maintenance.*`` / ``.documentation.*``; live datapoints live here under
+    ``.datapoint.*``. Telemetry VALUES are not stored on ``kg_entities`` (see
+    ``docs/specs/uns-kg-unification-spec.md`` §3.4); this builder only addresses
+    the node. See ``docs/specs/realtime-datapoint-and-clock-source.md``.
+    """
+    return equipment_subnode_path(equipment_path_value, "datapoint", tag_name)
+
+
 # ---------------------------------------------------------------------------
 # Operations branch
 # ---------------------------------------------------------------------------

@@ -48,6 +48,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional, Protocol
 
+from clock_resolver import (
+    SERVER_CLOCK,
+    find_batch_clock,
+    resolve_event_timestamp,
+)
+
 logger = logging.getLogger("mira-relay.tag_ingest")
 
 VALID_SOURCE_SYSTEMS = {"ignition", "plc_bridge", "relay", "simulator"}
@@ -113,6 +119,13 @@ class TagEventRow:
     equipment_entity_id: Optional[str] = None
     source_connection_id: Optional[str] = None
     metadata: dict = field(default_factory=dict)
+    # Real-time clock provenance (Walker live-state). Carried first-class on the
+    # typed row AND mirrored into `metadata` for persistence, so the existing
+    # tag_events.metadata / live_signal_cache.properties JSONB stores it with no
+    # schema migration. See clock_resolver + the realtime-datapoint spec.
+    timestamp_source: str = SERVER_CLOCK
+    sample_age_seconds: Optional[float] = None
+    source_timestamp_local: Optional[str] = None
 
 
 @dataclass
@@ -165,10 +178,6 @@ class TagStore(Protocol):
         ...
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
 def ingest_batch(payload: dict, tenant_id: str, store: TagStore) -> IngestResult:
     """Run the full ingest pipeline for one batch. Pure orchestration over the
     injected store — see module docstring for behaviour."""
@@ -191,7 +200,14 @@ def ingest_batch(payload: dict, tenant_id: str, store: TagStore) -> IngestResult
     result = IngestResult(source_system=source_system, simulated=simulated)
 
     allowlist = store.load_allowlist(tenant_id, source_system)
-    now = _now_iso()
+    server_now = datetime.now(timezone.utc)
+
+    # Resolve the batch's authoritative clock ONCE. A PLC/SCADA/gateway clock
+    # tag (plc_time, controller_time, scada_time, …) anywhere in the batch
+    # certifies when the controller observed these values; otherwise each
+    # reading falls back to its own ts, then to server-receive time. `degraded`
+    # means a clock tag was present but unusable (stale/unparseable).
+    batch_clock, clock_degraded = find_batch_clock(raw_tags, server_now)
 
     parsed: list[TagEventRow] = []
     for tag in raw_tags:
@@ -227,6 +243,21 @@ def ingest_batch(payload: dict, tenant_id: str, store: TagStore) -> IngestResult
             result.rejected.append(RejectedTag(tag_path=tag_path, reason="null_value"))
             continue
 
+        # Resolve the authoritative event time + its provenance. UTC-normalized.
+        rt = resolve_event_timestamp(
+            tag.get("ts"), batch_clock, server_now, clock_degraded
+        )
+        # Mirror provenance into metadata so it persists in the existing
+        # tag_events.metadata / live_signal_cache.properties JSONB (no migration).
+        meta = dict(tag.get("metadata") or {})
+        meta["timestamp_source"] = rt.timestamp_source
+        if rt.sample_age_seconds is not None:
+            meta["sample_age_seconds"] = rt.sample_age_seconds
+        if rt.source_timestamp_local is not None:
+            meta["source_timestamp_local"] = rt.source_timestamp_local
+        if rt.degraded:
+            meta["clock_degraded"] = True
+
         parsed.append(
             TagEventRow(
                 tenant_id=tenant_id,
@@ -236,11 +267,14 @@ def ingest_batch(payload: dict, tenant_id: str, store: TagStore) -> IngestResult
                 quality=quality,
                 source_system=source_system,
                 simulated=simulated,
-                event_timestamp=tag.get("ts") or now,
+                event_timestamp=rt.timestamp,
                 uns_path=allowlist.get(norm),  # resolve UNS where possible
                 equipment_entity_id=tag.get("equipment_entity_id"),
                 source_connection_id=source_connection_id,
-                metadata=tag.get("metadata") or {},
+                metadata=meta,
+                timestamp_source=rt.timestamp_source,
+                sample_age_seconds=rt.sample_age_seconds,
+                source_timestamp_local=rt.source_timestamp_local,
             )
         )
 

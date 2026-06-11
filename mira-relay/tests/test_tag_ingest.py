@@ -16,6 +16,8 @@ Required behaviours (gap-closure plan §3 G6/G7):
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from starlette.testclient import TestClient
 
@@ -252,6 +254,104 @@ def test_zero_and_false_are_valid_values():
     rf = ingest_batch(_batch(value=False, value_type="bool"), "t-1", store2)
     assert rf.accepted == 1
     assert store2.state[TAG].value == "false"
+
+
+# ── clock / timestamp_source provenance (Walker live-state) ──────────────────
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _clock_tag(value):
+    # A controller clock tag (drives the batch event time). Not allowlisted
+    # below, so it is NOT stored — it only certifies the batch's clock.
+    return {"tag_path": "Mira_Monitored/Filler01/controller_time", "value": value}
+
+
+def _batch_with(*tags, source_system="ignition"):
+    return {"source_system": source_system, "tenant_id": "t-1", "tags": list(tags)}
+
+
+def _data_tag(value=8.3, ts=None):
+    t = {"tag_path": TAG, "value": value, "value_type": "float", "quality": "good"}
+    if ts is not None:
+        t["ts"] = ts
+    return t
+
+
+def test_plc_clock_preferred_over_server_time():
+    # A fresh controller clock in the batch → the stored data reading is stamped
+    # plc_clock with the controller's time, not the server-receive time.
+    store = _store_with_tag()
+    clock_value = _utc_now_iso()
+    res = ingest_batch(_batch_with(_clock_tag(clock_value), _data_tag()), "t-1", store)
+    assert res.accepted == 1  # clock tag not allowlisted → only the data tag stored
+    row = store.events[0]
+    assert row.timestamp_source == "plc_clock"
+    assert row.event_timestamp == clock_value
+    assert row.metadata["timestamp_source"] == "plc_clock"  # mirrored to JSONB
+
+
+def test_server_clock_fallback_when_no_plc_time():
+    store = _store_with_tag()
+    res = ingest_batch(_batch_with(_data_tag()), "t-1", store)  # no clock, no ts
+    assert res.accepted == 1
+    row = store.events[0]
+    assert row.timestamp_source == "server_clock"
+    assert row.metadata["timestamp_source"] == "server_clock"
+
+
+def test_gateway_clock_from_reading_ts():
+    store = _store_with_tag()
+    ts = (datetime.now(timezone.utc) - timedelta(seconds=30)).isoformat()
+    ingest_batch(_batch_with(_data_tag(ts=ts)), "t-1", store)
+    row = store.events[0]
+    assert row.timestamp_source == "gateway_clock"
+    assert row.source_timestamp_local == ts
+
+
+def test_stale_plc_clock_rejected_and_marked_degraded():
+    # Controller clock 2h old → stale → rejected. The data reading has no ts of
+    # its own, so the time is untrusted → unknown + clock_degraded in metadata.
+    store = _store_with_tag()
+    stale = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    ingest_batch(_batch_with(_clock_tag(stale), _data_tag()), "t-1", store)
+    row = store.events[0]
+    assert row.timestamp_source == "unknown"
+    assert row.metadata.get("clock_degraded") is True
+
+
+def test_unparseable_plc_clock_marked_degraded():
+    store = _store_with_tag()
+    ingest_batch(_batch_with(_clock_tag("NOT-A-TIME"), _data_tag()), "t-1", store)
+    assert store.events[0].metadata.get("clock_degraded") is True
+
+
+def test_provenance_present_on_every_row_default():
+    # Even with zero clock awareness in the payload, every row carries a
+    # first-class timestamp_source (never silently absent).
+    store = _store_with_tag()
+    ingest_batch(_batch(), "t-1", store)
+    assert store.events[0].timestamp_source in {"server_clock", "gateway_clock"}
+
+
+# ── separation: live state vs maintenance history ────────────────────────────
+
+
+def test_live_ingest_writes_only_live_branch_never_kg():
+    # The ingest pipeline's ONLY persistence surface is the live branch
+    # (tag_events + live_signal_cache, modeled here as store.events / .state).
+    # It has no path to kg_entities / kg_relationships — live telemetry is never
+    # written as maintenance KG history. Promotion to a fault / work-order / KG
+    # edge is a separate, explicit step outside this pipeline.
+    store = _store_with_tag()
+    ingest_batch(_batch(), "t-1", store)
+    assert len(store.events) == 1  # live raw stream
+    assert len(store.state) == 1  # live current-value cache
+    # The store (TagStore) exposes no KG write surface at all.
+    assert not hasattr(store, "kg_entities")
+    assert not hasattr(store, "persist_kg")
 
 
 # ── endpoint level ───────────────────────────────────────────────────────────
