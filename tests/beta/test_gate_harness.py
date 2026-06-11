@@ -20,10 +20,13 @@ import json
 
 import httpx
 
-from ._gate import GateConfig, _ask, _parse_sse_answer
+from ._gate import GateConfig, _ask, _headers, _parse_sse_answer
 
 
-def _cfg(chat_url: str = "https://dev.example/api/namespace/node/n1/chat") -> GateConfig:
+def _cfg(
+    chat_url: str = "https://dev.example/api/namespace/node/n1/chat",
+    cookie: str | None = None,
+) -> GateConfig:
     return GateConfig(
         upload_url="https://dev.example/api/namespace/node/n1/files",
         chat_url=chat_url,
@@ -31,6 +34,7 @@ def _cfg(chat_url: str = "https://dev.example/api/namespace/node/n1/chat") -> Ga
         api_key=None,
         asset=None,
         poll_seconds=1,
+        cookie=cookie,
     )
 
 
@@ -97,6 +101,39 @@ def test_ask_detects_sse_by_body_when_content_type_missing():
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         assert _ask(_cfg(), client) == "overcurrent"
+
+
+# ── auth headers: Hub NodeChat needs a session COOKIE, not a bearer ───────────
+
+
+def test_headers_forward_session_cookie():
+    cookie = "next-auth.session-token=abc.def.ghi"
+    h = _headers(_cfg(cookie=cookie))
+    assert h["Cookie"] == cookie
+    assert h["X-Tenant-Id"] == "t-demo"
+
+
+def test_headers_omit_cookie_when_unset():
+    assert "Cookie" not in _headers(_cfg())
+
+
+def test_ask_sends_cookie_header_to_nodechat():
+    seen: dict[str, str | None] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["cookie"] = request.headers.get("cookie")
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            text=_sse({"content": "overcurrent"}),
+        )
+
+    cookie = "next-auth.session-token=abc.def.ghi"
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        answer = _ask(_cfg(cookie=cookie), client)
+
+    assert answer == "overcurrent"
+    assert seen["cookie"] == cookie
 
 
 # ── _ask: JSON surfaces still work (backward compatibility) ───────────────────
