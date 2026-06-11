@@ -1160,3 +1160,56 @@ class TestDecisionTraceIsolation:
             for t in list(supervisor._decision_trace_tasks):
                 await t
         assert captured.get("manual_sources") is None
+
+    @pytest.mark.asyncio
+    async def test_trace_attributed_to_passed_tenant_not_instance(self, supervisor):
+        # The decision trace must record THIS turn's tenant (passed by the
+        # caller), never a shared instance attr a concurrent tenant overwrites.
+        supervisor.tenant_id = "TENANT-Y-FALLBACK"  # would-be cross-tenant bleed
+        captured = {}
+
+        def fake_write_trace(**kw):
+            captured.update(kw)
+
+        with patch("shared.decision_trace.write_trace", side_effect=fake_write_trace):
+            supervisor._schedule_decision_trace(
+                chat_id="c",
+                message="why faulted?",
+                reply="r",
+                result={"reply": "r", "next_state": "DIAGNOSIS"},
+                platform="test",
+                latency_ms=1,
+                tag_evidence=None,
+                tenant_id="tenant-X",
+            )
+            for t in list(supervisor._decision_trace_tasks):
+                await t
+        assert captured.get("tenant_id") == "tenant-X"
+
+    @pytest.mark.asyncio
+    async def test_trace_tenant_falls_back_to_self_when_unset(self, supervisor):
+        supervisor.tenant_id = "ctor-tenant"
+        captured = {}
+
+        def fake_write_trace(**kw):
+            captured.update(kw)
+
+        with patch("shared.decision_trace.write_trace", side_effect=fake_write_trace):
+            supervisor._schedule_decision_trace(
+                chat_id="c",
+                message="m",
+                reply="r",
+                result={"reply": "r", "next_state": "IDLE"},
+                platform="test",
+                latency_ms=1,
+                tag_evidence=None,
+                tenant_id=None,
+            )
+            for t in list(supervisor._decision_trace_tasks):
+                await t
+        assert captured.get("tenant_id") == "ctor-tenant"
+
+    def test_supervisor_has_no_per_turn_tenant_attribute(self, supervisor):
+        # The shared per-turn tenant footgun is gone — nothing to race on.
+        assert not hasattr(supervisor, "_current_tenant_id")
+        assert not hasattr(supervisor, "_current_mira_user_id")
