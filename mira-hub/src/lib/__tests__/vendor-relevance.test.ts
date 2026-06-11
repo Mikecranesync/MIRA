@@ -77,6 +77,19 @@ describe("stripConflictingVendors", () => {
     expect(out[0].manufacturer).toBe("Allen-Bradley");
   });
 
+  it("strips a wrong-vendor chunk sharing the same fault code (#1875 code-pass leak guard)", () => {
+    // The #1875 fault-code pass can surface another vendor's F004 chunk; the
+    // route runs this strip on the merged set, so the wrong vendor never leaks
+    // into the answer/citations for an Allen-Bradley question.
+    const chunks = [chunk("Rockwell Automation"), chunk("Siemens")];
+    const out = stripConflictingVendors(
+      chunks,
+      "My Allen-Bradley PowerFlex 525 is showing fault F004",
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].manufacturer).toBe("Rockwell Automation");
+  });
+
   it("does not strip when the query resolves to no known vendor", () => {
     const chunks = [chunk("Danfoss"), chunk("Siemens")];
     const out = stripConflictingVendors(chunks, "the drive keeps tripping");
