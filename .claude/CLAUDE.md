@@ -165,6 +165,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - **Python: ruff + httpx + `Optional[X]` (3.12 target)** — see `.claude/rules/python-standards.md`.
 - **Security boundaries** — see `.claude/rules/security-boundaries.md` (PII sanitization, safety keywords, Doppler).
 - **UNS compliance** — see `.claude/rules/uns-compliance.md` (every asset row has `uns_path` or `equipment_entity_id` FK).
+- **mira-hub migrations** — see `.claude/rules/mira-hub-migrations.md` (`tenant_id` is **TEXT** for the CMMS/equipment family / **UUID** for the kg/Hub family — match it; RLS compares in-type, no cross-cast; `GRANT … TO factorylm_app`; drop policy+GiST index before `ALTER COLUMN TYPE`; verify the route write path with a real slug tenant `'mike'`, not a synthetic UUID).
 - **Direct-connection UNS certification** — see `.claude/rules/direct-connection-uns-certified.md` (Ignition/MQTT/PLC/Hub/QR surfaces carry a UNS identifier on every turn or are rejected; engine skips the chat-gate on `source="direct_connection"`).
 - **CodeGraph-first exploration** — see `.claude/rules/codegraph-usage.md` (use `codegraph_context` / `codegraph_impact` before grep + Read for any symbol-shaped question).
 - **Train before deploy** — see `.claude/rules/train-before-deploy.md` (Command Center builds+validates; Ignition/HMI deploys approved asset agents only; no HMI deployment without grounded docs + validation questions + approved cited answers; read-only in beta).
@@ -209,6 +210,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - `docs/specs/asset-agent-validation-spec.md` — per-asset agent lifecycle (draft→…→approved→deployed) + HMI deployment gate
 - `.claude/rules/security-boundaries.md` — secrets, PII, safety keywords
 - `.claude/rules/python-standards.md` — ruff, httpx, NeonDB, async
+- `.claude/rules/mira-hub-migrations.md` — migration tenant_id typing (TEXT vs UUID family), RLS, grants, ALTER ordering, real-tenant verification
 - `.claude/rules/karpathy-principles.md` — coding behavior
 - `.claude/rules/debugging-conventions.md` — multi-cause perf debugging + verify schema/API paths before guessing
 - `.claude/rules/session-discipline.md` — premise-verify, regression-recheck, scoped-commits, migration-safety, long-task checkpointing
