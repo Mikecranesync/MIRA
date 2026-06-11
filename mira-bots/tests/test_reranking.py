@@ -116,6 +116,64 @@ class TestBuildPromptWithChunks:
         assert "VFD troubleshooting table" in system_msg
 
 
+# -- kg_context isolation (#1846 cross-tenant race) ---------------------------
+
+
+class TestKgContextIsolation:
+    """The KG/live-data block must come from the per-call ``kg_context`` param,
+    never from shared instance state. ``RAGWorker`` is a singleton on
+    ``Supervisor`` shared across tenants; reading it from ``self`` lets one
+    tenant's equipment/fault/live-tag data bleed into another's prompt after an
+    ``await`` (the #1846 race; mirrors the #1082 ``local_neon_chunks`` fix).
+    """
+
+    _TENANT_X = "[KG: pump P-101 at plant X, 3 recent faults]"
+    _TENANT_Y = "[KG: compressor C-3 at plant Y, work order #892]"
+
+    def test_kg_context_param_injected_into_system_prompt(self):
+        worker = _make_rag_worker()
+        msgs = worker._build_prompt_with_chunks(
+            _base_state(), "what's wrong?", ["chunk"], kg_context=self._TENANT_X
+        )
+        assert self._TENANT_X in msgs[0]["content"]
+
+    def test_no_kg_param_means_no_block(self):
+        # Backward-compatible: legacy callers pass no kg_context → no KG block.
+        worker = _make_rag_worker()
+        msgs = worker._build_prompt_with_chunks(_base_state(), "msg", ["chunk"])
+        assert "[KG:" not in msgs[0]["content"]
+
+    def test_builder_ignores_stale_self_state(self):
+        # Simulate the race: another coroutine poisoned a (now-removed) instance
+        # attribute. The builder must read ONLY its passed param, never self.
+        worker = _make_rag_worker()
+        worker._kg_context = self._TENANT_Y  # stale/poison; must be ignored
+        msgs = worker._build_prompt_with_chunks(
+            _base_state(), "msg", ["chunk"], kg_context=self._TENANT_X
+        )
+        system = msgs[0]["content"]
+        assert self._TENANT_X in system
+        assert self._TENANT_Y not in system
+
+    def test_build_prompt_path_also_isolated(self):
+        # The no-chunks _build_prompt path carries the same param.
+        worker = _make_rag_worker()
+        worker._kg_context = self._TENANT_Y  # poison
+        msgs = worker._build_prompt(_base_state(), "msg", kg_context=self._TENANT_X)
+        system = msgs[0]["content"]
+        assert self._TENANT_X in system
+        assert self._TENANT_Y not in system
+
+    def test_attribute_not_set_by_process(self):
+        # The fix removes the self._kg_context stash entirely — no write in process().
+        import inspect
+
+        from shared.workers.rag_worker import RAGWorker
+
+        src = inspect.getsource(RAGWorker.process)
+        assert "self._kg_context" not in src
+
+
 # -- Reranking integration tests (mocked) -------------------------------------
 
 
