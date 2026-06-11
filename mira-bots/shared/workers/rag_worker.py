@@ -628,19 +628,16 @@ class RAGWorker:
             self._last_sources = chunk_texts
             self._last_distances = [c.get("similarity", 0.0) for c in neon_chunks]
             # Snapshot before any await so concurrent sessions can't overwrite
-            # this call's metadata (fixes #1082 Nemotron rerank race).
+            # this call's metadata (fixes #1082 Nemotron rerank race). These
+            # pre-await locals are the ONLY safe source for the state stash
+            # below — reading self._last_* after the rerank await would re-race
+            # (#1704). ``local_sources`` keeps the pre-rerank texts _is_grounded
+            # has always used.
+            local_sources = list(chunk_texts)
             local_neon_chunks = list(neon_chunks)
             self._last_neon_chunks = local_neon_chunks
-            # Snapshot kb_status before the LLM await too (#1704): the citation
-            # footer + relevance-strip read it back user-facing in engine.py
-            # after this call's await, so a concurrent tenant overwriting
-            # self._kb_status would bleed its citations into this reply. Stash
-            # the per-call snapshot on this call's own ``state`` dict; the engine
-            # promotes it to ``parsed["_kb_status"]`` in _call_with_correction.
             local_kb_status = self._compute_kb_status(neon_chunks, bool(chunk_texts))
             self._kb_status = local_kb_status
-            if isinstance(state, dict):
-                state["_rag_kb_status"] = local_kb_status
 
             async with spans.vector_search(
                 rewritten, self._last_sources[:5], self._last_distances[:5]
@@ -707,6 +704,23 @@ class RAGWorker:
                     messages = self._build_prompt(
                         state, rewritten, photo_b64, kg_context=local_kg_context
                     )
+
+            # Snapshot ALL of this call's citation/grounding evidence onto its
+            # own ``state`` dict immediately before the LLM await (#1704).
+            # RAGWorker is a singleton shared across tenants; engine.py reads
+            # this evidence back AFTER the await (citation footer, citation
+            # rewrite, grounding check, decision-trace), so reading it off the
+            # shared instance lets a concurrent tenant's data bleed in. The
+            # engine POPS these keys into the per-turn parsed/result payload
+            # (so they never persist to the session row) and never falls back
+            # to self.* when a key is absent. The clarification early-return
+            # above skips this — a no-coverage turn correctly carries nothing.
+            if isinstance(state, dict):
+                state["_rag_kb_status"] = local_kb_status
+                state["_rag_sources"] = local_sources
+                state["_rag_last_chunks"] = local_neon_chunks
+                state["_rag_no_kb"] = self._last_no_kb
+
             t0 = time.monotonic()
             raw = await self._call_llm(messages, model=model)
             elapsed_ms = int((time.monotonic() - t0) * 1000)

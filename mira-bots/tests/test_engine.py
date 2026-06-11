@@ -116,6 +116,7 @@ class TestMakeResult:
             "trace_id": "trace-123",
             "next_state": "Q1",
             "dispatch_kind": "",
+            "_citation_evidence": None,
         }
 
     def test_defaults(self):
@@ -1007,3 +1008,155 @@ class TestKbStatusIsolation:
             "why faulted?", {"state": "Q1", "asset_identified": ""}
         )
         assert parsed["_kb_status"] == self._X
+
+
+# ---------------------------------------------------------------------------
+# Remaining #1704 read-back races: citation rewrite, grounding, decision-trace
+# ---------------------------------------------------------------------------
+
+
+class TestCitationRewriteIsolation:
+    """_enforce_citation_rewrite must use THIS turn's evidence (chunks+kb_status
+    threaded via the result dict), never the shared self.rag.last_chunks /
+    kb_status a concurrent tenant overwrites (#1704)."""
+
+    @pytest.mark.asyncio
+    async def test_rewrite_uses_evidence_not_shared_rag(self, supervisor):
+        supervisor.rag.last_chunks = [{"manufacturer": "Danfoss"}]  # poison
+        supervisor.rag.kb_status = {"citations": [{"manufacturer": "Danfoss"}]}  # poison
+        ev_chunks = [{"manufacturer": "Rockwell", "content": "F004"}]
+        ev_kb = {"citations": [{"manufacturer": "Rockwell"}]}
+        captured = {}
+
+        async def fake_helper(reply, chunks, kb_status, **kw):
+            captured["chunks"] = chunks
+            captured["kb_status"] = kb_status
+            return reply
+
+        with patch("shared.engine._enforce_citation_via_rewrite", side_effect=fake_helper):
+            with patch.dict("os.environ", {"MIRA_CITATION_REWRITE": "1"}):
+                await supervisor._enforce_citation_rewrite(
+                    "the drive faulted",
+                    chat_id="c",
+                    fsm_state="DIAGNOSIS",
+                    evidence={"chunks": ev_chunks, "kb_status": ev_kb},
+                )
+        assert captured["chunks"] == ev_chunks  # this turn's chunks
+        assert captured["kb_status"] == ev_kb
+        assert "Danfoss" not in str(captured)  # concurrent tenant's poison unused
+
+    @pytest.mark.asyncio
+    async def test_rewrite_no_evidence_returns_unchanged_no_rag_read(self, supervisor):
+        # No per-turn snapshot → no rewrite, and the shared helper (which would
+        # read rag state) is never invoked. Requirement #5: no stale fallback.
+        supervisor.rag.last_chunks = [{"manufacturer": "Danfoss"}]  # would-be poison
+        called = False
+
+        async def fake_helper(*a, **k):
+            nonlocal called
+            called = True
+            return "REWRITTEN"
+
+        with patch("shared.engine._enforce_citation_via_rewrite", side_effect=fake_helper):
+            with patch.dict("os.environ", {"MIRA_CITATION_REWRITE": "1"}):
+                out = await supervisor._enforce_citation_rewrite(
+                    "original reply", chat_id="c", fsm_state="DIAGNOSIS", evidence=None
+                )
+        assert out == "original reply"
+        assert called is False
+
+
+class TestGroundingIsolation:
+    """_call_with_correction must check grounding against THIS turn's sources
+    snapshot (popped off state), never the shared self.rag._last_sources (#1704)."""
+
+    @pytest.mark.asyncio
+    async def test_grounding_keys_off_snapshot_not_shared(self, supervisor):
+        supervisor.rag._last_sources = ["tenant Y overcurrent fault drive motor cable"]  # poison
+
+        async def fake_process(query, state, **kw):
+            state["_rag_sources"] = ["tenant X alpha bravo charlie delta echo"]
+            return '{"reply": "alpha bravo charlie delta echo", "next_state": "DIAGNOSIS"}'
+
+        supervisor.rag.process = AsyncMock(side_effect=fake_process)
+        supervisor.nemotron.enabled = False
+        supervisor._build_kg_context = AsyncMock(return_value="")
+        supervisor._build_live_data_context = AsyncMock(return_value="")
+
+        captured = {}
+        original = supervisor._is_grounded
+
+        def spy(parsed, sources):
+            captured["sources"] = sources
+            return original(parsed, sources)
+
+        supervisor._is_grounded = spy
+        await supervisor._call_with_correction("q", {"state": "DIAGNOSIS", "asset_identified": ""})
+        assert captured["sources"] == ["tenant X alpha bravo charlie delta echo"]
+        assert "tenant Y" not in " ".join(captured["sources"])
+
+
+class TestDecisionTraceIsolation:
+    """_schedule_decision_trace must derive manual_sources from the per-turn
+    snapshot on the result dict, never the shared self.rag._last_sources (#1704)."""
+
+    @pytest.mark.asyncio
+    async def test_manual_sources_from_snapshot_not_shared(self, supervisor):
+        supervisor.rag._last_sources = ["POISON tenant Y source"]  # shared — must be ignored
+        supervisor.rag._last_no_kb = False
+        result = {
+            "reply": "r",
+            "next_state": "DIAGNOSIS",
+            "_citation_evidence": {
+                "sources": ["tenant X manual section 5"],
+                "no_kb": False,
+                "kb_status": {},
+                "chunks": [],
+            },
+        }
+        captured = {}
+
+        # write_trace is async → patch() makes it an AsyncMock; the side_effect
+        # fires only when the fire-and-forget task is awaited, so drain the
+        # scheduled task before asserting.
+        def fake_write_trace(**kw):
+            captured.update(kw)
+
+        with patch("shared.decision_trace.write_trace", side_effect=fake_write_trace):
+            supervisor._schedule_decision_trace(
+                chat_id="c",
+                message="why faulted?",
+                reply="r",
+                result=result,
+                platform="test",
+                latency_ms=1,
+                tag_evidence=None,
+            )
+            for t in list(supervisor._decision_trace_tasks):
+                await t
+        assert captured.get("manual_sources") == ["tenant X manual section 5"]
+        assert "POISON" not in str(captured.get("manual_sources"))
+
+    @pytest.mark.asyncio
+    async def test_no_evidence_means_no_manual_sources(self, supervisor):
+        supervisor.rag._last_sources = ["POISON would-be stale source"]
+        supervisor.rag._last_no_kb = False
+        result = {"reply": "hi", "next_state": "IDLE"}  # non-RAG turn, no evidence
+        captured = {}
+
+        def fake_write_trace(**kw):
+            captured.update(kw)
+
+        with patch("shared.decision_trace.write_trace", side_effect=fake_write_trace):
+            supervisor._schedule_decision_trace(
+                chat_id="c",
+                message="hi",
+                reply="hi",
+                result=result,
+                platform="test",
+                latency_ms=1,
+                tag_evidence=None,
+            )
+            for t in list(supervisor._decision_trace_tasks):
+                await t
+        assert captured.get("manual_sources") is None
