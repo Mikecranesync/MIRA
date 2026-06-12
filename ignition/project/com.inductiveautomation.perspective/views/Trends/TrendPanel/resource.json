@@ -1,0 +1,138 @@
+{
+  "custom": {},
+  "params": {
+    "assetId": {
+      "paramType": "value",
+      "value": "conveyor_demo"
+    },
+    "trendUrl": {
+      "paramType": "value",
+      "value": "http://127.0.0.1:8766/chart?asset=conveyor_demo"
+    }
+  },
+  "props": {
+    "defaultSize": {
+      "height": 800,
+      "width": 1280
+    }
+  },
+  "root": {
+    "children": [
+      {
+        "children": [
+          {
+            "meta": { "name": "BrandLabel" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "color": "#00C851",
+                "fontSize": "20px",
+                "fontWeight": "bold",
+                "letterSpacing": "4px",
+                "padding": "8px 16px"
+              },
+              "text": "LIVE TRENDS"
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "SubLabel" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "color": "#AAAAAA",
+                "fontSize": "13px",
+                "padding": "8px 8px"
+              },
+              "text": "Conv_Simple — live signal trends"
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "meta": { "name": "Header" },
+        "position": { "basis": "48px", "shrink": 0 },
+        "props": {
+          "align": "center",
+          "direction": "row",
+          "style": {
+            "backgroundColor": "#111111"
+          }
+        },
+        "type": "ia.container.flex"
+      },
+      {
+        "children": [
+          {
+            "meta": { "name": "TrendEmbed" },
+            "position": { "basis": "auto", "grow": 1 },
+            "propConfig": {
+              "props.source": {
+                "binding": {
+                  "config": { "path": "view.params.trendUrl" },
+                  "type": "property"
+                }
+              }
+            },
+            "props": {
+              "source": "http://127.0.0.1:8766/chart?asset=conveyor_demo",
+              "style": {
+                "border": "none",
+                "height": "100%",
+                "width": "100%"
+              }
+            },
+            "type": "ia.display.webBrowser"
+          }
+        ],
+        "meta": { "name": "ChartArea" },
+        "position": { "basis": "1", "grow": 1 },
+        "props": {
+          "direction": "column",
+          "style": {
+            "backgroundColor": "#161616",
+            "padding": "0px"
+          }
+        },
+        "type": "ia.container.flex"
+      },
+      {
+        "children": [
+          {
+            "meta": { "name": "StatusLabel" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "color": "#666666",
+                "fontSize": "12px",
+                "padding": "8px 16px"
+              },
+              "text": "Trend historian (read-only) — FactoryLM · MIRA"
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "meta": { "name": "Footer" },
+        "position": { "basis": "40px", "shrink": 0 },
+        "props": {
+          "align": "center",
+          "direction": "row",
+          "style": {
+            "borderTop": "1px solid #333333"
+          }
+        },
+        "type": "ia.container.flex"
+      }
+    ],
+    "meta": { "name": "root" },
+    "position": { "basis": "auto" },
+    "props": {
+      "direction": "column",
+      "style": {
+        "backgroundColor": "#161616",
+        "height": "100%",
+        "padding": "0px"
+      }
+    },
+    "type": "ia.container.flex"
+  }
+}
