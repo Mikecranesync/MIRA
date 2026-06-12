@@ -87,9 +87,12 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "20"
+      - uses: oven-sh/setup-bun@v2
       - name: Install deps
+        # bun (bun.lock) instead of `npm ci || npm install` — the npm fallback
+        # masked the package-lock drift; bun.lock is the in-sync source of truth.
         run: |
-          npm ci || npm install
+          bun install --frozen-lockfile --ignore-scripts
           npx playwright install --with-deps chromium
       - name: Run audit
         env:

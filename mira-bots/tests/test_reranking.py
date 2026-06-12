@@ -116,6 +116,64 @@ class TestBuildPromptWithChunks:
         assert "VFD troubleshooting table" in system_msg
 
 
+# -- kg_context isolation (#1846 cross-tenant race) ---------------------------
+
+
+class TestKgContextIsolation:
+    """The KG/live-data block must come from the per-call ``kg_context`` param,
+    never from shared instance state. ``RAGWorker`` is a singleton on
+    ``Supervisor`` shared across tenants; reading it from ``self`` lets one
+    tenant's equipment/fault/live-tag data bleed into another's prompt after an
+    ``await`` (the #1846 race; mirrors the #1082 ``local_neon_chunks`` fix).
+    """
+
+    _TENANT_X = "[KG: pump P-101 at plant X, 3 recent faults]"
+    _TENANT_Y = "[KG: compressor C-3 at plant Y, work order #892]"
+
+    def test_kg_context_param_injected_into_system_prompt(self):
+        worker = _make_rag_worker()
+        msgs = worker._build_prompt_with_chunks(
+            _base_state(), "what's wrong?", ["chunk"], kg_context=self._TENANT_X
+        )
+        assert self._TENANT_X in msgs[0]["content"]
+
+    def test_no_kg_param_means_no_block(self):
+        # Backward-compatible: legacy callers pass no kg_context → no KG block.
+        worker = _make_rag_worker()
+        msgs = worker._build_prompt_with_chunks(_base_state(), "msg", ["chunk"])
+        assert "[KG:" not in msgs[0]["content"]
+
+    def test_builder_ignores_stale_self_state(self):
+        # Simulate the race: another coroutine poisoned a (now-removed) instance
+        # attribute. The builder must read ONLY its passed param, never self.
+        worker = _make_rag_worker()
+        worker._kg_context = self._TENANT_Y  # stale/poison; must be ignored
+        msgs = worker._build_prompt_with_chunks(
+            _base_state(), "msg", ["chunk"], kg_context=self._TENANT_X
+        )
+        system = msgs[0]["content"]
+        assert self._TENANT_X in system
+        assert self._TENANT_Y not in system
+
+    def test_build_prompt_path_also_isolated(self):
+        # The no-chunks _build_prompt path carries the same param.
+        worker = _make_rag_worker()
+        worker._kg_context = self._TENANT_Y  # poison
+        msgs = worker._build_prompt(_base_state(), "msg", kg_context=self._TENANT_X)
+        system = msgs[0]["content"]
+        assert self._TENANT_X in system
+        assert self._TENANT_Y not in system
+
+    def test_attribute_not_set_by_process(self):
+        # The fix removes the self._kg_context stash entirely — no write in process().
+        import inspect
+
+        from shared.workers.rag_worker import RAGWorker
+
+        src = inspect.getsource(RAGWorker.process)
+        assert "self._kg_context" not in src
+
+
 # -- Reranking integration tests (mocked) -------------------------------------
 
 
@@ -228,3 +286,40 @@ class TestRerankingIntegration:
             await worker.process("What causes F004?", _base_state())
 
         worker.nemotron.rerank.assert_not_called()
+
+
+# -- kb_status snapshot stash (#1704 cross-tenant citation race) ---------------
+
+
+class TestKbStatusStash:
+    """process() must stash its per-call kb_status snapshot on the call's own
+    ``state`` dict (before the LLM await), so the engine threads THIS turn's
+    citations to the footer instead of the shared self._kb_status a concurrent
+    tenant can overwrite (#1704)."""
+
+    @pytest.mark.asyncio
+    async def test_process_stashes_kb_status_on_state(self):
+        worker = _make_rag_worker()
+        worker._call_llm = AsyncMock(return_value='{"reply": "ok", "next_state": "Q1"}')
+        worker._embed_ollama = AsyncMock(return_value=[0.1] * 768)
+        chunks = [
+            {
+                "content": "PowerFlex 525 fault F004 overcurrent",
+                "similarity": 0.9,
+                "manufacturer": "Rockwell",
+                "model_number": "PowerFlex 525",
+                "equipment_type": "",
+                "source_type": "",
+                "metadata": {},
+            },
+        ]
+        state = _base_state()
+        with patch("shared.workers.rag_worker._neon_recall") as mock_neon:
+            mock_neon.recall_knowledge.return_value = chunks
+            await worker.process("What causes F004?", state)
+
+        snap = state.get("_rag_kb_status")
+        assert snap is not None
+        assert snap is worker._kb_status  # the call-local snapshot, same object
+        assert snap.get("citations")  # carries this turn's citations
+        assert snap["citations"][0]["manufacturer"] == "Rockwell"

@@ -53,6 +53,76 @@ export function chunkText(text: string, size = CHUNK_CHARS, overlap = CHUNK_OVER
 }
 
 /**
+ * Extract + chunk a PDF buffer and write per-chunk knowledge_entries rows bound
+ * to an EXISTING upload + node. Single source of v2 chunk-writing, shared by
+ * `ingestPdfToNode` (node-attach door) and the blind upload doors (#1806, which
+ * route un-addressed PDFs into the per-tenant Inbox node). Does NOT create or
+ * update a hub_uploads row — the caller owns the upload lifecycle. Returns the
+ * chunk count. Throws on extraction/insert error (caller marks the upload).
+ */
+export async function writePdfChunksForNode(opts: {
+  tenantId: string;
+  uploadId: string;
+  nodeId: string;
+  unsPath: string | null;
+  filename: string;
+  buffer: Buffer | Uint8Array;
+}): Promise<number> {
+  const { tenantId, uploadId, nodeId, unsPath, filename, buffer } = opts;
+
+  const pdf = await getDocumentProxy(new Uint8Array(buffer));
+  const { text } = await extractText(pdf, { mergePages: false });
+  const pages: string[] = Array.isArray(text) ? text : [text];
+
+  // Unique per attachment so same-named files on different nodes never false-dedup
+  // against the partial UNIQUE (tenant_id, source_url, metadata->>'chunk_index').
+  const sourceUrl = `node-doc/${uploadId}/${filename}`;
+
+  type ChunkRow = { content: string; page: number; idx: number };
+  const rows: ChunkRow[] = [];
+  let idx = 0;
+  pages.forEach((pageText, p) => {
+    for (const piece of chunkText(pageText)) {
+      rows.push({ content: piece, page: p + 1, idx: idx++ });
+    }
+  });
+
+  if (rows.length > 0) {
+    await withTenantContext(tenantId, async (c) => {
+      for (const r of rows) {
+        await c.query(
+          `INSERT INTO knowledge_entries
+             (id, tenant_id, source_type, content, source_url, source_page,
+              doc_id, ingest_route, page_start, page_end, metadata)
+           VALUES ($1, $2, 'node_attachment', $3, $4, $5, $6, 'v2', $7, $7, $8)
+           ON CONFLICT (tenant_id, source_url, ((metadata->>'chunk_index')::int))
+             WHERE (metadata->>'chunk_index') IS NOT NULL
+             DO NOTHING`,
+          [
+            randomUUID(),
+            tenantId,
+            r.content,
+            sourceUrl,
+            r.page,
+            uploadId,
+            r.page,
+            JSON.stringify({
+              filename,
+              uns_path: unsPath,
+              node_id: nodeId,
+              chunk_index: r.idx,
+              source: "hub_node_attachment",
+            }),
+          ],
+        );
+      }
+    });
+  }
+
+  return rows.length;
+}
+
+/**
  * Ingest a PDF buffer attached to a namespace node. Creates the hub_uploads row,
  * extracts + chunks the text, and writes per-chunk knowledge_entries rows.
  * Returns the upload id + chunk count. Throws (and marks the upload failed) on error.
@@ -82,57 +152,16 @@ export async function ingestPdfToNode(opts: {
   });
 
   try {
-    const pdf = await getDocumentProxy(new Uint8Array(buffer));
-    const { text } = await extractText(pdf, { mergePages: false });
-    const pages: string[] = Array.isArray(text) ? text : [text];
-
-    // Unique per attachment so same-named files on different nodes never false-dedup
-    // against the partial UNIQUE (tenant_id, source_url, metadata->>'chunk_index').
-    const sourceUrl = `node-doc/${upload.id}/${filename}`;
-
-    type ChunkRow = { content: string; page: number; idx: number };
-    const rows: ChunkRow[] = [];
-    let idx = 0;
-    pages.forEach((pageText, p) => {
-      for (const piece of chunkText(pageText)) {
-        rows.push({ content: piece, page: p + 1, idx: idx++ });
-      }
+    const chunkCount = await writePdfChunksForNode({
+      tenantId,
+      uploadId: upload.id,
+      nodeId,
+      unsPath,
+      filename,
+      buffer,
     });
-
-    if (rows.length > 0) {
-      await withTenantContext(tenantId, async (c) => {
-        for (const r of rows) {
-          await c.query(
-            `INSERT INTO knowledge_entries
-               (id, tenant_id, source_type, content, source_url, source_page,
-                doc_id, ingest_route, page_start, page_end, metadata)
-             VALUES ($1, $2, 'node_attachment', $3, $4, $5, $6, 'v2', $7, $7, $8)
-             ON CONFLICT (tenant_id, source_url, ((metadata->>'chunk_index')::int))
-               WHERE (metadata->>'chunk_index') IS NOT NULL
-               DO NOTHING`,
-            [
-              randomUUID(),
-              tenantId,
-              r.content,
-              sourceUrl,
-              r.page,
-              upload.id,
-              r.page,
-              JSON.stringify({
-                filename,
-                uns_path: unsPath,
-                node_id: nodeId,
-                chunk_index: r.idx,
-                source: "hub_node_attachment",
-              }),
-            ],
-          );
-        }
-      });
-    }
-
-    await updateUploadStatus(upload.id, tenantId, "parsed", null, { kbChunkCount: rows.length });
-    return { uploadId: upload.id, chunkCount: rows.length };
+    await updateUploadStatus(upload.id, tenantId, "parsed", null, { kbChunkCount: chunkCount });
+    return { uploadId: upload.id, chunkCount };
   } catch (err) {
     await updateUploadStatus(upload.id, tenantId, "failed", (err as Error).message);
     throw err;

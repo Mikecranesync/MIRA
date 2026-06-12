@@ -593,6 +593,11 @@ _INSTRUCTIONAL_PHRASES = (
     "give me the steps",
     "walk me through",
     "what are the steps",
+    # Informational lookup phrasing — "looking up the default value/range" is clearly
+    # not fault diagnosis. Checked before INTENT_KEYWORDS so "decel" doesn't route to industrial.
+    # "what is/what's parameter X?" is intentionally NOT here — bare parameter questions
+    # can be fault-context queries (see bot_regression.py::powerflex_parameter_q).
+    "looking up the default",
 )
 
 # Signals that the technician is under time or job pressure.

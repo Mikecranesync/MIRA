@@ -17,6 +17,7 @@ import httpx
 from . import quality_gate
 from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
+from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
 from .conversation_router import route_intent
 from .detection.recurring_fault import check_recurring_and_annotate
@@ -751,10 +752,6 @@ class Supervisor:
         self.print_ = PrintWorker(openwebui_url, api_key)
         self.plc = PLCWorker()
 
-        # Per-call tenant context (overridden by process(tenant_id=...) when provided)
-        self._current_tenant_id: str = self.tenant_id
-        self._current_mira_user_id: str = ""
-
         self._ensure_table()
 
     # ------------------------------------------------------------------
@@ -1052,6 +1049,7 @@ class Supervisor:
         trace_id: str | None = None,
         next_state: str | None = None,
         dispatch_kind: str = "",
+        citation_evidence: dict | None = None,
     ) -> dict:
         """Build a standard process_full() result dict.
 
@@ -1059,6 +1057,12 @@ class Supervisor:
         can bypass replies it shouldn't second-guess (action_request,
         cmms_pending, dont_know, session_followup). Empty string = default
         diagnostic flow → gate runs normally.
+
+        citation_evidence carries THIS turn's per-call retrieval snapshot
+        (kb_status / chunks / sources / no_kb) from process_full() out to the
+        post-process_full() consumers in process() — the citation rewrite and
+        decision-trace — so they never read it off the shared RAGWorker
+        instance after an await (#1704). None on non-RAG turns.
         """
         return {
             "reply": reply,
@@ -1066,9 +1070,27 @@ class Supervisor:
             "trace_id": trace_id,
             "next_state": next_state,
             "dispatch_kind": dispatch_kind,
+            "_citation_evidence": citation_evidence,
         }
 
-    async def _enforce_citation_rewrite(self, reply: str, *, chat_id: str, fsm_state: str) -> str:
+    @staticmethod
+    def _evidence_from_parsed(parsed: dict) -> dict:
+        """Per-turn citation/grounding evidence carried on ``parsed`` (#1704).
+
+        Built from the snapshot _call_with_correction popped off ``state``;
+        threaded into the result dict so the rewrite + decision-trace read this
+        turn's data, never the shared self.rag.* attributes.
+        """
+        return {
+            "kb_status": parsed.get("_kb_status") or {},
+            "chunks": parsed.get("_last_chunks") or [],
+            "sources": parsed.get("_sources") or [],
+            "no_kb": parsed.get("_no_kb", False),
+        }
+
+    async def _enforce_citation_rewrite(
+        self, reply: str, *, chat_id: str, fsm_state: str, evidence: dict | None = None
+    ) -> str:
         """#1659 enforce-mode bridge: connect the insertion-only citation rewrite
         to this turn's retrieval set + the inference router.
 
@@ -1077,8 +1099,16 @@ class Supervisor:
         insertion-only second pass salvages it (validated for content
         preservation + real labels by the helper). Kill-switch
         ``MIRA_CITATION_REWRITE=0`` disables it; any error falls open.
+
+        ``evidence`` is THIS turn's per-call snapshot (chunks + kb_status),
+        threaded via the result dict. It is read ONLY from here, never from the
+        shared self.rag.* attributes a concurrent tenant overwrites (#1704). No
+        snapshot (non-RAG turn) → nothing to enforce → reply unchanged, with no
+        stale-shared fallback.
         """
         if os.getenv("MIRA_CITATION_REWRITE", "1") != "1":
+            return reply
+        if not evidence:
             return reply
         rag = getattr(self, "rag", None)
         if rag is None:
@@ -1086,8 +1116,8 @@ class Supervisor:
         try:
             return await _enforce_citation_via_rewrite(
                 reply,
-                getattr(rag, "last_chunks", None),
-                getattr(rag, "kb_status", None),
+                evidence.get("chunks"),
+                evidence.get("kb_status"),
                 fsm_state=fsm_state,
                 chat_id=chat_id,
                 llm_call=rag._call_llm,
@@ -1147,13 +1177,9 @@ class Supervisor:
         EMBEDDING still uses the full ``message`` for semantic context. Default
         None = use ``message`` (chat surfaces unchanged).
         """
-        # Per-call tenant overrides constructor default. Stash on self so workers
-        # can reach the current request's tenant via self._current_tenant_id.
-        # Existing callers that don't pass the kwargs continue to use self.tenant_id
-        # from __init__ (set as the fallback below).
-        self._current_tenant_id = tenant_id or self.tenant_id
-        self._current_mira_user_id = mira_user_id or ""
-
+        # Per-call tenant flows through method params (tenant_id → process_full,
+        # workers, and the decision-trace) — NOT stashed on self, which a
+        # concurrent tenant would overwrite across this turn's awaits.
         # Read-only live-tag snapshot — gated on a confirmed asset (see helper).
         message = self._maybe_attach_live_snapshot(chat_id, message, live_tags, platform)
 
@@ -1199,7 +1225,10 @@ class Supervisor:
         # admission. Runs post-quality-gate so the injected tag can't perturb
         # the gate; gated + fail-open inside the bridge.
         reply = await self._enforce_citation_rewrite(
-            reply, chat_id=chat_id, fsm_state=result.get("next_state", "")
+            reply,
+            chat_id=chat_id,
+            fsm_state=result.get("next_state", ""),
+            evidence=result.get("_citation_evidence"),
         )
         # H4 enforcer (2026-06-06): every reply must carry a [Source:] citation
         # or an explicit KB-gap admission. Applied AFTER the quality gate so the
@@ -1228,6 +1257,7 @@ class Supervisor:
             platform=platform,
             latency_ms=elapsed_ms,
             tag_evidence=tag_evidence,
+            tenant_id=tenant_id,
         )
         return reply
 
@@ -1241,6 +1271,7 @@ class Supervisor:
         platform: str,
         latency_ms: int,
         tag_evidence: list | None = None,
+        tenant_id: str | None = None,
     ) -> None:
         """Schedule a non-blocking decision_traces write for this turn.
 
@@ -1266,15 +1297,20 @@ class Supervisor:
             else:
                 outcome = None
 
-            tenant_id = getattr(self, "_current_tenant_id", None) or self.tenant_id
+            # Use THIS turn's tenant, passed in by the caller — never a shared
+            # self._current_tenant_id read after process_full's awaits, which a
+            # concurrent tenant could overwrite (cross-tenant trace attribution).
+            tenant_id = tenant_id or self.tenant_id
 
-            # Only attach RAG sources when THIS turn actually retrieved — the
-            # worker's _last_sources persists across turns, so a non-RAG turn
-            # (greeting, WO action) would otherwise inherit the prior turn's
-            # manual evidence and disagree with citations_present.
-            rag = getattr(self, "rag", None)
-            retrieved = rag is not None and not getattr(rag, "_last_no_kb", True)
-            manual_sources = getattr(rag, "_last_sources", None) if retrieved else None
+            # Only attach RAG sources when THIS turn actually retrieved. Read
+            # the per-turn snapshot threaded on the result dict (#1704) — NOT
+            # the shared worker._last_sources, which persists across turns and,
+            # under concurrency, can hold another tenant's evidence. No snapshot
+            # (non-RAG turn) → no manual sources, which also keeps the trace in
+            # agreement with citations_present.
+            ev = result.get("_citation_evidence") or {}
+            retrieved = bool(ev) and not ev.get("no_kb", True)
+            manual_sources = (ev.get("sources") or None) if retrieved else None
 
             coro = write_trace(
                 tenant_id=tenant_id,
@@ -1458,9 +1494,6 @@ class Supervisor:
         the chat ack message ("Processing photo 2/4..."). Callback exceptions
         are caught and logged so a flaky chat-edit can't take down the engine.
         """
-        self._current_tenant_id = tenant_id or getattr(self, "tenant_id", "") or ""
-        self._current_mira_user_id = mira_user_id or ""
-
         n = len(photos_b64)
         t0 = time.monotonic()
 
@@ -2587,15 +2620,21 @@ class Supervisor:
         if _honest_prefix:
             formatted = _honest_prefix + formatted
 
-        # CRA-11 / Unit 2 — observational citation compliance check.
-        # Logs CITATION_COMPLIANCE_OK / _MISS so we can measure inline-cite
-        # rate over time. Never blocks the reply.
-        _check_citation_compliance(
+        # CRA-11 / Unit 2 — citation presence (observational) + P0-3 relevance.
+        # Presence logs OK/MISS for the inline-cite rate metric. Relevance (the
+        # "stop the lie" gate) strips a cited source that names a DIFFERENT
+        # manufacturer than the resolved asset (alias-aware, fail-open) so a
+        # confidently-wrong attribution never reaches the technician.
+        _cc = _check_citation_compliance(
             formatted,
-            getattr(self.rag, "kb_status", {}),
+            parsed.get("_kb_status") or {},
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
+            uns_context=(state.get("context") or {}).get("uns_context"),
+            enforce=_citation_enforce_enabled(),
         )
+        if _cc.get("sanitized_reply"):
+            formatted = _cc["sanitized_reply"]
 
         tl_flush()
         return self._make_result(
@@ -2603,6 +2642,7 @@ class Supervisor:
             self._infer_confidence(formatted),
             trace_id,
             state["state"],
+            citation_evidence=self._evidence_from_parsed(parsed),
         )
 
     # ------------------------------------------------------------------
@@ -3359,9 +3399,20 @@ class Supervisor:
                 return None, {"reply": f"MIRA error: {e}"}
 
             parsed = self._parse_response(raw)
+            # Pop this call's citation/grounding evidence (stashed on ``state``
+            # by rag.process() before its LLM await) onto ``parsed`` — the
+            # durable per-turn carrier the footer, rewrite, grounding check, and
+            # decision-trace read, instead of the shared self.rag.* attributes a
+            # concurrent tenant overwrites (#1704). POP (not get) so the keys
+            # never reach _save_state. Set every attempt so the last one wins.
+            parsed["_kb_status"] = state.pop("_rag_kb_status", None) or {}
+            parsed["_sources"] = state.pop("_rag_sources", None) or []
+            parsed["_last_chunks"] = state.pop("_rag_last_chunks", None) or []
+            parsed["_no_kb"] = state.pop("_rag_no_kb", False)
 
-            # Check grounding: did we get sources and does response reference them?
-            if self._is_grounded(parsed, self.rag._last_sources):
+            # Check grounding against THIS turn's sources snapshot, never the
+            # shared self.rag._last_sources (#1704).
+            if self._is_grounded(parsed, parsed["_sources"]):
                 return raw, parsed
 
             # Not grounded on first attempt — rewrite and retry
@@ -3420,18 +3471,23 @@ class Supervisor:
         if honest_prefix:
             formatted = honest_prefix + formatted
 
-        _check_citation_compliance(
+        _cc = _check_citation_compliance(
             formatted,
-            getattr(self.rag, "kb_status", {}),
+            parsed.get("_kb_status") or {},
             fsm_state=state.get("state", ""),
             chat_id=chat_id,
+            uns_context=ctx.get("uns_context"),
+            enforce=_citation_enforce_enabled(),
         )
+        if _cc.get("sanitized_reply"):
+            formatted = _cc["sanitized_reply"]
 
         return self._make_result(
             formatted,
             self._infer_confidence(formatted),
             None,
             state["state"],
+            citation_evidence=self._evidence_from_parsed(parsed),
         )
 
     # ------------------------------------------------------------------
@@ -3969,6 +4025,15 @@ class Supervisor:
                 raw_resp = await self.rag.process(
                     message, state, photo_b64=None, tenant_id=resolved_tenant
                 )
+                # This path calls rag.process() directly (no _call_with_correction),
+                # so pop the per-turn evidence off state here — BEFORE
+                # _record_exchange persists state — and thread it via result (#1704).
+                _evidence = {
+                    "kb_status": state.pop("_rag_kb_status", None) or {},
+                    "chunks": state.pop("_rag_last_chunks", None) or [],
+                    "sources": state.pop("_rag_sources", None) or [],
+                    "no_kb": state.pop("_rag_no_kb", False),
+                }
                 parsed = self._parse_response(raw_resp)
                 raw = parsed.get("reply", "") if parsed else ""
                 if raw:
@@ -3987,6 +4052,7 @@ class Supervisor:
                         self._infer_confidence(raw),
                         trace_id,
                         state.get("state", "IDLE"),
+                        citation_evidence=_evidence,
                     )
             except Exception as exc:
                 logger.warning("GENERAL_QUESTION_RAG_FAILURE error=%s — falling through", exc)
@@ -5345,8 +5411,15 @@ class Supervisor:
         return advance_state(state, parsed)
 
     def _format_reply(self, parsed: dict, user_message: str = "") -> str:
-        """Format parsed response for display. Delegates to response_formatter.format_reply."""
-        kb_status = getattr(self.rag, "kb_status", None) or {}
+        """Format parsed response for display. Delegates to response_formatter.format_reply.
+
+        Reads kb_status from this turn's ``parsed`` (the per-call snapshot
+        threaded by _call_with_correction), NOT the shared self.rag.kb_status
+        attribute a concurrent tenant can overwrite (#1704). A reply that did
+        not run RAG retrieval carries no snapshot → no citation footer, which
+        is correct (it had nothing to cite).
+        """
+        kb_status = parsed.get("_kb_status") or {}
         return format_reply(parsed, user_message, kb_status)
 
     # ------------------------------------------------------------------

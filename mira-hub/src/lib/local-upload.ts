@@ -20,6 +20,8 @@ import {
   readUploadBuffer,
   deleteUploadBuffer,
 } from "@/lib/upload-buffer";
+import { resolveOrCreateInboxNode } from "@/lib/inbox-node";
+import { writePdfChunksForNode } from "@/lib/node-knowledge-ingest";
 
 export interface UploadAuthContext {
   tenantId: string;
@@ -152,6 +154,40 @@ async function runLocalIngest(p: LocalIngestParams): Promise<void> {
     mimeType: p.mime,
     sizeBytes: p.buffer.byteLength,
   });
+
+  // #1806: a blind-door PDF (browser /local + MiraDrop /folder) becomes CITABLE.
+  // Route the buffer through the SAME v2 writer the node-attach door uses
+  // (writePdfChunksForNode), landing in the per-tenant Inbox node, so the chunks
+  // reach knowledge_entries (ingest_route='v2', metadata.node_id) and NodeChat can
+  // cite them — instead of landing Open-WebUI-KB-only. Single-writer; no second
+  // chunker. On ANY failure, fall through to the legacy OW path below so the door
+  // keeps working. Non-PDF + photo + remote-fetch (cloud) doors keep the OW path.
+  if (p.kind === "document" && p.mime === "application/pdf") {
+    try {
+      const inbox = await resolveOrCreateInboxNode(p.tenantId);
+      const chunkCount = await writePdfChunksForNode({
+        tenantId: p.tenantId,
+        uploadId: p.uploadId,
+        nodeId: inbox.nodeId,
+        unsPath: inbox.unsPath,
+        filename: p.filename,
+        buffer: p.buffer,
+      });
+      await updateUploadStatus(p.uploadId, p.tenantId, "parsed", null, {
+        kbChunkCount: chunkCount,
+        kgEntityId: inbox.nodeId,
+        ingestRoute: "v2",
+      });
+      log.log("parsed", { kind: p.kind, route: "v2", nodeId: inbox.nodeId, kbChunkCount: chunkCount });
+      await deleteUploadBuffer(p.uploadId);
+      return;
+    } catch (err) {
+      // v2 inbox ingest failed — fall back to the legacy OW-KB path below so the
+      // door still works (the v2 core is the same proven node-attach path).
+      log.error("v2_inbox_fallback", err);
+    }
+  }
+
   const stream = () =>
     new ReadableStream<Uint8Array>({
       start(controller) {
