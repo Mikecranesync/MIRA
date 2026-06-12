@@ -9,6 +9,15 @@ const nextConfig: NextConfig = {
   output: "standalone",
   basePath,
   assetPrefix: basePath,
+  // #1899: unpdf loads its PDF.js engine via a runtime `import('unpdf/pdfjs')`.
+  // Under `output: "standalone"`, @vercel/nft does not trace that dynamic
+  // subpath import, so unpdf is dropped from `.next/standalone/node_modules`
+  // and the deployed server throws `Cannot find module 'unpdf/pdfjs'` on every
+  // PDF folder upload (POST /api/namespace/node/[id]/files → ingestPdfToNode).
+  // Marking it external keeps it out of the bundle and copies the full package
+  // (incl. dist/pdfjs.mjs) into the standalone node_modules, so the runtime
+  // import resolves. See docs/tech-debt + node-knowledge-ingest.ts.
+  serverExternalPackages: ["unpdf"],
   // Drop the `X-Powered-By: Next.js` response header — small fingerprint-leak
   // cleanup (#1762). No functional impact; Next.js never relied on it.
   poweredByHeader: false,

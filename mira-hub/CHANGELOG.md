@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.2.2 — 2026-06-12
+- fix(hub): folder=brain PDF upload no longer 500s — `unpdf` is now in `serverExternalPackages` so its runtime `import('unpdf/pdfjs')` resolves in the `output: standalone` build (was dropped from the trace → `Cannot find module 'unpdf/pdfjs'` on every PDF upload). Upload errors now surface a specific message + a durable error row in the Files panel instead of looking like "nothing happened". Adds a standalone-bundling regression guard + a real upload→citation e2e. Unblocks the beta gate. (#1899)
+
 ## v2.2.1 — 2026-06-11
 - fix(hub): Command Center — every tree node is now selectable; the detail panel no longer freezes on the one live-display node. Selection was gated on `hasLiveDisplay`, swallowing clicks on VFDs / PLCs / folders. Refresh button now spins + disables while fetching. (#1881)
 

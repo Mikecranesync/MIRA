@@ -172,6 +172,18 @@ export async function POST(
     );
   } catch (err) {
     console.error("[api/namespace/node/:id/files POST]", err);
-    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
+    // #1899: a 500 must NOT render as "nothing happened". Return a specific,
+    // actionable message (the client surfaces body.error in a toast + a durable
+    // error row), while the full error stays server-side in the log above.
+    const msg = (err as Error)?.message ?? "";
+    let userError = "Couldn't save this file. The error has been logged — please try again.";
+    if (/unpdf\/pdfjs|Serverless PDF\.js bundle|Cannot find module/i.test(msg)) {
+      userError = "PDF processing is temporarily unavailable on the server. Please try again shortly.";
+    } else if (/Invalid PDF|getDocument|extractText|XRef|FormatError/i.test(msg)) {
+      userError = "We couldn't read this PDF — it may be image-only, encrypted, or corrupted. Try a text-based PDF.";
+    } else if (/permission denied|does not exist|violates|constraint/i.test(msg)) {
+      userError = "Server storage error while saving the document. The error has been logged.";
+    }
+    return NextResponse.json({ error: userError }, { status: 500 });
   }
 }
