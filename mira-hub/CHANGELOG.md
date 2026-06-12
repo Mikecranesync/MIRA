@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.2.5 — 2026-06-12
+- security(hub): node-attachment manual chunks are now written `is_private = true` (`writePdfChunksForNode`). They were inserted without it → defaulted `false` → a tenant's uploaded manual could surface in other tenants' library/aggregate views via the hybrid read filter `(is_private = false OR tenant_id = $caller)` (#1833 leak class). Migration 052 backfills existing v2 node_attachment chunks to private; shared OEM corpus untouched. Adds a regression test pinning the INSERT to `is_private = true`. (#1903)
+
 ## v2.2.4 — 2026-06-12
 - fix(hub): folder=brain PDF upload 500 — second cause. Signup created only the auth-side `hub_tenants` row, never the data-side `tenants` row that `knowledge_entries.tenant_id` FK-references, so a fresh tenant's first manual upload threw `23503 knowledge_entries_tenant_id_fkey` ("Server storage error") even after the unpdf fix. `createUser` now creates the `tenants` row (id, name, contact_email) at signup; migration 051 backfills existing fresh tenants. Verified against the live prod FK + reproduced fixed on staging. Closes the upload→retrieval gap for strangers. (#1899)
 

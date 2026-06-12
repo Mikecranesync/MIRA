@@ -91,10 +91,15 @@ export async function writePdfChunksForNode(opts: {
     await withTenantContext(tenantId, async (c) => {
       for (const r of rows) {
         await c.query(
+          // #1903: a node attachment is a per-tenant upload, NOT shared OEM corpus.
+          // is_private = true keeps it out of the universal/library aggregate surfaces
+          // and the hybrid read filter `(is_private = false OR tenant_id = $caller)`, so
+          // tenant A's manual is never visible to tenant B. The column defaults to false,
+          // so relying on the default would leak (see .claude/rules/knowledge-entries-tenant-scoping.md #1833).
           `INSERT INTO knowledge_entries
              (id, tenant_id, source_type, content, source_url, source_page,
-              doc_id, ingest_route, page_start, page_end, metadata)
-           VALUES ($1, $2, 'node_attachment', $3, $4, $5, $6, 'v2', $7, $7, $8)
+              doc_id, ingest_route, page_start, page_end, metadata, is_private)
+           VALUES ($1, $2, 'node_attachment', $3, $4, $5, $6, 'v2', $7, $7, $8, true)
            ON CONFLICT (tenant_id, source_url, ((metadata->>'chunk_index')::int))
              WHERE (metadata->>'chunk_index') IS NOT NULL
              DO NOTHING`,
