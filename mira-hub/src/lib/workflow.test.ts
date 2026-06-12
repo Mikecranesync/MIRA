@@ -6,7 +6,7 @@
  * so no Postgres is required; the SQL itself is proven by the Python wrapper's
  * round-trip test against an ephemeral pg (the SQL is identical).
  */
-import { expect, test, describe } from "bun:test";
+import { expect, test, describe } from "vitest";
 import {
   type CreateRowInput,
   type CreateRowResult,

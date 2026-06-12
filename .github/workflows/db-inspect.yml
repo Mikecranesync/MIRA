@@ -194,4 +194,23 @@ jobs:
           FROM kg_relationships
           GROUP BY relationship_type
           ORDER BY 2 DESC;
+
+          \echo
+          \echo === factorylm_app grants on write-path tables (grant-drift check, #1861) ===
+          \echo 'knowledge_entries MUST include INSERT or folder=brain uploads 500 (aclcheck_error).'
+          \echo 'A privilege missing here is grant drift: applied by hand somewhere, not via a migration.'
+          SELECT t.table_name,
+                 COALESCE(string_agg(g.privilege_type, ',' ORDER BY g.privilege_type),
+                          '(NONE - factorylm_app cannot touch this table)') AS privileges
+          FROM (VALUES
+                  ('knowledge_entries'), ('hub_uploads'), ('kg_entities'),
+                  ('kg_relationships'), ('namespace_direct_uploads'),
+                  ('relationship_proposals'), ('installed_component_instances')
+               ) AS t(table_name)
+          LEFT JOIN information_schema.role_table_grants g
+            ON g.table_name = t.table_name
+           AND g.table_schema = 'public'
+           AND g.grantee = 'factorylm_app'
+          GROUP BY t.table_name
+          ORDER BY t.table_name;
           SQL

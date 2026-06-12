@@ -45,9 +45,16 @@ from ._gate import QUESTION, run_beta_gate
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "RELEASE GATE: upload→retrieval gap (PR #1592). A stranger's uploaded "
-        "manual is not yet citable in chat. Flips RED (strict) the moment it "
-        "passes — remove this marker and confirm beta readiness when it does."
+        "RELEASE GATE. The upload→retrieval CODE PATH is closed (PR #1592, "
+        "folder=brain NodeChat) and the harness can now drive it (BETA_GATE_COOKIE "
+        "session auth, added 2026-06-09). What remains is DURABLE provisioning: a "
+        "standing dev/staging NodeChat endpoint + tenant + session cookie + reachable "
+        "LLM cascade, OR this job wired in CI with those secrets. A one-shot local "
+        "`next dev` run is not enough — removing a release gate's xfail must leave a "
+        "result anyone can re-run (else the file goes RED the moment the server is "
+        "torn down). Remove this marker only once the gate runs green against a "
+        "durable surface. Repro recipe: tests/beta/README.md + the folder-brain-proof "
+        "auth recipe. Flips RED (strict) the instant it passes."
     ),
 )
 def test_beta_ready_upload_retrieval_citation():

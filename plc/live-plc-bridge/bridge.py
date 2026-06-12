@@ -48,6 +48,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import time
 from typing import Optional
 
@@ -86,6 +87,9 @@ COIL_TOPICS: dict[int, str] = {
     17: "plc/do/do01_red",
     18: "safety/contactor_q1",
     19: "plc/do/do03_pbrun_led",
+    # --- slave-map v2 (A12 photo-eye): enable after the MbSrvConf.xml reflash ---
+    # 20: "plc/di/di05_photoeye",   # raw photo-eye beam
+    # 21: "safety/pe_latched",      # photo-eye latching soft-stop engaged
 }
 
 # HR offset -> (relative topic, scale divisor). vfd_comm_ok (coil 3) is the
@@ -96,9 +100,15 @@ HR_SPECS: dict[int, tuple[str, float]] = {
     108: ("vfd/vfd101/voltage_v", 10.0),   # output V x10
     109: ("vfd/vfd101/dc_bus_v", 10.0),    # DC bus V x10
     114: ("vfd/vfd101/cmd_word", 1.0),     # GS10 command echo (1=STOP 18=FWD 20=REV)
+    # --- slave-map v2 (A2 fault decode / A7 setpoint): enable after the reflash ---
+    # 110: ("vfd/vfd101/fault_raw", 1.0),    # GS10 0x2100: hi byte=warn, lo byte=fault (split in decode)
+    # 111: ("vfd/vfd101/freq_setpoint", 100.0),  # GS10 0x2101 freq command x100
 }
 
 # Read plan: blocks that are fully mapped (no unmapped address inside a span).
+# The Micro 820 rejects a read that spans an unmapped address, so the plan only
+# covers mapped blocks. After the slave-map v2 reflash, widen these spans (e.g.
+# HR (106, 6) to pick up 110/111) and uncomment the HR_SPECS/COIL_TOPICS above.
 COIL_READS = [(0, 1), (3, 1), (5, 1), (9, 1), (11, 9)]  # (offset, count)
 HR_READS = [(106, 4), (114, 1)]
 
@@ -131,7 +141,17 @@ def _envelope(value, ts: Optional[float] = None) -> str:
 
 
 async def _read_block(fn, offset: int, count: int):
-    rr = await fn(offset, count=count, slave=PLC_UNIT)
+    # pymodbus renamed the unit kwarg (slave -> device_id) across 3.x; try both,
+    # then positional, so the bridge runs on whatever the bench laptop has installed.
+    rr = None
+    for kw in ({"count": count, "device_id": PLC_UNIT}, {"count": count, "slave": PLC_UNIT}):
+        try:
+            rr = await fn(offset, **kw)
+            break
+        except TypeError:
+            continue
+    if rr is None:
+        rr = await fn(offset, count)
     if rr.isError():
         raise IOError(f"modbus read error @{offset} x{count}: {rr}")
     return rr
@@ -193,4 +213,10 @@ async def run() -> None:
 
 
 if __name__ == "__main__":
+    # On Windows the default ProactorEventLoop lacks add_reader/add_writer, which
+    # pymodbus' async client + aiomqtt require. The bench bridge runs on the
+    # Windows PLC laptop (only host with a route to 192.168.1.0/24), so select the
+    # SelectorEventLoop there. No effect on the Linux container deploy.
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(run())

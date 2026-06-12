@@ -7,8 +7,11 @@ document that embeds the current state. The scheduled task re-runs scan + score
 """
 from __future__ import annotations
 
+import html
 import json
 import os
+import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -18,6 +21,81 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 mira = Path(os.environ.get("MIRA_DIR") or REPO_ROOT)
 state = json.loads((mira / "wiki" / "orchestrator" / "state.json").read_text())
 out = mira / "wiki" / "orchestrator" / "artifact.html"
+
+
+def kg_insights() -> dict | None:
+    """Shell out to kg_query.py (the same CLI the pulse uses) for a KG snapshot.
+    Returns None if the graph or helper is unavailable — the section is then
+    omitted rather than failing the whole render."""
+    helper = Path(__file__).resolve().parent / "kg_query.py"
+    if not helper.exists():
+        return None
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(helper), "insights", "--json"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if proc.returncode != 0:
+            print(f"kg_query insights failed (rc={proc.returncode}): {proc.stderr.strip()}",
+                  file=sys.stderr)
+            return None
+        return json.loads(proc.stdout)
+    except (OSError, ValueError, subprocess.SubprocessError) as e:
+        print(f"kg_query insights unavailable: {e}", file=sys.stderr)
+        return None
+
+
+def kg_section_html(kg: dict | None) -> str:
+    """Render the KG Insights block: god nodes, the latest lens's relevant
+    subgraph, and any orphan routes. Empty string when the graph is absent."""
+    if not kg:
+        return ""
+
+    def esc(s) -> str:
+        return html.escape(str(s if s is not None else ""))
+
+    def rows(items: list, with_degree: bool = True) -> str:
+        if not items:
+            return '<div class="kg-empty">none</div>'
+        out_rows = []
+        for r in items:
+            deg = f'<span class="kg-deg">{r["degree"]}</span>' if with_degree and "degree" in r else ""
+            loc = f':{esc(r["source_location"])}' if r.get("source_location") else ""
+            out_rows.append(
+                f'<div class="kg-row">{deg}'
+                f'<code class="kg-id">{esc(r["id"])}</code> '
+                f'<span class="kg-label">{esc(r.get("label"))}</span>'
+                f'<span class="kg-file">{esc(r.get("source_file"))}{loc}</span></div>'
+            )
+        return "".join(out_rows)
+
+    lens = kg.get("lens") or {}
+    lens_label = lens.get("label") or "—"
+    lens_letter = lens.get("lens") or "?"
+    lens_date = lens.get("date") or ""
+    commit = (kg.get("built_at_commit") or "")[:8]
+    sub = kg.get("lens_subgraph") or []
+    lens_sub_html = (
+        f'<h3 class="kg-h3">Lens {esc(lens_letter)} subgraph — '
+        f'{esc(lens_label)}<span class="kg-meta"> ({esc(lens_date)})</span></h3>'
+        f'<div class="kg-list">{rows(sub)}</div>'
+    ) if sub else (
+        f'<h3 class="kg-h3">Lens {esc(lens_letter)} subgraph — {esc(lens_label)}</h3>'
+        '<div class="kg-empty">no nodes matched the lens scope</div>'
+    )
+
+    return f"""
+<h2>KG Insights</h2>
+<div class="kg">
+  <div class="kg-stat">{kg.get('node_count', 0)} nodes · {kg.get('edge_count', 0)} edges ·
+    {kg.get('orphan_count', 0)} orphans · graph @ <code>{esc(commit)}</code></div>
+  <h3 class="kg-h3">God nodes <span class="kg-meta">(highest degree — architectural load-bearers)</span></h3>
+  <div class="kg-list">{rows(kg.get('god_nodes') or [])}</div>
+  {lens_sub_html}
+  <h3 class="kg-h3">Orphan routes <span class="kg-meta">(route nodes with no edges — dead/unmounted)</span></h3>
+  <div class="kg-list">{rows(kg.get('orphan_routes') or [])}</div>
+</div>
+"""
 
 # Inline the state as JS — Grid.js will render from it.
 state_js = json.dumps(state)
@@ -75,6 +153,18 @@ h2 { font-size: 14px; margin: 16px 0 8px; font-weight: 600; color: #555; letter-
 .btn { padding: 6px 12px; font-size: 12px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer; }
 .btn:hover { background: #f5f5f5; }
 .subj { color: #555; }
+.kg { background: #fff; border: 1px solid #e3e3e3; border-radius: 6px; padding: 10px 14px; }
+.kg-stat { font-size: 12px; color: #888; margin-bottom: 8px; }
+.kg-h3 { font-size: 12px; margin: 14px 0 6px; font-weight: 600; color: #444; }
+.kg-h3:first-of-type { margin-top: 4px; }
+.kg-meta { font-weight: 400; color: #999; }
+.kg-list { display: flex; flex-direction: column; gap: 3px; }
+.kg-row { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; padding: 2px 0; flex-wrap: wrap; }
+.kg-deg { display: inline-block; min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; color: #0a5d0a; font-weight: 600; }
+.kg-id { background: rgba(0,0,0,0.05); padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+.kg-label { color: #1a1a1a; }
+.kg-file { color: #999; font-size: 11.5px; margin-left: auto; }
+.kg-empty { font-size: 12.5px; color: #aaa; font-style: italic; }
 .footer { margin-top: 24px; font-size: 11px; color: #999; padding-top: 12px; border-top: 1px solid #eee; }
 </style>
 </head>
@@ -101,6 +191,8 @@ h2 { font-size: 14px; margin: 16px 0 8px; font-weight: 600; color: #555; letter-
 <h2>Work streams</h2>
 <div class="tabs" id="tabs"></div>
 <div class="grid-host" id="grid"></div>
+
+__KG_SECTION__
 
 <div class="footer">
   Generated by <code>tools/orchestrator/score.py</code> from <code>scan.json</code>.
@@ -242,6 +334,9 @@ function escapeHtml(s){
 </html>
 """
 
-out.write_text(HTML.replace("__STATE_JSON__", state_js))
+kg = kg_insights()
+html_out = HTML.replace("__STATE_JSON__", state_js).replace("__KG_SECTION__", kg_section_html(kg))
+out.write_text(html_out)
 print(f"artifact rendered: {out}")
 print(f"size: {out.stat().st_size} bytes")
+print(f"kg insights: {'embedded' if kg else 'skipped (graph unavailable)'}")
