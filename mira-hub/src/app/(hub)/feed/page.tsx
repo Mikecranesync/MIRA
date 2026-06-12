@@ -166,7 +166,17 @@ export default function FeedPage() {
   const [wos, setWos] = useState<WOApi[]>([]);
   const [pms, setPms] = useState<PMApi[]>([]);
   const [loading, setLoading] = useState(true);
+  // #1904: the header showed a hardcoded "Mike Harper · Admin" to every tenant.
+  // Show the real signed-in user instead (same /api/me source as the sidebar).
+  const [me, setMe] = useState<{ name: string; role: string } | null>(null);
   const { speaking, speak } = useSpeech();
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/me`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { name: string; role: string } | null) => d && setMe(d))
+      .catch(() => {});
+  }, []);
 
   const KPI_LABEL_MAP: Record<string, string> = {
     "Open Work Orders": tFeed("kpi.openWorkOrders"),
@@ -245,9 +255,11 @@ export default function FeedPage() {
               <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{tFeed("title")}</h1>
               <Badge variant="secondary" className="text-[10px]">Live</Badge>
             </div>
-            <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
-              Mike Harper · <span className="capitalize font-medium" style={{ color: "var(--brand-blue)" }}>Admin</span>
-            </p>
+            {me && (
+              <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
+                {me.name} · <span className="capitalize font-medium" style={{ color: "var(--brand-blue)" }}>{me.role}</span>
+              </p>
+            )}
           </div>
           <Button variant="ghost" size="icon" onClick={handleRefresh}>
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} style={{ color: "var(--foreground-muted)" }} />
