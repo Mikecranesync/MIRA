@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+import pool from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +93,33 @@ export async function GET() {
 
       return { entities: entitiesRes.rows, proposals: proposalsRes.rows };
     });
+
+    // #1900: a PDF uploaded via Knowledge / a folder is chunked into
+    // knowledge_entries and attached to its node (hub_uploads.kg_entity_id) — it
+    // is NOT a namespace_direct_uploads row, so files_count above counts 0 and the
+    // node looks empty even though the manual is citable. Fold in the v2-attached
+    // upload count. hub_uploads is an app-pool table with no RLS, so query it on
+    // the owner pool (not the tenant RLS context); a failure here must never break
+    // the tree, so it degrades to the direct-upload count alone.
+    try {
+      const { rows } = await pool.query<{ kg_entity_id: string; n: string }>(
+        `SELECT kg_entity_id, COUNT(*)::text AS n
+           FROM hub_uploads
+          WHERE tenant_id = $1
+            AND kg_entity_id IS NOT NULL
+            AND status = 'parsed'
+            AND kind = 'document'
+          GROUP BY kg_entity_id`,
+        [ctx.tenantId],
+      );
+      const v2Counts = new Map(rows.map((r) => [r.kg_entity_id, Number(r.n) || 0]));
+      for (const e of result.entities) {
+        const extra = v2Counts.get(e.id);
+        if (extra) e.files_count = String((Number(e.files_count) || 0) + extra);
+      }
+    } catch (err) {
+      console.warn("[api/namespace/tree] v2 upload count skipped", err);
+    }
 
     const nodes = buildTree(result.entities, result.proposals);
     return NextResponse.json({ nodes, total: result.entities.length });

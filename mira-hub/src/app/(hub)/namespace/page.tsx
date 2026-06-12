@@ -89,6 +89,8 @@ export default function NamespacePage() {
   const [uploadState, setUploadState] = useState<UploadState>(null);
   const [nodeFiles, setNodeFiles] = useState<Record<string, FileRecord[]>>({});
   const [ctxMenu, setCtxMenu] = useState<{ node: NamespaceNode; x: number; y: number } | null>(null);
+  const [pendingChat, setPendingChat] = useState(false);
+  const [deepLinkApplied, setDeepLinkApplied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showToast = useCallback((msg: string) => {
@@ -150,6 +152,28 @@ export default function NamespacePage() {
     setSelected(node);
     void loadFiles(node.id);
   }, [loadFiles]);
+
+  // #1900 deep-link: `/namespace?node=<id|inbox>&chat=1` selects a node (used by
+  // the post-upload "Ask MIRA about this manual" CTA — lands the user straight on
+  // the Inbox node that holds their just-uploaded manual) and optionally opens its
+  // Ask MIRA panel. Read once, after the tree has loaded so the target exists.
+  useEffect(() => {
+    if (deepLinkApplied || loading || tree.length === 0) return;
+    setDeepLinkApplied(true);
+    const params = new URLSearchParams(window.location.search);
+    const nodeParam = params.get("node");
+    if (!nodeParam) return;
+    const chain =
+      nodeParam === "inbox"
+        ? findChain(tree, (n) => n.unsPath === "inbox")
+        : findChain(tree, (n) => n.id === nodeParam);
+    if (!chain || chain.length === 0) return;
+    const target = chain[chain.length - 1];
+    setExpandedIds((prev) => new Set([...prev, ...chain.map((n) => n.id)]));
+    setSelected(target);
+    void loadFiles(target.id);
+    if (params.get("chat") === "1") setPendingChat(true);
+  }, [deepLinkApplied, loading, tree, loadFiles]);
 
   // ── Node drag-and-drop (reparent) ──────────────────────────────────────────
 
@@ -458,6 +482,8 @@ export default function NamespacePage() {
               node={selected}
               files={nodeFiles[selected.id]}
               uploadState={uploadState}
+              openChat={pendingChat}
+              onChatOpened={() => setPendingChat(false)}
               onSelect={handleSelect}
               onDeleteFile={(fileId) => handleDeleteFile(fileId, selected.id)}
               onUpload={() => fileInputRef.current?.click()}
@@ -731,12 +757,14 @@ function TreeNode({
 // ── ContentPanel ──────────────────────────────────────────────────────────────
 
 function ContentPanel({
-  node, files, uploadState,
+  node, files, uploadState, openChat, onChatOpened,
   onSelect, onDeleteFile, onUpload,
 }: {
   node: NamespaceNode;
   files: FileRecord[] | undefined;
   uploadState: UploadState;
+  openChat: boolean;
+  onChatOpened: () => void;
   onSelect: (n: NamespaceNode) => void;
   onDeleteFile: (fileId: string) => void;
   onUpload: () => void;
@@ -754,6 +782,15 @@ function ContentPanel({
   // folder=brain: "Ask MIRA" is available at every node — the answer is grounded in
   // the docs attached to this node and everything beneath it (subtree retrieval).
   const [showChat, setShowChat] = useState(false);
+
+  // #1900: a deep-link (`?chat=1`) auto-opens Ask MIRA after upload. Fire once per
+  // signal so the user can still close it; the parent resets `openChat` immediately.
+  useEffect(() => {
+    if (openChat) {
+      setShowChat(true);
+      onChatOpened();
+    }
+  }, [openChat, onChatOpened]);
 
   return (
     <div className="flex flex-col h-full">
@@ -931,14 +968,27 @@ function FilesSection({ nodeId, files, uploadState, onDeleteFile, onUpload }: {
             {files.map((f) => (
               <tr key={f.id} className="group hover:bg-[#e8e8f8]">
                 <td className="py-0.5 pr-4">
-                  <a
-                    href={`${API_BASE}/api/namespace/files/${f.id}`}
-                    className="flex items-center gap-1.5 text-blue-700 hover:underline"
-                    download={f.filename}
-                  >
-                    <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                    {f.filename}
-                  </a>
+                  {f.source === "upload" ? (
+                    // #1900: an indexed PDF (chunked into knowledge_entries, citable
+                    // by Ask MIRA) — no raw bytes are parked here to download, so show
+                    // it as a read-only "indexed" entry rather than a broken link.
+                    <span className="flex items-center gap-1.5 text-gray-800">
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                      {f.filename}
+                      <span className="ml-1 rounded bg-green-100 px-1 text-[10px] text-green-700">
+                        indexed
+                      </span>
+                    </span>
+                  ) : (
+                    <a
+                      href={`${API_BASE}/api/namespace/files/${f.id}`}
+                      className="flex items-center gap-1.5 text-blue-700 hover:underline"
+                      download={f.filename}
+                    >
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                      {f.filename}
+                    </a>
+                  )}
                 </td>
                 <td className="py-0.5 pr-4 text-gray-500">{formatBytes(f.size_bytes)}</td>
                 <td className="py-0.5 pr-4 text-gray-400">{formatDate(f.created_at)}</td>
@@ -1125,6 +1175,23 @@ function findNode(nodes: NamespaceNode[], id: string): NamespaceNode | null {
     if (n.id === id) return n;
     const found = findNode(n.children, id);
     if (found) return found;
+  }
+  return null;
+}
+
+/** Return the root→match chain (inclusive) for the first node matching `pred`, so
+ *  the caller can expand every ancestor and select the target. Used by the #1900
+ *  deep-link. */
+function findChain(
+  nodes: NamespaceNode[],
+  pred: (n: NamespaceNode) => boolean,
+  trail: NamespaceNode[] = [],
+): NamespaceNode[] | null {
+  for (const n of nodes) {
+    const next = [...trail, n];
+    if (pred(n)) return next;
+    const deeper = findChain(n.children, pred, next);
+    if (deeper) return deeper;
   }
   return null;
 }
