@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Conv_Simple — Bench Demo Playbook: from PLC workbench to "text your factory" demo</title>
+<style>
+  @page { size: Letter; margin: 0.45in 0.55in; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10.5pt; color: #111; line-height: 1.42; }
+  h1 { font-size: 19pt; margin: 0 0 4pt 0; border-bottom: 2pt solid #111; padding-bottom: 6pt; }
+  h2 { font-size: 14pt; margin: 18pt 0 6pt 0; padding: 6pt 10pt; background: #1f3a5f; color: #fff; }
+  h2.part { background: #8a1a10; font-size: 16pt; padding: 8pt 12pt; }
+  h3 { font-size: 12pt; margin: 14pt 0 4pt 0; color: #1f3a5f; }
+  h4 { font-size: 11pt; margin: 10pt 0 2pt 0; color: #333; }
+  .meta { font-size: 9.5pt; color: #555; margin-bottom: 10pt; }
+  .meta strong { color: #111; }
+  ol, ul { margin: 4pt 0 6pt 22pt; }
+  li { margin-bottom: 4pt; }
+  code, pre { font-family: 'Consolas', 'Courier New', monospace; }
+  pre { background: #f4f5f7; border: 1pt solid #d0d5dc; border-radius: 3pt; padding: 8pt; font-size: 9pt; white-space: pre; overflow-x: auto; tab-size: 2; line-height: 1.25; }
+  pre.flow { background: #fafbfd; border: 1pt solid #1f3a5f; font-size: 9pt; line-height: 1.2; padding: 10pt 12pt; }
+  pre.wiring { background: #fff8e8; border: 1pt solid #b9882a; padding: 10pt; font-size: 9.5pt; }
+  code { background: #f4f5f7; padding: 1pt 3pt; border-radius: 2pt; font-size: 10pt; }
+  table { border-collapse: collapse; width: 100%; margin: 4pt 0 8pt 0; font-size: 9.5pt; }
+  th, td { border: 1pt solid #b5bcc4; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #e8edf3; }
+  .callout { border-left: 4pt solid #d9822b; background: #fff7eb; padding: 8pt 12pt; margin: 8pt 0; }
+  .callout-title { font-weight: bold; color: #a55a14; display: block; margin-bottom: 2pt; }
+  .danger { border-left: 4pt solid #c5392c; background: #fdecea; padding: 8pt 12pt; margin: 8pt 0; }
+  .danger-title { font-weight: bold; color: #8a1a10; display: block; margin-bottom: 2pt; }
+  .ok { border-left: 4pt solid #2f8f3a; background: #ecf6ee; padding: 8pt 12pt; margin: 8pt 0; }
+  .ok-title { font-weight: bold; color: #1f5f24; display: block; margin-bottom: 2pt; }
+  .why { background: #eef2f9; padding: 6pt 10pt; margin: 4pt 0 6pt 0; border-radius: 3pt; font-size: 10pt; }
+  .why::before { content: 'Why this matters: '; font-weight: bold; color: #1f3a5f; }
+  .check { background: #f7fff8; border: 1pt dashed #2f8f3a; padding: 5pt 9pt; border-radius: 3pt; margin: 4pt 0; font-size: 10pt; }
+  .check::before { content: '\2713 You should see: '; font-weight: bold; color: #2f8f3a; }
+  hr { border: 0; border-top: 1pt solid #b5bcc4; margin: 12pt 0; }
+  .step { background: #1f3a5f; color: #fff; border-radius: 50%; display: inline-block; width: 20pt; height: 20pt; line-height: 20pt; text-align: center; font-weight: bold; margin-right: 7pt; }
+  .checkbox { display: inline-block; width: 11pt; height: 11pt; border: 1.5pt solid #111; margin-right: 6pt; vertical-align: middle; }
+  .small { font-size: 9.5pt; color: #555; }
+  .page-break { page-break-before: always; }
+  .compact td, .compact th { padding: 3pt 6pt; font-size: 9.5pt; }
+  .cheatsheet { background: #fffaf0; border: 2pt solid #1f3a5f; padding: 12pt 14pt; margin: 10pt 0; }
+  .cheatsheet h3 { margin-top: 8pt; color: #1f3a5f; }
+  .cheatsheet th { background: #1f3a5f; color: #fff; }
+  .toc { background: #f7f8fa; border: 1pt solid #b5bcc4; padding: 10pt 14pt; margin: 10pt 0 18pt 0; }
+  .toc h3 { margin: 0 0 6pt 0; color: #1f3a5f; }
+  .gate { background: #1f3a5f; color: #fff; font-weight: bold; padding: 3pt 8pt; border-radius: 3pt; font-size: 9.5pt; }
+  .win { background: #2f8f3a; color: #fff; font-weight: bold; padding: 3pt 8pt; border-radius: 3pt; font-size: 9.5pt; }
+  .stretch { background: #d9822b; color: #fff; font-weight: bold; padding: 3pt 8pt; border-radius: 3pt; font-size: 9.5pt; }
+</style>
+</head>
+<body>
+
+<h1>Conv_Simple — Bench Demo Playbook<br/><span style="font-size:13pt;font-weight:normal;color:#555;">From the PLC workbench to a live "text your factory, it tells you what's wrong" demo</span></h1>
+<div class="meta">
+  <strong>Audience:</strong> You, standing at the bench with the Micro 820 + GS10 rig &nbsp;|&nbsp;
+  <strong>Goal:</strong> get MIRA detecting a real fault on real hardware, today<br/>
+  <strong>PLC:</strong> Allen-Bradley Micro 820 (2080-LC20-20QBB) @ <code>192.168.1.100:502</code> (Modbus TCP) &nbsp;|&nbsp;
+  <strong>PC:</strong> <code>192.168.1.50</code> (Ethernet) / Tailscale <code>100.72.2.99</code><br/>
+  <strong>Drive:</strong> AutomationDirect GS10 DURApulse, Modbus RTU slave node 1, 9600/8N2 &nbsp;|&nbsp;
+  <strong>Sensor just wired:</strong> PE-101 photo-eye → embedded <code>DI 5</code><br/>
+  <strong>Slave map:</strong> <code>plc/MbSrvConf_v4.xml</code> (now 23 coils — <code>_IO_EM_DI_05</code> at coil <code>000023</code>) &nbsp;|&nbsp;
+  <strong>Engine:</strong> <code>plc/conv_simple_anomaly/</code> (A0–A10 live; A2/A7/A12 dormant)<br/>
+  <strong>Companion deep-dive:</strong> <code>docs/instructions/Conv_Simple_Complete.html</code> (RS-485 wiring + Modbus sequencer + UDFB)
+</div>
+
+<div class="toc">
+  <h3>📖 What's in here</h3>
+  <ol>
+    <li><strong>The demo scenario</strong> — the story you're trying to tell, and why it sells.</li>
+    <li><strong>How the system works</strong> — the data path from a beam-break to a phone reply.</li>
+    <li><strong>Where we are right now</strong> — what's done, and the one thing gating everything.</li>
+    <li><strong>The bench playbook</strong> — Step 0 → Step 3, each with what to do, why, and what you should see.</li>
+    <li><strong>The demo script</strong> — exactly what to do and say in front of an audience.</li>
+    <li><strong>Troubleshooting + cheat sheet</strong> — IPs, commands, fault table.</li>
+  </ol>
+</div>
+
+<h2>1. The demo scenario — the story you're selling</h2>
+<p><em>"Factory technicians spend up to 40% of their time just diagnosing what's wrong. What if a tech could text the machine — in plain English — and the machine told them the fault, the likely cause, and the next thing to check?"</em></p>
+<p>That is MIRA. The demo proves three things in under two minutes, on <strong>real hardware</strong>, not a slideshow:</p>
+<ol>
+  <li><strong>Real PLC, real fault.</strong> A real Micro 820 + GS10 conveyor rig develops a real problem — a flaky sensor wire, an E-stop, a lost drive link.</li>
+  <li><strong>The AI diagnoses it.</strong> MIRA reads the live tag stream, recognizes the fault pattern, and explains it the way a senior tech would — fault → likely cause → next check.</li>
+  <li><strong>From your phone.</strong> The whole thing rides phone → Telegram → cloud → factory floor → back to your phone. No HMI, no manual.</li>
+</ol>
+<div class="why">A dashboard tells a manager a number is red. MIRA tells a <em>technician on the floor</em> what to do about it. That is the wedge — conversational diagnosis for the person holding the wrench, not another SCADA screen.</div>
+
+<h2>2. How the system works — beam-break to phone reply</h2>
+<p>Every fault follows the same path. Knowing it tells you exactly where to look when something doesn't light up.</p>
+<pre class="flow">
+  PHYSICAL                 PLC                    EDGE (PLC laptop)                  CLOUD / PHONE
+ ----------          ---------------         --------------------------          ------------------
+  PE-101  ───►  DI 5 ─► Micro 820 ladder ─► Modbus TCP server (:502)
+  photo-eye         (_IO_EM_DI_05)            coil 000023
+  E-stop    ───►  DI's ─► state machine ─►  coils 000001..000023
+  GS10 VFD  ◄──RS-485──► poll sequencer ─►  holding regs 400101..400117
+                                                     │
+                                                     │  live-plc-bridge (bridge.py)
+                                                     ▼  polls :502, publishes UNS JSON
+                                            Mosquitto MQTT broker
+                                            demo/cell1/conveyor/cv101/_streams/bridge/#
+                                                     │
+                            ┌────────────────────────┼───────────────────────────┐
+                            ▼                         ▼                            ▼
+                  conv_simple_anomaly         mira-relay (tag_diff,        live_check.py
+                  engine (rules A0..A12)       flaky_detector)             (no broker — direct
+                  → conveyor_events DB         → tag_events (Neon)          read of :502, ad-hoc)
+                            │                         │
+                            └─────────────┬───────────┘
+                                          ▼
+                         MIRA answer surfaces:  Telegram /fault   +   MCP /api/faults/active
+                                          ▲
+                                          │  phone → Telegram → VPS (Jarvis) → PLC laptop
+                                       YOUR PHONE
+</pre>
+<div class="callout"><span class="callout-title">The two read paths</span>
+<code>live_check.py</code> is your <strong>bench multimeter</strong> — it reads the PLC directly and runs the rules, no broker or Docker needed. The <code>bridge → relay → tag_events</code> path is the <strong>production pipeline</strong> that feeds Telegram/MCP. Get <code>live_check.py</code> green first; it isolates "is the PLC publishing the tag?" from "is the cloud plumbing wired?"</div>
+
+<h2 class="page-break">3. Where we are right now</h2>
+<table>
+<thead><tr><th>Piece</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>Modbus TCP to the PLC (<code>:502</code>)</td><td><span class="ok-title" style="display:inline">✓ LIVE</span> — bridge reads it; heartbeat toggling, scan running</td></tr>
+<tr><td>Anomaly engine (rules A0–A10)</td><td><span class="ok-title" style="display:inline">✓ MERGED + bench-verified</span> (fired A1 when the drive link dropped)</td></tr>
+<tr><td>Slave-map v2 — PE-101 photo-eye on DI 5</td><td><strong>Code done</strong> (PR #1905) — <em>needs a controller download to take effect</em></td></tr>
+<tr><td>Rules A2 / A7 / A12 (VFD fault + photo-eye jam)</td><td>Dormant — wake after the reflash publishes their registers</td></tr>
+<tr><td>GS10 RS-485 drive link (motor run)</td><td><span class="danger-title" style="display:inline">✗ Not confirmed</span> — gated by the CCW download below</td></tr>
+</tbody>
+</table>
+<div class="danger"><span class="danger-title">The one thing gating everything: a clean CCW download.</span>
+Historically a <code>TCPIPObject</code> download failure aborted the <em>entire</em> config transfer — both the Modbus slave map and the RS-485 serial config. That single failure is why the photo-eye never reflashed <em>and</em> the drive never talked. A fix was written (static IP <code>192.168.1.100</code>, replacing the APIPA <code>169.254.x</code> that broke the TCP object) but <strong>never verified</strong>. Confirming a clean download is today's highest-value move — it can unblock both payoffs at once.</div>
+
+<h2>4. The bench playbook</h2>
+
+<h3><span class="step">0</span>Master gate — get ONE clean CCW download <span class="gate">UNBLOCKS EVERYTHING</span></h3>
+<p>Do this first. Both Step 1 and Step 2 ride on it.</p>
+<ol>
+  <li>Stage the updated map into the CCW project so it goes down with this build:<br/>
+    <code>python plc/deploy_modbus_map.py</code></li>
+  <li>Confirm the PC is on <code>192.168.1.50</code> and you can reach the PLC: <code>ping 192.168.1.100</code>.</li>
+  <li>In CCW: <strong>Build</strong>, then <strong>Download to controller</strong>. Let it run to 100% with no error dialog.</li>
+  <li><span class="checkbox"></span> <strong>If the download fails</strong> with the TCP/"out of sync" error → unplug Ethernet for the download and use the <strong>USB cable</strong> instead. USB bypasses the <code>TCPIPObject</code> path entirely — this is the untried tactic.</li>
+  <li>After it completes: <strong>Serial Port → Diagnose</strong> must report <strong>"in sync."</strong></li>
+</ol>
+<div class="check">the download reaches 100% with zero failures, and Serial Port → Diagnose says "in sync."</div>
+<div class="why">"In sync" means the controller's embedded serial config finally matches the project. That is the precondition the drive link has been waiting on for months — and the same download carries your new 23-coil slave map.</div>
+<div class="callout"><span class="callout-title">Report back here</span>Tell me: did it download clean, and does Diagnose say "in sync"? Your answer decides whether we sprint to the easy demo (Step 1) or also chase the motor (Step 2).</div>
+
+<h3><span class="step">1</span>Easy demo win — the live photo-eye feed <span class="win">NO MOTOR NEEDED</span></h3>
+<p>The moment Step 0 succeeds, your slave-map v2 is live. This path needs no VFD, so it's your fastest route to a demoable moment.</p>
+<ol>
+  <li>Read the PLC directly and run the rules for a few seconds:<br/>
+    <code>python plc/conv_simple_anomaly/live_check.py --secs 4</code></li>
+  <li><strong>Break the PE-101 beam</strong> with your hand a few times while it runs.</li>
+  <li>Watch the decoded tag <code>plc/di/di05_photoeye</code> flip <code>True/False</code> with the beam.</li>
+</ol>
+<div class="check"><code>plc/di/di05_photoeye</code> toggles in lock-step with your hand breaking the beam.</div>
+<div class="why">This proves the full sensor → DI 5 → coil 000023 → Modbus → decode chain end to end. Once the beam reads live, the flaky-input detector (which keys on a rapidly toggling sensor) has real data to fire on — that is the "flaky sensor wire" story, the most relatable fault on a factory floor.</div>
+<div class="danger"><span class="danger-title">If di05_photoeye never appears</span>The read block <code>(22,1)</code> covers coil 000023. If it errors, the download didn't carry the new map — re-do Step 0 (the map edit is only real after a successful download).</div>
+
+<h3><span class="step">2</span>Full demo — VFD link → first motor run <span class="stretch">STRETCH GOAL</span></h3>
+<p>Only chase this once Step 0's "in sync" holds — that's the gate the drive link was always waiting on.</p>
+<ol>
+  <li>Read every VFD tag and check comm health:<br/>
+    <code>python plc/vfd_diag.py</code></li>
+  <li>Expect <code>vfd_comm_ok = TRUE</code> and <code>ErrorID ≠ 255</code>. <code>255</code> means the MSG never completed a real transaction (UART silent).</li>
+  <li>If still timing out after "in sync": swap the <strong>D+/D-</strong> pair once, then toggle GS10 <code>P09.04</code> between <code>12</code> and <code>13</code> (8N1 ↔ 8N2). Re-run <code>vfd_diag.py</code> after each change.</li>
+  <li>On healthy comm: command <strong>FWD run</strong> → first motor turn → then <strong>REV</strong>.</li>
+</ol>
+<div class="check"><code>vfd_comm_ok=TRUE</code>, a non-255 ErrorID, and the motor physically turns on a FWD command.</div>
+<div class="callout"><span class="callout-title">Don't rewrite the program</span>The ladder/ST is correct. If comm fails, it is sync or physical (wiring/baud), never the code. The deep RS-485 reference is <code>Conv_Simple_Complete.html</code>.</div>
+
+<h3><span class="step">3</span>Close the loop to MIRA <span class="win">THE PAYOFF</span></h3>
+<p>This turns a green <code>live_check</code> into an actual phone reply. The cloud-side prep (seed <code>approved_tags</code>, relay env) can be staged in parallel while you're on the hardware.</p>
+<ol>
+  <li>Start the bridge on the PLC laptop (only host routed to the PLC subnet) so it publishes the UNS stream.</li>
+  <li>With <code>approved_tags</code> seeded + <code>RELAY_TAG_EVENTS=1</code>, the relay logs tag changes to <code>tag_events</code>; the flaky detector raises a <code>flaky_signal_alert</code>.</li>
+  <li>From your phone, message the MIRA Telegram bot: <em>"What's wrong with the conveyor?"</em> → it answers from the live fault.</li>
+</ol>
+<div class="check">breaking the beam ~7× quickly produces a flaky-sensor alert that MIRA reports in Telegram / on <code>/api/faults/active</code>.</div>
+
+<h2 class="page-break">5. The demo script — what to do and say</h2>
+<p>Rehearse this exact sequence. Total run time ~2 minutes.</p>
+<table>
+<thead><tr><th>#</th><th>You do</th><th>You say</th><th>Audience sees</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>Hold up phone, conveyor running on the bench</td><td>"This is a real conveyor — Allen-Bradley PLC, real drive. Watch me ask it what's wrong, like a tech would."</td><td>A live machine, a phone</td></tr>
+<tr><td>2</td><td>Wiggle / rapidly break the PE-101 beam (simulating a loose sensor wire)</td><td>"A sensor wire just started acting up — the kind of intermittent fault that eats a tech's afternoon."</td><td>You touching the rig</td></tr>
+<tr><td>3</td><td>Text the bot: "what's wrong with the conveyor?"</td><td>"I'm not reading a manual or a dashboard. I'm just texting the factory."</td><td>A normal text message</td></tr>
+<tr><td>4</td><td>Show the reply</td><td>"It caught the flaky sensor, told me the likely cause, and the next thing to check — in plain English."</td><td>MIRA's diagnosis on the phone</td></tr>
+<tr><td>5</td><td>(If Step 2 is live) command a run / inject a drive fault</td><td>"And it's not just sensors — it reads the drive, the safety circuit, the whole machine."</td><td>Motor runs / fault caught</td></tr>
+</tbody>
+</table>
+<div class="callout"><span class="callout-title">Fallbacks (always have one ready)</span>
+<ul>
+<li><strong>If Step 2 (motor) isn't live:</strong> the photo-eye flaky-sensor story (Steps 1+3) is a complete demo on its own. Lead with it.</li>
+<li><strong>If the cloud loop hiccups:</strong> run <code>live_check.py</code> on the laptop screen — the rules firing on a real beam-break is still a compelling, honest proof.</li>
+<li><strong>If the PLC laptop drops:</strong> have a screen recording of a clean run as the ultimate backstop.</li>
+</ul></div>
+
+<h2>6. Troubleshooting + cheat sheet</h2>
+<table class="compact">
+<thead><tr><th>Symptom</th><th>Likely cause</th><th>Do this</th></tr></thead>
+<tbody>
+<tr><td>CCW download fails / "out of sync"</td><td>TCPIPObject over Ethernet</td><td>Download over USB cable instead; re-check Diagnose</td></tr>
+<tr><td><code>di05_photoeye</code> missing in live_check</td><td>New map not actually downloaded</td><td>Re-run Step 0; map edits are inert until a clean download</td></tr>
+<tr><td><code>live_check</code> coil read error @22</td><td>Coil 000023 not mapped on controller</td><td>Confirm <code>deploy_modbus_map.py</code> ran <em>before</em> the download</td></tr>
+<tr><td><code>vfd_comm_ok=FALSE</code>, ErrorID 255</td><td>Serial not in sync / UART silent</td><td>Confirm "in sync"; swap D+/D-; toggle P09.04 12↔13</td></tr>
+<tr><td>Beam toggles but no Telegram reply</td><td>Cloud loop (bridge/relay/seed)</td><td>Verify bridge running + <code>approved_tags</code> seeded + <code>RELAY_TAG_EVENTS=1</code></td></tr>
+</tbody>
+</table>
+
+<div class="cheatsheet">
+<h3 style="margin-top:0;">🛈 One-page reference</h3>
+<h4>Addresses</h4>
+<table class="compact">
+<tbody>
+<tr><th>PLC (Modbus TCP)</th><td><code>192.168.1.100 : 502</code>, unit 1</td></tr>
+<tr><th>PLC laptop</th><td><code>192.168.1.50</code> (Ethernet) · <code>100.72.2.99</code> (Tailscale)</td></tr>
+<tr><th>UNS prefix</th><td><code>demo/cell1/conveyor/cv101</code></td></tr>
+<tr><th>Photo-eye coil</th><td><code>000023</code> = <code>_IO_EM_DI_05</code> = pymodbus offset 22 → topic <code>plc/di/di05_photoeye</code></td></tr>
+</tbody>
+</table>
+<h4>Commands (run on the PLC laptop)</h4>
+<table class="compact">
+<tbody>
+<tr><th>Stage map into CCW</th><td><code>python plc/deploy_modbus_map.py</code></td></tr>
+<tr><th>Live rules vs real PLC</th><td><code>python plc/conv_simple_anomaly/live_check.py --secs 4</code></td></tr>
+<tr><th>VFD comm health</th><td><code>python plc/vfd_diag.py</code></td></tr>
+<tr><th>Unit tests (sanity)</th><td><code>python -m pytest plc/conv_simple_anomaly/</code> (26)</td></tr>
+</tbody>
+</table>
+<h4>The priority call</h4>
+<p style="margin:2pt 0;">Closest-to-market-ready today = <strong>Step 0 → Step 1 → Step 3</strong> (live AI-detected flaky sensor answered on a phone). The motor run (Step 2) is the stretch goal once the download is clean — don't let it block the demo.</p>
+</div>
+
+<p class="small" style="margin-top:14pt;">Generated for the Conv_Simple bench session. Companion docs: <code>plc/RESUME_1668_PLC_FEED.md</code> (full feed spec) · <code>docs/instructions/Conv_Simple_Complete.html</code> (RS-485 / Modbus / UDFB deep-dive).</p>
+
+</body>
+</html>
