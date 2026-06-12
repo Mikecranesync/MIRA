@@ -68,6 +68,16 @@
         "viewPath": "Mira/ConnectSetup",
         "params": {}
       }
+    },
+    {
+      "id": "page-trends",
+      "url": "/trends",
+      "primaryView": {
+        "viewPath": "Trends/TrendPanel",
+        "params": {
+          "assetId": "conveyor_demo"
+        }
+      }
     }
   ],
   "navDocked": {
