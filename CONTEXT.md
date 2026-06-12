@@ -72,6 +72,36 @@ Per ADR-0018: a Motor and the VFD that controls it are **siblings** in the Asset
 The Hub `/assets` page renders either view from the same data — **Physical** (default, mirrors UNS path) or **Control** (motors indent under their VFDs via the `DRIVES` edge). Toggle is session-sticky. Orphan motors (across-the-line, no VFD) and orphan VFDs (spare drives in inventory) are first-class — they render at their physical-tree position in both views.
 _Avoid_: "motor is part of the VFD" (it isn't — it's driven by one), "VFD parent / motor child" (no parent_asset_id relationship between them — they share a parent sub-assembly).
 
+### Documents & references
+
+The file layer rides the same **Template/Instance** split as the factory objects above: a Document's
+*knowledge* (its section structure + extracted facts) is **Template-level** (shared across all tenants,
+`component_templates`, reused by every Instance of the model); the Document *file* and any tenant
+corrections are **tenant-scoped**. The file is stored once and referenced — never copied.
+
+**Document**:
+The actual file uploaded by a customer or the OEM pipeline (manual, datasheet, wiring diagram, photo, SOP).
+**Content-addressed**: identified by the hash of its bytes and stored exactly once — two identical uploads
+are one Document with two access grants, never two copies. Registry row in `hub_uploads` (`kg_entity_id`
+ties it to the node/Instance it documents; `uns_path` mirrors where that sits); retrieval chunks in
+`knowledge_entries` (`doc_id` = the Document, per ADR-0019). **Shared** (a public OEM file, one global copy)
+or **tenant-private** (the customer's own file) by access grant — never by duplication.
+_Avoid_: upload (that's the act), file (alone), PDF, attachment, manual (a *kind* of Document, not the type).
+
+**Section Link** *(the "hot link")*:
+A lightweight reference from a node (or Template) to a span of a Document — a section + page range —
+addressed as a deep link (`document/{id}#page=N&section=…`), **never a copy of the file**. Section Links
+are what appear on every surface (namespace file center, asset page, Map node, chat citation, work order);
+the file stays in its one place. A Section Link **resolves its file at read time**: the tenant's own copy →
+the shared public copy → "upload to read." Anchor columns live on `knowledge_entries` (`section_path`,
+`page_start`, `page_end`, `equipment_entity_id`).
+_Avoid_: attachment, copy, embedded file, manual reference (alone).
+
+**Table of Contents**:
+The ordered set of a Document's Section Links, shown at the Document's home — jump to any section, or open
+the whole file. **Derived** from the Document's chunks; never stored as a duplicate.
+_Avoid_: index, outline (TOC is acceptable shorthand).
+
 ### Counting and reading rules
 
 - "N proposals pending" = `SELECT count(*) FROM ai_suggestions WHERE status='pending'`. Never join through `relationship_proposals` for this count — the `kg_edge` header pattern double-counts.
@@ -81,6 +111,8 @@ _Avoid_: "motor is part of the VFD" (it isn't — it's driven by one), "VFD pare
 ## Flagged ambiguities
 
 **"The proposal table"** — forbidden phrase. Code reviews and ADRs must name `ai_suggestions` or `relationship_proposals` explicitly. Resolved 2026-05-24 (this entry); enforced in `.claude/CLAUDE.md` § "Knowledge graph proposals".
+
+**Two upload registries** — `hub_uploads` vs `namespace_direct_uploads`. Resolved 2026-06-12 (direction, not yet implemented): **`hub_uploads` is the canonical `Document` registry**; `namespace_direct_uploads` is a parallel store written only by the `/namespace` node-upload path (files stored, not indexed, not citable). Per ADR-0023 (**Proposed**) it **will be** folded into `hub_uploads` and retired in Phase 0 of `docs/specs/unified-document-reference-layer-spec.md`. **Until that ships it is still live** — `/api/namespace/node/[id]/files` still writes it — so treat it as **deprecated, not yet removed**. Don't build *new* readers/writers against it; don't yet assume it's empty.
 
 ## Example dialogue
 
@@ -95,3 +127,11 @@ _Avoid_: "motor is part of the VFD" (it isn't — it's driven by one), "VFD pare
 > **Mike:** What does the engine see right after that?
 >
 > **Claude:** Nothing yet. Both AISuggestions are `status='pending'`; the engine reads only `approval_state='verified'` rows from `kg_entities` and `kg_relationships`. Once an admin accepts on `/proposals`, the engine sees the new instance + edge on the next diagnostic turn.
+>
+> **Mike:** Now the tech uploads the GS10 manual on that asset. Does it show up in the namespace file center too?
+>
+> **Claude:** Yes — there's one **Document** (the file, content-addressed, stored once in `hub_uploads`), and both surfaces render **Section Links** to it, not copies. The asset page and the `/namespace` file center are two projections of the same Document. Open it from either and you get the same file; open it from the VFD node and the **Section Link** drops you at the drive-fault pages.
+>
+> **Mike:** And the next customer who has a GS10 but never uploaded anything?
+>
+> **Claude:** They still see a populated GS10, because the *knowledge* — the **Table of Contents**, fault codes, pinout — is **Template-level** (`component_templates`, shared, admin-curated). Their Section Links resolve "upload your manual to read this section": MIRA knows the structure from the Template, it just doesn't have *their* file yet. The file never crossed tenants; only the model-level knowledge did.

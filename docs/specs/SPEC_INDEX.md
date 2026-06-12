@@ -20,6 +20,7 @@ Specs follow the same template (Purpose · Scope · Architecture · API Contract
 - [`rag-pipeline`](./rag-pipeline-spec.md) — End-to-end retrieval, hybrid (BM25 + pgvector + RRF), citation contract, eval discipline.
 - [`quality-gate`](./quality-gate-spec.md) — Output post-processor + confidence heuristic; deterministic, < 10 ms.
 - [`dialogue-state-tracker`](./dialogue-state-tracker-spec.md) — Stage-1 FSM that drives the Guided Socratic Dialogue.
+- [`unified-document-reference-layer`](./unified-document-reference-layer-spec.md) — One content-addressed Document stored once; Section Links ("hot links") + Table of Contents project it onto every surface; knowledge rides the Template/Instance split for the cross-tenant network effect (study + build sequence; ADR-0023).
 
 ## Integrations
 - [`mira-cmms`](./mira-cmms-spec.md) — Atlas CMMS (4 containers); REST-only integration to keep license boundary clean.
