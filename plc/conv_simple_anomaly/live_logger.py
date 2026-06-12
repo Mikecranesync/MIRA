@@ -18,6 +18,10 @@ the PLC or the GS10. Modbus TCP over Ethernet is side-effect-free per
 
 While running, type a note + Enter to stamp an event marker into the log
 (e.g. "broke beam now") — makes the dataset self-labeling without stopping.
+
+NOTE: the PLC has ONE Modbus connection slot. Do NOT run this concurrently with
+trend_historian.py (the bench trend service) — they compete for the bus. The historian
+is the sole poller when it's up; stop it before running a labeled capture here.
 """
 from __future__ import annotations
 import argparse, csv, json, os, sys, threading, time
