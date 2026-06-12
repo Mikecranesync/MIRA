@@ -98,11 +98,11 @@ async function seedNodesOnly() {
   });
   await client.connect();
   try {
-    await client.query(
-      `INSERT INTO tenants (id, name, contact_email) VALUES ($1, $2, $3)
-       ON CONFLICT (id) DO NOTHING`,
-      [tenantId, MARK, CREDS.email],
-    );
+    // #1899b: do NOT seed the data-side `tenants` row here. The real signup path
+    // (register() above → createUser) now creates it; if it didn't, the chunk
+    // INSERT below would 23503 on knowledge_entries_tenant_id_fkey. Seeding it
+    // here would mask exactly that regression (the older folder-brain-proof spec
+    // does seed it). This spec proves the REAL signup→upload path end to end.
     const ent = (id: string, type: string, name: string, p: string) =>
       client.query(
         `INSERT INTO kg_entities (id, tenant_id, entity_type, entity_id, name, uns_path, properties)

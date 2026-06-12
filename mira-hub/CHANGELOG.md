@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.2.3 — 2026-06-12
+- fix(hub): folder=brain PDF upload 500 — second cause. Signup created only the auth-side `hub_tenants` row, never the data-side `tenants` row that `knowledge_entries.tenant_id` FK-references, so a fresh tenant's first manual upload threw `23503 knowledge_entries_tenant_id_fkey` ("Server storage error") even after the unpdf fix. `createUser` now creates the `tenants` row (id, name, contact_email) at signup; migration 051 backfills existing fresh tenants. Verified against the live prod FK + reproduced fixed on staging. Closes the upload→retrieval gap for strangers. (#1899)
+
 ## v2.2.2 — 2026-06-12
 - fix(hub): folder=brain PDF upload no longer 500s — `unpdf` is now in `serverExternalPackages` so its runtime `import('unpdf/pdfjs')` resolves in the `output: standalone` build (was dropped from the trace → `Cannot find module 'unpdf/pdfjs'` on every PDF upload). Upload errors now surface a specific message + a durable error row in the Files panel instead of looking like "nothing happened". Adds a standalone-bundling regression guard + a real upload→citation e2e. Unblocks the beta gate. (#1899)
 
