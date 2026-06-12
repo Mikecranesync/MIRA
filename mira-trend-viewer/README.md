@@ -20,6 +20,12 @@ Adapter is chosen by query string:
 - `?source=historian&base=http://<plc-laptop>:8766` — the real MIRA bench trend historian
   (`plc/conv_simple_anomaly/trend_historian.py`). Proves the same UI on a different real source.
 
+**Embedded (no separate server):** the trend historian mounts this directory at `/viewer`, so
+`http://<plc-laptop>:8766/viewer/?source=historian` serves the viewer same-origin (the adapter
+auto-targets the serving origin — no `base=` needed). The Ignition Perspective
+`Trends/TrendPanel` view (route `/trends`, NavBar **TRENDS** button) embeds exactly that URL,
+alongside Ask MIRA.
+
 ## What it does
 
 - **Grouped source browser** (left): VFDs · Analog Inputs · Analog Outputs · Digital Inputs ·
@@ -31,6 +37,10 @@ Adapter is chosen by query string:
   **step lanes** in a distinct strip so they read clearly against analog lines. Time X-axis, grid,
   hairline cursor readout, wheel-zoom + drag-pan, live/pause with a loud **VIEWING HISTORY /
   PAUSED** indicator.
+- **VFD fault intelligence**: each drive exposes `fault_code` (active) **and** `last_fault` —
+  the register that survives a reset, the workhorse for chasing intermittent trips. Status
+  WORDs that declare a `bits` map (`{0:"Running", 5:"Faulted", …}`) are decoded once in the
+  store into named boolean child tags — each bit is its own checkbox + digital step lane.
 - **Selected-pen list** (bottom): every checked signal with source, value, units/state, quality,
   timestamp, and a Remove button. Remove unchecks the browser box (and vice-versa) — one source of
   truth, the store.
@@ -71,16 +81,23 @@ train-before-deploy.
 ## Tests
 
 ```bash
-node --test            # 25 tests: grouping, pen select/remove, checkbox sync, VFD expansion,
-                       # analog-vs-digital, stale/bad quality, scale/offset, WORD/hex, mock updates, CSV
+node --test            # 33 tests: grouping, pen select/remove, checkbox sync, VFD expansion,
+                       # analog-vs-digital, stale/bad quality, scale/offset, WORD/hex, mock updates,
+                       # CSV, last-fault persistence, status-word bit decode + fan-out
 ```
 
-## Deferred to v2 (from the controls/PLC · architecture · QA · HMI review)
+## Shipped in v2 (2026-06-12)
 
-- **VFD "last/previous fault" register** — the workhorse for chasing *intermittent* trips (the
-  active `fault_code` clears on reset). Highest-value functional add.
-- **Status-word bit decode** — currently shown as honest hex (`0x0007`); decode into named
-  boolean child traces (running/at-speed/faulted/…) for real troubleshooting.
+- ✅ **VFD "last/previous fault" register** — `last_fault` per drive; persists the trip cause
+  after the active `fault_code` clears on reset (mock: VFD1 runs clean, last fault `ocA`).
+- ✅ **Status-word bit decode** — a WORD tag declaring `bits` gets named boolean child tags
+  (Running / At Speed / Faulted / …), each a trendable digital step lane; decode happens once
+  in the store (like scaling), so adapters and UI stay unchanged.
+- ✅ **Ignition Perspective wiring** — the historian serves this app at `/viewer`; the
+  `Trends/TrendPanel` view embeds it alongside Ask MIRA.
+
+## Deferred to v3 (from the controls/PLC · architecture · QA · HMI review)
+
 - **Contactor command-vs-feedback** pairing (catch a sticking/dropping contactor).
 - **History backfill** — an optional `history(id, from, to)` on the adapter so a historian /
   Ignition tagHistory / timestamped CSV pre-seeds the chart instead of drawing from "now".

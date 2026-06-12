@@ -67,6 +67,9 @@ export function createTag(input) {
     category: input.category ?? "",
     // enum/state maps for digital + status words: {0:"OFF",1:"ON"} or fault-code tables.
     states: input.states ?? null,
+    // WORD bit map {bitIndex: "label"} — declares named status bits (Running/Faulted/…)
+    // so the store can derive trendable boolean child tags. null = plain hex word.
+    bits: input.bits ?? null,
     metadata: input.metadata ?? {},
   };
 }
@@ -135,6 +138,36 @@ export function formatTimestamp(ts) {
   if (isNaN(d.getTime())) return "timestamp unavailable";
   return d.toLocaleTimeString([], { hour12: false }) +
     "." + String(d.getMilliseconds()).padStart(3, "0");
+}
+
+/** Decode a WORD tag's declared bits: [{bit, label, value}] in bit order. value is the
+ *  decoded 0/1, or null when the word itself has no value (honest, not a fake 0). */
+export function decodeWordBits(tag) {
+  if (!tag.bits) return [];
+  const v = tag.currentValue;
+  return Object.entries(tag.bits)
+    .map(([bit, label]) => ({ bit: Number(bit), label,
+      value: v === null || v === undefined ? null : (Number(v) >> Number(bit)) & 1 }))
+    .sort((a, b) => a.bit - b.bit);
+}
+
+/** Derive boolean child tags from a WORD tag's bit map — each named status bit becomes a
+ *  trendable digital tag grouped under the same device, marked with metadata.parentWord. */
+export function wordBitTags(tag) {
+  return decodeWordBits(tag).map(({ bit, label, value }) => createTag({
+    id: `${tag.id}.b${bit}`,
+    name: label,
+    displayName: label,
+    sourceType: tag.sourceType,
+    assetId: tag.assetId, assetName: tag.assetName,
+    deviceId: tag.deviceId, deviceName: tag.deviceName,
+    address: tag.address ? `${tag.address}.${bit}` : "",
+    dataType: DataType.BOOLEAN,
+    currentValue: value,
+    quality: tag.quality,
+    timestamp: tag.timestamp,
+    metadata: { parentWord: tag.id, bit },
+  }));
 }
 
 /** Group tags by sourceType, then for VFDs sub-group by device (each VFD is a card). */

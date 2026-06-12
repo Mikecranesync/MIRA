@@ -136,6 +136,16 @@ def build_app():
             "n": len(rows), "points": rows, "status": _state["connection"],
         })
 
+    # Serve the full trend viewer (mira-trend-viewer/, repo root) at /viewer when this is a
+    # repo checkout. Same-origin as /trends/summary, so the viewer's historian adapter needs
+    # no CORS and Perspective embeds  http://<host>:8766/viewer/?source=historian  directly.
+    viewer_dir = os.path.normpath(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "..", "mira-trend-viewer"))
+    if os.path.isdir(viewer_dir):
+        from fastapi.staticfiles import StaticFiles
+        app.mount("/viewer", StaticFiles(directory=viewer_dir, html=True), name="viewer")
+        log.info("trend viewer mounted at /viewer (%s)", viewer_dir)
+
     return app
 
 

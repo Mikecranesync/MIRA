@@ -13,6 +13,12 @@ import { createTag, SourceType, DataType, Quality } from "../model.js";
 const GS10_FAULTS = { 0: "No fault", 1: "oc (overcurrent)", 2: "ov (overvoltage)",
   6: "oH (overheat)", 9: "ocA (accel oc)", 12: "Lv (undervoltage)", 16: "CE (comm err)" };
 
+// Drive status-word bit names (DEMO placeholders, same caveat as GS10_FAULTS — a live
+// adapter must take the real bit assignments from the drive manual). Declaring `bits` on
+// the WORD tag is what makes the store derive named, trendable boolean child pens.
+const STATUS_BITS = { 0: "Running", 1: "At Speed", 2: "Ready",
+  3: "Reverse", 4: "Warning", 5: "Faulted" };
+
 function vfdRegisters(dev) {
   const a = dev.assetId;
   const r = (suffix, o) => createTag({ id: `${a}.${suffix}`, assetId: a, assetName: dev.assetName,
@@ -27,7 +33,10 @@ function vfdRegisters(dev) {
     r("torque",     { name: "Torque",            dataType: DataType.FLOAT, engineeringUnits: "%", min: 0, max: 150 }),
     r("heatsink",   { name: "Heat Sink Temp",    dataType: DataType.FLOAT, engineeringUnits: "°C", min: 0, max: 90 }),
     r("fault_code", { name: "Fault Code",        dataType: DataType.ENUM, states: GS10_FAULTS }),
-    r("status_word",{ name: "Drive Status Word", dataType: DataType.WORD, engineeringUnits: "" }),
+    r("last_fault", { name: "Last Fault",        dataType: DataType.ENUM, states: GS10_FAULTS,
+      description: "Previous trip cause — persists after the active fault is reset" }),
+    r("status_word",{ name: "Drive Status Word", dataType: DataType.WORD, engineeringUnits: "",
+      bits: STATUS_BITS }),
     r("run_cmd",    { name: "Run Command",       dataType: DataType.BOOLEAN, states: { 0: "STOP", 1: "RUN" } }),
     r("direction",  { name: "Direction",         dataType: DataType.BOOLEAN, states: { 0: "FWD", 1: "REV" } }),
     r("comm_ok",    { name: "Communication OK",  dataType: DataType.BOOLEAN, states: { 0: "FAULT", 1: "OK" } }),
@@ -40,9 +49,10 @@ export class MockAdapter extends DataSourceAdapter {
     this._timer = null;
     this._t0 = 0;
     const vfds = [
-      { assetId: "VFD1", assetName: "VFD 1 — Infeed Conveyor", running: true,  base: 45 },
-      { assetId: "VFD2", assetName: "VFD 2 — Wash Pump",       running: true,  base: 58 },
-      { assetId: "VFD3", assetName: "VFD 3 — Discharge",       running: false, base: 0 },
+      // VFD1: runs clean NOW but last_fault remembers an intermittent accel-overcurrent trip
+      { assetId: "VFD1", assetName: "VFD 1 — Infeed Conveyor", running: true,  base: 45, lastFault: 9 },
+      { assetId: "VFD2", assetName: "VFD 2 — Wash Pump",       running: true,  base: 58, lastFault: 0 },
+      { assetId: "VFD3", assetName: "VFD 3 — Discharge",       running: false, base: 0,  lastFault: 6 },
     ];
     this._vfdMeta = new Map(vfds.map((v) => [v.assetId, v]));
     const tags = [];
@@ -115,7 +125,8 @@ export class MockAdapter extends DataSourceAdapter {
         put(`${aid}.torque`, +(42 + 8 * wave(11)).toFixed(1));
         put(`${aid}.heatsink`, +(38 + 4 * wave(120)).toFixed(1));
         put(`${aid}.fault_code`, 0);
-        put(`${aid}.status_word`, 0x0007);
+        put(`${aid}.last_fault`, v.lastFault);
+        put(`${aid}.status_word`, 0x0007);   // Running + At Speed + Ready
         put(`${aid}.run_cmd`, 1);
         put(`${aid}.direction`, aid === "VFD2" ? 1 : 0);
         put(`${aid}.comm_ok`, 1);
@@ -124,7 +135,8 @@ export class MockAdapter extends DataSourceAdapter {
         put(`${aid}.dc_bus`, +(322 + 1 * wave(31)).toFixed(1));
         put(`${aid}.heatsink`, +(30 + 1 * wave(120)).toFixed(1));
         put(`${aid}.fault_code`, 6);                 // a parked drive showing an overheat fault
-        put(`${aid}.status_word`, 0x0020);
+        put(`${aid}.last_fault`, v.lastFault);
+        put(`${aid}.status_word`, 0x0020);           // Faulted
         put(`${aid}.run_cmd`, 0);
         put(`${aid}.direction`, 0);
         put(`${aid}.comm_ok`, 1);

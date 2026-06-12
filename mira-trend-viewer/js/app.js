@@ -14,7 +14,10 @@ import { Toolbar } from "./ui/toolbar.js";
 function pickAdapter() {
   const src = new URLSearchParams(location.search).get("source") || "mock";
   if (src === "historian") {
-    const base = new URLSearchParams(location.search).get("base") || "http://127.0.0.1:8766";
+    // served BY the historian (mounted at /viewer) -> same origin; standalone -> default port
+    const sameOrigin = location.pathname.startsWith("/viewer");
+    const base = new URLSearchParams(location.search).get("base") ||
+      (sameOrigin ? location.origin : "http://127.0.0.1:8766");
     return { adapter: new HistorianAdapter(base), label: "Trend historian", state: "ok" };
   }
   return { adapter: new MockAdapter(), label: "Mock data (demo)", state: "ok" };

@@ -3,7 +3,8 @@
 // export. The browser, chart, and pen list all read/observe this one store, which is what
 // keeps a checkbox in the browser and a pen in the pen list in sync. Fully unit-testable.
 
-import { PEN_PALETTE, formatValue, unitLabel, qualityLabel, isDigitalTag } from "./model.js";
+import { PEN_PALETTE, formatValue, unitLabel, qualityLabel, isDigitalTag,
+  wordBitTags } from "./model.js";
 
 const HISTORY_CAP = 6000; // max samples per pen kept in memory (ring buffer)
 
@@ -27,16 +28,29 @@ export class TrendStore {
     this.refreshMs = 1000;
     this._subs = new Set();
     this._colorCursor = 0;
+    this._wordChildren = new Map();  // word parentId -> [{id, bit}] derived bit children
   }
 
   // ── catalog ────────────────────────────────────────────────────────────────
-  /** Replace/merge the tag catalog (from an adapter). Preserves selection + history. */
+  /** Replace/merge the tag catalog (from an adapter). Preserves selection + history.
+   *  WORD tags with a declared bit map are expanded here (once, centrally — like scaling)
+   *  into boolean child tags placed right after the parent, so each named status bit is a
+   *  trendable digital pen with no adapter or UI changes. */
   setTags(tagList) {
     const next = new Map();
-    for (const t of tagList) {
+    this._wordChildren = new Map();   // parentId -> [{id, bit}]
+    const add = (t) => {
       const prev = this.tags.get(t.id);
       const scaled = { ...t, currentValue: applyScale(t, t.currentValue) };
       next.set(t.id, prev ? { ...scaled, selectedForTrend: prev.selectedForTrend } : scaled);
+    };
+    for (const t of tagList) {
+      add(t);
+      if (t.bits) {
+        const kids = wordBitTags(t);
+        for (const k of kids) add(k);
+        this._wordChildren.set(t.id, kids.map((k) => ({ id: k.id, bit: k.metadata.bit })));
+      }
     }
     this.tags = next;
     // drop pens whose tag vanished
@@ -50,7 +64,22 @@ export class TrendStore {
   /** Apply a batch of live updates: [{id, currentValue, quality, timestamp, lastChangedTimestamp}].
    *  Appends to history for SELECTED pens only (chart data) unless paused. */
   updateValues(updates, now = Date.now()) {
+    // fan word-parent updates out to their derived bit children (decoded once, here)
+    const expanded = [];
     for (const u of updates) {
+      expanded.push(u);
+      const kids = this._wordChildren.get(u.id);
+      if (!kids) continue;
+      for (const k of kids) {
+        const cu = { id: k.id, quality: u.quality, timestamp: u.timestamp,
+          lastChangedTimestamp: u.lastChangedTimestamp };
+        if (u.currentValue !== undefined) {
+          cu.currentValue = u.currentValue === null ? null : (Number(u.currentValue) >> k.bit) & 1;
+        }
+        expanded.push(cu);
+      }
+    }
+    for (const u of expanded) {
       const tag = this.tags.get(u.id);
       if (!tag) continue;
       if (u.currentValue !== undefined) tag.currentValue = applyScale(tag, u.currentValue);
