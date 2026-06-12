@@ -319,11 +319,13 @@ export default function NamespacePage() {
         <ToolbarButton
           icon={<FolderPlus className="h-3.5 w-3.5" />}
           label="New Folder"
+          testId="toolbar-new-folder"
           onClick={() => setNewFolder({ parentId: selected?.id ?? null, value: "" })}
         />
         <ToolbarButton
           icon={<Upload className="h-3.5 w-3.5" />}
           label="Upload"
+          testId="toolbar-upload"
           disabled={!selected}
           onClick={() => {
             if (!selected) return;
@@ -356,6 +358,7 @@ export default function NamespacePage() {
         type="file"
         multiple
         className="hidden"
+        data-testid="namespace-file-input"
         onChange={(e) => {
           if (selected) void uploadFiles(selected.id, e.target.files);
           e.target.value = "";
@@ -975,18 +978,20 @@ function DetailsSection({ node }: { node: NamespaceNode }) {
 // ── Small components ──────────────────────────────────────────────────────────
 
 function ToolbarButton({
-  icon, label, onClick, disabled,
+  icon, label, onClick, disabled, testId,
 }: {
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  testId?: string;
 }) {
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
+      data-testid={testId}
       className="flex items-center gap-1 border border-gray-500 bg-[#d4d0c8] px-2 py-0.5 text-[12px] hover:bg-[#e8e8e8] disabled:cursor-not-allowed disabled:opacity-40 active:border-inset"
     >
       {icon}
@@ -1074,6 +1079,7 @@ function NewFolderRow({
       <Folder className="h-3.5 w-3.5 text-gray-400" />
       <input
         autoFocus
+        data-testid="new-folder-input"
         className="h-5 flex-1 rounded border border-blue-400 bg-white px-1 text-[12px] text-black"
         placeholder="Folder name…"
         value={value}
@@ -1090,7 +1096,7 @@ function NewFolderRow({
 
 function EmptyState() {
   return (
-    <div className="text-center">
+    <div className="text-center" data-testid="namespace-empty">
       <Layers className="mx-auto h-10 w-10 text-gray-200" />
       <p className="mt-3 text-sm text-gray-500">Your namespace is empty.</p>
       <p className="mt-1 text-xs text-gray-400">Use &ldquo;New Folder&rdquo; in the toolbar to create your first node.</p>

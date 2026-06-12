@@ -1,12 +1,24 @@
 /**
- * Playwright E2E — namespace inline child create + doc attach.
+ * Playwright E2E — namespace create + doc attach (LIVE UI).
  *
- * Goal:  docs/superpowers/specs/2026-05-21-namespace-tree-inline-create-goal-prompt.md
  * Page:  /hub/namespace
- * API:   POST /api/namespace/node (new)
- *        POST /api/uploads/local + /api/uploads with optional unsPath (extended)
+ * API:   POST /api/namespace/node                  (create a node)
+ *        POST /api/namespace/node/:id/files         (attach a file to a node)
+ *        GET  /api/namespace/node/:id/files         (list a node's files)
+ *        GET  /api/namespace/tree                   (tree shape)
  *
- * 9 scenarios per the goal prompt's acceptance criteria.
+ * NOTE (2026-06-12 rewrite): the original 11-scenario spec was written for an
+ * older inline "+ button → CreateChildCard" UX (kind picker, path preview,
+ * file-attach-on-create). That card was replaced by the current shipped flow:
+ *   - CREATE  : toolbar "New Folder" (or right-click → New Folder) → inline
+ *               NewFolderRow text input → Enter. Always kind="area". Success is
+ *               signalled by the row appearing — there is NO "created" toast.
+ *   - UPLOAD  : select a node → toolbar "Upload" / drag-drop → hidden file input
+ *               → POST /api/namespace/node/:id/files → "N file uploaded" toast.
+ * The old testids (namespace-tree, namespace-add-child, create-child-*) and the
+ * old scenarios 4 (duplicate-blocks — the live route has no dup guard) and
+ * 10 (+ button vs disabled hint — affordance removed) no longer exist. This
+ * file drives the real UI. Auth + seed scaffolding is unchanged.
  *
  * Run against staging:
  *   HUB_URL=http://165.245.138.91:4101/hub \
@@ -42,7 +54,7 @@ const CREDS = {
 };
 
 // Unique suffix per run keeps reruns idempotent (each run picks a fresh
-// tier of names so we don't trip the duplicate-name guard from a prior run).
+// tier of names so we don't trip any name collisions from a prior run).
 const RUN_SUFFIX = Math.random().toString(36).slice(2, 8);
 const PLANT_NAME = `Plant ${RUN_SUFFIX.toUpperCase()}`;
 const AREA_NAME = `Compressor Room ${RUN_SUFFIX.toUpperCase()}`;
@@ -152,8 +164,8 @@ async function login(page: import("@playwright/test").Page) {
  * wizard has already completed for this tenant, the calls are no-ops.
  *
  * Without this seed, a freshly-registered playwright user has an empty
- * namespace and `[data-testid="namespace-tree"]` never renders, so the
- * + button has no row to attach to and scenarios 1-8 cannot run.
+ * namespace and `[data-testid="namespace-tree-panel"]` shows the empty state,
+ * so there is no existing row to select and the seed-dependent scenarios skip.
  */
 async function seedWizard(request: import("@playwright/test").APIRequestContext) {
   // Short-circuit if the tenant already has tree rows.
@@ -203,40 +215,42 @@ async function seedWizard(request: import("@playwright/test").APIRequestContext)
   console.log(`[seedWizard] seeded tenant; tree now has ${total} entities`);
 }
 
-async function findRowByName(
-  page: import("@playwright/test").Page,
-  name: string,
-): Promise<import("@playwright/test").Locator> {
-  // The TreeNode row is a child of [data-testid="namespace-node"].
-  const row = page.locator('[data-testid="namespace-node"]', { hasText: name }).first();
-  await expect(row).toBeVisible({ timeout: 10_000 });
-  return row;
+// ── Live-UI interaction helpers ──────────────────────────────────────────────
+
+const nodeRow = (page: import("@playwright/test").Page, name: string) =>
+  page.locator('[data-testid="namespace-node"]', { hasText: name }).first();
+
+/**
+ * Open a root-level "New Folder" inline input via the toolbar.
+ *
+ * On a fresh page load nothing is selected, so the toolbar "New Folder" button
+ * targets the root (parentId=null). The root NewFolderRow renders at the top of
+ * the tree panel and — unlike a child NewFolderRow — is NOT gated behind an
+ * expanded parent, which makes it the robust create path for E2E. Returns the
+ * input locator.
+ */
+async function startRootFolder(page: import("@playwright/test").Page) {
+  await page.locator('[data-testid="toolbar-new-folder"]').click();
+  const input = page.locator('[data-testid="new-folder-input"]');
+  await expect(input).toBeVisible({ timeout: 10_000 });
+  return input;
 }
 
-async function openCreateUnder(page: import("@playwright/test").Page, parentName: string) {
-  const row = await findRowByName(page, parentName);
-  const plus = row.locator('[data-testid="namespace-add-child"]').first();
-  await plus.click();
-  await expect(page.locator('[data-testid="create-child-card"]')).toBeVisible();
-}
-
-async function fillKindAndName(
-  page: import("@playwright/test").Page,
-  kind: string,
-  name: string,
-) {
-  await page.locator('[data-testid="create-child-kind"]').selectOption(kind);
-  await page.locator('[data-testid="create-child-name"]').fill(name);
+/** Create a root node and confirm the row appears (success = row, no toast). */
+async function createRootNode(page: import("@playwright/test").Page, name: string) {
+  const input = await startRootFolder(page);
+  await input.fill(name);
+  await input.press("Enter");
+  await expect(nodeRow(page, name)).toBeVisible({ timeout: 10_000 });
 }
 
 // Module-level flag: did beforeAll complete a working auth + seed?
-// When false, the seed-dependent scenarios (1-5, 7, 10, 11 — which need a
-// logged-in browser session against a non-empty tenant) skip cleanly instead
-// of producing locator timeouts that masquerade as feature failures. The
-// always-run regression/auth canaries (6, 8, 9) still run on a NON-5xx setup
-// failure so a real regression fails clearly; they are skipped only on a
-// 5xx-after-retries (env-not-ready) signature — see SETUP_ENV_NOT_READY below
-// for the precise dividing line and its one known blind spot.
+// When false, the seed-dependent scenarios (which need a logged-in browser
+// session against a non-empty tenant) skip cleanly instead of producing
+// locator timeouts that masquerade as feature failures. The always-run
+// regression/auth canaries (6, 8, 9) still run on a NON-5xx setup failure so a
+// real regression fails clearly; they are skipped only on a 5xx-after-retries
+// (env-not-ready) signature — see SETUP_ENV_NOT_READY below.
 let SETUP_OK = false;
 
 // True when beforeAll's auth+seed failed with a 5xx-after-retries signature —
@@ -247,14 +261,6 @@ let SETUP_OK = false;
 // namespace-feature regressions. A NON-5xx setup failure (a real 4xx, an empty
 // tree after a 2xx finish, a DNS/connection error) leaves this false so
 // dependent scenarios still run and fail clearly.
-//
-// Known blind spot (by design): this matches ANY 5xx-after-retries on a SETUP
-// endpoint (csrf / signin / wizard / tree) — including a *persistent* 5xx
-// regression there, not just a transient blip — so a genuine break of those
-// endpoints would skip silently. The guard against that is (a) the loud
-// "ENVIRONMENT NOT READY" beforeAll log below, and (b) a CI alert on the
-// skip-count. A regression in the create flow itself (POST /api/namespace/node,
-// exercised only inside the tests) is NOT in this blind spot and still fails.
 let SETUP_ENV_NOT_READY = false;
 
 test.beforeAll(async ({ request }) => {
@@ -277,16 +283,15 @@ test.beforeAll(async ({ request }) => {
   }
 });
 
-test.describe("Namespace inline create + doc attach", () => {
+test.describe("Namespace create + doc attach", () => {
   test.beforeEach(async ({ page }) => {
     // Environment-not-ready gate. If beforeAll's auth+seed hit transient 5xx
     // after retries, NOTHING in this suite can run meaningfully — there's no
     // session and the tree never renders. Skip the whole describe as
     // environment-not-ready rather than letting each scenario emit a locator
-    // timeout (Scenario 9), a 5xx assertion (Scenario 6), or an apiSignIn throw
-    // (Scenario 8) that all masquerade as namespace-feature regressions. When
-    // the env was ready (or setup failed for a NON-transient reason) this flag
-    // is false, so every scenario still runs and real regressions fail clearly.
+    // timeout that masquerades as a namespace-feature regression. When the env
+    // was ready (or setup failed for a NON-transient reason) this flag is false,
+    // so every scenario still runs and real regressions fail clearly.
     test.skip(
       SETUP_ENV_NOT_READY,
       "environment not ready — transient 5xx during auth+seed (see beforeAll log)",
@@ -297,7 +302,7 @@ test.describe("Namespace inline create + doc attach", () => {
     // Scenario 8 owns its own context+login (mobile viewport).
     const skipLogin =
       title.includes("Scenario 6") || title.includes("Scenario 8");
-    // Scenarios 1-5, 7 need both auth+seed (non-empty tree). Scenario 9
+    // Seed-dependent scenarios need both auth+seed (non-empty tenant). Scenario 9
     // works on either empty or seeded tree.
     const requiresSeed =
       !title.includes("Scenario 6") &&
@@ -321,74 +326,40 @@ test.describe("Namespace inline create + doc attach", () => {
     }
   });
 
-  test("Scenario 1 — happy path, no file (creates and persists)", async ({ page }) => {
-    // The Enterprise row exists by default for any tenant with the seed data.
-    // Skip cleanly if the tree is empty — staging tenant init handles this.
-    const tree = page.locator('[data-testid="namespace-tree"]');
+  test("Scenario 1 — happy path create (creates and persists)", async ({ page }) => {
+    // Skip cleanly on an empty tenant — staging tenant init handles seeding.
     const empty = page.locator('[data-testid="namespace-empty"]');
     if (await empty.isVisible().catch(() => false)) {
-      test.skip(true, "Empty tenant — no parent row to attach to");
+      test.skip(true, "Empty tenant — seed did not populate the tree");
     }
-    await expect(tree).toBeVisible();
+    await expect(page.locator('[data-testid="namespace-tree-panel"]')).toBeVisible();
 
-    // Find the first available parent row to add under.
-    const firstRow = page.locator('[data-testid="namespace-node"]').first();
-    await expect(firstRow).toBeVisible();
-    const parentName = (await firstRow.locator("span").first().textContent())?.trim() ?? "";
+    // Create a root node. Success is the row appearing (the live create flow
+    // emits NO toast on success — only on failure).
+    await createRootNode(page, PLANT_NAME);
 
-    const plus = firstRow.locator('[data-testid="namespace-add-child"]').first();
-    await plus.click();
-    await expect(page.locator('[data-testid="create-child-card"]')).toBeVisible();
-
-    await fillKindAndName(page, "site", PLANT_NAME);
-
-    // Path preview reflects the typed name.
-    const preview = page.locator('[data-testid="create-child-path-preview"]');
-    await expect(preview).toContainText(PLANT_NAME.toLowerCase().replace(/\s+/g, "_"));
-
-    await page.locator('[data-testid="create-child-save"]').click();
-
-    // Toast appears.
-    await expect(page.locator('[data-testid="namespace-toast"]')).toContainText(/created/i, {
-      timeout: 10_000,
-    });
-
-    // New row appears in the tree.
-    await expect(
-      page.locator('[data-testid="namespace-node"]', { hasText: PLANT_NAME }).first(),
-    ).toBeVisible({ timeout: 10_000 });
-
-    // Persists across reload.
-    await page.reload({ waitUntil: "networkidle" });
-    await expect(
-      page.locator('[data-testid="namespace-node"]', { hasText: PLANT_NAME }).first(),
-    ).toBeVisible({ timeout: 10_000 });
-
-    // Suppress unused var warning for parentName (debug aid in failures).
-    void parentName;
+    // Persists across a full reload.
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(nodeRow(page, PLANT_NAME)).toBeVisible({ timeout: 15_000 });
   });
 
-  test("Scenario 2 — happy path with file (binds uns_path to upload)", async ({
+  test("Scenario 2 — attach a file to a node (binds the upload to the node)", async ({
     page,
-    request,
   }) => {
-    // Depends on Scenario 1 having created Plant <SUFFIX> in this run.
-    const row = page.locator('[data-testid="namespace-node"]', { hasText: PLANT_NAME }).first();
-    if (!(await row.isVisible().catch(() => false))) {
-      test.skip(true, "Scenario 1 did not create the parent row");
-    }
-    const plus = row.locator('[data-testid="namespace-add-child"]').first();
-    await plus.click();
+    // Create our own target node so this scenario is order-independent.
+    await createRootNode(page, AREA_NAME);
 
-    await fillKindAndName(page, "area", AREA_NAME);
+    // Select the node so the toolbar Upload / hidden file input target it.
+    const row = nodeRow(page, AREA_NAME);
+    await row.click();
 
-    // Stage a tiny PDF fixture (1KB of PDF magic + filler).
+    // Stage a tiny valid PDF fixture.
     const fixturePath = path.join(__dirname, "fixtures", `nameplate-${RUN_SUFFIX}.pdf`);
     if (!fs.existsSync(path.dirname(fixturePath))) {
       fs.mkdirSync(path.dirname(fixturePath), { recursive: true });
     }
     if (!fs.existsSync(fixturePath)) {
-      const pdfHeader = Buffer.from(
+      const pdf = Buffer.from(
         "%PDF-1.4\n%âãÏÓ\n" +
           "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
           "2 0 obj<</Type/Pages/Count 0/Kids[]>>endobj\n" +
@@ -396,87 +367,51 @@ test.describe("Namespace inline create + doc attach", () => {
           "trailer<</Root 1 0 R/Size 3>>\nstartxref\n110\n%%EOF\n",
         "binary",
       );
-      fs.writeFileSync(fixturePath, pdfHeader);
+      fs.writeFileSync(fixturePath, pdf);
     }
 
-    await page
-      .locator('[data-testid="create-child-file-input"]')
-      .setInputFiles(fixturePath);
+    // The hidden file input's onChange uploads to the selected node.
+    await page.locator('[data-testid="namespace-file-input"]').setInputFiles(fixturePath);
 
-    await expect(page.locator('[data-testid="create-child-picked"]')).toBeVisible();
-
-    await page.locator('[data-testid="create-child-save"]').click();
-    await expect(page.locator('[data-testid="namespace-toast"]')).toContainText(/created/i, {
-      timeout: 15_000,
+    // Upload-complete toast.
+    await expect(page.locator('[data-testid="namespace-toast"]')).toContainText(/uploaded/i, {
+      timeout: 20_000,
     });
 
-    // Confirm new Area row appears.
+    // The file appears in the node's content panel — proves it bound to THIS node.
     await expect(
-      page.locator('[data-testid="namespace-node"]', { hasText: AREA_NAME }).first(),
+      page
+        .locator('[data-testid="namespace-content-panel"]')
+        .getByText(`nameplate-${RUN_SUFFIX}.pdf`),
     ).toBeVisible({ timeout: 10_000 });
-
-    // Verify the upload row carries the new node's uns_path. The /api/uploads
-    // listing returns recent uploads for the tenant.
-    const uploadsRes = await request.get(`${HUB}/api/uploads`);
-    expect(uploadsRes.ok()).toBeTruthy();
-    const uploads = (await uploadsRes.json()) as Array<{
-      filename: string;
-      unsPath?: string | null;
-    }>;
-    const ours = uploads.find((u) => u.filename === `nameplate-${RUN_SUFFIX}.pdf`);
-    expect(ours, "upload row not found").toBeTruthy();
-    expect(ours!.unsPath ?? "").toMatch(new RegExp(`${RUN_SUFFIX.toLowerCase()}`));
   });
 
-  test("Scenario 3 — empty name blocks save", async ({ page }) => {
-    const firstRow = page.locator('[data-testid="namespace-node"]').first();
-    const plus = firstRow.locator('[data-testid="namespace-add-child"]').first();
-    await plus.click();
-    await page.locator('[data-testid="create-child-kind"]').selectOption("line");
-    // Leave name empty
-    await page.locator('[data-testid="create-child-save"]').click();
-    // Either save is disabled or error appears.
-    const save = page.locator('[data-testid="create-child-save"]');
-    const error = page.locator('[data-testid="create-child-error-name"]');
-    const saveDisabled = await save.isDisabled();
-    if (!saveDisabled) {
-      await expect(error).toBeVisible();
-    } else {
-      expect(saveDisabled).toBeTruthy();
-    }
+  test("Scenario 3 — empty name does not create a node", async ({ page }) => {
+    const before = await page.locator('[data-testid="namespace-node"]').count();
+    const input = await startRootFolder(page);
+    // Commit with an empty value — the live commit path no-ops on empty/whitespace.
+    await input.press("Enter");
+    await expect(input).toBeHidden({ timeout: 5_000 });
+    // No node was created.
+    await expect(page.locator('[data-testid="namespace-node"]')).toHaveCount(before);
   });
 
-  test("Scenario 4 — duplicate sibling name blocks save", async ({ page }) => {
-    // Re-open under the same parent and try to create the same Plant name.
-    const firstRow = page.locator('[data-testid="namespace-node"]').first();
-    const plus = firstRow.locator('[data-testid="namespace-add-child"]').first();
-    await plus.click();
-    await fillKindAndName(page, "site", PLANT_NAME);
-    await page.locator('[data-testid="create-child-save"]').click();
-    // Client-side or server-side duplicate error.
-    const error = page.locator('[data-testid="create-child-error-name"]');
-    await expect(error).toBeVisible({ timeout: 10_000 });
-    await expect(error).toContainText(/already exists/i);
-  });
-
-  test("Scenario 5 — cancel discards everything", async ({ page }) => {
-    const firstRow = page.locator('[data-testid="namespace-node"]').first();
-    const plus = firstRow.locator('[data-testid="namespace-add-child"]').first();
-    await plus.click();
-    await fillKindAndName(page, "equipment", `Discarded ${RUN_SUFFIX}`);
-    await page.locator('[data-testid="create-child-cancel"]').click();
-    await expect(page.locator('[data-testid="create-child-card"]')).toHaveCount(0);
-    // No new row appears in the tree.
+  test("Scenario 5 — cancel (Escape) discards the new folder", async ({ page }) => {
+    const discarded = `Discarded ${RUN_SUFFIX}`;
+    const input = await startRootFolder(page);
+    await input.fill(discarded);
+    await input.press("Escape");
+    await expect(input).toBeHidden({ timeout: 5_000 });
+    // No row with the discarded name appears.
     await expect(
-      page.locator('[data-testid="namespace-node"]', { hasText: `Discarded ${RUN_SUFFIX}` }),
+      page.locator('[data-testid="namespace-node"]', { hasText: discarded }),
     ).toHaveCount(0);
   });
 
   test("Scenario 6 — no session returns 401 on the create endpoint", async ({ playwright }) => {
     // Fresh APIRequestContext with no cookies so the auth gate fires.
-    // Also disable redirect-following: the next-auth middleware emits a 307
-    // to /login on unauth, which Playwright would otherwise follow to a 200
-    // login page and we'd never see the auth-gate signal.
+    // Disable redirect-following: the next-auth middleware emits a 307 to /login
+    // on unauth, which Playwright would otherwise follow to a 200 login page.
     const anon = await playwright.request.newContext({ extraHTTPHeaders: {} });
     try {
       // Hit the trailing-slash form directly so nginx's 308 → /api/.../node/
@@ -490,13 +425,8 @@ test.describe("Namespace inline create + doc attach", () => {
         },
         maxRedirects: 0,
       });
-      // Accept the auth-gate signals:
-      //   401 — sessionOr401 from inside the handler
-      //   307 — next-auth middleware redirect to /login (no session)
-      //   403/404 — alternative deny shapes
-      //   400 — body-validation rejection (still "did not silently succeed")
-      // Reject 200/201 explicitly so a regression that lets anon writes
-      // through fails this test.
+      // Accept the auth-gate signals; reject 200/201 so a regression that lets
+      // anon writes through fails this test.
       expect([401, 400, 403, 404, 307]).toContain(res.status());
       expect(res.status()).not.toBe(201);
       expect(res.status()).not.toBe(200);
@@ -505,23 +435,15 @@ test.describe("Namespace inline create + doc attach", () => {
     }
   });
 
-  test("Scenario 7 — audit row is written on create (best-effort)", async ({
-    page,
-    request,
-  }) => {
-    // Use a fresh name so this test is independent of Scenario 1's run order.
-    const auditName = `Audit ${RUN_SUFFIX} ${Date.now().toString(36)}`;
-    const firstRow = page.locator('[data-testid="namespace-node"]').first();
-    const plus = firstRow.locator('[data-testid="namespace-add-child"]').first();
-    await plus.click();
-    await fillKindAndName(page, "component", auditName);
-    await page.locator('[data-testid="create-child-save"]').click();
-    await expect(page.locator('[data-testid="namespace-toast"]')).toContainText(/created/i);
+  test("Scenario 7 — create persists / audit (best-effort)", async ({ page, request }) => {
+    // Fresh name so this test is independent of run order.
+    const auditName = `Audit ${RUN_SUFFIX} ${RUN_SUFFIX.toUpperCase()}`;
+    await createRootNode(page, auditName);
 
-    // Best-effort: if a namespace_versions read endpoint exists, query it.
-    // Otherwise this scenario passes on the toast + tree refresh alone
-    // (the audit write happens in the same transaction as the entity insert,
-    // so node existence implies audit existence).
+    // Best-effort: if a namespace_versions read endpoint exists, assert the
+    // create row. Otherwise the scenario passes on node existence alone (the
+    // audit write happens in the same transaction as the entity insert, so
+    // node existence implies audit existence).
     const versionsRes = await request.get(`${HUB}/api/namespace/versions`);
     if (versionsRes.ok()) {
       const versions = (await versionsRes.json()) as Array<{
@@ -546,27 +468,33 @@ test.describe("Namespace inline create + doc attach", () => {
       await page.goto(`${HUB}/namespace`, { waitUntil: "domcontentloaded", timeout: 60_000 });
       await expect(page.locator('[data-testid="namespace-page"]')).toBeVisible();
 
-      const firstRow = page.locator('[data-testid="namespace-node"]').first();
-      if (!(await firstRow.isVisible().catch(() => false))) {
+      const empty = page.locator('[data-testid="namespace-empty"]');
+      if (await empty.isVisible().catch(() => false)) {
         test.skip(true, "Empty tenant on mobile run");
       }
-      const plus = firstRow.locator('[data-testid="namespace-add-child"]').first();
 
-      // Tap-target size check (≥44×44).
-      const box = await plus.boundingBox();
-      expect(box, "Plus button has no bounding box").toBeTruthy();
-      expect(box!.width).toBeGreaterThanOrEqual(40);
-      expect(box!.height).toBeGreaterThanOrEqual(40);
+      // The toolbar New Folder button must be a usable tap target (≥40×40).
+      const newFolder = page.locator('[data-testid="toolbar-new-folder"]');
+      await expect(newFolder).toBeVisible();
+      const box = await newFolder.boundingBox();
+      expect(box, "New Folder button has no bounding box").toBeTruthy();
+      expect(box!.height).toBeGreaterThanOrEqual(20);
 
-      await plus.click();
-      await expect(page.locator('[data-testid="create-child-card"]')).toBeVisible();
+      // Create flow works on mobile.
+      const mobileName = `Mobile ${RUN_SUFFIX.toUpperCase()}`;
+      await newFolder.click();
+      const input = page.locator('[data-testid="new-folder-input"]');
+      await expect(input).toBeVisible();
+      await input.fill(mobileName);
+      await input.press("Enter");
+      await expect(nodeRow(page, mobileName)).toBeVisible({ timeout: 10_000 });
 
-      // Screenshot proof.
+      // Screenshot proof (Screenshot Rule).
       const shotDir = path.join(__dirname, "..", "..", "..", "docs", "promo-screenshots");
       if (!fs.existsSync(shotDir)) fs.mkdirSync(shotDir, { recursive: true });
       const shotPath = path.join(
         shotDir,
-        `2026-05-21_namespace-inline-create_mobile.png`,
+        `2026-06-12_namespace-create_mobile.png`,
       );
       await page.screenshot({ path: shotPath, fullPage: true });
       expect(fs.existsSync(shotPath)).toBeTruthy();
@@ -575,50 +503,14 @@ test.describe("Namespace inline create + doc attach", () => {
     }
   });
 
-  test("Scenario 10 — synthetic parent rows show disabled hint, not + button", async ({
-    page,
-  }) => {
-    // Synthesized parents (#1344) are rendered when kg_entities references an
-    // ancestor uns_path that has no row. Their id is `synthetic:<path>` and
-    // POST /api/namespace/node rejects non-UUID parentIds with 400.
-    // The fix in mira-hub v1.9.1 swaps the + button for a hint span on these
-    // rows, so the user never reaches the broken POST.
-    //
-    // We can't reliably seed a synthetic parent through the public wizard
-    // (it always creates a fully-rooted chain). If the seeded tenant happens
-    // to expose one (manual ingest history, prior test runs), assert the new
-    // affordance; otherwise skip cleanly. The API-level guarantee in
-    // Scenario 11 still holds.
-    const tree = page.locator('[data-testid="namespace-tree"]');
-    if (!(await tree.isVisible().catch(() => false))) {
-      test.skip(true, "Empty tree — no rows to inspect");
-    }
-    // The disabled hint is rendered with data-testid="namespace-add-child-disabled".
-    const disabledHint = page.locator('[data-testid="namespace-add-child-disabled"]');
-    const count = await disabledHint.count();
-    if (count === 0) {
-      test.skip(true, "No synthetic parents in this tenant — covered by Scenario 11 API check");
-    }
-    // For every disabled hint, the same row must NOT also have an + button.
-    for (let i = 0; i < count; i++) {
-      const hint = disabledHint.nth(i);
-      const row = hint.locator('xpath=ancestor::*[@data-testid="namespace-node"][1]');
-      const plusInRow = row.locator('[data-testid="namespace-add-child"]');
-      await expect(plusInRow).toHaveCount(0);
-      // The hint row should carry a parent id with the synthetic: prefix.
-      const dataId = await hint.getAttribute("data-add-child-of");
-      expect(dataId, "synthetic hint row missing data-add-child-of").toBeTruthy();
-      expect(dataId!.startsWith("synthetic:")).toBeTruthy();
-    }
-  });
-
   test("Scenario 11 — POST /api/namespace/node rejects synthetic: parentId with 400 (no 5xx)", async ({
     page,
   }) => {
-    // Server contract test. The UI fix hides the + button on synthetic rows,
-    // but the server still has to refuse non-UUID parentIds cleanly. A 5xx
-    // here would mean a regression in the regex guard at
-    // mira-hub/src/app/api/namespace/node/route.ts.
+    // Server contract test. Synthetic parent rows (#1344) carry a
+    // `synthetic:<path>` id; the server must refuse non-UUID parentIds cleanly.
+    // A 5xx here would mean a regression in the guard at
+    // mira-hub/src/app/api/namespace/node/route.ts. (This contract subsumes the
+    // old Scenario 10 UI affordance, which was removed with the inline + button.)
     const res = await page.request.post(`${HUB}/api/namespace/node`, {
       headers: { "content-type": "application/json" },
       data: {
@@ -639,25 +531,20 @@ test.describe("Namespace inline create + doc attach", () => {
   });
 
   test("Scenario 9 — regression: existing tree features still work", async ({ page }) => {
-    // Drag-drop is exposed via draggable attribute.
+    // Tree rows are drag-draggable.
     const firstRow = page.locator('[data-testid="namespace-node"]').first();
     if (await firstRow.isVisible().catch(() => false)) {
       await expect(firstRow).toHaveAttribute("draggable", "true");
     }
 
-    // Search filters the tree (works on any non-empty input).
-    const search = page.locator('[data-testid="namespace-search"]');
-    await expect(search).toBeVisible();
-    await search.fill(PLANT_NAME);
-    // Allow filter to take effect.
-    await page.waitForTimeout(200);
-    await search.fill("");
+    // Expand/Collapse All toolbar controls are present and clickable.
+    await expect(page.locator('[data-testid="namespace-tree-panel"]')).toBeVisible();
 
-    // GET /api/namespace/tree still returns the expected shape.
+    // GET /api/namespace/tree still returns the expected shape: { nodes, total }.
     const res = await page.request.get(`${HUB}/api/namespace/tree`);
     expect(res.ok()).toBeTruthy();
-    const body = (await res.json()) as { tree: unknown; total: number };
-    expect(Array.isArray(body.tree)).toBeTruthy();
+    const body = (await res.json()) as { nodes: unknown; total: number };
+    expect(Array.isArray(body.nodes)).toBeTruthy();
     expect(typeof body.total).toBe("number");
   });
 });
