@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MockAdapter } from "../js/adapters/mockAdapter.js";
 import { groupTags, SourceType, Quality, isDigitalTag, formatValue } from "../js/model.js";
+import { TrendStore } from "../js/store.js";
 
 test("browse returns a catalog spanning all 5 groups with 3 VFD devices", async () => {
   const a = new MockAdapter();
@@ -56,6 +57,41 @@ test("the parked VFD3 reports stopped + a fault code", async () => {
   assert.equal(u.find((x) => x.id === "VFD3.fault_code").currentValue, 6);
   const tag = (await a.browse()).find((t) => t.id === "VFD3.fault_code");
   assert.equal(formatValue(tag), "oH (overheat)");
+});
+
+test("last_fault persists the previous trip after the active fault clears", async () => {
+  const a = new MockAdapter();
+  await a.connect();
+  const u = a.tick(a._t0 + 1000);
+  // VFD1 runs clean now — but the last-fault register still holds the intermittent trip
+  assert.equal(u.find((x) => x.id === "VFD1.fault_code").currentValue, 0, "active fault cleared");
+  const last = u.find((x) => x.id === "VFD1.last_fault").currentValue;
+  assert.notEqual(last, 0, "last fault survives the reset");
+  const tag = (await a.browse()).find((t) => t.id === "VFD1.last_fault");
+  assert.match(formatValue(tag), /ocA/, "renders the fault mnemonic, not a bare number");
+  // the faulted parked drive shows the same code in both registers
+  assert.equal(u.find((x) => x.id === "VFD3.last_fault").currentValue,
+    u.find((x) => x.id === "VFD3.fault_code").currentValue);
+});
+
+test("status word carries a bit map and decodes into trendable bit pens via the store", async () => {
+  const a = new MockAdapter();
+  await a.connect();
+  const tags = await a.browse();
+  const sw = tags.find((t) => t.id === "VFD1.status_word");
+  assert.equal(sw.bits !== null && typeof sw.bits === "object", true, "status word declares its bits");
+  const s = new TrendStore();
+  s.setTags(tags);
+  assert.notEqual(s.getTag("VFD1.status_word.b0"), undefined, "bit children exist in the catalog");
+  s.selectPen("VFD1.status_word.b0");
+  s.updateValues(a.tick(a._t0 + 1000));
+  assert.equal(s.getTag("VFD1.status_word.b0").currentValue, 1, "running drive: Running bit = 1");
+  assert.equal(s.getHistory("VFD1.status_word.b0").at(-1).v, 1, "bit pen trends");
+  // the parked, faulted VFD3 decodes its Faulted status bit
+  const faultedBit = s.allTags().find((t) =>
+    t.metadata?.parentWord === "VFD3.status_word" && t.displayName === "Faulted");
+  assert.notEqual(faultedBit, undefined, "VFD3 exposes a named Faulted bit");
+  assert.equal(faultedBit.currentValue, 1);
 });
 
 test("subscribe pushes an immediate batch then on interval; unsubscribe stops", async () => {

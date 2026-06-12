@@ -7,7 +7,7 @@
     },
     "trendUrl": {
       "paramType": "value",
-      "value": "http://127.0.0.1:8766/chart?asset=conveyor_demo"
+      "value": "http://127.0.0.1:8766/viewer/index.html?source=historian"
     }
   },
   "props": {
@@ -44,7 +44,7 @@
                 "fontSize": "13px",
                 "padding": "8px 8px"
               },
-              "text": "Conv_Simple — live signal trends"
+              "text": "Conv_Simple — trend viewer (browse · pens · history)"
             },
             "type": "ia.display.label"
           }
@@ -74,7 +74,7 @@
               }
             },
             "props": {
-              "source": "http://127.0.0.1:8766/chart?asset=conveyor_demo",
+              "source": "http://127.0.0.1:8766/viewer/index.html?source=historian",
               "style": {
                 "border": "none",
                 "height": "100%",

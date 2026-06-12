@@ -33,6 +33,7 @@ Modbus connection slot; they will fight. Stop the historian first to take a labe
 | `GET /chart?asset=…` | the self-contained ISA-101 trend chart page (no external JS) |
 | `GET /trend?tag=&window=&points=` | downsampled time-series JSON |
 | `GET /trends/summary?window=` | per-tag derived summary (chart intel + MIRA, next phase) |
+| `GET /viewer/` | the full trend viewer (`mira-trend-viewer/`, static mount, repo checkout only) — open with `?source=historian` |
 
 Quick check: `curl http://127.0.0.1:8766/trends/summary?window=30`
 
@@ -43,9 +44,14 @@ The `Trends/TrendPanel` view + `/trends` route + NavBar **TRENDS** button are al
 PowerShell -ExecutionPolicy Bypass -File ignition\deploy_ignition.ps1
 # browse: http://localhost:8088/data/perspective/client/ConveyorMIRA/trends
 ```
-**Remote clients:** the chart iframe defaults to `http://127.0.0.1:8766/chart` (same-laptop). For a
-phone/remote Perspective session, set the `TrendPanel` `trendUrl` param to the PLC laptop's
-Tailscale IP (e.g. `http://100.72.2.99:8766/chart?asset=conveyor_demo`) and run the historian with
+The TrendPanel iframe now embeds the **full trend viewer**
+(`http://127.0.0.1:8766/viewer/index.html?source=historian` — the historian serves
+`mira-trend-viewer/` itself at `/viewer`, same origin as `/trends/summary`, so the viewer's
+adapter auto-targets the serving origin). The bare single-chart page is still at `/chart`.
+
+**Remote clients:** the iframe URL defaults to `127.0.0.1` (same-laptop). For a phone/remote
+Perspective session, set the `TrendPanel` `trendUrl` param to the PLC laptop's Tailscale IP
+(e.g. `http://100.72.2.99:8766/viewer/index.html?source=historian`) and run the historian with
 `--bind 0.0.0.0`.
 
 ## Verify

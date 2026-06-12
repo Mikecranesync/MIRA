@@ -79,6 +79,7 @@ body { background: var(--bg); color: var(--text); font: var(--font); overflow: h
 .row { display: flex; align-items: center; gap: 8px; padding: 4px 10px; }
 .row:hover { background: var(--bg3); }
 .row.inactive { opacity: .5; }
+.row.bitrow { padding-left: 26px; }  /* derived status-word bit, indented under its parent word */
 .row input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; flex: none; }
 .row .swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; background: transparent; }
 .row .rname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

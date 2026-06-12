@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { TrendStore } from "../js/store.js";
-import { createTag, SourceType, Quality } from "../js/model.js";
+import { createTag, SourceType, DataType, Quality } from "../js/model.js";
 
 function seed() {
   const store = new TrendStore();
@@ -108,6 +108,54 @@ test("scale/offset applied centrally at ingest (raw counts -> engineering)", () 
   s.updateValues([{ id: "raw.pct", currentValue: 27648 }], 1000);
   assert.equal(Math.round(s.getTag("raw.pct").currentValue), 100, "updateValues scales raw");
   assert.equal(Math.round(s.getHistory("raw.pct").at(-1).v), 100, "history stores engineering value");
+});
+
+function seedWord() {
+  const s = new TrendStore();
+  s.setTags([
+    createTag({ id: "VFD1.status_word", sourceType: SourceType.VFD, dataType: DataType.WORD,
+      deviceId: "VFD1", bits: { 0: "Running", 5: "Faulted" }, currentValue: 0x01, timestamp: 500 }),
+    createTag({ id: "AI.temp", sourceType: SourceType.ANALOG_INPUT, currentValue: 72 }),
+  ]);
+  return s;
+}
+
+test("setTags expands a WORD-with-bits tag into bit children placed after the parent", () => {
+  const s = seedWord();
+  const ids = s.allTags().map((t) => t.id);
+  assert.deepEqual(ids, ["VFD1.status_word", "VFD1.status_word.b0", "VFD1.status_word.b5", "AI.temp"]);
+  assert.equal(s.getTag("VFD1.status_word.b0").currentValue, 1, "decoded from the parent's initial value");
+  assert.equal(s.getTag("VFD1.status_word.b5").currentValue, 0);
+});
+
+test("a word-parent update fans out to its bit children, including selected-pen history", () => {
+  const s = seedWord();
+  s.selectPen("VFD1.status_word.b5");
+  s.updateValues([{ id: "VFD1.status_word", currentValue: 0x20, timestamp: 1000 }]);
+  assert.equal(s.getTag("VFD1.status_word.b5").currentValue, 1, "Faulted bit set");
+  assert.equal(s.getTag("VFD1.status_word.b0").currentValue, 0, "Running bit cleared");
+  const h = s.getHistory("VFD1.status_word.b5");
+  assert.equal(h.at(-1).v, 1, "bit pen history follows the parent word");
+  assert.equal(h.at(-1).t, 1000, "bit sample carries the parent timestamp");
+  s.updateValues([{ id: "VFD1.status_word", currentValue: 0x00, timestamp: 2000 }]);
+  assert.equal(s.getHistory("VFD1.status_word.b5").at(-1).v, 0);
+});
+
+test("bit children inherit parent quality on update", () => {
+  const s = seedWord();
+  s.updateValues([{ id: "VFD1.status_word", currentValue: null, quality: Quality.STALE, timestamp: 1000 }]);
+  const kid = s.getTag("VFD1.status_word.b0");
+  assert.equal(kid.quality, Quality.STALE);
+  assert.equal(kid.currentValue, null, "no parent value -> honest null bit, not 0");
+});
+
+test("bit-child selection survives a re-browse (setTags)", () => {
+  const s = seedWord();
+  s.selectPen("VFD1.status_word.b0");
+  s.setTags([createTag({ id: "VFD1.status_word", sourceType: SourceType.VFD, dataType: DataType.WORD,
+    deviceId: "VFD1", bits: { 0: "Running", 5: "Faulted" }, currentValue: 0x01 })]);
+  assert.equal(s.isSelected("VFD1.status_word.b0"), true);
+  assert.equal(s.getPens().length, 1);
 });
 
 test("subscribe fires on mutation and unsubscribe stops it", () => {

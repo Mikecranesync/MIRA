@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   createTag, groupTags, isDigitalTag, formatValue, unitLabel, rangeLabel,
-  formatTimestamp, qualityLabel, SourceType, DataType, Quality,
+  formatTimestamp, qualityLabel, decodeWordBits, wordBitTags,
+  SourceType, DataType, Quality,
 } from "../js/model.js";
 
 test("createTag fills safe defaults and requires id", () => {
@@ -74,6 +75,37 @@ test("formatTimestamp returns honest 'timestamp unavailable' on null/invalid", (
   assert.equal(formatTimestamp(null), "timestamp unavailable");
   assert.equal(formatTimestamp("not-a-date"), "timestamp unavailable");
   assert.match(formatTimestamp(Date.UTC(2026, 0, 1, 12, 0, 0)), /\d\d:\d\d:\d\d/);
+});
+
+test("decodeWordBits: WORD with a bit map decodes into named bit values", () => {
+  const w = createTag({ id: "sw", sourceType: SourceType.VFD, dataType: DataType.WORD,
+    bits: { 0: "Running", 5: "Faulted" }, currentValue: 0x21 });
+  assert.deepEqual(decodeWordBits(w), [
+    { bit: 0, label: "Running", value: 1 },
+    { bit: 5, label: "Faulted", value: 1 },
+  ]);
+  w.currentValue = 0x20;
+  assert.deepEqual(decodeWordBits(w).map((b) => b.value), [0, 1]);
+  w.currentValue = null;
+  assert.deepEqual(decodeWordBits(w).map((b) => b.value), [null, null], "no value -> honest null, not 0");
+  const plain = createTag({ id: "p", sourceType: SourceType.VFD, dataType: DataType.WORD, currentValue: 7 });
+  assert.deepEqual(decodeWordBits(plain), [], "no bit map -> nothing to decode");
+});
+
+test("wordBitTags derives trendable boolean child tags from a WORD tag", () => {
+  const w = createTag({ id: "VFD1.status_word", sourceType: SourceType.VFD, dataType: DataType.WORD,
+    deviceId: "VFD1", deviceName: "VFD 1", bits: { 0: "Running", 5: "Faulted" },
+    currentValue: 0x20, quality: Quality.GOOD, timestamp: 1000 });
+  const kids = wordBitTags(w);
+  assert.equal(kids.length, 2);
+  assert.deepEqual(kids.map((k) => k.id), ["VFD1.status_word.b0", "VFD1.status_word.b5"]);
+  assert.equal(kids[0].displayName, "Running");
+  assert.equal(isDigitalTag(kids[0]), true, "bit child renders as a digital step lane");
+  assert.equal(kids[0].deviceId, "VFD1", "child stays grouped under the parent device");
+  assert.equal(kids[0].metadata.parentWord, "VFD1.status_word");
+  assert.equal(kids[0].currentValue, 0, "Running bit of 0x0020");
+  assert.equal(kids[1].currentValue, 1, "Faulted bit of 0x0020");
+  assert.equal(kids[1].timestamp, 1000, "child carries the parent timestamp");
 });
 
 test("qualityLabel covers all states", () => {

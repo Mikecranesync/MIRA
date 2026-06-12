@@ -65,7 +65,8 @@ export class SourceBrowser {
 
   _row(tag) {
     const row = document.createElement("div");
-    row.className = "row" + (tag.trendable ? "" : " inactive");
+    row.className = "row" + (tag.trendable ? "" : " inactive") +
+      (tag.metadata?.parentWord ? " bitrow" : "");
     const cb = document.createElement("input");
     cb.type = "checkbox"; cb.disabled = !tag.trendable;
     cb.onchange = () => this.store.togglePen(tag.id);
