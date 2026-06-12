@@ -19,12 +19,16 @@ name: oauth-redirect canary
 #   2 = probe could not run (app unreachable / signin shape changed) — NOT a
 #       Google rejection; investigate the probe/deploy, not the Console
 #   3 = inconclusive. The script emits the matching ::error::/::warning::
-# annotation itself, so there is no separate (and previously misleading)
-# "on failure" step. Canonical URI list: mira-hub/docs/auth/oauth-redirect-uris.md.
+# annotation itself. ONLY exit 1 pages: the "Page on redirect_uri_mismatch"
+# step below opens (or comments on) a deduplicated `oauth-incident` issue, so a
+# real sign-in break reaches a human instead of sitting unseen in the Actions
+# tab. exit 2/3 still turn the run red (honest status) but do NOT open an
+# incident — they're probe-could-not-run / inconclusive, not "sign-in broken".
+# Canonical URI list: mira-hub/docs/auth/oauth-redirect-uris.md.
 
 on:
   schedule:
-    - cron: "17 14 * * *"   # 14:17 UTC = 10:17 EDT / 09:17 EST
+    - cron: "17 * * * *"   # hourly at :17 — catch a sign-in break within ~1h, not ~24h
   workflow_dispatch: {}     # manual trigger from the Actions tab
   push:
     branches: [main]
@@ -42,6 +46,9 @@ jobs:
     name: Probe Google authorize endpoint
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write          # open / comment the oauth-incident issue on exit 1
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -52,6 +59,7 @@ jobs:
           bun-version: latest
 
       - name: Run canary
+        id: canary
         env:
           # No secret needed — the probe derives the public client_id from the
           # live signin flow. HUB_URL selects which deployment to verify;
@@ -59,4 +67,49 @@ jobs:
           # (override both to check preview / staging).
           HUB_URL: "https://app.factorylm.com"
           OAUTH_REDIRECT_URI_TO_VERIFY: "https://app.factorylm.com/api/auth/callback/google"
-        run: bun run mira-hub/scripts/verify-google-oauth-redirect.ts
+        run: |
+          set +e
+          bun run mira-hub/scripts/verify-google-oauth-redirect.ts
+          code=$?
+          set -e
+          # Single-line GITHUB_OUTPUT write — no heredoc delimiter (avoids the
+          # GITHUB_OUTPUT collision class from #1637).
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          # Keep the run's status honest: any non-zero exit shows red. The next
+          # step decides which non-zero exits actually page a human.
+          exit "$code"
+
+      - name: Page on redirect_uri_mismatch
+        # Only a REAL Google rejection (exit 1) opens an incident. exit 2/3 left
+        # the run red above but are NOT "sign-in broken", so they don't page.
+        if: ${{ always() && steps.canary.outputs.exit_code == '1' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          title="🔴 OAuth canary: Google sign-in broken (redirect_uri_mismatch)"
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          # Build the body via printf so each line has NO leading whitespace —
+          # 4+ leading spaces would render the whole issue as a code block. No
+          # backticks anywhere (avoids bash command substitution in the body).
+          body=$(printf '%s\n' \
+            "The hourly OAuth redirect canary detected a Google redirect_uri_mismatch." \
+            "**Google sign-in is broken on https://app.factorylm.com right now.**" \
+            "" \
+            "Failing run: ${run_url}" \
+            "" \
+            "Fix: add the redirect_uri the app sends to Google Cloud Console -> APIs &" \
+            "Services -> Credentials -> the Hub OAuth client -> Authorized redirect URIs." \
+            "Canonical list + runbook: mira-hub/docs/auth/oauth-redirect-uris.md")
+          # Ensure the label exists (no-op if it already does).
+          gh label create oauth-incident --color B60205 \
+            --description "Google OAuth sign-in incident (canary)" 2>/dev/null || true
+          # Dedup by a stable title marker so a multi-hour outage updates ONE
+          # issue instead of opening a new one every hour.
+          existing=$(gh issue list --state open --search 'in:title redirect_uri_mismatch' \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+            echo "commented on existing incident #$existing"
+          else
+            gh issue create --title "$title" --body "$body" --label oauth-incident
+          fi

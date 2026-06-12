@@ -11,6 +11,8 @@
     "test:watch": "vitest",
     "test:integration": "vitest run --testTimeout 30000 '**/*.integration.test.ts'",
     "db:check-order": "node db/check-migration-order.mjs",
+    "sitemap": "node scripts/sitemap.mjs",
+    "sitemap:check": "node scripts/sitemap.mjs --check",
     "kg:sync": "bun run scripts/kg-cmms-sync.ts",
     "cmms:sync": "bun run scripts/cmms-sync-worker.ts",
     "cmms:sync:once": "bun run scripts/cmms-sync-worker.ts --once",
