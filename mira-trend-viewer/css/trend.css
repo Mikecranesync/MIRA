@@ -1,0 +1,126 @@
+/* MIRA Trend Viewer — ISA-101 / High-Performance HMI styling.
+   Neutral gray canvas; alarm colors (red/amber/green) reserved for state only; minimal
+   decoration; no gradients/3D; data is the focus. */
+:root {
+  --bg: #1c1f22;          /* neutral background */
+  --bg2: #23272b;         /* panels */
+  --bg3: #2b3036;         /* cards / hover */
+  --line: #363c43;        /* borders / grid */
+  --line2: #444b53;
+  --text: #d7dbe0;        /* primary text */
+  --muted: #8b939c;       /* secondary text / neutral data */
+  --muted2: #69707a;
+  /* Reserved state colors — used ONLY for status, never as ordinary pen colors */
+  --alarm: #d24b3f;       /* red  = alarm / fault / stopped-unexpected */
+  --warn: #d99a2b;        /* amber= warning / uncertain */
+  --ok: #4f9e57;          /* green= running / healthy / on */
+  --accent: #3a7ca5;      /* muted blue = interactive accent (not a status) */
+  --font: 13px/1.45 "Segoe UI", Roboto, Arial, sans-serif;
+  --mono: 12px "Consolas", "SF Mono", monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font: var(--font); overflow: hidden; }
+
+#app { display: grid; grid-template-rows: 42px 1fr; height: 100vh; }
+
+/* ── Toolbar ───────────────────────────────────────────────────────────────── */
+#toolbar { display: flex; align-items: center; gap: 6px; padding: 0 10px;
+  background: var(--bg2); border-bottom: 1px solid var(--line); }
+#toolbar .brand { font-weight: 600; letter-spacing: .06em; color: var(--text); margin-right: 8px; }
+#toolbar .brand small { color: var(--muted); font-weight: 400; letter-spacing: 0; }
+#toolbar .sep { width: 1px; align-self: stretch; background: var(--line); margin: 8px 4px; }
+#toolbar .spacer { flex: 1; }
+.tbtn { background: var(--bg3); color: var(--text); border: 1px solid var(--line2);
+  border-radius: 4px; padding: 5px 10px; font: inherit; cursor: pointer; display: inline-flex;
+  align-items: center; gap: 6px; }
+.tbtn:hover { background: #333a41; }
+.tbtn.active { border-color: var(--accent); color: #cfe6f5; }
+.tbtn.live { color: var(--ok); }
+.tbtn.paused { color: var(--warn); }
+.tbtn[disabled] { opacity: .45; cursor: default; }
+#toolbar select { background: var(--bg3); color: var(--text); border: 1px solid var(--line2);
+  border-radius: 4px; padding: 4px 6px; font: inherit; }
+#toolbar label.fld { color: var(--muted); display: inline-flex; align-items: center; gap: 5px; }
+.statedot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+.statedot.ok { background: var(--ok); } .statedot.warn { background: var(--warn); }
+.statedot.alarm { background: var(--alarm); }
+
+/* ── Body grid: browser | (chart over pen list) ──────────────────────────────── */
+#body { display: grid; grid-template-columns: 330px 1fr; min-height: 0; }
+#browser { background: var(--bg2); border-right: 1px solid var(--line); overflow-y: auto; }
+#right { display: grid; grid-template-rows: 1fr 188px; min-height: 0; min-width: 0; }
+#chartwrap { position: relative; min-height: 0; background: var(--bg); }
+#chart { width: 100%; height: 100%; display: block; cursor: crosshair; }
+#penpanel { background: var(--bg2); border-top: 1px solid var(--line); overflow-y: auto; }
+
+/* ── Source browser ──────────────────────────────────────────────────────────── */
+.group { border-bottom: 1px solid var(--line); }
+.group > .ghead { display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  cursor: pointer; user-select: none; font-weight: 600; letter-spacing: .02em; }
+.group > .ghead:hover { background: var(--bg3); }
+.group .caret { color: var(--muted); width: 10px; transition: transform .12s; }
+.group.collapsed .caret { transform: rotate(-90deg); }
+.group .gcount { color: var(--muted); font-weight: 400; margin-left: auto; font: var(--mono); }
+.group.collapsed .gbody { display: none; }
+.gbody { padding: 2px 0 6px; }
+
+/* device (VFD) card */
+.dev { margin: 4px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); }
+.dev > .dhead { display: flex; align-items: center; gap: 8px; padding: 7px 9px; cursor: pointer;
+  user-select: none; }
+.dev > .dhead:hover { background: var(--bg3); }
+.dev .dname { font-weight: 600; }
+.dev .dstate { margin-left: auto; font: var(--mono); }
+.dev.collapsed .dbody { display: none; }
+.dbody { padding: 2px 0 4px; }
+
+/* a trendable row (register / analog / digital) with a checkbox */
+.row { display: flex; align-items: center; gap: 8px; padding: 4px 10px; }
+.row:hover { background: var(--bg3); }
+.row.inactive { opacity: .5; }
+.row input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; flex: none; }
+.row .swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; background: transparent; }
+.row .rname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .rval { font: var(--mono); color: var(--text); }
+.row .runit { color: var(--muted); font: var(--mono); margin-left: 2px; }
+.row .rstate { font: var(--mono); padding: 1px 6px; border-radius: 9px; border: 1px solid var(--line2); }
+/* digital ON/OFF indicator (NOT a button — read-only state) */
+.state-on { color: var(--ok); border-color: #3c5e40; }
+.state-off { color: var(--muted); }
+.state-alarm { color: var(--alarm); border-color: #5e3430; }
+/* analog mini bar */
+.bar { height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; width: 56px; flex: none; }
+.bar > span { display: block; height: 100%; background: var(--muted); }
+/* quality marker */
+.q { font: 10px var(--mono); padding: 0 4px; border-radius: 3px; }
+.q-good { color: var(--muted2); }
+.q-stale { color: var(--warn); border: 1px solid #5e4a22; }
+.q-bad { color: var(--alarm); border: 1px solid #5e3430; }
+
+/* ── Pen list ────────────────────────────────────────────────────────────────── */
+#penpanel .pphead { display: flex; align-items: center; padding: 6px 10px; color: var(--muted);
+  border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg2); }
+.pentbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.pentbl th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px;
+  border-bottom: 1px solid var(--line); position: sticky; top: 28px; background: var(--bg2); }
+.pentbl td { padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.pentbl tr:hover { background: var(--bg3); }
+.pentbl .swatch { width: 12px; height: 4px; border-radius: 2px; display: inline-block; vertical-align: middle; }
+.pentbl .pval { font: var(--mono); }
+.pentbl .punit { color: var(--muted); }
+.pentbl .ptime { color: var(--muted2); font: 11px var(--mono); }
+.pentbl .premove { color: var(--muted); cursor: pointer; border: 1px solid var(--line2);
+  border-radius: 3px; padding: 0 7px; background: none; }
+.pentbl .premove:hover { color: var(--alarm); border-color: #5e3430; }
+.empty { color: var(--muted2); padding: 22px; text-align: center; }
+
+/* ── Chart cursor readout ─────────────────────────────────────────────────────── */
+#cursor { position: absolute; pointer-events: none; background: var(--bg2);
+  border: 1px solid var(--line2); border-radius: 4px; padding: 6px 8px; font: var(--mono);
+  display: none; z-index: 5; max-width: 260px; }
+#cursor .ct { color: var(--muted); margin-bottom: 3px; }
+#cursor .cr { display: flex; align-items: center; gap: 6px; }
+#cursor .cr .sw { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.chart-empty { position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: center; color: var(--muted2); font-size: 14px; }
