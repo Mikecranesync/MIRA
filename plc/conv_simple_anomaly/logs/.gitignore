@@ -2,3 +2,4 @@
 *.jsonl
 *.csv
 !.gitignore
+*.out
