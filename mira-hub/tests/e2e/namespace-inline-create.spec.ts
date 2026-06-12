@@ -230,6 +230,15 @@ const nodeRow = (page: import("@playwright/test").Page, name: string) =>
  * input locator.
  */
 async function startRootFolder(page: import("@playwright/test").Page) {
+  // Wait for the tree to render before interacting. A rendered tree row means
+  // React has hydrated and the toolbar's onClick is wired — a click fired
+  // before hydration is silently dropped (the button is in the DOM but the
+  // handler isn't attached yet) and the inline input never appears. This is the
+  // root cause of the intermittent "new-folder-input never visible" failures.
+  await page
+    .locator('[data-testid="namespace-node"]')
+    .first()
+    .waitFor({ state: "visible", timeout: 15_000 });
   await page.locator('[data-testid="toolbar-new-folder"]').click();
   const input = page.locator('[data-testid="new-folder-input"]');
   await expect(input).toBeVisible({ timeout: 10_000 });
@@ -353,40 +362,63 @@ test.describe("Namespace create + doc attach", () => {
     const row = nodeRow(page, AREA_NAME);
     await row.click();
 
-    // Stage a tiny valid PDF fixture.
-    const fixturePath = path.join(__dirname, "fixtures", `nameplate-${RUN_SUFFIX}.pdf`);
+    // Stage a tiny valid PNG fixture. NOTE: a PDF upload is routed to the
+    // indexable path (chunked into knowledge_entries for retrieval), NOT the
+    // namespace_direct_uploads table the files endpoint lists — so a PDF would
+    // upload fine but never show under /node/:id/files. A non-indexable image
+    // lands in namespace_direct_uploads, which is the binding this scenario
+    // asserts. (The PDF→knowledge_entries retrieval path is covered by the beta
+    // upload→retrieval gate, not here.)
+    const fixturePath = path.join(__dirname, "fixtures", `nameplate-${RUN_SUFFIX}.png`);
     if (!fs.existsSync(path.dirname(fixturePath))) {
       fs.mkdirSync(path.dirname(fixturePath), { recursive: true });
     }
     if (!fs.existsSync(fixturePath)) {
-      const pdf = Buffer.from(
-        "%PDF-1.4\n%âãÏÓ\n" +
-          "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
-          "2 0 obj<</Type/Pages/Count 0/Kids[]>>endobj\n" +
-          "xref\n0 3\n0000000000 65535 f\n0000000015 00000 n\n0000000061 00000 n\n" +
-          "trailer<</Root 1 0 R/Size 3>>\nstartxref\n110\n%%EOF\n",
-        "binary",
+      // Minimal valid 1×1 PNG.
+      const png = Buffer.from(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489" +
+          "0000000d49444154789c6360000002000100ffff03000006000557bfabd4" +
+          "0000000049454e44ae426082",
+        "hex",
       );
-      fs.writeFileSync(fixturePath, pdf);
+      fs.writeFileSync(fixturePath, png);
     }
 
     // The hidden file input's onChange uploads to the selected node.
     await page.locator('[data-testid="namespace-file-input"]').setInputFiles(fixturePath);
 
-    // Upload-complete toast.
+    // Upload-complete toast (success path of uploadFiles → "N file uploaded").
     await expect(page.locator('[data-testid="namespace-toast"]')).toContainText(/uploaded/i, {
       timeout: 20_000,
     });
 
-    // The file appears in the node's content panel — proves it bound to THIS node.
-    await expect(
-      page
-        .locator('[data-testid="namespace-content-panel"]')
-        .getByText(`nameplate-${RUN_SUFFIX}.pdf`),
-    ).toBeVisible({ timeout: 10_000 });
+    // Definitive binding check: read the node's real id off the row, then GET
+    // that node's files endpoint and assert our file is listed under it. This
+    // proves the upload bound to THIS node (not the tree badge, which the tree
+    // API doesn't refresh for direct uploads, nor the tab-gated content panel).
+    const nodeId = await nodeRow(page, AREA_NAME).getAttribute("data-node-id");
+    expect(nodeId, "node row is missing data-node-id").toBeTruthy();
+    // Poll the files endpoint — the INSERT into namespace_direct_uploads can lag
+    // the success toast by a beat on serverless Postgres (read-after-write). If
+    // the filename never appears, the upload did not bind to the node.
+    await expect
+      .poll(
+        async () => {
+          const r = await page.request.get(`${HUB}/api/namespace/node/${nodeId}/files`);
+          return r.ok() ? JSON.stringify(await r.json()) : "";
+        },
+        { timeout: 15_000, message: "uploaded file never bound to the node" },
+      )
+      .toContain(`nameplate-${RUN_SUFFIX}.png`);
   });
 
   test("Scenario 3 — empty name does not create a node", async ({ page }) => {
+    // Snapshot the count only after the tree has rendered — counting before the
+    // tree hydrates returns 0 and the post-create comparison spuriously fails.
+    await page
+      .locator('[data-testid="namespace-node"]')
+      .first()
+      .waitFor({ state: "visible", timeout: 15_000 });
     const before = await page.locator('[data-testid="namespace-node"]').count();
     const input = await startRootFolder(page);
     // Commit with an empty value — the live commit path no-ops on empty/whitespace.
