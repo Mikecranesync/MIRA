@@ -1,5 +1,37 @@
 # Diagnosis — "Insert failed" on the Train & approve onboarding step (2026-06-10)
 
+> ## ⚠️ CORRECTION (2026-06-12) — the root cause below is WRONG. Read this first.
+>
+> The "Finding 2" conclusion — that `tenant_id UUID` in migrations 046/047 caused the
+> prod "Insert failed", fixed by `048_asset_agent_tenant_text.sql` (UUID→TEXT) — **does not
+> hold.** Established after the fact:
+>
+> 1. The screenshot was **prod, on the reporter's own account = a UUID tenant** (confirmed
+>    by the reporter).
+> 2. `mira-hub/src/lib/session.ts requireSession()` has **401'd any non-UUID session `tid`
+>    since 2026-05-19** (commit `369513cb`). So a slug tenant like `'mike'` **cannot
+>    authenticate** — the `'mike'`→UUID-column failure reproduced on staging is **unreachable**
+>    through the authed route.
+> 3. A **UUID**-tenant insert **succeeds even on the pre-fix schema** (staging test, returned
+>    a `qa_id`). So `048` changes nothing for the tenants that can actually reach the route.
+>
+> **Therefore `048` is harmless hardening but did NOT fix what the reporter saw.** The
+> diagnosis below confirmation-biased on a staging-only `'mike'` asset. The **real cause of the
+> prod "Insert failed" for a UUID tenant was never read** — the original `console.error` line
+> rotated out of the prod container log (mira-hub recreated 2026-06-12T10:58, ~12 min
+> retention) before it could be captured. Current prod behavior is **unverified** pending a
+> live exercise of the route. Candidates for the real cause: prod-only schema/grant/RLS drift
+> on `asset_agent_status`/`asset_validation_qa`, a constraint, or transient.
+>
+> **Method lesson (the durable takeaway):** I never read the actual error (systematic-debugging
+> step 1) and let a *reproducible-but-unreachable* path stand in for the root cause. Reproduce
+> with a tenant that can actually authenticate, and read the real error before asserting a cause.
+>
+> Keep `048` (TEXT tolerates both uuid-strings and slugs). Everything below is preserved as the
+> record of the (incorrect) investigation.
+
+---
+
 **Reporter evidence:** two prod screenshots (app.factorylm.com `/hub`), demo tenant
 (`enterprise.home_garage.conveyor_lab`, asset `Conv_Simple Bench Conveyor … (CV-101)`).
 
