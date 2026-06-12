@@ -4,8 +4,15 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 import { countTransitions } from "@/lib/signal-recorder";
 import { extractTrace, recordQueryTrace, type TraceGroundingLike } from "@/lib/knowledge-graph/trace";
+import { clientIpHash, rateLimited } from "@/lib/ip-rate-limit";
 
 export const dynamic = "force-dynamic";
+
+// Authenticated, but reachable via the shared public demo bearer token (the
+// expo-booth iPad), and it fires the shared free-tier cascade. Per-IP rate
+// limit so a leaked/shared token can't drain the cohort's quota. Higher cap
+// than the fully-public quickstart door. See @/lib/ip-rate-limit.
+const MIRA_ASK_MAX_PER_MIN = 40;
 
 interface AskPayload {
   session_id: string;
@@ -94,6 +101,15 @@ export async function POST(req: Request) {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
   }
+
+  // Rate limit before any work — we never store raw IPs.
+  if (rateLimited("mira-ask", await clientIpHash(), MIRA_ASK_MAX_PER_MIN, 60_000)) {
+    return NextResponse.json(
+      { error: "Too many requests — slow down and try again in a minute." },
+      { status: 429 },
+    );
+  }
+
   const ctx = await sessionOrDemo(req);
   if (ctx instanceof NextResponse) return ctx;
 

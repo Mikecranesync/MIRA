@@ -118,7 +118,18 @@ def test_safety_keyword_with_prefix(keyword, prefix):
 # classify_intent: always returns a valid intent string
 # ---------------------------------------------------------------------------
 
-_VALID_INTENTS = {"greeting", "help", "industrial", "documentation", "safety", "off_topic"}
+# NB: "instructional" was added to classify_intent's return set (procedural how-to
+# routing) but omitted here — Hypothesis only surfaces it on inputs like "how do i
+# wire". Pre-existing stale enum, fixed alongside #1834.
+_VALID_INTENTS = {
+    "greeting",
+    "help",
+    "industrial",
+    "instructional",
+    "documentation",
+    "safety",
+    "off_topic",
+}
 
 
 @given(st.text(min_size=0, max_size=500))

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+import { ingestPdfToNode } from "@/lib/node-knowledge-ingest";
 
 export const dynamic = "force-dynamic";
 
@@ -114,39 +115,59 @@ export async function POST(
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
+  const isPdf = mimeRaw === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 
   try {
-    const result = await withTenantContext(ctx.tenantId, async (c) => {
-      const nodeCheck = await c.query(
-        `SELECT id FROM kg_entities WHERE id = $1 AND tenant_id = $2`,
+    // Validate the node belongs to the tenant + read its UNS path.
+    const node = await withTenantContext(ctx.tenantId, async (c) => {
+      const r = await c.query<{ id: string; uns_path: string | null }>(
+        `SELECT id, uns_path::text AS uns_path FROM kg_entities WHERE id = $1 AND tenant_id = $2`,
         [id, ctx.tenantId],
       );
-      if (nodeCheck.rows.length === 0) return null;
+      return r.rows[0] ?? null;
+    });
+    if (!node) {
+      return NextResponse.json({ error: "node not found" }, { status: 404 });
+    }
 
+    // Indexable docs (PDF) → mira-ingest-v2 path: chunk into knowledge_entries,
+    // attached to this node (folder = brain). Re-readable + citable via node chat.
+    if (isPdf) {
+      const { uploadId, chunkCount } = await ingestPdfToNode({
+        tenantId: ctx.tenantId,
+        nodeId: id,
+        unsPath: node.uns_path,
+        filename: file.name,
+        mimeType: mimeRaw,
+        sizeBytes: file.size,
+        buffer,
+      });
+      return NextResponse.json(
+        {
+          ok: true,
+          indexed: true,
+          uploadId,
+          chunkCount,
+          file: { filename: file.name, size_bytes: file.size },
+        },
+        { status: 201 },
+      );
+    }
+
+    // Non-indexable files (images / CAD / etc.) → park the raw bytes (unchanged).
+    const directId = await withTenantContext(ctx.tenantId, async (c) => {
       const ins = await c.query<{ id: string }>(
         `INSERT INTO namespace_direct_uploads
             (tenant_id, node_id, filename, mime_type, size_bytes, content, created_by)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING id`,
-        [
-          ctx.tenantId,
-          id,
-          file.name,
-          mimeRaw,
-          file.size,
-          buffer,
-          ctx.userId,
-        ],
+        [ctx.tenantId, id, file.name, mimeRaw, file.size, buffer, ctx.userId],
       );
       return ins.rows[0].id;
     });
 
-    if (result === null) {
-      return NextResponse.json({ error: "node not found" }, { status: 404 });
-    }
-
     return NextResponse.json(
-      { ok: true, file: { id: result, filename: file.name, size_bytes: file.size } },
+      { ok: true, indexed: false, file: { id: directId, filename: file.name, size_bytes: file.size } },
       { status: 201 },
     );
   } catch (err) {

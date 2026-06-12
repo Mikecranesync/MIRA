@@ -9,6 +9,9 @@ const nextConfig: NextConfig = {
   output: "standalone",
   basePath,
   assetPrefix: basePath,
+  // Drop the `X-Powered-By: Next.js` response header — small fingerprint-leak
+  // cleanup (#1762). No functional impact; Next.js never relied on it.
+  poweredByHeader: false,
   // nginx-oracle.conf has `location /hub/` — that block fires nginx's auto-301
   // from /hub → /hub/. Next.js's default `trailingSlash: false` then 308s
   // /hub/ → /hub, producing an infinite redirect loop on the basePath root.

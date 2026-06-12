@@ -116,6 +116,15 @@ describe("POST /api/wizard/:step", () => {
     expect(sqls[0]).toMatch(/FROM wizard_progress[\s\S]+FOR UPDATE/);
     expect(sqls[1]).toMatch(/INSERT INTO kg_entities/);
     expect(sqls[2]).toMatch(/INSERT INTO kg_entities/);
+    // Regression guard: the kg_entities upsert MUST target the live unique index
+    // kg_entities_tenant_type_name_key (tenant_id, entity_type, name) created by
+    // migrations 025/026. The original (…, entity_id) target was orphaned when
+    // those migrations dropped that constraint, making every finish 500 with
+    // "no unique or exclusion constraint matching the ON CONFLICT specification".
+    for (const sql of [sqls[1], sqls[2]]) {
+      expect(sql).toMatch(/ON CONFLICT \(tenant_id, entity_type, name\)/);
+      expect(sql).not.toMatch(/ON CONFLICT \(tenant_id, entity_type, entity_id\)/);
+    }
     expect(sqls[3]).toMatch(/INSERT INTO namespace_versions/);
     expect(sqls[4]).toMatch(/INSERT INTO namespace_versions/);
     expect(sqls[5]).toMatch(/UPDATE wizard_progress[\s\S]+'completed'/);

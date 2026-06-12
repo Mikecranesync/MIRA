@@ -105,9 +105,9 @@ def _build_clarification_request(message: str, asset_identified: str) -> str | N
     fires instead.
 
     REGRESSION GUARD (2026-05-12): When the user's message ALREADY contains a
-    recognizable manufacturer (e.g. "PowerFlex" → Rockwell) AND a fault code,
-    return None so the LLM answers from general engineering knowledge with the
-    no_kb_coverage disclaimer — never re-ask for info the user just provided.
+    recognizable manufacturer AND a fault code, return None so the LLM answers
+    from general engineering knowledge with the no_kb_coverage disclaimer —
+    never re-ask for info the user just provided.
     """
     has_fault_mention = bool(_FAULT_MENTION_RE.search(message))
     # Use the same extractor the recall path used — what it found is what failed
@@ -138,11 +138,9 @@ def _build_clarification_request(message: str, asset_identified: str) -> str | N
 
     if not asset_identified:
         parts.append(
-            "1. **Manufacturer** — who made the equipment? (e.g. AutomationDirect, Yaskawa, Rockwell)"
+            "1. **Manufacturer** — who made the equipment? (e.g. AutomationDirect, Yaskawa, Danfoss)"
         )
-        parts.append(
-            "2. **Model number** — shown on the nameplate or display (e.g. GS20, PowerFlex 40)"
-        )
+        parts.append("2. **Model number** — shown on the nameplate or display (e.g. GS20, V1000)")
         parts.append("3. **Exact code** — copy it exactly as it appears on the screen")
     else:
         parts.append(f"Equipment: {asset_identified}")
@@ -397,8 +395,10 @@ class RAGWorker:
                 = no KG block (the default; enrichment is engine-side + flag-gated).
         """
         effective_tenant = tenant_id or self.tenant_id
-        # Stash for the prompt builders (_build_prompt / _build_prompt_with_chunks).
-        self._kg_context = kg_context or ""
+        # Snapshot before any await so concurrent sessions can't overwrite this
+        # call's KG context (cross-tenant data race — mirrors the local_neon_chunks
+        # fix in #1082). Passed as a param to the prompt builders, never via self.
+        local_kg_context = kg_context or ""
         # Track whether retrieval was attempted so we can inject the honesty
         # directive when it ran but returned zero useful chunks.
         retrieval_attempted = bool(effective_tenant)
@@ -422,6 +422,19 @@ class RAGWorker:
                         embed_query = message
                         if photo_b64 and state.get("asset_identified"):
                             embed_query = f"{state['asset_identified']} {message}"
+
+                        # Clean recall query (#1766). The engine stashes a trimmed
+                        # question+status string on state for direct-connection
+                        # surfaces (the /ask kiosk) whose `message` is a large static
+                        # context card. When set, it drives BOTH the embedding and the
+                        # lexical streams (BM25 / fault-code / product-name). When NOT
+                        # set (chat / photo surfaces), fall back to embed_query — which
+                        # is the bare message for text chat and the asset-enriched
+                        # "{asset} {message}" for photo queries. Falling back to the
+                        # raw `message` here would silently drop the photo asset
+                        # context from the embedding (regressed test_photo_query_
+                        # embeds_with_asset_context); embed_query keeps it.
+                        recall_query = state.get("retrieval_query") or embed_query
 
                         sub_queries: list[str] = [embed_query]
                         if is_decompose_enabled():
@@ -451,16 +464,40 @@ class RAGWorker:
                                 len(neon_chunks),
                             )
                         else:
-                            embedding = await self._embed_ollama(embed_query)
+                            # Embed the CLEAN recall_query, not the enriched blob
+                            # (#1766 follow-up). Prod RAG_STAGE_TIMING showed the
+                            # embed of the ~2760-char /ask MACHINE_CONTEXT card was
+                            # 3-5s on CPU Ollama — the dominant latency after the
+                            # recall fix. On the /ask kiosk recall_query is the
+                            # trimmed question+status (~200 chars) → embed drops to
+                            # <1s, and the vector is question-focused rather than
+                            # blurred by the static card. On chat/photo surfaces the
+                            # kiosk key isn't set, so recall_query == embed_query:
+                            # bare message for text chat (unchanged), asset-enriched
+                            # for photo (asset context preserved in the embedding).
+                            _t_emb = time.monotonic()
+                            embedding = await self._embed_ollama(recall_query)
+                            _embed_ms = int((time.monotonic() - _t_emb) * 1000)
                             # Call recall_knowledge unconditionally — it now
                             # falls through to lexical streams when embedding
                             # is None (Ollama sidecar down). Pre-fix this gate
                             # short-circuited BM25 and produced NO_KB_COVERAGE
                             # despite KB rows being lexically retrievable.
+                            _t_rec = time.monotonic()
                             neon_chunks = _neon_recall.recall_knowledge(
                                 embedding,
                                 effective_tenant,
-                                query_text=embed_query,
+                                query_text=recall_query,
+                            )
+                            _recall_ms = int((time.monotonic() - _t_rec) * 1000)
+                            logger.info(
+                                "RAG_STAGE_TIMING embed_ms=%d recall_ms=%d embed_chars=%d "
+                                "recall_chars=%d n_chunks=%d",
+                                _embed_ms,
+                                _recall_ms,
+                                len(recall_query),
+                                len(recall_query),
+                                len(neon_chunks),
                             )
 
                         if is_self_eval_enabled() and neon_chunks:
@@ -591,10 +628,16 @@ class RAGWorker:
             self._last_sources = chunk_texts
             self._last_distances = [c.get("similarity", 0.0) for c in neon_chunks]
             # Snapshot before any await so concurrent sessions can't overwrite
-            # this call's metadata (fixes #1082 Nemotron rerank race).
+            # this call's metadata (fixes #1082 Nemotron rerank race). These
+            # pre-await locals are the ONLY safe source for the state stash
+            # below — reading self._last_* after the rerank await would re-race
+            # (#1704). ``local_sources`` keeps the pre-rerank texts _is_grounded
+            # has always used.
+            local_sources = list(chunk_texts)
             local_neon_chunks = list(neon_chunks)
             self._last_neon_chunks = local_neon_chunks
-            self._kb_status = self._compute_kb_status(neon_chunks, bool(chunk_texts))
+            local_kb_status = self._compute_kb_status(neon_chunks, bool(chunk_texts))
+            self._kb_status = local_kb_status
 
             async with spans.vector_search(
                 rewritten, self._last_sources[:5], self._last_distances[:5]
@@ -625,6 +668,7 @@ class RAGWorker:
                     chunk_texts,
                     photo_b64=photo_b64,
                     neon_chunks_meta=local_neon_chunks,
+                    kg_context=local_kg_context,
                 )
             else:
                 no_kb = retrieval_attempted and not photo_b64
@@ -637,7 +681,11 @@ class RAGWorker:
                     triage_data = (state.get("context") or {}).get("triage_result", {})
                     if triage_data.get("is_answerable_from_general_knowledge"):
                         messages = self._build_prompt(
-                            state, rewritten, photo_b64, no_kb_coverage="general_knowledge"
+                            state,
+                            rewritten,
+                            photo_b64,
+                            no_kb_coverage="general_knowledge",
+                            kg_context=local_kg_context,
                         )
                     else:
                         clarification = _build_clarification_request(
@@ -646,10 +694,33 @@ class RAGWorker:
                         if clarification:
                             return clarification
                         messages = self._build_prompt(
-                            state, rewritten, photo_b64, no_kb_coverage=True
+                            state,
+                            rewritten,
+                            photo_b64,
+                            no_kb_coverage=True,
+                            kg_context=local_kg_context,
                         )
                 else:
-                    messages = self._build_prompt(state, rewritten, photo_b64)
+                    messages = self._build_prompt(
+                        state, rewritten, photo_b64, kg_context=local_kg_context
+                    )
+
+            # Snapshot ALL of this call's citation/grounding evidence onto its
+            # own ``state`` dict immediately before the LLM await (#1704).
+            # RAGWorker is a singleton shared across tenants; engine.py reads
+            # this evidence back AFTER the await (citation footer, citation
+            # rewrite, grounding check, decision-trace), so reading it off the
+            # shared instance lets a concurrent tenant's data bleed in. The
+            # engine POPS these keys into the per-turn parsed/result payload
+            # (so they never persist to the session row) and never falls back
+            # to self.* when a key is absent. The clarification early-return
+            # above skips this — a no-coverage turn correctly carries nothing.
+            if isinstance(state, dict):
+                state["_rag_kb_status"] = local_kb_status
+                state["_rag_sources"] = local_sources
+                state["_rag_last_chunks"] = local_neon_chunks
+                state["_rag_no_kb"] = self._last_no_kb
+
             t0 = time.monotonic()
             raw = await self._call_llm(messages, model=model)
             elapsed_ms = int((time.monotonic() - t0) * 1000)
@@ -687,6 +758,16 @@ class RAGWorker:
         """Current KB coverage status set during the last process() call."""
         return self._kb_status
 
+    @property
+    def last_chunks(self) -> list[dict]:
+        """Retrieved NeonDB chunks from the last process() call.
+
+        Public accessor for the citation enforce-mode rewrite (#1659) so the
+        engine can build valid `[Source:]` labels without reaching into a
+        private attribute. Empty when the last turn retrieved nothing.
+        """
+        return self._last_neon_chunks
+
     def _build_prompt_with_chunks(
         self,
         state: dict,
@@ -694,6 +775,7 @@ class RAGWorker:
         chunks: list,
         photo_b64: str = None,
         neon_chunks_meta: list[dict] | None = None,
+        kg_context: str = "",
     ) -> list[dict]:
         """Build prompt with explicitly injected reranked chunks.
 
@@ -703,12 +785,10 @@ class RAGWorker:
         with text. When a string is passed, ``neon_chunks_meta`` (a
         call-local snapshot) is preferred over ``self._last_neon_chunks`` to
         avoid a cross-tenant data race when Nemotron reranking is enabled.
+        ``kg_context`` is a call-local snapshot for the same reason — never
+        read it from ``self`` (see #1846).
         """
-        system_content = (
-            _active_system_prompt()
-            + getattr(self, "_kg_context", "")
-            + "\n\n--- CURRENT STATE ---\n"
-        )
+        system_content = _active_system_prompt() + kg_context + "\n\n--- CURRENT STATE ---\n"
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"
         system_content += f"Exchange count: {state['exchange_count']}\n"
@@ -798,6 +878,7 @@ class RAGWorker:
         photo_b64: str = None,
         neon_chunks: list[dict] = None,
         no_kb_coverage: bool | str = False,
+        kg_context: str = "",
     ) -> list[dict]:
         """Build message list for LLM with GSD system prompt and state context.
 
@@ -807,11 +888,7 @@ class RAGWorker:
                 answerable from general engineering knowledge — LLM answers with a prefix
                 instead of refusing.
         """
-        system_content = (
-            _active_system_prompt()
-            + getattr(self, "_kg_context", "")
-            + "\n\n--- CURRENT STATE ---\n"
-        )
+        system_content = _active_system_prompt() + kg_context + "\n\n--- CURRENT STATE ---\n"
         system_content += "IMPORTANT: This is an independent conversation. Do not reference equipment, fault codes, or details from any other session.\n"
         system_content += f"FSM state: {state['state']}\n"
         system_content += f"Exchange count: {state['exchange_count']}\n"

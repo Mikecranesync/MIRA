@@ -15,6 +15,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 
 from . import data_types as _data_types
+from .manufacturer_normalize import normalize_manufacturer
 
 
 def _engine():
@@ -361,6 +362,9 @@ def insert_knowledge_entry(
 ) -> str:
     """Insert one chunk into knowledge_entries. Returns the new row id."""
     _data_types.validate(data_type)
+    # Collapse OCR/extraction manufacturer variants to the catalog canonical
+    # (#1596). Column is nullable — preserve None for an empty canonical.
+    manufacturer = normalize_manufacturer(manufacturer).canonical or None
     entry_id = str(uuid.uuid4())
     meta = {
         "source_url": source_url,
@@ -425,6 +429,7 @@ def insert_knowledge_entries_batch(entries: list[dict]) -> int:
         prepared.append(
             {
                 **e,
+                "manufacturer": normalize_manufacturer(e.get("manufacturer")).canonical or None,
                 "isa95_path": e.get("isa95_path"),
                 "equipment_id": e.get("equipment_id"),
                 "data_type": dt,

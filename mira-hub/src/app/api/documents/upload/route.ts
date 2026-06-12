@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sessionOrDemo } from "@/lib/demo-auth";
 import { withTenantContext } from "@/lib/tenant-context";
+import { normalizeManufacturer } from "@/lib/manufacturerNormalize";
 
 export const dynamic = "force-dynamic";
 
@@ -57,18 +58,25 @@ export async function POST(req: Request) {
 
   const excerpt = (body.excerpt ?? "").slice(0, 2000);
   const sourceUrl = body.source_url ?? `demo://upload/${encodeURIComponent(body.filename)}`;
+  // Collapse OCR/extraction manufacturer variants to the canonical catalog name
+  // before insert (issue #1596). Empty → null preserves the existing behavior.
+  const manufacturer = normalizeManufacturer(body.manufacturer).canonical || null;
 
   try {
     const id = await withTenantContext<string>(ctx.tenantId, async (c) => {
+      // is_private = true: this is a per-tenant upload, not shared OEM corpus.
+      // The canonical read filter `(is_private = false OR tenant_id = $caller)`
+      // relies on this so /api/documents never leaks it to another tenant.
+      // See `.claude/rules/knowledge-entries-tenant-scoping.md` (#1833).
       const result = await c.query(
         `INSERT INTO knowledge_entries
-           (tenant_id, source_url, manufacturer, model_number, equipment_type, content)
-         VALUES ($1, $2, $3, $4, $5, $6)
+           (tenant_id, source_url, manufacturer, model_number, equipment_type, content, is_private)
+         VALUES ($1, $2, $3, $4, $5, $6, true)
          RETURNING id`,
         [
           ctx.tenantId,
           sourceUrl,
-          body.manufacturer ?? null,
+          manufacturer,
           body.model ?? null,
           null,
           excerpt || `[Demo placeholder — ${body.filename}]`,

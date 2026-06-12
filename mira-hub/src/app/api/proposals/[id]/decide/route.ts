@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+import { applyHubProposalTransition } from "@/lib/proposal-transition";
 
 export const dynamic = "force-dynamic";
 
@@ -89,15 +90,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const newStatus = decision === "verify" ? "verified" : "rejected";
       const reviewerLabel = `human:${ctx.userId ?? ctx.tenantId}`;
 
-      await c.query(
-        `UPDATE relationship_proposals
-           SET status = $1,
-               reviewed_at = now(),
-               reviewed_by = $2,
-               reasoning = COALESCE(NULLIF($3, ''), reasoning)
-         WHERE id = $4`,
-        [newStatus, reviewerLabel, reason, id],
-      );
+      // ADR-0017: route the Hub-side projections through the single helper so
+      // the paired ai_suggestions(kg_edge) row transitions in lockstep with
+      // relationship_proposals (the drift the proposal-state canary detects).
+      // kg_relationships (engine projection) is still mirrored below.
+      await applyHubProposalTransition(c, {
+        trigger: decision === "verify" ? "accept" : "reject",
+        relationshipProposalId: id,
+        reviewerLabel,
+        reason,
+      });
 
       if (decision === "verify") {
         // Engine-side mirror in kg_relationships. Insert if missing, else
@@ -114,8 +116,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           await c.query(
             `INSERT INTO kg_relationships
                (tenant_id, source_id, target_id, relationship_type,
-                confidence, approval_state, proposed_by, evidence_summary)
-             VALUES ($1, $2, $3, $4, $5, 'verified', $6, $7)`,
+                confidence, approval_state, proposed_by, evidence_summary,
+                relationship_proposal_id)
+             VALUES ($1, $2, $3, $4, $5, 'verified', $6, $7, $8)`,
             [
               ctx.tenantId,
               p.source_entity_id,
@@ -124,17 +127,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
               p.confidence,
               p.created_by,
               p.reasoning,
+              id,
             ],
           );
         } else {
+          // Provenance link: record which proposal verified this edge (keep the
+          // first link if one already exists). Makes the edge traceable back to
+          // the human approval and the ADR-0017 canary's Check 2 load-bearing.
           await c.query(
             `UPDATE kg_relationships
                 SET approval_state = 'verified',
                     confidence = GREATEST(confidence, $1),
                     proposed_by = COALESCE(proposed_by, $2),
-                    evidence_summary = COALESCE(evidence_summary, $3)
+                    evidence_summary = COALESCE(evidence_summary, $3),
+                    relationship_proposal_id = COALESCE(relationship_proposal_id, $5)
               WHERE id = $4`,
-            [p.confidence, p.created_by, p.reasoning, existingRes.rows[0].id],
+            [p.confidence, p.created_by, p.reasoning, existingRes.rows[0].id, id],
           );
         }
       }

@@ -35,6 +35,9 @@ permissions:
   # the rubric comment on the PR. The default repository GITHUB_TOKEN is
   # read-only on this repo, so the permission must be granted per-workflow.
   pull-requests: write
+  # Read Migration Verify's run status on the same SHA so the gate can order
+  # itself AFTER migrations (P3-3 — avoid grading a pre-migration schema).
+  actions: read
 
 jobs:
   staging-gate:
@@ -165,6 +168,40 @@ jobs:
             -o /tmp/ollama-pull.json
           # Sanity-check that the model is now resident.
           curl -sf http://localhost:11434/api/tags | grep -q nomic-embed-text
+
+      - name: Order after Migration Verify (avoid grading pre-migration schema, P3-3)
+        if: steps.scope.outputs.run_eval == 'true' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SHA="${{ github.event.pull_request.head.sha }}"
+          # Migration Verify only runs when migration files change (its own
+          # paths: filter). If this PR didn't touch them, there's nothing to
+          # order against — proceed immediately.
+          files="$(gh pr view "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --json files -q '.files[].path' || true)"
+          if ! printf '%s\n' "$files" | grep -q '^mira-hub/db/migrations/'; then
+            echo "No migration files changed — staging-gate proceeds without waiting."
+            exit 0
+          fi
+          echo "Migration files changed — waiting for 'Migration Verify' on $SHA so the gate grades the POST-migration schema."
+          for i in $(seq 1 72); do   # up to ~12 min (job timeout is 20)
+            line="$(gh api "repos/${{ github.repository }}/actions/workflows/migration-verify.yml/runs?head_sha=$SHA&event=pull_request" \
+                      -q '.workflow_runs[0] | "\(.status) \(.conclusion)"' 2>/dev/null || true)"
+            if [ -z "$line" ] || [ "$line" = "null null" ]; then
+              echo "  ($i) migration-verify run not visible yet…"; sleep 10; continue
+            fi
+            status="${line%% *}"; concl="${line##* }"
+            echo "  ($i) migration-verify: status=$status conclusion=$concl"
+            if [ "$status" = "completed" ]; then
+              if [ "$concl" = "success" ]; then
+                echo "Migration Verify succeeded — schema is current. Proceeding."; exit 0
+              fi
+              echo "::error::Migration Verify concluded '$concl' — refusing to grade a bad/incomplete schema."; exit 1
+            fi
+            sleep 10
+          done
+          echo "::error::Timed out waiting for Migration Verify on $SHA"; exit 1
 
       - name: Run staging gate
         if: steps.scope.outputs.run_eval == 'true'

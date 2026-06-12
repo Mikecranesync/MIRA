@@ -48,9 +48,16 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install mira-hub npm deps (includes @playwright/test)
+      - uses: oven-sh/setup-bun@v2
+
+      # bun is the source-of-truth package manager (bun.lock). CI installed via
+      # `npm ci`, which hard-fails when package-lock.json drifts from
+      # package.json (graphology #1789 / unpdf were missing) — silently blocking
+      # every deploy. bun.lock stays in sync with package.json, so install via
+      # bun. --ignore-scripts preserves the prior `npm ci --ignore-scripts`.
+      - name: Install mira-hub deps (includes @playwright/test)
         working-directory: mira-hub
-        run: npm ci --ignore-scripts
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Install Playwright Chromium browser + OS deps
         working-directory: mira-hub
@@ -76,13 +83,16 @@ jobs:
         run: |
           echo "## ❌ Smoke test failed" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "One or more critical pages are broken on production." >> "$GITHUB_STEP_SUMMARY"
+          echo "The money path or a critical page is broken on production." >> "$GITHUB_STEP_SUMMARY"
           echo "Download the \`smoke-failures-${{ github.run_id }}\` artifact for screenshots." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| URL | What was checked |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | What was verified |" >> "$GITHUB_STEP_SUMMARY"
           echo "|-----|-----------------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| https://factorylm.com/ | OG tags, FactoryLM title |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| https://factorylm.com/pricing | Pricing cards visible |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| https://factorylm.com/cmms | Magic link email form |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| https://app.factorylm.com/ | Redirects to /login |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| https://app.factorylm.com/login | Email + password + Google OAuth |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| factorylm.com/ | OG tags, FactoryLM title |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| factorylm.com/pricing | Pricing cards + Start Free Trial CTA |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| factorylm.com/cmms | Magic link email form |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| /api/checkout/session | 303 → checkout.stripe.com |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| app.factorylm.com/ → /login | Redirect + email/password/Google |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **/quickstart** | **Public grounded chat returns an answer (money path, P1-1)** |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **/api/quickstart/ask** | **Flood → HTTP 429 (rate-limit holds, P0-1)** |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **/api/documents** | **Unauthenticated → 401, no asset data (tenant gate, P0-2)** |" >> "$GITHUB_STEP_SUMMARY"

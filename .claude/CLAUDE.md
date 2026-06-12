@@ -6,11 +6,27 @@
 > **Product-surface contract:** `docs/specs/maintenance-namespace-builder-spec.md` — the UNS gate, AI proposals, readiness levels.
 > **Phased execution:** `docs/plans/2026-05-15-maintenance-namespace-builder.md`.
 
+## 🚦 Primary product focus: Beta readiness
+
+The current execution phase is **Path to Beta Testers** (`docs/plans/2026-06-07-path-to-beta.md`).
+Until the beta gate is met, every product change is judged against one question:
+
+> **Does this get us closer to: a stranger uploads their own equipment manual, asks a real
+> troubleshooting question, and gets a grounded answer with citations from that manual —
+> without Mike manually fixing anything?**
+
+The gate is enforced by `tests/beta/beta_ready_upload_retrieval_citation.py` (xfail until it's
+met). The known blocker is the **upload→retrieval gap**: uploads land in the Open WebUI KB but
+chat retrieval reads only `knowledge_entries` (PR #1592 closes it). Don't build beta-adjacent
+features that route around this gap — close the gap. See `NORTH_STAR.md` § "Path to Beta Testers".
+
 ## What MIRA is
 
 **MIRA** (Maintenance Intelligence Resource Agent) is an industrial maintenance intelligence system. The product wedge is a **Slack-first maintenance copilot** that grounds every answer in the customer's real factory context.
 
 It is **not** a generic chatbot. It is **not** a SCADA or CMMS replacement. It is a focused, grounded troubleshooting and ingestion assistant for plant maintenance technicians.
+
+**Train before deploy (product direction).** FactoryLM Command Center (`mira-hub`, `app.factorylm.com`) is where customers build the namespace, upload documentation, train/validate asset-specific MIRA agents, and approve them. Ignition/HMI "Ask MIRA" is a **deployment surface for approved agents**, not the primary onboarding system. No HMI deployment until the asset agent has grounded docs, validation questions, and approved cited answers. MIRA is **read-only troubleshooting intelligence first — no control writes in beta.** Full rule: `.claude/rules/train-before-deploy.md`; per-asset lifecycle + deployment gate: `docs/specs/asset-agent-validation-spec.md`.
 
 ## North Star architecture
 
@@ -129,15 +145,17 @@ See `.claude/skills/slack-technician-ux-writer/SKILL.md` for sample message temp
 
 ## Code exploration: CodeGraph first
 
-CodeGraph is the SQLite semantic index of every symbol, edge, file, and call path in the workspace. It is wired into every Claude Code session via the `codegraph` MCP server in `.mcp.json`. Use it BEFORE grep / Read for any symbol-shaped question.
+CodeGraph is the SQLite semantic index of every symbol, edge, file, and call path in the workspace. It is wired into every Claude Code session via the `codegraph` MCP server in `.mcp.json`. Use it BEFORE grep / Read for any symbol-shaped question. **It is the only code-navigation graph for this repo — Graphify is excluded from code navigation (`.claude/rules/graphify-excluded.md`).**
 
+- **Preflight BEFORE any non-doc coding task:** `tools/codegraph-preflight.sh ["task"]` — verifies install / MCP / index presence / freshness / canary and prints a markdown report for the PR (verdict **READY / STALE / BROKEN**). **If STALE or BROKEN, `sync` / `index --force` and re-run before trusting call edges.** Trust is earned, not assumed: the call-graph (`callers`/`callees`/`trace`/`impact`) is only reliable after freshness + health pass — symbol *lookup* is reliable on any non-broken index. Periodic fail-loud check: `tools/codegraph-benchmark.sh`.
+- **Known blind spots (verify with grep):** class instantiation `ClassName()` isn't a caller edge; `impact <Class>` returns containment not dependents; import-alias calls and same-name symbols don't resolve. Full list: `.claude/rules/codegraph-usage.md`.
 - **First call for any task in indexed code:** `codegraph_context "<task>"` — composes search + node + callers + callees in one call. Cheapest possible orientation.
 - **Before editing `engine.py` or any shared module:** `codegraph_impact <symbol>` to see the blast radius. Modules in scope: `mira-bots/shared/engine.py`, `mira-bots/shared/inference/router.py`, `mira-bots/shared/uns_resolver.py`, `mira-bots/shared/citation_compliance.py`, `mira-bots/shared/guardrails.py`, `mira-crawler/ingest/uns.py`, `mira-mcp/server.py`, plus anything imported by >5 files. **Never ignore an unexpected symbol in the blast-radius output** — narrow the change first.
 - **"How does X reach Y" / call-path questions:** `codegraph_trace` — handles dynamic-dispatch hops (callbacks, async workers, FSM transitions) that grep can't follow.
 - **Multi-symbol surveys:** `codegraph_explore` — one capped call for several related symbols. Don't loop `codegraph_node` or `Read`.
 - **Do NOT re-read files CodeGraph already returned source for.** `codegraph_node` / `codegraph_explore` include the symbol body.
 - **Only fall back to `Grep` / `Read`** for plain-text matches (prompt strings, log lines, comments), file-level inspection of files CodeGraph didn't index, or details the CodeGraph response didn't cover.
-- **Index freshness:** `.githooks/post-merge` and `.githooks/post-checkout` run `codegraph sync` automatically (incremental, <1 s, no-op when codegraph isn't installed). After cherry-picks or hand-edits, run `npx -y @colbymchenry/codegraph sync` manually.
+- **Index freshness:** `.githooks/post-merge` and `.githooks/post-checkout` run `codegraph sync` → corruption canary → write a `.codegraph/.last-sync` marker (sync alone can't repair dropped call edges; the canary `index --force`s if they collapsed). A daily `index --force` launchd job (`tools/codegraph-force-reindex.sh`) bounds drift. After cherry-picks or hand-edits, run `npx -y @colbymchenry/codegraph sync` (or the preflight) manually.
 
 Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/codegraph.md`.
 
@@ -149,9 +167,14 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - **Python: ruff + httpx + `Optional[X]` (3.12 target)** — see `.claude/rules/python-standards.md`.
 - **Security boundaries** — see `.claude/rules/security-boundaries.md` (PII sanitization, safety keywords, Doppler).
 - **UNS compliance** — see `.claude/rules/uns-compliance.md` (every asset row has `uns_path` or `equipment_entity_id` FK).
+- **mira-hub migrations** — see `.claude/rules/mira-hub-migrations.md` (`tenant_id` is **TEXT** for the CMMS/equipment family / **UUID** for the kg/Hub family — match it; RLS compares in-type, no cross-cast; `GRANT … TO factorylm_app`; drop policy+GiST index before `ALTER COLUMN TYPE`; verify the route write path with a real slug tenant `'mike'`, not a synthetic UUID).
 - **Direct-connection UNS certification** — see `.claude/rules/direct-connection-uns-certified.md` (Ignition/MQTT/PLC/Hub/QR surfaces carry a UNS identifier on every turn or are rejected; engine skips the chat-gate on `source="direct_connection"`).
-- **CodeGraph-first exploration** — see `.claude/rules/codegraph-usage.md` (use `codegraph_context` / `codegraph_impact` before grep + Read for any symbol-shaped question).
+- **CodeGraph-first exploration** — see `.claude/rules/codegraph-usage.md` (run `tools/codegraph-preflight.sh` before non-doc code work; `codegraph_context` / `codegraph_impact` before grep + Read; trust the call-graph only after freshness passes).
+- **Graphify excluded from code navigation** — see `.claude/rules/graphify-excluded.md` (CodeGraph is the single code-nav graph; the orchestrator-pulse product KG is a separate, allowed artifact).
+- **Train before deploy** — see `.claude/rules/train-before-deploy.md` (Command Center builds+validates; Ignition/HMI deploys approved asset agents only; no HMI deployment without grounded docs + validation questions + approved cited answers; read-only in beta).
 - **Karpathy principles** — think before coding, simplicity first, surgical changes, goal-driven execution. See `.claude/rules/karpathy-principles.md`.
+- **Debugging & verification** — perf problems are multi-cause (re-measure after each fix); verify exact table/column names + API auth paths from the codebase before guessing. See `.claude/rules/debugging-conventions.md`.
+- **Session discipline** — verify stated premises against the codebase + `git log` before building; re-run the full suite before reporting eval gains; stage only files your change touched (never `git add -A` over foreign WIP); validate migration/seed prerequisites + schema constraints; checkpoint long tasks to `.planning/STATE.md` early. See `.claude/rules/session-discipline.md`.
 - **Don't break the UNS confirmation gate.** Run `mira-run-hallucination-audit` after engine/bot edits.
 
 ## Testing expectations
@@ -186,10 +209,16 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - `.claude/rules/uns-compliance.md` — UNS data-shape enforcement
 - `.claude/rules/uns-confirmation-gate.md` — chat-surface UNS gate (Slack/Telegram/email/web)
 - `.claude/rules/direct-connection-uns-certified.md` — direct-connection UNS certification (Ignition/MQTT/PLC/Hub/QR)
+- `.claude/rules/train-before-deploy.md` — Command Center trains/validates; Ignition/HMI deploys approved asset agents only
+- `docs/specs/asset-agent-validation-spec.md` — per-asset agent lifecycle (draft→…→approved→deployed) + HMI deployment gate
 - `.claude/rules/security-boundaries.md` — secrets, PII, safety keywords
 - `.claude/rules/python-standards.md` — ruff, httpx, NeonDB, async
+- `.claude/rules/mira-hub-migrations.md` — migration tenant_id typing (TEXT vs UUID family), RLS, grants, ALTER ordering, real-tenant verification
 - `.claude/rules/karpathy-principles.md` — coding behavior
-- `.claude/rules/codegraph-usage.md` — when to use CodeGraph vs grep/Read (CodeGraph-first for symbol-shaped questions)
+- `.claude/rules/debugging-conventions.md` — multi-cause perf debugging + verify schema/API paths before guessing
+- `.claude/rules/session-discipline.md` — premise-verify, regression-recheck, scoped-commits, migration-safety, long-task checkpointing
+- `.claude/rules/codegraph-usage.md` — when to use CodeGraph vs grep/Read + trust model + preflight + blind spots
+- `.claude/rules/graphify-excluded.md` — Graphify excluded from code navigation (CodeGraph is the single code-nav graph)
 - `docs/specs/uns-kg-unification-spec.md` — UNS authority (data architecture)
 - `docs/specs/mira-component-intelligence-architecture.md` — implementation-level architecture (component templates, KG mechanics)
 - `docs/specs/dialogue-state-tracker-spec.md` — FSM the UNS gate plugs into

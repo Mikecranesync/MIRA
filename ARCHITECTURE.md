@@ -10,7 +10,7 @@ Each MIRA module falls into one of four layers. Dependencies flow **downward onl
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  PRESENTATION (user-facing surfaces)                     │
-│  mira-web · mira-hud · atlas-frontend                   │
+│  mira-web · mira-hub · mira-hud · atlas-frontend        │
 ├─────────────────────────────────────────────────────────┤
 │  ADAPTERS (protocol translation → engine)                │
 │  mira-bots/{telegram,slack,reddit} · mira-pipeline       │
@@ -72,4 +72,8 @@ Alpha (Celery orchestrator) ──tailscale──→ Bravo (Ollama compute)
 | mira-pipeline | Adapter | mira-pipeline | 9099 | ✓ |
 | mira-bots/{tg,slack} | Adapter | mira-bot-{telegram,slack} | — | via shared |
 | mira-web | Presentation | mira-web | 3200→3000 | ✓ |
-| mira-hud | Presentation | — (standalone) | — | ✓ |
+| mira-hub | Presentation | mira-hub | 3101→3000 | ✓ |
+| mira-hud | Presentation | — (standalone, heads-up display) | — | ✓ |
+| live-plc-bridge | Infra | mira-live-plc-bridge | — | (bench Modbus→MQTT ingest, read-only) |
+| conv_simple_anomaly | Engine | mira-conv-simple-anomaly | — | (bench machine-card rule engine) |
+| mira-fault-detective | Engine | mira-fault-detective | — | (cv101 demo rule engine) |

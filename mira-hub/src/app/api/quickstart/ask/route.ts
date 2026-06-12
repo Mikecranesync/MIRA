@@ -1,14 +1,41 @@
 import { NextResponse } from "next/server";
+import { headers } from "next/headers";
+import { createHash } from "crypto";
 import { withTenantContext } from "@/lib/tenant-context";
 import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 import {
   retrieveManualChunks,
   buildGroundedContext,
+  isRefusalAnswer,
   type ManualChunk,
   type ManualSource,
 } from "@/lib/manual-rag";
+import { stripConflictingVendors } from "@/lib/vendor-relevance";
 
 export const dynamic = "force-dynamic";
+
+// Per-IP-hash rate limit for this public, unauthenticated LLM endpoint.
+// In-memory (per-instance) — sufficient while the hub runs as a single
+// container (see root CLAUDE.md Container Map). Mirrors the intent of
+// /api/public/report's DB-backed IP-hash limiter. If the hub scales
+// horizontally, port to a shared store / quickstart_rate table.
+const QUICKSTART_MAX_PER_MIN = 20;
+const QUICKSTART_WINDOW_MS = 60_000;
+const quickstartHits = new Map<string, number[]>();
+
+function quickstartRateLimited(ipHash: string): boolean {
+  const now = Date.now();
+  const cutoff = now - QUICKSTART_WINDOW_MS;
+  const hits = (quickstartHits.get(ipHash) ?? []).filter((t) => t > cutoff);
+  hits.push(now);
+  quickstartHits.set(ipHash, hits);
+  if (quickstartHits.size > 5000) {
+    for (const [k, v] of quickstartHits) {
+      if (v.every((t) => t <= cutoff)) quickstartHits.delete(k);
+    }
+  }
+  return hits.length > QUICKSTART_MAX_PER_MIN;
+}
 
 // See /api/quickstart/manufacturers/route.ts for the rationale on
 // QUICKSTART_TENANT_ID. Production sets it via Doppler / docker-compose;
@@ -69,6 +96,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
   }
 
+  // Rate limit before any work — we never store raw IPs.
+  const rlHdrs = await headers();
+  const rawIp =
+    rlHdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    rlHdrs.get("x-real-ip") ??
+    "unknown";
+  const ipHash = createHash("sha256").update(rawIp).digest("hex");
+  if (quickstartRateLimited(ipHash)) {
+    return NextResponse.json(
+      { error: "Too many requests — slow down and try again in a minute." },
+      { status: 429 },
+    );
+  }
+
   let body: AskPayload;
   try {
     body = (await req.json()) as AskPayload;
@@ -102,6 +143,14 @@ export async function POST(req: Request) {
     // Continue — the model can still refuse with no context.
   }
 
+  // Cross-vendor conflict strip (mirrors rag_worker.CROSS_VENDOR_FILTER): the
+  // tenant-only / OR fallback in retrieveManualChunks can surface a chunk from
+  // the wrong manufacturer (e.g. a Siemens chunk for a Danfoss question). Drop
+  // those before they reach the context and the citation list. Prefer the
+  // explicit manufacturer the user picked; otherwise infer the vendor from the
+  // question text. No-op when no vendor resolves, and never strips to empty.
+  chunks = stripConflictingVendors(chunks, manufacturer ?? question);
+
   const context = buildGroundedContext(chunks);
   const userMsg = context
     ? `CONTEXT:\n${context}\n\n---\n\nUSER QUESTION:\n${question}`
@@ -130,12 +179,18 @@ export async function POST(req: Request) {
     );
   }
 
-  const citations: ManualSource[] = chunks.map((c, i) => ({
-    index: i + 1,
-    title: [c.manufacturer, c.modelNumber].filter(Boolean).join(" ") || c.title,
-    url: c.sourceUrl || null,
-    page: c.sourcePage,
-  }));
+  // Suppress phantom citation cards on a refusal: chunks render 1:1, so an
+  // answer that says "I don't have manuals for that" would otherwise ship with
+  // up-to-6 citation cards — the contradiction reported in PR #1875. When the
+  // model refuses, it cited nothing, so the citation list is a lie. (#1875)
+  const citations: ManualSource[] = isRefusalAnswer(result.content)
+    ? []
+    : chunks.map((c, i) => ({
+        index: i + 1,
+        title: [c.manufacturer, c.modelNumber].filter(Boolean).join(" ") || c.title,
+        url: c.sourceUrl || null,
+        page: c.sourcePage,
+      }));
 
   return NextResponse.json({
     answer: result.content,

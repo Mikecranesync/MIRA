@@ -1,6 +1,6 @@
 {
   "name": "mira-hub",
-  "version": "1.9.1",
+  "version": "2.2.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -45,6 +45,10 @@
     "clsx": "^2.1.1",
     "dexie": "^4.0.11",
     "fft-js": "^0.0.12",
+    "graphology": "^0.26.0",
+    "graphology-communities-louvain": "^2.0.2",
+    "graphology-metrics": "^2.4.0",
+    "graphology-types": "^0.24.8",
     "jose": "^5.10.0",
     "libsodium-wrappers": "^0.7.15",
     "lucide-react": "^1.8.0",
@@ -61,6 +65,7 @@
     "recharts": "^3.8.1",
     "rrule": "^2.8.1",
     "tailwind-merge": "^3.5.0",
+    "unpdf": "^1.6.2",
     "xml2js": "^0.6.2"
   },
   "devDependencies": {
