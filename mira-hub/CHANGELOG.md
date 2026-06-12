@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.2.6 — 2026-06-12
+- fix(hub): fresh-tenant Feed header no longer shows a hardcoded "Mike Harper · Admin" — it now renders the real signed-in user (name + role) from `/api/me`, the same source as the sidebar, and renders nothing until loaded. Also replaced the leftover "Mike Harper" placeholder in the labs-only Conversations/Team mock data with a generic name. No real cross-tenant data was leaking — the strings were hardcoded. (#1904)
+
 ## v2.2.5 — 2026-06-12
 - security(hub): node-attachment manual chunks are now written `is_private = true` (`writePdfChunksForNode`). They were inserted without it → defaulted `false` → a tenant's uploaded manual could surface in other tenants' library/aggregate views via the hybrid read filter `(is_private = false OR tenant_id = $caller)` (#1833 leak class). Migration 052 backfills existing v2 node_attachment chunks to private; shared OEM corpus untouched. Adds a regression test pinning the INSERT to `is_private = true`. (#1903)
 
