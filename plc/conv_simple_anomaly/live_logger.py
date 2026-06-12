@@ -49,50 +49,49 @@ HR_SPECS = {
     111: ("uptime_seconds", 1.0), 112: ("conveyor_speed_cmd", 1.0), 113: ("conv_state", 1.0),
     114: ("vfd_cmd_word", 1.0), 115: ("vfd_freq_setpoint", 100.0), 116: ("vfd_poll_step", 1.0),
 }
-# Read blocks (offset, count). Each block is read independently and tolerated-missing,
-# so a PLC running an older/narrower program (fewer coils mapped) degrades gracefully
-# instead of crashing. Core safety/IO coils 0..19 are always present; the v4.1.x poll
-# coils (20,21) and the slave-map-v2 photo-eye (22) appear only on newer firmware.
-COIL_BLOCKS = [(0, 20), (20, 2), (22, 1)]
-HR_BLOCKS = [(100, 17)]
 UNIT = 1
 
 ALL_COLS = [COIL_NAMES[i] for i in sorted(COIL_NAMES)] + [HR_SPECS[i][0] for i in sorted(HR_SPECS)]
 
 
+# pymodbus dropped slave= in favor of device_id= around 3.7; probe once and cache the
+# working keyword so we don't spew TypeErrors every poll.
+_DEV_KW = {"device_id": UNIT}
+
+
 def _read(fn, addr, count):
-    """pymodbus read tolerant of the count= / slave= vs device_id= API drift."""
-    last = None
-    for kw in ({"count": count, "slave": UNIT}, {"count": count, "device_id": UNIT}):
+    """Single tolerant read. Returns the response, or None on error/exception."""
+    try:
+        r = fn(addr, count=count, **_DEV_KW)
+        return None if r.isError() else r
+    except TypeError:
+        # very old pymodbus — fall back to slave= and remember it
         try:
-            r = fn(addr, **kw)
-            if not r.isError():
-                return r
-            last = r
-        except Exception as e:  # noqa: BLE001 — surface as a soft poll miss
-            last = e
-    return last
+            r = fn(addr, count=count, slave=UNIT)
+            globals()["_DEV_KW"] = {"slave": UNIT}
+            return None if r.isError() else r
+        except Exception:
+            return None
+    except Exception:  # noqa: BLE001 — surface as a soft poll miss
+        return None
 
 
 def poll_once(c) -> dict:
-    """Read all mapped coils + HRs once. Returns {name: value}; missing signals omitted."""
+    """Read every mapped coil + HR ONE AT A TIME. The running program may expose only a
+    sparse subset (a freshly-downloaded ladder maps fewer registers, and the Micro820
+    rejects a read that spans an unmapped address) — per-offset reads capture whatever IS
+    mapped and silently skip the rest. Returns {name: value}; unmapped signals omitted."""
     row: dict[str, object] = {}
-    for off, cnt in COIL_BLOCKS:
-        r = _read(c.read_coils, off, cnt)
+    for off, name in COIL_NAMES.items():
+        r = _read(c.read_coils, off, 1)
         bits = getattr(r, "bits", None)
-        if not bits:
-            continue  # block unmapped on this firmware (e.g. poll coils / photo-eye) — skip
-        for i in range(min(cnt, len(bits))):
-            if (off + i) in COIL_NAMES:
-                row[COIL_NAMES[off + i]] = int(bool(bits[i]))
-    for off, cnt in HR_BLOCKS:
-        r = _read(c.read_holding_registers, off, cnt)
+        if bits:
+            row[name] = int(bool(bits[0]))
+    for off, (name, div) in HR_SPECS.items():
+        r = _read(c.read_holding_registers, off, 1)
         regs = getattr(r, "registers", None)
-        if not regs:
-            continue
-        for i in range(min(cnt, len(regs))):
-            name, div = HR_SPECS[off + i]
-            raw = regs[i]
+        if regs:
+            raw = regs[0]
             row[name] = round(raw / div, 3) if div != 1.0 else raw
     return row
 
