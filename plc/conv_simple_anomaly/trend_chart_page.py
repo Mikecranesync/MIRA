@@ -82,10 +82,14 @@ _HTML = r"""<!doctype html>
 // ---- Signal registry: ISA-101 actual+setpoint+range+units+quality contract per tag ----
 // band = mode-aware normal band [lo,hi]; bandRun overrides when motor_running=1.
 // plaus = wider sanity range; outside => SUSPECT (tag lying, not process abnormal).
+// on:true => drawn by default. Signals are auto-scaled per-trace on a shared axis, so the
+// default shows ONE primary trace (DC Bus); the tech toggles others on from the list. Band
+// shading shows when <=2 traces are active. (Track B's native Perspective chart gives each
+// pen its own axis — this is the bench-bootstrap simplification.)
 const REG = [
   {key:"vfd_dc_bus_v",   label:"DC Bus",     unit:"V",  band:[305,325], bandRun:[300,360], plaus:[50,500], on:true},
-  {key:"vfd_frequency_hz",label:"Frequency", unit:"Hz", band:[-0.5,0.5],bandRun:[0,62],    plaus:[-1,80],  on:true, setpoint:"vfd_freq_setpoint"},
-  {key:"vfd_current_a",  label:"Current",    unit:"A",  band:[-0.1,0.3],bandRun:[-0.1,6],  plaus:[-1,40],  on:true},
+  {key:"vfd_frequency_hz",label:"Frequency", unit:"Hz", band:[-0.5,0.5],bandRun:[0,62],    plaus:[-1,80],  on:false, setpoint:"vfd_freq_setpoint"},
+  {key:"vfd_current_a",  label:"Current",    unit:"A",  band:[-0.1,0.3],bandRun:[-0.1,6],  plaus:[-1,40],  on:false},
   {key:"vfd_voltage_v",  label:"Out Voltage",unit:"V",  band:[-1,5],    bandRun:[0,260],   plaus:[-5,400], on:false},
   {key:"vfd_freq_setpoint",label:"Setpoint", unit:"Hz", band:null,      plaus:[-1,80],     on:false},
   {key:"ambient_temp_c", label:"Ambient Temp",unit:"°C",band:[-10,45],  plaus:[-40,85],    on:false, future:true},
