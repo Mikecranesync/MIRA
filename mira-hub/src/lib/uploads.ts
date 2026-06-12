@@ -244,8 +244,12 @@ export async function updateUploadStatus(
   tenantId: string,
   status: UploadStatus,
   detail?: string | null,
-  extras?: { kbFileId?: string; kbChunkCount?: number },
+  extras?: { kbFileId?: string; kbChunkCount?: number; kgEntityId?: string; ingestRoute?: string },
 ): Promise<void> {
+  // kgEntityId + ingestRoute let a blind-door upload (#1806) be re-stamped to the
+  // Inbox node + 'v2' once its PDF is chunked into knowledge_entries, so the node
+  // Documents panel + provenance match the citable chunks. COALESCE — only set
+  // when provided, never clobber an existing value with NULL.
   await pool.query(
     `
     UPDATE hub_uploads
@@ -253,11 +257,22 @@ export async function updateUploadStatus(
            status_detail = COALESCE($4, status_detail),
            kb_file_id = COALESCE($5, kb_file_id),
            kb_chunk_count = COALESCE($6, kb_chunk_count),
+           kg_entity_id = COALESCE($7::uuid, kg_entity_id),
+           ingest_route = COALESCE($8, ingest_route),
            updated_at = NOW()
      WHERE id = $1
        AND tenant_id = $2
   `,
-    [id, tenantId, status, detail ?? null, extras?.kbFileId ?? null, extras?.kbChunkCount ?? null],
+    [
+      id,
+      tenantId,
+      status,
+      detail ?? null,
+      extras?.kbFileId ?? null,
+      extras?.kbChunkCount ?? null,
+      extras?.kgEntityId ?? null,
+      extras?.ingestRoute ?? null,
+    ],
   );
 }
 

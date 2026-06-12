@@ -9,6 +9,7 @@ import {
   type ManualChunk,
   type ManualSource,
 } from "@/lib/manual-rag";
+import { stripConflictingVendors } from "@/lib/vendor-relevance";
 
 export const dynamic = "force-dynamic";
 
@@ -140,6 +141,14 @@ export async function POST(req: Request) {
     console.error("[quickstart/ask] retrieval failed:", err);
     // Continue — the model can still refuse with no context.
   }
+
+  // Cross-vendor conflict strip (mirrors rag_worker.CROSS_VENDOR_FILTER): the
+  // tenant-only / OR fallback in retrieveManualChunks can surface a chunk from
+  // the wrong manufacturer (e.g. a Siemens chunk for a Danfoss question). Drop
+  // those before they reach the context and the citation list. Prefer the
+  // explicit manufacturer the user picked; otherwise infer the vendor from the
+  // question text. No-op when no vendor resolves, and never strips to empty.
+  chunks = stripConflictingVendors(chunks, manufacturer ?? question);
 
   const context = buildGroundedContext(chunks);
   const userMsg = context

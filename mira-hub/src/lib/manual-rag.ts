@@ -34,6 +34,59 @@ export interface ManualSource {
 
 const MAX_CONTENT_CHARS = 1200;
 
+// #1766 — BM25 term bounding. Ports mira-bots/shared/neon_recall._recall_bm25's
+// 32-term cap to the Hub retrieval path. The OR fallback below rewrites
+// plainto's `&` lexemes to `|`; for a pathologically long query — the /ask
+// kiosk's ~440-token MACHINE_CONTEXT prefix is the known offender — that is a
+// ~438-term OR-fanout, and `to_tsquery` unioning hundreds of huge GIN posting
+// lists took 31-45s (issue #1766; engine-side neon_recall already has the fix).
+//
+// Bounding is a NO-OP for normal-length queries: any query of <= BM25_MAX_TERMS
+// raw tokens is passed through verbatim, so short technical tokens ("oC", "F4")
+// and the AND→OR natural-question grounding are unchanged. Only a query that
+// exceeds the cap is reduced to its <= BM25_MAX_TERMS most-selective tokens
+// (deduped; pure-digit, <=2-char, and stopword tokens dropped — Postgres'
+// 'english' config stems + drops its own stopwords downstream regardless).
+const BM25_MAX_TERMS = 32;
+
+// Local high-frequency stopwords. Mirrors neon_recall._COMMON_WORDS. The <=2-char
+// rule already covers the short ones; the multi-char entries are the ones that
+// matter once a query is long enough to bound.
+const BM25_STOPWORDS = new Set<string>([
+  "the", "and", "for", "with", "your", "its", "has", "was", "are", "can",
+  "not", "but", "that", "this", "what", "from", "how", "why", "when", "does",
+  "did", "any", "all", "also", "just", "like", "get", "got", "see", "saw",
+  "too", "our", "now", "try", "fix", "out", "off", "had", "may", "will",
+  "let", "run", "set", "use", "they", "them", "his", "her", "she",
+]);
+
+/**
+ * Bound the text handed to `plainto_tsquery` so a runaway query can't blow up
+ * the OR-fallback fanout. No-op for queries of <= BM25_MAX_TERMS raw tokens;
+ * caps longer ones. Never returns empty: if every token of a long query is
+ * filtered out, falls back to the deduped raw tokens (capped). Exported for
+ * unit testing.
+ */
+export function boundBm25Query(query: string): string {
+  const rawAll = query.match(/\w+/g) ?? [];
+  if (rawAll.length <= BM25_MAX_TERMS) return query;
+
+  const lowered = query.toLowerCase().match(/\w+/g) ?? [];
+  const seen = new Set<string>();
+  const tokens: string[] = [];
+  for (const tok of lowered) {
+    if (seen.has(tok)) continue;
+    seen.add(tok);
+    if (tok.length <= 2 || /^\d+$/.test(tok) || BM25_STOPWORDS.has(tok)) continue;
+    tokens.push(tok);
+    if (tokens.length >= BM25_MAX_TERMS) break;
+  }
+  if (tokens.length === 0) {
+    return Array.from(new Set(lowered)).slice(0, BM25_MAX_TERMS).join(" ");
+  }
+  return tokens.join(" ");
+}
+
 /**
  * Run BM25 retrieval. Tries a manufacturer-scoped query first; falls
  * back to a tenant-only query if zero hits or no manufacturer.
@@ -63,7 +116,7 @@ async function runBm25Query(
   topK: number,
   manufacturer: string | null,
 ): Promise<ManualChunk[]> {
-  const params: unknown[] = [tenantId, query];
+  const params: unknown[] = [tenantId, boundBm25Query(query)];
   let mfrClause = "";
   if (manufacturer) {
     params.push(`%${manufacturer}%`);
@@ -72,23 +125,40 @@ async function runBm25Query(
   params.push(topK);
   const limitParam = `$${params.length}`;
 
-  const { rows } = await client.query(
-    `SELECT
-        content,
-        manufacturer,
-        model_number,
-        source_url,
-        source_page,
-        metadata->>'title' AS title,
-        ts_rank_cd(content_tsv, plainto_tsquery('english', $2)) AS rank
-      FROM knowledge_entries
-      WHERE tenant_id = $1
-        ${mfrClause}
-        AND content_tsv @@ plainto_tsquery('english', $2)
-      ORDER BY rank DESC
-      LIMIT ${limitParam}`,
-    params,
-  );
+  // plainto_tsquery ANDs every term, so a conversational query ("what does oC
+  // mean?") whose off-vocabulary words ("mean") aren't in the corpus matches
+  // nothing. Try the precise AND first; fall back to an OR query (the sanitized
+  // plainto lexemes rejoined with `|`) only when AND finds nothing — precision
+  // when it works, recall for natural questions. Mirrors retrieveNodeChunks.
+  const AND_TSQUERY = "plainto_tsquery('english', $2)";
+  const OR_TSQUERY =
+    "to_tsquery('english', replace(plainto_tsquery('english', $2)::text, ' & ', ' | '))";
+
+  const run = async (tsquery: string) => {
+    const res = await client.query(
+      `SELECT
+          content,
+          manufacturer,
+          model_number,
+          source_url,
+          source_page,
+          metadata->>'title' AS title,
+          ts_rank_cd(content_tsv, ${tsquery}) AS rank
+        FROM knowledge_entries
+        WHERE tenant_id = $1
+          ${mfrClause}
+          AND content_tsv @@ ${tsquery}
+        ORDER BY rank DESC
+        LIMIT ${limitParam}`,
+      params,
+    );
+    return res.rows;
+  };
+
+  let rows = await run(AND_TSQUERY);
+  if (rows.length === 0) {
+    rows = await run(OR_TSQUERY);
+  }
 
   return rows.map((r: Record<string, unknown>) => ({
     content: String(r.content ?? ""),
@@ -151,24 +221,47 @@ export async function retrieveNodeChunks(
   }
   if (nodeIds.length === 0) return [];
 
-  const { rows } = await client.query(
-    `SELECT
-        content,
-        source_url,
-        source_page,
-        page_start,
-        section_path,
-        metadata->>'filename' AS filename,
-        ts_rank_cd(content_tsv, plainto_tsquery('english', $2)) AS rank
-      FROM knowledge_entries
-      WHERE tenant_id = $1
-        AND ingest_route = 'v2'
-        AND (metadata->>'node_id') = ANY($3::text[])
-        AND content_tsv @@ plainto_tsquery('english', $2)
-      ORDER BY rank DESC
-      LIMIT $4`,
-    [tenantId, q, nodeIds, topK],
-  );
+  // Two tsquery shapes, both derived from plainto_tsquery so the user's text is
+  // sanitized (no to_tsquery injection):
+  //   AND — `plainto_tsquery('english', $2)` ("gs10 & fault & oc & mean"): precise,
+  //         but a single off-vocabulary word (e.g. the interrogative "mean" in
+  //         "what does oC mean?") that no manual chunk contains zeroes the whole
+  //         match. Natural questions hit this constantly.
+  //   OR  — the same lexemes joined with `|` ("gs10 | fault | oc | mean"): recall,
+  //         ranked by ts_rank_cd so the best chunk still sorts first.
+  // Run AND first (precision); fall back to OR only when AND finds nothing — so a
+  // precise query keeps its tight result, and a conversational one still grounds
+  // instead of returning "no coverage" for a manual that IS attached.
+  const AND_TSQUERY = "plainto_tsquery('english', $2)";
+  const OR_TSQUERY =
+    "to_tsquery('english', replace(plainto_tsquery('english', $2)::text, ' & ', ' | '))";
+
+  const runRetrieval = async (tsquery: string) => {
+    const res = await client.query(
+      `SELECT
+          content,
+          source_url,
+          source_page,
+          page_start,
+          section_path,
+          metadata->>'filename' AS filename,
+          ts_rank_cd(content_tsv, ${tsquery}) AS rank
+        FROM knowledge_entries
+        WHERE tenant_id = $1
+          AND ingest_route = 'v2'
+          AND (metadata->>'node_id') = ANY($3::text[])
+          AND content_tsv @@ ${tsquery}
+        ORDER BY rank DESC
+        LIMIT $4`,
+      [tenantId, boundBm25Query(q), nodeIds, topK],
+    );
+    return res.rows;
+  };
+
+  let rows = await runRetrieval(AND_TSQUERY);
+  if (rows.length === 0) {
+    rows = await runRetrieval(OR_TSQUERY);
+  }
 
   return rows.map((r: Record<string, unknown>) => ({
     content: String(r.content ?? ""),

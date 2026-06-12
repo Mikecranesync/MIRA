@@ -24,12 +24,19 @@ Env contract (all dev/staging — NEVER point this at prod):
   BETA_GATE_CHAT_URL     POST → ask a question, get an answer (engine/pipeline).
   BETA_GATE_TENANT       tenant id the upload + chat share.
   BETA_GATE_API_KEY      bearer token for both endpoints (optional).
+  BETA_GATE_COOKIE       raw Cookie header for both endpoints (optional). Hub
+                         NodeChat routes authenticate via a next-auth
+                         `next-auth.session-token` cookie, NOT a bearer — set
+                         this to the session cookie when pointing the gate at a
+                         Hub surface (`/api/namespace/node/<id>/{files,chat}`).
+                         See tests/beta/README.md for how to mint it.
   BETA_GATE_ASSET        asset / UNS hint sent with the question (optional).
   BETA_GATE_POLL_SECONDS ingestion poll budget (default 90).
 """
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from dataclasses import dataclass
@@ -64,6 +71,7 @@ class GateConfig:
     api_key: str | None
     asset: str | None
     poll_seconds: int
+    cookie: str | None = None
 
 
 @dataclass
@@ -100,6 +108,7 @@ def load_gate_config() -> GateConfig:
         api_key=os.getenv("BETA_GATE_API_KEY") or None,
         asset=os.getenv("BETA_GATE_ASSET") or None,
         poll_seconds=int(os.getenv("BETA_GATE_POLL_SECONDS", "90")),
+        cookie=os.getenv("BETA_GATE_COOKIE") or None,
     )
 
 
@@ -107,18 +116,76 @@ def _headers(cfg: GateConfig) -> dict[str, str]:
     h = {"X-Tenant-Id": cfg.tenant}
     if cfg.api_key:
         h["Authorization"] = f"Bearer {cfg.api_key}"
+    # Hub NodeChat routes (sessionOr401) authenticate via a next-auth session
+    # cookie, not a bearer. Forward the raw Cookie header when provided so the
+    # gate can drive the real /api/namespace/node/<id>/{files,chat} doors.
+    if cfg.cookie:
+        h["Cookie"] = cfg.cookie
     return h
 
 
+def _parse_sse_answer(text: str) -> str:
+    """Accumulate the answer from an SSE stream.
+
+    The Hub NodeChat surface (`/api/namespace/node/<id>/chat`) streams
+    `text/event-stream` lines of the form `data: {"content": "..."}` (token
+    deltas), plus a leading `data: {"sources": [...]}` and a terminating
+    `data: [DONE]`. We concatenate the `content` deltas — the assembled string
+    is the answer the human reads.
+    """
+    parts: list[str] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+        payload = line[len("data:"):].strip()
+        if not payload or payload == "[DONE]":
+            continue
+        try:
+            obj = json.loads(payload)
+        except (ValueError, TypeError):
+            continue
+        if isinstance(obj, dict) and isinstance(obj.get("content"), str):
+            parts.append(obj["content"])
+    return "".join(parts)
+
+
 def _ask(cfg: GateConfig, client: httpx.Client) -> str:
-    """Ask the question through the real chat endpoint; return the answer text."""
-    payload = {"question": QUESTION, "query": QUESTION, "tenant_id": cfg.tenant}
+    """Ask the question through the real chat endpoint; return the answer text.
+
+    Supports two contracts so the same gate runs against either beta surface:
+      * Hub **NodeChat** (`/api/namespace/node/<id>/chat`): body is a `messages`
+        array, response is an **SSE** stream of `content` deltas. This is the
+        surface PR #1592 grounds (uploads → `knowledge_entries` → cited answer).
+      * Engine / pipeline / OpenAI-compat: JSON body, JSON response
+        (`reply` / `answer` / `choices[].message.content`).
+
+    We always send both `messages` and the legacy `question`/`query` keys, then
+    branch on the response: SSE (event-stream) is accumulated; otherwise parsed
+    as JSON. This keeps one gate working across surfaces without a mode flag.
+    """
+    payload: dict[str, object] = {
+        "messages": [{"role": "user", "content": QUESTION}],
+        "question": QUESTION,
+        "query": QUESTION,
+        "tenant_id": cfg.tenant,
+    }
     if cfg.asset:
         payload["asset_id"] = cfg.asset
     resp = client.post(cfg.chat_url, json=payload, headers=_headers(cfg))
     resp.raise_for_status()
-    data = resp.json()
-    # Accept a few common response shapes (engine/pipeline/OpenAI-compat).
+
+    # SSE surface (NodeChat) — accumulate the streamed content deltas.
+    ctype = resp.headers.get("content-type", "")
+    body = resp.text
+    if "text/event-stream" in ctype or body.lstrip().startswith("data:"):
+        return _parse_sse_answer(body)
+
+    # JSON surfaces (engine / pipeline / OpenAI-compat).
+    try:
+        data = resp.json()
+    except (ValueError, TypeError):
+        return body
     if isinstance(data, dict):
         if "reply" in data:
             return str(data["reply"])
@@ -139,7 +206,11 @@ def run_beta_gate() -> GateResult:
     if not FIXTURE.exists():
         raise GateUnavailable(f"fixture missing: {FIXTURE}")
 
-    with httpx.Client(timeout=60) as client:
+    # follow_redirects: Hub runs with Next.js `trailingSlash: true`, so the
+    # canonical doors are `/files/` and `/chat/` and a slash-less URL 308s.
+    # httpx preserves method + body across a 308, so following it reaches the
+    # real door instead of erroring on the redirect.
+    with httpx.Client(timeout=60, follow_redirects=True) as client:
         # 1. Upload through the REAL door (multipart form). No direct DB writes.
         with FIXTURE.open("rb") as fh:
             files = {"file": (FIXTURE.name, fh, "application/pdf")}

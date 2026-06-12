@@ -1,76 +1,104 @@
 # CodeGraph
 
-Local-first semantic index of the MIRA codebase for faster AI-assisted navigation.
+Local-first semantic index of the MIRA codebase — **the single code-navigation
+graph for this repo.** (Graphify is excluded from code navigation; see
+`.claude/rules/graphify-excluded.md`.)
 
-- **Package:** `@colbymchenry/codegraph` (npm, v0.9.4 at install)
-- **Installed:** 2026-05-25 on CHARLIE
-- **Index location:** `.codegraph/codegraph.db` (gitignored — local + regenerable)
-- **Backend:** node:sqlite with WAL journal
+- **Package:** `@colbymchenry/codegraph` (npm). Running on CHARLIE: **v0.9.5**.
+- **Index location:** `.codegraph/codegraph.db` (gitignored — local + regenerable, WAL + FTS5).
+- **MCP:** wired into `.mcp.json` (`serve --mcp`) — every session gets the `codegraph_*` tools.
 
-## Install / re-index
+## Operating doctrine (read first)
 
-```bash
-npx -y @colbymchenry/codegraph init -i      # first time
-npx -y @colbymchenry/codegraph sync          # incremental update
-npx -y @colbymchenry/codegraph index -f      # force full re-index
-npx -y @colbymchenry/codegraph status        # stats
-```
+- **Trust is earned, not assumed.** The call-graph layer (`callers`/`callees`/
+  `trace`/`impact`) silently corrupted under the incremental watcher in 2026-06
+  (0 callers where the truth was 20), while `status`/`sync` reported "healthy."
+  **Trust call-graph results only after a freshness + health check passes.**
+  Symbol *lookup* (`query`/`files`/`node`) is reliable on any non-broken index.
+- **Run the preflight before non-doc code work:** `tools/codegraph-preflight.sh`.
+- **Rules:** `.claude/rules/codegraph-usage.md` (when to use + trust model + blind spots).
+- **History:** `docs/tech-debt/2026-06-09-codegraph-evaluation.md` (the corruption
+  finding) → `…2026-06-10-codegraph-rebenchmark.md` (fix verified, D→A−).
 
-## Index stats (2026-05-25 baseline)
-
-| Metric | Value |
-|---|---|
-| Files indexed | 1,221 (of 1,444 scanned) |
-| Nodes | 18,955 |
-| Edges | 35,361 |
-| DB size | ~35 MB |
-| Index time | ~5 s |
-
-Languages: 744 Python · 364 TypeScript · 223 YAML · 79 TSX · 28 JS · 6 JSX.
-Node kinds: 5,374 imports · 5,008 functions · 2,957 variables · 2,352 methods · 1,221 files · 874 constants · 690 classes · 275 interfaces · 135 type aliases · 69 routes.
-
-## Useful queries
+## Real CLI usage (v0.9.5)
 
 ```bash
-codegraph query <symbol>          # fuzzy symbol search with scores
-codegraph callers <symbol>        # who calls this
-codegraph callees <symbol>        # what does this call
-codegraph impact <symbol>         # blast radius of changing this
-codegraph affected <files...>     # tests touched by file changes
-codegraph context "<task>"        # markdown context bundle for a task
-codegraph files                   # project tree with per-file symbol counts
+npx -y @colbymchenry/codegraph <command>
 ```
 
-## MCP server
-
-**Enabled 2026-05-25** — wired into `.mcp.json` (project-scoped, not global). Every Claude Code session in this repo gets 10 codegraph tools without bash:
-
-| Tool | When to call |
+| Command | What it does |
 |---|---|
-| `codegraph_context` | PRIMARY — "how does X work / what's the deal with this feature" |
-| `codegraph_search` | Quick name lookup |
-| `codegraph_callers` / `codegraph_callees` | Caller / callee audit |
-| `codegraph_impact` | Blast radius of changing a symbol |
-| `codegraph_trace` | "How does X reach Y" — call path with dynamic-dispatch hops |
-| `codegraph_node` | One symbol's signature/docstring + trail |
-| `codegraph_explore` | Source for several related symbols in one call |
-| `codegraph_files` | File/folder structure |
-| `codegraph_status` | Index health |
+| `init [-i] [path]` | Initialize CodeGraph in a project (`-i` also runs the first index) |
+| `index [-f\|--force] [path]` | Index all files; `--force` rebuilds the whole graph (**repairs corruption**, ~9 s) |
+| `sync [path]` | Incremental update since last index (fast; does **not** repair a corrupted edge set) |
+| `status [path]` | Index stats (files / nodes / edges / db size) |
+| `query <search>` | Fuzzy symbol search (kind + location + signature, ranked) |
+| `files` | Project file structure from the index |
+| `context <task>` | Markdown context bundle for a task (entry points + related + code) |
+| `callers <symbol>` | Functions/methods that call a symbol |
+| `callees <symbol>` | What a symbol calls |
+| `impact <symbol>` | What changing a symbol affects (⚠ containment, not dependents, for a **class**) |
+| `affected [files...]` | Test files affected by changed source files |
+| `serve [--mcp]` | Run as an MCP server (this is what `.mcp.json` launches) |
+| `status` / `unlock` | health / remove a stale lock blocking indexing |
+| `uninit` | Remove `.codegraph/` |
+| `install` / `uninstall` | Wire/unwire the MCP server into agents |
 
-**Anti-patterns** (per the server's own instructions):
-- Don't grep first when looking up a symbol — `codegraph_search` is faster and returns kind + location + signature.
-- Don't loop `codegraph_node` — use `codegraph_explore` to batch.
-- Don't query immediately after editing — watcher needs ~500 ms to debounce.
+### MCP tools (in-session, no bash)
 
-To disable: remove the `codegraph` entry from `.mcp.json`.
+`codegraph_context` (PRIMARY orientation) · `codegraph_search` · `codegraph_callers` /
+`codegraph_callees` · `codegraph_impact` · `codegraph_trace` ("how does X reach Y") ·
+`codegraph_node` · `codegraph_explore` (several symbols, one call) · `codegraph_files` ·
+`codegraph_status`. See `.claude/rules/codegraph-usage.md` for tool-selection rules.
 
-Validation: see [codegraph-benchmark-2026-05-25.md](../../docs/evaluations/codegraph-benchmark-2026-05-25.md) — 49/49 caller relationships verified, 5/5 impact samples valid.
+## Preflight — the per-task navigation gate
 
-## Workflow integration
+```bash
+tools/codegraph-preflight.sh ["task description"]
+```
 
-- **Mandatory exploration tool:** `.claude/rules/codegraph-usage.md` — CodeGraph-first before grep/Read for any architecture, impact, or trace question.
-- **Auto-sync hook:** `.githooks/post-merge` and `.githooks/post-checkout` run `codegraph sync` after every merge / pull / branch-switch (incremental, <1 s, no-op if codegraph not installed).
-- **Manual sync:** `npx -y @colbymchenry/codegraph sync` — run if hook didn't fire (e.g. cherry-pick, hand-edit) or after large file moves.
+Checks install / MCP / index presence / **freshness** (any source file newer than
+the index) / sync marker / **corruption canary**, optionally runs `codegraph context`
+for the task and flags shared modules needing `impact`, lists the known blind spots,
+and prints a markdown report to paste into the PR. **Verdict + exit:** `0` READY ·
+`1` STALE (sync/`index --force` then re-run) · `2` BROKEN (no index / no npx).
+
+## Benchmark — periodic fail-loud regression suite
+
+```bash
+tools/codegraph-benchmark.sh [output.md]      # default: docs/tech-debt/<date>-codegraph-benchmark.md
+```
+
+Two tiers. **Tier-1 gates the exit code:** the previously-corrupted symbols must
+return correct callers (floors + known-caller-file presence), coverage resolves,
+canary healthy, stale-detection logic works, MCP/CLI parity (best-effort). **Tier-2
+is reported, not gating:** the known blind spots (class instantiation, import-alias,
+same-name) — it fails loud only if one **regresses** (a good case breaks) or
+**resolves** (limitation gone → update docs + close the upstream issue). Latest run:
+`docs/tech-debt/2026-06-11-codegraph-benchmark.md`.
+
+## Known blind spots (verify with grep)
+
+1. **Class instantiation `ClassName()` is not a caller edge** — `callers <Class>` = 0
+   despite many `Class(...)` sites. grep for class blast-radius. (upstream `colbymchenry/codegraph#774`)
+2. **`impact <Class>` returns containment, not dependents.**
+3. **Import-alias calls** (`import f as _f` → `_f()`) don't resolve — grep the alias.
+4. **Same-name symbols** aggregate; can't scope to one def — grep the file.
+
+## Freshness & operations (how the index is kept honest)
+
+- **Hooks:** `.githooks/post-merge` + `.githooks/post-checkout` → `sync` → corruption
+  canary (`index --force` if call edges collapsed) → write `.codegraph/.last-sync`
+  marker. Non-blocking; logs to `.codegraph/hook.log`. Requires `git config
+  core.hooksPath .githooks` (set on CHARLIE).
+- **Daily reindex:** `tools/codegraph-force-reindex.sh` via launchd
+  `com.factorylm.codegraph-reindex` (04:17) bounds watcher drift to ≤24 h. Setup:
+  `tools/launchd/README.md`.
+- **Corruption canary:** `tools/codegraph-canary.sh` — `callers resolve_uns_path`
+  must be ≥1; 0 ⇒ auto `index --force`. Exit 0 healthy / 1 repaired / 2 failed.
+- **Manual:** `npx -y @colbymchenry/codegraph sync` (light) or `index --force`
+  (repairs corruption) after cherry-picks / hand-edits. Upstream bugs:
+  `colbymchenry/codegraph#773` (FK edge drops) + `#774` (class instantiation).
 
 ## Rollback
 
@@ -78,4 +106,4 @@ Validation: see [codegraph-benchmark-2026-05-25.md](../../docs/evaluations/codeg
 npx -y @colbymchenry/codegraph uninit    # deletes .codegraph/
 ```
 
-Pre-install state tagged `pre-codegraph-install` (commit `748bf2b4`).
+To disable the MCP server: remove the `codegraph` entry from `.mcp.json`.
