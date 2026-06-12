@@ -398,6 +398,64 @@ def test_family_aliases_set_product_family():
 
 
 # ---------------------------------------------------------------------------
+# #1572 cluster 1 — family-marker aliases must populate model + reach 0.7
+# confidence so engine.py sets state["asset_identified"] and the UNS gate
+# stops re-firing on every turn.
+# ---------------------------------------------------------------------------
+
+
+def test_family_marker_alias_populates_model():
+    """gs10/gs20/powerflex etc. without a separate model token must still
+    expose a model so confidence reaches the 0.7 asset_identified threshold."""
+    for alias, family in FAMILY_FROM_ALIAS.items():
+        ctx = resolve_uns_path(f"my {alias} drive")
+        assert ctx.model == family, (
+            f"alias {alias!r} (no separate model token) should fall back to "
+            f"model={family!r}, got {ctx.model!r}"
+        )
+        assert ctx.confidence >= 0.7, (
+            f"alias {alias!r} should yield confidence >= 0.7 once family-marker "
+            f"falls back to model, got {ctx.confidence}"
+        )
+
+
+def test_gs20_oc_reaches_asset_identified_threshold():
+    """Fixture vague_opener_stuck_state_05 turn 2 — gate must skip after
+    this message resolves to manufacturer + family + fault."""
+    ctx = resolve_uns_path("It's a GS20, showing OC fault on the display")
+    assert ctx.manufacturer == "AutomationDirect"
+    assert ctx.model == "GS20"
+    assert ctx.fault_code == "OC"
+    assert ctx.confidence == 0.9
+
+
+def test_gs10_overcurrent_reaches_threshold():
+    """Fixture asset_change_mid_session_08 / reset_new_session_09 / 01 — gate
+    must skip even without a fault code pattern (word 'overcurrent' alone)."""
+    ctx = resolve_uns_path("GS10 VFD overcurrent fault on startup")
+    assert ctx.manufacturer == "AutomationDirect"
+    assert ctx.model == "GS10"
+    assert ctx.confidence == 0.7
+
+
+def test_family_marker_path_does_not_double_segment():
+    """When model fell back to family-token, _build_uns_path must not insert
+    both as separate slots (would produce .../gs20/gs20/...).  The model
+    field still reads GS20 for downstream consumers, but the path drops the
+    duplicate slot."""
+    ctx = resolve_uns_path("GS20 OC fault")
+    assert ctx.model == "GS20"
+    assert ctx.product_family == "GS20"
+    assert ctx.uns_path is not None
+    # No "gs20.gs20" doubled segment anywhere in the path
+    assert "gs20.gs20" not in ctx.uns_path, ctx.uns_path
+    # And the manufacturer + fault still appear (path is well-formed)
+    assert "automationdirect" in ctx.uns_path
+    assert "fault_codes" in ctx.uns_path
+    assert "oc" in ctx.uns_path
+
+
+# ---------------------------------------------------------------------------
 # Offline guarantee — these must pass without a NeonDB connection
 # ---------------------------------------------------------------------------
 
