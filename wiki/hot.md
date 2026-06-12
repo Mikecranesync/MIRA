@@ -1,4 +1,22 @@
-# Hot Cache — 2026-06-08 — CHARLIE
+# Hot Cache — 2026-06-12 — PLC laptop
+
+## Session — 2026-06-12 (trend-viewer v2 — last-fault + status-bit decode + Perspective embed)
+
+**Shipped (commit `a55bf2f3`, branch `docs/plc-1668-feed-resume`, 33/33 node tests):**
+- `mira-trend-viewer/` v2: per-VFD `last_fault` ENUM register (persists trip cause after
+  `fault_code` resets — the intermittent-trip workhorse); status-word **bit decode** — a WORD
+  tag declaring `bits:{0:"Running",5:"Faulted",…}` expands ONCE in the store (like scaling)
+  into named boolean child tags, each an indented checkbox row + digital step lane, parent
+  updates fan out with honest null/quality.
+- **Perspective wiring:** `trend_historian.py` now mounts the viewer at `/viewer` (same origin
+  as `/trends/summary` → no CORS, no extra server); `app.js` auto-targets the serving origin;
+  `Trends/TrendPanel` embeds `/viewer/index.html?source=historian` alongside Ask MIRA (route
+  `/trends` + NavBar TRENDS unchanged). Deploy to gateway: `ignition\deploy_ignition.ps1`.
+- Verified: live browser check (Fault Code "No fault" + Last Fault "ocA"; 0x0007 →
+  Running/At Speed/Ready ON) + smoke of `/viewer` mount on scratch port 8799; promo screenshots
+  in `docs/promo-screenshots/2026-06-12_trend-viewer-v2-*`.
+- **Next (v3 backlog, `mira-trend-viewer/README.md`):** contactor cmd-vs-feedback, adapter
+  `history()` backfill, pen-list patch-render, MIRA "discuss this trend" hand-off.
 
 ## Session — 2026-06-08 (Path-to-Beta: upload→retrieval gate — #1592 reality check)
 
