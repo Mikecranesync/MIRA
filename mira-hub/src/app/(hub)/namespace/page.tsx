@@ -39,7 +39,7 @@ interface FileRecord {
 
 type EditingState = { nodeId: string; value: string } | null;
 type NewFolderState = { parentId: string | null; value: string } | null;
-type UploadState = { nodeId: string; state: "uploading" | "done" | "error" } | null;
+type UploadState = { nodeId: string; state: "uploading" | "done" | "error"; message?: string } | null;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -263,11 +263,14 @@ export default function NamespacePage() {
       if (selected?.id === nodeId) void loadFiles(nodeId);
       await refreshTree();
       showToast(`${files.length} file${files.length === 1 ? "" : "s"} uploaded`);
-    } catch (e) {
-      setUploadState({ nodeId, state: "error" });
-      showToast(`Upload failed: ${(e as Error).message}`);
-    } finally {
       setTimeout(() => setUploadState(null), 2000);
+    } catch (e) {
+      // #1899: keep the failure VISIBLE — a durable error row in the Files
+      // panel (below), not just a 2s toast that the user can miss while the
+      // panel still reads "No files attached" (i.e. "nothing happened").
+      const message = (e as Error).message;
+      setUploadState({ nodeId, state: "error", message });
+      showToast(`Upload failed: ${message}`);
     }
   }
 
@@ -886,14 +889,25 @@ function FilesSection({ nodeId, files, uploadState, onDeleteFile, onUpload }: {
   onUpload: () => void;
 }) {
   const isUploading = uploadState?.nodeId === nodeId && uploadState.state === "uploading";
+  const isError = uploadState?.nodeId === nodeId && uploadState.state === "error";
 
-  if (files === undefined && !isUploading) return null;
+  if (files === undefined && !isUploading && !isError) return null;
 
   return (
     <div>
       <div className="mb-2 text-[11px] uppercase tracking-wide text-gray-400">Files</div>
       {isUploading && (
         <div className="mb-2 text-xs text-blue-500 animate-pulse">Uploading…</div>
+      )}
+      {isError && (
+        // #1899: durable failure row so a 500 never looks like "nothing happened".
+        <div className="mb-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-700">
+          <span className="font-medium">Upload failed.</span>{" "}
+          {uploadState?.message ?? "Please try again."}{" "}
+          <button type="button" onClick={onUpload} className="underline hover:opacity-80">
+            Retry
+          </button>
+        </div>
       )}
       {files === undefined || files.length === 0 ? (
         <div className="text-xs text-gray-400">
