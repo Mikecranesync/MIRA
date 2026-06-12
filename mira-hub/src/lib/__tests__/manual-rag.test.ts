@@ -5,6 +5,8 @@ import {
   boundBm25Query,
   buildGroundedContext,
   chunksToSources,
+  extractFaultCodes,
+  isRefusalAnswer,
   retrieveManualChunks,
   retrieveNodeChunks,
   type ManualChunk,
@@ -293,5 +295,104 @@ describe("retrieveManualChunks term bounding (#1766)", () => {
     const { client, calls } = makeClient([[row()]]);
     await retrieveManualChunks(client, "tenant-1", "what is the torque spec");
     expect(calls[0].params[1]).toBe("what is the torque spec");
+  });
+});
+
+describe("extractFaultCodes (#1875)", () => {
+  it("extracts a single-letter fault code from a verbose question", () => {
+    expect(
+      extractFaultCodes(
+        "My Allen-Bradley PowerFlex 525 is showing fault F004, what does it mean?",
+      ),
+    ).toEqual(["F004"]);
+  });
+
+  it("extracts bare and multiple codes, uppercased + de-duplicated", () => {
+    expect(extractFaultCodes("F004")).toEqual(["F004"]);
+    expect(extractFaultCodes("faults e001 and A002")).toEqual(["E001", "A002"]);
+    expect(extractFaultCodes("F004 again F004")).toEqual(["F004"]);
+    expect(extractFaultCodes("F0004 underflow")).toEqual(["F0004"]);
+  });
+
+  it("does NOT match model numbers, two-letter prefixes, bare digits, or single-digit codes", () => {
+    expect(extractFaultCodes("PowerFlex 525")).toEqual([]); // 525 = digits only
+    expect(extractFaultCodes("GS10 drive overcurrent")).toEqual([]); // two-letter prefix
+    expect(extractFaultCodes("what is the torque spec")).toEqual([]);
+    expect(extractFaultCodes("fault F4")).toEqual([]); // single digit — known limit
+  });
+});
+
+describe("retrieveManualChunks fault-code prioritization (#1875)", () => {
+  it("runs an extra code-scoped pass and promotes the code-bearing chunk above the generic BM25 result", async () => {
+    const generic = row({
+      content: "PowerFlex 525 general overview, mounting and wiring.",
+      source_page: 12,
+      source_url: "pf525-overview.pdf",
+    });
+    const f004 = row({
+      content: "F004 UnderVoltage: incoming AC line low. Check incoming line power.",
+      source_page: 670,
+      source_url: "520-um001.pdf",
+    });
+    // call 1 = main AND pass (returns the generic row, non-empty ⇒ no OR fallback)
+    // call 2 = fault-code pass keyed on "F004" (returns the F004 row)
+    const { client, calls } = makeClient([[generic], [f004]]);
+    const out = await retrieveManualChunks(
+      client,
+      "tenant-1",
+      "My Allen-Bradley PowerFlex 525 is showing fault F004, what does it mean?",
+      { topK: 6 },
+    );
+    expect(calls.length).toBe(2);
+    expect(calls[1].params[1]).toBe("F004"); // code pass queries on the code alone
+    expect(out.map((c) => c.sourcePage)).toContain(670); // F004 chunk retrieved
+    expect(out[0].sourcePage).toBe(670); // promoted ahead of the generic chunk
+    expect(out.length).toBe(2); // deduped, both distinct
+  });
+
+  it("dedupes when the code pass returns the same chunk as the main pass", async () => {
+    const f004 = row({
+      content: "F004 UnderVoltage table row.",
+      source_page: 670,
+      source_url: "520-um001.pdf",
+    });
+    // main pass returns the F004 row; code pass returns the SAME row → 1 result
+    const { client } = makeClient([[f004], [f004]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "fault F004 meaning", {
+      topK: 6,
+    });
+    expect(out.length).toBe(1);
+    expect(out[0].sourcePage).toBe(670);
+  });
+
+  it("does not run a code pass for a code-free query (no behavior change)", async () => {
+    const { client, calls } = makeClient([[row()]]);
+    await retrieveManualChunks(client, "tenant-1", "what is the torque spec", {
+      topK: 6,
+    });
+    expect(calls.length).toBe(1);
+  });
+});
+
+describe("isRefusalAnswer (#1875 phantom-citation gate)", () => {
+  it("detects the quickstart cite-or-refuse sentence (case-insensitive, mid-answer)", () => {
+    expect(
+      isRefusalAnswer(
+        "I don't have manuals for that in the public knowledge base — sign up to upload your own.",
+      ),
+    ).toBe(true);
+    expect(
+      isRefusalAnswer(
+        "I DON'T HAVE MANUALS FOR THAT IN THE PUBLIC KNOWLEDGE BASE. The context blocks do not mention F081.",
+      ),
+    ).toBe(true);
+  });
+
+  it("returns false for a real grounded answer and for empty input", () => {
+    expect(isRefusalAnswer("For fault F004, the most likely cause is UnderVoltage [1].")).toBe(
+      false,
+    );
+    expect(isRefusalAnswer("")).toBe(false);
+    expect(isRefusalAnswer(null)).toBe(false);
   });
 });

@@ -87,9 +87,57 @@ export function boundBm25Query(query: string): string {
   return tokens.join(" ");
 }
 
+// #1875 — fault-code token detector. A SINGLE letter followed by 2-4 digits:
+// matches F004, F0004, E001, A002 (and parameter tokens like b005 — boosting a
+// chunk that names them verbatim is still good retrieval). Deliberately does
+// NOT match two-letter model prefixes (PF525, GS10) or bare model numbers
+// (525) so the code pass never fires on a vendor/model token. Known limit:
+// single-digit codes ("F4") are not matched — widening to \d{1,4} would start
+// catching false positives, so terse codes rely on the normal BM25 path.
+const FAULT_CODE_RE = /\b[A-Za-z]\d{2,4}\b/g;
+
+/**
+ * Extract fault-code tokens from a query, uppercased and de-duplicated.
+ * Exported for unit testing. Empty array ⇒ the caller skips the code pass.
+ */
+export function extractFaultCodes(query: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const m of query.matchAll(FAULT_CODE_RE)) {
+    const code = m[0].toUpperCase();
+    if (!seen.has(code)) {
+      seen.add(code);
+      out.push(code);
+    }
+  }
+  return out;
+}
+
+function dedupeChunks(chunks: ManualChunk[]): ManualChunk[] {
+  const seen = new Set<string>();
+  const out: ManualChunk[] = [];
+  for (const c of chunks) {
+    const key = `${c.sourceUrl}|${c.sourcePage}|${c.content}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+  }
+  return out;
+}
+
 /**
  * Run BM25 retrieval. Tries a manufacturer-scoped query first; falls
  * back to a tenant-only query if zero hits or no manufacturer.
+ *
+ * #1875 fault-code prioritization: a verbose natural-language question
+ * ("…PowerFlex 525 is showing fault F004, what does it mean?") dilutes the
+ * BM25/OR ranking so the chunk that documents the code ranks below top-K and
+ * the model honestly refuses ("the context blocks do not mention F004") even
+ * though the chunk exists — proven live: the terse query "F004" retrieves and
+ * answers it. Mirrors the engine's `recall_fault_code` *intent* (not its RRF /
+ * structured-table apparatus): when the query names a fault code, run one extra
+ * pass keyed on the code alone and merge those chunks AHEAD of the main result.
+ * Additive only — never removes a main-pass chunk, never causes a refusal.
  */
 export async function retrieveManualChunks(
   client: PoolClient,
@@ -102,11 +150,42 @@ export async function retrieveManualChunks(
   const topK = opts.topK ?? 6;
   const mfr = (opts.manufacturer ?? "").trim();
 
+  // Main pass (manufacturer-scoped first, tenant-only fallback).
+  let main: ManualChunk[];
   if (mfr) {
     const scoped = await runBm25Query(client, tenantId, q, topK, mfr);
-    if (scoped.length > 0) return scoped;
+    main = scoped.length > 0 ? scoped : await runBm25Query(client, tenantId, q, topK, null);
+  } else {
+    main = await runBm25Query(client, tenantId, q, topK, null);
   }
-  return runBm25Query(client, tenantId, q, topK, null);
+
+  const codes = extractFaultCodes(q);
+  if (codes.length === 0) return main;
+
+  // Code pass: query on the code(s) alone (the terse form that reliably
+  // surfaces the documenting chunk), manufacturer-scoped first then fallback.
+  const codeQuery = codes.join(" ");
+  let codeHits = mfr ? await runBm25Query(client, tenantId, codeQuery, topK, mfr) : [];
+  if (codeHits.length === 0) {
+    codeHits = await runBm25Query(client, tenantId, codeQuery, topK, null);
+  }
+  if (codeHits.length === 0) return main;
+
+  return dedupeChunks([...codeHits, ...main]).slice(0, topK);
+}
+
+// #1875 — the exact cite-or-refuse sentence the quickstart system prompt tells
+// the model to emit when context has no support. The route uses this to
+// suppress phantom citation cards on a refusal (chunks render 1:1, so a refusal
+// otherwise ships with 6 citations under "I don't have manuals" — the
+// contradiction reported in PR #1875). Kept here so it is unit-testable.
+export const QUICKSTART_REFUSAL_MARK =
+  "I don't have manuals for that in the public knowledge base";
+
+/** True when an answer is the quickstart cite-or-refuse refusal. */
+export function isRefusalAnswer(answer: string | null | undefined): boolean {
+  if (!answer) return false;
+  return answer.toLowerCase().includes(QUICKSTART_REFUSAL_MARK.toLowerCase());
 }
 
 async function runBm25Query(
