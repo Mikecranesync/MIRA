@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.2.1 — 2026-06-11
+- fix(hub): Command Center — every tree node is now selectable; the detail panel no longer freezes on the one live-display node. Selection was gated on `hasLiveDisplay`, swallowing clicks on VFDs / PLCs / folders. Refresh button now spins + disables while fetching. (#1881)
+
 ## v2.2.0 — 2026-06-07
 - fix(hub): Command Center selecting a node with a live display renders **"Open Live View"** button (target=`_blank`, rel=`noopener noreferrer`) instead of an embedded iframe. Iframe was XFO=SAMEORIGIN blocked. Top-level navigation ignores XFO; matches direct-connection handoff model. (#1765)
 

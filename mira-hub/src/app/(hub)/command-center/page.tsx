@@ -58,6 +58,7 @@ export default function CommandCenterPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<CCNode | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -100,6 +101,14 @@ export default function CommandCenterPage() {
     return findById(data.nodes, selected.id) ?? selected;
   }, [data, selected]);
 
+  // Manual refresh: show a spinner so the click reads as doing something. The
+  // background poll (POLL_MS) keeps re-fetching silently and must NOT flip this.
+  const manualRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try { await refresh(); } finally { setRefreshing(false); }
+  };
+
   const toggle = (id: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -119,10 +128,12 @@ export default function CommandCenterPage() {
           {data && <FreshnessSummary counts={data.freshnessCounts}
             displaysTotal={data.displaysTotal} reachable={data.liveCount} />}
         </div>
-        <button onClick={() => refresh()}
-          className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium hover:bg-black/5"
+        <button onClick={() => void manualRefresh()}
+          disabled={refreshing}
+          className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium hover:bg-black/5 disabled:opacity-50"
           title="Refresh">
-          <RefreshCw className="h-3.5 w-3.5" /> Refresh
+          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? "Refreshing…" : "Refresh"}
         </button>
       </div>
 
@@ -176,7 +187,11 @@ function TreeRow({
           backgroundColor: isSelected ? "#2563EB14" : undefined,
         }}
         onClick={() => {
-          if (node.hasLiveDisplay) onSelect(node);
+          // Every node is selectable — the Viewer renders the right state per
+          // node (live display, "no display configured", or no-tags). Gating
+          // selection on hasLiveDisplay froze the detail panel on the one
+          // display node and swallowed every other click.
+          onSelect(node);
           if (hasChildren) toggle(node.id);
         }}
       >
@@ -284,8 +299,8 @@ function Viewer({ node }: { node: CCNode | null }) {
   if (!node) {
     return (
       <Empty icon={MonitorPlay}
-        title="Select an asset with a live display"
-        sub="Equipment with a green dot has a screen you can watch." />
+        title="Select a node to see its details"
+        sub="Equipment with a green dot has a live screen you can watch." />
     );
   }
   if (!node.hasLiveDisplay || !node.displayId) {
