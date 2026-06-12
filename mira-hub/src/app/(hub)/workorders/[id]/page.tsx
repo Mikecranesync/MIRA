@@ -13,8 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { OpenInCMMSButton } from "@/components/cmms/open-in-cmms-button";
 import { PARTS } from "@/lib/parts-data";
+import { isWorkOrderInProgressStatus, WORK_ORDER_IN_PROGRESS_STATUS } from "@/lib/work-order-status";
 import { useToast } from "@/providers/toast-provider";
-import { API_BASE } from "@/lib/config";
 
 type Priority = "critical" | "high" | "medium" | "low";
 
@@ -116,7 +116,24 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [timerRunning]);
 
-  function startWork() { setStatus("inprogress"); setTimerRunning(true); toast(t("started")); }
+  async function startWork() {
+    try {
+      const res = await fetch(`/hub/api/work-orders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: WORK_ORDER_IN_PROGRESS_STATUS }),
+      });
+      if (!res.ok) throw new Error("Failed to start work order");
+      const data = (await res.json()) as { work_order?: Partial<WO> };
+      const nextStatus = data.work_order?.status ?? WORK_ORDER_IN_PROGRESS_STATUS;
+      setStatus(nextStatus);
+      setWo(prev => prev ? { ...prev, status: nextStatus } : prev);
+      setTimerRunning(true);
+      toast(t("started"));
+    } catch {
+      toast("Could not start work — please try again");
+    }
+  }
   function stopTimer() { setTimerRunning(false); toast(t("paused", { time: formatTimer(elapsed) })); }
 
   function openCompleteForm() {
@@ -457,7 +474,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
         {/* Status actions */}
         {status !== "completed" && (
           <div className="space-y-2">
-            {status === "inprogress" && (
+            {isWorkOrderInProgressStatus(status) && (
               <Button onClick={openCompleteForm} className="w-full h-11 gap-2 font-semibold"
                 style={{ backgroundColor: "#16A34A" }}>
                 <CheckCircle2 className="w-4 h-4" />{t("markComplete")}
