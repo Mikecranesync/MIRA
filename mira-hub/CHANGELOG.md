@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.2.7 — 2026-06-12
+- fix(hub): a manual uploaded via Knowledge → Upload is now one click from being asked about. The PDF was already chunked + attached to the per-tenant Inbox node and citable (#1806), but nothing pointed the user there: the post-upload card said "Parsed", the Inbox folder read "0 files", and the user's own folder's Ask MIRA structurally can't reach Inbox docs (subtree-scoped retrieval) → felt broken. Now (1) the upload summary card shows an **"Ask MIRA about this manual"** CTA deep-linking to `/namespace?node=<inbox>&chat=1`; (2) `namespace?node=&chat=1` selects + expands the target node and auto-opens Ask MIRA; (3) node `files_count` + the folder Files list now include v2-indexed PDFs (`hub_uploads.kg_entity_id`), shown as read-only "indexed" entries — killing the "0 files" lie. No schema change. (The reported "Knowledge upload hits the demo `/api/documents/upload`" was stale — it's hit `/api/uploads/local` since the Knowledge-tab unification; that demo endpoint is now-orphaned dead code, noted for separate cleanup.) (#1900)
+
 ## v2.2.6 — 2026-06-12
 - fix(hub): fresh-tenant Feed header no longer shows a hardcoded "Mike Harper · Admin" — it now renders the real signed-in user (name + role) from `/api/me`, the same source as the sidebar, and renders nothing until loaded. Also replaced the leftover "Mike Harper" placeholder in the labs-only Conversations/Team mock data with a generic name. No real cross-tenant data was leaking — the strings were hardcoded. (#1904)
 

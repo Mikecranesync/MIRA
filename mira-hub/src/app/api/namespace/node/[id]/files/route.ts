@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { ingestPdfToNode } from "@/lib/node-knowledge-ingest";
+import pool from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +70,47 @@ export async function GET(
       return NextResponse.json({ error: "node not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ files });
+    // #1900: also list PDFs indexed into this node (hub_uploads v2 attach) so a
+    // folder holding a citable manual doesn't read "0 files / No files attached".
+    // hub_uploads is an app-pool table (no RLS) — query on the owner pool. These
+    // are read-only here (source 'upload'): no raw bytes are parked in
+    // namespace_direct_uploads, so the client renders them as indexed entries with
+    // no download/delete. A failure must never break the panel.
+    let indexed: Array<Omit<FileRow, "size_bytes"> & { size_bytes: number }> = [];
+    try {
+      const r = await pool.query<{
+        id: string;
+        filename: string;
+        mime_type: string;
+        size_bytes: string;
+        created_at: string;
+      }>(
+        `SELECT id::text AS id,
+                filename,
+                COALESCE(mime_type, 'application/pdf') AS mime_type,
+                COALESCE(size_bytes, 0)::text AS size_bytes,
+                created_at
+           FROM hub_uploads
+          WHERE tenant_id = $1
+            AND kg_entity_id = $2
+            AND status = 'parsed'
+            AND kind = 'document'
+          ORDER BY created_at DESC`,
+        [ctx.tenantId, id],
+      );
+      indexed = r.rows.map((row) => ({
+        id: row.id,
+        filename: row.filename,
+        mime_type: row.mime_type,
+        size_bytes: Number(row.size_bytes),
+        source: "upload" as const,
+        created_at: row.created_at,
+      }));
+    } catch (err) {
+      console.warn("[api/namespace/node/:id/files] indexed list skipped", err);
+    }
+
+    return NextResponse.json({ files: [...indexed, ...files] });
   } catch (err) {
     console.error("[api/namespace/node/:id/files GET]", err);
     return NextResponse.json({ error: "Query failed" }, { status: 500 });
