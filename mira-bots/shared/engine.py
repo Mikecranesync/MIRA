@@ -752,10 +752,6 @@ class Supervisor:
         self.print_ = PrintWorker(openwebui_url, api_key)
         self.plc = PLCWorker()
 
-        # Per-call tenant context (overridden by process(tenant_id=...) when provided)
-        self._current_tenant_id: str = self.tenant_id
-        self._current_mira_user_id: str = ""
-
         self._ensure_table()
 
     # ------------------------------------------------------------------
@@ -1181,13 +1177,9 @@ class Supervisor:
         EMBEDDING still uses the full ``message`` for semantic context. Default
         None = use ``message`` (chat surfaces unchanged).
         """
-        # Per-call tenant overrides constructor default. Stash on self so workers
-        # can reach the current request's tenant via self._current_tenant_id.
-        # Existing callers that don't pass the kwargs continue to use self.tenant_id
-        # from __init__ (set as the fallback below).
-        self._current_tenant_id = tenant_id or self.tenant_id
-        self._current_mira_user_id = mira_user_id or ""
-
+        # Per-call tenant flows through method params (tenant_id → process_full,
+        # workers, and the decision-trace) — NOT stashed on self, which a
+        # concurrent tenant would overwrite across this turn's awaits.
         # Read-only live-tag snapshot — gated on a confirmed asset (see helper).
         message = self._maybe_attach_live_snapshot(chat_id, message, live_tags, platform)
 
@@ -1265,6 +1257,7 @@ class Supervisor:
             platform=platform,
             latency_ms=elapsed_ms,
             tag_evidence=tag_evidence,
+            tenant_id=tenant_id,
         )
         return reply
 
@@ -1278,6 +1271,7 @@ class Supervisor:
         platform: str,
         latency_ms: int,
         tag_evidence: list | None = None,
+        tenant_id: str | None = None,
     ) -> None:
         """Schedule a non-blocking decision_traces write for this turn.
 
@@ -1303,7 +1297,10 @@ class Supervisor:
             else:
                 outcome = None
 
-            tenant_id = getattr(self, "_current_tenant_id", None) or self.tenant_id
+            # Use THIS turn's tenant, passed in by the caller — never a shared
+            # self._current_tenant_id read after process_full's awaits, which a
+            # concurrent tenant could overwrite (cross-tenant trace attribution).
+            tenant_id = tenant_id or self.tenant_id
 
             # Only attach RAG sources when THIS turn actually retrieved. Read
             # the per-turn snapshot threaded on the result dict (#1704) — NOT
@@ -1497,9 +1494,6 @@ class Supervisor:
         the chat ack message ("Processing photo 2/4..."). Callback exceptions
         are caught and logged so a flaky chat-edit can't take down the engine.
         """
-        self._current_tenant_id = tenant_id or getattr(self, "tenant_id", "") or ""
-        self._current_mira_user_id = mira_user_id or ""
-
         n = len(photos_b64)
         t0 = time.monotonic()
 
