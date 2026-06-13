@@ -16,9 +16,13 @@ Verified against the live CCW project (Mike confirms Conv_Simple_1.8 is on the P
   `plc/MbSrvConf_ConvSimple_v1.9.xml` (surgical superset of the live map),
   `plc/CCW_VARIABLES_ConvSimple_v1.9_DELTA.md` (the deploy sequence — 17 new vars,
   real CCW types). The v5.1.0 files were deleted.
-- **Flash = Mike's CCW step:** stop historian → `deploy_modbus_map.py --project
-  ".../Conv_Simple_1.8"` → declare 17 vars → paste Prog_init V1.9 → build/download/Run
-  → freq-scale acceptance check.
+- **Flash = Mike's CCW step.** Easiest path: double-click `plc/BUILD_CONV_SIMPLE_1.9.cmd`
+  (or `python plc/build_conv_simple_1_9.py`) → produces `CCW/MIRA_PLC/Conv_Simple_1.9`
+  (clone of 1.8, slave map BAKED, program+vars staged in `_V1.9_APPLY/`). Then open
+  `Conv_Simple_1.9.ccwsln` → import vars (export-clone-import per the staged INSTALL card)
+  → paste Prog_init V1.9 → build/download/Run → freq-scale acceptance check.
+  CCW's program+vars are binary (`.rtc`/`.xtc`/`PrjLibrary.accdb`) so those 2 steps can't be
+  safely pre-baked; only the slave-map XML is CCW-reads-on-open.
 - Still-true facts: GS10 warn IDs ≠ fault IDs (CE10 warn 5 / fault 58); power 0x210F is
   kW×1000; Addr = wire+1 (AB firmware off-by-one, bench-proven). Real decode tables in
   `mira-trend-viewer/js/adapters/gs10.js` + `plc/conv_simple_anomaly/rules.py`.
