@@ -1,7 +1,14 @@
 PROGRAM Prog_init
 (* ===================================================================== *)
-(* Conv_Simple Prog_VFD -- V2.0: reads torque / rpm / power (GS10)        *)
+(* Conv_Simple_2.0  Prog_VFD V2.0 -- reads torque / rpm / power (GS10)    *)
 (* ===================================================================== *)
+(* VERSIONING: this POU is Prog_VFD V2.0 and it ships in CCW project       *)
+(* Conv_Simple_2.0 -- project name and POU version finally MATCH. The jump *)
+(* 1.8 -> 2.0 is deliberate: V1.8 was the last build actually flashed;     *)
+(* "1.9" was a never-cleanly-built interim whose project image corrupted   *)
+(* (symbol-table desync -- see EVIDENCE_ConvSimple_1.9_corruption.md);     *)
+(* 2.0 is the first clean build that actually reads torque/rpm/power,      *)
+(* cloned from the PROVEN-GOOD 1.8 baseline (correct e-stop behaviour).    *)
 (* WHY V2.0 EXISTS (the real story, 2026-06-13):                          *)
 (*   vfd_torque / vfd_motor_rpm / vfd_power read 0 NOT because of wiring,  *)
 (*   the drive, or a round-robin bug -- the GS10 keypad proves the drive   *)
@@ -14,10 +21,12 @@ PROGRAM Prog_init
 (*   build-clean, so a single Build -> Download finally flashes it.        *)
 (*                                                                       *)
 (* THE ONLY THING THAT MATTERS TO FIX THE ZEROS: this POU must be          *)
-(* Built -> Downloaded. The variables and the Modbus slave map are ALREADY *)
-(* in Conv_Simple_1.9 (deployed + historian-verified good-quality on       *)
-(* CCW 400118..400125). V2.0 adds NO new variables and NO map changes --   *)
-(* see DELIVER_ConvSimple_v2.0.md.                                         *)
+(* Built -> Downloaded. In the clean Conv_Simple_2.0 clone the 9 register/  *)
+(* control variables and the Modbus slave map are applied ONCE per          *)
+(* INSTALL_ConvSimple_v2.0.md (declare vars FIRST -> Import .ccwmod ->       *)
+(* paste this POU -> Build -> Download). Do a CCW Clean before Build so no  *)
+(* stale compiled ladder is reused (that stale-cache reuse is what          *)
+(* corrupted the 1.9 image).                                                *)
 (*                                                                       *)
 (* DESIGN: one read FB, reconfigured per read tick (two half-blocks).      *)
 (*   The single existing mb_read_status FB + read_data buffer is pointed   *)
@@ -65,8 +74,9 @@ PROGRAM Prog_init
 (*         P09.09=10.0 ms  <-- CRITICAL (default 2.0 ms => ErrorID-55).    *)
 (*   PLC Serial Port 2: 9600/8/None/1, Modbus RTU Master, RS485.          *)
 (* ===================================================================== *)
-(* --- VARIABLES (ALL already declared in Conv_Simple_1.9 -- V2.0 adds none) -
-   Reused from the V1.x base (do NOT re-declare):
+(* --- VARIABLES -- in the Conv_Simple_2.0 clone of 1.8, declare the 9 in the
+       second group; the first group already exists in the 1.8 baseline. ----
+   Reused from the V1.x (1.8) base (already declared -- do NOT re-declare):
      poll_timer       : TON                          poll_phase      : BOOL
      mb_read_status   : MSG_MODBUS                    read_local_cfg  : MODBUSLOCPARA
      read_target_cfg  : MODBUSTARPARA                 read_data       : ARRAY[1..10] OF UDINT
@@ -79,16 +89,17 @@ PROGRAM Prog_init
      dir_fwd/dir_rev/pe_latched/e_stop_ok      : BOOL
      vfd_comm_ok      : BOOL   vfd_poll_count  : UDINT  vfd_err_count : UDINT
      _IO_EM_DI_* / _IO_EM_DO_*                 : BOOL (physical I/O)
-   Added by the Conv_Simple_1.9 deploy (already declared + Modbus-mapped):
+   DECLARE THESE 9 in the Conv_Simple_2.0 clone (then Import the .ccwmod map):
      vfd_warn_code    : WORD   (400120, reserved -- see note 0x2100)
      vfd_freq_cmd     : WORD   (400121)   vfd_torque    : WORD (400122)
      vfd_motor_rpm    : WORD   (400123)   vfd_power     : WORD (400124)
      vfd_last_fault   : WORD   (400125)
      lp_toggle        : BOOL               last_fault_clear : BOOL (coil 000024)
-   Register vars are WORD (CCW RefDefType 16); read_data[n] assigns straight in.
-   read_sel (UINT) from the 1.9 var-inject is UNUSED by V2.0 -- harmless; leave
-   it or delete it. Every register var's Dimension MUST be blank (scalars), or
-   CCW makes them ARRAY[..] OF WORD = AnyArray and Build fails.
+   The 6 register vars are WORD (CCW RefDefType 16); read_data[n] assigns
+   straight in. Clone vfd_status_word for the WORDs and poll_phase for the
+   BOOLs (guarantees correct type). Every register var's Dimension MUST be
+   blank (scalars), or CCW makes them ARRAY[..] OF WORD = AnyArray and Build
+   fails. (V2.0 does NOT use read_sel -- do not add it.)
 --------------------------------------------------------------------- *)
 
 
