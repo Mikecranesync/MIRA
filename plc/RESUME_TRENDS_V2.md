@@ -16,13 +16,18 @@ Verified against the live CCW project (Mike confirms Conv_Simple_1.8 is on the P
   `plc/MbSrvConf_ConvSimple_v1.9.xml` (surgical superset of the live map),
   `plc/CCW_VARIABLES_ConvSimple_v1.9_DELTA.md` (the deploy sequence — 17 new vars,
   real CCW types). The v5.1.0 files were deleted.
-- **Flash = Mike's CCW step.** Easiest path: double-click `plc/BUILD_CONV_SIMPLE_1.9.cmd`
-  (or `python plc/build_conv_simple_1_9.py`) → produces `CCW/MIRA_PLC/Conv_Simple_1.9`
-  (clone of 1.8, slave map BAKED, program+vars staged in `_V1.9_APPLY/`). Then open
-  `Conv_Simple_1.9.ccwsln` → import vars (export-clone-import per the staged INSTALL card)
-  → paste Prog_init V1.9 → build/download/Run → freq-scale acceptance check.
-  CCW's program+vars are binary (`.rtc`/`.xtc`/`PrjLibrary.accdb`) so those 2 steps can't be
-  safely pre-baked; only the slave-map XML is CCW-reads-on-open.
+- **Flash:** double-click `plc/BUILD_CONV_SIMPLE_1.9.cmd` → produces
+  `CCW/MIRA_PLC/Conv_Simple_1.9` = clone of 1.8 + slave map BAKED + **pre-injected** 9 V1.9
+  vars (via `inject_vars_accdb.py` cloning `vfd_status_word`/`poll_phase` rows in
+  `PrjLibrary.accdb`) + V1.9 program written to `Prog_init.stf`. **Intended flow: open
+  `Conv_Simple_1.9.ccwsln` → Build → Download** (Build+Download irreducible = PLC physics).
+  V1.9 was redesigned to a **single reconfigured read FB** (reuses mb_read_status/read_data),
+  so only **9 scalar** new vars (no FB/struct/array) — makes injection + manual fallback easy.
+  **UNVERIFIED until Mike opens CCW:** the `.acfproj` names `PrjLibrary.accdb` as the project
+  file (vars likely load); program-via-`.stf` less certain. If CCW shows missing vars / old
+  program (binary caches `GlobalVariable.rtc`/`.xtc` overrode), fall back: `build_conv_simple_1_9.py
+  --force` for a clean clone, then export-clone-import vars + paste `Prog_init_ConvSimple_v1.9.st`
+  (manual steps in `_V1.9_APPLY/INSTALL_ConvSimple_v1.9.md`). 1.8 + live PLC never touched.
 - Still-true facts: GS10 warn IDs ≠ fault IDs (CE10 warn 5 / fault 58); power 0x210F is
   kW×1000; Addr = wire+1 (AB firmware off-by-one, bench-proven). Real decode tables in
   `mira-trend-viewer/js/adapters/gs10.js` + `plc/conv_simple_anomaly/rules.py`.
