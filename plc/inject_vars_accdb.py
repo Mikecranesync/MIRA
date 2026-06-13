@@ -19,8 +19,11 @@ verified without running CCW. So this is bounded-downside:
 Only 9 SIMPLE SCALAR variables are injected (the V1.9 redesign reuses the
 existing read FB/buffer, so there are no new function-block instances, structs,
 or arrays to inject -- those would need ComplexInstanceList/Dimension rows that
-can't be replicated safely blind). The 7 UINTs clone the `vfd_status_word` row;
-the 2 BOOLs clone `poll_phase`.
+can't be replicated safely blind). The 6 register WORDs + the UINT counter
+(`read_sel`) clone the `vfd_status_word` row (CCW type WORD; `read_sel` is then
+edited to UINT); the 2 BOOLs clone `poll_phase`. All 9 are SCALARS -- the cloned
+rows inherit the template's empty Dimension. A non-empty Dimension would make CCW
+see them as `AnyArray` and Build would fail against the scalar `Word` Modbus map.
 
 Usage (PLC laptop, CCW CLOSED):
     python plc/inject_vars_accdb.py --dry-run
@@ -80,7 +83,7 @@ def main():
     todo = [(n, t) for (n, t) in NEW_VARS if n not in existing]
     skip = [n for (n, _) in NEW_VARS if n in existing]
     print(f"Inject plan -> {ACCDB.name}")
-    print(f"  template rows: vfd_status_word (UINT), poll_phase (BOOL)")
+    print(f"  template rows: vfd_status_word (WORD), poll_phase (BOOL); scalars, blank Dimension")
     print(f"  to insert ({len(todo)}): {', '.join(n for n,_ in todo) or '(none)'}")
     if skip: print(f"  already present (skip): {', '.join(skip)}")
     print(f"  next RefSymbols={max_ref+1}, next Order={max_ord+1}")
