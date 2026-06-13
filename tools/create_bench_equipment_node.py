@@ -75,7 +75,8 @@ def main() -> int:
         ok = uns.is_valid_path(path)
         log.info("  [%s] %-18s %s  %s", etype, name, path, "OK" if ok else "INVALID PATH")
         if not ok:
-            log.error("invalid uns_path — aborting"); return 2
+            log.error("invalid uns_path — aborting")
+            return 2
     log.info("Planned edges:")
     for s, rel, t in edges:
         log.info("  %s -[%s]-> %s", s, rel, t)
@@ -85,13 +86,15 @@ def main() -> int:
         return 0
 
     if not tenant or not os.environ.get("NEON_DATABASE_URL"):
-        log.error("MIRA_TENANT_ID and NEON_DATABASE_URL required (run under doppler)."); return 2
+        log.error("MIRA_TENANT_ID and NEON_DATABASE_URL required (run under doppler).")
+        return 2
 
     ids: dict[str, str] = {}
     for etype, name, path, props in plan:
         eid = kg_writer.upsert_entity(tenant, etype, name, path, properties=props)
         if not eid:
-            log.error("upsert_entity failed for %s/%s", etype, name); return 1
+            log.error("upsert_entity failed for %s/%s", etype, name)
+            return 1
         ids[name] = eid
         log.info("upserted %-18s -> %s", name, eid)
     for s, rel, t in edges:

@@ -16,6 +16,7 @@ currently-deployed slave does NOT yet publish — those rules degrade silently (
 until the PLC Modbus-slave-map extension is reflashed. See README + specs/CONVEYOR_MACHINE_CARD.md.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 CRITICAL, HIGH, MED, LOW, INFO = "CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"
