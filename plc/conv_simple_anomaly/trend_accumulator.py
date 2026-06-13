@@ -20,6 +20,9 @@ KEEP_S = 600.0        # how much history each tag keeps in memory (>= any summar
 RATE_EPS = 0.5        # |rate_per_min| below this reads as "stable"
 FROZEN_S = 5.0        # unchanged at least this long (and steady) reads as "frozen"
 NOLOAD_AMPS = 0.05    # vfd_current_a mean below this while running => unloaded-bench note
+RPM_PER_HZ = 30.0     # 4-pole 60 Hz motor: 1800 rpm sync / 60 Hz — cmd-vs-rpm tracking ratio
+SLIP_FRACTION = 0.15  # rpm more than 15% below sync-from-cmd while running => divergence note
+SLIP_MIN_HZ = 1.0     # ignore cmd-vs-rpm tracking below this command (noise floor)
 
 # Units per friendly tag name (matches live_logger HR scaling). Bools have no unit.
 UNITS: dict[str, str] = {
@@ -27,11 +30,15 @@ UNITS: dict[str, str] = {
     "vfd_dc_bus_v": "V", "vfd_freq_setpoint": "Hz", "motor_speed": "rpm",
     "motor_current": "A", "temperature": "°C", "ambient_temp_c": "°C",
     "conveyor_speed": "rpm", "pressure": "kPa",
+    # Trends V2 — full GS10 monitoring (codes/words are unitless enums/bitfields)
+    "vfd_freq_cmd": "Hz", "vfd_torque_pct": "%", "vfd_motor_rpm": "rpm",
+    "vfd_power_kw": "kW",
 }
 # tag -> (low_threshold_cfg_key, high_threshold_cfg_key); either may be None.
 THRESHOLDS: dict[str, tuple[str | None, str | None]] = {
     "vfd_dc_bus_v": ("dc_bus_lo_v", "dc_bus_hi_v"),
     "vfd_current_a": (None, "motor_fla_a"),
+    "vfd_torque_pct": (None, "torque_hi_pct"),  # sustained high torque = jam precursor
 }
 
 
@@ -143,4 +150,13 @@ class TrendAccumulator:
         running = self._last_value.get("motor_running")
         if cur and cur.mean_val is not None and cur.mean_val < NOLOAD_AMPS and running == 1:
             cur.note = "unloaded bench — near-zero current is correct, not a fault"
+        # Trends V2 cross-tag guard: actual shaft speed lagging the commanded frequency while
+        # running reads as slip/overload (jam precursor), not a chart artifact.
+        rpm = out.get("vfd_motor_rpm")
+        cmd = out.get("vfd_freq_cmd")
+        if (rpm and cmd and running == 1
+                and rpm.mean_val is not None and cmd.mean_val is not None
+                and cmd.mean_val >= SLIP_MIN_HZ
+                and rpm.mean_val < (1.0 - SLIP_FRACTION) * cmd.mean_val * RPM_PER_HZ):
+            rpm.note = "rpm lags freq command — possible slip/overload, check load/jam"
         return out

@@ -70,6 +70,10 @@ export function createTag(input) {
     // WORD bit map {bitIndex: "label"} — declares named status bits (Running/Faulted/…)
     // so the store can derive trendable boolean child tags. null = plain hex word.
     bits: input.bits ?? null,
+    // WORD multi-bit fields [{key, label, shift, mask, states}] — 2-bit+ enums packed in a
+    // status word (e.g. GS10 op-status bits 1–0). Each derives an ENUM child tag whose
+    // value is (word >> shift) & mask, rendered through its states map. null = none.
+    fields: input.fields ?? null,
     metadata: input.metadata ?? {},
   };
 }
@@ -167,6 +171,29 @@ export function wordBitTags(tag) {
     quality: tag.quality,
     timestamp: tag.timestamp,
     metadata: { parentWord: tag.id, bit },
+  }));
+}
+
+/** Derive ENUM child tags from a WORD tag's multi-bit fields — each packed field (op
+ *  status, direction, …) becomes a state-labelled tag, marked with metadata.parentWord +
+ *  shift/mask so the store can fan parent updates out exactly like single bits. */
+export function wordFieldTags(tag) {
+  if (!tag.fields) return [];
+  const v = tag.currentValue;
+  return tag.fields.map((f) => createTag({
+    id: `${tag.id}.${f.key}`,
+    name: f.label,
+    displayName: f.label,
+    sourceType: tag.sourceType,
+    assetId: tag.assetId, assetName: tag.assetName,
+    deviceId: tag.deviceId, deviceName: tag.deviceName,
+    address: tag.address ? `${tag.address}[${f.shift}+${f.mask.toString(2).length}]` : "",
+    dataType: DataType.ENUM,
+    states: f.states,
+    currentValue: v === null || v === undefined ? null : (Number(v) >> f.shift) & f.mask,
+    quality: tag.quality,
+    timestamp: tag.timestamp,
+    metadata: { parentWord: tag.id, shift: f.shift, mask: f.mask },
   }));
 }
 

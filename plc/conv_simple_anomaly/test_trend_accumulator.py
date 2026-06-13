@@ -92,3 +92,30 @@ def test_noload_guard_silent_when_loaded():
     acc.update("motor_running", 1, 9.0)
     out = acc.summarize_all(now=9.0, window_s=60)
     assert out["vfd_current_a"].note == ""
+
+
+def test_v2_torque_threshold_wired():
+    acc = TrendAccumulator()
+    last = _feed(acc, "vfd_torque_pct", [165.0] * 10)  # > torque_hi_pct default 150
+    s = acc.summarize("vfd_torque_pct", now=last, window_s=60)
+    assert s.unit == "%"
+    assert s.threshold_hi == rules.DEFAULT_CFG["torque_hi_pct"]
+    assert s.distance_to_threshold == 150.0 - 165.0    # negative = jam-precursor territory
+
+
+def test_v2_slip_note_fires_when_rpm_lags_cmd():
+    acc = TrendAccumulator()
+    _feed(acc, "vfd_freq_cmd", [60.0] * 10)        # commanded 60 Hz → ~1800 rpm sync
+    _feed(acc, "vfd_motor_rpm", [900.0] * 10)      # shaft at half speed
+    acc.update("motor_running", 1, 9.0)
+    out = acc.summarize_all(now=9.0, window_s=60)
+    assert "rpm lags freq command" in out["vfd_motor_rpm"].note
+
+
+def test_v2_slip_note_silent_when_tracking():
+    acc = TrendAccumulator()
+    _feed(acc, "vfd_freq_cmd", [60.0] * 10)
+    _feed(acc, "vfd_motor_rpm", [1750.0] * 10)     # normal slip, inside tolerance
+    acc.update("motor_running", 1, 9.0)
+    out = acc.summarize_all(now=9.0, window_s=60)
+    assert out["vfd_motor_rpm"].note == ""

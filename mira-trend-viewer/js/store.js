@@ -4,7 +4,7 @@
 // keeps a checkbox in the browser and a pen in the pen list in sync. Fully unit-testable.
 
 import { PEN_PALETTE, formatValue, unitLabel, qualityLabel, isDigitalTag,
-  wordBitTags } from "./model.js";
+  wordBitTags, wordFieldTags } from "./model.js";
 
 const HISTORY_CAP = 6000; // max samples per pen kept in memory (ring buffer)
 
@@ -28,17 +28,17 @@ export class TrendStore {
     this.refreshMs = 1000;
     this._subs = new Set();
     this._colorCursor = 0;
-    this._wordChildren = new Map();  // word parentId -> [{id, bit}] derived bit children
+    this._wordChildren = new Map();  // word parentId -> [{id, shift, mask}] derived children
   }
 
   // ── catalog ────────────────────────────────────────────────────────────────
   /** Replace/merge the tag catalog (from an adapter). Preserves selection + history.
-   *  WORD tags with a declared bit map are expanded here (once, centrally — like scaling)
-   *  into boolean child tags placed right after the parent, so each named status bit is a
-   *  trendable digital pen with no adapter or UI changes. */
+   *  WORD tags with a declared bit map and/or multi-bit field list are expanded here (once,
+   *  centrally — like scaling) into boolean/enum child tags placed right after the parent,
+   *  so each named status bit or packed field is a trendable pen with no UI changes. */
   setTags(tagList) {
     const next = new Map();
-    this._wordChildren = new Map();   // parentId -> [{id, bit}]
+    this._wordChildren = new Map();   // parentId -> [{id, shift, mask}]
     const add = (t) => {
       const prev = this.tags.get(t.id);
       const scaled = { ...t, currentValue: applyScale(t, t.currentValue) };
@@ -46,10 +46,13 @@ export class TrendStore {
     };
     for (const t of tagList) {
       add(t);
-      if (t.bits) {
-        const kids = wordBitTags(t);
-        for (const k of kids) add(k);
-        this._wordChildren.set(t.id, kids.map((k) => ({ id: k.id, bit: k.metadata.bit })));
+      if (t.bits || t.fields) {
+        const kids = [
+          ...wordBitTags(t).map((k) => ({ tag: k, shift: k.metadata.bit, mask: 1 })),
+          ...wordFieldTags(t).map((k) => ({ tag: k, shift: k.metadata.shift, mask: k.metadata.mask })),
+        ];
+        for (const k of kids) add(k.tag);
+        this._wordChildren.set(t.id, kids.map((k) => ({ id: k.tag.id, shift: k.shift, mask: k.mask })));
       }
     }
     this.tags = next;
@@ -64,7 +67,7 @@ export class TrendStore {
   /** Apply a batch of live updates: [{id, currentValue, quality, timestamp, lastChangedTimestamp}].
    *  Appends to history for SELECTED pens only (chart data) unless paused. */
   updateValues(updates, now = Date.now()) {
-    // fan word-parent updates out to their derived bit children (decoded once, here)
+    // fan word-parent updates out to their derived bit/field children (decoded once, here)
     const expanded = [];
     for (const u of updates) {
       expanded.push(u);
@@ -74,7 +77,7 @@ export class TrendStore {
         const cu = { id: k.id, quality: u.quality, timestamp: u.timestamp,
           lastChangedTimestamp: u.lastChangedTimestamp };
         if (u.currentValue !== undefined) {
-          cu.currentValue = u.currentValue === null ? null : (Number(u.currentValue) >> k.bit) & 1;
+          cu.currentValue = u.currentValue === null ? null : (Number(u.currentValue) >> k.shift) & k.mask;
         }
         expanded.push(cu);
       }
