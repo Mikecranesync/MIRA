@@ -71,72 +71,48 @@ PROGRAM Prog_init
 --------------------------------------------------------------------- *)
 
 
-(* --- 500 ms self-retriggering tick; advance read_sel on READ ticks --- *)
+(* --- 500 ms self-retriggering tick; alternate read/write on the shared Ch2 --- *)
 poll_timer(IN := NOT poll_timer.Q, PT := T#500ms);
 
 IF poll_timer.Q THEN
     vfd_poll_count := vfd_poll_count + 1;
-    poll_phase := NOT poll_phase;          (* alternate read/write (Ch2 share) *)
-    IF poll_phase THEN
-        read_sel := read_sel + 1;
-        IF read_sel > 2 THEN
-            read_sel := 0;
-            lp_toggle := NOT lp_toggle;     (* swap load<->power each full cycle *)
-        END_IF;
-    END_IF;
+    poll_phase := NOT poll_phase;          (* read tick <-> write tick *)
 END_IF;
 
 
-(* --- Reconfigure the ONE read FB for this tick's register group --- *)
+(* --- ONE read per read-tick: the FULL status block 0x2100..0x210F (16 regs). ---
+   V1.9 FIX (2026-06-13): the old round-robin (read_sel 0/1/2 cycling THREE different
+   Addr/ElementCnt configs through ONE shared async MSG FB) never landed the
+   torque/rpm/power group -- those vars stayed 0 while the GS10 keypad showed real
+   values (torque 73.7%, 880 rpm at 30 Hz). Reading the whole contiguous status block
+   in a SINGLE FC03 message (still one Modbus message per tick) captures every value at
+   once, so torque[12]/rpm[13]/power[16] unpack reliably next to the monitor values.
+   read_sel / lp_toggle are now UNUSED. read_data MUST be ARRAY[1..16] (or larger). *)
 read_local_cfg.Channel     := 2;            (* embedded RS-485 -- NOT 0 *)
 read_local_cfg.TriggerType := 0;
 read_local_cfg.Cmd         := 3;            (* FC03 read holding *)
-read_target_cfg.Node := 1;
+read_local_cfg.ElementCnt  := 16;           (* 0x2100..0x210F = 16 regs *)
+read_target_cfg.Node       := 1;
+read_target_cfg.Addr       := 16#2101;      (* Addr = wire+1 -> wire 0x2100 *)
 
-IF read_sel = 2 AND lp_toggle THEN
-    read_local_cfg.ElementCnt := 2;         (* load: torque + motor rpm *)
-    read_target_cfg.Addr      := 16#210C;   (* -> wire 0x210B, 0x210C *)
-ELSIF read_sel = 2 THEN
-    read_local_cfg.ElementCnt := 1;         (* power *)
-    read_target_cfg.Addr      := 16#2110;   (* -> wire 0x210F *)
-ELSE
-    read_local_cfg.ElementCnt := 7;         (* monitor block *)
-    read_target_cfg.Addr      := 16#2101;   (* -> wire 0x2100..0x2106 *)
-END_IF;
-
-(* --- Fire the read FB on read ticks (write takes the other ticks) --- *)
 mb_read_status(IN        := poll_timer.Q AND poll_phase,
               LocalCfg  := read_local_cfg,
               TargetCfg := read_target_cfg,
               LocalAddr := read_data);
 
-
-(* --- Unpack per the group that was just read --- *)
 IF mb_read_status.Q AND NOT mb_read_status.Error THEN
-    IF read_sel = 2 AND lp_toggle THEN
-        vfd_torque    := read_data[1];      (* 0x210B torque 0.1 % *)
-        vfd_motor_rpm := read_data[2];      (* 0x210C motor rpm    *)
-    ELSIF read_sel = 2 THEN
-        vfd_power     := read_data[1];      (* 0x210F power kW x1000 *)
-    ELSE
-        (* 0x2100: low byte = fault code, high byte = warning. Micro800 ST AND/SHR
-           need bit-string operands (not UDINT), so we take the whole word like
-           V1.8 -- on this bench the warning high byte is normally 0, so
-           vfd_fault_code reads the fault correctly. (Warn-byte split deferred:
-           add via AND_MASK/the masking FBs once confirmed building on the bench.) *)
-        vfd_fault_code  := read_data[1];                    (* 0x2100 fault     *)
-        vfd_status_word := read_data[2];                    (* 0x2101 status    *)
-        (* read_data[3] = 0x2102 "F" register: NOT used for vfd_freq_cmd. In
-           comms-frequency mode 0x2102 reads 0 (it is the keypad F, not the
-           comms command), so vfd_freq_cmd is sourced from vfd_freq_sp (the
-           value written to drive 0x2001) in Phase B below instead. *)
-        vfd_frequency   := read_data[4];                    (* 0x2103 Hz x100   *)
-        vfd_current     := read_data[5];                    (* 0x2104 A x100    *)
-        vfd_dc_bus      := read_data[6];                    (* 0x2105 V x10     *)
-        vfd_voltage     := read_data[7];                    (* 0x2106 V x10     *)
-        IF vfd_fault_code > 0 THEN
-            vfd_last_fault := vfd_fault_code;               (* latch trip cause *)
-        END_IF;
+    vfd_fault_code  := read_data[1];        (* 0x2100 fault       *)
+    vfd_status_word := read_data[2];        (* 0x2101 status      *)
+    (* read_data[3] = 0x2102 keypad "F" echo: unused (vfd_freq_cmd <- vfd_freq_sp below) *)
+    vfd_frequency   := read_data[4];        (* 0x2103 Hz x100     *)
+    vfd_current     := read_data[5];        (* 0x2104 A x100      *)
+    vfd_dc_bus      := read_data[6];        (* 0x2105 V x10       *)
+    vfd_voltage     := read_data[7];        (* 0x2106 V x10       *)
+    vfd_torque      := read_data[12];       (* 0x210B torque % x10 *)
+    vfd_motor_rpm   := read_data[13];       (* 0x210C motor rpm    *)
+    vfd_power       := read_data[16];       (* 0x210F power kW x1000 *)
+    IF vfd_fault_code > 0 THEN
+        vfd_last_fault := vfd_fault_code;   (* latch trip cause *)
     END_IF;
     vfd_comm_ok := TRUE;
 END_IF;
