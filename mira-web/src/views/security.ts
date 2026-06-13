@@ -1,5 +1,5 @@
 import { head } from "../lib/head.js";
-import { btnPrimary, btnGhost } from "../lib/components.js";
+import { btnPrimary } from "../lib/components.js";
 import { navbar, footer } from "./_topbar.js";
 
 const PAGE_STYLES = `
@@ -325,6 +325,17 @@ export function renderSecurity(reqUrl?: string): string {
     </div>
   </section>
 
+  <div class="fl-sec-section">
+    <h2 class="fl-sec-section-h2">What matters, in plain terms</h2>
+    <ul class="fl-sec-list">
+      <li><strong>Your plant data is isolated by tenant.</strong> Row-level security means one customer can never read another's data — enforced in the database, not just the app.</li>
+      <li><strong>Your manuals never train external models.</strong> We use Groq, Cerebras, and Gemini inference-only; your documents and conversations stay yours.</li>
+      <li><strong>Safety-critical questions escalate.</strong> LOTO, arc flash, and confined-space prompts stop and route to your safety contact instead of getting a risky AI answer.</li>
+      <li><strong>Every answer cites its source.</strong> Technicians can verify MIRA against the manual section or fault record it pulled from — no uncited speculation.</li>
+      <li><strong>We're honest about the roadmap.</strong> We are not SOC 2 certified yet; readiness work is underway. The technical detail below says exactly where we stand.</li>
+    </ul>
+  </div>
+
   ${renderSection("Infrastructure", INFRASTRUCTURE)}
   ${renderSection("Data protection", DATA_PROTECTION)}
   ${renderSection("Authentication &amp; access control", AUTH_ACCESS)}
@@ -332,7 +343,7 @@ export function renderSecurity(reqUrl?: string): string {
   ${renderSection("Compliance &amp; certifications", COMPLIANCE)}
 
   <div class="fl-sec-cta">
-    ${btnPrimary("Try it free — no credit card", { href: "/cmms", cta: "sec-cta-try" })}
+    ${btnPrimary("Book a $500 assessment", { href: "/buy", cta: "sec-cta-assessment" })}
     <p>
       Security question or vulnerability report?
       <a href="mailto:security@factorylm.com">security@factorylm.com</a>
