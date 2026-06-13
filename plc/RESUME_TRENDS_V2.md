@@ -2,20 +2,29 @@
 
 > Paste-able resume prompt after /clear. State as of 2026-06-12 **evening** (PLC laptop).
 
-## ⚡ UPDATE 2026-06-12b — ALL THREE LAYERS BUILT; only the reflash remains
+## ⚡ UPDATE 2026-06-13 — layer-1 CORRECTED; only the flash remains
 
-Commits `215f0f2a` (layers 2+3) + `9cda0169` (layer 1 prep), branch
-`docs/plc-1668-feed-resume`. 48/48 pytest, 41/41 node tests. What remains is
-**Mike's manual CCW flash** — full sequence in `plc/CCW_VARIABLES_v5.1.0_DELTA.md`
-(stop historian → `deploy_modbus_map.py` → declare vars → paste
-`plc/Micro820_v5.1.0_Program.st` → build/download/Run), then the live acceptance
-list in the plan doc (incl. the freq-scale check). Key truths discovered:
-- DEPLOYED ladder is **v5.0.0 `Prog2.stf` (Channel 0)** — `Micro820_v4.1.9_Program.st`
-  is stale (Channel 2, bogus SM2 bit-13 fault comment). v5.1.0 builds on v5.0.0.
-- GS10 warn IDs ≠ fault IDs (CE10: warn 5, fault 58). Real tables live in
+**The 2026-06-12b layer-1 was built on the WRONG base and has been replaced.**
+Verified against the live CCW project (Mike confirms Conv_Simple_1.8 is on the PLC):
+
+- **Live structure:** `Conv_Simple_1.8` = **Prog1 (ladder I/O) + Prog_init (ST comms,
+  internal V1.8), Channel 2.** There is **no "Prog2."** The repo `plc/Prog2.stf` and
+  `plc/Micro820_v4.1.9_Program.st` are a dead pre-1.8 lineage — do NOT use them. The
+  earlier "deployed = Channel 0" note was **backwards**; live is Channel 2.
+- **Use these (committed after `35c0549b`):**
+  `plc/Prog_init_ConvSimple_v1.9.st` (extends real V1.8, Option C tiered polling),
+  `plc/MbSrvConf_ConvSimple_v1.9.xml` (surgical superset of the live map),
+  `plc/CCW_VARIABLES_ConvSimple_v1.9_DELTA.md` (the deploy sequence — 17 new vars,
+  real CCW types). The v5.1.0 files were deleted.
+- **Flash = Mike's CCW step:** stop historian → `deploy_modbus_map.py --project
+  ".../Conv_Simple_1.8"` → declare 17 vars → paste Prog_init V1.9 → build/download/Run
+  → freq-scale acceptance check.
+- Still-true facts: GS10 warn IDs ≠ fault IDs (CE10 warn 5 / fault 58); power 0x210F is
+  kW×1000; Addr = wire+1 (AB firmware off-by-one, bench-proven). Real decode tables in
   `mira-trend-viewer/js/adapters/gs10.js` + `plc/conv_simple_anomaly/rules.py`.
-- Power 0x210F is kW×1000 (manual X.XXX), not the plan's ×100.
-The original V2 context below is kept for reference.
+
+The original V2 context below is kept for reference (note its layer-1 register/HR plan
+was superseded by the V1.9 work above).
 
 ## Where V1 stands (DONE, live-verified, tagged)
 

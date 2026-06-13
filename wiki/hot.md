@@ -1,6 +1,31 @@
 # Hot Cache — 2026-06-12 — PLC laptop
 
-## Session — 2026-06-12b (Trends V2 — all three layers built; AWAITING REFLASH)
+## Session — 2026-06-13 (Trends V2 layer-1 CORRECTED — built on the REAL Prog_init)
+
+**Mike caught a version mismatch mid-walkthrough; verified against the live CCW project.**
+The deployed **Conv_Simple_1.8** runs **Prog1 (ladder I/O) + Prog_init (ST comms, V1.8) on
+Channel 2** — NOT a monolithic "Prog2" ST on Channel 0. The repo `plc/Prog2.stf` /
+`Micro820_v4.1.9_Program.st` are a dead pre-1.8 lineage. My 2026-06-12b "deployed = v5.0.0
+Channel 0" claim was **backwards**; live is Channel 2 (serial_sniff 2026-05-26). Fixed the
+`feedback_micro820_channel0` memory (was asserting Channel 0).
+
+**Rebuilt layer 1 (commit after `35c0549b`):**
+- `plc/Prog_init_ConvSimple_v1.9.st` — extends the REAL V1.8 POU. **Option C** tiered polling
+  (researched industry standard — flowfuse/dpstele): one MSG per 500ms tick on shared Ch2, so
+  monitor block keeps 2 of 3 read-ticks (~1.5s; faults+freq/current/DC-bus), torque/rpm + power
+  interleaved (~6s); **writes unchanged ~1Hz**. Keeps bench-proven **Addr = wire+1** off-by-one.
+  Splits 0x2100 → fault(low)/warn(high), captures 0x2102 freq-cmd echo, latches vfd_last_fault
+  (operator clear coil 24).
+- `plc/MbSrvConf_ConvSimple_v1.9.xml` — surgical superset of the LIVE map (Version 2.0, 13 coils
+  + 5 HRs) + 8 new HRs (offsets 117-124 = HR_SPECS) + clear coil. Drops v4-lineage vars that may
+  not exist in 1.8. Dry-run verified vs the live project.
+- `plc/CCW_VARIABLES_ConvSimple_v1.9_DELTA.md` — real CCW types + the deploy sequence.
+- Removed the wrong `Micro820_v5.1.0_Program.st` / `MbSrvConf_v5.1.xml` / v5.1.0 delta.
+- Layers 2+3 unchanged (48 pytest / 41 node green; offsets line up). Historian left RUNNING.
+- **Next:** Mike runs the delta-doc deploy sequence on Conv_Simple_1.8 (declare 17 vars → paste
+  Prog_init V1.9 → build/download/Run), then live acceptance (freq-scale check).
+
+## Session — 2026-06-12b (Trends V2 — SUPERSEDED by the 2026-06-13 correction above)
 
 **Shipped (commits `215f0f2a` + `9cda0169`, branch `docs/plc-1668-feed-resume`):**
 - **Layer 2 (historian):** `live_logger.py` HR_SPECS 117–124 (`vfd_status_word`/`error_code`/
