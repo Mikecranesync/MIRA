@@ -118,7 +118,7 @@
   },
   "feed": {
     "title": "Activity Feed",
-    "newRequest": "New Request",
+    "newRequest": "Submit maintenance request",
     "allCaughtUp": "All caught up!",
     "noActivity": "No new activity",
     "markRead": "Mark as read",
@@ -130,7 +130,9 @@
     "auditTrail": "Audit Trail",
     "acknowledge": "Acknowledge",
     "addNote": "Add Note",
-    "scanQr": "Scan QR Code",
+    "scanQr": "Scan asset QR",
+    "createWorkOrder": "Create work order",
+    "newAsset": "Add new asset",
     "kpi": {
       "openWorkOrders": "Open Work Orders",
       "overduePMs": "Overdue PMs",
