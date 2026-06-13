@@ -721,6 +721,11 @@ class Supervisor:
         # fire-and-forget writes from being GC'd before they complete.
         self._decision_trace_tasks: set = set()
 
+        # Troubleshooting session lifecycle tasks + in-process session cache
+        # (Phase 7, #1659).  Maps chat_id → active session UUID string.
+        self._session_tasks: set = set()
+        self._ts_sessions: dict[str, str] = {}
+
         # Service base URLs for nameplate downstream calls and reactive ingest
         self.mcp_base_url = (
             mcp_base_url or os.getenv("MCP_BASE_URL", "http://mira-mcp:8001")
@@ -1259,6 +1264,16 @@ class Supervisor:
             tag_evidence=tag_evidence,
             tenant_id=tenant_id,
         )
+        # Phase 7 — troubleshooting session lifecycle (observational, fire-and-forget).
+        self._schedule_session_lifecycle(
+            chat_id=chat_id,
+            message=message,
+            reply=reply,
+            result=result,
+            platform=platform,
+            uns_source=uns_source,
+            tenant_id=self._current_tenant_id,
+        )
         return reply
 
     def _schedule_decision_trace(
@@ -1329,6 +1344,103 @@ class Supervisor:
             task.add_done_callback(self._decision_trace_tasks.discard)
         except Exception as exc:  # noqa: BLE001
             logger.debug("decision_trace schedule skipped: %s", exc)
+
+    def _schedule_session_lifecycle(
+        self,
+        *,
+        chat_id: str,
+        message: str,
+        reply: str,
+        result: dict,
+        platform: str,
+        uns_source: str | None,
+        tenant_id: str | None,
+    ) -> None:
+        """Schedule non-blocking troubleshooting session lifecycle writes (Phase 7).
+
+        Opens a session on gate-pass (UNS confirm YES) or the first turn of a
+        direct-connection chat.  Appends assistant turns to the transcript.
+        Closes on RESOLVED.  All NeonDB work is fire-and-forget in a background
+        task — errors never reach the reply path.
+        """
+        if not tenant_id:
+            return
+        try:
+            import asyncio
+
+            from .troubleshooting_session import (
+                append_turn_coro,
+                close_session_coro,
+                open_session_coro,
+            )
+
+            dispatch_kind = result.get("dispatch_kind", "")
+            next_state = result.get("next_state", "")
+
+            # Gate-pass: explicit UNS confirm YES, or first direct-connection turn.
+            opening = dispatch_kind == "uns_confirm_yes" or (
+                uns_source == "direct_connection" and chat_id not in self._ts_sessions
+            )
+
+            if opening:
+                state = self._load_state(chat_id)
+                ctx = (state.get("context") or {}) if isinstance(state, dict) else {}
+                confirmed_ns = ctx.get("confirmed_namespace") or {}
+
+                async def _open_and_update() -> None:
+                    sid = await open_session_coro(
+                        tenant_id=tenant_id,
+                        asset_id=confirmed_ns.get("asset_id"),
+                        component_id=confirmed_ns.get("component_id"),
+                        channel=platform,
+                        metadata={"chat_id": chat_id, "platform": platform},
+                    )
+                    if not sid:
+                        return
+                    self._ts_sessions[chat_id] = sid
+                    await append_turn_coro(
+                        session_id=sid, tenant_id=tenant_id, role="user", content=message
+                    )
+                    await append_turn_coro(
+                        session_id=sid, tenant_id=tenant_id, role="assistant", content=reply
+                    )
+                    if next_state == "RESOLVED":
+                        await close_session_coro(
+                            session_id=sid, tenant_id=tenant_id, reason="resolved"
+                        )
+                        self._ts_sessions.pop(chat_id, None)
+
+                task = asyncio.create_task(_open_and_update())
+                self._session_tasks.add(task)
+                task.add_done_callback(self._session_tasks.discard)
+
+            elif session_id := self._ts_sessions.get(chat_id):
+
+                async def _update() -> None:
+                    await append_turn_coro(
+                        session_id=session_id,
+                        tenant_id=tenant_id,
+                        role="user",
+                        content=message,
+                    )
+                    await append_turn_coro(
+                        session_id=session_id,
+                        tenant_id=tenant_id,
+                        role="assistant",
+                        content=reply,
+                    )
+                    if next_state == "RESOLVED":
+                        await close_session_coro(
+                            session_id=session_id, tenant_id=tenant_id, reason="resolved"
+                        )
+                        self._ts_sessions.pop(chat_id, None)
+
+                task = asyncio.create_task(_update())
+                self._session_tasks.add(task)
+                task.add_done_callback(self._session_tasks.discard)
+
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("session_lifecycle schedule skipped: %s", exc)
 
     def _maybe_attach_live_snapshot(
         self,
