@@ -74,7 +74,7 @@ PROGRAM Prog_init
 (*         P09.09=10.0 ms  <-- CRITICAL (default 2.0 ms => ErrorID-55).    *)
 (*   PLC Serial Port 2: 9600/8/None/1, Modbus RTU Master, RS485.          *)
 (* ===================================================================== *)
-(* --- VARIABLES -- in the Conv_Simple_2.0 clone of 1.8, declare the 9 in the
+(* --- VARIABLES -- in the Conv_Simple_2.0 clone of 1.8, declare the 8 in the
        second group; the first group already exists in the 1.8 baseline. ----
    Reused from the V1.x (1.8) base (already declared -- do NOT re-declare):
      poll_timer       : TON                          poll_phase      : BOOL
@@ -89,7 +89,7 @@ PROGRAM Prog_init
      dir_fwd/dir_rev/pe_latched/e_stop_ok      : BOOL
      vfd_comm_ok      : BOOL   vfd_poll_count  : UDINT  vfd_err_count : UDINT
      _IO_EM_DI_* / _IO_EM_DO_*                 : BOOL (physical I/O)
-   DECLARE THESE 9 in the Conv_Simple_2.0 clone (then Import the .ccwmod map):
+   DECLARE THESE 8 in the Conv_Simple_2.0 clone (then Import the .ccwmod map):
      vfd_warn_code    : WORD   (400120, reserved -- see note 0x2100)
      vfd_freq_cmd     : WORD   (400121)   vfd_torque    : WORD (400122)
      vfd_motor_rpm    : WORD   (400123)   vfd_power     : WORD (400124)

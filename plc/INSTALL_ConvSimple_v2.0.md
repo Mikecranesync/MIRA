@@ -31,10 +31,11 @@ that does NOT inherit the 1.9 corruption.
    python plc/build_conv_simple_2_0.py               # build
    ```
 2. Open `Conv_Simple_2.0\Conv_Simple_2.0.ccwsln`.
-3. **Declare the 9 variables** in Global Variables (the apply kit's
-   `CCW_VARIABLES_ConvSimple_v1.9_DELTA.md` is the checklist — the register map is
-   unchanged for 2.0). Fastest + safest: **clone an existing row** so the type is
-   guaranteed:
+3. **Declare the 8 variables** in Global Variables (the apply kit's
+   `CCW_VARIABLES_ConvSimple_v2.0_DELTA.md` is the checklist — the register map is
+   unchanged for 2.0). **8, not 9:** V2.0 dropped `read_sel` (the v1.9 delta lists 9
+   incl. `read_sel` — ignore that file for 2.0). Fastest + safest: **clone an existing
+   row** so the type is guaranteed:
    - clone `vfd_status_word` (WORD) → rename to each of:
      `vfd_warn_code`, `vfd_freq_cmd`, `vfd_torque`, `vfd_motor_rpm`, `vfd_power`,
      `vfd_last_fault`
