@@ -1,5 +1,28 @@
 # Hot Cache — 2026-06-12 — PLC laptop
 
+## Session — 2026-06-12b (Trends V2 — all three layers built; AWAITING REFLASH)
+
+**Shipped (commits `215f0f2a` + `9cda0169`, branch `docs/plc-1668-feed-resume`):**
+- **Layer 2 (historian):** `live_logger.py` HR_SPECS 117–124 (`vfd_status_word`/`error_code`/
+  `warn_code`/`freq_cmd`÷100/`torque_pct`÷10/`motor_rpm`/`power_kw`÷1000/`last_fault`);
+  `trend_accumulator.py` units + `torque_hi_pct` 150% threshold + rpm-lags-cmd slip note.
+  48/48 pytest. Tags silently absent until reflash. ⚠ plan said power ÷100 — manual says
+  X.XXX kW (÷1000); manual won.
+- **Layer 3 (viewer):** `mira-trend-viewer/js/adapters/gs10.js` — REAL GS10 tables transcribed
+  from `conveyor-evidence/manuals/GS10_UM.pdf` (faults p5-4, warning IDs ch6 — warn ids ≠ fault
+  ids! CE10 warn=5 fault=58; SM2 bits p4-196). New WORD `fields` decode for the 2-bit packed
+  enums (op_status, direction) → ENUM child lanes; single-bit decode would lie. 41/41 node tests.
+- **Layer 1 PREP (flash-ready, Mike's CCW step remains):** `plc/Micro820_v5.1.0_Program.st` —
+  based on DEPLOYED v5.0.0 `Prog2.stf` (Channel 0!), NOT the stale v4.1.9 .st (Channel 2 +
+  bogus SM2 bit-13-fault comment). Step-1 read widened to 0x2100×7; SM1 byte-split feeds
+  vfd_fault_code (red light finally live) + vfd_warn_code; last-fault latch w/ operator clear
+  coil C24; steps 5/6 read torque/rpm (0x210B×2) + power (0x210F×1). `plc/MbSrvConf_v5.1.xml`
+  24 coils + 25 HRs (vfd_* = Word per deployed CCW truth); `deploy_modbus_map.py` dry-run
+  verified vs `CCW/MIRA_PLC/Conv_Simple_1.8`. Sequence: `plc/CCW_VARIABLES_v5.1.0_DELTA.md`.
+- **Next:** Mike runs the delta-doc deploy sequence (stop historian → deploy map → declare vars
+  → paste v5.1.0 → flash). Then live acceptance per the plan doc (freq-cmd-vs-actual scale
+  check step 6!) + screenshots. Same flash wakes dormant A2/A12.
+
 ## Session — 2026-06-12 (trend-viewer v2 — last-fault + status-bit decode + Perspective embed)
 
 **Shipped (commit `a55bf2f3`, branch `docs/plc-1668-feed-resume`, 33/33 node tests):**

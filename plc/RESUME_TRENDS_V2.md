@@ -1,6 +1,21 @@
 # RESUME — Trends V2: full GS10 VFD parameter monitoring
 
-> Paste-able resume prompt after /clear. State as of 2026-06-12 (PLC laptop).
+> Paste-able resume prompt after /clear. State as of 2026-06-12 **evening** (PLC laptop).
+
+## ⚡ UPDATE 2026-06-12b — ALL THREE LAYERS BUILT; only the reflash remains
+
+Commits `215f0f2a` (layers 2+3) + `9cda0169` (layer 1 prep), branch
+`docs/plc-1668-feed-resume`. 48/48 pytest, 41/41 node tests. What remains is
+**Mike's manual CCW flash** — full sequence in `plc/CCW_VARIABLES_v5.1.0_DELTA.md`
+(stop historian → `deploy_modbus_map.py` → declare vars → paste
+`plc/Micro820_v5.1.0_Program.st` → build/download/Run), then the live acceptance
+list in the plan doc (incl. the freq-scale check). Key truths discovered:
+- DEPLOYED ladder is **v5.0.0 `Prog2.stf` (Channel 0)** — `Micro820_v4.1.9_Program.st`
+  is stale (Channel 2, bogus SM2 bit-13 fault comment). v5.1.0 builds on v5.0.0.
+- GS10 warn IDs ≠ fault IDs (CE10: warn 5, fault 58). Real tables live in
+  `mira-trend-viewer/js/adapters/gs10.js` + `plc/conv_simple_anomaly/rules.py`.
+- Power 0x210F is kW×1000 (manual X.XXX), not the plan's ×100.
+The original V2 context below is kept for reference.
 
 ## Where V1 stands (DONE, live-verified, tagged)
 
