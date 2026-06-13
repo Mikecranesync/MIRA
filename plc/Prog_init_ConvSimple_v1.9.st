@@ -32,7 +32,7 @@ PROGRAM Prog_init
 (*   1. Byte-split of 0x2100: low byte -> vfd_fault_code (active fault),   *)
 (*      high byte -> vfd_warn_code. V1.8 took the whole word as            *)
 (*      vfd_fault_code, so a high-byte warning falsely read as a fault.    *)
-(*   2. Captures the 0x2102 freq-command echo (read_data[3]) -> vfd_freq_cmd*)
+(*   2. vfd_freq_cmd = the commanded Hz written to drive 0x2001 (= vfd_freq_sp)*)
 (*      (V1.8 discarded it).                                               *)
 (*   3. vfd_last_fault latch: holds the last nonzero fault; survives the   *)
 (*      drive's own reset; cleared ONLY by operator coil last_fault_clear  *)
@@ -126,7 +126,10 @@ IF mb_read_status.Q AND NOT mb_read_status.Error THEN
            add via AND_MASK/the masking FBs once confirmed building on the bench.) *)
         vfd_fault_code  := read_data[1];                    (* 0x2100 fault     *)
         vfd_status_word := read_data[2];                    (* 0x2101 status    *)
-        vfd_freq_cmd    := read_data[3];                    (* 0x2102 freq cmd  *)
+        (* read_data[3] = 0x2102 "F" register: NOT used for vfd_freq_cmd. In
+           comms-frequency mode 0x2102 reads 0 (it is the keypad F, not the
+           comms command), so vfd_freq_cmd is sourced from vfd_freq_sp (the
+           value written to drive 0x2001) in Phase B below instead. *)
         vfd_frequency   := read_data[4];                    (* 0x2103 Hz x100   *)
         vfd_current     := read_data[5];                    (* 0x2104 A x100    *)
         vfd_dc_bus      := read_data[6];                    (* 0x2105 V x10     *)
@@ -152,7 +155,7 @@ END_IF;
 (* ===================================================================== *)
 (* REGISTER MAP (V1.9)   HR off = historian pymodbus offset = CCW-400001  *)
 (* 0x2100lo fault  vfd_fault_code/118   0x2100hi warn vfd_warn_code/119    *)
-(* 0x2101 status   vfd_status_word/117  0x2102 freqcmd vfd_freq_cmd/120    *)
+(* 0x2101 status   vfd_status_word/117  0x2001cmd freqcmd vfd_freq_cmd/120  *)
 (* 0x2103 freq     vfd_frequency/106    0x2104 amps   vfd_current/107      *)
 (* 0x2105 dcbus    vfd_dc_bus/109       0x2106 outV   vfd_voltage/108      *)
 (* 0x210B torque   vfd_torque/121       0x210C rpm    vfd_motor_rpm/122    *)
@@ -188,6 +191,14 @@ END_IF;
 IF vfd_freq_sp = 0 THEN
     vfd_freq_sp := 3000;       (* 30.00 Hz default *)
 END_IF;
+
+(* Frequency command (HR120) = the value the PLC writes to drive 0x2001.
+   Re-pointed off the 0x2102 keypad echo (read 0 in comms mode). Always fresh
+   -- independent of the RS-485 read link -- and is the true commanded Hz, so
+   the historian's rpm-vs-command slip guard works. vfd_freq_sp is x100 (3000 =
+   30.00 Hz), same scale as HR120. NOTE: if Build flags a type mismatch here,
+   vfd_freq_sp is not WORD -- declare a same-type intermediate or match it. *)
+vfd_freq_cmd := vfd_freq_sp;
 
 motor_running := vfd_run_permit AND (dir_fwd OR dir_rev);
 
