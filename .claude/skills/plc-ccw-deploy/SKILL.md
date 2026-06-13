@@ -171,8 +171,17 @@ divisor, not a PLC bug).
 - The historian must be running (serves `/viewer/` + `/trends/summary`). `/health`
   shows `connection` + `last_poll_ts`.
 
-## 7. "Still 0 after a clean flash" decision tree
+## 7. "Still 0 / no_data after a clean flash" decision tree
 
+0. **`no_data` (not `0`) on a whole register block = the `.ccwmod` map wasn't
+   imported.** Run `live_capture.py` first. If the LIVE tags are exactly the 1.8
+   base-map registers (`400107–110`) and the `no_data` tags are exactly the
+   `.ccwmod` block (`400118–125`) — including `vfd_status_word`, which the program
+   populates from the *same* monitor read that feeds the live `vfd_frequency` — the
+   globals are populated but **not exposed on Modbus**. Fix: Device Config → Modbus
+   Mapping → **Import** the `.ccwmod` (vars must already exist) → Build → Download.
+   This is the #1 cause and the cheapest to confirm; check it before the below.
+   (Confirmed live 2026-06-13: clean split isolated exactly this.)
 1. **The program didn't actually compile/download.** Confirm: correct version
    header, Clean was done, 0 errors, download completed. (This was the real cause of
    the V2.0 zeros — the flashed firmware was still V1.8, which never reads the load
@@ -189,6 +198,7 @@ divisor, not a PLC bug).
 |---|---|---|
 | `plc/build_conv_simple_2_0.py` | clone proven-good 1.8 → 2.0, stage apply kit, kit-consistency guard | safe (file copy); `--dry-run`/`--force` |
 | `plc/conv_simple_anomaly/verify_v2_telemetry.py` | step-6 acceptance verifier (`--watch`) | read-only HTTP |
+| `plc/conv_simple_anomaly/live_capture.py` | full-tag coverage logger (run while cycling functions; LIVE/no_data per tag) — **run this FIRST after a download** to spot a missed `.ccwmod` import (clean 400107-110-live / 400118-125-no_data split) before chasing program/drive causes | read-only HTTP |
 | `plc/inject_vars_accdb.py` | pre-inject vars to `.accdb` | ⚠️ **bench-only bet**, symbol-table-desync risk — do NOT use on a safety deploy |
 | `plc/ccw_autoflash_1_9.py` | pywinauto GUI Build/Download | ⚠️ untested, degrades gracefully, human-watched only; never blind near a motor |
 | `plc/deploy_modbus_map.py` | write the Modbus map config | deliberate config-write tool, not a runtime path |
