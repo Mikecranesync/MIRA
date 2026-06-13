@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Conv_Simple — Live Anomaly Catalog &amp; Bench Injection Guide</title>
+<style>
+  @page { size: Letter; margin: 0.45in 0.55in; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10.5pt; color: #111; line-height: 1.42; }
+  h1 { font-size: 19pt; margin: 0 0 4pt 0; border-bottom: 2pt solid #111; padding-bottom: 6pt; }
+  h2 { font-size: 14pt; margin: 18pt 0 6pt 0; padding: 6pt 10pt; background: #1f3a5f; color: #fff; }
+  h2.part { background: #8a1a10; font-size: 16pt; padding: 8pt 12pt; }
+  h3 { font-size: 12pt; margin: 14pt 0 4pt 0; color: #1f3a5f; }
+  h4 { font-size: 11pt; margin: 10pt 0 2pt 0; color: #333; }
+  .meta { font-size: 9.5pt; color: #555; margin-bottom: 10pt; }
+  .meta strong { color: #111; }
+  ol, ul { margin: 4pt 0 6pt 22pt; }
+  li { margin-bottom: 4pt; }
+  code, pre { font-family: 'Consolas', 'Courier New', monospace; }
+  pre { background: #f4f5f7; border: 1pt solid #d0d5dc; border-radius: 3pt; padding: 8pt; font-size: 9pt; white-space: pre; overflow-x: auto; tab-size: 2; line-height: 1.25; }
+  pre.flow { background: #fafbfd; border: 1pt solid #1f3a5f; font-size: 9pt; line-height: 1.2; padding: 10pt 12pt; }
+  code { background: #f4f5f7; padding: 1pt 3pt; border-radius: 2pt; font-size: 10pt; }
+  table { border-collapse: collapse; width: 100%; margin: 4pt 0 8pt 0; font-size: 9.5pt; }
+  th, td { border: 1pt solid #b5bcc4; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #e8edf3; }
+  .callout { border-left: 4pt solid #d9822b; background: #fff7eb; padding: 8pt 12pt; margin: 8pt 0; }
+  .callout-title { font-weight: bold; color: #a55a14; display: block; margin-bottom: 2pt; }
+  .danger { border-left: 4pt solid #c5392c; background: #fdecea; padding: 8pt 12pt; margin: 8pt 0; }
+  .danger-title { font-weight: bold; color: #8a1a10; display: block; margin-bottom: 2pt; }
+  .ok { border-left: 4pt solid #2f8f3a; background: #ecf6ee; padding: 8pt 12pt; margin: 8pt 0; }
+  .ok-title { font-weight: bold; color: #1f5f24; display: block; margin-bottom: 2pt; }
+  .why { background: #eef2f9; padding: 6pt 10pt; margin: 4pt 0 6pt 0; border-radius: 3pt; font-size: 10pt; }
+  .why::before { content: 'Why this matters: '; font-weight: bold; color: #1f3a5f; }
+  hr { border: 0; border-top: 1pt solid #b5bcc4; margin: 12pt 0; }
+  .small { font-size: 9.5pt; color: #555; }
+  .page-break { page-break-before: always; }
+  .compact td, .compact th { padding: 3pt 6pt; font-size: 9pt; }
+  .cheatsheet { background: #fffaf0; border: 2pt solid #1f3a5f; padding: 12pt 14pt; margin: 10pt 0; }
+  .cheatsheet h3 { margin-top: 8pt; color: #1f3a5f; }
+  .toc { background: #f7f8fa; border: 1pt solid #b5bcc4; padding: 10pt 14pt; margin: 10pt 0 18pt 0; }
+  .toc h3 { margin: 0 0 6pt 0; color: #1f3a5f; }
+  .id { font-family: 'Consolas','Courier New',monospace; font-weight: bold; white-space: nowrap; }
+  .sev-crit { color: #fff; background: #8a1a10; font-weight: bold; padding: 1pt 5pt; border-radius: 3pt; font-size: 8.5pt; }
+  .sev-high { color: #fff; background: #c5392c; font-weight: bold; padding: 1pt 5pt; border-radius: 3pt; font-size: 8.5pt; }
+  .sev-med  { color: #fff; background: #d9822b; font-weight: bold; padding: 1pt 5pt; border-radius: 3pt; font-size: 8.5pt; }
+  .sev-low  { color: #333; background: #e8edf3; font-weight: bold; padding: 1pt 5pt; border-radius: 3pt; font-size: 8.5pt; }
+  .st-live    { color: #1f5f24; font-weight: bold; }
+  .st-reflash { color: #a55a14; font-weight: bold; }
+  .st-new     { color: #1f3a5f; font-weight: bold; }
+  .st-coded   { color: #2f8f3a; font-weight: bold; }
+  caption { caption-side: top; text-align: left; font-weight: bold; color: #1f3a5f; padding: 2pt 0; font-size: 11pt; }
+</style>
+</head>
+<body>
+
+<h1>Conv_Simple — Live Anomaly Catalog<br/><span style="font-size:13pt;font-weight:normal;color:#555;">52 things MIRA can detect on the real bench, how to inject each one, and what Ask&nbsp;MIRA says</span></h1>
+<div class="meta">
+  <strong>Audience:</strong> You, at the bench with the Micro&nbsp;820 + GS10 rig &nbsp;|&nbsp;
+  <strong>Goal:</strong> log live data, inject faults, prove each anomaly fires &amp; Ask&nbsp;MIRA explains it<br/>
+  <strong>PLC:</strong> Allen-Bradley Micro&nbsp;820 (2080-LC20-20QBB) @ <code>192.168.1.100:502</code> (Modbus TCP) &nbsp;|&nbsp;
+  <strong>PC:</strong> <code>192.168.1.50</code> / Tailscale <code>100.72.2.99</code> &nbsp;|&nbsp;
+  <strong>Drive:</strong> GS10 DURApulse, RTU slave 1, 9600/8N2<br/>
+  <strong>Signal source:</strong> <code>plc/MbSrvConf_v4.xml</code> (23 coils + 17 HRs) → <code>plc/live-plc-bridge</code> &nbsp;|&nbsp;
+  <strong>Engine:</strong> <code>plc/conv_simple_anomaly/</code> (A0–A12) &nbsp;|&nbsp;
+  <strong>Logger:</strong> <code>plc/conv_simple_anomaly/live_logger.py</code><br/>
+  <strong>Generated:</strong> 2026-06-12 &nbsp;|&nbsp; every row is grounded in a real signal — nothing invented.
+</div>
+
+<div class="toc">
+  <h3>📖 What's in here</h3>
+  <ol>
+    <li><strong>The bench loop</strong> — log → inject → confirm → ask, the five-step rhythm.</li>
+    <li><strong>The live signal inventory</strong> — every coil &amp; register we can read today.</li>
+    <li><strong>The 52-anomaly catalog</strong> — by subsystem, with how to reproduce each at the bench.</li>
+    <li><strong>What Ask MIRA says</strong> — the grounded answer shape per category.</li>
+    <li><strong>Two fixes this surfaces</strong> — the reverse-cmd bug and the slave-map reflash.</li>
+    <li><strong>Suggested first capture sequence</strong> + coverage summary.</li>
+  </ol>
+</div>
+
+<h2>1. The bench loop — how to run it through its paces</h2>
+<pre class="flow">  1.  CCW: DISCONNECT from the controller, PLC in RUN     (so the Modbus server answers)
+  2.  Start a labeled capture for the fault you'll inject:
+        python plc/conv_simple_anomaly/live_logger.py --label flaky_photoeye
+        (type a note + Enter mid-run to stamp "broke beam now"; Ctrl-C to stop)
+  3.  Inject the fault at the bench               (see the "Reproduce" column below)
+  4.  Stop the logger → logs/&lt;stamp&gt;_flaky_photoeye.{jsonl,csv} = your ground truth
+  5.  Confirm the rule fires:  python plc/conv_simple_anomaly/live_check.py --secs 6
+  6.  Ask MIRA the question → it answers grounded in the same live tags</pre>
+<div class="callout"><span class="callout-title">Capture baselines first</span>
+Record <code>--label baseline_idle</code> (everything stopped) and <code>--label baseline_run_fwd</code>
+before any fault. Every threshold — motor FLA, DC-bus band, frequency tolerance — is set
+<em>relative to those golden runs</em>. Without a baseline a number is just a number.</div>
+<div class="danger"><span class="danger-title">Read-only, always</span>
+The logger and <code>live_check.py</code> use only Modbus <em>read</em> function codes over Ethernet —
+side-effect-free per <code>.claude/rules/fieldbus-readonly.md</code>. Nothing here writes to the PLC or
+the GS10. Inject faults <em>physically</em> at the bench, never by writing registers.</div>
+
+<h2>2. Live signal inventory — what we can read today</h2>
+<table class="compact">
+<tr><th>Type</th><th>Signals (friendly names as logged)</th></tr>
+<tr><td><strong>Coils&nbsp;(23)</strong></td><td><code>motor_running, conveyor_running, fault_alarm, vfd_comm_ok, system_ready, e_stop_active, dir_fwd, dir_rev, heartbeat, estop_wiring_fault, dir_fault, di00_fwd_sw, di01_rev_sw, di02_estop_nc, di03_estop_no, di04_pb_run, do00_green, do01_red, do02_contactor_q1, do03_pb_run_led, vfd_poll_active, vfd_fault_reset_pending, di05_photoeye</code>★</td></tr>
+<tr><td><strong>Registers&nbsp;(17)</strong></td><td><code>motor_speed, motor_current, temperature, pressure, conveyor_speed, error_code, vfd_frequency_hz, vfd_current_a, vfd_voltage_v, vfd_dc_bus_v, item_count, uptime_seconds, conveyor_speed_cmd, conv_state, vfd_cmd_word, vfd_freq_setpoint, vfd_poll_step</code></td></tr>
+</table>
+<p class="small">★ <code>di05_photoeye</code> (coil 000023) is published only after the slave-map-v2 reflash — on the
+current live firmware it returns ILLEGAL DATA ADDRESS and the logger simply omits it.</p>
+
+<h3>Legend</h3>
+<p class="small">
+<strong>Status</strong>: <span class="st-live">LIVE</span> detectable now ·
+<span class="st-reflash">REFLASH</span> needs DI 5 / GS10-fault-reg reflash ·
+<span class="st-new">NEW</span> signal is live, rule not yet written ·
+<span class="st-coded">A#</span> already coded in <code>rules.py</code>. &nbsp;
+<strong>Sev</strong>: <span class="sev-crit">CRIT</span> <span class="sev-high">HIGH</span> <span class="sev-med">MED</span> <span class="sev-low">LOW</span>. &nbsp;
+<strong>Alerts</strong>: Telegram <code>/fault</code>, MCP <code>/api/faults/active</code>, ntfy push (HIGH/CRIT), Ask&nbsp;MIRA.
+</p>
+
+<h2 class="part page-break">3. The 52-anomaly catalog</h2>
+
+<table class="compact">
+<caption>A. PLC &amp; RS-485 / VFD comms health</caption>
+<tr><th>#</th><th>ID</th><th>Anomaly</th><th>Signal(s)</th><th>Reproduce at bench</th><th>Sev</th><th>Status</th></tr>
+<tr><td>1</td><td class="id">A0</td><td>PLC / bridge offline</td><td>no fresh sample ≥ <code>offline_s</code></td><td>Unplug PLC Ethernet / stop bridge</td><td><span class="sev-crit">CRIT</span></td><td><span class="st-coded">A0</span> <span class="st-live">LIVE</span></td></tr>
+<tr><td>2</td><td class="id">A1</td><td>GS10 RS-485 link down</td><td><code>vfd_comm_ok=0</code></td><td>Unplug RS-485 / power off GS10</td><td><span class="sev-high">HIGH</span></td><td><span class="st-coded">A1</span> <span class="st-live">LIVE</span></td></tr>
+<tr><td>3</td><td class="id">B1</td><td>RS-485 flaky / intermittent</td><td><code>vfd_comm_ok</code> toggles ≥N</td><td>Partially seat / wiggle RS-485 plug</td><td><span class="sev-high">HIGH</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>4</td><td class="id">B2</td><td>PLC heartbeat stalled (scan dead)</td><td><code>heartbeat</code> not toggling ≥X&nbsp;s</td><td>Put PLC in PROG / stop scan</td><td><span class="sev-crit">CRIT</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>5</td><td class="id">B3</td><td>VFD poll state-machine stuck</td><td><code>vfd_poll_step</code> frozen / <code>vfd_poll_active</code> stuck=1</td><td>Half-fail comms mid-poll</td><td><span class="sev-med">MED</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>6</td><td class="id">B4</td><td>PLC unexpected restart</td><td><code>uptime_seconds</code> resets → 0</td><td>Power-cycle the PLC</td><td><span class="sev-high">HIGH</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>7</td><td class="id">B5</td><td>Stale VFD values not trust-gated</td><td><code>vfd_comm_ok=0</code> yet HRs look fresh</td><td>Pull RS-485, watch the HRs</td><td><span class="sev-med">MED</span></td><td><span class="st-live">LIVE</span> (gate)</td></tr>
+</table>
+
+<table class="compact">
+<caption>B. Safety &amp; E-stop (dual-channel)</caption>
+<tr><th>#</th><th>ID</th><th>Anomaly</th><th>Signal(s)</th><th>Reproduce at bench</th><th>Sev</th><th>Status</th></tr>
+<tr><td>8</td><td class="id">A3</td><td>E-stop dual-channel wiring fault</td><td><code>estop_wiring_fault=1</code> OR <code>di02_estop_nc==di03_estop_no</code></td><td>Pull ONE e-stop channel wire</td><td><span class="sev-high">HIGH</span></td><td><span class="st-coded">A3</span> <span class="st-live">LIVE</span></td></tr>
+<tr><td>9</td><td class="id">S1</td><td>E-stop pressed (normal stop)</td><td><code>e_stop_active=1</code></td><td>Press the E-stop</td><td><span class="sev-low">INFO</span></td><td><span class="st-live">LIVE</span></td></tr>
+<tr><td>10</td><td class="id">S2</td><td>E-stop NC channel stuck / jumpered</td><td>press, but <code>di02_estop_nc</code> stays 1</td><td>Jumper the NC channel</td><td><span class="sev-high">HIGH</span></td><td><span class="st-live">LIVE</span></td></tr>
+<tr><td>11</td><td class="id">S3</td><td>E-stop NO channel stuck</td><td><code>di03_estop_no</code> disagrees w/ NC</td><td>Jumper the NO channel</td><td><span class="sev-high">HIGH</span></td><td><span class="st-live">LIVE</span></td></tr>
+<tr><td>12</td><td class="id">S4</td><td>E-stop chatter / flaky contact</td><td><code>e_stop_active</code> toggles rapidly</td><td>Loosen e-stop wire, tap button</td><td><span class="sev-high">HIGH</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>13</td><td class="id">A5</td><td>Belt running while not permitted</td><td><code>motor_running ∧ (estop ∨ wiring ∨ ¬contactor_q1)</code></td><td>Force run with a safety open</td><td><span class="sev-high">HIGH</span></td><td><span class="st-coded">A5</span> <span class="st-live">LIVE</span></td></tr>
+<tr><td>14</td><td class="id">S5</td><td>Contactor Q1 dropped under run cmd</td><td><code>do02_contactor_q1=0 ∧</code> run</td><td>Open contactor coil while running</td><td><span class="sev-high">HIGH</span></td><td><span class="st-new">NEW</span></td></tr>
+</table>
+
+<table class="compact">
+<caption>C. Direction &amp; control logic</caption>
+<tr><th>#</th><th>ID</th><th>Anomaly</th><th>Signal(s)</th><th>Reproduce at bench</th><th>Sev</th><th>Status</th></tr>
+<tr><td>15</td><td class="id">A4</td><td>Direction conflict (both selected)</td><td><code>di00_fwd_sw ∧ di01_rev_sw</code> (<code>dir_fault</code>)</td><td>Throw BOTH direction switches</td><td><span class="sev-med">MED</span></td><td><span class="st-coded">A4</span> <span class="st-live">LIVE</span></td></tr>
+<tr><td>16</td><td class="id">C1</td><td><strong>Reverse-run blind spot (bug)</strong></td><td><code>vfd_cmd_word=34</code> not in <code>run_cmd_values [18,20]</code></td><td>Run conveyor in REVERSE</td><td><span class="sev-med">FIX</span></td><td>config → <code>[18,34]</code></td></tr>
+<tr><td>17</td><td class="id">A6</td><td>Drive not responding to RUN</td><td><code>cmd_word∈{18,34} ∧ ¬motor_running ≥ grace</code></td><td>Command run, GS10 disabled</td><td><span class="sev-med">MED</span></td><td><span class="st-coded">A6</span> <span class="st-live">LIVE</span>*</td></tr>
+<tr><td>18</td><td class="id">C2</td><td>Run command with no direction</td><td>run word ∧ ¬<code>dir_fwd</code> ∧ ¬<code>dir_rev</code></td><td>Command run, no dir switch</td><td><span class="sev-med">MED</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>19</td><td class="id">C3</td><td>Direction reversed under load</td><td><code>dir_fwd→dir_rev</code> while <code>motor_running</code></td><td>Flip dir switch while running</td><td><span class="sev-med">MED</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>20</td><td class="id">C4</td><td>Run pushbutton stuck / held</td><td><code>di04_pb_run</code> held &gt; X&nbsp;s</td><td>Tape the run button down</td><td><span class="sev-low">LOW</span></td><td><span class="st-new">NEW</span></td></tr>
+</table>
+
+<table class="compact">
+<caption>D. Drive electrical (GS10 — current / voltage / DC-bus / frequency)</caption>
+<tr><th>#</th><th>ID</th><th>Anomaly</th><th>Signal(s)</th><th>Reproduce at bench</th><th>Sev</th><th>Status</th></tr>
+<tr><td>21</td><td class="id">A8</td><td>Output overcurrent &gt; FLA</td><td><code>vfd_current_a &gt; motor_fla_a</code></td><td>Brake / load the belt</td><td><span class="sev-high">HIGH</span></td><td><span class="st-coded">A8</span> <span class="st-live">LIVE</span></td></tr>
+<tr><td>22</td><td class="id">D1</td><td>Locked-rotor / stall</td><td>high <code>vfd_current_a</code> ∧ <code>frequency_hz&gt;0</code> ∧ <code>motor_speed≈0</code></td><td>Hold the belt still</td><td><span class="sev-high">HIGH</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>23</td><td class="id">A9</td><td>DC bus undervoltage</td><td><code>vfd_dc_bus_v &lt; dc_bus_lo_v</code></td><td>Input sag (hard to force)</td><td><span class="sev-med">MED</span></td><td><span class="st-coded">A9</span> <span class="st-live">LIVE</span></td></tr>
+<tr><td>24</td><td class="id">A9</td><td>DC bus overvoltage (regen)</td><td><code>vfd_dc_bus_v &gt; dc_bus_hi_v</code></td><td>Rapid decel of loaded belt</td><td><span class="sev-med">MED</span></td><td><span class="st-coded">A9</span> <span class="st-live">LIVE</span></td></tr>
+<tr><td>25</td><td class="id">A10</td><td>Output frequency frozen under RUN</td><td><code>frequency_hz</code> unchanged ≥ <code>freq_frozen_s</code></td><td>Drive stops ramping</td><td><span class="sev-med">MED</span></td><td><span class="st-coded">A10</span> <span class="st-live">LIVE</span></td></tr>
+<tr><td>26</td><td class="id">A7</td><td>Output Hz not tracking setpoint</td><td><code>|frequency_hz − vfd_freq_setpoint| &gt; tol</code></td><td>Change setpoint, drive lags</td><td><span class="sev-med">MED</span></td><td><span class="st-coded">A7</span> <span class="st-live">LIVE</span></td></tr>
+<tr><td>27</td><td class="id">A2</td><td>GS10 drive fault active (decoded)</td><td><code>fault_raw</code> (0x2100) → <code>GS10_FAULT_CODES</code></td><td>Trip GS10 (oC / oL / oH / E.LV)</td><td><span class="sev-high">HIGH</span></td><td><span class="st-reflash">REFLASH</span></td></tr>
+<tr><td>28</td><td class="id">D2</td><td>Output current zero under run</td><td><code>vfd_current_a≈0 ∧ motor_running ∧ Hz&gt;0</code></td><td>Open a motor lead / blow output fuse</td><td><span class="sev-high">HIGH</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>29</td><td class="id">D3</td><td>Output voltage zero with run cmd</td><td><code>vfd_voltage_v≈0 ∧</code> run</td><td>Output-stage fault</td><td><span class="sev-high">HIGH</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>30</td><td class="id">D4</td><td>Undercurrent / load lost</td><td><code>vfd_current_a ≪ baseline</code> while running</td><td>Decouple belt from motor</td><td><span class="sev-med">MED</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>31</td><td class="id">D5</td><td>Current spike transient</td><td><code>Δvfd_current_a</code> &gt; jump in one interval</td><td>Brief jam pulse</td><td><span class="sev-med">MED</span></td><td><span class="st-new">NEW</span></td></tr>
+</table>
+
+<table class="compact">
+<caption>E. Photo-eye &amp; material flow &nbsp;<span class="small">(most need the DI 5 reflash)</span></caption>
+<tr><th>#</th><th>ID</th><th>Anomaly</th><th>Signal(s)</th><th>Reproduce at bench</th><th>Sev</th><th>Status</th></tr>
+<tr><td>32</td><td class="id">A12</td><td>Photo-eye jam (continuous block)</td><td><code>di05_photoeye</code> blocked ≥ X&nbsp;s</td><td>Hold the beam broken</td><td><span class="sev-high">HIGH</span></td><td><span class="st-reflash">REFLASH</span></td></tr>
+<tr><td>33</td><td class="id">E1</td><td>Photo-eye flaky / rapid toggle (#1668)</td><td><code>di05</code> ≥7 falling edges in ~5.6&nbsp;s</td><td>Wiggle sensor / wave hand fast</td><td><span class="sev-high">HIGH</span></td><td><span class="st-reflash">REFLASH</span></td></tr>
+<tr><td>34</td><td class="id">E2</td><td>Photo-eye dead / dark (never makes)</td><td><code>di05</code> never trips over a run</td><td>Disconnect the sensor</td><td><span class="sev-med">MED</span></td><td><span class="st-reflash">REFLASH</span></td></tr>
+<tr><td>35</td><td class="id">E3</td><td>Photo-eye stuck-made (never breaks)</td><td><code>di05</code> never clears</td><td>Block / misalign permanently</td><td><span class="sev-med">MED</span></td><td><span class="st-reflash">REFLASH</span></td></tr>
+<tr><td>36</td><td class="id">E4</td><td>Photo-eye loose wire (intermittent open)</td><td><code>di05</code> brief random drops</td><td>Loosen the terminal</td><td><span class="sev-med">MED</span></td><td><span class="st-reflash">REFLASH</span></td></tr>
+<tr><td>37</td><td class="id">E5</td><td>Unexpected trip while stopped</td><td><code>di05</code> changes ∧ <code>conveyor_running=0</code></td><td>Wave hand at eye while off</td><td><span class="sev-low">LOW</span></td><td><span class="st-reflash">REFLASH</span></td></tr>
+<tr><td>38</td><td class="id">E6</td><td>No item flow while running</td><td><code>item_count</code> flat ∧ running ∧ motion</td><td>Run an empty belt</td><td><span class="sev-med">MED</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>39</td><td class="id">E7</td><td>Item jam (flow + beam)</td><td><code>di05</code> blocked ∧ <code>item_count</code> frozen</td><td>Jam an item at the eye</td><td><span class="sev-high">HIGH</span></td><td><span class="st-reflash">REFLASH</span></td></tr>
+</table>
+
+<table class="compact">
+<caption>F. Motion &amp; speed</caption>
+<tr><th>#</th><th>ID</th><th>Anomaly</th><th>Signal(s)</th><th>Reproduce at bench</th><th>Sev</th><th>Status</th></tr>
+<tr><td>40</td><td class="id">F1</td><td>Commanded run, no motion</td><td>run cmd ∧ <code>conveyor_speed≈0</code> past grace</td><td>Belt slips / drive disabled</td><td><span class="sev-high">HIGH</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>41</td><td class="id">F2</td><td>Motion while commanded stop</td><td><code>conveyor_speed&gt;0 ∧</code> stop cmd</td><td>Excess coast after stop</td><td><span class="sev-med">MED</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>42</td><td class="id">F3</td><td>Speed not reaching command</td><td><code>|conveyor_speed − speed_cmd| &gt; tol</code> steady</td><td>Overload the belt</td><td><span class="sev-med">MED</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>43</td><td class="id">F4</td><td>Belt overspeed</td><td><code>conveyor_speed &gt; speed_cmd + tol</code></td><td>(drive misconfig)</td><td><span class="sev-med">MED</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>44</td><td class="id">F5</td><td>Speed hunting / oscillation</td><td>high variance in <code>conveyor_speed</code></td><td>PID instability</td><td><span class="sev-low">LOW</span></td><td><span class="st-new">NEW</span></td></tr>
+</table>
+
+<table class="compact">
+<caption>G. State machine, process &amp; HMI consistency</caption>
+<tr><th>#</th><th>ID</th><th>Anomaly</th><th>Signal(s)</th><th>Reproduce at bench</th><th>Sev</th><th>Status</th></tr>
+<tr><td>45</td><td class="id">G1</td><td>Fault alarm latched</td><td><code>fault_alarm=1</code></td><td>Trigger any ladder fault</td><td><span class="sev-high">HIGH</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>46</td><td class="id">G2</td><td>Error code nonzero (decode)</td><td><code>error_code ≠ 0</code></td><td>Trip a fault path</td><td><span class="sev-med">var</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>47</td><td class="id">G3</td><td><code>conv_state</code> wedged in FAULT</td><td>stuck non-running ≥ X</td><td>Trip, then don't reset</td><td><span class="sev-med">MED</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>48</td><td class="id">G4</td><td>System not ready w/o cause</td><td><code>system_ready=0</code> ∧ no estop/fault</td><td>Remove a start precondition</td><td><span class="sev-med">MED</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>49</td><td class="id">G5</td><td>Inconsistent state</td><td><code>conveyor_running ∧ ¬system_ready</code> (or <code>motor ∧ ¬conveyor</code>)</td><td>Force contradictory states</td><td><span class="sev-med">MED</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>50</td><td class="id">G6</td><td>Stack-light logic mismatch</td><td><code>do00_green ∧ do01_red</code> both / neither</td><td>Diagnostic check</td><td><span class="sev-low">LOW</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>51</td><td class="id">G7</td><td>Motor over-temperature</td><td><code>temperature &gt; limit</code></td><td>Heat sensor / sustained load</td><td><span class="sev-high">HIGH</span></td><td><span class="st-new">NEW</span></td></tr>
+<tr><td>52</td><td class="id">G8</td><td>Temperature rising trend (predictive)</td><td><code>temperature</code> slope &gt; X over window</td><td>Gradual loading</td><td><span class="sev-med">MED</span></td><td><span class="st-new">NEW</span></td></tr>
+</table>
+
+<h2 class="part page-break">4. What Ask MIRA says</h2>
+<p>Each answer leads with <strong>equipment + fault state</strong>, then <strong>likely cause</strong>, then
+<strong>next check</strong> — never a raw-tag wall (per the industrial-HMI rule). Representative answers:</p>
+<table>
+<tr><th>Category</th><th>Ask MIRA reply (grounded shape)</th></tr>
+<tr><td><strong>A1 / B1</strong> comms</td><td>"GS10 isn't answering on RS-485 — its values are stale, treat them with suspicion. Likely a loose / re-seated RS-485 conductor or termination. Check the A/B pair at both ends; confirm GS10 is 9600 8N2, slave 1."</td></tr>
+<tr><td><strong>A3 / S2</strong> e-stop</td><td>"E-stop channels disagree (NC vs NO) — one contact or wire has failed. This can defeat the stop. Verify both channels switch together; check the suspect leg."</td></tr>
+<tr><td><strong>A8 / D1</strong> current</td><td>"Output current is above motor FLA with little/no motion — mechanical jam, seized bearing, or overloaded belt. Stop and clear the obstruction before restarting."</td></tr>
+<tr><td><strong>A12 / E1</strong> photo-eye</td><td>"PE-101 is chattering (7 fast breaks in ~6 s) while the line is clear — a flaky sensor: loose connector, marginal alignment, or a wiring fault. Reseat and realign."</td></tr>
+<tr><td><strong>G1 / G2</strong> fault latch</td><td>Decodes <code>error_code</code> / GS10 fault code → plain-language cause + reset steps.</td></tr>
+</table>
+
+<h2>5. Two fixes this catalog surfaces</h2>
+<div class="danger"><span class="danger-title">1 — Reverse cmd-word bug (C1)</span>
+<code>config.yaml</code> has <code>run_cmd_values: [18, 20]</code> but REV+RUN on the GS10 is <strong>34</strong>
+(0x20 REV + 0x02 RUN), which you verified at the bench. Until fixed, rules A6 (drive-not-responding)
+and A10 (freq-frozen) are <em>blind whenever the belt runs in reverse</em>. One-line change to
+<code>[18, 34]</code> plus a rule test.</div>
+<div class="callout"><span class="callout-title">2 — Slave-map-v2 reflash</span>
+Unblocks every <span class="st-reflash">REFLASH</span> row at once — the whole photo-eye family (E1–E7)
+plus A2 GS10-drive-fault decode. The committed map adds DI 5 (coil 000023); the live PLC hasn't been
+reflashed yet (<code>coil 23 → ILLEGAL DATA ADDRESS</code>). See <code>plc/RESUME_1668_PLC_FEED.md</code> §3.</div>
+
+<h2>6. Suggested first capture sequence + coverage</h2>
+<div class="cheatsheet">
+<h3>Run these, in order — all live, no reflash needed</h3>
+<ol>
+  <li><code>--label baseline_idle</code> &nbsp;— 30 s, everything stopped</li>
+  <li><code>--label baseline_run_fwd</code> &nbsp;— run forward</li>
+  <li><code>--label baseline_run_rev</code> &nbsp;— run reverse (confirms <code>vfd_cmd_word=34</code> in the data)</li>
+  <li><code>--label estop_press</code> → <code>--label estop_wiring_fault</code> (pull one channel)</li>
+  <li><code>--label rs485_flaky</code> &nbsp;— wiggle the serial plug</li>
+  <li><code>--label belt_stall</code> &nbsp;— hold the belt, watch <code>vfd_current_a</code> climb</li>
+</ol>
+</div>
+<table class="compact">
+<tr><th>Coverage</th><th>Count</th><th>Notes</th></tr>
+<tr><td><span class="st-live">LIVE today</span> (no reflash)</td><td>~30</td><td>All of A / B / C / D-electrical / F / G groups</td></tr>
+<tr><td><span class="st-reflash">Needs DI 5 / fault-reg reflash</span></td><td>8</td><td>Photo-eye family E1–E7 + A2 drive-fault decode</td></tr>
+<tr><td><span class="st-coded">Already coded</span> (<code>rules.py</code>)</td><td>12</td><td>A0–A12</td></tr>
+<tr><td><span class="st-new">NEW candidates</span> to write</td><td>~30</td><td>B1–B4, S4/S5, C2–C4, D1–D5, E6, F1–F5, G1–G8</td></tr>
+</table>
+
+<hr/>
+<p class="small">Source of truth: <code>plc/conv_simple_anomaly/ANOMALY_CATALOG.md</code> ·
+Logger: <code>plc/conv_simple_anomaly/live_logger.py</code> ·
+Engine: <code>plc/conv_simple_anomaly/rules.py</code> ·
+Slave map: <code>plc/MbSrvConf_v4.xml</code>. Every signal above is read-only Modbus TCP — nothing here writes to the PLC.</p>
+
+</body>
+</html>

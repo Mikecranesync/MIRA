@@ -44,9 +44,10 @@ DEFAULT_CFG = {
     "freq_frozen_s": 5.0,      # A10 — Hz unchanged this long while commanded RUN
     "cmd_run_grace_s": 3.0,    # A6 — RUN commanded but not running this long
     "offline_s": 30.0,         # A0 — no fresh data this long
-    "run_cmd_values": (18, 20),  # GS10 cmd word: 18=FWD+RUN, 20=REV+RUN (§4)
+    "run_cmd_values": (18, 34),  # GS10 cmd word: 18=FWD+RUN (0x12), 34=REV+RUN (0x22) — bench-verified 2026-06-12 (§4)
     "freq_track_tol_hz": 3.0,  # A7 — allowed |output Hz − setpoint Hz| at steady state
     "freq_track_grace_s": 5.0, # A7 — accel grace after RUN before A7 may fire
+    "torque_hi_pct": 150.0,    # * vfd_torque_pct high limit (jam precursor); GS10 oL = 150%/1 min
 }
 
 # GS10 fault/error codes — low byte of register 0x2100 (manual §P06.17 ranges,

@@ -25,11 +25,12 @@ COIL_TOPICS = {
     11: "plc/di/di00_fwd", 12: "plc/di/di01_rev", 13: "plc/di/di02_estop_nc",
     14: "plc/di/di03_estop_no", 15: "plc/di/di04_pbrun", 16: "plc/do/do00_green",
     17: "plc/do/do01_red", 18: "safety/contactor_q1", 19: "plc/do/do03_pbrun_led",
+    22: "plc/di/di05_photoeye",  # slave-map v2: PE-101 on DI 5, coil 000023 (offset 22)
 }
 HR_SPECS = {106: ("vfd/vfd101/freq", 100.0), 107: ("vfd/vfd101/current_a", 100.0),
             108: ("vfd/vfd101/voltage_v", 10.0), 109: ("vfd/vfd101/dc_bus_v", 10.0),
             114: ("vfd/vfd101/cmd_word", 1.0)}
-COIL_READS = [(0, 1), (3, 1), (5, 1), (9, 1), (11, 9)]
+COIL_READS = [(0, 1), (3, 1), (5, 1), (9, 1), (11, 9), (22, 1)]
 HR_READS = [(106, 4), (114, 1)]
 UNIT = 1
 
