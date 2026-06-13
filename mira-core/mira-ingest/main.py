@@ -925,12 +925,18 @@ async def ingest_document_kb(
             detail=f"Only PDF files are supported (got mime={mime or 'unknown'}, ext={ext or 'none'})",
         )
 
-    # Validate size (20MB Telegram limit, enforced universally)
+    # Validate size. The old 20 MB cap was a Telegram-era artifact; real OEM
+    # manuals (31.5 MB GS10, 33 MB Rockwell ref) exceed it. Bounded — NOT
+    # unbounded — because this handler buffers the whole file (`await file.read()`
+    # above) before forwarding to docling, the documented 8 GB-VPS OOM path
+    # (ADR-0019). MUST match the Hub's NEXT_PUBLIC_MAX_UPLOAD_MB to avoid the
+    # Hub accepting a file ingest then rejects. True any-size needs ingest-v2.
     MB = 1024 * 1024
-    if len(raw) > 20 * MB:
+    max_upload_mb = int(os.getenv("MIRA_MAX_UPLOAD_MB", "50"))
+    if len(raw) > max_upload_mb * MB:
         raise HTTPException(
             status_code=413,
-            detail=f"File exceeds 20MB limit ({len(raw) // MB}MB)",
+            detail=f"File exceeds {max_upload_mb}MB limit ({len(raw) // MB}MB)",
         )
 
     form_tenant = (tenant_id or "").strip()
