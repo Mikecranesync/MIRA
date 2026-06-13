@@ -77,23 +77,34 @@ poll_timer(IN := NOT poll_timer.Q, PT := T#500ms);
 IF poll_timer.Q THEN
     vfd_poll_count := vfd_poll_count + 1;
     poll_phase := NOT poll_phase;          (* read tick <-> write tick *)
+    IF poll_phase THEN
+        lp_toggle := NOT lp_toggle;        (* on READ ticks: alternate the two blocks *)
+    END_IF;
 END_IF;
 
 
-(* --- ONE read per read-tick: the FULL status block 0x2100..0x210F (16 regs). ---
-   V1.9 FIX (2026-06-13): the old round-robin (read_sel 0/1/2 cycling THREE different
-   Addr/ElementCnt configs through ONE shared async MSG FB) never landed the
-   torque/rpm/power group -- those vars stayed 0 while the GS10 keypad showed real
-   values (torque 73.7%, 880 rpm at 30 Hz). Reading the whole contiguous status block
-   in a SINGLE FC03 message (still one Modbus message per tick) captures every value at
-   once, so torque[12]/rpm[13]/power[16] unpack reliably next to the monitor values.
-   read_sel / lp_toggle are now UNUSED. read_data MUST be ARRAY[1..16] (or larger). *)
+(* --- V1.9: read the GS10 status in TWO half-blocks, alternating each read tick. ---
+   The flashed V1.8 read ONLY the 0x2100..0x2106 monitor block, so torque/rpm/power
+   (0x210B/0x210C/0x210F) were never read -- they sat at 0 while the keypad showed
+   real values (torque 73.7%, 880 rpm at 30 Hz). Both half-blocks fit the EXISTING
+   read_data[1..10] buffer (no resize, no new vars), and it stays ONE Modbus message
+   per tick. Same fire/unpack pattern as V1.8 (proven), just two configs:
+     lp_toggle = FALSE -> monitor 0x2100..0x2106 (7 regs)
+     lp_toggle = TRUE  -> load/power 0x210B..0x210F (5 regs)
+   Each read completes well within the 500 ms tick, so the unpack always matches the
+   block that was just read. read_sel is now unused. *)
 read_local_cfg.Channel     := 2;            (* embedded RS-485 -- NOT 0 *)
 read_local_cfg.TriggerType := 0;
 read_local_cfg.Cmd         := 3;            (* FC03 read holding *)
-read_local_cfg.ElementCnt  := 16;           (* 0x2100..0x210F = 16 regs *)
 read_target_cfg.Node       := 1;
-read_target_cfg.Addr       := 16#2101;      (* Addr = wire+1 -> wire 0x2100 *)
+
+IF lp_toggle THEN
+    read_local_cfg.ElementCnt := 5;         (* 0x210B..0x210F *)
+    read_target_cfg.Addr      := 16#210C;   (* Addr=wire+1 -> wire 0x210B *)
+ELSE
+    read_local_cfg.ElementCnt := 7;         (* 0x2100..0x2106 *)
+    read_target_cfg.Addr      := 16#2101;   (* Addr=wire+1 -> wire 0x2100 *)
+END_IF;
 
 mb_read_status(IN        := poll_timer.Q AND poll_phase,
               LocalCfg  := read_local_cfg,
@@ -101,18 +112,21 @@ mb_read_status(IN        := poll_timer.Q AND poll_phase,
               LocalAddr := read_data);
 
 IF mb_read_status.Q AND NOT mb_read_status.Error THEN
-    vfd_fault_code  := read_data[1];        (* 0x2100 fault       *)
-    vfd_status_word := read_data[2];        (* 0x2101 status      *)
-    (* read_data[3] = 0x2102 keypad "F" echo: unused (vfd_freq_cmd <- vfd_freq_sp below) *)
-    vfd_frequency   := read_data[4];        (* 0x2103 Hz x100     *)
-    vfd_current     := read_data[5];        (* 0x2104 A x100      *)
-    vfd_dc_bus      := read_data[6];        (* 0x2105 V x10       *)
-    vfd_voltage     := read_data[7];        (* 0x2106 V x10       *)
-    vfd_torque      := read_data[12];       (* 0x210B torque % x10 *)
-    vfd_motor_rpm   := read_data[13];       (* 0x210C motor rpm    *)
-    vfd_power       := read_data[16];       (* 0x210F power kW x1000 *)
-    IF vfd_fault_code > 0 THEN
-        vfd_last_fault := vfd_fault_code;   (* latch trip cause *)
+    IF lp_toggle THEN
+        vfd_torque    := read_data[1];      (* 0x210B torque % x10 *)
+        vfd_motor_rpm := read_data[2];      (* 0x210C motor rpm    *)
+        vfd_power     := read_data[5];      (* 0x210F power kW x1000 *)
+    ELSE
+        vfd_fault_code  := read_data[1];    (* 0x2100 fault       *)
+        vfd_status_word := read_data[2];    (* 0x2101 status      *)
+        (* read_data[3] = 0x2102 keypad "F" echo: unused (vfd_freq_cmd <- vfd_freq_sp) *)
+        vfd_frequency   := read_data[4];    (* 0x2103 Hz x100     *)
+        vfd_current     := read_data[5];    (* 0x2104 A x100      *)
+        vfd_dc_bus      := read_data[6];    (* 0x2105 V x10       *)
+        vfd_voltage     := read_data[7];    (* 0x2106 V x10       *)
+        IF vfd_fault_code > 0 THEN
+            vfd_last_fault := vfd_fault_code; (* latch trip cause *)
+        END_IF;
     END_IF;
     vfd_comm_ok := TRUE;
 END_IF;
