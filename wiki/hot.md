@@ -15,8 +15,15 @@
 - Verified: live browser check (Fault Code "No fault" + Last Fault "ocA"; 0x0007 →
   Running/At Speed/Ready ON) + smoke of `/viewer` mount on scratch port 8799; promo screenshots
   in `docs/promo-screenshots/2026-06-12_trend-viewer-v2-*`.
-- **Next (v3 backlog, `mira-trend-viewer/README.md`):** contactor cmd-vs-feedback, adapter
-  `history()` backfill, pen-list patch-render, MIRA "discuss this trend" hand-off.
+- **LIVE DEPLOY (same day, tagged `trends-v1` / MIRA_PLC `trends-hmi-v1`):** the real gateway
+  project is **ConvSimpleLive** (NOT monorepo `ignition/project/` ConveyorMIRA — never loads on
+  8.3.4; `ia.display.webBrowser` isn't a Perspective component, `ia.display.iframe` is).
+  Shipped + browser-verified: `/trends` page + **≋ TRENDS toggle buttons** (Ask-MIRA popup
+  pattern) on Conveyor + home; DC bus 321.6 V GOOD drawing live in the popup. Source:
+  `CCW/MIRA_PLC/ignition/ConvSimpleLive` @ `a3f79b0`; deploy = `gsudo APPLY_TRENDS.cmd`.
+- **Next: Trends V2 — full GS10 monitoring.** Plan: `docs/plans/2026-06-12-trends-v2-full-vfd-monitoring.md`;
+  resume prompt: `plc/RESUME_TRENDS_V2.md`. Blocked on the slave-map reflash for layer 1;
+  layers 2–3 (historian HR_SPECS/UNITS + viewer GS10 bits/fault tables) buildable now.
 
 ## ⭐ MASTER GTM CHECKLIST — `docs/gtm/go-to-market-hardening-checklist.md`
 
