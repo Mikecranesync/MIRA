@@ -31,6 +31,7 @@ Usage (PLC laptop, CCW CLOSED):
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -58,6 +59,49 @@ STAGE_FILES = [
 def fail(msg: str) -> "None":
     print(f"ERROR: {msg}", file=sys.stderr)
     sys.exit(1)
+
+
+# The 8 (NOT 9) new globals the V2.0 program needs. read_sel is v1.9-only and
+# must never appear in a 2.0 kit (see CCW_VARIABLES_ConvSimple_v2.0_DELTA.md).
+EXPECTED_V20_VARS = {
+    "vfd_warn_code", "vfd_freq_cmd", "vfd_torque", "vfd_motor_rpm",
+    "vfd_power", "vfd_last_fault", "lp_toggle", "last_fault_clear",
+}
+_DELTA_VAR_ROW = re.compile(r"^\s*\|\s*`([A-Za-z_]\w*)`\s*\|")  # md table row: | `name` | ...
+
+
+def check_stage(apply_dir: Path) -> None:
+    """Verify the staged kit is V2.0-consistent. Catches the stale-checklist
+    desync (v1.9 delta / read_sel / wrong var count / wrong program header)
+    that would otherwise only surface as confusion in CCW."""
+    problems: list[str] = []
+
+    delta = apply_dir / "CCW_VARIABLES_ConvSimple_v2.0_DELTA.md"
+    if not delta.is_file():
+        problems.append(
+            "v2.0 variable delta not staged — operator would fall back to the "
+            "v1.9 list (9 vars incl. read_sel)")
+    else:
+        declared = {m.group(1) for ln in delta.read_text(encoding="utf-8", errors="ignore").splitlines()
+                    if (m := _DELTA_VAR_ROW.match(ln))}
+        if "read_sel" in declared:
+            problems.append("staged delta declares read_sel in its variable table (v1.9 leaked in)")
+        if declared != EXPECTED_V20_VARS:
+            problems.append(
+                f"staged delta var table {sorted(declared)} != the 8 expected "
+                f"{sorted(EXPECTED_V20_VARS)}")
+
+    prog = apply_dir / "Prog_init_ConvSimple_v2.0.st"
+    if prog.is_file():
+        head = prog.read_text(encoding="utf-8", errors="ignore")
+        if "Prog_VFD V2.0" not in head or "Conv_Simple_2.0" not in head:
+            problems.append("staged program header is not 'Conv_Simple_2.0  Prog_VFD V2.0'")
+
+    if problems:
+        print("\nKIT-CONSISTENCY CHECK FAILED:", file=sys.stderr)
+        for p in problems:
+            print(f"  x {p}", file=sys.stderr)
+        fail("staged apply kit is inconsistent — fix STAGE_FILES / source docs and rebuild")
 
 
 def main() -> None:
@@ -118,6 +162,15 @@ def main() -> None:
     for f in STAGE_FILES:
         shutil.copy2(f, apply_dir / f.name)
     print(f"[3/3] staged apply kit -> {apply_dir}")
+
+    # --- 4. kit-consistency check (fail loud on a stale-checklist desync) ----
+    # Why: the kit once shipped the v1.9 variable delta into a 2.0 build. That
+    # list's first row is read_sel (a v1.9-only var 2.0 dropped) and it said
+    # "9 vars" — sending the operator to declare a var the program never uses.
+    # This makes that class of desync a hard build-time failure, not a surprise
+    # in CCW. (`8 vars, no read_sel` is the 2.0 invariant.)
+    check_stage(apply_dir)
+    print("[4/4] kit-consistency check passed (8 vars, no read_sel, header OK)")
 
     print("\nDONE. Conv_Simple_2.0 is a clean clone of proven-good 1.8 (builds as-is).")
     print(f"  Open:   {new_sln}")
