@@ -265,8 +265,8 @@ async def vendor_chat(
         label = asset_label or (asset_id or "").replace("-", " ").strip() or "this equipment"
         return (
             f"I don't have documentation for **{label}** in the knowledge base yet. "
-            "Once the OEM manual is indexed, I'll be able to answer grounded questions "
-            "about fault codes, parameters, and procedures.",
+            "Your MIRA administrator can add the OEM manual to unlock grounded fault "
+            "code and parameter answers.",
             [],
         )
 
