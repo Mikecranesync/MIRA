@@ -1,0 +1,18 @@
+Name,Data Type,Dimension,Initial Value,Attribute,Comment,CLONE_FROM_EXISTING_ROW
+read_sel,INT,,0,Read/Write,V1.9 read-rotation selector 0..2,(simple INT - copy any INT row)
+lp_toggle,BOOL,,FALSE,Read/Write,V1.9 alternates load/power in read slot 2,(simple BOOL - copy any BOOL row)
+vfd_warn_code,UINT,,0,Read/Write,GS10 0x2100 high byte (active warning),vfd_status_word
+vfd_freq_cmd,UINT,,0,Read/Write,GS10 0x2102 freq command echo,vfd_status_word
+vfd_torque,UINT,,0,Read/Write,GS10 0x210B torque 0.1 percent,vfd_status_word
+vfd_motor_rpm,UINT,,0,Read/Write,GS10 0x210C motor speed rpm,vfd_status_word
+vfd_power,UINT,,0,Read/Write,GS10 0x210F output power 0.001 kW,vfd_status_word
+vfd_last_fault,UINT,,0,Read/Write,PLC-latched last nonzero fault code,vfd_status_word
+last_fault_clear,BOOL,,FALSE,Read/Write,Operator clear for vfd_last_fault (Modbus coil 24),(simple BOOL)
+mb_read_load,MSG_MODBUS,,,Read/Write,V1.9 load read FB (torque/rpm),mb_read_status
+read_load_cfg,MODBUSLOCPARA,,,Read/Write,V1.9 load read local cfg,read_local_cfg
+read_load_tgt,MODBUSTARPARA,,,Read/Write,V1.9 load read target cfg,read_target_cfg
+read_load_data,UDINT,1..10,,Read/Write,V1.9 load read buffer,read_data
+mb_read_power,MSG_MODBUS,,,Read/Write,V1.9 power read FB,mb_read_status
+read_power_cfg,MODBUSLOCPARA,,,Read/Write,V1.9 power read local cfg,read_local_cfg
+read_power_tgt,MODBUSTARPARA,,,Read/Write,V1.9 power read target cfg,read_target_cfg
+read_power_data,UDINT,1..10,,Read/Write,V1.9 power read buffer,read_data
