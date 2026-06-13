@@ -38,19 +38,30 @@ Modbus connection slot; they will fight. Stop the historian first to take a labe
 Quick check: `curl http://127.0.0.1:8766/trends/summary?window=30`
 
 ## Wire into Ignition Perspective
-The `Trends/TrendPanel` view + `/trends` route + NavBar **TRENDS** button are already in
-`ignition/project/`. Deploy with the existing script, then open the page:
-```powershell
-PowerShell -ExecutionPolicy Bypass -File ignition\deploy_ignition.ps1
-# browse: http://localhost:8088/data/perspective/client/ConveyorMIRA/trends
-```
-The TrendPanel iframe now embeds the **full trend viewer**
-(`http://127.0.0.1:8766/viewer/index.html?source=historian` — the historian serves
-`mira-trend-viewer/` itself at `/viewer`, same origin as `/trends/summary`, so the viewer's
-adapter auto-targets the serving origin). The bare single-chart page is still at `/chart`.
+
+**The live gateway project is `ConvSimpleLive`** (deployed 2026-06-12; source of truth:
+`C:\Users\hharp\Documents\CCW\MIRA_PLC\ignition\ConvSimpleLive\`, separate repo). Wired in:
+
+- **`/trends` page** — full-page `Trends` view, iframe →
+  `http://127.0.0.1:8766/viewer/index.html?source=historian` (the historian serves
+  `mira-trend-viewer/` itself at `/viewer`, same origin as `/trends/summary`, so the
+  viewer's adapter auto-targets the serving origin). Bare single-chart page stays at `/chart`.
+- **`≋ TRENDS` toggle buttons** on the Conveyor HMI and home page — same Perspective
+  popup-toggle action as the Ask MIRA button (`onActionPerformed → type:"popup",
+  config.type:"toggle", viewPath:"Trends"`): click opens the viewer as a draggable/
+  resizable popup, click again closes.
+- Deploy: `gsudo …\ConvSimpleLive\APPLY_TRENDS.cmd` (stop service → backup → copy →
+  start; existing-view edits are ignored without a restart).
+- Browse: `http://localhost:8088/data/perspective/client/ConvSimpleLive/conveyor`
+
+> ⚠️ **The monorepo's `ignition/project/` (ConveyorMIRA) is NOT the live project.** Its
+> content-only view format never loads on the 8.3.4 gateway ("View Not Found") and its
+> `ia.display.webBrowser` component doesn't exist in Perspective — the working embed
+> component is **`ia.display.iframe`**. Live Perspective views are 8.3 format
+> (`view.json` content + `resource.json` manifest) in the MIRA_PLC repo above.
 
 **Remote clients:** the iframe URL defaults to `127.0.0.1` (same-laptop). For a phone/remote
-Perspective session, set the `TrendPanel` `trendUrl` param to the PLC laptop's Tailscale IP
+Perspective session, point the Trends view iframe at the PLC laptop's Tailscale IP
 (e.g. `http://100.72.2.99:8766/viewer/index.html?source=historian`) and run the historian with
 `--bind 0.0.0.0`.
 
