@@ -106,7 +106,7 @@ export const NAV_ITEMS: ReadonlyArray<{
   // approval (approve / revoke / expire). Gated to platform admins
   // (platform.users.read ← status === "admin"); distinct from the tenant-scoped
   // /settings/users. URL stays /admin/users; only platform admins see this link.
-  { key: "platform-users", label: "Accounts",     icon: "Users",         href: "/admin/users",            roles: ["admin", "owner"], group: "secondary", capability: "platform.users.read" },
+  { key: "platform-users", label: "Platform accounts", icon: "Users",     href: "/admin/users",            roles: ["admin", "owner"], group: "secondary", capability: "platform.users.read" },
 
   // ── LABS (gated on NEXT_PUBLIC_LABS_ENABLED) ───────────────────────────────
   { key: "conversations", label: "Conversations", icon: "MessageSquare", href: "/conversations", roles: [...ALL_ROLES], group: "labs" },
