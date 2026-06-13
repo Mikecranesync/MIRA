@@ -1,8 +1,31 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-06-13
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-06-13
+
+### Most actionable change for MIRA playbook
+
+Augury's "Industrial AI Workforce" pivot (May 2026) is the most consequential pattern shift since the last scan. They've moved from sensor-monitoring + alerting into role-based AI agents positioned as "digital collaborators" for reliability, maintenance, and operations teams — directly encroaching on MIRA's territory. Augury still requires their hardware; MIRA's counterplay is sensor-agnostic ("works with your PLCs, OEM manuals, and work-order history"). First mover to own "maintenance AI that works with what you already have" wins the counter-narrative. Secondary playbook signal: the developer-conference-as-launch-vehicle format (Anthropic Code with Claude, May 2026) has matured into the dominant owned-channel distribution strategy for technical B2B — conference keynote video → organic YouTube → word of mouth. No paid ad required.
+
+### New findings (post 2026-05-03)
+
+**CMMS / EAM**
+- **MaintainX** — acquired by Autodesk for $3.6B all-cash (May 28, 2026): https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video — Bloomberg TV CEO interview, not a product promo. Andrew Anagnost on Bloomberg Open Interest; "exciting opportunity" framing; real-executive-on-camera format. Competitive map change: MaintainX is now Autodesk's factory floor operations play, not an independent CMMS. [video on Bloomberg, not YouTube; transcript not verified]
+
+**Predictive maintenance**
+- **Augury** — "Industrial AI Workforce" launch (May 18, 2026): https://www.augury.com/media-center/press/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce/ — announced at AVEVA World, Milan. Role-based AI agents (reliability agent / maintenance agent / operations agent) synthesizing Machine Health data + AVEVA CONNECT + Google Gemini. Framing: "bridge insight to action"; "self-optimizing, adaptive production environments." No confirmed YouTube video — press release + trade show demo. **Pattern shift:** Augury pivoted from hardware monitoring to autonomous factory operations positioning; now competing for the same "AI that already knows the fault" framing MIRA targets.
+
+**Automation / SCADA**
+- **Rockwell Automation ROKStudios** — new season (June 4, 2026): https://www.prnewswire.com/news-releases/rockwell-automation-launches-new-season-of-rokstudios-video-series-highlighting-oem-leaders-on-machine-lifecycle-innovation-302788178.html — recorded at Interpack 2026, Düsseldorf. Theme shifted from "automation → autonomy" (April season) to "OEM machine lifecycle innovation" — full lifecycle from design through commissioning through long-term operation. Executive interview format; 150+ total recordings now in archive. Second season in ~2 months signals accelerating video cadence.
+
+**B2B SaaS / dev-tools**
+- **Anthropic** — "Code with Claude 2026" developer conference. SF keynote (May 6): https://www.youtube.com/watch?v=wjvESxKgqaQ London keynote (May 19): https://www.youtube.com/watch?v=6amLO7I9xdg — On-stage developer register; launched Managed Agents (multiagent orchestration), Dynamic Workflows (hundreds of parallel subagents), Claude Opus 4.8 (May 28), Claude Fable 5 + Mythos 5 (June 9). Confirms the developer-conference-as-launch-vehicle pattern as Anthropic's primary video channel. [transcript not verified]
+- **Notion** — Developer Platform 3.5 (May 13, 2026): https://www.youtube.com/playlist?list=PLzaYMdbJMZW2to9W0NNPwvYFPy64HpJB9 — CEO Ivan Zhao livestream. Workers (hosted code runtime) + External Agents API + CLI. Framing evolution from 3.0: "agents inside Notion" → "Notion as the platform where work is executed, coordinated, and reviewed across people and software agents." New hook: workspace as agent orchestration infrastructure, not just an agent consumer. [transcript not verified]
 
 ---
 
@@ -88,6 +111,8 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
 
+**⚠ Competitive map change (May 28, 2026):** Autodesk acquired MaintainX for $3.6B all-cash — largest acquisition in Autodesk's history. MaintainX is no longer an independent CMMS. Bloomberg CEO video (Andrew Anagnost, May 29 2026): https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video — "exciting opportunity" framing; real-executive interview format. Strategic rationale: Autodesk extending from design + make into the operational lifecycle. MIRA implication: MaintainX will be bundled with CAD/BIM tools for the next acquisition wave; the independent CMMS market is contracting. May reinforce MIRA's wedge as the standalone, AI-first maintenance intelligence layer that doesn't require an Autodesk subscription.
+
 ---
 
 ### Fiix
@@ -146,6 +171,15 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 
 **Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
 
+**Industrial AI Workforce (May 18, 2026)**
+- Source: https://www.augury.com/media-center/press/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce/
+- Announced at AVEVA World, Milan (trade show debut, no standalone YouTube video confirmed)
+- Role-based AI agents: reliability agent, maintenance agent, operations agent — each tailored to daily workflows of specific plant roles
+- Integration stack: Augury Machine Health + AVEVA CONNECT + Google Gemini models
+- Claim: "manufacturers can build self-optimizing, adaptive production environments"
+- Framing: "bridge the gap between insight and action"; "digital collaborators for factory workers"
+- Pattern shift: Augury is no longer pure hardware monitoring → competing for the autonomous factory operations space. This is the most direct MIRA competitor pivot in this scan window. Augury's constraint: requires their proprietary sensors. MIRA's counterplay: sensor-agnostic, works with existing PLCs + OEM manuals + CMMS data.
+
 ---
 
 ### Senseye (now Siemens)
@@ -199,6 +233,14 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Episode topics: cyber resilience in OT/IT convergence, workforce reshaping under AI
 - VO register: corporate executive
 - CTA: soft brand / thought leadership
+
+**ROKStudios — OEM Machine Lifecycle season (Jun 4, 2026)**
+- Source: https://www.prnewswire.com/news-releases/rockwell-automation-launches-new-season-of-rokstudios-video-series-highlighting-oem-leaders-on-machine-lifecycle-innovation-302788178.html
+- Recorded at Interpack 2026, Düsseldorf, Germany
+- Theme: "OEM machine lifecycle innovation" — design → commissioning → long-term operation; sustainability + digital twin + cybersecurity topics
+- Format: in-depth executive interviews with machine builder leaders; joins 150+ prior recordings at ROKStudios portal
+- Audience: packaging OEM executives, not plant maintenance technicians
+- Shift from April 2026 season ("automation → autonomy") to lifecycle service framing — signals Rockwell positioning Fiix/services as recurring revenue attached to the machine, not just the installation
 
 **Automation Fair 2025 (Nov 17–20, Chicago)**
 - 30+ new products: ControlLogix 5590 (integrated functional safety), OptixEdge gateway, Armor PowerFlex 330, Asset+ managed service
@@ -304,6 +346,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 30+ product releases in recent months per search results
 - No standalone promo video; analyst/conference appearances as primary video channel
 
+**Code with Claude 2026 — developer conference (May 6 SF / May 19 London)**
+- SF keynote: https://www.youtube.com/watch?v=wjvESxKgqaQ
+- London keynote: https://www.youtube.com/watch?v=6amLO7I9xdg
+- Full playlist: https://www.youtube.com/playlist?list=PLf2m23nhTg1P5BsOHUOXyQz5RhfUSSVUi
+- On-stage, developer register; Anthropic engineering + product leaders presenting live demos
+- Key launches: Managed Agents (dreaming, outcomes, multiagent orchestration); Dynamic Workflows (hundreds of parallel subagents from Claude Code); Claude Opus 4.8 (May 28); Claude Fable 5 + Mythos 5 (June 9)
+- Pattern: developer conference as primary launch vehicle — no standalone ad; all video investment goes to conference content that lives organically on YouTube (same playbook as Stripe Sessions, Figma Config, Notion's CEO livestreams). [transcript not verified]
+
 ---
 
 ### Cursor
@@ -339,6 +389,13 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Music: likely ambient [not verified]
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
+
+**Developer Platform 3.5 (May 13, 2026)**
+- YouTube playlist: https://www.youtube.com/playlist?list=PLzaYMdbJMZW2to9W0NNPwvYFPy64HpJB9
+- CEO Ivan Zhao livestream; developer-register announcement
+- Framing evolution: from "agents inside Notion" (3.0) → "Notion as the platform where work is *executed, coordinated, and reviewed* across people and software agents"
+- New hook: workspace as agent orchestration infrastructure (not just an agent consumer); includes Workers runtime, External Agents API (Claude Code, Cursor, Codex, Decagon listed as partner agents), and CLI
+- Pattern note: Notion is signaling that the workspace layer IS the product; the agents are tenants, not features. Relevant to how MIRA Command Center could be positioned — not "chatbot with a dashboard" but "the coordination layer for plant intelligence." [transcript not verified]
 
 ---
 
@@ -385,6 +442,8 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| Role-based agent framing: "agent for [job role]" | Augury Industrial AI Workforce (May 2026): reliability agent / maintenance agent / operations agent | "MIRA for the reliability engineer" / "MIRA for the maintenance tech" |
+| Developer conference as launch vehicle (no ad spend) | Anthropic Code with Claude (May 2026); Figma Config; Stripe Sessions | MIRA could own "annual diagnostics summit" content; keynote-as-organic-reach |
 
 ### Anti-patterns (avoid)
 
@@ -395,6 +454,8 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now acquired by Autodesk (May 2026, $3.6B) — no longer an independent competitor; will consolidate under Autodesk's design/make/operate stack.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Augury**: pivoted from hardware monitoring + credibility videos (Bloomberg, ROI proofs) to full "Industrial AI Workforce" positioning — autonomous factory agents, not just sensor alerts. Most significant competitive drift in this scan window for MIRA.
+- **Rockwell Automation**: shifted ROKStudios theme from "automation → autonomy" (Apr 2026) to "machine lifecycle innovation" (Jun 2026) — signaling move toward lifecycle service recurring revenue model alongside hardware.
+- **Anthropic**: adopted developer conference as primary launch vehicle (Code with Claude, May 2026) — conference keynote → organic YouTube is now their distribution pattern, not standalone ads.
