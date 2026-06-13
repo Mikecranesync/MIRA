@@ -182,35 +182,51 @@ HUB_URL=http://localhost:3017/hub E2E_RUNS=5 doppler run -p factorylm -c dev -- 
 Fresh registered tenant → seed 2 nodes → real credentials sign-in → **drive the
 upload screen** (`[data-testid="namespace-file-input"]`.setInputFiles, the control
 the page wires to `POST /node/:id/files`) → poll the DB for v2 chunks → **Ask MIRA
-in the UI** → assert a **citation chip** for the uploaded file (deterministic) +
-capture the AI prose (not asserted). Verdicts separate infra flake from path
-failure: chip+answer = **PASS**; chat 5xx = **PROVIDER_FLAKE** (Groq/Cerebras
-upstream — Gemini is blocked); 200 + no chip + refusal = **PATH_FAIL**. Per-run
-cleanup in `finally` + an `afterAll` sweep by `mark`/email prefix.
+in the UI**.
+
+**The deterministic PASS signal is a `[n]` citation marker in the STREAMED ASSISTANT
+PROSE** — not the on-page filename. Why: the uploaded filename also appears in the
+node's attached-file list, and the citation **chip** can render *before* the answer
+streams in (first-pass run 5 captured an empty answer yet had the chip — proof the
+chip alone is too weak). The `[n]` marker exists only once the AI has actually
+written a cited answer, so gating on it both isolates the citation and removes the
+race. A run PASSES only on `cited (prose [n]) && chip ("[n] <file> p.N" resolves to
+the uploaded manual) && non-empty prose`; the chip regex's `[n]`+`p.N` shape also
+distinguishes it from a plain file-list row. Verdicts separate infra flake from path
+failure: chat ≠ 200 or no prose streamed = **PROVIDER_FLAKE** (Gemini is blocked, so
+the cascade is really Groq→Cerebras); prose written but no `[n]` = **PATH_FAIL**
+(grounding gap). Per-run cleanup in `finally` + an `afterAll` sweep by `mark`/email
+prefix.
 
 ### Recorded results — 2026-06-13 (dev, standalone build, fixture `zephyr-zx9000-service-manual.pdf`, question "fault ZX-451")
 
-**5 PASS / 0 PROVIDER_FLAKE / 0 PATH_FAIL** (37.5 s total):
+**5 PASS / 0 PROVIDER_FLAKE / 0 PATH_FAIL** (40.9 s total). Every run: prose `[n]`
+citation marker present (`cited`) AND the `[n] <file> p.N` chip resolved to the
+uploaded manual (`chip`):
 
-| Run | Verdict | Upload chunks | Upload ms | Citation chip | Answer ms | chat HTTP |
-|--:|:--|--:|--:|:--:|--:|--:|
-| 1 | PASS | 1 | 2443 | ✅ | 870 | 200 |
-| 2 | PASS | 1 | 2411 | ✅ | 871 | 200 |
-| 3 | PASS | 1 | 2401 | ✅ | 875 | 200 |
-| 4 | PASS | 1 | 2415 | ✅ | 874 | 200 |
-| 5 | PASS | 1 | 2402 | ✅ | 878 | 200 |
+| Run | Verdict | Upload chunks | Upload ms | cited (prose [n]) | chip | Answer ms | chat HTTP |
+|--:|:--|--:|--:|:--:|:--:|--:|--:|
+| 1 | PASS | 1 | 2487 | ✅ | ✅ | 870 | 200 |
+| 2 | PASS | 1 | 2386 | ✅ | ✅ | 870 | 200 |
+| 3 | PASS | 1 | 2436 | ✅ | ✅ | 875 | 200 |
+| 4 | PASS | 1 | 2458 | ✅ | ✅ | 1876 | 200 |
+| 5 | PASS | 1 | 2410 | ✅ | ✅ | 1877 | 200 |
 
-The live cascade (Groq) produced a grounded, cited answer every run, e.g.:
+The live cascade (Groq) produced a grounded, cited answer every run — full prose
+captured all 5 (the hardened gate waits for the marker, so there's no capture race):
 
 > "The cause of Fault ZX-451 is the PT-7 pressure transducer drifting outside the
 > 4-20 mA calibration band, usually after a cold-start or following a manifold
-> reseal **[1]**. To fix it: 1. Recalibrate the PT…"
+> reseal **[1]**. To fix it: 1. Recalibrate the PT-7 transducer to 4.2 mA…"
 
-The `[1]` marker + the citation chip for `zephyr-zx9000-service-manual.pdf` prove
-the answer is grounded in the *uploaded* manual, not generic knowledge. Run 5's
-prose snapshot raced the render (empty capture) but PASSED on the deterministic
-chip + `chat=200` signal — by design, prose is captured, not asserted. All test
-tenants/nodes/chunks cleaned up (verified 0 left).
+The `[1]` marker in the prose + the `[1] zephyr-zx9000-service-manual.pdf p.1` chip
+prove the answer is grounded in the *uploaded* manual, not generic knowledge. All
+test tenants/nodes/chunks cleaned up (verified 0 left).
+
+> History note: a first pass scored 5/5 on chip-presence alone, but run 5's prose
+> had not streamed in at capture time — the chip rendered first. That exposed that
+> chip-alone is too weak a signal, so the gate was moved to the in-prose `[n]`
+> marker (above). The corrected gate is what the table reports.
 
 > Artifacts (`tests/e2e/.artifacts/` — screenshots + results JSON) are gitignored;
 > the table above is the durable record.

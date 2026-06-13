@@ -51,7 +51,8 @@ type RunResult = {
   verdict: "PASS" | "PROVIDER_FLAKE" | "PATH_FAIL";
   uploadChunks: number | null;
   uploadMs: number | null;
-  chip: boolean;
+  cited: boolean; // a [n] marker is present in the STREAMED PROSE (AI wrote a cited answer)
+  chip: boolean; // a "[n] <file> p.N" citation chip resolved to the uploaded manual
   answerMs: number | null;
   chatStatus: number | null;
   answerSnippet: string;
@@ -169,7 +170,7 @@ for (let run = 1; run <= RUNS; run++) {
     const pressId = randomUUID();
     const result: RunResult = {
       run, verdict: "PATH_FAIL", uploadChunks: null, uploadMs: null,
-      chip: false, answerMs: null, chatStatus: null, answerSnippet: "", note: "",
+      cited: false, chip: false, answerMs: null, chatStatus: null, answerSnippet: "", note: "",
     };
     let tenantId = "";
     let ctx: BrowserContext | null = null;
@@ -220,47 +221,59 @@ for (let run = 1; run <= RUNS; run++) {
       const tAsk = Date.now();
       await input.press("Enter");
 
-      // Deterministic grounding signal: citation chip for the uploaded manual.
+      // The DETERMINISTIC grounding signal is a `[n]` citation marker in the
+      // STREAMED ASSISTANT PROSE — it exists only once the AI has actually written
+      // a cited answer, and (unlike the bare filename) never appears in the
+      // attached-file list. Waiting for it also avoids the chip-renders-before-
+      // prose race that left run 5's first-pass capture empty.
+      const answer = page.locator(".whitespace-pre-wrap").last();
       try {
-        await expect(page.getByText(FIXTURE_NAME).first()).toBeVisible({ timeout: 60_000 });
-        result.chip = true;
+        await expect(answer).toContainText(/\[\d+\]/, { timeout: 60_000 });
+        result.cited = true;
       } catch {
-        result.chip = false;
+        result.cited = false;
       }
       result.answerMs = Date.now() - tAsk;
       result.chatStatus = chatStatus;
+      const proseText = (await answer.innerText().catch(() => "")).replace(/\s+/g, " ").trim();
+      result.answerSnippet = proseText.slice(0, 220);
 
-      // Capture the assistant prose (don't assert its words). The assistant bubble
-      // is the streamed `.whitespace-pre-wrap` block in NodeChat (no test-id).
-      const answerText = await page
-        .locator(".whitespace-pre-wrap")
-        .last()
-        .innerText()
-        .catch(() => "");
-      result.answerSnippet = answerText.replace(/\s+/g, " ").slice(0, 220);
+      // The citation CHIP renders as "[n] <file> p.N" — assert it resolves to the
+      // uploaded manual specifically (the `[n]`+`p.N` shape distinguishes it from a
+      // plain attached-file row).
+      const chipRe = new RegExp(`\\[\\d+\\]\\s*${FIXTURE_NAME.replace(/[.]/g, "\\.")}`);
+      result.chip = await page.getByText(chipRe).first().isVisible().catch(() => false);
 
-      // Classify: chip = grounded path works. No chip + chat 5xx/0 = provider flake,
-      // not a path failure. No chip + chat 200 + refusal = path/grounding failure.
-      if (result.chip && result.answerSnippet.length > 0) {
+      // Classify: cited prose + chip = the AI wrote a grounded cited answer. A
+      // non-200 chat (Gemini blocked → really Groq→Cerebras) or no prose at all is
+      // an infra flake, not an ingest-path failure. Prose written but no [n] =
+      // a real grounding failure.
+      if (result.cited && result.chip && proseText.length > 0) {
         result.verdict = "PASS";
       } else if (chatStatus != null && chatStatus >= 500) {
         result.verdict = "PROVIDER_FLAKE";
-        result.note = `chat returned ${chatStatus} (Groq/Cerebras upstream) — infra flake, not ingest-path`;
-      } else if (!result.chip && looksLikeRefusal(result.answerSnippet)) {
-        result.verdict = "PATH_FAIL";
-        result.note = "answered but did not cite the uploaded manual (grounding gap)";
-      } else {
+        result.note = `chat ${chatStatus} (Groq/Cerebras upstream) — infra flake, not ingest-path`;
+      } else if (chatStatus != null && chatStatus !== 200) {
         result.verdict = "PROVIDER_FLAKE";
-        result.note = `no chip; chatStatus=${chatStatus}; answer="${result.answerSnippet.slice(0, 80)}"`;
+        result.note = `chat status ${chatStatus}`;
+      } else if (!result.cited) {
+        result.verdict = proseText.length > 0 && looksLikeRefusal(proseText) ? "PATH_FAIL" : "PROVIDER_FLAKE";
+        result.note = proseText.length > 0
+          ? "answer written but no [n] citation marker (grounding gap)"
+          : "no answer streamed within timeout (likely provider latency)";
+      } else {
+        result.verdict = "PATH_FAIL";
+        result.note = `cited=${result.cited} chip=${result.chip}`;
       }
 
       const shot = path.join(ARTIFACT_DIR, `run-${run}.png`);
       await page.screenshot({ path: shot, fullPage: false }).catch(() => {});
 
-      // The hard assertions for THIS run (a flake won't fail the suite-as-a-whole
-      // because each run is its own test()).
+      // Hard assertions for THIS run (each run is its own test(), so a flake on one
+      // doesn't red the whole suite).
       expect(result.uploadChunks, "upload screen → v2 chunks").toBeGreaterThan(0);
-      expect(result.chip, `no citation chip (verdict=${result.verdict}, ${result.note})`).toBe(true);
+      expect(result.cited, `AI did not write a [n]-cited answer (verdict=${result.verdict}, ${result.note})`).toBe(true);
+      expect(result.chip, "citation chip did not resolve to the uploaded manual").toBe(true);
     } finally {
       RESULTS.push(result);
       if (ctx) await ctx.close();
@@ -292,7 +305,7 @@ test.afterAll(async () => {
   const fail = RESULTS.filter((r) => r.verdict === "PATH_FAIL").length;
   console.log(`\n=== INGEST-V2 E2E: ${pass} PASS / ${flake} PROVIDER_FLAKE / ${fail} PATH_FAIL (of ${RESULTS.length}) ===`);
   for (const r of RESULTS) {
-    console.log(`run ${r.run}: ${r.verdict} | chunks=${r.uploadChunks} uploadMs=${r.uploadMs} chip=${r.chip} answerMs=${r.answerMs} chat=${r.chatStatus} ${r.note}`);
+    console.log(`run ${r.run}: ${r.verdict} | chunks=${r.uploadChunks} uploadMs=${r.uploadMs} cited=${r.cited} chip=${r.chip} answerMs=${r.answerMs} chat=${r.chatStatus} ${r.note}`);
     if (r.answerSnippet) console.log(`   answer: ${r.answerSnippet}`);
   }
 });
