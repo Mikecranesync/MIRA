@@ -31,16 +31,21 @@ the pre-inject didn't take. No harm — fall back to the manual path:
    (this reveals your CCW's exact CSV columns). In the CSV, add 9 rows using
    `_V1.9_APPLY/vars_ConvSimple_v1.9.csv` as the checklist — the
    `CLONE_FROM_EXISTING_ROW` column says which existing row to duplicate-and-rename
-   (the 7 UINTs clone `vfd_status_word`; the 2 BOOLs clone `poll_phase`). Then
+   (the 6 `vfd_*` register vars + `read_sel` clone `vfd_status_word`; the 2 BOOLs
+   clone `poll_phase`). The 6 `vfd_*` vars are **WORD**, `read_sel` is **UINT**, and
+   **every row's Dimension MUST be blank** (scalars). Then
    **Variable Export/Import → Import**.
    (`vfd_status_word` and `vfd_fault_code` already exist — don't re-add.)
 3. **Program** — open `Prog_init`, select all, paste
    `_V1.9_APPLY/Prog_init_ConvSimple_v1.9.st`.
 4. **Build → Download → Run.**
 
-Build notes: if CCW flags `SHR(...)` → `SHR(IN := read_data[1], N := 8)`. If it
-flags UDINT→UINT narrowing on a `vfd_*` var, declare it `UDINT` — no `ANY_TO_*`
-cast (that caused err 0124 before).
+Build notes:
+- **"Data type of variable X:AnyArray does not match with current mapping item: Word"**
+  → the var has a **Dimension** set (CCW made it an array). Clear the Dimension field so
+  it's a scalar `WORD`; the Modbus map binds it to one register. (Seen 2026-06-13 from a
+  hand-entered `1..125` dimension.)
+- if CCW flags `SHR(...)` → `SHR(IN := read_data[1], N := 8)`.
 
 ## Verify (tell Claude when it's running)
 Claude restarts the historian and confirms the 8 new tags read `quality: good`,

@@ -16,19 +16,29 @@ poll (the same reconfigure-every-scan style the write path already uses). That m
 **no new function-block instances, structs, or arrays** — the only new globals are 9
 simple scalars:
 
-| Name | Type | clone of |
-|---|---|---|
-| `read_sel` | `UINT` | `vfd_status_word` |
-| `vfd_warn_code` | `UINT` | `vfd_status_word` |
-| `vfd_freq_cmd` | `UINT` | `vfd_status_word` |
-| `vfd_torque` | `UINT` | `vfd_status_word` |
-| `vfd_motor_rpm` | `UINT` | `vfd_status_word` |
-| `vfd_power` | `UINT` | `vfd_status_word` |
-| `vfd_last_fault` | `UINT` | `vfd_status_word` |
-| `lp_toggle` | `BOOL` | `poll_phase` |
-| `last_fault_clear` | `BOOL` | `poll_phase` |
+| Name | Type | Dimension | clone of |
+|---|---|---|---|
+| `read_sel` | `UINT` | *(blank)* | `vfd_status_word` |
+| `vfd_warn_code` | `WORD` | *(blank)* | `vfd_status_word` |
+| `vfd_freq_cmd` | `WORD` | *(blank)* | `vfd_status_word` |
+| `vfd_torque` | `WORD` | *(blank)* | `vfd_status_word` |
+| `vfd_motor_rpm` | `WORD` | *(blank)* | `vfd_status_word` |
+| `vfd_power` | `WORD` | *(blank)* | `vfd_status_word` |
+| `vfd_last_fault` | `WORD` | *(blank)* | `vfd_status_word` |
+| `lp_toggle` | `BOOL` | *(blank)* | `poll_phase` |
+| `last_fault_clear` | `BOOL` | *(blank)* | `poll_phase` |
 
 `vfd_fault_code` and `vfd_status_word` already exist (V1.x) — **reused.**
+
+> ⚠️ **The 6 `vfd_*` register vars are `WORD`, not `UINT`** (corrected in commit
+> `9141f195` — the live `vfd_status_word` / `vfd_fault_code` rows are CCW type WORD, and
+> `read_data[n]` assigns straight into them). `read_sel` is `UINT` (a 0..2 counter).
+>
+> ⚠️ **Dimension MUST be blank — these are SCALARS, not arrays.** Each is bound to a single
+> holding register in `Modbus_ConvSimple_v1.9.ccwmod` (`DataTypeSize="2"`). If you put a
+> dimension (e.g. `1..125`) in the CCW variable table, CCW declares an `ARRAY[..] OF WORD`,
+> reports its type as **`AnyArray`**, and Build fails with *"Data type of variable
+> X:AnyArray does not match with current mapping item: Word"*. Leave Dimension empty.
 
 ## You normally don't declare these by hand
 `BUILD_CONV_SIMPLE_1.9.cmd` runs `inject_vars_accdb.py`, which clones the
