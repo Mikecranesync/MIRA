@@ -7,9 +7,10 @@ as a plain XML file inside the project directory:
     <ProjectDir>/Controller/Controller/MbSrvConf.xml
 
 Editing it in the GUI is just typing into that file. So we skip the GUI
-entirely: back up whatever's there, drop in `plc/MbSrvConf_v4.xml`
-(22 coils + 17 holding registers, matching the v4.1.9 ladder), and
-the next time CCW opens the project the mapping is fully populated.
+entirely: back up whatever's there, drop in `plc/MbSrvConf_v5.1.xml`
+(24 coils + 25 holding registers, matching the v5.1.0 Trends-V2 ladder
+`Micro820_v5.1.0_Program.st`), and the next time CCW opens the project
+the mapping is fully populated.
 
 Usage (run on the PLC laptop, where CCW lives):
 
@@ -52,7 +53,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-DEFAULT_SOURCE = "plc/MbSrvConf_v4.xml"
+DEFAULT_SOURCE = "plc/MbSrvConf_v5.1.xml"
 TARGET_RELATIVE = Path("Controller") / "Controller" / "MbSrvConf.xml"
 COMMON_PARENTS = [
     Path.home() / "Documents" / "CCW",
