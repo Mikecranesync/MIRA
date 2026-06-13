@@ -119,8 +119,12 @@ IF mb_read_status.Q AND NOT mb_read_status.Error THEN
     ELSIF read_sel = 2 THEN
         vfd_power     := read_data[1];      (* 0x210F power kW x1000 *)
     ELSE
-        vfd_fault_code  := read_data[1] AND 16#00FF;        (* 0x2100 low byte  *)
-        vfd_warn_code   := SHR(read_data[1], 8) AND 16#00FF;(* 0x2100 high byte *)
+        (* 0x2100: low byte = fault code, high byte = warning. Micro800 ST AND/SHR
+           need bit-string operands (not UDINT), so we take the whole word like
+           V1.8 -- on this bench the warning high byte is normally 0, so
+           vfd_fault_code reads the fault correctly. (Warn-byte split deferred:
+           add via AND_MASK/the masking FBs once confirmed building on the bench.) *)
+        vfd_fault_code  := read_data[1];                    (* 0x2100 fault     *)
         vfd_status_word := read_data[2];                    (* 0x2101 status    *)
         vfd_freq_cmd    := read_data[3];                    (* 0x2102 freq cmd  *)
         vfd_frequency   := read_data[4];                    (* 0x2103 Hz x100   *)
