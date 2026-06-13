@@ -49,14 +49,18 @@ SKIP = shutil.ignore_patterns(
 )
 
 HERE = Path(__file__).resolve().parent          # repo plc/
-SLAVE_MAP_SRC = HERE / "MbSrvConf_ConvSimple_v1.9.xml"
+# NOTE: we deliberately do NOT bake MbSrvConf_ConvSimple_v1.9.xml into the clone.
+# That map references the 7 new V1.9 variables, which don't exist until they're
+# declared in CCW — and a Modbus mapping pointing at a non-existent variable makes
+# the ISaGRAF build task throw (ISaGRAF.CCW.targets exception). The clone keeps
+# 1.8's original map (builds clean); the V1.9 mappings are applied via CCW's
+# Import Modbus Mapping using the staged .ccwmod, AFTER the vars are declared.
 STAGE_FILES = [
     HERE / "Prog_init_ConvSimple_v1.9.st",
     HERE / "vars_ConvSimple_v1.9.csv",
+    HERE / "Modbus_ConvSimple_v1.9.ccwmod",
     HERE / "INSTALL_ConvSimple_v1.9.md",
 ]
-# Inside the cloned project, this is the device config CCW reads on open.
-MBSRV_REL = Path("Controller") / "Controller" / "MbSrvConf.xml"
 
 
 def fail(msg: str) -> "None":
@@ -80,8 +84,6 @@ def main() -> None:
         fail(f"source project not found: {src}")
     if not (src / f"{SRC_NAME}.ccwsln").is_file():
         fail(f"{src} does not look like a CCW project (no {SRC_NAME}.ccwsln)")
-    if not SLAVE_MAP_SRC.is_file():
-        fail(f"missing repo artifact: {SLAVE_MAP_SRC}")
     for f in STAGE_FILES:
         if not f.is_file():
             fail(f"missing repo artifact to stage: {f}")
@@ -89,19 +91,12 @@ def main() -> None:
         fail(f"{dst} already exists. Re-run with --force to overwrite, "
              f"or delete it first.")
 
-    # validate the slave map before we bake it
-    try:
-        t = ET.parse(SLAVE_MAP_SRC)
-        nc = len(t.findall('.//modbusRegister[@name="COILS"]/mapping'))
-        nh = len(t.findall('.//modbusRegister[@name="HOLDING_REGISTERS"]/mapping'))
-    except ET.ParseError as e:
-        fail(f"slave map is not well-formed XML: {e}")
-
     print("Conv_Simple_1.9 package build plan")
     print("-" * 60)
     print(f"  Source        {src}")
     print(f"  Destination   {dst}{'  (EXISTS, will overwrite)' if dst.exists() else ''}")
-    print(f"  Slave map     {SLAVE_MAP_SRC.name}  ({nc} coils, {nh} HRs) -> {MBSRV_REL}")
+    print(f"  Slave map     KEEP 1.8 original (V1.9 map applied via .ccwmod Import")
+    print(f"                AFTER vars are declared — NOT baked, see header note)")
     print(f"  Staged in     {DST_NAME}/_V1.9_APPLY/:")
     for f in STAGE_FILES:
         print(f"                  {f.name}")
@@ -126,18 +121,10 @@ def main() -> None:
     else:
         print(f"[2/4] WARN: {old_sln.name} not found in clone — open the .ccwsln present")
 
-    # --- 3. bake the V1.9 slave map ----------------------------------------
-    target_map = dst / MBSRV_REL
-    if target_map.is_file():
-        shutil.copy2(target_map, target_map.with_suffix(".xml.pre_v1_9.bak"))
-    shutil.copy2(SLAVE_MAP_SRC, target_map)
-    # confirm it took
-    chk = ET.parse(target_map)
-    cc = len(chk.findall('.//modbusRegister[@name="COILS"]/mapping'))
-    ch = len(chk.findall('.//modbusRegister[@name="HOLDING_REGISTERS"]/mapping'))
-    if (cc, ch) != (nc, nh):
-        fail(f"slave-map bake mismatch: wrote {nc}/{nh}, read back {cc}/{ch}")
-    print(f"[3/4] baked slave map -> {MBSRV_REL}  ({cc} coils, {ch} HRs)")
+    # --- 3. slave map: KEEP 1.8 original (do NOT bake the V1.9 map) --------
+    # The V1.9 map references vars that don't exist until declared; baking it
+    # makes ISaGRAF codegen throw. Leave the cloned 1.8 map so the project builds.
+    print("[3/4] kept 1.8 Modbus map (V1.9 map staged for Import after vars exist)")
 
     # --- 4. stage the apply kit --------------------------------------------
     apply_dir = dst / "_V1.9_APPLY"
@@ -146,10 +133,10 @@ def main() -> None:
         shutil.copy2(f, apply_dir / f.name)
     print(f"[4/4] staged apply kit -> {apply_dir}")
 
-    print("\nDONE. Conv_Simple_1.9 is ready.")
+    print("\nDONE. Conv_Simple_1.9 is ready (clean — builds as-is, = renamed 1.8).")
     print(f"  Open:   {new_sln}")
     print(f"  Then follow: {apply_dir / 'INSTALL_ConvSimple_v1.9.md'}")
-    print("  (slave map already baked; remaining = import vars + paste Prog_init V1.9 + build)")
+    print("  (declare 9 vars -> Import the .ccwmod -> paste Prog_init V1.9 -> Build -> Download)")
 
 
 if __name__ == "__main__":
