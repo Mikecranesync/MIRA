@@ -1,10 +1,10 @@
 Name,Data Type,Dimension,Initial Value,Attribute,Comment,CLONE_FROM_EXISTING_ROW
-read_sel,UINT,,0,Read/Write,V1.9 read-rotation selector 0..2,vfd_status_word
+read_sel,UINT,,0,Read/Write,V1.9 read-rotation selector 0..2 (counter - needs numeric type),(any UINT/INT)
 lp_toggle,BOOL,,FALSE,Read/Write,V1.9 alternates load/power in read slot 2,poll_phase
-vfd_warn_code,UINT,,0,Read/Write,GS10 0x2100 high byte (active warning),vfd_status_word
-vfd_freq_cmd,UINT,,0,Read/Write,GS10 0x2102 freq command echo,vfd_status_word
-vfd_torque,UINT,,0,Read/Write,GS10 0x210B torque 0.1 percent,vfd_status_word
-vfd_motor_rpm,UINT,,0,Read/Write,GS10 0x210C motor speed rpm,vfd_status_word
-vfd_power,UINT,,0,Read/Write,GS10 0x210F output power 0.001 kW,vfd_status_word
-vfd_last_fault,UINT,,0,Read/Write,PLC-latched last nonzero fault code,vfd_status_word
+vfd_warn_code,WORD,,0,Read/Write,GS10 0x2100 high byte (active warning),vfd_status_word
+vfd_freq_cmd,WORD,,0,Read/Write,GS10 0x2102 freq command echo,vfd_status_word
+vfd_torque,WORD,,0,Read/Write,GS10 0x210B torque 0.1 percent,vfd_status_word
+vfd_motor_rpm,WORD,,0,Read/Write,GS10 0x210C motor speed rpm,vfd_status_word
+vfd_power,WORD,,0,Read/Write,GS10 0x210F output power 0.001 kW,vfd_status_word
+vfd_last_fault,WORD,,0,Read/Write,PLC-latched last nonzero fault code,vfd_status_word
 last_fault_clear,BOOL,,FALSE,Read/Write,Operator clear for vfd_last_fault (Modbus coil 24),poll_phase
