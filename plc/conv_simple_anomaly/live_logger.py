@@ -43,6 +43,7 @@ COIL_NAMES = {
     15: "di04_pb_run", 16: "do00_green", 17: "do01_red", 18: "do02_contactor_q1",
     19: "do03_pb_run_led", 20: "vfd_poll_active", 21: "vfd_fault_reset_pending",
     22: "di05_photoeye",  # slave-map v2: PE-101 on DI_05, coil 000023 (errors until reflash)
+    23: "last_fault_clear",  # v5.1.0 trends V2: operator clear for vfd_last_fault latch
 }
 # HR offset -> (friendly name, scale divisor). divisor 1 = raw int.
 HR_SPECS = {
