@@ -926,11 +926,13 @@ async def ingest_document_kb(
         )
 
     # Validate size. The old 20 MB cap was a Telegram-era artifact; real OEM
-    # manuals (31.5 MB GS10, 33 MB Rockwell ref) exceed it. Bounded — NOT
-    # unbounded — because this handler buffers the whole file (`await file.read()`
-    # above) before forwarding to docling, the documented 8 GB-VPS OOM path
-    # (ADR-0019). MUST match the Hub's NEXT_PUBLIC_MAX_UPLOAD_MB to avoid the
-    # Hub accepting a file ingest then rejects. True any-size needs ingest-v2.
+    # manuals (31.5 MB GS10, 33 MB Rockwell ref) exceed it. This is the LEGACY
+    # OW->docling fallback path (the primary PDF path is now in-Hub ingest-v2 via
+    # unpdf, which never reaches here); it buffers the whole file
+    # (`await file.read()` above) before docling, so the bound matters —
+    # docling's 8 GB-VPS OOM history (ADR-0019) is contained by its container
+    # mem_limit. MUST match the Hub's NEXT_PUBLIC_MAX_UPLOAD_MB to avoid the Hub
+    # accepting a file that ingest then rejects.
     MB = 1024 * 1024
     max_upload_mb = int(os.getenv("MIRA_MAX_UPLOAD_MB", "50"))
     if len(raw) > max_upload_mb * MB:
