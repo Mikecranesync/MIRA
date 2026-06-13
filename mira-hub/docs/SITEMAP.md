@@ -10,10 +10,10 @@
 
 | Surface | Count |
 |---|---|
-| Pages | **48** (6 dynamic) |
+| Pages | **57** (6 dynamic) |
 | API routes | **116** (32 dynamic) |
 
-## Pages (48)
+## Pages (57)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -43,7 +43,7 @@
 | `/library` | static | `(hub)/library/page.tsx` |
 | `/login` | static | `login/page.tsx` |
 | `/m/[assetTag]` | dynamic | `m/[assetTag]/page.tsx` |
-| `/magic` | static | `(hub)/magic/page.tsx` |
+| `/magic` | static | `magic/page.tsx` |
 | `/more` | static | `(hub)/more/page.tsx` |
 | `/namespace` | static | `(hub)/namespace/page.tsx` |
 | `/onboarding` | static | `(hub)/onboarding/page.tsx` |
@@ -57,6 +57,15 @@
 | `/requests/new` | static | `(hub)/requests/new/page.tsx` |
 | `/scan` | static | `(hub)/scan/page.tsx` |
 | `/schedule` | static | `(hub)/schedule/page.tsx` |
+| `/settings` | static | `(hub)/settings/page.tsx` |
+| `/settings/audit-log` | static | `(hub)/settings/audit-log/page.tsx` |
+| `/settings/integrations` | static | `(hub)/settings/integrations/page.tsx` |
+| `/settings/organization` | static | `(hub)/settings/organization/page.tsx` |
+| `/settings/review-queue` | static | `(hub)/settings/review-queue/page.tsx` |
+| `/settings/roles` | static | `(hub)/settings/roles/page.tsx` |
+| `/settings/security` | static | `(hub)/settings/security/page.tsx` |
+| `/settings/usage` | static | `(hub)/settings/usage/page.tsx` |
+| `/settings/users` | static | `(hub)/settings/users/page.tsx` |
 | `/signup` | static | `signup/page.tsx` |
 | `/team` | static | `(hub)/team/page.tsx` |
 | `/upgrade` | static | `(hub)/upgrade/page.tsx` |

@@ -5,6 +5,14 @@ import { Search, CheckCircle2, XCircle, ShieldCheck, Clock, Loader2, Zap } from 
 import { Input } from "@/components/ui/input";
 import { useTranslations } from "next-intl";
 import { API_BASE } from "@/lib/config";
+import { NoAccess } from "@/components/ui/no-access";
+
+// Platform user administration (FactoryLM staff): the cross-workspace list with
+// approve / revoke / expire actions used to gate new signups. Distinct from the
+// read-only, tenant-scoped /settings/users (a customer's own workspace).
+// Gated by platform.users.read (status==="admin") — both in the nav (the link
+// only shows for platform admins) and the API. A non-admin who reaches this URL
+// directly gets a clean no-access panel, not the old silent spinner (#1932).
 
 type ApiUser = {
   id: string;
@@ -32,6 +40,7 @@ export default function AdminUsersPage() {
   const t = useTranslations("admin");
   const [users, setUsers] = useState<ApiUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [denied, setDenied] = useState(false);
   const [query, setQuery] = useState("");
   const [updating, setUpdating] = useState<string | null>(null);
   const [showSystem, setShowSystem] = useState(false);
@@ -40,7 +49,17 @@ export default function AdminUsersPage() {
   const loadUsers = useCallback(async () => {
     const qs = showSystem ? "?includeSystem=1" : "";
     const res = await fetch(`${API_BASE}/api/admin/users${qs}`);
-    if (!res.ok) return;
+    // Clean no-access instead of an indefinite spinner when the caller lacks
+    // platform.users.read (#1932).
+    if (res.status === 401 || res.status === 403) {
+      setDenied(true);
+      setLoading(false);
+      return;
+    }
+    if (!res.ok) {
+      setLoading(false);
+      return;
+    }
     const { users: data, systemHidden: hidden } =
       await res.json() as { users: ApiUser[]; systemHidden?: number };
     setUsers(data);
@@ -59,6 +78,15 @@ export default function AdminUsersPage() {
     });
     await loadUsers();
     setUpdating(null);
+  }
+
+  if (denied) {
+    return (
+      <NoAccess
+        title="User administration is admin-only"
+        message="Managing and approving accounts across workspaces is limited to FactoryLM administrators."
+      />
+    );
   }
 
   const visible = users.filter(u =>

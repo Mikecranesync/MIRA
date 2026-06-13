@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
-import { getReviewQueue, isReviewAdmin } from "@/lib/review-queue";
+import { getReviewQueue } from "@/lib/review-queue";
+import { requireCapability } from "@/lib/capabilities";
 
 export const dynamic = "force-dynamic";
 
@@ -11,9 +12,10 @@ export async function GET() {
   }
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
-  if (!isReviewAdmin(ctx.email)) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  // review_queue.read maps to the same isReviewAdmin(email) allowlist this route
+  // always used — behavior-identical, now via the shared guard (#1932).
+  const denied = requireCapability(ctx, "review_queue.read");
+  if (denied) return denied;
   try {
     const data = await withTenantContext(ctx.tenantId, (c) => getReviewQueue(c, ctx.tenantId));
     return NextResponse.json(data);
