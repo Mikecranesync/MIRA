@@ -52,6 +52,15 @@ HR_SPECS = {
     108: ("vfd_voltage_v", 10.0), 109: ("vfd_dc_bus_v", 10.0), 110: ("item_count", 1.0),
     111: ("uptime_seconds", 1.0), 112: ("conveyor_speed_cmd", 1.0), 113: ("conv_state", 1.0),
     114: ("vfd_cmd_word", 1.0), 115: ("vfd_freq_setpoint", 100.0), 116: ("vfd_poll_step", 1.0),
+    # Trends V2 — full GS10 monitoring (ladder mirrors of the 0x2100 status group; absent
+    # until the slave-map-v2 reflash; per-offset reads skip them silently meanwhile).
+    # Scales follow the drive's native register formats (GS10 UM p4-195/p5-5): 0x2102 freq
+    # cmd XXX.XX Hz, 0x210B torque XXX.X %, 0x210C rpm raw, 0x210F power X.XXX kW.
+    # error/warn are the split bytes of 0x2100; last_fault is the PLC-latched copy of the
+    # last nonzero error code (survives a drive fault reset).
+    117: ("vfd_status_word", 1.0), 118: ("vfd_error_code", 1.0), 119: ("vfd_warn_code", 1.0),
+    120: ("vfd_freq_cmd", 100.0), 121: ("vfd_torque_pct", 10.0), 122: ("vfd_motor_rpm", 1.0),
+    123: ("vfd_power_kw", 1000.0), 124: ("vfd_last_fault", 1.0),
 }
 UNIT = 1
 

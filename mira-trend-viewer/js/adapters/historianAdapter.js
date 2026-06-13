@@ -4,19 +4,34 @@
 // historian exposes the conv_simple bench (one GS10 VFD + digital I/O), which this maps into
 // the vendor-neutral model. Used via ?source=historian&base=http://<plc-laptop>:8766
 //
-// (Node tests don't cover this — it needs the live HTTP service; the mock adapter is the
-//  tested reference implementation of the same contract.)
+// (The HTTP plumbing needs the live service, but classify() + the GS10 decode tables are
+//  pure and covered by gs10.test.mjs; the mock adapter remains the tested reference
+//  implementation of the full adapter contract.)
 
 import { DataSourceAdapter } from "./adapter.js";
 import { createTag, SourceType, DataType, Quality } from "../model.js";
+import { GS10_FAULT_CODES, GS10_WARN_CODES, GS10_STATUS_BITS, GS10_STATUS_FIELDS } from "./gs10.js";
 
-// Map a historian summary key -> {sourceType, deviceId, dataType, name}.
-function classify(key) {
+// vfd_* keys that aren't plain analogs — decode tables transcribed from the GS10 manual
+// (gs10.js). status_word carries real Status Monitor 2 bits + packed fields; the store
+// derives the named step/state lanes from those declarations.
+const VFD_SPECIAL = {
+  vfd_comm_ok: { dataType: DataType.BOOLEAN },
+  vfd_cmd_word: { dataType: DataType.WORD },
+  vfd_status_word: { dataType: DataType.WORD, name: "Drive Status Word",
+    bits: GS10_STATUS_BITS, fields: GS10_STATUS_FIELDS },
+  vfd_error_code: { dataType: DataType.ENUM, name: "Active Fault", states: GS10_FAULT_CODES },
+  vfd_last_fault: { dataType: DataType.ENUM, name: "Last Fault", states: GS10_FAULT_CODES,
+    description: "PLC-latched trip cause — persists after the drive fault is reset" },
+  vfd_warn_code: { dataType: DataType.ENUM, name: "Active Warning", states: GS10_WARN_CODES },
+};
+
+// Map a historian summary key -> {sourceType, deviceId, dataType, name, states?, bits?, fields?}.
+export function classify(key) {
   if (key.startsWith("vfd_")) {
-    const digital = key === "vfd_comm_ok";
-    const word = key === "vfd_cmd_word";
+    const special = VFD_SPECIAL[key] || { dataType: DataType.FLOAT };
     return { sourceType: SourceType.VFD, deviceId: "GS10", deviceName: "GS10 — Conv_Simple Drive",
-      dataType: digital ? DataType.BOOLEAN : word ? DataType.WORD : DataType.FLOAT, name: pretty(key) };
+      ...special, name: special.name || pretty(key) };
   }
   if (key === "motor_running") return { sourceType: SourceType.VFD, deviceId: "GS10",
     deviceName: "GS10 — Conv_Simple Drive", dataType: DataType.BOOLEAN, name: "Motor Running" };
@@ -48,6 +63,8 @@ export class HistorianAdapter extends DataSourceAdapter {
         deviceId: c.deviceId, deviceName: c.deviceName,
         assetId: c.deviceId || c.sourceType, assetName: c.deviceName || "Conv_Simple Field I/O",
         address: key, engineeringUnits: s.unit || "",
+        states: c.states ?? null, bits: c.bits ?? null, fields: c.fields ?? null,
+        description: c.description ?? "",
         min: s.threshold_lo ?? null, max: s.threshold_hi ?? null,
         currentValue: s.current, quality: mapQuality(s.quality),
       });
