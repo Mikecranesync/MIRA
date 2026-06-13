@@ -24,6 +24,8 @@ const VFD_SPECIAL = {
   vfd_last_fault: { dataType: DataType.ENUM, name: "Last Fault", states: GS10_FAULT_CODES,
     description: "PLC-latched trip cause — persists after the drive fault is reset" },
   vfd_warn_code: { dataType: DataType.ENUM, name: "Active Warning", states: GS10_WARN_CODES },
+  vfd_freq_cmd: { dataType: DataType.FLOAT, name: "Frequency Command",
+    description: "Commanded Hz the PLC writes to drive 0x2001 (vfd_freq_sp) — not the 0x2102 keypad echo" },
 };
 
 // Map a historian summary key -> {sourceType, deviceId, dataType, name, states?, bits?, fields?}.
