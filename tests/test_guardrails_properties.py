@@ -11,12 +11,11 @@ Uses hypothesis to discover edge cases in:
 
 from __future__ import annotations
 
-import re
 import sys
 
 sys.path.insert(0, "mira-bots")
 
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, strategies as st
 
 from shared.guardrails import (
     SAFETY_KEYWORDS,
