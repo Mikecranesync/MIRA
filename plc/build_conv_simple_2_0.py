@@ -49,7 +49,7 @@ HERE = Path(__file__).resolve().parent          # repo plc/
 STAGE_FILES = [
     HERE / "Prog_init_ConvSimple_v2.0.st",
     HERE / "Modbus_ConvSimple_v1.9.ccwmod",      # register map is unchanged for 2.0
-    HERE / "CCW_VARIABLES_ConvSimple_v1.9_DELTA.md",
+    HERE / "CCW_VARIABLES_ConvSimple_v2.0_DELTA.md",  # 8 vars, no read_sel (NOT the v1.9 delta)
     HERE / "INSTALL_ConvSimple_v2.0.md",
     HERE / "EVIDENCE_ConvSimple_1.9_corruption.md",
 ]
@@ -87,7 +87,7 @@ def main() -> None:
     print(f"  Source        {src}   (PRISTINE -- correct e-stop)")
     print(f"  Destination   {dst}{'  (EXISTS, will overwrite)' if dst.exists() else ''}")
     print(f"  Slave map     KEEP 1.8 original; V2.0 map applied via .ccwmod Import")
-    print(f"                AFTER the 9 vars are declared (NOT baked).")
+    print(f"                AFTER the 8 vars are declared (NOT baked).")
     print(f"  Staged in     {DST_NAME}/_V2.0_APPLY/:")
     for f in STAGE_FILES:
         print(f"                  {f.name}")
@@ -122,7 +122,7 @@ def main() -> None:
     print("\nDONE. Conv_Simple_2.0 is a clean clone of proven-good 1.8 (builds as-is).")
     print(f"  Open:   {new_sln}")
     print(f"  Follow: {apply_dir / 'INSTALL_ConvSimple_v2.0.md'}")
-    print("  (declare 9 vars -> Import .ccwmod -> paste Prog_init V2.0 -> Clean -> Build -> Download)")
+    print("  (declare 8 vars -> Import .ccwmod -> paste Prog_init V2.0 -> Clean -> Build -> Download)")
     print("  THEN re-validate the e-stop under LOTO before running.")
 
 
