@@ -43,8 +43,10 @@ COIL_NAMES = {
     15: "di04_pb_run", 16: "do00_green", 17: "do01_red", 18: "do02_contactor_q1",
     19: "do03_pb_run_led", 20: "vfd_poll_active", 21: "vfd_fault_reset_pending",
     22: "di05_photoeye",  # slave-map v2: PE-101 on DI_05, coil 000023 (errors until reflash)
-    23: "last_fault_clear",  # v5.1.0 trends V2: operator clear for vfd_last_fault latch
 }
+# NOTE: coil 000024 last_fault_clear (Prog_init V1.9) is a WRITE-command coil for
+# the HMI/operator to clear the vfd_last_fault latch — intentionally NOT trended
+# here (it is almost always 0; surfacing it would just add a dead OFF lane).
 # HR offset -> (friendly name, scale divisor). divisor 1 = raw int.
 HR_SPECS = {
     100: ("motor_speed", 1.0), 101: ("motor_current", 1.0), 102: ("temperature", 1.0),
