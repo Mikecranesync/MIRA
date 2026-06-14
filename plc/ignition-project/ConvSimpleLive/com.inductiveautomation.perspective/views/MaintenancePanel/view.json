@@ -18,6 +18,12 @@
     },
     "children": [
       {
+        "type": "ia.embedding.view",
+        "meta": { "name": "navbar" },
+        "position": { "basis": "44px", "shrink": 0 },
+        "props": { "path": "NavBar", "params": { "active": "maintenance" } }
+      },
+      {
         "type": "ia.container.flex",
         "meta": { "name": "header" },
         "position": { "basis": "60px", "shrink": 0 },
@@ -150,18 +156,10 @@
                 "props": { "text": "LIVE TRENDS", "style": { "color": "#8b949e", "fontSize": "11px", "fontWeight": 700, "letterSpacing": "0.08em", "padding": "8px 12px 0 12px" } }
               },
               {
-                "type": "ia.display.iframe",
-                "meta": { "name": "trendIframe" },
+                "type": "ia.embedding.view",
+                "meta": { "name": "trendEmbed" },
                 "position": { "grow": 1, "basis": "1" },
-                "props": {
-                  "src": "http://127.0.0.1:8766/viewer/index.html?source=historian",
-                  "style": { "border": "none", "height": "100%", "width": "100%" }
-                },
-                "propConfig": {
-                  "props.src": {
-                    "binding": { "type": "property", "config": { "path": "view.params.trendUrl" } }
-                  }
-                }
+                "props": { "path": "TrendChart", "params": { "rangeMinutes": 15 } }
               }
             ]
           }

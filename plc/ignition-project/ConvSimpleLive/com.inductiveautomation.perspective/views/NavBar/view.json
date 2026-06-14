@@ -1,0 +1,59 @@
+{
+  "custom": {},
+  "params": { "active": "" },
+  "propConfig": { "params.active": { "paramDirection": "input" } },
+  "props": { "defaultSize": { "width": 1280, "height": 44 } },
+  "root": {
+    "type": "ia.container.coord",
+    "meta": { "name": "root" },
+    "props": { "style": { "backgroundColor": "#161b22", "borderBottom": "1px solid #30363d" } },
+    "children": [
+      {
+        "type": "ia.display.label",
+        "meta": { "name": "brand" },
+        "position": { "x": 20, "y": 12, "width": 130, "height": 22 },
+        "props": { "text": "FactoryLM", "style": { "color": "#39d353", "fontSize": "14px", "fontWeight": 700, "letterSpacing": "0.12em" } }
+      },
+      {
+        "type": "ia.navigation.link",
+        "meta": { "name": "nav_conveyor" },
+        "position": { "x": 170, "y": 12, "width": 120, "height": 22 },
+        "props": { "text": "CONVEYOR", "url": "/conveyor", "target": "self", "style": { "color": "#8b949e", "fontSize": "13px", "fontWeight": 600 } },
+        "propConfig": {
+          "props.style.color": { "binding": { "type": "expr", "config": { "expression": "if({view.params.active} = \"conveyor\", \"#e6edf3\", \"#8b949e\")" } } },
+          "props.style.borderBottom": { "binding": { "type": "expr", "config": { "expression": "if({view.params.active} = \"conveyor\", \"2px solid #39d353\", \"none\")" } } }
+        }
+      },
+      {
+        "type": "ia.navigation.link",
+        "meta": { "name": "nav_maintenance" },
+        "position": { "x": 290, "y": 12, "width": 130, "height": 22 },
+        "props": { "text": "MAINTENANCE", "url": "/maintenance", "target": "self", "style": { "color": "#8b949e", "fontSize": "13px", "fontWeight": 600 } },
+        "propConfig": {
+          "props.style.color": { "binding": { "type": "expr", "config": { "expression": "if({view.params.active} = \"maintenance\", \"#e6edf3\", \"#8b949e\")" } } },
+          "props.style.borderBottom": { "binding": { "type": "expr", "config": { "expression": "if({view.params.active} = \"maintenance\", \"2px solid #39d353\", \"none\")" } } }
+        }
+      },
+      {
+        "type": "ia.navigation.link",
+        "meta": { "name": "nav_trends" },
+        "position": { "x": 430, "y": 12, "width": 110, "height": 22 },
+        "props": { "text": "TRENDS", "url": "/trends", "target": "self", "style": { "color": "#8b949e", "fontSize": "13px", "fontWeight": 600 } },
+        "propConfig": {
+          "props.style.color": { "binding": { "type": "expr", "config": { "expression": "if({view.params.active} = \"trends\", \"#e6edf3\", \"#8b949e\")" } } },
+          "props.style.borderBottom": { "binding": { "type": "expr", "config": { "expression": "if({view.params.active} = \"trends\", \"2px solid #39d353\", \"none\")" } } }
+        }
+      },
+      {
+        "type": "ia.navigation.link",
+        "meta": { "name": "nav_ask" },
+        "position": { "x": 540, "y": 12, "width": 120, "height": 22 },
+        "props": { "text": "ASK MIRA", "url": "/AskMira", "target": "self", "style": { "color": "#8b949e", "fontSize": "13px", "fontWeight": 600 } },
+        "propConfig": {
+          "props.style.color": { "binding": { "type": "expr", "config": { "expression": "if({view.params.active} = \"ask\", \"#e6edf3\", \"#8b949e\")" } } },
+          "props.style.borderBottom": { "binding": { "type": "expr", "config": { "expression": "if({view.params.active} = \"ask\", \"2px solid #39d353\", \"none\")" } } }
+        }
+      }
+    ]
+  }
+}
