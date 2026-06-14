@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+import { workOrderSourceLabel } from "@/lib/work-order-source";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +57,7 @@ function rowToWO(r: Record<string, unknown>) {
     status: String(r.status ?? "open"),
     priority: String(r.priority ?? "medium"),
     source,
-    source_label: isAutoPM ? "Auto-PM" : source === "telegram_text" ? "Telegram" : source,
+    source_label: workOrderSourceLabel(source, isAutoPM),
     is_auto_pm: isAutoPM,
     created_by_agent: r.created_by_agent ? String(r.created_by_agent) : null,
     suggested_actions: suggested,
