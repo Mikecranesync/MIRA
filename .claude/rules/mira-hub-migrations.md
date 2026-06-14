@@ -5,27 +5,40 @@ schema gotchas that have shipped real prod bugs. Migrations are applied to
 **staging** automatically by `migration-verify.yml` on any PR touching this
 directory, and to **prod** only via the gated `apply-migrations.yml` dispatch.
 
-## 1. `tenant_id` type MUST match the table's tenancy family
+## 1. `tenant_id` type — know which space, and know it's mid-migration
 
-MIRA runs **two non-interchangeable `tenant_id` spaces**. Pick the one that
-matches what the new table is keyed to — copying the wrong pattern is a bug.
+MIRA has **two `tenant_id` spaces**, and tenancy is **actively migrating toward
+UUID-only** — so don't blindly copy either pattern; understand which tenants can
+actually reach the table.
 
-| Family | `tenant_id` type | Tenants look like | Canonical example | Keyed to |
+| Family | `tenant_id` type today | Tenants | Canonical | Keyed to |
 |---|---|---|---|---|
-| **CMMS / equipment** | **`TEXT`** | slugs incl. `'mike'` (the demo tenant) AND uuid-strings | `008_tenant_cmms_config.sql` | `cmms_equipment.id`, `tenants.tenant_id` |
-| **kg / Hub / knowledge** | **`UUID`** | uuid only | `kg_entities`, `knowledge_entries` (see `knowledge-entries-tenant-scoping.md`) | kg entity / hub proposal ids |
+| **CMMS / equipment** | **`TEXT`** | uuid-strings + **legacy** slugs (`'mike'`) | `008_tenant_cmms_config.sql` | `cmms_equipment.id`, `tenants.tenant_id` |
+| **kg / Hub / knowledge** | **`UUID`** | uuid only | `kg_entities`, `knowledge_entries` | kg entity / hub proposal ids |
 
-**Decision rule:** if the new table's foreign-ish key is `cmms_equipment.id`
-(an `equipment_id`) — or it otherwise lives in the CMMS/equipment world — its
-`tenant_id` is **`TEXT`**. Only the kg/Hub/knowledge family is `UUID`.
+**Direction of travel:** `mira-hub/src/lib/session.ts requireSession()` has
+**401'd any non-UUID session `tid` since 2026-05-19** (commit `369513cb`) —
+slug tenants like `'mike'` are deprecated and **cannot authenticate**. So:
 
-> **Shipped bug (2026-06-10):** migrations `046/047` (asset-agent validation)
-> keyed on `cmms_equipment.id` but declared `tenant_id UUID`. The Hub validation
-> route binds the session's TEXT tenant `'mike'` into the UUID column →
-> `invalid input syntax for type uuid: "mike"` → UI **"Insert failed"**. The
-> read path (GET) worked because a brand-new asset matched zero rows, so the RLS
-> `::UUID` cast never fired — only the first INSERT threw. Fixed by `048`.
-> Full write-up: `docs/tech-debt/2026-06-10-train-approve-insert-failed-diagnosis.md`.
+- **Only UUID tenants reach the Hub API.** A new equipment-keyed table will, in
+  practice, only ever receive UUID `tenant_id` values from authed routes — even
+  though `cmms_equipment.tenant_id` is `TEXT` and still holds legacy slug rows.
+- **Match the column you JOIN/compare against** so the SQL type-checks
+  (`cmms_equipment.tenant_id` is `TEXT` today → comparisons/inserts sourced from
+  it want `TEXT`; a `UUID` column forces a cast that throws on any slug value).
+- **But don't enshrine `TEXT` as the goal.** The cleaner end-state is migrating
+  legacy `cmms_equipment` slug rows to `UUID`, not loosening new tables to `TEXT`.
+  If you add an equipment-keyed table, **state the choice and the tension in the
+  migration header** rather than silently copying a neighbor.
+
+> **Worked example — migrations `046/047` (asset-agent validation):** declared
+> `tenant_id UUID` while keying on `cmms_equipment.id`. A clean-room/staging
+> repro with a slug tenant fails (`invalid input syntax for type uuid: "mike"`);
+> `048` switched them to `TEXT`. **Caveat:** `048` did NOT fix the originally
+> reported prod "Insert failed" — that session was a *UUID* tenant, for which the
+> insert succeeds on either schema. See the ⚠️ CORRECTION at the top of
+> `docs/tech-debt/2026-06-10-train-approve-insert-failed-diagnosis.md`. The point
+> of this rule is the type-matching discipline, **not** that `TEXT` is the fix.
 
 ## 2. RLS policy must compare `tenant_id` in its OWN type — no cross-cast
 
@@ -59,16 +72,25 @@ A type change is blocked by dependents. Drop, alter, recreate — in this order:
 Wrap in `BEGIN; … COMMIT;` (single transaction — partial application must not
 be possible).
 
-## 6. Verify with REAL tenant data before claiming done
+## 6. Read the real error and reproduce with a REACHABLE tenant
 
-Reproduce the **route's actual write path** (not just `CREATE TABLE`) on an
-ephemeral `postgres:16` under `SET ROLE factorylm_app` + the tenant settings —
-**using a real slug tenant (`'mike'`), not a synthetic UUID.** A clean-room
-seeded with a UUID tenant will PASS and **mask** any TEXT-vs-UUID defect; the
-2026-06-10 bug hid exactly this way. Confirm both: the slug-tenant write
-succeeds AND a uuid-string tenant still works. Read-only schema inspection of
-staging is the sanctioned check (`db-inspect.yml`, or psql against
-`factorylm/stg`). Never psql prod.
+The 2026-06-10 investigation got the cause wrong by skipping this. Two rules:
+
+- **Read the actual error first (systematic-debugging step 1).** Don't assert a
+  cause from static analysis. The genuine prod error (`console.error` in the
+  route) is the ground truth; everything else is a hypothesis. Note prod
+  container logs rotate fast (mira-hub retains ~minutes after a redeploy) — grab
+  the error promptly or have it reproduced live.
+- **Reproduce with a tenant that can actually reach the code.** Only **UUID**
+  tenants authenticate (rule 1). A repro with a slug tenant (`'mike'`) exercises a
+  path that is **unreachable in production** — it can both *manufacture* a failure
+  that real users never hit and *mask* the real one. Reproduce the route's write
+  path on ephemeral `postgres:16` under `SET ROLE factorylm_app` with the **same
+  kind of tenant that actually hits the route** (UUID for authed surfaces), and
+  confirm the behavior matches the real error you read.
+
+Read-only schema inspection of staging is the sanctioned check (`db-inspect.yml`,
+or psql against `factorylm/stg`). Never psql prod.
 
 ## When this applies
 - Any new or altered file under `mira-hub/db/migrations/`.

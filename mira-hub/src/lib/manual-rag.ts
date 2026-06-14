@@ -143,18 +143,21 @@ export async function retrieveManualChunks(
   client: PoolClient,
   tenantId: string,
   query: string,
-  opts: { manufacturer?: string | null; topK?: number } = {},
+  opts: { manufacturer?: string | null; topK?: number; allowTenantFallback?: boolean } = {},
 ): Promise<ManualChunk[]> {
   const q = query.trim();
   if (!q) return [];
   const topK = opts.topK ?? 6;
   const mfr = (opts.manufacturer ?? "").trim();
+  const allowTenantFallback = opts.allowTenantFallback ?? true;
 
-  // Main pass (manufacturer-scoped first, tenant-only fallback).
+  // Main pass (manufacturer-scoped first, optional tenant-only fallback).
   let main: ManualChunk[];
   if (mfr) {
     const scoped = await runBm25Query(client, tenantId, q, topK, mfr);
-    main = scoped.length > 0 ? scoped : await runBm25Query(client, tenantId, q, topK, null);
+    main = scoped.length > 0 || !allowTenantFallback
+      ? scoped
+      : await runBm25Query(client, tenantId, q, topK, null);
   } else {
     main = await runBm25Query(client, tenantId, q, topK, null);
   }
@@ -166,7 +169,7 @@ export async function retrieveManualChunks(
   // surfaces the documenting chunk), manufacturer-scoped first then fallback.
   const codeQuery = codes.join(" ");
   let codeHits = mfr ? await runBm25Query(client, tenantId, codeQuery, topK, mfr) : [];
-  if (codeHits.length === 0) {
+  if (codeHits.length === 0 && allowTenantFallback) {
     codeHits = await runBm25Query(client, tenantId, codeQuery, topK, null);
   }
   if (codeHits.length === 0) return main;
