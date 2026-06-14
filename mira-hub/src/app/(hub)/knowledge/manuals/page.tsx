@@ -14,7 +14,7 @@ import {
 import { useTranslations } from "next-intl";
 import { UploadPicker } from "@/components/UploadPicker";
 import { UploadBlock, type UploadBlockData } from "@/components/UploadBlock";
-import { API_BASE } from "@/lib/config";
+import { API_BASE, MAX_UPLOAD_MB } from "@/lib/config";
 import { KbGrowthDashboard } from "../KbGrowthDashboard";
 import { UploadSummaryCard } from "@/components/UploadSummaryCard";
 
@@ -319,8 +319,8 @@ export default function KnowledgePage() {
         const msg =
           body.error === "unsupported_mime"
             ? `Unsupported file type: ${(body.got as string | undefined) || file.type || "unknown"}`
-            : body.error === "exceeds_20mb_limit"
-              ? `File too large (max 20 MB): ${file.name}`
+            : body.error === "exceeds_size_limit"
+              ? `File too large (max ${MAX_UPLOAD_MB} MB): ${file.name}`
               : typeof body.error === "string"
                 ? body.error
                 : `Upload failed (${res.status})`;
@@ -896,7 +896,7 @@ export default function KnowledgePage() {
               className="text-xs"
               style={{ color: "var(--foreground-muted)" }}
             >
-              Tap to upload a PDF manual or photo — PDF, JPEG, PNG up to 20 MB.
+              Tap to upload a PDF manual or photo — PDF, JPEG, PNG up to {MAX_UPLOAD_MB} MB.
             </p>
           </button>
         )}

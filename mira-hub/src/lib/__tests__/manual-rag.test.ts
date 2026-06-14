@@ -5,6 +5,8 @@ import {
   boundBm25Query,
   buildGroundedContext,
   chunksToSources,
+  extractFaultCodes,
+  isRefusalAnswer,
   retrieveManualChunks,
   retrieveNodeChunks,
   type ManualChunk,
@@ -230,6 +232,65 @@ describe("chunksToSources", () => {
     expect(sources[0].title).toBe("AB PF525");
     expect(sources[1].page).toBe(8);
   });
+
+  it("numbers chips contiguously even after a dedupe (#1912)", () => {
+    const c: ManualChunk = {
+      content: "a", manufacturer: "AB", modelNumber: "PF525",
+      sourceUrl: "https://x/y.pdf", sourcePage: 1, title: "", rank: 1,
+    };
+    // 2nd chunk is a same-(url,page) duplicate; 3rd is a new page.
+    const sources = chunksToSources([c, { ...c, content: "b" }, { ...c, sourcePage: 2 }]);
+    expect(sources.map((s) => s.index)).toEqual([1, 2]); // not [1, 3]
+  });
+});
+
+// #1912 — the answer cited [2] but only chip [1] rendered. Root cause: the LLM
+// context blocks were numbered per-chunk while the chips were deduped by
+// (url, page). This locks the invariant: every block number the model can cite
+// has a matching chip with the same index.
+describe("citation numbering matches between context and chips (#1912)", () => {
+  it("collapses same-page excerpts to one [n] in BOTH the prompt and the chips", () => {
+    // Two excerpts of the same PDF page (the PowerFlex sample, p.1) — exactly the
+    // shape that produced the bug.
+    const base: ManualChunk = {
+      content: "F004 UnderVoltage: check incoming line voltage.",
+      manufacturer: "", modelNumber: "",
+      sourceUrl: "https://x/powerflex-fault-code-sample.pdf",
+      sourcePage: 1, title: "powerflex-fault-code-sample.pdf", rank: 1,
+    };
+    const chunks: ManualChunk[] = [
+      base,
+      { ...base, content: "F005 OverVoltage: increase decel time." },
+    ];
+
+    const ctx = buildGroundedContext(chunks);
+    const sources = chunksToSources(chunks);
+
+    // Both excerpts cite source [1]; there is NO [2] block for the model to cite.
+    expect(ctx).toContain("[1] powerflex-fault-code-sample.pdf, p.1");
+    expect(ctx).not.toContain("[2]");
+    expect(sources).toHaveLength(1);
+    expect(sources[0].index).toBe(1);
+
+    // Invariant: every [n] the prompt exposes has a matching chip index.
+    const blockNums = [...ctx.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1]));
+    const chipNums = new Set(sources.map((s) => s.index));
+    for (const n of blockNums) expect(chipNums.has(n)).toBe(true);
+  });
+
+  it("keeps distinct pages as distinct, matching [n]s", () => {
+    const p1: ManualChunk = {
+      content: "page one", manufacturer: "AB", modelNumber: "PF525",
+      sourceUrl: "https://x/m.pdf", sourcePage: 1, title: "m.pdf", rank: 1,
+    };
+    const chunks: ManualChunk[] = [p1, { ...p1, content: "page two", sourcePage: 2 }];
+    const ctx = buildGroundedContext(chunks);
+    const sources = chunksToSources(chunks);
+    expect(ctx).toContain("[1] AB PF525, p.1");
+    expect(ctx).toContain("[2] AB PF525, p.2");
+    expect(sources.map((s) => s.index)).toEqual([1, 2]);
+    expect(sources.map((s) => s.page)).toEqual([1, 2]);
+  });
 });
 
 const tokenCount = (s: string) => s.split(/\s+/).filter(Boolean).length;
@@ -293,5 +354,104 @@ describe("retrieveManualChunks term bounding (#1766)", () => {
     const { client, calls } = makeClient([[row()]]);
     await retrieveManualChunks(client, "tenant-1", "what is the torque spec");
     expect(calls[0].params[1]).toBe("what is the torque spec");
+  });
+});
+
+describe("extractFaultCodes (#1875)", () => {
+  it("extracts a single-letter fault code from a verbose question", () => {
+    expect(
+      extractFaultCodes(
+        "My Allen-Bradley PowerFlex 525 is showing fault F004, what does it mean?",
+      ),
+    ).toEqual(["F004"]);
+  });
+
+  it("extracts bare and multiple codes, uppercased + de-duplicated", () => {
+    expect(extractFaultCodes("F004")).toEqual(["F004"]);
+    expect(extractFaultCodes("faults e001 and A002")).toEqual(["E001", "A002"]);
+    expect(extractFaultCodes("F004 again F004")).toEqual(["F004"]);
+    expect(extractFaultCodes("F0004 underflow")).toEqual(["F0004"]);
+  });
+
+  it("does NOT match model numbers, two-letter prefixes, bare digits, or single-digit codes", () => {
+    expect(extractFaultCodes("PowerFlex 525")).toEqual([]); // 525 = digits only
+    expect(extractFaultCodes("GS10 drive overcurrent")).toEqual([]); // two-letter prefix
+    expect(extractFaultCodes("what is the torque spec")).toEqual([]);
+    expect(extractFaultCodes("fault F4")).toEqual([]); // single digit — known limit
+  });
+});
+
+describe("retrieveManualChunks fault-code prioritization (#1875)", () => {
+  it("runs an extra code-scoped pass and promotes the code-bearing chunk above the generic BM25 result", async () => {
+    const generic = row({
+      content: "PowerFlex 525 general overview, mounting and wiring.",
+      source_page: 12,
+      source_url: "pf525-overview.pdf",
+    });
+    const f004 = row({
+      content: "F004 UnderVoltage: incoming AC line low. Check incoming line power.",
+      source_page: 670,
+      source_url: "520-um001.pdf",
+    });
+    // call 1 = main AND pass (returns the generic row, non-empty ⇒ no OR fallback)
+    // call 2 = fault-code pass keyed on "F004" (returns the F004 row)
+    const { client, calls } = makeClient([[generic], [f004]]);
+    const out = await retrieveManualChunks(
+      client,
+      "tenant-1",
+      "My Allen-Bradley PowerFlex 525 is showing fault F004, what does it mean?",
+      { topK: 6 },
+    );
+    expect(calls.length).toBe(2);
+    expect(calls[1].params[1]).toBe("F004"); // code pass queries on the code alone
+    expect(out.map((c) => c.sourcePage)).toContain(670); // F004 chunk retrieved
+    expect(out[0].sourcePage).toBe(670); // promoted ahead of the generic chunk
+    expect(out.length).toBe(2); // deduped, both distinct
+  });
+
+  it("dedupes when the code pass returns the same chunk as the main pass", async () => {
+    const f004 = row({
+      content: "F004 UnderVoltage table row.",
+      source_page: 670,
+      source_url: "520-um001.pdf",
+    });
+    // main pass returns the F004 row; code pass returns the SAME row → 1 result
+    const { client } = makeClient([[f004], [f004]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "fault F004 meaning", {
+      topK: 6,
+    });
+    expect(out.length).toBe(1);
+    expect(out[0].sourcePage).toBe(670);
+  });
+
+  it("does not run a code pass for a code-free query (no behavior change)", async () => {
+    const { client, calls } = makeClient([[row()]]);
+    await retrieveManualChunks(client, "tenant-1", "what is the torque spec", {
+      topK: 6,
+    });
+    expect(calls.length).toBe(1);
+  });
+});
+
+describe("isRefusalAnswer (#1875 phantom-citation gate)", () => {
+  it("detects the quickstart cite-or-refuse sentence (case-insensitive, mid-answer)", () => {
+    expect(
+      isRefusalAnswer(
+        "I don't have manuals for that in the public knowledge base — sign up to upload your own.",
+      ),
+    ).toBe(true);
+    expect(
+      isRefusalAnswer(
+        "I DON'T HAVE MANUALS FOR THAT IN THE PUBLIC KNOWLEDGE BASE. The context blocks do not mention F081.",
+      ),
+    ).toBe(true);
+  });
+
+  it("returns false for a real grounded answer and for empty input", () => {
+    expect(isRefusalAnswer("For fault F004, the most likely cause is UnderVoltage [1].")).toBe(
+      false,
+    );
+    expect(isRefusalAnswer("")).toBe(false);
+    expect(isRefusalAnswer(null)).toBe(false);
   });
 });

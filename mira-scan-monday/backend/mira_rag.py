@@ -188,7 +188,8 @@ async def chat(
 
     if not MIRA_KB_BASE_URL:
         return (
-            "MIRA knowledge base is not configured. Set MIRA_KB_BASE_URL to enable grounded chat.",
+            "Grounded chat is not available for this equipment right now. "
+            "Contact your MIRA administrator to enable it.",
             [],
         )
 

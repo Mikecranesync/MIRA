@@ -344,6 +344,8 @@ function AssetTile({ asset }: { asset: Asset }) {
   const StatusIcon = statusCfg.Icon;
   const Icon = TYPE_ICONS[asset.type ?? ""] ?? Cog;
   const newBadge = isNew(asset);
+  const displayName =
+    asset.name || `${asset.manufacturer ?? ""} ${asset.model ?? ""}`.trim() || "Unnamed Asset";
 
   return (
     <Link href={`/assets/${asset.id}`} className="block">
@@ -365,21 +367,29 @@ function AssetTile({ asset }: { asset: Asset }) {
           <StatusIcon className="w-4 h-4 mt-0.5" style={{ color: statusCfg.color }} />
         </div>
 
-        <div className="flex-1">
-          <p className="text-sm font-medium leading-snug" style={{ color: "var(--foreground)" }}>
-            {asset.name || `${asset.manufacturer ?? ""} ${asset.model ?? ""}`.trim() || "Unnamed Asset"}
+        <div className="flex-1 min-w-0">
+          <p
+            className="text-sm font-medium leading-snug line-clamp-2 break-words"
+            style={{ color: "var(--foreground)" }}
+            title={displayName}
+          >
+            {displayName}
           </p>
-          <p className="text-[11px] font-mono mt-0.5" style={{ color: "var(--foreground-subtle)" }}>
+          <p className="text-[11px] font-mono mt-0.5 truncate" style={{ color: "var(--foreground-subtle)" }}>
             {asset.tag}
           </p>
         </div>
 
-        <div className="flex items-center justify-between">
-          <span className="text-[11px]" style={{ color: "var(--foreground-muted)" }}>
+        <div className="flex items-center justify-between gap-2">
+          <span
+            className="text-[11px] truncate min-w-0"
+            style={{ color: "var(--foreground-muted)" }}
+            title={asset.location ?? undefined}
+          >
             {asset.location ?? "—"}
           </span>
           <span
-            className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+            className="text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0"
             style={{ backgroundColor: statusCfg.bg, color: statusCfg.color }}
           >
             {status}

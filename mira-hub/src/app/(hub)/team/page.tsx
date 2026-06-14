@@ -38,7 +38,7 @@ type TeamMember = {
 
 const TEAM: TeamMember[] = [
   {
-    id: "T-001", name: "Mike Harper", initials: "MH", role: "Maintenance Lead", dept: "Maintenance",
+    id: "T-001", name: "Alex Rivera", initials: "AR", role: "Maintenance Lead", dept: "Maintenance",
     shift: "Day (6AM–2PM)", shiftStatus: "on-shift", phone: "(863) 555-0101",
     currentAssignment: "WO-2026-009 — Air Compressor PM",
     todayActivity: ["Completed PM-008 (Oil Change)", "Reviewed 2 maintenance requests", "Ordered parts PO-2026-044"],
