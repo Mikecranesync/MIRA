@@ -1,3 +1,58 @@
+# Hot Cache — 2026-06-08 — CHARLIE
+
+## Session — 2026-06-08 (Path-to-Beta: upload→retrieval gate — #1592 reality check)
+
+**Drift corrected:** PR #1592 (`feat(hub): folder = brain`) is **MERGED** to main
+(`6758e7e6`, Slices 1–4 + e2e proof) — earlier hot.md/path-to-beta notes calling it
+"DRAFT" are stale. It wired the upload→retrieval **write + plumbing** **on the Hub NodeChat
+surface** (but the retrieval *query semantics* had a bug — found + fixed this session, below):
+
+- `/api/namespace/node/[id]/files` POST → `ingestPdfToNode` (`mira-hub/src/lib/node-knowledge-ingest.ts`)
+  chunks an attached PDF into `knowledge_entries` (`ingest_route='v2'`, generated `content_tsv`
+  = BM25-citable immediately, page anchors, `metadata.node_id`). Pure in-Hub (unpdf + Neon) —
+  does NOT depend on mira-ingest, so the "staging ingest disabled" constraint doesn't apply here.
+- `retrieveNodeChunks` (`mira-hub/src/lib/manual-rag.ts`) reads exactly those rows, subtree-scoped
+  via `uns_path <@ ltree`, keyed on `metadata->>'node_id'` (RLS-safe; `hub_uploads` has no RLS).
+- `/api/namespace/node/[id]/chat` wires retrieve → `appendManualContext` → Groq→Cerebras→Gemini
+  cascade, streaming SSE with `[n]` citations + `sources` chips. Write↔read↔chat↔UI all aligned.
+- Full stranger flow EXISTS in UI: empty tenant → `EmptyState` "New Folder" → attach manual
+  (`/namespace` page.tsx:251) → ask via `NodeChat`.
+
+**🔴 Retrieval-semantics bug — found via execution proof, FIXED this session.** Inspection said
+write↔read aligned; running the literal INSERT+SELECT against the real schema (ephemeral pg,
+migrations 001/003/006/045 + kg_entities) showed the gate's OWN question returns **0 rows**:
+`retrieveNodeChunks` used `plainto_tsquery`, which **AND-combines every term**, so a natural
+question ("what does oC **mean**?") injects an off-vocabulary word no manual chunk contains →
+empty retrieval → no citation. Proven: `plainto`(AND)=false, `websearch`=false (also ANDs),
+OR-joined `to_tsquery`=true. **Fix:** `manual-rag.ts::retrieveNodeChunks` now runs the precise AND
+query first, then falls back to an OR query (`' & '→' | '` rewrite of the sanitized plainto output)
+only when AND returns nothing — precision kept, recall restored. Proven at SQL level + 4 vitest
+tests (`mira-hub/src/lib/__tests__/manual-rag.test.ts`). **Sibling sweep (reuse-before-build):**
+the **bot/engine path was already fixed** — `neon_recall.py::_recall_bm25` is OR-fanout
+(`to_tsquery('t1 | t2 | …')`, bounded; PR #1382) and `rag_worker.py` just calls `recall_knowledge`,
+so Telegram/scan/pipeline have **no** plainto AND bug (eval regime NOT needed). **`retrieveManualChunks`**
+(Hub asset-chat + quickstart-ask, natural questions) DID have it → **fixed this PR** (same AND→OR
+fallback). 15/15 vitest now. Out of scope, noted on #1808: `asset-intelligence.ts` (enrichment
+*fallback*, keyword query — AND defensible) + `mira-scan-monday/vendor_rag.py` (legacy, not in compose).
+
+**Gate still RED (do not declare beta-ready):** the gate is "an *unseen* manual on a *self-served*
+node, zero Mike seeding" — a pre-seeded pass doesn't count. Remaining blockers to a green run:
+1. **Harness contract (FIXED):** `tests/beta/_gate.py::_ask` posted JSON `{question}` but NodeChat
+   needs a `messages` array + returns **SSE**. Added messages-body + SSE accumulation (back-compat
+   with JSON surfaces) + `tests/beta/test_gate_harness.py` (7 unit tests, no env). Did NOT remove
+   the `xfail(strict)` marker (gate not yet proven met end-to-end).
+2. **Provisioning:** needs a dev/staging run with a real tenant + node. Hub auth is a **next-auth
+   session cookie**, not the `BETA_GATE_API_KEY` bearer — provisioner must supply working auth.
+
+**Still open (#1806, NOT a beta blocker):** the blind production upload doors
+(`/api/uploads`, `folder`, `local`) still write OW-KB-only — only the deliberate node-attach door
+reaches v2 `knowledge_entries`. Wire-or-deprecate is a separate change (research doc's
+"two divergent ingest writers" warning). Branch `lane/upload-retrieval-gate`.
+
+Refs: `docs/research/2026-06-07-upload-retrieval-gap-and-beta-path.md`, `tests/beta/README.md`.
+
+---
+
 # Hot Cache — 2026-06-04 — CLOUD
 
 ## Session — 2026-06-07 (Train-before-deploy audit — 7 lanes)

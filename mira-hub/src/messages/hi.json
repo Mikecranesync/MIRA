@@ -119,7 +119,7 @@
   },
   "feed": {
     "title": "गतिविधि फ़ीड",
-    "newRequest": "नया अनुरोध",
+    "newRequest": "रखरखाव अनुरोध सबमिट करें",
     "allCaughtUp": "सब अद्यतन है!",
     "noActivity": "कोई नई गतिविधि नहीं",
     "markRead": "पढ़ा हुआ चिह्नित करें",
@@ -131,7 +131,9 @@
     "auditTrail": "ऑडिट ट्रेल",
     "acknowledge": "स्वीकार करें",
     "addNote": "नोट जोड़ें",
-    "scanQr": "QR कोड स्कैन करें",
+    "scanQr": "एसेट QR स्कैन करें",
+    "createWorkOrder": "कार्य आदेश बनाएं",
+    "newAsset": "नया एसेट जोड़ें",
     "kpi": {
       "openWorkOrders": "खुले कार्य आदेश",
       "overduePMs": "विलंबित PM",

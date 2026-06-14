@@ -67,7 +67,7 @@ const CONVERSATIONS: Conversation[] = [
     ],
   },
   {
-    id: "c005", tech: "Mike Harper", techInitials: "MH",
+    id: "c005", tech: "Alex Rivera", techInitials: "AR",
     channel: "Open WebUI", channelEmoji: "🖥️",
     lastMessage: "Show me the weekly wrench time breakdown by tech",
     ts: "Yesterday", asset: null, unread: 0,

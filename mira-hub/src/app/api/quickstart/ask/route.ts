@@ -6,9 +6,11 @@ import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 import {
   retrieveManualChunks,
   buildGroundedContext,
+  isRefusalAnswer,
   type ManualChunk,
   type ManualSource,
 } from "@/lib/manual-rag";
+import { stripConflictingVendors } from "@/lib/vendor-relevance";
 
 export const dynamic = "force-dynamic";
 
@@ -141,6 +143,14 @@ export async function POST(req: Request) {
     // Continue — the model can still refuse with no context.
   }
 
+  // Cross-vendor conflict strip (mirrors rag_worker.CROSS_VENDOR_FILTER): the
+  // tenant-only / OR fallback in retrieveManualChunks can surface a chunk from
+  // the wrong manufacturer (e.g. a Siemens chunk for a Danfoss question). Drop
+  // those before they reach the context and the citation list. Prefer the
+  // explicit manufacturer the user picked; otherwise infer the vendor from the
+  // question text. No-op when no vendor resolves, and never strips to empty.
+  chunks = stripConflictingVendors(chunks, manufacturer ?? question);
+
   const context = buildGroundedContext(chunks);
   const userMsg = context
     ? `CONTEXT:\n${context}\n\n---\n\nUSER QUESTION:\n${question}`
@@ -169,12 +179,18 @@ export async function POST(req: Request) {
     );
   }
 
-  const citations: ManualSource[] = chunks.map((c, i) => ({
-    index: i + 1,
-    title: [c.manufacturer, c.modelNumber].filter(Boolean).join(" ") || c.title,
-    url: c.sourceUrl || null,
-    page: c.sourcePage,
-  }));
+  // Suppress phantom citation cards on a refusal: chunks render 1:1, so an
+  // answer that says "I don't have manuals for that" would otherwise ship with
+  // up-to-6 citation cards — the contradiction reported in PR #1875. When the
+  // model refuses, it cited nothing, so the citation list is a lie. (#1875)
+  const citations: ManualSource[] = isRefusalAnswer(result.content)
+    ? []
+    : chunks.map((c, i) => ({
+        index: i + 1,
+        title: [c.manufacturer, c.modelNumber].filter(Boolean).join(" ") || c.title,
+        url: c.sourceUrl || null,
+        page: c.sourcePage,
+      }));
 
   return NextResponse.json({
     answer: result.content,
