@@ -50,7 +50,8 @@ try {
     if (-not ($cfg.pages.PSObject.Properties.Name -contains "/maintenance")) {
         $page = [pscustomobject]@{ title = "Maintenance Intelligence"; viewPath = "MaintenancePanel"; docks = [pscustomobject]@{} }
         $cfg.pages | Add-Member -NotePropertyName "/maintenance" -NotePropertyValue $page
-        ($cfg | ConvertTo-Json -Depth 20) | Set-Content $cfgPath -Encoding UTF8
+        # Write UTF-8 WITHOUT BOM (Set-Content -Encoding UTF8 adds a BOM that strict JSON parsers reject).
+        [System.IO.File]::WriteAllText($cfgPath, ($cfg | ConvertTo-Json -Depth 20), (New-Object System.Text.UTF8Encoding($false)))
         Write-Host "[ok] added /maintenance route"
     } else {
         Write-Host "[ok] /maintenance route already present (skipped)"
