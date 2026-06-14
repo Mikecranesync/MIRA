@@ -63,6 +63,31 @@ Refs: `docs/research/2026-06-07-upload-retrieval-gap-and-beta-path.md`, `tests/b
 
 ---
 
+# Hot Cache — 2026-06-10 — CLOUD
+
+## Session — 2026-06-10 (Autonomous gap-closure driver — epic #1666 continued)
+
+**Preflight:** PR #1657 (Phases 0–5) confirmed merged. PR #1687 (wiki docs) confirmed closed by owner — do not reopen.
+
+**Issues closed this session:**
+- **#1658** (Phase 6 — direct_connection UNS bypass): closed as completed — was implemented in PR #1844 (merged 2026-06-09) but not linked. Closed the issue.
+- **#1659** (Phase 7 — citation enforce + session lifecycle): **SHIPPED** → PR #1866 (draft, waiting CI).
+
+**PR #1866 — feat(engine): Phase 7 (#1659)**
+- `mira-bots/shared/troubleshooting_session.py` — async lifecycle wrapper: `open_session_coro` (gate-pass or first direct-connection turn) / `append_turn_coro` (per turn) / `close_session_coro` (RESOLVED) / `close_idle_sessions` (nightly cron).
+- `Supervisor._schedule_session_lifecycle` — fire-and-forget `asyncio.create_task` pattern, zero reply-path latency.
+- `mira-bots/scripts/nightly_close_sessions.py` — cron entry-point.
+- Citation enforce-mode already wired via `_enforce_citation_rewrite` + H4 enforcer (prior PR).
+- 43/43 offline tests pass.
+
+**Remaining open ready-for-agent issues (ordered):**
+- **#1660** — Phase 8: DecisionTraceWriter + /decision-traces admin page (P2)
+- **#1661** — Phase 9: Flaky-input / sensor-anomaly detector (P1, demo wedge)
+
+**Next run:** once PR #1866 merges, pick #1661 (P1 / wedge demo) unless #1660 is unblocked first.
+
+---
+
 # Hot Cache — 2026-06-04 — CLOUD
 
 ## Session — 2026-06-07 (Train-before-deploy audit — 7 lanes)
