@@ -29,9 +29,17 @@ COIL_TOPICS = {
 }
 HR_SPECS = {106: ("vfd/vfd101/freq", 100.0), 107: ("vfd/vfd101/current_a", 100.0),
             108: ("vfd/vfd101/voltage_v", 10.0), 109: ("vfd/vfd101/dc_bus_v", 10.0),
-            114: ("vfd/vfd101/cmd_word", 1.0)}
+            114: ("vfd/vfd101/cmd_word", 1.0),
+            # Conv_Simple_2.1 status group (HR 400118-400125 = offsets 117-124), exposed
+            # 2026-06-14. Unblocks A2 (fault decode) + A7 (freq-vs-setpoint) on live hardware
+            # — the catalog's "REFLASH" rows are now LIVE without a reflash.
+            117: ("vfd/vfd101/status_word", 1.0), 118: ("vfd/vfd101/fault_code", 1.0),
+            119: ("vfd/vfd101/warn_code", 1.0), 120: ("vfd/vfd101/freq_setpoint", 100.0),
+            124: ("vfd/vfd101/last_fault", 1.0)}
 COIL_READS = [(0, 1), (3, 1), (5, 1), (9, 1), (11, 9), (22, 1)]
-HR_READS = [(106, 4), (114, 1)]
+# (117,8) spans the V2.1 status block (all 8 offsets mapped); keep it its own read so a
+# pre-2.1 PLC (block unmapped) just fails that one read, not the whole poll.
+HR_READS = [(106, 4), (114, 1), (117, 8)]
 UNIT = 1
 
 
@@ -49,6 +57,12 @@ def poll(client) -> dict:
     for off, cnt in COIL_READS:
         rr = _read(client.read_coils, off, cnt)
         if rr.isError():
+            # di05_photoeye (coil 000023 = offset 22) is only mapped after the
+            # slave-map-v2 reflash; on the current firmware it returns ILLEGAL DATA
+            # ADDRESS. Skip it (A12/photo-eye rules degrade via snap.get -> None)
+            # instead of failing the whole poll and falsely tripping A0_OFFLINE.
+            if off == 22:
+                continue
             raise RuntimeError(f"coil read @{off} failed: {rr}")
         for i in range(cnt):
             if off + i in COIL_TOPICS:
@@ -56,6 +70,11 @@ def poll(client) -> dict:
     for off, cnt in HR_READS:
         rr = _read(client.read_holding_registers, off, cnt)
         if rr.isError():
+            # The V2.1 status block (offset 117) is optional — a pre-2.1 PLC doesn't
+            # map it, so skip it silently (A2/A7 then degrade via snap.get -> None)
+            # rather than failing the whole poll. The core blocks must still succeed.
+            if off == 117:
+                continue
             raise RuntimeError(f"HR read @{off} failed: {rr}")
         for i in range(cnt):
             if off + i in HR_SPECS:
