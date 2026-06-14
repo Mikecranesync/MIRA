@@ -56,21 +56,39 @@ def evaluate(data: dict) -> bool:
 
     ok = True
 
-    # --- criterion 1: torque / rpm / power non-zero at good quality ---
-    print("[1] torque / rpm / power NON-ZERO + quality=good")
-    for label, tag in (("torque", T_TORQUE), ("rpm", T_RPM), ("power", T_POWER)):
+    # Is the motor actually spinning right now? A stopped motor reads 0 torque/rpm/
+    # power legitimately — that's not a flash/mapping failure. Distinguish the two.
+    out_hz = field(summaries, T_FREQ_OUT, "current")
+    running = field(summaries, "motor_running", "current")
+    motor_stopped = (out_hz is not None and out_hz < 1.0) or (running == 0)
+
+    # --- criterion 1: torque / rpm / power live at good quality ---
+    # torque + rpm must be non-zero while spinning; power may be ~0 on an UNLOADED
+    # bench motor (it computes from V*I under load) — so power only needs to be
+    # live at good quality, its value is informational.
+    print("[1] torque / rpm non-zero + power live, all quality=good")
+    for label, tag, need_nonzero in (("torque", T_TORQUE, True), ("rpm", T_RPM, True),
+                                     ("power", T_POWER, False)):
         cur = field(summaries, tag, "current")
         q = field(summaries, tag, "quality")
         unit = field(summaries, tag, "unit") or ""
         if cur is None or q is None:
-            print(f"    FAIL {label:6} ({tag}): no data yet (current={cur}, quality={q})")
+            print(f"    FAIL {label:6} ({tag}): no data (current={cur}, quality={q}) "
+                  f"— register unmapped or historian offline")
             ok = False
         elif q != "good":
             print(f"    FAIL {label:6} ({tag}): quality={q} (need 'good'), current={cur} {unit}")
             ok = False
-        elif cur == 0:
-            print(f"    FAIL {label:6} ({tag}): reads 0 (V1.8 symptom — was V2.0 actually flashed?)")
+        elif cur == 0 and motor_stopped:
+            print(f"    WAIT {label:6} ({tag}): reads 0 but the MOTOR IS STOPPED "
+                  f"(freq_out={out_hz}, motor_running={running}) — run at 30 Hz and re-check")
             ok = False
+        elif cur == 0 and need_nonzero:
+            print(f"    FAIL {label:6} ({tag}): reads 0 while running (should not be)")
+            ok = False
+        elif cur == 0:  # power, running, unloaded
+            print(f"    PASS {label:6} ({tag}): live, current=0 {unit} (≈0 = unloaded bench; "
+                  f"load the motor to see real kW)")
         else:
             print(f"    PASS {label:6} ({tag}): current={cur} {unit}, quality={q}")
 
