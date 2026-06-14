@@ -92,7 +92,10 @@ export default function SignupPage() {
             <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Ask MIRA a fault-code question, get a cited answer</li>
             <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Answers cite our OEM manual library — not guesses</li>
           </ul>
-          <p className="text-slate-500 text-xs mt-3">No credit card.</p>
+          <p className="text-slate-500 text-xs mt-3 max-w-xs text-center">
+            Track faults, work orders, assets, manuals, and shift handoffs in one place.
+          </p>
+          <p className="text-slate-500 text-xs mt-2">No credit card.</p>
         </div>
 
         <div

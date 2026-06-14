@@ -97,7 +97,10 @@ function LoginFormInner() {
             <Factory className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">FactoryLM</h1>
-          <p className="text-slate-400 text-sm mt-1">Sign in to continue</p>
+          <p className="text-slate-400 text-sm mt-1">Sign in to your maintenance workspace</p>
+          <p className="text-slate-500 text-xs mt-2 max-w-xs text-center">
+            Faults, work orders, assets, manuals, and shift handoffs — grounded in your factory namespace.
+          </p>
         </div>
 
         <div
