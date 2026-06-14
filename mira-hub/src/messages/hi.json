@@ -277,6 +277,12 @@
   },
   "schedule": {
     "title": "PM कार्यक्रम",
+    "emptyTitle": "अभी तक कोई PM निर्धारित नहीं",
+    "emptyDesc": "मैनुअल अपलोड करें और MIRA आपकी समीक्षा के लिए निवारक रखरखाव अनुशंसाएँ निकालेगा — या अपने एसेट देखकर शुरू करें।",
+    "emptyUploadManual": "मैनुअल अपलोड करें",
+    "emptyViewAssets": "एसेट देखें",
+    "emptyExtractPms": "मैनुअल से PM निकालें",
+    "exportEmptyHint": "अभी निर्यात के लिए कोई PM नहीं",
     "overdueCount": "{count} विलंबित",
     "upcomingCount": "{count} आगामी",
     "calendar": "कैलेंडर",

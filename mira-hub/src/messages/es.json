@@ -277,6 +277,12 @@
   },
   "schedule": {
     "title": "Programa de MP",
+    "emptyTitle": "Aún no hay MP programados",
+    "emptyDesc": "Sube un manual y MIRA extraerá recomendaciones de mantenimiento preventivo para que las revises — o empieza explorando tus activos.",
+    "emptyUploadManual": "Subir manual",
+    "emptyViewAssets": "Ver activos",
+    "emptyExtractPms": "Extraer MP de los manuales",
+    "exportEmptyHint": "Aún no hay MP para exportar",
     "overdueCount": "{count} vencido",
     "upcomingCount": "{count} próximos",
     "calendar": "Calendario",
