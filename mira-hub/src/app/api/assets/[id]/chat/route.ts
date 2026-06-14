@@ -257,6 +257,7 @@ export async function POST(
       const mfr = row?.manufacturer ? String(row.manufacturer) : null;
       const chunks = await retrieveManualChunks(c, ctx.tenantId, lastUser.content, {
         manufacturer: mfr,
+        allowTenantFallback: false,
       });
       return { row, chunks };
     });
