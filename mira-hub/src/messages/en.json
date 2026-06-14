@@ -277,7 +277,7 @@
   "schedule": {
     "title": "PM Schedule",
     "emptyTitle": "No PMs scheduled yet",
-    "emptyDesc": "Create your first preventive maintenance task — or upload a manual and MIRA will suggest PM schedules for you.",
+    "emptyDesc": "Upload a manual and MIRA will extract preventive-maintenance recommendations for you to review — or start by browsing your assets.",
     "emptyUploadManual": "Upload manual",
     "emptyViewAssets": "View assets",
     "emptyExtractPms": "Extract PMs from manuals",

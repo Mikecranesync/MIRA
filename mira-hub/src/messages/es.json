@@ -278,7 +278,7 @@
   "schedule": {
     "title": "Programa de MP",
     "emptyTitle": "Aún no hay MP programados",
-    "emptyDesc": "Crea tu primera tarea de mantenimiento preventivo — o sube un manual y MIRA te sugerirá programas de MP.",
+    "emptyDesc": "Sube un manual y MIRA extraerá recomendaciones de mantenimiento preventivo para que las revises — o empieza explorando tus activos.",
     "emptyUploadManual": "Subir manual",
     "emptyViewAssets": "Ver activos",
     "emptyExtractPms": "Extraer MP de los manuales",
