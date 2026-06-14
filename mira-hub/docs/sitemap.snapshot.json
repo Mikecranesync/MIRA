@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 57,
-    "apiRoutes": 117
+    "apiRoutes": 118
   },
   "pages": [
     "/admin",
@@ -152,6 +152,7 @@
     "/api/picker/google/token",
     "/api/pm-schedules",
     "/api/pm-schedules/[id]",
+    "/api/pm-schedules/[id]/complete",
     "/api/pm-schedules/[id]/meter",
     "/api/pm/export.csv",
     "/api/pm/export.ics",

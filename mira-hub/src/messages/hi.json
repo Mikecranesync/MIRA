@@ -289,6 +289,9 @@
     "list": "सूची",
     "markComplete": "पूर्ण चिह्नित करें",
     "completedToast": "पूर्ण चिह्नित ✓",
+    "completeFailedToast": "पूर्ण चिह्नित नहीं हो सका — कृपया पुनः प्रयास करें",
+    "triggerUpdatedToast": "ट्रिगर अपडेट किया गया ✓",
+    "triggerFailedToast": "ट्रिगर अपडेट नहीं हो सका",
     "pmCount": "{count} PM",
     "pmCountPlural": "{count} PMs",
     "days": {

@@ -75,7 +75,6 @@ export default function SchedulePage() {
   const [pms, setPms] = useState<PM[]>(FALLBACK_PMS);
   const [loading, setLoading] = useState(true);
   const [extractedCount, setExtractedCount] = useState(0);
-  const { toast } = useToast();
 
   // Fetch real PM schedules from API on mount
   useEffect(() => {
@@ -106,6 +105,13 @@ export default function SchedulePage() {
   function nextMonth() {
     if (month === 11) { setYear(y => y + 1); setMonth(0); }
     else setMonth(m => m + 1);
+  }
+
+  // Sync a server-persisted change back into local state so the UI matches a
+  // reload without a full refetch (optimistic, but mirrors what GET derives).
+  function applyPMPatch(patch: Partial<PM> & { id: string }) {
+    setPms(prev => prev.map(p => (p.id === patch.id ? { ...p, ...patch } : p)));
+    setSelectedPM(prev => (prev && prev.id === patch.id ? { ...prev, ...patch } : prev));
   }
 
   const overdueCount = pms.filter(p => p.status === "overdue").length;
@@ -316,7 +322,7 @@ export default function SchedulePage() {
         <PMSheet
           pm={selectedPM}
           onClose={() => setSelectedPM(null)}
-          onComplete={() => { toast(`${selectedPM.title} ${t("completedToast")}`); setSelectedPM(null); }}
+          onUpdated={applyPMPatch}
         />
       )}
     </div>
@@ -402,10 +408,61 @@ function DayDetail({ selectedDay, pms, months, onClose, onSelectPM }: {
   );
 }
 
-function PMSheet({ pm, onClose, onComplete }: { pm: PM; onClose: () => void; onComplete: () => void }) {
+function PMSheet({ pm, onClose, onUpdated }: {
+  pm: PM; onClose: () => void; onUpdated: (patch: Partial<PM> & { id: string }) => void;
+}) {
   const t = useTranslations("schedule");
   const tCommon = useTranslations("common");
+  const { toast } = useToast();
   const cfg = STATUS_CFG[pm.status];
+
+  // Persist completion: rolls last_completed_at + next_due_at forward server-side,
+  // then syncs local state so the change survives a reload.
+  async function handleComplete() {
+    try {
+      const res = await fetch(`${API_BASE}/api/pm-schedules/${pm.id}/complete`, { method: "POST" });
+      if (!res.ok) {
+        toast(t("completeFailedToast"), "error");
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      const nextDue = data?.schedule?.next_due_at ? String(data.schedule.next_due_at) : null;
+      onUpdated({
+        id: pm.id,
+        status: "completed",
+        date: nextDue ? nextDue.slice(0, 10) : pm.date,
+        meter_current: data?.schedule?.meter_current != null ? Number(data.schedule.meter_current) : pm.meter_current,
+      });
+      toast(`${pm.title} ${t("completedToast")}`, "success");
+      onClose();
+    } catch {
+      toast(t("completeFailedToast"), "error");
+    }
+  }
+
+  // Persist a trigger-type change. The API rejects switching to a meter trigger
+  // without a threshold (400) — surface that as an error toast rather than a
+  // silent no-op.
+  async function handleTriggerChange(tt: string) {
+    try {
+      const res = await fetch(`${API_BASE}/api/pm-schedules/${pm.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trigger_type: tt }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        toast(err?.error ?? t("triggerFailedToast"), "error");
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      onUpdated({ id: pm.id, trigger_type: data?.schedule?.trigger_type ?? tt });
+      toast(t("triggerUpdatedToast"), "success");
+    } catch {
+      toast(t("triggerFailedToast"), "error");
+    }
+  }
+
   const critColor: Record<string, string> = { critical: "#DC2626", high: "#F97316", medium: "#2563EB", low: "#64748B" };
   const crit = pm.criticality ?? "medium";
   return (
@@ -525,13 +582,7 @@ function PMSheet({ pm, onClose, onComplete }: { pm: PM; onClose: () => void; onC
               const active = (pm.trigger_type ?? "calendar") === tt;
               return (
                 <button key={tt}
-                  onClick={async () => {
-                    await fetch(`/hub/api/pm-schedules/${pm.id}`, {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ trigger_type: tt }),
-                    });
-                  }}
+                  onClick={() => handleTriggerChange(tt)}
                   className="px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors"
                   style={{
                     backgroundColor: active ? "var(--brand-blue)" : "var(--surface-0)",
@@ -576,7 +627,7 @@ function PMSheet({ pm, onClose, onComplete }: { pm: PM; onClose: () => void; onC
         </div>
 
         <div className="flex gap-2">
-          <button onClick={onComplete} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white"
+          <button onClick={handleComplete} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white"
             style={{ backgroundColor: "#16A34A" }}>
             {t("markComplete")}
           </button>

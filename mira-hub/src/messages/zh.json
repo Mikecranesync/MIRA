@@ -289,6 +289,9 @@
     "list": "列表",
     "markComplete": "标记完成",
     "completedToast": "已标记完成 ✓",
+    "completeFailedToast": "无法标记完成 — 请重试",
+    "triggerUpdatedToast": "触发器已更新 ✓",
+    "triggerFailedToast": "无法更新触发器",
     "pmCount": "{count} 项PM",
     "pmCountPlural": "{count} 项PM",
     "days": {

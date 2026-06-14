@@ -289,6 +289,9 @@
     "list": "Lista",
     "markComplete": "Marcar como completado",
     "completedToast": "marcado como completado ✓",
+    "completeFailedToast": "No se pudo marcar como completado — inténtalo de nuevo",
+    "triggerUpdatedToast": "Disparador actualizado ✓",
+    "triggerFailedToast": "No se pudo actualizar el disparador",
     "pmCount": "{count} MP",
     "pmCountPlural": "{count} MPs",
     "days": {

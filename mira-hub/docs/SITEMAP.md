@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **57** (6 dynamic) |
-| API routes | **117** (32 dynamic) |
+| API routes | **118** (33 dynamic) |
 
 ## Pages (57)
 
@@ -75,7 +75,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (117)
+## API routes (118)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -167,6 +167,7 @@
 | `/api/picker/google/token` | static | `api/picker/google/token/route.ts` |
 | `/api/pm-schedules` | static | `api/pm-schedules/route.ts` |
 | `/api/pm-schedules/[id]` | dynamic | `api/pm-schedules/[id]/route.ts` |
+| `/api/pm-schedules/[id]/complete` | dynamic | `api/pm-schedules/[id]/complete/route.ts` |
 | `/api/pm-schedules/[id]/meter` | dynamic | `api/pm-schedules/[id]/meter/route.ts` |
 | `/api/pm/export.csv` | static | `api/pm/export.csv/route.ts` |
 | `/api/pm/export.ics` | static | `api/pm/export.ics/route.ts` |
