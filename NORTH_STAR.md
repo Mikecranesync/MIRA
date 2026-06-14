@@ -61,6 +61,31 @@ existing canonical nodes instead of starting blank. The asset graph is what comp
 `docs/mira/current-repo-inventory.md` (what's built), governed by
 `docs/plans/2026-06-01-mira-master-architecture-plan.md`.
 
+## The Maintenance Intelligence Module (the deployable edge — added 2026-06-14)
+
+> How the namespace gets **built and consumed at the plant edge**: the canonical asset graph,
+> made installable. This is the namespace-builder doctrine, pointed at *live SCADA tags*.
+
+**What it is:** an installable Ignition Perspective module (then any SCADA) that **onboards itself.**
+Install → auto-detect the connection (Ignition tags now; OPC-UA next) → read whatever tags exist →
+**AI-classify them into equipment** → approve (train-before-deploy) → and then **trends + live fault
+detection + grounded Ask MIRA** light up on every machine. No per-site hand-wiring; no other Ignition
+Exchange module understands a customer's tags — that self-sorting install is the moat.
+
+**The unique hook — detect AND explain.** A panel that spots a fault from live tags (the A0–A12
+anomaly rules running **in-gateway, offline**) and one-tap explains it from the customer's own manuals
+(grounded Ask MIRA). Detection → grounded-diagnosis, fused in the HMI. Read-only for OT, always.
+
+**Tier split:** detection + trends = the **free wedge** (in-gateway, works on install); grounded Ask
+MIRA = the **paid** cloud upsell.
+
+**Status (2026-06-14):** live GS10 telemetry proven on the bench (torque/rpm/power/fault, validated);
+the **in-gateway diagnose seam is built + tested** — the 12 anomaly rules run inside Ignition on a live
+tag snapshot (commit `83ea8e81`, 41 regime-7 tests). Plan:
+`~/.claude/plans/yes-map-the-path-warm-wadler.md`; toward-GTM proving plan:
+`docs/plans/2026-06-14-proving-test-case-plan.md`; resume:
+`docs/RESUME_2026-06-14_maintenance-intelligence-module.md`.
+
 ## The Decision Filter
 
 Before building any feature, ask: **"Does this make the flywheel spin faster?"**
@@ -80,7 +105,7 @@ Status: PARTIALLY BUILT. This is what every pilot produces.
 | Nameplate → asset binding | ✅ Built | Vision + OCR (mira-pipeline) |
 | Manual ingest → cited RAG | ✅ Built | mira-ingest, 68K chunks indexed |
 | PM schedule extraction | 🔲 NOT BUILT | LLM structured output from chunks |
-| PLC tag ↔ asset reconciliation | 🔲 NOT BUILT | Ignition tag stream + asset matcher |
+| PLC tag ↔ asset reconciliation | 🟡 In progress | Self-onboarding module: in-gateway anomaly detection built (`83ea8e81`); auto-classify next — see § Maintenance Intelligence Module |
 | Fault history capture (Telegram → structured RCA) | ✅ Partial | Adapter exists; RCA schema TBD |
 | Tribal knowledge → structured notes | 🔲 NOT BUILT | Voice memo → structured RCA |
 | CMMS write-back | ✅ Partial | Atlas integration; MaintainX via Nango next |
