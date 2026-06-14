@@ -110,7 +110,7 @@ export default function SignupPage() {
             type="button"
             onClick={handleGoogle}
             disabled={googleLoading}
-            className="w-full h-11 mb-4 flex items-center justify-center gap-3 rounded-md bg-white text-slate-900 font-medium hover:bg-slate-100 transition-colors disabled:opacity-60"
+            className="w-full h-11 min-h-[44px] mb-4 flex items-center justify-center gap-3 rounded-md bg-white text-slate-900 font-medium hover:bg-slate-100 transition-colors disabled:opacity-60"
           >
             {googleLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -141,7 +141,7 @@ export default function SignupPage() {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Your name"
                 autoComplete="name"
-                className="h-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
+                className="h-11 min-h-[44px] bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
               />
             </div>
 
@@ -155,7 +155,7 @@ export default function SignupPage() {
                 placeholder="you@company.com"
                 autoComplete="email"
                 required
-                className="h-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
+                className="h-11 min-h-[44px] bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
               />
             </div>
 
@@ -171,13 +171,13 @@ export default function SignupPage() {
                   autoComplete="new-password"
                   required
                   minLength={MIN_PW}
-                  className="h-11 pr-10 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
+                  className="h-11 min-h-[44px] pr-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
                 />
                 <button
                   type="button"
                   aria-label={showPw ? "Hide password" : "Show password"}
                   onClick={() => setShowPw((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+                  className="absolute inset-y-0 right-0 flex items-center justify-center w-11 min-w-[44px] text-slate-400 hover:text-slate-200 transition-colors"
                 >
                   {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -192,7 +192,7 @@ export default function SignupPage() {
 
             <Button
               type="submit"
-              className="w-full h-11 text-base font-semibold mt-2"
+              className="w-full h-11 min-h-[44px] text-base font-semibold mt-2"
               disabled={loading}
               style={{ background: loading ? undefined : "linear-gradient(135deg, #2563EB, #0891B2)" }}
             >
