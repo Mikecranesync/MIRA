@@ -84,6 +84,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: v.error }, { status: 400 });
   }
   const { unsPath, host, scheme, port, path, displayType, label } = v.value;
+
+  // SSRF lockdown for prod: when set, the registered host MUST be in the
+  // operator allowlist (the tree route server-side-probes it). Unset = no
+  // restriction beyond the validator's link-local block (dev/bench). A future
+  // admin-role gate is blocked on #578 (Session.role is hardcoded "member").
+  const allow = (process.env.COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST ?? "")
+    .split(",").map((s) => s.trim()).filter(Boolean);
+  if (allow.length > 0 && !allow.includes(host)) {
+    return NextResponse.json(
+      { error: "host is not in the configured display host allowlist" },
+      { status: 400 },
+    );
+  }
+
   const createdBy = UUID_RE.test(ctx.userId) ? ctx.userId : null;
 
   try {

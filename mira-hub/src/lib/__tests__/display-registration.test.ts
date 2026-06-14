@@ -70,6 +70,16 @@ describe("validateDisplayRegistration", () => {
     expect(validateDisplayRegistration({ ...ok, displayType: "telnet" })).toMatchObject({ ok: false });
   });
 
+  it("blocks SSRF link-local/unspecified hosts but allows legit internal hosts", () => {
+    expect(validateDisplayRegistration({ ...ok, host: "169.254.169.254" })).toMatchObject({ ok: false });
+    expect(validateDisplayRegistration({ ...ok, host: "0.0.0.0" })).toMatchObject({ ok: false });
+    expect(validateDisplayRegistration({ ...ok, host: "fe80::1" })).toMatchObject({ ok: false });
+    // Legit internal display hosts stay allowed (dev loopback, LAN, Tailscale).
+    expect(validateDisplayRegistration({ ...ok, host: "127.0.0.1" })).toMatchObject({ ok: true });
+    expect(validateDisplayRegistration({ ...ok, host: "192.168.1.20" })).toMatchObject({ ok: true });
+    expect(validateDisplayRegistration({ ...ok, host: "100.72.2.99" })).toMatchObject({ ok: true });
+  });
+
   it("normalizes a path missing its leading slash", () => {
     const r = validateDisplayRegistration({ ...ok, path: "dashboard" });
     expect(r.ok).toBe(true);

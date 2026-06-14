@@ -56,6 +56,15 @@ export function validateDisplayRegistration(input: DisplayRegistrationInput): Va
   if (/[/\s]/.test(host) || host.includes("://")) {
     return { ok: false, error: "host must be a bare hostname or IP (no scheme, path, or spaces)" };
   }
+  // SSRF guard: the tree route server-side-probes this host. Block link-local /
+  // unspecified addresses — never a legitimate display host, but the classic
+  // SSRF pivot (169.254.169.254 = cloud metadata). Legit internal targets
+  // (127.0.0.1, LAN 10/192.168, Tailscale CGNAT 100.64/10) stay allowed; the
+  // full prod lockdown is the operator allowlist enforced in the route.
+  const lc = host.toLowerCase().replace(/^\[|\]$/g, "");
+  if (/^169\.254\./.test(host) || /^fe80:/.test(lc) || host === "0.0.0.0" || lc === "::") {
+    return { ok: false, error: "host is a link-local/unspecified address and is not allowed" };
+  }
 
   const schemeRaw = asString(input.scheme) ?? "http";
   if (!SCHEMES.includes(schemeRaw as Scheme)) {
