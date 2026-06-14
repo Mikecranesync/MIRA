@@ -20,7 +20,8 @@ boss ──email task──▶ +carlos@…  ──▶ Hermes (Bravo)  ──▶ 
 | File | What it is |
 |---|---|
 | `personas/SCHEMA.md` | The persona-brief template (fill it to add a crew member). |
-| `personas/carlos.md` | First persona — Carlos Mendez, technician, on Bravo. |
+| `personas/carlos.md` | Carlos Mendez — technician, on Bravo. |
+| `personas/dana.md` | Dana Reyes — manager, on the manager-agent node. |
 | `runbook.md` | The day-loop each node's Hermes agent runs (become persona → read inbox → act in Hub → report → journal). |
 | `task-protocol.md` | How the boss phrases task emails + how agents reply / file issues. |
 | `provision_subordinate.mjs` | Human-run script: add one subordinate `hub_users` row to the owner's tenant. |
@@ -29,23 +30,23 @@ boss ──email task──▶ +carlos@…  ──▶ Hermes (Bravo)  ──▶ 
 
 ## Phase 0 — owner setup (do this once, before the first agent)
 
-1. **Capture your prod tenant id.** Get the `tenant_id` for your Hub account
-   (`harperhousebuyers@gmail.com` / `mike@factorylm.com`) via a sanctioned read
-   (`db-inspect.yml`) or from your own session. It's a UUID, **not** `'mike'`. Store it
-   in Doppler as `CREW_TENANT_ID`.
-   > If you'd rather keep your primary workspace clean, make a dedicated "Hermes Test
-   > Factory" workspace you own and use *its* tenant id instead — same mechanism.
+1. **No tenant-id hunting needed.** The provisioning script resolves your tenant from
+   your Hub login email (`--owner-email`). (If you'd rather keep your primary workspace
+   clean, make a dedicated "Hermes Test Factory" workspace you own and pass *its* owner
+   email / `--tenant <uuid>` instead — same mechanism.)
 2. **Gmail aliases need no setup** — `harperhousebuyers+carlos@gmail.com` already routes
    to your inbox. Give each node-agent **read access to that one inbox** (a Gmail
    **IMAP app-password** is simplest for a headless node; or the Gmail API). Store the
    credential in Doppler. Each agent filters to mail whose `To:` is *its* alias.
-3. **Provision the first subordinate** — staging first, then prod, **as yourself**:
+3. **Provision a subordinate** — **as yourself**, via Doppler. The preflight prints the
+   resolved tenant + owner before writing and refuses on a mismatch:
    ```bash
-   doppler run --project factorylm --config stg -- \
+   doppler run --project factorylm --config prd -- \
      node tools/crew/provision_subordinate.mjs \
+       --owner-email 'harperhousebuyers@gmail.com' \
        --email 'harperhousebuyers+carlos@gmail.com' --name 'Carlos Mendez' --role technician
-   # confirm the printed tenant/owner is yours, save the generated password to Doppler
-   # (CREW_PW_CARLOS), log in on staging to verify, THEN repeat with --config prd.
+   # save the printed generated password to Doppler (CREW_PW_CARLOS), then log in to verify.
+   # Manager seat: --email harperhousebuyers+dana@gmail.com --name 'Dana Reyes' --role manager
    ```
    This is the only prod write; it's human-run via Doppler, never `psql` from a session.
 

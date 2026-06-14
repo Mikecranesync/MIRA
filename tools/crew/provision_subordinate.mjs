@@ -16,21 +16,20 @@
  * session, never raw psql. It writes to whatever NEON_DATABASE_URL the Doppler
  * config points at, so pick the config deliberately:
  *
- *   # 1) staging first — validate the row + a real login
- *   doppler run --project factorylm --config stg -- \
- *     node tools/crew/provision_subordinate.mjs \
- *       --email 'harperhousebuyers+carlos@gmail.com' \
- *       --name 'Carlos Mendez' --role technician
- *
- *   # 2) prod — only after the staging login works
+ *   # 1) prod (or staging) — let it resolve your tenant from your Hub login email:
  *   doppler run --project factorylm --config prd -- \
  *     node tools/crew/provision_subordinate.mjs \
+ *       --owner-email 'harperhousebuyers@gmail.com' \
  *       --email 'harperhousebuyers+carlos@gmail.com' \
  *       --name 'Carlos Mendez' --role technician
  *
- * Required env (from Doppler): NEON_DATABASE_URL, CREW_TENANT_ID (the owner's
- *   real prod tenant UUID — capture it via db-inspect.yml or from your own Hub
- *   session; it is NOT the string 'mike').
+ * The preflight prints the resolved tenant + owner BEFORE inserting, and refuses
+ * if nothing matches — so a typo can't write to the wrong place.
+ *
+ * Tenant selection (first that is set wins): --tenant <uuid>  >  CREW_TENANT_ID
+ *   >  --owner-email <your Hub login>  >  CREW_OWNER_EMAIL. The owner-email form
+ *   needs no UUID hunting; it is NOT the string 'mike'.
+ * Required env (from Doppler): NEON_DATABASE_URL.
  * Password: pass --password, or set CREW_SUBORDINATE_PASSWORD, else a strong
  *   random one is generated and PRINTED ONCE (store it in Doppler, never git).
  *
@@ -63,20 +62,37 @@ function die(msg) {
 const email = arg("email");
 const name = arg("name") ?? email;
 const role = arg("role") ?? "technician";
-const tenantId = arg("tenant") ?? process.env.CREW_TENANT_ID;
+// Tenant can be given directly (--tenant / CREW_TENANT_ID), or looked up from the
+// owner's email (--owner-email) so you never have to hunt down the UUID by hand.
+const tenantArg = arg("tenant") ?? process.env.CREW_TENANT_ID;
+const ownerEmail = arg("owner-email") ?? process.env.CREW_OWNER_EMAIL;
 const passwordExplicit = arg("password") ?? process.env.CREW_SUBORDINATE_PASSWORD;
 const password = passwordExplicit ?? randomBytes(12).toString("base64url");
 const dbUrl = process.env.NEON_DATABASE_URL;
 
 if (!email) die("--email is required (e.g. harperhousebuyers+carlos@gmail.com)");
-if (!tenantId) die("--tenant or CREW_TENANT_ID is required (the owner's tenant UUID)");
+if (!tenantArg && !ownerEmail) {
+  die("provide --tenant <uuid> (or CREW_TENANT_ID), or --owner-email <your Hub login> to auto-resolve it");
+}
 if (!dbUrl) die("NEON_DATABASE_URL is required — run under `doppler run ... --`");
 
 const pool = new Pool({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
 
 try {
+  // Resolve the tenant by the owner's email when no UUID was given.
+  let tenantId = tenantArg;
+  if (!tenantId) {
+    const { rows } = await pool.query(
+      `SELECT tenant_id FROM hub_users WHERE email_lower = LOWER($1) LIMIT 1`,
+      [ownerEmail],
+    );
+    if (!rows[0]) die(`no Hub user found for owner-email '${ownerEmail}' in this env — wrong email or wrong --config?`);
+    tenantId = String(rows[0].tenant_id);
+    console.log(`Resolved tenant from owner ${ownerEmail}: ${tenantId}`);
+  }
+
   // Preflight: confirm the target tenant exists and show whose it is, so a typo
-  // in the UUID can't silently create an orphan / cross-tenant account.
+  // can't silently create an orphan / cross-tenant account.
   const { rows: tRows } = await pool.query(
     `SELECT t.id, t.name, u.email AS owner_email
        FROM hub_tenants t
