@@ -282,6 +282,9 @@
     "list": "List",
     "markComplete": "Mark Complete",
     "completedToast": "marked complete ✓",
+    "completeFailedToast": "Couldn't mark complete — please try again",
+    "triggerUpdatedToast": "Trigger updated ✓",
+    "triggerFailedToast": "Couldn't update trigger",
     "pmCount": "{count} PM",
     "pmCountPlural": "{count} PMs",
     "days": {
