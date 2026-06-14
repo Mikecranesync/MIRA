@@ -365,9 +365,14 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
           </div>
           <div className="flex-1">
             <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{t("photos")}</p>
-            <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>{t("noPhotos")}</p>
+            <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>{t("noPhotos")} · {t("photosComingSoon")}</p>
           </div>
-          <Button variant="outline" size="sm" className="text-xs">+ {t("addPhoto")}</Button>
+          {/* #1929: attaching photos from the detail page isn't built yet — disable
+              the control with honest copy rather than leaving an enabled no-op.
+              Photo capture/upload lives on the New Work Order wizard today. */}
+          <Button variant="outline" size="sm" className="text-xs" disabled title={t("photosComingSoon")}>
+            + {t("addPhoto")}
+          </Button>
         </div>
 
         {/* Parts Used */}

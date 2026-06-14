@@ -110,7 +110,7 @@ export function OpenInCMMSButton({
 
   return (
     <Button variant={variant} size={size} className={cn(className)} asChild>
-      <Link href="/cmms">
+      <Link href="/cmms" title={t("connectCmmsTooltip")}>
         <Link2 className="w-4 h-4" />
         {t("connectCmms")}
       </Link>
