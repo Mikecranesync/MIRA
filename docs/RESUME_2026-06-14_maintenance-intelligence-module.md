@@ -73,8 +73,21 @@ bench runbook faults. Time-based A6/A7/A10 await a **stateful poller** (Phase 4)
 
 ---
 
-## NEXT — Phase 2: the Maintenance Intelligence Panel (use the Perspective-project-script path)
+## Phase 2 — BUILT (file-only; awaits bench deploy + screenshot)
 
+The panel is built in the **live `ConvSimpleLive` project** (`plc/ignition-project/ConvSimpleLive/`):
+- Views: `MaintenancePanel/` (state header + Flex Repeater of `AnomalyCard` + trend iframe), `AnomalyCard/`
+  (severity + cause + next check + **Ask MIRA about this** → `openPopup`), `MiraAsk/` (seeded popup → the
+  same `:8011/ask` contract as the live native `AskMira`). Page route `/maintenance` added.
+- Diagnose source (NO WebDev): project script lib `ignition/script-python/{mira_diagnose_core,mira_tag_map,
+  mira_diagnose}/` — `runScript("mira_diagnose.cards_json"/"header_*", pollMs, tagFolders)`. `mira_diagnose_core`
+  + `mira_tag_map` are **byte-identical vendored copies** (parity-guarded; regime7 41→44 green). Reads are
+  bounded to `LEAF_MAP` leaves, read-only.
+- **Deploy + screenshot = manual bench step:** `plc/ignition-project/ConvSimpleLive/DEPLOY_MAINTENANCE_PANEL.md`.
+- Adaptations from the original sketch below (forced by live reality): WebDev is absent → project-script path;
+  the live `AskMira` is Perspective-native (no `?asset&alarm` iframe seam) → a param-seeded `MiraAsk` popup.
+
+Original Phase-2 design sketch (still the intent):
 Build a `MaintenancePanel` Perspective view (params: tagFolder, assetId, archetype, pollMs):
 - **State header** (3-second test: running/faulted/stopped + why).
 - **Anomaly feed** — Flex Repeater of `AnomalyCard` sub-views from the diagnose script; each card =
