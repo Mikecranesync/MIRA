@@ -162,6 +162,8 @@
     "photos": "照片",
     "noPhotos": "暂无附件照片",
     "addPhoto": "+ 添加",
+    "type": "类型",
+    "photosComingSoon": "照片附件即将推出",
     "viewMira": "MIRA对话",
     "openCmms": "CMMS",
     "assignedTo": "负责人",
@@ -711,6 +713,7 @@
     "openIn": "在 {provider} 中打开",
     "syncing": "正在同步到CMMS…",
     "syncingTooltip": "此工单正在推送到您的CMMS — 通常 <60秒",
-    "connectCmms": "连接CMMS →"
+    "connectCmms": "连接CMMS以同步",
+    "connectCmmsTooltip": "仅存储在FactoryLM中。连接CMMS以在外部同步工单。"
   }
 }

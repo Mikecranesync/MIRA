@@ -162,6 +162,8 @@
     "photos": "फ़ोटो",
     "noPhotos": "कोई फ़ोटो संलग्न नहीं",
     "addPhoto": "+ जोड़ें",
+    "type": "प्रकार",
+    "photosComingSoon": "फ़ोटो अटैचमेंट जल्द आ रहा है",
     "viewMira": "MIRA वार्तालाप",
     "openCmms": "CMMS",
     "assignedTo": "सौंपा गया",
@@ -711,6 +713,7 @@
     "openIn": "{provider} में खोलें",
     "syncing": "CMMS के साथ सिंक हो रहा है…",
     "syncingTooltip": "यह वर्क ऑर्डर आपके CMMS को भेजा जा रहा है — आमतौर पर <60 सेकंड",
-    "connectCmms": "CMMS कनेक्ट करें →"
+    "connectCmms": "सिंक करने के लिए CMMS कनेक्ट करें",
+    "connectCmmsTooltip": "केवल FactoryLM में संग्रहीत। वर्क ऑर्डर को बाहरी रूप से सिंक करने के लिए एक CMMS कनेक्ट करें।"
   }
 }

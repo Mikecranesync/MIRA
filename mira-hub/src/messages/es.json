@@ -162,6 +162,8 @@
     "photos": "Fotos",
     "noPhotos": "Sin fotos adjuntas",
     "addPhoto": "+ Agregar",
+    "type": "Tipo",
+    "photosComingSoon": "Adjuntar fotos próximamente",
     "viewMira": "Conversación MIRA",
     "openCmms": "CMMS",
     "assignedTo": "Asignado a",
@@ -711,6 +713,7 @@
     "openIn": "Abrir en {provider}",
     "syncing": "Sincronizando con CMMS…",
     "syncingTooltip": "Esta orden de trabajo se está enviando a tu CMMS — normalmente <60s",
-    "connectCmms": "Conectar un CMMS →"
+    "connectCmms": "Conectar CMMS para sincronizar",
+    "connectCmmsTooltip": "Almacenado solo en FactoryLM. Conecta un CMMS para sincronizar las órdenes de trabajo externamente."
   }
 }
