@@ -38,12 +38,17 @@ try {
     Copy-Item (Join-Path $REPO "ignition\script-python\*") $dst -Recurse -Force
     Write-Host "[ok] copied script-python (mira_diagnose_core, mira_tag_map, mira_diagnose)"
 
-    # --- 4. the three views ---
+    # --- 4. the views (per-view copy ONLY -- never folder-sync; preserves live-only views) ---
     $vdst = Join-Path $GW "com.inductiveautomation.perspective\views"
-    foreach ($v in "MaintenancePanel","AnomalyCard","MiraAsk") {
+    foreach ($v in "MaintenancePanel","AnomalyCard","MiraAsk","NavBar","TrendChart","Trends") {
         Copy-Item (Join-Path $REPO "com.inductiveautomation.perspective\views\$v") $vdst -Recurse -Force
         Write-Host "[ok] copied view $v"
     }
+
+    # --- 4b. in-place edits (history-enable GS10 tags + add nav links to live coord views) ---
+    Write-Host "[..] running deploy_edits.py (tag history + nav links)"
+    & python (Join-Path $REPO "deploy_edits.py")
+    Write-Host "[ok] deploy_edits.py complete"
 
     # --- 5. MERGE the /maintenance route (preserve /AskMira, /trends, etc.) ---
     $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
