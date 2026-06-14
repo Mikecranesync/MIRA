@@ -59,9 +59,15 @@ pure, dual-Py module (`signal_roles.py`) so UI, storage, and rules can't drift.
 
 ---
 
-## 3. Storage — the per-asset config Document tag (Option A)
+## 3. Storage — the per-asset config tag (Option A)
 
-**One `Document` memory tag per asset:** `[default]MIRA/Config/<assetId>/map`.
+**One `String` memory tag per asset:** `[default]MIRA/Config/<assetId>/map`, holding the map as a JSON
+string.
+
+> **Build refinement (2026-06-14):** Option A's concrete type is a **String** memory tag, not a
+> `Document` tag. `system.tag.readBlocking` returns the String value as a plain Jython string →
+> `asset_config.load_config(str)` parses it directly, avoiding `Document`→Jython value marshalling.
+> The decision ("a JSON tag, runtime-editable, no DB") is unchanged.
 
 ```jsonc
 {
