@@ -3,6 +3,7 @@ import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { ingestPdfToNode } from "@/lib/node-knowledge-ingest";
 import pool from "@/lib/db";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ const MIME_ALLOWLIST = [
   "application/vnd.openxmlformats-officedocument.",
 ];
 
-const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+const MAX_BYTES = MAX_UPLOAD_BYTES;
 
 function isMimeAllowed(mime: string): boolean {
   return MIME_ALLOWLIST.some((prefix) => mime.startsWith(prefix));
@@ -144,7 +145,7 @@ export async function POST(
     return NextResponse.json({ error: "file field is required" }, { status: 422 });
   }
   if (file.size > MAX_BYTES) {
-    return NextResponse.json({ error: "file exceeds 10 MB limit" }, { status: 413 });
+    return NextResponse.json({ error: `file exceeds ${MAX_UPLOAD_MB} MB limit` }, { status: 413 });
   }
 
   const mimeRaw = file.type || "application/octet-stream";

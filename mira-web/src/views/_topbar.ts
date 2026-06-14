@@ -92,7 +92,7 @@ export function footer(opts: TopbarOpts = {}): string {
     <ul class="fl-footer-links">
 ${items}
     </ul>
-    <button type="button" id="fl-sun-toggle" class="fl-sun-toggle" aria-pressed="false" aria-label="&#9728; Sun-readable" data-cta="sun-toggle">&#9728; Sun-readable</button>
+    <button type="button" id="fl-sun-toggle" class="fl-sun-toggle" aria-pressed="false" aria-label="Switch to sun-readable high-contrast mode" data-cta="sun-toggle">&#9728; Sun-readable</button>
   </div>
 </footer>`;
 }
