@@ -6,6 +6,7 @@ import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 import {
   retrieveManualChunks,
   buildGroundedContext,
+  isRefusalAnswer,
   type ManualChunk,
   type ManualSource,
 } from "@/lib/manual-rag";
@@ -178,12 +179,18 @@ export async function POST(req: Request) {
     );
   }
 
-  const citations: ManualSource[] = chunks.map((c, i) => ({
-    index: i + 1,
-    title: [c.manufacturer, c.modelNumber].filter(Boolean).join(" ") || c.title,
-    url: c.sourceUrl || null,
-    page: c.sourcePage,
-  }));
+  // Suppress phantom citation cards on a refusal: chunks render 1:1, so an
+  // answer that says "I don't have manuals for that" would otherwise ship with
+  // up-to-6 citation cards — the contradiction reported in PR #1875. When the
+  // model refuses, it cited nothing, so the citation list is a lie. (#1875)
+  const citations: ManualSource[] = isRefusalAnswer(result.content)
+    ? []
+    : chunks.map((c, i) => ({
+        index: i + 1,
+        title: [c.manufacturer, c.modelNumber].filter(Boolean).join(" ") || c.title,
+        url: c.sourceUrl || null,
+        page: c.sourcePage,
+      }));
 
   return NextResponse.json({
     answer: result.content,

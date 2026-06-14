@@ -48,9 +48,16 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install mira-hub npm deps (includes @playwright/test)
+      - uses: oven-sh/setup-bun@v2
+
+      # bun is the source-of-truth package manager (bun.lock). CI installed via
+      # `npm ci`, which hard-fails when package-lock.json drifts from
+      # package.json (graphology #1789 / unpdf were missing) — silently blocking
+      # every deploy. bun.lock stays in sync with package.json, so install via
+      # bun. --ignore-scripts preserves the prior `npm ci --ignore-scripts`.
+      - name: Install mira-hub deps (includes @playwright/test)
         working-directory: mira-hub
-        run: npm ci --ignore-scripts
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Install Playwright Chromium browser + OS deps
         working-directory: mira-hub
@@ -62,6 +69,13 @@ jobs:
           WEB_URL: https://factorylm.com
           HUB_URL: https://app.factorylm.com
         run: npx playwright test --config playwright.smoke.config.ts
+
+      - name: Run signup money-path tests (pricing → trial CTA → checkout → magic link)
+        working-directory: mira-hub
+        env:
+          WEB_URL: https://factorylm.com
+          HUB_URL: https://app.factorylm.com
+        run: npx playwright test --config playwright.signup.config.ts
 
       - name: Upload failure screenshots
         if: failure()

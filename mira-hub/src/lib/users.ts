@@ -251,6 +251,16 @@ export async function ensureUserAndTenant(
       [tenantName],
     );
     const tenantId = String(tenant.id);
+    // #1899b: the data-side `tenants` table (FK target of knowledge_entries.tenant_id)
+    // is separate from auth-side hub_tenants. Mirror the new tenant id here in the same
+    // transaction, so this tenant's first manual/document upload doesn't 23503 on
+    // knowledge_entries_tenant_id_fkey ("Server storage error" / folder-upload 500).
+    // tenants.name + contact_email are NOT NULL (no default); everything else defaults.
+    await client.query(
+      `INSERT INTO tenants (id, name, contact_email) VALUES ($1, $2, $3)
+       ON CONFLICT (id) DO NOTHING`,
+      [tenantId, tenantName, input.email],
+    );
     const {
       rows: [user],
     } = await client.query(

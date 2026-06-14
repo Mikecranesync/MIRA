@@ -12,7 +12,7 @@ import { UploadPicker } from "@/components/UploadPicker";
 import { UploadBlock, type UploadBlockData } from "@/components/UploadBlock";
 import { useToast } from "@/providers/toast-provider";
 import { LabsStub } from "@/components/labs-stub";
-import { API_BASE } from "@/lib/config";
+import { API_BASE, MAX_UPLOAD_MB } from "@/lib/config";
 
 const NON_TERMINAL: ReadonlyArray<UploadBlockData["status"]> = [
   "queued",
@@ -121,8 +121,8 @@ export default function DocumentsPage() {
           const msg =
             body.error === "unsupported_mime"
               ? `Unsupported file type: ${(body.got as string | undefined) || file.type || "unknown"}`
-              : body.error === "exceeds_20mb_limit"
-                ? `File too large (max 20 MB): ${file.name}`
+              : body.error === "exceeds_size_limit"
+                ? `File too large (max ${MAX_UPLOAD_MB} MB): ${file.name}`
                 : typeof body.error === "string"
                   ? body.error
                   : `Upload failed (${res.status})`;

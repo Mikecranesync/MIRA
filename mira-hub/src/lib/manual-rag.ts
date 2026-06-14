@@ -87,9 +87,57 @@ export function boundBm25Query(query: string): string {
   return tokens.join(" ");
 }
 
+// #1875 — fault-code token detector. A SINGLE letter followed by 2-4 digits:
+// matches F004, F0004, E001, A002 (and parameter tokens like b005 — boosting a
+// chunk that names them verbatim is still good retrieval). Deliberately does
+// NOT match two-letter model prefixes (PF525, GS10) or bare model numbers
+// (525) so the code pass never fires on a vendor/model token. Known limit:
+// single-digit codes ("F4") are not matched — widening to \d{1,4} would start
+// catching false positives, so terse codes rely on the normal BM25 path.
+const FAULT_CODE_RE = /\b[A-Za-z]\d{2,4}\b/g;
+
+/**
+ * Extract fault-code tokens from a query, uppercased and de-duplicated.
+ * Exported for unit testing. Empty array ⇒ the caller skips the code pass.
+ */
+export function extractFaultCodes(query: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const m of query.matchAll(FAULT_CODE_RE)) {
+    const code = m[0].toUpperCase();
+    if (!seen.has(code)) {
+      seen.add(code);
+      out.push(code);
+    }
+  }
+  return out;
+}
+
+function dedupeChunks(chunks: ManualChunk[]): ManualChunk[] {
+  const seen = new Set<string>();
+  const out: ManualChunk[] = [];
+  for (const c of chunks) {
+    const key = `${c.sourceUrl}|${c.sourcePage}|${c.content}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+  }
+  return out;
+}
+
 /**
  * Run BM25 retrieval. Tries a manufacturer-scoped query first; falls
  * back to a tenant-only query if zero hits or no manufacturer.
+ *
+ * #1875 fault-code prioritization: a verbose natural-language question
+ * ("…PowerFlex 525 is showing fault F004, what does it mean?") dilutes the
+ * BM25/OR ranking so the chunk that documents the code ranks below top-K and
+ * the model honestly refuses ("the context blocks do not mention F004") even
+ * though the chunk exists — proven live: the terse query "F004" retrieves and
+ * answers it. Mirrors the engine's `recall_fault_code` *intent* (not its RRF /
+ * structured-table apparatus): when the query names a fault code, run one extra
+ * pass keyed on the code alone and merge those chunks AHEAD of the main result.
+ * Additive only — never removes a main-pass chunk, never causes a refusal.
  */
 export async function retrieveManualChunks(
   client: PoolClient,
@@ -102,11 +150,42 @@ export async function retrieveManualChunks(
   const topK = opts.topK ?? 6;
   const mfr = (opts.manufacturer ?? "").trim();
 
+  // Main pass (manufacturer-scoped first, tenant-only fallback).
+  let main: ManualChunk[];
   if (mfr) {
     const scoped = await runBm25Query(client, tenantId, q, topK, mfr);
-    if (scoped.length > 0) return scoped;
+    main = scoped.length > 0 ? scoped : await runBm25Query(client, tenantId, q, topK, null);
+  } else {
+    main = await runBm25Query(client, tenantId, q, topK, null);
   }
-  return runBm25Query(client, tenantId, q, topK, null);
+
+  const codes = extractFaultCodes(q);
+  if (codes.length === 0) return main;
+
+  // Code pass: query on the code(s) alone (the terse form that reliably
+  // surfaces the documenting chunk), manufacturer-scoped first then fallback.
+  const codeQuery = codes.join(" ");
+  let codeHits = mfr ? await runBm25Query(client, tenantId, codeQuery, topK, mfr) : [];
+  if (codeHits.length === 0) {
+    codeHits = await runBm25Query(client, tenantId, codeQuery, topK, null);
+  }
+  if (codeHits.length === 0) return main;
+
+  return dedupeChunks([...codeHits, ...main]).slice(0, topK);
+}
+
+// #1875 — the exact cite-or-refuse sentence the quickstart system prompt tells
+// the model to emit when context has no support. The route uses this to
+// suppress phantom citation cards on a refusal (chunks render 1:1, so a refusal
+// otherwise ships with 6 citations under "I don't have manuals" — the
+// contradiction reported in PR #1875). Kept here so it is unit-testable.
+export const QUICKSTART_REFUSAL_MARK =
+  "I don't have manuals for that in the public knowledge base";
+
+/** True when an answer is the quickstart cite-or-refuse refusal. */
+export function isRefusalAnswer(answer: string | null | undefined): boolean {
+  if (!answer) return false;
+  return answer.toLowerCase().includes(QUICKSTART_REFUSAL_MARK.toLowerCase());
 }
 
 async function runBm25Query(
@@ -281,19 +360,48 @@ export async function retrieveNodeChunks(
 }
 
 /**
- * Build the grounded context block for the system prompt. Chunks are
- * numbered so the model can cite with `[n]` markers.
+ * Stable citation key for a chunk's source. Two chunks from the same document
+ * page share one key (and therefore one citation number + one UI chip).
+ */
+function sourceKey(c: Pick<ManualChunk, "sourceUrl" | "sourcePage">): string {
+  return `${c.sourceUrl}::${c.sourcePage ?? ""}`;
+}
+
+/**
+ * Assign every unique source (url, page) a stable 1-based citation number in
+ * first-appearance order. #1912: buildGroundedContext (the blocks the model
+ * cites) and chunksToSources (the chips the UI renders) MUST share this numbering
+ * — otherwise the model cites a per-chunk block number (e.g. two excerpts of the
+ * same page → blocks [1] and [2]) while the deduped chip list only shows [1], and
+ * the answer's `[2]` has no matching chip. Numbering by source key makes both
+ * spaces identical: every inline `[n]` has a rendered `[n]` chip.
+ */
+function citationIndex(chunks: ManualChunk[]): Map<string, number> {
+  const idx = new Map<string, number>();
+  for (const c of chunks) {
+    const key = sourceKey(c);
+    if (!idx.has(key)) idx.set(key, idx.size + 1);
+  }
+  return idx;
+}
+
+/**
+ * Build the grounded context block for the system prompt. Each chunk is labelled
+ * with its SOURCE citation number (#1912): excerpts from the same document page
+ * share one `[n]`, matching the single chip chunksToSources renders for them.
  */
 export function buildGroundedContext(chunks: ManualChunk[]): string {
   if (chunks.length === 0) return "";
-  const blocks = chunks.map((c, i) => {
+  const idx = citationIndex(chunks);
+  const blocks = chunks.map((c) => {
+    const n = idx.get(sourceKey(c))!;
     const headBits = [c.manufacturer, c.modelNumber].filter(Boolean);
     const head = headBits.join(" ") || c.title || "OEM document";
     const page = c.sourcePage != null ? `, p.${c.sourcePage}` : "";
     const content = c.content.length > MAX_CONTENT_CHARS
       ? `${c.content.slice(0, MAX_CONTENT_CHARS)}…`
       : c.content;
-    return `[${i + 1}] ${head}${page}\n${content}`;
+    return `[${n}] ${head}${page}\n${content}`;
   });
   return blocks.join("\n\n---\n\n");
 }
@@ -321,23 +429,28 @@ ${buildGroundedContext(chunks)}`;
 }
 
 /**
- * Public source descriptors for the UI. Dedupes by (url, page).
+ * Public source descriptors for the UI. Dedupes by (url, page) and numbers each
+ * chip with the SAME citation index the model is shown (#1912) — so an inline
+ * `[n]` in the answer always maps to a rendered `[n]` chip. Indices are
+ * contiguous 1..M over the unique sources (previously `i + 1` used the pre-dedupe
+ * position, which could emit a non-contiguous [3] for the 2nd unique chip).
  */
 export function chunksToSources(chunks: ManualChunk[]): ManualSource[] {
+  const idx = citationIndex(chunks);
   const seen = new Set<string>();
   const out: ManualSource[] = [];
-  chunks.forEach((c, i) => {
-    const key = `${c.sourceUrl}::${c.sourcePage ?? ""}`;
-    if (seen.has(key)) return;
+  for (const c of chunks) {
+    const key = sourceKey(c);
+    if (seen.has(key)) continue;
     seen.add(key);
     const titleBits = [c.manufacturer, c.modelNumber].filter(Boolean);
     const title = titleBits.join(" ") || c.title || c.sourceUrl || "OEM document";
     out.push({
-      index: i + 1,
+      index: idx.get(key)!,
       title,
       url: c.sourceUrl || null,
       page: c.sourcePage,
     });
-  });
+  }
   return out;
 }
