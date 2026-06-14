@@ -5,7 +5,7 @@ import Link from "next/link";
 import Script from "next/script";
 import { X, Upload as UploadIcon, Search, Loader2, FolderOpen, Package, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { API_BASE } from "@/lib/config";
+import { API_BASE, MAX_UPLOAD_MB } from "@/lib/config";
 
 export type PickResult = {
   provider: "google" | "dropbox";
@@ -429,7 +429,7 @@ export function UploadPicker({
               {uploading ? "Uploading…" : "Drop PDFs or photos here — or click to browse"}
             </span>
             <span className="text-xs" style={{ color: "var(--foreground-subtle)" }}>
-              PDF, JPEG, PNG, WebP, HEIC · Up to 20 MB each
+              PDF, JPEG, PNG, WebP, HEIC · Up to {MAX_UPLOAD_MB} MB each
             </span>
             <input
               ref={fileInputRef}

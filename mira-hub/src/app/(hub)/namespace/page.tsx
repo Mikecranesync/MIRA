@@ -347,6 +347,14 @@ export default function NamespacePage() {
           icon={<FolderPlus className="h-3.5 w-3.5" />}
           label="New Folder"
           testId="toolbar-new-folder"
+          // #1917: keep New Folder disabled until the initial tree load resolves.
+          // `loading` starts true (so the SSR HTML renders the button disabled)
+          // and only flips false inside a post-hydration effect — so a click on a
+          // fresh empty namespace can't land before React wires up onClick and get
+          // silently dropped (the input never appeared). Native disabled blocks the
+          // early click; Playwright's .click() auto-waits for "enabled", so the
+          // first interaction always happens once the page is truly interactive.
+          disabled={loading}
           onClick={() => setNewFolder({ parentId: selected?.id ?? null, value: "" })}
         />
         <ToolbarButton

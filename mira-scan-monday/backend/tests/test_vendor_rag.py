@@ -92,6 +92,37 @@ async def test_vendor_chat_returns_none_when_no_patterns():
 
 
 @pytest.mark.asyncio
+async def test_vendor_chat_no_chunks_returns_no_docs_message(monkeypatch):
+    """Known asset in the allowlist but no KB chunks — should return a
+    deterministic 'no documentation' message, NOT None (which would fall
+    through to the raw MIRA_KB_BASE_URL config error).
+    """
+
+    async def empty_chunks(_patterns, _query, **_kwargs):  # noqa: ARG001
+        return []
+
+    monkeypatch.setattr(vendor_rag, "retrieve_vendor_chunks", empty_chunks)
+    monkeypatch.setattr(
+        vendor_rag,
+        "_providers",
+        lambda: [{"name": "stub", "url": "x", "key": "x", "model": "x"}],
+    )
+
+    result = await vendor_rag.vendor_chat(
+        message="What does fault code F12 mean?",
+        asset_id="automationdirect-gs10",
+        asset_label="AutomationDirect GS10",
+        history=[],
+    )
+    # Must NOT return None — returning None exposes the config-error string to users.
+    assert result is not None
+    reply, sources = result
+    assert "AutomationDirect GS10" in reply
+    assert "knowledge base" in reply.lower()
+    assert sources == []
+
+
+@pytest.mark.asyncio
 async def test_vendor_chat_filters_by_manufacturer(monkeypatch):
     """The retrieval SQL must restrict by manufacturer ILIKE — never
     return chunks from unrelated vendors. We assert by inspecting the

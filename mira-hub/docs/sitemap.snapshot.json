@@ -1,7 +1,7 @@
 {
   "basePath": "/hub",
   "counts": {
-    "pages": 48,
+    "pages": 57,
     "apiRoutes": 116
   },
   "pages": [
@@ -45,6 +45,15 @@
     "/requests/new",
     "/scan",
     "/schedule",
+    "/settings",
+    "/settings/audit-log",
+    "/settings/integrations",
+    "/settings/organization",
+    "/settings/review-queue",
+    "/settings/roles",
+    "/settings/security",
+    "/settings/usage",
+    "/settings/users",
     "/signup",
     "/team",
     "/upgrade",
