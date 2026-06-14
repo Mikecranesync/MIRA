@@ -27,6 +27,14 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 RULES_CORE = REPO / "plc" / "conv_simple_anomaly" / "rules_core.py"
 VENDORED = REPO / "ignition" / "webdev" / "FactoryLM" / "api" / "diagnose" / "diagnose_core.py"
+TAG_MAP_SRC = REPO / "ignition" / "webdev" / "FactoryLM" / "api" / "diagnose" / "tag_topic_map.py"
+
+# Phase 2: the Perspective project-library diagnose seam (runs in-gateway WITHOUT WebDev) vendors
+# the SAME rule core + tag map as byte-identical sibling script modules. These must not drift.
+SCRIPT_LIB = (REPO / "plc" / "ignition-project" / "ConvSimpleLive" / "ignition"
+              / "script-python")
+SCRIPT_CORE = SCRIPT_LIB / "mira_diagnose_core" / "code.py"
+SCRIPT_TAG_MAP = SCRIPT_LIB / "mira_tag_map" / "code.py"
 
 
 def _load(path, name):
@@ -115,6 +123,31 @@ def test_vendored_copy_is_byte_identical():
 
 def test_vendored_copy_imports_and_matches(core):
     vend = _load(VENDORED, "diagnose_core_under_test")
+    for _id, _sev, snap, derived in GOLDENS:
+        a = [x.rule_id for x in core.evaluate(snap, derived)]
+        b = [x.rule_id for x in vend.evaluate(snap, derived)]
+        assert a == b
+
+
+# --- Phase 2 drift guard: the Perspective project-library script copies must not diverge ---
+def test_script_lib_core_is_byte_identical():
+    assert SCRIPT_CORE.exists(), "missing project-script rule core: %s" % SCRIPT_CORE
+    assert RULES_CORE.read_bytes() == SCRIPT_CORE.read_bytes(), (
+        "mira_diagnose_core/code.py has drifted from rules_core.py -- re-sync with:\n"
+        "  cp plc/conv_simple_anomaly/rules_core.py "
+        "plc/ignition-project/ConvSimpleLive/ignition/script-python/mira_diagnose_core/code.py")
+
+
+def test_script_lib_tag_map_is_byte_identical():
+    assert SCRIPT_TAG_MAP.exists(), "missing project-script tag map: %s" % SCRIPT_TAG_MAP
+    assert TAG_MAP_SRC.read_bytes() == SCRIPT_TAG_MAP.read_bytes(), (
+        "mira_tag_map/code.py has drifted from the WebDev tag_topic_map.py -- re-sync with:\n"
+        "  cp ignition/webdev/FactoryLM/api/diagnose/tag_topic_map.py "
+        "plc/ignition-project/ConvSimpleLive/ignition/script-python/mira_tag_map/code.py")
+
+
+def test_script_lib_core_imports_and_matches(core):
+    vend = _load(SCRIPT_CORE, "script_lib_core_under_test")
     for _id, _sev, snap, derived in GOLDENS:
         a = [x.rule_id for x in core.evaluate(snap, derived)]
         b = [x.rule_id for x in vend.evaluate(snap, derived)]
