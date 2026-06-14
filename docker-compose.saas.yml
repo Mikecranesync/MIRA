@@ -553,6 +553,10 @@ services:
       - "127.0.0.1:3101:3000"
     environment:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      # Command Center display registration SSRF lockdown (PR #1960): comma-separated
+      # exact hosts allowed as live-display probe targets. Empty = link-local/metadata
+      # block only (pure code). Set in Doppler factorylm/prd to bound the surface.
+      - COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST=${COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST:-}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://app.factorylm.com}
       # AES-256-GCM key for at-rest encryption of OAuth tokens in hub_channel_bindings
       - OAUTH_TOKEN_ENC_KEY=${OAUTH_TOKEN_ENC_KEY:-}
