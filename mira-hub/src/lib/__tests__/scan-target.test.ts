@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractAssetTag } from "../scan-target";
+import { extractAssetTag, buildScanRoute } from "../scan-target";
 
 describe("extractAssetTag", () => {
   it("extracts a tag from the canonical app.factorylm.com URL", () => {
@@ -50,5 +50,30 @@ describe("extractAssetTag", () => {
   it("rejects tags that exceed the 64-char limit", () => {
     const tooLong = "A".repeat(65);
     expect(extractAssetTag(tooLong)).toBeNull();
+  });
+});
+
+describe("buildScanRoute", () => {
+  it("defaults to the asset mobile page when there is no returnTo", () => {
+    expect(buildScanRoute(null, "VFD-07")).toBe("/m/VFD-07");
+    expect(buildScanRoute(undefined, "VFD-07")).toBe("/m/VFD-07");
+    expect(buildScanRoute("", "VFD-07")).toBe("/m/VFD-07");
+  });
+
+  it("returns the scanned tag to a safe internal returnTo (New Work Order flow)", () => {
+    expect(buildScanRoute("/workorders/new", "QA-CMMS-SS-214546")).toBe(
+      "/workorders/new?assetTag=QA-CMMS-SS-214546",
+    );
+  });
+
+  it("percent-encodes the tag in the returnTo query", () => {
+    expect(buildScanRoute("/workorders/new", "A B")).toBe("/workorders/new?assetTag=A%20B");
+  });
+
+  it("rejects open-redirect targets and falls back to /m/<tag>", () => {
+    expect(buildScanRoute("https://evil.com", "VFD-07")).toBe("/m/VFD-07");
+    expect(buildScanRoute("//evil.com", "VFD-07")).toBe("/m/VFD-07");
+    expect(buildScanRoute("/workorders/new?x=1", "VFD-07")).toBe("/m/VFD-07");
+    expect(buildScanRoute("javascript:alert(1)", "VFD-07")).toBe("/m/VFD-07");
   });
 });

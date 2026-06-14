@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Keyboard, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { extractAssetTag } from "@/lib/scan-target";
+import { extractAssetTag, buildScanRoute } from "@/lib/scan-target";
 
 type ScanState = "starting" | "scanning" | "denied" | "unsupported" | "error";
 
@@ -31,6 +31,22 @@ export default function ScanPage() {
       streamRef.current = null;
     }
   }, []);
+
+  // Route a resolved asset tag to its destination. The default is the asset's
+  // mobile page (/m/<tag>). When the scanner was opened with a `returnTo`
+  // (e.g. the New Work Order wizard: /scan?returnTo=/workorders/new), send the
+  // tag back to that surface as `?assetTag=` so it can preselect the asset.
+  // `returnTo` is validated to an internal path to prevent open-redirect.
+  const routeForTag = useCallback(
+    (tag: string) => {
+      const returnTo =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("returnTo")
+          : null;
+      router.push(buildScanRoute(returnTo, tag));
+    },
+    [router],
+  );
 
   const start = useCallback(async () => {
     setError(null);
@@ -67,7 +83,7 @@ export default function ScanPage() {
               const tag = extractAssetTag(results[0].rawValue);
               if (tag) {
                 stop();
-                router.push(`/m/${encodeURIComponent(tag)}`);
+                routeForTag(tag);
                 return;
               }
             }
@@ -90,7 +106,7 @@ export default function ScanPage() {
         setError(err.message || "Could not start the camera.");
       }
     }
-  }, [router, stop]);
+  }, [routeForTag, stop]);
 
   useEffect(() => {
     // Defer to a microtask so the synchronous setState calls inside start()
@@ -107,7 +123,7 @@ export default function ScanPage() {
     const tag = extractAssetTag(manual);
     if (!tag) return;
     stop();
-    router.push(`/m/${encodeURIComponent(tag)}`);
+    routeForTag(tag);
   }
 
   const manualValid = extractAssetTag(manual) !== null;

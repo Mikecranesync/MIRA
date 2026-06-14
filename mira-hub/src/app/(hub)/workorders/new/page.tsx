@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Search, QrCode, Camera, CheckCircle2, Loader2, X, ImagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OpenInCMMSButton } from "@/components/cmms/open-in-cmms-button";
+import { photoAttachHelp } from "@/lib/work-order-copy";
 import { useTranslations } from "next-intl";
 
 type AssetOption = { id: string; name: string; tag: string; location: string };
@@ -67,6 +69,8 @@ export default function NewWorkOrderPage() {
 
   const [photos, setPhotos] = useState<PhotoState[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const router = useRouter();
 
   function uploadPhoto(p: PhotoState, assetTag: string) {
     setPhotos((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: "uploading" } : x)));
@@ -133,7 +137,22 @@ export default function NewWorkOrderPage() {
           return;
         }
         const data = (await res.json()) as AssetRow[];
-        if (!cancelled) setAssets(data.map(toAssetOption));
+        if (!cancelled) {
+          const opts = data.map(toAssetOption);
+          setAssets(opts);
+          // QR return: the scanner (/scan?returnTo=/workorders/new) hands the
+          // scanned asset tag back as ?assetTag=. Preselect the matching asset,
+          // or prefill the search box so the tech sees what was scanned.
+          const scannedTag =
+            typeof window !== "undefined"
+              ? new URLSearchParams(window.location.search).get("assetTag")
+              : null;
+          if (scannedTag) {
+            const match = opts.find((a) => a.tag.toLowerCase() === scannedTag.toLowerCase());
+            if (match) setSelectedAsset(match);
+            else setAssetQuery(scannedTag);
+          }
+        }
       } catch {
         if (!cancelled) setAssetsError("Could not load assets");
       } finally {
@@ -285,7 +304,13 @@ export default function NewWorkOrderPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--foreground-subtle)" }} />
                 <Input placeholder={`${tCommon("search")}…`} value={assetQuery} onChange={e => setAssetQuery(e.target.value)} className="pl-9" />
               </div>
-              <Button variant="outline" size="icon" title="Scan QR">
+              <Button
+                variant="outline"
+                size="icon"
+                title="Scan QR"
+                aria-label="Scan QR code to select an asset"
+                onClick={() => router.push("/scan?returnTo=/workorders/new")}
+              >
                 <QrCode className="w-4 h-4" />
               </Button>
             </div>
@@ -408,7 +433,11 @@ export default function NewWorkOrderPage() {
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
+                  aria-label="Take photo"
+                  aria-describedby="wo-photo-help"
                   onClick={() => {
+                    // capture="environment" tells supported mobile browsers to open
+                    // the rear camera directly. Set it only for "Take photo".
                     if (fileInputRef.current) {
                       fileInputRef.current.setAttribute("capture", "environment");
                       fileInputRef.current.click();
@@ -422,7 +451,11 @@ export default function NewWorkOrderPage() {
                 </button>
                 <button
                   type="button"
+                  aria-label="Upload photo"
+                  aria-describedby="wo-photo-help"
                   onClick={() => {
+                    // Remove capture so "Upload photo" opens the file picker rather
+                    // than the camera.
                     if (fileInputRef.current) {
                       fileInputRef.current.removeAttribute("capture");
                       fileInputRef.current.click();
@@ -435,6 +468,11 @@ export default function NewWorkOrderPage() {
                   <span className="text-sm font-medium" style={{ color: "var(--foreground)" }}>Upload photo</span>
                 </button>
               </div>
+
+              <p id="wo-photo-help" className="text-[11px] mt-2" style={{ color: "var(--foreground-subtle)" }}>
+                <strong>Take photo</strong> opens your camera on supported mobile devices.{" "}
+                <strong>Upload photo</strong> opens the file picker.
+              </p>
 
               {photos.length > 0 && (
                 <div className="mt-3 grid grid-cols-3 gap-2">
@@ -457,8 +495,11 @@ export default function NewWorkOrderPage() {
                         </div>
                       )}
                       {p.status === "failed" && (
-                        <div className="absolute inset-0 flex items-center justify-center text-[10px] text-white text-center px-1 bg-red-600/80">
-                          {p.error ?? "Failed"}
+                        <div
+                          className="absolute inset-0 flex items-center justify-center text-[10px] text-white text-center px-1 bg-red-600/80"
+                          title={p.error ? `Upload failed: ${p.error}` : "Upload failed"}
+                        >
+                          {p.error ?? "Upload failed"}
                         </div>
                       )}
                       <button
@@ -475,7 +516,7 @@ export default function NewWorkOrderPage() {
               )}
 
               <p className="text-[11px] mt-2" style={{ color: "var(--foreground-subtle)" }}>
-                Photos attach to {selectedAsset?.tag ? `asset ${selectedAsset.tag}` : "the selected asset"} in MIRA&apos;s knowledge base.
+                {photoAttachHelp(selectedAsset?.tag)}
               </p>
             </div>
 
