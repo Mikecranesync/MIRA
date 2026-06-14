@@ -56,3 +56,5 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `HARDENING_LOCK_DIR` | tools/lead-hunter — directory for singleton lock file; default `/tmp` |
 | `HARDENING_ALERT_LOG` | tools/lead-hunter — JSONL alert log path; default `marketing/prospects/hardening-alerts.jsonl` |
 | `DISCORD_ALERT_WEBHOOK` | tools/lead-hunter — optional Discord webhook URL for degraded/failed runs |
+| `COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST` | mira-hub — comma-separated exact hosts allowed as Command Center display targets (e.g. `127.0.0.1,192.168.1.20,100.72.2.99`). The tree route server-side-probes each registered display host; **set this in prod** to bound the SSRF surface of `POST /api/command-center/display` to known proxy/HMI origins. Unset = no restriction beyond the validator's link-local/metadata block (dev/bench). Interim control until #578 enables a true admin-role gate. |
+| `CSP_FRAME_SRC_DISPLAY_HOSTS` | mira-hub `src/middleware.ts` — comma-separated hosts added to the site-wide CSP `frame-src` allowlist (for any framed display surface). Distinct from the allowlist above: this governs what the browser may frame, not what may be registered. |

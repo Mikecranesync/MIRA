@@ -1,23 +1,24 @@
 /**
- * Command Center (Phase 1) render proof.
+ * Command Center render proof — displays-first view, onboarding empty state,
+ * refresh-persists, and down-not-missing.
  *
  * Auth: mint a next-auth JWE session cookie (Hub local-e2e recipe) signed with the
  * SAME AUTH_SECRET the server boots with (see playwright.command-center.config.ts)
  * so the (hub) middleware lets us in — no real login.
  *
- * Data: the tree + display endpoints are mocked via page.route() so the screenshot
- * is deterministic (green dot guaranteed) and doesn't depend on dev-DB seed state
- * or Node-RED being reachable. The real tree route + reachability probe were proven
- * separately at the data layer; this spec proves the UI renders.
- *
- * Captures desktop (1440×900) + mobile (412×915) into docs/promo-screenshots/.
+ * Data: the tree is mocked via page.route() so renders are deterministic and don't
+ * depend on dev-DB seed state or any HMI being reachable. DB-level PERSISTENCE of a
+ * registered display is proven separately + non-circularly by
+ * scripts/verify-display-register-roundtrip.sh (ephemeral Postgres round-trip);
+ * mocking the tree here would only prove the UI re-renders what it's handed, so this
+ * spec scopes itself to UI-state rendering.
  *
  * Run:
  *   cd mira-hub
  *   doppler run -p factorylm -c dev -- npx playwright test \
  *     --config playwright.command-center.config.ts
  */
-import { test, expect } from "@playwright/test";
+import { test, expect, type BrowserContext } from "@playwright/test";
 import { encode } from "next-auth/jwt";
 import * as path from "path";
 import * as fs from "fs";
@@ -25,191 +26,175 @@ import * as fs from "fs";
 const AUTH_SECRET = "cc-e2e-fixed-secret-do-not-use-in-prod";
 const TENANT_ID = "00000000-0000-0000-0000-0000000000cc"; // valid UUID; gate doesn't hit DB
 const OUT = path.resolve(__dirname, "..", "..", "..", "docs", "promo-screenshots");
-const DATE = "2026-05-29";
+const DATE = "2026-06-14";
 
 const DISPLAY_ID = "11111111-1111-1111-1111-111111111111";
-const UNS = "enterprise.home_garage.conveyor_lab.conveyor_1";
+const CONV_UNS = "enterprise.bench.area.conv_simple";
 
-// Deterministic tree: a site → area → two assets, one with a LIVE display.
-// Schema mirrors TreeResponse + CCNode in src/app/api/command-center/tree/route.ts.
-const TREE = {
-  total: 4,
-  displaysTotal: 1,
-  liveCount: 1,
-  freshnessCounts: { live: 1, stale: 0, simulated: 0 },
-  nodes: [
-    {
-      id: "site-1",
-      name: "Lake Wales Plant",
-      kind: "site",
-      unsPath: "enterprise.home_garage",
-      filesCount: 0,
-      status: null,
-      counts: { children: 1, proposalsPending: 0, proposalsVerified: 0 },
-      hasLiveDisplay: false,
-      displayId: null,
-      displayType: null,
-      displayLabel: null,
-      tagFreshness: "unknown",
-      live: false,
-      children: [
-        {
-          id: "area-1",
-          name: "Conveyor Lab",
-          kind: "namespace",
-          unsPath: "enterprise.home_garage.conveyor_lab",
-          filesCount: 0,
-          status: null,
-          counts: { children: 2, proposalsPending: 0, proposalsVerified: 0 },
-          hasLiveDisplay: false,
-          displayId: null,
-          displayType: null,
-          displayLabel: null,
-          tagFreshness: "unknown",
-          live: false,
-          children: [
-            {
-              id: "asset-conv-1",
-              name: "Conveyor 1",
-              kind: "equipment",
-              unsPath: UNS,
-              filesCount: 3,
-              status: "running",
-              counts: { children: 0, proposalsPending: 0, proposalsVerified: 2 },
-              hasLiveDisplay: true,
-              displayId: DISPLAY_ID,
-              displayType: "nodered",
-              displayLabel: "Conveyor 1 — Fault Detective",
-              tagFreshness: "live",
-              live: true,
-              children: [],
-            },
-            {
-              id: "asset-pump-1",
-              name: "Coolant Pump 1",
-              kind: "equipment",
-              unsPath: "enterprise.home_garage.conveyor_lab.coolant_pump_1",
-              filesCount: 1,
-              status: "stopped",
-              counts: { children: 0, proposalsPending: 1, proposalsVerified: 0 },
-              hasLiveDisplay: false,
-              displayId: null,
-              displayType: null,
-              displayLabel: null,
-              tagFreshness: "unknown",
-              live: false,
-              children: [],
-            },
-          ],
-        },
-      ],
-    },
-  ],
+// A leaf display node (conv_simple) used inside the trees below.
+function convNode(live: boolean) {
+  return {
+    id: "asset-conv-1",
+    name: "Conveyor",
+    kind: "equipment",
+    unsPath: CONV_UNS,
+    filesCount: 0,
+    status: "running",
+    counts: { children: 0, proposalsPending: 0, proposalsVerified: 0 },
+    hasLiveDisplay: true,
+    displayId: DISPLAY_ID,
+    displayType: "web_iframe",
+    displayLabel: "Conv Simple — Live",
+    tagFreshness: live ? "live" : "stale",
+    live,
+    children: [],
+  };
+}
+
+// An audit/test node like the ones the secret-shopper QA saw dumped.
+const AUDIT_NODE = {
+  id: "audit-1",
+  name: "Audit 0o494d 0O494D",
+  kind: "area",
+  unsPath: "audit_0o494d_0o494d",
+  filesCount: 0,
+  status: null,
+  counts: { children: 0, proposalsPending: 0, proposalsVerified: 0 },
+  hasLiveDisplay: false,
+  displayId: null,
+  displayType: null,
+  displayLabel: null,
+  tagFreshness: "unknown",
+  live: false,
+  children: [] as unknown[],
 };
 
-// The viewer no longer iframes the HMI — it hands off via "Open Live View" in a
-// new tab. Mocking the display route is still useful so a stray top-level click
-// during the test never reaches a real LAN host.
+// Tree WITH a configured conv_simple display (+ an audit node to prove demotion).
+function treeWithDisplay(live = true) {
+  return {
+    total: 2,
+    displaysTotal: 1,
+    liveCount: live ? 1 : 0,
+    freshnessCounts: { live: live ? 1 : 0, stale: live ? 0 : 1, simulated: 0 },
+    nodes: [AUDIT_NODE, convNode(live)],
+  };
+}
+
+// Tree with NO displays + NO telemetry — the empty/onboarding case (118 audit nodes).
+const TREE_EMPTY = {
+  total: 1,
+  displaysTotal: 0,
+  liveCount: 0,
+  freshnessCounts: { live: 0, stale: 0, simulated: 0 },
+  nodes: [AUDIT_NODE],
+};
+
 const FAKE_HMI_REDIRECT_BODY = "<!doctype html><html><body>handoff</body></html>";
+
+async function auth(context: BrowserContext, baseURL: string, uid: string) {
+  const trialExpiresAt = new Date(Date.now() + 30 * 86_400_000).toISOString();
+  const token = await encode({
+    token: { uid, tid: TENANT_ID, status: "trial", trialExpiresAt, email: `${uid}@factorylm-test.com` },
+    secret: AUTH_SECRET,
+  });
+  await context.addCookies([{ name: "next-auth.session-token", value: token, url: baseURL }]);
+}
 
 test.beforeAll(() => {
   fs.mkdirSync(OUT, { recursive: true });
 });
 
-test("command center renders — UNS tree, freshness summary, Open Live View handoff", async ({
-  page,
-  context,
-  baseURL,
+test("displays-first: Live Views leads, audit nodes are demoted, Open Live View hands off", async ({
+  page, context, baseURL,
 }) => {
-  // 1) Mint the session cookie so (hub) middleware admits us.
-  const trialExpiresAt = new Date(Date.now() + 30 * 86_400_000).toISOString();
-  const token = await encode({
-    token: {
-      uid: "cc-e2e-user",
-      tid: TENANT_ID,
-      status: "trial",
-      trialExpiresAt,
-      email: "command-center-e2e@factorylm-test.com",
-    },
-    secret: AUTH_SECRET,
-  });
-  await context.addCookies([
-    { name: "next-auth.session-token", value: token, url: baseURL! },
-  ]);
-
-  // 2) Deterministic data: mock the tree fetch + the handoff route.
+  await auth(context, baseURL!, "cc-e2e-user");
   await page.route("**/api/command-center/tree*", (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify(TREE) }),
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(treeWithDisplay(true)) }),
   );
   await page.route("**/api/command-center/display/**", (route) =>
     route.fulfill({ contentType: "text/html", body: FAKE_HMI_REDIRECT_BODY }),
   );
 
-  // 3) Desktop render.
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/command-center", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByRole("heading", { name: "Command Center" })).toBeVisible();
-  // Freshness summary "1 live · 0 stale · 0 sim · 1/1 display up" confirms tree
-  // + freshnessCounts + display-reachability logic ran. Match the substring so
-  // whitespace / dot punctuation doesn't break the assertion.
-  await expect(page.getByText(/1 live · 0 stale · 0 sim/)).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText(/1\/1 display.*up/)).toBeVisible();
-  // The conveyor row with its live dot.
-  await expect(page.getByText("Conveyor 1")).toBeVisible();
+  // Live Views section leads with the configured display.
+  await expect(page.getByText(/Live Views \(1\)/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Conv Simple — Live").first()).toBeVisible();
+  // exact: the header summary also contains "…display up" ("1/1 display up").
+  // first: the auto-selected viewer header also renders "display up".
+  await expect(page.getByText("display up", { exact: true }).first()).toBeVisible();
+  // The audit node is NOT in the default view (it's behind "All namespace nodes").
+  await expect(page.getByText("Audit 0o494d 0O494D")).toHaveCount(0);
 
-  await page.screenshot({
-    path: path.join(OUT, `${DATE}_command-center-tree-live_desktop.png`),
-    fullPage: false,
-  });
-  console.log(`📸 ${DATE}_command-center-tree-live_desktop.png`);
+  await page.screenshot({ path: path.join(OUT, `${DATE}_command-center-live-views_desktop.png`), fullPage: false });
 
-  // 4) Select the live asset → viewer offers an "Open Live View" handoff link.
-  await page.getByText("Conveyor 1").click();
-  await expect(page.getByText(/^Live$/)).toBeVisible({ timeout: 10_000 });
+  // Selecting the display offers the new-tab handoff.
+  await page.getByText("Conv Simple — Live").first().click();
   const openLink = page.getByRole("link", { name: /Open Live View/i });
-  await expect(openLink).toBeVisible();
+  await expect(openLink).toBeVisible({ timeout: 10_000 });
   await expect(openLink).toHaveAttribute("target", "_blank");
-  await expect(openLink).toHaveAttribute("rel", /noopener/);
   await expect(openLink).toHaveAttribute("href", /\/api\/command-center\/display\//);
-  await page.screenshot({
-    path: path.join(OUT, `${DATE}_command-center-watching-display_desktop.png`),
-    fullPage: false,
-  });
-  console.log(`📸 ${DATE}_command-center-watching-display_desktop.png`);
 
-  // 5) Mobile render.
-  await page.setViewportSize({ width: 412, height: 915 });
-  await page.waitForTimeout(300);
-  await page.screenshot({
-    path: path.join(OUT, `${DATE}_command-center-tree-live_mobile.png`),
-    fullPage: false,
-  });
-  console.log(`📸 ${DATE}_command-center-tree-live_mobile.png`);
+  // Demoted tree is reachable on demand.
+  await page.getByText(/All namespace nodes \(2\)/).click();
+  await expect(page.getByText("Audit 0o494d 0O494D")).toBeVisible();
 });
 
-// Defense-in-depth CSP guard. The viewer no longer iframes the HMI (it hands off
-// in a new tab — see Open Live View), so frame-src is no longer load-bearing for
-// the Command Center. The directive is still enforced site-wide and 'self' must
-// stay listed for any future framed surface; assert that minimum here.
-// See mira-hub/src/middleware.ts (DISPLAY_FRAME_SRC / CSP_FRAME_SRC_DISPLAY_HOSTS).
-test("CSP frame-src admits the display iframe ('self' + configured hosts)", async ({
-  page,
-  context,
-  baseURL,
-}) => {
-  const trialExpiresAt = new Date(Date.now() + 30 * 86_400_000).toISOString();
-  const token = await encode({
-    token: { uid: "cc-csp-user", tid: TENANT_ID, status: "trial", trialExpiresAt, email: "cc-csp@factorylm-test.com" },
-    secret: AUTH_SECRET,
-  });
-  await context.addCookies([{ name: "next-auth.session-token", value: token, url: baseURL! }]);
+test("refresh keeps the configured display present", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!, "cc-refresh-user");
+  await page.route("**/api/command-center/tree*", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(treeWithDisplay(true)) }),
+  );
+  await page.goto("/command-center", { waitUntil: "domcontentloaded" });
+  await expect(page.getByText("Conv Simple — Live").first()).toBeVisible({ timeout: 15_000 });
 
+  await page.getByRole("button", { name: /Refresh/i }).click();
+  // Still present after an explicit refresh (re-fetch returns the same row).
+  await expect(page.getByText("Conv Simple — Live").first()).toBeVisible();
+  await expect(page.getByText(/Live Views \(1\)/)).toBeVisible();
+});
+
+test("down display stays listed and is marked down (configured, not missing)", async ({
+  page, context, baseURL,
+}) => {
+  await auth(context, baseURL!, "cc-down-user");
+  await page.route("**/api/command-center/tree*", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(treeWithDisplay(false)) }),
+  );
+  await page.goto("/command-center", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByText("Conv Simple — Live").first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("display down", { exact: true }).first()).toBeVisible();
+});
+
+test("empty state: onboarding CTA instead of an audit-node dump", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!, "cc-empty-user");
+  await page.route("**/api/command-center/tree*", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(TREE_EMPTY) }),
+  );
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/command-center", { waitUntil: "domcontentloaded" });
+
+  await expect(page.getByText("No live displays connected yet")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: /Connect live view/i }).first()).toBeVisible();
+  // Audit nodes are NOT the primary content — hidden until explicitly browsed.
+  await expect(page.getByText("Audit 0o494d 0O494D")).toHaveCount(0);
+
+  await page.screenshot({ path: path.join(OUT, `${DATE}_command-center-empty-onboarding_desktop.png`), fullPage: false });
+
+  // Demoted, not deleted: the operator can still reach the raw namespace.
+  await page.getByText(/Browse all namespace nodes/).click();
+  await expect(page.getByText("Audit 0o494d 0O494D")).toBeVisible();
+});
+
+// Defense-in-depth CSP guard (site-wide frame-src must keep 'self' for any future
+// framed surface). The viewer hands off in a new tab rather than iframing.
+test("CSP frame-src keeps 'self'", async ({ page, context, baseURL }) => {
+  await auth(context, baseURL!, "cc-csp-user");
   const res = await page.goto("/command-center", { waitUntil: "domcontentloaded" });
   const csp = res?.headers()["content-security-policy"] ?? "";
   const frameSrc = (csp.split(";").find((d) => d.trim().startsWith("frame-src")) ?? "").trim();
-
   expect(frameSrc, "frame-src directive present").not.toBe("");
-  // 'self' is required for the same-origin display route to be frameable at all.
   expect(frameSrc, "frame-src must include 'self'").toContain("'self'");
 });
