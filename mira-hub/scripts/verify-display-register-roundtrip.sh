@@ -16,6 +16,10 @@
 # Run from mira-hub/:  bash scripts/verify-display-register-roundtrip.sh
 set -euo pipefail
 
+# macOS Postgres aborts initdb ("postmaster became multithreaded during startup")
+# unless a valid locale is set — force a portable one so the proof runs cleanly.
+export LC_ALL="${LC_ALL:-C}"
+
 PGBIN="${PGBIN:-/opt/homebrew/bin}"
 TMP="$(mktemp -d)"
 PGDATA="$TMP/data"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown, ChevronRight,
   Folder, FolderOpen, Cog, Factory, FileText, Layers,
@@ -69,6 +69,8 @@ export default function CommandCenterPage() {
   // The full namespace tree (incl. audit/test nodes) is demoted behind this
   // toggle so the default view leads with configured live views, not 117 nodes.
   const [showAllNodes, setShowAllNodes] = useState(false);
+  // Auto-select the first configured display once, on first load.
+  const autoSelectedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -77,6 +79,17 @@ export default function CommandCenterPage() {
       const json = (await res.json()) as TreeResponse;
       setData(json);
       setError(null);
+      // Land on the first live view so "Open Live View" is immediately visible
+      // instead of a bare "Select a node". Once only — never overrides a user's
+      // later selection or re-fires on the 10s poll.
+      if (!autoSelectedRef.current) {
+        const first = collectConfiguredDisplays(json.nodes)[0];
+        const node = first ? findById(json.nodes, first.nodeId) : null;
+        if (node) {
+          setSelected(node);
+          autoSelectedRef.current = true;
+        }
+      }
       // Expand the path to every display so live equipment is visible on load.
       setExpanded((prev) => {
         if (prev.size > 0) return prev;

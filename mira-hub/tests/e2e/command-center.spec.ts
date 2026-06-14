@@ -120,9 +120,10 @@ test("displays-first: Live Views leads, audit nodes are demoted, Open Live View 
 
   // Live Views section leads with the configured display.
   await expect(page.getByText(/Live Views \(1\)/)).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Conv Simple — Live")).toBeVisible();
+  await expect(page.getByText("Conv Simple — Live").first()).toBeVisible();
   // exact: the header summary also contains "…display up" ("1/1 display up").
-  await expect(page.getByText("display up", { exact: true })).toBeVisible();
+  // first: the auto-selected viewer header also renders "display up".
+  await expect(page.getByText("display up", { exact: true }).first()).toBeVisible();
   // The audit node is NOT in the default view (it's behind "All namespace nodes").
   await expect(page.getByText("Audit 0o494d 0O494D")).toHaveCount(0);
 
@@ -146,11 +147,11 @@ test("refresh keeps the configured display present", async ({ page, context, bas
     route.fulfill({ contentType: "application/json", body: JSON.stringify(treeWithDisplay(true)) }),
   );
   await page.goto("/command-center", { waitUntil: "domcontentloaded" });
-  await expect(page.getByText("Conv Simple — Live")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Conv Simple — Live").first()).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: /Refresh/i }).click();
   // Still present after an explicit refresh (re-fetch returns the same row).
-  await expect(page.getByText("Conv Simple — Live")).toBeVisible();
+  await expect(page.getByText("Conv Simple — Live").first()).toBeVisible();
   await expect(page.getByText(/Live Views \(1\)/)).toBeVisible();
 });
 
@@ -163,8 +164,8 @@ test("down display stays listed and is marked down (configured, not missing)", a
   );
   await page.goto("/command-center", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByText("Conv Simple — Live")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("display down", { exact: true })).toBeVisible();
+  await expect(page.getByText("Conv Simple — Live").first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("display down", { exact: true }).first()).toBeVisible();
 });
 
 test("empty state: onboarding CTA instead of an audit-node dump", async ({ page, context, baseURL }) => {
