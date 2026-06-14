@@ -40,11 +40,9 @@ export default function App() {
     <div className="app-shell">
       <header className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0, fontSize: 20 }}>MIRA Scan</h1>
-        <span className="muted">
-          {mondayCtx?.itemId
-            ? `Item ${mondayCtx.itemId}`
-            : "monday context loading…"}
-        </span>
+        {mondayCtx?.itemId && (
+          <span className="muted">Item {mondayCtx.itemId}</span>
+        )}
       </header>
 
       <ScanPanel sessionToken={sessionToken} onResult={setPlate} />

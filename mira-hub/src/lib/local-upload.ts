@@ -22,13 +22,12 @@ import {
 } from "@/lib/upload-buffer";
 import { resolveOrCreateInboxNode } from "@/lib/inbox-node";
 import { writePdfChunksForNode } from "@/lib/node-knowledge-ingest";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
 
 export interface UploadAuthContext {
   tenantId: string;
   userId?: string;
 }
-
-const MAX = 20 * 1024 * 1024;
 
 function extGuess(nameLower: string): string {
   if (nameLower.endsWith(".pdf")) return "application/pdf";
@@ -44,15 +43,32 @@ export async function handleLocalUpload(
   req: NextRequest,
   ctx: UploadAuthContext,
 ): Promise<NextResponse> {
-  const form = await req.formData().catch(() => null);
-  if (!form) return NextResponse.json({ error: "invalid_multipart" }, { status: 400 });
+  // Do NOT swallow the parse error. formData() throws `Failed to parse body as
+  // FormData` when the multipart body is truncated or malformed (e.g. an aborted
+  // or proxy-timed-out large upload) — which previously surfaced as a bare
+  // `invalid_multipart` with no clue why. Log the real reason + content-length so
+  // the next occurrence is diagnosable instead of guessed at.
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch (err) {
+    console.error("[local-upload] formData parse failed", {
+      contentLength: req.headers.get("content-length"),
+      maxUploadMb: MAX_UPLOAD_MB,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return NextResponse.json({ error: "invalid_multipart" }, { status: 400 });
+  }
 
   const file = form.get("file");
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "file_field_required" }, { status: 400 });
   }
-  if (file.size > MAX) {
-    return NextResponse.json({ error: "exceeds_20mb_limit", got: file.size }, { status: 400 });
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return NextResponse.json(
+      { error: "exceeds_size_limit", got: file.size, limitBytes: MAX_UPLOAD_BYTES },
+      { status: 400 },
+    );
   }
 
   const nameLower = file.name.toLowerCase();
