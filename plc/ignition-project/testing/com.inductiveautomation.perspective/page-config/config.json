@@ -1,0 +1,9 @@
+{
+  "pages": {
+    "/": {
+      "title": "MIRA Sandbox",
+      "viewPath": "Sandbox",
+      "docks": {}
+    }
+  }
+}
