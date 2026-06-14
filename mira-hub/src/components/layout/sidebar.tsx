@@ -102,7 +102,7 @@ export function Sidebar() {
     // Map sidebar keys to translated / display strings. Reordered IA per
     // ADR-0014 — see NAV_ITEMS in providers/access-control.ts.
     const map: Record<string, string> = {
-      "feed":          "Feed",
+      "feed":          "Command Board",
       "namespace":     "Namespace",
       "command-center": "Command Center",
       "channels":      t("channels"),
