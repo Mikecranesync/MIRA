@@ -21,6 +21,48 @@ import { extractText, getDocumentProxy } from "unpdf";
 const CHUNK_CHARS = 1000;
 const CHUNK_OVERLAP = 120;
 
+// Multi-row INSERT batch size. Bounds BOTH the chunk rows held in memory at once
+// (≤ BATCH_ROWS, instead of every chunk of a 1200-page manual accumulated in one
+// array before any insert) AND the DB round-trips (total_chunks / BATCH_ROWS,
+// not one query per chunk). This is a modest, honest win — it does NOT bound the
+// dominant memory term (the full file buffer + eagerly-extracted page text); that
+// is what the concurrency guard below contains, and true streaming is Slice 2.
+const BATCH_ROWS = 50;
+
+// Concurrency guard. unpdf loads the whole PDF (getDocumentProxy + eager
+// extractText) into memory; the file buffer + extracted text — not the chunk
+// rows — are the dominant memory term, and two large manuals parsing at once is
+// the documented 8 GB-VPS OOM path (ADR-0019 / project_vps_oom_docling_incidents).
+// Default 1 = serialize heavy parses, so the peak is one in-flight PDF, not N.
+// Raise NODE_INGEST_CONCURRENCY only after measuring; the ceiling is
+// concurrency x per-parse-peak, and per-parse-peak is O(file size), not O(1).
+const INGEST_CONCURRENCY = Math.max(1, Number(process.env.NODE_INGEST_CONCURRENCY ?? "1"));
+let activeIngests = 0;
+const ingestWaiters: Array<() => void> = [];
+
+/**
+ * Acquire one of INGEST_CONCURRENCY parse slots; returns a release fn. A
+ * releaser with a waiter hands its slot straight to that waiter (no decrement),
+ * so the active count can never transiently exceed the limit between a release
+ * and the woken waiter resuming. Double-release is a no-op.
+ */
+async function acquireIngestSlot(): Promise<() => void> {
+  if (activeIngests < INGEST_CONCURRENCY) {
+    activeIngests++;
+  } else {
+    await new Promise<void>((resolve) => ingestWaiters.push(resolve));
+    // A releaser handed us its slot; activeIngests already accounts for us.
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const next = ingestWaiters.shift();
+    if (next) next(); // hand the slot to the next waiter (count unchanged)
+    else activeIngests--; // no waiter: free the slot
+  };
+}
+
 export interface NodeIngestResult {
   uploadId: string;
   chunkCount: number;
@@ -70,46 +112,39 @@ export async function writePdfChunksForNode(opts: {
 }): Promise<number> {
   const { tenantId, uploadId, nodeId, unsPath, filename, buffer } = opts;
 
-  const pdf = await getDocumentProxy(new Uint8Array(buffer));
-  const { text } = await extractText(pdf, { mergePages: false });
-  const pages: string[] = Array.isArray(text) ? text : [text];
+  // Serialize heavy parses so concurrent uploads don't multiply the in-memory
+  // PDF peak (see acquireIngestSlot / INGEST_CONCURRENCY above).
+  const release = await acquireIngestSlot();
+  try {
+    const pdf = await getDocumentProxy(new Uint8Array(buffer));
+    const { text } = await extractText(pdf, { mergePages: false });
+    const pages: string[] = Array.isArray(text) ? text : [text];
 
-  // Unique per attachment so same-named files on different nodes never false-dedup
-  // against the partial UNIQUE (tenant_id, source_url, metadata->>'chunk_index').
-  const sourceUrl = `node-doc/${uploadId}/${filename}`;
+    // Unique per attachment so same-named files on different nodes never false-dedup
+    // against the partial UNIQUE (tenant_id, source_url, metadata->>'chunk_index').
+    const sourceUrl = `node-doc/${uploadId}/${filename}`;
 
-  type ChunkRow = { content: string; page: number; idx: number };
-  const rows: ChunkRow[] = [];
-  let idx = 0;
-  pages.forEach((pageText, p) => {
-    for (const piece of chunkText(pageText)) {
-      rows.push({ content: piece, page: p + 1, idx: idx++ });
-    }
-  });
+    type ChunkRow = { content: string; page: number; idx: number };
+    let idx = 0;
+    let batch: ChunkRow[] = [];
 
-  if (rows.length > 0) {
     await withTenantContext(tenantId, async (c) => {
-      for (const r of rows) {
-        await c.query(
-          // #1903: a node attachment is a per-tenant upload, NOT shared OEM corpus.
-          // is_private = true keeps it out of the universal/library aggregate surfaces
-          // and the hybrid read filter `(is_private = false OR tenant_id = $caller)`, so
-          // tenant A's manual is never visible to tenant B. The column defaults to false,
-          // so relying on the default would leak (see .claude/rules/knowledge-entries-tenant-scoping.md #1833).
-          `INSERT INTO knowledge_entries
-             (id, tenant_id, source_type, content, source_url, source_page,
-              doc_id, ingest_route, page_start, page_end, metadata, is_private)
-           VALUES ($1, $2, 'node_attachment', $3, $4, $5, $6, 'v2', $7, $7, $8, true)
-           ON CONFLICT (tenant_id, source_url, ((metadata->>'chunk_index')::int))
-             WHERE (metadata->>'chunk_index') IS NOT NULL
-             DO NOTHING`,
-          [
+      // Flush the buffered chunks as ONE multi-row INSERT, then drop them.
+      // tenant_id / source_url / doc_id are constant across the whole file, so
+      // they are fixed leading params ($1..$3) and only id/content/page/metadata
+      // vary per row — keeping the param count at 3 + 4*BATCH_ROWS.
+      const flush = async () => {
+        if (batch.length === 0) return;
+        const tuples = batch.map((_r, k) => {
+          const b = 3 + k * 4; // per-row params start after the 3 fixed ones
+          // page_start and page_end reuse the SAME page placeholder ($b+3).
+          return `($${b + 1}, $1, 'node_attachment', $${b + 2}, $2, $${b + 3}, $3, 'v2', $${b + 3}, $${b + 3}, $${b + 4}, true)`;
+        });
+        const params: unknown[] = [tenantId, sourceUrl, uploadId];
+        for (const r of batch) {
+          params.push(
             randomUUID(),
-            tenantId,
             r.content,
-            sourceUrl,
-            r.page,
-            uploadId,
             r.page,
             JSON.stringify({
               filename,
@@ -118,13 +153,44 @@ export async function writePdfChunksForNode(opts: {
               chunk_index: r.idx,
               source: "hub_node_attachment",
             }),
-          ],
+          );
+        }
+        await c.query(
+          // #1903: a node attachment is a per-tenant upload, NOT shared OEM corpus.
+          // is_private = true (a LITERAL, never a bound param) keeps it out of the
+          // universal/library aggregate surfaces and the hybrid read filter
+          // `(is_private = false OR tenant_id = $caller)`, so tenant A's manual is
+          // never visible to tenant B. The column defaults to false, so relying on
+          // the default would leak (see .claude/rules/knowledge-entries-tenant-scoping.md #1833).
+          `INSERT INTO knowledge_entries
+             (id, tenant_id, source_type, content, source_url, source_page,
+              doc_id, ingest_route, page_start, page_end, metadata, is_private)
+           VALUES ${tuples.join(", ")}
+           ON CONFLICT (tenant_id, source_url, ((metadata->>'chunk_index')::int))
+             WHERE (metadata->>'chunk_index') IS NOT NULL
+             DO NOTHING`,
+          params,
         );
-      }
-    });
-  }
+        batch = [];
+      };
 
-  return rows.length;
+      for (let p = 0; p < pages.length; p++) {
+        const pageText = pages[p];
+        pages[p] = ""; // release each page's text once chunked — bounds peak memory
+        for (const piece of chunkText(pageText)) {
+          batch.push({ content: piece, page: p + 1, idx: idx++ });
+          if (batch.length >= BATCH_ROWS) await flush();
+        }
+      }
+      await flush();
+    });
+
+    // Generated-chunk count (matches the historical `rows.length` semantics: the
+    // number attempted, not the number actually inserted after ON CONFLICT).
+    return idx;
+  } finally {
+    release();
+  }
 }
 
 /**

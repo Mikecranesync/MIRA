@@ -158,7 +158,6 @@ function useSpeech() {
 
 export default function FeedPage() {
   const tFeed = useTranslations("feed");
-  const tWorkorders = useTranslations("workorders");
   const [fabOpen, setFabOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
@@ -317,15 +316,15 @@ export default function FeedPage() {
         )}
       </div>
 
-      {/* FAB */}
+      {/* FAB — "Scan asset QR" first: most field-relevant quick action */}
       <div className="fixed bottom-20 right-5 md:bottom-6 z-30 flex flex-col items-end gap-2">
         {fabOpen && (
           <div className="flex flex-col items-end gap-2 mb-1 animate-in fade-in slide-in-from-bottom-2 duration-150">
             {[
-              { label: tWorkorders("new"), icon: ClipboardList,     href: "/workorders/new" },
-              { label: tFeed("scanQr"),    icon: QrCode,            href: "/scan" },
-              { label: tFeed("newRequest"), icon: MessageSquarePlus, href: "/requests/new" },
-              { label: "New Asset",        icon: Cog,               href: "/assets?create=1" },
+              { label: tFeed("scanQr"),          icon: QrCode,            href: "/scan" },
+              { label: tFeed("createWorkOrder"), icon: ClipboardList,     href: "/workorders/new" },
+              { label: tFeed("newRequest"),      icon: MessageSquarePlus, href: "/requests/new" },
+              { label: tFeed("newAsset"),        icon: Cog,               href: "/assets?create=1" },
             ].map((action) => (
               <Link key={action.label} href={action.href}
                 className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-white shadow-lg"
@@ -337,6 +336,8 @@ export default function FeedPage() {
           </div>
         )}
         <button onClick={() => setFabOpen(v => !v)}
+          aria-expanded={fabOpen}
+          aria-label={fabOpen ? "Close quick actions" : "Open quick actions"}
           className="w-14 h-14 rounded-full text-white flex items-center justify-center transition-all duration-200"
           style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)", boxShadow: "var(--shadow-fab)", transform: fabOpen ? "rotate(45deg)" : "none" }}>
           {fabOpen ? <X className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
