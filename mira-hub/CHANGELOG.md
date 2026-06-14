@@ -2,7 +2,7 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
-## v2.3.0 — 2026-06-14
+## v2.4.0 — 2026-06-14
 - fix(schedule): PM "Mark Complete" now persists via new `POST /api/pm-schedules/[id]/complete` (stamps `last_completed_at`, rolls `next_due_at` forward, resets meter cycle for meter PMs); trigger buttons use `${API_BASE}/api/...` (was hardcoded `/hub/api`) with `res.ok` checks + error toasts + local-state sync; self-contained synthetic `tools/seed_demo_tenant_pms.sql` for the demo tenant (#1950)
 
 ## v2.2.7 — 2026-06-12
