@@ -213,4 +213,48 @@ jobs:
            AND g.grantee = 'factorylm_app'
           GROUP BY t.table_name
           ORDER BY t.table_name;
+
+          \echo
+          \echo === #1899 folder=brain upload-path schema probe ===
+          \echo 'hub_uploads is RUNTIME-managed (ensureUploadsSchema), NOT migration-managed.'
+          \echo 'createUpload INSERTs kg_entity_id + ingest_route; if absent here, the door 500s (42703).'
+          SELECT 'hub_uploads.kg_entity_id' AS column, EXISTS(
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='hub_uploads' AND column_name='kg_entity_id') AS present
+          UNION ALL SELECT 'hub_uploads.ingest_route', EXISTS(
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='hub_uploads' AND column_name='ingest_route')
+          UNION ALL SELECT 'hub_uploads.kind', EXISTS(
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='hub_uploads' AND column_name='kind')
+          UNION ALL SELECT 'knowledge_entries.doc_id (045)', EXISTS(
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='knowledge_entries' AND column_name='doc_id')
+          UNION ALL SELECT 'knowledge_entries.ingest_route (045)', EXISTS(
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='knowledge_entries' AND column_name='ingest_route')
+          UNION ALL SELECT 'knowledge_entries.is_private', EXISTS(
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='knowledge_entries' AND column_name='is_private')
+          UNION ALL SELECT 'idx_ke_chunk_dedup (ON CONFLICT target)', EXISTS(
+            SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='idx_ke_chunk_dedup');
+
+          \echo
+          \echo === hub_uploads full column list ===
+          SELECT column_name FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='hub_uploads'
+          ORDER BY ordinal_position;
+
+          \echo
+          \echo === #1899b tenants-FK probe (fresh-signup chunk INSERT 500) ===
+          \echo 'knowledge_entries.tenant_id FKs to tenants(id). Signup makes hub_tenants but NOT tenants.'
+          \echo 'orphan_hub_tenants = real signups whose uploads will 23503 until backfilled.'
+          SELECT conname AS fk_name, confrelid::regclass AS references
+            FROM pg_constraint
+           WHERE conrelid = 'knowledge_entries'::regclass AND contype = 'f';
+          SELECT
+            (SELECT COUNT(*) FROM hub_tenants) AS hub_tenants,
+            (SELECT COUNT(*) FROM tenants) AS tenants,
+            (SELECT COUNT(*) FROM hub_tenants ht
+               WHERE NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = ht.id)) AS orphan_hub_tenants;
           SQL

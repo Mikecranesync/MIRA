@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Script from "next/script";
 import { Loader2, Paperclip, X, FolderOpen, Package, Smartphone } from "lucide-react";
-import { API_BASE } from "@/lib/config";
+import { API_BASE, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
 
 /**
  * Inline create form for a child namespace node.
@@ -127,7 +127,7 @@ const ACCEPTED_MIME = [
 ].join(",");
 
 const DROPBOX_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"];
-const MAX_BYTES = 20 * 1024 * 1024;
+const MAX_BYTES = MAX_UPLOAD_BYTES;
 
 function mimeFromExt(name: string): string {
   const n = name.toLowerCase();
@@ -245,10 +245,10 @@ export function CreateChildCard({
       next.name = `A subsystem named "${name.trim()}" already exists here.`;
     }
     if (picked?.kind === "local" && picked.file.size > MAX_BYTES) {
-      next.file = "File is too big. Limit is 20 MB.";
+      next.file = `File is too big. Limit is ${MAX_UPLOAD_MB} MB.`;
     }
     if (picked?.kind === "cloud" && picked.sizeBytes > MAX_BYTES) {
-      next.file = "File is too big. Limit is 20 MB.";
+      next.file = `File is too big. Limit is ${MAX_UPLOAD_MB} MB.`;
     }
     setErrors(next);
     return Object.keys(next).length === 0;

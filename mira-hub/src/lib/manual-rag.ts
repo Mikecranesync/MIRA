@@ -360,19 +360,48 @@ export async function retrieveNodeChunks(
 }
 
 /**
- * Build the grounded context block for the system prompt. Chunks are
- * numbered so the model can cite with `[n]` markers.
+ * Stable citation key for a chunk's source. Two chunks from the same document
+ * page share one key (and therefore one citation number + one UI chip).
+ */
+function sourceKey(c: Pick<ManualChunk, "sourceUrl" | "sourcePage">): string {
+  return `${c.sourceUrl}::${c.sourcePage ?? ""}`;
+}
+
+/**
+ * Assign every unique source (url, page) a stable 1-based citation number in
+ * first-appearance order. #1912: buildGroundedContext (the blocks the model
+ * cites) and chunksToSources (the chips the UI renders) MUST share this numbering
+ * — otherwise the model cites a per-chunk block number (e.g. two excerpts of the
+ * same page → blocks [1] and [2]) while the deduped chip list only shows [1], and
+ * the answer's `[2]` has no matching chip. Numbering by source key makes both
+ * spaces identical: every inline `[n]` has a rendered `[n]` chip.
+ */
+function citationIndex(chunks: ManualChunk[]): Map<string, number> {
+  const idx = new Map<string, number>();
+  for (const c of chunks) {
+    const key = sourceKey(c);
+    if (!idx.has(key)) idx.set(key, idx.size + 1);
+  }
+  return idx;
+}
+
+/**
+ * Build the grounded context block for the system prompt. Each chunk is labelled
+ * with its SOURCE citation number (#1912): excerpts from the same document page
+ * share one `[n]`, matching the single chip chunksToSources renders for them.
  */
 export function buildGroundedContext(chunks: ManualChunk[]): string {
   if (chunks.length === 0) return "";
-  const blocks = chunks.map((c, i) => {
+  const idx = citationIndex(chunks);
+  const blocks = chunks.map((c) => {
+    const n = idx.get(sourceKey(c))!;
     const headBits = [c.manufacturer, c.modelNumber].filter(Boolean);
     const head = headBits.join(" ") || c.title || "OEM document";
     const page = c.sourcePage != null ? `, p.${c.sourcePage}` : "";
     const content = c.content.length > MAX_CONTENT_CHARS
       ? `${c.content.slice(0, MAX_CONTENT_CHARS)}…`
       : c.content;
-    return `[${i + 1}] ${head}${page}\n${content}`;
+    return `[${n}] ${head}${page}\n${content}`;
   });
   return blocks.join("\n\n---\n\n");
 }
@@ -400,23 +429,28 @@ ${buildGroundedContext(chunks)}`;
 }
 
 /**
- * Public source descriptors for the UI. Dedupes by (url, page).
+ * Public source descriptors for the UI. Dedupes by (url, page) and numbers each
+ * chip with the SAME citation index the model is shown (#1912) — so an inline
+ * `[n]` in the answer always maps to a rendered `[n]` chip. Indices are
+ * contiguous 1..M over the unique sources (previously `i + 1` used the pre-dedupe
+ * position, which could emit a non-contiguous [3] for the 2nd unique chip).
  */
 export function chunksToSources(chunks: ManualChunk[]): ManualSource[] {
+  const idx = citationIndex(chunks);
   const seen = new Set<string>();
   const out: ManualSource[] = [];
-  chunks.forEach((c, i) => {
-    const key = `${c.sourceUrl}::${c.sourcePage ?? ""}`;
-    if (seen.has(key)) return;
+  for (const c of chunks) {
+    const key = sourceKey(c);
+    if (seen.has(key)) continue;
     seen.add(key);
     const titleBits = [c.manufacturer, c.modelNumber].filter(Boolean);
     const title = titleBits.join(" ") || c.title || c.sourceUrl || "OEM document";
     out.push({
-      index: i + 1,
+      index: idx.get(key)!,
       title,
       url: c.sourceUrl || null,
       page: c.sourcePage,
     });
-  });
+  }
   return out;
 }

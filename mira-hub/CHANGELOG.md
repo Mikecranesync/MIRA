@@ -2,6 +2,23 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.2.7 — 2026-06-12
+- fix(hub): a manual uploaded via Knowledge → Upload is now one click from being asked about. The PDF was already chunked + attached to the per-tenant Inbox node and citable (#1806), but nothing pointed the user there: the post-upload card said "Parsed", the Inbox folder read "0 files", and the user's own folder's Ask MIRA structurally can't reach Inbox docs (subtree-scoped retrieval) → felt broken. Now (1) the upload summary card shows an **"Ask MIRA about this manual"** CTA deep-linking to `/namespace?node=<inbox>&chat=1`; (2) `namespace?node=&chat=1` selects + expands the target node and auto-opens Ask MIRA; (3) node `files_count` + the folder Files list now include v2-indexed PDFs (`hub_uploads.kg_entity_id`), shown as read-only "indexed" entries — killing the "0 files" lie. No schema change. (The reported "Knowledge upload hits the demo `/api/documents/upload`" was stale — it's hit `/api/uploads/local` since the Knowledge-tab unification; that demo endpoint is now-orphaned dead code, noted for separate cleanup.) (#1900)
+
+## v2.2.6 — 2026-06-12
+- fix(hub): fresh-tenant Feed header no longer shows a hardcoded "Mike Harper · Admin" — it now renders the real signed-in user (name + role) from `/api/me`, the same source as the sidebar, and renders nothing until loaded. Also replaced the leftover "Mike Harper" placeholder in the labs-only Conversations/Team mock data with a generic name. No real cross-tenant data was leaking — the strings were hardcoded. (#1904)
+
+## v2.2.5 — 2026-06-12
+- security(hub): node-attachment manual chunks are now written `is_private = true` (`writePdfChunksForNode`). They were inserted without it → defaulted `false` → a tenant's uploaded manual could surface in other tenants' library/aggregate views via the hybrid read filter `(is_private = false OR tenant_id = $caller)` (#1833 leak class). Migration 052 backfills existing v2 node_attachment chunks to private; shared OEM corpus untouched. Adds a regression test pinning the INSERT to `is_private = true`. (#1903)
+
+## v2.2.4 — 2026-06-12
+- fix(hub): folder=brain PDF upload 500 — second cause. Signup created only the auth-side `hub_tenants` row, never the data-side `tenants` row that `knowledge_entries.tenant_id` FK-references, so a fresh tenant's first manual upload threw `23503 knowledge_entries_tenant_id_fkey` ("Server storage error") even after the unpdf fix. `createUser` now creates the `tenants` row (id, name, contact_email) at signup; migration 051 backfills existing fresh tenants. Verified against the live prod FK + reproduced fixed on staging. Closes the upload→retrieval gap for strangers. (#1899)
+
+## v2.2.3 — 2026-06-12
+- fix(hub): magic-link page (`/magic`) no longer renders the authenticated app chrome to signed-out visitors. It lived inside the `(hub)` route group, so its `Sidebar` fired `GET /api/me` pre-auth → a `401` console error + the full nav (Feed/Admin/Review queue) bleeding behind the full-screen sign-in gradient. Moved out of `(hub)` to a top-level route (same `/magic` URL, root layout only) — matching the existing `login`/`signup`/`m`/`quickstart` pre-auth pattern. Console clean; no nav leak.
+## v2.2.2 — 2026-06-12
+- fix(hub): folder=brain PDF upload no longer 500s — `unpdf` is now in `serverExternalPackages` so its runtime `import('unpdf/pdfjs')` resolves in the `output: standalone` build (was dropped from the trace → `Cannot find module 'unpdf/pdfjs'` on every PDF upload). Upload errors now surface a specific message + a durable error row in the Files panel instead of looking like "nothing happened". Adds a standalone-bundling regression guard + a real upload→citation e2e. Unblocks the beta gate. (#1899)
+
 ## v2.2.1 — 2026-06-11
 - fix(hub): Command Center — every tree node is now selectable; the detail panel no longer freezes on the one live-display node. Selection was gated on `hasLiveDisplay`, swallowing clicks on VFDs / PLCs / folders. Refresh button now spins + disables while fetching. (#1881)
 
