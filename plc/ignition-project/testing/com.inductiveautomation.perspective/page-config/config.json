@@ -5,6 +5,16 @@
       "viewPath": "TrendChart",
       "docks": {}
     },
+    "/setup": {
+      "title": "VFD Analyzer — Tag Setup",
+      "viewPath": "TagMapper",
+      "docks": {}
+    },
+    "/maintenance": {
+      "title": "Maintenance (config-driven)",
+      "viewPath": "MaintenanceConfig",
+      "docks": {}
+    },
     "/help": {
       "title": "MIRA Sandbox",
       "viewPath": "Sandbox",
