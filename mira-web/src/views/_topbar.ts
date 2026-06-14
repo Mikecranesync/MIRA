@@ -65,7 +65,7 @@ export function navbar(opts: TopbarOpts = {}): string {
   </nav>
   <div class="fl-topbar-cta">
     ${btnGhost("Sign in", { href: `${APEX}/cmms`, cta: signinCta })}
-    ${btnPrimary("Get Started", { href: `${APEX}/buy`, cta: buyCta })}
+    ${btnPrimary("Book $500 Assessment", { href: `${APEX}/buy`, cta: buyCta })}
   </div>
 </header>`;
 }
