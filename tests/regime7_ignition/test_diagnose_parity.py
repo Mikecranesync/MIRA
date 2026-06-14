@@ -36,6 +36,13 @@ SCRIPT_LIB = (REPO / "plc" / "ignition-project" / "ConvSimpleLive" / "ignition"
 SCRIPT_CORE = SCRIPT_LIB / "mira_diagnose_core" / "code.py"
 SCRIPT_TAG_MAP = SCRIPT_LIB / "mira_tag_map" / "code.py"
 
+# Auto-map (Slice 1): the per-asset config logic + role catalog are also vendored byte-identical
+# from the WebDev diagnose package into the gateway script lib. Same drift discipline.
+SIGNAL_ROLES_SRC = REPO / "ignition" / "webdev" / "FactoryLM" / "api" / "diagnose" / "signal_roles.py"
+ASSET_CONFIG_SRC = REPO / "ignition" / "webdev" / "FactoryLM" / "api" / "diagnose" / "asset_config.py"
+SCRIPT_SIGNAL_ROLES = SCRIPT_LIB / "mira_signal_roles" / "code.py"
+SCRIPT_ASSET_CONFIG = SCRIPT_LIB / "mira_asset_config" / "code.py"
+
 
 def _load(path, name):
     spec = importlib.util.spec_from_file_location(name, str(path))
@@ -152,3 +159,20 @@ def test_script_lib_core_imports_and_matches(core):
         a = [x.rule_id for x in core.evaluate(snap, derived)]
         b = [x.rule_id for x in vend.evaluate(snap, derived)]
         assert a == b
+
+
+# --- Auto-map drift guard: the vendored signal_roles + asset_config copies must not diverge ---
+def test_script_lib_signal_roles_is_byte_identical():
+    assert SCRIPT_SIGNAL_ROLES.exists(), "missing vendored signal_roles: %s" % SCRIPT_SIGNAL_ROLES
+    assert SIGNAL_ROLES_SRC.read_bytes() == SCRIPT_SIGNAL_ROLES.read_bytes(), (
+        "mira_signal_roles/code.py has drifted from signal_roles.py -- re-sync with:\n"
+        "  cp ignition/webdev/FactoryLM/api/diagnose/signal_roles.py "
+        "plc/ignition-project/ConvSimpleLive/ignition/script-python/mira_signal_roles/code.py")
+
+
+def test_script_lib_asset_config_is_byte_identical():
+    assert SCRIPT_ASSET_CONFIG.exists(), "missing vendored asset_config: %s" % SCRIPT_ASSET_CONFIG
+    assert ASSET_CONFIG_SRC.read_bytes() == SCRIPT_ASSET_CONFIG.read_bytes(), (
+        "mira_asset_config/code.py has drifted from asset_config.py -- re-sync with:\n"
+        "  cp ignition/webdev/FactoryLM/api/diagnose/asset_config.py "
+        "plc/ignition-project/ConvSimpleLive/ignition/script-python/mira_asset_config/code.py")
