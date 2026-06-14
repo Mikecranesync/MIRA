@@ -277,6 +277,12 @@
   },
   "schedule": {
     "title": "预防维护计划",
+    "emptyTitle": "尚未安排预防性维护",
+    "emptyDesc": "创建您的第一个预防性维护任务 — 或上传手册，MIRA 将为您推荐 PM 计划。",
+    "emptyUploadManual": "上传手册",
+    "emptyViewAssets": "查看资产",
+    "emptyExtractPms": "从手册提取 PM",
+    "exportEmptyHint": "暂无可导出的 PM",
     "overdueCount": "{count} 项逾期",
     "upcomingCount": "{count} 项计划中",
     "calendar": "日历",

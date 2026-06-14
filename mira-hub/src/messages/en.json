@@ -276,6 +276,12 @@
   },
   "schedule": {
     "title": "PM Schedule",
+    "emptyTitle": "No PMs scheduled yet",
+    "emptyDesc": "Create your first preventive maintenance task — or upload a manual and MIRA will suggest PM schedules for you.",
+    "emptyUploadManual": "Upload manual",
+    "emptyViewAssets": "View assets",
+    "emptyExtractPms": "Extract PMs from manuals",
+    "exportEmptyHint": "No PMs to export yet",
     "overdueCount": "{count} overdue",
     "upcomingCount": "{count} upcoming",
     "calendar": "Calendar",
