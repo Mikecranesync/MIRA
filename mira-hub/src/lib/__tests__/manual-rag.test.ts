@@ -78,6 +78,18 @@ describe("retrieveManualChunks", () => {
     expect(calls[2].sql).not.toContain("manufacturer ILIKE"); // tenant-only
   });
 
+  it("can disable tenant-wide fallback for asset-scoped validation chat", async () => {
+    const { client, calls } = makeClient([[], [], [row({ manufacturer: "Generic" })]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "torque", {
+      manufacturer: "Allen-Bradley",
+      allowTenantFallback: false,
+    });
+    expect(out).toEqual([]);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].sql).toContain("manufacturer ILIKE");
+    expect(calls[1].sql).toContain("manufacturer ILIKE");
+  });
+
   it("falls back to an OR tsquery when the precise AND query is empty (no mfr)", async () => {
     const { client, calls } = makeClient([[], [row()]]);
     const out = await retrieveManualChunks(client, "tenant-1", "what does oC mean");

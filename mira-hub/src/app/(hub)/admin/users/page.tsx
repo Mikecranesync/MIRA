@@ -6,6 +6,13 @@ import { Input } from "@/components/ui/input";
 import { useTranslations } from "next-intl";
 import { API_BASE } from "@/lib/config";
 import { NoAccess } from "@/components/ui/no-access";
+import { useToast } from "@/providers/toast-provider";
+import {
+  formatCountLabel,
+  confirmMessage,
+  actionAriaLabel,
+  type MutationStatus,
+} from "./account-actions";
 
 // Platform user administration (FactoryLM staff): the cross-workspace list with
 // approve / revoke / expire actions used to gate new signups. Distinct from the
@@ -38,6 +45,7 @@ function daysLeft(isoDate: string): number {
 
 export default function AdminUsersPage() {
   const t = useTranslations("admin");
+  const { toast } = useToast();
   const [users, setUsers] = useState<ApiUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [denied, setDenied] = useState(false);
@@ -69,15 +77,33 @@ export default function AdminUsersPage() {
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
-  async function setStatus(id: string, status: string) {
+  async function setStatus(id: string, status: MutationStatus, label: string) {
+    // Destructive transitions (Revoke / Expire) confirm before mutating;
+    // approval stays one-click. confirmMessage returns null for one-click.
+    const prompt = confirmMessage(status, label);
+    if (prompt && !window.confirm(prompt)) return;
+
     setUpdating(id);
-    await fetch(`/hub/api/admin/users/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    await loadUsers();
-    setUpdating(null);
+    try {
+      const res = await fetch(`/hub/api/admin/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        // Surface the failure instead of silently reloading the old state.
+        toast(
+          `Couldn't update ${label} — ${res.status === 403 ? "not permitted" : "please try again"}`,
+          "error",
+        );
+        return;
+      }
+      await loadUsers();
+    } catch {
+      toast(`Couldn't update ${label} — network error`, "error");
+    } finally {
+      setUpdating(null);
+    }
   }
 
   if (denied) {
@@ -94,6 +120,12 @@ export default function AdminUsersPage() {
   );
 
   const pendingCount = users.filter(u => u.status === "pending").length;
+  const countLabel = formatCountLabel({
+    total: users.length,
+    visible: visible.length,
+    hasQuery: query.trim().length > 0,
+    pending: pendingCount,
+  });
 
   return (
     <div className="min-h-full" style={{ backgroundColor: "var(--background)" }}>
@@ -102,7 +134,9 @@ export default function AdminUsersPage() {
           <div>
             <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("users.title")}</h1>
             <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
-              {users.length} total{pendingCount > 0 && ` · ${pendingCount} pending review`}
+              {/* Scope hint distinguishes this platform-wide approvals surface
+                  from the tenant-scoped Settings → Users (#1945). */}
+              Platform-wide account approvals · {countLabel}
             </p>
           </div>
           {(showSystem || systemHidden > 0) && (
@@ -139,6 +173,7 @@ export default function AdminUsersPage() {
             {visible.map(user => {
               const cfg = STATUS_CONFIG[user.status] ?? STATUS_CONFIG.pending;
               const StatusIcon = cfg.Icon;
+              const label = user.name ?? user.email;
               return (
                 <div key={user.id} className="card p-3 flex items-center gap-3">
                   <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
@@ -179,7 +214,8 @@ export default function AdminUsersPage() {
                       <>
                         {user.status !== "approved" && (
                           <button
-                            onClick={() => setStatus(user.id, "approved")}
+                            onClick={() => setStatus(user.id, "approved", label)}
+                            aria-label={actionAriaLabel("approved", label)}
                             className="px-2.5 py-1 text-xs font-medium rounded-md transition-colors"
                             style={{ backgroundColor: "rgba(34,197,94,0.1)", color: "#22C55E" }}
                           >
@@ -188,7 +224,8 @@ export default function AdminUsersPage() {
                         )}
                         {user.status === "approved" && (
                           <button
-                            onClick={() => setStatus(user.id, "pending")}
+                            onClick={() => setStatus(user.id, "pending", label)}
+                            aria-label={actionAriaLabel("pending", label)}
                             className="px-2.5 py-1 text-xs font-medium rounded-md transition-colors"
                             style={{ backgroundColor: "rgba(234,179,8,0.1)", color: "#EAB308" }}
                           >
@@ -197,7 +234,8 @@ export default function AdminUsersPage() {
                         )}
                         {user.status === "trial" && (
                           <button
-                            onClick={() => setStatus(user.id, "expired")}
+                            onClick={() => setStatus(user.id, "expired", label)}
+                            aria-label={actionAriaLabel("expired", label)}
                             className="px-2.5 py-1 text-xs font-medium rounded-md transition-colors"
                             style={{ backgroundColor: "rgba(148,163,184,0.1)", color: "#94A3B8" }}
                           >

@@ -119,7 +119,7 @@
   },
   "feed": {
     "title": "动态",
-    "newRequest": "新报修",
+    "newRequest": "提交维护请求",
     "allCaughtUp": "全部处理完毕！",
     "noActivity": "暂无新动态",
     "markRead": "标记为已读",
@@ -131,7 +131,9 @@
     "auditTrail": "审计记录",
     "acknowledge": "确认",
     "addNote": "添加备注",
-    "scanQr": "扫描QR码",
+    "scanQr": "扫描资产二维码",
+    "createWorkOrder": "创建工单",
+    "newAsset": "添加新资产",
     "kpi": {
       "openWorkOrders": "待处理工单",
       "overduePMs": "逾期预防维护",

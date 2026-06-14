@@ -86,7 +86,13 @@ export default function SignupPage() {
             <Factory className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">FactoryLM</h1>
-          <p className="text-slate-400 text-sm mt-1">Create your account</p>
+          <p className="text-slate-400 text-sm mt-1">Create your workspace to:</p>
+          <ul className="mt-3 space-y-1.5 text-sm text-slate-300">
+            <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Build your namespace — first site &amp; line</li>
+            <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Ask MIRA a fault-code question, get a cited answer</li>
+            <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Answers cite our OEM manual library — not guesses</li>
+          </ul>
+          <p className="text-slate-500 text-xs mt-3">No credit card.</p>
         </div>
 
         <div
@@ -204,6 +210,14 @@ export default function SignupPage() {
             </Link>
           </p>
         </div>
+
+        <p className="text-center text-sm text-slate-400 mt-4">
+          Want to try first?{" "}
+          <Link href="/quickstart" className="text-blue-400 hover:text-blue-300 font-medium">
+            Ask a sample question
+          </Link>{" "}
+          — no signup.
+        </p>
       </div>
     </div>
   );
