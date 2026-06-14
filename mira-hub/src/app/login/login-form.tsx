@@ -116,7 +116,7 @@ function LoginFormInner() {
             type="button"
             onClick={handleGoogle}
             disabled={googleLoading}
-            className="w-full h-11 mb-4 flex items-center justify-center gap-3 rounded-md bg-white text-slate-900 font-medium hover:bg-slate-100 transition-colors disabled:opacity-60"
+            className="w-full h-11 min-h-[44px] mb-4 flex items-center justify-center gap-3 rounded-md bg-white text-slate-900 font-medium hover:bg-slate-100 transition-colors disabled:opacity-60"
           >
             {googleLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -143,14 +143,14 @@ function LoginFormInner() {
               <Mail className="w-8 h-8 text-blue-400 mx-auto mb-2" />
               <p className="text-white font-semibold text-sm">Check your inbox</p>
               <p className="text-slate-400 text-xs mt-1">We sent a sign-in link to <strong>{magicEmail}</strong></p>
-              <button onClick={() => setMagicSent(false)} className="text-blue-400 text-xs mt-2 hover:text-blue-300">
+              <button onClick={() => setMagicSent(false)} className="inline-flex items-center justify-center min-h-[44px] px-4 mt-1 text-blue-400 text-sm font-medium hover:text-blue-300">
                 Send again
               </button>
             </div>
           ) : (
             <form onSubmit={handleMagicLink} method="post" className="mb-4">
               <label htmlFor="magic-email" className="block text-xs font-medium text-slate-400 mb-1.5">Email magic link</label>
-              <div className="flex gap-2">
+              <div className="space-y-2">
                 <Input
                   id="magic-email"
                   type="email"
@@ -159,16 +159,16 @@ function LoginFormInner() {
                   placeholder="you@company.com"
                   autoComplete="email"
                   required
-                  className="flex-1 h-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
+                  className="w-full h-11 min-h-[44px] bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
                 />
                 <button
                   type="submit"
-                  aria-label="Send magic link"
                   disabled={magicLoading || !magicEmail}
-                  className="px-4 h-11 min-w-[44px] rounded-md font-medium text-white text-sm disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  className="w-full h-11 min-h-[44px] rounded-md font-semibold text-white text-sm disabled:opacity-50 flex items-center justify-center gap-2"
                   style={{ background: "linear-gradient(135deg,#2563EB,#0891B2)" }}
                 >
                   {magicLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                  <span>Send link</span>
                 </button>
               </div>
             </form>
@@ -186,7 +186,7 @@ function LoginFormInner() {
             onClick={() => setShowPasswordForm(v => !v)}
             aria-expanded={showPasswordForm}
             aria-controls="password-signin-form"
-            className="w-full flex items-center justify-between min-h-[44px] py-2 text-xs text-slate-400 hover:text-slate-200 transition-colors mb-3"
+            className="w-full flex items-center justify-between min-h-[44px] px-4 py-2 rounded-md border border-slate-700 bg-slate-800/40 text-sm font-medium text-slate-200 hover:bg-slate-800/70 hover:border-slate-600 transition-colors mb-3"
           >
             <span>Sign in with password</span>
             <ChevronDown className={`w-4 h-4 transition-transform ${showPasswordForm ? "rotate-180" : ""}`} />
@@ -204,7 +204,7 @@ function LoginFormInner() {
                   placeholder="you@company.com"
                   autoComplete="email"
                   required
-                  className="h-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
+                  className="h-11 min-h-[44px] bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
                 />
               </div>
 
@@ -219,13 +219,13 @@ function LoginFormInner() {
                     placeholder="••••••••"
                     autoComplete="current-password"
                     required
-                    className="h-11 pr-10 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
+                    className="h-11 min-h-[44px] pr-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
                   />
                   <button
                     type="button"
                     aria-label={showPw ? "Hide password" : "Show password"}
                     onClick={() => setShowPw((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+                    className="absolute inset-y-0 right-0 flex items-center justify-center w-11 min-w-[44px] text-slate-400 hover:text-slate-200 transition-colors"
                   >
                     {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -234,7 +234,7 @@ function LoginFormInner() {
 
               <Button
                 type="submit"
-                className="w-full h-11 text-base font-semibold"
+                className="w-full h-11 min-h-[44px] text-base font-semibold"
                 disabled={loading}
                 style={{ background: loading ? undefined : "linear-gradient(135deg, #2563EB, #0891B2)" }}
               >
