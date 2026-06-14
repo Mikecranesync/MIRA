@@ -156,16 +156,6 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
   const nonce = b64Nonce(crypto.randomUUID());
   const csp = buildCsp(nonce, pathname);
 
-  // Basepath root → /feed. `redirect()` from a Server Component is silently
-  // swallowed in Next.js 16.2.4 standalone + basePath (response comes back
-  // chunked, 0 bytes, no Location header), so the redirect has to live here.
-  if (pathname === "/") {
-    const url = req.nextUrl.clone();
-    url.pathname = "/feed";
-    url.search = "";
-    return applySecurityHeaders(NextResponse.redirect(url), pathname, csp);
-  }
-
   const cookieValue =
     req.cookies.get(SECURE_NAME)?.value ?? req.cookies.get(REGULAR_NAME)?.value;
   const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET ?? "";
@@ -202,6 +192,19 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
     url.pathname = "/login";
     url.search = "";
     url.searchParams.set("callbackUrl", pathname);
+    return applySecurityHeaders(NextResponse.redirect(url), pathname, csp);
+  }
+
+  // Authenticated. Basepath root → /feed (the default landing surface).
+  // Placed AFTER the auth gate, not before it: an UNAUTHENTICATED root request
+  // must preserve "/" as its login callback, not be pre-redirected to /feed and
+  // come back with callbackUrl=/feed, losing the destination (#1952). `redirect()`
+  // from a Server Component is silently swallowed in Next.js 16.2.4 standalone +
+  // basePath (chunked 0-byte response, no Location header), so it lives here.
+  if (pathname === "/") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/feed";
+    url.search = "";
     return applySecurityHeaders(NextResponse.redirect(url), pathname, csp);
   }
 
