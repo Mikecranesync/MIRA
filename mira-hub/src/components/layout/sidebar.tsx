@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { API_BASE } from "@/lib/config";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -65,9 +66,9 @@ function NavItem({ item, collapsed, active, label }: NavItemProps) {
   );
 }
 
-type MeData = { name: string; initials: string; role: string };
+type MeData = { name: string; initials: string; role: string; capabilities?: string[] };
 
-export function Sidebar({ role = "admin" }: { role?: string }) {
+export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const { theme, toggleTheme } = useTheme();
@@ -76,19 +77,22 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
   const [me, setMe] = useState<MeData | null>(null);
 
   useEffect(() => {
-    fetch("/api/me")
+    fetch(`${API_BASE}/api/me/`)
       .then(r => r.ok ? r.json() : null)
       .then((d: MeData | null) => d && setMe(d))
       .catch(() => {});
   }, []);
 
-  // Labs items only render when NEXT_PUBLIC_LABS_ENABLED=true. They are
-  // mock-data surfaces (Conversations, Alerts, Requests, Parts, Reports,
-  // Team, Documents) — kept in code, hidden from prod IA per ADR-0014.
+  // Nav visibility is capability-gated (#1932). Capabilities come from /api/me —
+  // the SAME source the API route guards use, so the link a user sees and the
+  // API that link calls always agree. Items with no `capability` are visible to
+  // every authenticated user; capability-gated items are hidden until /api/me
+  // confirms the capability (fail-closed — never flash a gated link).
+  const caps = me?.capabilities ?? [];
   const labsOn = labsEnabled();
   const visible = NAV_ITEMS.filter((item) => {
-    if (!(item.roles as readonly string[]).includes(role)) return false;
     if (item.group === "labs" && !labsOn) return false;
+    if (item.capability && !caps.includes(item.capability)) return false;
     return true;
   });
   const primary   = visible.filter((item) => item.group === "primary");
@@ -99,7 +103,7 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
     // Map sidebar keys to translated / display strings. Reordered IA per
     // ADR-0014 — see NAV_ITEMS in providers/access-control.ts.
     const map: Record<string, string> = {
-      "feed":          "Feed",
+      "feed":          "Command Board",
       "namespace":     "Namespace",
       "command-center": "Command Center",
       "channels":      t("channels"),
@@ -109,8 +113,7 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       "assets":        t("assets"),
       "workorders":    "CMMS",
       "scan":          "Scan",
-      "integrations":  "Settings",
-      "admin":         "Admin",
+      "settings":      "Settings",
       "conversations": t("conversations"),
       "alerts":        t("alerts"),
       "requests":      t("requests"),
@@ -119,6 +122,7 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       "reports":       t("reports"),
       "team":          t("team"),
       "admin-review":  "Review queue",
+      "platform-users": "Platform accounts",
       // Legacy routes (still reachable, not in sidebar):
       "event-log":     t("eventLog"),
       "usage":         t("usage"),
@@ -269,7 +273,7 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-medium truncate" style={{ color: "var(--sidebar-fg)" }}>{me?.name ?? "—"}</p>
-              <p className="text-[11px] capitalize" style={{ color: "#64748B" }}>{me?.role ?? role}</p>
+              <p className="text-[11px] capitalize" style={{ color: "#64748B" }}>{me?.role ?? ""}</p>
             </div>
             <button
               className="w-7 h-7 rounded-md flex items-center justify-center transition-colors"

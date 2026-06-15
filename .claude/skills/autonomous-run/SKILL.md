@@ -66,8 +66,26 @@ These are not suggestions. Several of these were hit on 2026-04-25 and ignored.
 | 5 consecutive turns on the same failing test | You're stuck. A fresh perspective will help |
 | Decision needed at the architecture/security/dependency level | Not an autonomous decision. Hand off |
 | Pre-merge reviewer-style issue surfaces (the kind in `docs/competitors/pre-merge-review-2026-04-25.md`) | Stop, fix it, re-run gates. Do not "document and move on" — that's the anti-pattern |
+| **Remaining work is human-gated** (a PR merge needing approval, a vendor-admin click, a physical hardware action, an interactive login, a staging sign-off) | You cannot clear it. Stop ONCE with a precise handoff — do not retry. See below |
 
 When you stop, the LAST thing you do is write `HANDOFF.md` (template: `docs/templates/overnight-HANDOFF.md`) and commit it. Then literally stop.
+
+### Human-gated goals — stop once, do not loop  (issue #1811)
+
+A `/goal` or `/loop` session installs a **harness Stop hook** that re-injects the goal
+condition and blocks stopping until it holds. That hook lives in the Claude Code runtime,
+**not** in `.claude/settings.json` — the repo's own Stop hooks (`tools/hooks/stop-gate.sh`
+= lint gate, `.claude/hooks/stop.sh` = progress autolog) do **not** produce a merge/verify
+retry loop. So the loop in #1811 is **not patchable from the repo**; the fix is operator
+discipline:
+
+- When the only work left on a goal is something **a human must do** (approve a merge, click a
+  vendor console, plug in hardware, sign off staging), drive all *agent-side* work to done,
+  then make **one** consolidated handoff request and stop. Do not re-attempt the gated step.
+- **Honor a prior override.** If the operator already redirected ("skip that", "leave it",
+  "try again later"), treat the gate as satisfied-for-now and stop — re-prompting is the bug.
+- Batch the handoff: one message listing exactly what the human must do (per memory
+  `feedback_user_gated_goals_no_pr_spam` — no PR-spam, no AskUserQuestion drip). Then exit.
 
 ## Before declaring "done"
 

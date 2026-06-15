@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { API_BASE } from "@/lib/config";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -67,7 +68,7 @@ export default function ReportsPage() {
     setLoading(true);
     setReportError(null);
     try {
-      const res = await fetch("/api/reports/generate", { method: "POST" });
+      const res = await fetch(`${API_BASE}/api/reports/generate/`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Generation failed");
       setNarrative(data.narrative);

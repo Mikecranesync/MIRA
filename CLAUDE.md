@@ -1,6 +1,6 @@
 # MIRA — Build State
 
-**Version:** v3.4.0 | **Updated:** 2026-05-07
+**Version:** see `/VERSION` (authoritative overall counter; auto-tagged `vX.Y.Z` on merge — `docs/versioning.md`)
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Gemini (cascade, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
 **Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → Supervisor (shared/engine.py) → cascade providers
@@ -172,6 +172,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **Quality score (domain grades):** `docs/QUALITY_SCORE.md`
 - **Harness plan (security/measurement/arch phases):** `docs/superpowers/plans/2026-04-17-harness-engineering-industrial-grade.md`
 - **Release notes:** `docs/CHANGELOG.md`
+- **Versioning & rollback (every merge bumps `/VERSION`, auto-tags `vX.Y.Z` + a rollback checkpoint):** `docs/versioning.md` — enforced by `version-gate.yml` (required) + `version-tag.yml`
 - **Kiosk / AskMira deploy + prod verify runbook:** `docs/runbooks/kiosk-askmira-deploy-and-verify.md` — read BEFORE shipping any `mira-bots/ask_api/`, kiosk-scoped engine fast-path, or AskMira `view.json` change. Documents the **`services=mira-ask`** dispatch + 9/10 Mode A hard-pass + Mode B browser verify.
 - **All env vars:** `docs/env-vars.md`
 - **Known issues / deferred / abandoned:** `docs/known-issues.md`

@@ -6,9 +6,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Release versioning
 
-`mira-hub` is versioned independently of the rest of the MIRA monorepo using namespaced git tags.
+`mira-hub` is versioned independently of the rest of the MIRA monorepo using namespaced git tags. **This is in addition to — not instead of — the overall monorepo counter in `/VERSION`, which every code PR must bump and which auto-tags `vX.Y.Z` on merge (see `docs/versioning.md`).** A hub PR bumps both: `/VERSION` (required, overall) and `mira-hub/package.json` (hub release line, below).
 
-- `package.json` version is the source of truth.
+- `package.json` version is the source of truth (for the hub component line).
 - Every meaningful change (feature, schema migration, provider addition, UI overhaul) bumps the minor — patch bumps are reserved for hotfixes on a released line.
 - Ship sequence: bump `version` in `package.json` → `git commit -m "chore(hub): release vX.Y.Z"` → `git tag -a mira-hub/vX.Y.Z -m "..."` → `git push origin main --follow-tags`.
 - First tagged release: `mira-hub/v1.1.0` (2026-04-24) — OAuth persistence + full platform build.

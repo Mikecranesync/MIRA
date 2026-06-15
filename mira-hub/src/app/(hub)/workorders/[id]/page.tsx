@@ -13,8 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { OpenInCMMSButton } from "@/components/cmms/open-in-cmms-button";
 import { PARTS } from "@/lib/parts-data";
+import { isWorkOrderInProgressStatus, WORK_ORDER_IN_PROGRESS_STATUS } from "@/lib/work-order-status";
 import { useToast } from "@/providers/toast-provider";
-import { API_BASE } from "@/lib/config";
+import { uploadWorkOrderPhoto } from "./wo-photo-upload";
 
 type Priority = "critical" | "high" | "medium" | "low";
 
@@ -94,8 +95,39 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
   const [compSubmitting, setCompSubmitting] = useState(false);
   const [compMissingFields, setCompMissingFields] = useState<string[]>([]);
 
+  // Photo evidence (#1929 — the Add-photo control was a dead button). Uploads
+  // through the existing local-upload endpoint (same flow as New Work Order).
+  const [photos, setPhotos] = useState<
+    { id: string; previewUrl: string; status: "uploading" | "uploaded" | "failed" }[]
+  >([]);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+
+  function onPhotosPicked(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const queued = Array.from(files).map((file) => ({
+      file,
+      id: crypto.randomUUID(),
+      previewUrl: URL.createObjectURL(file),
+    }));
+    setPhotos((prev) => [
+      ...prev,
+      ...queued.map((q) => ({ id: q.id, previewUrl: q.previewUrl, status: "uploading" as const })),
+    ]);
+    for (const q of queued) {
+      uploadWorkOrderPhoto(q.file)
+        .then(() =>
+          setPhotos((prev) => prev.map((p) => (p.id === q.id ? { ...p, status: "uploaded" } : p))),
+        )
+        .catch(() => {
+          setPhotos((prev) => prev.map((p) => (p.id === q.id ? { ...p, status: "failed" } : p)));
+          toast(t("photoUploadFailed"));
+        });
+    }
+    if (photoInputRef.current) photoInputRef.current.value = "";
+  }
+
   useEffect(() => {
-    fetch(`/hub/api/work-orders/${id}`)
+    fetch(`/hub/api/work-orders/${id}/`)
       .then(r => r.json())
       .then((data: { work_order?: WO }) => {
         if (data.work_order) {
@@ -116,7 +148,24 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [timerRunning]);
 
-  function startWork() { setStatus("inprogress"); setTimerRunning(true); toast(t("started")); }
+  async function startWork() {
+    try {
+      const res = await fetch(`/hub/api/work-orders/${id}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: WORK_ORDER_IN_PROGRESS_STATUS }),
+      });
+      if (!res.ok) throw new Error("Failed to start work order");
+      const data = (await res.json()) as { work_order?: Partial<WO> };
+      const nextStatus = data.work_order?.status ?? WORK_ORDER_IN_PROGRESS_STATUS;
+      setStatus(nextStatus);
+      setWo(prev => prev ? { ...prev, status: nextStatus } : prev);
+      setTimerRunning(true);
+      toast(t("started"));
+    } catch {
+      toast("Could not start work — please try again");
+    }
+  }
   function stopTimer() { setTimerRunning(false); toast(t("paused", { time: formatTimer(elapsed) })); }
 
   function openCompleteForm() {
@@ -131,7 +180,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
     setCompSubmitting(true);
     setCompMissingFields([]);
     try {
-      const res = await fetch(`/hub/api/work-orders/${id}`, {
+      const res = await fetch(`/hub/api/work-orders/${id}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -358,16 +407,71 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
           </div>
         )}
 
-        {/* Photo placeholder */}
-        <div className="card p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "var(--surface-1)" }}>
-            <Camera className="w-5 h-5" style={{ color: "var(--foreground-subtle)" }} />
+        {/* Photos — evidence attachments (#1929: was a dead control). */}
+        <div className="card p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "var(--surface-1)" }}>
+              <Camera className="w-5 h-5" style={{ color: "var(--foreground-subtle)" }} />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{t("photos")}</p>
+              <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
+                {photos.length === 0 ? t("noPhotos") : t("tapPhotos")}
+              </p>
+            </div>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              multiple
+              className="hidden"
+              onChange={(e) => onPhotosPicked(e.target.files)}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              onClick={() => photoInputRef.current?.click()}
+            >
+              + {t("addPhoto")}
+            </Button>
           </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{t("photos")}</p>
-            <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>{t("noPhotos")}</p>
-          </div>
-          <Button variant="outline" size="sm" className="text-xs">+ {t("addPhoto")}</Button>
+          {photos.length > 0 && (
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {photos.map((p) => (
+                <div
+                  key={p.id}
+                  className="relative aspect-square rounded-lg overflow-hidden border"
+                  style={{
+                    borderColor: p.status === "failed" ? "#DC2626" : "var(--border)",
+                    backgroundColor: "var(--surface-1)",
+                  }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.previewUrl}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    style={{ opacity: p.status === "uploaded" ? 1 : 0.5 }}
+                  />
+                  {p.status === "uploading" && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Loader2 className="w-5 h-5 animate-spin" style={{ color: "white" }} />
+                    </div>
+                  )}
+                  {p.status === "failed" && (
+                    <div
+                      className="absolute inset-0 flex items-center justify-center"
+                      style={{ backgroundColor: "rgba(0,0,0,0.4)" }}
+                    >
+                      <AlertCircle className="w-5 h-5" style={{ color: "#FCA5A5" }} />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Parts Used */}
@@ -457,7 +561,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
         {/* Status actions */}
         {status !== "completed" && (
           <div className="space-y-2">
-            {status === "inprogress" && (
+            {isWorkOrderInProgressStatus(status) && (
               <Button onClick={openCompleteForm} className="w-full h-11 gap-2 font-semibold"
                 style={{ backgroundColor: "#16A34A" }}>
                 <CheckCircle2 className="w-4 h-4" />{t("markComplete")}

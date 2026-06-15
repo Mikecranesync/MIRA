@@ -14,7 +14,7 @@ import {
 import { useTranslations } from "next-intl";
 import { UploadPicker } from "@/components/UploadPicker";
 import { UploadBlock, type UploadBlockData } from "@/components/UploadBlock";
-import { API_BASE } from "@/lib/config";
+import { API_BASE, MAX_UPLOAD_MB } from "@/lib/config";
 import { KbGrowthDashboard } from "../KbGrowthDashboard";
 import { UploadSummaryCard } from "@/components/UploadSummaryCard";
 
@@ -138,7 +138,7 @@ export default function KnowledgePage() {
 
   const fetchManufacturers = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/knowledge`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/knowledge/`, { cache: "no-store" });
       if (!res.ok) return;
       const data = await res.json();
       // API now returns A-Z; sort defensively in case any caller mutates.
@@ -188,7 +188,7 @@ export default function KnowledgePage() {
     setExpandedAsset(null);
     setAssetChildren({});
     setAssetDocs({});
-    fetch(`${API_BASE}/api/knowledge/manufacturer?name=${encodeURIComponent(name)}`, {
+    fetch(`${API_BASE}/api/knowledge/manufacturer/?name=${encodeURIComponent(name)}`, {
       cache: "no-store",
     })
       .then((r) => r.json())
@@ -221,7 +221,7 @@ export default function KnowledgePage() {
       setExpandedAsset(id);
       if (!assetChildren[id]) {
         try {
-          const r = await fetch(`${API_BASE}/api/assets/${id}/children`, {
+          const r = await fetch(`${API_BASE}/api/assets/${id}/children/`, {
             cache: "no-store",
           });
           if (r.ok) {
@@ -234,7 +234,7 @@ export default function KnowledgePage() {
       }
       if (!assetDocs[id]) {
         try {
-          const r = await fetch(`${API_BASE}/api/assets/${id}/documents`, {
+          const r = await fetch(`${API_BASE}/api/assets/${id}/documents/`, {
             cache: "no-store",
           });
           if (r.ok) {
@@ -260,7 +260,7 @@ export default function KnowledgePage() {
 
   const fetchUploads = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/uploads`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/uploads/`, { cache: "no-store" });
       if (!res.ok) return;
       const rows = (await res.json()) as Array<{
         id: string;
@@ -310,7 +310,7 @@ export default function KnowledgePage() {
       const form = new FormData();
       form.append("file", file);
       if (assetTag) form.append("assetTag", assetTag);
-      const res = await fetch(`${API_BASE}/api/uploads/local`, {
+      const res = await fetch(`${API_BASE}/api/uploads/local/`, {
         method: "POST",
         body: form,
       });
@@ -319,8 +319,8 @@ export default function KnowledgePage() {
         const msg =
           body.error === "unsupported_mime"
             ? `Unsupported file type: ${(body.got as string | undefined) || file.type || "unknown"}`
-            : body.error === "exceeds_20mb_limit"
-              ? `File too large (max 20 MB): ${file.name}`
+            : body.error === "exceeds_size_limit"
+              ? `File too large (max ${MAX_UPLOAD_MB} MB): ${file.name}`
               : typeof body.error === "string"
                 ? body.error
                 : `Upload failed (${res.status})`;
@@ -349,7 +349,7 @@ export default function KnowledgePage() {
   ) {
     let firstId: string | null = null;
     for (const result of results) {
-      const res = await fetch(`${API_BASE}/api/uploads`, {
+      const res = await fetch(`${API_BASE}/api/uploads/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...result, assetTag: assetTag ?? undefined }),
@@ -364,12 +364,12 @@ export default function KnowledgePage() {
   }
 
   async function handleDeleteUpload(id: string) {
-    await fetch(`/hub/api/uploads/${id}`, { method: "DELETE" });
+    await fetch(`/hub/api/uploads/${id}/`, { method: "DELETE" });
     await fetchUploads();
   }
 
   async function handleRetryUpload(id: string) {
-    const res = await fetch(`${API_BASE}/api/uploads/${id}/retry`, { method: "POST" });
+    const res = await fetch(`${API_BASE}/api/uploads/${id}/retry/`, { method: "POST" });
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       // Local buffer expired/lost — the only case where retry can't proceed.
@@ -896,7 +896,7 @@ export default function KnowledgePage() {
               className="text-xs"
               style={{ color: "var(--foreground-muted)" }}
             >
-              Tap to upload a PDF manual or photo — PDF, JPEG, PNG up to 20 MB.
+              Tap to upload a PDF manual or photo — PDF, JPEG, PNG up to {MAX_UPLOAD_MB} MB.
             </p>
           </button>
         )}

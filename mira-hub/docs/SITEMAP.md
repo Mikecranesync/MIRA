@@ -10,10 +10,10 @@
 
 | Surface | Count |
 |---|---|
-| Pages | **48** (6 dynamic) |
-| API routes | **116** (32 dynamic) |
+| Pages | **57** (6 dynamic) |
+| API routes | **118** (33 dynamic) |
 
-## Pages (48)
+## Pages (57)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -43,7 +43,7 @@
 | `/library` | static | `(hub)/library/page.tsx` |
 | `/login` | static | `login/page.tsx` |
 | `/m/[assetTag]` | dynamic | `m/[assetTag]/page.tsx` |
-| `/magic` | static | `(hub)/magic/page.tsx` |
+| `/magic` | static | `magic/page.tsx` |
 | `/more` | static | `(hub)/more/page.tsx` |
 | `/namespace` | static | `(hub)/namespace/page.tsx` |
 | `/onboarding` | static | `(hub)/onboarding/page.tsx` |
@@ -57,6 +57,15 @@
 | `/requests/new` | static | `(hub)/requests/new/page.tsx` |
 | `/scan` | static | `(hub)/scan/page.tsx` |
 | `/schedule` | static | `(hub)/schedule/page.tsx` |
+| `/settings` | static | `(hub)/settings/page.tsx` |
+| `/settings/audit-log` | static | `(hub)/settings/audit-log/page.tsx` |
+| `/settings/integrations` | static | `(hub)/settings/integrations/page.tsx` |
+| `/settings/organization` | static | `(hub)/settings/organization/page.tsx` |
+| `/settings/review-queue` | static | `(hub)/settings/review-queue/page.tsx` |
+| `/settings/roles` | static | `(hub)/settings/roles/page.tsx` |
+| `/settings/security` | static | `(hub)/settings/security/page.tsx` |
+| `/settings/usage` | static | `(hub)/settings/usage/page.tsx` |
+| `/settings/users` | static | `(hub)/settings/users/page.tsx` |
 | `/signup` | static | `signup/page.tsx` |
 | `/team` | static | `(hub)/team/page.tsx` |
 | `/upgrade` | static | `(hub)/upgrade/page.tsx` |
@@ -66,7 +75,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (116)
+## API routes (118)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -114,6 +123,7 @@
 | `/api/cmms/deep-link` | static | `api/cmms/deep-link/route.ts` |
 | `/api/cmms/health` | static | `api/cmms/health/route.ts` |
 | `/api/cmms/stats` | static | `api/cmms/stats/route.ts` |
+| `/api/command-center/display` | static | `api/command-center/display/route.ts` |
 | `/api/command-center/display/[id]` | dynamic | `api/command-center/display/[id]/route.ts` |
 | `/api/command-center/tree` | static | `api/command-center/tree/route.ts` |
 | `/api/components/[id]` | dynamic | `api/components/[id]/route.ts` |
@@ -157,6 +167,7 @@
 | `/api/picker/google/token` | static | `api/picker/google/token/route.ts` |
 | `/api/pm-schedules` | static | `api/pm-schedules/route.ts` |
 | `/api/pm-schedules/[id]` | dynamic | `api/pm-schedules/[id]/route.ts` |
+| `/api/pm-schedules/[id]/complete` | dynamic | `api/pm-schedules/[id]/complete/route.ts` |
 | `/api/pm-schedules/[id]/meter` | dynamic | `api/pm-schedules/[id]/meter/route.ts` |
 | `/api/pm/export.csv` | static | `api/pm/export.csv/route.ts` |
 | `/api/pm/export.ics` | static | `api/pm/export.ics/route.ts` |

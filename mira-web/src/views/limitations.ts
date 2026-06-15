@@ -1,5 +1,5 @@
 import { head } from "../lib/head.js";
-import { btnPrimary, btnGhost } from "../lib/components.js";
+import { btnPrimary } from "../lib/components.js";
 import { navbar, footer } from "./_topbar.js";
 
 const PAGE_STYLES = `
@@ -251,7 +251,7 @@ export function renderLimitations(reqUrl?: string): string {
   </div>
 
   <div class="fl-lim-cta">
-    ${btnPrimary("Try it free — no credit card", { href: "/cmms", cta: "lim-cta-try" })}
+    ${btnPrimary("See if we're a fit — book a $500 assessment", { href: "/buy", cta: "lim-cta-assessment" })}
     <p>
       Spotted something we're not honest about?
       <a href="mailto:mike@factorylm.com">Email mike@factorylm.com</a> — we'll add it.
