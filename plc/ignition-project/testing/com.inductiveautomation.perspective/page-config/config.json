@@ -1,12 +1,22 @@
 {
   "pages": {
     "/": {
-      "title": "VFD Analyzer — Tag Setup",
-      "viewPath": "TagMapper",
+      "title": "VFD Analyzer — Setup",
+      "viewPath": "SetupWizard",
       "docks": {}
     },
     "/setup": {
-      "title": "VFD Analyzer — Tag Setup",
+      "title": "VFD Analyzer — Setup",
+      "viewPath": "SetupWizard",
+      "docks": {}
+    },
+    "/wizard": {
+      "title": "VFD Analyzer — Setup Wizard",
+      "viewPath": "SetupWizard",
+      "docks": {}
+    },
+    "/mapper": {
+      "title": "VFD Analyzer — Tag Mapper (single-screen fallback)",
       "viewPath": "TagMapper",
       "docks": {}
     },

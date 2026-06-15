@@ -532,3 +532,288 @@ def slot_divisor(role_key, asset):
     semantics (bool->None, code->1.0) at write time, so the field value only matters for analog."""
     d = _roles.default_divisor(role_key, _family(asset))
     return 1 if d is None else d
+
+
+# ---- 4-step wizard helpers (Connect -> Verify -> Map -> Save) ----
+# These wrap the existing browse/scan/live machinery for the SetupWizard view. The wizard adds a
+# CONNECT step (pick provider + folder), a VERIFY step (prove the source is live before mapping),
+# the existing MAP step, and a SAVE step (readiness + train-before-deploy approval). Read-only on
+# process tags throughout; only the per-asset config tag is written. Jython 2.7 safe (no f-strings).
+
+# --- Step 1: CONNECT ---
+
+def provider_options():
+    """Dropdown options for the tag-provider picker. Browses the gateway root for providers;
+    fails soft to [default] so Step 1 never hard-blocks (the provider list has no scripting API
+    guarantee across versions, so we discover it by browsing root and degrade gracefully)."""
+    out = []
+    try:
+        results = system.tag.browse("").getResults()
+        for r in results:
+            try:
+                full = str(r['fullPath'])
+            except Exception:
+                continue
+            if not full:
+                continue
+            val = full if full.startswith("[") else ("[%s]" % full)
+            label = val.strip("[]") or "default"
+            seen = False
+            for o in out:
+                if o["value"] == val:
+                    seen = True
+                    break
+            if not seen:
+                out.append({"value": val, "label": label})
+    except Exception as e:
+        _logger().warn("provider browse failed: %s" % str(e))
+    if not out:
+        out = [{"value": "[default]", "label": "default"}]
+    return out
+
+
+def browse_nodes(base):
+    """Folder browser rows for Step 1: immediate children under `base` as
+    [{label, path, kind}] where kind is 'folder' or 'tag'. Click a folder row to drill in;
+    'Use this folder' commits `base` as the data source. Read-only browse."""
+    out = []
+    if not base:
+        base = "[default]"
+    try:
+        results = system.tag.browse(base).getResults()
+    except Exception as e:
+        _logger().warn("browse_nodes %s failed: %s" % (base, str(e)))
+        return out
+    for r in results:
+        try:
+            full = str(r['fullPath'])
+            children = r['hasChildren']
+        except Exception:
+            continue
+        leaf = full.rsplit("/", 1)[-1]
+        if leaf.startswith("["):
+            leaf = leaf.strip("[]")
+        if children:
+            out.append({"label": "[+]  " + leaf, "path": full, "kind": "folder"})
+        else:
+            out.append({"label": "      " + leaf, "path": full, "kind": "tag"})
+    return out
+
+
+# --- Step 2: VERIFY ---
+
+def verify_summary(folder):
+    """Scan `folder` and report {count, good, bad}: total atomic tags + a live good/bad read
+    (capped) so the operator can prove the source is alive BEFORE mapping. Reuses the cached
+    _scan_all so Step 2 and Step 3 share one browse. Called from the 'Test data source' event."""
+    items = _scan_all(folder or "[default]")
+    count = len(items)
+    paths = [t["path"] for t in items[:500]]   # cap the read; count is the true total
+    good = 0
+    bad = 0
+    if paths:
+        try:
+            qvs = system.tag.readBlocking(paths)
+            for q in qvs:
+                try:
+                    if q.quality.isGood():
+                        good += 1
+                    else:
+                        bad += 1
+                except Exception:
+                    bad += 1
+        except Exception as e:
+            _logger().warn("verify read failed: %s" % str(e))
+    return {"count": count, "good": good, "bad": bad}
+
+
+def verify_ok(folder):
+    """True iff the folder has at least one good-quality tag (the Step-2 advance gate)."""
+    return verify_summary(folder)["good"] >= 1
+
+
+def verify_breakdown_md(folder):
+    """Datatype breakdown line for Step 2: how many Float/Int/Bool/String tags are under `folder`."""
+    items = _scan_all(folder or "[default]")
+    f = i = b = s = 0
+    for t in items:
+        dt = t["dt"].lower()
+        if "float" in dt:
+            f += 1
+        elif "int" in dt:
+            i += 1
+        elif "bool" in dt:
+            b += 1
+        elif "string" in dt:
+            s += 1
+    return "**Types:**  Float %d  &middot;  Int %d  &middot;  Bool %d  &middot;  String %d" % (f, i, b, s)
+
+
+def verify_sample(folder):
+    """A small live sample (<=15 rows) of the folder for Step 2: [{path, type, value, quality}].
+    Reuses scan_tags so the operator watches real values move and spots bad-quality links."""
+    return scan_tags(folder or "[default]", "", "All")[:15]
+
+
+# --- Step 3: MAP (auto-suggest seam) ---
+# Lightweight LOCAL fuzzy match of tag NAMES to a signal role -- no cloud, no AI service. Pre-fills
+# the best guess for the user to confirm; unknowns stay empty (never guessed). Conservative: a
+# candidate must both fit the role's datatype AND contain a role keyword.
+_SUGGEST_KEYWORDS = {
+    "vfd/vfd101/freq": ["freq", "hz", "output_freq", "speed_hz"],
+    "vfd/vfd101/current_a": ["current", "amp", "amps", "iout", "motor_current"],
+    "vfd/vfd101/fault_code": ["fault", "trip", "faultcode", "fault_code"],
+    "vfd/vfd101/freq_setpoint": ["setpoint", "freq_cmd", "cmd_freq", "freq_ref", "freq_sp"],
+    "vfd/vfd101/dc_bus_v": ["dc_bus", "dcbus", "bus_v", "vdc", "dc_link", "busvolt"],
+    "vfd/vfd101/comm_ok": ["comm", "online", "connected", "heartbeat", "link_ok"],
+    "vfd/vfd101/cmd_word": ["cmd_word", "control_word", "ctrl_word", "command_word", "cmdword"],
+    "vfd/vfd101/warn_code": ["warn", "warning", "alarm_code"],
+    "motor/m101/running": ["running", "run_status", "motor_run", "is_running"],
+    "safety/estop": ["estop", "e_stop", "emergency"],
+}
+# Negative tokens: a tag whose name contains one of these is probably a DIFFERENT signal, so we
+# penalize it. This stops greedy keywords from mis-matching -- e.g. "freq" alone would tie
+# vfd_frequency (the OUTPUT) with vfd_freq_cmd (the SETPOINT) and the shorter name would win.
+_SUGGEST_NEG = {
+    "vfd/vfd101/freq": ["cmd", "setpoint", "set_", "_set", "ref", "_sp", "sp_", "command", "target"],
+    "vfd/vfd101/current_a": ["cmd", "setpoint", "limit", "ref"],
+    "vfd/vfd101/dc_bus_v": ["cmd", "setpoint", "ref"],
+}
+
+
+def suggest_for_role(folder, role_key):
+    """Best fuzzy name-match tag path for `role_key` under `folder`, or '' if none is confident
+    enough. Requires datatype fit + a net-positive keyword score; negative tokens (e.g. 'cmd',
+    'setpoint') penalize a candidate so an OUTPUT role won't grab a SETPOINT tag. Ties break to
+    the shorter tag name."""
+    kws = _SUGGEST_KEYWORDS.get(role_key)
+    if not kws:
+        return ""
+    neg = _SUGGEST_NEG.get(role_key, [])
+    r = _roles.role(role_key)
+    kind = r["kind"] if r else "analog"
+    allowed = _DT_FOR_KIND.get(kind)
+    items = _scan_all(folder or "[default]")
+    best = ""
+    best_score = 0
+    best_len = 99999
+    for t in items:
+        if allowed is not None:
+            dtl = t["dt"].lower()
+            ok = False
+            for a in allowed:
+                if a in dtl:
+                    ok = True
+                    break
+            if not ok:
+                continue
+        name = t["path"].rsplit("/", 1)[-1].lower()
+        score = 0
+        for kw in kws:
+            if kw in name:
+                score += 1
+        for nk in neg:
+            if nk in name:
+                score -= 2   # a negative token outweighs a single positive -> disqualifies it
+        if score > 0 and (score > best_score or (score == best_score and len(name) < best_len)):
+            best = t["path"]
+            best_score = score
+            best_len = len(name)
+    return best
+
+
+def accept_all_suggestions(asset, folder):
+    """Auto-fill every UNMAPPED required/recommended role with its fuzzy suggestion (source
+    'suggested', confidence 'proposed' -- distinct from a manual 'verified' pick). Never
+    overwrites an existing mapping; unknowns stay unmapped. The user still reviews + can change
+    each slot. One batched write."""
+    asset = _coerce_asset(asset)
+    if not asset:
+        return "ERROR: no asset"
+    cfg = _load(asset)
+    if cfg is None:
+        cfg = {"schemaVersion": 1, "assetId": asset, "driveFamily": "GS10",
+               "unsPath": "", "roles": {}}
+    cfg = _scaffold(cfg, asset)
+    n = 0
+    for r in _roles.ROLES:
+        if r["requirement"] == _roles.OPTIONAL:
+            continue
+        key = r["key"]
+        if key in cfg["roles"]:
+            continue
+        tag = suggest_for_role(folder, key)
+        if tag:
+            div = _norm_divisor(key, _roles.default_divisor(key, _family(asset)))
+            cfg["roles"][key] = {"tag": tag, "divisor": div, "source": "suggested",
+                                 "confidence": "proposed", "evidence": "name_match"}
+            n += 1
+    if n == 0:
+        return "no new suggestions found under that folder"
+    try:
+        _cfg.load_config(cfg, valid_keys=_roles.valid_keys())
+    except Exception as e:
+        return "ERROR: %s" % str(e)
+    _ensure_tag(asset)
+    js = system.util.jsonEncode(cfg)
+    try:
+        q = system.tag.writeBlocking([CONFIG_TAG % asset], [js])[0]
+        if q.isGood():
+            return "Applied %d suggestion(s) -- review the slots, then confirm" % n
+        return "WRITE FAILED (quality not good)"
+    except Exception as e:
+        return "ERROR writing: %s" % str(e)
+
+
+def progress_text(asset):
+    """Step-3 required-field progress meter, e.g. 'Mapped 2 of 3 required'."""
+    cfg = _load(asset)
+    req = _roles.required_keys()
+    if cfg is None:
+        return "Mapped 0 of %d required" % len(req)
+    mapped = len(req) - len(_cfg.required_unmapped(cfg, req))
+    return "Mapped %d of %d required" % (mapped, len(req))
+
+
+def is_ready(asset):
+    """True iff all REQUIRED roles are mapped (the Step-3 -> Step-4 advance gate)."""
+    asset = _coerce_asset(asset)
+    if not asset:
+        return False
+    cfg = _load(asset)
+    if cfg is None:
+        return False
+    return len(_cfg.required_unmapped(cfg, _roles.required_keys())) == 0
+
+
+# --- Step 4: SAVE ---
+
+def finalize(asset, approved, approved_by):
+    """Commit the config with its train-before-deploy approval state. approved=True records
+    approvedBy; approved=False clears it. Validates before writing; never writes an invalid config.
+    Returns a human status string."""
+    asset = _coerce_asset(asset)
+    if not asset:
+        return "ERROR: no asset"
+    cfg = _load(asset)
+    if cfg is None:
+        cfg = {"schemaVersion": 1, "assetId": asset, "driveFamily": "GS10",
+               "unsPath": "", "roles": {}}
+    cfg = _scaffold(cfg, asset)
+    cfg["approved"] = bool(approved)
+    cfg["approvedBy"] = approved_by if (approved and approved_by) else None
+    try:
+        _cfg.load_config(cfg, valid_keys=_roles.valid_keys())
+    except Exception as e:
+        return "ERROR: %s" % str(e)
+    _ensure_tag(asset)
+    js = system.util.jsonEncode(cfg)
+    try:
+        q = system.tag.writeBlocking([CONFIG_TAG % asset], [js])[0]
+        if q.isGood():
+            n = len(cfg.get("roles", {}))
+            tail = "  (approved)" if approved else ""
+            return "Saved %d role(s)%s" % (n, tail)
+        return "WRITE FAILED (quality not good)"
+    except Exception as e:
+        return "ERROR writing: %s" % str(e)
