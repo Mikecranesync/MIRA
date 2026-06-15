@@ -101,11 +101,15 @@ function buildCsp(nonce: string, pathname: string): string {
     : `frame-ancestors 'self'`;
   return [
     `default-src 'self'`,
-    `script-src 'self' 'nonce-${nonce}' https://accounts.google.com https://apis.google.com https://js.stripe.com`,
+    // www.dropbox.com is required for the Dropbox Chooser: `dropins.js` loads from
+    // there (script-src), the Chooser makes XHRs back to it (connect-src), and the
+    // modern Chooser renders its UI in a www.dropbox.com iframe (frame-src, below).
+    // Without these the script is CSP-blocked and `window.Dropbox` is never defined (#1902).
+    `script-src 'self' 'nonce-${nonce}' https://accounts.google.com https://apis.google.com https://js.stripe.com https://www.dropbox.com`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.stripe.com`,
     `font-src 'self' https://fonts.gstatic.com`,
     `img-src 'self' data: https:`,
-    `connect-src 'self' https://accounts.google.com https://api.hubapi.com https://api.stripe.com https://js.stripe.com`,
+    `connect-src 'self' https://accounts.google.com https://api.hubapi.com https://api.stripe.com https://js.stripe.com https://www.dropbox.com`,
     // Command Center display hosts (DISPLAY_FRAME_SRC) are appended so the framed
     // HMI loads. CSP checks the post-redirect URL, so even though the iframe src is
     // the same-origin /api/command-center/display/[id] route, the display host it
@@ -116,7 +120,7 @@ function buildCsp(nonce: string, pathname: string): string {
     // The display host(s) cover the URL that route 302-redirects to (CSP
     // re-checks frame-src against the post-redirect URL).
     [
-      `frame-src 'self' https://accounts.google.com https://js.stripe.com https://hooks.stripe.com https://mikecranesync.github.io`,
+      `frame-src 'self' https://accounts.google.com https://js.stripe.com https://hooks.stripe.com https://mikecranesync.github.io https://www.dropbox.com`,
       ...DISPLAY_FRAME_SRC,
     ].join(" "),
     frameAncestors,
