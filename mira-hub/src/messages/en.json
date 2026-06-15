@@ -161,6 +161,7 @@
     "photos": "Photos",
     "noPhotos": "No photos attached",
     "addPhoto": "Add",
+    "photoUploadFailed": "Photo upload failed — try again.",
     "viewMira": "MIRA Conversation",
     "openCmms": "CMMS",
     "assignedTo": "Assigned To",
