@@ -93,7 +93,9 @@ function gateRedirect(req: NextRequest, status: string, trialExpiresAt: unknown)
   return null;
 }
 
-function buildCsp(nonce: string, pathname: string): string {
+// Exported for unit testing (#1902). Next.js only consumes the default
+// `middleware` export + `config`; extra named exports are ignored by the runtime.
+export function buildCsp(nonce: string, pathname: string): string {
   // `/scan` is the monday.com marketplace iframe — it must be framable by
   // monday's marketplace shell. Every other path stays self-only.
   const frameAncestors = pathname.startsWith("/scan")
@@ -101,7 +103,11 @@ function buildCsp(nonce: string, pathname: string): string {
     : `frame-ancestors 'self'`;
   return [
     `default-src 'self'`,
-    `script-src 'self' 'nonce-${nonce}' https://accounts.google.com https://apis.google.com https://js.stripe.com`,
+    // https://www.dropbox.com — the Dropbox Chooser (`dropins.js`) loads its
+    // script and renders its picker iframe from this origin (#1902). The picked
+    // file's direct link is downloaded server-side, so no connect-src widening
+    // is needed.
+    `script-src 'self' 'nonce-${nonce}' https://accounts.google.com https://apis.google.com https://js.stripe.com https://www.dropbox.com`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.stripe.com`,
     `font-src 'self' https://fonts.gstatic.com`,
     `img-src 'self' data: https:`,
@@ -116,7 +122,7 @@ function buildCsp(nonce: string, pathname: string): string {
     // The display host(s) cover the URL that route 302-redirects to (CSP
     // re-checks frame-src against the post-redirect URL).
     [
-      `frame-src 'self' https://accounts.google.com https://js.stripe.com https://hooks.stripe.com https://mikecranesync.github.io`,
+      `frame-src 'self' https://accounts.google.com https://js.stripe.com https://hooks.stripe.com https://mikecranesync.github.io https://www.dropbox.com`,
       ...DISPLAY_FRAME_SRC,
     ].join(" "),
     frameAncestors,

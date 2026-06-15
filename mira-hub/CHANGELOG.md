@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.7.1 — 2026-06-15
+- security(hub): allow the Dropbox Chooser through CSP — `https://www.dropbox.com` added to `script-src` (loads `dropins.js`) and `frame-src` (the Chooser iframe) in `middleware.ts`. The picked file's direct link is downloaded server-side, so `connect-src` is intentionally NOT widened. Fixes cloud-picker breakage on prod; `buildCsp` exported + unit-tested (#1902)
+
 ## v2.4.0 — 2026-06-14
 - fix(schedule): PM "Mark Complete" now persists via new `POST /api/pm-schedules/[id]/complete` (stamps `last_completed_at`, rolls `next_due_at` forward, resets meter cycle for meter PMs); trigger buttons use `${API_BASE}/api/...` (was hardcoded `/hub/api`) with `res.ok` checks + error toasts + local-state sync; self-contained synthetic `tools/seed_demo_tenant_pms.sql` for the demo tenant (#1950)
 
