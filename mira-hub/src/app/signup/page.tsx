@@ -4,12 +4,20 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
-import { Factory, Loader2, Eye, EyeOff } from "lucide-react";
+import { Factory, Loader2, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { API_BASE } from "@/lib/config";
 
 const MIN_PW = 8;
+// Public legal + trust pages are served by the marketing site (factorylm.com),
+// not the Hub (app.factorylm.com) — link to absolute URLs.
+const LEGAL = {
+  privacy: "https://factorylm.com/privacy",
+  terms: "https://factorylm.com/terms",
+  security: "https://factorylm.com/security",
+} as const;
+const SUPPORT_EMAIL = "support@factorylm.com";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -95,7 +103,7 @@ export default function SignupPage() {
           <p className="text-slate-500 text-xs mt-3 max-w-xs text-center">
             Track faults, work orders, assets, manuals, and shift handoffs in one place.
           </p>
-          <p className="text-slate-500 text-xs mt-2">No credit card.</p>
+          <p className="text-slate-500 text-xs mt-2">7-day free trial — no credit card.</p>
         </div>
 
         <div
@@ -206,6 +214,36 @@ export default function SignupPage() {
             </Button>
           </form>
 
+          {/* Terms / Privacy — shown before account creation (#1958) */}
+          <p className="text-center text-xs text-slate-500 mt-4 leading-relaxed">
+            By creating an account you agree to our{" "}
+            <a href={LEGAL.terms} target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-300">
+              Terms
+            </a>{" "}
+            and{" "}
+            <a href={LEGAL.privacy} target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-300">
+              Privacy Policy
+            </a>
+            .
+          </p>
+
+          {/* Data-handling reassurance — mirrors the public Security posture (#1958) */}
+          <div className="mt-4 rounded-lg border border-slate-700/50 bg-slate-800/40 px-3 py-2.5 flex gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Your manuals and maintenance data stay private to your organization and are never used to
+              train external models.{" "}
+              <a
+                href={LEGAL.security}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:text-blue-300 underline"
+              >
+                Security &amp; data handling
+              </a>
+            </p>
+          </div>
+
           <p className="text-center text-sm text-slate-400 mt-6">
             Already have an account?{" "}
             <Link href="/login" className="text-blue-400 hover:text-blue-300 font-medium">
@@ -220,6 +258,13 @@ export default function SignupPage() {
             Ask a sample question
           </Link>{" "}
           — no signup.
+        </p>
+
+        <p className="text-center text-xs text-slate-500 mt-3">
+          Questions about security or your data?{" "}
+          <a href={`mailto:${SUPPORT_EMAIL}`} className="text-slate-400 hover:text-slate-300 underline">
+            Contact support
+          </a>
         </p>
       </div>
     </div>
