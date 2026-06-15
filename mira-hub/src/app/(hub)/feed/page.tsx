@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
@@ -13,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import HealthScoreWidget from "@/components/HealthScoreWidget";
 import { API_BASE } from "@/lib/config";
+import { shouldRedirectToOnboarding } from "@/lib/onboarding-flow";
 
 type KpiCard = {
   label: string;
@@ -157,6 +159,32 @@ function useSpeech() {
 }
 
 export default function FeedPage() {
+  const router = useRouter();
+  // #1901: a fresh tenant who hasn't finished onboarding is sent into the wizard
+  // so they reach the one gated action (upload a manual -> cited answer). Loop-safe:
+  // only /feed does this; /onboarding never redirects back; completed tenants stay.
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/wizard/company`, { cache: "no-store" });
+        if (cancelled) return;
+        const data = res.ok ? await res.json().catch(() => ({})) : {};
+        const status = String((data as { status?: unknown }).status ?? "");
+        if (shouldRedirectToOnboarding(status)) {
+          router.replace("/onboarding");
+          return;
+        }
+      } catch {
+        // network/transient — fail safe: show the feed
+      } finally {
+        if (!cancelled) setOnboardingChecked(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [router]);
+
   const tFeed = useTranslations("feed");
   const tWorkorders = useTranslations("workorders");
   const [fabOpen, setFabOpen] = useState(false);
@@ -244,6 +272,14 @@ export default function FeedPage() {
   }
 
   const visibleItems = feedItems.filter(i => !dismissed.has(i.id));
+
+  if (!onboardingChecked) {
+    return (
+      <div className="flex h-full items-center justify-center text-slate-500" data-testid="feed-onboarding-gate">
+        Loading…
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-full" style={{ backgroundColor: "var(--background)" }}>
