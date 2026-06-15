@@ -166,6 +166,7 @@ export default function FeedPage() {
   const [onboardingChecked, setOnboardingChecked] = useState(false);
   useEffect(() => {
     let cancelled = false;
+    let redirecting = false;
     void (async () => {
       try {
         const res = await fetch(`${API_BASE}/api/wizard/company`, { cache: "no-store" });
@@ -173,13 +174,14 @@ export default function FeedPage() {
         const data = res.ok ? await res.json().catch(() => ({})) : {};
         const status = String((data as { status?: unknown }).status ?? "");
         if (shouldRedirectToOnboarding(status)) {
+          redirecting = true;
           router.replace("/onboarding");
           return;
         }
       } catch {
         // network/transient — fail safe: show the feed
       } finally {
-        if (!cancelled) setOnboardingChecked(true);
+        if (!cancelled && !redirecting) setOnboardingChecked(true);
       }
     })();
     return () => { cancelled = true; };
