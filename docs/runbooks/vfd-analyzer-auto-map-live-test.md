@@ -32,21 +32,25 @@ This pulls the new `mira_diagnose` + `mira_asset_config` + `mira_signal_roles` +
 ## 2. Click-to-map the conveyor  →  open the setup page
 `http://localhost:8088/data/perspective/client/testing/setup`
 
-For each **required** role (the gate pill turns green when all 3 are mapped), and any recommended ones:
+The page now has a **tag scanner** in the "DISCOVER TAGS" section: a **tag-browse tree** (left) and a
+**searchable table** (right) that auto-lists every tag the gateway can see, with its **live value +
+quality**. You no longer type a folder path — you find the tag and click it.
 
-| Role | Browse folder | Pick tag | Scale | Live preview should read |
-|---|---|---|---|---|
-| Output frequency | `[default]MIRA_IOCheck/VFD` | `vfd_frequency` | 100 | `= <Hz> Hz (good)` |
-| Output current | `[default]MIRA_IOCheck/VFD` | `vfd_current` | 100 | `= <A> A (good)` |
-| Fault code | `[default]MIRA_IOCheck/VFD` | `vfd_fault_code` | (ignored) | `= 0 (good)` |
-| DC-bus voltage *(rec)* | `[default]MIRA_IOCheck/VFD` | `vfd_dc_bus` | 10 | `= ~320 V (good)` |
-| Freq setpoint *(rec)* | `[default]MIRA_IOCheck/VFD` | `vfd_freq_cmd` | 100 | `= <Hz> Hz (good)` |
-| Drive comm OK *(rec)* | `[default]MIRA_IOCheck/VFD` | `vfd_comm_ok` | (ignored) | `= True (good)` |
-| Command word *(rec)* | `[default]MIRA_IOCheck/VFD` | `vfd_cmd_word` | (ignored) | `= <int> (good)` |
+The flow per role:
+1. In the **Signal role** dropdown pick the role (start with the 3 required: Output frequency, Output
+   current, Fault code).
+2. Find the tag — either expand the **tree** on the left, or type in the table's **search box** (e.g.
+   `vfd_freq`) and/or narrow the **scope** field / **datatype** filter. The table shows each tag's live
+   value so you can confirm it's the right one.
+3. **Click the tag** (table row, or select it in the tree) → it appears as the **Chosen tag**, and the
+   blue **preview** shows the scaled value + unit.
+4. Set the **Scale (÷)** if needed (Frequency/Current = 100, DC-bus = 10; bool/code roles ignore it).
+5. **Set this role.** The status line confirms; the **CURRENT MAP** table updates; the gate pill turns
+   **green "3 of 3 required roles mapped — ready"** once the three required roles are set.
 
-For each: pick role → set folder → pick tag → set scale → **watch the live preview** → **Set this role**.
-The status line confirms each save; the **map table** below updates live. The gate pill should reach
-**"3 of 3 required roles mapped — ready"** (green).
+Suggested picks for the bench conveyor: Output frequency → `…/VFD/vfd_frequency` (÷100), Output current →
+`vfd_current` (÷100), Fault code → `vfd_fault_code`, DC-bus → `vfd_dc_bus` (÷10), Freq setpoint →
+`vfd_freq_cmd` (÷100), Drive comm OK → `vfd_comm_ok`, Command word → `vfd_cmd_word`.
 
 > **Faster alternative (skip hand-mapping):** in the Designer Tag Browser, right-click the `default`
 > provider → **Import Tags** → choose `ignition/tags/mira_config_conveyor.json`. That drops in the
@@ -76,8 +80,16 @@ That's "runs on any drive's tags." Put it back to `vfd_frequency` when done.
 **Do NOT `PROMOTE` yet** — promotion to the live ConvSimpleLive project happens only after this passes.
 
 ## Known limits (expected, not bugs)
-- The **trend** chart (`/`) is still the hardcoded sandbox version — generalizing its binding to the
-  config map is the next change in this phase (spec §5), intentionally not in this PR.
-- `TagMapper` editing + `mira_setup`/`mira_diagnose` config path are **new gateway code that can't run in
-  CI** — this live test is their first real execution. The pure logic (`asset_config`/`signal_roles`) and
-  the no-regression guard are CI-green; the system.* I/O + view bindings are what you're validating here.
+- The **trend** chart (`/`) is still the hardcoded sandbox version, and it's **blank until tag history is
+  recording** — run `plc/ignition-project/testing/enable_trend_history.py` (then restart) if you want it
+  to fill. Generalizing the trend to the config map is a later change in this phase (spec §5). The tag
+  attribution work (this test) does **not** need the historian.
+- The scanner uses **verified 8.3 component IDs** (`ia.input.numeric-entry-field`, `ia.display.table`,
+  `ia.display.tag-browse-tree` — extracted from the installed Perspective 3.3.4 module; the earlier
+  `numeric-entry not found` was an 8.1→8.3 rename, now fixed).
+- `TagMapper` (scanner + editing) + `mira_setup`/`mira_diagnose` config path are **new gateway code that
+  can't run in CI** — this live test is their first real execution. The pure logic
+  (`asset_config`/`signal_roles`) + the no-regression guard are CI-green; the `system.*` I/O, the
+  tree/table selection wiring, and the view bindings are what you're validating here. If the tree's
+  click-to-select doesn't populate "Chosen tag", use the **table** (its row-click is the primary
+  selector) — report either way.
