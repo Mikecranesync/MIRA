@@ -37,7 +37,8 @@ function LoginFormInner() {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [magicEmail, setMagicEmail] = useState("");
+  // #1956: email is captured ONCE in `email` and shared by the magic-link and
+  // password forms, so switching method never asks the user to retype it.
   const [magicLoading, setMagicLoading] = useState(false);
   const [magicSent, setMagicSent] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -69,14 +70,14 @@ function LoginFormInner() {
 
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
-    if (!magicEmail) return;
+    if (!email) return;
     setMagicLoading(true);
     setError("");
     try {
       const res = await fetch(`${API_BASE}/api/auth/magic-link/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: magicEmail }),
+        body: JSON.stringify({ email }),
       });
       if (res.ok) {
         setMagicSent(true);
@@ -160,7 +161,7 @@ function LoginFormInner() {
             <div className="text-center py-2 mb-4">
               <Mail className="w-8 h-8 text-blue-400 mx-auto mb-2" />
               <p className="text-white font-semibold text-sm">Check your inbox</p>
-              <p className="text-slate-400 text-xs mt-1">We sent a sign-in link to <strong>{magicEmail}</strong></p>
+              <p className="text-slate-400 text-xs mt-1">We sent a sign-in link to <strong>{email}</strong></p>
               <button onClick={() => setMagicSent(false)} className="inline-flex items-center justify-center min-h-[44px] px-4 mt-1 text-blue-400 text-sm font-medium hover:text-blue-300">
                 Send again
               </button>
@@ -172,8 +173,8 @@ function LoginFormInner() {
                 <Input
                   id="magic-email"
                   type="email"
-                  value={magicEmail}
-                  onChange={(e) => setMagicEmail(e.target.value)}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@company.com"
                   autoComplete="email"
                   required
@@ -181,7 +182,7 @@ function LoginFormInner() {
                 />
                 <button
                   type="submit"
-                  disabled={magicLoading || !magicEmail}
+                  disabled={magicLoading || !email}
                   className="w-full h-11 min-h-[44px] rounded-md font-semibold text-white text-sm disabled:opacity-50 flex items-center justify-center gap-2"
                   style={{ background: "linear-gradient(135deg,#2563EB,#0891B2)" }}
                 >
