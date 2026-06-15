@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS i3x_api_keys (
   last_used_at TIMESTAMPTZ
 );
 
-CREATE INDEX IF NOT EXISTS idx_i3x_api_keys_hash ON i3x_api_keys(key_hash) WHERE enabled;
+CREATE INDEX IF NOT EXISTS idx_i3x_api_keys_hash ON i3x_api_keys(key_hash) WHERE enabled = true;
 
 -- Resolved BEFORE a tenant context exists (the key IS what identifies the
 -- tenant), so the lookup runs as owner; do NOT enable RLS on this table.

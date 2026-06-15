@@ -14,6 +14,11 @@
  * Exposure rule: callers MUST gate inputs through ./approval (verified entities +
  * approved-tag values) before projecting. The projection emits whatever it's
  * given; the gate decides what it's given.
+ *
+ * Note: auth.ts and response.ts are intentionally NOT re-exported here.
+ * Route handlers import them directly via `@/lib/i3x/auth` and
+ * `@/lib/i3x/response` because they are route-layer concerns (DB access,
+ * HTTP response shaping), not part of this pure projection surface.
  */
 
 export * from "@/lib/i3x/types";

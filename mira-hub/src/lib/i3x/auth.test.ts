@@ -21,6 +21,9 @@ describe("hashKey", () => {
     expect(hashKey("secret")).toMatch(/^[0-9a-f]{64}$/);
     expect(hashKey("a")).not.toBe(hashKey("b"));
   });
+  it("produces the known sha256 digest for 'secret'", () => {
+    expect(hashKey("secret")).toBe("2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b");
+  });
 });
 
 describe("resolveTenantFromKeyRow", () => {

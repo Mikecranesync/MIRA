@@ -31,9 +31,14 @@ export function resolveTenantFromKeyRow(row: KeyRow | null): string | null {
 export async function resolveI3xTenant(req: Request): Promise<string | null> {
   const token = parseBearer(req.headers.get("authorization"));
   if (!token) return null;
-  const { rows } = await pool.query<KeyRow>(
-    "SELECT tenant_id, enabled FROM i3x_api_keys WHERE key_hash = $1 LIMIT 1",
-    [hashKey(token)],
-  );
-  return resolveTenantFromKeyRow(rows[0] ?? null);
+  try {
+    const { rows } = await pool.query<KeyRow>(
+      "SELECT tenant_id, enabled FROM i3x_api_keys WHERE key_hash = $1 AND enabled = true LIMIT 1",
+      [hashKey(token)],
+    );
+    return resolveTenantFromKeyRow(rows[0] ?? null);
+  } catch {
+    console.error("i3x key lookup failed");
+    return null;
+  }
 }
