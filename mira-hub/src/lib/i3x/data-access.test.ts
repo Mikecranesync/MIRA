@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { parentUnsPath, loadEntitiesByIds, readingForElement } from "@/lib/i3x/data-access";
+import {
+  parentUnsPath,
+  loadEntitiesByIds,
+  readingForElement,
+  historyForElement,
+  relationshipsForElement,
+  type DbClient,
+} from "@/lib/i3x/data-access";
 
 describe("parentUnsPath", () => {
   it("drops the last ltree segment", () => {
@@ -24,9 +31,7 @@ describe("loadEntitiesByIds", () => {
       { id: "parent", entity_type: "area", name: "Area", approval_state: "verified",
         uns_path: "enterprise.acme.equipment", properties: {} },
     ];
-    const client = {
-      query: async () => ({ rows: fakeRows }),
-    };
+    const client = { query: async () => ({ rows: fakeRows }) } as unknown as DbClient;
     const out = await loadEntitiesByIds(client, ["child", "hidden", "parent"]);
     // proposed 'hidden' is filtered out
     expect(out.map((e) => e.id).sort()).toEqual(["child", "parent"]);
@@ -59,7 +64,7 @@ describe("readingForElement — value only for approved tags", () => {
           }],
         };
       },
-    };
+    } as unknown as DbClient;
     const r = await readingForElement(client, "elem-uuid");
     expect(r).not.toBeNull();
     expect(r!.value).toBe(8.3);
@@ -74,7 +79,48 @@ describe("readingForElement — value only for approved tags", () => {
         if (sql.includes("approved_tags")) return { rows: [] }; // not allowlisted
         return { rows: [] };
       },
-    };
+    } as unknown as DbClient;
     expect(await readingForElement(client, "elem-uuid")).toBeNull();
+  });
+});
+
+describe("historyForElement — bounded tag_events window, approved only", () => {
+  it("maps tag_events rows to MiraReadings (value_type carried)", async () => {
+    const client = {
+      query: async (sql: string) => {
+        if (sql.includes("kg_entities")) return { rows: [{ uns_path: "enterprise.a.eq.cv.datapoint.cur" }] };
+        if (sql.includes("approved_tags")) return { rows: [{ uns_path: "enterprise.a.eq.cv.datapoint.cur" }] };
+        return { rows: [
+          { value: "8.3", value_type: "float", quality: "good", event_timestamp: "2026-06-14T12:00:00.000Z" },
+          { value: "8.5", value_type: "float", quality: "good", event_timestamp: "2026-06-14T12:01:00.000Z" },
+        ] };
+      },
+    } as unknown as DbClient;
+    const out = await historyForElement(client, "elem", { startTime: null, endTime: null, limit: 1000 });
+    expect(out).toHaveLength(2);
+    expect(out[0].valueType).toBe("float");
+  });
+  it("returns [] for an unapproved element", async () => {
+    const client = {
+      query: async (sql: string) => {
+        if (sql.includes("kg_entities")) return { rows: [{ uns_path: "x" }] };
+        if (sql.includes("approved_tags")) return { rows: [] };
+        return { rows: [] };
+      },
+    } as unknown as DbClient;
+    expect(await historyForElement(client, "elem", { startTime: null, endTime: null, limit: 1000 })).toEqual([]);
+  });
+});
+
+describe("relationshipsForElement — verified edges touching the element", () => {
+  it("returns only verified edges where the element is source or target", async () => {
+    const client = {
+      query: async () => ({ rows: [
+        { source_id: "elem", target_id: "motor", relationship_type: "has_component", approval_state: "verified" },
+      ] }),
+    } as unknown as DbClient;
+    const edges = await relationshipsForElement(client, "elem");
+    expect(edges).toHaveLength(1);
+    expect(edges[0].relationship_type).toBe("has_component");
   });
 });
