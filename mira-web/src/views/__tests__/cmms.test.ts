@@ -4,10 +4,13 @@ import { renderCmms, renderSamplePlaceholder } from "../cmms.js";
 describe("#SO-070 renderCmms — magic-link landing acceptance", () => {
   const html = renderCmms("https://factorylm.com/cmms");
 
-  test("AC1: page shows ONE input (work email) and one CTA", () => {
+  test("AC1: page shows ONE visible email input (+ hidden plan field) and one CTA", () => {
+    // Exactly one user-facing input (the work email) plus a hidden `cmms-plan`
+    // field that carries plan intent → total <input> count is 2.
     const inputCount = (html.match(/<input\b/g) || []).length;
-    expect(inputCount).toBe(1);
-    expect(html).toContain('id="cmms-email"');
+    expect(inputCount).toBe(2);
+    const emailIds = (html.match(/id="cmms-email"/g) || []).length;
+    expect(emailIds).toBe(1);
     expect(html).toContain('type="email"');
     expect(html).toContain('autocomplete="email"');
     expect(html).toContain("required");
@@ -25,21 +28,20 @@ describe("#SO-070 renderCmms — magic-link landing acceptance", () => {
     expect(html).toContain('method: \'POST\'');
   });
 
-  test("AC5: 3-step 'What happens next' strip with stateBadge markers", () => {
+  test("AC5: 3-step 'Operating Layer is one component' strip with stateBadge markers", () => {
     expect(html).toContain('aria-labelledby="fl-steps-h"');
-    expect(html).toContain("What happens next");
+    expect(html).toContain("The Operating Layer is one component.");
     const stepCount = (html.match(/<li class="fl-step">/g) || []).length;
     expect(stepCount).toBe(3);
     expect(html).toContain("fl-state-indexed");
-    expect(html).toContain("fl-state-partial");
-    expect(html).toContain("Click the magic link");
-    expect(html).toContain("Drop your first PDF");
-    expect(html).toContain("Get the cited answer");
+    expect(html).toContain("Asset hierarchy + nameplates");
+    expect(html).toContain("CMMS write-back");
+    expect(html).toContain("MIRA on the floor");
   });
 
-  test("AC6: compareBlock from prototype X tab is present", () => {
+  test("AC6: compareBlock — generic AI vs MIRA on a namespace is present", () => {
     expect(html).toContain('class="fl-compare"');
-    expect(html).toContain("ChatGPT Projects");
+    expect(html).toContain("Generic AI");
     expect(html).toContain("MIRA");
     expect(html).toContain("PowerFlex 755");
   });
@@ -82,10 +84,10 @@ describe("#SO-070 renderCmms — magic-link landing acceptance", () => {
 
   test("SEO: title + canonical + description match spec", () => {
     expect(html).toContain(
-      "<title>FactoryLM CMMS — sign in with a magic link</title>"
+      "<title>Maintenance Operating Layer — FactoryLM</title>"
     );
     expect(html).toContain('<link rel="canonical" href="https://factorylm.com/cmms">');
-    expect(html).toMatch(/<meta name="description" content="Send yourself/);
+    expect(html).toMatch(/<meta name="description" content="Sign in to the Operating Layer/);
   });
 
   test("Tokens + components stylesheets are linked via head()", () => {

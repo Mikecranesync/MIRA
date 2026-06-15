@@ -29,9 +29,12 @@ export interface Upload {
   statusDetail: string | null;
   kbFileId: string | null;
   kbChunkCount: number | null;
-  kgEntityId: string | null;
   assetTag: string | null;
   unsPath: string | null;
+  /** Confirmed kg_entities node this drop is attached to (Inbox node for blind PDFs, #1806). */
+  kgEntityId: string | null;
+  /** 'v2' = chunks written to knowledge_entries (citable); null/'ow' = legacy OW-only. */
+  ingestRoute: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -143,9 +146,10 @@ function rowToUpload(r: Record<string, unknown>): Upload {
     statusDetail: (r.status_detail as string | null) ?? null,
     kbFileId: (r.kb_file_id as string | null) ?? null,
     kbChunkCount: r.kb_chunk_count != null ? Number(r.kb_chunk_count) : null,
-    kgEntityId: (r.kg_entity_id as string | null) ?? null,
     assetTag: (r.asset_tag as string | null) ?? null,
     unsPath: (r.uns_path as string | null) ?? null,
+    kgEntityId: (r.kg_entity_id as string | null) ?? null,
+    ingestRoute: (r.ingest_route as string | null) ?? null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   };

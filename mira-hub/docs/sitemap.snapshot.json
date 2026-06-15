@@ -1,8 +1,8 @@
 {
   "basePath": "/hub",
   "counts": {
-    "pages": 48,
-    "apiRoutes": 116
+    "pages": 57,
+    "apiRoutes": 118
   },
   "pages": [
     "/admin",
@@ -45,6 +45,15 @@
     "/requests/new",
     "/scan",
     "/schedule",
+    "/settings",
+    "/settings/audit-log",
+    "/settings/integrations",
+    "/settings/organization",
+    "/settings/review-queue",
+    "/settings/roles",
+    "/settings/security",
+    "/settings/usage",
+    "/settings/users",
     "/signup",
     "/team",
     "/upgrade",
@@ -99,6 +108,7 @@
     "/api/cmms/deep-link",
     "/api/cmms/health",
     "/api/cmms/stats",
+    "/api/command-center/display",
     "/api/command-center/display/[id]",
     "/api/command-center/tree",
     "/api/components/[id]",
@@ -142,6 +152,7 @@
     "/api/picker/google/token",
     "/api/pm-schedules",
     "/api/pm-schedules/[id]",
+    "/api/pm-schedules/[id]/complete",
     "/api/pm-schedules/[id]/meter",
     "/api/pm/export.csv",
     "/api/pm/export.ics",

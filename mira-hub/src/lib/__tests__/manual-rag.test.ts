@@ -78,6 +78,18 @@ describe("retrieveManualChunks", () => {
     expect(calls[2].sql).not.toContain("manufacturer ILIKE"); // tenant-only
   });
 
+  it("can disable tenant-wide fallback for asset-scoped validation chat", async () => {
+    const { client, calls } = makeClient([[], [], [row({ manufacturer: "Generic" })]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "torque", {
+      manufacturer: "Allen-Bradley",
+      allowTenantFallback: false,
+    });
+    expect(out).toEqual([]);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].sql).toContain("manufacturer ILIKE");
+    expect(calls[1].sql).toContain("manufacturer ILIKE");
+  });
+
   it("falls back to an OR tsquery when the precise AND query is empty (no mfr)", async () => {
     const { client, calls } = makeClient([[], [row()]]);
     const out = await retrieveManualChunks(client, "tenant-1", "what does oC mean");
@@ -231,6 +243,65 @@ describe("chunksToSources", () => {
     expect(sources).toHaveLength(2);
     expect(sources[0].title).toBe("AB PF525");
     expect(sources[1].page).toBe(8);
+  });
+
+  it("numbers chips contiguously even after a dedupe (#1912)", () => {
+    const c: ManualChunk = {
+      content: "a", manufacturer: "AB", modelNumber: "PF525",
+      sourceUrl: "https://x/y.pdf", sourcePage: 1, title: "", rank: 1,
+    };
+    // 2nd chunk is a same-(url,page) duplicate; 3rd is a new page.
+    const sources = chunksToSources([c, { ...c, content: "b" }, { ...c, sourcePage: 2 }]);
+    expect(sources.map((s) => s.index)).toEqual([1, 2]); // not [1, 3]
+  });
+});
+
+// #1912 — the answer cited [2] but only chip [1] rendered. Root cause: the LLM
+// context blocks were numbered per-chunk while the chips were deduped by
+// (url, page). This locks the invariant: every block number the model can cite
+// has a matching chip with the same index.
+describe("citation numbering matches between context and chips (#1912)", () => {
+  it("collapses same-page excerpts to one [n] in BOTH the prompt and the chips", () => {
+    // Two excerpts of the same PDF page (the PowerFlex sample, p.1) — exactly the
+    // shape that produced the bug.
+    const base: ManualChunk = {
+      content: "F004 UnderVoltage: check incoming line voltage.",
+      manufacturer: "", modelNumber: "",
+      sourceUrl: "https://x/powerflex-fault-code-sample.pdf",
+      sourcePage: 1, title: "powerflex-fault-code-sample.pdf", rank: 1,
+    };
+    const chunks: ManualChunk[] = [
+      base,
+      { ...base, content: "F005 OverVoltage: increase decel time." },
+    ];
+
+    const ctx = buildGroundedContext(chunks);
+    const sources = chunksToSources(chunks);
+
+    // Both excerpts cite source [1]; there is NO [2] block for the model to cite.
+    expect(ctx).toContain("[1] powerflex-fault-code-sample.pdf, p.1");
+    expect(ctx).not.toContain("[2]");
+    expect(sources).toHaveLength(1);
+    expect(sources[0].index).toBe(1);
+
+    // Invariant: every [n] the prompt exposes has a matching chip index.
+    const blockNums = [...ctx.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1]));
+    const chipNums = new Set(sources.map((s) => s.index));
+    for (const n of blockNums) expect(chipNums.has(n)).toBe(true);
+  });
+
+  it("keeps distinct pages as distinct, matching [n]s", () => {
+    const p1: ManualChunk = {
+      content: "page one", manufacturer: "AB", modelNumber: "PF525",
+      sourceUrl: "https://x/m.pdf", sourcePage: 1, title: "m.pdf", rank: 1,
+    };
+    const chunks: ManualChunk[] = [p1, { ...p1, content: "page two", sourcePage: 2 }];
+    const ctx = buildGroundedContext(chunks);
+    const sources = chunksToSources(chunks);
+    expect(ctx).toContain("[1] AB PF525, p.1");
+    expect(ctx).toContain("[2] AB PF525, p.2");
+    expect(sources.map((s) => s.index)).toEqual([1, 2]);
+    expect(sources.map((s) => s.page)).toEqual([1, 2]);
   });
 });
 

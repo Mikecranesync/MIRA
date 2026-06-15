@@ -1,0 +1,55 @@
+name: Deploy nginx stg.factorylm.com vhost
+
+# Installs deployment/nginx-stg-factorylm.conf as the stg.factorylm.com vhost on
+# the prod nginx box, giving the staging stack (stg-mira-hub :4101) an HTTPS front
+# door. See docs/plans/2026-06-15-staging-usable-subdomain.md.
+#
+# Human-dispatched (touches the prod nginx box → `production` environment gate).
+# One-shot per change to deployment/nginx-stg-factorylm.conf.
+#
+# AFTER first run: on the VPS run `certbot --nginx -d stg.factorylm.com` to add
+# TLS (requires the DNS A record stg.factorylm.com -> 165.245.138.91 to be live).
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-nginx:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_deploy_key
+          chmod 600 ~/.ssh/vps_deploy_key
+          ssh-keyscan -H 165.245.138.91 >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: SCP vhost to prod
+        run: |
+          scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
+            deployment/nginx-stg-factorylm.conf \
+            root@165.245.138.91:/etc/nginx/sites-available/stg-factorylm
+
+      - name: Symlink + test + reload nginx
+        run: |
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
+            root@165.245.138.91 'bash -s' << 'ENDSSH'
+          set -euo pipefail
+          [ -L /etc/nginx/sites-enabled/stg-factorylm ] || \
+            ln -sf /etc/nginx/sites-available/stg-factorylm /etc/nginx/sites-enabled/stg-factorylm
+          nginx -t
+          systemctl reload nginx
+          echo "=== probe (http; will be 301->https once certbot has run) ==="
+          curl -sI -o /dev/null -w "http://stg.factorylm.com -> %{http_code}\n" --max-time 10 http://stg.factorylm.com/ || true
+          curl -sI -o /dev/null -w "https://stg.factorylm.com -> %{http_code}\n" --max-time 10 https://stg.factorylm.com/ || true
+          ENDSSH
+
+      - name: Reminder
+        run: |
+          echo "If https probe was not 2xx/3xx, run on the VPS: certbot --nginx -d stg.factorylm.com"
+          echo "(needs DNS A record stg.factorylm.com -> 165.245.138.91 live first)"

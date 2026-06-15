@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { sessionOr401 } from "@/lib/session";
-import { isReviewAdmin, resolveAssetPath } from "@/lib/review-queue";
+import { resolveAssetPath } from "@/lib/review-queue";
+import { requireCapability } from "@/lib/capabilities";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +20,8 @@ export async function GET(
 ) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
-  if (!isReviewAdmin(ctx.email)) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  const denied = requireCapability(ctx, "review_queue.read");
+  if (denied) return denied;
   const { path: parts } = await params;
   const relPath = parts.map(decodeURIComponent).join("/");
   const abs = resolveAssetPath(relPath);

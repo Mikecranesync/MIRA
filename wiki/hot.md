@@ -1,5 +1,15 @@
 # Hot Cache — 2026-06-08 — CHARLIE
 
+## ⭐ MASTER GTM CHECKLIST — `docs/gtm/go-to-market-hardening-checklist.md`
+
+**The single doc the whole operation runs against** (created 2026-06-11, audited vs `origin/main`
+@`7d3483cf`). Tracks every surface (website, quickstart, Hub, Slack, Telegram, engine, SimLab,
+infra, revenue) with Status/Owner/Priority/Evidence. **3 P0 blockers to first dollar — all HUMAN:**
+(1) Stripe in TEST mode (#1831 — flip Doppler `STRIPE_SECRET_KEY`→`sk_live_`); (2) DigitalOcean
+billing; (3) NeonDB billing. Once those clear, a stranger can buy + get a grounded answer. P1 tail:
+Gemini key 403 (#1830, tail-only), Google SSO redirect (#1756), bot liveness probes. Pairs with
+`wiki/orchestrator/BETA_READINESS.md` (A–F lens scorecard).
+
 ## Session — 2026-06-08 (Path-to-Beta: upload→retrieval gate — #1592 reality check)
 
 **Drift corrected:** PR #1592 (`feat(hub): folder = brain`) is **MERGED** to main

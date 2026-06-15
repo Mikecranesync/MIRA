@@ -1,3 +1,8 @@
+# ROLE: LOCAL-DEV staging (CHARLIE). NOT the deployed VPS stack.
+# The always-on staging stack on the VPS is docker-compose.staging-vps.yml
+# (project `mira-staging`, /opt/mira-staging/). Use THIS file only for a local
+# bot-path staging boot on CHARLIE. See docs/environments.md.
+#
 # MIRA staging — bot path only, runs on CHARLIE against NeonDB staging branch.
 #
 # Spec:    docs/specs/staging-environment-spec.md

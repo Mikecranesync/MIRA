@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Script from "next/script";
 import { Loader2, Paperclip, X, FolderOpen, Package, Smartphone } from "lucide-react";
-import { API_BASE } from "@/lib/config";
+import { API_BASE, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
 
 /**
  * Inline create form for a child namespace node.
@@ -127,7 +127,7 @@ const ACCEPTED_MIME = [
 ].join(",");
 
 const DROPBOX_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"];
-const MAX_BYTES = 20 * 1024 * 1024;
+const MAX_BYTES = MAX_UPLOAD_BYTES;
 
 function mimeFromExt(name: string): string {
   const n = name.toLowerCase();
@@ -195,10 +195,10 @@ export function CreateChildCard({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/picker/google/token`)
+    fetch(`${API_BASE}/api/picker/google/token/`)
       .then((r) => setGoogleAvailable(r.ok))
       .catch(() => setGoogleAvailable(false));
-    fetch(`${API_BASE}/api/picker/dropbox/key`)
+    fetch(`${API_BASE}/api/picker/dropbox/key/`)
       .then(async (r) => {
         if (!r.ok) return setDropboxAvailable(false);
         try {
@@ -245,10 +245,10 @@ export function CreateChildCard({
       next.name = `A subsystem named "${name.trim()}" already exists here.`;
     }
     if (picked?.kind === "local" && picked.file.size > MAX_BYTES) {
-      next.file = "File is too big. Limit is 20 MB.";
+      next.file = `File is too big. Limit is ${MAX_UPLOAD_MB} MB.`;
     }
     if (picked?.kind === "cloud" && picked.sizeBytes > MAX_BYTES) {
-      next.file = "File is too big. Limit is 20 MB.";
+      next.file = `File is too big. Limit is ${MAX_UPLOAD_MB} MB.`;
     }
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -259,7 +259,7 @@ export function CreateChildCard({
     if (!validate()) return;
     setSaving(true);
     try {
-      const createRes = await fetch(`${API_BASE}/api/namespace/node`, {
+      const createRes = await fetch(`${API_BASE}/api/namespace/node/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -309,13 +309,13 @@ export function CreateChildCard({
         const form = new FormData();
         form.append("file", p.file);
         form.append("unsPath", unsPath);
-        const res = await fetch(`${API_BASE}/api/uploads/local`, {
+        const res = await fetch(`${API_BASE}/api/uploads/local/`, {
           method: "POST",
           body: form,
         });
         return res.ok;
       } else {
-        const res = await fetch(`${API_BASE}/api/uploads`, {
+        const res = await fetch(`${API_BASE}/api/uploads/`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -338,7 +338,7 @@ export function CreateChildCard({
 
   async function openGoogle() {
     try {
-      const tokenRes = await fetch(`${API_BASE}/api/picker/google/token`);
+      const tokenRes = await fetch(`${API_BASE}/api/picker/google/token/`);
       if (!tokenRes.ok) throw new Error("Google not connected");
       const { accessToken, apiKey, appId } = await tokenRes.json();
       if (!window.google?.picker || !pickerLoaded) {

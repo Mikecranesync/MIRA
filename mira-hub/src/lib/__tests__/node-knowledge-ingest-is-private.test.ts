@@ -54,9 +54,11 @@ describe("#1903 node-attachment chunks are is_private = true", () => {
     expect(insert, "no knowledge_entries INSERT was issued").toBeTruthy();
 
     // Column list includes is_private, and it is the literal `true` (not a default,
-    // not a bound param that could be flipped).
+    // not a bound param that could be flipped). Asserted shape-independently of the
+    // batch param numbering: ingest_route 'v2', page_start and page_end reuse the
+    // SAME page placeholder, metadata is a param, then is_private is literal `true`.
     expect(insert!.sql).toMatch(/\bis_private\b/);
-    expect(insert!.sql).toMatch(/'v2',\s*\$7,\s*\$7,\s*\$8,\s*true\b/);
+    expect(insert!.sql).toMatch(/'v2',\s*(\$\d+),\s*\1,\s*\$\d+,\s*true\b/);
     // Belt + suspenders: the params never carry a `false` for privacy.
     expect(insert!.params).not.toContain(false);
   });
