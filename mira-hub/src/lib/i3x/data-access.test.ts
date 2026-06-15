@@ -84,6 +84,22 @@ describe("readingForElement — value only for approved tags", () => {
   });
 });
 
+describe("readingForElement — 22P02 fail-closed on malformed id", () => {
+  it("returns null when Postgres throws 22P02 (invalid uuid syntax)", async () => {
+    const client = {
+      query: async () => { throw { code: "22P02" }; },
+    } as unknown as DbClient;
+    expect(await readingForElement(client, "not-a-uuid")).toBeNull();
+  });
+
+  it("re-throws non-22P02 errors so infra failures surface", async () => {
+    const client = {
+      query: async () => { throw { code: "08006", message: "connection refused" }; },
+    } as unknown as DbClient;
+    await expect(readingForElement(client, "some-id")).rejects.toMatchObject({ code: "08006" });
+  });
+});
+
 describe("historyForElement — bounded tag_events window, approved only", () => {
   it("maps tag_events rows to MiraReadings (value_type carried)", async () => {
     const client = {
@@ -110,6 +126,25 @@ describe("historyForElement — bounded tag_events window, approved only", () =>
     } as unknown as DbClient;
     expect(await historyForElement(client, "elem", { startTime: null, endTime: null, limit: 1000 })).toEqual([]);
   });
+
+  it("clamps negative or NaN limit to 0 (no Postgres error on negative LIMIT)", async () => {
+    let capturedLimit: unknown;
+    const client = {
+      query: async (sql: string, params?: unknown[]) => {
+        if (sql.includes("kg_entities"))  return { rows: [{ uns_path: "enterprise.a.eq.cv.datapoint.cur" }] };
+        if (sql.includes("approved_tags")) return { rows: [{ uns_path: "enterprise.a.eq.cv.datapoint.cur" }] };
+        // tag_events query — capture the limit param (4th positional)
+        capturedLimit = params?.[3];
+        return { rows: [] };
+      },
+    } as unknown as DbClient;
+
+    await historyForElement(client, "elem", { startTime: null, endTime: null, limit: -5 });
+    expect(capturedLimit).toBe(0);
+
+    await historyForElement(client, "elem", { startTime: null, endTime: null, limit: Number.NaN });
+    expect(capturedLimit).toBe(0);
+  });
 });
 
 describe("relationshipsForElement — verified edges touching the element", () => {
@@ -122,5 +157,21 @@ describe("relationshipsForElement — verified edges touching the element", () =
     const edges = await relationshipsForElement(client, "elem");
     expect(edges).toHaveLength(1);
     expect(edges[0].relationship_type).toBe("has_component");
+  });
+
+  it("excludes proposed edges even when returned by the DB alongside verified ones", async () => {
+    const client = {
+      query: async () => ({
+        rows: [
+          { source_id: "elem", target_id: "motor",  relationship_type: "has_component", approval_state: "verified" },
+          { source_id: "elem", target_id: "sensor", relationship_type: "monitors",      approval_state: "proposed" },
+        ],
+      }),
+    } as unknown as DbClient;
+    const edges = await relationshipsForElement(client, "elem");
+    expect(edges).toHaveLength(1);
+    expect(edges[0].target_id).toBe("motor");
+    // proposed edge must not be present
+    expect(edges.find((e) => e.target_id === "sensor")).toBeUndefined();
   });
 });
