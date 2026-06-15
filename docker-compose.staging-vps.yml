@@ -1,3 +1,7 @@
+# ROLE: THE DEPLOYED VPS staging stack (project `mira-staging`, /opt/mira-staging/).
+# This is what runs live on the VPS — deploy via .github/workflows/deploy-staging.yml.
+# For a local CHARLIE boot use docker-compose.staging.yml instead. See docs/environments.md.
+#
 # MIRA — Staging Stack (Phase 1)
 #
 # Lightweight staging environment co-tenanted on the production VPS.
