@@ -241,7 +241,13 @@ export default function QuickstartPage() {
                         {c.index}
                       </span>
                       <span className="leading-relaxed">
-                        {c.url ? (
+                        {/* Only link real web URLs. Source urls are often
+                            internal refs (e.g. internal://… manual chunks) that
+                            don't resolve in a browser — rendering those as a
+                            link is a dead control that erodes the "cited answer"
+                            trust promise (#1893 dogfood #4). Show the title as
+                            plain text instead. */}
+                        {c.url && /^https?:\/\//i.test(c.url) ? (
                           <a
                             href={c.url}
                             target="_blank"
