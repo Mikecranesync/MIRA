@@ -8,6 +8,7 @@ import { Factory, Loader2, Eye, EyeOff, Mail, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { API_BASE } from "@/lib/config";
+import { emailError } from "@/lib/auth-validation";
 
 // NextAuth surfaces raw provider error codes (e.g. "CredentialsSignin") via the
 // `result.error` / `?error=` channels. Customers shouldn't see auth-provider
@@ -34,6 +35,10 @@ function LoginFormInner() {
   const initialError = searchParams.get("error");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // #1957: inline app-level error for the email field (replaces the browser's
+  // native validation popup). `email` is shared by both forms (#1956), so a
+  // single error string drives the inline message under whichever field shows.
+  const [emailErr, setEmailErr] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -44,10 +49,18 @@ function LoginFormInner() {
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [error, setError] = useState(initialError ? friendlyAuthError(initialError) : "");
 
+  function onEmailChange(value: string) {
+    setEmail(value);
+    if (emailErr) setEmailErr("");
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError("");
+    const emErr = emailError(email);
+    setEmailErr(emErr ?? "");
+    if (emErr) return;
+    setLoading(true);
     const result = await signIn("credentials", {
       email,
       password,
@@ -70,9 +83,11 @@ function LoginFormInner() {
 
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
-    if (!email) return;
-    setMagicLoading(true);
     setError("");
+    const emErr = emailError(email);
+    setEmailErr(emErr ?? "");
+    if (emErr) return;
+    setMagicLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/auth/magic-link/`, {
         method: "POST",
@@ -161,33 +176,38 @@ function LoginFormInner() {
             <div className="text-center py-2 mb-4">
               <Mail className="w-8 h-8 text-blue-400 mx-auto mb-2" />
               <p className="text-white font-semibold text-sm">Check your inbox</p>
-              <p className="text-slate-400 text-xs mt-1">We sent a sign-in link to <strong>{email}</strong></p>
+              <p className="text-slate-400 text-xs mt-1">If an account exists for <strong>{email}</strong>, we&apos;ll send a sign-in link.</p>
               <button onClick={() => setMagicSent(false)} className="inline-flex items-center justify-center min-h-[44px] px-4 mt-1 text-blue-400 text-sm font-medium hover:text-blue-300">
                 Send again
               </button>
             </div>
           ) : (
-            <form onSubmit={handleMagicLink} method="post" className="mb-4">
+            <form onSubmit={handleMagicLink} method="post" noValidate className="mb-4">
               <label htmlFor="magic-email" className="block text-xs font-medium text-slate-400 mb-1.5">Email magic link</label>
               <div className="space-y-2">
                 <Input
                   id="magic-email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => onEmailChange(e.target.value)}
                   placeholder="you@company.com"
                   autoComplete="email"
                   required
+                  aria-invalid={emailErr ? true : undefined}
+                  aria-describedby={emailErr ? "magic-email-error" : undefined}
                   className="w-full h-11 min-h-[44px] bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
                 />
+                {emailErr && (
+                  <p id="magic-email-error" role="alert" className="text-xs text-red-400">{emailErr}</p>
+                )}
                 <button
                   type="submit"
-                  disabled={magicLoading || !email}
+                  disabled={magicLoading}
                   className="w-full h-11 min-h-[44px] rounded-md font-semibold text-white text-sm disabled:opacity-50 flex items-center justify-center gap-2"
                   style={{ background: "linear-gradient(135deg,#2563EB,#0891B2)" }}
                 >
                   {magicLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-                  <span>Send link</span>
+                  <span>{magicLoading ? "Sending link…" : "Send link"}</span>
                 </button>
               </div>
             </form>
@@ -212,19 +232,24 @@ function LoginFormInner() {
           </button>
 
           {showPasswordForm && (
-            <form id="password-signin-form" onSubmit={handleSubmit} method="post" className="space-y-4">
+            <form id="password-signin-form" onSubmit={handleSubmit} method="post" noValidate className="space-y-4">
               <div>
                 <label htmlFor="login-email" className="block text-xs font-medium text-slate-400 mb-1.5">Email</label>
                 <Input
                   id="login-email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => onEmailChange(e.target.value)}
                   placeholder="you@company.com"
                   autoComplete="email"
                   required
+                  aria-invalid={emailErr ? true : undefined}
+                  aria-describedby={emailErr ? "login-email-error" : undefined}
                   className="h-11 min-h-[44px] bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
                 />
+                {emailErr && (
+                  <p id="login-email-error" role="alert" className="mt-1.5 text-xs text-red-400">{emailErr}</p>
+                )}
               </div>
 
               <div>
@@ -259,7 +284,7 @@ function LoginFormInner() {
               >
                 {loading ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" /> Signing in
+                    <Loader2 className="w-4 h-4 animate-spin" /> Signing in…
                   </>
                 ) : (
                   "Sign in"

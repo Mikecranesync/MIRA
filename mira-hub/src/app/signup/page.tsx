@@ -8,14 +8,17 @@ import { Factory, Loader2, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { API_BASE } from "@/lib/config";
+import { MIN_PASSWORD_LENGTH, emailError, passwordError } from "@/lib/auth-validation";
 
-const MIN_PW = 8;
+const MIN_PW = MIN_PASSWORD_LENGTH;
 
 export default function SignupPage() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [emailErr, setEmailErr] = useState("");
+  const [pwErr, setPwErr] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -24,10 +27,11 @@ export default function SignupPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (password.length < MIN_PW) {
-      setError(`Password must be at least ${MIN_PW} characters`);
-      return;
-    }
+    const emErr = emailError(email);
+    const pErr = passwordError(password);
+    setEmailErr(emErr ?? "");
+    setPwErr(pErr ?? "");
+    if (emErr || pErr) return;
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/auth/register/`, {
@@ -131,7 +135,7 @@ export default function SignupPage() {
             <div className="flex-1 h-px bg-slate-700/50" />
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} noValidate className="space-y-4">
             <div>
               <label htmlFor="signup-name" className="block text-xs font-medium text-slate-400 mb-1.5">Name (optional)</label>
               <Input
@@ -151,12 +155,17 @@ export default function SignupPage() {
                 id="signup-email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); if (emailErr) setEmailErr(""); }}
                 placeholder="you@company.com"
                 autoComplete="email"
                 required
+                aria-invalid={emailErr ? true : undefined}
+                aria-describedby={emailErr ? "signup-email-error" : undefined}
                 className="h-11 min-h-[44px] bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
               />
+              {emailErr && (
+                <p id="signup-email-error" role="alert" className="mt-1.5 text-xs text-red-400">{emailErr}</p>
+              )}
             </div>
 
             <div>
@@ -166,11 +175,13 @@ export default function SignupPage() {
                   id="signup-password"
                   type={showPw ? "text" : "password"}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => { setPassword(e.target.value); if (pwErr) setPwErr(""); }}
                   placeholder={`At least ${MIN_PW} characters`}
                   autoComplete="new-password"
                   required
                   minLength={MIN_PW}
+                  aria-invalid={pwErr ? true : undefined}
+                  aria-describedby={pwErr ? "signup-password-error" : undefined}
                   className="h-11 min-h-[44px] pr-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
                 />
                 <button
@@ -182,6 +193,9 @@ export default function SignupPage() {
                   {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              {pwErr && (
+                <p id="signup-password-error" role="alert" className="mt-1.5 text-xs text-red-400">{pwErr}</p>
+              )}
             </div>
 
             {error && (
@@ -198,7 +212,7 @@ export default function SignupPage() {
             >
               {loading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Creating account
+                  <Loader2 className="w-4 h-4 animate-spin" /> Creating account…
                 </>
               ) : (
                 "Create account"
