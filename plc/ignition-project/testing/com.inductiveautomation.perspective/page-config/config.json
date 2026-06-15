@@ -1,13 +1,18 @@
 {
   "pages": {
     "/": {
-      "title": "GS10 Trend (sandbox)",
-      "viewPath": "TrendChart",
+      "title": "VFD Analyzer — Tag Setup",
+      "viewPath": "TagMapper",
       "docks": {}
     },
     "/setup": {
       "title": "VFD Analyzer — Tag Setup",
       "viewPath": "TagMapper",
+      "docks": {}
+    },
+    "/trend": {
+      "title": "GS10 Trend (sandbox)",
+      "viewPath": "TrendChart",
       "docks": {}
     },
     "/maintenance": {
