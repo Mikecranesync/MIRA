@@ -4,7 +4,7 @@ redis==5.2.1
 
 # Ingest pipeline
 httpx>=0.28.1
-pdfplumber>=0.11.9
+pdfplumber>=0.11.10
 beautifulsoup4>=4.14.3
 lxml>=6.1.1
 
