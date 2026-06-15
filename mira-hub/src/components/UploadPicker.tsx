@@ -492,7 +492,7 @@ export function UploadPicker({
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => { window.location.href = "/hub/api/auth/google"; }}
+                onClick={() => { window.location.href = `${API_BASE}/api/auth/google`; }}
                 title="Sign in with Google to pick files from Drive"
                 data-testid="connect-google-drive"
                 className="gap-1.5"
