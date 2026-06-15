@@ -1,0 +1,108 @@
+{
+  "custom": {
+    "selectedProvider": "[default]",
+    "browseBase": "[default]",
+    "selectedFolder": ""
+  },
+  "params": {
+    "assetId": "conveyor",
+    "folder": "",
+    "pollMs": 2000
+  },
+  "props": { "defaultSize": { "width": 1360, "height": 980 } },
+  "root": {
+    "type": "ia.container.flex",
+    "meta": { "name": "root" },
+    "props": { "direction": "column", "style": { "backgroundColor": "#0d1117", "height": "100%" } },
+    "children": [
+      {
+        "type": "ia.container.flex", "meta": { "name": "header" }, "position": { "basis": "52px", "shrink": 0 },
+        "props": { "direction": "row", "alignItems": "center", "style": { "backgroundColor": "#161b22", "borderBottom": "1px solid #30363d", "padding": "0 18px", "gap": "14px" } },
+        "children": [
+          { "type": "ia.display.label", "meta": { "name": "brand" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "VFD ANALYZER — SETUP", "style": { "color": "#e6edf3", "fontSize": "16px", "fontWeight": 700, "letterSpacing": "0.08em" } } },
+          { "type": "ia.display.label", "meta": { "name": "assetLbl" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "asset", "style": { "color": "#8b949e", "fontSize": "13px" } }, "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "\"asset: \" + {view.params.assetId}" } } } } }
+        ]
+      },
+      {
+        "type": "ia.container.flex", "meta": { "name": "steps" }, "position": { "basis": "42px", "shrink": 0 },
+        "props": { "direction": "row", "alignItems": "stretch", "style": { "backgroundColor": "#0d1117", "padding": "8px 14px", "gap": "8px" } },
+        "children": [
+          { "type": "ia.display.label", "meta": { "name": "sp1" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "1  CONNECT", "style": { "color": "#fff", "backgroundColor": "#1f6feb", "fontSize": "13px", "fontWeight": 700, "borderRadius": "8px", "textAlign": "center", "padding": "6px 0" } } },
+          { "type": "ia.display.label", "meta": { "name": "sp2" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "2  Verify", "style": { "color": "#8b949e", "backgroundColor": "#21262d", "fontSize": "13px", "fontWeight": 600, "borderRadius": "8px", "textAlign": "center", "padding": "6px 0" } } },
+          { "type": "ia.display.label", "meta": { "name": "sp3" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "3  Map", "style": { "color": "#8b949e", "backgroundColor": "#21262d", "fontSize": "13px", "fontWeight": 600, "borderRadius": "8px", "textAlign": "center", "padding": "6px 0" } } },
+          { "type": "ia.display.label", "meta": { "name": "sp4" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "4  Save", "style": { "color": "#8b949e", "backgroundColor": "#21262d", "fontSize": "13px", "fontWeight": 600, "borderRadius": "8px", "textAlign": "center", "padding": "6px 0" } } }
+        ]
+      },
+      {
+        "type": "ia.container.flex", "meta": { "name": "content" }, "position": { "grow": 1, "shrink": 1 },
+        "props": { "direction": "column", "style": { "padding": "16px 18px", "gap": "12px", "overflow": "hidden" } },
+        "children": [
+          { "type": "ia.display.label", "meta": { "name": "title" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "Where are this drive's tags?", "style": { "color": "#e6edf3", "fontSize": "22px", "fontWeight": 700 } } },
+          { "type": "ia.display.label", "meta": { "name": "subtitle" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "Pick the tag provider, then open the folder that holds this drive's tags. Click a [+] folder to go into it.", "style": { "color": "#8b949e", "fontSize": "14px" } } },
+          {
+            "type": "ia.container.flex", "meta": { "name": "provRow" }, "position": { "basis": "auto", "shrink": 0 },
+            "props": { "direction": "row", "alignItems": "center", "style": { "gap": "10px" } },
+            "children": [
+              { "type": "ia.display.label", "meta": { "name": "provLbl" }, "position": { "basis": "110px", "shrink": 0 }, "props": { "text": "Tag provider", "style": { "color": "#c9d1d9", "fontSize": "14px" } } },
+              {
+                "type": "ia.input.dropdown", "meta": { "name": "provDrop" }, "position": { "basis": "260px", "shrink": 0 },
+                "props": { "value": "[default]" },
+                "propConfig": {
+                  "props.value": { "binding": { "type": "property", "config": { "path": "view.custom.selectedProvider" }, "bidirectional": true } },
+                  "props.options": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.provider_options\", 0)" } } }
+                },
+                "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tself.view.custom.browseBase = self.view.custom.selectedProvider\n" } } } }
+              },
+              { "type": "ia.input.text-field", "meta": { "name": "pathField" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "[default]", "placeholder": "folder path" }, "propConfig": { "props.text": { "binding": { "type": "property", "config": { "path": "view.custom.browseBase" }, "bidirectional": true } } } },
+              {
+                "type": "ia.input.button", "meta": { "name": "upBtn" }, "position": { "basis": "90px", "shrink": 0 },
+                "props": { "text": "↑ Up", "style": { "backgroundColor": "#30363d", "color": "#c9d1d9", "fontSize": "13px", "borderRadius": "8px", "border": "none", "padding": "10px" } },
+                "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tb = self.view.custom.browseBase\n\tif b and \"/\" in b:\n\t\tself.view.custom.browseBase = b.rsplit(\"/\", 1)[0]\n" } } } }
+              }
+            ]
+          },
+          {
+            "type": "ia.display.table", "meta": { "name": "browseTable" }, "position": { "grow": 1, "shrink": 1 },
+            "props": {
+              "data": [],
+              "columns": [
+                { "field": "label", "header": { "title": "Browse — click a [+] folder to open it" }, "align": "left" },
+                { "field": "kind", "header": { "title": "Kind" }, "align": "left" },
+                { "field": "path", "header": { "title": "Full path" }, "align": "left" }
+              ],
+              "rows": { "pageSize": 0 },
+              "style": { "border": "1px solid #30363d", "borderRadius": "8px", "fontSize": "14px" }
+            },
+            "propConfig": { "props.data": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.browse_nodes\", 1000, {view.custom.browseBase})" } } } },
+            "events": { "component": { "onRowClick": { "type": "script", "scope": "G", "config": { "script": "\ttry:\n\t\tif event.value['kind'] == 'folder':\n\t\t\tself.view.custom.browseBase = event.value['path']\n\t\telse:\n\t\t\tself.view.custom.selectedFolder = self.view.custom.browseBase\n\texcept Exception:\n\t\tpass\n" } } } }
+          },
+          {
+            "type": "ia.container.flex", "meta": { "name": "useRow" }, "position": { "basis": "auto", "shrink": 0 },
+            "props": { "direction": "row", "alignItems": "center", "style": { "gap": "12px" } },
+            "children": [
+              {
+                "type": "ia.input.button", "meta": { "name": "useBtn" }, "position": { "basis": "220px", "shrink": 0 },
+                "props": { "text": "Use this folder", "style": { "backgroundColor": "#1f6feb", "color": "#fff", "fontSize": "14px", "fontWeight": 700, "borderRadius": "8px", "border": "none", "padding": "11px" } },
+                "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tself.view.custom.selectedFolder = self.view.custom.browseBase\n" } } } }
+              },
+              { "type": "ia.display.label", "meta": { "name": "chosen" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "", "style": { "color": "#7ee787", "fontSize": "15px", "fontWeight": 600, "fontFamily": "Consolas, monospace" } }, "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "if(len({view.custom.selectedFolder})>0, \"✓  source:  \" + {view.custom.selectedFolder}, \"open a folder above, then Use this folder\")" } } } } }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "ia.container.flex", "meta": { "name": "footer" }, "position": { "basis": "60px", "shrink": 0 },
+        "props": { "direction": "row", "alignItems": "center", "style": { "backgroundColor": "#161b22", "borderTop": "1px solid #30363d", "padding": "0 18px", "gap": "12px" } },
+        "children": [
+          { "type": "ia.display.label", "meta": { "name": "fspacer" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "Step 1 of 4 — Connect", "style": { "color": "#6e7d90", "fontSize": "13px" } } },
+          {
+            "type": "ia.input.button", "meta": { "name": "next" }, "position": { "basis": "200px", "shrink": 0 },
+            "props": { "text": "Next: Verify ▸", "enabled": false, "style": { "backgroundColor": "#238636", "color": "#fff", "fontSize": "15px", "fontWeight": 700, "borderRadius": "8px", "border": "none", "padding": "11px" } },
+            "propConfig": { "props.enabled": { "binding": { "type": "expr", "config": { "expression": "len({view.custom.selectedFolder}) > 0" } } } },
+            "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tp = {\"assetId\": self.view.params.assetId or \"conveyor\", \"folder\": self.view.custom.selectedFolder, \"pollMs\": self.view.params.pollMs}\n\tsystem.perspective.navigate(page=\"/verify\", params=p)\n" } } } }
+          }
+        ]
+      }
+    ]
+  }
+}
