@@ -180,11 +180,16 @@ export async function historyForElement(
 
 /** Returns edges touching the element, filtered to verified in app code via filterExposable. */
 export async function relationshipsForElement(client: DbClient, elementId: string): Promise<KgRelationship[]> {
-  const { rows } = await client.query<KgRelationship & { approval_state: string }>(
-    `SELECT source_id, target_id, relationship_type, approval_state
-       FROM kg_relationships
-      WHERE (source_id = $1 OR target_id = $1)`,
-    [elementId],
-  );
-  return filterExposable(rows);
+  try {
+    const { rows } = await client.query<KgRelationship & { approval_state: string }>(
+      `SELECT source_id, target_id, relationship_type, approval_state
+         FROM kg_relationships
+        WHERE (source_id = $1 OR target_id = $1)`,
+      [elementId],
+    );
+    return filterExposable(rows);
+  } catch (err) {
+    if ((err as { code?: string }).code === "22P02") return [];
+    throw err;
+  }
 }

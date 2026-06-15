@@ -175,3 +175,19 @@ describe("relationshipsForElement — verified edges touching the element", () =
     expect(edges.find((e) => e.target_id === "sensor")).toBeUndefined();
   });
 });
+
+describe("relationshipsForElement — 22P02 fail-closed on malformed id", () => {
+  it("returns [] when Postgres throws 22P02 (invalid uuid syntax)", async () => {
+    const client = {
+      query: async () => { throw { code: "22P02" }; },
+    } as unknown as DbClient;
+    expect(await relationshipsForElement(client, "not-a-uuid")).toEqual([]);
+  });
+
+  it("re-throws non-22P02 errors so infra failures surface", async () => {
+    const client = {
+      query: async () => { throw { code: "08006", message: "connection refused" }; },
+    } as unknown as DbClient;
+    await expect(relationshipsForElement(client, "some-id")).rejects.toMatchObject({ code: "08006" });
+  });
+});
