@@ -12,6 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/config";
+import { deriveStatus, assetMatchesStatusFilter, STATUS_LABELS, type AssetStatus } from "./asset-status";
 
 /* ─── Types ──────────────────────────────────────────────────────────── */
 type Asset = {
@@ -44,13 +45,8 @@ const OEM_OPTIONS = [
 ];
 
 /* ─── Status derivation ──────────────────────────────────────────────── */
-function deriveStatus(a: Asset): "operational" | "warning" | "critical" | "idle" {
-  if (a.downtimeHours > 0 && a.lastFault) return "warning";
-  if (a.criticality === "critical" && a.lastFault) return "critical";
-  if (a.workOrderCount === 0 && !a.lastWorkOrder) return "idle";
-  return "operational";
-}
-
+// deriveStatus / STATUS_LABELS / assetMatchesStatusFilter live in ./asset-status
+// (pure + unit-tested, #1985). STATUS_CONFIG stays here — it carries UI icons/colors.
 const STATUS_CONFIG = {
   operational: { color: "#16A34A", bg: "#DCFCE7", Icon: CheckCircle2 },
   warning:     { color: "#EAB308", bg: "#FEF9C3", Icon: AlertTriangle },
@@ -69,11 +65,14 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
   Pneumatic: Wind,
 };
 
-const FILTER_CHIPS = [
-  { key: "all",      labelKey: "filters.all" },
-  { key: "critical", labelKey: "filters.active" },
-  { key: "warning",  labelKey: "filters.maintenance" },
-  { key: "idle",     labelKey: "filters.inactive" },
+// One chip per real (derived) status, plus "All". Labels come from STATUS_LABELS
+// so they always match the badges. (#1985)
+const FILTER_CHIPS: Array<{ key: "all" | AssetStatus }> = [
+  { key: "all" },
+  { key: "operational" },
+  { key: "warning" },
+  { key: "critical" },
+  { key: "idle" },
 ];
 
 const CRITICALITY_OPTIONS = ["low", "medium", "high", "critical"];
@@ -392,7 +391,7 @@ function AssetTile({ asset }: { asset: Asset }) {
             className="text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0"
             style={{ backgroundColor: statusCfg.bg, color: statusCfg.color }}
           >
-            {status}
+            {STATUS_LABELS[status]}
           </span>
         </div>
       </div>
@@ -453,13 +452,7 @@ function AssetsPageInner() {
       || (a.name ?? "").toLowerCase().includes(q)
       || (a.tag ?? "").toLowerCase().includes(q)
       || (a.location ?? "").toLowerCase().includes(q);
-    const matchFilter =
-      filter === "all"      ? true :
-      filter === "critical" ? a.criticality === "critical" :
-      filter === "warning"  ? deriveStatus(a) === "warning" :
-      filter === "idle"     ? deriveStatus(a) === "idle" :
-      true;
-    return matchQuery && matchFilter;
+    return matchQuery && assetMatchesStatusFilter(a, filter);
   });
 
   return (
@@ -529,7 +522,7 @@ function AssetsPageInner() {
                 color: filter === chip.key ? "white" : "var(--foreground-muted)",
               }}
             >
-              {t(chip.labelKey)}
+              {chip.key === "all" ? t("filters.all") : STATUS_LABELS[chip.key]}
             </button>
           ))}
         </div>
