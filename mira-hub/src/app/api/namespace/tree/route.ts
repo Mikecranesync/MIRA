@@ -75,6 +75,13 @@ export async function GET() {
             NULL AS equipment_status
          FROM kg_entities e
          WHERE e.tenant_id = $1::uuid
+           -- #1983: only the maintenance namespace belongs in the tree. Every
+           -- real UNS path is rooted at the 'enterprise' ltree label
+           -- (.claude/rules/uns-compliance.md); stray non-UNS rows (e.g. historical
+           -- 'audit_<rand>' test areas) have flat roots and would otherwise flood
+           -- the tree. Keep enterprise-rooted rows + NULL-path entities
+           -- (legitimately unpathed); drop the rest.
+           AND (e.uns_path IS NULL OR e.uns_path <@ 'enterprise'::ltree)
          ORDER BY e.uns_path::text NULLS LAST, e.name`,
         [ctx.tenantId],
       );
@@ -129,10 +136,23 @@ export async function GET() {
   }
 }
 
+/** A uns_path belongs in the maintenance tree iff it is the enterprise root,
+ *  a descendant of it, or NULL (a legitimately-unpathed entity). Stray non-UNS
+ *  rows (historical 'audit_<rand>' test areas, #1983) are flat-rooted and
+ *  excluded. Mirrors the SQL `uns_path <@ 'enterprise'` predicate as
+ *  defence-in-depth + the unit-testable surface. */
+export function isMaintenanceNamespacePath(unsPath: string | null): boolean {
+  return unsPath === null || unsPath === "enterprise" || unsPath.startsWith("enterprise.");
+}
+
 export function buildTree(
   entities: KgEntityRow[],
   proposalCounts: ProposalCountRow[],
 ): NamespaceNode[] {
+  // #1983: drop any row that isn't part of the enterprise-rooted UNS, so stray
+  // non-namespace data never floods the tree even if it slips past the query.
+  entities = entities.filter((e) => isMaintenanceNamespacePath(e.uns_path));
+
   // Index proposal counts by uns_path so we can attach without a per-node loop.
   const proposalsByPath = new Map<string, { pending: number; verified: number }>();
   for (const row of proposalCounts) {
