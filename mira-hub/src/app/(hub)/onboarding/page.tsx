@@ -663,6 +663,7 @@ function UploadStep({
   const [file, setFile] = useState<File | null>(null);
   const [phase, setPhase] = useState<UploadPhase>("idle");
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [readyNodeId, setReadyNodeId] = useState<string | null>(null);
   const stopPollRef = useRef<(() => void) | null>(null);
   useEffect(() => () => { stopPollRef.current?.(); }, []);
 
@@ -673,7 +674,7 @@ function UploadStep({
       try {
         const res = await fetch(`${API_BASE}/api/uploads/${uploadId}`, { cache: "no-store" });
         const row = res.ok
-          ? ((await res.json()) as { status?: string; knowledge_chunks_count?: number })
+          ? ((await res.json()) as { status?: string; knowledge_chunks_count?: number; kgEntityId?: string | null })
           : null;
         if (row?.status === "failed" || row?.status === "cancelled") {
           setErrMsg("Processing failed for that file. Try a different PDF.");
@@ -681,6 +682,7 @@ function UploadStep({
           return;
         }
         if (row && isManualReady({ status: String(row.status ?? "") as UploadStatus, knowledge_chunks_count: Number(row.knowledge_chunks_count ?? 0) })) {
+          setReadyNodeId(row.kgEntityId ?? null);
           setPhase("ready");
           return;
         }
@@ -738,7 +740,11 @@ function UploadStep({
           </div>
         </div>
         <div className="rounded-lg border border-slate-200" data-testid="onboarding-node-chat">
-          <NodeChat nodeId={lineNode.id} nodeName={lineNode.name} unsPath={lineNode.unsPath} />
+          <NodeChat
+            nodeId={readyNodeId ?? lineNode.id}
+            nodeName={lineNode.name}
+            unsPath={readyNodeId ? null : lineNode.unsPath}
+          />
         </div>
         <NavButtons rightLabel="Continue" onRight={onContinue} rightTestId="onboarding-upload-continue" />
       </div>
