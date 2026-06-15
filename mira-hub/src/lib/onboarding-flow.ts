@@ -2,8 +2,10 @@
 // Pure decision logic for the onboarding upload->ask beta-gate flow (#1901).
 // No React, no IO — unit-tested in isolation.
 
+import type { UploadStatus } from "./uploads";
+
 export interface UploadReadiness {
-  status: string;
+  status: UploadStatus;
   knowledge_chunks_count: number;
 }
 

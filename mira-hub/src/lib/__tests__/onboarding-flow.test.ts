@@ -10,11 +10,11 @@ describe("isManualReady", () => {
     expect(isManualReady({ status: "parsed", knowledge_chunks_count: 0 })).toBe(false);
   });
   it("false for in-flight statuses", () => {
-    expect(isManualReady({ status: "uploaded", knowledge_chunks_count: 0 })).toBe(false);
-    expect(isManualReady({ status: "processing", knowledge_chunks_count: 0 })).toBe(false);
+    expect(isManualReady({ status: "queued", knowledge_chunks_count: 0 })).toBe(false);
+    expect(isManualReady({ status: "parsing", knowledge_chunks_count: 0 })).toBe(false);
   });
-  it("false for error status even with stale counts", () => {
-    expect(isManualReady({ status: "error", knowledge_chunks_count: 5 })).toBe(false);
+  it("false for failed status even with stale counts", () => {
+    expect(isManualReady({ status: "failed", knowledge_chunks_count: 5 })).toBe(false);
   });
 });
 
