@@ -16,7 +16,7 @@
  * Slice 1 will add area, equipment, tag-import CSV.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Building2, Factory, Loader2, MapPin, MessageSquare, ShieldCheck, Sparkles, Upload } from "lucide-react";
 import { API_BASE } from "@/lib/config";
@@ -663,6 +663,8 @@ function UploadStep({
   const [file, setFile] = useState<File | null>(null);
   const [phase, setPhase] = useState<UploadPhase>("idle");
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  const stopPollRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => { stopPollRef.current?.(); }, []);
 
   function pollUntilReady(uploadId: string) {
     let stopped = false;
@@ -704,7 +706,8 @@ function UploadStep({
       const data = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
       if (!res.ok || !data.id) throw new Error(data.error ?? `HTTP ${res.status}`);
       setPhase("processing");
-      pollUntilReady(data.id);
+      stopPollRef.current?.();                       // cancel any prior poll
+      stopPollRef.current = pollUntilReady(data.id); // save cleanup for unmount
     } catch (e) {
       setErrMsg((e as Error).message);
       setPhase("error");
