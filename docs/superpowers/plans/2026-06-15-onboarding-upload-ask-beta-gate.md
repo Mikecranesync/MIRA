@@ -51,11 +51,11 @@ describe("isManualReady", () => {
     expect(isManualReady({ status: "parsed", knowledge_chunks_count: 0 })).toBe(false);
   });
   it("false for in-flight statuses", () => {
-    expect(isManualReady({ status: "uploaded", knowledge_chunks_count: 0 })).toBe(false);
-    expect(isManualReady({ status: "processing", knowledge_chunks_count: 0 })).toBe(false);
+    expect(isManualReady({ status: "queued", knowledge_chunks_count: 0 })).toBe(false);
+    expect(isManualReady({ status: "parsing", knowledge_chunks_count: 0 })).toBe(false);
   });
-  it("false for error status even with stale counts", () => {
-    expect(isManualReady({ status: "error", knowledge_chunks_count: 5 })).toBe(false);
+  it("false for failed status even with stale counts", () => {
+    expect(isManualReady({ status: "failed", knowledge_chunks_count: 5 })).toBe(false);
   });
 });
 
@@ -86,8 +86,10 @@ Expected: FAIL — cannot find module `@/lib/onboarding-flow`.
 // Pure decision logic for the onboarding upload→ask beta-gate flow (#1901).
 // No React, no IO — unit-tested in isolation.
 
+import type { UploadStatus } from "./uploads";
+
 export interface UploadReadiness {
-  status: string;
+  status: UploadStatus;
   knowledge_chunks_count: number;
 }
 
@@ -291,6 +293,7 @@ Expected: FAIL — `UploadStep` is not defined yet (added in Task 4). This confi
 ```ts
 import { NodeChat } from "@/components/namespace/NodeChat";
 import { isManualReady } from "@/lib/onboarding-flow";
+import type { UploadStatus } from "@/lib/uploads";
 import { Upload as UploadIcon } from "lucide-react"; // if not already importing Upload
 ```
 
@@ -324,12 +327,12 @@ function UploadStep({
         const row = res.ok
           ? ((await res.json()) as { status?: string; knowledge_chunks_count?: number })
           : null;
-        if (row?.status === "error") {
+        if (row?.status === "failed" || row?.status === "cancelled") {
           setErrMsg("Processing failed for that file. Try a different PDF.");
           setPhase("error");
           return;
         }
-        if (row && isManualReady({ status: String(row.status ?? ""), knowledge_chunks_count: Number(row.knowledge_chunks_count ?? 0) })) {
+        if (row && isManualReady({ status: String(row.status ?? "") as UploadStatus, knowledge_chunks_count: Number(row.knowledge_chunks_count ?? 0) })) {
           setPhase("ready");
           return;
         }
