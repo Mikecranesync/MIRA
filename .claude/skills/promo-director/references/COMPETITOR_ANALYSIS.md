@@ -1,8 +1,25 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-06-15
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-06-15
+
+### Most actionable pattern for MIRA playbook
+
+Figma's episodic "Release Notes" video series is the most transferable new pattern: regular practitioner-hosted video drops (not big keynotes) turn incremental product updates into a content flywheel. Each episode is a live-streamed demo by advocates, not executives. For MIRA, this maps to a recurring "What's new in MIRA" short-form series hosted by a technician advocate alongside each sprint — low production cost, high retention signal.
+
+### New findings
+
+**Automation / SCADA**
+- **Rockwell Automation** — ROKStudios Interpack 2026 season (Jun 4, 2026): new video batch from Interpack 2026 Düsseldorf; focus shifted to "OEM Leaders on Machine Lifecycle Innovation" (packaging ecosystem, full machine lifecycle — design through commissioning through operation). Separate season from the April 2026 "automation to autonomy" EMEA cohort. 150+ total recordings. Source: https://www.prnewswire.com/news-releases/rockwell-automation-launches-new-season-of-rokstudios-video-series-highlighting-oem-leaders-on-machine-lifecycle-innovation-302788178.html [no direct YouTube URL confirmed]
+
+**B2B SaaS / dev-tools (pattern transfer)**
+- **Figma** — Release Notes EP-007, May Edition (May 5–6, 2026): https://www.youtube.com/watch?v=11mdb7lLclM — practitioner-hosted live episode; hook: "Taking vibe-coded prototypes further"; demo includes live MCP server workflow and design-to-code round-trip. Confirms Figma's commitment to a recurring episodic series (playlist: https://www.youtube.com/playlist?list=PLXDU_eVOJTx4wCgXwkYeI5gQ6miXjWe1p) over big keynotes as primary product content vehicle.
+- **Notion** — Developer Platform (May 13, 2026): Workers (hosted code runtime), Agent SDK, Notion CLI; YouTube: https://www.youtube.com/watch?v=k-6ldiWIDsg ("Meet the Notion CLI: Built for Agents & Humans") + https://www.youtube.com/watch?v=zCFlM2XhJJE. Platform shift from using Notion's agents to deploying your own agents in Notion's hosted runtime. Closest B2B analogy to MIRA's Command Center train-and-deploy lifecycle.
 
 ---
 
@@ -205,6 +222,15 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - NVIDIA NeMoTron partnership: edge-based generative AI for industrial intelligence
 - No standalone launch video URL confirmed
 
+**ROKStudios Interpack 2026 season (Jun 4, 2026)**
+- Source: https://www.prnewswire.com/news-releases/rockwell-automation-launches-new-season-of-rokstudios-video-series-highlighting-oem-leaders-on-machine-lifecycle-innovation-302788178.html
+- Recorded at Interpack 2026 Düsseldorf, Germany
+- Focus: packaging/manufacturing ecosystem OEM leaders; full machine lifecycle — design through commissioning through long-term operation
+- Separate season from the April 2026 "automation to autonomy" EMEA cohort; 150+ total ROKStudios recordings
+- Format: executive interviews, non-commercial peer knowledge sharing
+- CTA: none explicit; thought-leadership brand play
+- No standalone YouTube URL confirmed; content hosted at ROKStudios portal
+
 ---
 
 ### Siemens
@@ -340,6 +366,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**Developer Platform launch (May 13, 2026)**
+- URL (CLI video): https://www.youtube.com/watch?v=k-6ldiWIDsg
+- URL (overview): https://www.youtube.com/watch?v=zCFlM2XhJJE
+- Announcement: https://www.notion.com/releases/2026-05-13
+- Features: Workers (hosted code runtime, no external infra required), Agent SDK (embed a Notion agent in other tools), Notion CLI (command-line interface for agents + humans)
+- Platform shift: from using Notion's agents → deploying your own custom agents inside Notion's hosted runtime
+- VO register: developer-advocate
+- CTA: "Workers free during beta" — soft urgency without pricing pressure [search-derived]
+- Pattern note: extends the "You assign. It does." framing into a full platform story — "You don't just assign the tasks; you build and deploy the agent that handles them." Closest B2B analogy to MIRA's Command Center train-and-deploy lifecycle for asset agents. [transcript not verified]
+
 ---
 
 ### Figma
@@ -354,6 +390,19 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**Release Notes EP-007, May Edition (May 5–6, 2026)**
+- URL: https://www.youtube.com/watch?v=11mdb7lLclM
+- Title: "Release Notes 2026: May Edition"
+- Hosted by: designer advocates (not executives); live-streamed format
+- Hook: "Taking vibe-coded prototypes further in Figma" [search-derived]
+- Key demo: MCP server workflow, design-to-code round-trip (dark mode variable sync), AI agents in design workflows
+- Footage style: live screen capture + live demo
+- VO register: practitioner/peer
+- CTA: soft — "available now" callouts during demo; no hard URL
+- Series context: Episode 007 in recurring Release Notes playlist — Figma's ongoing product content vehicle alongside annual Config keynote [transcript not verified]
+
+**Pattern note (updated 2026-06-15):** Figma has moved from conference-keynote-as-primary-launch to an episodic practitioner-hosted release-notes series as its ongoing velocity content channel. Config anchors the annual narrative; the monthly Release Notes series handles sprint-level product updates. Config 2026 is scheduled June 23–25 in San Francisco.
 
 ---
 
@@ -385,6 +434,7 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| Episodic release-notes series (practitioner-hosted) | Figma Release Notes EP-007 (May 2026): live, advocate-led, sprint-cadence | "What's new in MIRA" monthly short-form hosted by a technician advocate — low production cost, high product-velocity signal |
 
 ### Anti-patterns (avoid)
 
@@ -398,3 +448,4 @@ No video content surfaced for 2025–2026.
 - **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Figma** (updated 2026-06-15): shifted from conference-keynote-as-primary-launch (Config 2025) to an episodic practitioner-hosted Release Notes series as its ongoing product velocity content. Config 2026 (Jun 23–25) still anchors the annual narrative; monthly episodes handle sprint-level product updates.
