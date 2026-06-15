@@ -94,7 +94,7 @@ export default function MobileAssetPage({
     let cancelled = false;
     setLoading(true);
     setErrorStatus(null);
-    fetch(`${API_BASE}/api/assets/by-tag/${encodeURIComponent(assetTag)}`)
+    fetch(`${API_BASE}/api/assets/by-tag/${encodeURIComponent(assetTag)}/`)
       .then(async (res) => {
         if (!res.ok) {
           if (!cancelled) setErrorStatus(res.status);
@@ -120,7 +120,7 @@ export default function MobileAssetPage({
   useEffect(() => {
     if (!isAuthed || !asset?.id) return;
     let cancelled = false;
-    fetch(`${API_BASE}/api/workorders?assetId=${encodeURIComponent(asset.id)}&limit=5`)
+    fetch(`${API_BASE}/api/workorders/?assetId=${encodeURIComponent(asset.id)}&limit=5`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data: RecentWorkOrder[]) => {
         if (!cancelled && Array.isArray(data)) setRecentWos(data);
@@ -403,7 +403,7 @@ function GuestLanding({ assetTag, apiBase }: { assetTag: string; apiBase: string
     setSubmitting(true);
     setError(null);
     try {
-      const res = await fetch(`${apiBase}/api/public/report`, {
+      const res = await fetch(`${apiBase}/api/public/report/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ equipmentNumber: assetTag, description, contactInfo: contactInfo || undefined }),

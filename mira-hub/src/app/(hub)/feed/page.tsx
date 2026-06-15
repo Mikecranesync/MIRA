@@ -206,7 +206,7 @@ export default function FeedPage() {
   const [me, setMe] = useState<{ name: string; role: string } | null>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/me`)
+    fetch(`${API_BASE}/api/me/`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { name: string; role: string } | null) => d && setMe(d))
       .catch(() => {});
@@ -222,8 +222,8 @@ export default function FeedPage() {
     async function load() {
       try {
         const [woRes, pmRes] = await Promise.all([
-          fetch(`${API_BASE}/api/work-orders`).then(r => r.ok ? r.json() : { work_orders: [] }),
-          fetch(`${API_BASE}/api/pm-schedules`).then(r => r.ok ? r.json() : { pm_schedules: [] }),
+          fetch(`${API_BASE}/api/work-orders/`).then(r => r.ok ? r.json() : { work_orders: [] }),
+          fetch(`${API_BASE}/api/pm-schedules/`).then(r => r.ok ? r.json() : { pm_schedules: [] }),
         ]);
         if (cancelled) return;
         const woList: WOApi[] = woRes?.work_orders ?? [];

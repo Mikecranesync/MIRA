@@ -96,7 +96,7 @@ export default function ProposalsPage() {
       setProposals((cur) => cur.filter((p) => p.id !== proposalId));
     }
     try {
-      const res = await fetch(`${API_BASE}/api/proposals/${proposalId}/decide`, {
+      const res = await fetch(`${API_BASE}/api/proposals/${proposalId}/decide/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ decision }),
@@ -123,7 +123,7 @@ export default function ProposalsPage() {
     let cancelled = false;
     const fetchProposals = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/proposals?status=${statusFilter}`, {
+        const res = await fetch(`${API_BASE}/api/proposals/?status=${statusFilter}`, {
           cache: "no-store",
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);

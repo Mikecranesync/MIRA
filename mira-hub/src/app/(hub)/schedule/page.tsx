@@ -78,7 +78,7 @@ export default function SchedulePage() {
 
   // Fetch real PM schedules from API on mount
   useEffect(() => {
-    fetch(`${API_BASE}/api/pm-schedules`)
+    fetch(`${API_BASE}/api/pm-schedules/`)
       .then(r => r.json())
       .then((data: { count: number; schedules: PM[] }) => {
         if (data.schedules && data.schedules.length > 0) {
@@ -420,7 +420,7 @@ function PMSheet({ pm, onClose, onUpdated }: {
   // then syncs local state so the change survives a reload.
   async function handleComplete() {
     try {
-      const res = await fetch(`${API_BASE}/api/pm-schedules/${pm.id}/complete`, { method: "POST" });
+      const res = await fetch(`${API_BASE}/api/pm-schedules/${pm.id}/complete/`, { method: "POST" });
       if (!res.ok) {
         toast(t("completeFailedToast"), "error");
         return;
@@ -445,7 +445,7 @@ function PMSheet({ pm, onClose, onUpdated }: {
   // silent no-op.
   async function handleTriggerChange(tt: string) {
     try {
-      const res = await fetch(`${API_BASE}/api/pm-schedules/${pm.id}`, {
+      const res = await fetch(`${API_BASE}/api/pm-schedules/${pm.id}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ trigger_type: tt }),

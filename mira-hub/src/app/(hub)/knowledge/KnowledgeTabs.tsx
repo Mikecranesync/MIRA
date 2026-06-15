@@ -22,7 +22,7 @@ export function KnowledgeTabs() {
   // Best-effort pending-suggestion count for the badge; silent on failure.
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/api/proposals?status=proposed`, { cache: "no-store" })
+    fetch(`${API_BASE}/api/proposals/?status=proposed`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { proposals?: unknown[] } | null) => {
         if (!cancelled && Array.isArray(d?.proposals)) setPending(d.proposals.length);

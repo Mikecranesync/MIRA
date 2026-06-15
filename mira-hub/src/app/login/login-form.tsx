@@ -55,7 +55,7 @@ function LoginFormInner() {
     setMagicLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API_BASE}/api/auth/magic-link`, {
+      const res = await fetch(`${API_BASE}/api/auth/magic-link/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: magicEmail }),

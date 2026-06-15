@@ -95,7 +95,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
   const [compMissingFields, setCompMissingFields] = useState<string[]>([]);
 
   useEffect(() => {
-    fetch(`/hub/api/work-orders/${id}`)
+    fetch(`/hub/api/work-orders/${id}/`)
       .then(r => r.json())
       .then((data: { work_order?: WO }) => {
         if (data.work_order) {
@@ -118,7 +118,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
 
   async function startWork() {
     try {
-      const res = await fetch(`/hub/api/work-orders/${id}`, {
+      const res = await fetch(`/hub/api/work-orders/${id}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: WORK_ORDER_IN_PROGRESS_STATUS }),
@@ -148,7 +148,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
     setCompSubmitting(true);
     setCompMissingFields([]);
     try {
-      const res = await fetch(`/hub/api/work-orders/${id}`, {
+      const res = await fetch(`/hub/api/work-orders/${id}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

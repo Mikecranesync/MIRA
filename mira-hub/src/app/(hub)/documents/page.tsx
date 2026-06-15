@@ -51,7 +51,7 @@ export default function DocumentsPage() {
 
   const fetchUploads = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/uploads`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/uploads/`, { cache: "no-store" });
       if (!res.ok) return;
       const rows = (await res.json()) as Array<{
         id: string;
@@ -115,7 +115,7 @@ export default function DocumentsPage() {
         const form = new FormData();
         form.append("file", file);
         if (assetTag) form.append("assetTag", assetTag);
-        const res = await fetch(`${API_BASE}/api/uploads/local`, { method: "POST", body: form });
+        const res = await fetch(`${API_BASE}/api/uploads/local/`, { method: "POST", body: form });
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
           const msg =
@@ -150,7 +150,7 @@ export default function DocumentsPage() {
       assetTag: string | null,
     ) => {
       for (const result of results) {
-        await fetch(`${API_BASE}/api/uploads`, {
+        await fetch(`${API_BASE}/api/uploads/`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...result, assetTag: assetTag ?? undefined }),
@@ -164,7 +164,7 @@ export default function DocumentsPage() {
 
   const handleRetry = useCallback(
     async (id: string) => {
-      const res = await fetch(`${API_BASE}/api/uploads/${id}/retry`, { method: "POST" });
+      const res = await fetch(`${API_BASE}/api/uploads/${id}/retry/`, { method: "POST" });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         toast(typeof body.error === "string" ? body.error : "Retry failed", "error");
@@ -178,7 +178,7 @@ export default function DocumentsPage() {
 
   const handleDelete = useCallback(
     async (id: string) => {
-      await fetch(`${API_BASE}/api/uploads/${id}`, { method: "DELETE" });
+      await fetch(`${API_BASE}/api/uploads/${id}/`, { method: "DELETE" });
       await fetchUploads();
     },
     [fetchUploads],
