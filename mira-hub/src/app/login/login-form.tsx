@@ -9,6 +9,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { API_BASE } from "@/lib/config";
 
+// NextAuth surfaces raw provider error codes (e.g. "CredentialsSignin") via the
+// `result.error` / `?error=` channels. Customers shouldn't see auth-provider
+// codes (#1893 dogfood / #1957) — translate the ones we expect to plain text.
+function friendlyAuthError(code: string | null | undefined): string {
+  switch (code) {
+    case "CredentialsSignin":
+      return "Email or password is incorrect.";
+    case "AccessDenied":
+      return "This account isn't allowed to sign in.";
+    case "Configuration":
+    case "OAuthSignin":
+    case "OAuthCallback":
+      return "Sign-in is temporarily unavailable. Please try again.";
+    default:
+      return "Email or password is incorrect.";
+  }
+}
+
 function LoginFormInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -23,7 +41,7 @@ function LoginFormInner() {
   const [magicLoading, setMagicLoading] = useState(false);
   const [magicSent, setMagicSent] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [error, setError] = useState(initialError ? "Sign in failed" : "");
+  const [error, setError] = useState(initialError ? friendlyAuthError(initialError) : "");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -36,7 +54,7 @@ function LoginFormInner() {
     });
     setLoading(false);
     if (!result || result.error) {
-      setError(result?.error || "Invalid email or password");
+      setError(friendlyAuthError(result?.error));
       return;
     }
     router.push(callbackUrl);
