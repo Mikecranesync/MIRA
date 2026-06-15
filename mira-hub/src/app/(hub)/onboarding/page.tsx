@@ -56,7 +56,7 @@ export default function OnboardingPage() {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/wizard/company`, { cache: "no-store" });
+        const res = await fetch(`${API_BASE}/api/wizard/company/`, { cache: "no-store" });
         if (cancelled) return;
         if (!res.ok) {
           if (res.status !== 401) setError(`Failed to load progress: HTTP ${res.status}`);
@@ -88,7 +88,7 @@ export default function OnboardingPage() {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/wizard/${stepId}`, {
+      const res = await fetch(`${API_BASE}/api/wizard/${stepId}/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(value),
@@ -107,7 +107,7 @@ export default function OnboardingPage() {
     setFinishing(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/wizard/finish`, {
+      const res = await fetch(`${API_BASE}/api/wizard/finish/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "{}",
@@ -542,7 +542,7 @@ function ValidateStep({ onBack, onDone }: { onBack: () => void; onDone: () => vo
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/assets`, { cache: "no-store" });
+        const res = await fetch(`${API_BASE}/api/assets/`, { cache: "no-store" });
         if (cancelled) return;
         if (!res.ok) throw new Error(`Failed to load assets: HTTP ${res.status}`);
         const data = (await res.json()) as Array<{ id?: unknown; tag?: unknown; name?: unknown }>;

@@ -201,7 +201,7 @@ function ChannelsInner() {
 
     refresh();
 
-    fetch(`${API_BASE}/api/auth/status`)
+    fetch(`${API_BASE}/api/auth/status/`)
       .then(r => r.json())
       .then((d: AuthStatus) => setAuthStatus(d))
       .catch(() => {});
@@ -220,7 +220,7 @@ function ChannelsInner() {
     setTelegramLoading(true);
     setTelegramError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/auth/telegram`, {
+      const res = await fetch(`${API_BASE}/api/auth/telegram/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: telegramToken.trim() }),
@@ -259,7 +259,7 @@ function ChannelsInner() {
     setMaintainxLoading(true);
     setMaintainxError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/integrations/nango/connect`, {
+      const res = await fetch(`${API_BASE}/api/integrations/nango/connect/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider: "maintainx", apiKey: maintainxKey.trim() }),
@@ -410,7 +410,7 @@ function ChannelsInner() {
                 setModal("maintainx");
               }}
               onDisconnect={async () => {
-                await fetch(`${API_BASE}/api/integrations/nango/connect?provider=maintainx`, {
+                await fetch(`${API_BASE}/api/integrations/nango/connect/?provider=maintainx`, {
                   method: "DELETE",
                 });
                 disconnect("maintainx");

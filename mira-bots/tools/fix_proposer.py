@@ -31,6 +31,7 @@ import argparse
 import asyncio
 import json
 import logging
+import math
 import os
 import re
 import subprocess
@@ -118,6 +119,68 @@ def find_latest_scorecard(runs_dir: Path) -> Path | None:
     # Prefer judge-enabled runs (they have more signal)
     judge_first = [c for c in candidates if "judge" in c.stem]
     return (judge_first or candidates)[0] if (judge_first or candidates) else None
+
+
+def _recent_scorecards(runs_dir: Path, limit: int) -> list[Path]:
+    """Return up to `limit` most-recent scorecard .md files, newest first.
+
+    Mirrors find_latest_scorecard's ordering (lexical-desc, judge-enabled
+    runs first) so the quorum window is drawn from the same population the
+    single-scorecard path would have sampled.
+    """
+    if limit < 1 or not runs_dir.exists():
+        return []
+    candidates = sorted(runs_dir.glob("*.md"), reverse=True)
+    judge_first = [c for c in candidates if "judge" in c.stem]
+    ordered = judge_first or candidates
+    return ordered[:limit]
+
+
+def quorum_failures(
+    latest_failures: list[FailureRecord],
+    runs_dir: Path,
+    window: int,
+) -> list[FailureRecord]:
+    """Keep only failures confirmed by a median quorum across recent scorecards.
+
+    A flaky scenario that fails one scorecard but passes most others should not
+    drive a fix-PR (phantom clusters #1773/#1788). A failure from the latest
+    scorecard survives only if the same (scenario, checkpoint, reason-signature)
+    triple appears in at least ceil(window/2) of the last `window` scorecards.
+
+    Backward-compatible: if fewer than `window` scorecards exist (or window < 2),
+    the latest failures are returned unchanged — identical to the historical
+    single-scorecard behavior.
+    """
+    recent = _recent_scorecards(runs_dir, window)
+    if window < 2 or len(recent) < window:
+        return latest_failures
+
+    threshold = math.ceil(window / 2)
+    # Count, per failure signature, how many of the recent scorecards exhibit it.
+    occurrence: dict[tuple[str, str, str], int] = defaultdict(int)
+    for card in recent:
+        seen: set[tuple[str, str, str]] = set()
+        for rec in parse_scorecard(card):
+            seen.add((rec.scenario_id, rec.checkpoint, _reason_signature(rec.reason)))
+        for sig in seen:
+            occurrence[sig] += 1
+
+    confirmed = [
+        rec
+        for rec in latest_failures
+        if occurrence[(rec.scenario_id, rec.checkpoint, _reason_signature(rec.reason))] >= threshold
+    ]
+    dropped = len(latest_failures) - len(confirmed)
+    if dropped:
+        logger.info(
+            "Quorum filter: %d/%d failures dropped (need %d of last %d scorecards)",
+            dropped,
+            len(latest_failures),
+            threshold,
+            window,
+        )
+    return confirmed
 
 
 # ── Clustering: group failures by signature ─────────────────────────────────
@@ -263,6 +326,7 @@ class FixProposerConfig:
     claude_model: str = _DEFAULT_MODEL
     min_cluster_size: int = 3
     max_clusters_per_run: int = 3
+    quorum_window: int = 3
     repo: str = REPO
 
 
@@ -492,6 +556,18 @@ class FixProposer:
                 "ts": run_ts,
             }
 
+        # Require a median quorum across recent scorecards before clustering, so a
+        # single flaky scorecard can't spawn a phantom fix-PR (#1773/#1788).
+        failures = quorum_failures(failures, self.cfg.runs_dir, self.cfg.quorum_window)
+        if not failures:
+            logger.info("No quorum-confirmed failures — nothing to propose")
+            return {
+                "status": "ok",
+                "reason": "no_quorum_failures",
+                "scorecard": str(scorecard),
+                "ts": run_ts,
+            }
+
         clusters = cluster_failures(failures, self.cfg.min_cluster_size)
         if not clusters:
             logger.info("No clusters ≥%d failures — nothing to propose", self.cfg.min_cluster_size)
@@ -566,6 +642,7 @@ def _build_proposer() -> FixProposer:
             claude_model=os.getenv("CLAUDE_MODEL", _DEFAULT_MODEL),
             min_cluster_size=int(os.getenv("FIX_PROPOSER_MIN_CLUSTER", "3")),
             max_clusters_per_run=int(os.getenv("FIX_PROPOSER_MAX_CLUSTERS", "3")),
+            quorum_window=int(os.getenv("FIX_PROPOSER_QUORUM_WINDOW", "3")),
         )
     )
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { updateUserStatus, type UserStatus } from "@/lib/users";
 import { requireSession, UnauthorizedError } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 
 export const dynamic = "force-dynamic";
 
@@ -9,9 +10,8 @@ const VALID_STATUSES: UserStatus[] = ["pending", "trial", "approved", "expired",
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    if (session.status !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const denied = requireCapability(session, "platform.users.read");
+    if (denied) return denied;
     const { id } = await params;
     const body = await req.json() as { status?: unknown };
     const { status } = body;

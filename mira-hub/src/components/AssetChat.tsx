@@ -134,7 +134,7 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
     let isSafety = false;
 
     try {
-      const res = await fetch(`/hub/api/assets/${assetId}/chat`, {
+      const res = await fetch(`/hub/api/assets/${assetId}/chat/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: apiMessages }),

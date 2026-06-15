@@ -43,6 +43,7 @@ interface ProposalRow {
   reasoning: string | null;
   evidence_count: string;
   created_at: string;
+  total_count: number;
 }
 
 // ai_suggestions rows (mig 027). The 5 non-edge suggestion types — `kg_edge` is
@@ -62,6 +63,7 @@ interface SuggestionRow {
   source_document_id: string | null;
   source_page: number | null;
   created_at: string;
+  total_count: number;
 }
 
 const DEFAULT_LIMIT = 100;
@@ -87,6 +89,36 @@ const PROPOSAL_TO_SUGGESTION_STATUS: Record<string, string> = {
   contradicted: "superseded",
 };
 
+// ── Paging helpers (pure, unit-tested — see route.test.ts) ──────────────────
+// #1892: the old endpoint returned `total: rows.length` (the page size, not a
+// real COUNT) and capped at 500 with no offset, so large queues were silently
+// truncated and the tab badge undercounted. These keep the math in one place.
+
+/** Clamp a raw ?limit into [1, HARD_LIMIT], default DEFAULT_LIMIT. */
+export function clampLimit(raw: string | null): number {
+  const n = Number(raw ?? DEFAULT_LIMIT);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_LIMIT;
+  return Math.min(Math.floor(n), HARD_LIMIT);
+}
+
+/** Clamp a raw ?offset into [0, ∞), default 0. */
+export function clampOffset(raw: string | null): number {
+  const n = Number(raw ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.floor(n);
+}
+
+/** Real total comes back on every row as COUNT(*) OVER(); an empty page means
+ *  zero matches. Reading row[0] avoids a second COUNT round-trip. */
+export function readTotal(rows: Array<{ total_count?: number }>): number {
+  return rows.length > 0 ? Number(rows[0].total_count) || 0 : 0;
+}
+
+/** Are there more rows beyond the current page? */
+export function hasMorePage(offset: number, pageRows: number, total: number): boolean {
+  return offset + pageRows < total;
+}
+
 export async function GET(req: Request) {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
@@ -98,12 +130,11 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const statusParam = (url.searchParams.get("status") ?? "proposed").trim();
     const typeParam = url.searchParams.get("type");
-    const limitParam = Number(url.searchParams.get("limit") ?? DEFAULT_LIMIT);
-    const limit = Math.min(
-      Number.isFinite(limitParam) && limitParam > 0 ? limitParam : DEFAULT_LIMIT,
-      HARD_LIMIT,
-    );
+    const countOnly = url.searchParams.get("count") != null;
+    const limit = clampLimit(url.searchParams.get("limit"));
+    const offset = clampOffset(url.searchParams.get("offset"));
 
+    // ── shared WHERE for relationship_proposals (edge proposals) ──
     const filters: string[] = ["(p.tenant_id = $1::uuid OR p.tenant_id IS NULL)"];
     const params: unknown[] = [ctx.tenantId];
 
@@ -129,9 +160,71 @@ export async function GET(req: Request) {
         filters.push(`p.relationship_type = ANY($${params.length})`);
       }
     }
+    const propWhere = filters.join(" AND ");
 
-    params.push(limit);
-    const limitPlaceholder = `$${params.length}`;
+    // ── shared WHERE for ai_suggestions (the 5 non-edge suggestion types) ──
+    const sugFilters: string[] = [
+      "s.tenant_id = $1::uuid",
+      "s.suggestion_type <> 'kg_edge'",
+    ];
+    const sugParams: unknown[] = [ctx.tenantId];
+    if (statusParam !== "all") {
+      const sugStatuses = Array.from(
+        new Set(
+          statusParam
+            .split(",")
+            .map((s) => s.trim().toLowerCase())
+            .filter((s) => ALLOWED_STATUS.has(s))
+            .map((s) => PROPOSAL_TO_SUGGESTION_STATUS[s])
+            .filter(Boolean),
+        ),
+      );
+      // statusParam was validated non-empty above and the mapping is total, so
+      // sugStatuses is always non-empty here.
+      sugParams.push(sugStatuses);
+      sugFilters.push(`s.status = ANY($${sugParams.length})`);
+    }
+    const sugWhere = sugFilters.join(" AND ");
+
+    // ai_suggestions is fail-soft everywhere: if the table is absent (mig 027 not
+    // applied) or the query errors, fall back to 0/[] rather than 500 the whole
+    // page — the edge-proposals path must keep working. See #1663.
+    const countSuggestions = () =>
+      withTenantContext(ctx.tenantId, (c) =>
+        c
+          .query<{ c: number }>(
+            `SELECT COUNT(*)::int AS c FROM ai_suggestions s WHERE ${sugWhere}`,
+            sugParams,
+          )
+          .then((r) => r.rows[0]?.c ?? 0),
+      ).catch((err) => {
+        console.error("[api/proposals GET] ai_suggestions count failed (soft)", err);
+        return 0;
+      });
+
+    // ── count-only mode (#1892): cheap COUNTs for the tab badge — no row
+    // hydration, no kg_entities joins, no per-row evidence subquery. ──
+    if (countOnly) {
+      const proposalsTotal = await withTenantContext(ctx.tenantId, (c) =>
+        c
+          .query<{ c: number }>(
+            `SELECT COUNT(*)::int AS c FROM relationship_proposals p WHERE ${propWhere}`,
+            params,
+          )
+          .then((r) => r.rows[0]?.c ?? 0),
+      );
+      const suggestionsTotal = await countSuggestions();
+      return NextResponse.json({
+        proposalsTotal,
+        suggestionsTotal,
+        pendingTotal: proposalsTotal + suggestionsTotal,
+      });
+    }
+
+    // ── list mode: real total via COUNT(*) OVER() + offset paging (#1892) ──
+    const listParams = [...params, limit, offset];
+    const propLimitPh = `$${listParams.length - 1}`;
+    const propOffsetPh = `$${listParams.length}`;
 
     const rows = await withTenantContext(ctx.tenantId, (c) =>
       c
@@ -154,11 +247,12 @@ export async function GET(req: Request) {
               p.requires_human_review,
               p.reasoning,
               (SELECT COUNT(*) FROM relationship_evidence e WHERE e.proposal_id = p.id)::text AS evidence_count,
-              p.created_at
+              p.created_at,
+              COUNT(*) OVER()::int AS total_count
            FROM relationship_proposals p
            LEFT JOIN kg_entities src ON src.id = p.source_entity_id AND src.tenant_id = $1::uuid
            LEFT JOIN kg_entities tgt ON tgt.id = p.target_entity_id AND tgt.tenant_id = $1::uuid
-           WHERE ${filters.join(" AND ")}
+           WHERE ${propWhere}
            ORDER BY
               CASE p.risk_level
                 WHEN 'safety_critical' THEN 0
@@ -167,39 +261,15 @@ export async function GET(req: Request) {
                 ELSE 3
               END,
               p.created_at DESC
-           LIMIT ${limitPlaceholder}`,
-          params,
+           LIMIT ${propLimitPh} OFFSET ${propOffsetPh}`,
+          listParams,
         )
         .then((r) => r.rows),
     );
 
-    // ai_suggestions (mig 027) — the 5 non-edge suggestion types. Fetched in a
-    // separate tenant context and fail-soft: if the table is absent (mig 027 not
-    // applied to this DB) or the query errors, return [] rather than 500 the
-    // whole page — the edge-proposals path above must keep working. See #1663.
-    const sugFilters: string[] = [
-      "s.tenant_id = $1::uuid",
-      "s.suggestion_type <> 'kg_edge'",
-    ];
-    const sugParams: unknown[] = [ctx.tenantId];
-    if (statusParam !== "all") {
-      const sugStatuses = Array.from(
-        new Set(
-          statusParam
-            .split(",")
-            .map((s) => s.trim().toLowerCase())
-            .filter((s) => ALLOWED_STATUS.has(s))
-            .map((s) => PROPOSAL_TO_SUGGESTION_STATUS[s])
-            .filter(Boolean),
-        ),
-      );
-      // statusParam was validated non-empty above and the mapping is total, so
-      // sugStatuses is always non-empty here.
-      sugParams.push(sugStatuses);
-      sugFilters.push(`s.status = ANY($${sugParams.length})`);
-    }
-    sugParams.push(limit);
-    const sugLimitPlaceholder = `$${sugParams.length}`;
+    const sugListParams = [...sugParams, limit, offset];
+    const sugLimitPh = `$${sugListParams.length - 1}`;
+    const sugOffsetPh = `$${sugListParams.length}`;
 
     const suggestionRows: SuggestionRow[] = await withTenantContext(
       ctx.tenantId,
@@ -218,9 +288,10 @@ export async function GET(req: Request) {
                 s.source_kind,
                 s.source_document_id::text AS source_document_id,
                 s.source_page,
-                s.created_at
+                s.created_at,
+                COUNT(*) OVER()::int AS total_count
              FROM ai_suggestions s
-             WHERE ${sugFilters.join(" AND ")}
+             WHERE ${sugWhere}
              ORDER BY
                 CASE s.risk_level
                   WHEN 'safety_critical' THEN 0
@@ -229,8 +300,8 @@ export async function GET(req: Request) {
                   ELSE 3
                 END,
                 s.created_at DESC
-             LIMIT ${sugLimitPlaceholder}`,
-            sugParams,
+             LIMIT ${sugLimitPh} OFFSET ${sugOffsetPh}`,
+            sugListParams,
           )
           .then((r) => r.rows),
     ).catch((err) => {
@@ -238,12 +309,17 @@ export async function GET(req: Request) {
       return [];
     });
 
+    const total = readTotal(rows);
+    const suggestionsTotal = readTotal(suggestionRows);
+
     return NextResponse.json({
       proposals: rows.map(rowToProposal),
-      total: rows.length,
+      total,
+      hasMore: hasMorePage(offset, rows.length, total),
       suggestions: suggestionRows.map(rowToSuggestion),
-      suggestionsTotal: suggestionRows.length,
-      filters: { status: statusParam, type: typeParam, limit },
+      suggestionsTotal,
+      suggestionsHasMore: hasMorePage(offset, suggestionRows.length, suggestionsTotal),
+      filters: { status: statusParam, type: typeParam, limit, offset },
     });
   } catch (err) {
     console.error("[api/proposals GET]", err);

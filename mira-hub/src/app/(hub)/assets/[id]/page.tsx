@@ -430,7 +430,7 @@ function DocumentsTab({ assetId, assetTag }: { assetId: string; assetTag: string
       const form = new FormData();
       form.append("file", file);
       if (tag) form.append("assetTag", tag);
-      const res = await fetch(`${API_BASE}/api/uploads/local`, { method: "POST", body: form });
+      const res = await fetch(`${API_BASE}/api/uploads/local/`, { method: "POST", body: form });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         throw new Error(typeof body.error === "string" ? body.error : `Upload failed (${res.status})`);
@@ -443,7 +443,7 @@ function DocumentsTab({ assetId, assetTag }: { assetId: string; assetTag: string
 
   async function handleCloudPicks(results: PickResult[], tag: string | null) {
     for (const r of results) {
-      await fetch(`${API_BASE}/api/uploads`, {
+      await fetch(`${API_BASE}/api/uploads/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...r, assetTag: tag ?? undefined }),

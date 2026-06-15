@@ -53,7 +53,7 @@ function MagicVerify() {
             <p className="text-slate-400 text-sm mt-2">Magic links expire after 15 minutes.</p>
             <a
               href="/login"
-              className="mt-6 inline-block px-6 py-2.5 rounded-lg text-sm font-semibold text-white"
+              className="mt-6 inline-flex items-center justify-center min-h-[44px] px-6 rounded-lg text-sm font-semibold text-white"
               style={{ background: "linear-gradient(135deg,#2563EB,#0891B2)" }}
             >
               Back to login
