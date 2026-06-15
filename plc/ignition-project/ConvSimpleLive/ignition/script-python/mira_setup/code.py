@@ -316,9 +316,41 @@ def _ensure_tag(asset):
         return False
 
 
+def _coerce_asset(asset):
+    """Force the asset id to a clean non-empty string, or '' if unusable. Perspective view
+    params can arrive as None or a non-str object when a route passes no param; coercing here
+    keeps a bad param from reaching the validator as a non-string assetId."""
+    if asset is None:
+        return ""
+    try:
+        return str(asset).strip()
+    except Exception:
+        return ""
+
+
+def _scaffold(cfg, asset):
+    """Ensure a config dict carries the required identity + scaffold BEFORE validate/write.
+    This is the fix for the 'assetId is required and must be a non-empty string' save error:
+    an existing or hand-edited config tag may lack assetId (or schemaVersion/roles), and the
+    pure validator correctly rejects it -- so the gateway writer, which knows the asset
+    identity, must re-assert it every time rather than only when building a brand-new config."""
+    if not isinstance(cfg, dict):
+        cfg = {}
+    cfg["assetId"] = asset
+    cfg["schemaVersion"] = 1
+    if not isinstance(cfg.get("roles"), dict):
+        cfg["roles"] = {}
+    if "driveFamily" not in cfg:
+        cfg["driveFamily"] = "GS10"
+    if "unsPath" not in cfg:
+        cfg["unsPath"] = ""
+    return cfg
+
+
 def set_role(asset, role, tag, divisor):
     """Map `role` -> `tag` (+divisor) in the asset's config and Save. Validates before writing;
     never writes an invalid config. Returns a human status string for the view."""
+    asset = _coerce_asset(asset)
     if not asset:
         return "ERROR: no asset"
     if role not in _roles.valid_keys():
@@ -330,6 +362,7 @@ def set_role(asset, role, tag, divisor):
     if cfg is None:
         cfg = {"schemaVersion": 1, "assetId": asset, "driveFamily": "GS10",
                "unsPath": "", "roles": {}}
+    cfg = _scaffold(cfg, asset)              # always re-assert identity (fixes assetId save error)
     cfg["roles"][role] = {"tag": tag, "divisor": divisor, "source": "manual",
                           "confidence": "verified", "evidence": "technician_confirm"}
     try:
@@ -349,9 +382,13 @@ def set_role(asset, role, tag, divisor):
 
 def clear_role(asset, role):
     """Remove a role mapping and Save."""
+    asset = _coerce_asset(asset)
+    if not asset:
+        return "ERROR: no asset"
     cfg = _load(asset)
     if cfg is None or role not in cfg.get("roles", {}):
         return "nothing to clear"
+    cfg = _scaffold(cfg, asset)              # re-assert identity so the write stays valid
     del cfg["roles"][role]
     js = system.util.jsonEncode(cfg)
     try:
@@ -359,3 +396,139 @@ def clear_role(asset, role):
         return "Cleared %s" % role if q.isGood() else "WRITE FAILED"
     except Exception as e:
         return "ERROR: %s" % str(e)
+
+
+# ---- big-slot redesign helpers (matching-game TagMapper v2) ----
+# The setup page shows the REQUIRED roles as big tap-able SLOTS; tap a slot and the right pane
+# lists only the tags whose datatype could fill that role (the pre-filter that kills the
+# "wall of irrelevant tags"). These feed that view. Read-only on process tags (live preview
+# reads only; never writes a drive/PLC tag).
+
+# One-line hint of which tag datatypes can fill a role, by role kind (drives the right-pane subhead).
+_TYPEHINT = {"analog": "number tags  (Float / Int)",
+             "bool": "on / off tags  (Boolean)",
+             "code": "whole-number tags  (Int)"}
+# Datatype substrings Ignition reports (Float4/Float8, Int2/Int4, Boolean, String), per role kind.
+_DT_FOR_KIND = {"analog": ["float", "int"], "bool": ["bool"], "code": ["int"]}
+
+
+def role_display(role_key):
+    """Human label for a role key, e.g. 'Output frequency'. '' if unknown."""
+    r = _roles.role(role_key)
+    return r["display"] if r else ""
+
+
+def role_typehint(role_key):
+    """One-line hint of which tag datatypes can fill this role (right-pane subheader)."""
+    r = _roles.role(role_key)
+    if not r:
+        return "any tag"
+    return _TYPEHINT.get(r["kind"], "any tag")
+
+
+def _slot_state(asset, role_key):
+    """(status, value_str) for a role: status in unmapped / good / bad / novalue."""
+    cfg = _load(asset)
+    ent = (cfg or {}).get("roles", {}).get(role_key)
+    if ent is None:
+        return ("unmapped", None)
+    val, good = _live(ent.get("tag", ""), ent.get("divisor"))
+    if good is False:
+        return ("bad", None)
+    if val is None:
+        return ("novalue", None)
+    r = _roles.role(role_key)
+    unit = (" " + r["unit"]) if (r and r.get("unit")) else ""
+    return ("good", "%s%s" % (val, unit))
+
+
+def slot_text(asset, role_key):
+    """Status line shown inside a role slot. States the action (unmapped) or the live value (done)."""
+    st, val = _slot_state(asset, role_key)
+    if st == "unmapped":
+        return "NEEDS A TAG  --  tap here, then pick a tag"
+    if st == "bad":
+        return "mapped, but BAD QUALITY -- check the tag"
+    if st == "novalue":
+        return "mapped  (waiting for a live value)"
+    return "DONE   =  %s   (good)" % val
+
+
+def slot_color(asset, role_key):
+    """Slot status color. amber=needs a tag, green=done/good, red=bad quality (ISA-101)."""
+    st, _v = _slot_state(asset, role_key)
+    if st == "good" or st == "novalue":
+        return "#1a7f37"   # green
+    if st == "bad":
+        return "#cf222e"   # red
+    return "#f0a90e"       # amber -- still needs a tag
+
+
+def scan_for_role(base, search, role_key):
+    """Candidate tags for the right pane: ONLY tags whose datatype can fill `role_key`, under
+    `base`, matching the `search` substring. Rows = [{tag(short), value(live), quality, path}].
+    The datatype pre-filter is what removes the wall of irrelevant tags; the cap keeps a big
+    plant responsive (narrow with search)."""
+    r = _roles.role(role_key)
+    kind = r["kind"] if r else "analog"
+    allowed = _DT_FOR_KIND.get(kind)   # None -> show all datatypes
+    items = _scan_all(base or "[default]")
+    s = (search or "").lower()
+    sel = []
+    for t in items:
+        if s and s not in t["path"].lower():
+            continue
+        if allowed is not None:
+            dtl = t["dt"].lower()
+            ok = False
+            for a in allowed:
+                if a in dtl:
+                    ok = True
+                    break
+            if not ok:
+                continue
+        sel.append(t)
+    sel = sel[:60]
+    paths = [t["path"] for t in sel]
+    qvs = []
+    if paths:
+        try:
+            qvs = system.tag.readBlocking(paths)
+        except Exception as e:
+            _logger().warn("scan_for_role read failed: %s" % str(e))
+            qvs = []
+    rows = []
+    for i in range(len(sel)):
+        val = None
+        qual = ""
+        if i < len(qvs):
+            try:
+                if qvs[i].quality.isGood():
+                    val = qvs[i].value
+                    qual = "good"
+                else:
+                    qual = "bad"
+            except Exception:
+                qual = ""
+        short = sel[i]["path"].rsplit("/", 1)[-1]
+        rows.append({"tag": short, "value": val, "quality": qual, "path": sel[i]["path"]})
+    return rows
+
+
+def optional_role_options():
+    """Dropdown options for the '+ add optional' picker: recommended + optional roles only."""
+    out = []
+    for r in _roles.ROLES:
+        if r["requirement"] == _roles.REQUIRED:
+            continue
+        suffix = "  [recommended]" if r["requirement"] == _roles.RECOMMENDED else "  [optional]"
+        out.append({"value": r["key"], "label": r["display"] + suffix})
+    return out
+
+
+def slot_divisor(role_key, asset):
+    """Default scale divisor for a role on slot-tap, coerced so a numeric-entry never gets None.
+    bool roles (divisor None) -> 1 for the field; set_role's _norm_divisor still forces the real
+    semantics (bool->None, code->1.0) at write time, so the field value only matters for analog."""
+    d = _roles.default_divisor(role_key, _family(asset))
+    return 1 if d is None else d
