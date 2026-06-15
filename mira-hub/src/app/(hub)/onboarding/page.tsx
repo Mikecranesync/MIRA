@@ -18,11 +18,14 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Building2, Factory, Loader2, MapPin, MessageSquare, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Building2, Factory, Loader2, MapPin, MessageSquare, ShieldCheck, Sparkles, Upload } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 import { AssetValidateTab } from "@/components/AssetValidateTab";
+import { NodeChat } from "@/components/namespace/NodeChat";
+import { isManualReady } from "@/lib/onboarding-flow";
+import type { UploadStatus } from "@/lib/uploads";
 
-type StepId = "company" | "site" | "line" | "review" | "try" | "validate";
+type StepId = "company" | "site" | "line" | "review" | "upload" | "try" | "validate";
 
 interface CompanyPayload { name: string }
 interface SitePayload    { name: string; location?: string }
@@ -38,6 +41,7 @@ const STEPS: { id: StepId; label: string; icon: React.ElementType }[] = [
   { id: "site",    label: "First site",     icon: MapPin },
   { id: "line",    label: "First line",     icon: Factory },
   { id: "review",  label: "Review & finish", icon: Sparkles },
+  { id: "upload",  label: "Upload a manual", icon: Upload },
   { id: "try",     label: "Try MIRA",        icon: MessageSquare },
   { id: "validate", label: "Train & approve", icon: ShieldCheck },
 ];
@@ -50,6 +54,7 @@ export default function OnboardingPage() {
   const [saving, setSaving] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lineNode, setLineNode] = useState<{ id: string; name: string; unsPath: string } | null>(null);
 
   // Resume from server: read whatever step the user was last on.
   useEffect(() => {
@@ -112,9 +117,14 @@ export default function OnboardingPage() {
         headers: { "content-type": "application/json" },
         body: "{}",
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string; sitePath?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string; lineId?: string; linePath?: string;
+      };
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      advance("try");
+      if (data.lineId && data.linePath) {
+        setLineNode({ id: data.lineId, name: payloads.line?.name ?? "your line", unsPath: data.linePath });
+      }
+      advance("upload");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -194,6 +204,12 @@ export default function OnboardingPage() {
             finishing={finishing}
             onBack={() => advance("line")}
             onFinish={finish}
+          />
+        )}
+        {activeStep === "upload" && (
+          <UploadStep
+            lineNode={lineNode}
+            onContinue={() => advance("try")}
           />
         )}
         {activeStep === "try" && (
@@ -632,6 +648,154 @@ function ValidateStep({ onBack, onDone }: { onBack: () => void; onDone: () => vo
         rightTestId="onboarding-validate-done"
       />
     </div>
+  );
+}
+
+type UploadPhase = "idle" | "uploading" | "processing" | "ready" | "error";
+
+function UploadStep({
+  lineNode,
+  onContinue,
+}: {
+  lineNode: { id: string; name: string; unsPath: string } | null;
+  onContinue: () => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [phase, setPhase] = useState<UploadPhase>("idle");
+  const [errMsg, setErrMsg] = useState<string | null>(null);
+
+  function pollUntilReady(uploadId: string) {
+    let stopped = false;
+    const tick = async () => {
+      if (stopped) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/uploads/${uploadId}`, { cache: "no-store" });
+        const row = res.ok
+          ? ((await res.json()) as { status?: string; knowledge_chunks_count?: number })
+          : null;
+        if (row?.status === "failed" || row?.status === "cancelled") {
+          setErrMsg("Processing failed for that file. Try a different PDF.");
+          setPhase("error");
+          return;
+        }
+        if (row && isManualReady({ status: String(row.status ?? "") as UploadStatus, knowledge_chunks_count: Number(row.knowledge_chunks_count ?? 0) })) {
+          setPhase("ready");
+          return;
+        }
+      } catch {
+        // transient — keep polling
+      }
+      if (!stopped) setTimeout(tick, 2000);
+    };
+    void tick();
+    return () => { stopped = true; };
+  }
+
+  async function onUpload(e: React.FormEvent) {
+    e.preventDefault();
+    if (!file || !lineNode) return;
+    setErrMsg(null);
+    setPhase("uploading");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("unsPath", lineNode.unsPath);
+      const res = await fetch(`${API_BASE}/api/uploads/local`, { method: "POST", body: fd });
+      const data = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
+      if (!res.ok || !data.id) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setPhase("processing");
+      pollUntilReady(data.id);
+    } catch (e) {
+      setErrMsg((e as Error).message);
+      setPhase("error");
+    }
+  }
+
+  if (!lineNode) {
+    return (
+      <div className="space-y-4" data-testid="step-upload">
+        <p className="text-sm text-slate-600">Your namespace is ready. You can upload a manual any time from Knowledge → Manuals.</p>
+        <NavButtons rightLabel="Continue" onRight={onContinue} rightTestId="onboarding-upload-continue" />
+      </div>
+    );
+  }
+
+  if (phase === "ready") {
+    return (
+      <div className="space-y-4" data-testid="step-upload-ready">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+            <Upload className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Your manual is ready.</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Ask a real question about <span className="font-medium text-slate-900">{lineNode.name}</span> — MIRA answers from the manual you just uploaded, with citations.
+            </p>
+          </div>
+        </div>
+        <div className="rounded-lg border border-slate-200" data-testid="onboarding-node-chat">
+          <NodeChat nodeId={lineNode.id} nodeName={lineNode.name} unsPath={lineNode.unsPath} />
+        </div>
+        <NavButtons rightLabel="Continue" onRight={onContinue} rightTestId="onboarding-upload-continue" />
+      </div>
+    );
+  }
+
+  const busy = phase === "uploading" || phase === "processing";
+
+  return (
+    <form onSubmit={onUpload} className="space-y-5" data-testid="step-upload">
+      <div>
+        <h2 className="text-lg font-semibold text-slate-900">Upload your equipment manual</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Upload a PDF manual for {lineNode.name}. MIRA reads it so it can answer your
+          troubleshooting questions with citations from your own document.
+        </p>
+      </div>
+
+      <Field label="Manual (PDF)" hint="Max 20 MB.">
+        <input
+          type="file"
+          accept="application/pdf"
+          disabled={busy}
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          data-testid="onboarding-upload-input"
+          className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-blue-600 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-blue-700"
+        />
+      </Field>
+
+      {phase === "processing" && (
+        <div className="flex items-center gap-2 rounded-md border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900" data-testid="onboarding-upload-processing">
+          <Loader2 className="h-4 w-4 animate-spin" /> Extracting &amp; indexing your manual…
+        </div>
+      )}
+      {errMsg && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700" data-testid="onboarding-upload-error">
+          {errMsg}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between pt-2">
+        <button
+          type="button"
+          onClick={onContinue}
+          className="inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
+          data-testid="onboarding-upload-skip"
+        >
+          Skip for now
+        </button>
+        <button
+          type="submit"
+          disabled={!file || busy}
+          className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          data-testid="onboarding-upload-submit"
+        >
+          {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+          {phase === "uploading" ? "Uploading…" : phase === "processing" ? "Processing…" : "Upload manual"}
+        </button>
+      </div>
+    </form>
   );
 }
 
