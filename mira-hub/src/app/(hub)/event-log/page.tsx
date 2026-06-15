@@ -157,7 +157,7 @@ export default function EventLogPage() {
 
   const loadEvents = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/events`);
+      const res = await fetch(`${API_BASE}/api/events/`);
       if (res.ok) {
         const data = await res.json();
         setEvents(Array.isArray(data) ? data.map(apiRowToEvent) : []);

@@ -81,7 +81,7 @@ export function ConnectDisplayModal({
     setError(null);
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE}/api/command-center/display`, {
+      const res = await fetch(`${API_BASE}/api/command-center/display/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -195,10 +195,10 @@ export function CreateChildCard({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/picker/google/token`)
+    fetch(`${API_BASE}/api/picker/google/token/`)
       .then((r) => setGoogleAvailable(r.ok))
       .catch(() => setGoogleAvailable(false));
-    fetch(`${API_BASE}/api/picker/dropbox/key`)
+    fetch(`${API_BASE}/api/picker/dropbox/key/`)
       .then(async (r) => {
         if (!r.ok) return setDropboxAvailable(false);
         try {
@@ -259,7 +259,7 @@ export function CreateChildCard({
     if (!validate()) return;
     setSaving(true);
     try {
-      const createRes = await fetch(`${API_BASE}/api/namespace/node`, {
+      const createRes = await fetch(`${API_BASE}/api/namespace/node/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -309,13 +309,13 @@ export function CreateChildCard({
         const form = new FormData();
         form.append("file", p.file);
         form.append("unsPath", unsPath);
-        const res = await fetch(`${API_BASE}/api/uploads/local`, {
+        const res = await fetch(`${API_BASE}/api/uploads/local/`, {
           method: "POST",
           body: form,
         });
         return res.ok;
       } else {
-        const res = await fetch(`${API_BASE}/api/uploads`, {
+        const res = await fetch(`${API_BASE}/api/uploads/`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -338,7 +338,7 @@ export function CreateChildCard({
 
   async function openGoogle() {
     try {
-      const tokenRes = await fetch(`${API_BASE}/api/picker/google/token`);
+      const tokenRes = await fetch(`${API_BASE}/api/picker/google/token/`);
       if (!tokenRes.ok) throw new Error("Google not connected");
       const { accessToken, apiKey, appId } = await tokenRes.json();
       if (!window.google?.picker || !pickerLoaded) {

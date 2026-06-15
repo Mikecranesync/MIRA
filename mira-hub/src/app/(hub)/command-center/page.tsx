@@ -74,7 +74,7 @@ export default function CommandCenterPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/command-center/tree`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/command-center/tree/`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as TreeResponse;
       setData(json);

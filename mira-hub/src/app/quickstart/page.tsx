@@ -24,7 +24,7 @@ export default function QuickstartPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/quickstart/manufacturers`)
+    fetch(`${API_BASE}/api/quickstart/manufacturers/`)
       .then((r) => (r.ok ? r.json() : { manufacturers: [] }))
       .then((d: { manufacturers: Manufacturer[] }) => setManufacturers(d.manufacturers ?? []))
       .catch(() => setManufacturers([]));
@@ -37,7 +37,7 @@ export default function QuickstartPage() {
     setError(null);
     setResult(null);
     try {
-      const res = await fetch(`${API_BASE}/api/quickstart/ask`, {
+      const res = await fetch(`${API_BASE}/api/quickstart/ask/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ manufacturer: manufacturer || undefined, question }),

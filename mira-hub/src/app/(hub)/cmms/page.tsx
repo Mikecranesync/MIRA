@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { API_BASE } from "@/lib/config";
 import { Database, ExternalLink, CheckCircle2, ClipboardList, Wrench, Calendar, AlertCircle, Link2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,7 +45,7 @@ export default function CMMSPage() {
   async function fetchStats() {
     setStatsLoading(true);
     try {
-      const res = await fetch("/api/cmms/stats");
+      const res = await fetch(`${API_BASE}/api/cmms/stats/`);
       if (res.ok) {
         const data: CMMSStats = await res.json();
         setLiveStats(data);
@@ -60,7 +61,7 @@ export default function CMMSPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/cmms/health");
+        const res = await fetch(`${API_BASE}/api/cmms/health/`);
         if (!res.ok) {
           if (!cancelled) setConfigured(false);
           return;

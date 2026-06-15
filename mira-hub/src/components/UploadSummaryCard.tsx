@@ -83,7 +83,7 @@ export function UploadSummaryCard({ uploadId }: { uploadId: string }) {
     async function poll() {
       if (!mountedRef.current) return;
       try {
-        const res = await fetch(`${API_BASE}/api/uploads/${uploadId}`, { cache: "no-store" });
+        const res = await fetch(`${API_BASE}/api/uploads/${uploadId}/`, { cache: "no-store" });
         if (!res.ok) {
           setFetchError(`Failed to load upload status (${res.status})`);
           return;

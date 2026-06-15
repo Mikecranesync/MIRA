@@ -142,7 +142,7 @@ function CreateAssetModal({
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/assets`, {
+      const res = await fetch(`${API_BASE}/api/assets/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -421,7 +421,7 @@ function AssetsPageInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/assets`)
+    fetch(`${API_BASE}/api/assets/`)
       .then(r => {
         if (r.status === 401) {
           router.push(`/login?callbackUrl=${API_BASE}/assets`);

@@ -100,7 +100,7 @@ export default function NamespacePage() {
 
   const refreshTree = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/namespace/tree`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/namespace/tree/`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json() as { nodes: NamespaceNode[]; total: number };
       setTree(data.nodes);
@@ -141,7 +141,7 @@ export default function NamespacePage() {
   const loadFiles = useCallback(async (nodeId: string) => {
     if (nodeFiles[nodeId]) return;
     try {
-      const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}/files`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}/files/`, { cache: "no-store" });
       if (!res.ok) return;
       const data = await res.json() as { files: FileRecord[] };
       setNodeFiles((prev) => ({ ...prev, [nodeId]: data.files }));
@@ -181,7 +181,7 @@ export default function NamespacePage() {
     if (sourceId === targetId) return;
     showToast("Moving…");
     try {
-      const res = await fetch(`${API_BASE}/api/namespace/node/${sourceId}`, {
+      const res = await fetch(`${API_BASE}/api/namespace/node/${sourceId}/`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ newParentId: targetId, reason: "drag-and-drop" }),
@@ -207,7 +207,7 @@ export default function NamespacePage() {
     const trimmed = newName.trim();
     if (!trimmed) return;
     try {
-      const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}`, {
+      const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}/`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ newName: trimmed }),
@@ -229,7 +229,7 @@ export default function NamespacePage() {
     const trimmed = name.trim();
     if (!trimmed) return;
     try {
-      const res = await fetch(`${API_BASE}/api/namespace/node`, {
+      const res = await fetch(`${API_BASE}/api/namespace/node/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ parentId: parentId ?? undefined, name: trimmed, kind: "area" }),
@@ -251,7 +251,7 @@ export default function NamespacePage() {
 
   async function handleDeleteNode(nodeId: string) {
     try {
-      const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}`, { method: "DELETE" });
+      const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}/`, { method: "DELETE" });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };
         throw new Error(body.error ?? `HTTP ${res.status}`);
@@ -272,7 +272,7 @@ export default function NamespacePage() {
       for (const file of Array.from(files)) {
         const fd = new FormData();
         fd.append("file", file);
-        const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}/files`, {
+        const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}/files/`, {
           method: "POST",
           body: fd,
         });
@@ -302,7 +302,7 @@ export default function NamespacePage() {
 
   async function handleDeleteFile(fileId: string, nodeId: string) {
     try {
-      const res = await fetch(`${API_BASE}/api/namespace/files/${fileId}`, { method: "DELETE" });
+      const res = await fetch(`${API_BASE}/api/namespace/files/${fileId}/`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setNodeFiles((prev) => ({
         ...prev,

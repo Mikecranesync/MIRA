@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { API_BASE } from "@/lib/config";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { GraphCanvas } from "@/components/kg/GraphCanvas";
@@ -139,7 +140,7 @@ function GraphView() {
       if (!link?.proposalId) return;
       setBusy(true);
       try {
-        const res = await fetch(`/api/proposals/${link.proposalId}/decide`, {
+        const res = await fetch(`${API_BASE}/api/proposals/${link.proposalId}/decide/`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ decision }),
