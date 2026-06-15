@@ -162,6 +162,7 @@
     "photos": "照片",
     "noPhotos": "暂无附件照片",
     "addPhoto": "+ 添加",
+    "photoUploadFailed": "照片上传失败 — 请重试。",
     "viewMira": "MIRA对话",
     "openCmms": "CMMS",
     "assignedTo": "负责人",
