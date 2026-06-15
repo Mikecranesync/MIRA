@@ -100,7 +100,7 @@ function cacheRowToReading(row: CacheRow): MiraReading {
 export async function readingForElement(client: DbClient, elementId: string): Promise<MiraReading | null> {
   try {
     const ent = await client.query<{ uns_path: string | null }>(
-      "SELECT uns_path::text AS uns_path FROM kg_entities WHERE id = $1 LIMIT 1",
+      "SELECT uns_path::text AS uns_path FROM kg_entities WHERE id = $1 AND approval_state = 'verified' LIMIT 1",
       [elementId],
     );
     const unsPath = ent.rows[0]?.uns_path;
@@ -133,24 +133,31 @@ interface EventRow {
   event_timestamp: string;
 }
 
-/** Bounded history window for an element (approved-tag gated). */
+/**
+ * Bounded history window for an element (approved-tag gated).
+ *
+ * Returns null when the element is unknown, not verified, or its tag is not
+ * approved (gate failures — callers should emit a 404-style response).
+ * Returns MiraReading[] (possibly empty []) when the element IS exposable but
+ * the requested time window has no points.
+ */
 export async function historyForElement(
   client: DbClient,
   elementId: string,
   opts: { startTime: string | null; endTime: string | null; limit: number },
-): Promise<MiraReading[]> {
+): Promise<MiraReading[] | null> {
   try {
     const ent = await client.query<{ uns_path: string | null }>(
-      "SELECT uns_path::text AS uns_path FROM kg_entities WHERE id = $1 LIMIT 1",
+      "SELECT uns_path::text AS uns_path FROM kg_entities WHERE id = $1 AND approval_state = 'verified' LIMIT 1",
       [elementId],
     );
     const unsPath = ent.rows[0]?.uns_path;
-    if (!unsPath) return [];
+    if (!unsPath) return null;
     const allowed = await client.query(
       "SELECT 1 FROM approved_tags WHERE uns_path = $1::ltree AND enabled = true LIMIT 1",
       [unsPath],
     );
-    if (allowed.rows.length === 0) return [];
+    if (allowed.rows.length === 0) return null;
 
     // Clamp limit: negative or NaN reaches LIMIT $4 as 0 (Postgres errors on negative).
     const safeLimit = Math.max(0, Math.trunc(opts.limit) || 0);
@@ -173,7 +180,7 @@ export async function historyForElement(
       timestamp: r.event_timestamp,
     }));
   } catch (err) {
-    if ((err as { code?: string }).code === "22P02") return [];
+    if ((err as { code?: string }).code === "22P02") return null; // gate failure shape
     throw err;
   }
 }

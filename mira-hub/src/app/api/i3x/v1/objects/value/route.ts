@@ -12,6 +12,7 @@ export async function POST(req: Request) {
   if (!tenantId) return NextResponse.json(errorBody(401, "Unauthorized", "valid bearer key required"), { status: 401 });
   const body = await req.json().catch(() => ({}));
   const ids: string[] = Array.isArray(body?.elementIds) ? body.elementIds : [];
+  if (ids.length > 200) return NextResponse.json(errorBody(400, "Bad Request", "elementIds exceeds maximum of 200"), { status: 400 });
 
   const items = await withTenantContext(tenantId, async (c) => {
     const out = [];

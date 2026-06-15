@@ -82,6 +82,23 @@ describe("readingForElement — value only for approved tags", () => {
     } as unknown as DbClient;
     expect(await readingForElement(client, "elem-uuid")).toBeNull();
   });
+
+  it("returns null for a proposed entity even if its tag is approved (no leak)", async () => {
+    // Simulate the kg_entities query returning no row because approval_state='verified'
+    // is in the SQL but the entity is proposed — the DB filters it out.
+    const client = {
+      query: async (sql: string) => {
+        if (sql.includes("kg_entities")) return { rows: [] }; // proposed entity filtered by WHERE clause
+        // approved_tags and live_signal_cache would match — but we must never reach them
+        if (sql.includes("approved_tags")) return { rows: [{ uns_path: "enterprise.acme.equipment.cv101.datapoint.motor_current" }] };
+        return { rows: [{ uns_path: "enterprise.acme.equipment.cv101.datapoint.motor_current",
+          last_value_text: null, last_value_numeric: 8.3, last_value_bool: null,
+          latest_quality: "good", freshness_status: "live", last_seen_at: "2026-06-14T12:00:00.000Z" }] };
+      },
+    } as unknown as DbClient;
+    // Proposed entity (filtered by approval_state='verified') must yield null, not data
+    expect(await readingForElement(client, "proposed-entity-id")).toBeNull();
+  });
 });
 
 describe("readingForElement — 22P02 fail-closed on malformed id", () => {
@@ -113,10 +130,11 @@ describe("historyForElement — bounded tag_events window, approved only", () =>
       },
     } as unknown as DbClient;
     const out = await historyForElement(client, "elem", { startTime: null, endTime: null, limit: 1000 });
-    expect(out).toHaveLength(2);
-    expect(out[0].valueType).toBe("float");
+    expect(out).not.toBeNull();
+    expect(out!).toHaveLength(2);
+    expect(out![0].valueType).toBe("float");
   });
-  it("returns [] for an unapproved element", async () => {
+  it("returns null for an unapproved element (gate failure — tag not on allowlist)", async () => {
     const client = {
       query: async (sql: string) => {
         if (sql.includes("kg_entities")) return { rows: [{ uns_path: "x" }] };
@@ -124,7 +142,34 @@ describe("historyForElement — bounded tag_events window, approved only", () =>
         return { rows: [] };
       },
     } as unknown as DbClient;
-    expect(await historyForElement(client, "elem", { startTime: null, endTime: null, limit: 1000 })).toEqual([]);
+    expect(await historyForElement(client, "elem", { startTime: null, endTime: null, limit: 1000 })).toBeNull();
+  });
+
+  it("returns null for a proposed entity even if its tag is approved (no leak)", async () => {
+    // Simulate the kg_entities query returning no row because approval_state='verified'
+    // is in the SQL but the entity is proposed — the DB filters it out.
+    const client = {
+      query: async (sql: string) => {
+        if (sql.includes("kg_entities")) return { rows: [] }; // proposed entity filtered by WHERE clause
+        // approved_tags and live_signal_cache would match — but we must never reach them
+        if (sql.includes("approved_tags")) return { rows: [{ uns_path: "enterprise.acme.equipment.cv101.datapoint.motor_current" }] };
+        return { rows: [{ value: "8.3", value_type: "float", quality: "good", event_timestamp: "2026-06-14T12:00:00.000Z" }] };
+      },
+    } as unknown as DbClient;
+    // Proposed entity (filtered by approval_state='verified') must yield null, not data
+    expect(await historyForElement(client, "proposed-entity-id", { startTime: null, endTime: null, limit: 1000 })).toBeNull();
+  });
+
+  it("returns [] (not null) for an approved element with no points in the window", async () => {
+    const client = {
+      query: async (sql: string) => {
+        if (sql.includes("kg_entities")) return { rows: [{ uns_path: "enterprise.a.eq.cv.datapoint.cur" }] };
+        if (sql.includes("approved_tags")) return { rows: [{ uns_path: "enterprise.a.eq.cv.datapoint.cur" }] };
+        return { rows: [] }; // tag_events: empty window
+      },
+    } as unknown as DbClient;
+    const result = await historyForElement(client, "elem", { startTime: null, endTime: null, limit: 1000 });
+    expect(result).toEqual([]); // exposable element, just no data — empty array, NOT null
   });
 
   it("clamps negative or NaN limit to 0 (no Postgres error on negative LIMIT)", async () => {
@@ -144,6 +189,20 @@ describe("historyForElement — bounded tag_events window, approved only", () =>
 
     await historyForElement(client, "elem", { startTime: null, endTime: null, limit: Number.NaN });
     expect(capturedLimit).toBe(0);
+  });
+
+  it("returns null when Postgres throws 22P02 (invalid uuid syntax)", async () => {
+    const client = {
+      query: async () => { throw { code: "22P02" }; },
+    } as unknown as DbClient;
+    expect(await historyForElement(client, "not-a-uuid", { startTime: null, endTime: null, limit: 100 })).toBeNull();
+  });
+
+  it("re-throws non-22P02 errors so infra failures surface", async () => {
+    const client = {
+      query: async () => { throw { code: "08006", message: "connection refused" }; },
+    } as unknown as DbClient;
+    await expect(historyForElement(client, "some-id", { startTime: null, endTime: null, limit: 100 })).rejects.toMatchObject({ code: "08006" });
   });
 });
 
