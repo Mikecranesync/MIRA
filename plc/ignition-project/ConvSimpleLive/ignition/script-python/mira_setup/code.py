@@ -110,6 +110,101 @@ def default_divisor(role, asset=None):
     return _roles.default_divisor(role, _family(asset))
 
 
+# ---- tag auto-discovery (the scanner) ----
+# Ignition already knows every tag, so "discover the network's tags" = recursively browse the
+# gateway tag tree. Browse once, cache (the tree changes rarely), filter in-memory per keystroke.
+_SCAN_TTL_MS = 30000
+_scan_cache = {}   # root -> (expires_ms, [{path, dt}])
+
+
+def _now_ms():
+    return system.date.now().getTime()
+
+
+def _scan_all(root):
+    """Recursive browse of all ATOMIC tags under root. Cached. Returns [{path, dt}]."""
+    if not root:
+        root = "[default]"
+    ent = _scan_cache.get(root)
+    now = _now_ms()
+    if ent is not None and ent[0] > now:
+        return ent[1]
+    out = []
+
+    def _walk(path, depth):
+        if depth > 25:
+            return
+        try:
+            results = system.tag.browse(path).getResults()
+        except Exception as e:
+            _logger().warn("browse %s failed: %s" % (path, str(e)))
+            return
+        for r in results:
+            try:
+                full = str(r['fullPath'])
+                ttype = str(r['tagType'])
+                children = r['hasChildren']
+            except Exception:
+                continue
+            if ttype == "AtomicTag":
+                dt = r.get('dataType')
+                out.append({"path": full, "dt": str(dt) if dt is not None else ""})
+            elif children:
+                _walk(full, depth + 1)
+
+    _walk(root, 0)
+    _scan_cache[root] = (now + _SCAN_TTL_MS, out)
+    return out
+
+
+def dtype_options():
+    """Datatype filter chips for the scanner table."""
+    return [{"value": "All", "label": "All types"},
+            {"value": "Float", "label": "Float"},
+            {"value": "Int", "label": "Integer"},
+            {"value": "Bool", "label": "Boolean"},
+            {"value": "String", "label": "String"}]
+
+
+def scan_tags(root, search, dtype):
+    """Table data for the picker: [{path, type, value, quality}] for tags under `root` matching the
+    `search` substring + `dtype` filter. Bulk-reads live values only for the shown subset (capped)."""
+    base = _scan_all(root or "[default]")
+    s = (search or "").lower()
+    dt = dtype or "All"
+    sel = []
+    for t in base:
+        if s and s not in t["path"].lower():
+            continue
+        if dt != "All" and dt.lower() not in t["dt"].lower():
+            continue
+        sel.append(t)
+    sel = sel[:200]   # cap rows so a huge plant stays responsive; refine the search to narrow
+    paths = [t["path"] for t in sel]
+    rows = []
+    qvs = []
+    if paths:
+        try:
+            qvs = system.tag.readBlocking(paths)
+        except Exception as e:
+            _logger().warn("scan readBlocking failed: %s" % str(e))
+            qvs = []
+    for i in range(len(sel)):
+        val = None
+        qual = ""
+        if i < len(qvs):
+            try:
+                if qvs[i].quality.isGood():
+                    val = qvs[i].value
+                    qual = "good"
+                else:
+                    qual = "bad"
+            except Exception:
+                qual = ""
+        rows.append({"path": sel[i]["path"], "type": sel[i]["dt"], "value": val, "quality": qual})
+    return rows
+
+
 def _norm_divisor(role, divisor):
     """Force the divisor to match the role KIND: bool -> None (passthrough), code -> 1.0
     (int passthrough), analog -> the provided numeric scale. Keeps the UI from having to express
