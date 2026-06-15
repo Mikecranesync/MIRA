@@ -88,7 +88,18 @@ the API layer in Phase 2 instead) unless query performance proves otherwise.
 
 ---
 
-## Phase 2 — Read-only i3X API prototype
+## Phase 2 — Read-only i3X API prototype ✅ DONE (read/query server)
+
+**Status:** Read/query API server **DONE** — all 11 read/query endpoints
+implemented, contract-tested, and passing. See detailed plan:
+`docs/superpowers/plans/2026-06-15-i3x-readonly-api-server.md`.
+
+**Conformance tier:** "1.0 Compatible (read/query)" — the server correctly
+reports `update.current=false`, `update.history=false` in `/info`. Subscriptions
+(`/subscriptions` create/register/sync/list/delete) are a **MUST for Full 1.0**
+but are a distinct stateful subsystem (sequence numbers, TTL, 206-on-overflow);
+they remain in a separate follow-on plan. Until subscriptions land, the server
+is honestly "1.0 Compatible (read/query)", not "Full 1.0".
 
 **Objective:** stand up the conformant **read** surface as a projection. This is
 the core deliverable. Endpoints (all read/query; subscriptions sync-only):
