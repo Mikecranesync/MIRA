@@ -535,7 +535,8 @@ def slot_divisor(role_key, asset):
 
 
 # ---- 4-step wizard helpers (Connect -> Verify -> Map -> Save) ----
-# These wrap the existing browse/scan/live machinery for the SetupWizard view. The wizard adds a
+# These wrap the existing browse/scan/live machinery for the wizard views (WizardConnect/Verify/
+# Map/Save -- one full-frame page per step, navigated via routes). The wizard adds a
 # CONNECT step (pick provider + folder), a VERIFY step (prove the source is live before mapping),
 # the existing MAP step, and a SAVE step (readiness + train-before-deploy approval). Read-only on
 # process tags throughout; only the per-asset config tag is written. Jython 2.7 safe (no f-strings).

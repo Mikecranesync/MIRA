@@ -1,18 +1,28 @@
 {
   "pages": {
     "/": {
-      "title": "VFD Analyzer — Setup",
-      "viewPath": "SetupWizard",
+      "title": "VFD Analyzer — Setup (Connect)",
+      "viewPath": "WizardConnect",
       "docks": {}
     },
     "/setup": {
-      "title": "VFD Analyzer — Setup",
-      "viewPath": "SetupWizard",
+      "title": "VFD Analyzer — Setup (Connect)",
+      "viewPath": "WizardConnect",
       "docks": {}
     },
-    "/wizard": {
-      "title": "VFD Analyzer — Setup Wizard",
-      "viewPath": "SetupWizard",
+    "/verify": {
+      "title": "VFD Analyzer — Verify",
+      "viewPath": "WizardVerify",
+      "docks": {}
+    },
+    "/map": {
+      "title": "VFD Analyzer — Map",
+      "viewPath": "WizardMap",
+      "docks": {}
+    },
+    "/save": {
+      "title": "VFD Analyzer — Save",
+      "viewPath": "WizardSave",
       "docks": {}
     },
     "/mapper": {
