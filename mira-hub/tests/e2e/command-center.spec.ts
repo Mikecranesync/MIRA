@@ -26,7 +26,7 @@ import * as fs from "fs";
 const AUTH_SECRET = "cc-e2e-fixed-secret-do-not-use-in-prod";
 const TENANT_ID = "00000000-0000-0000-0000-0000000000cc"; // valid UUID; gate doesn't hit DB
 const OUT = path.resolve(__dirname, "..", "..", "..", "docs", "promo-screenshots");
-const DATE = "2026-06-14";
+const DATE = "2026-06-16";
 
 const DISPLAY_ID = "11111111-1111-1111-1111-111111111111";
 const CONV_UNS = "enterprise.bench.area.conv_simple";
@@ -91,6 +91,17 @@ const TREE_EMPTY = {
 
 const FAKE_HMI_REDIRECT_BODY = "<!doctype html><html><body>handoff</body></html>";
 
+const FAKE_GATEWAYS = {
+  gateways: [
+    {
+      hostname: "plc-laptop.local:8088",
+      agentId: "agent-abc123",
+      activatedAt: "2026-06-01T00:00:00Z",
+      online: true,
+    },
+  ],
+};
+
 async function auth(context: BrowserContext, baseURL: string, uid: string) {
   const trialExpiresAt = new Date(Date.now() + 30 * 86_400_000).toISOString();
   const token = await encode({
@@ -108,10 +119,10 @@ test("displays-first: Live Views leads, audit nodes are demoted, Open Live View 
   page, context, baseURL,
 }) => {
   await auth(context, baseURL!, "cc-e2e-user");
-  await page.route("**/api/command-center/tree*", (route) =>
+  await page.route(/\/api\/command-center\/tree/, (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(treeWithDisplay(true)) }),
   );
-  await page.route("**/api/command-center/display/**", (route) =>
+  await page.route(/\/api\/command-center\/display\//, (route) =>
     route.fulfill({ contentType: "text/html", body: FAKE_HMI_REDIRECT_BODY }),
   );
 
@@ -143,7 +154,7 @@ test("displays-first: Live Views leads, audit nodes are demoted, Open Live View 
 
 test("refresh keeps the configured display present", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!, "cc-refresh-user");
-  await page.route("**/api/command-center/tree*", (route) =>
+  await page.route(/\/api\/command-center\/tree/, (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(treeWithDisplay(true)) }),
   );
   await page.goto("/command-center", { waitUntil: "domcontentloaded" });
@@ -159,7 +170,7 @@ test("unprobeable display stays listed as 'open to view' (configured, not missin
   page, context, baseURL,
 }) => {
   await auth(context, baseURL!, "cc-down-user");
-  await page.route("**/api/command-center/tree*", (route) =>
+  await page.route(/\/api\/command-center\/tree/, (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(treeWithDisplay(false)) }),
   );
   await page.goto("/command-center", { waitUntil: "domcontentloaded" });
@@ -173,7 +184,7 @@ test("unprobeable display stays listed as 'open to view' (configured, not missin
 
 test("empty state: onboarding CTA instead of an audit-node dump", async ({ page, context, baseURL }) => {
   await auth(context, baseURL!, "cc-empty-user");
-  await page.route("**/api/command-center/tree*", (route) =>
+  await page.route(/\/api\/command-center\/tree/, (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(TREE_EMPTY) }),
   );
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -189,6 +200,29 @@ test("empty state: onboarding CTA instead of an audit-node dump", async ({ page,
   // Demoted, not deleted: the operator can still reach the raw namespace.
   await page.getByText(/Browse all namespace nodes/).click();
   await expect(page.getByText("Audit 0o494d 0O494D")).toBeVisible();
+});
+
+test("ConnectedGatewaysBar shows online gateways from the registry", async ({
+  page, context, baseURL,
+}) => {
+  await auth(context, baseURL!, "cc-gw-user");
+  await page.route(/\/api\/command-center\/tree/, (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(treeWithDisplay(true)) }),
+  );
+  await page.route(/\/api\/command-center\/gateways/, (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(FAKE_GATEWAYS) }),
+  );
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/command-center", { waitUntil: "domcontentloaded" });
+
+  // Gateway bar should surface the online gateway hostname.
+  await expect(page.getByText(/plc-laptop\.local/)).toBeVisible({ timeout: 10_000 });
+
+  await page.screenshot({
+    path: path.join(OUT, `${DATE}_command-center-gateway-bar_desktop.png`),
+    fullPage: false,
+  });
 });
 
 // Defense-in-depth CSP guard (site-wide frame-src must keep 'self' for any future
