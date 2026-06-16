@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MIRA Tag Mapper</title>
+<!--
+  MIRA Tag Mapper — offline, no-network, no-LLM front end for the MIRA PLC Parser.
+  It reads a *.report.json produced by `mira-plc-parser analyze` (the same IR the CLI emits):
+  customer tags on the LEFT (tag_dictionary), analyzer roles on the RIGHT, a swap button between,
+  and the parser's auto-suggestions (vfd_signal_candidates) pre-linked + highlighted yellow.
+
+  The chrome below is an ORIGINAL implementation of the classic desktop look (beveled gray panels,
+  title bar, resizable window) — no third-party/proprietary stylesheet is copied. If you want a
+  drop-in classic skin instead, the MIT-licensed 98.css / 7.css libraries are an option; this file
+  ships its own CSS so it stays dependency- and network-free.
+-->
+<style>
+  :root{
+    --face:#c0c0c0; --face-light:#dfdfdf; --hi:#ffffff; --sh:#808080; --sh-dark:#404040;
+    --title1:#000080; --title2:#1084d0; --sel:#000080; --suggest:#fff19a; --suggest-edge:#e3c400;
+    --field:#ffffff; --ink:#000000; --font:"Segoe UI","Tahoma","MS Sans Serif",sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:#0a7d7d; font-family:var(--font); font-size:12px; color:var(--ink);
+    overflow:hidden; user-select:none;
+  }
+  /* ---- the window ---- */
+  .window{
+    position:absolute; top:36px; left:48px; width:760px; height:520px;     /* starts inset */
+    min-width:520px; min-height:340px;
+    background:var(--face); display:flex; flex-direction:column;
+    border-top:2px solid var(--hi); border-left:2px solid var(--hi);
+    border-right:2px solid var(--sh-dark); border-bottom:2px solid var(--sh-dark);
+    box-shadow:1px 1px 0 0 #000; resize:both; overflow:hidden;            /* OS-style resizable */
+  }
+  .window.max{ top:0!important; left:0!important; width:100%!important; height:100%!important; resize:none; }
+  .titlebar{
+    height:22px; flex:0 0 auto; display:flex; align-items:center; gap:4px; padding:2px 3px;
+    background:linear-gradient(90deg,var(--title1),var(--title2)); color:#fff; cursor:move;
+  }
+  .titlebar .ic{width:16px;height:16px;background:var(--face);border:1px solid var(--sh-dark);
+    display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:#000;}
+  .titlebar .ttl{flex:1 1 auto; font-weight:700; font-size:12px; padding-left:2px; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis;}
+  .tbtn{width:18px;height:18px;display:flex;align-items:center;justify-content:center;
+    background:var(--face);color:#000;font-size:11px;font-weight:700;cursor:pointer;
+    border-top:1px solid var(--hi);border-left:1px solid var(--hi);
+    border-right:1px solid var(--sh-dark);border-bottom:1px solid var(--sh-dark);}
+  .tbtn:active{border-color:var(--sh-dark) var(--hi) var(--hi) var(--sh-dark);}
+  .menubar{flex:0 0 auto; display:flex; gap:2px; padding:2px 4px; background:var(--face);}
+  .menubar .mi{padding:2px 8px; cursor:pointer;}
+  .menubar .mi:hover{background:var(--sel); color:#fff;}
+  .toolbar{flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:5px 8px;
+    border-top:1px solid var(--hi); border-bottom:1px solid var(--sh);}
+  .btn{font-family:var(--font); font-size:12px; padding:3px 12px; background:var(--face); cursor:pointer;
+    border-top:2px solid var(--hi); border-left:2px solid var(--hi);
+    border-right:2px solid var(--sh-dark); border-bottom:2px solid var(--sh-dark);}
+  .btn:active{border-color:var(--sh-dark) var(--hi) var(--hi) var(--sh-dark); padding:4px 11px 2px 13px;}
+  .btn[disabled]{color:var(--sh); cursor:default;}
+  .meta{margin-left:auto; color:#222; font-size:11px;}
+  /* ---- body: tags | swap | roles ---- */
+  .body{flex:1 1 auto; display:grid; grid-template-columns:1fr 64px 1fr; gap:8px; padding:8px; min-height:0;}
+  .pane{display:flex; flex-direction:column; min-height:0;}
+  .pane h2{margin:0 0 4px; font-size:12px; font-weight:700;}
+  .list{flex:1 1 auto; overflow:auto; background:var(--field);
+    border-top:2px solid var(--sh-dark); border-left:2px solid var(--sh-dark);
+    border-right:2px solid var(--hi); border-bottom:2px solid var(--hi);}     /* sunken field */
+  .row{display:flex; align-items:baseline; gap:6px; padding:3px 6px; cursor:default; white-space:nowrap;}
+  .row .nm{font-weight:600;}
+  .row .ty{color:#555; font-size:11px;}
+  .row .rl{margin-left:auto; color:#333; font-size:11px;}
+  .row.sel{background:var(--sel); color:#fff;}
+  .row.sel .ty,.row.sel .rl{color:#e8e8ff;}
+  .row.suggest{background:var(--suggest); box-shadow:inset 0 0 0 1px var(--suggest-edge);}
+  .row.suggest.sel{background:var(--sel);}
+  .badge{font-size:10px; font-weight:700; color:#6a5300; border:1px solid var(--suggest-edge);
+    background:#fff7c2; padding:0 3px; border-radius:2px;}
+  .swap{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;}
+  .swap .arrow{font-size:18px; line-height:1; font-weight:700;}
+  .roleTag{color:#1a5e1a; font-weight:700;}
+  .roleTag.empty{color:#999; font-weight:400; font-style:italic;}
+  /* ---- statusbar ---- */
+  .status{flex:0 0 auto; display:flex; gap:0; padding:0; border-top:1px solid var(--hi);}
+  .status .cell{flex:1 1 auto; padding:3px 8px; font-size:11px;
+    border-top:1px solid var(--sh); border-left:1px solid var(--sh); margin:2px 0 2px 2px;}
+  .status .cell:last-child{margin-right:2px; flex:0 0 auto; min-width:130px;}
+  input[type=file]{display:none;}
+</style>
+</head>
+<body>
+<div class="window" id="win">
+  <div class="titlebar" id="titlebar">
+    <span class="ic">&#9874;</span>
+    <span class="ttl" id="winTitle">MIRA Tag Mapper &mdash; (sample)</span>
+    <span class="tbtn" title="Minimize">_</span>
+    <span class="tbtn" id="maxBtn" title="Maximize">&#9633;</span>
+    <span class="tbtn" id="closeBtn" title="Close">&#10005;</span>
+  </div>
+  <div class="menubar"><span class="mi" id="fileMenu"><u>F</u>ile</span><span class="mi">View</span><span class="mi">Help</span></div>
+  <div class="toolbar">
+    <button class="btn" id="openBtn">Open report.json&hellip;</button>
+    <button class="btn" id="assignBtn" disabled>Assign &#8644;</button>
+    <button class="btn" id="clearBtn" disabled>Clear</button>
+    <button class="btn" id="acceptBtn">Accept all suggestions</button>
+    <span class="meta" id="metaLine">&nbsp;</span>
+  </div>
+  <div class="body">
+    <div class="pane">
+      <h2>Customer tags</h2>
+      <div class="list" id="tagList"></div>
+    </div>
+    <div class="swap">
+      <div class="arrow">&#8644;</div>
+      <button class="btn" id="swapBtn" disabled title="Map selected tag to selected role">Map &#8594;</button>
+    </div>
+    <div class="pane">
+      <h2>Analyzer roles</h2>
+      <div class="list" id="roleList"></div>
+    </div>
+  </div>
+  <div class="status">
+    <span class="cell" id="statusMain">Ready.</span>
+    <span class="cell" id="statusCount">0 mapped</span>
+  </div>
+</div>
+<input type="file" id="fileInput" accept=".json,application/json">
+
+<script>
+"use strict";
+/* ---- the analyzer's signal roles (right pane). Mirrors signal_roles.py display names. ---- */
+var ROLES = [
+  {key:"freq",     display:"Output frequency"},
+  {key:"current",  display:"Output current"},
+  {key:"fault",    display:"Fault code"},
+  {key:"setpoint", display:"Frequency setpoint"},
+  {key:"dc_bus",   display:"DC-bus voltage"},
+  {key:"comm",     display:"Drive comm OK"},
+  {key:"cmd",      display:"Command word"}
+];
+/* map a suggestion's "candidate role: X" detail onto a role key */
+function roleKeyFromDetail(detail){
+  var d = (detail||"").toLowerCase();
+  if(d.indexOf("setpoint")>=0) return "setpoint";
+  if(d.indexOf("frequency")>=0||d.indexOf("freq")>=0) return "freq";
+  if(d.indexOf("current")>=0) return "current";
+  if(d.indexOf("fault")>=0) return "fault";
+  if(d.indexOf("bus")>=0||d.indexOf("dc")>=0) return "dc_bus";
+  if(d.indexOf("comm")>=0) return "comm";
+  if(d.indexOf("command")>=0||d.indexOf("cmd")>=0) return "cmd";
+  return "";
+}
+
+/* ---- a small embedded sample (the conveyor fixture) so the window works on open, no server ---- */
+var SAMPLE = {
+  controller:"ConveyorCell", vendor:"Rockwell Automation",
+  tag_dictionary:[
+    {name:"Motor_Run",data_type:"BOOL",description:"Conveyor VFD run command",roles:["output"]},
+    {name:"VFD_Frequency",data_type:"REAL",description:"Drive output frequency",roles:[]},
+    {name:"VFD_Current",data_type:"REAL",description:"Drive output current",roles:[]},
+    {name:"VFD_Fault",data_type:"DINT",description:"Drive fault code",roles:[]},
+    {name:"Freq_Setpoint",data_type:"REAL",description:"Commanded speed",roles:[]},
+    {name:"EStop_OK",data_type:"BOOL",description:"Safety circuit healthy",roles:["safety"]},
+    {name:"Photoeye_1",data_type:"BOOL",description:"Jam photo-eye",roles:["input"]},
+    {name:"Run_Timer",data_type:"TIMER",description:"Run-time accumulator",roles:[]}
+  ],
+  vfd_signal_candidates:[
+    {name:"VFD_Frequency",detail:"candidate role: frequency",confidence:"medium"},
+    {name:"VFD_Current",detail:"candidate role: current",confidence:"medium"},
+    {name:"VFD_Fault",detail:"candidate role: fault",confidence:"medium"}
+  ]
+};
+
+var state = { tags:[], suggestByTag:{}, mapping:{}, selTag:null, selRole:null, title:"(sample)" };
+
+function loadReport(rep){
+  state.tags = (rep.tag_dictionary||[]).map(function(t){return {name:t.name,type:t.data_type||"",desc:t.description||""};});
+  state.suggestByTag = {};
+  (rep.vfd_signal_candidates||[]).forEach(function(c){
+    var rk = roleKeyFromDetail(c.detail);
+    if(rk) state.suggestByTag[c.name] = rk;
+  });
+  /* seed mapping from suggestions (the yellow pre-fill the user confirms or changes) */
+  state.mapping = {};
+  Object.keys(state.suggestByTag).forEach(function(tagName){
+    state.mapping[ state.suggestByTag[tagName] ] = {tag:tagName, source:"suggested"};
+  });
+  state.selTag = null; state.selRole = null;
+  document.getElementById("winTitle").innerHTML = "MIRA Tag Mapper &mdash; " + (state.title);
+  document.getElementById("metaLine").textContent =
+    (rep.controller||"(unnamed)") + "  ·  " + (rep.vendor||"?") + "  ·  " + state.tags.length + " tags";
+  render();
+}
+
+function roleOfTag(tagName){ for(var k in state.mapping){ if(state.mapping[k].tag===tagName) return k; } return null; }
+
+function render(){
+  var tl = document.getElementById("tagList"); tl.innerHTML="";
+  state.tags.forEach(function(t){
+    var mappedRole = roleOfTag(t.name);
+    var suggested = state.suggestByTag[t.name];
+    var div = document.createElement("div");
+    div.className = "row" + (state.selTag===t.name?" sel":"") + (suggested&&!mappedRole?" suggest":"");
+    var rl = mappedRole ? ("→ "+displayOf(mappedRole)) : (suggested ? "suggested" : "");
+    div.innerHTML = '<span class="nm">'+esc(t.name)+'</span><span class="ty">'+esc(t.type)+'</span>'+
+      (suggested&&!mappedRole?'<span class="badge">SUGGEST</span>':'')+
+      '<span class="rl">'+esc(rl)+'</span>';
+    div.onclick=function(){ state.selTag=t.name; refreshButtons(); render(); };
+    tl.appendChild(div);
+  });
+  var rls = document.getElementById("roleList"); rls.innerHTML="";
+  ROLES.forEach(function(r){
+    var m = state.mapping[r.key];
+    var isSug = m && m.source==="suggested";
+    var div = document.createElement("div");
+    div.className="row"+(state.selRole===r.key?" sel":"")+(isSug?" suggest":"");
+    div.innerHTML = '<span class="nm">'+esc(r.display)+'</span>'+
+      (isSug?'<span class="badge">SUGGEST</span>':'')+
+      '<span class="rl '+(m?'roleTag':'roleTag empty')+'">'+(m?esc(m.tag):"(unmapped)")+'</span>';
+    div.onclick=function(){ state.selRole=r.key; refreshButtons(); render(); };
+    rls.appendChild(div);
+  });
+  var mapped = Object.keys(state.mapping).length;
+  document.getElementById("statusCount").textContent = mapped+" mapped";
+  document.getElementById("statusMain").textContent =
+    state.selTag ? ("Selected tag: "+state.selTag+(state.selRole?("  →  role: "+displayOf(state.selRole)):"")) : "Ready.";
+}
+function displayOf(key){ for(var i=0;i<ROLES.length;i++){ if(ROLES[i].key===key) return ROLES[i].display; } return key; }
+function esc(s){ return String(s==null?"":s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];}); }
+
+function refreshButtons(){
+  var can = state.selTag && state.selRole;
+  document.getElementById("swapBtn").disabled = !can;
+  document.getElementById("assignBtn").disabled = !can;
+  document.getElementById("clearBtn").disabled = !state.selRole || !state.mapping[state.selRole];
+}
+function assign(){
+  if(!(state.selTag && state.selRole)) return;
+  /* remove the tag from any other role, then assign here as a confirmed (manual) mapping */
+  for(var k in state.mapping){ if(state.mapping[k].tag===state.selTag) delete state.mapping[k]; }
+  state.mapping[state.selRole] = {tag:state.selTag, source:"manual"};
+  document.getElementById("statusMain").textContent = "Mapped "+state.selTag+" → "+displayOf(state.selRole);
+  refreshButtons(); render();
+}
+function clearRole(){ if(state.selRole && state.mapping[state.selRole]){ delete state.mapping[state.selRole]; refreshButtons(); render(); } }
+function acceptAll(){
+  Object.keys(state.suggestByTag).forEach(function(tagName){
+    var rk = state.suggestByTag[tagName];
+    if(!state.mapping[rk]) state.mapping[rk] = {tag:tagName, source:"suggested"};
+  });
+  document.getElementById("statusMain").textContent="Accepted all suggestions."; render();
+}
+
+/* ---- wiring ---- */
+document.getElementById("swapBtn").onclick = assign;
+document.getElementById("assignBtn").onclick = assign;
+document.getElementById("clearBtn").onclick = clearRole;
+document.getElementById("acceptBtn").onclick = acceptAll;
+document.getElementById("openBtn").onclick = function(){ document.getElementById("fileInput").click(); };
+document.getElementById("fileMenu").onclick = function(){ document.getElementById("fileInput").click(); };
+document.getElementById("fileInput").onchange = function(e){
+  var f = e.target.files[0]; if(!f) return;
+  var rd = new FileReader();
+  rd.onload = function(){
+    try{ var rep = JSON.parse(rd.result); state.title = f.name; loadReport(rep); }
+    catch(err){ alert("Could not read report JSON:\n"+err.message); }
+  };
+  rd.readAsText(f);
+};
+/* window controls */
+document.getElementById("maxBtn").onclick=function(){ document.getElementById("win").classList.toggle("max"); };
+document.getElementById("closeBtn").onclick=function(){ document.getElementById("statusMain").textContent="(close is decorative in the browser proof)"; };
+/* drag by title bar */
+(function(){
+  var win=document.getElementById("win"), bar=document.getElementById("titlebar"), drag=null;
+  bar.onmousedown=function(e){ if(win.classList.contains("max"))return;
+    drag={x:e.clientX,y:e.clientY,l:win.offsetLeft,t:win.offsetTop}; e.preventDefault(); };
+  document.onmousemove=function(e){ if(!drag)return;
+    win.style.left=(drag.l+e.clientX-drag.x)+"px"; win.style.top=Math.max(0,drag.t+e.clientY-drag.y)+"px"; };
+  document.onmouseup=function(){ drag=null; };
+})();
+
+/* boot with the embedded sample */
+loadReport(SAMPLE);
+</script>
+</body>
+</html>
