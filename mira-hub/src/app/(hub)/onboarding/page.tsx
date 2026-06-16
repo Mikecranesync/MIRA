@@ -18,28 +18,31 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Building2, Factory, Loader2, MapPin, MessageSquare, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Building2, Factory, Loader2, MapPin, MessageSquare, ShieldCheck, Sparkles, Tag } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 import { AssetValidateTab } from "@/components/AssetValidateTab";
 
-type StepId = "company" | "site" | "line" | "review" | "try" | "validate";
+type StepId = "company" | "site" | "line" | "tag-import" | "review" | "try" | "validate";
 
-interface CompanyPayload { name: string }
-interface SitePayload    { name: string; location?: string }
-interface LinePayload    { name: string; description?: string }
+interface CompanyPayload    { name: string }
+interface SitePayload       { name: string; location?: string }
+interface LinePayload       { name: string; description?: string }
+interface TagImportPayload  { proposals_created?: number; skipped?: boolean }
 interface AllPayloads {
   company?: CompanyPayload;
   site?: SitePayload;
   line?: LinePayload;
+  tagImport?: TagImportPayload;
 }
 
 const STEPS: { id: StepId; label: string; icon: React.ElementType }[] = [
-  { id: "company", label: "Company",        icon: Building2 },
-  { id: "site",    label: "First site",     icon: MapPin },
-  { id: "line",    label: "First line",     icon: Factory },
-  { id: "review",  label: "Review & finish", icon: Sparkles },
-  { id: "try",     label: "Try MIRA",        icon: MessageSquare },
-  { id: "validate", label: "Train & approve", icon: ShieldCheck },
+  { id: "company",    label: "Company",        icon: Building2 },
+  { id: "site",       label: "First site",     icon: MapPin },
+  { id: "line",       label: "First line",     icon: Factory },
+  { id: "tag-import", label: "Import tags",    icon: Tag },
+  { id: "review",     label: "Review & finish", icon: Sparkles },
+  { id: "try",        label: "Try MIRA",        icon: MessageSquare },
+  { id: "validate",   label: "Train & approve", icon: ShieldCheck },
 ];
 
 export default function OnboardingPage() {
@@ -71,7 +74,7 @@ export default function OnboardingPage() {
         const restored: AllPayloads = data.stepPayloads ?? {};
         setPayloads(restored);
         const current = String(data.currentStep ?? "company");
-        const known: StepId[] = ["company", "site", "line", "review"];
+        const known: StepId[] = ["company", "site", "line", "tag-import", "review"];
         setActiveStep(known.includes(current as StepId) ? (current as StepId) : "review");
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
@@ -184,6 +187,22 @@ export default function OnboardingPage() {
             onSubmit={async (value) => {
               await saveStep("line", value as unknown as Record<string, unknown>);
               setPayloads((p) => ({ ...p, line: value }));
+              advance("tag-import");
+            }}
+          />
+        )}
+        {activeStep === "tag-import" && (
+          <TagImportStep
+            saving={saving}
+            onBack={() => advance("line")}
+            onSubmit={async (proposalsCreated) => {
+              await saveStep("tag-import", { proposals_created: proposalsCreated });
+              setPayloads((p) => ({ ...p, tagImport: { proposals_created: proposalsCreated } }));
+              advance("review");
+            }}
+            onSkip={async () => {
+              await saveStep("tag-import", { skipped: true });
+              setPayloads((p) => ({ ...p, tagImport: { skipped: true } }));
               advance("review");
             }}
           />
@@ -192,7 +211,7 @@ export default function OnboardingPage() {
           <ReviewStep
             payloads={payloads}
             finishing={finishing}
-            onBack={() => advance("line")}
+            onBack={() => advance("tag-import")}
             onFinish={finish}
           />
         )}
@@ -250,9 +269,10 @@ function Stepper({ active, payloads }: { active: StepId; payloads: AllPayloads }
 }
 
 function isStepDone(id: StepId, p: AllPayloads): boolean {
-  if (id === "company") return !!p.company?.name;
-  if (id === "site")    return !!p.site?.name;
-  if (id === "line")    return !!p.line?.name;
+  if (id === "company")    return !!p.company?.name;
+  if (id === "site")       return !!p.site?.name;
+  if (id === "line")       return !!p.line?.name;
+  if (id === "tag-import") return p.tagImport?.proposals_created !== undefined || p.tagImport?.skipped === true;
   return false;
 }
 
@@ -696,6 +716,121 @@ function NavButtons({
         {rightLabel}
         {!rightLoading && <ArrowRight className="h-4 w-4" />}
       </button>
+    </div>
+  );
+}
+
+function TagImportStep({
+  saving,
+  onBack,
+  onSubmit,
+  onSkip,
+}: {
+  saving: boolean;
+  onBack: () => void;
+  onSubmit: (proposalsCreated: number) => Promise<void>;
+  onSkip: () => Promise<void>;
+}) {
+  const [classifying, setClassifying] = useState(false);
+  const [result, setResult] = useState<{ proposals_created: number } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function classify() {
+    setClassifying(true);
+    setErr(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/connectors/ignition/import/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ connector_type: "mock" }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { proposals_created?: number; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setResult({ proposals_created: data.proposals_created ?? 0 });
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setClassifying(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5" data-testid="step-tag-import">
+      <div>
+        <h2 className="text-lg font-semibold text-slate-900">Import Ignition tags</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          MIRA classifies your Ignition tags into UNS paths and creates mapping proposals for review.
+          Use the demo tag set to see how it works, then review proposals in the Suggestions tab.
+        </p>
+      </div>
+
+      {err && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div>
+      )}
+
+      {!result ? (
+        <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+          <Tag className="mx-auto h-8 w-8 text-slate-300" />
+          <p className="mt-3 text-sm text-slate-600">
+            Click to classify the demo Ignition tag set and generate tag-mapping proposals.
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            File import from a live Ignition gateway is coming in a future release.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
+          <p className="text-sm font-medium text-emerald-800">
+            {result.proposals_created} tag proposals created.
+          </p>
+          <p className="mt-1 text-xs text-emerald-700">
+            Review and accept or reject them in the{" "}
+            <a className="underline" href={`${API_BASE}/knowledge/suggestions`}>Suggestions tab</a>.
+          </p>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between pt-2">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
+          data-testid="onboarding-back"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back
+        </button>
+        <div className="flex items-center gap-3">
+          {!result && (
+            <button
+              type="button"
+              onClick={classify}
+              disabled={classifying}
+              className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+              data-testid="tag-import-classify"
+            >
+              {classifying && <Loader2 className="h-4 w-4 animate-spin" />}
+              {classifying ? "Classifying…" : "Classify demo tags"}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={async () => {
+              if (result) {
+                await onSubmit(result.proposals_created);
+              } else {
+                await onSkip();
+              }
+            }}
+            disabled={saving}
+            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+            data-testid="tag-import-continue"
+          >
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            {result ? "Continue" : "Skip"}
+            {!saving && <ArrowRight className="h-4 w-4" />}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
