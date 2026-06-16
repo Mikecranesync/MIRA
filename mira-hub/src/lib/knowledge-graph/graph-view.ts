@@ -82,3 +82,22 @@ export function buildGraphPayload(entities: EntityRow[], rels: RelRow[]): GraphP
 
   return { nodes: [...nodes.values()], links };
 }
+
+/**
+ * Which guidance the relationship-graph page should show, given edge counts.
+ * Pure so it can be unit-tested without rendering the client component (#1984).
+ *
+ * - "guidance": no edges at all — nodes may exist but nothing is linked, so
+ *   the page shows actionable next steps (upload manuals → confirm proposals).
+ * - "review-suggestions": MIRA has proposed edges but none are verified yet —
+ *   the thin banner nudges the tech to review them.
+ * - "none": verified edges exist; the graph speaks for itself.
+ */
+export function kgMapDisplayState(
+  verifiedCount: number,
+  proposedCount: number,
+): "guidance" | "review-suggestions" | "none" {
+  if (verifiedCount > 0) return "none";
+  if (proposedCount > 0) return "review-suggestions";
+  return "guidance";
+}
