@@ -108,6 +108,40 @@ export default function KnowledgePage() {
   const [docsLoading, setDocsLoading] = useState(false);
   const [openTypes, setOpenTypes] = useState<Set<string>>(new Set());
 
+  type ContentResult = {
+    sourceUrl: string;
+    title: string;
+    manufacturer: string;
+    modelNumber: string | null;
+    sourceType: string | null;
+    snippet: string;
+  };
+  const [contentResults, setContentResults] = useState<ContentResult[]>([]);
+  const [contentSearching, setContentSearching] = useState(false);
+
+  // Debounced full-text search: fires 350 ms after the user stops typing,
+  // only in the manufacturer list view (not drilled in) and only with a query.
+  useEffect(() => {
+    if (selectedMfr || !search.trim()) {
+      setContentResults([]);
+      return;
+    }
+    setContentSearching(true);
+    const timer = setTimeout(() => {
+      fetch(`${API_BASE}/api/knowledge/search?q=${encodeURIComponent(search.trim())}`, {
+        cache: "no-store",
+      })
+        .then((r) => (r.ok ? r.json() : { results: [] }))
+        .then((data) => setContentResults(data.results ?? []))
+        .catch(() => setContentResults([]))
+        .finally(() => setContentSearching(false));
+    }, 350);
+    return () => {
+      clearTimeout(timer);
+      setContentSearching(false);
+    };
+  }, [search, selectedMfr]);
+
   type LinkedAsset = {
     id: string;
     tag: string;
@@ -491,7 +525,7 @@ export default function KnowledgePage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={selectedMfr ? `Search ${selectedMfr} documents…` : t("search")}
+              placeholder={selectedMfr ? `Search ${selectedMfr} documents…` : "Search manufacturers or content…"}
               className="w-full h-9 pl-9 pr-3 rounded-lg border text-sm"
               style={{
                 backgroundColor: "var(--surface-1)",
@@ -872,33 +906,123 @@ export default function KnowledgePage() {
         )}
 
         {!loading && !selectedMfr && filteredMfrs.length === 0 && uploads.length === 0 && (
-          <button
-            onClick={() => setPickerOpen(true)}
-            className="w-full flex flex-col items-center justify-center text-center py-10 px-6 rounded-xl border-2 border-dashed transition-colors hover:bg-[var(--surface-1)]"
-            style={{ borderColor: "var(--border)" }}
-          >
-            <div
-              className="w-12 h-12 rounded-full flex items-center justify-center mb-3"
-              style={{ backgroundColor: "var(--surface-1)" }}
-            >
-              <Upload
-                className="w-6 h-6"
-                style={{ color: "var(--brand-blue)" }}
-              />
+          search.trim() ? (
+            // Full-text content search results — shown when no manufacturer name matches.
+            <div>
+              {contentSearching && (
+                <div className="text-center py-8">
+                  <Clock
+                    className="w-6 h-6 mx-auto mb-2 animate-spin"
+                    style={{ color: "var(--foreground-subtle)" }}
+                  />
+                  <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
+                    Searching document content…
+                  </p>
+                </div>
+              )}
+              {!contentSearching && contentResults.length > 0 && (
+                <div className="space-y-2">
+                  <p
+                    className="text-[11px] uppercase tracking-wider font-semibold mb-2"
+                    style={{ color: "var(--foreground-subtle)" }}
+                  >
+                    Document content results ({contentResults.length})
+                  </p>
+                  {contentResults.map((r) => (
+                    <button
+                      key={r.sourceUrl}
+                      onClick={() => openManufacturer(r.manufacturer)}
+                      className="w-full text-left p-3 rounded-lg border transition-colors hover:opacity-80"
+                      style={{
+                        backgroundColor: "var(--surface-1)",
+                        borderColor: "var(--border)",
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p
+                            className="text-sm font-medium truncate"
+                            style={{ color: "var(--foreground)" }}
+                          >
+                            {r.title}
+                          </p>
+                          <p
+                            className="text-[11px] mt-0.5"
+                            style={{ color: "var(--foreground-subtle)" }}
+                          >
+                            {r.manufacturer}
+                            {r.modelNumber ? ` · ${r.modelNumber}` : ""}
+                            {r.sourceType ? ` · ${r.sourceType}` : ""}
+                          </p>
+                          {r.snippet && (
+                            <p
+                              className="text-[11px] mt-1.5 line-clamp-2"
+                              style={{ color: "var(--foreground-muted)" }}
+                            >
+                              {r.snippet}
+                            </p>
+                          )}
+                        </div>
+                        <ChevronRight
+                          className="w-4 h-4 flex-shrink-0 mt-0.5"
+                          style={{ color: "var(--foreground-subtle)" }}
+                        />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!contentSearching && contentResults.length === 0 && (
+                <div className="text-center py-10">
+                  <FileText
+                    className="w-8 h-8 mx-auto mb-3"
+                    style={{ color: "var(--foreground-subtle)" }}
+                  />
+                  <p className="text-sm font-semibold mb-1" style={{ color: "var(--foreground)" }}>
+                    No matching documents
+                  </p>
+                  <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
+                    No manufacturers or document content matched &quot;{search}&quot;.
+                  </p>
+                  <button
+                    onClick={() => setPickerOpen(true)}
+                    className="mt-4 text-xs font-medium underline underline-offset-2"
+                    style={{ color: "var(--brand-blue)" }}
+                  >
+                    Upload a manual
+                  </button>
+                </div>
+              )}
             </div>
-            <p
-              className="text-sm font-semibold mb-1"
-              style={{ color: "var(--foreground)" }}
+          ) : (
+            <button
+              onClick={() => setPickerOpen(true)}
+              className="w-full flex flex-col items-center justify-center text-center py-10 px-6 rounded-xl border-2 border-dashed transition-colors hover:bg-[var(--surface-1)]"
+              style={{ borderColor: "var(--border)" }}
             >
-              {t("noDocuments")}
-            </p>
-            <p
-              className="text-xs"
-              style={{ color: "var(--foreground-muted)" }}
-            >
-              Tap to upload a PDF manual or photo — PDF, JPEG, PNG up to {MAX_UPLOAD_MB} MB.
-            </p>
-          </button>
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center mb-3"
+                style={{ backgroundColor: "var(--surface-1)" }}
+              >
+                <Upload
+                  className="w-6 h-6"
+                  style={{ color: "var(--brand-blue)" }}
+                />
+              </div>
+              <p
+                className="text-sm font-semibold mb-1"
+                style={{ color: "var(--foreground)" }}
+              >
+                {t("noDocuments")}
+              </p>
+              <p
+                className="text-xs"
+                style={{ color: "var(--foreground-muted)" }}
+              >
+                Tap to upload a PDF manual or photo — PDF, JPEG, PNG up to {MAX_UPLOAD_MB} MB.
+              </p>
+            </button>
+          )
         )}
 
         {selectedMfr && !docsLoading && filteredGroups.length === 0 && (

@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **57** (6 dynamic) |
-| API routes | **129** (33 dynamic) |
+| API routes | **130** (33 dynamic) |
 
 ## Pages (57)
 
@@ -75,7 +75,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (129)
+## API routes (130)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -161,6 +161,7 @@
 | `/api/knowledge` | static | `api/knowledge/route.ts` |
 | `/api/knowledge/growth` | static | `api/knowledge/growth/route.ts` |
 | `/api/knowledge/manufacturer` | static | `api/knowledge/manufacturer/route.ts` |
+| `/api/knowledge/search` | static | `api/knowledge/search/route.ts` |
 | `/api/knowledge/stats` | static | `api/knowledge/stats/route.ts` |
 | `/api/library/chunks` | static | `api/library/chunks/route.ts` |
 | `/api/library/documents` | static | `api/library/documents/route.ts` |
