@@ -57,6 +57,55 @@ POST /api/v1/chat
 
 Same body shape, no asset scope. Model can still invoke tool-use to fetch assets by tag, query work orders, etc.
 
+### OpenAI-compatible completions
+
+A drop-in replacement for OpenAI's chat-completions API — point any OpenAI SDK at MIRA's base URL with your MIRA key as the API key. MIRA grounds the completion in the tenant's maintenance context (UNS, manuals, work-order history) and appends `[Source: …]` citations.
+
+```http
+POST /api/v1/chat/completions
+Content-Type: application/json
+```
+
+```bash
+curl https://acme.factorylm.com/api/v1/chat/completions \
+  -H "Authorization: Bearer $MIRA_KEY" -H "Content-Type: application/json" \
+  -d '{
+    "model": "mira-grounded",
+    "messages": [{"role": "user", "content": "F004 on a PowerFlex 525 — cause?"}],
+    "stream": false
+  }'
+```
+
+Response is the standard OpenAI shape (`choices[].message.content`, `usage.{prompt,completion,total}_tokens`); set `"stream": true` for `text/event-stream` deltas. With the OpenAI Python SDK:
+
+```python
+from openai import OpenAI
+client = OpenAI(base_url="https://acme.factorylm.com/api/v1", api_key=os.environ["MIRA_KEY"])
+resp = client.chat.completions.create(
+    model="mira-grounded",
+    messages=[{"role": "user", "content": "F004 on a PowerFlex 525 — cause?"}],
+)
+print(resp.choices[0].message.content)
+```
+
+List the model ids this tenant can call (OpenAI-compatible shape):
+
+```http
+GET /api/v1/models
+```
+
+> **Platform default vs BYO-LLM.** MIRA's hosted default is a free-tier cascade (Groq → Cerebras → Gemini) exposed as `mira-grounded`. To route to a specific model — including your own OpenAI / Anthropic / on-prem Ollama key — set `model` (see [Supported models](#supported-models-byo-llm)). BYO models use the customer's own provider credentials, configured at `/hub/admin/ai-settings`.
+
+### Direct-connection chat (Ignition / Perspective)
+
+Surfaces that already know which machine the technician is on — the Ignition cloud-chat endpoint, a Perspective "Ask MIRA" panel, an MQTT/Sparkplug turn — call a direct-connection variant that carries the asset's UNS identity on the payload:
+
+```http
+POST /api/v1/ignition/chat
+```
+
+Because the connection itself certifies the namespace path, MIRA skips the asset-confirmation gate and answers immediately. A direct-connection request that arrives **without** a resolvable UNS identifier is rejected (`422 uns_required`) rather than downgraded to a confirmation prompt. This endpoint is for embedded plant surfaces, not general API clients.
+
 ### List asset resources
 
 Factory-AI-compatible retrieval endpoint — return the indexed manuals/troubleshooting docs attached to an asset, without the chat:
