@@ -24,13 +24,11 @@
 
 ---
 
-## Open product fork (needs a decision before Phase 1 code)
+## Key-issuance mechanism — DECIDED: self-serve (2026-06-16, Mike)
 
-**How are keys minted?** Recommended default below is **(A) admin-gated mint endpoint**. Alternatives noted so the choice is explicit.
+**Self-serve at signup / settings.** A logged-in tenant mints its OWN i3X key from the Hub settings area (`mira-hub/src/app/(hub)/settings/*` — fits under a new `settings/api-keys` or within `settings/security`/`integrations`). This is the true "stranger can hook up" answer. The mint endpoint is **session-gated to the caller's own tenant** (NOT admin-only, NOT in the i3x middleware bypass — a logged-in user mints their own key). There is no existing `public_api_keys` table; `i3x_api_keys` (migration 054) is the store.
 
-- **(A) Admin-gated mint endpoint (recommended, this plan assumes it):** `POST /api/admin/i3x-keys` — session-gated, admin-only. Generates a random key, stores `sha256(key)`, returns the plaintext **once**. Writes via the Hub's own pooled DB connection (sanctioned — NOT psql-to-prod). Lets us mint a key per tenant today and test end-to-end. Self-serve-at-signup is a later enhancement.
-- (B) Self-serve at signup: a tenant mints its own key from a settings page. More product surface; better long-term; defer.
-- (C) Ops tool/workflow: a `gh workflow` that inserts a key. Avoids UI but is clunky and still needs a sanctioned write path.
+Prod migration 054: **Mike reviews the dry-run Summary, then I apply** (decided 2026-06-16).
 
 ---
 
