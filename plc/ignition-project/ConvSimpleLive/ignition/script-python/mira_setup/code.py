@@ -461,6 +461,20 @@ def role_typehint(role_key):
     return _TYPEHINT.get(r["kind"], "any tag")
 
 
+def role_about(role_key):
+    """Plain-language 'what this signal is + a good reading' for the active slot -- baked-in
+    education so a first-timer can choose the right tag without a tutorial. Returns the role's
+    'about' sentence with a '(typical: ...)' hint appended, or '' if the role has none yet."""
+    r = _roles.role(role_key)
+    if not r:
+        return ""
+    about = r.get("about", "")
+    typical = r.get("typical", "")
+    if about and typical:
+        return "%s  (typical: %s)" % (about, typical)
+    return about or ""
+
+
 def _slot_state(asset, role_key):
     """(status, value_str) for a role: status in unmapped / good / bad / novalue."""
     cfg = _load(asset)
