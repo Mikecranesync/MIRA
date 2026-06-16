@@ -1,4 +1,4 @@
--- Migration 053: i3x_api_keys — bearer keys for the read-only i3X API.
+-- Migration 054: i3x_api_keys — bearer keys for the read-only i3X API.
 -- Each key is tenant-scoped, stores only a SHA-256 hash (never the plaintext),
 -- and is read-only by construction (the i3X server has no write paths).
 BEGIN;

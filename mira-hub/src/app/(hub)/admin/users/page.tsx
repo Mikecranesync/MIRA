@@ -56,7 +56,7 @@ export default function AdminUsersPage() {
 
   const loadUsers = useCallback(async () => {
     const qs = showSystem ? "?includeSystem=1" : "";
-    const res = await fetch(`${API_BASE}/api/admin/users${qs}`);
+    const res = await fetch(`${API_BASE}/api/admin/users/${qs}`);
     // Clean no-access instead of an indefinite spinner when the caller lacks
     // platform.users.read (#1932).
     if (res.status === 401 || res.status === 403) {
@@ -85,7 +85,7 @@ export default function AdminUsersPage() {
 
     setUpdating(id);
     try {
-      const res = await fetch(`/hub/api/admin/users/${id}`, {
+      const res = await fetch(`/hub/api/admin/users/${id}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),

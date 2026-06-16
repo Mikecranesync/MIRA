@@ -50,7 +50,7 @@ export default function HealthScoreWidget() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/readiness`, { cache: "no-store" });
+        const res = await fetch(`${API_BASE}/api/readiness/`, { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = (await res.json()) as ReadinessResponse;
         if (cancelled) return;

@@ -162,6 +162,7 @@
     "photos": "फ़ोटो",
     "noPhotos": "कोई फ़ोटो संलग्न नहीं",
     "addPhoto": "+ जोड़ें",
+    "photoUploadFailed": "फ़ोटो अपलोड विफल — पुनः प्रयास करें।",
     "viewMira": "MIRA वार्तालाप",
     "openCmms": "CMMS",
     "assignedTo": "सौंपा गया",

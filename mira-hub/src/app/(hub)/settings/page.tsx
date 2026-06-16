@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { API_BASE } from "@/lib/config";
 import Link from "next/link";
 import {
   Building2, Users, Shield, Lock, Plug, BarChart2, ScrollText, Inbox,
@@ -38,7 +39,7 @@ export default function SettingsIndexPage() {
   const [me, setMe] = useState<Me | null>(null);
 
   useEffect(() => {
-    fetch("/api/me")
+    fetch(`${API_BASE}/api/me/`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: Me | null) => d && setMe(d))
       .catch(() => {});

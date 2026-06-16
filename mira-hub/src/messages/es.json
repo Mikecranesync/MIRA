@@ -162,6 +162,7 @@
     "photos": "Fotos",
     "noPhotos": "Sin fotos adjuntas",
     "addPhoto": "+ Agregar",
+    "photoUploadFailed": "Error al subir la foto — inténtalo de nuevo.",
     "viewMira": "Conversación MIRA",
     "openCmms": "CMMS",
     "assignedTo": "Asignado a",

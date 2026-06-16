@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
@@ -14,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import HealthScoreWidget from "@/components/HealthScoreWidget";
 import { API_BASE } from "@/lib/config";
+import { shouldRedirectToOnboarding } from "@/lib/onboarding-flow";
 
 type KpiCard = {
   label: string;
@@ -191,6 +193,34 @@ function assetKeyFor(item: BoardItem, woAsset: Map<string, string>, pmAsset: Map
 }
 
 export default function FeedPage() {
+  const router = useRouter();
+  // #1901: a fresh tenant who hasn't finished onboarding is sent into the wizard
+  // so they reach the one gated action (upload a manual -> cited answer). Loop-safe:
+  // only /feed does this; /onboarding never redirects back; completed tenants stay.
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    let redirecting = false;
+    void (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/wizard/company`, { cache: "no-store" });
+        if (cancelled) return;
+        const data = res.ok ? await res.json().catch(() => ({})) : {};
+        const status = String((data as { status?: unknown }).status ?? "");
+        if (shouldRedirectToOnboarding(status)) {
+          redirecting = true;
+          router.replace("/onboarding");
+          return;
+        }
+      } catch {
+        // network/transient — fail safe: show the feed
+      } finally {
+        if (!cancelled && !redirecting) setOnboardingChecked(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [router]);
+
   const tFeed = useTranslations("feed");
   const [fabOpen, setFabOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -206,7 +236,7 @@ export default function FeedPage() {
   const [me, setMe] = useState<{ name: string; role: string } | null>(null);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/me`)
+    fetch(`${API_BASE}/api/me/`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { name: string; role: string } | null) => d && setMe(d))
       .catch(() => {});
@@ -222,8 +252,8 @@ export default function FeedPage() {
     async function load() {
       try {
         const [woRes, pmRes] = await Promise.all([
-          fetch(`${API_BASE}/api/work-orders`).then(r => r.ok ? r.json() : { work_orders: [] }),
-          fetch(`${API_BASE}/api/pm-schedules`).then(r => r.ok ? r.json() : { pm_schedules: [] }),
+          fetch(`${API_BASE}/api/work-orders/`).then(r => r.ok ? r.json() : { work_orders: [] }),
+          fetch(`${API_BASE}/api/pm-schedules/`).then(r => r.ok ? r.json() : { pm_schedules: [] }),
         ]);
         if (cancelled) return;
         const woList: WOApi[] = woRes?.work_orders ?? [];
@@ -314,6 +344,14 @@ export default function FeedPage() {
 
   function handleRefresh() {
     setRefreshing(prev => !prev);
+  }
+
+  if (!onboardingChecked) {
+    return (
+      <div className="flex h-full items-center justify-center text-slate-500" data-testid="feed-onboarding-gate">
+        Loading…
+      </div>
+    );
   }
 
   return (

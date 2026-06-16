@@ -9,6 +9,32 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { API_BASE } from "@/lib/config";
 
+const MIN_PW = 8;
+// Matches the server-side check in api/auth/magic-link.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isValidEmail(value: string): boolean {
+  return EMAIL_RE.test(value.trim());
+}
+
+// NextAuth surfaces raw provider error codes (e.g. "CredentialsSignin") via the
+// `result.error` / `?error=` channels. Customers shouldn't see auth-provider
+// codes (#1893 dogfood / #1957) — translate the ones we expect to plain text.
+function friendlyAuthError(code: string | null | undefined): string {
+  switch (code) {
+    case "CredentialsSignin":
+      return "Email or password is incorrect.";
+    case "AccessDenied":
+      return "This account isn't allowed to sign in.";
+    case "Configuration":
+    case "OAuthSignin":
+    case "OAuthCallback":
+      return "Sign-in is temporarily unavailable. Please try again.";
+    default:
+      return "Email or password is incorrect.";
+  }
+}
+
 function LoginFormInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -19,24 +45,41 @@ function LoginFormInner() {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [magicEmail, setMagicEmail] = useState("");
+  // #1956: email is captured ONCE in `email` and shared by the magic-link and
+  // password forms, so switching method never asks the user to retype it.
   const [magicLoading, setMagicLoading] = useState(false);
   const [magicSent, setMagicSent] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [error, setError] = useState(initialError ? "Sign in failed" : "");
+  // Inline, app-level validation (#1957) — no browser-native popups.
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [error, setError] = useState(initialError ? friendlyAuthError(initialError) : "");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError("");
+    setEmailError("");
+    setPasswordError("");
+    let ok = true;
+    if (!isValidEmail(email)) {
+      setEmailError("Enter a valid work email.");
+      ok = false;
+    }
+    if (password.length < MIN_PW) {
+      setPasswordError(`Password must be at least ${MIN_PW} characters.`);
+      ok = false;
+    }
+    if (!ok) return;
+
+    setLoading(true);
     const result = await signIn("credentials", {
-      email,
+      email: email.trim(),
       password,
       redirect: false,
     });
     setLoading(false);
     if (!result || result.error) {
-      setError(result?.error || "Invalid email or password");
+      setError(friendlyAuthError(result?.error));
       return;
     }
     router.push(callbackUrl);
@@ -51,19 +94,27 @@ function LoginFormInner() {
 
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
-    if (!magicEmail) return;
-    setMagicLoading(true);
     setError("");
+    setEmailError("");
+    if (!isValidEmail(email)) {
+      setEmailError("Enter a valid work email.");
+      return;
+    }
+    setMagicLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/auth/magic-link`, {
+      const res = await fetch(`${API_BASE}/api/auth/magic-link/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: magicEmail }),
+        body: JSON.stringify({ email: email.trim() }),
       });
+      // The route returns 200 for any valid email whether or not the account
+      // exists (anti-enumeration by construction), 400 for a malformed email.
       if (res.ok) {
         setMagicSent(true);
+      } else if (res.status === 400) {
+        setEmailError("Enter a valid work email.");
       } else {
-        setError("Failed to send magic link. Try again.");
+        setError("Couldn't send the link. Try again.");
       }
     } catch {
       setError("Network error. Please try again.");
@@ -142,35 +193,55 @@ function LoginFormInner() {
             <div className="text-center py-2 mb-4">
               <Mail className="w-8 h-8 text-blue-400 mx-auto mb-2" />
               <p className="text-white font-semibold text-sm">Check your inbox</p>
-              <p className="text-slate-400 text-xs mt-1">We sent a sign-in link to <strong>{magicEmail}</strong></p>
+              <p className="text-slate-400 text-xs mt-1">
+                If an account exists for <strong>{email}</strong>, a sign-in link is on its way.
+              </p>
               <button onClick={() => setMagicSent(false)} className="inline-flex items-center justify-center min-h-[44px] px-4 mt-1 text-blue-400 text-sm font-medium hover:text-blue-300">
                 Send again
               </button>
             </div>
           ) : (
-            <form onSubmit={handleMagicLink} method="post" className="mb-4">
+            /* noValidate suppresses browser-native popups in favour of inline errors (#1957) */
+            <form onSubmit={handleMagicLink} method="post" noValidate className="mb-4">
               <label htmlFor="magic-email" className="block text-xs font-medium text-slate-400 mb-1.5">Email magic link</label>
               <div className="space-y-2">
                 <Input
                   id="magic-email"
                   type="email"
-                  value={magicEmail}
-                  onChange={(e) => setMagicEmail(e.target.value)}
+                  inputMode="email"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (emailError) setEmailError("");
+                  }}
                   placeholder="you@company.com"
                   autoComplete="email"
-                  required
+                  aria-invalid={!!emailError}
+                  aria-describedby={emailError ? "login-email-error" : undefined}
                   className="w-full h-11 min-h-[44px] bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
                 />
                 <button
                   type="submit"
-                  disabled={magicLoading || !magicEmail}
+                  disabled={magicLoading}
                   className="w-full h-11 min-h-[44px] rounded-md font-semibold text-white text-sm disabled:opacity-50 flex items-center justify-center gap-2"
                   style={{ background: "linear-gradient(135deg,#2563EB,#0891B2)" }}
                 >
-                  {magicLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-                  <span>Send link</span>
+                  {magicLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> <span>Sending link…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="w-4 h-4" /> <span>Send link</span>
+                    </>
+                  )}
                 </button>
               </div>
+              {emailError && (
+                <p id="login-email-error" className="text-xs text-red-400 mt-1.5">
+                  {emailError}
+                </p>
+              )}
             </form>
           )}
 
@@ -193,19 +264,29 @@ function LoginFormInner() {
           </button>
 
           {showPasswordForm && (
-            <form id="password-signin-form" onSubmit={handleSubmit} method="post" className="space-y-4">
+            <form id="password-signin-form" onSubmit={handleSubmit} method="post" noValidate className="space-y-4">
               <div>
                 <label htmlFor="login-email" className="block text-xs font-medium text-slate-400 mb-1.5">Email</label>
                 <Input
                   id="login-email"
                   type="email"
+                  inputMode="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (emailError) setEmailError("");
+                  }}
                   placeholder="you@company.com"
                   autoComplete="email"
-                  required
+                  aria-invalid={!!emailError}
+                  aria-describedby={emailError ? "login-pw-email-error" : undefined}
                   className="h-11 min-h-[44px] bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
                 />
+                {emailError && (
+                  <p id="login-pw-email-error" className="text-xs text-red-400 mt-1.5">
+                    {emailError}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -215,10 +296,14 @@ function LoginFormInner() {
                     id="login-password"
                     type={showPw ? "text" : "password"}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (passwordError) setPasswordError("");
+                    }}
                     placeholder="••••••••"
                     autoComplete="current-password"
-                    required
+                    aria-invalid={!!passwordError}
+                    aria-describedby={passwordError ? "login-password-error" : undefined}
                     className="h-11 min-h-[44px] pr-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
                   />
                   <button
@@ -230,6 +315,11 @@ function LoginFormInner() {
                     {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {passwordError && (
+                  <p id="login-password-error" className="text-xs text-red-400 mt-1.5">
+                    {passwordError}
+                  </p>
+                )}
               </div>
 
               <Button
@@ -240,7 +330,7 @@ function LoginFormInner() {
               >
                 {loading ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" /> Signing in
+                    <Loader2 className="w-4 h-4 animate-spin" /> Signing in…
                   </>
                 ) : (
                   "Sign in"

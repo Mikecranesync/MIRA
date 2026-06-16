@@ -48,11 +48,11 @@ export async function POST() {
             )::text AS docs,
             (
               SELECT COUNT(*) FROM relationship_proposals
-              WHERE (tenant_id = $1 OR tenant_id IS NULL) AND status = 'proposed'
+              WHERE tenant_id = $1 AND status = 'proposed'
             )::text AS proposals_pending,
             (
               SELECT COUNT(*) FROM relationship_proposals
-              WHERE (tenant_id = $1 OR tenant_id IS NULL) AND status = 'verified'
+              WHERE tenant_id = $1 AND status = 'verified'
             )::text AS proposals_verified,
             (
               SELECT COUNT(DISTINCT uns_path) FROM kg_entities WHERE tenant_id = $1 AND uns_path IS NOT NULL

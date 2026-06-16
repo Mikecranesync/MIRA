@@ -4,7 +4,7 @@
 
 This doctrine is referenced from `CLAUDE.md` and `.claude/CLAUDE.md`. Every Claude Code session is expected to honor it.
 
-> **Status note (last refreshed 2026-05-31):** Staging is mostly mechanical as a CI gate — Doppler `factorylm/stg`, the NeonDB staging branch (closed Gap-2), and `.github/workflows/staging-gate.yml` (closed Gap-4) all exist and run on every PR. The two remaining gaps are local-development conveniences: `docker-compose.staging.yml` (Gap-1, makes interactive local staging easier) and `@MiraStagingBot` (Gap-3, makes interactive local Telegram probing possible). Neither blocks the CI gate. Locally-run staging today = Charlie boot with `doppler run -p factorylm -c stg`, against the staging Neon branch, with bot traffic routed to a personal/dev bot — *never* `@FactoryLM_Diagnose`.
+> **Status note (last refreshed 2026-06-15):** Staging is far more built than this doc long claimed. The CI gate (Doppler `factorylm/stg`, NeonDB staging branch, `staging-gate.yml`) has run on every PR since 2026-05-18. **And a full always-on staging stack now runs on the VPS** — compose project `mira-staging` from `/opt/mira-staging/docker-compose.staging-vps.yml`, all services healthy on offset ports (`stg-mira-hub` 4101, pipeline 4099, web 4200, mcp 4000/4001, atlas-api 4088, atlas-frontend 4100), pointed at the staging Neon branch (`ep-polished-hall-ahcqtcxe-pooler`, NOT prod) with its own Telegram bot `@Mira_stagong_bot` (token `TELEGRAM_BOT_TOKEN_STG`). Deploy via `.github/workflows/deploy-staging.yml` (push to `staging`/`release/*` or manual dispatch). **Both `docker-compose.staging.yml` (local-dev) and `docker-compose.staging-vps.yml` (the deployed one) exist** — Gap-1 and Gap-3 are CLOSED (see below). The one real gap was **human access**: the staging hub's `NEXTAUTH_URL` pointed at a Tailscale http IP, so browser/Google login broke. Fix in progress: `stg.factorylm.com` HTTPS subdomain — see `docs/plans/2026-06-15-staging-usable-subdomain.md`.
 
 ---
 
@@ -21,10 +21,10 @@ The three environments below are not aspirational — they are how every code ch
 | | **DEV** | **STAGING** | **PRODUCTION** |
 |---|---|---|---|
 | **Where** | CHARLIE local (`~/MIRA`) | CHARLIE + NeonDB staging branch | VPS (`165.245.138.91`) |
-| **Compose** | `docker-compose.yml` | `docker-compose.staging.yml` *(TODO — open Gap-1, local-dev only; CI gate runs Supervisor in-process)* | `docker-compose.saas.yml` |
+| **Compose** | `docker-compose.yml` | `docker-compose.staging.yml` (local-dev) · **`docker-compose.staging-vps.yml`** (the deployed VPS stack, project `mira-staging`) | `docker-compose.saas.yml` |
 | **Doppler config** | `factorylm/dev` | `factorylm/stg` | `factorylm/prd` |
 | **NeonDB** | dev branch (or local Postgres) | staging branch (zero-copy clone of prod) — `br-small-term-ahtkz61d` | main branch — `br-lively-bread-ahoa86se` |
-| **Telegram** | `@MiraDevBot` *(if created)* or skip | `@MiraStagingBot` *(TODO — open Gap-3, local-probing only; CI gate calls Supervisor directly)* | `@FactoryLM_Diagnose` |
+| **Telegram** | `@MiraDevBot` *(if created)* or skip | **`@Mira_stagong_bot`** (token `TELEGRAM_BOT_TOKEN_STG`, runs as `stg-mira-bot-telegram`) | `@FactoryLM_Diagnose` |
 | **Purpose** | Write code, run unit/eval tests, iterate fast | Test against real-shape data; final gate before prod | Customer surface |
 | **Safe to break** | YES | YES (but must pass gate before promotion) | **NEVER** |
 | **Gate to enter** | none | local tests pass | staging gate passes (see below) |
@@ -45,12 +45,13 @@ Numbering is stable — closed gaps keep their original number so cross-referenc
 
 **Open:**
 
-- **Gap-1** — `docker-compose.staging.yml` does not exist. Today, "staging" is whatever you `docker compose up` locally with `--config stg`. Until the file lands, locally-running staging = Charlie boot with `doppler run -p factorylm -c stg`. (The CI `staging-gate.yml` does NOT need this file — it instantiates Supervisor in-process.)
-- **Gap-3** — `@MiraStagingBot` does not exist. Until it does, do **not** point a staging build at `@FactoryLM_Diagnose`. Use a no-op adapter or a personal test bot. The CI `staging-gate.yml` calls Supervisor directly with `platform="staging"`, so no Telegram bot is needed for the gate; this gap matters only for interactive local probing.
+- **Gap-5** — staging has no human-usable HTTPS front door. The VPS staging stack runs (see below), but the hub's `NEXTAUTH_URL` points at a Tailscale http IP, so browser/Google login fails — you can reach staging but not sign in. Fix planned: `stg.factorylm.com` HTTPS subdomain (`deployment/nginx-stg-factorylm.conf` + `.github/workflows/deploy-nginx-stg.yml`), point `factorylm/stg` `NEXTAUTH_URL` at it, add the Google redirect URI. Plan: `docs/plans/2026-06-15-staging-usable-subdomain.md`.
 
 **Closed (kept here for history):**
 
+- ~~Gap-1~~ — `docker-compose.staging.yml` — **closed.** Both `docker-compose.staging.yml` (local-dev, 4 KB) and `docker-compose.staging-vps.yml` (the deployed VPS stack, 19 KB) exist in the repo root. The running staging stack on the VPS uses `staging-vps.yml` (compose project `mira-staging`, `/opt/mira-staging/`).
 - ~~Gap-2~~ — NeonDB staging branch — **closed 2026-05-18** (PR #1386). Branch `br-small-term-ahtkz61d` zero-copy-forked from prod. See "Existing infrastructure" above.
+- ~~Gap-3~~ — staging Telegram bot — **closed.** `@Mira_stagong_bot` (sic) runs as `stg-mira-bot-telegram`, using a separate token (`TELEGRAM_BOT_TOKEN_STG`) — never `@FactoryLM_Diagnose`.
 - ~~Gap-4~~ — `staging-gate.yml` workflow — **closed 2026-05-18** (PR #1386). Workflow active continuously since then; do not treat the gate as aspirational. See "Existing infrastructure" above.
 
 Track open gaps as issues, not assumptions. Closing them is what hardens this doctrine into mechanism. **No "staging-guard" hook is planned** — staging is safe-to-break by design; the guard exists for production.

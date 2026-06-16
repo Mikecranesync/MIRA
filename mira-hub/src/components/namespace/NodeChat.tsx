@@ -177,7 +177,7 @@ export function NodeChat({ nodeId, nodeName, unsPath }: NodeChatProps) {
     let isSafety = false;
 
     try {
-      const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}/chat`, {
+      const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}/chat/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: apiMessages }),

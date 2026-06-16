@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { API_BASE } from "@/lib/config";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
@@ -34,7 +35,7 @@ export default function OrganizationSettingsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/me")
+    fetch(`${API_BASE}/api/me/`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: Me | null) => setMe(d))
       .catch(() => {})

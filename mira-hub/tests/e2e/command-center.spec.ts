@@ -155,7 +155,7 @@ test("refresh keeps the configured display present", async ({ page, context, bas
   await expect(page.getByText(/Live Views \(1\)/)).toBeVisible();
 });
 
-test("down display stays listed and is marked down (configured, not missing)", async ({
+test("unprobeable display stays listed as 'open to view' (configured, not missing)", async ({
   page, context, baseURL,
 }) => {
   await auth(context, baseURL!, "cc-down-user");
@@ -165,7 +165,10 @@ test("down display stays listed and is marked down (configured, not missing)", a
   await page.goto("/command-center", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByText("Conv Simple — Live").first()).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("display down", { exact: true }).first()).toBeVisible();
+  // A display the cloud Hub can't server-side-probe (e.g. a Tailscale gateway) is
+  // NOT shown as a red "down" — it's an honest "open to view ↗" the user can open
+  // from their own browser. See DisplayDot in command-center/page.tsx.
+  await expect(page.getByText("open to view ↗", { exact: true }).first()).toBeVisible();
 });
 
 test("empty state: onboarding CTA instead of an audit-node dump", async ({ page, context, baseURL }) => {
@@ -176,8 +179,8 @@ test("empty state: onboarding CTA instead of an audit-node dump", async ({ page,
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/command-center", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByText("No live displays connected yet")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole("button", { name: /Connect live view/i }).first()).toBeVisible();
+  await expect(page.getByText("No live screens connected yet")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: /Connect live screen/i }).first()).toBeVisible();
   // Audit nodes are NOT the primary content — hidden until explicitly browsed.
   await expect(page.getByText("Audit 0o494d 0O494D")).toHaveCount(0);
 

@@ -29,7 +29,7 @@ export default function SettingsUsersPage() {
   useEffect(() => {
     // /api/team is tenant-scoped (WHERE tenant_id = $caller) — this lists only
     // the caller's own workspace members, never another tenant's. (#1932)
-    fetch(`${API_BASE}/api/team`)
+    fetch(`${API_BASE}/api/team/`)
       .then((r) => (r.ok ? r.json() : []))
       .then((d: TeamMember[]) => setMembers(Array.isArray(d) ? d : []))
       .catch(() => {})

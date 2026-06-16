@@ -127,7 +127,7 @@ export default function TeamPage() {
   const [hubUsers, setHubUsers] = useState<HubTeamMember[]>([]);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/team`)
+    fetch(`${API_BASE}/api/team/`)
       .then(r => r.ok ? r.json() : [])
       .then(setHubUsers)
       .catch(() => {});

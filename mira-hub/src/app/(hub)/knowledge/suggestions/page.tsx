@@ -12,7 +12,7 @@
  * ships.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, Check, FileText, Loader2, Shield, X } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 
@@ -69,9 +69,15 @@ const SUGGESTION_TYPE_LABELS: Record<string, string> = {
 interface ProposalsResponse {
   proposals: Proposal[];
   total: number;
+  hasMore?: boolean;
   suggestions?: Suggestion[];
   suggestionsTotal?: number;
+  suggestionsHasMore?: boolean;
 }
+
+// Page size for the proposals/suggestions queue. Matches the API default limit;
+// "Load more" advances the offset by this amount (#1892).
+const PAGE_SIZE = 100;
 
 const STATUS_TABS: Array<{ key: string; label: string }> = [
   { key: "proposed", label: "Pending" },
@@ -88,6 +94,13 @@ export default function ProposalsPage() {
   const [statusFilter, setStatusFilter] = useState("proposed");
   const [deciding, setDeciding] = useState<Record<string, "verify" | "reject" | undefined>>({});
   const [toast, setToast] = useState<string | null>(null);
+  // #1892: real totals + offset paging so large queues aren't silently truncated.
+  const [total, setTotal] = useState(0);
+  const [suggestionsTotal, setSuggestionsTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [suggestionsHasMore, setSuggestionsHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const offsetRef = useRef(0);
 
   async function decide(proposalId: string, decision: "verify" | "reject") {
     setDeciding((s) => ({ ...s, [proposalId]: decision }));
@@ -96,7 +109,7 @@ export default function ProposalsPage() {
       setProposals((cur) => cur.filter((p) => p.id !== proposalId));
     }
     try {
-      const res = await fetch(`${API_BASE}/api/proposals/${proposalId}/decide`, {
+      const res = await fetch(`${API_BASE}/api/proposals/${proposalId}/decide/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ decision }),
@@ -121,16 +134,23 @@ export default function ProposalsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const fetchProposals = async () => {
+    const load = async () => {
+      setLoading(true);
+      offsetRef.current = 0;
       try {
-        const res = await fetch(`${API_BASE}/api/proposals?status=${statusFilter}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `${API_BASE}/api/proposals/?status=${statusFilter}&limit=${PAGE_SIZE}&offset=0`,
+          { cache: "no-store" },
+        );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as ProposalsResponse;
         if (cancelled) return;
         setProposals(data.proposals);
         setSuggestions(data.suggestions ?? []);
+        setTotal(data.total ?? data.proposals.length);
+        setSuggestionsTotal(data.suggestionsTotal ?? data.suggestions?.length ?? 0);
+        setHasMore(Boolean(data.hasMore));
+        setSuggestionsHasMore(Boolean(data.suggestionsHasMore));
         setError(null);
       } catch (e) {
         if (cancelled) return;
@@ -139,11 +159,37 @@ export default function ProposalsPage() {
         if (!cancelled) setLoading(false);
       }
     };
-    void fetchProposals();
+    void load();
     return () => {
       cancelled = true;
     };
   }, [statusFilter]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore) return;
+    setLoadingMore(true);
+    const nextOffset = offsetRef.current + PAGE_SIZE;
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/proposals/?status=${statusFilter}&limit=${PAGE_SIZE}&offset=${nextOffset}`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as ProposalsResponse;
+      offsetRef.current = nextOffset;
+      setProposals((cur) => [...cur, ...data.proposals]);
+      setSuggestions((cur) => [...cur, ...(data.suggestions ?? [])]);
+      setTotal(data.total ?? 0);
+      setSuggestionsTotal(data.suggestionsTotal ?? 0);
+      setHasMore(Boolean(data.hasMore));
+      setSuggestionsHasMore(Boolean(data.suggestionsHasMore));
+    } catch (e) {
+      setToast(`Couldn't load more: ${(e as Error).message}`);
+      setTimeout(() => setToast(null), 4000);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, statusFilter]);
 
   const grouped = useMemo(() => groupByRiskLevel(proposals), [proposals]);
 
@@ -189,6 +235,9 @@ export default function ProposalsPage() {
         <EmptyState statusFilter={statusFilter} />
       ) : (
         <div className="space-y-6" data-testid="proposals-list">
+          <p className="text-xs text-slate-500" data-testid="proposals-count">
+            Showing {proposals.length + suggestions.length} of {total + suggestionsTotal}
+          </p>
           {grouped.safetyCritical.length > 0 && (
             <RiskSection
               title="Safety-critical"
@@ -230,6 +279,20 @@ export default function ProposalsPage() {
             />
           )}
           {suggestions.length > 0 && <SuggestionSection suggestions={suggestions} />}
+          {(hasMore || suggestionsHasMore) && (
+            <div className="flex justify-center pt-2">
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                data-testid="proposals-load-more"
+                className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                {loadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

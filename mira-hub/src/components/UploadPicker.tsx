@@ -143,13 +143,13 @@ export function UploadPicker({
   useEffect(() => {
     if (!open) return;
     setError(null);
-    fetch(`${API_BASE}/api/picker/google/token`)
+    fetch(`${API_BASE}/api/picker/google/token/`)
       .then((r) => setGoogleAvailable(r.ok))
       .catch(() => setGoogleAvailable(false));
-    fetch(`${API_BASE}/api/picker/dropbox/key`)
+    fetch(`${API_BASE}/api/picker/dropbox/key/`)
       .then((r) => setDropboxAvailable(r.ok))
       .catch(() => setDropboxAvailable(false));
-    fetch(`${API_BASE}/api/assets`)
+    fetch(`${API_BASE}/api/assets/`)
       .then((r) => (r.ok ? r.json() : []))
       .then((data: Asset[] | unknown) => {
         if (Array.isArray(data)) setAssets(data as Asset[]);
@@ -201,7 +201,7 @@ export function UploadPicker({
   async function openGoogle() {
     setError(null);
     try {
-      const tokenRes = await fetch(`${API_BASE}/api/picker/google/token`);
+      const tokenRes = await fetch(`${API_BASE}/api/picker/google/token/`);
       if (!tokenRes.ok) throw new Error("Google not connected");
       const { accessToken, apiKey, appId } = await tokenRes.json();
       if (!window.google?.picker || !pickerLoaded) {
@@ -267,7 +267,7 @@ export function UploadPicker({
   }
 
   async function fetchAppKey(): Promise<string> {
-    const res = await fetch(`${API_BASE}/api/picker/dropbox/key`);
+    const res = await fetch(`${API_BASE}/api/picker/dropbox/key/`);
     if (!res.ok) return "";
     const { appKey } = await res.json();
     return appKey as string;
@@ -492,7 +492,7 @@ export function UploadPicker({
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => { window.location.href = "/hub/api/auth/google"; }}
+                onClick={() => { window.location.href = `${API_BASE}/api/auth/google`; }}
                 title="Sign in with Google to pick files from Drive"
                 data-testid="connect-google-drive"
                 className="gap-1.5"

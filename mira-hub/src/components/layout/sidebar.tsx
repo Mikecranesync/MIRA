@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { API_BASE } from "@/lib/config";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -76,7 +77,7 @@ export function Sidebar() {
   const [me, setMe] = useState<MeData | null>(null);
 
   useEffect(() => {
-    fetch("/api/me")
+    fetch(`${API_BASE}/api/me/`)
       .then(r => r.ok ? r.json() : null)
       .then((d: MeData | null) => d && setMe(d))
       .catch(() => {});

@@ -74,7 +74,7 @@ export default function CommandCenterPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/command-center/tree`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/command-center/tree/`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as TreeResponse;
       setData(json);
@@ -273,10 +273,10 @@ function LiveViewsSection({
       </div>
       {displays.length === 0 ? (
         <div className="px-4 py-3">
-          <p className="text-xs text-slate-500">No live views connected yet.</p>
+          <p className="text-xs text-slate-500">No live screens connected yet.</p>
           <button onClick={onConnect} className="mt-2 inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
             style={{ borderColor: "var(--border, #e2e8f0)" }}>
-            <Plus className="h-3.5 w-3.5" /> Connect live view
+            <Plus className="h-3.5 w-3.5" /> Connect live screen
           </button>
         </div>
       ) : (
@@ -297,9 +297,9 @@ function LiveViewsSection({
                 </span>
                 {d.unsPath && <span className="block truncate font-mono text-[10px] text-slate-400">{d.unsPath}</span>}
                 <span className="mt-0.5 inline-flex items-center gap-1 text-[10px]"
-                  style={{ color: d.live ? "#16a34a" : "#d97706" }}>
+                  style={{ color: d.live ? "#16a34a" : "#2563eb" }}>
                   <DisplayDot live={d.live} />
-                  {d.live ? "display up" : "display down"}
+                  {d.live ? "display up" : "open to view ↗"}
                 </span>
               </span>
             </button>
@@ -325,14 +325,15 @@ function OnboardingEmpty({
     <div className="flex flex-1 flex-col overflow-y-auto">
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
         <MonitorPlay className="mb-4 h-12 w-12 text-slate-300" />
-        <h2 className="text-base font-semibold text-slate-700">No live displays connected yet</h2>
+        <h2 className="text-base font-semibold text-slate-700">No live screens connected yet</h2>
         <p className="mt-1 max-w-md text-sm text-slate-500">
-          Connect an Ignition, Node-RED, or HMI display to turn Command Center into a live view of
-          your plant. It opens in its own tab and stays connected across refreshes.
+          Pick a gateway and a screen MIRA already knows about, choose the machine it shows, and
+          it&apos;ll appear here. The screen opens in its own tab and stays connected across
+          refreshes.
         </p>
         <button onClick={onConnect}
           className="mt-5 inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
-          <Plus className="h-4 w-4" /> Connect live view
+          <Plus className="h-4 w-4" /> Connect live screen
         </button>
         {totalNodes > 0 && (
           <button onClick={onToggleAllNodes}
@@ -404,14 +405,20 @@ function TreeRow({
   );
 }
 
-/** Green dot (open ring) = a registered HMI display URL reachable over HTTP.
- * SECONDARY status — reachability, NOT telemetry freshness. */
+/** Open ring = a registered HMI display. Green when the Hub server confirmed it
+ * reachable over HTTP; blue ("open to view") when it couldn't probe — which is
+ * the normal case for a Tailscale/LAN gateway viewed from the cloud Hub, since
+ * the VPS isn't on the tenant's tailnet and an HTTPS page can't probe an HTTP
+ * gateway (mixed content). Blue is NOT "down": the display opens in the user's
+ * browser, which CAN reach it. SECONDARY status — reachability, not telemetry. */
 function DisplayDot({ live }: { live: boolean }) {
   return (
     <span className="relative ml-1 flex h-2.5 w-2.5 flex-shrink-0"
-      title={live ? "Display URL reachable (HTTP) — click to watch" : "Display registered but unreachable"}>
+      title={live
+        ? "Display URL reachable (HTTP) — click to watch"
+        : "Registered — opens in your browser. The cloud Hub can't probe a Tailscale/LAN gateway, so reachability isn't confirmed server-side."}>
       <span className="relative inline-flex h-2.5 w-2.5 rounded-full border-2"
-        style={{ borderColor: live ? "#16a34a" : "#cbd5e1", backgroundColor: "transparent" }} />
+        style={{ borderColor: live ? "#16a34a" : "#2563eb", backgroundColor: "transparent" }} />
     </span>
   );
 }
@@ -475,7 +482,8 @@ function FreshnessSummary({
       <FreshnessDot freshness={headline} forceShow />
       {counts.live} live · {counts.stale} stale · {counts.simulated} sim
       <span className="text-slate-400">
-        · {reachable}/{displaysTotal} display{displaysTotal === 1 ? "" : "s"} up
+        · {displaysTotal} display{displaysTotal === 1 ? "" : "s"} connected
+        {reachable > 0 ? ` · ${reachable} cloud-reachable` : ""}
       </span>
     </span>
   );
