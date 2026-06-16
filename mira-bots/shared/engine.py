@@ -721,6 +721,13 @@ class Supervisor:
         # fire-and-forget writes from being GC'd before they complete.
         self._decision_trace_tasks: set = set()
 
+        # Troubleshooting-session lifecycle (Phase 7, #1659). Strong refs keep
+        # the fire-and-forget NeonDB writes alive; the dict maps chat_id → the
+        # active troubleshooting_sessions UUID so a session opens once per
+        # confirmed-asset conversation and subsequent turns append to it.
+        self._session_tasks: set = set()
+        self._ts_sessions: dict[str, str] = {}
+
         # Service base URLs for nameplate downstream calls and reactive ingest
         self.mcp_base_url = (
             mcp_base_url or os.getenv("MCP_BASE_URL", "http://mira-mcp:8001")
@@ -1259,6 +1266,18 @@ class Supervisor:
             tag_evidence=tag_evidence,
             tenant_id=tenant_id,
         )
+        # Phase 7 (#1659) — troubleshooting-session lifecycle (observational,
+        # fire-and-forget). Opens a session on gate-pass (confirmed asset +
+        # active diagnostic state), appends each turn, closes on RESOLVED.
+        # Idle sessions are abandoned by the nightly cron. Fully guarded.
+        self._schedule_session_lifecycle(
+            chat_id=chat_id,
+            message=message,
+            reply=reply,
+            result=result,
+            platform=platform,
+            tenant_id=tenant_id,
+        )
         return reply
 
     def _schedule_decision_trace(
@@ -1329,6 +1348,100 @@ class Supervisor:
             task.add_done_callback(self._decision_trace_tasks.discard)
         except Exception as exc:  # noqa: BLE001
             logger.debug("decision_trace schedule skipped: %s", exc)
+
+    def _schedule_session_lifecycle(
+        self,
+        *,
+        chat_id: str,
+        message: str,
+        reply: str,
+        result: dict,
+        platform: str,
+        tenant_id: str | None = None,
+    ) -> None:
+        """Open / append / close a ``troubleshooting_sessions`` row for this turn.
+
+        Phase 7 (#1659). Best-effort and fully guarded — a NeonDB blip must
+        never touch the reply path:
+
+          * **Open** on gate-pass: an asset is confirmed (``asset_identified``),
+            the UNS gate is no longer pending, and the turn is in an active
+            diagnostic state. Opens once per ``chat_id`` (deduped via
+            ``self._ts_sessions``).
+          * **Append** every turn while a session is active — the user message
+            and the assistant reply.
+          * **Close** (``resolved``) on a ``RESOLVED`` next_state. Idle sessions
+            (>24h) are abandoned by ``mira-bots/scripts/nightly_close_sessions.py``.
+
+        Asset context lives in ``metadata`` — chat surfaces carry no asset UUID,
+        so ``asset_id``/``component_id`` stay NULL (the column is nullable).
+        """
+        try:
+            import asyncio  # noqa: PLC0415
+
+            from .fsm import ACTIVE_DIAGNOSTIC_STATES  # noqa: PLC0415
+            from .troubleshooting_session import (  # noqa: PLC0415
+                append_turn_coro,
+                close_session_coro,
+                open_session_coro,
+            )
+
+            tenant_id = tenant_id or self.tenant_id
+            if not tenant_id:
+                return
+
+            state = self._load_state(chat_id)
+            if not isinstance(state, dict):
+                return
+            ctx = state.get("context") or {}
+            uns_context = ctx.get("uns_context") if isinstance(ctx, dict) else None
+            next_state = result.get("next_state") or ""
+            asset_label = state.get("asset_identified") or ""
+            gate_passed = bool(asset_label) and not (
+                isinstance(ctx, dict) and ctx.get("pending_uns_confirm")
+            )
+
+            async def _run() -> None:
+                sid = self._ts_sessions.get(chat_id)
+                if not sid and gate_passed and next_state in ACTIVE_DIAGNOSTIC_STATES:
+                    uc = uns_context if isinstance(uns_context, dict) else {}
+                    metadata = {
+                        "asset_label": asset_label,
+                        "manufacturer": uc.get("manufacturer"),
+                        "model": uc.get("model"),
+                        "uns_path": uc.get("uns_path"),
+                        "fault_code": uc.get("fault_code"),
+                        "source": uc.get("source"),
+                        "fsm_state": next_state,
+                    }
+                    sid = await open_session_coro(
+                        tenant_id=tenant_id,
+                        asset_id=None,
+                        component_id=None,
+                        channel=platform,
+                        metadata=metadata,
+                    )
+                    if sid:
+                        self._ts_sessions[chat_id] = sid
+                if not sid:
+                    return
+                await append_turn_coro(
+                    session_id=sid, tenant_id=tenant_id, role="user", content=message
+                )
+                await append_turn_coro(
+                    session_id=sid, tenant_id=tenant_id, role="assistant", content=reply
+                )
+                if next_state == "RESOLVED":
+                    await close_session_coro(
+                        session_id=sid, tenant_id=tenant_id, reason="resolved"
+                    )
+                    self._ts_sessions.pop(chat_id, None)
+
+            task = asyncio.create_task(_run())
+            self._session_tasks.add(task)
+            task.add_done_callback(self._session_tasks.discard)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("session_lifecycle schedule skipped: %s", exc)
 
     def _maybe_attach_live_snapshot(
         self,
