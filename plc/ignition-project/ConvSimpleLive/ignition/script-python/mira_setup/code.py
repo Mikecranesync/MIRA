@@ -541,6 +541,53 @@ def slot_divisor(role_key, asset):
 # the existing MAP step, and a SAVE step (readiness + train-before-deploy approval). Read-only on
 # process tags throughout; only the per-asset config tag is written. Jython 2.7 safe (no f-strings).
 
+# --- cross-page state: the chosen data-source folder ---
+# Session-custom props did NOT survive page navigation on the bench (a write on the Connect page
+# read back empty on Verify), so the wizard's one piece of cross-page state -- the chosen folder --
+# lives in a String memory tag instead. Tags persist reliably across pages. (Bench single-flow tool;
+# a per-session value isn't needed here.) Connect writes it; Verify/Map read it.
+SETUP_FOLDER_TAG = "[default]MIRA/Config/_wizard_folder"
+
+
+def _ensure_setup_tag():
+    try:
+        qv = system.tag.readBlocking([SETUP_FOLDER_TAG])[0]
+        if qv.quality.isGood():
+            return True
+    except Exception:
+        pass
+    td = {"name": "_wizard_folder", "tagType": "AtomicTag", "valueSource": "memory",
+          "dataType": "String", "value": "[default]"}
+    try:
+        system.tag.configure("[default]MIRA/Config", [td], "o")
+        return True
+    except Exception as e:
+        _logger().warn("could not create setup-folder tag: %s" % str(e))
+        return False
+
+
+def set_setup_folder(folder):
+    """Connect step: persist the chosen data-source folder (memory tag). Returns it for chaining."""
+    folder = folder or "[default]"
+    _ensure_setup_tag()
+    try:
+        system.tag.writeBlocking([SETUP_FOLDER_TAG], [folder])
+    except Exception as e:
+        _logger().warn("set_setup_folder failed: %s" % str(e))
+    return folder
+
+
+def get_setup_folder():
+    """Verify/Map steps: the chosen data-source folder, or '[default]' if not set yet."""
+    try:
+        qv = system.tag.readBlocking([SETUP_FOLDER_TAG])[0]
+        if qv.quality.isGood() and qv.value is not None and str(qv.value).strip():
+            return str(qv.value)
+    except Exception:
+        pass
+    return "[default]"
+
+
 # --- Step 1: CONNECT ---
 
 def provider_options():

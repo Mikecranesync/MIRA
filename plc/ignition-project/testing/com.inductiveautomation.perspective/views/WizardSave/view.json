@@ -75,7 +75,7 @@
           {
             "type": "ia.input.button", "meta": { "name": "back" }, "position": { "basis": "140px", "shrink": 0 },
             "props": { "text": "◂ Back", "style": { "backgroundColor": "#30363d", "color": "#c9d1d9", "fontSize": "14px", "borderRadius": "8px", "border": "none", "padding": "11px" } },
-            "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tp = {\"assetId\": self.session.custom.assetId, \"folder\": self.session.custom.folder, \"pollMs\": self.session.custom.pollMs}\n\tsystem.perspective.navigate(page=\"/map\")\n" } } } }
+            "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tp = {\"assetId\": self.session.custom.assetId, \"folder\": mira_setup.get_setup_folder(), \"pollMs\": self.session.custom.pollMs}\n\tsystem.perspective.navigate(page=\"/map\")\n" } } } }
           },
           { "type": "ia.display.label", "meta": { "name": "status" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "", "style": { "color": "#7ee787", "fontSize": "15px", "fontWeight": 600, "textAlign": "center" } }, "propConfig": { "props.text": { "binding": { "type": "property", "config": { "path": "view.custom.status" } } } } },
           {
