@@ -5,6 +5,7 @@ import {
   ChevronDown, ChevronRight,
   Folder, FolderOpen, Cog, Factory, FileText, Layers,
   RefreshCw, MonitorPlay, MonitorOff, Radio, ExternalLink, Plus,
+  Wifi, WifiOff,
 } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 import {
@@ -54,6 +55,64 @@ function KindIcon({ kind, open, className }: { kind: string; open: boolean; clas
   if (kind === "document") return <FileText className={className} />;
   if (kind === "namespace") return open ? <FolderOpen className={className} /> : <Folder className={className} />;
   return <Layers className={className} />;
+}
+
+// ── Connected Gateways Bar (Phase 2, issue #2014) ────────────────────────────
+// Reads from GET /api/command-center/gateways which surfaces every Ignition
+// gateway that completed the MIRA Connect activation flow for this tenant.
+// Each gateway is probed for HTTP reachability on the server side; we just
+// render the result here.
+
+interface GatewayEntry {
+  hostname: string;
+  agentId: string | null;
+  activatedAt: string;
+  online: boolean;
+}
+
+function ConnectedGatewaysBar() {
+  const [gateways, setGateways] = useState<GatewayEntry[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    void fetch(`${API_BASE}/api/command-center/gateways`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j: { gateways: GatewayEntry[] }) => setGateways(j.gateways))
+      .catch(() => undefined)
+      .finally(() => setLoaded(true));
+  }, []);
+
+  // Don't show anything until loaded (avoids flicker on first paint).
+  if (!loaded) return null;
+  // No gateways yet — show a compact hint instead of an empty bar.
+  if (gateways.length === 0) return (
+    <div className="border-b px-5 py-1.5 text-[11px] text-slate-400"
+      style={{ borderColor: "var(--border, #e2e8f0)" }}>
+      No Ignition gateways connected. Activate MIRA Connect from your gateway to pair it.
+    </div>
+  );
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b px-5 py-1.5"
+      style={{ borderColor: "var(--border, #e2e8f0)" }}>
+      <span className="text-[11px] font-medium text-slate-500">Gateways:</span>
+      {gateways.map((g) => (
+        <span key={g.hostname}
+          className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium"
+          style={{
+            borderColor: g.online ? "#16a34a40" : "#cbd5e1",
+            backgroundColor: g.online ? "#f0fdf4" : "#f8fafc",
+            color: g.online ? "#15803d" : "#64748b",
+          }}
+          title={`${g.hostname}${g.agentId ? ` · agent ${g.agentId}` : ""}`}>
+          {g.online
+            ? <Wifi className="h-3 w-3" />
+            : <WifiOff className="h-3 w-3" />}
+          {g.hostname}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -182,6 +241,9 @@ export default function CommandCenterPage() {
           </button>
         </div>
       </div>
+
+      {/* Connected Gateways Bar — Phase 2, issue #2014. */}
+      <ConnectedGatewaysBar />
 
       {loading && <p className="px-5 py-4 text-sm text-slate-500">Loading namespace…</p>}
       {error && <p className="px-5 py-4 text-sm text-red-600">Failed to load: {error}</p>}
