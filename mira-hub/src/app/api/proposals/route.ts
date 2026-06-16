@@ -135,7 +135,7 @@ export async function GET(req: Request) {
     const offset = clampOffset(url.searchParams.get("offset"));
 
     // ── shared WHERE for relationship_proposals (edge proposals) ──
-    const filters: string[] = ["(p.tenant_id = $1::uuid OR p.tenant_id IS NULL)"];
+    const filters: string[] = ["p.tenant_id = $1::uuid"];
     const params: unknown[] = [ctx.tenantId];
 
     if (statusParam !== "all") {
