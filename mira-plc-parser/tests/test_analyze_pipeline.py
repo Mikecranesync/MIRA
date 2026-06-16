@@ -86,7 +86,7 @@ def test_render_markdown_smoke(conveyor_l5x):
 
 
 def test_unknown_format_handled_gracefully():
-    res = run("mystery.bin", "\x00\x01 not a plc export")
+    res = run("notes.txt", "just some plain prose with no plc structure at all")
     assert not res.handled
     assert res.detection.fmt == "unknown"
     md = render_markdown(res)
@@ -99,3 +99,14 @@ def test_planned_format_routes_but_defers():
     assert not res.handled
     assert res.detection.fmt == "plcopen_xml"
     assert any("later phase" in w for w in res.project.warnings)
+
+
+def test_acd_pipeline_gives_actionable_guidance():
+    res = run("PlantLine.ACD", "\x00\x01 binary project")
+    assert not res.handled
+    assert res.detection.fmt == "rockwell_acd"
+    md = render_markdown(res)
+    assert "action needed" in md.lower()
+    assert "L5X" in md
+    # and it must NOT pretend to have parsed anything
+    assert res.report.counts.get("tags", 0) == 0
