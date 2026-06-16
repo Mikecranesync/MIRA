@@ -1,0 +1,37 @@
+From: MIRA beta-readiness orchestrator (Lens A re-audit, 2026-06-08)
+Subject: [PATCH] security(hub): tenant-scope cmms_equipment lookup in /api/documents
+
+WHY: /api/documents resolves an asset's manufacturer/model via
+`SELECT ... FROM cmms_equipment WHERE id = $1` on the raw RLS-bypass pool with NO
+tenant filter. An authenticated tenant-A user (or the shared demo token) can pass
+any asset UUID and read a tenant-B asset's manufacturer + model_number = a
+cross-tenant IDOR. cmms_equipment is per-tenant OPERATIONAL data, not the
+universal knowledge_entries corpus, so the #1761 precedent (/api/usage: keep
+knowledge_entries untenanted, tenant-filter operational tables) applies directly.
+Surgical: add `AND tenant_id = $2` to the one lookup; knowledge_entries query is
+left as the documented universal corpus.
+
+APPLY:
+  cd <repo-root-MIRA>
+  git checkout -b fix/documents-tenant-filter
+  git apply wiki/orchestrator/patches/2026-06-08-documents-tenant-filter.patch
+
+VERIFY:
+  cd mira-hub && npx tsc --noEmit
+  # request another tenant's asset_id => empty mfr/model (was: leaked); own asset => unchanged
+
+diff --git a/mira-hub/src/app/api/documents/route.ts b/mira-hub/src/app/api/documents/route.ts
+index a42b49bf..261e4023 100644
+--- a/mira-hub/src/app/api/documents/route.ts
++++ b/mira-hub/src/app/api/documents/route.ts
+@@ -36,8 +36,8 @@ export async function GET(req: Request) {
+     if (assetId) {
+       const asset = await pool
+         .query(
+-          `SELECT manufacturer, model_number FROM cmms_equipment WHERE id = $1 LIMIT 1`,
+-          [assetId],
++          `SELECT manufacturer, model_number FROM cmms_equipment WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
++          [assetId, ctx.tenantId],
+         )
+         .then((r: { rows: Record<string, unknown>[] }) => r.rows[0] ?? null);
+       if (asset) {

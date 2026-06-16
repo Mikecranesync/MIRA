@@ -1,0 +1,33 @@
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -42,9 +42,9 @@
+ | | DEV | STAGING | PROD |
+ |---|---|---|---|
+ | Where | CHARLIE local | CHARLIE + Neon staging branch | VPS (`165.245.138.91`) |
+-| Compose | `docker-compose.yml` | `docker-compose.staging.yml` *(TODO)* | `docker-compose.saas.yml` |
++| Compose | `docker-compose.yml` | `docker-compose.staging.yml` (+ `docker-compose.staging-vps.yml` on VPS) | `docker-compose.saas.yml` |
+ | Doppler | `factorylm/dev` | `factorylm/stg` | `factorylm/prd` |
+-| Telegram | `@MiraDevBot` or none | `@MiraStagingBot` *(TODO)* | `@FactoryLM_Diagnose` |
++| Telegram | `@MiraDevBot` or none | `@MiraStaging_bot` | `@FactoryLM_Diagnose` |
+ | Safe to break | YES | YES (gate before promotion) | **NEVER** |
+ 
+ **Hard rules (do not bypass — `prod-guard.sh` enforces #1–#3):**
+--- a/docs/architecture/environment-quick-ref.md
++++ b/docs/architecture/environment-quick-ref.md
+@@ -9,14 +9,14 @@
+ | | DEV | STAGING | PROD |
+ |---|---|---|---|
+ | Where | CHARLIE local | CHARLIE + NeonDB staging branch | VPS `165.245.138.91` (DigitalOcean) |
+-| Compose | `docker-compose.yml` | `docker-compose.staging.yml` (**Gap-1 — does not exist yet**) | `docker-compose.saas.yml` |
++| Compose | `docker-compose.yml` | `docker-compose.staging.yml` (+ `docker-compose.staging-vps.yml`) | `docker-compose.saas.yml` |
+ | Doppler | `factorylm/dev` | `factorylm/stg` | `factorylm/prd` |
+ | NeonDB branch | `ep-lingering-salad` (dev endpoint) | `br-small-term-ahtkz61d` / `ep-polished-hall-ahcqtcxe-pooler` | `br-lively-bread-ahoa86se` |
+ | Telegram bot | `@MiraDevBot` or none | `@MiraStagingBot` (**Gap-3 — does not exist yet**) | `@FactoryLM_Diagnose` |
+ | VPS host | n/a | Same VPS, `stg-*` containers, port `4xxx`, `/opt/mira-staging` | `/opt/mira`, standard ports |
+ | Safe to break | YES | YES (gate before promotion) | **NEVER** |
+ 
+-Source: `docs/environments.md`. Gap-1 (staging compose) and Gap-3 (staging bot) are open as of this writing.
++Source: `docs/environments.md`. Gap-1 (staging compose) and Gap-3 (staging bot) are CLOSED — both compose files + `@MiraStaging_bot` exist on origin/main.
+ 
+ ---
+ 
