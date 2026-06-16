@@ -1,16 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
-// Honest scaffold: rows describe security controls that are planned but not yet
-// available. No interactive dead controls — nothing here pretends to work.
+// Honest scaffold: rows describe security controls.
+// API keys row links to the live page; others remain planned.
 
-const ROWS: { label: string; description: string }[] = [
+const PLANNED_ROWS: { label: string; description: string }[] = [
   { label: "Two-factor authentication", description: "Require a second factor at sign-in." },
   { label: "Single sign-on (SSO)", description: "Sign in with your company identity provider." },
   { label: "Active sessions", description: "Review and revoke signed-in devices." },
-  { label: "API keys", description: "Programmatic access tokens for your workspace." },
 ];
 
 export default function SettingsSecurityPage() {
@@ -27,7 +26,23 @@ export default function SettingsSecurityPage() {
 
       <div className="px-4 md:px-6 py-4 max-w-2xl mx-auto">
         <div className="card divide-y" style={{ borderColor: "var(--border)" }}>
-          {ROWS.map((r) => (
+          {/* Live: API Keys */}
+          <Link
+            href="/settings/api-keys"
+            className="flex items-center justify-between gap-3 p-4 transition-colors hover:bg-[var(--surface-1)]"
+            style={{ minHeight: "44px" }}
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>API keys</p>
+              <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
+                Programmatic access tokens for the i3X API.
+              </p>
+            </div>
+            <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "var(--foreground-subtle)" }} />
+          </Link>
+
+          {/* Planned (not yet available) */}
+          {PLANNED_ROWS.map((r) => (
             <div key={r.label} className="flex items-center justify-between gap-3 p-4">
               <div className="min-w-0">
                 <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{r.label}</p>

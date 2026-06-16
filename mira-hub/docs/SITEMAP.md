@@ -10,10 +10,10 @@
 
 | Surface | Count |
 |---|---|
-| Pages | **57** (6 dynamic) |
-| API routes | **129** (33 dynamic) |
+| Pages | **58** (6 dynamic) |
+| API routes | **131** (34 dynamic) |
 
-## Pages (57)
+## Pages (58)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -58,6 +58,7 @@
 | `/scan` | static | `(hub)/scan/page.tsx` |
 | `/schedule` | static | `(hub)/schedule/page.tsx` |
 | `/settings` | static | `(hub)/settings/page.tsx` |
+| `/settings/api-keys` | static | `(hub)/settings/api-keys/page.tsx` |
 | `/settings/audit-log` | static | `(hub)/settings/audit-log/page.tsx` |
 | `/settings/integrations` | static | `(hub)/settings/integrations/page.tsx` |
 | `/settings/organization` | static | `(hub)/settings/organization/page.tsx` |
@@ -75,7 +76,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (129)
+## API routes (131)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -141,6 +142,8 @@
 | `/api/events/[id]` | dynamic | `api/events/[id]/route.ts` |
 | `/api/export` | static | `api/export/route.ts` |
 | `/api/health` | static | `api/health/route.ts` |
+| `/api/i3x-keys` | static | `api/i3x-keys/route.ts` |
+| `/api/i3x-keys/[id]` | dynamic | `api/i3x-keys/[id]/route.ts` |
 | `/api/i3x/v1/info` | static | `api/i3x/v1/info/route.ts` |
 | `/api/i3x/v1/namespaces` | static | `api/i3x/v1/namespaces/route.ts` |
 | `/api/i3x/v1/objects` | static | `api/i3x/v1/objects/route.ts` |

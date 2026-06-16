@@ -1,8 +1,8 @@
 {
   "basePath": "/hub",
   "counts": {
-    "pages": 57,
-    "apiRoutes": 129
+    "pages": 58,
+    "apiRoutes": 131
   },
   "pages": [
     "/admin",
@@ -46,6 +46,7 @@
     "/scan",
     "/schedule",
     "/settings",
+    "/settings/api-keys",
     "/settings/audit-log",
     "/settings/integrations",
     "/settings/organization",
@@ -126,6 +127,8 @@
     "/api/events/[id]",
     "/api/export",
     "/api/health",
+    "/api/i3x-keys",
+    "/api/i3x-keys/[id]",
     "/api/i3x/v1/info",
     "/api/i3x/v1/namespaces",
     "/api/i3x/v1/objects",

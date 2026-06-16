@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { API_BASE } from "@/lib/config";
 import Link from "next/link";
 import {
-  Building2, Users, Shield, Lock, Plug, BarChart2, ScrollText, Inbox,
+  Building2, Users, Shield, Lock, Plug, BarChart2, ScrollText, Inbox, KeyRound,
 } from "lucide-react";
 
 type Me = {
@@ -33,6 +33,7 @@ const CARDS: Card[] = [
   { title: "Usage", description: "Activity and consumption for your workspace.", href: "/settings/usage", icon: BarChart2 },
   { title: "Audit Log", description: "Recent events across your workspace.", href: "/settings/audit-log", icon: ScrollText },
   { title: "Review Queue", description: "Pending proposals and findings to review.", href: "/settings/review-queue", icon: Inbox, capability: "review_queue.read" },
+  { title: "API Keys", description: "Programmatic access tokens for the i3X API.", href: "/settings/api-keys", icon: KeyRound },
 ];
 
 export default function SettingsIndexPage() {
