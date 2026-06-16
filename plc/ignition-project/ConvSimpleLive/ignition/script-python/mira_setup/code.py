@@ -592,8 +592,8 @@ def browse_nodes(base):
         except Exception:
             continue
         leaf = full.rsplit("/", 1)[-1]
-        if leaf.startswith("["):
-            leaf = leaf.strip("[]")
+        if leaf.startswith("[") and "]" in leaf:
+            leaf = leaf.split("]", 1)[1]   # strip the "[provider]" prefix on root-level nodes
         if children:
             out.append({"label": "[+]  " + leaf, "path": full, "kind": "folder"})
         else:
