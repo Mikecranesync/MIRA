@@ -1,7 +1,0 @@
-{
-  "title": "Conv Simple Live",
-  "description": "Live conveyor dashboard (Perspective) — bound to MIRA_IOCheck tags. Auto-built 2026-05-29.",
-  "enabled": true,
-  "inheritable": false,
-  "parent": ""
-}

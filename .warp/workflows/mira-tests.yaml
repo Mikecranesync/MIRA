@@ -1,5 +1,0 @@
----
-name: MIRA run tests
-command: cd /Users/charlienode/MIRA && python -m pytest tests/ -v --tb=short
-tags: [mira, test, pytest]
-description: Run full offline test suite (76 tests, no containers required)

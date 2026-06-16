@@ -1,5 +1,0 @@
----
-name: MIRA check enum drift
-command: cd /Users/charlienode/MIRA && python scripts/check_enum_drift.py
-tags: [mira, lint, ci]
-description: Detect enum drift between Python source and DB schema

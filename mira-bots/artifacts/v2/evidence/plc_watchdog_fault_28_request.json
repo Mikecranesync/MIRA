@@ -1,5 +1,0 @@
-{
-  "asset_tag": "plc_watchdog_fault_28",
-  "notes": "PLC scan time exceeding limit, watchdog fault every few cycles",
-  "image": "<66920 chars b64>"
-}

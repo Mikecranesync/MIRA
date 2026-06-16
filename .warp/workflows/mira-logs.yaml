@@ -1,8 +1,0 @@
----
-name: MIRA service logs
-command: doppler run --project factorylm --config prd -- docker compose logs -f {{service}}
-tags: [mira, docker, debug]
-description: Tail logs for a MIRA container
-arguments:
-  - name: service
-    description: "Container name: mira-pipeline, mira-bot-telegram, mira-bot-slack, mira-mcp, atlas-api, mira-web, mira-bridge, mira-ingest"

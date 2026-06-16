@@ -1,5 +1,0 @@
----
-name: MIRA smoke test
-command: bash install/smoke_test.sh
-tags: [mira, test, ops]
-description: Run smoke tests against localhost (set MIRA_SERVER_BASE_URL=http://IP for remote node)

@@ -1,8 +1,0 @@
----
-name: MIRA rebuild service
-command: doppler run --project factorylm --config prd -- docker compose up -d --build {{service}}
-tags: [mira, docker, ops]
-description: Rebuild and restart a single MIRA container without touching others
-arguments:
-  - name: service
-    description: "Container name: mira-pipeline, mira-bot-telegram, mira-mcp, atlas-api, mira-web, etc."

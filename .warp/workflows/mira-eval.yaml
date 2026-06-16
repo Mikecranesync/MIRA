@@ -1,5 +1,0 @@
----
-name: MIRA eval (golden cases)
-command: cd /Users/charlienode/MIRA && python -m pytest tests/eval/ -v --tb=short
-tags: [mira, test, eval]
-description: Run 39 golden eval cases against the diagnostic engine
