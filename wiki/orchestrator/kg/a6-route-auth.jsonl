@@ -1,0 +1,7 @@
+{"node":"middleware.ts","type":"control","module":"mira-hub","role":"global_edge_auth_gate","evidence":"mira-hub/src/middleware.ts"}
+{"edge":"protects","from":"middleware.ts","to":"all_non_allowlisted_routes","mechanism":"next-auth JWE decrypt; 401 JSON for /api/*, /login redirect for pages"}
+{"node":"public_allowlist","type":"attack_surface","members":["login","signup","magic","m/","quickstart","api/auth","api/public","api/quickstart","api/health","api/scanbe/healthz","api/uploads/folder","api/uploads/[a-f0-9]"],"evidence":"middleware matcher negative-lookahead"}
+{"edge":"self_auths","from":"api/uploads/folder","to":"HUB_INGEST_TOKEN","mechanism":"Bearer token + UUID x-mira-tenant-id header"}
+{"edge":"self_protects","from":"api/quickstart/ask","to":"per_ip_hash_rate_limit","mechanism":"DB-pattern IP-hash limiter; public-seed-corpus only; cross-vendor strip"}
+{"edge":"depended_on_by","from":"sessionOr401()","to":"hub_api_routes","degree":95,"evidence":"kg god_nodes"}
+{"edge":"depended_on_by","from":"withTenantContext()","to":"hub_api_routes","degree":80,"evidence":"kg god_nodes"}

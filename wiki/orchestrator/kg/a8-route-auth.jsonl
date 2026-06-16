@@ -1,0 +1,11 @@
+{"type":"node","id":"route_cc_display_collection","label":"GET/POST /api/command-center/display","node_type":"route","source":"mira-hub/src/app/api/command-center/display/route.ts","auth":"sessionOr401","tenant_scoped":true,"input_validation":"validateDisplayRegistration","evidence":"L43 sessionOr401; L54 withTenantContext; WHERE d.tenant_id=$1::uuid","run":"A8","commit":"60e3c61d","audited_ref":"origin/main@80f5da18"}
+{"type":"node","id":"route_cc_display_item","label":"GET /api/command-center/display/[id]","node_type":"route","source":"mira-hub/src/app/api/command-center/display/[id]/route.ts","auth":"sessionOr401","tenant_scoped":true,"ssrf_probe":true,"evidence":"L45 sessionOr401; L54 withTenantContext; L75 NextResponse.redirect 302","run":"A8"}
+{"type":"node","id":"route_pm_complete","label":"POST /api/pm-schedules/[id]/complete","node_type":"route","source":"mira-hub/src/app/api/pm-schedules/[id]/complete/route.ts","auth":"sessionOr401","tenant_scoped":true,"idor_guard":"WHERE id=$1 AND tenant_id=$2","uuid_validated":true,"run":"A8","commit":"83dd1af0"}
+{"type":"node","id":"lib_display_registration_validator","label":"validateDisplayRegistration()","node_type":"validator","source":"mira-hub/src/lib/display-registration.ts","ssrf_guard":"blocks link-local/169.254 cloud-metadata; prod allowlist COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST","run":"A8"}
+{"type":"edge","from":"route_cc_display_collection","to":"lib_session_sessionor401","edge_type":"calls","evidence":"L43","run":"A8"}
+{"type":"edge","from":"route_cc_display_collection","to":"lib_tenant_context_withtenantcontext","edge_type":"calls","evidence":"L54","run":"A8"}
+{"type":"edge","from":"route_cc_display_collection","to":"lib_display_registration_validator","edge_type":"validates_input","run":"A8"}
+{"type":"edge","from":"route_cc_display_item","to":"lib_session_sessionor401","edge_type":"calls","run":"A8"}
+{"type":"edge","from":"route_cc_display_item","to":"lib_tenant_context_withtenantcontext","edge_type":"calls","run":"A8"}
+{"type":"edge","from":"route_pm_complete","to":"lib_session_sessionor401","edge_type":"calls","run":"A8"}
+{"type":"edge","from":"route_pm_complete","to":"lib_tenant_context_withtenantcontext","edge_type":"calls","run":"A8"}

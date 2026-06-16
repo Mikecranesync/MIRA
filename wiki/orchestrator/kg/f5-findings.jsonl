@@ -1,0 +1,21 @@
+{"_lens":"F5","ts":"2026-06-12","audited":"origin/main@51e3f5b0","graph_owner":"nightly graphify agent #1854/#1888 now owns graph.json (3879 nodes/5840 edges @308e7b55); F5 triples recorded sidecar to avoid clobber"}
+{"node":"f5_north_star","label":"stranger signs up → uploads a manual → MIRA cites it; nothing breaks/leaks/lies","file_type":"finding","status":"GREEN_strengthened"}
+{"node":"f5_upload_cite_flow","label":"authed folder-upload→NodeChat→cite path (literal North Star)","file_type":"surface","evidence":"mira-hub/src/lib/node-knowledge-ingest.ts + manual-rag.ts + /api/namespace/node/[id]/chat"}
+{"node":"f5_break_500x3_closed","label":"3 folder-upload 500 BREAK causes closed this cycle","file_type":"finding","evidence":"#1899: unpdf standalone externalize #1907 + data-side tenants row #1910 + is_private writer #1911"}
+{"node":"f5_lie_mikeharper_closed","label":"hardcoded 'Mike Harper · Admin' shown to every tenant — LIE closed","file_type":"finding","evidence":"#1904 feed/page.tsx:169 (only fix-comment + test fixture remain; verified gone)"}
+{"node":"f5_lie_citation_markers_closed","label":"NodeChat [n] markers now 1:1 with rendered source chips — LIE closed","file_type":"finding","evidence":"#1912 manual-rag.ts:363-377 stable citation key; refusals suppress phantom chips"}
+{"node":"f5_leak_csv_injection_closed","label":"CSV/spreadsheet formula-injection neutralized — LEAK closed","file_type":"finding","evidence":"#1919 csv-export.ts neutralizeFormula (prefixes ' to =+@\\t\\r); 5 export routes; QA-repro tested"}
+{"node":"f5_leak_node_chunk_closed","label":"node-attachment chunks written is_private=true — cross-tenant LEAK closed","file_type":"finding","evidence":"#1903 node-knowledge-ingest.ts:95-101 + mig052 privatize_node_attachment_chunks"}
+{"node":"f5_gate_deploy_unblocked","label":"deploy smoke gate restored (bun, not npm ci) — was silently RED","file_type":"finding","evidence":"#1855 smoke-test.yml:60 bun install --frozen-lockfile"}
+{"node":"f5_residual_replay_guard","label":"#1858/#1877 vendor-strip has NO CI regression gate (D-owned, inert replay seam)","file_type":"residual","status":"OPEN","owner":"D"}
+{"node":"f5_residual_uploadflow_ungated","label":"just-repaired upload→cite North-Star flow still NOT in deploy smoke gate → could silently re-500","file_type":"residual","status":"OPEN","owner":"B/E","fix":"namespace E2E green 9/9 #1889; staged patches/2026-06-09-smoke-gate-signup-moneypath.patch"}
+{"node":"f5_phase6_gap","label":"ignition_chat.py sets per-asset chat_id but not source=direct_connection (master-plan Phase 6)","file_type":"roadmap","status":"conservative-safe (direct surfaces get chat-gate, not unsafe bypass)"}
+{"node":"kg_insight_f5","label":"highest-degree HUB nodes = sessionOr401() deg95 + withTenantContext() deg80 → auth+tenant-isolation choke points; structurally corroborates A5 '0 auth-orphans/111 routes'","file_type":"kg_insight"}
+{"edge":["f5_break_500x3_closed","closes","f5_upload_cite_flow"]}
+{"edge":["f5_lie_citation_markers_closed","closes","f5_upload_cite_flow"]}
+{"edge":["f5_residual_uploadflow_ungated","guard_gap_over","f5_upload_cite_flow"]}
+{"edge":["f5_residual_replay_guard","guard_gap_over","f5_north_star"]}
+{"edge":["f5_break_500x3_closed","verified_closed_on","origin/main@51e3f5b0"]}
+{"edge":["f5_lie_mikeharper_closed","verified_closed_on","origin/main@51e3f5b0"]}
+{"edge":["f5_leak_csv_injection_closed","verified_closed_on","origin/main@51e3f5b0"]}
+{"edge":["kg_insight_f5","corroborates","A5 0-auth-orphans"]}

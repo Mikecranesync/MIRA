@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Bot, Send, AlertTriangle, RotateCcw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { API_BASE } from "@/lib/config";
 
 interface ChatMessage {
   id: string;
@@ -134,7 +135,7 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
     let isSafety = false;
 
     try {
-      const res = await fetch(`/hub/api/assets/${assetId}/chat`, {
+      const res = await fetch(`${API_BASE}/api/assets/${assetId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: apiMessages }),
@@ -185,7 +186,13 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
       }
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
-      setError("Connection lost. Check your network and try again.");
+      console.error("[AssetChat] chat request failed:", err);
+      const statusCode = /(\d{3})/.exec((err as Error).message ?? "")?.[1];
+      setError(
+        statusCode
+          ? `Chat unavailable (${statusCode}). Try again or refresh the page.`
+          : "Connection lost. Check your network and try again.",
+      );
       setMessages((prev) => {
         const next = [...prev];
         next.pop(); // remove empty assistant bubble

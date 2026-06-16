@@ -57,17 +57,17 @@ const WO_LIST = [
 ];
 
 const DOCS_LIST = [
-  { id: "d1", name: "Ingersoll Rand R55n — OEM Service Manual",   category: "Manuals",    state: "indexed",    date: "2026-01-10", pages: 248 },
-  { id: "d2", name: "Air Compressor Wiring Diagram — Rev B",      category: "Schematics", state: "indexed",    date: "2025-11-20", pages: 12 },
-  { id: "d3", name: "Spare Parts List — R55n Series",             category: "Parts",      state: "partial",    date: "2025-08-05", pages: 64 },
-  { id: "d4", name: "R55n Service Manual — Rev A (Superseded)",   category: "Manuals",    state: "superseded", date: "2023-03-01", pages: 210 },
+  { id: "d1", name: "AutomationDirect GS1 Series — User Manual",       category: "Manuals",    state: "indexed",    date: "2026-01-10", pages: 248 },
+  { id: "d2", name: "GS1-45P0 Wiring Diagram — Rev B",                 category: "Schematics", state: "indexed",    date: "2025-11-20", pages: 12 },
+  { id: "d3", name: "GS1 Series — Spare Parts & Accessories List",      category: "Parts",      state: "partial",    date: "2025-08-05", pages: 64 },
+  { id: "d4", name: "GS1 User Manual — Rev A (Superseded)",             category: "Manuals",    state: "superseded", date: "2023-03-01", pages: 210 },
 ];
 
 const PARTS_LIST = [
-  { id: "P-001", name: "Air Filter",          qty: 12, reorder: 5,  unit: "ea", status: "ok" },
-  { id: "P-015", name: "Drive Belt — R55n",   qty: 2,  reorder: 2,  unit: "ea", status: "low" },
-  { id: "P-022", name: "Compressor Oil 46",   qty: 8,  reorder: 4,  unit: "L",  status: "ok" },
-  { id: "P-031", name: "Shaft Seal Kit",      qty: 0,  reorder: 1,  unit: "ea", status: "out" },
+  { id: "P-001", name: "GS1 EMI Line Filter",          qty: 2,  reorder: 1, unit: "ea", status: "ok" },
+  { id: "P-015", name: "GS1 AC Input Line Reactor",    qty: 1,  reorder: 1, unit: "ea", status: "low" },
+  { id: "P-022", name: "GS1 Braking Resistor 200Ω",   qty: 0,  reorder: 1, unit: "ea", status: "out" },
+  { id: "P-031", name: "GS1 Fan Replacement Kit",      qty: 3,  reorder: 2, unit: "ea", status: "ok" },
 ];
 
 const EVENT_ICON: Record<string, { Icon: React.ElementType; color: string }> = {

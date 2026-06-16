@@ -1,0 +1,21 @@
+{"_lens":"A9","_run":"2026-06-16","_audited":"origin/main@ba79b4de","_baseline":"A8@80f5da18","_graphify":"uninstallable (no CLI/module; GEMINI/GROQ/CEREBRAS/OPENAI/ANTHROPIC all unset) — hand-extracted, no-clobber on nightly graph 3888n/5853e"}
+{"type":"node","id":"hub.middleware.buildCsp","kind":"function","file":"mira-hub/src/middleware.ts:101","evidence":"CSP builder; modified #1902 7aab77d9"}
+{"type":"node","id":"ext.www.dropbox.com","kind":"external_origin","evidence":"Dropbox Chooser host (dropins.js + XHR + iframe)"}
+{"type":"edge","from":"hub.middleware.buildCsp","to":"ext.www.dropbox.com","rel":"trusts_in_script_src","evidence":"middleware.ts:105 — 4th external script-exec origin after google(x2)/stripe; nonce model preserved, no unsafe-inline added"}
+{"type":"edge","from":"hub.middleware.buildCsp","to":"ext.www.dropbox.com","rel":"trusts_in_connect_src","evidence":"middleware.ts:111"}
+{"type":"edge","from":"hub.middleware.buildCsp","to":"ext.www.dropbox.com","rel":"trusts_in_frame_src","evidence":"middleware.ts:123 — Chooser triad scoped to one host, not a CDN wildcard"}
+{"type":"node","id":"hub.api.proposals.GET","kind":"route","file":"mira-hub/src/app/api/proposals/route.ts:122","evidence":"admin proposals queue; #1892 real COUNT(*) OVER + offset paging"}
+{"type":"edge","from":"hub.api.proposals.GET","to":"hub.lib.sessionOr401","rel":"guarded_by","evidence":"route.ts:126"}
+{"type":"edge","from":"hub.api.proposals.GET","to":"table.ai_suggestions","rel":"tenant_scoped","evidence":"s.tenant_id = $1::uuid (strict)"}
+{"type":"edge","from":"hub.api.proposals.GET","to":"table.relationship_proposals","rel":"tenant_scoped","evidence":"p.tenant_id=$1 OR IS NULL = documented global-template pattern"}
+{"type":"node","id":"hub.api.proposals.clampLimit","kind":"function","file":"route.ts:97","evidence":"coerces ?limit→[1,HARD_LIMIT] int; numeric bound = no injection via limit/offset"}
+{"type":"node","id":"hub.api.proposals.clampOffset","kind":"function","file":"route.ts:104","evidence":"coerces ?offset→[0,inf) int; unit-tested route.test.ts (NEW)"}
+{"type":"node","id":"hub.api.namespace.node.POST","kind":"route","file":"mira-hub/src/app/api/namespace/node/route.ts:34","evidence":"#1983 enterprise-rooted inline-create"}
+{"type":"edge","from":"hub.api.namespace.node.POST","to":"hub.lib.sessionOr401","rel":"guarded_by","evidence":"route.ts:38; all queries ctx.tenantId-scoped"}
+{"type":"node","id":"hub.api.namespace.tree.GET","kind":"route","file":"mira-hub/src/app/api/namespace/tree/route.ts:56","evidence":"#1983 enterprise-rooted tree"}
+{"type":"edge","from":"hub.api.namespace.tree.GET","to":"hub.lib.sessionOr401","rel":"guarded_by","evidence":"route.ts:60; ctx.tenantId on every query"}
+{"type":"node","id":"hub.api.quickstart.manufacturers.GET","kind":"route","file":"mira-hub/src/app/api/quickstart/manufacturers/route.ts:26","evidence":"PUBLIC picker (#1977 normalize)"}
+{"type":"edge","from":"hub.api.quickstart.manufacturers.GET","to":"hub.lib.quickstartTenantId","rel":"pinned_to_demo_tenant","evidence":"withTenantContext(quickstartTenantId()) — reads demo tenant only, NOT caller tenant = no leak despite no sessionOr401"}
+{"type":"node","id":"hub.middleware.publicMatcher","kind":"config","file":"middleware.ts:244","evidence":"public set {login,signup,magic,m/,quickstart,api/auth,api/public,api/quickstart,api/health,api/scanbe/healthz,api/uploads/folder,api/uploads/[a-f0-9],static} — UNCHANGED this window (frozen)"}
+{"type":"edge","from":"commits.1957_1956_1958","to":"hub.auth.logic","rel":"does_not_touch","evidence":"login/signup #1957/#1956/#1958 = client-validation + UX + anti-enumeration copy ('if an account exists…'); 0 auth-logic files in diff = security-positive"}
+{"type":"insight","id":"a9.no_unguarded_route","text":"Query 'API route nodes mutated 80f5da18..ba79b4de lacking a guarded_by->sessionOr401 edge' = EXACTLY [quickstart/manufacturers], and that node carries instead a pinned_to_demo_tenant edge -> 0 caller-tenant-reachable routes are unguarded this window. Public allowlist set unchanged; the only NEW external-origin trust edge is www.dropbox.com (scoped Chooser triad, one host, behind nonce model)."}

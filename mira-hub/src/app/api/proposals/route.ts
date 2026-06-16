@@ -73,7 +73,7 @@ export async function GET(req: Request) {
       HARD_LIMIT,
     );
 
-    const filters: string[] = ["(p.tenant_id = $1::uuid OR p.tenant_id IS NULL)"];
+    const filters: string[] = ["p.tenant_id = $1::uuid"];
     const params: unknown[] = [ctx.tenantId];
 
     if (statusParam !== "all") {

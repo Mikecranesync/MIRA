@@ -1,0 +1,11 @@
+{"node":"capabilities.ts","type":"control","module":"mira-hub","role":"authz_single_source_of_truth","added":"#1932","evidence":"mira-hub/src/lib/capabilities.ts","kg_status":"NOT in graph.json (built @308e7b55, predates #1932)"}
+{"node":"requireCapability()","type":"control","module":"mira-hub","role":"api_route_authz_guard","evidence":"capabilities.ts requireCapability(); returns 403 NextResponse or null"}
+{"node":"getCapabilities()","type":"control","module":"mira-hub","role":"nav_authz_source","evidence":"capabilities.ts; surfaced via /api/me to client nav"}
+{"edge":"composes_after","from":"requireCapability()","to":"sessionOr401()","mechanism":"every admin route: const ctx=await sessionOr401(); if(ctx instanceof NextResponse)return ctx; const denied=requireCapability(ctx,cap); if(denied)return denied;"}
+{"edge":"guards","from":"requireCapability('review_queue.read')","to":"api/admin/review/queue + api/admin/review/asset/[...path]","mechanism":"migrated from isReviewAdmin(email) 403; behavior-identical (cap<-isReviewAdmin(email))"}
+{"edge":"feeds","from":"getCapabilities()","to":"api/me","mechanism":"capabilities[] derived from session (email allowlist + status); same signals API guards use -> no nav/API drift"}
+{"edge":"maps_to_existing_signal","from":"platform.users.read","to":"status==='admin'","mechanism":"no access widening; platform user-admin gate unchanged"}
+{"edge":"tightens","from":"api/assets/[id]/chat","to":"retrieveManualChunks(allowTenantFallback=false)","mechanism":"manufacturer-scoped citations only; helper tenant-scoped by ctx.tenantId in all branches"}
+{"edge":"preserves_invariant","from":"node-knowledge-ingest(ingest-v2,#1935)","to":"is_private=true (literal)","mechanism":"knowledge_entries INSERT L168; hybrid read filter (is_private=false OR tenant_id=caller); no-DB vitest guard"}
+{"node":"public_allowlist","type":"attack_surface","status":"FROZEN since A6","members":["login","signup","magic","m/","quickstart","api/auth","api/public","api/quickstart","api/health","api/scanbe/healthz","api/uploads/folder","api/uploads/[a-f0-9]"],"evidence":"middleware.ts diff empty 51e3f5b0..origin/main"}
+{"node":"MAX_UPLOAD_BYTES","type":"dos_bound","value":"50MB default (NEXT_PUBLIC_MAX_UPLOAD_MB)","evidence":"config.ts:30-31; enforced server-side on uploads + namespace/node files routes"}

@@ -1,0 +1,25 @@
+{"type":"node","id":"f7_north_star_yes","_lens":"F7","kind":"verdict","label":"North Star YES on deploy truth @a485bdf8","evidence":"stranger signup->grounded chat: zero stranger-reachable break/leak/lie re-verified on origin/main"}
+{"type":"node","id":"f7_break_429","_lens":"F7","kind":"invariant","label":"BREAK quickstart/ask 429","evidence":"git show origin/main:mira-hub/src/app/api/quickstart/ask/route.ts -> {status:429} L109 byte-stable"}
+{"type":"node","id":"f7_lie_strip","_lens":"F7","kind":"invariant","label":"LIE stripConflictingVendors pre-citations","evidence":"route.ts:152 stripConflictingVendors(chunks,...) BEFORE citations[]; cite-or-refuse system prompt L67/88; #1875 refusal->[] held"}
+{"type":"node","id":"f7_leak_docfilter","_lens":"F7","kind":"invariant","label":"LEAK /api/documents tenant filter","evidence":"sessionOrDemo + (is_private=false OR tenant_id=$caller) + single-doc AND tenant_id=$2 (#1833) byte-stable"}
+{"type":"node","id":"f7_gate_smoke","_lens":"F7","kind":"invariant","label":"GATE deploy smoke + signup money-path","evidence":"smoke-test.yml P0-1/P0-2/P1-1 + playwright.signup.config wired 44fa7d97 (deploy-blocking); bun --frozen-lockfile #1855"}
+{"type":"node","id":"f7_engine_citation","_lens":"F7","kind":"invariant","label":"ENGINE citation enforce default-ON","evidence":"citation_compliance.py:42 MIRA_CITATION_ENFORCE defaults 1; engine FROZEN since C7"}
+{"type":"node","id":"f7_version_tag","_lens":"F7","kind":"new_mechanism","label":"#1970 version-tag.yml auto v+rollback on merge","evidence":"38cc1cfa: on push main reads /VERSION -> annotated v<VERSION> tag + rollback/<date>-v<VERSION> checkpoint + GitHub Release; no-op if tag exists"}
+{"type":"node","id":"f7_version_gate","_lens":"F7","kind":"new_mechanism","label":"version-gate.yml bump-gate every code PR","evidence":"38cc1cfa: /VERSION must bump on every code PR -> guarantees unique tag per code merge; docs/versioning.md"}
+{"type":"node","id":"f7_deploy_main_head","_lens":"F7","kind":"residual","label":"deploy-vps.yml still checks out main HEAD","evidence":"git show origin/main:.github/workflows/deploy-vps.yml -> actions/checkout@v6 main; NO ref:/tag pin; tags created but deploy not pinned to them"}
+{"type":"node","id":"f7_ledger6_narrowed","_lens":"F7","kind":"ledger_item","label":"#736 deploy reproducibility NARROWED","evidence":"automatic rollback target now exists (rollback/<date>-v<VERSION>); remaining half = deploy ships main HEAD not the tag"}
+{"type":"node","id":"f7_knownissues_stale","_lens":"F7","kind":"ledger_item","label":"known-issues.md stale 2026-05-26 (worsens)","evidence":"0 of 51 commits since F6 touched it; now also omits #1970 version-tag/rollback + 040-042 gap + closed #1833/#1858/#1899/#1903/#1909/#1919"}
+{"type":"node","id":"f7_funnel_rework","_lens":"F7","kind":"watch","label":"assessment-led GTM funnel rework","evidence":"#1937 assessment GTM + #1953/#1960 command-board landing + #1963 CTA Book-Your-Assessment->/buy + #1969 login UX; self-serve signup->chat + quickstart demo still wired+gated"}
+{"type":"node","id":"f7_migration_head_052","_lens":"F7","kind":"fact","label":"hub migration head 052","evidence":"mira-hub/db/migrations head 052_privatize_node_attachment_chunks; hot.md still says 037 (ledger #9); 040-042 gap + dup-048 confirmed"}
+{"type":"edge","from":"f7_version_gate","rel":"gates","to":"f7_version_tag","_lens":"F7","evidence":"VERSION bump precondition -> unique tag per code merge"}
+{"type":"edge","from":"f7_version_tag","rel":"produces","to":"f7_ledger6_narrowed","_lens":"F7","evidence":"auto rollback/<date> checkpoint = the rollback target #736 lacked"}
+{"type":"edge","from":"f7_deploy_main_head","rel":"does_NOT_consume","to":"f7_version_tag","_lens":"F7","evidence":"deploy checkout pins main HEAD, never the v<VERSION> tag = missing consumer edge = remaining half of #736"}
+{"type":"edge","from":"f7_ledger6_narrowed","rel":"residual","to":"f7_deploy_main_head","_lens":"F7","evidence":"narrowed-not-closed: rollback exists, deploy still not tag-pinned"}
+{"type":"edge","from":"f7_north_star_yes","rel":"rests_on","to":"f7_break_429","_lens":"F7"}
+{"type":"edge","from":"f7_north_star_yes","rel":"rests_on","to":"f7_lie_strip","_lens":"F7"}
+{"type":"edge","from":"f7_north_star_yes","rel":"rests_on","to":"f7_leak_docfilter","_lens":"F7"}
+{"type":"edge","from":"f7_north_star_yes","rel":"rests_on","to":"f7_gate_smoke","_lens":"F7"}
+{"type":"edge","from":"f7_north_star_yes","rel":"rests_on","to":"f7_engine_citation","_lens":"F7"}
+{"type":"edge","from":"f7_funnel_rework","rel":"does_not_break","to":"f7_break_429","_lens":"F7","evidence":"GTM rework is copy/CTA/landing; quickstart chat + signup money-path still wired+gated"}
+{"type":"edge","from":"f7_knownissues_stale","rel":"omits","to":"f7_version_tag","_lens":"F7","evidence":"stale doc misses the very mechanism that narrowed #736"}
+{"type":"edge","from":"f7_migration_head_052","rel":"contradicts","to":"f7_knownissues_stale","_lens":"F7","evidence":"actual head 052 vs doc-hygiene drift across hot.md/known-issues"}

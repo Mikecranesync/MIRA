@@ -1,0 +1,34 @@
+{"_lens":"B8","_baseline":"origin/main@8c3a44c1","_method":"hand-extracted (graphify uninstallable; GEMINI/GROQ/CEREBRAS/OPENAI/ANTHROPIC all unset); main graph @3888/5853 no-clobber","type":"node","id":"b8_hub_functional_readiness","label":"Lens B — Hub functional readiness (origin/main @8c3a44c1)","status":"GREEN"}
+{"type":"node","id":"adr0017_helper","label":"applyHubProposalTransition (lib/proposal-transition.ts)","evidence":"decide/route.ts:4 import, :97 call"}
+{"type":"node","id":"decide_route","label":"proposals/[id]/decide/route.ts","evidence":"raw kg_relationships UPDATE L138 = documented engine projection (L93-96 comment)"}
+{"type":"node","id":"table_ai_suggestions","label":"ai_suggestions table"}
+{"type":"node","id":"table_relationship_proposals","label":"relationship_proposals table"}
+{"type":"node","id":"canary_proposal_drift","label":"tests/canary/proposal_state_drift.sql","evidence":"exactly 2 forward-only @checks on origin/main (L19,L36)"}
+{"type":"node","id":"canary_reverse_drift_patch","label":"patches/2026-06-10-canary-reverse-drift-check.patch","status":"staged-apply-clean-vs-origin/main","evidence":"git apply -p1 --check CLEAN; 6-cycle stall B3->B8"}
+{"type":"node","id":"engine_proposal_transition_py","label":"mira-bots/shared/proposal_transition.py","evidence":"terminal transitions disown ai_suggestions (Hub-owned docstring) -> stale-pending lie canary-blind"}
+{"type":"node","id":"pw_config_signup","label":"playwright.signup.config.ts","status":"wired"}
+{"type":"node","id":"pw_config_smoke","label":"playwright.smoke.config.ts","status":"wired"}
+{"type":"node","id":"pw_config_command_center","label":"playwright.command-center.config.ts","status":"workflow-orphan(0 refs)"}
+{"type":"node","id":"pw_config_onboarding_validate","label":"playwright.onboarding-validate.config.ts","status":"workflow-orphan(0 refs)"}
+{"type":"node","id":"pw_config_onboarding_walkthrough","label":"playwright.onboarding-walkthrough.config.ts","status":"workflow-orphan(0 refs)"}
+{"type":"node","id":"cmd_center_display_api","label":"/api/command-center/display GET+POST (#1960 bdfdec38)","evidence":"NEW feature code this window; sessionOr401+withTenantContext+tenant_id WHERE"}
+{"type":"node","id":"quickstart_manufacturers_route","label":"api/quickstart/manufacturers/route.ts (#1977 cc2de0e2)","evidence":"manufacturer dedup via canonical-lowercase Map; stranger-path, no auth/leak change"}
+{"type":"node","id":"normalizeManufacturer","label":"lib/manufacturerNormalize.normalizeManufacturer (#1977)","evidence":"collapses OCR aliases -> canonical"}
+{"type":"node","id":"migration_053","label":"053_cleanup_dogfood_test_account.sql (#1981 9f1f5176)","evidence":"DELETE hub_users WHERE email_lower=one exact dogfood email; idempotent, FK-safe, head 052->053"}
+{"type":"node","id":"hub_unit_tests_job","label":"Hub Unit Tests (vitest) CI job"}
+{"type":"edge","src":"decide_route","dst":"adr0017_helper","rel":"calls (ADR-0017 lockstep, clean)"}
+{"type":"edge","src":"adr0017_helper","dst":"table_ai_suggestions","rel":"writes_lockstep"}
+{"type":"edge","src":"adr0017_helper","dst":"table_relationship_proposals","rel":"writes_lockstep"}
+{"type":"edge","src":"canary_proposal_drift","dst":"table_ai_suggestions","rel":"checks(forward-only)"}
+{"type":"edge","src":"canary_proposal_drift","dst":"table_relationship_proposals","rel":"checks(forward-only)"}
+{"type":"edge","src":"engine_proposal_transition_py","dst":"table_relationship_proposals","rel":"terminal-transition reaches"}
+{"type":"edge","src":"engine_proposal_transition_py","dst":"table_ai_suggestions","rel":"DISOWNS (leaves stale-pending) -- the missing reverse @check"}
+{"type":"edge","src":"canary_reverse_drift_patch","dst":"canary_proposal_drift","rel":"adds_reverse_check(staged,apply-clean,unmerged 6-cycle)"}
+{"type":"edge","src":"pw_config_signup","dst":"hub_unit_tests_job","rel":"wired_by smoke-test.yml:73-78"}
+{"type":"edge","src":"pw_config_smoke","dst":"hub_unit_tests_job","rel":"wired_by smoke-test.yml"}
+{"type":"edge","src":"cmd_center_display_api","dst":"pw_config_command_center","rel":"would_be_e2e_tested_by (config is 0-workflow orphan)"}
+{"type":"edge","src":"cmd_center_display_api","dst":"hub_unit_tests_job","rel":"unit_tested_by (framework-free helpers — mitigates e2e gap)"}
+{"type":"edge","src":"quickstart_manufacturers_route","dst":"normalizeManufacturer","rel":"dedups_via (stranger-path readiness++)"}
+{"type":"edge","src":"migration_053","dst":"hub_unit_tests_job","rel":"ledger filename-keyed idempotent (head 053)"}
+{"_insight":"Among 7 Playwright configs, EXACTLY 2 carry a wired_by workflow edge (signup,smoke). Of the 3 workflow-orphans, command-center is the UNIQUE node that is BOTH a 0-workflow config AND target of a this-window feature commit (#1960 /api/command-center/display + live-view) -> live churn on an e2e-untested surface; mitigated (not erased) by #1960 shipping framework-free vitest helpers into the wired Hub Unit Tests job. onboarding-validate/onboarding-walkthrough saw 0 code churn = pure dormant coverage."}
+{"_delta":"+18 nodes/+12 edges (sidecar; main graph 3888/5853 unchanged, no-clobber)"}

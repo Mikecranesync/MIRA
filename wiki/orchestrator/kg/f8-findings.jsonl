@@ -1,0 +1,18 @@
+{"type":"node","id":"lens_f8","label":"Lens F8 beta-blocker ledger 2026-06-15","kind":"audit","evidence":"wiki/orchestrator/BETA_READINESS.md"}
+{"type":"node","id":"pr_1901_beta_gate_close","label":"#1901 onboarding upload→ask beta-gate close","kind":"pr","evidence":"origin/main@10eccc7d"}
+{"type":"node","id":"pr_2020_staging_usable","label":"#2020 staging usable stg.factorylm.com HTTPS","kind":"pr","evidence":"origin/main@85a7a1ae"}
+{"type":"node","id":"pr_2019_prodguard_readonly","label":"#2019 prod-guard read-only prod inspection","kind":"pr","evidence":"origin/main@58c22e26"}
+{"type":"node","id":"pr_2014_screen_picker","label":"#2014 gateway→screen→machine live-screen picker (Phase 1)","kind":"pr","evidence":"origin/main@ba79b4de"}
+{"type":"node","id":"cfg_onboarding_validate","label":"playwright.onboarding-validate.config.ts","kind":"test_config","evidence":"mira-hub/playwright.onboarding-validate.config.ts"}
+{"type":"node","id":"cfg_onboarding_walkthrough","label":"playwright.onboarding-walkthrough.config.ts","kind":"test_config","evidence":"mira-hub/playwright.onboarding-walkthrough.config.ts"}
+{"type":"node","id":"cfg_command_center","label":"playwright.command-center.config.ts","kind":"test_config","evidence":"mira-hub/playwright.command-center.config.ts"}
+{"type":"node","id":"wf_smoke_test","label":"smoke-test.yml (gates smoke+signup only)","kind":"workflow","evidence":".github/workflows/smoke-test.yml"}
+{"type":"node","id":"known_issues_stale","label":"known-issues.md stale (2026-05-26, 6-cycle)","kind":"doc_debt","evidence":"docs/known-issues.md"}
+{"type":"node","id":"deploy_vps_head_not_tag","label":"deploy-vps.yml checks out main HEAD not v<VERSION> tag (#736)","kind":"ops_gap","evidence":".github/workflows/deploy-vps.yml:56"}
+{"type":"edge","from":"pr_1901_beta_gate_close","to":"cfg_onboarding_validate","rel":"should_be_gated_by","evidence":"beta-gate close merged; config gates 0 workflows"}
+{"type":"edge","from":"cfg_onboarding_validate","to":"wf_smoke_test","rel":"NOT_wired_into","evidence":"smoke-test.yml runs only smoke+signup configs"}
+{"type":"edge","from":"cfg_onboarding_walkthrough","to":"wf_smoke_test","rel":"NOT_wired_into","evidence":"smoke-test.yml line 71/78"}
+{"type":"edge","from":"cfg_command_center","to":"wf_smoke_test","rel":"NOT_wired_into","evidence":"3 configs gate 0 workflows"}
+{"type":"edge","from":"lens_f8","to":"known_issues_stale","rel":"flags","evidence":"0 of 17 commits since F7 touched it"}
+{"type":"edge","from":"lens_f8","to":"deploy_vps_head_not_tag","rel":"flags","evidence":"#1970 created tag+rollback; deploy still checks out HEAD"}
+{"type":"edge","from":"pr_2020_staging_usable","to":"lens_f8","rel":"strengthens","evidence":"long-stalled staging gap materially closed"}

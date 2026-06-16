@@ -73,7 +73,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
                 target_entity_id, target_entity_type, relationship_type,
                 confidence, status, created_by, reasoning
          FROM relationship_proposals
-         WHERE id = $1 AND (tenant_id = $2 OR tenant_id IS NULL)
+         WHERE id = $1 AND tenant_id = $2::uuid
          FOR UPDATE`,
         [id, ctx.tenantId],
       );

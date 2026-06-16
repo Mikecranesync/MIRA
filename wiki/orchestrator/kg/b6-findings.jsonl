@@ -1,0 +1,20 @@
+{"_lens":"B6","type":"node","id":"b6_decide_route_post","label":"decide/route.ts POST (ADR-0017 surface)","evidence":"mira-hub/src/app/api/proposals/[id]/decide/route.ts:97","status":"clean"}
+{"_lens":"B6","type":"node","id":"b6_apply_hub_transition","label":"applyHubProposalTransition (lockstep helper)","evidence":"mira-hub/src/lib/proposal-transition.ts","status":"chokepoint"}
+{"_lens":"B6","type":"node","id":"b6_ai_suggestions_tbl","label":"ai_suggestions table","evidence":"db/migrations/027_ai_suggestions.sql"}
+{"_lens":"B6","type":"node","id":"b6_relationship_proposals_tbl","label":"relationship_proposals table","evidence":"mira-hub/db/migrations"}
+{"_lens":"B6","type":"node","id":"b6_mig050_proposal_id","label":"migration 050 kg_relationships.relationship_proposal_id (#1890)","evidence":"mira-hub/db/migrations/050_kg_relationships_proposal_id.sql","status":"merged_schema_apply_pending_prod"}
+{"_lens":"B6","type":"node","id":"b6_verify_500_closed","label":"admin Suggestions 'Verify' 500 (closed by #1890)","evidence":"PR #1890/#1896","reach":"admin_only"}
+{"_lens":"B6","type":"node","id":"b6_sitemap_drift_guard","label":"route-surface drift guard (#1888): 48 pages + 116 API routes snapshot","evidence":"mira-hub/scripts/sitemap.mjs + src/lib/sitemap-drift.test.ts","status":"wired_hub_unit_tests"}
+{"_lens":"B6","type":"node","id":"b6_namespace_e2e_9of9","label":"namespace-inline-create E2E 9/9 (#1889/#1886)","evidence":".github/workflows/staging-namespace-create-e2e.yml","gate":"post_deploy"}
+{"_lens":"B6","type":"node","id":"b6_canary_2checks","label":"proposal_state_drift.sql — 2 forward-only @checks (reverse-drift absent)","evidence":"tests/canary/proposal_state_drift.sql","status":"unchanged_4cycle_stall"}
+{"_lens":"B6","type":"node","id":"b6_pw_orphan_configs","label":"4 named Playwright configs gate 0 workflows","evidence":"playwright.{command-center,signup,onboarding-validate,onboarding-walkthrough}.config.ts","status":"unchanged_4cycle_stall"}
+{"_lens":"B6","type":"node","id":"b6_staged_reverse_patch","label":"staged reverse-drift canary patch (apply-ready, unmerged)","evidence":"patches/2026-06-10-canary-reverse-drift-check.patch"}
+{"_lens":"B6","type":"edge","source":"b6_decide_route_post","target":"b6_apply_hub_transition","rel":"calls"}
+{"_lens":"B6","type":"edge","source":"b6_decide_route_post","target":"b6_relationship_proposals_tbl","rel":"writes_direct_edge_in_graph"}
+{"_lens":"B6","type":"edge","source":"b6_apply_hub_transition","target":"b6_ai_suggestions_tbl","rel":"writes_only_via_helper"}
+{"_lens":"B6","type":"edge","source":"b6_apply_hub_transition","target":"b6_relationship_proposals_tbl","rel":"writes_lockstep"}
+{"_lens":"B6","type":"edge","source":"b6_mig050_proposal_id","target":"b6_verify_500_closed","rel":"closes_on_apply"}
+{"_lens":"B6","type":"edge","source":"b6_sitemap_drift_guard","target":"b6_pw_orphan_configs","rel":"partially_mitigates_route_coverage"}
+{"_lens":"B6","type":"edge","source":"b6_namespace_e2e_9of9","target":"b6_pw_orphan_configs","rel":"partially_mitigates_postdeploy"}
+{"_lens":"B6","type":"edge","source":"b6_canary_2checks","target":"b6_ai_suggestions_tbl","rel":"blind_to_stale_pending"}
+{"_lens":"B6","type":"edge","source":"b6_staged_reverse_patch","target":"b6_canary_2checks","rel":"fixes_unmerged"}

@@ -1,4 +1,12 @@
-# Hot Cache — 2026-06-04 — CLOUD
+# Hot Cache — 2026-06-16 — CLOUD
+
+## Command Center Gateway Registry (#2014) — 2026-06-16
+- **PR #2042** (tenant-id join fix): MERGED — corrected Hub `tenantId` column in `plg_activation_codes` query
+- **PR #2044** (version bump): MERGED — 3.24.3→3.24.4
+- **PR #2046** (Phase 2 gateway registry): MERGED (22008bb2, 12:56Z) — `GET /api/command-center/gateways`, `ConnectedGatewaysBar`, modal live-gateway fetch, SSRF guard (link-local block + `COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST`)
+- **PR #2047** (sitemap fix followup): OPEN, auto-merge enabled — `docs/sitemap.snapshot.json` drift from #2046 squash omission; VERSION→3.24.7
+- Screenshots NOT taken (Hub dev server not running; needs real Ignition gateway for meaningful gateway-bar screenshot — take when demoing with PLC laptop)
+- Tenant-ID join VERIFIED: mira-web sets `plg_activation_codes.tenant_id = hub_tenants.id` via `signToken.sub`; Hub reads same via NextAuth `token.tid`
 
 ## eval-fixer run — 2026-06-16
 - Scorecard: 50/57 passing (88%)
