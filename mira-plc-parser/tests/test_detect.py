@@ -36,3 +36,36 @@ def test_unknown_pdf_is_low_confidence():
     d = detect("drawing.pdf", "%PDF-1.7 binary...")
     assert d.fmt == "unknown"
     assert d.confidence == "low"
+
+
+def test_acd_is_recognized_as_closed_project_not_great():
+    """A Rockwell .ACD is the proprietary binary project -- we do NOT parse it; we ask for L5X."""
+    d = detect("PlantLine.ACD", "\x00\x01\x02 binary studio5000 project bytes")
+    assert d.fmt == "rockwell_acd"
+    assert d.confidence == "high"
+    assert d.needs_export
+    assert "L5X" in d.needs_export
+
+
+def test_siemens_tia_project_asks_for_openness_export():
+    d = detect("Line3.ap17", "\x00binary tia project")
+    assert d.fmt == "siemens_tia_project"
+    assert "Openness" in d.needs_export
+
+
+def test_codesys_project_asks_for_plcopen():
+    d = detect("machine.project", "\x00binary codesys")
+    assert d.fmt == "codesys_project"
+    assert "PLCopen" in d.needs_export
+
+
+def test_archive_asks_to_unpack():
+    d = detect("backup.zip", "PK\x03\x04 binary zip")
+    assert d.fmt == "archive"
+    assert d.needs_export
+
+
+def test_renamed_binary_acd_detected_by_content():
+    d = detect("project.txt", "\x00\x00 lots of\x01 binary \x02bytes here")
+    assert d.fmt == "rockwell_acd"
+    assert d.needs_export

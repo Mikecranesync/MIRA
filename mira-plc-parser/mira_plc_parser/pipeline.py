@@ -36,7 +36,10 @@ def run(filename: str, text: str) -> ParseResult:
     parser = _PARSERS.get(det.fmt)
     if parser is None:
         proj = PLCProject(source_format=det.fmt, source_files=[filename] if filename else [])
-        if det.fmt in _PLANNED:
+        if det.needs_export:
+            # closed/binary project file -- don't say "great"; tell them what to export
+            proj.warnings.append("cannot parse this file directly. " + det.needs_export)
+        elif det.fmt in _PLANNED:
             proj.warnings.append("format '%s' recognized but its parser is a later phase" % det.fmt)
         else:
             proj.warnings.append("unrecognized format (%s): %s" % (det.fmt, det.reason))
@@ -57,7 +60,11 @@ def render_markdown(result: ParseResult) -> str:
     lines.append("**Format:** %s (%s confidence) — %s" % (det.fmt, det.confidence, det.reason))
     if not result.handled:
         lines.append("")
-        lines.append("> Not parsed: " + "; ".join(result.project.warnings))
+        if det.needs_export:
+            lines.append("## ⛔ Not a parseable export — action needed")
+            lines.append(det.needs_export)
+        else:
+            lines.append("> Not parsed: " + "; ".join(result.project.warnings))
         return "\n".join(lines)
     lines.append("**Controller:** %s  ·  **Vendor:** %s" % (r.controller or "(unnamed)", r.vendor or "?"))
     lines.append("")
