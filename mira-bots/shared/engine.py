@@ -1432,9 +1432,7 @@ class Supervisor:
                     session_id=sid, tenant_id=tenant_id, role="assistant", content=reply
                 )
                 if next_state == "RESOLVED":
-                    await close_session_coro(
-                        session_id=sid, tenant_id=tenant_id, reason="resolved"
-                    )
+                    await close_session_coro(session_id=sid, tenant_id=tenant_id, reason="resolved")
                     self._ts_sessions.pop(chat_id, None)
 
             task = asyncio.create_task(_run())

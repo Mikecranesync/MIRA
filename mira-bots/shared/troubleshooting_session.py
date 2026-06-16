@@ -77,6 +77,7 @@ WHERE status   = 'confirmed'
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _get_neon_url() -> str:
     return os.getenv("NEON_DATABASE_URL", "")
 
@@ -103,6 +104,7 @@ def _set_rls(conn, tenant_id: str) -> None:
 
 
 # ── Public async coroutines ───────────────────────────────────────────────────
+
 
 async def open_session_coro(
     *,
@@ -244,9 +246,7 @@ def close_idle_sessions(cutoff_hours: int = 24) -> int:
         engine = _make_engine(url)
         try:
             with engine.connect() as conn:
-                result = conn.execute(
-                    sql_text(_CLOSE_IDLE_SQL), {"cutoff_hours": cutoff_hours}
-                )
+                result = conn.execute(sql_text(_CLOSE_IDLE_SQL), {"cutoff_hours": cutoff_hours})
                 conn.commit()
                 count = result.rowcount
                 logger.info("TS_CRON_CLOSED abandoned=%d cutoff_hours=%d", count, cutoff_hours)

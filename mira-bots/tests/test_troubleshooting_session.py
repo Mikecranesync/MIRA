@@ -61,18 +61,21 @@ async def test_append_turn_fail_open(monkeypatch):
     assert ok is False
     # Missing session_id also degrades to False even with a URL set.
     monkeypatch.setenv("NEON_DATABASE_URL", "postgresql://unused")
-    assert await ts.append_turn_coro(
-        session_id="", tenant_id="t", role="user", content="x"
-    ) is False
+    assert (
+        await ts.append_turn_coro(session_id="", tenant_id="t", role="user", content="x") is False
+    )
 
 
 async def test_close_session_fail_open(monkeypatch):
     monkeypatch.delenv("NEON_DATABASE_URL", raising=False)
-    assert await ts.close_session_coro(
-        session_id="22222222-2222-2222-2222-222222222222",
-        tenant_id="11111111-1111-1111-1111-111111111111",
-        reason="resolved",
-    ) is False
+    assert (
+        await ts.close_session_coro(
+            session_id="22222222-2222-2222-2222-222222222222",
+            tenant_id="11111111-1111-1111-1111-111111111111",
+            reason="resolved",
+        )
+        is False
+    )
 
 
 def test_close_idle_sessions_fail_open_without_db(monkeypatch):
