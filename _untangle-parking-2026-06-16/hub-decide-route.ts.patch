@@ -1,0 +1,13 @@
+diff --git a/mira-hub/src/app/api/proposals/[id]/decide/route.ts b/mira-hub/src/app/api/proposals/[id]/decide/route.ts
+index 4dd30242..54b8a6f8 100644
+--- a/mira-hub/src/app/api/proposals/[id]/decide/route.ts
++++ b/mira-hub/src/app/api/proposals/[id]/decide/route.ts
+@@ -73,7 +73,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
+                 target_entity_id, target_entity_type, relationship_type,
+                 confidence, status, created_by, reasoning
+          FROM relationship_proposals
+-         WHERE id = $1 AND (tenant_id = $2 OR tenant_id IS NULL)
++         WHERE id = $1 AND tenant_id = $2::uuid
+          FOR UPDATE`,
+         [id, ctx.tenantId],
+       );

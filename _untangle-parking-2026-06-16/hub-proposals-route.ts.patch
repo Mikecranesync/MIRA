@@ -1,0 +1,13 @@
+diff --git a/mira-hub/src/app/api/proposals/route.ts b/mira-hub/src/app/api/proposals/route.ts
+index 28ffdf0e..787b2f39 100644
+--- a/mira-hub/src/app/api/proposals/route.ts
++++ b/mira-hub/src/app/api/proposals/route.ts
+@@ -73,7 +73,7 @@ export async function GET(req: Request) {
+       HARD_LIMIT,
+     );
+ 
+-    const filters: string[] = ["(p.tenant_id = $1::uuid OR p.tenant_id IS NULL)"];
++    const filters: string[] = ["p.tenant_id = $1::uuid"];
+     const params: unknown[] = [ctx.tenantId];
+ 
+     if (statusParam !== "all") {

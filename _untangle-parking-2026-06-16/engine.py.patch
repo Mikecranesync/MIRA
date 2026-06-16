@@ -1,0 +1,224 @@
+diff --git a/mira-bots/shared/engine.py b/mira-bots/shared/engine.py
+index 9b812c79..5fd784a3 100644
+--- a/mira-bots/shared/engine.py
++++ b/mira-bots/shared/engine.py
+@@ -1235,9 +1235,72 @@ class Supervisor:
+             task = asyncio.create_task(coro)
+             self._decision_trace_tasks.add(task)
+             task.add_done_callback(self._decision_trace_tasks.discard)
++
++            # Local, cloud-free structured agent trace (Phoenix/OpenInference
++            # shape). Emits JSON-L and/or an OTLP span ONLY when a sink env var
++            # is set (MIRA_AGENT_TRACE_FILE / MIRA_OTEL_ENDPOINT) — a silent
++            # no-op otherwise, so prod and CI are unchanged unless opted in.
++            # See mira-bots/shared/agent_trace.py + docs/observability/.
++            self._emit_agent_trace(
++                chat_id=chat_id,
++                message=message,
++                reply=reply,
++                result=result,
++                platform=platform,
++                uns_context=uns_context,
++                manual_sources=manual_sources,
++                tenant_id=tenant_id,
++                outcome=outcome,
++                latency_ms=latency_ms,
++                final_state=state.get("final_state"),
++            )
+         except Exception as exc:  # noqa: BLE001
+             logger.debug("decision_trace schedule skipped: %s", exc)
+ 
++    def _emit_agent_trace(
++        self,
++        *,
++        chat_id: str,
++        message: str,
++        reply: str,
++        result: dict,
++        platform: str,
++        uns_context: dict | None,
++        manual_sources: list | None,
++        tenant_id: str | None,
++        outcome: str | None,
++        latency_ms: int,
++        final_state: str | None,
++    ) -> None:
++        """Build + emit one AgentTrace for this turn. Best-effort; never raises."""
++        try:
++            from datetime import datetime, timezone
++
++            from .agent_trace import build_agent_trace, emit
++
++            next_state = result.get("next_state") or ""
++            safety = next_state == "SAFETY_ALERT" or final_state == "SAFETY_ALERT"
++            trace = build_agent_trace(
++                user_question=message,
++                final_answer=reply,
++                ts=datetime.now(timezone.utc).isoformat(),
++                trace_id=result.get("trace_id") or "",
++                session_id=chat_id,
++                tenant_id=tenant_id,
++                platform=platform,
++                fsm_state=next_state or None,
++                uns_context=uns_context,
++                live_snapshots=getattr(self, "_last_live_snapshots", None),
++                manual_sources=manual_sources,
++                confidence=result.get("confidence"),
++                safety_triggered=safety,
++                outcome=outcome,
++                latency_ms=latency_ms,
++            )
++            emit(trace)
++        except Exception as exc:  # noqa: BLE001
++            logger.debug("agent_trace emit skipped: %s", exc)
++
+     def _maybe_attach_live_snapshot(
+         self,
+         chat_id: str,
+@@ -1259,6 +1322,11 @@ class Supervisor:
+         logged (``LIVE_SNAPSHOT``) for traceability. Best-effort: any failure
+         falls back to the original message so a snapshot bug never breaks chat.
+         """
++        # Reset the per-turn snapshot stash up front so a turn without live
++        # tags (or one withheld by the gate) never inherits the prior turn's
++        # snapshots when the decision/agent trace reads it — same carryover
++        # discipline as the RAG worker's _last_sources.
++        self._last_live_snapshots: list = []
+         if not live_tags:
+             return message
+         try:
+@@ -1275,6 +1343,8 @@ class Supervisor:
+             uns_base = uns_ctx.get("uns_path") or ""
+             ts = datetime.now(timezone.utc).isoformat()
+             snapshots = normalize_live_tags(live_tags, uns_base, source=platform, ts=ts)
++            # Stash for the decision/agent trace (read in _schedule_decision_trace).
++            self._last_live_snapshots = snapshots
+             block = render_status_block(snapshots)
+             if not block:
+                 return message
+@@ -1606,12 +1676,14 @@ class Supervisor:
+         _uns_ctx_dict = uns_ctx.as_dict()
+         # Direct-connection provenance: a surface that already knows which
+         # machine the technician is on (Ignition, MQTT, PLC bridge, Hub display,
+-        # QR) certifies the UNS path by construction. We stamp the source so the
+-        # decision trace + hallucination audit can see it. Recorded only; the
+-        # gate-firing change is master-plan Phase 6. See
++        # QR) certifies the UNS path by construction. We stamp source AND
++        # confidence so the gate check, decision trace, and hallucination audit
++        # all see the full certification. See
+         # .claude/rules/direct-connection-uns-certified.md.
+         if uns_source:
+             _uns_ctx_dict["source"] = uns_source
++            if uns_source == "direct_connection":
++                _uns_ctx_dict["confidence"] = "certified"
+         _ctx_for_uns["uns_context"] = _uns_ctx_dict
+         state["context"] = _ctx_for_uns
+         if uns_ctx.manufacturer and uns_ctx.confidence >= 0.7 and not state.get("asset_identified"):
+@@ -1903,7 +1975,7 @@ class Supervisor:
+             # detected) should not trigger the gate — the bot asks Q1 clarifiers
+             # instead. Gate fires when we have at least a partial context to confirm.
+             if uns_ctx.confidence > 0 and self._should_fire_uns_gate(
+-                _router_intent, state, message, sc
++                _router_intent, state, message, sc, _keyword_intent
+             ):
+                 return await self._handle_uns_confirmation_request(
+                     chat_id,
+@@ -2264,6 +2336,43 @@ class Supervisor:
+                 tl_flush()
+                 return self._make_result(reply, "none", trace_id, "ASSET_IDENTIFIED")
+ 
++        # Fault-code fast-path (Phase 6): when the UNS resolver has extracted a
++        # fault code AND the structured fault_codes table has a deterministic hit
++        # for that code + vendor/model family, prepend the structured description
++        # to the message so the prompt's Rule 1 fires immediately and the LLM
++        # advances to DIAGNOSIS without burning Q2/Q3 turns asking for context
++        # we already have.  Fail-closed: DB error, missing env, or no hit → fall
++        # through to the normal Q-ladder.  Never over-skips: an unknown code
++        # returns no rows, so the Q-ladder is unchanged.
++        # Fixes: pf525_f004_02, vfd_ab_01_pf525_f004_undervoltage, vfd_abb_01_acs580_fault_2310
++        if not photo_b64 and uns_ctx.fault_code and uns_ctx.manufacturer:
++            try:
++                from .neon_recall import recall_fault_code as _rfc  # noqa: PLC0415
++                _fc_rows = _rfc(
++                    uns_ctx.fault_code,
++                    resolved_tenant or "",
++                    uns_ctx.model or None,
++                )
++                if _fc_rows:
++                    _row = _fc_rows[0]
++                    _fc_desc = (_row.get("description") or "").strip()
++                    _fc_cause = (_row.get("cause") or "").strip()
++                    if _fc_desc:
++                        _fc_label = " ".join(
++                            filter(None, [uns_ctx.manufacturer, uns_ctx.model, uns_ctx.fault_code])
++                        )
++                        _fc_preamble = f"[FAULT CODE REFERENCE — {_fc_label}] {_fc_desc}"
++                        if _fc_cause:
++                            _fc_preamble += f" Typical cause: {_fc_cause}."
++                        message = f"{_fc_preamble}\n\n{message}"
++                        logger.debug(
++                            "FAULT_CODE_FASTPATH code=%s model=%s injected",
++                            uns_ctx.fault_code,
++                            uns_ctx.model,
++                        )
++            except Exception as _fce:  # noqa: BLE001
++                logger.debug("FAULT_CODE_FASTPATH skip error=%s", _fce)
++
+         # RAG worker with self-correction: text queries and photo+intent queries
+         # Use session photo for follow-up text questions within PHOTO_MEMORY_TURNS
+         session_photo = None
+@@ -5300,6 +5409,7 @@ class Supervisor:
+         state: dict,
+         message: str,
+         session_context: dict,
++        keyword_intent: str = "",
+     ) -> bool:
+         """Return True when the gate should interrupt the turn with a confirm prompt.
+ 
+@@ -5307,23 +5417,26 @@ class Supervisor:
+         - MIRA_UNS_GATE_ENABLED is on (default true)
+         - router classified the turn as a gated intent (see _GATED_INTENTS:
+           diagnose_equipment or schedule_maintenance)
++        - deterministic keyword classifier also agrees the turn is industrial
++          troubleshooting — documentary / greeting / help / safety / off_topic
++          turns never gate even if the probabilistic router mislabels them.
++          (Fixes the 2-week Cluster-B oscillation: "find the ACS880 manual"
++          has vendor+model tokens that fool the router into diagnose_equipment,
++          but classify_intent correctly returns "documentation".)
+         - session has no asset_identified
+         - session is in IDLE (don't interrupt mid-FSM Q1/Q2/Q3/DIAGNOSIS).
+           AWAITING_UNS_CONFIRMATION is consumed earlier in `process()` via
+           `_handle_uns_confirmation_response`, so it never reaches this check.
+ 
+         `message` and `session_context` are accepted for symmetry with other
+-        gate helpers and to keep the call site readable, even though the
+-        current implementation only inspects intent + state + flag.
++        gate helpers and to keep the call site readable.
+ 
+         Direct-connection carve-out: a turn whose UNS context was certified by
+         the connection itself (Ignition, MQTT/Sparkplug, PLC bridge, Hub
+         display, QR — source="direct_connection") MUST NOT be interrupted with a
+         "which machine?" confirmation. The connection already proved the asset;
+         asking would be the exact anti-pattern
+-        .claude/rules/direct-connection-uns-certified.md forbids. We honor the
+-        marker here at the chat-gate so it can never lie. (The broader
+-        reject-on-missing-identifier contract for direct surfaces is still P6.)
++        .claude/rules/direct-connection-uns-certified.md forbids.
+         """
+         del message, session_context  # reserved for future signal expansion
+         if not _UNS_GATE_ENABLED:
+@@ -5333,6 +5446,14 @@ class Supervisor:
+             return False
+         if router_intent not in _GATED_INTENTS:
+             return False
++        # Deterministic veto: the keyword classifier's verdict takes precedence
++        # over the probabilistic router when they disagree. A turn labelled
++        # "documentation", "greeting", "help", "safety", or "off_topic" by
++        # classify_intent() is never industrial troubleshooting, regardless of
++        # what tokens the router latched onto. Only "industrial" (and "" when
++        # no keyword_intent was supplied) may trigger the gate.
++        if keyword_intent and keyword_intent != "industrial":
++            return False
+         if state.get("asset_identified"):
+             return False
+         if state.get("state", "IDLE") != "IDLE":
