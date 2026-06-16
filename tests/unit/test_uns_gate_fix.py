@@ -17,7 +17,7 @@ import os
 import types
 import importlib
 import unittest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 # ── Path setup ────────────────────────────────────────────────────────────────
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -187,7 +187,7 @@ class TestFaultCodeFastPath(unittest.TestCase):
                       mock_rows: list[dict]) -> str:
         """Execute the fast-path block from engine.py (inline copy for isolation)."""
         import logging
-        logger = logging.getLogger("test")
+        _logger = logging.getLogger("test")
 
         class _UNSCtx:
             pass
@@ -277,7 +277,8 @@ class TestIgnitionChat422Rejection(unittest.TestCase):
                     stub.HTTPException = HTTPException
                     stub.APIRouter = MagicMock
                     stub.Query = MagicMock
-                    class Request: pass
+                    class Request:
+                        pass
                     stub.Request = Request
                 elif mod == "ignition_audit":
                     stub.write_audit_row = MagicMock(return_value=True)
@@ -288,7 +289,7 @@ class TestIgnitionChat422Rejection(unittest.TestCase):
         self.HTTPException = HTTPExc
 
         # Import the pydantic model only
-        spec = importlib.util.spec_from_file_location(
+        _spec = importlib.util.spec_from_file_location(
             "ignition_chat",
             os.path.join(REPO_ROOT, "mira-pipeline", "ignition_chat.py"),
         )
