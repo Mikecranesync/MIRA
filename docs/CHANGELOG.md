@@ -3,6 +3,12 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.25.0 (2026-06-16) — feat(staging): digital-twin review layer + migration-collision doctrine
+- **`tools/staging/staging-smoke.sh`** — deterministic curl-and-assert health gate for the staging twin (Cluster Law 2: a binary check is a script, not an LLM). Asserts the externally-reachable review surfaces (Hub 4101, Web 4200) return 200; probes pipeline/atlas best-effort (the deploy workflow is authoritative for those on `127.0.0.1`). shellcheck-clean; verified live (Hub+Web PASS).
+- **`tools/staging/hermes-staging-review.sh`** — async qualitative review: runs the smoke gate first, and only on PASS asks Hermes (on CHARLIE) to browse the staging Hub and post a terse verdict to Telegram. Advisory, never a CI gate.
+- **`docs/runbooks/staging-twin-review.md`** — the operating model: prod auto-deploys on push-to-main, so the twin reviews the **candidate ref before merge** (`deploy-staging.yml --ref <branch>` → review → merge → prod). Documents the two-layer gate + the deferred hard-gate follow-up. Pairs with the `--ref` fix (v3.24.9 / #2063).
+- **`.claude/rules/mira-hub-migrations.md` §7** — new doctrine: duplicate numeric migration prefixes are COSMETIC (the runner keys `schema_migrations` by full basename, not prefix); renumbering an already-applied migration makes the runner re-run it → drift. Do not renumber applied migrations.
+
 ### v3.24.9 (2026-06-16) — fix(ci): deploy-staging honors dispatched `--ref`
 - **`.github/workflows/deploy-staging.yml`** — the VPS deploy step runs over an ssh heredoc quoted with `<< 'ENDSSH'`, so `GITHUB_REF_NAME` was evaluated *on the VPS* (where it's unset) and the deploy ref always fell back to `staging`. Every `workflow_dispatch --ref <X>` silently deployed the `staging` branch regardless of `X`. Fix threads the runner's `github.ref_name` through the ssh command line as `DEPLOY_REF`, and the heredoc now reads `REF="${DEPLOY_REF:-${GITHUB_REF_NAME:-staging}}"`. Unblocks `--ref main` staging deploys. Cherry-picked from `test/staging-1901-deploy` (`a5cd0fcc`) to land on main independently of the #1901 onboarding stack.
 
