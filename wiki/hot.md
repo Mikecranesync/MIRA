@@ -754,3 +754,23 @@ Mitsubishi Electric: 16 chunks (NULL model)
 - Scorecard: 48/57 passing (84%)
 - Action: issue-filed (#1843)
 - 9 failures span 3 file clusters (engine.py ×7, guardrails.py ×2, active.yaml ×2) → hard-stop, no single-file patch. FSM failures are directionally contradictory (under-progression cluster A vs over-progression cluster B); vfd_abb_03 is a live-LLM timeout flake. No regressions vs prior scorecard.
+
+## eval-fixer run — 2026-06-10
+- Scorecard: 47/57 passing (82%)
+- Action: issue-filed (#1862)
+- Skipped autopatch: failures span 3 file clusters (engine.py/guardrails.py/active.yaml) → hard-stop. 2 of 10 are provider-latency timeouts (pf525_ground_fault_19, sew_overcurrent_29), not code bugs. Engine FSM drifts point in opposite directions (some stuck at Q1, some over-asking at Q2) — no single minimal fix.
+
+## eval-fixer run — 2026-06-11
+- Scorecard: 48/57 passing (84%)
+- Action: issue-filed (#1876)
+- 9 failures span 3 file clusters (engine.py FSM ×6, guardrails.py+active.yaml keyword ×2, +1 timeout flake) → autopatch hard-stop on >1 file cluster. Same FSM A/B-conflict pattern as #1843/#1862; needs human multi-file fix.
+
+## eval-fixer run — 2026-06-12
+- Scorecard: 45/57 passing (79%)
+- Action: issue-filed (#1884)
+- 12 failures across 3 file clusters (engine.py FSM-progression ×8 + guardrails.py/active.yaml keyword ×4) → over single-file autopatch limit, escalated to human. No regressions vs prior run.
+
+## eval-fixer run — 2026-06-13
+- Scorecard: 49/57 passing (86%)
+- Action: issue-filed (#1931)
+- 8 failures span 3 file_clusters (engine.py FSM ×5, guardrails.py + active.yaml honesty-signal ×3) → single-file auto-patch limit can't cover both root causes; escalated for human review.

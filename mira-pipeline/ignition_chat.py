@@ -190,22 +190,32 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
         # The Ignition session is per-asset; if no explicit chat_id is supplied
         # use (tenant_id, asset_id) so concurrent assets keep independent FSM state.
         asset_id = (req.asset_id or "").strip()
+
+        # Direct-connection UNS certification (Phase 6).
+        # An Ignition turn is UNS-certified by construction: the WebDev/Perspective
+        # surface already knows which machine the technician is on.
+        #
+        # Contract (per .claude/rules/direct-connection-uns-certified.md):
+        # - asset_id or asset_context present → mark "direct_connection" so the
+        #   engine stamps source="direct_connection", confidence="certified" and
+        #   skips the chat-gate confirmation.
+        # - Neither present → reject 422.  Do NOT downgrade to a chat-gate
+        #   confirmation.  A missing identifier means the WebDev handler is
+        #   misconfigured, not that the tech needs to supply the asset name.
+        if not asset_id and not req.asset_context:
+            logger.warning(
+                "IGNITION_CHAT uns_required tenant=%s — no asset_id or asset_context",
+                tenant_id,
+            )
+            raise HTTPException(422, {"error": "uns_required"})
+
+        uns_source: str = "direct_connection"
         chat_id = f"ignition:{tenant_id}:{asset_id or 'default'}"
 
         preamble = _format_tag_preamble(req.tag_snapshot or {}, asset_id)
         message = f"{preamble}\n\n{question}" if preamble else question
 
         tag_reads = sorted((req.tag_snapshot or {}).keys())
-
-        # Direct-connection provenance: an Ignition turn arriving with an asset
-        # identifier is UNS-certified by construction — the WebDev/Perspective
-        # surface already knows which machine the technician is on. Mark the
-        # turn so the engine stamps state["uns_context"]["source"] and the
-        # decision trace records it. A turn WITHOUT an asset id is treated as a
-        # plain chat turn here (the reject-on-missing-identifier contract is the
-        # broader Phase-6 gate-bypass work — see
-        # .claude/rules/direct-connection-uns-certified.md).
-        uns_source = "direct_connection" if (asset_id or req.asset_context) else None
 
         # Structured tag evidence for the decision trace (Phase 9). The Ignition
         # turn already carries the live snapshot; surface it as evidence rows so

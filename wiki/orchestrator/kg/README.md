@@ -133,3 +133,12 @@ After code changes you can refresh AST-only edges with **no API cost**:
   rebuild, wait for the throttle to clear and add `--exclude messages` to the rsync.
 
 > 2026-06-08 (orchestrator, Lens B): +8 hand-extracted nodes / +6 edges appended to graph.json (`_origin: hand-extracted`, `lens: B`) — proposal-queue canonical-source drift, missing ADR-0017 helper, Playwright config map. Sandbox has no LLM key; next CHARLIE regen will rebuild from AST and these annotations should be re-checked.
+
+- 2026-06-08 Lens C: +7 nodes/+7 edges (engine gate/citation/direct-connection). totals 3524 nodes / 5429 links. Insight: direct_connection 1->1 producer/consumer, 0 reject guards; uns_required orphan.
+
+## Lens D slice (2026-06-08) — tests/eval/
++18 nodes / +23 edges (→ 3542 / 5452). Hand-extracted (graphify imports + sandbox network OK, but no LLM API key → LLM extraction phase cannot run). Wired the eval harness (offline_run → local_pipeline → synthetic_user → grader + 6 checkpoints + 51 fixtures) into real engine anchors (shared_engine_supervisor_process, inference_router, groq, shared_citation_compliance_check_citation_compliance). Marked the live-LLM path with `non_deterministic=true` and tagged the 4 hard-stable failing fixtures. Insight: tests/eval was previously 0 nodes; all 6 binary checkpoints now resolve downstream of a single non_deterministic edge — no deterministic seam in the gate's truth set.
+
+- 2026-06-09 Lens C2: +12 nodes / +18 links (3613 / 5545). Hand-extracted grounding-parity subgraph (_lens:C2). Finding-as-topology: hub beta surface has 0 inbound edges to the engine subgraph (uns_gate + citation chokepoint + cite-rate metric); BYPASSES_engine + NO_citation_postcheck are _missing:true edges. graphify still LLM-keyless in sandbox.
+
+- 2026-06-09 Lens D2: +15 nodes / +19 links (3628 / 5564). Hand-extracted noise-topology slice (`_lens:D2`). Finding-as-topology: FSM(59)+KeyKW(24) carry `noise_source` edges into `d2_noise_band` while RState/No5xx/TurnBudget/CitGrond carry `deterministic_0fail_NOT_noise` edges → fix locus narrows to just the 2 LLM-touched checkpoints. Second arm: `d2_fixer_routine --consumes_single_run_snapshot--> d2_noise_band --phantom_cluster_named--> #1788`. graphify still LLM-keyless in sandbox.

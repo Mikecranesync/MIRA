@@ -6,7 +6,8 @@ tenant UUID so it can be applied to dev or prod without touching real customers.
 | File | Tenant | Asset | What it seeds |
 |---|---|---|---|
 | `demo-conveyor-001.sql` | `00000000-0000-0000-0000-0000000000d1` ("demo") | Conveyor 001 (`CV-001`) | 5 components (PE/MTR/VFD/PLC/PANEL), PE-001 full template, ISA-95 UNS paths, PLC tag bindings (4 entities), 12 verified relationship proposals + evidence, promoted into `kg_relationships` |
-| `run_demo_seed.py` | — | — | Python runner: `--dry-run` (rollback), `--commit`, `--verify` |
+| `demo-hub-tenant.sql` | `00000000-0000-0000-0000-0000000000d1` ("demo") | Garage conveyor cell | Hub UI tables for demo videos: 11 `kg_entities` (ISA-95 UNS tree), 5 `cmms_equipment` assets (conveyor/GS10/Micro820/photoeyes), 7 `work_orders` (mixed status), 8 `pm_schedules` (3 overdue, 5 upcoming), 2 `kg_relationships` (CONTROLS + DRIVES), 1 `health_scores` row. Does NOT duplicate knowledge_entries — complements demo-conveyor-001.sql. Apply via `psql -v tenant_id=…` (not run_demo_seed.py — uses psql `\set`/`:'var'` syntax). |
+| `run_demo_seed.py` | — | — | Python runner: `--dry-run` (rollback), `--commit`, `--verify`. Note: does NOT support demo-hub-tenant.sql (psql variable syntax — apply directly via psql). |
 
 ## Prerequisites
 
