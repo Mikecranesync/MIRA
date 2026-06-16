@@ -1,0 +1,75 @@
+rules:
+  # Block yaml.load() without SafeLoader (python-standards.md)
+  - id: unsafe-yaml-load
+    patterns:
+      - pattern: yaml.load(...)
+      - pattern-not: yaml.safe_load(...)
+      - pattern-not: yaml.load(..., Loader=yaml.SafeLoader)
+    message: "Use yaml.safe_load() — never yaml.load(). See .claude/rules/python-standards.md"
+    languages: [python]
+    severity: ERROR
+
+  # Block os.system() and subprocess with shell=True
+  - id: shell-injection
+    patterns:
+      - pattern-either:
+          - pattern: os.system(...)
+          - pattern: subprocess.call(..., shell=True, ...)
+          - pattern: subprocess.run(..., shell=True, ...)
+          - pattern: subprocess.Popen(..., shell=True, ...)
+    paths:
+      exclude:
+        - "scripts/*"
+        - "**/scripts/*"
+    message: "Shell injection risk. Use subprocess.run([...], shell=False) instead."
+    languages: [python]
+    severity: ERROR
+
+  # Block pickle deserialization (security-boundaries.md)
+  - id: unsafe-pickle
+    pattern: pickle.loads(...)
+    message: "Never deserialize untrusted pickle data. See security-boundaries.md."
+    languages: [python]
+    severity: ERROR
+
+  # Block hardcoded API keys/tokens
+  - id: hardcoded-secret
+    patterns:
+      - pattern-regex: '(sk-ant-|sk-proj-|ghp_|ghs_|glpat-|xoxb-|xoxp-)[a-zA-Z0-9]{10,}'
+    message: "Hardcoded secret detected. Use Doppler (factorylm/prd)."
+    languages: [python, javascript, typescript]
+    severity: ERROR
+
+  # Block requests library (must use httpx per python-standards.md)
+  - id: use-httpx-not-requests
+    pattern: import requests
+    message: "Use httpx, not requests. See .claude/rules/python-standards.md"
+    languages: [python]
+    severity: WARNING
+
+  # Block print() in production code (must use logging)
+  - id: no-print-in-production
+    pattern: print(...)
+    paths:
+      exclude:
+        - "tests/*"
+        - "tools/*"
+        - "scripts/*"
+        - "**/test_*.py"
+        - "**/cli.py"
+        - "**/evaluator.py"
+        - "**/feedback_sync.py"
+        - "**/main.py"
+        - "**/few_shot_trainer.py"
+    message: "Use logging.getLogger(), not print(). See python-standards.md"
+    languages: [python]
+    severity: WARNING
+
+  # Block bare except
+  - id: no-bare-except
+    pattern: |
+      except:
+        ...
+    message: "Catch specific exceptions, not bare except. See python-standards.md"
+    languages: [python]
+    severity: ERROR

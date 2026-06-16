@@ -1,0 +1,15 @@
+{
+  "anchors": [
+    "Check the fault code on the VFD display and refer to the troubleshooting section of the drive manual for corrective action.",
+    "Before performing any maintenance on electrical equipment, follow LOTO procedures: lock out and tag out all energy sources per NFPA 70E.",
+    "The motor failed to start. Verify input voltage at L1, L2, L3 terminals is within rated tolerance. Check for blown fuses or tripped breakers.",
+    "Fault F005 indicates overcurrent. Reduce the acceleration ramp time or lower the load. Check for mechanical binding in the driven equipment.",
+    "Preventive maintenance schedule: inspect contactors every 6 months, replace filter media annually, lubricate bearings per OEM specification.",
+    "Allen-Bradley PowerFlex 525 parameter P033 sets the minimum frequency. Default is 0 Hz. Adjust to 6 Hz if the application requires minimum speed.",
+    "GS20 VFD error code E.OC1 indicates overcurrent during acceleration. Increase acceleration time (parameter P1-03) and verify motor nameplate data.",
+    "Vibration analysis: baseline measurement at 10 Hz to 1000 Hz. Compare trend data monthly. Alarm at 2x baseline RMS velocity.",
+    "Replace the proximity sensor if the output LED does not illuminate when the target is within the rated sensing distance.",
+    "PLC input card failure: verify 24VDC supply to the I/O module. Use ladder logic forced values to isolate the fault to hardware or software."
+  ],
+  "anchor_embeddings": []
+}

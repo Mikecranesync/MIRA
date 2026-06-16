@@ -1,0 +1,79 @@
+{
+  "props": {
+    "defaultPageUrl": "/"
+  },
+  "pages": [
+    {
+      "id": "page-conveyor-status",
+      "url": "/",
+      "primaryView": {
+        "viewPath": "ConveyorStatus",
+        "params": {}
+      }
+    },
+    {
+      "id": "page-conveyor-status-explicit",
+      "url": "/status",
+      "primaryView": {
+        "viewPath": "ConveyorStatus",
+        "params": {}
+      }
+    },
+    {
+      "id": "page-speed-control",
+      "url": "/speed",
+      "primaryView": {
+        "viewPath": "SpeedControl",
+        "params": {}
+      }
+    },
+    {
+      "id": "page-fault-log",
+      "url": "/faults",
+      "primaryView": {
+        "viewPath": "FaultLog",
+        "params": {}
+      }
+    },
+    {
+      "id": "page-mira-panel",
+      "url": "/mira",
+      "primaryView": {
+        "viewPath": "Mira/MiraPanel",
+        "params": {
+          "assetId": "conveyor_demo"
+        }
+      }
+    },
+    {
+      "id": "page-mira-alerts",
+      "url": "/mira/alerts",
+      "primaryView": {
+        "viewPath": "Mira/MiraAlertHistory",
+        "params": {}
+      }
+    },
+    {
+      "id": "page-mira-settings",
+      "url": "/mira/settings",
+      "primaryView": {
+        "viewPath": "Mira/MiraSettings",
+        "params": {}
+      }
+    },
+    {
+      "id": "page-mira-connect",
+      "url": "/mira/connect",
+      "primaryView": {
+        "viewPath": "Mira/ConnectSetup",
+        "params": {}
+      }
+    }
+  ],
+  "navDocked": {
+    "north": null,
+    "south": null,
+    "east": null,
+    "west": null
+  }
+}

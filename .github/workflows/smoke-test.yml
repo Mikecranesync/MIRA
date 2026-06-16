@@ -1,0 +1,105 @@
+name: Smoke Test
+
+# Auto-cancel superseded runs on the same PR/branch. cancel-in-progress is gated
+# to pull_request only: a push to main (the deploy gate that deploy-vps.yml waits
+# on via workflow_run) is NEVER cancelled — only redundant PR re-pushes are.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Deploy gate: verifies factorylm.com + app.factorylm.com are healthy before
+# deploy-vps.yml is allowed to run. See issue #689.
+#
+# Triggers:
+#   push to main  — fires first; deploy-vps.yml waits for this to succeed
+#   PR to main    — blocks merge if smoke fails (branch protection rule)
+#   workflow_dispatch — manual trigger for ad-hoc checks
+#
+# deploy-vps.yml listens for workflow_run: ["Smoke Test"] types: [completed]
+# and checks conclusion == 'success' before starting the deploy job.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'wiki/**'
+      - '**/*.md'
+      - '.claude/**'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'wiki/**'
+      - '**/*.md'
+      - '.claude/**'
+  workflow_dispatch: {}
+
+jobs:
+  smoke:
+    name: E2E smoke (factorylm.com + app.factorylm.com)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - uses: oven-sh/setup-bun@v2
+
+      # bun is the source-of-truth package manager (bun.lock). CI installed via
+      # `npm ci`, which hard-fails when package-lock.json drifts from
+      # package.json (graphology #1789 / unpdf were missing) — silently blocking
+      # every deploy. bun.lock stays in sync with package.json, so install via
+      # bun. --ignore-scripts preserves the prior `npm ci --ignore-scripts`.
+      - name: Install mira-hub deps (includes @playwright/test)
+        working-directory: mira-hub
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Install Playwright Chromium browser + OS deps
+        working-directory: mira-hub
+        run: npx playwright install chromium --with-deps
+
+      - name: Run smoke tests
+        working-directory: mira-hub
+        env:
+          WEB_URL: https://factorylm.com
+          HUB_URL: https://app.factorylm.com
+        run: npx playwright test --config playwright.smoke.config.ts
+
+      - name: Run signup money-path tests (pricing → trial CTA → checkout → magic link)
+        working-directory: mira-hub
+        env:
+          WEB_URL: https://factorylm.com
+          HUB_URL: https://app.factorylm.com
+        run: npx playwright test --config playwright.signup.config.ts
+
+      - name: Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-failures-${{ github.run_id }}
+          path: mira-hub/test-results/
+          retention-days: 3
+
+      - name: Annotate PR with failure summary
+        if: failure() && github.event_name == 'pull_request'
+        run: |
+          echo "## ❌ Smoke test failed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "The money path or a critical page is broken on production." >> "$GITHUB_STEP_SUMMARY"
+          echo "Download the \`smoke-failures-${{ github.run_id }}\` artifact for screenshots." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | What was verified |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----|-----------------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| factorylm.com/ | OG tags, FactoryLM title |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| factorylm.com/pricing | Pricing cards + Start Free Trial CTA |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| factorylm.com/cmms | Magic link email form |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| /api/checkout/session | 303 → checkout.stripe.com |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| app.factorylm.com/ → /login | Redirect + email/password/Google |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **/quickstart** | **Public grounded chat returns an answer (money path, P1-1)** |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **/api/quickstart/ask** | **Flood → HTTP 429 (rate-limit holds, P0-1)** |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **/api/documents** | **Unauthenticated → 401, no asset data (tenant gate, P0-2)** |" >> "$GITHUB_STEP_SUMMARY"

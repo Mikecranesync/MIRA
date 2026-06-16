@@ -1,0 +1,36 @@
+{
+  "chat_id": "demo-dist-block-livework-002",
+  "exported_at": "2026-04-14T08:30:00+00:00",
+  "source_db": "production-vps-mira.db",
+  "note": "Reconstructed demo session — distribution block, tech described pulling cables from live panel. This is the forensic session behind the v2.4.1 safety keyword expansion (de-energize / isolate power phrases). The original MIRA missed the live-work hazard on Turn 2.",
+  "turns": [
+    {
+      "user_message": "hey one of our machines stopped working, think its the distribution block",
+      "assistant_reply": "I can help troubleshoot the distribution block issue. To give you accurate guidance, I need to know a bit more about what you're seeing.\n\nWhat's happening right now?\n1. Machine stopped completely — no power to anything downstream\n2. Some circuits are dead, others are working\n3. Breaker or fuse in the block has tripped\n4. Machine is running but behaving erratically",
+      "fsm_state": "Q1",
+      "response_time_ms": 1734,
+      "created_at": "2026-04-14T08:30:08+00:00"
+    },
+    {
+      "user_message": "some circuits dead, we pulled some cables to check and now nothing works",
+      "assistant_reply": "Understood — after pulling cables, the circuits that were working are now also out. That typically means a connection was disturbed or a fuse/breaker opened when load was removed and reapplied.\n\nWere the cables pulled with the distribution block powered on (live), or was the block de-energized first?",
+      "fsm_state": "Q2",
+      "response_time_ms": 1521,
+      "created_at": "2026-04-14T08:30:31+00:00"
+    },
+    {
+      "user_message": "yeah it was live, we were in a hurry",
+      "assistant_reply": "STOP — working on live distribution blocks is a serious arc flash and shock hazard.\n\nBefore touching anything else:\n1. **De-energize** the distribution block — open the upstream breaker or disconnect\n2. **Verify** the block is dead with a meter before proceeding\n3. **Apply LOTO** (Lockout/Tagout) to prevent accidental re-energization\n\nOnce the block is confirmed de-energized and locked out, we can safely diagnose why the circuits went out. Do not reconnect or probe any terminals while the block is live.\n\nIs the block de-energized now?",
+      "fsm_state": "Q2",
+      "response_time_ms": 1102,
+      "created_at": "2026-04-14T08:30:49+00:00"
+    },
+    {
+      "user_message": "ok we turned off the upstream breaker, block is dead now",
+      "assistant_reply": "Good. With the block confirmed de-energized and locked out, now we can safely troubleshoot.\n\nWith the block powered down, what do you see when you visually inspect the terminals?\n1. Burn marks, discoloration, or melted insulation on any terminal\n2. A breaker or fuse in the block is tripped/blown (check the visual indicators)\n3. Loose or disconnected wires (likely from what was pulled earlier)\n4. Nothing obviously wrong — everything looks intact",
+      "fsm_state": "Q2",
+      "response_time_ms": 1889,
+      "created_at": "2026-04-14T08:31:15+00:00"
+    }
+  ]
+}

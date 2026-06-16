@@ -1,0 +1,83 @@
+[
+  {
+    "video_id": "HayryySX_po",
+    "video_title": "Variable Frequency Drives Explained | VFD Basics - Part 1",
+    "channel": "RealPars",
+    "channel_url": "https://www.youtube.com/@realpars",
+    "video_url": "https://www.youtube.com/watch?v=HayryySX_po",
+    "duration_seconds": 515,
+    "view_count": 625407,
+    "like_count": 0,
+    "chunk_index": 0,
+    "chunk_text": "this video is brought to you by us real pars join the top 1% of PLC programmers learn from the world's best so you can join their rank head on over to realpars decom and start learning now induction or alternating current electric motors rotate at a rate that is set by the number of poles inside the motor itself and the power supplied the frequency is directly related to the revolution per minute or RPM of a motor the higher the frequency the faster the RPM or the higher the engine rotation speed in the United States Electric Power utilities provide alternating energy with a frequency of 60 hertz a standard two-pole AC motor operating at this frequency provides a nominal rotation of 3600 RPM however if an application does not require an electric motor running at full speed of 3600 RPM which is very common a few Solutions exist one using a mechanical speed reducer it mechanically decreases the output speed by increasing torque the output gear has more teeth than the input gear they require lubrication provide no flexibility are settled to vibration and noise and are not suitable when shafts are distant two adding more sets of poles it reduces the speed without altering it electrically currently there are transistor systems that allow for poles inside Motors to be turned on and off however those systems can be complex and don't provide fine control and three using a variable frequency drive it can be configured in fine-tuned to generate a ramp frequency and voltage so that the motor operates according to the load requirements that is desired speed and vol voltage an important feature of the variable frequency drive is that as the motor speed requirements in a given application change the drive can simply raise or lower the motor speed in order to meet new operating requirements which would not otherwise be possible by using only the mechanical speed reducer or the transistor system to add more poles the use of vfds is widespread in numerous Industrial and Commercial applications in industrial applications vfds are used to control from extruders and electric cranes to roller coasters and mechanical bows with so much in between in commercial applications vfds are widely used in pumps to control flow and even volume in a tank as well as an HVAC industry being considered Green Technology ultimately a vfd varies the supplied frequency to an AC motor in order to control its speed speed allowing a smooth startup and adjusting motor speed as the application requires now that we know why and where variable frequency drives are used let's dive into the how does a variable frequency drive work let's look at this vfd diagram the first thing we find T3 is a current Transformer which has the function of measuring the current entering our vfd so that the vfd controls can compare the current entering and the current leaving the vfd measured by the two current Transformers indicated",
+    "word_count": 500,
+    "topic": "maintenance",
+    "category": "electrical",
+    "manufacturer": "",
+    "equipment_type": "VFD",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "3600",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ],
+    "search_query": "VFD variable frequency drive troubleshooting basics",
+    "knowledge_entry": "Expert RealPars says about VFD: this video is brought to you by us real pars join the top 1% of PLC programmers learn from the world's best so you can join their rank head on over to realpars decom and start learning now induction or alternating current electric motors rotate at a rate that is set by the number of poles inside the"
+  },
+  {
+    "video_id": "LJYfZlMQ8co",
+    "video_title": "How To: Troubleshoot VFDs",
+    "channel": "Radwell International",
+    "channel_url": "https://www.youtube.com/@RadwellTV",
+    "video_url": "https://www.youtube.com/watch?v=LJYfZlMQ8co",
+    "duration_seconds": 690,
+    "view_count": 68829,
+    "like_count": 0,
+    "chunk_index": 0,
+    "chunk_text": "[Music] hi I'm Jason Larson technical business development manager for radwell international and today is video number two of our how-to series and today we're going to be talking about AC variable frequency drives and more specifically field troubleshooting of those drives we're going to go over some general generic troubleshooting and uh overview of next steps so why don't we just jump right in so this variable frequency drive is um this is a danfoss drive that's using HVAC applications and we want to go over some general troubleshooting ideas here so the first thing that we obviously want to talk about is safety these things are generally powered by 240 or 480 volts ac which can be very dangerous so we want to make sure that whenever you're having your hands near the the power terminals you obviously want to have the power off and check yourself to make sure that the power is definitely off don't ever take someone's word for it check yourself I've seen people get hurt out in the field they've gotten shocked and it's not a pretty sight so obviously always check yourself 100 make sure that Breakers are turned off disconnects are turned on or off and uh double check if you guys have a lockout tag out safety program make sure that that's in place and that Breakers are locked out and tagged out and also notify somebody I always make sure that we're notifying somebody that we're turning power off so that way somebody doesn't accidentally think you know a breaker tripped or something and turn it back on while you're working on equipment so obviously lockout tag out make sure the power is turned off and notify somebody as well one additional thing I want to add is making sure that your bus supply is completely dead before moving forward on the bottom side of this drive and the inside there's what they call bus capacitors that stores voltage and it and we've seen instances where the bus supply can can be stored for a very long period of time so we just want to make sure before we move forward that these terminals right here labeled DC plus and DC minus sometimes you'll see them labeled bus that they're completely dead so you want to take your volt meter put it on DC and check make sure that that is 100 dead that is um it can be it can be deadly so you want to make sure that that's 100 percent zero volts before moving forward the first thing that we'll do obviously is we want to prepare ourselves for whatever we're working on I always obviously like to have documentation available that's the first thing I always look for is is manuals and documentation familiarize yourself with the equipment obviously if you can familiarize yourself with the equipment beforehand I always like to print out maintenance Diagnostics and troubleshooting guide and have it available inside the",
+    "word_count": 500,
+    "topic": "maintenance",
+    "category": "electrical",
+    "manufacturer": "Danfoss",
+    "equipment_type": "VFD",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "bus",
+        "manufacturer": "Yaskawa",
+        "description": "Option communications fault"
+      }
+    ],
+    "search_query": "VFD variable frequency drive troubleshooting basics",
+    "knowledge_entry": "Expert Radwell International says about Danfoss: [Music] hi I'm Jason Larson technical business development manager for radwell international and today is video number two of our how-to series and today we're going to be talking about AC variable frequency drives and more specifically field troubleshooting of those drives we're going to go over so"
+  },
+  {
+    "video_id": "N8Bvmx3Sr28",
+    "video_title": "PLC Programming Tutorial for Beginners. 3 Steps Before you Start",
+    "channel": "Tim Wilborne",
+    "channel_url": "https://www.youtube.com/@TimWilborne",
+    "video_url": "https://www.youtube.com/watch?v=N8Bvmx3Sr28",
+    "duration_seconds": 683,
+    "view_count": 93586,
+    "like_count": 0,
+    "chunk_index": 0,
+    "chunk_text": "Hi this is Tim and welcome to talks with Tim and today we're going to answer a Patreon question Eddy asked what are the steps to start programming PLCs I have an electrical background mostly in building electrical and don't know where to start this is another one of those questions that really gets me excited because when you're on the outside looking in at our industry similar to a lot of industries it can seem impossible to navigate to get into it and it really is easier than it appears but there are some critical moments and i do believe these first few steps to getting into it have a lot to do with whether you will succeed or fail at your journey if i had to break it down oh let's say to three steps then the first step is determining what brand plc that you want to learn because i disagree with a lot of people on this a lot of people will tell you that you should get a broad knowledge of a lot of plcs and i see schools do this and i really discourage them from it because you know they'll set up for a little bit of allen bradley and a little bit of omron a little bit of siemens and a little bit of mitsubishi and a little bit of automation direct and they'll have the students kind of skip across the plc's throughout the semester but in the end they don't have an in-depth knowledge of any of them so i really do believe that you should choose one and learn it inside and out i mean learn every single instruction every single aspect of it every single little feature of it how to do all the little things and then you're gonna find that once you have that really strong foundation you can jump from allen bradley to siemens to omron if necessary but especially starting out you shouldn't be intending on doing that you should have a path that will probably keep you on one particular plc and that's why really when it comes to what brand i recommend that you learn on it is going to be the brand that is the most popular in your area now do not go to your local supply house and say hey what plc is the most popular around here because they're going to tell you the plc they sell is so you need to go and talk to manufacturers and see what they're using i mean talk to some of the maintenance people out there and say hey what are you working on her you know if you don't know anybody in the industry then check out linkedin you can narrow it down to a location and you can you know ask some people and that's going to be a critical step both early on in your learning but also further down the road because if you learn the plc",
+    "word_count": 500,
+    "topic": "maintenance",
+    "category": "controls",
+    "manufacturer": "Allen-Bradley",
+    "equipment_type": "PLC",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "oh",
+        "manufacturer": "Yaskawa",
+        "description": "Heatsink overtemperature"
+      }
+    ],
+    "search_query": "PLC ladder logic programming tutorial beginners",
+    "knowledge_entry": "Expert Tim Wilborne says about Allen-Bradley: Hi this is Tim and welcome to talks with Tim and today we're going to answer a Patreon question Eddy asked what are the steps to start programming PLCs I have an electrical background mostly in building electrical and don't know where to start this is another one of those questions that really gets "
+  }
+]

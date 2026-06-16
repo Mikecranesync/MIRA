@@ -1,0 +1,8 @@
+---
+name: MIRA trigger PR self-fix
+command: bash scripts/pr_self_fix.sh {{pr_number}}
+tags: [mira, ci, github]
+description: Run automated self-fix loop on a PR (reads 🔴 IMPORTANT review comments, applies patches, pushes)
+arguments:
+  - name: pr_number
+    description: "GitHub PR number to fix (e.g. 1082)"

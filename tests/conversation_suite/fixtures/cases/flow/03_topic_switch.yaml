@@ -1,0 +1,12 @@
+id: flow_topic_switch_01
+category: flow
+description: "Mid-session topic switch from VFD to motor — engine acknowledges, asks for motor context."
+expected_keywords: ["motor"]
+max_turns: 2
+mock_responses: garage/flow
+mock_kb_chunks: garage/gs10_modbus
+turns:
+  - role: user
+    content: "GS10 OC fault on startup"
+  - role: user
+    content: "now help me with the motor"

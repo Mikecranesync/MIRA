@@ -1,0 +1,260 @@
+name: NeonDB inspect (P0 #1305/#1343/#1344)
+
+# Ad-hoc DB inspection workflow. Uses psql against NeonDB directly via the
+# Doppler-managed NEON_DATABASE_URL (factorylm/prd). Read-only.
+#
+# Previous version (pre-2026-05-19) executed Python inside the mira-mcp-saas
+# container and broke when the container lost psycopg2 in a rebuild. Switched
+# to the same psql pattern apply-migrations.yml uses for resilience.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'NeonDB target. staging = factorylm/stg, prod = factorylm/prd. Default staging — pre-flight check before any prod write.'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - prod
+
+concurrency:
+  group: db-inspect-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    name: Inspect ${{ inputs.target }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target == 'prod' && 'production' || 'staging' }}
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v4
+
+      - name: Install psql
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+          psql --version
+
+      - name: Authenticate Doppler + resolve DATABASE_URL
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DOPPLER_TOKEN:-}" ]; then
+            echo "::error::DOPPLER_TOKEN secret not set."
+            exit 1
+          fi
+          case "${{ inputs.target }}" in
+            staging) DOPPLER_CFG=stg ;;
+            prod)    DOPPLER_CFG=prd ;;
+            *) echo "::error::Unknown target ${{ inputs.target }}"; exit 1 ;;
+          esac
+          echo "Doppler config: factorylm/${DOPPLER_CFG}"
+          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config "${DOPPLER_CFG}" --plain)"
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::NEON_DATABASE_URL empty after Doppler fetch (factorylm/${DOPPLER_CFG})"
+            exit 1
+          fi
+          echo "::add-mask::$DATABASE_URL"
+          echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
+
+      - name: Inspect kg_entities + kg_relationships
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === connection identity ===
+          SELECT current_user AS connected_as, session_user;
+          SELECT rolname, rolbypassrls FROM pg_roles WHERE rolname = current_user;
+
+          \echo
+          \echo === table inventory ===
+          SELECT tablename FROM pg_tables
+          WHERE schemaname='public'
+            AND tablename IN ('knowledge_entries','fault_codes','kg_entities',
+                              'kg_relationships','kg_bridge','tenant_invites',
+                              'kg_approval_state','relationship_proposals',
+                              'relationship_evidence',
+                              'troubleshooting_sessions','live_signal_events',
+                              'live_signal_cache','diagnostic_trend_sessions',
+                              'diagnostic_trend_signals',
+                              'namespace_versions','namespace_proposals',
+                              'guest_reports','pm_schedules')
+          ORDER BY tablename;
+
+          \echo
+          \echo === migrations 019-026 artifact presence ===
+          SELECT
+            'troubleshooting_sessions (019)' AS artifact,
+            EXISTS(SELECT 1 FROM information_schema.tables
+                   WHERE table_schema='public' AND table_name='troubleshooting_sessions') AS present
+          UNION ALL SELECT 'live_signal_events (019)',
+            EXISTS(SELECT 1 FROM information_schema.tables
+                   WHERE table_schema='public' AND table_name='live_signal_events')
+          UNION ALL SELECT 'live_signal_cache (020)',
+            EXISTS(SELECT 1 FROM information_schema.tables
+                   WHERE table_schema='public' AND table_name='live_signal_cache')
+          UNION ALL SELECT 'diagnostic_trend_sessions (020)',
+            EXISTS(SELECT 1 FROM information_schema.tables
+                   WHERE table_schema='public' AND table_name='diagnostic_trend_sessions')
+          UNION ALL SELECT 'diagnostic_trend_signals (020)',
+            EXISTS(SELECT 1 FROM information_schema.tables
+                   WHERE table_schema='public' AND table_name='diagnostic_trend_signals')
+          UNION ALL SELECT 'namespace_versions (021_namespace_builder)',
+            EXISTS(SELECT 1 FROM information_schema.tables
+                   WHERE table_schema='public' AND table_name='namespace_versions')
+          UNION ALL SELECT 'pm_schedules.updated_at (021_pm)',
+            EXISTS(SELECT 1 FROM information_schema.columns
+                   WHERE table_schema='public' AND table_name='pm_schedules'
+                     AND column_name='updated_at')
+          UNION ALL SELECT 'guest_reports (022)',
+            EXISTS(SELECT 1 FROM information_schema.tables
+                   WHERE table_schema='public' AND table_name='guest_reports')
+          UNION ALL SELECT 'kg_entities.source_chunk_id (024)',
+            EXISTS(SELECT 1 FROM information_schema.columns
+                   WHERE table_schema='public' AND table_name='kg_entities'
+                     AND column_name='source_chunk_id')
+          UNION ALL SELECT 'kg_entities_tenant_type_name_key idx (025/026)',
+            EXISTS(SELECT 1 FROM pg_indexes
+                   WHERE schemaname='public' AND tablename='kg_entities'
+                     AND indexname='kg_entities_tenant_type_name_key')
+          UNION ALL SELECT 'kg_entities_tenant_id_entity_type_entity_id_key DROPPED (025/026)',
+            NOT EXISTS(SELECT 1 FROM pg_constraint c
+                       JOIN pg_class t ON t.oid = c.conrelid
+                       WHERE t.relname='kg_entities'
+                         AND c.conname='kg_entities_tenant_id_entity_type_entity_id_key');
+
+          \echo
+          \echo === kg_entities indexes ===
+          SELECT indexname, indexdef
+          FROM pg_indexes
+          WHERE schemaname='public' AND tablename='kg_entities'
+          ORDER BY indexname;
+
+          \echo
+          \echo === row counts ===
+          SELECT 'kg_entities' AS tbl, COUNT(*)::text AS n FROM kg_entities
+          UNION ALL SELECT 'kg_entities NULL uns_path', COUNT(*)::text FROM kg_entities WHERE uns_path IS NULL
+          UNION ALL SELECT 'kg_relationships', COUNT(*)::text FROM kg_relationships
+          UNION ALL SELECT 'knowledge_entries', COUNT(*)::text FROM knowledge_entries;
+
+          \echo
+          \echo === kg_entities columns ===
+          SELECT column_name, data_type
+          FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='kg_entities'
+          ORDER BY ordinal_position;
+
+          \echo
+          \echo === kg_relationships columns ===
+          SELECT column_name, data_type
+          FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='kg_relationships'
+          ORDER BY ordinal_position;
+
+          \echo
+          \echo === kg_relationships indexes ===
+          SELECT indexname, indexdef
+          FROM pg_indexes
+          WHERE schemaname='public' AND tablename='kg_relationships'
+          ORDER BY indexname;
+
+          \echo
+          \echo === RLS state ===
+          SELECT c.relname,
+                 c.relrowsecurity AS rls_enabled,
+                 c.relforcerowsecurity AS rls_forced
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname='public'
+            AND c.relname IN ('kg_entities','kg_relationships');
+
+          \echo
+          \echo === RLS policies ===
+          SELECT tablename, policyname, cmd, qual::text
+          FROM pg_policies
+          WHERE schemaname='public'
+            AND tablename IN ('kg_entities','kg_relationships');
+
+          \echo
+          \echo === kg_relationships sample (10) ===
+          SELECT * FROM kg_relationships LIMIT 10;
+
+          \echo
+          \echo === kg_relationships by type ===
+          SELECT relationship_type, COUNT(*)
+          FROM kg_relationships
+          GROUP BY relationship_type
+          ORDER BY 2 DESC;
+
+          \echo
+          \echo === factorylm_app grants on write-path tables (grant-drift check, #1861) ===
+          \echo 'knowledge_entries MUST include INSERT or folder=brain uploads 500 (aclcheck_error).'
+          \echo 'A privilege missing here is grant drift: applied by hand somewhere, not via a migration.'
+          SELECT t.table_name,
+                 COALESCE(string_agg(g.privilege_type, ',' ORDER BY g.privilege_type),
+                          '(NONE - factorylm_app cannot touch this table)') AS privileges
+          FROM (VALUES
+                  ('knowledge_entries'), ('hub_uploads'), ('kg_entities'),
+                  ('kg_relationships'), ('namespace_direct_uploads'),
+                  ('relationship_proposals'), ('installed_component_instances')
+               ) AS t(table_name)
+          LEFT JOIN information_schema.role_table_grants g
+            ON g.table_name = t.table_name
+           AND g.table_schema = 'public'
+           AND g.grantee = 'factorylm_app'
+          GROUP BY t.table_name
+          ORDER BY t.table_name;
+
+          \echo
+          \echo === #1899 folder=brain upload-path schema probe ===
+          \echo 'hub_uploads is RUNTIME-managed (ensureUploadsSchema), NOT migration-managed.'
+          \echo 'createUpload INSERTs kg_entity_id + ingest_route; if absent here, the door 500s (42703).'
+          SELECT 'hub_uploads.kg_entity_id' AS column, EXISTS(
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='hub_uploads' AND column_name='kg_entity_id') AS present
+          UNION ALL SELECT 'hub_uploads.ingest_route', EXISTS(
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='hub_uploads' AND column_name='ingest_route')
+          UNION ALL SELECT 'hub_uploads.kind', EXISTS(
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='hub_uploads' AND column_name='kind')
+          UNION ALL SELECT 'knowledge_entries.doc_id (045)', EXISTS(
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='knowledge_entries' AND column_name='doc_id')
+          UNION ALL SELECT 'knowledge_entries.ingest_route (045)', EXISTS(
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='knowledge_entries' AND column_name='ingest_route')
+          UNION ALL SELECT 'knowledge_entries.is_private', EXISTS(
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='knowledge_entries' AND column_name='is_private')
+          UNION ALL SELECT 'idx_ke_chunk_dedup (ON CONFLICT target)', EXISTS(
+            SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='idx_ke_chunk_dedup');
+
+          \echo
+          \echo === hub_uploads full column list ===
+          SELECT column_name FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='hub_uploads'
+          ORDER BY ordinal_position;
+
+          \echo
+          \echo === #1899b tenants-FK probe (fresh-signup chunk INSERT 500) ===
+          \echo 'knowledge_entries.tenant_id FKs to tenants(id). Signup makes hub_tenants but NOT tenants.'
+          \echo 'orphan_hub_tenants = real signups whose uploads will 23503 until backfilled.'
+          SELECT conname AS fk_name, confrelid::regclass AS references
+            FROM pg_constraint
+           WHERE conrelid = 'knowledge_entries'::regclass AND contype = 'f';
+          SELECT
+            (SELECT COUNT(*) FROM hub_tenants) AS hub_tenants,
+            (SELECT COUNT(*) FROM tenants) AS tenants,
+            (SELECT COUNT(*) FROM hub_tenants ht
+               WHERE NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = ht.id)) AS orphan_hub_tenants;
+          SQL

@@ -1,0 +1,16 @@
+id: no-unscoped-tenant-query
+language: Python
+# Hint, not a hard error: ast-grep's regex engine (Rust) does not support
+# lookaround, so we cannot express "touches tenant table AND lacks tenant_id"
+# as a single regex. The runtime guard `TenantScopedSession` in
+# mira-bots/shared/tenant/session.py is the real enforcer; this rule is a
+# review-time prompt to verify the query is properly scoped.
+severity: warning
+message: |
+  Query on a tenant-scoped table (mira_users, identity_links, tenant_invites,
+  conversation_state, feedback_log, api_usage, asset_qr_tags) — verify it
+  filters on tenant_id, or wrap it in TenantScopedSession.
+rule:
+  any:
+    - pattern: text($_)
+      regex: '\b(mira_users|identity_links|tenant_invites|conversation_state|feedback_log|api_usage|asset_qr_tags)\b'

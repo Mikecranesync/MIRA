@@ -1,0 +1,5 @@
+{
+  "asset_tag": "plc_program_fault_23",
+  "notes": "PLC went to fault mode, red fault LED on, machine stopped",
+  "image": "<66920 chars b64>"
+}

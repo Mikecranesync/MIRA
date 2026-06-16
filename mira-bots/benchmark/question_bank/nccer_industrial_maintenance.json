@@ -1,0 +1,81 @@
+{
+  "version": "1.0",
+  "domain": "nccer_industrial_maintenance",
+  "description": "NCCER Industrial Maintenance seed questions for MIRA benchmark scoring",
+  "questions": [
+    {
+      "id": "hyd-001",
+      "question": "Explain Pascal's Law and how it applies to hydraulic system force multiplication in industrial equipment.",
+      "category": "hydraulics_theory",
+      "difficulty": "intermediate",
+      "expected_keywords": [
+        "pressure",
+        "enclosed fluid",
+        "force multiplication",
+        "area ratio",
+        "equal pressure",
+        "transmitted undiminished"
+      ]
+    },
+    {
+      "id": "hyd-002",
+      "question": "A hydraulic actuator is extending slowly and not reaching full force. What are the most likely failure modes and diagnostic steps?",
+      "category": "hydraulics_troubleshooting",
+      "difficulty": "advanced",
+      "expected_keywords": [
+        "internal leakage",
+        "seal wear",
+        "pressure gauge",
+        "flow rate",
+        "relief valve",
+        "cylinder bore",
+        "rod seal"
+      ]
+    },
+    {
+      "id": "hyd-003",
+      "question": "What are the primary failure modes of a positive displacement hydraulic pump, and what symptoms does each produce?",
+      "category": "hydraulics_troubleshooting",
+      "difficulty": "advanced",
+      "expected_keywords": [
+        "cavitation",
+        "wear ring",
+        "bearing failure",
+        "seal failure",
+        "pressure pulsation",
+        "noise",
+        "overheating",
+        "flow reduction"
+      ]
+    },
+    {
+      "id": "hyd-004",
+      "question": "How does contamination affect hydraulic system performance, and what are the standard filtration practices to prevent damage?",
+      "category": "hydraulics_maintenance",
+      "difficulty": "intermediate",
+      "expected_keywords": [
+        "particulate",
+        "micron rating",
+        "return line filter",
+        "pressure filter",
+        "beta ratio",
+        "ISO cleanliness code",
+        "water contamination"
+      ]
+    },
+    {
+      "id": "hyd-005",
+      "question": "What is the function of a pressure relief valve in a hydraulic circuit, and what happens if it is set incorrectly?",
+      "category": "hydraulics_theory",
+      "difficulty": "foundational",
+      "expected_keywords": [
+        "overpressure protection",
+        "cracking pressure",
+        "system damage",
+        "bypass flow",
+        "heat generation",
+        "component failure"
+      ]
+    }
+  ]
+}

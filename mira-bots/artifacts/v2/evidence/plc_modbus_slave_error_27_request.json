@@ -1,0 +1,5 @@
+{
+  "asset_tag": "plc_modbus_slave_error_27",
+  "notes": "Modbus polling to drive getting exception code 02, started after maintenance",
+  "image": "<66920 chars b64>"
+}

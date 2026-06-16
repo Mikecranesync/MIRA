@@ -1,0 +1,85 @@
+# Migrated from mira-bots/telegram_test_runner/test_manifest_case1.yaml
+# Real factory photos — minimal pass conditions (ground truth labels pending Mike).
+# Image paths are relative to the repo root.
+
+cases:
+  - name: case1_photo_01
+    image: "MIRA test case 1/PXL_20260219_043746450.jpg"
+    caption: "What is this equipment?"
+    must_contain: []
+    must_not_contain: ["I cannot", "I'm unable", "no image"]
+    max_words: 80
+    speed_timeout: 45
+    intent: "Real factory photo 01 — discover equipment identity"
+
+  - name: case1_photo_02
+    image: "MIRA test case 1/PXL_20260219_045141856.MACRO_FOCUS.jpg"
+    caption: "What is this equipment?"
+    must_contain: []
+    must_not_contain: ["I cannot", "I'm unable", "no image"]
+    max_words: 80
+    speed_timeout: 45
+    intent: "Real factory photo 02 macro — close-up tag/nameplate"
+
+  - name: case1_photo_03
+    image: "MIRA test case 1/PXL_20260219_045632544.MACRO_FOCUS.jpg"
+    caption: "What is this equipment?"
+    must_contain: []
+    must_not_contain: ["I cannot", "I'm unable", "no image"]
+    max_words: 80
+    speed_timeout: 45
+    intent: "Real factory photo 03 macro — close-up tag/nameplate"
+
+  - name: case1_photo_04
+    image: "MIRA test case 1/PXL_20260219_045640877.jpg"
+    caption: "What is this equipment?"
+    must_contain: []
+    must_not_contain: ["I cannot", "I'm unable", "no image"]
+    max_words: 80
+    speed_timeout: 45
+    intent: "Real factory photo 04 — discover equipment identity"
+
+  - name: case1_photo_05
+    image: "MIRA test case 1/PXL_20260219_045647225.MACRO_FOCUS.jpg"
+    caption: "What is this equipment?"
+    must_contain: []
+    must_not_contain: ["I cannot", "I'm unable", "no image"]
+    max_words: 80
+    speed_timeout: 45
+    intent: "Real factory photo 05 macro — close-up tag/nameplate"
+
+  - name: case1_photo_06
+    image: "MIRA test case 1/PXL_20260219_045654220.jpg"
+    caption: "What is this equipment?"
+    must_contain: []
+    must_not_contain: ["I cannot", "I'm unable", "no image"]
+    max_words: 80
+    speed_timeout: 45
+    intent: "Real factory photo 06 — discover equipment identity"
+
+  - name: case1_photo_07
+    image: "MIRA test case 1/PXL_20260219_045719632.jpg"
+    caption: "What is this equipment?"
+    must_contain: []
+    must_not_contain: ["I cannot", "I'm unable", "no image"]
+    max_words: 80
+    speed_timeout: 45
+    intent: "Real factory photo 07 — discover equipment identity"
+
+  - name: case1_photo_08
+    image: "MIRA test case 1/PXL_20260219_045737047.MACRO_FOCUS.jpg"
+    caption: "What is this equipment?"
+    must_contain: []
+    must_not_contain: ["I cannot", "I'm unable", "no image"]
+    max_words: 80
+    speed_timeout: 45
+    intent: "Real factory photo 08 macro — close-up tag/nameplate"
+
+  - name: case1_photo_09
+    image: "MIRA test case 1/PXL_20260219_045802513.MP.jpg"
+    caption: "What is this equipment?"
+    must_contain: []
+    must_not_contain: ["I cannot", "I'm unable", "no image"]
+    max_words: 80
+    speed_timeout: 45
+    intent: "Real factory photo 09 — discover equipment identity"

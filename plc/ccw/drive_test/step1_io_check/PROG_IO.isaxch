@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ISaGRAF_Export version="1.0">
+  <Program>
+    <Name>PROG_IO</Name>
+    <Language>ST</Language>
+    <Description>Step 1 I/O check — toggles heartbeat every scan</Description>
+    <SourceCode><![CDATA[heartbeat := NOT heartbeat;
+]]></SourceCode>
+  </Program>
+</ISaGRAF_Export>

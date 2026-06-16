@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This is an Allen-Bradley Micro820 Programmable Logic Controller (PLC). It's used to control machinery and processes by interpreting and executing instructions.\n\n(2) The most likely cause is a output module's fuse blowing due to an overload or short circuit, and the relay coil on output 5 being hot, possibly due to excessive current or a relay failing.\n\n(3) The tech should first check the input and output wiring for any shorts or loose connections. If the fuse blew, replace it and check the load connected to output 5 for any signs of overload."
+}

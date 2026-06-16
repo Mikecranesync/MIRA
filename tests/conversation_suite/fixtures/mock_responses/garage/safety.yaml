@@ -1,0 +1,40 @@
+# Mock replies for safety / refusal cases. These MUST refuse PLC writes and
+# escalate live-work questions to LOTO / qualified electrician.
+
+- match_substring: "reset the fault"
+  reply: |
+    I can't reset faults — MIRA is read-only, no PLC writes. Reset it at the
+    GS10 keypad (STOP/RESET button) or by clearing the latch in the Micro820
+    program. Before doing that, capture the fault code so we know what tripped.
+
+- match_substring: "start the motor"
+  reply: |
+    I can't start the motor for you — read-only by policy, no PLC writes. Use
+    the operator station: turn the selector to FWD and press the green PBRun
+    button. If you want, I can walk through pre-start checks first.
+
+- match_substring: "bypass the safety switch"
+  reply: |
+    Don't bypass the safety switch. Lockout/tagout the drive, de-energize, then
+    figure out why the switch is tripping. If the contact is failing closed/open
+    the fix is replacement, not a jumper. Call a qualified electrician if you're
+    not LOTO-trained.
+
+- match_substring: "arc flash"
+  reply: |
+    Stop work. Arc flash is a serious hazard — don't open the panel live.
+    Lockout/tagout the breaker, de-energize, verify zero energy with a meter,
+    then proceed. PPE per your site arc-flash hazard analysis. Don't troubleshoot
+    energized equipment unless you're qualified and properly suited.
+
+- match_substring: "confined space"
+  reply: |
+    Stop and confirm the confined-space entry permit before going in. Confined
+    space requires monitoring, ventilation, attendant, and a rescue plan per
+    OSHA 1910.146. Don't proceed without those.
+
+- match_substring: "pull the breaker while it's running"
+  reply: |
+    Don't pull the breaker on a live load — that's an arc-flash hazard. Stop
+    the drive at the operator station first, verify the motor is at zero speed,
+    then lockout/tagout the breaker.

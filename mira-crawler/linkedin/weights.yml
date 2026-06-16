@@ -1,0 +1,34 @@
+# Phase 1: WARM-UP (months 1-2) — current default
+# Goal: consistency, trust, zero spam signal
+# Edit this file to shift phases. Worker reads it fresh on every run.
+weights:
+  general_ai_maintenance: 30   # highest — safe, newsworthy, no pitch
+  insight:                15   # data/stats-driven authority
+  pain_story:             15   # relatable, specific, no CTA
+  community:              12   # group-focused, warms the group itself
+  case_study:             10   # soft proof, light MIRA mention
+  myth_bust:              10   # debate engagement, no pitch
+  hot_take:                5   # sharper — use sparingly in warm-up
+  hand_raiser:             3   # VERY rare while audience is dormant
+
+# Phase 2: ENGAGEMENT (months 3-4) — uncomment when you see traction
+# weights:
+#   general_ai_maintenance: 20
+#   pain_story:             18
+#   case_study:             15
+#   insight:                15
+#   community:              12
+#   myth_bust:              10
+#   hot_take:                5
+#   hand_raiser:             5
+
+# Phase 3: CONVERSION (month 5+) — balanced with real CTAs
+# weights:
+#   pain_story:             18
+#   case_study:             18
+#   hand_raiser:            15
+#   general_ai_maintenance: 15
+#   insight:                12
+#   myth_bust:              10
+#   hot_take:                7
+#   community:               5

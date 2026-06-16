@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This is an Allen-Bradley Micro820 Programmable Logic Controller (PLC). It's used to control and monitor industrial processes.\n\n(2) The most likely cause is a faulty or dirty float level switch, which is not detecting the empty condition.\n\n(3) The tech should first clean or replace the float level switch to see if the issue is resolved."
+}

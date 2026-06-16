@@ -1,0 +1,16 @@
+id: pf525_f004_02
+description: "PowerFlex 525 F004 overcurrent on conveyor, standard fault-code lookup"
+expected_final_state: DIAGNOSIS
+max_turns: 8
+expected_keywords: [cable, wire, motor, fault, AWG, overcurrent, PowerFlex]
+expected_vendor: Allen-Bradley
+wo_expected: false
+safety_expected: false
+tags: [vfd, pf525, f004, fault-code]
+turns:
+  - role: user
+    content: "PF525 showing F004, what's wrong?"
+  - role: user
+    content: "Main conveyor, trips on startup every time"
+  - role: user
+    content: "Motor is 10HP, cable run about 100ft, installed last month"

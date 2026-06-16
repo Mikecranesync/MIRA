@@ -1,0 +1,16 @@
+id: reset_new_session_09
+description: "User starts a session, sends /reset, then starts fresh — FSM must clear cleanly"
+expected_final_state: Q1
+max_turns: 4
+expected_keywords: [GS10, overcurrent, parameter, fault, motor]
+expected_vendor: AutomationDirect
+wo_expected: false
+safety_expected: false
+tags: [reset, new-session, fsm, regression]
+turns:
+  - role: user
+    content: "GS10 VFD overcurrent fault on startup"
+  - role: user
+    content: "/reset"
+  - role: user
+    content: "GS10 VFD overcurrent fault on startup"

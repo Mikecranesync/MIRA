@@ -1,0 +1,5 @@
+{
+  "asset_tag": "plc_power_loss_24",
+  "notes": "PLC rebooted itself during production, power supply reading 23V on 24V input",
+  "image": "<66920 chars b64>"
+}

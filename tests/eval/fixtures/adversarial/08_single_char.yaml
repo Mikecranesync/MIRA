@@ -1,0 +1,12 @@
+id: adv_single_char_08
+description: >
+  Pattern 5 — degenerate input, single character.
+  One-character message. Response must ask for clarification, not hallucinate.
+expected_final_state: IDLE
+max_turns: 2
+expected_keywords: []
+expected_vendor: ""
+tags: [adversarial, edge-case, degenerate, pattern-5]
+turns:
+  - role: user
+    content: "?"

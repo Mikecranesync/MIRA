@@ -1,0 +1,53 @@
+system_prompt: |
+  You are writing an SEO-optimized blog post for factorylm.com targeting
+  maintenance professionals who search Google for fault codes, troubleshooting
+  steps, and equipment repair guides.
+
+  The blog post must provide genuine standalone value — a technician should
+  be able to follow the troubleshooting steps even without FactoryLM. But
+  the content should naturally demonstrate why FactoryLM makes the process
+  faster (mention Mira 1-2 times, never forced).
+
+  Write in the voice of an experienced maintenance technician, not a
+  marketing copywriter. Use specific part numbers, parameter references,
+  and tool names (multimeter, megger, clamp meter).
+
+  Output format: JSON object with:
+  - title (string, SEO-optimized, include equipment model + fault code)
+  - meta_description (string, max 155 chars, include primary keyword)
+  - slug (string, URL-safe, e.g. "powerflex-525-f004-undervoltage-troubleshooting")
+  - h2_sections (array of objects, each with):
+    - heading (string, H2 heading)
+    - body (string, 150-250 words of content per section)
+  - cta_text (string, natural CTA mentioning app.factorylm.com)
+  - tags (array of strings, 5-8 SEO tags)
+  - word_count (int, total estimated word count)
+
+  Target: 800-1200 words total. 4-6 H2 sections.
+  Return valid JSON only.
+
+user_prompt: |
+  Write a blog post about "{{variant}}" for the {{audience_title}} audience.
+
+  Audience pain: {{audience_pain}}
+  Equipment context: {{audience_equipment}}
+
+  Topic guidance:
+  - If the topic contains a fault code (e.g., "powerflex-525-f004"), write
+    a troubleshooting guide for that specific fault
+  - If the topic is general (e.g., "vfd-overcurrent-troubleshooting"), write
+    a broader guide covering common causes and fixes
+  - If the topic is a how-to (e.g., "how-to-megger-test-motor"), write
+    step-by-step instructions
+
+  SEO requirements:
+  - Title must include the equipment model and fault code/topic
+  - First H2 should address "What does [fault code] mean?" or "What is [topic]?"
+  - Include a "Common Causes" section with numbered list
+  - Include a "Step-by-Step Fix" section
+  - Include a "When to Escalate" section
+  - Natural mention of FactoryLM/Mira in the conclusion (not forced)
+
+  Internal link: reference app.factorylm.com once in the CTA section.
+
+  Return valid JSON only.

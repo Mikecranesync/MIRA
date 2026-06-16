@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This device is an Allen-Bradley Micro820 Programmable Logic Controller (PLC). It's used to control and automate industrial processes.\n\n(2) The most probable fault cause is a software glitch or a PLC's memory not saving the new program correctly.\n\n(3) The tech should immediately check the PLC's memory backup and ensure the new program is correctly uploaded and saved."
+}

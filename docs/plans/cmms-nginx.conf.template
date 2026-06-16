@@ -1,0 +1,75 @@
+# nginx server block template for cmms.factorylm.com
+# Deploy to: /etc/nginx/sites-available/cmms.factorylm.com
+# Upstream: atlas-frontend running on 127.0.0.1:3100
+# Brand assets served from: /opt/mira/mira-web/public/
+
+# Legacy domain redirect
+server {
+    listen 80;
+    listen 443 ssl http2;
+    server_name cmms.factorylm.ai;
+
+    ssl_certificate     /etc/letsencrypt/live/cmms.factorylm.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/cmms.factorylm.com/privkey.pem;
+
+    return 301 https://cmms.factorylm.com$request_uri;
+}
+
+# HTTP → HTTPS redirect
+server {
+    listen 80;
+    server_name cmms.factorylm.com;
+    return 301 https://$host$request_uri;
+}
+
+# Primary HTTPS block
+server {
+    listen 443 ssl http2;
+    server_name cmms.factorylm.com;
+
+    ssl_certificate     /etc/letsencrypt/live/cmms.factorylm.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/cmms.factorylm.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # Serve FactoryLM brand assets directly
+    location = /factorylm-logo.svg {
+        alias /opt/mira/mira-web/public/og-image.svg;
+        add_header Cache-Control "public, max-age=86400";
+    }
+
+    location = /factorylm-cmms-brand.css {
+        alias /opt/mira/mira-web/public/factorylm-cmms-brand.css;
+        add_header Cache-Control "public, max-age=3600";
+    }
+
+    # Proxy to atlas-frontend with rebranding filters
+    location / {
+        proxy_pass         http://127.0.0.1:3100;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade $http_upgrade;
+        proxy_set_header   Connection "upgrade";
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+
+        # sub_filter requires proxy_buffering on and one substitution pass
+        proxy_buffering on;
+
+        # String replacements — order matters (longest/most-specific first)
+        sub_filter_once off;
+        sub_filter_types text/html text/javascript application/javascript;
+
+        sub_filter 'Atlas CMMS'          'FactoryLM CMMS';
+        sub_filter 'Atlas'               'FactoryLM';
+        sub_filter 'atlas-cmms'          'factorylm-cmms';
+        sub_filter 'Powered by Atlas'    '';
+        sub_filter 'atlas.factorylm.com' 'cmms.factorylm.com';
+
+        # Inject branding stylesheet before </head>
+        sub_filter '</head>' '<link rel="stylesheet" href="/factorylm-cmms-brand.css"></head>';
+    }
+}

@@ -1,0 +1,10 @@
+id: uns_motor_shutting_off_01
+category: uns_gate
+description: "Vague 'motor keeps shutting off' — engine must ask which motor."
+clarification_required: true
+expected_keywords: ["which"]
+max_turns: 1
+mock_responses: garage/uns_gate
+turns:
+  - role: user
+    content: "motor keeps shutting off"

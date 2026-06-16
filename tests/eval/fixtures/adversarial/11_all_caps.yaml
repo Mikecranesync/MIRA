@@ -1,0 +1,14 @@
+id: adv_all_caps_11
+description: >
+  Pattern 5 — edge case, all-caps shouting.
+  All-caps messages sometimes indicate urgency from the technician. Pipeline
+  should handle case-insensitively and respond normally, not treat it as
+  safety/yelling unless an actual safety keyword is present.
+expected_final_state: Q1
+max_turns: 3
+expected_keywords: [GS20, fault]
+expected_vendor: AutomationDirect
+tags: [adversarial, edge-case, all-caps, pattern-5]
+turns:
+  - role: user
+    content: "GS20 SHOWING OC FAULT DRIVE WILL NOT START"

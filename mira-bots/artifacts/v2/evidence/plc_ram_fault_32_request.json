@@ -1,0 +1,5 @@
+{
+  "asset_tag": "plc_ram_fault_32",
+  "notes": "PLC showing memory error, program corrupted after power spike",
+  "image": "<66920 chars b64>"
+}

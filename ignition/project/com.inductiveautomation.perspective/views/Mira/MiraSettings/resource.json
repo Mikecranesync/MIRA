@@ -1,0 +1,243 @@
+{
+  "custom": {},
+  "params": {},
+  "props": {
+    "defaultSize": {
+      "height": 800,
+      "width": 1280
+    }
+  },
+  "root": {
+    "children": [
+      {
+        "children": [
+          {
+            "meta": { "name": "Title" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "color": "#FFFFFF",
+                "fontSize": "22px",
+                "fontWeight": "bold",
+                "letterSpacing": "3px",
+                "padding": "8px 16px"
+              },
+              "text": "MIRA SETTINGS"
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "meta": { "name": "Header" },
+        "position": { "basis": "48px", "shrink": 0 },
+        "props": {
+          "align": "center",
+          "direction": "row",
+          "style": {
+            "backgroundColor": "#111111"
+          }
+        },
+        "type": "ia.container.flex"
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "meta": { "name": "SectionTitle" },
+                "position": { "basis": "auto" },
+                "props": {
+                  "style": {
+                    "color": "#AAAAAA",
+                    "fontSize": "14px",
+                    "fontWeight": "bold",
+                    "letterSpacing": "2px",
+                    "marginBottom": "8px"
+                  },
+                  "text": "SYSTEM STATUS"
+                },
+                "type": "ia.display.label"
+              },
+              {
+                "meta": { "name": "StatusText" },
+                "position": { "basis": "auto" },
+                "props": {
+                  "style": {
+                    "color": "#888888",
+                    "fontSize": "13px"
+                  },
+                  "text": "Open /system/webdev/FactoryLM/api/status to check system health"
+                },
+                "type": "ia.display.label"
+              }
+            ],
+            "meta": { "name": "SidecarStatusPanel" },
+            "position": { "basis": "80px", "shrink": 0 },
+            "props": {
+              "direction": "column",
+              "style": {
+                "backgroundColor": "#2a2a2a",
+                "borderRadius": "6px",
+                "marginBottom": "16px",
+                "padding": "16px"
+              }
+            },
+            "type": "ia.container.flex"
+          },
+          {
+            "children": [
+              {
+                "meta": { "name": "SectionTitle" },
+                "position": { "basis": "auto" },
+                "props": {
+                  "style": {
+                    "color": "#AAAAAA",
+                    "fontSize": "14px",
+                    "fontWeight": "bold",
+                    "letterSpacing": "2px",
+                    "marginBottom": "8px"
+                  },
+                  "text": "DOCUMENT UPLOAD"
+                },
+                "type": "ia.display.label"
+              },
+              {
+                "meta": { "name": "UploadNote" },
+                "position": { "basis": "auto" },
+                "props": {
+                  "style": {
+                    "color": "#888888",
+                    "fontSize": "12px",
+                    "marginBottom": "12px"
+                  },
+                  "text": "Upload maintenance manuals, SOPs, or equipment documentation (PDF, DOCX, TXT)"
+                },
+                "type": "ia.display.label"
+              },
+              {
+                "events": {
+                  "component": {
+                    "onFileReceived": {
+                      "script": "filename = event.file.name\nasset_id = \"conveyor_demo\"\nimport java.io.File as File\nsave_dir = system.util.getProperty(\"user.dir\") + \"/data/factorylm/docs/\" + asset_id\nFile(save_dir).mkdirs()\nsave_path = save_dir + \"/\" + filename\nevent.file.copyTo(save_path)\nimport urllib2, json\npayload = json.dumps({\"filename\": filename, \"asset_id\": asset_id, \"path\": save_path})\nreq = urllib2.Request(\"http://localhost:5000/ingest\", payload, {\"Content-Type\": \"application/json\"})\ntry:\n    urllib2.urlopen(req, timeout=30)\n    system.perspective.print(\"Document '%s' queued for ingestion\" % filename)\nexcept Exception as e:\n    system.perspective.print(\"Ingest failed: %s\" % str(e))\n"
+                    }
+                  }
+                },
+                "meta": { "name": "FileUpload" },
+                "position": { "basis": "auto", "grow": 1 },
+                "props": {
+                  "acceptedFiles": ".pdf,.docx,.txt",
+                  "maxFileSize": 20971520,
+                  "style": {
+                    "color": "#FFFFFF"
+                  }
+                },
+                "type": "ia.input.file-upload"
+              }
+            ],
+            "meta": { "name": "UploadPanel" },
+            "position": { "basis": "200px", "shrink": 0 },
+            "props": {
+              "direction": "column",
+              "style": {
+                "backgroundColor": "#2a2a2a",
+                "borderRadius": "6px",
+                "marginBottom": "16px",
+                "padding": "16px"
+              }
+            },
+            "type": "ia.container.flex"
+          },
+          {
+            "children": [
+              {
+                "meta": { "name": "SectionTitle" },
+                "position": { "basis": "auto" },
+                "props": {
+                  "style": {
+                    "color": "#AAAAAA",
+                    "fontSize": "14px",
+                    "fontWeight": "bold",
+                    "letterSpacing": "2px",
+                    "marginBottom": "8px"
+                  },
+                  "text": "MONITORED TAGS"
+                },
+                "type": "ia.display.label"
+              },
+              {
+                "meta": { "name": "TagNote" },
+                "position": { "basis": "auto" },
+                "props": {
+                  "style": {
+                    "color": "#888888",
+                    "fontSize": "13px"
+                  },
+                  "text": "Tags under [default]Mira_Monitored/ are automatically watched. Add tags in Designer."
+                },
+                "type": "ia.display.label"
+              }
+            ],
+            "meta": { "name": "MonitoredTagsPanel" },
+            "position": { "basis": "100px", "shrink": 0 },
+            "props": {
+              "direction": "column",
+              "style": {
+                "backgroundColor": "#2a2a2a",
+                "borderRadius": "6px",
+                "padding": "16px"
+              }
+            },
+            "type": "ia.container.flex"
+          }
+        ],
+        "meta": { "name": "Content" },
+        "position": { "basis": "1", "grow": 1 },
+        "props": {
+          "direction": "column",
+          "style": {
+            "padding": "16px"
+          }
+        },
+        "type": "ia.container.flex"
+      },
+      {
+        "children": [
+          {
+            "meta": { "name": "VersionLabel" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "color": "#666666",
+                "fontSize": "12px",
+                "padding": "8px 16px"
+              },
+              "text": "Mira v0.1.0 — FactoryLM"
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "meta": { "name": "Footer" },
+        "position": { "basis": "40px", "shrink": 0 },
+        "props": {
+          "align": "center",
+          "direction": "row",
+          "style": {
+            "borderTop": "1px solid #333333",
+            "margin": "8px 12px"
+          }
+        },
+        "type": "ia.container.flex"
+      }
+    ],
+    "meta": { "name": "root" },
+    "position": { "basis": "auto" },
+    "props": {
+      "direction": "column",
+      "style": {
+        "backgroundColor": "#1a1a1a",
+        "height": "100%",
+        "padding": "8px"
+      }
+    },
+    "type": "ia.container.flex"
+  }
+}

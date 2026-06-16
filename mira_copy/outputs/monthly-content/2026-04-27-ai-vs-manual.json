@@ -1,0 +1,85 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "You're standing in front of a faulted PowerFlex 525. Red light blinking. No manual.\n\nManual way: \n- Walk back to office → 5 min\n- Dig through PDFs → 15 min\n- Call OEM tech line → 20 min on hold\n- Still no answer → 40 minutes wasted\n\nAI way:\n- Snap photo on phone → 8 sec\n- Mira pulls from *your* manual → 12 sec\n- Work order auto-created → 30 sec total\n\nWe tested this with an actual GS20 fault. Real scene. Real time save.\n\nNo sales call. No provisioning. CMMS setup in 2 minutes. Runs on your phone as a PWA.\n\nWhat’s your longest manual lookup horror story?\n\nhttps://app.factorylm.com",
+      "char_count": 645,
+      "hashtags": [
+        "MaintenanceTech",
+        "CMMS",
+        "IndustrialAI"
+      ],
+      "suggested_visual": "Split-screen video: left side shows technician walking back to office, flipping through binders, frustrated; right side shows same technician snapping a photo of a VFD, getting AI diagnosis instantly, smiling.",
+      "subreddit": ""
+    },
+    {
+      "platform": "X",
+      "text": "Faulted Allen-Bradley PLC. No manual.\n\nOld way: 40 min on hold + PDF scroll\n\nNew way: Photo → AI reads YOUR manual → fix in 30 sec\n\nReal test. Real time save.\nhttps://app.factorylm.com",
+      "char_count": 187,
+      "hashtags": [
+        "Maintenance",
+        "VFD"
+      ],
+      "suggested_visual": "15-second clip: phone camera points at a faulted AB PLC. Timer in corner: 00:00 → 00:30. Mira’s AI response pops up: 'Fault code 16: Overcurrent. Check output wiring to motor.'",
+      "subreddit": ""
+    },
+    {
+      "platform": "Reddit",
+      "text": "r/maintenance\n\nSharing a real test we ran last week — might help if you're stuck on a GS10 or PowerFlex 520 series VFD.\n\nScenario: Fault code F7 on a GS10. No manual at machine. Tech walks back, searches shared drive, finds wrong PDF version. 35 minutes pass.\n\nWe simulated same fault. Used AI to pull from the *correct* manual (uploaded once, indexed). Query: 'GS10 F7 fault'. Response in 9 seconds: 'F7 = Overvoltage. Check DC bus voltage. Inspect input line conditions and decel time setting.'\n\nKey: It’s not general knowledge — it’s RAG over your exact manual. No PLC connection needed. Just a photo or typed code.\n\nWe’re building around real pain points like this. No live PLC data yet (that’s Config 4, deferred). But if you're wasting 20+ min on lookups, this might save you.\n\nWould you try an AI that pulls answers from your own manuals — no OEM calls?",
+      "char_count": 1027,
+      "hashtags": [],
+      "suggested_visual": "Screen recording: side-by-side of manual PDF search failing (wrong file) vs AI query returning correct GS10 fault explanation in under 10 seconds.",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "Raise your hand if you’ve ever been stuck at a hydraulic power unit with a blinking fault — no manual, no answers, just downtime.\n\nOne tech last week faced a PowerFlex 525 fault. No binder. Shared drive down. Called the OEM. On hold 27 minutes.\n\nMeanwhile, another tech — same fault — snapped a photo with FactoryLM. AI read the code, pulled the fix from the correct manual, created a work order — all in 34 seconds.\n\nNot magic. Just your manual, instantly accessible.\n\nCMMS setup takes 2 minutes. Runs on any phone. No app store. Full photo-to-diagnosis pipeline.\n\nWhat’s one fault code you wish you could diagnose faster? Drop it below. 👇\n\nhttps://app.factorylm.com",
+      "char_count": 742,
+      "hashtags": [
+        "MaintenanceLife",
+        "ReliabilityEngineering",
+        "CMMS",
+        "Hydraulics",
+        "VFD"
+      ],
+      "suggested_visual": "Before/after carousel: 1) Frustrated tech at hydraulic unit, fault light blinking; 2) Phone photo of display; 3) AI response on screen; 4) Work order generated.",
+      "subreddit": ""
+    },
+    {
+      "platform": "TikTok",
+      "text": "You: Staring at a faulted Allen-Bradley PLC. Blinked 3 times. No idea what it means.\n\nManual way: walk back, search PDFs, call OEM, wait… 40 minutes later: still guessing.\n\nAI way: open FactoryLM on phone, snap photo, type 'What is fault 16?' → answer in 10 seconds from YOUR manual.\n\nNo app store. No login hassle. PWA works on any phone.\n\nWe timed it: 30 seconds from photo to work order.\n\nReal test. Real VFD. Real fix.\n\n#MaintenanceTech #FactoryLM",
+      "char_count": 598,
+      "hashtags": [
+        "MaintenanceTech",
+        "FixItFast",
+        "FactoryLM"
+      ],
+      "suggested_visual": "Fast-cut video: tech at machine looking confused → pulls phone → opens browser → uploads photo → AI responds 'Fault 16: Overcurrent, check motor wiring' → tech nods, starts repair. Timer overlay shows 00:00 → 00:30.",
+      "subreddit": ""
+    },
+    {
+      "platform": "Instagram",
+      "text": "Photo 1: A PowerFlex 525 with flashing fault light. No manual in sight.\n\nPhoto 2: Technician opens FactoryLM on iPhone — no app installed, just browser (PWA).\n\nPhoto 3: Uploads photo of display. Types: 'What’s F1?' → Mira responds in 11 seconds: 'F1 = Overvoltage. Check input voltage and decel time.'\n\nPhoto 4: Work order auto-generated. Asset tagged. PM scheduled.\n\nFrom fault to fix: 35 seconds.\n\nNo integrations. No provisioning. Your manuals. Instant access.\n\nWhat manual have you wasted hours searching for?\n\n.\n.\n.\n#MaintenanceLife #CMMS #VFD #AllenBradley #PowerFlex #Hydraulics #Reliability #FactoryTech #IndustrialMaintenance #MaintenanceTech #PWA #NoMoreCalls #WorkOrderAutomation #RAG #AIForeveryone",
+      "char_count": 998,
+      "hashtags": [
+        "MaintenanceLife",
+        "CMMS",
+        "VFD",
+        "AllenBradley",
+        "PowerFlex",
+        "Hydraulics",
+        "Reliability",
+        "FactoryTech",
+        "IndustrialMaintenance",
+        "MaintenanceTech",
+        "PWA",
+        "NoMoreCalls",
+        "WorkOrderAutomation",
+        "RAG",
+        "AIForeveryone"
+      ],
+      "suggested_visual": "4-image carousel: 1) Faulted VFD at machine; 2) Phone browser opening FactoryLM; 3) AI response on screen; 4) Work order and asset log in CMMS.",
+      "subreddit": ""
+    }
+  ]
+}

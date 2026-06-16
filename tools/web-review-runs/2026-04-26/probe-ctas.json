@@ -1,0 +1,271 @@
+{
+  "landing_anchors": [
+    {
+      "text": "FactoryLM",
+      "href": "https://factorylm.com/",
+      "classes": "nav-logo"
+    },
+    {
+      "text": "Product",
+      "href": "https://factorylm.com/#features",
+      "classes": ""
+    },
+    {
+      "text": "Pricing",
+      "href": "https://factorylm.com/pricing",
+      "classes": ""
+    },
+    {
+      "text": "Blog",
+      "href": "https://factorylm.com/blog",
+      "classes": ""
+    },
+    {
+      "text": "Troubleshooter",
+      "href": "https://factorylm.com/cmms",
+      "classes": ""
+    },
+    {
+      "text": "Join the Beta",
+      "href": "https://factorylm.com/cmms",
+      "classes": "nav-cta"
+    },
+    {
+      "text": "$97/MO — SITE LICENSE\nJoin the Beta →",
+      "href": "https://factorylm.com/cmms",
+      "classes": "cta-start"
+    },
+    {
+      "text": "Read the blog",
+      "href": "https://factorylm.com/blog",
+      "classes": "btn-ghost"
+    },
+    {
+      "text": "GUIDE\nHow to Read VFD Fault Codes\nInterpret fault codes from PowerFlex, Yaskawa,",
+      "href": "https://factorylm.com/blog/how-to-read-vfd-fault-codes",
+      "classes": "fade-in"
+    },
+    {
+      "text": "GUIDE\nHow to Megger Test a Motor\nStep-by-step insulation resistance testing with",
+      "href": "https://factorylm.com/blog/how-to-megger-test-a-motor",
+      "classes": "fade-in"
+    },
+    {
+      "text": "GUIDE\nVFD Troubleshooting Checklist\n10 things to check before calling the manufa",
+      "href": "https://factorylm.com/blog/vfd-troubleshooting-checklist",
+      "classes": "fade-in"
+    },
+    {
+      "text": "All articles",
+      "href": "https://factorylm.com/blog",
+      "classes": "btn-ghost"
+    },
+    {
+      "text": "Fault code library\n50 codes",
+      "href": "https://factorylm.com/blog/fault-codes",
+      "classes": "btn-ghost"
+    },
+    {
+      "text": "$97/MO — SITE LICENSE\nJoin the Beta →",
+      "href": "https://factorylm.com/cmms",
+      "classes": "cta-start"
+    },
+    {
+      "text": "FactoryLM",
+      "href": "https://factorylm.com/",
+      "classes": "footer-logo"
+    },
+    {
+      "text": "Blog",
+      "href": "https://factorylm.com/blog",
+      "classes": ""
+    },
+    {
+      "text": "Fault Codes",
+      "href": "https://factorylm.com/blog/fault-codes",
+      "classes": ""
+    },
+    {
+      "text": "Troubleshooter",
+      "href": "https://factorylm.com/cmms",
+      "classes": ""
+    },
+    {
+      "text": "Contact",
+      "href": "mailto:contact@factorylm.com",
+      "classes": ""
+    },
+    {
+      "text": "Privacy",
+      "href": "https://factorylm.com/privacy",
+      "classes": ""
+    },
+    {
+      "text": "Terms",
+      "href": "https://factorylm.com/terms",
+      "classes": ""
+    }
+  ],
+  "pricing_anchors": [
+    {
+      "tag": "A",
+      "text": "FactoryLM",
+      "href": "https://factorylm.com/",
+      "onclick": false,
+      "classes": "nav-logo"
+    },
+    {
+      "tag": "A",
+      "text": "Product",
+      "href": "https://factorylm.com/#features",
+      "onclick": false,
+      "classes": ""
+    },
+    {
+      "tag": "A",
+      "text": "Blog",
+      "href": "https://factorylm.com/blog",
+      "onclick": false,
+      "classes": ""
+    },
+    {
+      "tag": "A",
+      "text": "Troubleshooter",
+      "href": "https://factorylm.com/cmms",
+      "onclick": false,
+      "classes": ""
+    },
+    {
+      "tag": "A",
+      "text": "Get Started",
+      "href": "https://factorylm.com/cmms",
+      "onclick": false,
+      "classes": "nav-cta"
+    },
+    {
+      "tag": "A",
+      "text": "Start with MIRA",
+      "href": "https://factorylm.com/cmms",
+      "onclick": false,
+      "classes": "card-cta card-cta-primary"
+    },
+    {
+      "tag": "A",
+      "text": "Get MIRA Integrated",
+      "href": "https://factorylm.com/cmms",
+      "onclick": false,
+      "classes": "card-cta card-cta-ghost"
+    },
+    {
+      "tag": "A",
+      "text": "FactoryLM",
+      "href": "https://factorylm.com/",
+      "onclick": false,
+      "classes": "nav-logo"
+    },
+    {
+      "tag": "A",
+      "text": "Blog",
+      "href": "https://factorylm.com/blog",
+      "onclick": false,
+      "classes": ""
+    },
+    {
+      "tag": "A",
+      "text": "Fault Codes",
+      "href": "https://factorylm.com/blog/fault-codes",
+      "onclick": false,
+      "classes": ""
+    },
+    {
+      "tag": "A",
+      "text": "Troubleshooter",
+      "href": "https://factorylm.com/cmms",
+      "onclick": false,
+      "classes": ""
+    },
+    {
+      "tag": "A",
+      "text": "Contact",
+      "href": "mailto:contact@factorylm.com",
+      "onclick": false,
+      "classes": ""
+    },
+    {
+      "tag": "A",
+      "text": "Privacy",
+      "href": "https://factorylm.com/privacy",
+      "onclick": false,
+      "classes": ""
+    },
+    {
+      "tag": "A",
+      "text": "Terms",
+      "href": "https://factorylm.com/terms",
+      "onclick": false,
+      "classes": ""
+    }
+  ],
+  "pricing_html_for_cta_section": [
+    "One price for your whole team.",
+    "How MIRA compares",
+    "Questions"
+  ],
+  "cmms_form": {
+    "action": "https://factorylm.com/cmms",
+    "method": "get",
+    "html": "<form class=\"signup-card\" id=\"signup-form-wrap\" onsubmit=\"event.preventDefault(); handleSignup(); return false;\">\n        <div class=\"form-row\">\n          <label for=\"f-email\">Work email</label>\n          <input type=\"email\" id=\"f-email\" placeholder=\"you@yourplant.com\" autocomplete=\"email\" required=\"\">\n        </div>\n        <div class=\"form-row\">\n          <label for=\"f-company\">Company / Facility name</label>\n          <input type=\"text\" id=\"f-company\" placeholder=\"Acme Manufacturing\" autocomplete=\"organization\" required=\"\">\n        </div>\n        <div class=\"form-row\">\n          <label for=\"f-firstname\">First name</label>\n          <input type=\"text\" id=\"f-firstname\" placeholder=\"Mike\" autocomplete=\"given-name\">\n        </div>\n        <div class=\"form-row\" style=\"margin-top:12px\">\n          <label style=\"display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:var(--text-sm);color:var(--text-secondary)\">\n            <input type=\"checkbox\" id=\"f-terms\" required=\"\" style=\"margin-top:3px;flex-shrink:0;accent-color:var(--amber)\">\n            <span>I agree to the <a href=\"/terms\" target=\"_blank\" rel=\"noopener\" style=\"color:var(--amber)\">Terms of Service</a> and <a href=\"/privacy\" target=\"_blank\" rel=\"noopener\" style=\"color:var(--amber)\">Privacy Policy</a></span>\n          </label>\n        </div>\n        <div id=\"form-error\" class=\"form-error\"></div>\n        <button class=\"btn-primary\" id=\"signup-btn\" type=\"submit\">\n          <svg xmlns=\"http://www.w3.org/2000/svg\" w",
+    "inputs": [
+      {
+        "tag": "INPUT",
+        "type": "email",
+        "name": "",
+        "placeholder": "you@yourplant.com",
+        "labelled_by": null,
+        "label": null,
+        "has_label_el": true
+      },
+      {
+        "tag": "INPUT",
+        "type": "text",
+        "name": "",
+        "placeholder": "Acme Manufacturing",
+        "labelled_by": null,
+        "label": null,
+        "has_label_el": true
+      },
+      {
+        "tag": "INPUT",
+        "type": "text",
+        "name": "",
+        "placeholder": "Mike",
+        "labelled_by": null,
+        "label": null,
+        "has_label_el": true
+      },
+      {
+        "tag": "INPUT",
+        "type": "checkbox",
+        "name": "",
+        "placeholder": "",
+        "labelled_by": null,
+        "label": null,
+        "has_label_el": true
+      },
+      {
+        "tag": "BUTTON",
+        "type": "submit",
+        "name": "",
+        "labelled_by": null,
+        "label": null,
+        "has_label_el": false
+      }
+    ]
+  },
+  "cmms_anchors_with_signup_intent": [],
+  "activated_final": "https://factorylm.com/cmms",
+  "activated_h1": "The AI troubleshooter that knows your equipment.",
+  "activated_raw_status": 200,
+  "activated_raw_location": null,
+  "activated_raw_body_first_500": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n  <title>Welcome to MIRA — let's learn your equipment</title>\n  <meta name=\"robots\" content=\"noindex,nofollow\" />\n  <link rel=\"canonical\" href=\"https://factorylm.com/activated\" />\n  <link rel=\"dns-prefetch\" href=\"//fonts.googleapis.com\">\n  <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n  <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" "
+}

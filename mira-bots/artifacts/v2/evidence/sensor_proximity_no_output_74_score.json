@@ -1,0 +1,40 @@
+{
+  "case": "sensor_proximity_no_output_74",
+  "passed": false,
+  "failure_bucket": "RESPONSE_TOO_GENERIC",
+  "fix_suggestion": "Response could apply to any machine. Add: 'Reference the specific model you see in the image' to system prompt.",
+  "word_count": 79,
+  "elapsed": 32.50518298149109,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": false,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [
+      "Allen-Bradley",
+      "Micro820"
+    ],
+    "fault_cause_found": [
+      "likely",
+      "most likely",
+      "target"
+    ],
+    "next_step_found": [
+      "check",
+      "replace",
+      "set"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 5,
+  "max_score": 6,
+  "confidence": 0.8333,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

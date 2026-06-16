@@ -1,0 +1,12 @@
+id: uns_bare_fault_01
+category: uns_gate
+description: "Bare word 'fault' — engine must ask which asset, not diagnose."
+clarification_required: true
+expected_keywords: ["which", "asset"]
+forbidden_keywords: ["Source:"]   # no citation on a clarification turn
+max_turns: 1
+mock_responses: garage/uns_gate
+mock_kb_chunks: garage/gs10_modbus
+turns:
+  - role: user
+    content: "fault"

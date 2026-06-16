@@ -1,0 +1,22 @@
+{
+  "_comment": "Locked baseline for tests/qa_regression.py. Run with --seed-baseline to fill `per_question` from the first clean staging run. After that, runs read this as the locked floor. Updating it is a deliberate PR — same discipline as .github/baselines/mira-bench.json.",
+  "version": "v1",
+  "set_at": null,
+  "set_from_run": null,
+  "seeded": false,
+  "max_total_per_question": 35,
+  "questions": 5,
+  "max_total": 175,
+  "thresholds": {
+    "total_min": 0,
+    "per_question_drop_max": 6,
+    "_doc": "total_min is set on first seed to (baseline_total * 0.94) — 6% buffer for LLM-judge variance, matching the weekly bench. per_question_drop_max is a hard cap on individual question slippage."
+  },
+  "per_question": {
+    "QA1": {"total": 0, "bucket": "kb_general"},
+    "QA2": {"total": 0, "bucket": "uns_resolver_kb"},
+    "QA3": {"total": 0, "bucket": "grounded_troubleshoot"},
+    "QA4": {"total": 0, "bucket": "safety_keyword"},
+    "QA5": {"total": 0, "bucket": "kb_gap_admission"}
+  }
+}

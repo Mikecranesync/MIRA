@@ -1,0 +1,71 @@
+export interface HeadOpts {
+  title: string;
+  description: string;
+  canonical?: string;
+  ogImage?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  jsonLd?: object;
+}
+
+// Must match a path that is actually served (src/server.ts → /og-image.png).
+// Was "og-default.png", which 404s — breaking the default social/LLM preview
+// card on every page that doesn't pass an explicit ogImage.
+const DEFAULT_OG_IMAGE = "https://factorylm.com/og-image.png";
+const SITE_NAME = "FactoryLM";
+
+// Set GOOGLE_SITE_VERIFICATION in Doppler (factorylm/prd) after verifying in
+// Google Search Console. The meta tag is omitted when the env var is unset.
+const GOOGLE_VERIFY = (typeof process !== "undefined" ? process.env.GOOGLE_SITE_VERIFICATION : undefined) ?? "";
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1) + "…";
+}
+
+export function head(opts: HeadOpts, reqUrl?: string): string {
+  const desc = truncate(opts.description, 160);
+  const canonical = opts.canonical ?? (reqUrl ? new URL(reqUrl).href : "https://factorylm.com/");
+  const ogTitle = opts.ogTitle ?? opts.title;
+  const ogDesc = opts.ogDescription ?? desc;
+  const ogImage = opts.ogImage ?? DEFAULT_OG_IMAGE;
+
+  const jsonLdBlock = opts.jsonLd
+    ? `<script type="application/ld+json">${JSON.stringify(opts.jsonLd)}</script>`
+    : "";
+
+  const gscTag = GOOGLE_VERIFY
+    ? `\n  <meta name="google-site-verification" content="${GOOGLE_VERIFY}">`
+    : "";
+
+  return `<meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${opts.title}</title>${gscTag}
+  <meta name="description" content="${desc}">
+  <link rel="canonical" href="${canonical}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="${SITE_NAME}">
+  <meta property="og:title" content="${ogTitle}">
+  <meta property="og:description" content="${ogDesc}">
+  <meta property="og:image" content="${ogImage}">
+  <meta property="og:url" content="${canonical}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${ogTitle}">
+  <meta name="twitter:description" content="${ogDesc}">
+  <meta name="twitter:image" content="${ogImage}">
+  <link rel="stylesheet" href="/_tokens.css">
+  <link rel="stylesheet" href="/_components.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1B365D">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FactoryLM">
+  <link rel="apple-touch-icon" href="/public/icons/mira-192.png">
+  <link rel="icon" type="image/svg+xml" href="/public/icons/favicon.svg">
+  <script src="/posthog-init.js" defer></script>
+  <script src="/pwa-install.js" defer></script>
+  <script>(function(){try{if(localStorage.getItem('fl_sun_mode')==='1')document.documentElement.classList.add('sun-pre');}catch(e){}})()</script>
+  <script>if('serviceWorker'in navigator)window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){});});</script>
+  ${jsonLdBlock}`;
+}

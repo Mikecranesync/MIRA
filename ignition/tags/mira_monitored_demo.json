@@ -1,0 +1,61 @@
+{
+  "name": "default",
+  "tagType": "Provider",
+  "tags": [
+    {
+      "name": "Mira_Monitored",
+      "tagType": "Folder",
+      "tags": [
+        {
+          "name": "conveyor_demo",
+          "tagType": "Folder",
+          "tags": [
+            {
+              "name": "State",
+              "tagType": "ExpressionTag",
+              "expression": "{[default]Conveyor/Conv_State}",
+              "dataType": "Int4",
+              "tooltip": "Conveyor state machine: 0=idle, 1=starting, 2=running, 3=stopping, 4=fault"
+            },
+            {
+              "name": "Motor_Running",
+              "tagType": "ExpressionTag",
+              "expression": "{[default]Conveyor/Motor_Running}",
+              "dataType": "Boolean"
+            },
+            {
+              "name": "EStop_Active",
+              "tagType": "ExpressionTag",
+              "expression": "{[default]Conveyor/EStop_Active}",
+              "dataType": "Boolean"
+            },
+            {
+              "name": "Fault_Alarm",
+              "tagType": "ExpressionTag",
+              "expression": "{[default]Conveyor/Fault_Alarm}",
+              "dataType": "Boolean"
+            },
+            {
+              "name": "Motor_Current_A",
+              "tagType": "ExpressionTag",
+              "expression": "{[default]Conveyor/VFD_Amps}",
+              "dataType": "Float4"
+            },
+            {
+              "name": "VFD_Hz",
+              "tagType": "ExpressionTag",
+              "expression": "{[default]Conveyor/VFD_Hz}",
+              "dataType": "Float4"
+            },
+            {
+              "name": "Cycle_Counter",
+              "tagType": "ExpressionTag",
+              "expression": "{[default]Conveyor/Item_Count}",
+              "dataType": "Int4"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

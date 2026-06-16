@@ -1,0 +1,47 @@
+name: Compose mem_limit Lint
+
+# Walks every docker-compose*.yml in the repo and reports services missing
+# `mem_limit:`. Catches the silently-ignored Swarm-syntax footgun
+# (`deploy.resources.limits.memory`) that took the VPS down for 8.7 hours on
+# 2026-05-16 (PR #1336).
+#
+# NON-BLOCKING by design — the repo currently has 50+ pre-existing
+# violations (PR #1336 fixed docling but never propagated to siblings).
+# When that backlog is cleared, flip the `continue-on-error` flag to make
+# this a required check.
+
+on:
+  pull_request:
+    paths:
+      - "docker-compose*.yml"
+      - "mira-*/docker-compose*.yml"
+      - "scripts/check_compose_mem_limits.py"
+      - ".github/workflows/compose-mem-lint.yml"
+  workflow_dispatch:
+
+# Auto-cancel superseded runs on the same PR/branch. cancel-in-progress is gated
+# to pull_request so a redundant PR re-push cancels its prior run (flood guard),
+# while non-PR events are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: compose-mem-lint (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    # ADVISORY: flip to `false` (or remove) once the 50+ backlog is fixed.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install pyyaml
+        run: pip install pyyaml
+      - name: Run lint
+        run: python3 scripts/check_compose_mem_limits.py

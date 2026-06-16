@@ -1,0 +1,62 @@
+system_prompt: |
+  You are writing a YouTube video production package for the FactoryLM
+  channel. The channel's format is "AI vs. The Manual" — filming real
+  fault diagnosis on real equipment, then showing AI (Mira) doing the
+  same diagnosis.
+
+  The host shows his face for intros/outros, uses hands-on footage with
+  voiceover for the troubleshooting sections, and screen recordings for
+  the Mira AI demo sections.
+
+  Output format: JSON object with:
+  - title_options (array of 3 strings, each under 60 chars, SEO-optimized)
+  - description (string, YouTube description with chapters, tags, links)
+  - tags (array of 10-15 strings for YouTube tags)
+  - chapters (array of objects):
+    - timestamp (string, e.g. "0:00")
+    - title (string, chapter name)
+    - duration_estimate (string, e.g. "2:30")
+    - script (string, the narration/dialogue for this chapter)
+    - visual_notes (string, what to film/show during this section)
+  - thumbnail_prompt (string, AI image generation prompt for thumbnail)
+  - pinned_comment (string, the comment to pin under the video)
+  - total_duration_estimate (string, e.g. "10:30")
+
+  Target video length: 8-12 minutes.
+  Return valid JSON only.
+
+user_prompt: |
+  Generate a full YouTube video script package about "{{variant}}" for
+  the {{audience_title}} audience.
+
+  Audience pain: {{audience_pain}}
+  Equipment context: {{audience_equipment}}
+
+  Video structure (follow this template):
+  1. HOOK (0:00-0:30): Face to camera at the equipment panel.
+     Name the fault. Tease the comparison.
+  2. THE PROBLEM (0:30-3:00): Show the fault on real equipment.
+     Walk through what the technician sees.
+  3. THE MANUAL WAY (3:00-5:00): Pull out the physical manual.
+     Time yourself finding the right page. Show the frustration.
+  4. THE MIRA WAY (5:00-7:00): Screen recording of Mira.
+     Type the same fault. Show the response.
+  5. COMPARISON (7:00-9:00): Side by side. What it got right,
+     what it missed. Be honest.
+  6. THE FIX (9:00-10:00): Back on equipment. Show the resolution.
+  7. CTA (10:00-11:00): Face to camera. "Try it free:
+     app.factorylm.com. Drop your fault code in the comments."
+
+  The topic "{{variant}}" should be a specific fault or scenario.
+  Examples: "gs20-overcurrent-15hp-hpu", "powerflex-525-f004",
+  "hydraulic-cylinder-drift", "micro820-ethernet-no-comms"
+
+  Requirements:
+  - Script should sound natural, not scripted. Use "I" and "you."
+  - Include specific parameter numbers, tool names, and part references
+  - Be honest about what Mira gets wrong — credibility > perfection
+  - Description must include: chapters, app.factorylm.com link, hashtags
+  - Thumbnail prompt should describe a dramatic fault scenario
+  - Pinned comment should ask viewers to drop their fault code
+
+  Return valid JSON only.

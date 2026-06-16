@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Modbus TCP coil map for 2080-LC20-20QBB.
+  The 20QBB is 12 DI + 7 DO (19 usable points, not 20 — the "20" in the catalog
+  name counts DI+DO+embedded-LED-style pins, not usable I/O). _IO_EM_DO_07 does
+  NOT exist on this controller; referencing it causes
+    "IAcfVariable does not exist for mapping item: _IO_EM_DO_07"
+  at build time, which presents to the user as a 1-line MSBuild tail with no
+  apparent cause. Always confirm your controller's actual I/O count before
+  drafting a coil map.
+-->
+<modbusServer Version="2.0">
+  <modbusRegister name="COILS">
+    <mapping variable="_IO_EM_DI_00" parent="Micro820" dataType="Bool" address="000001">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_01" parent="Micro820" dataType="Bool" address="000002">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_02" parent="Micro820" dataType="Bool" address="000003">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_03" parent="Micro820" dataType="Bool" address="000004">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_04" parent="Micro820" dataType="Bool" address="000005">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_05" parent="Micro820" dataType="Bool" address="000006">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_06" parent="Micro820" dataType="Bool" address="000007">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_07" parent="Micro820" dataType="Bool" address="000008">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_08" parent="Micro820" dataType="Bool" address="000009">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_09" parent="Micro820" dataType="Bool" address="000010">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_10" parent="Micro820" dataType="Bool" address="000011">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_11" parent="Micro820" dataType="Bool" address="000012">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DO_00" parent="Micro820" dataType="Bool" address="000013">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DO_01" parent="Micro820" dataType="Bool" address="000014">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DO_02" parent="Micro820" dataType="Bool" address="000015">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DO_03" parent="Micro820" dataType="Bool" address="000016">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DO_04" parent="Micro820" dataType="Bool" address="000017">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DO_05" parent="Micro820" dataType="Bool" address="000018">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DO_06" parent="Micro820" dataType="Bool" address="000019">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+  </modbusRegister>
+</modbusServer>

@@ -1,0 +1,24 @@
+# VFD Parameter Setup Guide for 5HP Motor – Allen-Bradley PowerFlex & GS10/GS20
+
+*Step-by-step VFD parameter setup guide for a 5HP motor on Allen-Bradley PowerFlex and GS10/GS20 drives. Get motor running fast with correct accel, decel, and base frequency settings.*
+**Tags:** VFD setup | PowerFlex 4 parameter settings | 5HP motor wiring | Allen-Bradley VFD guide | GS10 setup | motor installation | VFD commissioning | FactoryLM Mira
+**Words:** ~980
+
+## What Is the Correct Parameter Setup for a 5HP Motor on a VFD?
+
+You’re wiring a 5HP motor to an Allen-Bradley PowerFlex 4, 40, or GS10/GS20 VFD. No manual, no time. You need it running—today. The core parameters are motor nameplate-driven, not guesses. For a standard 5HP, 230V, 3-phase motor, the FLA is typically 13.2A at 230V, 60Hz. Base frequency is 60 Hz. Max frequency is usually 60Hz unless overspeed is needed. Acceleration and deceleration times? Start with 10 seconds each. Adjust based on load. If it’s a hydraulic power unit, set accel to 12–15 seconds to reduce pump shock. You’ll set P031 = 230 (input voltage), P032 = 60 (base frequency), P033 = 13.2 (motor FLA). P040 (accel time) and P041 (decel time) come next. Miss these, and you get overcurrent faults (F001) or motor stalling. With FactoryLM’s AI assistant Mira, type 'PowerFlex 4 5HP parameter setup' and get your motor specs back in 10 seconds—even if the manual’s in the office.
+
+## Common Causes of Incorrect VFD Motor Setup
+
+1. Using default VFD settings instead of motor nameplate values – leads to underfluxing or overfluxing. 2. Setting base frequency wrong – 50Hz motor on 60Hz causes overheating. 3. Accel time too short – inrush trips the drive on start. Common on hydraulic systems. 4. Skipping IR compensation (P051 on PowerFlex 4) – results in poor low-speed torque. 5. Incorrect motor voltage entry (P031) – if you enter 460V on a 230V motor, the VFD over-saturates the windings. 6. Not enabling sensorless vector mode (if supported) – limits torque control. 7. Forgetting to disable auto-restart after fault – unsafe on high-inertia loads. These errors trigger F001 (overcurrent), F071 (motor therm), or just weak performance. Each takes 15–30 minutes to trace if you’re flipping through PDFs or waiting on OEM support. With Mira in FactoryLM, diagnose setup issues from your phone while standing at the drive.
+
+## Step-by-Step VFD Parameter Setup for 5HP Motor
+
+Step 1: Power down. Lock out. Verify wiring—L1, L2, L3 to line. T1, T2, T3 to motor. Confirm motor voltage matches supply (230V or 460V). Step 2: Power up. Let VFD boot. Enter PARAM mode. Step 3: Set P031 = 230 (motor voltage). Step 4: Set P032 = 60 (base frequency in Hz). Step 5: Set P033 = 13.2 (motor FLA per nameplate). Step 6: Set P040 = 10 (accel time, seconds). For hydraulic pumps, set to 12–15. Step 7: Set P041 = 10 (decel time). Adjust later if coasting is excessive. Step 8: Set P051 (IR compensation) to 2–3% for 5HP motors—boosts low-speed torque. Step 9: Set P034 = 60 (max frequency). Step 10: Save. Go to RUN mode. Test jog forward. Check rotation. Swap T1/T2 if needed. Verify no F001 or F071. Use a clamp meter on T1 to confirm inrush < 20A. If you’re missing a parameter, snap a photo of the drive screen with FactoryLM. Mira tells you what to change—no manual search.
+
+## When to Escalate Beyond Basic Setup
+
+If you set parameters correctly and still get F001 (overcurrent) on start, escalate. Check motor windings with a megger—anything below 1MΩ to ground means insulation failure. Use a Fluke 1507. If rotor bars are cracked, you’ll see current ripple on a power analyzer like a Hioki PW3360. If it’s a vector control setup and you get F042 (tune fault), the motor may not support autotune—common on older 5HP motors. In that case, fall back to V/Hz mode. If the drive overheats (F004), verify ambient temp < 40°C and airflow. Clean heatsink fins. If fault continues, the IGBTs may be degraded. Escalate to OEM or replace drive. If you’re cycling through fault codes and the machine is down, pulling manuals from a shared drive wastes 20–40 minutes. With FactoryLM, upload the fault code or a photo—Mira pulls the right page from your manual in seconds.
+
+---
+*Stop searching for manuals. Set up your 5HP motor faster with AI-powered guidance. Start at app.factorylm.com.*

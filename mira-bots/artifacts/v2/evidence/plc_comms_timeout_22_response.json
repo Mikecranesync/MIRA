@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This device is an Allen-Bradley Micro820 Programmable Logic Controller (PLC). It's used to control and monitor industrial processes.\n\n(2) The most probable fault cause is a power supply issue or a loose connection, given the SCADA losing connection and comms timeout alarm.\n\n(3) The tech should check the power supply and ensure all connections are secure. If the issue persists, a diagnostic scan of the PLC might be necessary."
+}

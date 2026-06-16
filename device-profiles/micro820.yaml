@@ -1,0 +1,55 @@
+# Allen-Bradley Micro820 2080-LC20-20QBB — fieldbus profile
+# See _schema.yaml for the contract. Every fact traces to `sources`.
+
+id: micro820
+display_name: Allen-Bradley Micro820 2080-LC20-20QBB
+kind: plc
+protocols: [ethernet_ip, modbus_tcp]
+
+# How discover.py recognizes a Micro820:
+#   - EtherNet/IP: CIP List Identity product name contains "Micro820"/"2080-LC20"
+#     (Rockwell vendor id = 1). This is the primary, reliable identifier.
+#   - Modbus/TCP: if the MbSrvConf map is deployed, unit 1 answers FC3; the deployed
+#     v4.1.9 map exposes conv_state at HR400114 (offset 113). Secondary — the map is
+#     only present after deploy_modbus_map.py has run.
+fingerprint:
+  ethernet_ip:
+    vendor_id: 1
+    identity_contains: ["Micro820", "2080-LC20"]
+  modbus_tcp:
+    read: { reg: 113, fc: 3, count: 1 }       # conv_state (HR400114) — present iff map deployed
+    expect: { in: [0, 1, 2, 3, 4] }            # IDLE/STARTING/RUNNING/STOPPING/FAULT
+
+# Modbus/TCP server map (only live after CCW deploy of MbSrvConf_v4.xml — 22 coils + 17 HRs).
+# Addresses are zero-based Modbus offsets. See plc/MbSrvConf_v4.xml for the full map.
+registers:
+  - { addr: 100, name: motor_speed,        access: r, fc: 3, units: RPM }
+  - { addr: 105, name: error_code,         access: r, fc: 3, units: enum, note: "0=none 6=E-STOP 7=WIRING 8=DIR 9=VFD_COMM" }
+  - { addr: 106, name: vfd_frequency,      access: r, fc: 3, scale: 0.1, units: Hz }
+  - { addr: 109, name: vfd_dc_bus,         access: r, fc: 3, units: V }
+  - { addr: 113, name: conv_state,         access: r, fc: 3, units: enum, note: "0=IDLE 1=STARTING 2=RUNNING 3=STOPPING 4=FAULT" }
+  - { addr: 114, name: vfd_cmd_word,       access: r, fc: 3, units: enum, note: "1=STOP 18=FWD+RUN 20=REV+RUN" }
+  - { addr: 116, name: vfd_poll_step,      access: r, fc: 3, units: enum, note: "1=read 2=cmd 3=freq 4=reset 5=status" }
+
+network_defaults:
+  ip: 192.168.1.100
+  modbus_tcp_port: 502
+  ethernet_ip_port: 44818
+  modbus_unit_id: 1
+
+gotchas:
+  - "Modbus/TCP answers TCP 502 but returns exception 1 (ILLEGAL_FUNCTION) on every read until the MbSrvConf map is deployed in CCW. Use plc/deploy_modbus_map.py --auto (drops MbSrvConf_v4.xml: 22 coils + 17 HRs)."
+  - "EtherNet/IP List Identity works even with NO program/map loaded — it's the reliable 'is the PLC alive and who is it' probe. Prefer it over Modbus for identification."
+  - "Default/factory IP may be DHCP or 192.168.1.1; if 192.168.1.100 doesn't answer, the PLC LCD shows its IP at boot, or discover via RSLinx Ethernet/IP driver."
+  - "Built-in serial RS-485 to the GS10 is Channel 0, NOT Channel 2. ErrorID=255 on the MSG block means the serial port config never downloaded (CCW sync issue), not a wiring fault."
+
+uns:
+  type_path_builder: model_path
+  manufacturer: Rockwell Automation
+  model: Micro820
+
+sources:
+  - plc/PLC_BRINGUP_PROMPT.md
+  - plc/MbSrvConf_v4.xml
+  - plc/live_monitor.py
+  - plc/RESUME_VFD_COMMISSIONING.md

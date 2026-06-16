@@ -1,0 +1,42 @@
+date,title,description,priority,asset,category
+2026-01-12,VFD fault F05 — Pump-001,Overcurrent on startup. Power cycled to clear. No load anomaly found.,MEDIUM,Pump-001,CORRECTIVE
+2026-01-18,Belt tracking adjustment — Conv-001,Belt off 2mm at tail pulley. Adjusted take-up bolt.,MEDIUM,Conv-001,CORRECTIVE
+2026-01-22,Compressor high temp alarm,Discharge temp 218°F. Cleaned condenser fins. Ambient 94°F.,HIGH,Comp-001,CORRECTIVE
+2026-01-25,PLC I/O module fault — Slot 4,1769-IQ16 faulted. Reseated module. Intermittent.,HIGH,PLC-001,CORRECTIVE
+2026-01-28,Hydraulic oil low — Press-001,Oil 2 inches below sight glass. Added 3 gal AW-46. No visible leaks.,MEDIUM,Press-001,CORRECTIVE
+2026-02-01,Robot J3 lubrication — quarterly PM,80cc Kluber NBU15 via Zerk at J3. No abnormal noise.,MEDIUM,Robot-001,PREVENTIVE
+2026-02-05,Fire extinguisher inspection,All 12 inspected. Unit #7 recharged — gauge was in yellow zone.,LOW,,PREVENTIVE
+2026-02-08,VFD fault F05 — Pump-001,Overcurrent on startup again. Increased accel ramp P042 from 2.0s to 3.5s.,MEDIUM,Pump-001,CORRECTIVE
+2026-02-12,Weld tip dresser skip — Robot-001,Cutter skipping every 3rd cycle. Blades worn. Replaced assembly.,MEDIUM,Robot-001,CORRECTIVE
+2026-02-15,Belt tracking — Conv-001,Off 4mm again. Take-up spring showing wear. Ordered replacement.,MEDIUM,Conv-001,CORRECTIVE
+2026-02-18,Compressor oil analysis,TAN 1.8 (replace at 2.0). Iron 35 ppm. Oil change scheduled.,MEDIUM,Comp-001,CONDITION_BASED
+2026-02-20,PLC program backup — quarterly,Downloaded L33ER program. Stored on network drive. No changes.,LOW,PLC-001,PREVENTIVE
+2026-02-22,VFD fault F05 — Pump-001,Third occurrence. DC bus voltage 5% below nominal. Suspect capacitor aging.,HIGH,Pump-001,CORRECTIVE
+2026-02-25,Hydraulic slow cycle — Press-001,Cycle 12s vs normal 8s. Pressure 2800 vs 3000 spec. Adjusted relief valve.,HIGH,Press-001,CORRECTIVE
+2026-02-28,Compressed air leak audit,Ultrasonic survey found 8 leaks. 15 CFM loss estimated. Repaired 6 of 8.,MEDIUM,,CONDITION_BASED
+2026-03-02,Belt slipping — Conv-001,8% speed loss under load. Tensioned to spec 45 lbs.,HIGH,Conv-001,CORRECTIVE
+2026-03-04,Compressor oil and filter changed,Reset service interval. Running at 195°F discharge.,MEDIUM,Comp-001,PREVENTIVE
+2026-03-06,E-731 encoder fault — Robot-001 Axis 2,Following error on J2 fast traverse. Cable wear at CN2 bend point. Rerouted with strain relief.,HIGH,Robot-001,CORRECTIVE
+2026-03-08,VFD fault F05 — Pump-001,5th time in 60 days. Motor 112% FLA. Coupling misalignment corrected.,HIGH,Pump-001,CORRECTIVE
+2026-03-10,Hydraulic filter replacement — Press-001,10-micron return filter collapsed. Metal contamination visible. Oil sample sent to lab.,HIGH,Press-001,CONDITION_BASED
+2026-03-12,Case erector sensor alignment — PLC Line 1,Prox sensor gap 8mm adjusted to 4mm per spec.,MEDIUM,PLC-001,CORRECTIVE
+2026-03-14,Safety shower test — monthly,All 4 stations tested per ANSI Z358.1. Station 3 strainer cleaned.,LOW,,PREVENTIVE
+2026-03-16,Belt edge fraying — Conv-001,Splice fraying. Field splice was 6 months old. Full belt replacement scheduled.,HIGH,Conv-001,CORRECTIVE
+2026-03-18,VFD fault F05 — Pump-001,DC bus capacitor ESR 2.3x nominal. Replacement on order P/N GS1-CAP-460.,HIGH,Pump-001,CORRECTIVE
+2026-03-20,Robot mastering check — post-collision,Minor collision detected. Re-mastered 6 axes. TCP within 0.5mm.,HIGH,Robot-001,CORRECTIVE
+2026-03-22,Compressor high temp again,Discharge 221°F at 97°F ambient. Thermal valve sluggish. Replaced.,HIGH,Comp-001,CORRECTIVE
+2026-03-24,Oil analysis results — Press-001,ISO 18/16/13 (target 17/15/12). Silicon 22 ppm — external contamination. Breather replaced.,MEDIUM,Press-001,CONDITION_BASED
+2026-03-26,New belt installed — Conv-001,Old belt had 3mm wear at splice. Take-up spring also replaced.,MEDIUM,Conv-001,CORRECTIVE
+2026-03-27,PLC battery low — L33ER,1769-BA at 2.8V. Replaced proactively. New battery 3.6V.,LOW,PLC-001,PREVENTIVE
+2026-03-28,VFD capacitor replaced — Pump-001,DC bus capacitor installed. F05 fault cleared. Monitoring.,HIGH,Pump-001,CORRECTIVE
+2026-03-30,Emergency generator load test,150kW genset at 75% load 30 min. Voltage and frequency stable.,LOW,,PREVENTIVE
+2026-04-01,Compressor PM — quarterly,Air filter replaced. Belt tension OK. Oil topped off.,MEDIUM,Comp-001,PREVENTIVE
+2026-04-02,Robot backup controller program,Full image backup R-30iB Plus to USB. MD5 verified.,LOW,Robot-001,PREVENTIVE
+2026-04-03,Conv-001 post-replacement check,Tracking centered. Tension 44 lbs. No slip under full load.,LOW,Conv-001,PREVENTIVE
+2026-04-04,Hydraulic press quarterly PM,Hose conditions OK. Cylinder rod OK. Pressure gauge within 2%.,LOW,Press-001,PREVENTIVE
+2026-04-05,Palletizer E-stop investigation,Operator hit E-stop for perceived jam. No jam found. Retrained operator.,MEDIUM,PLC-001,CORRECTIVE
+2026-04-06,Lockout/tagout procedure review,Annual LOTO review. Updated Pump-001 procedure to include DC bus discharge.,MEDIUM,,PREVENTIVE
+2026-04-07,VFD no recurrence — Pump-001,9 days since capacitor replacement. No F05. Closing pattern.,LOW,Pump-001,CORRECTIVE
+2026-04-08,Weld schedule optimization — Robot-001,Current adjusted 12.5kA to 13.0kA. Nugget 4.8mm to 5.2mm.,LOW,Robot-001,CORRECTIVE
+2026-04-09,Robot J1 reducer noise,Grinding noise CW >50%. Vibration 4.2 mm/s vs 2.8 baseline. Monitoring.,HIGH,Robot-001,CONDITION_BASED
+2026-04-10,5S audit — maintenance shop,Score 38/50. Chemical labels faded. Shadow board missing 2 tools.,LOW,,PREVENTIVE

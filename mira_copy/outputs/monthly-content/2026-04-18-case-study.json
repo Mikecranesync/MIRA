@@ -1,0 +1,83 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "A maintenance tech at a Midwest bottling plant was stopped cold by a PowerFlex 750 fault: Code F63. No manual onsite. Called OEM support — on hold for 37 minutes.\n\nHe pulled out his phone, snapped a photo of the drive’s display, uploaded it to FactoryLM.\n\nAI diagnosed it as a ground fault in Output Phase B. Pinpointed the manual page. Auto-created the work order.\n\nDiagnosis time: 28 seconds.\n\nNo login. No sales call. No waiting.\n\nWe built FactoryLM for these moments — when downtime burns $2k/hour and you need answers now.\n\nHow long does a single fault code lookup take at your plant?",
+      "char_count": 763,
+      "hashtags": [
+        "MaintenanceTech",
+        "CMMS",
+        "Industry40"
+      ],
+      "suggested_visual": "Split-screen video: left shows tech frustrated at a PowerFlex drive, right shows phone uploading photo and Mira AI returning the fault fix in seconds.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "F63 on a PowerFlex 750? \n\nNot a blown fuse. Not a software reset.\n\n9 times out of 10: ground fault in Output Phase B.\n\nUsed to take 40 min to find that in the manual. Now it’s a 30-second photo.\napp.factorylm.com",
+      "char_count": 207,
+      "hashtags": [
+        "VFD",
+        "Maintenance"
+      ],
+      "suggested_visual": "6-second clip: finger pointing at F63 on PowerFlex drive, quick cut to phone showing AI diagnosis.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "We’ve been testing AI diagnosis on real machine faults — specifically Allen-Bradley PLCs and PowerFlex/GS-series VFDs — with a few maintenance teams across food processing and metal stamping.\n\nOne repeat issue: PowerFlex 750 series throwing F63 (Output Phase B ground fault). Techs often assume it’s a drive failure. But in 8 of 11 cases logged, it was a damaged cable near the motor lead entry — not the drive.\n\nCommon fix: inspect the conduit bend radius, check for water ingress, megger the motor.\n\nWe trained our AI (Mira) on actual PowerFlex troubleshooting manuals so you can snap a photo of the code and get the *right* section in <30 sec — no flipping through PDFs.\n\nIf you’re still digging through binders or waiting on OEM support, there are faster ways to triage. Happy to share the test log details if useful.",
+      "char_count": 1031,
+      "hashtags": [],
+      "suggested_visual": "Short screen recording: photo of F63 on drive → AI returns diagnosis + manual excerpt highlighting the cable inspection step.",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "Here’s what happened when a technician at a packaging line hit a GS20 VFD fault yesterday:\n\n- 10:17 AM: Drive faulted. Code OL2.\n- 10:18 AM: Tech snapped a photo with phone.\n- 10:19 AM: AI returned: ‘Motor overload — verify load torque and ambient temp. Check for seized coupling.’\n- 10:20 AM: Work order created, assigned, parts pulled.\n\nMachine back by 10:45.\n\nNo manual. No OEM call. No 30-minute lookup.\n\nThis is happening in real plants now.\n\nWhat’s your go-to move when a GS10 or GS20 throws OL2?",
+      "char_count": 645,
+      "hashtags": [
+        "VFDMaintenance",
+        "PlantOperations",
+        "MaintenanceLife"
+      ],
+      "suggested_visual": "Three-image carousel: 1) Faulted GS20 display, 2) Phone showing AI diagnosis, 3) Tech clearing coupling jam.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "You’re at a Allen-Bradley ControlLogix rack. Red fault light flashing. No binder. No time.\n\nOpen FactoryLM.\nPoint. Shoot.\n\nAI reads the code — SF, not OK — pulls the exact troubleshooting page from Rockwell’s manual.\nTells you: ‘Replace module or check backplane voltage.’\n\nAll in 22 seconds.\n\nNo app install. Works in phone browser.\n\nThis is how maintenance wins now.\n\n#MaintenanceHack #FactoryLife #TechLife",
+      "char_count": 589,
+      "hashtags": [
+        "MaintenanceHack",
+        "FactoryLife",
+        "TechLife"
+      ],
+      "suggested_visual": "Vertical video: first-person view walking up to a faulted ControlLogix module. Hand pulls phone, snaps photo. Cut to screen recording: AI returns diagnosis instantly. Text overlay: '22 seconds'.",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "When the hydraulic power unit trips — again — and the manual’s in the office, you don’t have 40 minutes to waste.\n\nThis tech took one photo of the alarm tag.\n\nFactoryLM’s AI diagnosed low reservoir level due to a leaking return line — common on older Parker units.\n\nWork order created. Fix done in 20 minutes.\n\nNo login. No waiting.\n\nSpeed isn’t just convenient. It’s how you save $1,800 in downtime.\n\nTap to see how it works →",
+      "char_count": 658,
+      "hashtags": [
+        "HydraulicSystems",
+        "MaintenanceLife",
+        "CMMS",
+        "VFD",
+        "PowerFlex",
+        "AllenBradley",
+        "FactoryLM",
+        "MiraAI",
+        "TechTip",
+        "PlantMaintenance",
+        "NoDowntime",
+        "MobileMaintenance",
+        "WorkOrder",
+        "PreventiveMaintenance",
+        "ReliabilityEngineering"
+      ],
+      "suggested_visual": "Carousel: 1) Close-up of faulted HPU control panel, 2) Phone showing AI diagnosis with manual excerpt, 3) Work order screen, 4) Tech tightening return line fitting.",
+      "subreddit": null
+    }
+  ]
+}

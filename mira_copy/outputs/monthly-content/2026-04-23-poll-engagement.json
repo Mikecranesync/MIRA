@@ -1,0 +1,83 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "You're at a PowerFlex 755. Fault Code: F40. Motor temp high.\n\nDo you:\n\nA) Pull the manual, search 127 pages, find thermal overload settings\nB) Call OEM support, wait 23 minutes on hold\nC) Snap photo → AI pulls exact page from *your* manual in 9 seconds\n\nWe timed it.\n\nMira (our AI) reads your uploaded manuals. No internet needed at machine. Works on phone.\n\nWhat’s the last fault code you fought with?\n\nPS: CMMS setup takes 2 minutes. No sales call.\nhttps://app.factorylm.com",
+      "char_count": 546,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#VFD",
+        "#FactoryLM"
+      ],
+      "suggested_visual": "Split-screen video: left side shows technician flipping through thick manual, right side shows phone camera snapping VFD display, AI highlights correct manual page instantly.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "F40 on a PowerFlex 755?\n\nInstead of searching 127 pages or waiting on hold:\n\n1. Snap photo\n2. AI finds your manual entry\n3. Get fix steps in 9 sec\n\nNo internet. No call. Just work.\nhttps://app.factorylm.com",
+      "char_count": 220,
+      "hashtags": [
+        "#VFD",
+        "#Maintenance"
+      ],
+      "suggested_visual": "6-second screen capture: phone camera focuses on PowerFlex display, flashes 'Processing', then shows diagnostic result with manual excerpt.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "r/maintenance\n\nQuick tip for GS20 VFDs: F83 (overvoltage during stop) often isn’t supply voltage. \n\nCheck:\n- Decel time too short? Default is 10 sec, but long惯性 loads need 25+\n- DC bus cap aging? Measure ripple >10% → replace\n- Is there regeneration? Add braking resistor if not\n\nWe tested 14 units in food plants — 7 had decel set below 15 sec. Fixed with one parameter.\n\nBonus: If you upload your GS20 manual to a system that indexes it (like how search works on your phone), you can snap a photo of the fault and pull the exact page in <10 seconds. Not magic — just better access to what you already own.\n\nWhat tricks do you use for VFD overvoltage?",
+      "char_count": 866,
+      "hashtags": [],
+      "suggested_visual": "Image carousel: 1) GS20 HMI showing F83, 2) decel parameter setting screen, 3) oscilloscope trace of DC bus ripple, 4) photo of braking resistor installation.",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "You see F007 on an Allen-Bradley Micro850.\n\nNo manual at hand.\n\nOption 1: Walk back to office, dig through drawer, find 400-page PDF, search keywords — takes 32 minutes\nOption 2: Snap a photo with your phone, get the exact fix steps from *your* manual in 11 seconds\n\nWe timed both.\n\nFactoryLM runs on your phone like a PWA — no app store, no install. Just tap + go.\n\nWhat’s your go-to move when a PLC faults and the manual’s not there?",
+      "char_count": 634,
+      "hashtags": [
+        "#PLCTroubleshooting",
+        "#MaintenanceLife",
+        "#SmartMaintenance"
+      ],
+      "suggested_visual": "Side-by-side video: one tech walking down hallway to office, frustrated, while another snaps a photo of Micro850 display and reads AI response on phone in the field.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "When F40 hits your PowerFlex 755 and you don’t have 20 minutes to spare.\n\nThis is what happens when you snap a pic instead of calling support.\n\nNo app install. Works in grease, rain, or low light.\n\nYour manual. Instant search. Field-ready.\n\n#MaintenanceHack #FactoryTech #VFD",
+      "char_count": 346,
+      "hashtags": [
+        "#MaintenanceHack",
+        "#FactoryTech",
+        "#VFD"
+      ],
+      "suggested_visual": "15-second vertical video: technician wipes glove on coverall, points phone at VFD display showing F40, taps screen, AI returns diagnostic PDF snippet with fix steps. Timer overlay shows 0:09.",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "F40 on a PowerFlex 755? You don’t need the whole manual — just the right page.\n\nThis is how fast you get it.\n\nWe built the tool we wished we had at 2am on a shutdown.\n\nPhoto → diagnosis → action. All from your phone.\n\nNo waiting. No digging. Just fixed.\n\n—\n🛠 For Allen-Bradley, GS10/GS20, hydraulic units\n📱 PWA: install from browser, no app store\n📁 AI searches *your* manuals, not generic tips",
+      "char_count": 631,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#VFDRepair",
+        "#PLC",
+        "#Industry40",
+        "#SmartFactory",
+        "#Hydraulics",
+        "#PowerFlex",
+        "#AllenBradley",
+        "#CMMS",
+        "#MachineMaintenance",
+        "#AIinManufacturing",
+        "#FactoryLife",
+        "#ReliabilityEngineering",
+        "#MaintenanceEngineer",
+        "#TechnicianLife"
+      ],
+      "suggested_visual": "4-slide carousel: 1) Close-up of VFD fault screen, 2) Phone camera focusing on display, 3) AI interface showing manual excerpt with highlight, 4) Technician closing panel with gloves, satisfied look.",
+      "subreddit": null
+    }
+  ]
+}

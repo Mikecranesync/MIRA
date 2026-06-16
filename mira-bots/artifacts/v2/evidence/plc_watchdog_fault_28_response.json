@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This device is an Allen-Bradley Micro820 Programmable Logic Controller (PLC). It's used to control and automate industrial processes.\n\n(2) The most probable fault cause is a hardware issue, possibly a PLC itself or its power supply, given the watchdog fault and scan time issues.\n\n(3) The tech should first check the power supply and ensure all connections are secure. If the problem persists, a next step is to replace the PLC or its power supply."
+}

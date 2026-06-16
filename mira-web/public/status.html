@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="60">
+  <title>System Status — FactoryLM</title>
+  <meta name="description" content="Live status of MIRA / FactoryLM services.">
+  <link rel="stylesheet" href="/_tokens.css">
+  <link rel="stylesheet" href="/_dark-theme.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--fl-font-sans);
+      background: var(--fl-bg-50);
+      color: var(--fl-ink-900);
+      min-height: 100vh;
+      padding: var(--fl-sp-6) var(--fl-sp-6) var(--fl-sp-10);
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: var(--fl-sp-3);
+      max-width: 640px;
+      margin: 0 auto var(--fl-sp-8);
+    }
+    .header .logo {
+      font-size: var(--fl-type-2xl);
+      font-weight: 800;
+      color: var(--fl-orange-600);
+      letter-spacing: var(--fl-ls-tight);
+      text-decoration: none;
+    }
+    .header .divider {
+      color: var(--fl-rule-200);
+      font-size: var(--fl-type-xl);
+      font-weight: 300;
+    }
+    .header .title {
+      font-size: var(--fl-type-md);
+      font-weight: 600;
+      color: var(--fl-ink-900);
+    }
+
+    /* ── Banner ── */
+    .banner {
+      max-width: 640px;
+      margin: 0 auto var(--fl-sp-6);
+      border-radius: var(--fl-radius-lg);
+      padding: var(--fl-sp-4) var(--fl-sp-6);
+      display: flex;
+      align-items: center;
+      gap: var(--fl-sp-3);
+      font-size: var(--fl-type-md);
+      font-weight: 600;
+    }
+    .banner.all-ok {
+      background: rgba(0, 212, 170, 0.10);
+      border: 1px solid rgba(0, 212, 170, 0.28);
+      color: var(--fl-good);
+    }
+    .banner.degraded {
+      background: rgba(255, 180, 71, 0.10);
+      border: 1px solid rgba(255, 180, 71, 0.28);
+      color: var(--fl-orange-500);
+    }
+    .banner.outage {
+      background: rgba(255, 122, 92, 0.10);
+      border: 1px solid rgba(255, 122, 92, 0.28);
+      color: var(--fl-bad);
+    }
+    .banner.loading {
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--fl-rule-200);
+      color: var(--fl-muted-600);
+    }
+    .banner-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: currentColor;
+    }
+
+    /* ── Service list ── */
+    .service-list {
+      max-width: 640px;
+      margin: 0 auto;
+      border: 1px solid var(--fl-rule-200);
+      border-radius: var(--fl-radius-lg);
+      background: var(--fl-card-0);
+      overflow: hidden;
+      box-shadow: var(--fl-shadow-sm);
+    }
+    .service-row {
+      display: flex;
+      align-items: center;
+      gap: var(--fl-sp-4);
+      padding: var(--fl-sp-4) var(--fl-sp-6);
+      border-bottom: 1px solid var(--fl-rule-200);
+    }
+    .service-row:last-child {
+      border-bottom: none;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-dot.ok      { background: var(--fl-good); }
+    .status-dot.fail    { background: var(--fl-bad); }
+    .status-dot.unknown { background: var(--fl-muted-600); opacity: 0.5; }
+
+    .service-name {
+      flex: 1;
+      font-size: var(--fl-type-base);
+      font-weight: 500;
+      color: var(--fl-ink-900);
+    }
+    .service-check {
+      font-size: var(--fl-type-sm);
+      color: var(--fl-muted-600);
+      white-space: nowrap;
+    }
+    .status-badge {
+      font-size: var(--fl-type-xs);
+      font-weight: 600;
+      letter-spacing: var(--fl-ls-caps);
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: var(--fl-radius-pill);
+    }
+    .status-badge.ok      { background: rgba(0,212,170,.12); color: var(--fl-good); }
+    .status-badge.fail    { background: rgba(255,122,92,.12); color: var(--fl-bad); }
+    .status-badge.unknown { background: rgba(255,255,255,.06); color: var(--fl-muted-600); }
+
+    /* ── Footer ── */
+    .footer {
+      max-width: 640px;
+      margin: var(--fl-sp-6) auto 0;
+      text-align: center;
+      font-size: var(--fl-type-sm);
+      color: var(--fl-muted-600);
+    }
+    .footer a {
+      color: var(--fl-orange-600);
+      text-decoration: none;
+    }
+    .footer a:hover { text-decoration: underline; }
+
+    #last-updated {
+      font-size: var(--fl-type-xs);
+      color: var(--fl-muted-600);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <a class="logo" href="/">MIRA</a>
+    <span class="divider">/</span>
+    <span class="title">System Status</span>
+  </div>
+
+  <div id="banner" class="banner loading">
+    <div class="banner-dot"></div>
+    <span id="banner-text">Loading&hellip;</span>
+  </div>
+
+  <div class="service-list" id="service-list">
+    <!-- Populated by JS below -->
+    <div class="service-row">
+      <div class="status-dot unknown"></div>
+      <span class="service-name">Loading services&hellip;</span>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span id="last-updated"></span>
+    &nbsp;&middot;&nbsp;
+    Auto-refreshes every 60 s
+    &nbsp;&middot;&nbsp;
+    <a href="/">factorylm.com</a>
+  </div>
+
+  <script>
+    function fmtTime(iso) {
+      if (!iso) return "never";
+      try {
+        const d = new Date(iso);
+        return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      } catch { return iso; }
+    }
+
+    async function loadStatus() {
+      let data;
+      try {
+        const res = await fetch("/api/probe-state");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        data = await res.json();
+      } catch (err) {
+        document.getElementById("banner").className = "banner loading";
+        document.getElementById("banner-text").textContent = "Could not reach status API.";
+        return;
+      }
+
+      const services = data.services || [];
+
+      // Determine overall status
+      const hasAny = services.length > 0;
+      const hasKnown = services.some(s => s.status !== "unknown");
+      const hasFail = services.some(s => s.status === "fail");
+      const allOk = hasKnown && !hasFail && services.every(s => s.status === "ok");
+
+      const banner = document.getElementById("banner");
+      const bannerText = document.getElementById("banner-text");
+      if (!hasKnown) {
+        banner.className = "banner loading";
+        bannerText.textContent = "Status data not yet available.";
+      } else if (allOk) {
+        banner.className = "banner all-ok";
+        bannerText.textContent = "All Systems Operational";
+      } else if (hasFail) {
+        const failCount = services.filter(s => s.status === "fail").length;
+        const allFail = services.filter(s => s.status !== "unknown").every(s => s.status === "fail");
+        if (allFail) {
+          banner.className = "banner outage";
+          bannerText.textContent = "Major Outage";
+        } else {
+          banner.className = "banner degraded";
+          bannerText.textContent = failCount === 1
+            ? "1 Service Degraded"
+            : failCount + " Services Degraded";
+        }
+      } else {
+        banner.className = "banner loading";
+        bannerText.textContent = "Partial data available.";
+      }
+
+      // Render rows
+      const list = document.getElementById("service-list");
+      list.innerHTML = services.map(s => {
+        const dot = `<div class="status-dot ${s.status}"></div>`;
+        const name = `<span class="service-name">${escapeHtml(s.name)}</span>`;
+        const badge = `<span class="status-badge ${s.status}">${s.status}</span>`;
+        const check = `<span class="service-check">${s.lastCheck ? fmtTime(s.lastCheck) : "&mdash;"}</span>`;
+        return `<div class="service-row">${dot}${name}${check}${badge}</div>`;
+      }).join("");
+
+      if (data.updated) {
+        document.getElementById("last-updated").textContent =
+          "Updated " + fmtTime(data.updated);
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c =>
+        ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]
+      );
+    }
+
+    loadStatus();
+  </script>
+</body>
+</html>

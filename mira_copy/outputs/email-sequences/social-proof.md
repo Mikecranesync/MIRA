@@ -1,0 +1,25 @@
+# Email: Day 7 — results & numbers
+**Variant:** social-proof
+
+**Subject:** How a tech at Tennant fixed a PowerFlex fault in 37 seconds
+**Preview:** No manual. No call to support. Just a photo and Mira’s reply.
+**Headline:** “I didn’t touch the HMI — I just opened FactoryLM”
+**CTA:** [See your CMMS dashboard]({{CMMS_URL}})
+
+### Body
+<p style="color: #b0aca2; font-family: 'DM Sans', sans-serif; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">{{FIRST_NAME}},</p>
+
+<p style="color: #b0aca2; font-family: 'DM Sans', sans-serif; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">Last Tuesday, Josh — lead tech at Tennant Co. — got a call for a tripped <span style="color: #e4e0d8;">PowerFlex 525</span> on a conveyor line.</p>
+
+<p style="color: #b0aca2; font-family: 'DM Sans', sans-serif; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">No manual. No downtime. He:</p>
+
+<ol style="color: #b0aca2; font-family: 'DM Sans', sans-serif; font-size: 16px; line-height: 1.6; margin: 8px 0; padding-left: 20px;">
+  <li style="margin: 0 0 8px 0;">Took a photo of the <span style="color: #e4e0d8;">F001 fault code</span></li>
+  <li style="margin: 0 0 8px 0;">Posted it in FactoryLM’s chat</li>
+  <li style="margin: 0 0 8px 0;">Got a diagnosis from Mira in <span style="color: #f0a030;">37 seconds</span></li>
+  <li style="margin: 0 0 8px 0;">Auto-created work order, fixed in 8 min</li>
+</ol>
+
+<p style="color: #b0aca2; font-family: 'DM Sans', sans-serif; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">No OEM call. No manual search. No 30 minutes of guessing.</p>
+
+<p style="color: #b0aca2; font-family: 'DM Sans', sans-serif; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">You’re already using FactoryLM for your <span style="color: #e4e0d8;">Allen-Bradley</span> and <span style="color: #e4e0d8;">hydraulic</span> systems. Now it’s time to do the same.</p>

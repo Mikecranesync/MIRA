@@ -1,0 +1,555 @@
+{
+  "custom": {
+    "scanResult": {
+      "make": "",
+      "model": "",
+      "serial": "",
+      "voltage": "",
+      "hp": "",
+      "asset_id": "",
+      "kb_matched": false,
+      "raw_text": ""
+    },
+    "scanState": "idle",
+    "errorMessage": ""
+  },
+  "params": {},
+  "props": {
+    "defaultSize": {
+      "width": 480,
+      "height": 720
+    }
+  },
+  "root": {
+    "type": "ia.container.flex",
+    "version": 0,
+    "props": {
+      "direction": "column",
+      "alignItems": "stretch",
+      "justifyContent": "flex-start",
+      "style": {
+        "backgroundColor": "#F4F6F8",
+        "padding": "16px",
+        "gap": "16px",
+        "fontFamily": "Roboto, sans-serif"
+      }
+    },
+    "meta": {
+      "name": "root"
+    },
+    "position": {
+      "grow": 1
+    },
+    "children": [
+      {
+        "type": "ia.container.flex",
+        "version": 0,
+        "props": {
+          "direction": "row",
+          "alignItems": "center",
+          "justifyContent": "space-between",
+          "style": {
+            "padding": "8px 4px"
+          }
+        },
+        "meta": {
+          "name": "header"
+        },
+        "position": {
+          "basis": "40px",
+          "shrink": 0
+        },
+        "children": [
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {
+              "text": "MIRA Scan",
+              "style": {
+                "color": "#0E1A2B",
+                "fontSize": "20px",
+                "fontWeight": "700"
+              }
+            },
+            "meta": {
+              "name": "title"
+            },
+            "position": {}
+          },
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {
+              "text": "Powered by FactoryLM",
+              "style": {
+                "color": "#6B7280",
+                "fontSize": "10px",
+                "textTransform": "uppercase",
+                "letterSpacing": "0.5px"
+              }
+            },
+            "meta": {
+              "name": "poweredBy"
+            },
+            "position": {}
+          }
+        ]
+      },
+      {
+        "type": "ia.container.flex",
+        "version": 0,
+        "props": {
+          "direction": "column",
+          "alignItems": "center",
+          "justifyContent": "center",
+          "style": {
+            "backgroundColor": "#FFFFFF",
+            "border": "2px dashed #5BC0EB",
+            "borderRadius": "8px",
+            "padding": "24px",
+            "gap": "12px"
+          }
+        },
+        "meta": {
+          "name": "captureCard"
+        },
+        "position": {
+          "basis": "180px",
+          "shrink": 0
+        },
+        "children": [
+          {
+            "type": "ia.display.icon",
+            "version": 0,
+            "props": {
+              "path": "material/photo_camera",
+              "color": "#0E1A2B",
+              "style": {
+                "width": "48px",
+                "height": "48px"
+              }
+            },
+            "meta": {
+              "name": "cameraIcon"
+            },
+            "position": {
+              "basis": "48px",
+              "shrink": 0
+            }
+          },
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {
+              "text": "Capture an asset nameplate",
+              "style": {
+                "color": "#0E1A2B",
+                "fontSize": "14px",
+                "fontWeight": "500"
+              }
+            },
+            "meta": {
+              "name": "captureHint"
+            },
+            "position": {}
+          },
+          {
+            "type": "ia.input.file-upload",
+            "version": 0,
+            "props": {
+              "accept": "image/*",
+              "capture": "environment",
+              "showFileName": false,
+              "fileSizeLimit": 10485760,
+              "style": {
+                "backgroundColor": "#5BC0EB",
+                "color": "#0E1A2B",
+                "fontWeight": "600",
+                "borderRadius": "6px",
+                "padding": "10px 20px",
+                "minWidth": "200px"
+              }
+            },
+            "meta": {
+              "name": "captureInput"
+            },
+            "position": {
+              "basis": "auto",
+              "shrink": 0
+            },
+            "events": {
+              "component": {
+                "onFileReceived": [
+                  {
+                    "type": "script",
+                    "scope": "G",
+                    "config": {
+                      "script": "import base64\nimport system\nimport json\n\n# event.file contains the uploaded file bytes\nfile_bytes = event.file\nfilename = event.fileName if hasattr(event, 'fileName') else 'capture.jpg'\n\n# Mark scanning state\nself.view.custom.scanState = 'scanning'\nself.view.custom.errorMessage = ''\n\ntry:\n    # Base64 encode the image\n    b64 = base64.b64encode(file_bytes)\n    if isinstance(b64, bytes):\n        b64 = b64.decode('ascii')\n    \n    # Read the API URL from the gateway tag\n    api_url = system.tag.readBlocking(['[default]MIRA/scan_api_url'])[0].value\n    if not api_url:\n        raise Exception('MIRA/scan_api_url tag is empty')\n    \n    # Build the payload — backend expects {image_b64, filename}\n    payload = {\n        'image_b64': b64,\n        'filename': filename,\n        'source': 'ignition-perspective'\n    }\n    \n    # POST to /scan/extract\n    client = system.net.httpClient(timeout=30000)\n    response = client.post(\n        url=api_url.rstrip('/') + '/scan/extract',\n        data=json.dumps(payload),\n        headers={'Content-Type': 'application/json', 'Accept': 'application/json'}\n    )\n    \n    if response.good:\n        result = response.getJson()\n        self.view.custom.scanResult = {\n            'make': result.get('make', '') or '',\n            'model': result.get('model', '') or '',\n            'serial': result.get('serial', '') or '',\n            'voltage': result.get('voltage', '') or '',\n            'hp': result.get('hp', '') or '',\n            'asset_id': result.get('asset_id', '') or '',\n            'kb_matched': bool(result.get('kb_matched', False)),\n            'raw_text': result.get('raw_text', '') or ''\n        }\n        self.view.custom.scanState = 'complete'\n    else:\n        self.view.custom.errorMessage = 'Scan failed: HTTP ' + str(response.statusCode)\n        self.view.custom.scanState = 'error'\nexcept Exception as e:\n    self.view.custom.errorMessage = 'Scan error: ' + str(e)\n    self.view.custom.scanState = 'error'\n"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "ia.container.flex",
+        "version": 0,
+        "props": {
+          "direction": "row",
+          "alignItems": "center",
+          "justifyContent": "center",
+          "style": {
+            "backgroundColor": "#FEF3C7",
+            "borderRadius": "6px",
+            "padding": "10px 16px",
+            "gap": "8px"
+          },
+          "visible": false
+        },
+        "meta": {
+          "name": "scanningBanner"
+        },
+        "position": {
+          "basis": "44px",
+          "shrink": 0
+        },
+        "propConfig": {
+          "props.visible": {
+            "binding": {
+              "type": "expr",
+              "config": {
+                "expression": "{view.custom.scanState} = 'scanning'"
+              }
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "ia.display.icon",
+            "version": 0,
+            "props": {
+              "path": "material/autorenew",
+              "color": "#92400E",
+              "style": {"width": "20px", "height": "20px"}
+            },
+            "meta": {"name": "spinner"},
+            "position": {}
+          },
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {
+              "text": "Reading nameplate...",
+              "style": {"color": "#92400E", "fontSize": "13px", "fontWeight": "500"}
+            },
+            "meta": {"name": "scanningLabel"},
+            "position": {}
+          }
+        ]
+      },
+      {
+        "type": "ia.container.flex",
+        "version": 0,
+        "props": {
+          "direction": "row",
+          "alignItems": "center",
+          "justifyContent": "flex-start",
+          "style": {
+            "backgroundColor": "#FEE2E2",
+            "borderRadius": "6px",
+            "padding": "10px 16px",
+            "gap": "8px"
+          },
+          "visible": false
+        },
+        "meta": {
+          "name": "errorBanner"
+        },
+        "position": {
+          "basis": "auto",
+          "shrink": 0
+        },
+        "propConfig": {
+          "props.visible": {
+            "binding": {
+              "type": "expr",
+              "config": {
+                "expression": "{view.custom.scanState} = 'error'"
+              }
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "ia.display.icon",
+            "version": 0,
+            "props": {
+              "path": "material/error_outline",
+              "color": "#991B1B",
+              "style": {"width": "20px", "height": "20px"}
+            },
+            "meta": {"name": "errorIcon"},
+            "position": {"shrink": 0}
+          },
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {
+              "text": "",
+              "style": {"color": "#991B1B", "fontSize": "13px"}
+            },
+            "meta": {"name": "errorText"},
+            "position": {"grow": 1},
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "type": "property",
+                  "config": {
+                    "path": "view.custom.errorMessage"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "ia.container.flex",
+        "version": 0,
+        "props": {
+          "direction": "column",
+          "alignItems": "stretch",
+          "style": {
+            "backgroundColor": "#FFFFFF",
+            "borderRadius": "8px",
+            "padding": "16px",
+            "gap": "10px",
+            "boxShadow": "0 1px 3px rgba(0,0,0,0.08)"
+          },
+          "visible": false
+        },
+        "meta": {
+          "name": "resultCard"
+        },
+        "position": {
+          "basis": "auto",
+          "shrink": 0
+        },
+        "propConfig": {
+          "props.visible": {
+            "binding": {
+              "type": "expr",
+              "config": {
+                "expression": "{view.custom.scanState} = 'complete'"
+              }
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {
+              "text": "AssetPlate",
+              "style": {
+                "color": "#0E1A2B",
+                "fontSize": "16px",
+                "fontWeight": "700",
+                "marginBottom": "6px"
+              }
+            },
+            "meta": {"name": "resultTitle"},
+            "position": {}
+          },
+          {
+            "type": "ia.embedding.view",
+            "version": 0,
+            "props": {
+              "path": "MIRA/ScanWidget/components/FieldRow",
+              "params": {
+                "label": "Make",
+                "value": ""
+              }
+            },
+            "meta": {"name": "rowMake"},
+            "position": {"basis": "32px", "shrink": 0},
+            "propConfig": {
+              "props.params.value": {
+                "binding": {
+                  "type": "property",
+                  "config": {"path": "view.custom.scanResult.make"}
+                }
+              }
+            }
+          },
+          {
+            "type": "ia.embedding.view",
+            "version": 0,
+            "props": {
+              "path": "MIRA/ScanWidget/components/FieldRow",
+              "params": {
+                "label": "Model",
+                "value": ""
+              }
+            },
+            "meta": {"name": "rowModel"},
+            "position": {"basis": "32px", "shrink": 0},
+            "propConfig": {
+              "props.params.value": {
+                "binding": {
+                  "type": "property",
+                  "config": {"path": "view.custom.scanResult.model"}
+                }
+              }
+            }
+          },
+          {
+            "type": "ia.embedding.view",
+            "version": 0,
+            "props": {
+              "path": "MIRA/ScanWidget/components/FieldRow",
+              "params": {
+                "label": "Serial",
+                "value": ""
+              }
+            },
+            "meta": {"name": "rowSerial"},
+            "position": {"basis": "32px", "shrink": 0},
+            "propConfig": {
+              "props.params.value": {
+                "binding": {
+                  "type": "property",
+                  "config": {"path": "view.custom.scanResult.serial"}
+                }
+              }
+            }
+          },
+          {
+            "type": "ia.embedding.view",
+            "version": 0,
+            "props": {
+              "path": "MIRA/ScanWidget/components/FieldRow",
+              "params": {
+                "label": "Voltage",
+                "value": ""
+              }
+            },
+            "meta": {"name": "rowVoltage"},
+            "position": {"basis": "32px", "shrink": 0},
+            "propConfig": {
+              "props.params.value": {
+                "binding": {
+                  "type": "property",
+                  "config": {"path": "view.custom.scanResult.voltage"}
+                }
+              }
+            }
+          },
+          {
+            "type": "ia.embedding.view",
+            "version": 0,
+            "props": {
+              "path": "MIRA/ScanWidget/components/FieldRow",
+              "params": {
+                "label": "HP",
+                "value": ""
+              }
+            },
+            "meta": {"name": "rowHp"},
+            "position": {"basis": "32px", "shrink": 0},
+            "propConfig": {
+              "props.params.value": {
+                "binding": {
+                  "type": "property",
+                  "config": {"path": "view.custom.scanResult.hp"}
+                }
+              }
+            }
+          },
+          {
+            "type": "ia.input.button",
+            "version": 0,
+            "props": {
+              "text": "Open in MIRA Chat",
+              "style": {
+                "backgroundColor": "#0E1A2B",
+                "color": "#FFFFFF",
+                "fontWeight": "600",
+                "padding": "10px 16px",
+                "borderRadius": "6px",
+                "marginTop": "8px"
+              },
+              "visible": false
+            },
+            "meta": {"name": "openChatButton"},
+            "position": {"basis": "44px", "shrink": 0},
+            "propConfig": {
+              "props.visible": {
+                "binding": {
+                  "type": "property",
+                  "config": {"path": "view.custom.scanResult.kb_matched"}
+                }
+              }
+            },
+            "events": {
+              "component": {
+                "onActionPerformed": [
+                  {
+                    "type": "script",
+                    "scope": "G",
+                    "config": {
+                      "script": "import system\n\nendpoint = system.tag.readBlocking(['[default]MIRA/endpoint_url'])[0].value\nasset_id = self.view.custom.scanResult.asset_id\nif not endpoint:\n    return\n\nurl = endpoint.rstrip('/')\nif asset_id:\n    url = url + '?asset_id=' + asset_id\n\nsystem.perspective.openPopup(\n    id='mira-chat-popup',\n    view='MIRA/ChatDock',\n    params={},\n    title='MIRA Chat',\n    showCloseIcon=True,\n    resizable=True,\n    draggable=True\n)\n"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "ia.input.button",
+            "version": 0,
+            "props": {
+              "text": "Add to FactoryLM",
+              "style": {
+                "backgroundColor": "#5BC0EB",
+                "color": "#0E1A2B",
+                "fontWeight": "700",
+                "padding": "10px 16px",
+                "borderRadius": "6px",
+                "marginTop": "8px"
+              },
+              "visible": false
+            },
+            "meta": {"name": "addToFactoryLmButton"},
+            "position": {"basis": "44px", "shrink": 0},
+            "propConfig": {
+              "props.visible": {
+                "binding": {
+                  "type": "expr",
+                  "config": {
+                    "expression": "!{view.custom.scanResult.kb_matched}"
+                  }
+                }
+              }
+            },
+            "events": {
+              "component": {
+                "onActionPerformed": [
+                  {
+                    "type": "script",
+                    "scope": "G",
+                    "config": {
+                      "script": "import system\n\nonboard_url = system.tag.readBlocking(['[default]MIRA/factorylm_onboard_url'])[0].value\nif not onboard_url:\n    return\n\n# Append scan context as URL query string\nresult = self.view.custom.scanResult\nfrom java.net import URLEncoder\n\nparts = []\nfor key in ('make', 'model', 'serial', 'voltage', 'hp'):\n    val = result.get(key, '')\n    if val:\n        parts.append(key + '=' + URLEncoder.encode(str(val), 'UTF-8'))\n\nfinal_url = onboard_url\nif parts:\n    sep = '&' if '?' in onboard_url else '?'\n    final_url = onboard_url + sep + '&'.join(parts)\n\nsystem.perspective.openUrl(id='factorylm-onboard', url=final_url, useApplicationScope=False)\n"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

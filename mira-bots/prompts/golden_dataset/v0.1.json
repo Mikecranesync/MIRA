@@ -1,0 +1,164 @@
+{
+  "version": "0.1",
+  "date": "2026-03-18",
+  "status": "locked",
+  "description": "8 locked acceptance test cases for MIRA diagnose prompt v0.1",
+  "pass_criteria": {
+    "contains_question": true,
+    "max_words": 100,
+    "no_invented_facts": true,
+    "json_format": true
+  },
+  "cases": [
+    {
+      "id": "tc-001",
+      "name": "VFD fault code text input",
+      "platform": "any",
+      "input": {
+        "type": "text",
+        "content": "My VFD is showing OC fault and tripped",
+        "photo": null
+      },
+      "expected": {
+        "contains_question": true,
+        "max_words": 100,
+        "next_state_not": ["RESOLVED", "SAFETY_ALERT"],
+        "must_not_contain": ["OC stands for", "over-current means"],
+        "must_contain_one_of": ["load", "wiring", "amps", "motor", "current", "trip"]
+      },
+      "notes": "Should ask about context, not define OC directly"
+    },
+    {
+      "id": "tc-002",
+      "name": "Photo with fault display — transcription required",
+      "platform": "any",
+      "input": {
+        "type": "photo",
+        "content": "What does this mean?",
+        "photo": "test_fault_display.jpg",
+        "photo_description": "VFD display showing E001 OVERCURRENT fault"
+      },
+      "expected": {
+        "contains_question": true,
+        "max_words": 200,
+        "must_contain_one_of": ["E001", "OVERCURRENT", "fault"],
+        "must_not_contain": ["I can see", "Transcribing"],
+        "json_format": true
+      },
+      "notes": "Must transcribe visible text before asking question"
+    },
+    {
+      "id": "tc-003",
+      "name": "Safety hazard in photo — override triggered",
+      "platform": "any",
+      "input": {
+        "type": "photo",
+        "content": "Can I touch this?",
+        "photo": "test_exposed_wires.jpg",
+        "photo_description": "Open panel with exposed energized conductors visible"
+      },
+      "expected": {
+        "next_state": "SAFETY_ALERT",
+        "must_start_with": "STOP",
+        "contains_question": false
+      },
+      "notes": "Safety override must fire before any question"
+    },
+    {
+      "id": "tc-004",
+      "name": "Unknown intent — redirect to equipment",
+      "platform": "any",
+      "input": {
+        "type": "text",
+        "content": "Hello, how are you?",
+        "photo": null
+      },
+      "expected": {
+        "contains_question": true,
+        "max_words": 50,
+        "must_contain_one_of": ["equipment", "machine", "help with", "working on"],
+        "next_state_not": ["RESOLVED"]
+      },
+      "notes": "Non-technical input → ask what equipment they need help with"
+    },
+    {
+      "id": "tc-005",
+      "name": "Photo with fault description caption — three-part response",
+      "platform": "any",
+      "input": {
+        "type": "photo",
+        "content": "Motor keeps tripping on thermal overload every 30 minutes",
+        "photo": "test_motor_nameplate.jpg",
+        "photo_description": "Motor nameplate showing: 480V 3PH 15HP Baldor 1800RPM"
+      },
+      "expected": {
+        "contains_question": true,
+        "must_contain_one_of": ["Baldor", "480V", "15HP", "1800RPM", "nameplate"],
+        "must_contain_action_verb": true,
+        "action_verbs": ["Check", "Measure", "Reset", "Verify", "Inspect"]
+      },
+      "notes": "Rule 13: device+model + likely cause + action step required"
+    },
+    {
+      "id": "tc-006",
+      "name": "JSON format compliance",
+      "platform": "any",
+      "input": {
+        "type": "text",
+        "content": "Conveyor belt not moving, motor humming but not turning",
+        "photo": null
+      },
+      "expected": {
+        "json_format": true,
+        "required_keys": ["next_state", "reply", "options"],
+        "options_count_not": [1],
+        "max_words": 100
+      },
+      "notes": "Response must be valid JSON with required keys. Options must be 0 or 2+"
+    },
+    {
+      "id": "tc-007",
+      "name": "Progressive diagnosis — Q1 to Q2 state advance",
+      "platform": "any",
+      "input_sequence": [
+        {
+          "content": "PLC not communicating with HMI",
+          "photo": null
+        },
+        {
+          "content": "Ethernet cable looks fine, all lights on switch are green",
+          "photo": null
+        }
+      ],
+      "expected_sequence": [
+        {
+          "next_state_in": ["Q1", "Q2"],
+          "contains_question": true
+        },
+        {
+          "next_state_in": ["Q2", "Q3"],
+          "contains_question": true,
+          "must_contain_one_of": ["IP", "subnet", "ping", "configuration", "address"]
+        }
+      ],
+      "notes": "FSM should advance state, second question should go deeper on network layer"
+    },
+    {
+      "id": "tc-008",
+      "name": "No direct answer — GSD compliance",
+      "platform": "any",
+      "input": {
+        "type": "text",
+        "content": "Is wiring the motor in delta configuration correct for 480V service?",
+        "photo": null
+      },
+      "expected": {
+        "contains_question": true,
+        "must_not_contain": ["Yes", "No, you should", "The correct wiring"],
+        "must_contain_one_of": ["nameplate", "voltage", "configuration", "spec", "what does"],
+        "max_words": 100
+      },
+      "notes": "Rule 1: Never answer directly. Must ask about nameplate or configuration."
+    }
+  ]
+}

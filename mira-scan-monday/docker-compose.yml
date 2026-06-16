@@ -1,0 +1,94 @@
+services:
+  backend:
+    mem_limit: 512m
+    memswap_limit: 512m
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: mira-scan-backend:0.2.0
+    container_name: mira-scan-backend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8000"
+    env_file:
+      - .env
+    environment:
+      # Per CLAUDE.md feedback_compose_env_plumbing.md: Doppler-managed
+      # secrets only reach the container when explicitly listed here.
+      # `doppler run -- docker compose up` interpolates these from the
+      # shell env at compose-up time. env_file (above) covers local dev
+      # where Mike hand-edits .env; this block covers production deploys.
+      #
+      # The MONDAY_* aliases below cover the case where Doppler holds the
+      # value under a legacy name (e.g. MONDAY_CLIENT_SECRETS predates the
+      # _OAUTH_ prefix the code now reads). The fallback chain is:
+      # explicit-target → legacy-Doppler-name → empty.
+      MONDAY_OAUTH_CLIENT_ID: ${MONDAY_OAUTH_CLIENT_ID:-${MONDAY_CLIENT_ID:-}}
+      MONDAY_OAUTH_CLIENT_SECRET: ${MONDAY_OAUTH_CLIENT_SECRET:-${MONDAY_CLIENT_SECRETS:-}}
+      MONDAY_OAUTH_REDIRECT_URI: ${MONDAY_OAUTH_REDIRECT_URI:-}
+      MONDAY_OAUTH_SCOPES: ${MONDAY_OAUTH_SCOPES:-me:read boards:read boards:write}
+      MONDAY_SIGNING_SECRET: ${MONDAY_SIGNING_SECRET:-${MONDAY_CLIENT_SECRETS:-}}
+      MONDAY_WEBHOOK_SIGNING_SECRET: ${MONDAY_WEBHOOK_SIGNING_SECRET:-${MONDAY_CLIENT_SECRETS:-}}
+      MONDAY_API_TOKEN: ${MONDAY_API_TOKEN:-${MONDAY_API_KEY:-}}
+      # Vision + KB plumbing — also Doppler-managed, also previously
+      # missing from the env block (default empty meant the container
+      # silently degraded to standalone-fallback paths).
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      VISION_MODEL: ${VISION_MODEL:-gpt-4o}
+      MIRA_KB_BASE_URL: ${MIRA_KB_BASE_URL:-}
+      MIRA_KB_API_KEY: ${MIRA_KB_API_KEY:-}
+      NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
+      SERPER_API_KEY: ${SERPER_API_KEY:-}
+      # Manufacturer-scoped RAG (vendor_rag.py) — direct LLM cascade.
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
+      CEREBRAS_MODEL: ${CEREBRAS_MODEL:-llama3.1-8b}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      MIRA_SHARED_TENANT_ID: ${MIRA_SHARED_TENANT_ID:-78917b56-f85f-43bb-9a08-1bb98a6cd6c3}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - mira-net
+    # Mount the existing crawler queue so scan-discovered manuals are
+    # appended to the same file kb_growth_cron drains daily. The path
+    # only exists on the VPS — local dev sees a missing file and
+    # crawler_bridge.append_to_manual_queue_json no-ops gracefully.
+    volumes:
+      - ${MANUAL_QUEUE_HOST_DIR:-./_local-queue-stub}:/data/mira-crawler-cron:rw
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx,sys; sys.exit(0 if httpx.get('http://127.0.0.1:8000/healthz', timeout=3).status_code==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    mem_limit: 512m
+    memswap_limit: 512m
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/scanbe}
+        VITE_FACTORYLM_SIGNUP_URL: ${VITE_FACTORYLM_SIGNUP_URL:-https://app.factorylm.com/signup}
+        VITE_BASE_PATH: ${VITE_BASE_PATH:-/scan/}
+    image: mira-scan-frontend:0.1.0
+    container_name: mira-scan-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5180:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+networks:
+  # Join the mira stack's network so we can reach mira-pipeline by its
+  # service name. The network is created by the main mira docker-compose
+  # (compose project: "mira"), hence the external name.
+  mira-net:
+    external: true
+    name: mira_mira-net

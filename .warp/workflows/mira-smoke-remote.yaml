@@ -1,0 +1,8 @@
+---
+name: MIRA smoke test (remote node)
+command: MIRA_SERVER_BASE_URL=http://{{node_ip}} bash install/smoke_test.sh
+tags: [mira, test, ops]
+description: Run smoke tests against a remote cluster node
+arguments:
+  - name: node_ip
+    description: "Node IP or Tailscale IP (e.g. 100.107.140.12 for Alpha, 100.86.236.11 for Bravo)"

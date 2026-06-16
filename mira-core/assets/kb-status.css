@@ -1,0 +1,16 @@
+/*
+ * MIRA KB Status indicator — injected via WEBUI_CUSTOM_CSS in docker-compose.yml
+ *
+ * Default state: red outline (no KB coverage known — treat as caution).
+ * Per-message 🟢/🟡/🔴 banners from the pipeline provide the live per-turn signal.
+ * A fully dynamic border (live green/red without page reload) requires the mira-hud
+ * Electron overlay — deferred. This CSS provides the safe default.
+ */
+
+/* Default: red border — unknown KB state is always caution */
+#app > div:first-child {
+  outline: 3px solid #cc3333;
+  outline-offset: -3px;
+  border-radius: 4px;
+  transition: outline-color 0.5s ease;
+}

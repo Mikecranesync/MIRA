@@ -1,0 +1,39 @@
+{
+  "case": "vfd_capacitor_worn_16",
+  "passed": true,
+  "failure_bucket": null,
+  "fix_suggestion": "",
+  "word_count": 53,
+  "elapsed": 3.9107120037078857,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [
+      "AutomationDirect",
+      "GS10"
+    ],
+    "fault_cause_found": [
+      "likely",
+      "wear",
+      "capacitor"
+    ],
+    "next_step_found": [
+      "check",
+      "check"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

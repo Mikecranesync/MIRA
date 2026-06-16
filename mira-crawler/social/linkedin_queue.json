@@ -1,0 +1,110 @@
+[
+  {
+    "id": "launch-001",
+    "post_type": "pain_story",
+    "schedule_date": "2026-04-29",
+    "schedule_time": "07:30",
+    "timezone": "America/New_York",
+    "status": "draft",
+    "hashtags": [
+      "#HydraulicMaintenance",
+      "#IndustrialMaintenance",
+      "#VFD",
+      "#MaintenanceTech",
+      "#FactoryFloor"
+    ],
+    "image_suggestion": "Close-up of a VFD display showing an active fault code, dim shop lighting, someone holding a phone flashlight to read it. Candid, not staged.",
+    "char_count": 972,
+    "post_text": "2am. Hydraulic press down. Nobody has the manual.\nThe fault code on the VFD display means nothing to anyone on shift.\n\nIf you've been that tech, keep reading.\n\nI've been there. Everyone has.\n\nYou call the senior tech. He's not answering. You search the fault code online. Get a forum post from 2011 that doesn't match your drive.\n\n45 minutes later you've checked everything you can think of. The press is still down. The line is still stopped.\n\nThe manual finally surfaces as a 400-page PDF. You search 'F071'. Find the table on page 312. Read the fix. It was the input voltage all along.\n\nThe whole thing took 90 minutes. The actual repair took 8 minutes.\n\nI know -- every fault is different. But the lookup problem is the same every time. The knowledge exists. Getting to it is the bottleneck.\n\nThat's what I'm working on.\n\nWhat's your worst 'couldn't find the manual' story? Drop it below.\n\n#HydraulicMaintenance #IndustrialMaintenance #VFD #MaintenanceTech #FactoryFloor"
+  },
+  {
+    "id": "launch-002",
+    "post_type": "general_ai_maintenance",
+    "schedule_date": "2026-05-01",
+    "schedule_time": "07:30",
+    "timezone": "America/New_York",
+    "status": "draft",
+    "hashtags": [
+      "#HydraulicMaintenance",
+      "#IndustrialMaintenance",
+      "#AIForMaintenance",
+      "#PredictiveMaintenance",
+      "#ManufacturingTech"
+    ],
+    "image_suggestion": "Split screen: left side a tech flipping through a thick printed manual, right side the same fault code answered on a phone screen in seconds. Minimal text overlay.",
+    "char_count": 1038,
+    "post_text": "A tech asked a chatbot about a VFD fault last month.\nGot a real answer in 30 seconds. From the actual OEM manual.\n\nIf that sounds too good to be true, keep reading.\n\nThis is not magic. It's indexing.\n\nAI language models have gotten good at one specific thing: finding information inside a document you give them. Not the internet. The document.\n\nThat changes something for maintenance.\n\nMost fault code lookups fail because nobody can find the right page in the right manual fast enough. Not because the answer isn't there.\n\nWe're at the point where you can hand an AI a PDF, ask it a maintenance question, and get the answer in under 60 seconds.\n\nThe AI will still get it wrong sometimes. Agreed. Always verify it yourself. But 80% there in 30 seconds beats nowhere in 20 minutes.\n\nEvery OEM's answer is already written down. We just needed a better way to get to it.\n\nWhat's your take on AI in the maintenance shop? Agree or not?\n\n#HydraulicMaintenance #IndustrialMaintenance #AIForMaintenance #PredictiveMaintenance #ManufacturingTech"
+  },
+  {
+    "id": "launch-003",
+    "post_type": "community",
+    "schedule_date": "2026-05-06",
+    "schedule_time": "07:30",
+    "timezone": "America/New_York",
+    "status": "draft",
+    "hashtags": [
+      "#HydraulicMaintenance",
+      "#IndustrialMaintenance",
+      "#FaultCode",
+      "#PLC",
+      "#Troubleshooting"
+    ],
+    "image_suggestion": "Simple graphic: dark background, white text that reads 'Drop your fault code.' with a cursor blinking. Or a real photo of a hand pointing at an HMI touchscreen showing an error.",
+    "char_count": 951,
+    "post_text": "Drop your fault code below.\nI'll tell you what the OEM manual actually says.\n\nHydraulics, VFDs, PLCs, motor drives -- anything industrial.\n\nHere's what I need:\n- Equipment make and model\n- The fault code or symptom\n- What you've already checked\n- Running degraded or fully down?\n\nI'll run it through the manual and reply with the section, page number, and the recommended next steps.\n\nNo guarantee it solves everything. Manuals don't cover every scenario, and some faults need eyes-on diagnosis that no tool replaces. But for the lookup problem -- finding what the OEM actually says about your fault -- this works.\n\nI've watched techs spend 30 minutes finding what took 45 seconds to look up this way.\n\nDrop it in the comments.\n\n#HydraulicMaintenance #IndustrialMaintenance #FaultCode #PLC #Troubleshooting"
+  },
+  {
+    "id": "launch-004",
+    "post_type": "hot_take",
+    "schedule_date": "2026-05-08",
+    "schedule_time": "07:30",
+    "timezone": "America/New_York",
+    "status": "draft",
+    "hashtags": [
+      "#HydraulicMaintenance",
+      "#IndustrialMaintenance",
+      "#MaintenanceManagement",
+      "#OEM",
+      "#FactoryFloor"
+    ],
+    "image_suggestion": "Photo of an actual thick OEM manual open to a dense technical specification page, slightly out of focus in the background. Emphasis on the complexity.",
+    "char_count": 1062,
+    "post_text": "Unpopular opinion: most OEM maintenance manuals are written for the engineer who designed the system.\nNot the tech who fixes it at 3am.\n\nIf you've ever searched a 400-page drive manual for one fault code, you know what I mean.\n\nI've read a lot of manuals. Most of them have the right information.\n\nBut they're organized for comprehensiveness, not for speed.\n\nThe engineer needs every spec, every table, every wiring diagram. That makes sense. They're building a system.\n\nThe tech at 2am needs three things: what the fault means, what caused it, what to check first. In that order.\n\nThose three things are usually on three different pages of that 400-page document.\n\nI'm not blaming OEMs. Writing a manual that works for both audiences is genuinely hard. But it's worth saying out loud.\n\nThe manual format hasn't changed much in 30 years. The job hasn't either.\n\nDo OEM manuals work for your team? Or do you have a different system?\n\n#HydraulicMaintenance #IndustrialMaintenance #MaintenanceManagement #OEM #FactoryFloor"
+  },
+  {
+    "id": "launch-005",
+    "post_type": "insight",
+    "schedule_date": "2026-05-13",
+    "schedule_time": "07:30",
+    "timezone": "America/New_York",
+    "status": "draft",
+    "hashtags": [
+      "#HydraulicMaintenance",
+      "#IndustrialMaintenance",
+      "#MaintenanceManagement",
+      "#CMMS",
+      "#ContinuousImprovement"
+    ],
+    "image_suggestion": "Simple chart or graphic showing a fault repeating 3 times with identical root cause -- visual proof of the recurrence problem. Or a photo of a maintenance logbook with the same fault written multiple times.",
+    "char_count": 1089,
+    "post_text": "The same hydraulic fault. Third time this quarter.\nSame press, different tech, different shift.\n\nIf your team is fixing the same fault twice, the first repair didn't finish.\n\nShops I've worked in almost all had this problem.\n\nThe fault gets fixed. The line comes back up. The tech writes it down -- in a logbook, in the CMMS, in a notebook nobody reads. The shift changes.\n\nSix weeks later the same fault hits. Different tech. Nobody remembers what was done last time. They start from scratch.\n\nThe fix was in the log. It just didn't surface when it needed to.\n\nThis isn't a people problem. It's a retrieval problem. The information exists -- finding it under pressure is where the system breaks down.\n\nMost maintenance teams track mean time to repair. Almost none track fault recurrence. Those are different problems, and only one of them tells you if you're actually fixing anything.\n\nDoes your shop track repeat faults? What system do you use?\n\n#HydraulicMaintenance #IndustrialMaintenance #MaintenanceManagement #CMMS #ContinuousImprovement"
+  },
+  {
+    "id": "launch-006",
+    "post_type": "hand_raiser",
+    "schedule_date": "2026-05-15",
+    "schedule_time": "07:30",
+    "timezone": "America/New_York",
+    "status": "draft",
+    "hashtags": [
+      "#HydraulicMaintenance",
+      "#IndustrialMaintenance",
+      "#MIRA",
+      "#MaintenanceTech",
+      "#FactoryFloor"
+    ],
+    "image_suggestion": "Clean phone screen showing MIRA answering a real fault code question with a specific manual reference visible. Dark background, high contrast. No mockup feel -- make it look like a real screenshot.",
+    "char_count": 1147,
+    "post_text": "I built something for the tech who's Googling a fault code at 2am.\nIt's a lot faster than Google.\n\nIf you work in industrial maintenance, keep reading.\n\nI've spent the last several months building MIRA -- an AI maintenance copilot that answers fault code questions from actual OEM manuals.\n\nNot generic search results. The specific manual for your equipment, with the page number and the right section.\n\nI started because I kept watching techs lose 30-40 minutes on lookup that should take 60 seconds. The answer was always there. Getting to it was the problem.\n\nIt's not perfect. Some manuals aren't indexed yet. Some faults need eyes-on diagnosis that no tool replaces. But for the lookup problem specifically, it works.\n\nI'm opening a closed beta to a handful of floor techs and maintenance managers. No credit card. Just a walkthrough and early access.\n\nIf you want in: factorylm.com/cmms\n\nOr comment 'beta' below and I'll DM you a link.\n\n#HydraulicMaintenance #IndustrialMaintenance #MIRA #MaintenanceTech #FactoryFloor"
+  }
+]

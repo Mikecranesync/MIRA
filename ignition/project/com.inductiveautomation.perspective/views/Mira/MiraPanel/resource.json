@@ -1,0 +1,151 @@
+{
+  "custom": {},
+  "params": {
+    "assetId": {
+      "paramType": "value",
+      "value": "conveyor_demo"
+    }
+  },
+  "props": {
+    "defaultSize": {
+      "height": 800,
+      "width": 1280
+    }
+  },
+  "root": {
+    "children": [
+      {
+        "children": [
+          {
+            "meta": { "name": "BrandLabel" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "color": "#00C851",
+                "fontSize": "20px",
+                "fontWeight": "bold",
+                "letterSpacing": "4px",
+                "padding": "8px 16px"
+              },
+              "text": "MIRA CO-PILOT"
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "AlertBadge" },
+            "position": { "basis": "auto" },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "expression": "if(len({[default]Mira_Alerts/conveyor_demo/Latest}) > 2, '● ALERT', '')"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "color": "#FF4444",
+                "fontSize": "14px",
+                "fontWeight": "bold",
+                "letterSpacing": "2px",
+                "padding": "8px 16px"
+              },
+              "text": ""
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "meta": { "name": "Header" },
+        "position": { "basis": "48px", "shrink": 0 },
+        "props": {
+          "align": "center",
+          "direction": "row",
+          "style": {
+            "backgroundColor": "#111111"
+          }
+        },
+        "type": "ia.container.flex"
+      },
+      {
+        "children": [
+          {
+            "meta": { "name": "ChatInstructions" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "color": "#AAAAAA",
+                "fontSize": "14px",
+                "marginBottom": "16px"
+              },
+              "text": "MIRA Chat Interface"
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "ChatEmbed" },
+            "position": { "basis": "auto", "grow": 1 },
+            "props": {
+              "source": "/system/webdev/FactoryLM/mira?asset=conveyor_demo",
+              "style": {
+                "border": "none",
+                "height": "100%",
+                "width": "100%"
+              }
+            },
+            "type": "ia.display.webBrowser"
+          }
+        ],
+        "meta": { "name": "ChatArea" },
+        "position": { "basis": "1", "grow": 1 },
+        "props": {
+          "direction": "column",
+          "style": {
+            "backgroundColor": "#1a1a1a",
+            "padding": "8px"
+          }
+        },
+        "type": "ia.container.flex"
+      },
+      {
+        "children": [
+          {
+            "meta": { "name": "StatusLabel" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "color": "#666666",
+                "fontSize": "12px",
+                "padding": "8px 16px"
+              },
+              "text": "Mira HMI Co-Pilot — FactoryLM"
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "meta": { "name": "Footer" },
+        "position": { "basis": "40px", "shrink": 0 },
+        "props": {
+          "align": "center",
+          "direction": "row",
+          "style": {
+            "borderTop": "1px solid #333333"
+          }
+        },
+        "type": "ia.container.flex"
+      }
+    ],
+    "meta": { "name": "root" },
+    "position": { "basis": "auto" },
+    "props": {
+      "direction": "column",
+      "style": {
+        "backgroundColor": "#1a1a1a",
+        "height": "100%",
+        "padding": "8px"
+      }
+    },
+    "type": "ia.container.flex"
+  }
+}

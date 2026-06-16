@@ -1,0 +1,314 @@
+MIRA PHOTO ANALYZER — SENIOR TECH REVIEW
+Real-world test: 9 factory photos, live bot
+Date: 2026-03-17
+Reviewer notes written for Mike
+
+======================================================================
+HOW THIS TEST WORKED
+======================================================================
+Nine real factory photos — P&IDs, wiring diagrams, ladder logic,
+one-line diagrams, panel schedules — were sent to the MIRA bot
+through Telegram, same as you would on the job. Each photo got the
+same caption: "Please identify this industrial equipment. Note the
+make, model, and any issues visible." Bot replies were collected
+and evaluated below.
+
+======================================================================
+PHOTO-BY-PHOTO BREAKDOWN
+======================================================================
+
+----------------------------------------------------------------------
+PHOTO 1 — PXL_20260219_043746450.jpg  (3.1 MB)
+----------------------------------------------------------------------
+What the bot said:
+  "I can see a P&ID with 0 labeled elements. Key labels: — SS."
+
+1. Did it correctly identify what it was looking at?
+   PARTIALLY — It called it a P&ID, which may be right, but it
+   found zero labeled elements and only pulled the letters "SS."
+   That's essentially nothing.
+
+2. Would the answer help a senior tech troubleshoot or decide?
+   NO — "0 labeled elements" tells you the bot couldn't read the
+   drawing at all; a tech would get more from a quick glance.
+
+3. Obvious mistakes or missing info?
+   Yes. Either the photo angle/lighting was too poor to extract
+   text, or this isn't actually a P&ID and the bot guessed wrong.
+   Either way — no equipment ID, no tag numbers, no useful output.
+   A tech would catch this immediately.
+
+----------------------------------------------------------------------
+PHOTO 2 — PXL_20260219_045141856.MACRO_FOCUS.jpg  (5.1 MB)
+----------------------------------------------------------------------
+What the bot said:
+  "I can see a P&ID with 18 labeled elements. Key labels:
+   2400WK0266_HDW_AVL_220, 2400WK0266_OPM_Ride_V1, 1280,
+   file C:/Use..."
+
+1. Did it correctly identify what it was looking at?
+   PARTIALLY — Called it a P&ID and pulled 18 labels including
+   what look like real asset tag numbers. Good start.
+
+2. Would the answer help a senior tech troubleshoot or decide?
+   PARTIALLY — The tag numbers (2400WK0266_HDW_AVL_220 etc.) are
+   exactly the kind of IDs a tech would use to cross-reference a
+   maintenance system. The problem is the bot just lists them and
+   asks "what would you like to know?" instead of saying anything
+   useful on its own.
+
+3. Obvious mistakes or missing info?
+   It also pulled "file C:/Use..." — that's a Windows file path
+   visible somewhere in the image, probably from the screen it was
+   photographed off of. Bot can't tell the difference between
+   equipment data and background noise on the screen. A tech would
+   know to ignore that.
+
+----------------------------------------------------------------------
+PHOTO 3 — PXL_20260219_045632544.MACRO_FOCUS.jpg  (2.8 MB)
+----------------------------------------------------------------------
+What the bot said:
+  "I can see a wiring diagram with 6 labeled elements.
+   Key labels: ZIEHL, PROFESSIONAL, SYSTEM (repeated)."
+
+1. Did it correctly identify what it was looking at?
+   PARTIALLY — Wiring diagram is plausible. More importantly, it
+   picked up "ZIEHL" — that's Ziehl-Abegg, a real European
+   manufacturer of industrial fans and VFDs. That's a useful ID.
+
+2. Would the answer help a senior tech troubleshoot or decide?
+   PARTIALLY — Knowing the brand is Ziehl-Abegg narrows things
+   down. But "PROFESSIONAL SYSTEM" repeated 3 times is just the
+   product line name from the label, not technical content. A tech
+   would want wiring terminal numbers and connection details.
+
+3. Obvious mistakes or missing info?
+   The bot surfaced the brand name but stopped there. No terminal
+   numbers, no connection IDs, no fault indicators. If this is a
+   VFD wiring diagram, the most useful things — L1/L2/L3, U/V/W,
+   control terminal strip — were apparently invisible to it.
+
+----------------------------------------------------------------------
+PHOTO 4 — PXL_20260219_045640877.jpg  (5.8 MB)
+----------------------------------------------------------------------
+What the bot said:
+  "I can see a wiring diagram with 3 labeled elements.
+   Key labels: EMBER, EMBER, EMBER."
+
+1. Did it correctly identify what it was looking at?
+   PARTIALLY — Wiring diagram is a reasonable call. But finding
+   only one word ("EMBER") repeated 3 times is a very weak read.
+
+2. Would the answer help a senior tech troubleshoot or decide?
+   NO — "EMBER" three times with nothing else tells you almost
+   nothing. Whether EMBER is a brand, a system name, or just a
+   watermark, the bot can't tell you.
+
+3. Obvious mistakes or missing info?
+   3 labeled elements from a full wiring diagram is a badly missed
+   read. This photo may have had contrast or angle problems, but a
+   senior tech looking at this reply would immediately know it
+   didn't do the job.
+
+----------------------------------------------------------------------
+PHOTO 5 — PXL_20260219_045647225.MACRO_FOCUS.jpg  (5.7 MB)
+----------------------------------------------------------------------
+What the bot said:
+  "I can see a ladder logic diagram with 1 labeled element.
+   Key labels: A Ask Copilot 1098 of 3742."
+
+1. Did it correctly identify what it was looking at?
+   YES — Calling it a ladder logic diagram is correct, and that's
+   genuinely impressive. Ladder logic has a specific visual look
+   that's easy to confuse for generic wiring.
+
+2. Would the answer help a senior tech troubleshoot or decide?
+   NO — "Ask Copilot 1098 of 3742" is Microsoft Copilot's UI
+   button that was visible on screen behind the diagram. The bot
+   read screen furniture instead of the logic rungs. You get
+   diagram type correct but zero actual content.
+
+3. Obvious mistakes or missing info?
+   This is a common problem with photos of screens — the bot
+   can't filter out the software interface from the engineering
+   drawing. A tech would know to crop or go full-screen before
+   sending. But the bot should probably flag "this looks like
+   a screen photo — I may be reading the interface, not the
+   drawing."
+
+----------------------------------------------------------------------
+PHOTO 6 — PXL_20260219_045654220.jpg  (4.0 MB)
+----------------------------------------------------------------------
+What the bot said:
+  "I can see a one-line diagram with 55 labeled elements.
+   Key labels: EMG, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9."
+
+1. Did it correctly identify what it was looking at?
+   YES — One-line diagram is correct and 55 labeled elements is a
+   strong extraction count. EMG is a standard emergency designation.
+   The 0.1–0.9 sequence looks like protection relay time-delay
+   settings or zone labels.
+
+2. Would the answer help a senior tech troubleshoot or decide?
+   PARTIALLY — This is the best response of the nine. It correctly
+   typed the drawing, found a lot of labels, and the label content
+   (EMG, relay timing references) is actually technically relevant.
+   It still just lists and asks rather than interpreting, but at
+   least a tech has something to go on.
+
+3. Obvious mistakes or missing info?
+   No obvious errors here. The gap is interpretation — a tech
+   would also want to know: are there any fault indicators, what's
+   the voltage level, what equipment is being protected? The bot
+   doesn't offer that without being asked follow-up questions.
+
+----------------------------------------------------------------------
+PHOTO 7 — PXL_20260219_045719632.jpg  (3.9 MB)
+----------------------------------------------------------------------
+What the bot said:
+  "I can see a panel schedule with 9 labeled elements.
+   Key labels: ```json, {, \"Qty\": \"1\",, \"Specification\":
+   \"Plasma Contac..."
+
+1. Did it correctly identify what it was looking at?
+   PARTIALLY — Panel schedule is the right call. But the "labels"
+   it extracted are raw code syntax: backtick-json, curly brackets,
+   "Qty", "Specification." That's internal bot machinery leaking
+   into the reply, not content from the photo.
+
+2. Would the answer help a senior tech troubleshoot or decide?
+   NO — A tech reading "```json {" in a Telegram reply would lose
+   confidence in the tool immediately. This looks like a software
+   error, not a useful response.
+
+3. Obvious mistakes or missing info?
+   This is the most serious quality issue in the test. The bot's
+   internal formatting template (it builds responses as JSON
+   internally) is bleeding into the user-facing reply. It should
+   never happen, and if Mike saw this in the field he'd put the
+   tool down. This is a known bug that needs to be fixed before
+   wider use.
+
+----------------------------------------------------------------------
+PHOTO 8 — PXL_20260219_045737047.MACRO_FOCUS.jpg  (6.4 MB)
+----------------------------------------------------------------------
+What the bot said:
+  "I can see a panel schedule with 18 labeled elements.
+   Key labels: W-J803.31 S20.20.20 MUJ.184.2012.01,
+   W-J803.31 WAZU1.18..."
+
+1. Did it correctly identify what it was looking at?
+   YES — Panel schedule, correctly identified. 18 elements with
+   real part/wire numbers extracted (W-J803.31, MUJ.184.2012.01
+   look like cable or terminal block identifiers).
+
+2. Would the answer help a senior tech troubleshoot or decide?
+   PARTIALLY — If you're tracing a specific cable or looking up
+   a terminal, having those IDs surfaced is genuinely useful.
+   The limit is that the bot can't tell you what the schedule
+   MEANS — it just reads text off the page.
+
+3. Obvious mistakes or missing info?
+   No big errors. The part number strings are truncated (the "..."
+   at the end), so you might not get the full ID from a single
+   message. But this is one of the cleaner results in the batch.
+
+----------------------------------------------------------------------
+PHOTO 9 — PXL_20260219_045802513.MP.jpg  (8.0 MB)
+----------------------------------------------------------------------
+What the bot said:
+  "I can see a wiring diagram with 2 labeled elements.
+   Key labels: EMIS, EMIS."
+
+1. Did it correctly identify what it was looking at?
+   PARTIALLY — Wiring diagram is a reasonable guess. But 2
+   elements from an 8 MB photo is a very sparse read. EMIS
+   appears twice — likely a manufacturer or system acronym.
+
+2. Would the answer help a senior tech troubleshoot or decide?
+   NO — Two identical labels from a large, detailed diagram means
+   the bot barely scratched the surface. A tech would get nothing
+   actionable from this.
+
+3. Obvious mistakes or missing info?
+   This is the largest photo in the set and produced the thinnest
+   result. Large file size doesn't help if the image has low
+   contrast, complex backgrounds, or the text is too small for
+   the vision model to resolve. A tech would know to zoom in and
+   reshoot specific sections.
+
+======================================================================
+SCORECARD
+======================================================================
+
+  Photo   Diagram Type Correct?   Actionable for a Tech?
+  ------  ----------------------  ----------------------
+  1       Partial (P&ID)           No  — 0 labels
+  2       Partial (P&ID)           Partial — tag numbers yes, noise too
+  3       Partial (wiring)         Partial — brand ID only
+  4       Partial (wiring)         No  — single repeated word
+  5       YES (ladder logic)       No  — read screen UI instead
+  6       YES (one-line)           Partial — best reply of the 9
+  7       Partial (panel sched)    No  — internal code leaking
+  8       YES (panel schedule)     Partial — part numbers surfaced
+  9       Partial (wiring)         No  — 2 labels from big diagram
+
+  Correct diagram type:   3 of 9 clear yes, 6 partial
+  Actually useful output: 1 clearly yes (photo 6), 3 partial,
+                          5 not useful on their own
+
+======================================================================
+OVERALL VERDICT
+======================================================================
+
+GRADE: Second Opinion — but only for diagram identification.
+Not ready to rely on for fault diagnosis.
+
+Here's the honest picture:
+
+What it does well:
+The bot correctly figured out what TYPE of drawing it was looking
+at every time — P&ID, wiring diagram, ladder logic, one-line,
+panel schedule. It never confused a panel schedule for a one-line
+or a P&ID for ladder logic. For a tech who just wants to quickly
+sort through a pile of unfamiliar plant prints, that's genuinely
+useful. You'd save time.
+
+Where it falls short:
+Identifying the drawing type is the easy part. What a senior tech
+actually needs is: what equipment is this, what are the tag numbers,
+what does the fault path look like, is there anything obviously
+wrong in this drawing? MIRA's current answers stop at "here's a
+list of text I could read" and then ask you what you want to know.
+That puts the work back on you.
+
+The three specific problems that need fixing before shop-floor use:
+
+1. The JSON bleed on Photo 7. When a tech sees curly braces and
+   backtick-json in a reply, they assume the tool is broken — and
+   they're not wrong. This one bug alone would cause most techs
+   to stop trusting the tool.
+
+2. Sparse reads on Photos 1, 4, and 9. Three out of nine photos
+   came back essentially empty. On a real job, a 1-in-3 miss rate
+   is not acceptable. These might be fixable with better photo
+   technique (better lighting, no screen glare, cropped closeups),
+   but the bot currently gives no guidance on that.
+
+3. Screen-vs-drawing confusion on Photo 5. If a tech is looking
+   at ladder logic on a laptop screen and takes a photo, the bot
+   reads the software interface instead of the logic. That's a
+   real workflow problem since most techs ARE looking at screens.
+
+Bottom line:
+Use it as a quick first-pass to identify diagram types and pull
+tag numbers when the photo is clean. Don't use it to confirm a
+diagnosis or make a call on equipment without following up with
+additional questions or a manual check. It's a decent research
+assistant if you know its limits — not yet a tool you'd hand to
+a new tech and tell them to trust.
+
+Fix the JSON leak first. That's the one that will kill adoption
+fastest if techs see it in the field.
+
+======================================================================

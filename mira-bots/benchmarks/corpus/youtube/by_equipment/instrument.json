@@ -1,0 +1,23 @@
+[
+  {
+    "video_id": "273Lmle6zpc",
+    "video_title": "Why 4 to 20ma is used for Signal Transmission in Instrumentation. 4-20ma current signal.4to 20ma",
+    "channel": "Instrumentation Academy",
+    "channel_url": "https://www.youtube.com/@instrumentationacademy",
+    "video_url": "https://www.youtube.com/watch?v=273Lmle6zpc",
+    "duration_seconds": 334,
+    "view_count": 115654,
+    "like_count": 0,
+    "chunk_index": 1,
+    "chunk_text": "the input card of the controller, it can be concluded that there is a break in the wire connected between the transmitter output terminal and input card of the controller. Now consider the other case that fluid passing through the pipeline exerts pressure in the range of 0 to 10 bar and the transmitter is calibrated to generate current signal in the range of 0 to 20 milli amperes. when there is no fluid flowing through the pipeline the transmitter generates 0 milli ampere current at the output terminals.In this case it would be extremely difficult to identify that either 0 milli ampere current is due to the wire break of the transmitter or it is due to no pressure of the fluid. Hence if the transmitter is calibrated to generate current signal in the range of 4 to 20 milli amperes the faults like wire breaks can be easily detected but this reason is a secondary reason for the widespread use of 4 to 20 milli ampere signal. The primary reason that 4 to 20 milliampere is used instead of 0 to 20 milliampere is because, it allows to power the field devices on the same two wires that is used for transmitting signals. while using 4 to 20 milli ampere current signal since there will be at least 4 milli ampere flowing through the loop The connected instrument can be powered using the same two wires that transmit signals. process control devices such as digital displays that take advantage of this principle to power itself using the 4 to 20 milli ampere loop is called loop powerrd device. loop powered instruments consume very little power in order to be able to operate with the power supplied to the loop. A two wire connection may not be able to power devices that require a large power to operate. so a 3 wire or four wire connections . are used to connect an external power supply for devices that require large power to operate.",
+    "word_count": 334,
+    "topic": "installation",
+    "category": "instrumentation",
+    "manufacturer": "",
+    "equipment_type": "instrument",
+    "model_number": "",
+    "fault_codes": [],
+    "search_query": "4-20mA loop troubleshooting explained",
+    "knowledge_entry": "Expert Instrumentation Academy says about instrument: the input card of the controller, it can be concluded that there is a break in the wire connected between the transmitter output terminal and input card of the controller. Now consider the other case that fluid passing through the pipeline exerts pressure in the range of 0 to 10 bar and the transmit"
+  }
+]

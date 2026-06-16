@@ -1,0 +1,70 @@
+<modbusServer Version="2.0">
+  <modbusRegister name="COILS">
+    <mapping variable="motor_running" parent="Micro820" dataType="Bool" address="000001">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="conveyor_running" parent="Micro820" dataType="Bool" address="000002">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="fault_alarm" parent="Micro820" dataType="Bool" address="000003">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="vfd_comm_ok" parent="Micro820" dataType="Bool" address="000004">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="system_ready" parent="Micro820" dataType="Bool" address="000005">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="e_stop_active" parent="Micro820" dataType="Bool" address="000006">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="dir_fwd" parent="Micro820" dataType="Bool" address="000007">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="dir_rev" parent="Micro820" dataType="Bool" address="000008">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="heartbeat" parent="Micro820" dataType="Bool" address="000009">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="estop_wiring_fault" parent="Micro820" dataType="Bool" address="000010">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="dir_fault" parent="Micro820" dataType="Bool" address="000011">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_00" parent="Micro820" dataType="Bool" address="000012">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_01" parent="Micro820" dataType="Bool" address="000013">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_02" parent="Micro820" dataType="Bool" address="000014">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_03" parent="Micro820" dataType="Bool" address="000015">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DI_04" parent="Micro820" dataType="Bool" address="000016">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DO_00" parent="Micro820" dataType="Bool" address="000017">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DO_01" parent="Micro820" dataType="Bool" address="000018">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DO_02" parent="Micro820" dataType="Bool" address="000019">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="_IO_EM_DO_03" parent="Micro820" dataType="Bool" address="000020">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="vfd_poll_active" parent="Micro820" dataType="Bool" address="000021">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+    <mapping variable="vfd_fault_reset_pending" parent="Micro820" dataType="Bool" address="000022">
+      <MBVarInfo ElemType="Bool" SubElemType="Any" DataTypeSize="1" />
+    </mapping>
+  </modbusRegister>
+</modbusServer>

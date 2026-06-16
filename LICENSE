@@ -1,0 +1,31 @@
+PROPRIETARY SOFTWARE LICENSE
+
+Copyright (c) 2026 Cranesync. All rights reserved.
+
+This software, its source code, and all associated files (the "Software")
+are the proprietary and confidential property of Cranesync.
+
+Access to this repository does not grant any license, express or implied,
+to copy, modify, merge, publish, distribute, sublicense, sell, host as a
+service, reverse-engineer, or otherwise use the Software in any form or
+by any means. All rights not expressly granted in a separate signed
+written agreement with Cranesync are reserved.
+
+Unauthorized copying, disclosure, or use of the Software is strictly
+prohibited and may result in civil and/or criminal penalties under
+applicable law.
+
+Third-party components distributed with the Software retain their
+original licenses. Nothing in this license overrides the terms of any
+third-party open-source license that governs a bundled dependency; the
+terms above apply only to code authored by Cranesync.
+
+For licensing inquiries, contact: mike@cranesync.com
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+IN NO EVENT SHALL CRANESYNC BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.

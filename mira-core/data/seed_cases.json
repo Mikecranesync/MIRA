@@ -1,0 +1,132 @@
+[
+  {
+    "id": "seed-001",
+    "title": "VFD overcurrent fault on startup",
+    "equipment_type": "VFD",
+    "fault_category": "power",
+    "difficulty": "medium",
+    "evidence_packet": "Our Allen-Bradley PowerFlex 525 keeps throwing an overcurrent fault (F004) every time we try to start the motor. It ran fine yesterday. The motor is a 10HP 3-phase driving a centrifugal pump. We've checked the wiring and it looks OK. What should we look at?",
+    "ground_truth": {
+      "root_cause": "One phase of the input power is missing or significantly low voltage, causing the VFD to draw excessive current on the remaining phases during startup.",
+      "fix": "Check all three phases of input power at the VFD terminals with a multimeter. Verify voltage is balanced within 3%. Inspect the input fusing or breaker — one fuse may have blown or a breaker pole may have tripped. Replace the blown fuse or reset the breaker.",
+      "keywords": ["phase loss", "input power", "fuse", "voltage imbalance", "F004", "overcurrent", "breaker"]
+    }
+  },
+  {
+    "id": "seed-002",
+    "title": "Bearing failure vibration on pump motor",
+    "equipment_type": "motor",
+    "fault_category": "mechanical",
+    "difficulty": "medium",
+    "evidence_packet": "We have a 25HP motor on a cooling water pump that's developed a loud grinding noise and excessive vibration. It's been running 24/7 for about 18 months. The motor frame feels hot to the touch near the drive end. Vibration readings were 0.3 in/s last month, now showing 0.8 in/s.",
+    "ground_truth": {
+      "root_cause": "Drive-end bearing failure due to lubrication degradation from continuous duty cycle. The elevated vibration velocity (0.3 to 0.8 in/s) and localized heat at the drive end confirm bearing deterioration.",
+      "fix": "Shut down the motor immediately to prevent catastrophic bearing failure and shaft damage. Replace both drive-end and non-drive-end bearings. Check the shaft for scoring or damage. Re-grease with manufacturer-specified lubricant and establish a preventive re-lubrication schedule (typically every 2000-4000 hours for continuous duty).",
+      "keywords": ["bearing", "vibration", "lubrication", "drive end", "grinding", "overheating", "continuous duty"]
+    }
+  },
+  {
+    "id": "seed-003",
+    "title": "PLC communication loss to remote I/O rack",
+    "equipment_type": "PLC",
+    "fault_category": "comms",
+    "difficulty": "hard",
+    "evidence_packet": "We're losing communication intermittently between our main ControlLogix PLC and a remote I/O rack about 200 feet away connected via EtherNet/IP. The rack drops offline for 2-3 seconds then comes back. It's happening 5-10 times per shift. The network switch shows no errors. Started happening after we added a new VFD to that area last week.",
+    "ground_truth": {
+      "root_cause": "The new VFD is generating electromagnetic interference (EMI) that corrupts the EtherNet/IP communication. The Ethernet cable running near the VFD power cables picks up induced noise, causing packet loss and communication timeouts.",
+      "fix": "Route the Ethernet cable away from the VFD power cables, maintaining at least 12 inches of separation. Use shielded Ethernet cable (STP) with properly grounded shields. Add an EMI filter on the VFD output. Verify the VFD has a proper ground connection. If the cable path cannot be changed, use fiber optic Ethernet for the run near the VFD.",
+      "keywords": ["EMI", "interference", "VFD", "shielded cable", "EtherNet/IP", "packet loss", "separation", "fiber"]
+    }
+  },
+  {
+    "id": "seed-004",
+    "title": "Compressor high-head pressure alarm",
+    "equipment_type": "compressor",
+    "fault_category": "thermal",
+    "difficulty": "medium",
+    "evidence_packet": "Our Kaeser rotary screw air compressor keeps alarming on high discharge pressure. It's a 50HP unit, normally runs at 125 PSI but it's hitting the high limit at 145 PSI and shutting down. The downstream demand hasn't changed. We replaced the pressure transducer last month thinking it was bad but the problem persists.",
+    "ground_truth": {
+      "root_cause": "The minimum pressure check valve (between the compressor and the receiver tank) is stuck partially closed, causing pressure to build up on the compressor side beyond the normal operating range.",
+      "fix": "Inspect and clean the minimum pressure check valve. Remove, disassemble, and check the valve seat and spring for debris, carbon buildup, or a broken spring. Replace the valve if the seat is damaged. Also check the intake valve — if it's not unloading properly, the compressor will keep building pressure past the setpoint.",
+      "keywords": ["minimum pressure valve", "check valve", "stuck", "discharge pressure", "unload", "intake valve", "carbon buildup"]
+    }
+  },
+  {
+    "id": "seed-005",
+    "title": "Conveyor belt tracking/alignment issue",
+    "equipment_type": "conveyor",
+    "fault_category": "mechanical",
+    "difficulty": "easy",
+    "evidence_packet": "The belt on our 36-inch wide conveyor keeps drifting to one side. It's rubbing against the frame and starting to fray the edge. We've tried adjusting the tail pulley but it doesn't stay centered. The conveyor is about 60 feet long carrying boxes in a warehouse.",
+    "ground_truth": {
+      "root_cause": "The conveyor frame is not level or square, and/or the idler rollers are not perpendicular to the belt travel direction. Material buildup on the rollers or pulleys on one side can also cause the belt to track off-center.",
+      "fix": "Check the conveyor frame for level using a precision level — adjust the leg supports to make it level and square. Inspect all idler rollers and clean any material buildup. Verify all rollers are perpendicular to the belt direction using a string line or laser. Adjust the self-aligning (training) idlers if equipped. On the return side, adjust rollers in the direction you want the belt to move — the belt moves toward the side of the roller it contacts first.",
+      "keywords": ["tracking", "alignment", "level", "idler", "perpendicular", "material buildup", "training idler", "frame"]
+    }
+  },
+  {
+    "id": "seed-006",
+    "title": "Motor overheating under load",
+    "equipment_type": "motor",
+    "fault_category": "power",
+    "difficulty": "medium",
+    "evidence_packet": "We have a 15HP 3-phase motor driving a blower that keeps tripping on the overload relay. The motor surface temperature is reading 195F with our IR gun. The nameplate says class F insulation. This motor was rewound about 6 months ago. It was fine for the first 4 months after the rewind.",
+    "ground_truth": {
+      "root_cause": "The motor rewind was done with incorrect wire gauge or turn count, reducing the motor's efficiency and causing it to draw higher current under load. This is a common problem with poor-quality rewinds. The 4-month delay is typical as insulation degradation from the higher operating temperature is progressive.",
+      "fix": "Measure the running current on all three phases and compare to the nameplate FLA. If current is significantly above FLA (more than 10%), the rewind is suspect. Have the motor tested on a motor analyzer to compare winding resistance and inductance across phases. If imbalanced, the motor needs to be rewound correctly or replaced. Check the voltage at the motor terminals under load — low voltage will also cause overcurrent.",
+      "keywords": ["rewind", "overcurrent", "FLA", "current draw", "winding resistance", "wire gauge", "turn count", "insulation"]
+    }
+  },
+  {
+    "id": "seed-007",
+    "title": "Hydraulic cylinder slow response",
+    "equipment_type": "hydraulic",
+    "fault_category": "hydraulic",
+    "difficulty": "medium",
+    "evidence_packet": "One of our hydraulic press cylinders is moving much slower than usual. It's a 6-inch bore cylinder that normally extends in about 3 seconds, now taking 8-10 seconds. The other cylinders on the same HPU are working fine. The hydraulic oil was changed 2 months ago and the oil looks clean. System pressure gauge reads normal at 2500 PSI.",
+    "ground_truth": {
+      "root_cause": "The cylinder piston seals are worn, allowing internal bypass (oil leaking past the piston from the pressure side to the low-pressure side). This reduces the effective flow reaching the extending side of the piston, slowing the cylinder. Since other cylinders are fine, the HPU pump is not the issue.",
+      "fix": "Isolate the cylinder and perform a bypass test: fully extend the cylinder, block the rod mechanically, apply pressure, and disconnect the return line to check for flow — excessive flow from the return port with the cylinder stalled confirms piston seal bypass. Reseal the cylinder with new piston seals. Inspect the cylinder bore for scoring that could have caused the seal failure.",
+      "keywords": ["piston seal", "bypass", "internal leakage", "cylinder bore", "seal failure", "slow", "reseal"]
+    }
+  },
+  {
+    "id": "seed-008",
+    "title": "Proximity sensor intermittent detection",
+    "equipment_type": "sensor",
+    "fault_category": "comms",
+    "difficulty": "easy",
+    "evidence_packet": "We have an inductive proximity sensor on a packaging machine that's intermittently failing to detect the metal targets. The sensor LED flickers on and off when the target is right in front of it. Sometimes it works fine for an hour, then starts acting up. We replaced the sensor with a new one of the same model but the problem continues.",
+    "ground_truth": {
+      "root_cause": "The sensor wiring connection is loose or corroded, causing an intermittent signal. Since replacing the sensor didn't fix it, the issue is in the cable or connector. Vibration from the packaging machine loosens the connection over time.",
+      "fix": "Inspect the sensor connector and cable for loose pins, corrosion, or chafing. Check the cable routing — the cable may be getting pinched or flexed at a tight bend radius during machine operation. Re-terminate the wiring connections and apply dielectric grease to the connector pins. If using a quick-disconnect connector, replace the cable assembly. Secure the cable with proper strain relief to prevent vibration-induced failures.",
+      "keywords": ["wiring", "connector", "loose", "corrosion", "cable", "vibration", "intermittent", "strain relief"]
+    }
+  },
+  {
+    "id": "seed-009",
+    "title": "Soft starter bypass contactor failure",
+    "equipment_type": "soft starter",
+    "fault_category": "power",
+    "difficulty": "hard",
+    "evidence_packet": "Our 75HP soft starter successfully ramps up the motor but the bypass contactor isn't engaging after the ramp completes. The motor stays running through the SCRs, which is causing the soft starter to overheat. The soft starter display shows 'Run' status but the bypass contactor LED is off. The contactor was working fine until yesterday.",
+    "ground_truth": {
+      "root_cause": "The bypass contactor coil has failed (open circuit) or the control relay/output driving the bypass contactor has failed. The soft starter completes its ramp but cannot energize the bypass contactor to shunt the SCRs, so current continues flowing through the thyristors generating heat.",
+      "fix": "Measure the bypass contactor coil resistance — an open reading confirms a burned coil, replace the contactor. If the coil reads normal, check for control voltage at the contactor coil terminals when the soft starter is in 'Run' state. If no voltage, the soft starter's bypass relay output has failed — check the internal bypass relay or the wiring between the soft starter bypass output and the contactor coil. Replace the bypass relay or the soft starter control board as needed.",
+      "keywords": ["bypass contactor", "coil", "SCR", "thyristor", "overheat", "control relay", "bypass relay", "coil resistance"]
+    }
+  },
+  {
+    "id": "seed-010",
+    "title": "Chiller low refrigerant alarm",
+    "equipment_type": "chiller",
+    "fault_category": "thermal",
+    "difficulty": "medium",
+    "evidence_packet": "Our 100-ton chiller is alarming on low refrigerant pressure. It's using R-410A. Suction pressure is reading 95 PSI (should be around 120 PSI). The chiller was serviced 3 months ago and the tech said the charge was correct. We haven't noticed any oil spots around the unit. Discharge temperature is higher than normal.",
+    "ground_truth": {
+      "root_cause": "Refrigerant leak, most likely at a brazed joint, Schrader valve, or flare fitting. The gradual loss over 3 months with no visible oil spots suggests a small leak. R-410A leaks can be hard to see since the oil carried with it evaporates quickly in small quantities.",
+      "fix": "Perform an electronic leak detection sweep of all brazed joints, flare connections, and Schrader valve cores. Pay special attention to the condenser coil u-bends and the suction line connections. Once the leak is found, recover the charge, repair the leak (braze or replace fitting), pressure test with dry nitrogen to 500 PSI, evacuate the system to 500 microns, and recharge to manufacturer specifications. Document the charge amount.",
+      "keywords": ["refrigerant leak", "R-410A", "brazed joint", "Schrader valve", "leak detection", "suction pressure", "recharge", "nitrogen test"]
+    }
+  }
+]

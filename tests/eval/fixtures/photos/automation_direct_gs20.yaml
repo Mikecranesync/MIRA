@@ -1,0 +1,24 @@
+id: photo_gs20_nameplate
+description: "Photo of AutomationDirect GS20 VFD nameplate — vendor + model extraction and fault follow-up"
+expected_final_state: Q1
+max_turns: 3
+expected_keywords: [GS20, AutomationDirect, drive, VFD, fault]
+expected_vendor: AutomationDirect
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [photo, nameplate, automationdirect, vfd]
+
+photo_expected:
+  vendor: AutomationDirect
+  model: GS20
+  voltage: 230V
+
+turns:
+  - role: user
+    content: "Here's the drive that's been tripping"
+    photo: automation_direct_gs20.jpg
+  - role: user
+    content: "It shows OC on the display"
+  - role: user
+    content: "Motor is 3HP, load is a pump"

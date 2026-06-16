@@ -1,0 +1,44 @@
+# Python
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+
+# Environment / secrets
+.env
+
+# Vector store (large binary files)
+chroma_db/
+
+# Logs
+*.log
+
+# Node
+node_modules/
+
+# Build artifacts
+*.modl
+*.exe
+
+# Docs watch folder PDFs
+docs/*.pdf
+
+# Claude Code
+.claude/
+
+# CCW user settings and temp files
+.vs/
+*.tmp
+*.bak
+*.err
+*.zip
+
+# CCW compiled state (persist backups)
+persist.ccwx.bak
+
+# Vendor documentation cache — big blobs, regenerable via scripts/fetch_*.py.
+# Manifest and scraper log stay tracked so anyone can see what should exist.
+docs/**
+!docs/manifest.json
+!docs/scraper.log

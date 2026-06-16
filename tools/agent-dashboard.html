@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MIRA Agent Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2a2d3d;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --green: #22c55e;
+    --yellow: #f59e0b;
+    --red: #ef4444;
+    --blue: #3b82f6;
+    --purple: #a855f7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; min-height: 100vh; }
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.05em; color: var(--text); }
+  header h1 span { color: var(--blue); }
+  #refresh-info { font-size: 0.75rem; color: var(--muted); }
+  #countdown { color: var(--blue); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; padding: 24px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+  .card.status-green { border-left: 3px solid var(--green); }
+  .card.status-yellow { border-left: 3px solid var(--yellow); }
+  .card.status-red { border-left: 3px solid var(--red); }
+  .card.status-grey { border-left: 3px solid var(--muted); }
+  .card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+  .card-title { font-size: 1rem; font-weight: 600; }
+  .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 0.72rem; font-weight: 600; padding: 3px 10px; border-radius: 99px; white-space: nowrap; }
+  .badge-green { background: rgba(34,197,94,0.12); color: var(--green); }
+  .badge-yellow { background: rgba(245,158,11,0.12); color: var(--yellow); }
+  .badge-red { background: rgba(239,68,68,0.12); color: var(--red); }
+  .badge-grey { background: rgba(100,116,139,0.15); color: var(--muted); }
+  .meta { font-size: 0.78rem; color: var(--muted); }
+  .meta strong { color: var(--text); }
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; }
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stat-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+  .stat-value { font-size: 1.1rem; font-weight: 700; }
+  .stat-value.green { color: var(--green); }
+  .stat-value.red { color: var(--red); }
+  .stat-value.yellow { color: var(--yellow); }
+  .stat-value.muted { color: var(--muted); }
+  .history-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 6px; }
+  .sparkline { display: flex; gap: 4px; align-items: flex-end; height: 28px; }
+  .spark-bar { flex: 1; border-radius: 3px; min-height: 4px; max-width: 18px; }
+  .spark-bar.success { background: var(--green); opacity: 0.85; }
+  .spark-bar.partial { background: var(--yellow); opacity: 0.85; }
+  .spark-bar.failure { background: var(--red); opacity: 0.85; }
+  .spark-bar.empty { background: var(--border); opacity: 0.5; }
+  .error-msg { text-align: center; padding: 48px 24px; color: var(--muted); font-size: 0.9rem; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+  .loading { animation: pulse 1.5s infinite; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MIRA <span>Agent Dashboard</span></h1>
+  <div id="refresh-info">Auto-refresh in <span id="countdown">60</span>s &nbsp;·&nbsp; <span id="last-fetch">–</span></div>
+</header>
+<div class="grid" id="grid"><div class="error-msg loading">Loading agents…</div></div>
+
+<script>
+const AGENT_META = {
+  kb_builder:        { emoji: "🏗️", label: "KB Builder",          desc: "Detects under-covered manufacturers, triggers doc crawls" },
+  prompt_optimizer:  { emoji: "✏️", label: "Prompt Optimizer",    desc: "Detects eval failure clusters, proposes prompt tweaks" },
+  infra_guardian:    { emoji: "🛡️", label: "Infra Guardian",       desc: "Monitors VPS service health, auto-restarts containers" },
+};
+
+function fmtTime(iso) {
+  if (!iso) return "Never";
+  const d = new Date(iso);
+  const now = new Date();
+  const diff = Math.floor((now - d) / 1000);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+  return d.toLocaleDateString();
+}
+
+function fmtDur(s) {
+  if (s == null) return "–";
+  return s < 1 ? `${Math.round(s*1000)}ms` : `${s.toFixed(1)}s`;
+}
+
+function statusOf(data) {
+  if (!data.last_run) return "grey";
+  if (data.last_failed > 0 && data.last_succeeded === 0) return "red";
+  if (data.last_failed > 0) return "yellow";
+  return "green";
+}
+
+function badgeFor(status) {
+  const map = { green: ["badge-green","● Healthy"], yellow: ["badge-yellow","◐ Partial"], red: ["badge-red","● Failed"], grey: ["badge-grey","○ Never run"] };
+  const [cls, text] = map[status] || map.grey;
+  return `<span class="badge ${cls}">${text}</span>`;
+}
+
+function sparklineFor(runs) {
+  const items = [...runs].slice(0, 10).reverse();
+  const maxD = Math.max(...items.map(r => r.detected || 1), 1);
+  return items.map(r => {
+    const h = Math.max(4, Math.round((r.detected || 1) / maxD * 24));
+    let cls = "success";
+    if (r.failed > 0 && r.succeeded === 0) cls = "failure";
+    else if (r.failed > 0) cls = "partial";
+    return `<div class="spark-bar ${cls}" style="height:${h}px" title="${fmtTime(r.started)}: ${r.succeeded}✓ ${r.failed}✗"></div>`;
+  }).join("") + Array(Math.max(0, 10 - items.length)).fill('<div class="spark-bar empty" style="height:4px"></div>').join("");
+}
+
+function renderCards(data) {
+  const grid = document.getElementById("grid");
+  const cards = Object.entries(AGENT_META).map(([key, meta]) => {
+    const d = data[key] || { last_run: null, total_runs: 0, runs: [], last_succeeded: 0, last_failed: 0, last_detected: 0, last_duration_s: null };
+    const status = statusOf(d);
+    return `
+      <div class="card status-${status}">
+        <div class="card-header">
+          <div>
+            <div class="card-title">${meta.emoji} ${meta.label}</div>
+          </div>
+          ${badgeFor(status)}
+        </div>
+        <div class="meta">${meta.desc}</div>
+        <div class="meta">Last run: <strong>${fmtTime(d.last_run)}</strong> · Duration: <strong>${fmtDur(d.last_duration_s)}</strong> · Total runs: <strong>${d.total_runs}</strong></div>
+        <div class="stats">
+          <div class="stat"><div class="stat-label">Detected</div><div class="stat-value muted">${d.last_detected ?? "–"}</div></div>
+          <div class="stat"><div class="stat-label">Succeeded</div><div class="stat-value green">${d.last_succeeded ?? "–"}</div></div>
+          <div class="stat"><div class="stat-label">Failed</div><div class="stat-value ${d.last_failed > 0 ? "red" : "muted"}">${d.last_failed ?? "–"}</div></div>
+        </div>
+        <div>
+          <div class="history-label">Last 10 runs (newest right)</div>
+          <div class="sparkline">${sparklineFor(d.runs || [])}</div>
+        </div>
+      </div>`;
+  });
+  grid.innerHTML = cards.join("");
+}
+
+async function fetchStatus() {
+  try {
+    const res = await fetch("/api/agents/public-status");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    renderCards(data);
+    document.getElementById("last-fetch").textContent = "Updated " + new Date().toLocaleTimeString();
+  } catch (e) {
+    document.getElementById("grid").innerHTML = `<div class="error-msg">Failed to load agent status: ${e.message}</div>`;
+  }
+}
+
+let tick = 60;
+function startCountdown() {
+  clearInterval(window._timer);
+  tick = 60;
+  document.getElementById("countdown").textContent = tick;
+  window._timer = setInterval(() => {
+    tick--;
+    document.getElementById("countdown").textContent = tick;
+    if (tick <= 0) { tick = 60; fetchStatus(); }
+  }, 1000);
+}
+
+fetchStatus();
+startCountdown();
+</script>
+</body>
+</html>

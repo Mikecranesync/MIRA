@@ -1,0 +1,201 @@
+x-bot-common-env: &bot-common-env
+  INGEST_SERVICE_URL: ${INGEST_SERVICE_URL:-http://mira-ingest:8001}
+  OPENWEBUI_BASE_URL: ${OPENWEBUI_BASE_URL:-http://mira-core:8080}
+  OPENWEBUI_API_KEY: ${OPENWEBUI_API_KEY:-}
+  MCP_BASE_URL: ${MCP_BASE_URL:-http://mira-mcp:8001}
+  MCP_REST_API_KEY: ${MCP_REST_API_KEY:-}
+  MIRA_DB_PATH: /data/mira.db
+  KNOWLEDGE_COLLECTION_ID: ${KNOWLEDGE_COLLECTION_ID:-}
+  NEON_DATABASE_URL: ${NEON_DATABASE_URL:-}
+  MIRA_TENANT_ID: ${MIRA_TENANT_ID:-}
+  VISION_MODEL: ${VISION_MODEL:-qwen2.5vl:7b}
+  INFERENCE_BACKEND: ${INFERENCE_BACKEND:-cloud}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
+  OPENROUTER_VISION_MODEL: ${OPENROUTER_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct:free}
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
+  GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+  GROQ_VISION_MODEL: ${GROQ_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
+  CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
+  CEREBRAS_MODEL: ${CEREBRAS_MODEL:-llama3.1-8b}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-4-6}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+  GEMINI_VISION_MODEL: ${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+  LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+  LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+  LANGFUSE_PUBLIC_API_KEY: ${LANGFUSE_PUBLIC_API_KEY:-}
+  LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+  LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-}
+  ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-}
+
+services:
+  telegram-bot:
+    build:
+      context: ..
+      dockerfile: mira-bots/telegram/Dockerfile
+    container_name: mira-bot-telegram
+    environment:
+      <<: *bot-common-env
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      TELEGRAM_REPORT_CHAT_ID: ${TELEGRAM_REPORT_CHAT_ID:-}
+      GLM_OCR_MODEL: ${GLM_OCR_MODEL:-glm4v:9b-q4_0}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+    volumes:
+      - ../mira-bridge/data:/data:rw
+    networks:
+      - bot-net
+      - core-net
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 512m
+    healthcheck:
+      test: ["CMD", "sh", "-c", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  slack-bot:
+    build:
+      context: .
+      dockerfile: slack/Dockerfile
+    container_name: mira-bot-slack
+    environment:
+      <<: *bot-common-env
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN}
+    volumes:
+      - ../mira-bridge/data:/data:rw
+    networks:
+      - bot-net
+      - core-net
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 512m
+    healthcheck:
+      test: ["CMD", "sh", "-c", "cat /proc/1/cmdline | tr '\\0' ' ' | grep -q 'bot.py'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  teams-bot:
+    mem_limit: 512m
+    memswap_limit: 512m
+    profiles: ["dormant"]
+    build:
+      context: .
+      dockerfile: teams/Dockerfile
+    container_name: mira-bot-teams
+    environment:
+      <<: *bot-common-env
+      TEAMS_APP_ID: ${TEAMS_APP_ID:-}
+      TEAMS_APP_PASSWORD: ${TEAMS_APP_PASSWORD:-}
+      TEAMS_PORT: ${TEAMS_PORT:-8030}
+    volumes:
+      - ../mira-bridge/data:/data:rw
+    ports:
+      - "${TEAMS_PORT:-8030}:${TEAMS_PORT:-8030}"
+    networks:
+      - bot-net
+      - core-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import botbuilder.core; exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  whatsapp-bot:
+    mem_limit: 512m
+    memswap_limit: 512m
+    profiles: ["dormant"]
+    build:
+      context: .
+      dockerfile: whatsapp/Dockerfile
+    container_name: mira-bot-whatsapp
+    environment:
+      <<: *bot-common-env
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_WHATSAPP_FROM: ${TWILIO_WHATSAPP_FROM:-}
+    volumes:
+      - ../mira-bridge/data:/data:rw
+    ports:
+      - "${WHATSAPP_PORT:-8010}:8010"
+    networks:
+      - bot-net
+      - core-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  reddit-bot:
+    mem_limit: 512m
+    memswap_limit: 512m
+    profiles: ["dormant"]
+    build:
+      context: .
+      dockerfile: reddit/Dockerfile
+    container_name: mira-bot-reddit
+    environment:
+      <<: *bot-common-env
+      REDDIT_CLIENT_ID: ${REDDIT_CLIENT_ID}
+      REDDIT_CLIENT_SECRET: ${REDDIT_CLIENT_SECRET}
+      REDDIT_USERNAME: ${REDDIT_USERNAME}
+      REDDIT_PASSWORD: ${REDDIT_PASSWORD}
+      REDDIT_USER_AGENT: ${REDDIT_USER_AGENT:-linux:MIRA-RedditBot:0.1.0}
+      REDDIT_SUBREDDITS: ${REDDIT_SUBREDDITS:-IndustrialMaintenance,PLC,electricians,HVAC,AutomationTechnology}
+      REDDIT_POLL_INTERVAL: ${REDDIT_POLL_INTERVAL:-120}
+      REDDIT_MAX_POST_AGE_HOURS: ${REDDIT_MAX_POST_AGE_HOURS:-24}
+      REDDIT_MAX_EXISTING_COMMENTS: ${REDDIT_MAX_EXISTING_COMMENTS:-10}
+      REDDIT_DRY_RUN: ${REDDIT_DRY_RUN:-0}
+    volumes:
+      - ../mira-bridge/data:/data:rw
+    networks:
+      - bot-net
+      - core-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  telegram-test-runner:
+    mem_limit: 512m
+    memswap_limit: 512m
+    build:
+      context: .
+      dockerfile: telegram_test_runner/Dockerfile
+    container_name: mira-telegram-test-runner
+    profiles: ["test"]
+    environment:
+      - TELEGRAM_TEST_API_ID=${TELEGRAM_TEST_API_ID}
+      - TELEGRAM_TEST_API_HASH=${TELEGRAM_TEST_API_HASH}
+      - TELEGRAM_TEST_PHONE=${TELEGRAM_TEST_PHONE}
+      - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-@MIRABot}
+      - TELEGRAM_TEST_SESSION_PATH=/session/test_account.session
+    volumes:
+      - telegram_test_session:/session:rw
+      - ./telegram_test_runner:/app:ro
+      - /Users/bravonode/Mira/MIRA test case 1:/MIRA test case 1:ro
+      - ./artifacts:/artifacts:rw
+    networks:
+      - core-net
+    depends_on:
+      - telegram-bot
+    restart: "no"
+
+volumes:
+  telegram_test_session:
+
+networks:
+  bot-net:
+    external: true
+  core-net:
+    external: true

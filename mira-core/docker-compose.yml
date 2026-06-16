@@ -1,0 +1,223 @@
+services:
+  open-webui:
+    mem_limit: 512m
+    memswap_limit: 512m
+    image: ghcr.io/open-webui/open-webui:v0.8.10
+    container_name: mira-core
+    ports:
+      - "${WEBUI_PORT:-3000}:8080"
+    environment:
+      - WEBUI_NAME=MIRA
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - WEBUI_AUTH=true
+      - ENABLE_SIGNUP=true
+      - DEFAULT_USER_ROLE=pending
+      - ENABLE_COMMUNITY_SHARING=false
+      - ENABLE_FORWARD_USER_INFO_HEADERS=true
+      - ENABLE_API_KEYS=true
+      # OW v0.8.10 gates POST /api/v1/auths/api_key on ENABLE_API_KEYS (plural)
+      # AND has_permission(user, 'features.api_keys') — which defaults to False.
+      # USER_PERMISSIONS_FEATURES_API_KEYS=true also flips that per-user gate.
+      # Without both, you get 403 "API key creation is not allowed".
+      - USER_PERMISSIONS_FEATURES_API_KEYS=true
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:?WEBUI_SECRET_KEY must be set in .env}
+      - WEBUI_ENABLE_TELEMETRY=false
+      - WEBUI_CHECK_FOR_UPDATES=false
+      # RAG embedding: nomic-embed-text via Ollama (matches mira-ingest NeonDB embeddings)
+      # Default all-MiniLM-L6-v2 truncates at 256 tokens; nomic handles 8192
+      - RAG_EMBEDDING_ENGINE=ollama
+      - RAG_EMBEDDING_MODEL=nomic-embed-text:v1.5
+      - RAG_CHUNK_SIZE=1000
+      - RAG_CHUNK_OVERLAP=100
+      # Pipeline connection — MIRA Diagnostic model via mira-pipeline
+      - OPENAI_API_BASE_URLS=http://mira-pipeline:9099/v1
+      - OPENAI_API_KEYS=${PIPELINE_API_KEY:-}
+      # Content extraction: Apache Tika (replaced Docling 2026-06-06 — see
+      # docs/known-issues/2026-06-06-hub-upload-failures-docling-oom.md).
+      # CONTENT_EXTRACTION_ENGINE is a PersistentConfig var; on an existing OW
+      # DB run scripts/set-ow-extraction-engine.sh once to flip the DB value.
+      - CONTENT_EXTRACTION_ENGINE=tika
+      - TIKA_SERVER_URL=http://mira-tika:9998
+      # Admin key for entrypoint-mira.sh self-heal of the persisted engine.
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
+      # KB status indicator — red outline by default (unknown = caution).
+      # Per-turn 🟢/🟡/🔴 banners in pipeline responses provide the live signal.
+      # CRA-24: also enforce 44x44 minimum tap target on mobile widths so the
+      # OAuth/password buttons on /auth pass iOS HIG / WCAG 2.5.5. Open WebUI
+      # uses Svelte-generated class names that drift across releases, so we
+      # target generic interactive elements (button / a[href] / input
+      # submit/button) inside a mobile media query — desktop unchanged.
+      - "WEBUI_CUSTOM_CSS=#app > div:first-child { outline: 3px solid #cc3333; outline-offset: -3px; border-radius: 4px; transition: outline-color 0.5s ease; } @media (max-width: 768px) { button, a[href], input[type=submit], input[type=button] { min-height: 44px; } }"
+      # STT — Groq Whisper free tier (voice-to-text)
+      - AUDIO_STT_ENGINE=openai
+      - AUDIO_STT_OPENAI_API_BASE_URL=https://api.groq.com/openai/v1
+      - AUDIO_STT_OPENAI_API_KEY=${GROQ_API_KEY:-}
+      - AUDIO_STT_MODEL=whisper-large-v3-turbo
+      # TTS — browser Web Speech API (zero cost, works offline)
+      - AUDIO_TTS_ENGINE=
+    entrypoint: ["/bin/bash", "/entrypoint-mira.sh"]
+    volumes:
+      - open-webui-data:/app/backend/data
+      - ./entrypoint-mira.sh:/entrypoint-mira.sh:ro
+      - ./branding:/branding:ro
+    networks:
+      - core-net
+      - bot-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  mira-mcpo:
+    mem_limit: 512m
+    memswap_limit: 512m
+    image: mira-core-mira-mcpo:${MIRA_MCPO_VERSION:-3.4}
+    container_name: mira-mcpo
+    command: --port 8000 --api-key ${MCPO_API_KEY} --config /mcp/config.json
+    volumes:
+      - ../mira-mcp/server.py:/mcp/server.py:ro
+      - ../mira-bridge/data/mira.db:/data/mira.db:ro
+      - ./mcpo-config.json:/mcp/config.json:ro
+    ports:
+      - "${MCPO_PORT:-8000}:8000"
+    networks:
+      - core-net
+    depends_on:
+      open-webui:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-H", "Authorization: Bearer ${MCPO_API_KEY}", "http://localhost:8000/mira-mcp/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  mira-ingest:
+    mem_limit: 512m
+    memswap_limit: 512m
+    build:
+      context: ./mira-ingest
+    container_name: mira-ingest
+    environment:
+      - MIRA_DB_PATH=/app/mira.db
+      - PHOTOS_DIR=/data/photos
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - DESCRIBE_MODEL=${DESCRIBE_MODEL:-qwen2.5vl:7b}
+      - EMBED_VISION_MODEL=${EMBED_VISION_MODEL:-nomic-embed-vision-v1.5}
+      - EMBED_TEXT_MODEL=${EMBED_TEXT_MODEL:-nomic-embed-text-v1.5}
+      - OPENWEBUI_BASE_URL=${OPENWEBUI_BASE_URL:-http://mira-core:8080}
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
+      - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID:-}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+    volumes:
+      - ./data/photos:/data/photos
+      - ./mira.db:/app/mira.db
+    ports:
+      - "127.0.0.1:${INGEST_PORT:-8002}:8001"
+    networks:
+      - core-net
+    depends_on:
+      open-webui:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  mira-tika:
+    # `-full` bundles Tesseract OCR for scanned PDFs. 1 GB gives OCR headroom
+    # (512m can trip on large scanned docs); still ~1/3 of Docling's 3 GB.
+    mem_limit: 1g
+    memswap_limit: 1g
+    image: apache/tika:3.1.0.0-full
+    container_name: mira-tika
+    ports:
+      - "127.0.0.1:${TIKA_PORT:-9998}:9998"
+    networks:
+      - core-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9998/tika"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  mira-pipeline:
+    mem_limit: 512m
+    memswap_limit: 512m
+    build:
+      context: ..
+      dockerfile: mira-pipeline/Dockerfile
+    container_name: mira-pipeline
+    environment:
+      - MIRA_DB_PATH=/data/mira.db
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OPENWEBUI_BASE_URL=${OPENWEBUI_BASE_URL:-http://mira-core:8080}
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
+      - KNOWLEDGE_COLLECTION_ID=${KNOWLEDGE_COLLECTION_ID:-}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+      - VISION_MODEL=${VISION_MODEL:-qwen2.5vl:7b}
+      - INFERENCE_BACKEND=${INFERENCE_BACKEND:-cloud}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - GROQ_VISION_MODEL=${GROQ_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
+      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
+      - CEREBRAS_MODEL=${CEREBRAS_MODEL:-llama3.1-8b}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
+      - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
+      - MCP_BASE_URL=${MCP_BASE_URL:-http://mira-mcp:8001}
+      - INGEST_SERVICE_URL=http://mira-ingest:8001
+      - MAX_VISION_PX=${MAX_VISION_PX:-1024}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+    volumes:
+      - ../mira-bridge/data:/data
+    ports:
+      - "127.0.0.1:${PIPELINE_PORT:-9099}:9099"
+    networks:
+      - core-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9099/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # mira-docling removed 2026-06-06 — replaced by mira-tika (above). Docling's
+  # 3 GB PyTorch stack chronically OOM'd/504-timed-out on the prod 8 GB box and
+  # failed every PDF extraction. See docs/known-issues/2026-06-06-hub-upload-
+  # failures-docling-oom.md. docker-compose.override.yml may still define a
+  # mira-docling override for bench experiments; it is no longer wired to OW.
+
+volumes:
+  open-webui-data:
+
+networks:
+  core-net:
+    external: true
+  bot-net:
+    external: true

@@ -1,0 +1,84 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "This week on the FactoryLM feed:\n\n- Fixed a PowerFlex 525 'F8' fault in 32 seconds — photo to diagnosis\n- Why GS20 HMI 'no-comm' issues waste 27 min on average during manual lookup\n- How Mira pulled the right Allen-Bradley manual section in 9 seconds (not 30)\n- New onboarding drip: getting your CMMS live in under 2 minutes\n\nWe’ve been testing photo-to-work-order on hydraulic unit leaks. One user cut 41 min off first-response time.\n\nNo more digging through binders or waiting on OEM callbacks.\n\nWhat’s the worst fault code you’ve stood at a machine waiting to decode?\n\nhttps://app.factorylm.com",
+      "char_count": 654,
+      "hashtags": [
+        "#maintenancetech",
+        "#industrialmaintenance",
+        "#CMMS"
+      ],
+      "suggested_visual": "Carousel: 1) Phone showing a PowerFlex VFD with fault code F8, 2) AI diagnosis screen in Mira, 3) Completed work order, 4) Hydraulic unit with highlighted leak point",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "This week:\n• F8 on PowerFlex? Check DC bus voltage.\n• GS20 comms drop? Cycle power + check 24V supply.\n• Hydraulic leak? Photo to Mira > diagnosis in <30 sec.\n\nNo manual. No hold time. Just answers.\n\nStay fast.\nhttps://app.factorylm.com",
+      "char_count": 278,
+      "hashtags": [
+        "#Maintenance",
+        "#VFD"
+      ],
+      "suggested_visual": "Video clip: Phone camera zooms in on F8 fault on PowerFlex 525, then switches to Mira chat output: 'F8: Overvoltage. Check incoming line voltage and decel time.'",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "r/maintenance\n\nWe’ve been testing AI-assisted fault diagnosis with on-site techs this week — real machines, real pressure.\n\nRan trials on:\n- PowerFlex 525 (F8 faults) — 8 cases, average diagnosis time: 34 seconds via photo\n- Automation Direct GS20 HMI (comms loss) — 6 cases, 22 sec to identify 24V drop\n- Hydraulic power units (oil leaks) — 5 cases, 100% correct gasket/seal callouts\n\nCommon thread? Techs wasted 20–40 min just finding the right manual section. We piped OCR + equipment docs into a local AI, queried by photos and codes.\n\nNot selling anything. Just sharing what’s working: using phone cameras as diagnostic triggers reduces lookup time by 70–90%.\n\nWould a reference library that pulls the right page from your Allen-Bradley manual on photo upload be useful? Or is that too far off?\n\n(We’re calling it Mira. It runs in-browser. No app store.)",
+      "char_count": 1047,
+      "hashtags": [],
+      "suggested_visual": "Side-by-side: left shows crumpled paper manual open to wrong page, right shows phone with AI highlighting correct section from AB manual",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "This week:\n\n- Fixed a PowerFlex 525 F8 fault in 30 seconds — just by snapping a photo\n- Saved 27 min on average vs. digging through Allen-Bradley manuals\n- CMMS setup in under 2 minutes (no IT ticket, no sales call)\n- Shared real cases from hydraulic unit diagnostics\n\nOne tech said: “Mira gave me the manual page I needed before I even walked back to my locker.”\n\nNo more holding for OEM support or flipping through PDFs on a greasy tablet.\n\nWhat part of your troubleshooting process takes the most time every week?\n\nhttps://app.factorylm.com",
+      "char_count": 636,
+      "hashtags": [
+        "#MaintenanceTips",
+        "#Reliability",
+        "#FactoryLM"
+      ],
+      "suggested_visual": "Video: Technician snaps photo of VFD, then shows AI output with fault explanation and work order creation on phone",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "This week in real maintenance time:\n\n- F8 on PowerFlex? Checked DC bus. Fixed in 32 sec.\n- GS10 no display? 24V supply trip — found it with a photo\n- Hydraulic leak? Mira ID’d the seal type before I grabbed tools\n\nNo manual. No waiting.\n\nBuilt a tool that finds the exact page from your AB manual — just snap, ask, go.\n\nWe call it Mira. Lives in your phone browser. No download.\n\nWhat fault code do you wish you could skip the manual for?",
+      "char_count": 598,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#HVAC",
+        "#VFDRepair",
+        "#TechTok"
+      ],
+      "suggested_visual": "Fast cuts: 1) Gloved hand pointing at F8 on VFD, 2) Phone camera snapping photo, 3) AI response popping up, 4) Tech nodding and walking to tool cart",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "This week:\n\n📸 Photo of PowerFlex 525 F8 fault\n→ Mira finds overvoltage cause in 30 sec\n\n⚠️ GS10 HMI dead?\n→ AI checks power supply section in your manual\n\n💧 Hydraulic leak on unit?\n→ Snap it — get seal type + repair steps\n\nNo more binder diving. No OEM hold time.\n\nWe’re cutting the lookup phase from 30 min to under 10 sec — using your existing docs.\n\nWhat’s your most time-sucking fault?\n\n#MaintenanceLife #FactoryLM",
+      "char_count": 631,
+      "hashtags": [
+        "MaintenanceTech",
+        "VFD",
+        "AllenBradley",
+        "PowerFlex",
+        "Hydraulics",
+        "CMMS",
+        "IndustrialMaintenance",
+        "MaintenanceLife",
+        "FactoryLM",
+        "NoMoreManuals",
+        "Reliability",
+        "MiraAI",
+        "GS10",
+        "GS20",
+        "WorkOrder"
+      ],
+      "suggested_visual": "4-image carousel: 1) Close-up of PowerFlex 525 with F8, 2) Phone showing Mira chat: 'Check DC bus voltage', 3) Hydraulic unit with red arrow on leaking seal, 4) Work order screen with 'Completed' tag",
+      "subreddit": null
+    }
+  ]
+}

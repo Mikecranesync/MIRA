@@ -1,0 +1,14 @@
+id: vague_opener_stuck_state_05
+description: "Vague opener followed by minimal detail — tests FSM progression from Q1"
+expected_final_state: Q2
+max_turns: 4
+expected_keywords: [overcurrent, fault, GS20, motor, drive, OC]
+expected_vendor: AutomationDirect
+wo_expected: false
+safety_expected: false
+tags: [stuck-state, vague, gs20, fsm-progression]
+turns:
+  - role: user
+    content: "Something is wrong with the drive"
+  - role: user
+    content: "It's a GS20, showing OC fault on the display"

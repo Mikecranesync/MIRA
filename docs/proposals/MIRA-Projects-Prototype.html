@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>MIRA Projects — Interactive Prototype</title>
+<style>
+  :root {
+    --navy: #1B365D;
+    --navy-2: #23476F;
+    --orange: #C9531C;
+    --orange-2: #E67139;
+    --bg: #F5F6F8;
+    --card: #FFFFFF;
+    --rule: #E1E5EA;
+    --ink: #1B2530;
+    --muted: #5C6770;
+    --good: #1F8E5A;
+    --warn: #C77B0A;
+    --bad: #B5341E;
+    --sky: #E6F0FA;
+    --shadow: 0 1px 2px rgba(15,23,30,.04), 0 4px 16px rgba(15,23,30,.06);
+    --safety: #FCE9E5;
+    --safety-bd: #B5341E;
+    --indexed: #DCEFE3;
+    --partial: #FFF3D6;
+    --failed: #FBDDD3;
+    --superseded: #E2E5E9;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    font-size: 14px; line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+
+  /* ---------- Top chrome ---------- */
+  .topbar {
+    background: var(--navy); color: #fff;
+    padding: 12px 22px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 50;
+    box-shadow: 0 1px 0 rgba(255,255,255,.08), 0 4px 12px rgba(0,0,0,.06);
+  }
+  .topbar .brand { font-weight: 700; letter-spacing: .3px; }
+  .topbar .brand .dot { color: var(--orange-2); }
+  .topbar .pill {
+    background: rgba(255,255,255,.12);
+    padding: 6px 12px; border-radius: 999px;
+    font-size: 12px; letter-spacing: .4px; text-transform: uppercase;
+  }
+
+  .tabs {
+    display: flex; gap: 0;
+    background: #fff;
+    border-bottom: 1px solid var(--rule);
+    padding: 0 16px;
+    position: sticky; top: 49px; z-index: 49;
+    overflow-x: auto;
+  }
+  .tab {
+    padding: 14px 18px;
+    font-weight: 600; color: var(--muted);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    white-space: nowrap;
+    transition: color .15s, border-color .15s;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab.active { color: var(--navy); border-bottom-color: var(--orange); }
+  .tab .count { font-size: 11px; color: var(--muted); margin-left: 6px; font-weight: 500; }
+
+  /* ---------- Layout ---------- */
+  .stage {
+    max-width: 1280px; margin: 0 auto; padding: 18px;
+    display: grid; grid-template-columns: 1fr; gap: 18px;
+  }
+  @media (min-width: 980px) {
+    .with-rail { grid-template-columns: 1fr 360px; }
+  }
+
+  .panel {
+    background: var(--card);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .panel.pad { padding: 18px 20px; }
+  .panel + .panel { margin-top: 0; }
+
+  h1, h2, h3, h4 { margin: 0; }
+  h2.section { font-size: 13px; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+
+  .muted { color: var(--muted); }
+  .small { font-size: 12px; }
+
+  /* ---------- Hero asset card ---------- */
+  .hero {
+    padding: 22px 24px;
+    background: linear-gradient(135deg, #1B365D 0%, #23476F 100%);
+    color: #fff;
+  }
+  .hero .row { display: flex; flex-wrap: wrap; gap: 18px 32px; align-items: center; justify-content: space-between; }
+  .hero h1 { font-size: 24px; margin: 0 0 4px; letter-spacing: -.2px; }
+  .hero .sub { color: rgba(255,255,255,.78); font-size: 13px; }
+  .hero .meta { display: flex; gap: 22px; }
+  .hero .meta div { font-size: 12px; color: rgba(255,255,255,.72); text-transform: uppercase; letter-spacing: .5px; }
+  .hero .meta strong { display: block; color: #fff; font-size: 16px; text-transform: none; letter-spacing: 0; margin-top: 2px; }
+
+  .health {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px; border-radius: 999px;
+    background: rgba(255,255,255,.16);
+    font-weight: 600; font-size: 13px;
+  }
+  .dot-pulse { width: 8px; height: 8px; border-radius: 50%; background: #FFD27A; box-shadow: 0 0 0 0 rgba(255,210,122,.7); animation: pulse 2.2s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,210,122,.7);} 70% { box-shadow: 0 0 0 12px rgba(255,210,122,0);} 100% { box-shadow: 0 0 0 0 rgba(255,210,122,0);} }
+
+  /* ---------- Shelves ---------- */
+  .shelves { padding: 8px 0; }
+  .shelf-tabs {
+    display: flex; gap: 4px; padding: 8px 16px;
+    border-bottom: 1px solid var(--rule); overflow-x: auto;
+  }
+  .shelf-tab {
+    padding: 8px 14px; border-radius: 8px;
+    cursor: pointer; font-weight: 600; font-size: 13px; color: var(--muted);
+    white-space: nowrap;
+  }
+  .shelf-tab:hover { background: var(--bg); }
+  .shelf-tab.active { background: var(--sky); color: var(--navy); }
+  .shelf-tab .badge { background: var(--orange); color: #fff; border-radius: 999px; font-size: 10px; padding: 2px 6px; margin-left: 6px; }
+
+  .shelf { padding: 14px 18px; display: none; }
+  .shelf.active { display: block; }
+
+  /* ---------- File rows ---------- */
+  .file {
+    display: grid; grid-template-columns: 1fr auto auto;
+    gap: 12px; align-items: center;
+    padding: 12px 14px;
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: transform .08s, box-shadow .12s;
+  }
+  .file:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+  .file .name { font-weight: 600; }
+  .file .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .state {
+    font-size: 11px; font-weight: 700; letter-spacing: .4px;
+    padding: 4px 10px; border-radius: 999px; text-transform: uppercase;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .state .glyph { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .state.indexed { background: var(--indexed); color: #16623F; }
+  .state.indexed .glyph { background: var(--good); }
+  .state.partial { background: var(--partial); color: #856204; }
+  .state.partial .glyph { background: var(--warn); border-radius: 0; transform: rotate(45deg); width: 9px; height: 9px;}
+  .state.failed  { background: var(--failed); color: #862415; }
+  .state.failed .glyph { background: var(--bad); border-radius: 2px; width: 8px; height: 8px; transform: rotate(45deg);}
+  .state.superseded { background: var(--superseded); color: #455261; text-decoration: line-through; }
+  .state.superseded .glyph { background: #6B7785; border-radius: 0; }
+
+  .ghost-btn {
+    border: 1px solid var(--rule); background: #fff;
+    border-radius: 8px; padding: 8px 12px;
+    font-size: 12px; cursor: pointer; font-weight: 600;
+  }
+  .ghost-btn:hover { background: var(--bg); }
+  .primary-btn {
+    border: none; background: var(--orange); color: #fff;
+    border-radius: 10px; padding: 10px 16px; cursor: pointer;
+    font-weight: 700; font-size: 13px;
+    box-shadow: 0 1px 0 rgba(255,255,255,.2) inset, 0 2px 8px rgba(201,83,28,.32);
+  }
+  .primary-btn:hover { background: var(--orange-2); }
+
+  /* ---------- Sensor mini-charts ---------- */
+  .sensor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+  .sensor {
+    border: 1px solid var(--rule); border-radius: 10px; padding: 12px;
+    background: #fff;
+  }
+  .sensor h4 { font-size: 13px; font-weight: 600; }
+  .sensor .val { font-size: 22px; font-weight: 700; color: var(--navy); margin-top: 4px; }
+  .sensor .delta { font-size: 12px; }
+  .sensor .delta.up { color: var(--bad); }
+  .sensor .delta.down { color: var(--good); }
+  .sensor svg { width: 100%; height: 38px; margin-top: 6px; display: block; }
+
+  /* ---------- Chat rail ---------- */
+  .chat {
+    background: #fff; border-radius: 14px; box-shadow: var(--shadow);
+    display: flex; flex-direction: column;
+    height: 620px;
+    overflow: hidden;
+  }
+  .chat .head {
+    padding: 14px 16px; border-bottom: 1px solid var(--rule);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .chat .head .title { font-weight: 700; }
+  .chat .head .scope { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .chat .body { padding: 14px 16px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 92%; padding: 10px 14px; border-radius: 14px; font-size: 13.5px; line-height: 1.5; }
+  .msg.user  { align-self: flex-end; background: var(--navy); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.ai    { background: var(--bg); border-bottom-left-radius: 4px; }
+  .msg .src {
+    margin-top: 8px; padding-top: 8px;
+    border-top: 1px dashed var(--rule);
+    font-size: 11.5px; color: var(--muted);
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .src-chip {
+    background: #fff; border: 1px solid var(--rule); border-radius: 999px;
+    padding: 4px 9px; font-weight: 600; color: var(--navy); cursor: pointer;
+  }
+  .src-chip:hover { background: var(--sky); }
+  .src-chip.sensor { background: #FFF7EE; border-color: #F2D6BB; color: var(--orange); }
+
+  .stop-card {
+    background: var(--safety); border: 1.5px solid var(--safety-bd);
+    border-radius: 12px; padding: 14px; color: #5A1E13;
+    align-self: stretch;
+  }
+  .stop-card h4 { color: var(--safety-bd); font-size: 14px; letter-spacing: .5px; text-transform: uppercase; margin-bottom: 6px; }
+  .stop-card .cta { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .stop-card .cta button {
+    background: #fff; border: 1px solid var(--safety-bd); color: var(--safety-bd);
+    border-radius: 8px; padding: 8px 12px; font-weight: 700; cursor: pointer; font-size: 12px;
+  }
+
+  .composer {
+    border-top: 1px solid var(--rule); padding: 10px 12px;
+    display: flex; gap: 8px; align-items: flex-end;
+    background: #fff;
+  }
+  .composer input {
+    flex: 1; border: 1px solid var(--rule); border-radius: 12px;
+    padding: 12px 14px; font-size: 14px; outline: none;
+  }
+  .composer input:focus { border-color: var(--navy); box-shadow: 0 0 0 3px rgba(27,54,93,.10); }
+  .mic-btn {
+    border: none; background: var(--orange); color: #fff;
+    width: 44px; height: 44px; border-radius: 50%; cursor: pointer;
+    font-size: 18px; box-shadow: 0 2px 8px rgba(201,83,28,.32);
+  }
+
+  /* ---------- Direction B: Crew Workspace ---------- */
+  .crew-grid { display: grid; grid-template-columns: 1fr; gap: 14px; padding: 16px; }
+  @media (min-width: 760px) { .crew-grid { grid-template-columns: 1fr 1fr; } }
+  .pin {
+    border: 1px solid var(--rule); border-radius: 12px; padding: 14px;
+    background: #fff; display: flex; flex-direction: column; gap: 6px;
+  }
+  .pin .tag { font-size: 11px; color: var(--muted); letter-spacing: .4px; text-transform: uppercase; }
+  .pin .name { font-weight: 700; font-size: 16px; color: var(--navy); }
+  .pin .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { background: var(--sky); color: var(--navy); border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 600; }
+  .chip.warn { background: var(--partial); color: #856204; }
+  .chip.bad  { background: var(--failed); color: #862415; }
+  .avatars { display: flex; }
+  .avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--navy); color: #fff; font-size: 11px; font-weight: 700;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 2px solid #fff; margin-left: -6px;
+  }
+  .avatar:first-child { margin-left: 0; }
+  .handoff {
+    border: 1px dashed var(--orange); background: #FFFAF4;
+    border-radius: 12px; padding: 14px; margin: 16px;
+  }
+  .handoff h3 { color: var(--orange); font-size: 14px; letter-spacing: .5px; text-transform: uppercase; }
+
+  /* ---------- Direction C: Investigation ---------- */
+  .timeline { padding: 20px; }
+  .tl-row { display: grid; grid-template-columns: 110px 16px 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px dashed var(--rule); }
+  .tl-row .when { color: var(--muted); font-size: 12px; padding-top: 2px; font-weight: 600; }
+  .tl-row .marker { display: flex; justify-content: center; padding-top: 6px; }
+  .tl-row .marker .m { width: 10px; height: 10px; border-radius: 50%; background: var(--orange); }
+  .tl-row.event-data .marker .m { background: var(--navy); }
+  .tl-row.event-doc .marker .m { background: var(--good); }
+  .tl-row.event-photo .marker .m { background: var(--warn); }
+  .tl-row .what { font-size: 13.5px; }
+  .tl-row .what strong { color: var(--navy); }
+
+  .rca {
+    margin: 16px; padding: 16px;
+    background: var(--sky); border: 1px solid #C9DDF1; border-radius: 12px;
+  }
+  .rca h3 { color: var(--navy); font-size: 14px; letter-spacing: .4px; text-transform: uppercase; margin-bottom: 8px; }
+  .rca ul { margin: 6px 0 0 18px; padding: 0; }
+  .rca li { margin: 4px 0; }
+
+  .export-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 18px; background: var(--bg); border-top: 1px solid var(--rule);
+  }
+
+  /* ---------- Side-by-side competitor view ---------- */
+  .compare { padding: 18px; }
+  .compare-grid {
+    display: grid; gap: 14px;
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 880px) { .compare-grid { grid-template-columns: 1fr 1fr; } }
+  .col {
+    background: #fff; border: 1px solid var(--rule); border-radius: 12px; padding: 14px;
+  }
+  .col.bad { border-color: #F0C9C0; background: #FCF3F0; }
+  .col.good { border-color: #BCDFCC; background: #F2FAF5; }
+  .col h3 { font-size: 14px; margin-bottom: 6px; }
+  .col h3.bad-h { color: var(--bad); }
+  .col h3.good-h { color: var(--good); }
+  .col p.demo { font-size: 13px; line-height: 1.5; }
+
+  /* ---------- View switcher ---------- */
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ---------- Footer ---------- */
+  .footer {
+    text-align: center; color: var(--muted); font-size: 12px;
+    padding: 24px 16px 32px;
+  }
+
+  /* ---------- Citation overlay ---------- */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(15,23,30,.55);
+    display: none; align-items: center; justify-content: center;
+    z-index: 100; padding: 24px;
+  }
+  .overlay.open { display: flex; }
+  .overlay .card {
+    background: #fff; max-width: 560px; width: 100%;
+    border-radius: 14px; padding: 22px; box-shadow: 0 24px 48px rgba(0,0,0,.25);
+  }
+  .overlay h3 { color: var(--navy); margin-bottom: 6px; }
+  .overlay .src-snip {
+    background: var(--bg); padding: 14px; border-radius: 10px;
+    border-left: 4px solid var(--orange); margin-top: 14px; font-size: 13px;
+  }
+  .overlay .x {
+    float: right; cursor: pointer; color: var(--muted); font-weight: 700;
+    border: none; background: none; font-size: 18px;
+  }
+
+  /* ---------- Sun-readable mode ---------- */
+  body.sun {
+    --bg: #F0F0F0; --card: #FFFFFF; --rule: #404040;
+    --navy: #000; --orange: #C8400A;
+    --muted: #2A2A2A; --ink: #000;
+    font-weight: 500;
+  }
+  body.sun .topbar { background: #000; }
+  body.sun .hero { background: #000; }
+  body.sun .panel, body.sun .chat { box-shadow: 0 0 0 2px #000; }
+  body.sun .file { border-width: 2px; border-color: #000; }
+  body.sun .state { border: 1.5px solid #000; }
+  body.sun .primary-btn { background: #000; }
+  body.sun .ghost-btn { border-width: 2px; border-color: #000; }
+
+  .sun-toggle {
+    position: fixed; bottom: 20px; right: 20px;
+    background: #fff; border: 1px solid var(--rule); border-radius: 999px;
+    padding: 10px 14px; cursor: pointer; box-shadow: var(--shadow);
+    font-weight: 600; font-size: 13px; z-index: 60;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============== Top chrome ============== -->
+<div class="topbar">
+  <div class="brand">MIRA<span class="dot">·</span> Projects</div>
+  <div class="pill">Interactive Prototype</div>
+</div>
+
+<div class="tabs" id="dirTabs">
+  <div class="tab active" data-view="A">A · Asset Page <span class="count">recommended for v1</span></div>
+  <div class="tab" data-view="B">B · Crew Workspace</div>
+  <div class="tab" data-view="C">C · Investigation</div>
+  <div class="tab" data-view="X">vs · Competitors</div>
+</div>
+
+<!-- ============== Direction A: Asset Page ============== -->
+<div class="view active" id="view-A">
+  <div class="stage with-rail">
+    <div>
+
+      <!-- Hero asset card -->
+      <div class="panel">
+        <div class="hero">
+          <div class="row">
+            <div>
+              <div class="sub">Project · Asset record</div>
+              <h1>Line 3 Extruder #4</h1>
+              <div class="sub">Davis-Standard MAC-150 · Tag <strong style="color:#fff">EX-3-04</strong> · Installed 2014-08 · Criticality A</div>
+            </div>
+            <div class="health"><span class="dot-pulse"></span> Watch · vibration trending</div>
+          </div>
+          <div class="row" style="margin-top:18px">
+            <div class="meta">
+              <div>Last PM<strong>2026-04-09</strong></div>
+              <div>Next PM<strong>2026-05-12</strong></div>
+              <div>Open WO<strong>2 (1 P1)</strong></div>
+              <div>Manuals<strong>Rev D · live</strong></div>
+            </div>
+            <button class="primary-btn">+ New work · ask MIRA</button>
+          </div>
+        </div>
+
+        <!-- Shelves -->
+        <div class="shelves">
+          <div class="shelf-tabs" id="shelfTabs">
+            <div class="shelf-tab active" data-shelf="docs">Manuals & SOPs <span class="badge">12</span></div>
+            <div class="shelf-tab" data-shelf="photos">Photos <span class="badge">38</span></div>
+            <div class="shelf-tab" data-shelf="wo">Work Orders <span class="badge">2</span></div>
+            <div class="shelf-tab" data-shelf="sensor">Sensors <span class="badge">8</span></div>
+            <div class="shelf-tab" data-shelf="chats">Conversations <span class="badge">14</span></div>
+          </div>
+
+          <!-- Docs shelf -->
+          <div class="shelf active" data-shelf="docs">
+            <div class="file" onclick="showCite('Davis-Standard MAC-150 Service Manual', 'Rev D · §4.3 Bearing Replacement', 'Pre-load the new bearing to 45 N·m ± 2 N·m. Do NOT exceed 50 N·m or the inner race will deform under thermal expansion.')">
+              <div>
+                <div class="name">Davis-Standard MAC-150 Service Manual <span style="color:var(--orange);font-weight:700;font-size:11px;letter-spacing:.4px">REV D</span></div>
+                <div class="meta">PDF · 312 pages · OEM · Indexed 2 days ago</div>
+              </div>
+              <span class="state indexed"><span class="glyph"></span>Indexed</span>
+              <button class="ghost-btn">Open</button>
+            </div>
+            <div class="file" onclick="alert('Tap → side-by-side compare with Rev D, with diff highlights.')">
+              <div>
+                <div class="name">Davis-Standard MAC-150 Service Manual</div>
+                <div class="meta">Rev C · superseded by Rev D · still searchable for historical lookups</div>
+              </div>
+              <span class="state superseded"><span class="glyph"></span>Superseded</span>
+              <button class="ghost-btn">Diff</button>
+            </div>
+            <div class="file" onclick="alert('Photo-page OCR partial. Tap → re-scan with high-DPI mode.')">
+              <div>
+                <div class="name">EX-3-04 Hydraulic Schematic (scanned)</div>
+                <div class="meta">PDF · 14 pages · OCR found text on 11 pages, 3 image-only pages skipped</div>
+              </div>
+              <span class="state partial"><span class="glyph"></span>Partial · Tap to rescan</span>
+              <button class="ghost-btn">Rescan</button>
+            </div>
+            <div class="file" onclick="alert('LOTO procedure linked to safety-keyword interrupt. Any chat answer mentioning lockout will surface this card.')">
+              <div>
+                <div class="name">EX-3-04 LOTO Procedure</div>
+                <div class="meta">DOCX · 4 pages · 6 lockout points · safety-linked</div>
+              </div>
+              <span class="state indexed"><span class="glyph"></span>Indexed · Safety</span>
+              <button class="ghost-btn">Open</button>
+            </div>
+            <div class="file" onclick="alert('OCR failed on this PDF. We told the user immediately rather than answer from a partial read.')">
+              <div>
+                <div class="name">PLC Backup_v2.pdf (vendor email attachment)</div>
+                <div class="meta">PDF · 1 page · Encoded as raster with no searchable text · OCR failed</div>
+              </div>
+              <span class="state failed"><span class="glyph"></span>OCR failed · Tap to retry</span>
+              <button class="ghost-btn">Retry</button>
+            </div>
+          </div>
+
+          <!-- Sensors shelf -->
+          <div class="shelf" data-shelf="sensor">
+            <p class="muted small" style="margin-bottom:10px">Live tag streams from PLC + condition-monitoring kit. Trends are first-class context for chat answers.</p>
+            <div class="sensor-grid">
+              <div class="sensor">
+                <h4>Drive motor amps <span class="muted small">A1.MOTOR_AMP</span></h4>
+                <div class="val">142.6 A <span class="delta up">+8.3% / 24h</span></div>
+                <svg viewBox="0 0 100 30"><polyline fill="none" stroke="#C9531C" stroke-width="2" points="0,22 10,21 20,22 30,21 40,18 50,17 60,16 70,14 80,12 90,11 100,9"/></svg>
+              </div>
+              <div class="sensor">
+                <h4>Bearing vibration <span class="muted small">VB.BRG.RMS</span></h4>
+                <div class="val">3.8 mm/s <span class="delta up">+12% / 24h</span></div>
+                <svg viewBox="0 0 100 30"><polyline fill="none" stroke="#C9531C" stroke-width="2" points="0,22 12,20 24,18 36,18 48,15 60,13 72,12 84,10 96,8 100,7"/></svg>
+              </div>
+              <div class="sensor">
+                <h4>Barrel zone 3 °F</h4>
+                <div class="val">412.4 °F <span class="delta down">stable</span></div>
+                <svg viewBox="0 0 100 30"><polyline fill="none" stroke="#1F8E5A" stroke-width="2" points="0,15 10,16 20,15 30,15 40,14 50,15 60,15 70,14 80,15 90,15 100,15"/></svg>
+              </div>
+              <div class="sensor">
+                <h4>Screw RPM</h4>
+                <div class="val">86 rpm <span class="delta down">on spec</span></div>
+                <svg viewBox="0 0 100 30"><polyline fill="none" stroke="#1F8E5A" stroke-width="2" points="0,18 12,17 24,17 36,18 48,17 60,17 72,18 84,17 96,17 100,17"/></svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="shelf" data-shelf="photos">
+            <p class="muted">38 photos: 14 from this week's PM walkdown, 8 from last bearing replacement, 16 historical. Tap any photo to overlay AI annotations and link to the manual figure that matches.</p>
+          </div>
+          <div class="shelf" data-shelf="wo">
+            <p class="muted">2 open work orders · WO-4421 (P1, leak at packing gland) · WO-4438 (P3, scheduled belt tension check). Both linked to chats and photos in this project.</p>
+          </div>
+          <div class="shelf" data-shelf="chats">
+            <p class="muted">14 conversations stored. Each has a generated 1-line summary, the participants, and the sources cited. Search across all of them: <em>"what torque did Carlos use last quarter on the screw bolts?"</em></p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Chat rail -->
+    <div class="chat" id="chatRail">
+      <div class="head">
+        <div>
+          <div class="title">Ask MIRA</div>
+          <div class="scope">Grounded in <strong>EX-3-04</strong> · 12 docs · 8 streams · 38 photos</div>
+        </div>
+        <button class="ghost-btn">⌄</button>
+      </div>
+      <div class="body" id="chatBody">
+
+        <div class="msg user">What torque should I set the bearing pre-load to?</div>
+
+        <div class="msg ai">
+          <div><strong>45 N·m ± 2 N·m</strong> for the bearing pre-load on the screw drive end. Do not exceed <strong>50 N·m</strong> — the inner race will deform under thermal expansion.</div>
+          <div class="src">
+            <span class="muted">Sources →</span>
+            <span class="src-chip" onclick="showCite('Davis-Standard MAC-150 Service Manual', 'Rev D · §4.3 Bearing Replacement · p. 87', 'Pre-load the new bearing to 45 N·m ± 2 N·m. Do NOT exceed 50 N·m or the inner race will deform under thermal expansion.')">📄 Manual Rev D · §4.3 · p. 87</span>
+          </div>
+        </div>
+
+        <div class="msg user">My amps just jumped to 142. Should I be worried?</div>
+
+        <div class="msg ai">
+          <div>Yes — flag it. <strong>A1.MOTOR_AMP</strong> trended from 131 → 143 A over the last 24 hours, with bearing vibration <strong>VB.BRG.RMS</strong> rising in lockstep (+12%). The historical pattern that matches is the <em>April 2024</em> bearing failure on this machine — same lead time, same trend slope.</div>
+          <div class="src">
+            <span class="muted">Sources →</span>
+            <span class="src-chip sensor" onclick="alert('Tap → opens the actual sensor trace, last 7 days, with the historical pattern overlaid.')">📈 A1.MOTOR_AMP · 24h trace</span>
+            <span class="src-chip sensor" onclick="alert('Vibration trace overlaid on April 2024 failure.')">📈 VB.BRG.RMS · matched pattern</span>
+            <span class="src-chip" onclick="showCite('WO-3812 RCA', 'Apr 2024 bearing failure', 'Symptom timeline: amps drift +9% over 36 hours, vibration +14%, then catastrophic failure on hour 41.')">📋 WO-3812 RCA</span>
+          </div>
+        </div>
+
+        <div class="msg user">Walk me through replacing the bearing.</div>
+
+        <div class="stop-card">
+          <h4>⚠ STOP — Safety check before continuing</h4>
+          <div>This procedure requires <strong>lockout/tagout</strong> at MCC-3 panel breaker <strong>EX3-04-MAIN</strong>. Confirm with your safety lead and capture the lock photo before MIRA continues.</div>
+          <div class="cta">
+            <button onclick="alert('Opens LOTO procedure in full-screen mode. After photo capture, MIRA continues the bearing replacement walkthrough.')">Open LOTO procedure</button>
+            <button onclick="alert('Notify safety lead via Telegram/Slack with the asset, location, and link to this conversation.')">Notify safety lead</button>
+          </div>
+        </div>
+
+      </div>
+      <div class="composer">
+        <input placeholder="Ask about EX-3-04 — voice works in 80 dB" />
+        <button class="mic-btn" title="Voice input">🎙️</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============== Direction B: Crew Workspace ============== -->
+<div class="view" id="view-B">
+  <div class="stage">
+    <div class="panel">
+      <div class="hero">
+        <div class="row">
+          <div>
+            <div class="sub">Project · Crew workspace</div>
+            <h1>April Shutdown · Lines 1–4</h1>
+            <div class="sub">36-hour planned shutdown · 4 lines · 6 techs · starts 2026-04-26 22:00</div>
+          </div>
+          <div class="avatars" title="Crew">
+            <div class="avatar">MH</div>
+            <div class="avatar" style="background:#5C6770">CR</div>
+            <div class="avatar" style="background:#1F8E5A">JT</div>
+            <div class="avatar" style="background:#C9531C">SP</div>
+            <div class="avatar" style="background:#7A4FB8">DK</div>
+            <div class="avatar" style="background:#246FA8">AM</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="crew-grid">
+        <div class="pin">
+          <div class="tag">Pinned asset</div>
+          <div class="name">Line 3 Extruder #4</div>
+          <div class="row"><span class="chip warn">Watch</span><span class="chip">Bearing replacement</span><span class="chip">Carlos</span></div>
+          <div class="muted small">Last touched 12 min ago by Carlos · 3 open chat threads</div>
+        </div>
+        <div class="pin">
+          <div class="tag">Pinned asset</div>
+          <div class="name">Line 1 Pelletizer</div>
+          <div class="row"><span class="chip">PM only</span><span class="chip">Scott</span></div>
+          <div class="muted small">No alerts · 1 photo added today</div>
+        </div>
+        <div class="pin">
+          <div class="tag">Pinned asset</div>
+          <div class="name">Line 4 Cooling Tower</div>
+          <div class="row"><span class="chip bad">P1 leak</span><span class="chip">Jim · Dan</span></div>
+          <div class="muted small">Active investigation — see <em>RCA tab</em></div>
+        </div>
+        <div class="pin">
+          <div class="tag">Pinned asset</div>
+          <div class="name">Line 2 Granulator</div>
+          <div class="row"><span class="chip">Done</span><span class="chip">Adam</span></div>
+          <div class="muted small">Closed by Adam @ 14:08 · summary auto-posted to manager</div>
+        </div>
+      </div>
+
+      <div class="handoff">
+        <h3>Shift handoff · 22:00 → 06:00 (auto-generated)</h3>
+        <p style="margin-top:6px"><strong>Day shift completed:</strong> Bearing pre-load on EX-3-04 (Carlos) · PM walkdown Line 1 (Scott) · Granulator screen swap Line 2 (Adam, done).</p>
+        <p><strong>Night shift starts with:</strong> Cooling Tower Line 4 P1 leak (Jim + Dan continuing) · Vibration recheck on EX-3-04 (Carlos prepped data — see chat <em>thread #14</em>).</p>
+        <p><strong>MIRA flagged:</strong> Vibration on EX-3-04 still trending up 4% / hr — recommend reading WO-3812 RCA before next walkdown.</p>
+        <button class="primary-btn" style="margin-top:6px" onclick="alert('Plays a 90-second audio summary of the handoff. Hands-free, listen on the way to the floor.')">▶ Play 90-sec audio handoff</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============== Direction C: Investigation ============== -->
+<div class="view" id="view-C">
+  <div class="stage">
+    <div class="panel">
+      <div class="hero">
+        <div class="row">
+          <div>
+            <div class="sub">Project · Investigation</div>
+            <h1>RCA · Line 4 Cooling Tower P1 leak</h1>
+            <div class="sub">Opened 2026-04-22 04:17 by Jim T. · Status: <strong style="color:#FFD27A">Hypothesis under test</strong></div>
+          </div>
+          <button class="primary-btn" onclick="alert('Generates a signed PDF with full timeline, sources, sensor traces, photos, and the leading hypothesis. Pushes to Atlas CMMS as the WO closeout.')">Generate signed RCA report</button>
+        </div>
+      </div>
+
+      <div class="timeline">
+        <h2 class="section">Evidence timeline (auto-built)</h2>
+        <div class="tl-row event-data">
+          <div class="when">04:13:22</div><div class="marker"><span class="m"></span></div>
+          <div class="what"><strong>SCADA</strong> — flow rate dropped 38% (CT4.FLOW)<br><span class="muted small">Source: SCADA tag history · 60-day baseline overlaid</span></div>
+        </div>
+        <div class="tl-row event-data">
+          <div class="when">04:14:01</div><div class="marker"><span class="m"></span></div>
+          <div class="what"><strong>Vibration</strong> — pump 4B trended +220% in 8 seconds<br><span class="muted small">Source: VB.PUMP4B.RMS · trace attached</span></div>
+        </div>
+        <div class="tl-row event-doc">
+          <div class="when">04:17</div><div class="marker"><span class="m"></span></div>
+          <div class="what"><strong>Jim T.</strong> opened RCA. AI auto-attached related historical work orders.</div>
+        </div>
+        <div class="tl-row event-photo">
+          <div class="when">04:31</div><div class="marker"><span class="m"></span></div>
+          <div class="what"><strong>Photo</strong> from Jim — 2.5″ crack on bottom basin weld, NW corner. <em>AI overlay: matches OEM weld map zone B-3.</em></div>
+        </div>
+        <div class="tl-row event-doc">
+          <div class="when">05:02</div><div class="marker"><span class="m"></span></div>
+          <div class="what"><strong>OEM email</strong> ingested from Outlook — Service tech confirmed "weld B-3 has a 2024 known-issue advisory, FSB #2024-118."</div>
+        </div>
+        <div class="tl-row event-doc">
+          <div class="when">05:17</div><div class="marker"><span class="m"></span></div>
+          <div class="what"><strong>FSB #2024-118</strong> auto-located in OEM library and attached. AI: "This advisory matches the failure mode and recommends inserting a stiffener plate."</div>
+        </div>
+      </div>
+
+      <div class="rca">
+        <h3>Leading hypothesis</h3>
+        <p><strong>Bottom-basin weld B-3 cracked under thermal cycling.</strong> Same failure mode and location as OEM Field Service Bulletin #2024-118. Confidence: <strong>74%</strong>.</p>
+        <ul>
+          <li>Supports → photo NW corner, FSB #2024-118 weld map, vibration spike pattern.</li>
+          <li>Against → no warning vibration trend in the 48 h prior (the FSB describes a slow precursor; we have only 8 s of acceleration).</li>
+          <li>Next step → ultrasonic scan of welds B-1 and B-2 to confirm or rule out a wider weld defect.</li>
+        </ul>
+      </div>
+
+      <div class="export-bar">
+        <div class="muted small">Investigation will close out automatically when the linked WO is marked complete in Atlas CMMS.</div>
+        <div style="display:flex;gap:8px">
+          <button class="ghost-btn">Email to OEM warranty</button>
+          <button class="ghost-btn">Push to insurance file</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============== Comparison view ============== -->
+<div class="view" id="view-X">
+  <div class="stage">
+    <div class="panel pad">
+      <h2 class="section">The same question. Two products.</h2>
+      <p>A maintenance tech asks: <em>"What torque did we use on the screw bolts last time, and is the bearing about to fail?"</em></p>
+
+      <div class="compare-grid">
+        <div class="col bad">
+          <h3 class="bad-h">ChatGPT Projects</h3>
+          <p class="demo"><strong>"Based on standard industry practice, screw drive bolts are typically torqued to between 40 and 60 N·m. Bearings showing increased vibration may indicate impending failure — consider scheduling inspection."</strong></p>
+          <p class="muted small">No source. No reference to your manual. No reference to your sensor data. No previous-work memory. Confidently wrong about the spec range.</p>
+        </div>
+        <div class="col good">
+          <h3 class="good-h">MIRA Projects</h3>
+          <p class="demo"><strong>"45 N·m ± 2 N·m, per Carlos on 2026-01-14 (WO-3964) and per the OEM manual Rev D §4.3. Yes — your bearing is trending toward failure: amps +8% and vibration +12% over 24 h, matching the April 2024 failure pattern within 4%."</strong></p>
+          <p class="small">📄 Manual Rev D · §4.3 · p. 87 &nbsp; 📈 A1.MOTOR_AMP 24h &nbsp; 📋 WO-3964 &nbsp; 📋 WO-3812 RCA</p>
+        </div>
+      </div>
+
+      <div style="margin-top:24px">
+        <h2 class="section">Where each consumer AI breaks (cited)</h2>
+        <ul style="line-height:1.8">
+          <li><strong>ChatGPT Projects</strong> — silent file truncation at 30–60 KB while claiming full read · 10-file UI cap inside an advertised 20-file limit · uploads freeze beyond 10. <a href="https://community.openai.com/t/critical-gpt-5-1-silently-truncates-uploaded-documents-30-60-kb-limit-while-claiming-full-read-confirmed-by-4-major-ai-models/1368746" target="_blank" rel="noopener">[OpenAI Community]</a> <a href="https://community.openai.com/t/pro-user-hitting-10-file-limit-in-chatgpt-projects-uploads-freeze-edits-fail-despite-20-file-allowance-anyone-else-experiencing-this/1304217" target="_blank" rel="noopener">[10-file bug thread]</a></li>
+          <li><strong>Claude Projects</strong> — instructions followed before context compaction, violated 100% of the time after. <a href="https://golev.com/post/claude-saves-tokens-forgets-everything/" target="_blank" rel="noopener">[Golev]</a> <a href="https://dev.to/kiwibreaksme/claude-code-keeps-forgetting-your-project-heres-the-fix-2026-3flm" target="_blank" rel="noopener">[DEV]</a></li>
+          <li><strong>NotebookLM</strong> — 50-source cap (300 Plus, 600 Ultra), no in-place edit of sources, video/infographic outputs cannot be edited. <a href="https://www.atlasworkspace.ai/blog/notebooklm-limitations" target="_blank" rel="noopener">[Atlas]</a> <a href="https://www.xda-developers.com/notebooklms-source-limit-is-its-biggest-problem/" target="_blank" rel="noopener">[XDA]</a></li>
+          <li><strong>Perplexity Spaces</strong> — silent caps, hard-refresh required to surface uploaded files, weak cite-from-uploads bias toward web. <a href="https://www.perplexity.ai/help-center/en/articles/12569435-sharepoint-connector-frequently-asked-questions-and-troubleshooting" target="_blank" rel="noopener">[Help center]</a> <a href="https://www.aicerts.ai/news/perplexity-users-rebel-over-sudden-usage-caps/" target="_blank" rel="noopener">[Quota revolt]</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============== Citation overlay ============== -->
+<div class="overlay" id="overlay" onclick="if(event.target.id==='overlay')closeCite()">
+  <div class="card">
+    <button class="x" onclick="closeCite()">×</button>
+    <div class="muted small" id="ovDoc">Source</div>
+    <h3 id="ovLoc">Location</h3>
+    <div class="src-snip" id="ovText">snippet</div>
+    <p class="muted small" style="margin-top:14px">Tap → opens the original page in MIRA's PDF viewer with the cited paragraph highlighted. This is the same UX from NotebookLM citations, brought to all of MIRA.</p>
+  </div>
+</div>
+
+<button class="sun-toggle" onclick="document.body.classList.toggle('sun')">☀ Toggle sun-readable</button>
+
+<div class="footer">
+  MIRA Projects · Interactive Prototype · v0.1 · Built 2026-04-22 · FactoryLM
+</div>
+
+<script>
+  // Direction tab switching
+  document.querySelectorAll('#dirTabs .tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('#dirTabs .tab').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      const v = t.dataset.view;
+      document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+      document.getElementById('view-' + v).classList.add('active');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+
+  // Shelf tab switching (Direction A)
+  document.querySelectorAll('#shelfTabs .shelf-tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('#shelfTabs .shelf-tab').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      document.querySelectorAll('.shelf').forEach(x => x.classList.remove('active'));
+      document.querySelector('.shelf[data-shelf="' + t.dataset.shelf + '"]').classList.add('active');
+    });
+  });
+
+  // Citation overlay
+  function showCite(doc, loc, text) {
+    document.getElementById('ovDoc').textContent = doc;
+    document.getElementById('ovLoc').textContent = loc;
+    document.getElementById('ovText').textContent = '"' + text + '"';
+    document.getElementById('overlay').classList.add('open');
+  }
+  function closeCite() {
+    document.getElementById('overlay').classList.remove('open');
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCite(); });
+</script>
+</body>
+</html>

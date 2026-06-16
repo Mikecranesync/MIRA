@@ -1,0 +1,82 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "You’re on shift. Machine down. Screen shows 'F7 - Ground Fault' on a PowerFlex 525.\n\nYou grab the manual. Flip pages. Can’t find it.\nOEM support on hold — 23 minutes and counting.\n\nNow try this:\n1. Snap a photo of the display\n2. Upload to Mira in FactoryLM\n3. Get the exact cause + reset steps from YOUR manual in 12 seconds\n\nWe timed it.\n\nHow long does it *actually* take your team to diagnose a VFD fault? \n- Under 5 min\n- 5–15 min\n- 15–30 min\n- Over 30 min\n\nDrop your answer below. Let’s see where the industry really stands.\n\nWe built FactoryLM so you’re never stuck without the right page. CMMS + AI in one. $97/facility/month. 48hr refund.\nhttps://app.factorylm.com",
+      "char_count": 674,
+      "hashtags": [
+        "#VFD",
+        "#Maintenance",
+        "#FactoryAutomation"
+      ],
+      "suggested_visual": "Split-screen: left shows technician standing at a PowerFlex VFD with a confused look, right shows a phone uploading a photo to FactoryLM with 'Diagnosis in 12s' overlay.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "F7 on a PowerFlex 525.\n\nGround fault.\n\nManual says: check motor insulation, test cables, inspect IGBTs.\n\nHow long did it take you to find that page last time?\n\nWith FactoryLM: 12 seconds (photo → diagnosis + fix steps from YOUR manual)\n\nNo waiting. No digging.\n\n23 chars: https://app.factorylm.com",
+      "char_count": 278,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#VFD"
+      ],
+      "suggested_visual": "Short clip: phone camera focuses on a PowerFlex 525 display showing F7, then uploads to FactoryLM interface, results pop in under 15s.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "r/maintenance\n\nSharing something we learned testing AI on real plant data.\n\nWe ran 73 VFD fault code lookups (mostly Allen-Bradley PowerFlex, GS10/GS20) across 12 plants.\n\nManual search average: 22 minutes\n\nAI diagnosis (using RAG over actual plant manuals): 14 seconds\n\nBiggest time sink? Not technical skill — it was *finding the right PDF* in shared drives, binders, or waiting for OEM support.\n\nSo we cut the middleman. Took the exact same manuals — built a search that reads them like a tech does.\n\nIf you're debugging a hydraulic power unit alarm or a PLC fault, the answer should be instant — not on hold.\n\nNo pitch. Just sharing the gap we saw.\n\nWhat’s the longest you’ve spent hunting a manual page?",
+      "char_count": 1043,
+      "hashtags": [],
+      "suggested_visual": "Screen recording: left side shows frantic folder browsing, right shows instant AI return on a GS20 'OC' fault with repair steps.",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "Raise your hand if this sounds familiar:\n\nMachine down. Allen-Bradley PLC flashing 'SAC fault'.\n\nYou know it’s communication-related… but what *exactly*?\n\nNo manual on site. You call the day-shift tech. Wait 20 minutes.\n\nMeanwhile, the line’s dead.\n\nWhat if you could just snap a pic and get the fix in seconds — straight from your own documentation?\n\nFactoryLM does that. Uses your manuals. No internet beyond the plant.\n\nWe’re running this poll:\nHow long does a *single* fault diagnosis take your team, from alarm to fix decision?\n- Under 10 min\n- 10–25 min\n- 25–45 min\n- Over 45 min\n\nComment your answer. Let’s map real downtime.\n\nFull CMMS + AI diagnostics. $97 per facility/month. Start in 2 minutes.\nhttps://app.factorylm.com",
+      "char_count": 764,
+      "hashtags": [
+        "#MaintenanceLife",
+        "#Reliability",
+        "#FactoryLM"
+      ],
+      "suggested_visual": "Photo carousel: first image – technician looking at Allen-Bradley PLC screen with frown, second – phone showing FactoryLM app diagnosing SAC fault, third – work order auto-generated.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "POV: It’s 2AM. Hydraulic power unit trips. Red light. No manual.\n\nYou’re stuck.\n\nNow: pull phone, snap photo of error.\n\nAI reads YOUR maintenance manual.\n\n10 seconds later: exact cause + reset steps.\n\nNo waiting. No calls. No guessing.\n\nWe tested it on a GS20 ‘oL1’ fault — diagnosed in 8 seconds.\n\nThis isn’t sci-fi. It’s FactoryLM.\n\nP.S. We’re doing a poll: how long do *you* waste on fault lookups?\nVote in the comments.\n\n#MaintenanceTech #FactoryLife #VFD #Hydraulics",
+      "char_count": 533,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#FactoryLife",
+        "#VFD",
+        "#Hydraulics"
+      ],
+      "suggested_visual": "Fast-paced video: tech at machine, frustrated, takes photo with phone, uploads to FactoryLM, gets diagnosis instantly, restarts system with a smile.",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "When the line stops, every second counts.\n\nBut here’s the reality:\n\n⮞ SAC fault on Allen-Bradley PLC\n⮞ No manual on site\n⮞ Wait 30+ minutes to find the code\n\nOr:\n\n⮞ Snap a photo\n⮞ Upload to FactoryLM\n⮞ AI returns the fix — from *your* manual — in 12 seconds\n\nWe’re testing this with teams right now.\n\nQuestion: How long does a *typical* fault diagnosis take your crew?\n\nVote below or comment your experience.\n\n👇 Under 10 min\n👇 10–25 min\n👇 25–45 min\n👇 Over 45 min\n\nWe’re building in public — because you deserve tools that work *when* the machine fails.\n\n#MaintenanceTech #FactoryLife #CMMS #PredictiveMaintenance #IndustrialAI #PlantOperations #ReliabilityEngineer #MaintenanceLife #FactoryAutomation #AllenBradley #PowerFlex #Hydraulics #VFD",
+      "char_count": 984,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#FactoryLife",
+        "#CMMS",
+        "#PredictiveMaintenance",
+        "#IndustrialAI",
+        "#PlantOperations",
+        "#ReliabilityEngineer",
+        "#MaintenanceLife",
+        "#FactoryAutomation",
+        "#AllenBradley",
+        "#PowerFlex",
+        "#Hydraulics",
+        "#VFD"
+      ],
+      "suggested_visual": "3-slide carousel: 1) Close-up of Allen-Bradley PLC with SAC fault, 2) Phone uploading image to FactoryLM, 3) AI response showing fix steps and auto-generated work order.",
+      "subreddit": null
+    }
+  ]
+}

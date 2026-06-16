@@ -1,0 +1,84 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "We built the CMMS setup in 2 minutes because we watched 17 maintenance techs struggle with onboarding last month.\n\nNo forms. No provisioning. No sales call.\n\nJust log in, add assets, and start diagnosing.\n\nWe tested it on a PowerFlex 753 fault code (F302) — snapped the HMI screen, got the fix steps from the manual in 11 seconds.\n\nManual search? Took one tech 34 minutes. Phone tree with Rockwell support? Still on hold.\n\nNow live: AI diagnosis via Slack, Telegram, or web.\n\nWe’re running beta at $97/facility/month — unlimited queries, full CMMS.\n\nWhat’s the longest you’ve waited for a fault code answer?\n\nhttps://app.factorylm.com",
+      "char_count": 677,
+      "hashtags": [
+        "MaintenanceTech",
+        "CMMS",
+        "PowerFlex"
+      ],
+      "suggested_visual": "Split-screen video: left side shows someone scrolling through a printed PowerFlex manual, frustrated. Right side shows someone uploading the same fault screen to FactoryLM, getting an answer in seconds.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "Last week: 37% of AI diagnosis requests were for A-B PLC fault 17 (I/O Module Fail).\n\nInstead of digging through 400-page manuals, techs snapped a photo.\n\nAI pulled the exact isolation steps from THEIR manuals in <15 sec.\n\nNo waiting. No guesses.\n\nhttps://app.factorylm.com",
+      "char_count": 276,
+      "hashtags": [
+        "Maintenance",
+        "AllenBradley"
+      ],
+      "suggested_visual": "Side-by-side: blurry photo of an Allen-Bradley PLC fault light, then the AI response showing 'Check Module Status LED, verify backplane connections, replace if no link.'",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "We’ve been running FactoryLM onsite at a metal stamping plant for 6 weeks. Here’s what we learned:\n\nOne recurring issue: GS20 VFDs tripping on F09 (Overvoltage during decel).\n\nStandard manual fix: check input line, monitor DC bus voltage, adjust decel ramp.\n\nBut the real problem? Hydraulic power units cycling back pressure too fast, spiking regeneration.\n\nWe trained the AI to flag the hydraulic circuit first — not the VFD settings.\n\nNow, when a tech snaps a photo of the GS20 fault code, the AI diagnosis includes: 'Check hydraulic return valve timing before adjusting VFD decel.'\n\nIt’s not magic — it’s context. \n\nWe’re using RAG to pull from their actual GS20 and hydraulic unit manuals.\n\nIf you’re drowning in OEM docs and still guessing, you’re not alone. We’re trying to fix that — one facility at a time.\n\n(No sales pitch. Just sharing what worked here.)",
+      "char_count": 1109,
+      "hashtags": [],
+      "suggested_visual": "Photo of a GS20 VFD display showing F09 fault, with a red hydraulic line in the background. Caption overlay: 'F09? Check the hydraulics first.'",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "We built something real this week:\n\nA maintenance tech at a bottling plant snapped a photo of a flashing fault on a PowerFlex 525.\n\nIn 22 seconds, the AI returned: 'F71 – Ground fault. Check motor leads, inspect connector block for moisture.'\n\nHe found water in the conduit. Fixed in under 10 minutes.\n\nNo manual. No phone call. No downtime.\n\nWe’re shipping AI that reads YOUR manuals — not generic tips.\n\nHow many hours this month did you waste looking up fault codes?\n\nhttps://app.factorylm.com",
+      "char_count": 644,
+      "hashtags": [
+        "MaintenanceReliability",
+        "VFD",
+        "FactoryLM"
+      ],
+      "suggested_visual": "Short video: hand holding phone takes photo of PowerFlex 525 HMI. App processes image. Text appears: 'F71 – Ground Fault. Check motor leads and connector block for moisture.'",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "POV: You’re staring at a faulted Allen-Bradley PLC. No manual. No time.\n\nWe trained AI on actual Rockwell manuals — not guesses.\n\nSnap a photo. Get the fix from YOUR docs in seconds.\n\nThis isn’t demo. It’s live in 12 facilities.\n\nNo LangChain. No BS. Just faster answers.\n\n#MaintenanceTech #PLC #FactoryLM #BuildInPublic",
+      "char_count": 446,
+      "hashtags": [
+        "MaintenanceTech",
+        "PLC",
+        "FactoryLM",
+        "BuildInPublic"
+      ],
+      "suggested_visual": "Quick cuts: close-up of a fault light on an A-B PLC, hands fumbling with a binder, phone camera snapping the screen, app response popping up with 'Module 3: Replace due to comms loss.'",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "Carousel:\n\n1. Photo of a technician in front of a hydraulic power unit with a GS10 VFD showing fault F11 (Phase Loss).\n2. Phone screen: blurry photo upload to FactoryLM.\n3. App response: 'F11 – Check input fuses L1/L2/L3. Verify line voltage at terminal block. Inspect contactor coil.'\n4. Technician replacing a blown fuse.\n5. VFD green ready light on.\n\nNo manual. No wait. Just fix.\n\nWe built this because 40 minutes shouldn’t cost 4% of your shift.\n\nNow in beta: $97/month per facility. 48-hour refund if it doesn’t save time.\n\nWhat fault code wastes the most of your time?",
+      "char_count": 924,
+      "hashtags": [
+        "MaintenanceLife",
+        "Hydraulics",
+        "VFDRepair",
+        "AllenBradley",
+        "PowerFlex",
+        "GS10",
+        "Troubleshooting",
+        "FactoryTech",
+        "CMMS",
+        "IndustrialAI",
+        "BuildInPublic",
+        "MaintenanceTeam",
+        "ReliabilityEngineering",
+        "NoMoreManuals",
+        "FixItFast"
+      ],
+      "suggested_visual": "5-image carousel: 1) Faulted GS10 on hydraulic unit, 2) Phone uploading photo, 3) AI response on screen, 4) Technician swapping fuse, 5) Machine running again.",
+      "subreddit": null
+    }
+  ]
+}

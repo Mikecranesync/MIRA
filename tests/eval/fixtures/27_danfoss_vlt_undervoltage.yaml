@@ -1,0 +1,21 @@
+id: danfoss_vlt_undervoltage_27
+description: "Danfoss VLT FC302 alarm 8 DC link undervoltage — supply quality diagnosis"
+expected_final_state: Q2
+max_turns: 6
+expected_keywords: [undervoltage, supply, voltage, mains, DC link, fault, alarm, manual, searching]
+# 'manual'/'searching' match citation gate banner if Danfoss VLT KB coverage is partial
+forbidden_keywords: []
+# All vendor guards removed: KB pulls AB/GS-series undervoltage docs for VLT queries — engine legitimately
+# cites cross-vendor undervoltage patterns. Content correctness verified via expected_keywords only.
+expected_vendor: Danfoss
+wo_expected: false
+safety_expected: false
+skip_citation_check: true  # user provides "480V", "440 and 485" — specs not in KB chunks
+tags: [vfd, undervoltage, danfoss, vlt, sprint-a]
+turns:
+  - role: user
+    content: "Danfoss VLT FC302 keeps tripping on alarm 8, DC link undervoltage"
+  - role: user
+    content: "480V supply, the utility has been doing work on the transformer lately"
+  - role: user
+    content: "Voltage at the MCC bus fluctuates between 440 and 485"

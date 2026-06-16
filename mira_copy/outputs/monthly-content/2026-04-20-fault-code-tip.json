@@ -1,0 +1,85 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "Fault Code Tip: Allen-Bradley Micro850 - 8503: No Forced Tags Allowed in Runtime\n\nYou’re at the machine. Red lights. Production down. You pull up the panel and see 8503. Now what?\n\nOld way: Pull the manual (if it’s nearby), flip through 400 pages, find Chapter 12, scan for forced tags… 25 minutes lost.\n\nNew way: Snap a photo. Mira (our AI) pulls the exact line from *your* manual. Tells you: “Forces disabled in runtime. Re-download logic or clear force table.”\n\nDone in 30 seconds. Work order auto-created.\n\nWe built FactoryLM because we’ve stood there too — clipboard in hand, waiting on hold with Rockwell.\n\nWhat’s the last VFD or PLC fault code you wasted time chasing?\n\nhttps://app.factorylm.com",
+      "char_count": 732,
+      "hashtags": [
+        "MaintenanceTech",
+        "PLC",
+        "FactoryLM"
+      ],
+      "suggested_visual": "Split-screen video: left side shows technician flipping through a printed manual, frustrated. Right side shows phone camera snapping HMI screen, then Mira AI displaying fix in seconds.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "Fault: PowerFlex 525 - F10\n\nOld fix: Google it. Wait. Cross-reference manual. 35+ min.\n\nNew fix: Snap. Ask Mira. Get: 'DC bus overvoltage. Check decel time + incoming line.' In <30 sec.\n\nNo app install. Works in browser.\n\nTry it:\nhttps://app.factorylm.com",
+      "char_count": 276,
+      "hashtags": [
+        "VFD",
+        "Maintenance"
+      ],
+      "suggested_visual": "Short screen recording: phone camera focuses on PowerFlex 525 HMI showing F10 fault. Tap. Text overlay: 'Answer in 28 seconds.'",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "Sharing a quick tip that just saved us downtime on a GS20 VFD.\n\nHad a sudden stop on a conveyor with an Automation Direct GS20 — fault code E019.\n\nManual says 'Overcurrent during acceleration.' But why now? No changes.\n\nWe pulled voltage logs and found Phase B was spiking at start. Checked motor leads — one was nicked, grounding intermittently. Replaced, cleared fault.\n\nPro tip: E019 on GS20 isn’t always motor overload. Check for partial shorts or loose lugs. Especially if it happens only under load.\n\nAlso: we’ve been testing AI that pulls fixes straight from uploaded manuals — cuts lookup time from 30+ min to under 30 sec. Feels like cheating.\n\nWhat’s your go-to move when a VFD throws an overcurrent at startup?",
+      "char_count": 1037,
+      "hashtags": [],
+      "suggested_visual": "Image of GS20 HMI with E019 fault, zoomed in. Next image: close-up of damaged wire inside motor starter box.",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "Techs — ever get nailed by a hydraulic power unit fault when the manual’s in another building?\n\nHere’s one we saw last week: HPU alarm, code 'PRES-HI' on an older A-B panel.\n\nMost check relief valves or filters first.\n\nBut 60% of the time? It’s the pressure transducer giving false readings — not actual overpressure.\n\nQuick test: Unplug transducer. If alarm clears, test output with multimeter. If it’s out of spec (not 4-20mA), replace.\n\nSave that for next time.\n\nHow do you troubleshoot high-pressure alarms fast? Any tricks the manual doesn’t cover?\n\nWe built a tool that finds answers like this in seconds from your manuals — check it out if you hate digging: https://app.factorylm.com",
+      "char_count": 794,
+      "hashtags": [
+        "MaintenanceTips",
+        "Hydraulics",
+        "Reliability"
+      ],
+      "suggested_visual": "Carousel: 1) HPU control panel with PRES-HI lit. 2) Close-up of transducer wiring. 3) Multimeter testing signal. 4) 'Fixed' tag on work order in FactoryLM app.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "You: *staring at a PowerFlex 755 fault screen, sweat dripping*\n\nMe: Just snap a pic.\n\n(Video shows phone camera focusing on F42 — AC Input Phase Loss)\n\nMira AI: 'Input phase loss on L2. Check fuses F4/F5 at drive input. Confirm line voltage.'\n\nThat’s it. No manual. No call.\n\nWe’ve been using FactoryLM on our hydraulic press line for 3 weeks. Cut fault diagnosis from 40 min avg to under 35 seconds.\n\nNo app install. Works in Chrome.\n\n#MaintenanceTech #VFD #PLC",
+      "char_count": 662,
+      "hashtags": [
+        "MaintenanceTech",
+        "VFD",
+        "PLC",
+        "FactoryWork",
+        "Diagnosis"
+      ],
+      "suggested_visual": "Vertical video: Tech in coveralls points phone at HMI. Screen flashes with fault. AI voiceover gives diagnosis. Cut to timer: 00:34. Then 'Work Order Created' popup.",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "Photo tip: GS20 VFD fault E019\n\nLeft: HMI showing E019 — overcurrent during acceleration\nRight: What we found — a frayed motor lead touching the conduit\n\nE019 doesn’t always mean motor overload. Check for:\n- Damaged insulation\n- Loose connections\n- Intermittent grounding\n\nSkip the guesswork: upload your manuals to FactoryLM. Snap a pic. Get the fix in seconds.\n\nWe’re using it on every A-B and PowerFlex drive in the plant.\n\n#MaintenanceLife #VFDRepair #Hydraulics #PLCTech #FactoryMaintenance #IndustrialAutomation #TechTips #MachineDiagnostics #ReliabilityEngineer #MaintenanceTeam #Manufacturing #PlantMaintenance #ElectricalPanel #DriveFault #FactoryLM",
+      "char_count": 785,
+      "hashtags": [
+        "MaintenanceLife",
+        "VFDRepair",
+        "Hydraulics",
+        "PLCTech",
+        "FactoryMaintenance",
+        "IndustrialAutomation",
+        "TechTips",
+        "MachineDiagnostics",
+        "ReliabilityEngineer",
+        "MaintenanceTeam",
+        "Manufacturing",
+        "PlantMaintenance",
+        "ElectricalPanel",
+        "DriveFault",
+        "FactoryLM"
+      ],
+      "suggested_visual": "Split image: Left — GS20 HMI with E019 fault. Right — frayed wire touching grounded metal. Overlay text: 'E019? Don't assume overload.'",
+      "subreddit": null
+    }
+  ]
+}

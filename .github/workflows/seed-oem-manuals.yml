@@ -1,0 +1,116 @@
+name: Seed — OEM manuals (garage devices)
+
+# Validates the OEM manuals KB seed on PR/push, and provides a manual trigger
+# to dry-run the applier. The actual KB seed is applied OFF-CI from a node
+# with LAN access to Bravo (Charlie / Alpha / any Tailnet member):
+#
+#   doppler run -p factorylm -c prd -- \
+#     python3 tools/seeds/oem-manuals/apply_oem_seed.py
+#
+# CI cannot apply the seed because ubuntu-latest runners can't reach Bravo's
+# Ollama on 192.168.1.11 — embeddings would fail. CI exists to catch broken
+# chunks.jsonl, broken SQL, or applier regressions before merge.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Validation mode'
+        type: choice
+        options:
+          - 'syntax-only'
+          - 'dry-run-with-db'
+        default: 'syntax-only'
+  pull_request:
+    paths:
+      - 'tools/seeds/oem-manuals/**'
+      - 'tools/seeds/oem-manuals-knowledge.sql'
+      - '.github/workflows/seed-oem-manuals.yml'
+
+# Auto-cancel superseded runs on the same PR/branch. cancel-in-progress is gated
+# to pull_request so a redundant PR re-push cancels its prior run (flood guard),
+# while non-PR events are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install minimal deps
+        run: pip install httpx sqlalchemy
+
+      - name: Validate chunks.jsonl parses
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          from pathlib import Path
+          p = Path("tools/seeds/oem-manuals/chunks.jsonl")
+          required = {"chunk_key","manufacturer","model_number","source_type","chunk_type","source_url","content"}
+          count = 0
+          keys = []
+          for ln, line in enumerate(p.read_text().splitlines(), 1):
+              if not line.strip(): continue
+              obj = json.loads(line)  # raises on bad JSON
+              missing = required - obj.keys()
+              if missing:
+                  print(f"line {ln}: missing fields {missing}", file=sys.stderr)
+                  sys.exit(1)
+              if len(obj["content"]) < 200:
+                  print(f"line {ln}: content suspiciously short ({len(obj['content'])} chars)", file=sys.stderr)
+                  sys.exit(1)
+              keys.append(obj["chunk_key"])
+              count += 1
+          if len(keys) != len(set(keys)):
+              print(f"duplicate chunk_keys in JSONL: {[k for k in keys if keys.count(k)>1]}", file=sys.stderr)
+              sys.exit(1)
+          print(f"OK: {count} chunks, all unique, all required fields present")
+          PY
+
+      - name: Lint companion SQL
+        run: |
+          # Sanity-check SQL: every chunk_key in JSONL must appear in the SQL file
+          python3 - <<'PY'
+          import json, sys, re
+          from pathlib import Path
+          jsonl = Path("tools/seeds/oem-manuals/chunks.jsonl")
+          sql = Path("tools/seeds/oem-manuals-knowledge.sql").read_text()
+          jsonl_keys = {json.loads(l)["chunk_key"] for l in jsonl.read_text().splitlines() if l.strip()}
+          sql_keys = set(re.findall(r"chunk_key=([a-z0-9_-]+)", sql)) | set(re.findall(r"chunk_key[\"']?\s*:\s*[\"']([a-z0-9_-]+)", sql))
+          missing = jsonl_keys - sql_keys
+          extra = sql_keys - jsonl_keys
+          if missing:
+              print(f"SQL missing keys present in JSONL: {missing}", file=sys.stderr)
+              sys.exit(1)
+          if extra:
+              print(f"SQL has keys not in JSONL: {extra}", file=sys.stderr)
+              sys.exit(1)
+          print(f"OK: SQL covers all {len(jsonl_keys)} chunk_keys from JSONL")
+          PY
+
+      - name: Applier syntax + import check
+        run: |
+          python3 -m py_compile tools/seeds/oem-manuals/apply_oem_seed.py
+          # confirm imports succeed without env vars
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0, "tools/seeds/oem-manuals")
+          import apply_oem_seed as m
+          assert hasattr(m, "main"), "main() missing"
+          assert m.EMBED_DIM == 768, f"unexpected embed dim {m.EMBED_DIM}"
+          print("OK: applier module imports clean")
+          PY
+
+      - name: Document — how to apply
+        run: |
+          echo "::notice::This workflow validates ONLY. To apply the seed:"
+          echo "::notice::  doppler run -p factorylm -c prd -- python3 tools/seeds/oem-manuals/apply_oem_seed.py"
+          echo "::notice::Run from Charlie / Alpha / any Tailnet node with LAN reach to Bravo Ollama."

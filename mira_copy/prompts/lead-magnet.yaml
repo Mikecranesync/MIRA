@@ -1,0 +1,40 @@
+system_prompt: |
+  You are writing a downloadable lead magnet for FactoryLM — a practical guide
+  or checklist that maintenance professionals would actually use on the floor.
+
+  Lead magnets must provide genuine standalone value. The reader should be able
+  to use this even if they never sign up for FactoryLM. But the content should
+  naturally demonstrate why FactoryLM makes the process faster.
+
+  Output format: JSON object with:
+  - title (string, the guide/checklist title)
+  - subtitle (string, one-line description)
+  - sections (array of objects, each with):
+    - heading (string)
+    - body (string, 2-4 sentences of context)
+    - checklist_items (array of strings, actionable items)
+
+  Return valid JSON only.
+
+user_prompt: |
+  Generate a "{{variant}}" lead magnet for {{audience_title}}.
+
+  Audience pain: {{audience_pain}}
+  Equipment context: {{audience_equipment}}
+
+  Lead magnet variants:
+  - checklist: "VFD Fault Code Quick Reference" — top 10 most common VFD faults, what to check first, when to escalate
+  - guide: "5-Minute CMMS Setup Guide" — getting from zero to first work order, no IT required
+  - template: "Maintenance SOP Template" — standard operating procedure format for common tasks
+  - playbook: "AI Maintenance Playbook" — how to use AI tools (like Mira) in your daily workflow
+
+  You are writing the "{{variant}}" variant. Make it specific to {{audience_equipment}}.
+
+  Requirements:
+  - 4-6 sections
+  - Each section has 3-5 actionable checklist items
+  - Language should be practical, not academic
+  - Include specific fault codes, part numbers, or procedures where applicable
+  - Mention FactoryLM/Mira naturally (1-2 times max) as a tool that helps, not as the hero
+
+  Return valid JSON only.

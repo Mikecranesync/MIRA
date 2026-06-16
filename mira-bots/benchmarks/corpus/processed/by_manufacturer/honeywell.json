@@ -1,0 +1,51 @@
+[
+  {
+    "id": "1kbfav2",
+    "title": "c7027a uv troubleshooting",
+    "selftext": "Honeywell UV troubleshooting \nDo we need to apply 24v and read the resistance? Can we do it unpower. It is \"open\" as of now in my hand.",
+    "score": 2,
+    "num_comments": 5,
+    "created_utc": 1746016343,
+    "subreddit": "HVAC",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "medium",
+    "quality_score": 0.5,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (2)",
+      "no equipment mention"
+    ],
+    "manufacturer": "Honeywell",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "uv",
+        "manufacturer": "Yaskawa",
+        "description": "Undervoltage \u2014 DC bus"
+      }
+    ]
+  },
+  {
+    "id": "1p0r38o",
+    "title": "Should I quit?",
+    "selftext": "So for some context, I work in an aerospace company and we make parts for GE, Rolls-Royce, SpaceX, NASA, Honeywell, etc\u2026 I\u2019ve been with the company for a year and a half and I run five CNC lathe machines by myself 2 okumas, two haas and one smart machine and I also run a Proto trak for a couple hours out of the day after second shift gets there so I\u2019m running thousands of parts a week. Typical jobs have anywhere from one piece to 100 pieces per job and cycle times range anywhere from 30 seconds to one hour various different metals and alloys anything from aluminum all the way up to cobalt chromium and even harder so my question is I got a written warning a couple months ago because I lost orientation on two parts but it wasn\u2019t my fault. The person before me did it and I got the blame because I signed the router and then just this week. I messed up one part I put a 1/2-20 UNF-3A thread on a 1/2-13-UNJF-3A part.simple mistake I typed in the wrong program and I got written up as a final warning. and I am by myself running all five lathes on first shift. We have one guy who runs the mills he\u2019ll float back-and-forth to help me but he\u2019s never really helping me because the mill keeps him so busy but second and third shift on the lathes have 2 to 3 people per shift on the lathes. but all the people on second and third shift that keep crashing the machines and breaking $400 tail stocks never get written up. So I\u2019m definitely quitting my question is just how should I go about it? Should I give them a two week notice or should I just not show up tomorrow, the only thing with the two week notice at my company is ive seen several people give a two week notice and the boss will come up to them and have them grab their things and walk them out a day or two after they give their two week notice and pay them for the remainder of the two week notice I\u2019m not trying to be embarrassed like them I\u2019m thinking about just not even coming in tomorrow and just quitting because I am definitely not being appreciated. I just don\u2019t want to burn any bridges in case one of my future employers calls them for a referral. And also we\u2019ve been on mandatory 50s for almost 3 months and they said until at least the end of the year and yesterday they were talking about going up to mandatory 60s and another thing we have to work Christmas eve and all the people that have been here a while literally put their pto in the day after Christmas last year a year before so now the pto bank is maxed out and now everybody has to work Christmas eve besides the five people that have been here forever and knew to put their pto in early but last year was my first Christmas here so I didnt know to put the pto in early. Thank you for any help.\n\n\nUPDATE: so the parts that I got the final warning write up for werent even scrapped/void they were able to be fixed and i ended up saving them on the Proto trak so I got a final warning write up for parts that werent even scrapped I put in a week of PTO for next week so im off all next week just to relax and reset and get away from that place and then I will be back the following monday on December 1st and im going to talk to the boss above my supervisor that wrote me up on Monday and if he doesnt scrub that write up off im walking out\u2026 thank you for all the replies guys. I appreciate it. Keep them coming.\n",
+    "score": 27,
+    "num_comments": 75,
+    "created_utc": 1763507327,
+    "subreddit": "Machinists",
+    "top_comment": "",
+    "category": "general",
+    "urgency": "medium",
+    "quality_score": 0.5,
+    "quality_pass": false,
+    "quality_reasons": [
+      "no equipment mention"
+    ],
+    "manufacturer": "Honeywell",
+    "equipment_type": "",
+    "model_number": "",
+    "fault_codes": []
+  }
+]

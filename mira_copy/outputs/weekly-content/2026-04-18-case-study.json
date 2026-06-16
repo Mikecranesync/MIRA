@@ -1,0 +1,83 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "Last week, a maintenance tech at a food processing plant stood in front of a tripped PowerFlex 525 VFD. Fault code F4. No manual. No senior tech on shift.\n\nHe opened FactoryLM on his phone. Snapped a photo of the HMI. Mira (our AI) read the fault, pulled the exact troubleshooting steps from *their* uploaded manual, and created a work order in 28 seconds.\n\nSite manager messaged us: “We saved 37 minutes on downtime that would’ve taken an hour with OEM support.”\n\nThis is why we built FactoryLM — not as another dashboard, but as a tool for the moment you’re standing at the machine, alone, under pressure.\n\nHave you ever been stuck on a fault with no one to call? What was the code?",
+      "char_count": 739,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#VFD",
+        "#FactoryLM"
+      ],
+      "suggested_visual": "Split-screen video: left side shows a technician taking a photo of a PowerFlex 525 HMI with fault F4; right side shows Mira’s AI response with diagnostic steps and work order creation in app.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "PowerFlex 525 fault F4. No manual. No senior tech.\n\nTech snaps photo in FactoryLM.\nAI pulls fix from their manual.\nWork order generated.\n\n28 seconds.\n\nNo call to OEM. No binder flip. Just resolution.\n\nhttps://app.factorylm.com",
+      "char_count": 226,
+      "hashtags": [
+        "#Maintenance",
+        "#VFD"
+      ],
+      "suggested_visual": "15-second screen recording: photo upload → AI response → work order creation.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "We’ve been working with maintenance teams using Allen-Bradley PLCs and PowerFlex VFDs to reduce mean time to diagnose.\n\nOne recurring issue: F4 faults on PowerFlex 525 drives.\n\nStandard response: pull manual, find page 92, check AC input voltage, inspect fuses, verify phase loss.\nBut if you’re solo on 3rd shift? That lookup takes 30–40 minutes.\n\nWe built a tool that uses AI to scan *your* uploaded manuals so you can snap a photo of the HMI and get the exact troubleshooting steps in under 30 seconds.\n\nWe’re not selling anything here — just sharing because this problem is real. We had a tech in MN fix an F4 at 4:17 AM last week using a photo. Saved 37 minutes of downtime.\n\nIf you’re still managing manuals in binders or shared drives, consider: what if your phone could instantly find the right page?\n\n(We’ve open-sourced our fault lookup logic on GitHub if you want to build your own — no login needed.)",
+      "char_count": 1186,
+      "hashtags": [],
+      "suggested_visual": "Screen recording: uploading a photo of a PowerFlex HMI with F4, then showing AI returning steps from a user's PDF manual.",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "Imagine this:\n\n3 AM. Hydraulic press down. Allen-Bradley PLC shows fault code S:5. No lead tech. Manual’s in the office.\n\nOne maintenance tech at a packaging plant used FactoryLM. Took a photo. AI pulled the exact troubleshooting steps from their uploaded manual. Found a failed fuse in the input module.\n\nDiagnosis + work order in 31 seconds.\n\nThey avoided 40 minutes of waiting and guessing.\n\nWe hear this over and over: the hardest part isn’t fixing the machine — it’s getting the right info when you need it.\n\nHave you ever fixed a fault blind? What was the machine?",
+      "char_count": 648,
+      "hashtags": [
+        "#MaintenanceLife",
+        "#Reliability",
+        "#FactoryLM"
+      ],
+      "suggested_visual": "Carousel: 1) dark plant floor, 2) close-up of Allen-Bradley HMI with S:5 fault, 3) phone showing FactoryLM diagnosis, 4) tech replacing fuse.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "3rd shift. Machine down. No manual. No one to call.\n\nThis tech didn’t wait.\n\nTook a photo of the GS20 VFD fault.\nFactoryLM AI read it, pulled steps from their OWN manual, created a work order.\n\nEntire diagnosis: 22 seconds.\n\nNo OEM call. No binder. No downtime spiral.\n\nReal clip from a customer last week.\n\nThis is how maintenance wins now.\n\n#MaintenanceTech #VFD #FactoryLife",
+      "char_count": 634,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#VFD",
+        "#FactoryLife"
+      ],
+      "suggested_visual": "Vertical video: tech walks up to GS20 VFD, films HMI with 'F7' fault, opens FactoryLM, uploads photo, shows AI response and work order with timer overlay (0:22).",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "F7 fault on a GS20 VFD at 2:48 AM.\nTech on 3rd shift with no lead.\nNo manual. No time.\n\nHe opened FactoryLM.\nTook a photo.\nAI returned troubleshooting steps from THEIR manual in 22 seconds.\nWork order created. Fix underway in under 5 minutes.\n\nThis isn’t demo footage. It’s from a real shift last week at a plastics facility.\n\nWe built FactoryLM for these moments — when it’s just you and the machine, and every second counts.\n\nWhat’s the longest you’ve waited for a manual?\n\n.\n.\n.\n#MaintenanceLife #PlantFloor #VFDRepair #HydraulicSystems #AllenBradley #AutomationDirect #PowerFlex #CMMS #TechLife #FactoryLM #IndustrialAI #MaintenanceTech #NoDowntime #WorkOrder #FaultCode",
+      "char_count": 869,
+      "hashtags": [
+        "#MaintenanceLife",
+        "#PlantFloor",
+        "#VFDRepair",
+        "#HydraulicSystems",
+        "#AllenBradley",
+        "#AutomationDirect",
+        "#PowerFlex",
+        "#CMMS",
+        "#TechLife",
+        "#FactoryLM",
+        "#IndustrialAI",
+        "#MaintenanceTech",
+        "#NoDowntime",
+        "#WorkOrder",
+        "#FaultCode"
+      ],
+      "suggested_visual": "4-image carousel: 1) dark machine with GS20 VFD lit up, 2) phone camera focusing on F7 fault, 3) FactoryLM AI response with manual excerpt, 4) tech smiling, giving thumbs up with work order on screen.",
+      "subreddit": null
+    }
+  ]
+}

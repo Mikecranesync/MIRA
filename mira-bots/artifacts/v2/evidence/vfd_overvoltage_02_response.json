@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This device is an AutomationDirect GS10 Variable Frequency Drive. It controls motor speed by adjusting voltage and frequency.\n\n(2) The most likely cause of the OV fault code is a drive's input voltage being slightly higher than its rated 208-240VAC, possibly due to a line voltage reading 248VAC.\n\n(3) The tech should check the input voltage to ensure it's within the drive's operating range and consider adjusting the line voltage if necessary."
+}

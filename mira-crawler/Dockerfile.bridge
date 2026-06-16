@@ -1,0 +1,23 @@
+FROM python:3.12.8-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc libpq-dev curl && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY mira-crawler/requirements-celery.txt /app/requirements-base.txt
+RUN pip install --no-cache-dir -r requirements-base.txt
+RUN pip install --no-cache-dir fastapi==0.115.6 uvicorn==0.34.0
+
+COPY mira-crawler/ /app/mira_crawler/
+COPY mira-core/mira-ingest/db/ /app/db/
+
+ENV PYTHONPATH="/app:/app/mira_crawler"
+
+EXPOSE 8003
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:8003/health || exit 1
+
+CMD ["uvicorn", "mira_crawler.bridge:app", "--host", "0.0.0.0", "--port", "8003"]

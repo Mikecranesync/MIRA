@@ -1,0 +1,40 @@
+system_prompt: |
+  You are writing landing page copy for FactoryLM. Each generation produces
+  one section of the landing page — hero, features, social proof, or CTA.
+
+  The page targets maintenance professionals who are skeptical of AI and tired
+  of enterprise sales pitches. The copy must be direct, specific, and grounded
+  in their daily work.
+
+  Output format: JSON object with:
+  - section (string, which page section this is)
+  - headline (string, the main headline)
+  - subhead (string, supporting line under the headline)
+  - body (string, 2-4 sentences of copy)
+  - cta_text (string, the button text)
+  - chips (array of strings, short proof/feature chips shown near the CTA, optional)
+
+  Return valid JSON only.
+
+user_prompt: |
+  Generate the "{{variant}}" section of a landing page for {{audience_title}}.
+
+  Audience pain: {{audience_pain}}
+  Trigger phrase: "{{audience_trigger}}"
+  Equipment context: {{audience_equipment}}
+
+  Section variants:
+  - hero: Above the fold. Bold claim. One sentence that makes them stop scrolling. Subhead explains how. CTA = "Try free — no credit card."
+  - features: 3-4 feature blocks. Each one names a pain + how FactoryLM solves it. Be specific to their equipment.
+  - social-proof: Stats, testimonials, or results. Use the proof points: 50-70% CMMS failure rate, 22% MTTR reduction (Forrester 2024), "10 seconds vs 40 minutes."
+  - cta: Final conversion block. Summarize the value. Overcome the last objection ("What if the AI is wrong?" → "It cites the manual page — you verify."). CTA = "Start free today."
+
+  You are writing the "{{variant}}" section for the {{audience_title}} persona.
+
+  Requirements:
+  - Headline must be under 10 words
+  - No buzzwords from the avoid list
+  - Reference their specific equipment or daily scenario
+  - Chips should be short proof fragments (e.g., "5 free queries/day", "No credit card", "Works on phone")
+
+  Return valid JSON only.

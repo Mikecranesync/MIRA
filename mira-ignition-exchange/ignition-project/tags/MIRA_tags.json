@@ -1,0 +1,30 @@
+{
+  "name": "MIRA",
+  "tagType": "Folder",
+  "tags": [
+    {
+      "name": "endpoint_url",
+      "tagType": "AtomicTag",
+      "valueSource": "memory",
+      "dataType": "String",
+      "value": "https://app.factorylm.com",
+      "documentation": "MIRA chat endpoint URL embedded in the ChatDock view's Web Browser. Override per-gateway as needed."
+    },
+    {
+      "name": "scan_api_url",
+      "tagType": "AtomicTag",
+      "valueSource": "memory",
+      "dataType": "String",
+      "value": "https://app.factorylm.com/api/scanbe",
+      "documentation": "MIRA Scan backend base URL. The ScanWidget POSTs to <scan_api_url>/scan/extract."
+    },
+    {
+      "name": "factorylm_onboard_url",
+      "tagType": "AtomicTag",
+      "valueSource": "memory",
+      "dataType": "String",
+      "value": "https://factorylm.com/onboard",
+      "documentation": "FactoryLM onboarding URL — opened from the upsell banner and the 'Add to FactoryLM' CTA."
+    }
+  ]
+}

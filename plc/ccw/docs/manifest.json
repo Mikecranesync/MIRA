@@ -1,0 +1,5537 @@
+{
+  "generated_at": "2026-04-19T14:38:29.677034+00:00",
+  "root": "docs/",
+  "count": 553,
+  "files": [
+    {
+      "path": "ignition/8.3/_crawl_summary.json",
+      "bytes": 240,
+      "sha256": "8fe53fea08e5aca2d6b8a28dc8b513ceebe02db5831244ff0f26e0112f5e7c80",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/perspective-components/perspective-container-palette/perspective-breakpoint-container.html",
+      "bytes": 51170,
+      "sha256": "73d623a8e6f796bf256662d0c732d229763f2a5459c163c685a090b6bd66019c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/perspective-components/perspective-container-palette/perspective-column-container.html",
+      "bytes": 64822,
+      "sha256": "a6d6b6bb3146953eba2407e3b1b4773d33bd9af8ee4a8688bc50be7c1767351f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/perspective-components/perspective-display-palette/perspective-drawing.html",
+      "bytes": 312534,
+      "sha256": "5f80bdd0b9ad2626195bdf02bb7743799c74ec9e2559eb739acbd6e1c0221e03",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/perspective-components/perspective-display-palette/perspective-markdown.html",
+      "bytes": 65833,
+      "sha256": "b4d31a0a3706103b826b19d48e2243ac34343fb3b0f4ad4e1527f55dc4c3cf94",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/perspective-components/perspective-display-palette/perspective-table/perspective-table-scripting.html",
+      "bytes": 99993,
+      "sha256": "72897400965ec4740a4da83412477a0f8e4d696a5cde2aed3c80068740cb4a3c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/perspective-components/perspective-display-palette/perspective-table.html",
+      "bytes": 110394,
+      "sha256": "c1b56867b9acd7256632dc6d1f91e849e09de3325cf54176376f04fc00c077c0",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/perspective-components/perspective-input-palette/perspective-file-upload.html",
+      "bytes": 63800,
+      "sha256": "3505d17d2e3abf34069bf071dd60d2ef70c19eb96b00c7cbdb8fed675bdac317",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/perspective-components/perspective-input-palette/perspective-form.html",
+      "bytes": 131594,
+      "sha256": "ac177e05ba646e6d24d6ba69ec27e662a2b15bc61b40c688fdcf3088477b21e2",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/perspective-components/perspective-input-palette/perspective-toggle-switch.html",
+      "bytes": 59397,
+      "sha256": "019f8f117e92dd4285e2a0d484c5e6e214c3312afabbce5b058176d8e13323c5",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/perspective-components.html",
+      "bytes": 40559,
+      "sha256": "6848c63ef3358b32395d01618abe3104dba5af080baf56adfb8d9a5f0a55cfdb",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/report-design-components/report-design-chart-palette/report-component-bar-chart.html",
+      "bytes": 66980,
+      "sha256": "648f201167f8c607e31468570a54585d774dce0f06c9f517fa29fa8695541b24",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/report-design-components/report-design-chart-palette/report-component-pie-chart.html",
+      "bytes": 49438,
+      "sha256": "e2c85b79d67f47da67545387c8646247177295c3e9ea8f458b5005073506fa62",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/report-design-components/report-design-chart-palette/report-component-radar-chart.html",
+      "bytes": 49906,
+      "sha256": "5ea6b2d199f6d71761ae9dfa710eaaa4e4454afc4e30847ff049fbe202c1cafb",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/report-design-components/report-design-chart-palette/report-component-timeseries-chart.html",
+      "bytes": 80290,
+      "sha256": "75584832573e195d9a32bb23a820c478d8717c4ad172e3766980a6ded0c17213",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/report-design-components/report-design-chart-palette/report-component-xy-chart.html",
+      "bytes": 54790,
+      "sha256": "7cbb2b78cc137f5857812921b759fe9f1dfea8d3cadf88b0ed53383dc39e9e26",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/report-design-components/report-design-display-palette/report-component-barcode.html",
+      "bytes": 59516,
+      "sha256": "b6995923aa3fe84712ec269aec971581f8b5db00870c3a2ccb15c737cdf9d1a5",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/report-design-components/report-design-object-palette/report-component-page-object.html",
+      "bytes": 52392,
+      "sha256": "d7681a2432274634bc066fb1c9fd5045dffa33b3f469b601ae4cf59c6c61e502",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/report-design-components/report-design-table-palette/report-component-table.html",
+      "bytes": 67054,
+      "sha256": "13fc6c8a77759c6a2cc23c62bf9e9993b963725f4e9461b1474b0dbb843355d4",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/report-design-components.html",
+      "bytes": 35558,
+      "sha256": "be453b4ac424d5e626456152dc401a0c87e5269aea62c84f7d27b645ed415c30",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/vision-components/misc/web-browser.html",
+      "bytes": 59511,
+      "sha256": "4f93c4099edbec348d598ab16f292657d274536c623ddee7112912bfddbfc00d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components/vision-components.html",
+      "bytes": 42297,
+      "sha256": "35c07a2835a12a90d4194c52a8704b18f7c50b9ecca910d47db9529f5fdfc12a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/components.html",
+      "bytes": 32874,
+      "sha256": "9ec539b03c019649f2b25d6dec3f4f11dca36eadf1cbbc509a2b1ecfce15dc8c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/expression-functions/advanced/qualifiedValue.html",
+      "bytes": 44603,
+      "sha256": "975a093720951117edadba64812a9fbf956b8377b9e1dc65390193e2cb3f79e6",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/expression-functions/advanced.html",
+      "bytes": 44642,
+      "sha256": "38900d5ed1c2034505ac09a866fa5d9990c8c2ce6f54e678b2aef80177dc5912",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/expression-functions/aggregates.html",
+      "bytes": 44250,
+      "sha256": "872f7c5410a3fd6f03a2f3212c3ce6747ff6fc7f8810416436e6c72e101698e5",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/expression-functions/alarming.html",
+      "bytes": 37986,
+      "sha256": "59f8faadad25e90037b61ed5d096c7fae5db6ff8138518e6b3a3029bf7703be6",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/expression-functions/colors.html",
+      "bytes": 39393,
+      "sha256": "27b818b5c53ca36a7937555d7642229356bdd698168a27aaa18bd31c40d0e8be",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/expression-functions/date-and-time.html",
+      "bytes": 52319,
+      "sha256": "b3f286f0ebcb08ff0b0b2338fc765fb662b0ffa5aea41ae5f1d9a29f9077ee77",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/expression-functions/identity-provider.html",
+      "bytes": 38880,
+      "sha256": "6f30166e4ce2e0d6960b05c7e216433afa46550dc5256638c91822950e3050b0",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/expression-functions/JSON.html",
+      "bytes": 38658,
+      "sha256": "2f27c3a4f5b6fa90db383559d6be03b41898a275ba3c6ffd6ecdb3fe7a601783",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/expression-functions/logic.html",
+      "bytes": 50611,
+      "sha256": "008404a68167a19f7866982223f36fc0abd277a50ce6babb698a0bca209fd022",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/expression-functions/math.html",
+      "bytes": 47748,
+      "sha256": "52e69314a3155890b2cf7fe359a5354bd660c90eb87c90f6f885efc34722d130",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/expression-functions/mongo-db.html",
+      "bytes": 38741,
+      "sha256": "e05da4a79b0bb0f39e6320bea2e4cbb8566bb6f6088e53e6dcf401acf25ca0ef",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/expression-functions/string.html",
+      "bytes": 53475,
+      "sha256": "a81fadfc0909234d0f97850ef28703b8d90ffa41ad273336d825c91496db5ebf",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/expression-functions/translation.html",
+      "bytes": 37246,
+      "sha256": "20449587fc8f1c88373435fd100a02da6d6e75849271b27c167b9ad2ff240153",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/expression-functions/type-casting.html",
+      "bytes": 45702,
+      "sha256": "9ec278e4395e6a3a2b4f8b608c2046dc2cd56832c5537beee7240d6c80147f2f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/expression-functions/users.html",
+      "bytes": 38168,
+      "sha256": "f6991f88ac53f5c99663fdf0dee5bb16ef5a62d5302ebbf023d4b856bc01b0d4",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/expression-functions.html",
+      "bytes": 40389,
+      "sha256": "33874363611ea4b9ad4cc22c3076fadde4f6404b327d3f8336aa30ef6b376593",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/reference-pages/gateway-configuration-file-reference/gateway-and-gateway-network-parameters.html",
+      "bytes": 168794,
+      "sha256": "738e1b78560919dc4f4ceb76311d8faf4ca14c82a6f51805e77fa8eb5ca975d1",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/reference-pages/gateway-configuration-file-reference.html",
+      "bytes": 89662,
+      "sha256": "70affd145f05afd9c3f1c402c3b1a1e547488b25a9169fe474368c4158a5c3cc",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/reference-pages/gateway-folder-structure.html",
+      "bytes": 48645,
+      "sha256": "dd1b1772755fe56d8b8b27d522d1ac278e841432e9e51afd10f62806d6dc0a20",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/reference-pages/gateway-xml-file-reference.html",
+      "bytes": 49151,
+      "sha256": "d1fa555b9abcd29b80450eee112273787c1f7d5adae5f3dc3f94814b51fc090d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/reference-pages/platform-environment-variables.html",
+      "bytes": 55555,
+      "sha256": "d08d6f472ecdf3da8c2c8b0b7790ad0d446087bbe49c0b551530b2d4820e7e82",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/reference-pages/web-xml-file-reference.html",
+      "bytes": 43709,
+      "sha256": "2914edc098b7675990a09f609536fc091b61dc0dfa3bcad00ce461208480ccf8",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/reference-pages.html",
+      "bytes": 44662,
+      "sha256": "2f5c601ae7a5066fbe2681fd96cbfff589eb9d68c128fb869b67881cad973c48",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-alarm/system-alarm-acknowledge.html",
+      "bytes": 71255,
+      "sha256": "4c11fb893f8a571c9314df5e3a733ea77705e45546c0d353e9d9c4c681f535f7",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-alarm/system-alarm-cancel.html",
+      "bytes": 61951,
+      "sha256": "88574fa46e48ab75233d71c47d4dccbf9ff60ff4f0b8b4e79d78757e3cb20e31",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-alarm/system-alarm-createRoster.html",
+      "bytes": 57921,
+      "sha256": "6fa3603e932c2b86a77f8da7b2efa8787fc2b46f3ceb3a65011445214f7f2d9a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-alarm/system-alarm-getRosters.html",
+      "bytes": 65293,
+      "sha256": "80bc2ad26e4905cf9aecb54fcbfa57606cb4da27d407a95ec24eac108a60f9cc",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-alarm/system-alarm-getShelvedPaths.html",
+      "bytes": 59330,
+      "sha256": "59b64fe6f22f0eab18af19c1b3280786de3778a0619a1bc6d8c476ee50ef4be2",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-alarm/system-alarm-listPipelines.html",
+      "bytes": 62276,
+      "sha256": "df933c87f035af34e57f9e346d1d9a588c60c78f91da08485a32bbe99be14842",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-alarm/system-alarm-queryJournal.html",
+      "bytes": 96664,
+      "sha256": "7fe8b9cad008cb31e56baa67613a66f2d63ed4ac86d1db3ae3c0a12f274f580e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-alarm/system-alarm-queryStatus.html",
+      "bytes": 84709,
+      "sha256": "041c62e702bd7fc3488a517a8535fb51cebbb1feb820c9bf3aa0f6da1776047f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-alarm/system-alarm-shelve.html",
+      "bytes": 61848,
+      "sha256": "e61965104c0ede14eeab5ff3248d41a42ac8bb4da082cda9cf9d6dd20edfec5d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-alarm/system-alarm-unshelve.html",
+      "bytes": 57578,
+      "sha256": "c6d5782ab59881d4e363e6203c080894a32c33cfa9f5e3959c1102fdf5cbc4e7",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-alarm.html",
+      "bytes": 61798,
+      "sha256": "d0f5ea6ab12d8b5318cda9a4b36ec18d60fe1350ace40a1273d47a4e88f0ac31",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-bacnet/system-bacnet-readRaw.html",
+      "bytes": 89613,
+      "sha256": "625bfa6f754bf4c34cb860aaaed05ae3802734a341d8b1b6b91b0a4620bf0d25",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-bacnet/system-bacnet-readRawMultiple.html",
+      "bytes": 121011,
+      "sha256": "efeced50e3ceeeab5868142367926c5358d2e55126081db76175a8addd3d7295",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-bacnet/system-bacnet-synchronizeTime.html",
+      "bytes": 57230,
+      "sha256": "5d942b2f650f8eaf13ee8b9a3c906e9f222c3be8880cb1cf9cc7ae0418e6d1f3",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-bacnet/system-bacnet-synchronizeTimeUtc.html",
+      "bytes": 56991,
+      "sha256": "39b4a02b3739676087484e493caea3f06eddd692004488b6c1a30c995d6d0fd8",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-bacnet/system-bacnet-writeRaw.html",
+      "bytes": 136548,
+      "sha256": "06868a9c1c547a59489fa02f19b2ef7119170b107ae994bf14c6411729e70cc9",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-bacnet/system-bacnet-writeRawMultiple.html",
+      "bytes": 128829,
+      "sha256": "d03455e48d58154ec073ae062d21ced06885c520d5607081b410b1c3e70313df",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-bacnet/system-bacnet-writeWithPriority.html",
+      "bytes": 61916,
+      "sha256": "569eb12eecd9cbab085458c61849262a48ea303a2f19c1d20ccaeb012010e698",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-bacnet.html",
+      "bytes": 60824,
+      "sha256": "be27b097491e3dbdf7c70003aceb8afcec5726a33af8de8393a9f7a16c1f5926",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-addColumn.html",
+      "bytes": 74121,
+      "sha256": "6256977f6e2aa9f7cd5cbffc0f47637eb1b57aae943f39a2c6d54e11b2da29cf",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-addRow.html",
+      "bytes": 67187,
+      "sha256": "8ca099d6bfc8e3bfa7cf1cbf279d1e37fcef53c944e5933092d55805b9e63dd7",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-addRows.html",
+      "bytes": 68196,
+      "sha256": "3cfe290770cbe23ba5457a5d7944fcb15e0bca5601567f9af1ce30c1d24ab62e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-appendDataset.html",
+      "bytes": 68634,
+      "sha256": "80c46df9b2c837018e8fbd8d7fec5863c46e03ce03071158abdc79760569d24c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-clearDataset.html",
+      "bytes": 62350,
+      "sha256": "a2a0f9ac46f2e762cac24680625b219213827f9695161858913a5f186f36d63d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-dataSetToHTML.html",
+      "bytes": 75677,
+      "sha256": "f78706da03805f90f805ad4d845c0a2ab74941f6f08ec80b98db7714d468800a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-deleteRow.html",
+      "bytes": 63263,
+      "sha256": "abc344cc88d403883ac22aa61f4e933ec897ec7560c6435afda6c9cb6644c416",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-deleteRows.html",
+      "bytes": 63896,
+      "sha256": "0eee4180b78467d875071d6a6dbb6941212ae3c524379f6aa39908529a62bab6",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-filterColumns.html",
+      "bytes": 67108,
+      "sha256": "ba88e7844f65930ded98d73ecade2d055bcf039ce96139d5f11662bca06c219d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-formatDates.html",
+      "bytes": 68211,
+      "sha256": "74b46f82db273bbfe4acde3c6cac221fa985244e4ac657ee3566e6af6bee8b4f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-fromCSV.html",
+      "bytes": 66675,
+      "sha256": "8d51f6c77302c0947735c3c4bc3e1da893c73b44660641884f7cd5e177ff18f8",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-getColumnHeaders.html",
+      "bytes": 66391,
+      "sha256": "e5e82384bb420f09cd022aec6dad22d7313d018094b82d9f1476d7564e2a2aef",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-setValue.html",
+      "bytes": 72209,
+      "sha256": "bc6dada82784f0fa4e43c8d66e234d2bff03452f121c1a41c6dab0e7cda0e14d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-sort.html",
+      "bytes": 77975,
+      "sha256": "3901a32c38d6c331ade951641a9ffb955c9e5948dc681f7929dcd809d8bd288d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-toCSV.html",
+      "bytes": 63204,
+      "sha256": "9f843a5f791914798b86686b47c0968874f37b6e83fbebe1a86c7ce7c69a2ce3",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-toDataSet.html",
+      "bytes": 67085,
+      "sha256": "9370063e4dff139a404099daaeba616d711b4fc1dcee46e4a434dae51580f2f2",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-toExcel.html",
+      "bytes": 63156,
+      "sha256": "4b1272e0d4f1af36057f136ffb293bb8d21c31c606a7fd775d2d51ae32e9adea",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset/system-dataset-updateRow.html",
+      "bytes": 66424,
+      "sha256": "ca0abec6b71a06746d4161287b3aed95166df07623434ad1ca1e3d8361d2a9a1",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dataset.html",
+      "bytes": 71897,
+      "sha256": "18949c18fc681fd44c7037c80b5c3df1fdf379a885bcd15841f8baf9bf30df6b",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-add.html",
+      "bytes": 68128,
+      "sha256": "fd8a8726e03dcd68159035fee21acb461b2185b18df925a8859e937c43d1dcf1",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-between.html",
+      "bytes": 71340,
+      "sha256": "6b7be6d620060d22b5005342d9b9a254d2da7712b2191a26033100140c5395c4",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-format.html",
+      "bytes": 63227,
+      "sha256": "4307a14b94d9328fd5196b5cbcd20a65086cf5633af17fd6253dfbf8aa486e5c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-fromMillis.html",
+      "bytes": 58936,
+      "sha256": "6a0bd07d082babbe1c81a6afc07d8ce1cbe87a95a28247e61f1caa0743ce7132",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-get.html",
+      "bytes": 67432,
+      "sha256": "b43ca8529a963433eee533e605f09dce61966e7c5e9313ce77fa4ce0c1d812a9",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-getDate.html",
+      "bytes": 59854,
+      "sha256": "cf49fc0ac2f2ae3f5c9db4ee87d39b5fea483d3d64dd67225278a13d8dfaa43f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-getTimezone.html",
+      "bytes": 79575,
+      "sha256": "8fa7ada0667aa128130e9b2e743cfe277452906128fe6db02a4a078104b7f763",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-getTimezoneRawOffset.html",
+      "bytes": 59248,
+      "sha256": "3a9c827d3429798cf8a2a62677689bb26892bd72ae1a271135f1fdec27b9aa38",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-getTmezoneOffset.html",
+      "bytes": 60836,
+      "sha256": "70359688576762120edb81464f9f5821ffb49a89ee8bd3cd3be1575a29631288",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-isAfter.html",
+      "bytes": 61352,
+      "sha256": "9e9fca69019e358a8962d587ff2e428112dc0a19db0357eb80a739633c5ef402",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-isBefore.html",
+      "bytes": 61356,
+      "sha256": "e81ecd6b528a77db2bb5d7dd9432e680af9bad605efa5b35a85c92e47ba0627b",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-isBetween.html",
+      "bytes": 63164,
+      "sha256": "af401842c25b7a877a583ea68b3c30ee46b68693ba80e512a0aab584b273f2be",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-isDaylightTime.html",
+      "bytes": 60175,
+      "sha256": "a2605f99fb2f4043ed7ad76dd979a26a4249b46c4b74cf85e67b701fdd336522",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-midnight.html",
+      "bytes": 59664,
+      "sha256": "6601fc8be0c0a5e7460fae6debb0d940ded9b1ae76ff9c3e685a1f5d5032e319",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-now.html",
+      "bytes": 59484,
+      "sha256": "2293f3fb46f73b8cabaf19fbece8d3bdeb94eb1f6c2a75120598cd73805cd9d1",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-parse.html",
+      "bytes": 63892,
+      "sha256": "3be9df1154bd25e0a051d0f3d1d622b7f75b12fbae959240d4f084a355138074",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-setTime.html",
+      "bytes": 61231,
+      "sha256": "34d8e666b6c970522ba497790a9ec4b991f314f1535c8d312a77159e312b96b4",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date/system-date-toMillis.html",
+      "bytes": 61564,
+      "sha256": "4011ec4eb8a43c8c3ec888570043c00403ae86ea65faf4a782360533326627e7",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-date.html",
+      "bytes": 70265,
+      "sha256": "58e91d93a6e0e4f59c681dfd9a58cb4259e65b21fa9bb3b4276cc96cc2aee414",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-addDatasource.html",
+      "bytes": 63305,
+      "sha256": "cdafed03a089ab845f737f35be56dcd14f63f9957739bbe9481f11fbe5ab1328",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-beginNamedQueryTransaction.html",
+      "bytes": 78605,
+      "sha256": "bf13f0d19cf98dce7eee1618abb6ad1c051cad8a5398f4bd597db861ef16cac8",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-beginTransaction.html",
+      "bytes": 70665,
+      "sha256": "a3353d9034047c97b4f50ffd61fed94b9ca496aa1f63bbd001538425a4eb2a27",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-clearQueryCache.html",
+      "bytes": 62978,
+      "sha256": "88e45ea7bc587006e8673d6ecc7ed21f83f78aaf53afadeb5cb3f6fb0dce6364",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-closeTransaction.html",
+      "bytes": 65128,
+      "sha256": "0d60367795bab4037aefc9247bbb8d4ddf0b90d4bc630e0544c90323c4543dde",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-commitTransaction.html",
+      "bytes": 65843,
+      "sha256": "b50fcad7246456d76aa79c3631f7e6650e05b28ac77abfb34aae00fb3f96b189",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-createSProcCall.html",
+      "bytes": 84815,
+      "sha256": "d157273b247dcbc1dea0a11e040ea197267f2e4edd47f31f79313d4ea3be9440",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-execQuery.html",
+      "bytes": 63372,
+      "sha256": "90561e3df27a85ddddf6590b5f715fe66a4ede7c1824d5a32a7d969378ad73ba",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-execScalar.html",
+      "bytes": 63440,
+      "sha256": "55944439cbe84532f88e9ac4a31979269cea809d588be7add65ffc5726b2798d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-execSProcCall.html",
+      "bytes": 60071,
+      "sha256": "479c07bccc2fe72b670249adb7bcc64a9eb806945b732c3e4216c5c5dbdd36cb",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-execUpdate.html",
+      "bytes": 62097,
+      "sha256": "0819ba43931f81ad69e076bdc588b96b9e47a71c52d364252b99732ad50587d7",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-execUpdateAsync.html",
+      "bytes": 61653,
+      "sha256": "ff7841f961cebad888eaf970c7d5991a920c50fc222d1335a79cbed1525a5472",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-getConnectionInfo.html",
+      "bytes": 66335,
+      "sha256": "1687f2661a8edf3cb947256730a39b6c7818f3940d10113af7dcc57f217aa167",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-getConnections.html",
+      "bytes": 60890,
+      "sha256": "285e43c0f28764b18202b18570c35d13c4ed053519dba3e72c568ca9847b4e5a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-removeDatasource.html",
+      "bytes": 60847,
+      "sha256": "a4a2fcbd5022f9ff41b093e85f08e80b70a62b03374f40c8605d5b4b9d6d7d10",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-rollbackTransaction.html",
+      "bytes": 68925,
+      "sha256": "40495460f35422d6c88097fe00d6677f2aee8e138bfc8dce7fcc94aece6dfa61",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-runPrepQuery.html",
+      "bytes": 69308,
+      "sha256": "ef825f212aa6f24cc4aabd3ac0ef0d89343ec2f71ce717e83c934b39b0794a59",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-runPrepUpdate.html",
+      "bytes": 94004,
+      "sha256": "c2a88b8655ef6b3a3d595ec022c2a5da6beaaf89cce26b3225750855088f0080",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-runScalarPrepQuery.html",
+      "bytes": 66950,
+      "sha256": "5fcb735f3965c977e277f1471a1bbd4dd7254f72bf600e2459f07ed7ab1f8f13",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-runSFPrepUpdate.html",
+      "bytes": 66848,
+      "sha256": "724fc4a195d1178474d32276443e1259898f524b74bff5c297de5fa8abc7e127",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-setDatasourceConnectURL.html",
+      "bytes": 61332,
+      "sha256": "fd6345598c08c820428a944fdfaaa06fa7aec4eef9eef1926cb73b21cf3f15c2",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-setDatasourceEnabled.html",
+      "bytes": 62818,
+      "sha256": "3f6acedf32231fd498a66e1275d208ff04205e4f6231e45fcf13f043938bde1f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db/system-db-setDatasourceMaxConnections.html",
+      "bytes": 61467,
+      "sha256": "98011954abe5e34a95868a63e03860f0dc88597ee6be37e78e9396aa8deba156",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-db.html",
+      "bytes": 79565,
+      "sha256": "219731cfaa54ebd5e1d53ce926b8c5b3f1ca86a070946b7f9093aea4cf8730f0",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-device/system-device-getDeviceHostname.html",
+      "bytes": 56919,
+      "sha256": "c898ac25a9f28d7a20a5d9ac7688e210e99f5d432d4bedfb7e6f2983a32ba1a4",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-device/system-device-listDevices.html",
+      "bytes": 58055,
+      "sha256": "612e7e665fe8ef046c367f15d3c60019d36edf3daad7407059fd0c1d183d6cfb",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-device/system-device-refreshBrowse.html",
+      "bytes": 56571,
+      "sha256": "79adc8fe563be9bdb13b70538303e0020a4dcee0b3be1c60429a9988790d9348",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-device/system-device-removeDevice.html",
+      "bytes": 56591,
+      "sha256": "d52c282faf04b59625a488db6f2c2b626637b27d53ae1f357863f20d21ff10be",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-device/system-device-restart.html",
+      "bytes": 56390,
+      "sha256": "440e47c1d0ae279edcbf98a9b8f1b499ea9f5b2b6df75a55c1714c4a1a3eae5e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-device/system-device-setDeviceEnabled.html",
+      "bytes": 58579,
+      "sha256": "05881b9faa31e76f3f434c0d3e4ba411612d9da72333fa07112516585d623c53",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-device/system-device-setDeviceHostname.html",
+      "bytes": 57197,
+      "sha256": "97f8f93e8eb9bd068c8de6bcba66edd1cb3cd411536c982c132a03d320817eb3",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-device.html",
+      "bytes": 59419,
+      "sha256": "05bf85010311737743b6501def8c77900666295c7d8a8d125365cb41476fdbd8",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp/system-dnp-demandPoll.html",
+      "bytes": 58561,
+      "sha256": "bd4ce65830484e440abae08b23967a366b0e461dbe78a1c7f3268a65574d6cb8",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp/system-dnp-directOperateAnalog.html",
+      "bytes": 59152,
+      "sha256": "73a89d42f62d9ea5497cab439d1104955c3f7f1119e532e3892f78fefc53c621",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp/system-dnp-directOperateBinary.html",
+      "bytes": 60109,
+      "sha256": "7a13d277fd7792a12a0590ef34278eea243a68e870917d667884653d81903f28",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp/system-dnp-freezeAnalogs.html",
+      "bytes": 59070,
+      "sha256": "f29f326537fea0d0371258080c034c0b6284315cfbd82ff2141f435e8c36cb0b",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp/system-dnp-freezeAtTimeAnalogs.html",
+      "bytes": 61637,
+      "sha256": "d233f518ad21f8b742757ab4ecaaefbdd051bd5f586fd647c84c9129f00111ee",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp/system-dnp-freezeAtTimeCounters.html",
+      "bytes": 61640,
+      "sha256": "465db0d068fe7e0dabc5002cdf0735a5969b20565e5b344004381ff335ded6af",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp/system-dnp-freezeClearAnalogs.html",
+      "bytes": 59149,
+      "sha256": "1f0d00f2f564c6cb27d8029ccc98f8b1ef04e85b78ea15974f49d8c59d080e51",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp/system-dnp-freezeClearCounters.html",
+      "bytes": 59131,
+      "sha256": "033d68483a41a97ed6fcb4e8d8f514e8b5ba8c8f755ff08eb6b8fae1e1694476",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp/system-dnp-freezeCounters.html",
+      "bytes": 59066,
+      "sha256": "138c3f20514e6f4d7f10180895a52fbb8d57c989e7f42cfee82c8c73db274d51",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp/system-dnp-selectOperateAnalog.html",
+      "bytes": 59175,
+      "sha256": "1b2baa7567457b6a5db7a15e38f396a099114897b5a64cbcd9f1ce81470deac4",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp/system-dnp-selectOperateBinary.html",
+      "bytes": 60128,
+      "sha256": "80d97ef928f165c01139f3c7bfebddae45466ffd61649b4033b50052e6f34063",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp/system-dnp-synchronizeTime.html",
+      "bytes": 58288,
+      "sha256": "c00b590793d3458962c7e7a0d2492b344d522c2ce74fdc905d2a76f364b86421",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp.html",
+      "bytes": 62289,
+      "sha256": "193661659a77756af013fac3aa946a1f91517eac09f1968e633a4ea5813cca33",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp3/system-dnp3-directOperateAnalog.html",
+      "bytes": 65811,
+      "sha256": "d1028662ae3c7ed8fc0908ed204724a1a113678582c8cf66cb7c8258bdcc622d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp3/system-dnp3-directOperateBinary.html",
+      "bytes": 63704,
+      "sha256": "aac774497ed16e82892a01f8a07131d726e6948abe5b1292e83e6516bd664c2e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp3/system-dnp3-freezeAnalogs.html",
+      "bytes": 60184,
+      "sha256": "eff1efbc3cf8bd70de5a723a6a2b731988f56eba198ee593744020df03300faa",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp3/system-dnp3-freezeAnalogsAtTime.html",
+      "bytes": 61786,
+      "sha256": "02798aff55e99e1d0cc73a4260a8d107bd13ea43677691843b3a6b4836cda3c7",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp3/system-dnp3-freezeCounters.html",
+      "bytes": 59934,
+      "sha256": "9105a2d09afcf7df45a8b8f47a655c4c2e974ecb50624117ef91c4682322fac7",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp3/system-dnp3-freezeCountersAtTime.html",
+      "bytes": 61794,
+      "sha256": "e1591e1e3607e9014fcc16dbfa5ffb09f5b6b2cb3ba5b7fc7154fc1a473ed77a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp3/system-dnp3-selectOperateAnalog.html",
+      "bytes": 64187,
+      "sha256": "feac08517d3e64b320a434c87f06163b4923c6f0ff81241c1acc81fa95a8e58d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp3/system-dnp3-selectOperateBinary.html",
+      "bytes": 63969,
+      "sha256": "ba03c547a7375f1e30ea7869cad83133cc86ac76771118006518353e356e4ec2",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-dnp3.html",
+      "bytes": 65012,
+      "sha256": "1b018137913b242dcd831623d76b297fed175fd53a7cdb9939fd8e243c4d24b5",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-eam/system-eam-getGroups.html",
+      "bytes": 55528,
+      "sha256": "91dbd846f8a2431f2b5f80e4febbfd751e8d1f2043bd06aed71a5284ee0e90ce",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-eam/system-eam-queryAgentHistory.html",
+      "bytes": 67661,
+      "sha256": "423defd3fa50481128ecda3ce464e92c623220ddc900815cefcd799c3b932269",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-eam/system-eam-queryAgentStatus.html",
+      "bytes": 68482,
+      "sha256": "5730d717135299e54a7ad57b606d98b55903d4dd941d5a0e12bbcac3e9dad5dc",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-eam/system-eam-runTask.html",
+      "bytes": 66708,
+      "sha256": "320e7ec2498eb647f19109642b0f195185d2b559060efdfb394997b350d9c5b3",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-eam.html",
+      "bytes": 54589,
+      "sha256": "2356e1a066b402f616dbfce3624dd8077ff890c9cf1c8e645e2aaec87145f43d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-eventstream/system-eventstream-getDiagnostics.html",
+      "bytes": 54899,
+      "sha256": "f364d3ceac30c12e7192a9bcc779361be441e52619b1f21876be8e56b1b9e3e8",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-eventstream/system-eventstream-listEventStreams.html",
+      "bytes": 54785,
+      "sha256": "c89d8121ffcd060cad046e2d6636740b8da0b7c2d41e0833b93025697a2fc1ba",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-eventstream/system-eventstream-publishEvent.html",
+      "bytes": 61229,
+      "sha256": "1318b4ff6870a47e19aa440d7920efa17dc03be02490b9aa3ecbe9829919c61f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-eventstream.html",
+      "bytes": 52541,
+      "sha256": "0badca396b9ac8577cc094ffbadab9d42fc7abab6a7ebd23f7a84ad3a15fd49c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-file/system-file-fileExists.html",
+      "bytes": 63520,
+      "sha256": "3c1deb7167da801ff4e5a53647ecf679651f55051bac554159ebd3b4803fe288",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-file/system-file-getTempFile.html",
+      "bytes": 58502,
+      "sha256": "99f251b813d29760c94d6ee154e1d97bc553e8618a86ca92f5d44a4fd7627edd",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-file/system-file-readFileAsBytes.html",
+      "bytes": 59332,
+      "sha256": "24f1c7048d1bc87f8411dd4b0349d729d5f7c70024e3ae4b330b01899e898aff",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-file/system-file-readFileAsString.html",
+      "bytes": 59471,
+      "sha256": "05ad32c9a63566ecb44edc2ae831e5a10a99c8ec187e9215006b906f76f8dbf9",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-file/system-file-writeFile.html",
+      "bytes": 68666,
+      "sha256": "a4bc506e4791b04fd73fcc38ae127253db385923ac47f6942336b65298ffbb9c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-file.html",
+      "bytes": 55828,
+      "sha256": "e932d8d0b28e933a657adb01d48e3d5f9fdf3a5becb4e5540ce93e1443062159",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-groups/system-groups-loadFromFile.html",
+      "bytes": 57393,
+      "sha256": "070206a045e4f079f44c4464de3bce0b6442333ab5b9040f31f1ebe6641a861c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-groups/system-groups-removeGroups.html",
+      "bytes": 55617,
+      "sha256": "8ed48cac8a312f13edf409d87c13781fb39e261146d61b1dbd979a8df21f5150",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-groups.html",
+      "bytes": 52084,
+      "sha256": "c693bfb3bd94f191877e6f8999c4475a9ceecded6d13f376564227576b4cef67",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-historian/system-historian-browse.html",
+      "bytes": 67196,
+      "sha256": "7cdab1dede6f367d8774ea29d3143dbc0f88400676d9194a1a0dbf98e48296e8",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-historian/system-historian-deleteAnnotations.html",
+      "bytes": 60032,
+      "sha256": "21a89b64236999107e8f7e190175278fc7a4a64d71bfdddd366dc084f8ce25bf",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-historian/system-historian-queryAggregatedPoints.html",
+      "bytes": 72627,
+      "sha256": "0730788adb952c970948a6c6703c1f66e4b6ee9c849dd214506284f9dd3a5052",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-historian/system-historian-queryAnnotations.html",
+      "bytes": 61140,
+      "sha256": "3fa648e776d818516997ba955db7f662140ddfb0ce42b47b3eabcd2e5685cdbe",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-historian/system-historian-queryMetadata.html",
+      "bytes": 60116,
+      "sha256": "f71a1be4ed736c55b01395df94b2399d96d9491319332115847811ab8ef9f736",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-historian/system-historian-queryRawPoints.html",
+      "bytes": 70797,
+      "sha256": "f4c55cd510d0a02a1c2b3471a987821a023ffd5a88e48f6a72b60944abcbcb9f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-historian/system-historian-storeAnnotations.html",
+      "bytes": 65080,
+      "sha256": "736bbcd5bc35dc5c644b51da3a43a9ec09ff135b614f00ff5175b9606dd83e0a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-historian/system-historian-storeDataPoints.html",
+      "bytes": 62039,
+      "sha256": "d5fdb2c4881f9c793a4140097a77186be163c32692c14d0605526b67d6e18dd6",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-historian/system-historian-storeMetadata.html",
+      "bytes": 69196,
+      "sha256": "a14e90b370517637feef54b141b64678a59b9ddcafd001472f971c8c63d14651",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-historian/system-historian-updateRegisteredNodePath.html",
+      "bytes": 59158,
+      "sha256": "d907ca7f289a45ad2191d725fdb552079181ca803bca8d8e96adbb86c80350d7",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-historian.html",
+      "bytes": 62800,
+      "sha256": "08e4e64e1cebaf8d36f4239326158d872857b9616074606cf2f64add98a164ba",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-iec61850/system-iec61850-cancel.html",
+      "bytes": 61473,
+      "sha256": "2d2f3ef0c6409b27a38e1e303a7d6b27b26630d1b96afa6335f5c8e0612d7967",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-iec61850/system-iec61850-getControlParams.html",
+      "bytes": 59579,
+      "sha256": "5672dcd92144a434c2bce16f64cc9b12cdee50ed24c4c09414a0b4ca3ff9fdf2",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-iec61850/system-iec61850-listFiles.html",
+      "bytes": 57046,
+      "sha256": "f55db524c8372185766c86f9eb0b5090c6a48b85befcc6298edde4f7b5ae5b38",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-iec61850/system-iec61850-operate.html",
+      "bytes": 60655,
+      "sha256": "26fbc969b6bdc6fb4e91031ce773e96f1fbdca37a2a47583ff25c859f6a47451",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-iec61850/system-iec61850-readFile.html",
+      "bytes": 60180,
+      "sha256": "471f59cd5f405b112cb75c6803cee99c15cf6a0bf69ee72069fc1865d1eb2a20",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-iec61850/system-iec61850-select.html",
+      "bytes": 60704,
+      "sha256": "60642358640d5520ed934d7983f0bc9a5912cce8c9ae6e99a8e0d9caf6e7a047",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-iec61850/system-iec61850-writeFile.html",
+      "bytes": 58728,
+      "sha256": "1bca5f9df2346adb907d85630e42a1c7844769f242b712d75585edb89fce4190",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-iec61850.html",
+      "bytes": 63845,
+      "sha256": "4c372db031cb07400ad97b790bcad16a7485a349980323f40a4b02ed58cba747",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-kafka/system-kafka-listConnectorInfo.html",
+      "bytes": 55698,
+      "sha256": "ecf37255132dfd3012ee7865f3b138925d1f0de83f5801901a7941013a931394",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-kafka/system-kafka-listTopicPartitions.html",
+      "bytes": 56747,
+      "sha256": "86fbca06c0311ac6086b88e5913cd128ed039c5674932a8ca98f51d8107dada3",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-kafka/system-kafka-listTopics.html",
+      "bytes": 55844,
+      "sha256": "bb1d15f53b45171d2cbe149d9e13f4722f054fe5554ea2c68acbee2d2097fb50",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-kafka/system-kafka-pollPartition.html",
+      "bytes": 57663,
+      "sha256": "86e0d0cc5862a1c465191106999d07dc797f0e54d76c29d3b6c3f7a167dc581a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-kafka/system-kafka-pollTopic.html",
+      "bytes": 57088,
+      "sha256": "3685fe7da43b0d2e0ae6222534f90d3a5852bc9113e6b0d8991c302094f959aa",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-kafka/system-kafka-seekLatest.html",
+      "bytes": 56871,
+      "sha256": "82d927f1383e7c2ca071700291eeb9c8b4eb3e8a150511e58157db932ad1bae2",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-kafka/system-kafka-sendRecord.html",
+      "bytes": 57813,
+      "sha256": "8a70b4e3ecdc5d4ef62b4c687dc679161c250a19ce0fbdc9084078af62b46967",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-kafka/system-kafka-sendRecordAsync.html",
+      "bytes": 57556,
+      "sha256": "b9939829c21ca34d37e79aeb4c616469bf951b3777ee2eb9e50fcf541fa4833a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-kafka.html",
+      "bytes": 56724,
+      "sha256": "34fe8804ccbe4578f8e11e082059f361b04d05023e921ffa24caed1519a49300",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-geometricMean.html",
+      "bytes": 61308,
+      "sha256": "7d2f7f4f02e80e7a1bfe88b38cf82e2ad43fa6d27a4ae25a7bb76b9598f3ded8",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-kurtosis.html",
+      "bytes": 61244,
+      "sha256": "d814c148da6c00f87ed2dbccb0914d1f8258209109c818e9bc05188da00a3eac",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-max.html",
+      "bytes": 68377,
+      "sha256": "993ba2a517998e7beaafc187c3898d4693dc6aea7c48dddcb56910e0d6a97739",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-mean.html",
+      "bytes": 60777,
+      "sha256": "438be0071f016bcc588dac192155b0359d5984bf4644c73f549ea851c45a3782",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-meanDifference.html",
+      "bytes": 62894,
+      "sha256": "47f1cabe486dd512fab0a74d9108e2e2c9b07b4dff691e07d26f96e801b653b3",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-median.html",
+      "bytes": 60828,
+      "sha256": "4e9f50d2b44e80c7850a07f245093a4c328f662a396933bbf58c303a9dfa0695",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-min.html",
+      "bytes": 68408,
+      "sha256": "7b5dd7a3b9fc48a075dcbfc0e1540a11cba9b27bd590e5c31381dd7647013106",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-mode.html",
+      "bytes": 62674,
+      "sha256": "243957be8cc9d0272bb1d046ef00cbca7b259b82da649b861b0779b24e056568",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-normalize.html",
+      "bytes": 63014,
+      "sha256": "0d57e46647a0f107524567d67bd4e4e46c28935a2caefaac0873dd31b61a8991",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-percentile.html",
+      "bytes": 61345,
+      "sha256": "b38760d504450df57fee23ced5a41bb3593c55e1fe4ab71f3414e7634facb34c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-populationVariance.html",
+      "bytes": 61111,
+      "sha256": "e60fa18e0641a6309e45e3aff6cb30a627b1ec7e9188faec8ee3faa9045890eb",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-product.html",
+      "bytes": 60971,
+      "sha256": "b636a91a7d4ca7525f836af9466bb6cf7ecfa14c515c3704508689418ca18393",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-skewness.html",
+      "bytes": 61433,
+      "sha256": "fa5278fa0ba35ab8a7ed1aaf1e96e5094701b114e30fa7b1529c4b60cb50a7b1",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-standardDeviation.html",
+      "bytes": 61191,
+      "sha256": "1be5d89a0cb4204d65e9539d669ac70f77ba567ecf36e443d2604a60c62cfa4a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-sum.html",
+      "bytes": 60898,
+      "sha256": "485d76c2c070c35b825da8e1790b067cd69e5842ddd5590869eca81f5b42fac8",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-sumDifference.html",
+      "bytes": 62815,
+      "sha256": "fcfc3e75705504cd573baa83148f06237494db6775d50e15ef988487e5393419",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-sumLog.html",
+      "bytes": 60880,
+      "sha256": "f89c4492f85162078aade5bb32d0e64b71ee77e86af9476a5385a7769968bf88",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-sumSquares.html",
+      "bytes": 61059,
+      "sha256": "8c1974c9d3a9f73886dbd1ef2881f8a35c7cda7c1c3b53de4b7a168ba1d63633",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math/system-math-variance.html",
+      "bytes": 60937,
+      "sha256": "7a967e68f82ae155b77f5b8996b9917193f8dd6274af1afd3f2f337eb96cc228",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-math.html",
+      "bytes": 71553,
+      "sha256": "fdacdc1e1b93d96abbd991f4ebd88867671393b47fd90e19445ea2a50ee57c7d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-mongodb/system-mongodb-aggregate.html",
+      "bytes": 70362,
+      "sha256": "60c937a70ea55d419ba240fac071443fc93aeb30a850b91e3663e931cfd56eb3",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-mongodb/system-mongodb-deleteMany.html",
+      "bytes": 60454,
+      "sha256": "a4c09b2d07eecd6bc73580a6e72e5b16bdad52672eed21f9bd11b18819eee2aa",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-mongodb/system-mongodb-deleteOne.html",
+      "bytes": 61548,
+      "sha256": "214d5c5485a28ed9b3ae2f6943927127417c05805c727fd36e98dfa58d3cd951",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-mongodb/system-mongodb-find.html",
+      "bytes": 92097,
+      "sha256": "5c815d3a2b12ecffa02eed09f291b83eb94a074276acec5c578d52b651a3424d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-mongodb/system-mongodb-findOne.html",
+      "bytes": 73608,
+      "sha256": "367a25cc705560b8950f7b2c1ab1090375011dfb5a38330070d37ccf0cb60dc3",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-mongodb/system-mongodb-insertMany.html",
+      "bytes": 77676,
+      "sha256": "b35c6e62cee279104d084114f7b4a8bbc72acb904adb03f5ab3dd89deb05304e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-mongodb/system-mongodb-insertOne.html",
+      "bytes": 69429,
+      "sha256": "1dfc046379f6323593250ea0db43cd37bcf9c983c7c301e1cdcaeb24e6bde227",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-mongodb/system-mongodb-listCollectionNames.html",
+      "bytes": 60349,
+      "sha256": "bacce85f5e2156384422cadf1332e3047e414fd3e61e951e6670e2ca6bd34ddf",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-mongodb/system-mongodb-listConnectorInfo.html",
+      "bytes": 61342,
+      "sha256": "29aaa08e28f81c1c032eb5f40d585439213c190b57a9beae24a87847a5b8f990",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-mongodb/system-mongodb-replaceOne.html",
+      "bytes": 67633,
+      "sha256": "ecc7f8ffb33b4cf4bdd5f3616b484ee59278d7245a64a6a53f3e386120c1a3a3",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-mongodb/system-mongodb-updateMany.html",
+      "bytes": 67955,
+      "sha256": "e4e1530807fc7597069c85c7bdf4dba54a1ddba0402d59dc5082cfe2b3f2d633",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-mongodb/system-mongodb-updateOne.html",
+      "bytes": 69548,
+      "sha256": "d47f62b37d19295873668492aa40979f3562f780ba09b0abb054c240e70351c1",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-mongodb.html",
+      "bytes": 62262,
+      "sha256": "e5bd5b6aeaf62633a82bcaa47021c296ff2079f009c337f5e86ceb8fd836004d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-net/system-net-getHostName.html",
+      "bytes": 59829,
+      "sha256": "34ca94ad2f6620c41395a777a2d48681b6aed94653a0bcb597553f0186b799be",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-net/system-net-getIpAddress.html",
+      "bytes": 59784,
+      "sha256": "fd7363ecbab97f4fdd30bc6e31f3ffc14f38dacc2d6c592238a74df336b6fd53",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-net/system-net-getRemoteServers.html",
+      "bytes": 58832,
+      "sha256": "eecb3e256af3928fd668a383be1469d9d23c1366ac081445ce7a174599b88676",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-net/system-net-httpClient.html",
+      "bytes": 94249,
+      "sha256": "1880cd93d7204d2f73b6a24d4af2895eae1ea96228dcea2d434f341f4de31352",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-net/system-net-sendEmail.html",
+      "bytes": 85816,
+      "sha256": "55192046c9f82e5d347c012fd40fcd64c1392745290f6d65ac326147264f2491",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-net.html",
+      "bytes": 55744,
+      "sha256": "30e8f305be9bfeb2930b2d5a22593b985ab0d027892bc4f817686adbde39eac4",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opc/system-opc-browse.html",
+      "bytes": 68198,
+      "sha256": "6383b9cece2af9b9a9f97942f931bd9a32313e4faf19e996e3dfb0beb1ba6dca",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opc/system-opc-browseServer.html",
+      "bytes": 78801,
+      "sha256": "dc9301b7a76230930f9839f5983ceb6a62125f56a6da33cd59b7df5fb9b2828c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opc/system-opc-browseSimple.html",
+      "bytes": 63941,
+      "sha256": "48ac0c22b5642a5b644c7dd8674e7acb043170ca0f15a7bf0060d774f093f627",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opc/system-opc-getServers.html",
+      "bytes": 58702,
+      "sha256": "f853cb89928b87810ecfb775f6dc25a602a8481e1493af41eefc17428d6aae54",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opc/system-opc-getServerState.html",
+      "bytes": 62279,
+      "sha256": "23b8e1d7aafc7e93ec28e535fdf869520d76cb8a33294069bc79fe19b5dc3017",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opc/system-opc-isServerEnabled.html",
+      "bytes": 62232,
+      "sha256": "364acca044833ebd98bae90a08861d0beebb4e6a220c2dab5cfbf7ea6ccd4134",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opc/system-opc-readValue.html",
+      "bytes": 61463,
+      "sha256": "dd805b7412b3a4de01beaf51818edaa5c1dcea2b5786c15cb6f46b66483e759a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opc/system-opc-readValues.html",
+      "bytes": 59294,
+      "sha256": "1c60c3a4c8cfa6629a7b881382c44140916fbca1525f030d8ee4b73e4b25bc27",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opc/system-opc-setServerEnabled.html",
+      "bytes": 66324,
+      "sha256": "80ff65abe3a8701e2d026dc327e8e520d448afb6e4488b089bf2682014c1b8a0",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opc/system-opc-writeValue.html",
+      "bytes": 63266,
+      "sha256": "2a2de0e78ef50feb38428f27a8c56c8f4e9f8902974c2d3d474f5874eabd246b",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opc/system-opc-writeValues.html",
+      "bytes": 60167,
+      "sha256": "781944e688882aaaf53549889abc4411242948db48b0750de3b8ac2bdd6da7c4",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opc.html",
+      "bytes": 62508,
+      "sha256": "5634a205a848691ae7b544ce27da4a879552094ef2798b635200d6bcfc9fb63c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opchda/system-opchda-browse.html",
+      "bytes": 55703,
+      "sha256": "99c4efda10c3c4094ec6a530d890d288dd1a88c4889684eb633b42b83fb967fb",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opchda/system-opchda-getAggregates.html",
+      "bytes": 56016,
+      "sha256": "827f2f95c3b2e808fa63ec02aebf2a7b522463e21902ad420d38b04fe6e857b2",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opchda/system-opchda-getAttributes.html",
+      "bytes": 60286,
+      "sha256": "c857a1a9653dad7c8986151cee0c10f72cc2d2281dfad98b23550cd4ed70e30b",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opchda/system-opchda-getServers.html",
+      "bytes": 56936,
+      "sha256": "e465d4cefdc7e97ce5e96131d447780752e6774baf409fb1d74d8d11a5c2c46f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opchda/system-opchda-insert.html",
+      "bytes": 60618,
+      "sha256": "b211190c3ec8e322a91356d08a957d9788d861d254531f6604ec9ebf5ef8b63f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opchda/system-opchda-insertReplace.html",
+      "bytes": 62511,
+      "sha256": "60dca9911307496461bedd72def819e1ac7a6bca1b5e1322f97102dfbbb3ff67",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opchda/system-opchda-isServerAvailable.html",
+      "bytes": 57347,
+      "sha256": "ff1d8b159d1544be3527907583bf17d5ce797a596a97612418a2fad91b371ec6",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opchda/system-opchda-readAttributes.html",
+      "bytes": 62311,
+      "sha256": "8bf241fe330dde8c01f641234adc3117bc5bf684e2c705d341316cf0620bb2f6",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opchda/system-opchda-readProcessed.html",
+      "bytes": 62083,
+      "sha256": "0a4d5e9f832c48377926b1e0a45998d8f42f3dee64f0ce5b97feba99b0933ec8",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opchda/system-opchda-readRaw.html",
+      "bytes": 61360,
+      "sha256": "f1408669501c79bc156348e8b33ecdf82481567719641c9ed3bd4c365557d4a1",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opchda/system-opchda-replace.html",
+      "bytes": 56091,
+      "sha256": "f952c720fbb83d58725b7cd7ed4464761258bfd5a234332be3a09601e2b0a336",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opchda.html",
+      "bytes": 63113,
+      "sha256": "e6b85b0cf7c8dd70769d144ac88b4ba12cf9c3d2f2536b2b7c0153799a3a140e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opcua/system-opcua-addConnection.html",
+      "bytes": 61694,
+      "sha256": "2f75f40e67482adc77672e2cccdfd17d6d21857ae124da1d36cdc13dd9f56585",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opcua/system-opcua-callMethod.html",
+      "bytes": 60268,
+      "sha256": "89500654c9645100ec890732ed29f2be8310f3dc98bee6e1fa87c5a54e787bf4",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opcua/system-opcua-removeConnection.html",
+      "bytes": 53201,
+      "sha256": "5680ffab174d33ac33bd864fd8983067a343315352d76779a67702cb47c2dbcf",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-opcua.html",
+      "bytes": 52723,
+      "sha256": "67c8a1f492c6673a7e00cf3b3813c80d5ac71782b9f0210fe7e7f27f7f34f474",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-alterLogging.html",
+      "bytes": 69706,
+      "sha256": "1ce3cd2785b220f375ecf7518b52c4e25db33b09b83fd59e528fc7787a79b893",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-authenticationChallenge.html",
+      "bytes": 66309,
+      "sha256": "a588195ea88fba10b29afd88526d8a0d33058f49be108acf4433efe0f0245ec1",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-closeDock.html",
+      "bytes": 63481,
+      "sha256": "55d9b9e0d339a34396eb955fb49ae8faa26a1aaf143cb70b31a4a341ee32d42f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-closePage.html",
+      "bytes": 63010,
+      "sha256": "52c282227c6f4befe06f48a1ad0c0ecd101d2a4f27c694b35dda296e06f65a7f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-closePopup.html",
+      "bytes": 64639,
+      "sha256": "7beaa9ddd1456ba642e99386968836767659e659ef623623faec82046dc74f56",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-closeSession.html",
+      "bytes": 64013,
+      "sha256": "702bb6bc800ce3a4736b9d13ee02b7d4005a8ea88baf4adb6b49a84f63f0cb12",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-download.html",
+      "bytes": 69164,
+      "sha256": "6eb17a400cc977fc15a00f5d4aa751b3809ebccb75ad6053a6a4381ae200984e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-getSessionInfo.html",
+      "bytes": 71626,
+      "sha256": "f5d6217d0d0b0c54ee23431a2d5990511306cb1e70ccbc1c061b7c0ce37f8380",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-isAuthorized.html",
+      "bytes": 64411,
+      "sha256": "4531136393c9e0e09eb7b1f14d860c411d071b068054f1b3baa188b12c1c33a9",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-login.html",
+      "bytes": 64878,
+      "sha256": "6e7f57a795841cc5742339e4fc7ad40c22aa1e755a69e20bd8961002ef81d40a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-logout.html",
+      "bytes": 63802,
+      "sha256": "a228619ccb40a2da9ff531cf6699ecd982afa929d7f1e5620ed9a4995a98d261",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-navigate.html",
+      "bytes": 75438,
+      "sha256": "3d616d8218b7a4ce1f9ae98faacbd2a259dc3b30aecaefa35cb0733857bd2191",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-navigateBack.html",
+      "bytes": 63071,
+      "sha256": "7549e5b67d2d3416bb8e23d4e6aa989ba1ccad658a28ab73fd5734d3817d2ea6",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-navigateForward.html",
+      "bytes": 63460,
+      "sha256": "ce00141178921b0b555dade269a3c534f03aa0e899a68829d1b6916f079f0bb7",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-openDock.html",
+      "bytes": 63523,
+      "sha256": "7f3aff75a42c14cf9cee4161d6507b846e8ef22a33c86f20720d4d9399db46cd",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-openPopup.html",
+      "bytes": 68572,
+      "sha256": "ee3ebf7b31737e32ab597fd18a6ba0486af6ac8d86a033149f227bb1a0d3e324",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-print.html",
+      "bytes": 63541,
+      "sha256": "7685991a0e6af2133a7f6256426668aa5a35e59a19c23ef309d10adb4b3f3d4a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-refresh.html",
+      "bytes": 63355,
+      "sha256": "58d5dbbfada2001658aea338085272511536744b5ae3b16311dd9a0107c44664",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-sendMessage.html",
+      "bytes": 66940,
+      "sha256": "6f7dad5d9f1c2d8a37e76040b7551759e32610403f0e7dd0a4903ccc079737ac",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-setTheme.html",
+      "bytes": 62961,
+      "sha256": "b7f1a8e35bcf0b4e4a6fda0fded474bfbeca7738d77b39403966594295452a7c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-toggleDock.html",
+      "bytes": 63776,
+      "sha256": "1904ed28658398c66a3d0c80c8fc92415d25e99e17e89ef2613fa5a14a71e7af",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-togglePopup.html",
+      "bytes": 65731,
+      "sha256": "163d0691152ff8b01b65824eba4a8758bc5ab01e54bea41acb58e6aac40a2a61",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective/system-perspective-vibrateDevice.html",
+      "bytes": 63618,
+      "sha256": "99d134b3623654eef45568fbdfd4639ebc273b881ea601810a7ff0a8b0d3c339",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-perspective.html",
+      "bytes": 77711,
+      "sha256": "1e476cd8e5e769564f9309b7419c16264688f7744d169430288d9d8b08618267",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-print/system-print-getDefaultPrinterName.html",
+      "bytes": 54338,
+      "sha256": "f692360af3233bff778014841fc381187ac95f385e74108b92199a17bd2e0af7",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-print/system-print-getPrinterNames.html",
+      "bytes": 54299,
+      "sha256": "7a16fcb26fac4e69686a4982a3e856ccf9ceec7ba965be8c46a7a04dcbe18506",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-print.html",
+      "bytes": 52324,
+      "sha256": "2b74927433da21eeb2fa4bf1af93f25ff355686094d79d340b50a70e7cafc479",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-project/system-project-getProjectName.html",
+      "bytes": 56389,
+      "sha256": "da5220e70fa2faa2ebed7275747154ef555863c8ddae8eafe4f04c98416363cd",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-project/system-project-getProjectNames.html",
+      "bytes": 55115,
+      "sha256": "9374d5543a8bdf49c54f067d4c7b77cc32321333892b41a88111d5ba04e95a50",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-project/system-project-requestScan.html",
+      "bytes": 55241,
+      "sha256": "fe2852d5bf99b444e4bd50a7806073f13068935f0dfe37f0f1d62ad327318a6d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-project.html",
+      "bytes": 53618,
+      "sha256": "2f51d6fb8fedaf64ee9b0d2e91ee156bf6772580d3a3aef68a1585f62aa178cd",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-report/system-report-executeAndDistribute.html",
+      "bytes": 87590,
+      "sha256": "190606c734d0bac6e77819a7288b97df314e76462b63902df29c3e0389da9b73",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-report/system-report-executeReport.html",
+      "bytes": 60676,
+      "sha256": "e61407888d15f1b34ac6c9cdc679d561cc46d7673a8a7d5c834df8eb865a4cae",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-report/system-report-getReportNamesAsDataset.html",
+      "bytes": 57850,
+      "sha256": "f5df18798b0f9ba25f3a1e07f872e6a4a8c9ffcb9fef78bdbeca919822405be9",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-report/system-report-getReportNamesAsList.html",
+      "bytes": 58492,
+      "sha256": "4ffb4a327c851ad19dc9a41701935b483595a6ded6e3dec8be3647247c83da3d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-report.html",
+      "bytes": 55576,
+      "sha256": "fbd36a90d588986a6dde446b200a3f6f87c561e6c288fdf23e7e7a6a67a37124",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-roster/system-roster-addUsers.html",
+      "bytes": 59212,
+      "sha256": "669697a88ef3a28beb797137c1a1cbd75a90b9c61d9087e4a7fe78b8ec24ef7c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-roster/system-roster-createRoster.html",
+      "bytes": 57282,
+      "sha256": "978a12950fe5a63de6bd0e09fe1961355ecc5c8e6fd01557c1eea9b1061ab69d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-roster/system-roster-deleteRoster.html",
+      "bytes": 55203,
+      "sha256": "42a80c947ce2b07c20a3e1713b2f2c0eb313d816016775a0db963affc8f8a853",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-roster/system-roster-getRoster.html",
+      "bytes": 56550,
+      "sha256": "f1a941a2914b71e238ce2ba7f7fe621642342be2cfc90dcfac54ce51dc543637",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-roster/system-roster-getRosterNames.html",
+      "bytes": 55938,
+      "sha256": "08b4cc6c757dbbddacb0de9755953dae37ef4bf520642567417aa3e7ff78f415",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-roster/system-roster-getRosters.html",
+      "bytes": 62323,
+      "sha256": "61fafdd69aa4a97d9b633e3bd875204d16c42ef483f76479917948d41ffaf293",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-roster/system-roster-getUsers.html",
+      "bytes": 56425,
+      "sha256": "871c2b684f13a152f8940db7c5d8b30cbf2ba4bf4253259356cc0d02e2464dcd",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-roster/system-roster-removeUsers.html",
+      "bytes": 57879,
+      "sha256": "f7ed55898c5bf63ac603d0e537814f7fb1d94803a8a916cf4453d32ef221cbe4",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-roster.html",
+      "bytes": 58115,
+      "sha256": "d5f6cceeac6bcbce2b8d7dfc6cf6f8202f410b09d499a61c701392b07e542b37",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-secrets/system-secrets-decrypt.html",
+      "bytes": 67927,
+      "sha256": "82c4727ee70799ac98506c67ca2fd9a263bd60597f2b4e1d490914655506f746",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-secrets/system-secrets-encrypt.html",
+      "bytes": 63983,
+      "sha256": "a808b7dfd3ffa97363ab51753fff22de29296dfcaf514bea3eb9d7f274b7df5b",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-secrets/system-secrets-getProviders.html",
+      "bytes": 54488,
+      "sha256": "c272027dcc822a4ec8d61c86fca75370d39283ac62774500818e1926cb5123cb",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-secrets/system-secrets-getSecrets.html",
+      "bytes": 54726,
+      "sha256": "d23302491778adf3c4696061c4de04cdcf2e7161967033bf69d5fbeed1ef260e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-secrets/system-secrets-readSecretValue.html",
+      "bytes": 65557,
+      "sha256": "704c1ebb986d87c75656d0dfabaf98e3aeb9ba3c6d51cee6e35a389af14aae50",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-secrets.html",
+      "bytes": 55770,
+      "sha256": "99a643e89787debe32717545fea47d45556d79f950980d25f40c0871dbe2d702",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-secsgem/system-secsgem-getResponse.html",
+      "bytes": 72158,
+      "sha256": "5c11b594240ce27ea234e15321f748ae6dce85fbaf564347ed4b6379630e3d63",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-secsgem/system-secsgem-sendRequest.html",
+      "bytes": 60217,
+      "sha256": "274daa7e8d9eee2ca2414f306aff4d784d077031e80eb28e083540e7c17bb967",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-secsgem/system-secsgem-sendResponse.html",
+      "bytes": 66005,
+      "sha256": "d70b0766cd842f82cf5cc323b8e185a80b5e906411fe8b7c7b4daebd42782034",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-secsgem/system-secsgem-toDataset.html",
+      "bytes": 68131,
+      "sha256": "46bb598ab4f2bcff03daed52ee1f74c7ecddd6f2338d01448d9aabe681987d26",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-secsgem/system-secsgem-toTreeDataset.html",
+      "bytes": 60985,
+      "sha256": "3be4e1c68d72c073787ff5d0e5ec2a467ce3f2acf0a66ce11c98e74c5cab58c9",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-secsgem.html",
+      "bytes": 61901,
+      "sha256": "d40d7bcd260e29561caae17f065598c2d37f9e53da144bc26d4ddaf77c1b161b",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-security/system-security-getUserRoles.html",
+      "bytes": 59350,
+      "sha256": "a9f6217769870df7af373290320e46d8962552ad0411310bd951d943de01dffb",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-security/system-security-validateUser.html",
+      "bytes": 62044,
+      "sha256": "ffb6372947953ac11ffb3a4a949c249bcfe129376bccf7657188158468c19da7",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-security.html",
+      "bytes": 52551,
+      "sha256": "9ded86146939be004f87bc0d9cbaeb5459c2d44b3d72d64a4ae3c2890155fd32",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-serial/system-serial-closeSerialPort.html",
+      "bytes": 58799,
+      "sha256": "2a8f8c0656b2f7462f6fd19796a7caa72076e54163f8f01cfd2a427ffe58488b",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-serial/system-serial-configureSerialPort.html",
+      "bytes": 71319,
+      "sha256": "94c0599d58781d10467604e41ca39cd6881fd0793f21cdae55da7ceaaaa8de05",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-serial/system-serial-openSerialPort.html",
+      "bytes": 58737,
+      "sha256": "90e509f1ba469b8e1d9d154f722a538190fe1139d989729f8d75509bf89ae08c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-serial/system-serial-port.html",
+      "bytes": 72775,
+      "sha256": "a35709abcfe7772c2c009396299f7dd4cd024d5adfcc94631134b2767590c1c6",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-serial/system-serial-readBytes.html",
+      "bytes": 57919,
+      "sha256": "78584aa6d94161749b9929279ae5ef0c2d8b9af76bc6db140faa040c6e83ca1a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-serial/system-serial-readBytesAsString.html",
+      "bytes": 59828,
+      "sha256": "eda0a3a17f19b8f3fd9699c855fce711e3976e9d948713c4f1160b46c005e85f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-serial/system-serial-readLine.html",
+      "bytes": 58423,
+      "sha256": "56ceaccc8ce70cc397926019b032a7530aca61cdc75bce272a232889fefb49f0",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-serial/system-serial-readUntil.html",
+      "bytes": 59401,
+      "sha256": "711679c0ba7c020f333cb04639eef15b4d9083da11d7c0a393f8bb60d0a803ab",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-serial/system-serial-sendBreak.html",
+      "bytes": 58144,
+      "sha256": "dc5bb85f012d4776b41d56291968df417f86d3b324f9d7ecde9358068e8c7af6",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-serial/system-serial-write.html",
+      "bytes": 59290,
+      "sha256": "97aab7c9d98170889c4a082493955324f62970018094964600acd017ce9711d8",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-serial/system-serial-writeBytes.html",
+      "bytes": 58544,
+      "sha256": "03e965741069bc95188f629b2db155b144206c219fdeac7ae1f25b876cefe832",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-serial.html",
+      "bytes": 62755,
+      "sha256": "9578c40d50e22575208122aeaf6e13f85cfc96b0c84e07c0089be96d184ee1f9",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-sfc/system-sfc-cancelChart.html",
+      "bytes": 58333,
+      "sha256": "728a50bc7e74d8eb6b67f9816f6c31e8dfda2a89076a46268a3eb20e6ec17194",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-sfc/system-sfc-getRunningCharts.html",
+      "bytes": 68802,
+      "sha256": "4e0fd0bc328fffb52c2a95c65bb3dd34baa3185d6e080cad3118cb74dee184d4",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-sfc/system-sfc-getVariables.html",
+      "bytes": 75711,
+      "sha256": "a0ccfb1431ab80cadc2788918aed4139e82b5528619cc8045c6dca16690ce629",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-sfc/system-sfc-pauseChart.html",
+      "bytes": 57167,
+      "sha256": "738a303b95645cd9a91431523c0f8630cf66fbb7109e33c599f7c33d58e04f5a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-sfc/system-sfc-redundantCheckpoint.html",
+      "bytes": 57550,
+      "sha256": "9cbd258f8b9bb85f87474f4f689eec6f298efd9ca77d1d9aba888c774d7ce4cc",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-sfc/system-sfc-resumeChart.html",
+      "bytes": 57157,
+      "sha256": "29ac96a1ba1f53515ae5bb1439e2fec717df6053086a36036a7e0cdcbf8d8f32",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-sfc/system-sfc-setVariable.html",
+      "bytes": 70291,
+      "sha256": "c9c8c86c2441da07bc4d747b1af0087ae171a348b2e3600b96d950167b70d0ea",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-sfc/system-sfc-setVariables.html",
+      "bytes": 61425,
+      "sha256": "5eb30fac56213ea42fb38884dc61508b9009a65e67967d90a98c8b5bebef8523",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-sfc/system-sfc-startChart.html",
+      "bytes": 58705,
+      "sha256": "e66f116cf9f8ba35565151ea68b2955294248d741741cdc87712284c672b4f3e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-sfc.html",
+      "bytes": 62426,
+      "sha256": "ee43b2bfe1a68f4934535e2168bd6f4b56d1170acd68f322273e31534cf8eab2",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-tag/system-tag-browse.html",
+      "bytes": 98329,
+      "sha256": "31908d00a3cde67b134ef37892fb5924365d2a8482480a7d2b00b2a618f18928",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-tag/system-tag-configure.html",
+      "bytes": 133412,
+      "sha256": "6ddd614940dddc9eb64e2fc1ccdc545a002406d160a7f6a11cf380efaeedbee6",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-tag/system-tag-copy.html",
+      "bytes": 64592,
+      "sha256": "b29ea1883d1a6fea239929d73923db0ecbc8f2625e833e5e0fe793b73aa6c122",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-tag/system-tag-deleteTags.html",
+      "bytes": 64468,
+      "sha256": "b11a66596d4c34410294adb182ef60e9542fb39ffbdd821a1b02d6aaad12bfb9",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-tag/system-tag-exists.html",
+      "bytes": 59637,
+      "sha256": "ec8e436aabe2da0418c339ba2c5842be92b02a4ab0d1a6c1f70c0cdb6552e2a4",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-tag/system-tag-exportTags.html",
+      "bytes": 63707,
+      "sha256": "2b27ec6c66975e53241491b1e65600e91243a6c4279351bab2ba8535f3be5f33",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-tag/system-tag-getConfiguration.html",
+      "bytes": 79411,
+      "sha256": "39eb4681ab8720e7b74823435c8e21fe167bd9f4829f8388b781ddd28e9eca78",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-tag/system-tag-importTags.html",
+      "bytes": 60102,
+      "sha256": "bcc41ff0ec09569fa2c58fa695513278559e8f3972c688b6809b29ee95f03a65",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-tag/system-tag-move.html",
+      "bytes": 66089,
+      "sha256": "881986a37b6b549c0dfb01b85d1dc5349e1e941b779aad339d7e030ac8b8775a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-tag/system-tag-query.html",
+      "bytes": 90064,
+      "sha256": "ebeeb3774a81d92af7dd82a0a4b03334204a5959abbb21b65e5c501c57b8efec",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-tag/system-tag-readAsync.html",
+      "bytes": 64202,
+      "sha256": "053fcfedbb827de350545c39a8c9c901a419003a2c010c124f4f03590fcf9797",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-tag/system-tag-readBlocking.html",
+      "bytes": 67040,
+      "sha256": "3324b26e6065fb0ff7864dadb195d3ee487e5a9a3219fde0470977b493c4b589",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-tag/system-tag-rename.html",
+      "bytes": 59603,
+      "sha256": "0f54f794da8efa8b7654d788c1cf102b3140e4ca80a006d3013671992116c2e3",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-tag/system-tag-requestGroupExecution.html",
+      "bytes": 58696,
+      "sha256": "4a861d4e921b4534289a4707646c69128a0c4b1fd328c13bf5618257c62e5b42",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-tag/system-tag-writeAsync.html",
+      "bytes": 65091,
+      "sha256": "a7147adbfb4cad8cba37eeec82ed144e3527dd94c6165f97c55f78b390c27f4e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-tag/system-tag-writeBlocking.html",
+      "bytes": 61246,
+      "sha256": "74e5a535e15ee606267af2bbfdb06b0c4bd0907332bb3c8fed03fb49423a8178",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-tag.html",
+      "bytes": 67199,
+      "sha256": "cde27007377711d225a6014fe27392d7746f4ec8abe40fe883b4e2ca19f5b657",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-twilio/system-twilio-getAccounts.html",
+      "bytes": 58163,
+      "sha256": "115bf819a9edd94712d50a67d112365676c2a704b9fe27dc70cbe50acfbd1822",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-twilio/system-twilio-getAccountsDataset.html",
+      "bytes": 58899,
+      "sha256": "76d87ba0c1344e49ff16f7ad6d2031dca737963ab84232908e0ff59b3a0ea19e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-twilio/system-twilio-getActiveCalls.html",
+      "bytes": 57654,
+      "sha256": "223eddb244095f4307d6f8d576296600aa1a8168be5f3ed47282f6461b8b143b",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-twilio/system-twilio-getPhoneNumbers.html",
+      "bytes": 59116,
+      "sha256": "218f2d3b487c3bc2f0f206ec5cfac4e86d8e7131cf839d63a6caf11690fa57cc",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-twilio.html",
+      "bytes": 61159,
+      "sha256": "d5440bdde5edc304ab9f06b3a37b687ae7171ffaa6f29227ecc7bdab63ee5d1e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-user.html",
+      "bytes": 80753,
+      "sha256": "92a8a7a1dc64c8cef6d76b419b1d23190266726b6f1a4a31a3e9e91c19a1e1fc",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-util.html",
+      "bytes": 74497,
+      "sha256": "b34eb8104a49e572574b71dfbff59dadbf3f34ca3326d241c87dd44f1a9fb733",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions/system-vision.html",
+      "bytes": 131211,
+      "sha256": "bfd61b60a05f99d6db04a0c8ac08a335a5429b552f6fc1077a88680049fceff5",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix/scripting-functions.html",
+      "bytes": 208976,
+      "sha256": "95c50fbd75749d1813a846f3465de81c155fec1a4c67ddd73b83a5c9c159611d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/appendix.html",
+      "bytes": 29504,
+      "sha256": "c903a3cacd4c7e84bc15866627055e83b164ec93876fc3d483c6c91bd4f42532",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started/installing-and-upgrading/command-line-installations.html",
+      "bytes": 46987,
+      "sha256": "5291e974e363642a47808dffee2fd78bbf7291a5177a635951c647413570fb3a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started/installing-and-upgrading/ignition-8-upgrade-guide/79to81-upgrade-guide.html",
+      "bytes": 102448,
+      "sha256": "3a9adc65baa2e1b31fb3c4f8c0a0f4eb05d3be5b9b27b21dae2d880c9f291787",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started/installing-and-upgrading/ignition-8-upgrade-guide/80to81-upgrade-guide.html",
+      "bytes": 46747,
+      "sha256": "7931b145fb961fc09f72c6d8b81622d9bc9b886396c702e69d12ea4bfdf5ab4b",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started/installing-and-upgrading/ignition-8-upgrade-guide/81to83-upgrade-guide.html",
+      "bytes": 106660,
+      "sha256": "40caa6875c4a654a02aac2cacf722d79cd1c1ed145fd125f2acdaefe9feac1a1",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started/installing-and-upgrading/ignition-8-upgrade-guide.html",
+      "bytes": 34736,
+      "sha256": "0ea61ab00e64b0b9de5279457f6eb53cdcaaf00dc1db5a43c92f99b6ac8caf66",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started/installing-and-upgrading/installing-or-upgrading-a-module.html",
+      "bytes": 61972,
+      "sha256": "bb47f7ebac32ec9a25d72b0d5582d178ada71981af3ce33719ca20049a4d12f2",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started/installing-and-upgrading/zip-file-installations.html",
+      "bytes": 49563,
+      "sha256": "9ab97930d22eba3fc345c1ffd606a60379b90197a9354a1447b91275be54716f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started/installing-and-upgrading.html",
+      "bytes": 89339,
+      "sha256": "dbb973460ad51af4fdacaca19596ea813efe1587dd2c49b7a23a4ef96935cf69",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started/introducing-ignition.html",
+      "bytes": 58180,
+      "sha256": "0983c19c5f02b7778d51f82c64accdbcab6d7e1c1f3c010aaf79aac91da0d506",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started/modules-overview/additional-modules/OPC-COM-tunneller-module.html",
+      "bytes": 45892,
+      "sha256": "bc4953b55411383266a2b3fed12ced718c71c9f908d585d7425cc40c426c036c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started/modules-overview/core-modules/perspective-module.html",
+      "bytes": 52041,
+      "sha256": "de4df0c93e22cde639f3238aad05b289809ecbbce99d8bb2ca63cdac7f9ed202",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started/modules-overview/core-modules/sql-bridge-module.html",
+      "bytes": 50957,
+      "sha256": "bee4891e2c53c77a441d3ca00a9ae7d9b47a5bd0bb5a818c8203e69fa279a7c0",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started/modules-overview/core-modules/vision-module.html",
+      "bytes": 54408,
+      "sha256": "e55f72ca2b426012626bf56c3479e11c1d25469eb20254070d98be907226880a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started/modules-overview.html",
+      "bytes": 40263,
+      "sha256": "08cd4ed99906f0734f838a5833cbd1d55081810fb1d46b59310347b5c0848c16",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started/perspective-and-vision.html",
+      "bytes": 37901,
+      "sha256": "3196d2e5afe98d2b014255a4aa5f9e1ced4899273927c5b80600203720a46aa9",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started/startup-guide/designing-a-project.html",
+      "bytes": 116835,
+      "sha256": "548e46d07b5779830fdfa8f8fc8c99b4b66ce5823418391c2de179576ae3f332",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started/startup-guide.html",
+      "bytes": 31299,
+      "sha256": "06d76b48fbdb60ab6df7cafa2770729ad59e18d9c3051dc3edca2e5d39c0c49e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/getting-started.html",
+      "bytes": 31199,
+      "sha256": "b64dd61b6f5eee7415be82859d7f95efa9db299a3b5398d5a2b25e3943294755",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/alarm-notification/notification-profile-types/sms-notification-profile.html",
+      "bytes": 58915,
+      "sha256": "f5b25ee720ce89b0481f3317c07bababf61dbd823db00a4b7ad863fe57053a55",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/alarm-notification/notification-profile-types/twilio-notification-profiles/twilio-voice-notification.html",
+      "bytes": 59214,
+      "sha256": "df5a6a2cffbcc013e13c635db32bb272a7135fa7c06e50bde61d017f91321859",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/alarm-notification/notification-profile-types/twilio-notification-profiles/twilio-whatsapp-notification.html",
+      "bytes": 50850,
+      "sha256": "bc78becfca338bb98620502d7d3aac1bc44b0bacbc0cef6edab5bb54c79e262e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/alarm-notification/notification-profile-types/twilio-notification-profiles.html",
+      "bytes": 61545,
+      "sha256": "a721d4e73965424cb8f218146a10f5f1f4a820737a588c2d63b29275431000dd",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/alarm-notification/notification-profile-types/voice-notification-profile.html",
+      "bytes": 54280,
+      "sha256": "c46e10f52a52d5d96ea3ded9d252794eb99de8ff9d1ea004a9ede2b386b7f1b9",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/alarm-notification.html",
+      "bytes": 44697,
+      "sha256": "cc0626617a50beba942787d3ae5e6ef61e0db4ced05aca5a80fe21c855b9b4c2",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/cloud-connector-modules.html",
+      "bytes": 37946,
+      "sha256": "e750b31a953319919b1aa5e82fc3789381fcf21af98fc0c0ab4d37cf5b8d8210",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/enterprise-administration/adding-an-agent.html",
+      "bytes": 53199,
+      "sha256": "fe3e5be1f0aee81b55f3f3a49710629fe2a1bfa5257bb99170e1ef99b0964cd1",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/enterprise-administration/agent-management/license-management.html",
+      "bytes": 47482,
+      "sha256": "0403e8024114611eff601f20fe20417599bf6f2b310cfec47be8486f6704a506",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/enterprise-administration.html",
+      "bytes": 46504,
+      "sha256": "5edbc02ed253558bfc92aa17dfc8bef43429b708a8024d3606938751967bafe2",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/event-streams/types-of-handlers.html",
+      "bytes": 49808,
+      "sha256": "2e214048901b33cf92e0e90887537863d3dd9f0162ed8e86bfb7b44997a43dea",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/event-streams/types-of-sources.html",
+      "bytes": 53044,
+      "sha256": "6bc1cc4ca9d4445247820be8e66fc71188016da39c12e56f486c2818b521db25",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/event-streams.html",
+      "bytes": 94560,
+      "sha256": "21334525e75ae7aefb9703d09d4e6d9da6fcee4c24e6554bdd530b7cfae8a4d0",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/jdbc-drivers.html",
+      "bytes": 42863,
+      "sha256": "5823e6bf9a1609238240b2a7a929365933204ea0c0d15e420dac6fac6979c611",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/opc-ua/ignitions-opc-ua-server.html",
+      "bytes": 63191,
+      "sha256": "ec9af4aa557d107841ff840e077619c0ea769a13936b2569b1024cfaa917a315",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/opc-ua/opc-ua-connections.html",
+      "bytes": 59120,
+      "sha256": "826db972e04eeab66409e18a73e38d7d52522805b5b3795fb3350acc00acb813",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/opc-ua/opc-ua-drivers/mitsubishi-tcp-driver.html",
+      "bytes": 85120,
+      "sha256": "5d6bf116cf013c471199c2e5556d15fa56dc3477c194ef7f858a6f5885207282",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/opc-ua/opc-ua-drivers/modbus/connecting-to-modbus-device.html",
+      "bytes": 69340,
+      "sha256": "272779672ed9febdbb377ce411aef0cad3e50d77a08b0e5711d95b504ed30f18",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/opc-ua/opc-ua-drivers/programmable-device-simulator.html",
+      "bytes": 66784,
+      "sha256": "5a2b846662b589a4229d4d2de32c1d4e0ea843f9eab756533258f7d042d699a0",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/opc-ua/opc-ua-drivers/siemens/siemens-enhanced-driver.html",
+      "bytes": 63476,
+      "sha256": "f37b8c325420ab5ffcb545c5a2a09936d79d0abfda0b24e1ea777578b9090648",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/opc-ua/opc-ua-drivers/siemens.html",
+      "bytes": 49311,
+      "sha256": "6332f4ab426e59f2a1674f75e6a0a0c4811c3c1a0a472d11bb27c218d4a7eca4",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/opc-ua/opc-ua-drivers/udp-and-tcp-driver.html",
+      "bytes": 83415,
+      "sha256": "26943541f423511a8fce6f5cc4cfbe38bda74ed0c915802e7777f3313ec6247d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/opc-ua/opc-ua-drivers.html",
+      "bytes": 53814,
+      "sha256": "f701a47e5dc9b9264e6c7f548a1b0dbea6e73dfa47c78f3214055aba8f996709",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/opc-ua/third-party-opc-servers/opc-com.html",
+      "bytes": 58574,
+      "sha256": "bdca1bd78dba0d3e18e149a0735365c4a88372fb93337a62785eb2ff344cff1d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/opc-ua/third-party-opc-servers.html",
+      "bytes": 42236,
+      "sha256": "34ed537d70261af379019e099c5aecb1b14be36d74442bab30bd7b4e8944c75e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/opc-ua.html",
+      "bytes": 74857,
+      "sha256": "2ee27837c8377740b55c4f34e04b254acfe9734ef15b2ed0ae4f98e6828dcad3",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/perspective/perspective-sessions/ignition-perspective-app/offline-mode.html",
+      "bytes": 52656,
+      "sha256": "520c59149df6ed2a34fab087e61d1054234fd10cf68fbd49ab6a7ecb2e84446e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/perspective/perspective-sessions/ignition-perspective-app.html",
+      "bytes": 69430,
+      "sha256": "38a157887e8addd757b1a23bd9f12a7a38eb81de8de1be0c3869b2a4fe407b1c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/perspective/perspective-sessions.html",
+      "bytes": 73057,
+      "sha256": "8f793fe34a92e5d355070fd3e1fd2cb29195abea1da28fccea1717cfdfa430a2",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/perspective/scripting-in-perspective/perspective-session-events-scripts.html",
+      "bytes": 182877,
+      "sha256": "22607d0a754f121ea6271ca8d4407cc0d42d19b3682e909744825cb1c09b502e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/perspective/security-in-perspective.html",
+      "bytes": 60477,
+      "sha256": "0b850c6bb9ec86ebd401d62a261d4301d26030e1eda8421890b8aa045435f037",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/perspective/styles/creating-and-using-custom-perspective-themes.html",
+      "bytes": 91427,
+      "sha256": "0df68f24c069d7fb650240f48e23eebff42a88c45500a84868ef4701359f1cbc",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/perspective/working-with-perspective-components.html",
+      "bytes": 120988,
+      "sha256": "edbf9edb8dddaf6f0979934c9b38723f0055cb7027d09c116abe113f2783c699",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/perspective.html",
+      "bytes": 53520,
+      "sha256": "3c927a4171b8ae8d046bfaa562d25334d1892a4015297ff4a7cf4c5c44f26ac6",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/reporting/report-design/images-in-reports.html",
+      "bytes": 68115,
+      "sha256": "b02d477a74f46a95190335f8de32c93030be9486cde85df7ef92853f0f57144e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/reporting/report-designer-interface.html",
+      "bytes": 49128,
+      "sha256": "0b4b3ccf8942fe8009613a3175f8519086a73a59b76583c69b3cf8e1cae847cb",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/reporting/report-schedules/scheduling-actions.html",
+      "bytes": 72207,
+      "sha256": "4deaf5bea112e1ac6e1d155c71b33deaa8dccda127dd8b6e4bb3d1d843c0bd02",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/reporting.html",
+      "bytes": 49396,
+      "sha256": "b50baed332b49812e974db3932dd35a2df12a41029b85a00c01fc9cb30199992",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/secs-gem/basic-secs-gem-troubleshooting.html",
+      "bytes": 43212,
+      "sha256": "556bff28483e7a9f2332bddec30ce46030ba7ec9adceae2d958cb631bb526af5",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/secs-gem.html",
+      "bytes": 47170,
+      "sha256": "c203689dcd00e333c07766f9bc6fb838574e2a64972aca12e6b950594b886d72",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/sequential-function-charts.html",
+      "bytes": 91595,
+      "sha256": "481c9cfebec27818d87a7bb32b210b0708ccd8d8f549d6bea168742abfbb72b4",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/sql-bridge-transaction-groups.html",
+      "bytes": 44691,
+      "sha256": "61d9c0ab3c9c4a89bfb1b5ce2feaf36fca68c4726a21b26099e46a35898a1e88",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/symbol-factory.html",
+      "bytes": 50490,
+      "sha256": "5698c19862abf44bf7911c42e7e6c03f4f3bb3cd6d7a2864dc9d9ad13311b8d6",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/tag-historian/tag-history-providers/internal-historian-questdb.html",
+      "bytes": 46278,
+      "sha256": "0b00f15ac583efa1cce8e6d7d0d2db24c615ceed546107dc1cd3b28a5fe2ad8b",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/tag-historian/tag-history-providers.html",
+      "bytes": 70760,
+      "sha256": "49266cbde338a85ba5c19880235e79e238ace296dfd2c8a8c4220e36db0f6f02",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/tag-historian.html",
+      "bytes": 52303,
+      "sha256": "53295bc5048b86d2d8f22e7a932effce46741ff8c3bf0be7e3b39353e4c76ed4",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/vision/scripting-in-vision/client-event-scripts.html",
+      "bytes": 106677,
+      "sha256": "33feb95db674c2f3be1040a960ccafc1b3e456dca1aadea6ab749969ce7d5522",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/vision/security-in-vision/component-and-window-security.html",
+      "bytes": 49855,
+      "sha256": "0ca76d198e8e2775835f9ac3f274c4e1dae1e885096a26fb9d522465cb321a8f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/vision/vision-client-interface.html",
+      "bytes": 79774,
+      "sha256": "d55f62ff4556673ff99fe58c2533a2466fd996ed7a83a5ae2cb98dbf832adaa9",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/vision/vision-client-tags.html",
+      "bytes": 68286,
+      "sha256": "2685d8cfa6b261f313de3d51840a3ab6110e6ac8aa05bd506f4d950dfe532f65",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/vision/vision-project-properties.html",
+      "bytes": 86724,
+      "sha256": "5e2b44df73c88dd02b581d3b779e77421b6547dcdbcf288f57434fd2b1191386",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/vision/vision-windows/navigation-strategies-in-vision/navigation-retargeting.html",
+      "bytes": 53672,
+      "sha256": "3f172212119c49ab9edd9c3e61d65038db0f5d33bc69942b22fbce654c40f52e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/vision/working-with-vision-components/drawing-tools.html",
+      "bytes": 78536,
+      "sha256": "dbabd198751fbd6eadd8fd389060016465b8bac5dd76baf5be96dbcc48695bec",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/vision/working-with-vision-components.html",
+      "bytes": 168201,
+      "sha256": "7057d83c3d13e749ca7e4c66c43603cf577ec37d1afef42d70b374cc67cff285",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/vision.html",
+      "bytes": 63388,
+      "sha256": "346a2d1dec630746f12f70f3c852194041ce4873646fce7995cd5071657902eb",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules/web-dev.html",
+      "bytes": 69061,
+      "sha256": "cd9c03849c753d74e845e85bb48f3cbb0433d5df5088514c5de9a6c923a7ebd0",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/ignition-modules.html",
+      "bytes": 50700,
+      "sha256": "007af2934f148e1b1241b32fa8f355cb6fb2304f56cb88e8815f40297ce3136b",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/intro.html",
+      "bytes": 36916,
+      "sha256": "1c635748c01b749fd59f8cc3847ef85c36d0359e316bedc163a8755929112565",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/launchers-and-workstation/deploying-pre-configured-launchers.html",
+      "bytes": 71425,
+      "sha256": "4017254cc983f83d1ec372d6b50f6cff8cea783f8c26c16aeccb3a554a9367d0",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/launchers-and-workstation/designer-launcher.html",
+      "bytes": 33058,
+      "sha256": "56a7ecf8aea5ebc0e73b7196a0ecd56224bad3d5e49e28b5e9618c978134213f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/launchers-and-workstation/launcher-settings.html",
+      "bytes": 57641,
+      "sha256": "117eeb01a30031ed282709cb5d58f4c064a7fe8e88e3c0674f1e8986433f1a08",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/launchers-and-workstation/perspective-workstation.html",
+      "bytes": 48901,
+      "sha256": "d2c8ec95197d170a0c0766de5a7cfaf1787274613fdd7497172b31653b95e3fa",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/launchers-and-workstation/vision-client-launcher.html",
+      "bytes": 44914,
+      "sha256": "6e1238bcc7f29d80439d8caae47c54f364703fa82d117b44cd1e68a155995e9b",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/launchers-and-workstation.html",
+      "bytes": 93422,
+      "sha256": "dfc4998f4385bf11f1b3436abb1fb2ce7955566c46c76d79be61325011583207",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/new-in-this-version/mobile-app-changelog.html",
+      "bytes": 38243,
+      "sha256": "dc4d15bf145e4cfabf8372357f8d8abcb752ffb8bfdf86320f5bdb217b74161a",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/new-in-this-version.html",
+      "bytes": 76644,
+      "sha256": "0e1adab5b8b1c059705a59f9b837fa758e98c72cb37acfca5bc53a2fc8fc7602",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/other-editions/ignition-cloud-edition/upgrading-ignition-within-cloud-services.html",
+      "bytes": 42960,
+      "sha256": "2ab6eac3203aebb743a62ffa0ed0d4d05364b516b53bc14a9d8af50f8c18e317",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/other-editions/ignition-cloud-edition.html",
+      "bytes": 43116,
+      "sha256": "6c173ba2f8d8043fe6f6381d0d5b124aa4cb4f5648949299accd5c3cec23b9a1",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/other-editions/ignition-edge.html",
+      "bytes": 52325,
+      "sha256": "4bd31e9de6406c3bdf8c7d7d2e9a52e6aff0c154d4cf865e1f48a7443d553229",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/other-editions/ignition-maker-edition.html",
+      "bytes": 35662,
+      "sha256": "14b51dec862f4a3733596efd483338b3b01d9c03401c90ee2c0c23a67824a548",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/other-editions.html",
+      "bytes": 28150,
+      "sha256": "1b898e496ab778c34dcb8d6beca917bbdfc84b36c9a7af9dbb8fb6ef2d8da3e0",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/alarming.html",
+      "bytes": 58122,
+      "sha256": "3e580b7278e5290d845645d1cddfdd037a046a20f7dce99b289d8ecb79ee82f5",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/audit-log-and-profiles.html",
+      "bytes": 59184,
+      "sha256": "47230e09f76a34e85fe52fd4b47222dbb47b67a75aca731b779e4b19f07d0fcc",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/database-connections/connecting-to-databases/jdbc-drivers-and-translators/jdbc-driver-and-database-translator-settings.html",
+      "bytes": 90062,
+      "sha256": "358001eb00add1839a22d809b84002302d0eacea83e407a934f2ee8178308d0c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/database-connections/connecting-to-databases/jdbc-drivers-and-translators.html",
+      "bytes": 63831,
+      "sha256": "ce41d3a41444422508be79a7720bd63e81f5d9ceb2af74cd1696cdb64ccf82c8",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/database-connections.html",
+      "bytes": 52043,
+      "sha256": "55d74f0c404245f3e7a8c14edb0d49b6c18f88ad937bc7ee93e0e1b700453ebd",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/designer/project-properties.html",
+      "bytes": 55298,
+      "sha256": "dc028a6d8ad124a83dbab564bd6acaa37cb14ed2060a5e0f699fc1b9bb489da6",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/designer.html",
+      "bytes": 129952,
+      "sha256": "67ccedd9b05c8d0fcf8657c6c676a1baba1586a426d4870090a0b0bfbf014014",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/docker-image/docker-image-examples.html",
+      "bytes": 136329,
+      "sha256": "35dc51eb6af9b1873fca45d8c555e87001eb8e7093d6d752ab3c5dbd23bf0424",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/docker-image.html",
+      "bytes": 60424,
+      "sha256": "a6a8eeb3a368fcfdebb72621ac55fb752cfecc258ea85fe43abfd6adf4b2303b",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/expression-language-and-syntax.html",
+      "bytes": 84079,
+      "sha256": "010cb8c28d3deaa2acecee1230ea73eb2f15811cfa5adce39759f9b445828e60",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/gateway/gateway-backup-and-restore.html",
+      "bytes": 56703,
+      "sha256": "edf717d154e460d9a1664fb47c0ef2c3a6b576580adfc34cfae8fa3e9628ffe3",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/gateway/gateway-command-line-utility-gwcmd.html",
+      "bytes": 56040,
+      "sha256": "81ca35fe8cd7e7b108a5c33c8f42f13e352c168f55f6f74ebfbe1cfdbd1af177",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/gateway/openapi.html",
+      "bytes": 48202,
+      "sha256": "2854a909995a0c27f375982aff1f36e61268074bd5efb794f45ead8c327aab7b",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/gateway/web-interface/diagnostics/diagnostics-logs.html",
+      "bytes": 71685,
+      "sha256": "04dfd739c89b3d3c5ef5dd8d0666a85a7d6f4d75618ee3de9c1939d72f3d305f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/gateway/web-interface/platform/gateway-deployment-modes.html",
+      "bytes": 118197,
+      "sha256": "a9b5874b46e5ea6a50a8d38cb4b310dc1f38d8b2cf9bbc99695780dbf45df31f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/gateway/web-interface/platform/gateway-settings.html",
+      "bytes": 62130,
+      "sha256": "89b5dfb2cd3febdef3f7f9580ecc96955b23e7b15b29f76bd31095e526ecdd75",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/gateway/web-interface.html",
+      "bytes": 58957,
+      "sha256": "7e385f80cea61fb4afb37c13d0b85b30adb7a128e4f70d8f3ebbadaf193d1976",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/gateway-network/connections-gateway-network.html",
+      "bytes": 55335,
+      "sha256": "e2cbce1cf1f3f0832f949f0ed064dee4c44083ef63b033a2977f5d64a6a7f8fc",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/gateway-network.html",
+      "bytes": 82479,
+      "sha256": "aa215d0b5ec4c54ba088ce5d00ef52e3a55bd526883be8e983aa5b8f253b60cb",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/gateway.html",
+      "bytes": 88017,
+      "sha256": "4fcc60d59356e79ca0cf6b380d54e7a30d47e0d28c5949977c6725adc772c395",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/ignition-redundancy/setting-up-redundancy.html",
+      "bytes": 67322,
+      "sha256": "a4604fbf26bc25aae338549999b162bdf3b89b55241cd4d65d4e900e0b3902fa",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/ignition-redundancy.html",
+      "bytes": 56880,
+      "sha256": "e992dae4a19497b2b2bc382114060d6488fb18ec33e88baad90dcf4dd3fec524",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/licensing-and-activation/leased-licensing.html",
+      "bytes": 49264,
+      "sha256": "27718124dca6e493fcaebdc3dda1429c2f3c8519c869e1d37357e98257fd7313",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/licensing-and-activation.html",
+      "bytes": 86579,
+      "sha256": "88803c1cb228498fc3a2d5ec7d3685f1ea48a8ffc3588d2773e8756b83e4cd6c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/localization-and-languages.html",
+      "bytes": 44203,
+      "sha256": "6c3b1a4072bcb4ceb0955b303d584722f32dcf83623e79d6d58f21ea799432fe",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/projects/project-settings.html",
+      "bytes": 77797,
+      "sha256": "718641aae1e9263e808e449ced4185d3e119d1f19e40f03f159cf69e92eb13e6",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/projects.html",
+      "bytes": 52085,
+      "sha256": "df35d1f612a32793764388eff1ecdeafe8be18613bc733d9ab9656e7e28aa2ce",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/scripting/python-scripting/variables-datatypes-and-objects/strings.html",
+      "bytes": 90583,
+      "sha256": "3fadbee91ad82fefe38ea5779c4aea3fe10d23f701f7cb616569e75a82e5521c",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/scripting/python-scripting.html",
+      "bytes": 65582,
+      "sha256": "f032a32db85cd78e17da9d5e17fd47be85e4e6ffff81539f14cb50081afb459d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/scripting/scripting-in-ignition/gateway-event-scripts.html",
+      "bytes": 92765,
+      "sha256": "eb0a390172d5487ab538205cd03757fcd648a8b0ed2605a92afdebabc2da3c58",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/scripting/scripting-in-ignition.html",
+      "bytes": 70126,
+      "sha256": "870f533bb1bc7c3905074aec7bd1c647be06dac5491a2181093c99f9a5eb6933",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/scripting.html",
+      "bytes": 43675,
+      "sha256": "471e2d2fd4e21545f9399de070840c2d1e97d60174c1aeef3b09f02acadd8b9f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/security/classic-authentication-strategy/active-directory-authentication.html",
+      "bytes": 68334,
+      "sha256": "874d4f3ffdd17e83a2c9f379ec3297fcba590f58abb0d017ad20abb953e661af",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/security/classic-authentication-strategy/ad-database-hybrid.html",
+      "bytes": 62177,
+      "sha256": "29754b1f97050e1594417c346590be13dcbedb822cb9abe9e0901b695f242566",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/security/classic-authentication-strategy/ad-internal-hybrid.html",
+      "bytes": 61783,
+      "sha256": "4e32992b088ec1ff80474d525e1e1013a2d99b1519c91b0d3be05258c74eeac2",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/security/classic-authentication-strategy/internal-authentication.html",
+      "bytes": 49532,
+      "sha256": "a4287191ba1e5b88318aecc023e06b5dcfccdfc7f577dfd3d00173ef0fc55606",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/security/classic-authentication-strategy/managing-users-and-roles.html",
+      "bytes": 66672,
+      "sha256": "8e34a2f882e616369800fc260f2b19e05389eca13962c23ec5b8a8215ee8ee6b",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/security/gateway-general-security-settings.html",
+      "bytes": 47411,
+      "sha256": "fba7340486e47f5ae066334a7bebd5e8150ac0a973ab22ebbe77bad2f0d6031e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/security/identity-provider-authentication-strategy/configuring-identity-providers/user-attribute-mapping.html",
+      "bytes": 162954,
+      "sha256": "6b6ba69843793338dba7486dd0e88fe6c9d1c74ed2eabe23da9fb195104a7069",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/security/identity-provider-authentication-strategy/configuring-identity-providers.html",
+      "bytes": 84081,
+      "sha256": "d4f4b36ea3cb03c89347c22f76ba251c2818e1732156d400206e358c5be5429d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/security/identity-provider-authentication-strategy/security-levels.html",
+      "bytes": 65756,
+      "sha256": "548c99e96538534820e81d4a04db27e988fa1f628c0dec28fb88ed8507aa7e6f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/security/identity-provider-authentication-strategy/user-grants.html",
+      "bytes": 63495,
+      "sha256": "a2401e9a99dc685102aeb494bb19619f9fd3d1a8174e91fb82c1a50bd03c3738",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/security/secrets-management/secrets-management-key-cli-tool.html",
+      "bytes": 94731,
+      "sha256": "06cf5113d56aebd1ff047a47a9b32cfae3feac47f14e7093e1a161104b53315e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/security/secrets-management.html",
+      "bytes": 73631,
+      "sha256": "b8f974f178ab7cbfa2fb6944a9a2c7a8ca00a0d26743638f50cd18ac0c1b6902",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/security/service-security.html",
+      "bytes": 54606,
+      "sha256": "160b199d2a7076c0274452d4f243a67b6092aa0e82e71e064173c0107111cfc4",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/security.html",
+      "bytes": 44469,
+      "sha256": "082da6d8f834b2bf4f3b0fd4b9d099abb16bf4f46c6330fd41b2bfae2c035c2d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/sql-in-ignition.html",
+      "bytes": 69292,
+      "sha256": "5ce5cd65257cb70c7915080439b306e240d4a541ab8992ddf13966c8f943f714",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/store-and-forward.html",
+      "bytes": 47062,
+      "sha256": "af32557f45773c5a7a3581937d8a5db9f2626f73e396251cf65d1ed81d2e13e5",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/tags/tag-browser.html",
+      "bytes": 78919,
+      "sha256": "8cd5b20fbbecd69d8aa2cb57a70ac15994920b7a0d980714c6c42de5070fbee5",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/tags/tag-event-scripts.html",
+      "bytes": 68521,
+      "sha256": "dd5c59fbb97163e58e83452c4e22394efadec89dd37e03ffa15f5c5686376c58",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/tags/tag-properties/tag-alarm-properties.html",
+      "bytes": 100122,
+      "sha256": "ab121bb4749affee2cfe91492b00d09247a8cbcb4fd0effc230dda3e3b355467",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/tags/tag-properties/tag-security-properties.html",
+      "bytes": 57289,
+      "sha256": "01130d03684d8a86a8fe2cd16a1e27ab67d77969799e1ce40c70042938973359",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/tags/tag-properties.html",
+      "bytes": 109007,
+      "sha256": "25eb4bfa4a4e31b16423d4d711c87944df9b82b4b88dfa6fe3905b1d5b8349e7",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/tags/types-of-tags/system-tags.html",
+      "bytes": 83270,
+      "sha256": "b1ee8836cb2a6e4c1b462ef2dfd18c2fbe3f79d51989c9698a1471d8cefeeb66",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform/tags.html",
+      "bytes": 53275,
+      "sha256": "6e03f6d55a26174194a9de5c20ae62380f0ab452e55e215637abc4df09be67d8",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/platform.html",
+      "bytes": 42887,
+      "sha256": "97ef256d73d14eb592f7a05297a7a299bdb384d24166f23d2b2db517fc7b900f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/system-architectures/aws-outposts-architecture.html",
+      "bytes": 48286,
+      "sha256": "605d595c5768419f86299f7a67bc1265538ec5dff335231ec044d332de3e0c46",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/system-architectures/basic-architecture.html",
+      "bytes": 32188,
+      "sha256": "383e66b7b171c4adb54b2c58ff2addb4f03d5af87efc2ad248957ec77f2b76ba",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/system-architectures/cloud-based-architecture.html",
+      "bytes": 38569,
+      "sha256": "ea92b7ec8308d301f3238f201e329d4d717917927c255e082d9cefee3f5fc1c8",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/system-architectures/edge-architectures.html",
+      "bytes": 36638,
+      "sha256": "9226358a7d13b90c62b0667d4ddb1792150c416a247ce89379c274d00780d0e9",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/system-architectures/enterprise-architecture.html",
+      "bytes": 33308,
+      "sha256": "54637e638d9f8f2c39e2a2270bd3e48303ac657646836bc0fd0007ad4a7ffaf0",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/system-architectures/hub-and-spoke-architecture.html",
+      "bytes": 35568,
+      "sha256": "25b1879060a8cc887d5ab1b78473c6c1fe03a6f08033bbae866093d156a50894",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/system-architectures/iiot-architecture.html",
+      "bytes": 34742,
+      "sha256": "c4c79e26b4f30e9164ba285bf1bacc6b9de85490def585b41b9291c5220d85e1",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/system-architectures/redundancy-architecture.html",
+      "bytes": 36014,
+      "sha256": "cc90455cbfcc18220ceadda43c1b528293e2bc89b0c032464bbf3e6644342f5e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/system-architectures/scale-out-architecture.html",
+      "bytes": 37065,
+      "sha256": "d956f13bbae41dfd934bacae0b1ef12644a572856e64687467b91e754afde33f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/system-architectures/security-architectures.html",
+      "bytes": 37710,
+      "sha256": "a03c9f8f409ab5f7c5849e2a69f335e3d0e99bf9b296a2aa8c450496c04cdf2d",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/system-architectures.html",
+      "bytes": 36583,
+      "sha256": "7c1a2826fc5167a9f7d64dbc1853233e4c2741e7a9afd9f07db667c5ea3081e2",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/tutorials/ignition-8-deployment-best-practices.html",
+      "bytes": 95769,
+      "sha256": "6d1566b48e24f53c57ce967c262395fb6a3c3c436e9bdf098131b6fea230fcb0",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/tutorials/ignition-historian-guide.html",
+      "bytes": 90054,
+      "sha256": "8addb6e397bd65706de97ac8bd8e3f186db9ba8bd40d463fdbc629e0fa85760f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/tutorials/tutorials-and-helpful-tricks/working-with-long-paths.html",
+      "bytes": 40713,
+      "sha256": "b89cb9bbc4296053f5dc2b8f02e9e811a6616c70bf864dcdc5780bf6ee6ab84f",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/tutorials/tutorials-and-helpful-tricks.html",
+      "bytes": 39347,
+      "sha256": "37ea4b77db6dd05f4c1001e3f795ca73f4a7072e83e3066248eba03d1191e52e",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/tutorials/version-control-guide.html",
+      "bytes": 83855,
+      "sha256": "11a77796f63650e1dc46079f4a19c6d9c7afecb6f951ea9303f4de23bd3f4ad6",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "ignition/8.3/docs/8.3/tutorials.html",
+      "bytes": 31957,
+      "sha256": "7e91f6d04bb798acc663f12b39956dc8619e89c5d490e65bbc685154546ea9c4",
+      "is_pdf": false,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "rockwell/2080-IN001_-en-p.pdf",
+      "bytes": 436031,
+      "sha256": "72209214c87d339bf2f9bf2c13d8da0ca474d06ed40e222e3aa6746dd0a36094",
+      "is_pdf": true,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "rockwell/2080-QS001_-en-e.pdf",
+      "bytes": 5321465,
+      "sha256": "253c184241b09935d34fe00ece12b82d9b014499b306e642b66fa9143362655c",
+      "is_pdf": true,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "rockwell/2080-RM001_-en-e.pdf",
+      "bytes": 34695893,
+      "sha256": "d3f676fc2857d5f298bfaf70c392e1fd3e7ccc00a903b37223ff39a264126e20",
+      "is_pdf": true,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "rockwell/2080-RM002_-en-e.pdf",
+      "bytes": 20770113,
+      "sha256": "202a0509165d1bc74db841b54fa0d071fc6871fceda03fa85b136ff3e745af7e",
+      "is_pdf": true,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "rockwell/2080-RM003_-en-p.pdf",
+      "bytes": 56307410,
+      "sha256": "9cf8b9938412f87ad89e3aeca664c949c7578ea6c341fc2b5fb8d8f0811e3cba",
+      "is_pdf": true,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "rockwell/2080-SG001_-en-p.pdf",
+      "bytes": 3660758,
+      "sha256": "cf6b2ff0ea7c6564ffdef11f914ee8ee99944bbd7f8d5282212b8f1233e228f7",
+      "is_pdf": true,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "rockwell/2080-UM002_-en-e.pdf",
+      "bytes": 26238033,
+      "sha256": "4e927e793c30c661df346ec53dd20f87f2779ac2f4a96e7bc2ea8a53bdc1c90a",
+      "is_pdf": true,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "rockwell/2080-UM003_-en-p.pdf",
+      "bytes": 4078347,
+      "sha256": "82bad78e4fe93f8f1b5f77a56560837feeb6250f255b39ff79ff25a14db91687",
+      "is_pdf": true,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "rockwell/2080-UM004_-en-e.pdf",
+      "bytes": 8114679,
+      "sha256": "a54e1b4dc1dfddb95e41fca331498e52344db76eb84f3990cbf68cb12b366a3b",
+      "is_pdf": true,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "rockwell/2080-UM005_-en-e.pdf",
+      "bytes": 23247391,
+      "sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675",
+      "is_pdf": true,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "rockwell/2080-WD005_-en-p.pdf",
+      "bytes": 670191,
+      "sha256": "a2f1d899d538010aa203f9f6e239f452cc4f9cb5376f767e204c5f8ee0bf7c17",
+      "is_pdf": true,
+      "source_url": null,
+      "title": null,
+      "publication": null,
+      "downloaded_at": null
+    },
+    {
+      "path": "vfd/GS10_UM.pdf",
+      "bytes": 33001618,
+      "sha256": "3dfffe2ac51e12fc2072d002cc6918ef4ac8fc50a3e4b3fd1061ce9f718ab809",
+      "is_pdf": true,
+      "source_url": "https://cdn.automationdirect.com/static/manuals/gs10m/gs10m.pdf",
+      "title": "GS10 Series DURApulse AC Drive User Manual",
+      "publication": null,
+      "downloaded_at": "2026-04-19T12:35:14.780038+00:00"
+    }
+  ]
+}

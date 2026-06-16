@@ -1,0 +1,84 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "A plant manager in Ohio sent this last week: \n\n'My tech was stuck on a PowerFlex 750 fault — OC6, no manual, no OEM answer. He snapped a photo in the cabinet, uploaded it to FactoryLM. \n\nMira diagnosed a shorted output transistor. Gave torque specs for the heatsink and linked the replacement part number. 38 seconds from photo to fix. No call, no wait.'\n\nThis is real — not a demo. \n\nNo more holding a phone while staring at a faulted VFD. No digging through binders for Allen-Bradley publication 156 for the uhh... fifth time this month.\n\nWe built FactoryLM for moments like this: \n- CMMS in 2 mins \n- Photo-to-diagnosis in <40 seconds \n- RAG over YOUR manuals, not generic answers\n\nWe’re at $97/mo per facility, unlimited use. 48-hour refund if it doesn’t cut downtime.\n\nWhat’s the longest you’ve waited for a manual or OEM support on a GS20 or hydraulic unit?",
+      "char_count": 944,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#CMMS",
+        "#FactoryLM"
+      ],
+      "suggested_visual": "A split-screen: left shows a technician standing at a faulted VFD with a clipboard, confused; right shows the same tech using FactoryLM on phone, smiling, with diagnosis on screen.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "Tech in Indiana: Allen-Bradley PLC fault 1756-BA2. No manual. Called OEM — 28 min hold. \n\nSnapped photo. \nUploaded to FactoryLM. \nAI found it was low battery voltage. \nFixed before support picked up. \n\n47 seconds. \n\nNo waiting. \nNo guessing. \n\nhttps://app.factorylm.com",
+      "char_count": 272,
+      "hashtags": [
+        "#Maintenance",
+        "#VFD"
+      ],
+      "suggested_visual": "Screen recording: mobile upload of photo, then AI response showing 'Battery voltage below 2.8V — replace 1756-BP10 ENVR next to CPU' with diagram.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "Sharing something we saw last week — might help others working with PowerFlex or Allen-Bradley. \n\nA maintenance tech at a food processing plant had a GS20 VFD trip on F7 (overvoltage). No manual on site. OEM support was closed. \n\nHe used FactoryLM to upload a photo of the display and drive label. \nThe AI pulled from their uploaded manual set, found that they’d just replaced a motor but not updated the drive’s braking resistor config. \n\nSent the exact steps from the manual: go to Menu 5-42, set Braking Mode to External, adjust resistor value. \n\nMachine back up in 10 minutes. \n\nPoint is: having your manuals in a searchable, visual AI tool changes response time. \n\nWe’re not selling anything here — just showing how photo-based diagnosis with RAG over real documents can cut downtime when you’re alone on night shift.\n\nWhat’s your go-to move when you’re stuck on a PLC fault code and the manual’s MIA?",
+      "char_count": 948,
+      "hashtags": [],
+      "suggested_visual": "Video: technician taking photo of VFD screen showing F7 error, then scrolling through FactoryLM's response with highlighted repair steps.",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "Here’s a real case from a plastics plant:\n\nA hydraulic power unit faulted at 2 AM. No manual. Tech called the night support line — 36-minute hold.\n\nInstead, he tried FactoryLM. Took a photo of the pressure gauge and control panel.\n\nAI diagnosed a clogged return line filter, flagged the last PM date was 8 months ago (vs. 3-month interval), and generated a work order.\n\nHe cleared the blockage, reset the system, and was back online in 19 minutes.\n\nNo more ‘wait for the binder’ or ‘hope OEM picks up.’\n\nWe’re charging $97/month per facility — not per user — for full CMMS + AI diagnosis.\n\nWhat’s the last machine fault that had you waiting — and what would you do differently with instant access to your manuals?",
+      "char_count": 661,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#Hydraulics",
+        "#VFD",
+        "#CMMS"
+      ],
+      "suggested_visual": "Two-panel image: one shows a dimly lit hydraulic unit with a technician holding a flashlight; second shows phone screen with FactoryLM diagnosis and work order.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "You: standing at a faulted Allen-Bradley PLC. No manual. No support. Clock ticking.\n\nWhat happens now?\n\nHere’s what actually happened:\n\nTech in Ohio — 3 AM — 1769-IR6 fault.\nSnaps photo with phone.\nUploads to FactoryLM.\nAI pulls from their uploaded manual.\nSays: 'Input voltage below 10V on terminal 2. Check power supply PS3.'\n\nHe checks. It’s 8.3V. Fixes it. Done in 27 seconds.\n\nNo app store.\nNo sales call.\nSet up CMMS in 2 minutes.\n\nThis is how you cut downtime.",
+      "char_count": 594,
+      "hashtags": [
+        "#Maintenance",
+        "#PLC",
+        "#TechLife"
+      ],
+      "suggested_visual": "Fast-cut video: hands holding phone at machine, snapping photo; uploading; AI response popping up; tech walking to power supply, testing voltage, nodding.",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "This happened at 4:12 AM.\n\nA GS10 VFD faulted — code E.03 (encoder error). No manual on site. Third-shift tech didn’t touch drives often.\n\nHe opened FactoryLM on his phone.\nTook a photo of the display.\n\nIn 33 seconds:\n- AI ID’d the fault\n- Pulled the correct encoder model (E50S-920)\n- Sent torque spec for coupling (6.7 Nm)\n- Generated a repair work order\n\nMachine back online before shift change.\n\nNo wait. No escalations. Just answers.\n\nWe built this for the real moments — not the demos.\n\n👉 Tap to learn how teams are cutting fault diagnosis from 30 minutes to 30 seconds.",
+      "char_count": 627,
+      "hashtags": [
+        "#MaintenanceLife",
+        "#Manufacturing",
+        "#VFD",
+        "#AllenBradley",
+        "#PowerFlex",
+        "#Hydraulics",
+        "#CMMS",
+        "#FactoryLM",
+        "#Reliability",
+        "#IndustrialAI",
+        "#MaintenanceTech",
+        "#PlantFloor",
+        "#DowntimeKiller",
+        "#NoMoreWaiting",
+        "#TechTips"
+      ],
+      "suggested_visual": "Carousel: 1) dark machine room with lit VFD display, 2) phone uploading photo, 3) AI diagnosis text overlay, 4) technician reassembling encoder, 5) machine running.",
+      "subreddit": null
+    }
+  ]
+}

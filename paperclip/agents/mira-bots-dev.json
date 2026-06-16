@@ -1,0 +1,18 @@
+{
+  "name": "mira-bots-dev",
+  "description": "Bot adapter and diagnostic engine development. Works on mira-bots/ — shared engine, guardrails, adapters, prompts, inference routing.",
+  "adapter": "claude_local",
+  "model": "claude-sonnet-4-6",
+  "effort": "high",
+  "maxTurnsPerRun": 50,
+  "timeoutSec": 600,
+  "graceSec": 30,
+  "cwd": "__MIRA_HOME__",
+  "instructionsFilePath": "__MIRA_HOME__/paperclip/instructions/bots-dev.md",
+  "workspaceStrategy": { "type": "git_worktree" },
+  "extraArgs": [
+    "--mcp-config", "__MIRA_HOME__/paperclip/mcp-config.json"
+  ],
+  "env": {},
+  "dangerouslySkipPermissions": false
+}

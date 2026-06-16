@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This is an AutomationDirect GS10 Variable Frequency Drive, used to control the speed of AC motors. (2) The high current on two phases and low on the third likely indicates a phase imbalance, possibly due to a motor being unbalanced or a drive settings not correctly configured. (3) The tech should check the motor connections and verify the drive's settings for the motor's rated voltage and frequency."
+}

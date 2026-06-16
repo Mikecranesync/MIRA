@@ -1,0 +1,7 @@
+.env
+*.log
+__pycache__/
+mira.db
+artifacts/latest_run/
+*.session
+v2_test_harness/manifest_v2.yaml

@@ -1,0 +1,46 @@
+{
+  "name": "MIRA_IOCheck",
+  "tagType": "Folder",
+  "tags": [
+    {
+      "name": "Inputs",
+      "tagType": "Folder",
+      "tags": [
+        { "name": "DI_00", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C1",  "readOnly": true, "documentation": "Embedded DI-00 — forward selector (prod wiring)" },
+        { "name": "DI_01", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C2",  "readOnly": true, "documentation": "Embedded DI-01 — reverse selector (prod wiring)" },
+        { "name": "DI_02", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C3",  "readOnly": true, "documentation": "Embedded DI-02 — E-stop NC channel (healthy = 1)" },
+        { "name": "DI_03", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C4",  "readOnly": true, "documentation": "Embedded DI-03 — E-stop NO channel (healthy = 0)" },
+        { "name": "DI_04", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C5",  "readOnly": true, "documentation": "Embedded DI-04 — Run pushbutton" },
+        { "name": "DI_05", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C6",  "readOnly": true },
+        { "name": "DI_06", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C7",  "readOnly": true },
+        { "name": "DI_07", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C8",  "readOnly": true },
+        { "name": "DI_08", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C9",  "readOnly": true },
+        { "name": "DI_09", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C10", "readOnly": true },
+        { "name": "DI_10", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C11", "readOnly": true },
+        { "name": "DI_11", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C12", "readOnly": true }
+      ]
+    },
+    {
+      "name": "Outputs",
+      "tagType": "Folder",
+      "tags": [
+        { "name": "DO_00", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C13", "documentation": "Embedded DO-00 — green lamp (prod wiring)" },
+        { "name": "DO_01", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C14", "documentation": "Embedded DO-01 — red lamp (prod wiring)" },
+        { "name": "DO_02", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C15", "documentation": "Embedded DO-02 — SAFETY CONTACTOR Q1 (keep mains off during Step 1)" },
+        { "name": "DO_03", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C16", "documentation": "Embedded DO-03 — pushbutton indicator LED" },
+        { "name": "DO_04", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C17" },
+        { "name": "DO_05", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C18" },
+        { "name": "DO_06", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C19" },
+        { "name": "DO_07", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C20" }
+      ]
+    },
+    {
+      "name": "Diagnostics",
+      "tagType": "Folder",
+      "tags": [
+        { "name": "heartbeat", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "opc", "opcServer": "Ignition OPC UA Server", "opcItemPath": "[MIRA_PLC]1.C100", "readOnly": true, "documentation": "Toggles every PLC scan. Stale heartbeat = PLC not scanning." },
+        { "name": "plc_alive", "tagType": "AtomicTag", "dataType": "Boolean", "valueSource": "expr", "expression": "toggled({[.]../heartbeat}, 5000)", "readOnly": true, "documentation": "True iff heartbeat toggled within the last 5s." }
+      ]
+    }
+  ]
+}

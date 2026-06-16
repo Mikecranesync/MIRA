@@ -1,0 +1,102 @@
+name: DeepEval Quality Gate
+
+# Auto-cancel superseded runs on the same PR (prevents runaway-commit floods).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+on:
+  pull_request:
+    paths:
+      - 'mira-bots/**'
+      - 'evals/**'
+      - 'tests/golden_*.csv'
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Evaluation mode'
+        default: 'offline'
+        type: choice
+        options:
+          - offline
+
+jobs:
+  deepeval:
+    name: DeepEval Benchmark (offline)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # Dependabot PRs cannot read `secrets.GROQ_API_KEY` (security default —
+      # only `dependabot` secrets are exposed). The offline DeepEval suite
+      # uses Groq as the judge LLM and exits 1 with
+      # "GROQ_API_KEY is not set — required for judge LLM", which blocks
+      # every dependency-bump merge. Skip the judge-LLM steps for Dependabot;
+      # CI (lint + unit tests) and the GS11 grounding regression layer below
+      # still run and catch dependency regressions. Mirrors the same pattern
+      # already used in staging-gate.yml.
+      - name: Skip notice (Dependabot PR)
+        if: github.actor == 'dependabot[bot]'
+        run: |
+          echo "Dependabot PR detected (actor=${{ github.actor }})."
+          echo "DeepEval judge steps skipped — Dependabot cannot access"
+          echo "GROQ_API_KEY. GS11 grounding pytest layer still runs."
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install httpx deepeval>=1.0.0
+
+      - name: Run DeepEval suite (offline)
+        if: github.actor != 'dependabot[bot]'
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          cd mira-bots
+          python3 benchmarks/deepeval_suite.py \
+            --mode offline \
+            --output benchmarks/deepeval_results/
+        # offline mode: scores reference responses, no live bot needed
+        # fails the job if overall pass rate < 80% (exit code 1)
+        # Includes case `de-in-06-gs11-modbus` — guards the 2026-05-18 GS11
+        # demo regression (embedding sidecar down → BM25 fallthrough).
+
+      - name: GS11 grounding regression layer (unit + engine + gate)
+        run: |
+          pip install pytest pytest-asyncio sqlalchemy pyyaml httpx
+          # Two invocations: tests/ and mira-bots/tests/ each ship a conftest.py
+          # with the same module name and pytest refuses to mix them in one run.
+          python3 -m pytest -v \
+            mira-bots/tests/test_recall_no_embedding_fallthrough.py \
+            mira-bots/tests/test_engine_no_embedding_gs11.py
+          python3 -m pytest -v tests/test_quality_gate_stream_aware.py
+        # See wiki/references/bot-grounding-tests.md for the full test surface.
+
+      - name: RAGAS sanity on GS11 golden set (advisory)
+        if: github.actor != 'dependabot[bot]'
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          pip install ragas datasets 2>&1 | tail -5 || echo "ragas install failed — skipping"
+          python evals/run_eval.py --use-ragas \
+            --csv tests/golden_gs11_conveyor.csv || true
+        # Advisory: query_stub.py live mode is broken (uses removed Anthropic +
+        # nomic-embed-text on localhost). This step validates the CSV stays
+        # parse-able and emits a RAGAS artifact. Promote to a hard gate once
+        # evals/query_stub.py is migrated to the Groq cascade.
+        continue-on-error: true
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: deepeval-results-${{ github.run_number }}
+          path: mira-bots/benchmarks/deepeval_results/
+          retention-days: 30

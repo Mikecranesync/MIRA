@@ -1,0 +1,5 @@
+httpx==0.27.*
+Pillow>=12.0
+PyYAML==6.0.3
+anthropic>=0.40
+langfuse>=2.50.0,<3.0.0

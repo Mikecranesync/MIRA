@@ -1,0 +1,326 @@
+"""Document ingest tasks — download, extract, chunk, embed, store.
+
+Reuses existing mira-crawler pipeline modules:
+- converter.py for PDF/HTML extraction
+- chunker.py for semantic chunking
+- embedder.py for Ollama embedding
+- store.py for NeonDB insert + dedup
+
+Reliability:
+  - HEAD pre-flight + post-download size check, default 50MB cap (env-tunable)
+  - Streams to tempfile instead of loading body into memory
+  - autoretry only on transient errors (httpx, OS, conn) — MemoryError bubbles
+  - acks_late=False so OOM kills don't trigger redelivery loop
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import tempfile
+from pathlib import Path
+
+import httpx
+
+try:
+    from mira_crawler.celery_app import app
+except ImportError:
+    from celery_app import app
+
+logger = logging.getLogger("mira-crawler.tasks.ingest")
+
+DOWNLOAD_TIMEOUT = int(os.getenv("INGEST_DOWNLOAD_TIMEOUT", "60"))
+# Default lowered from 150MB to 50MB — Docling's PDF parser uses 5-10× the file
+# size during extraction (image OCR pass), so 50MB ≈ 250–500MB working set.
+MAX_PDF_BYTES = int(os.getenv("INGEST_MAX_PDF_BYTES", str(50 * 1024 * 1024)))
+
+_TRANSIENT = (
+    httpx.HTTPError,
+    httpx.TimeoutException,
+    ConnectionError,
+    TimeoutError,
+    OSError,
+)
+
+
+@app.task(
+    bind=True,
+    max_retries=3,
+    soft_time_limit=600,
+    time_limit=900,
+    acks_late=False,
+    reject_on_worker_lost=False,
+    autoretry_for=_TRANSIENT,
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+)
+def ingest_url(self, url: str, manufacturer: str = "",
+               model: str = "", source_type: str = "equipment_manual"):
+    """Download, extract, chunk, embed, and store one document.
+
+    Works with PDFs and HTML pages. Skips already-ingested chunks (dedup).
+    """
+    from ingest.chunker import chunk_blocks
+    from ingest.converter import extract_from_html, extract_from_pdf_with_fallback
+    from ingest.embedder import embed_text
+    from ingest.store import chunk_exists, insert_chunk
+
+    tenant_id = os.getenv("MIRA_TENANT_ID", "")
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    embed_model = os.getenv("EMBED_MODEL", "nomic-embed-text:latest")
+
+    if not tenant_id:
+        logger.error("MIRA_TENANT_ID not set — cannot ingest")
+        return {"url": url, "inserted": 0, "error": "no_tenant_id"}
+
+    # 1. Download (supports http(s):// and file:// schemes)
+    is_pdf_url = url.lower().endswith(".pdf")
+
+    if url.startswith("file://"):
+        from urllib.parse import urlparse as _urlparse
+        from urllib.request import url2pathname
+
+        local_path = Path(url2pathname(_urlparse(url).path))
+        try:
+            data = local_path.read_bytes()
+            content_type = (
+                "application/pdf" if local_path.suffix.lower() == ".pdf" else "text/html"
+            )
+            if len(data) > MAX_PDF_BYTES and is_pdf_url:
+                logger.warning(
+                    "Skipping %s — %d MB exceeds limit",
+                    url[:80], len(data) // 1024 // 1024,
+                )
+                return {"url": url, "inserted": 0, "error": "file_too_large"}
+        except Exception as exc:
+            logger.warning("Local file read failed for %s: %s", url[:80], exc)
+            return {"url": url, "inserted": 0, "error": f"local_read_failed: {exc}"}
+    else:
+        # Pre-flight size check for PDFs — avoids OOM on very large files
+        if is_pdf_url:
+            try:
+                head = httpx.head(
+                    url,
+                    timeout=10,
+                    follow_redirects=True,
+                    headers={"User-Agent": "MIRA-IngestBot/1.0 (KB builder)"},
+                )
+                content_length = int(head.headers.get("content-length", 0))
+                if content_length > MAX_PDF_BYTES:
+                    logger.warning(
+                        "Skipping %s — too large (%d MB > %d MB limit)",
+                        url[:80], content_length // 1024 // 1024, MAX_PDF_BYTES // 1024 // 1024,
+                    )
+                    return {"url": url, "inserted": 0, "error": "file_too_large"}
+            except Exception:
+                pass
+
+        # Stream download to a tempfile so a misbehaving server (no
+        # Content-Length, chunked-encoding bomb, etc.) can't OOM the worker.
+        # Abort mid-stream if we cross the size cap.
+        tmp = tempfile.NamedTemporaryFile(prefix="mira-ingest-", suffix=".bin", delete=False)
+        tmp_path = Path(tmp.name)
+        downloaded = 0
+        try:
+            with httpx.Client(
+                timeout=DOWNLOAD_TIMEOUT,
+                follow_redirects=True,
+                headers={"User-Agent": "MIRA-IngestBot/1.0 (KB builder)"},
+            ) as client:
+                with client.stream("GET", url) as resp:
+                    resp.raise_for_status()
+                    content_type = resp.headers.get("content-type", "")
+                    for chunk in resp.iter_bytes(chunk_size=64 * 1024):
+                        downloaded += len(chunk)
+                        if downloaded > MAX_PDF_BYTES and (
+                            "application/pdf" in content_type or is_pdf_url
+                        ):
+                            tmp.close()
+                            tmp_path.unlink(missing_ok=True)
+                            logger.warning(
+                                "Aborted streaming download of %s — exceeded %d MB cap mid-stream",
+                                url[:80], MAX_PDF_BYTES // 1024 // 1024,
+                            )
+                            return {"url": url, "inserted": 0, "error": "file_too_large"}
+                        tmp.write(chunk)
+            tmp.close()
+            data = tmp_path.read_bytes()
+        except _TRANSIENT as exc:
+            tmp.close()
+            tmp_path.unlink(missing_ok=True)
+            logger.warning("Download failed for %s: %s — Celery will retry", url[:80], exc)
+            raise  # autoretry_for handles the retry
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    # 3. Extract text blocks
+    is_pdf = url.lower().endswith(".pdf") or "application/pdf" in content_type
+    if is_pdf:
+        blocks = extract_from_pdf_with_fallback(data)
+    else:
+        blocks = extract_from_html(data)
+
+    if not blocks:
+        logger.warning("No extractable text from %s", url[:80])
+        return {"url": url, "inserted": 0, "error": "no_content"}
+
+    # 4. Chunk
+    chunks = chunk_blocks(
+        blocks,
+        source_url=url,
+        max_chars=2000,
+        min_chars=80,
+        overlap=200,
+    )
+    total = len(chunks)
+    logger.info("Extracted %d blocks → %d chunks from %s", len(blocks), total, url[:80])
+
+    # 5. Embed + store (with dedup and progress)
+    inserted = 0
+    skipped = 0
+
+    # Open ONE NeonDB connection per document — the quality gate's semantic
+    # dedup stage runs one SELECT per chunk. Reusing the connection avoids
+    # 1 TLS handshake per chunk (#112). Fail-open if connection fails.
+    from ingest.store import _engine
+
+    dedup_conn = None
+    try:
+        dedup_conn = _engine().connect()
+    except Exception as e:
+        logger.warning("Could not open shared dedup connection (fail open): %s", e)
+
+    try:
+        for i, chunk in enumerate(chunks):
+            chunk_idx = chunk.get("chunk_index", i)
+
+            # Dedup
+            if chunk_exists(tenant_id, url, chunk_idx):
+                skipped += 1
+                continue
+
+            # Progress logging every 50 chunks
+            if (i + 1) % 50 == 0:
+                logger.info("Embedding chunk %d/%d for %s...", i + 1, total, url[:60])
+
+            embedding = embed_text(
+                chunk["text"],
+                ollama_url=ollama_url,
+                model=embed_model,
+            )
+            if embedding is None:
+                continue
+
+            # Quality gate: content filter → relevance → semantic dedup
+            try:
+                from ingest.quality import quality_gate
+                passed, reason = quality_gate(
+                    chunk, embedding, tenant_id, conn=dedup_conn
+                )
+                if not passed:
+                    logger.debug("Quality gate rejected chunk %d: %s", chunk_idx, reason)
+                    skipped += 1
+                    continue
+            except Exception as e:
+                logger.warning("Quality gate error (fail open): %s", e)
+
+            entry_id = insert_chunk(
+                tenant_id=tenant_id,
+                content=chunk["text"],
+                embedding=embedding,
+                source_url=url,
+                source_type=source_type,
+                manufacturer=manufacturer,
+                model_number=model,
+                page_num=chunk.get("page_num"),
+                section=chunk.get("section", ""),
+                chunk_index=chunk_idx,
+                chunk_type=chunk.get("chunk_type", "text"),
+            )
+            if entry_id:
+                inserted += 1
+    finally:
+        if dedup_conn is not None:
+            try:
+                dedup_conn.close()
+            except Exception:
+                pass
+
+    logger.info(
+        "Completed %s: %d inserted, %d skipped, %d total chunks",
+        url[:60], inserted, skipped, total,
+    )
+
+    # Auto-extract a component_templates row when fresh chunks landed for a
+    # branded source. Dispatched async on the same queue — the ingest task
+    # never blocks on the LLM cascade. Issue #1257.
+    if inserted > 0 and manufacturer and model:
+        try:
+            try:
+                from mira_crawler.tasks.component_template import (
+                    extract_component_template,
+                )
+            except ImportError:
+                from tasks.component_template import (  # type: ignore[no-redef]
+                    extract_component_template,
+                )
+            extract_component_template.delay(
+                manufacturer=manufacturer,
+                model=model,
+                source_type=source_type,
+            )
+            logger.info(
+                "Queued component_template extraction for %s %s (%d new chunks)",
+                manufacturer, model, inserted,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to queue component_template extraction for %s %s: %s",
+                manufacturer, model, exc,
+            )
+
+    return {"url": url, "inserted": inserted, "skipped": skipped, "total": total}
+
+
+@app.task
+def ingest_all_pending():
+    """Queue ingest tasks for all pending URLs in manual_cache.
+
+    Reads from NeonDB manual_cache table (pdf_stored=false) and queues
+    each URL as a separate ingest task.
+    """
+    import sys
+
+    # Add mira-ingest to path for db.neon imports
+    _ingest_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "..", "mira-core", "mira-ingest",
+    )
+    if _ingest_dir not in sys.path:
+        sys.path.insert(0, os.path.abspath(_ingest_dir))
+
+    try:
+        from db.neon import get_pending_urls
+    except ImportError:
+        logger.error("Cannot import db.neon — check PYTHONPATH")
+        return {"queued": 0, "error": "import_failed"}
+
+    pending = get_pending_urls()
+    logger.info("Found %d pending URLs to ingest", len(pending))
+
+    queued = 0
+    for record in pending:
+        url = record.get("url", "")
+        manufacturer = record.get("manufacturer", "")
+        model = record.get("model", "")
+        if url:
+            ingest_url.delay(
+                url=url,
+                manufacturer=manufacturer,
+                model=model,
+                source_type="manual",
+            )
+            queued += 1
+
+    return {"queued": queued}

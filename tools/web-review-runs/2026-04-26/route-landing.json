@@ -1,0 +1,324 @@
+{
+  "route": "landing",
+  "url": "https://factorylm.com/",
+  "started_at": "2026-04-26T08:30:47.987Z",
+  "status": 200,
+  "final_url": "https://factorylm.com/",
+  "dom_desktop": {
+    "url": "https://factorylm.com/",
+    "images_total": 12,
+    "images_no_alt": [],
+    "images_empty_alt": 0,
+    "h1_count": 1,
+    "h1_text": [
+      "The AI troubleshooter\nthat knows your\nequipment."
+    ],
+    "heading_skips": [],
+    "meta": {
+      "title": "FactoryLM — AI Maintenance Copilot for Industrial Equipment",
+      "description": "AI-powered maintenance assistant for VFDs, motors, and PLCs. Snap a photo of any fault screen — get the diagnosis in 10 seconds. $97/mo per facility.",
+      "canonical": "https://factorylm.com/",
+      "og_title": "FactoryLM — AI Maintenance Copilot for Industrial Equipment",
+      "og_image": "https://factorylm.com/og-image.png",
+      "og_url": "https://factorylm.com/",
+      "twitter_card": "summary_large_image",
+      "viewport": "width=device-width, initial-scale=1.0, viewport-fit=cover",
+      "lang": "en",
+      "favicon": "https://factorylm.com/public/icons/favicon.svg"
+    },
+    "deprecated_meta": [],
+    "external_no_noopener": [],
+    "mixed_content": [],
+    "tap_targets_too_small": [
+      {
+        "tag": "A",
+        "text": "FactoryLM",
+        "w": 105,
+        "h": 24
+      },
+      {
+        "tag": "A",
+        "text": "Product",
+        "w": 52,
+        "h": 17
+      },
+      {
+        "tag": "A",
+        "text": "Pricing",
+        "w": 46,
+        "h": 17
+      },
+      {
+        "tag": "A",
+        "text": "Blog",
+        "w": 30,
+        "h": 17
+      },
+      {
+        "tag": "A",
+        "text": "Troubleshooter",
+        "w": 100,
+        "h": 17
+      },
+      {
+        "tag": "A",
+        "text": "Join the Beta",
+        "w": 112,
+        "h": 37
+      },
+      {
+        "tag": "A",
+        "text": "Read the blog",
+        "w": 125,
+        "h": 40
+      },
+      {
+        "tag": "A",
+        "text": "All articles",
+        "w": 103,
+        "h": 40
+      },
+      {
+        "tag": "A",
+        "text": "Fault code library\n50 codes",
+        "w": 221,
+        "h": 40
+      },
+      {
+        "tag": "A",
+        "text": "FactoryLM",
+        "w": 92,
+        "h": 21
+      },
+      {
+        "tag": "A",
+        "text": "Blog",
+        "w": 27,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Fault Codes",
+        "w": 73,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Troubleshooter",
+        "w": 93,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Contact",
+        "w": 48,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Privacy",
+        "w": 46,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Terms",
+        "w": 38,
+        "h": 16
+      }
+    ],
+    "buttons_no_name": 0,
+    "forms": [],
+    "jsonld_types": [
+      "SoftwareApplication",
+      "WebSite"
+    ],
+    "ctas": [],
+    "links_total": 21,
+    "links_internal": [
+      "/",
+      "#features",
+      "/pricing",
+      "/blog",
+      "/cmms",
+      "/cmms",
+      "/cmms",
+      "/blog",
+      "/blog/how-to-read-vfd-fault-codes",
+      "/blog/how-to-megger-test-a-motor",
+      "/blog/vfd-troubleshooting-checklist",
+      "/blog",
+      "/blog/fault-codes",
+      "/cmms",
+      "/",
+      "/blog",
+      "/blog/fault-codes",
+      "/cmms",
+      "/privacy",
+      "/terms"
+    ],
+    "links_external": [
+      "mailto:contact@factorylm.com"
+    ],
+    "body_text_len": 3018,
+    "has_main_landmark": true,
+    "has_nav_landmark": true,
+    "has_footer_landmark": true
+  },
+  "dom_mobile": {
+    "url": "https://factorylm.com/",
+    "images_total": 12,
+    "images_no_alt": [],
+    "images_empty_alt": 0,
+    "h1_count": 1,
+    "h1_text": [
+      "The AI troubleshooter\nthat knows your\nequipment."
+    ],
+    "heading_skips": [],
+    "meta": {
+      "title": "FactoryLM — AI Maintenance Copilot for Industrial Equipment",
+      "description": "AI-powered maintenance assistant for VFDs, motors, and PLCs. Snap a photo of any fault screen — get the diagnosis in 10 seconds. $97/mo per facility.",
+      "canonical": "https://factorylm.com/",
+      "og_title": "FactoryLM — AI Maintenance Copilot for Industrial Equipment",
+      "og_image": "https://factorylm.com/og-image.png",
+      "og_url": "https://factorylm.com/",
+      "twitter_card": "summary_large_image",
+      "viewport": "width=device-width, initial-scale=1.0, viewport-fit=cover",
+      "lang": "en",
+      "favicon": "https://factorylm.com/public/icons/favicon.svg"
+    },
+    "deprecated_meta": [],
+    "external_no_noopener": [],
+    "mixed_content": [],
+    "tap_targets_too_small": [
+      {
+        "tag": "A",
+        "text": "FactoryLM",
+        "w": 105,
+        "h": 24
+      },
+      {
+        "tag": "A",
+        "text": "Join the Beta",
+        "w": 112,
+        "h": 37
+      },
+      {
+        "tag": "A",
+        "text": "Read the blog",
+        "w": 125,
+        "h": 40
+      },
+      {
+        "tag": "A",
+        "text": "All articles",
+        "w": 103,
+        "h": 40
+      },
+      {
+        "tag": "A",
+        "text": "Fault code library\n50 codes",
+        "w": 221,
+        "h": 40
+      },
+      {
+        "tag": "A",
+        "text": "FactoryLM",
+        "w": 92,
+        "h": 21
+      },
+      {
+        "tag": "A",
+        "text": "Blog",
+        "w": 27,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Fault Codes",
+        "w": 40,
+        "h": 40
+      },
+      {
+        "tag": "A",
+        "text": "Troubleshooter",
+        "w": 93,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Contact",
+        "w": 48,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Privacy",
+        "w": 46,
+        "h": 16
+      },
+      {
+        "tag": "A",
+        "text": "Terms",
+        "w": 38,
+        "h": 16
+      }
+    ],
+    "buttons_no_name": 0,
+    "forms": [],
+    "jsonld_types": [
+      "SoftwareApplication",
+      "WebSite"
+    ],
+    "ctas": [],
+    "links_total": 21,
+    "links_internal": [
+      "/",
+      "#features",
+      "/pricing",
+      "/blog",
+      "/cmms",
+      "/cmms",
+      "/cmms",
+      "/blog",
+      "/blog/how-to-read-vfd-fault-codes",
+      "/blog/how-to-megger-test-a-motor",
+      "/blog/vfd-troubleshooting-checklist",
+      "/blog",
+      "/blog/fault-codes",
+      "/cmms",
+      "/",
+      "/blog",
+      "/blog/fault-codes",
+      "/cmms",
+      "/privacy",
+      "/terms"
+    ],
+    "links_external": [
+      "mailto:contact@factorylm.com"
+    ],
+    "body_text_len": 2982,
+    "has_main_landmark": true,
+    "has_nav_landmark": true,
+    "has_footer_landmark": true
+  },
+  "focus_after_3tab": {
+    "tag": "A",
+    "text": "$97/MO — SITE LICENSE\nJoin the Beta →",
+    "in_viewport": true,
+    "rect": {
+      "x": 16,
+      "y": 411,
+      "w": 242,
+      "h": 62
+    }
+  },
+  "focus_before": "BODY",
+  "scroll_introduced_errors": 0,
+  "console_errors": [],
+  "console_warnings": [],
+  "page_errors": [],
+  "failed_responses": [],
+  "failed_requests": [],
+  "finished_at": "2026-04-26T08:30:52.358Z"
+}

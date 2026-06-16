@@ -1,0 +1,1109 @@
+[
+  {
+    "route": "landing",
+    "url": "https://factorylm.com/",
+    "started_at": "2026-04-26T08:30:47.987Z",
+    "status": 200,
+    "final_url": "https://factorylm.com/",
+    "dom_desktop": {
+      "url": "https://factorylm.com/",
+      "images_total": 12,
+      "images_no_alt": [],
+      "images_empty_alt": 0,
+      "h1_count": 1,
+      "h1_text": [
+        "The AI troubleshooter\nthat knows your\nequipment."
+      ],
+      "heading_skips": [],
+      "meta": {
+        "title": "FactoryLM — AI Maintenance Copilot for Industrial Equipment",
+        "description": "AI-powered maintenance assistant for VFDs, motors, and PLCs. Snap a photo of any fault screen — get the diagnosis in 10 seconds. $97/mo per facility.",
+        "canonical": "https://factorylm.com/",
+        "og_title": "FactoryLM — AI Maintenance Copilot for Industrial Equipment",
+        "og_image": "https://factorylm.com/og-image.png",
+        "og_url": "https://factorylm.com/",
+        "twitter_card": "summary_large_image",
+        "viewport": "width=device-width, initial-scale=1.0, viewport-fit=cover",
+        "lang": "en",
+        "favicon": "https://factorylm.com/public/icons/favicon.svg"
+      },
+      "deprecated_meta": [],
+      "external_no_noopener": [],
+      "mixed_content": [],
+      "tap_targets_too_small": [
+        {
+          "tag": "A",
+          "text": "FactoryLM",
+          "w": 105,
+          "h": 24
+        },
+        {
+          "tag": "A",
+          "text": "Product",
+          "w": 52,
+          "h": 17
+        },
+        {
+          "tag": "A",
+          "text": "Pricing",
+          "w": 46,
+          "h": 17
+        },
+        {
+          "tag": "A",
+          "text": "Blog",
+          "w": 30,
+          "h": 17
+        },
+        {
+          "tag": "A",
+          "text": "Troubleshooter",
+          "w": 100,
+          "h": 17
+        },
+        {
+          "tag": "A",
+          "text": "Join the Beta",
+          "w": 112,
+          "h": 37
+        },
+        {
+          "tag": "A",
+          "text": "Read the blog",
+          "w": 125,
+          "h": 40
+        },
+        {
+          "tag": "A",
+          "text": "All articles",
+          "w": 103,
+          "h": 40
+        },
+        {
+          "tag": "A",
+          "text": "Fault code library\n50 codes",
+          "w": 221,
+          "h": 40
+        },
+        {
+          "tag": "A",
+          "text": "FactoryLM",
+          "w": 92,
+          "h": 21
+        },
+        {
+          "tag": "A",
+          "text": "Blog",
+          "w": 27,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Fault Codes",
+          "w": 73,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Troubleshooter",
+          "w": 93,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Contact",
+          "w": 48,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Privacy",
+          "w": 46,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Terms",
+          "w": 38,
+          "h": 16
+        }
+      ],
+      "buttons_no_name": 0,
+      "forms": [],
+      "jsonld_types": [
+        "SoftwareApplication",
+        "WebSite"
+      ],
+      "ctas": [],
+      "links_total": 21,
+      "links_internal": [
+        "/",
+        "#features",
+        "/pricing",
+        "/blog",
+        "/cmms",
+        "/cmms",
+        "/cmms",
+        "/blog",
+        "/blog/how-to-read-vfd-fault-codes",
+        "/blog/how-to-megger-test-a-motor",
+        "/blog/vfd-troubleshooting-checklist",
+        "/blog",
+        "/blog/fault-codes",
+        "/cmms",
+        "/",
+        "/blog",
+        "/blog/fault-codes",
+        "/cmms",
+        "/privacy",
+        "/terms"
+      ],
+      "links_external": [
+        "mailto:contact@factorylm.com"
+      ],
+      "body_text_len": 3018,
+      "has_main_landmark": true,
+      "has_nav_landmark": true,
+      "has_footer_landmark": true
+    },
+    "dom_mobile": {
+      "url": "https://factorylm.com/",
+      "images_total": 12,
+      "images_no_alt": [],
+      "images_empty_alt": 0,
+      "h1_count": 1,
+      "h1_text": [
+        "The AI troubleshooter\nthat knows your\nequipment."
+      ],
+      "heading_skips": [],
+      "meta": {
+        "title": "FactoryLM — AI Maintenance Copilot for Industrial Equipment",
+        "description": "AI-powered maintenance assistant for VFDs, motors, and PLCs. Snap a photo of any fault screen — get the diagnosis in 10 seconds. $97/mo per facility.",
+        "canonical": "https://factorylm.com/",
+        "og_title": "FactoryLM — AI Maintenance Copilot for Industrial Equipment",
+        "og_image": "https://factorylm.com/og-image.png",
+        "og_url": "https://factorylm.com/",
+        "twitter_card": "summary_large_image",
+        "viewport": "width=device-width, initial-scale=1.0, viewport-fit=cover",
+        "lang": "en",
+        "favicon": "https://factorylm.com/public/icons/favicon.svg"
+      },
+      "deprecated_meta": [],
+      "external_no_noopener": [],
+      "mixed_content": [],
+      "tap_targets_too_small": [
+        {
+          "tag": "A",
+          "text": "FactoryLM",
+          "w": 105,
+          "h": 24
+        },
+        {
+          "tag": "A",
+          "text": "Join the Beta",
+          "w": 112,
+          "h": 37
+        },
+        {
+          "tag": "A",
+          "text": "Read the blog",
+          "w": 125,
+          "h": 40
+        },
+        {
+          "tag": "A",
+          "text": "All articles",
+          "w": 103,
+          "h": 40
+        },
+        {
+          "tag": "A",
+          "text": "Fault code library\n50 codes",
+          "w": 221,
+          "h": 40
+        },
+        {
+          "tag": "A",
+          "text": "FactoryLM",
+          "w": 92,
+          "h": 21
+        },
+        {
+          "tag": "A",
+          "text": "Blog",
+          "w": 27,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Fault Codes",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "tag": "A",
+          "text": "Troubleshooter",
+          "w": 93,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Contact",
+          "w": 48,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Privacy",
+          "w": 46,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Terms",
+          "w": 38,
+          "h": 16
+        }
+      ],
+      "buttons_no_name": 0,
+      "forms": [],
+      "jsonld_types": [
+        "SoftwareApplication",
+        "WebSite"
+      ],
+      "ctas": [],
+      "links_total": 21,
+      "links_internal": [
+        "/",
+        "#features",
+        "/pricing",
+        "/blog",
+        "/cmms",
+        "/cmms",
+        "/cmms",
+        "/blog",
+        "/blog/how-to-read-vfd-fault-codes",
+        "/blog/how-to-megger-test-a-motor",
+        "/blog/vfd-troubleshooting-checklist",
+        "/blog",
+        "/blog/fault-codes",
+        "/cmms",
+        "/",
+        "/blog",
+        "/blog/fault-codes",
+        "/cmms",
+        "/privacy",
+        "/terms"
+      ],
+      "links_external": [
+        "mailto:contact@factorylm.com"
+      ],
+      "body_text_len": 2982,
+      "has_main_landmark": true,
+      "has_nav_landmark": true,
+      "has_footer_landmark": true
+    },
+    "focus_after_3tab": {
+      "tag": "A",
+      "text": "$97/MO — SITE LICENSE\nJoin the Beta →",
+      "in_viewport": true,
+      "rect": {
+        "x": 16,
+        "y": 411,
+        "w": 242,
+        "h": 62
+      }
+    },
+    "focus_before": "BODY",
+    "scroll_introduced_errors": 0,
+    "console_errors": [],
+    "console_warnings": [],
+    "page_errors": [],
+    "failed_responses": [],
+    "failed_requests": [],
+    "finished_at": "2026-04-26T08:30:52.358Z"
+  },
+  {
+    "route": "cmms",
+    "url": "https://factorylm.com/cmms",
+    "started_at": "2026-04-26T08:30:52.471Z",
+    "status": 200,
+    "final_url": "https://factorylm.com/cmms",
+    "dom_desktop": {
+      "url": "https://factorylm.com/cmms",
+      "images_total": 0,
+      "images_no_alt": [],
+      "images_empty_alt": 0,
+      "h1_count": 1,
+      "h1_text": [
+        "The AI troubleshooter that knows your equipment."
+      ],
+      "heading_skips": [],
+      "meta": {
+        "title": "FactoryLM CMMS — Work Orders, PM Scheduling & AI Diagnostics",
+        "description": "Maintenance management with AI diagnostics built in. Work orders, PM scheduling, asset registry, and Mira AI troubleshooting. $97/mo per facility.",
+        "canonical": "https://factorylm.com/cmms",
+        "og_title": "FactoryLM CMMS — Work Orders, PM Scheduling & AI Diagnostics",
+        "og_image": "https://factorylm.com/og-image.png",
+        "og_url": "https://factorylm.com/cmms",
+        "twitter_card": "summary_large_image",
+        "viewport": "width=device-width, initial-scale=1.0",
+        "lang": "en",
+        "favicon": "https://factorylm.com/public/icons/mira-192.png"
+      },
+      "deprecated_meta": [],
+      "external_no_noopener": [],
+      "mixed_content": [],
+      "tap_targets_too_small": [
+        {
+          "tag": "A",
+          "text": "Blog",
+          "w": 42,
+          "h": 44
+        },
+        {
+          "tag": "A",
+          "text": "PRIVACY POLICY",
+          "w": 60,
+          "h": 37
+        },
+        {
+          "tag": "A",
+          "text": "Fault Code Library",
+          "w": 111,
+          "h": 17
+        },
+        {
+          "tag": "A",
+          "text": "maintenance blog",
+          "w": 108,
+          "h": 17
+        },
+        {
+          "tag": "A",
+          "text": "Home",
+          "w": 44,
+          "h": 44
+        },
+        {
+          "tag": "A",
+          "text": "Blog",
+          "w": 34,
+          "h": 44
+        }
+      ],
+      "buttons_no_name": 0,
+      "forms": [
+        {
+          "action": "https://factorylm.com/cmms",
+          "method": "get",
+          "inputs_unlabelled": 0,
+          "input_types": [
+            "email",
+            "text",
+            "text",
+            "checkbox"
+          ]
+        }
+      ],
+      "jsonld_types": [
+        "SoftwareApplication",
+        "FAQPage"
+      ],
+      "ctas": [],
+      "links_total": 14,
+      "links_internal": [
+        "/",
+        "/blog",
+        "/blog/fault-codes",
+        "/terms",
+        "/privacy",
+        "/blog/fault-codes",
+        "/blog",
+        "/",
+        "/",
+        "/blog",
+        "/blog/fault-codes",
+        "/privacy",
+        "/terms"
+      ],
+      "links_external": [
+        "mailto:contact@factorylm.com"
+      ],
+      "body_text_len": 2642,
+      "has_main_landmark": true,
+      "has_nav_landmark": true,
+      "has_footer_landmark": true
+    },
+    "dom_mobile": {
+      "url": "https://factorylm.com/cmms",
+      "images_total": 0,
+      "images_no_alt": [],
+      "images_empty_alt": 0,
+      "h1_count": 1,
+      "h1_text": [
+        "The AI troubleshooter that knows your equipment."
+      ],
+      "heading_skips": [],
+      "meta": {
+        "title": "FactoryLM CMMS — Work Orders, PM Scheduling & AI Diagnostics",
+        "description": "Maintenance management with AI diagnostics built in. Work orders, PM scheduling, asset registry, and Mira AI troubleshooting. $97/mo per facility.",
+        "canonical": "https://factorylm.com/cmms",
+        "og_title": "FactoryLM CMMS — Work Orders, PM Scheduling & AI Diagnostics",
+        "og_image": "https://factorylm.com/og-image.png",
+        "og_url": "https://factorylm.com/cmms",
+        "twitter_card": "summary_large_image",
+        "viewport": "width=device-width, initial-scale=1.0",
+        "lang": "en",
+        "favicon": "https://factorylm.com/public/icons/mira-192.png"
+      },
+      "deprecated_meta": [],
+      "external_no_noopener": [],
+      "mixed_content": [],
+      "tap_targets_too_small": [
+        {
+          "tag": "A",
+          "text": "Blog",
+          "w": 42,
+          "h": 44
+        },
+        {
+          "tag": "A",
+          "text": "PRIVACY POLICY",
+          "w": 60,
+          "h": 37
+        },
+        {
+          "tag": "A",
+          "text": "Fault Code Library",
+          "w": 111,
+          "h": 17
+        },
+        {
+          "tag": "A",
+          "text": "maintenance blog",
+          "w": 108,
+          "h": 17
+        },
+        {
+          "tag": "A",
+          "text": "Home",
+          "w": 44,
+          "h": 44
+        },
+        {
+          "tag": "A",
+          "text": "Blog",
+          "w": 34,
+          "h": 44
+        }
+      ],
+      "buttons_no_name": 0,
+      "forms": [
+        {
+          "action": "https://factorylm.com/cmms",
+          "method": "get",
+          "inputs_unlabelled": 0,
+          "input_types": [
+            "email",
+            "text",
+            "text",
+            "checkbox"
+          ]
+        }
+      ],
+      "jsonld_types": [
+        "SoftwareApplication",
+        "FAQPage"
+      ],
+      "ctas": [],
+      "links_total": 14,
+      "links_internal": [
+        "/",
+        "/blog",
+        "/blog/fault-codes",
+        "/terms",
+        "/privacy",
+        "/blog/fault-codes",
+        "/blog",
+        "/",
+        "/",
+        "/blog",
+        "/blog/fault-codes",
+        "/privacy",
+        "/terms"
+      ],
+      "links_external": [
+        "mailto:contact@factorylm.com"
+      ],
+      "body_text_len": 2642,
+      "has_main_landmark": true,
+      "has_nav_landmark": true,
+      "has_footer_landmark": true
+    },
+    "focus_after_3tab": {
+      "tag": "A",
+      "text": "Fault Codes",
+      "in_viewport": true,
+      "rect": {
+        "x": 340,
+        "y": 4,
+        "w": 55,
+        "h": 44
+      }
+    },
+    "focus_before": "BODY",
+    "scroll_introduced_errors": 0,
+    "console_errors": [],
+    "console_warnings": [],
+    "page_errors": [],
+    "failed_responses": [],
+    "failed_requests": [],
+    "finished_at": "2026-04-26T08:30:56.854Z"
+  },
+  {
+    "route": "pricing",
+    "url": "https://factorylm.com/pricing",
+    "started_at": "2026-04-26T08:30:57.039Z",
+    "status": 200,
+    "final_url": "https://factorylm.com/pricing",
+    "dom_desktop": {
+      "url": "https://factorylm.com/pricing",
+      "images_total": 0,
+      "images_no_alt": [],
+      "images_empty_alt": 0,
+      "h1_count": 1,
+      "h1_text": [
+        "One price for your whole team."
+      ],
+      "heading_skips": [],
+      "meta": {
+        "title": "Pricing — FactoryLM AI Troubleshooter",
+        "description": "MIRA pricing: $97/mo unlimited queries with flat site license, $297/mo adds CMMS write-back. 14-day money-back guarantee. Works with MaintainX, Limble, UpKeep.",
+        "canonical": "https://factorylm.com/pricing",
+        "og_title": "Pricing — FactoryLM AI Troubleshooter",
+        "og_image": "https://factorylm.com/og-image.png",
+        "og_url": "https://factorylm.com/pricing",
+        "twitter_card": "summary_large_image",
+        "viewport": "width=device-width, initial-scale=1.0",
+        "lang": "en",
+        "favicon": "https://factorylm.com/public/icons/favicon.svg"
+      },
+      "deprecated_meta": [],
+      "external_no_noopener": [],
+      "mixed_content": [],
+      "tap_targets_too_small": [
+        {
+          "tag": "A",
+          "text": "FactoryLM",
+          "w": 107,
+          "h": 24
+        },
+        {
+          "tag": "A",
+          "text": "Product",
+          "w": 52,
+          "h": 17
+        },
+        {
+          "tag": "A",
+          "text": "Blog",
+          "w": 30,
+          "h": 17
+        },
+        {
+          "tag": "A",
+          "text": "Troubleshooter",
+          "w": 100,
+          "h": 17
+        },
+        {
+          "tag": "A",
+          "text": "Get Started",
+          "w": 102,
+          "h": 37
+        },
+        {
+          "tag": "A",
+          "text": "FactoryLM",
+          "w": 96,
+          "h": 22
+        },
+        {
+          "tag": "A",
+          "text": "Blog",
+          "w": 27,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Fault Codes",
+          "w": 73,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Troubleshooter",
+          "w": 93,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Contact",
+          "w": 48,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Privacy",
+          "w": 46,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Terms",
+          "w": 38,
+          "h": 16
+        }
+      ],
+      "buttons_no_name": 0,
+      "forms": [],
+      "jsonld_types": [],
+      "ctas": [
+        {
+          "tag": "A",
+          "text": "Get Started",
+          "href": "https://factorylm.com/cmms",
+          "disabled": false
+        }
+      ],
+      "links_total": 14,
+      "links_internal": [
+        "/",
+        "/#features",
+        "/blog",
+        "/cmms",
+        "/cmms",
+        "/cmms",
+        "/cmms",
+        "/",
+        "/blog",
+        "/blog/fault-codes",
+        "/cmms",
+        "/privacy",
+        "/terms"
+      ],
+      "links_external": [
+        "mailto:contact@factorylm.com"
+      ],
+      "body_text_len": 1452,
+      "has_main_landmark": true,
+      "has_nav_landmark": true,
+      "has_footer_landmark": true
+    },
+    "dom_mobile": {
+      "url": "https://factorylm.com/pricing",
+      "images_total": 0,
+      "images_no_alt": [],
+      "images_empty_alt": 0,
+      "h1_count": 1,
+      "h1_text": [
+        "One price for your whole team."
+      ],
+      "heading_skips": [],
+      "meta": {
+        "title": "Pricing — FactoryLM AI Troubleshooter",
+        "description": "MIRA pricing: $97/mo unlimited queries with flat site license, $297/mo adds CMMS write-back. 14-day money-back guarantee. Works with MaintainX, Limble, UpKeep.",
+        "canonical": "https://factorylm.com/pricing",
+        "og_title": "Pricing — FactoryLM AI Troubleshooter",
+        "og_image": "https://factorylm.com/og-image.png",
+        "og_url": "https://factorylm.com/pricing",
+        "twitter_card": "summary_large_image",
+        "viewport": "width=device-width, initial-scale=1.0",
+        "lang": "en",
+        "favicon": "https://factorylm.com/public/icons/favicon.svg"
+      },
+      "deprecated_meta": [],
+      "external_no_noopener": [],
+      "mixed_content": [],
+      "tap_targets_too_small": [
+        {
+          "tag": "A",
+          "text": "FactoryLM",
+          "w": 107,
+          "h": 24
+        },
+        {
+          "tag": "A",
+          "text": "Get Started",
+          "w": 102,
+          "h": 37
+        },
+        {
+          "tag": "A",
+          "text": "FactoryLM",
+          "w": 96,
+          "h": 22
+        },
+        {
+          "tag": "A",
+          "text": "Blog",
+          "w": 27,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Fault Codes",
+          "w": 40,
+          "h": 37
+        },
+        {
+          "tag": "A",
+          "text": "Troubleshooter",
+          "w": 93,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Contact",
+          "w": 48,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Privacy",
+          "w": 46,
+          "h": 16
+        },
+        {
+          "tag": "A",
+          "text": "Terms",
+          "w": 38,
+          "h": 16
+        }
+      ],
+      "buttons_no_name": 0,
+      "forms": [],
+      "jsonld_types": [],
+      "ctas": [
+        {
+          "tag": "A",
+          "text": "Get Started",
+          "href": "https://factorylm.com/cmms",
+          "disabled": false
+        }
+      ],
+      "links_total": 14,
+      "links_internal": [
+        "/",
+        "/#features",
+        "/blog",
+        "/cmms",
+        "/cmms",
+        "/cmms",
+        "/cmms",
+        "/",
+        "/blog",
+        "/blog/fault-codes",
+        "/cmms",
+        "/privacy",
+        "/terms"
+      ],
+      "links_external": [
+        "mailto:contact@factorylm.com"
+      ],
+      "body_text_len": 1424,
+      "has_main_landmark": true,
+      "has_nav_landmark": true,
+      "has_footer_landmark": true
+    },
+    "focus_after_3tab": {
+      "tag": "A",
+      "text": "Start with MIRA",
+      "in_viewport": false,
+      "rect": {
+        "x": 53,
+        "y": 934,
+        "w": 269,
+        "h": 46
+      }
+    },
+    "focus_before": "BODY",
+    "scroll_introduced_errors": 0,
+    "console_errors": [],
+    "console_warnings": [],
+    "page_errors": [],
+    "failed_responses": [],
+    "failed_requests": [],
+    "finished_at": "2026-04-26T08:31:01.261Z"
+  },
+  {
+    "route": "activated",
+    "url": "https://factorylm.com/activated",
+    "started_at": "2026-04-26T08:31:01.432Z",
+    "status": 200,
+    "final_url": "https://factorylm.com/cmms",
+    "dom_desktop": {
+      "url": "https://factorylm.com/cmms",
+      "images_total": 0,
+      "images_no_alt": [],
+      "images_empty_alt": 0,
+      "h1_count": 1,
+      "h1_text": [
+        "The AI troubleshooter that knows your equipment."
+      ],
+      "heading_skips": [],
+      "meta": {
+        "title": "FactoryLM CMMS — Work Orders, PM Scheduling & AI Diagnostics",
+        "description": "Maintenance management with AI diagnostics built in. Work orders, PM scheduling, asset registry, and Mira AI troubleshooting. $97/mo per facility.",
+        "canonical": "https://factorylm.com/cmms",
+        "og_title": "FactoryLM CMMS — Work Orders, PM Scheduling & AI Diagnostics",
+        "og_image": "https://factorylm.com/og-image.png",
+        "og_url": "https://factorylm.com/cmms",
+        "twitter_card": "summary_large_image",
+        "viewport": "width=device-width, initial-scale=1.0",
+        "lang": "en",
+        "favicon": "https://factorylm.com/public/icons/mira-192.png"
+      },
+      "deprecated_meta": [],
+      "external_no_noopener": [],
+      "mixed_content": [],
+      "tap_targets_too_small": [
+        {
+          "tag": "A",
+          "text": "Blog",
+          "w": 42,
+          "h": 44
+        },
+        {
+          "tag": "A",
+          "text": "PRIVACY POLICY",
+          "w": 60,
+          "h": 37
+        },
+        {
+          "tag": "A",
+          "text": "Fault Code Library",
+          "w": 111,
+          "h": 17
+        },
+        {
+          "tag": "A",
+          "text": "maintenance blog",
+          "w": 108,
+          "h": 17
+        },
+        {
+          "tag": "A",
+          "text": "Home",
+          "w": 44,
+          "h": 44
+        },
+        {
+          "tag": "A",
+          "text": "Blog",
+          "w": 34,
+          "h": 44
+        }
+      ],
+      "buttons_no_name": 0,
+      "forms": [
+        {
+          "action": "https://factorylm.com/cmms",
+          "method": "get",
+          "inputs_unlabelled": 0,
+          "input_types": [
+            "email",
+            "text",
+            "text",
+            "checkbox"
+          ]
+        }
+      ],
+      "jsonld_types": [
+        "SoftwareApplication",
+        "FAQPage"
+      ],
+      "ctas": [],
+      "links_total": 14,
+      "links_internal": [
+        "/",
+        "/blog",
+        "/blog/fault-codes",
+        "/terms",
+        "/privacy",
+        "/blog/fault-codes",
+        "/blog",
+        "/",
+        "/",
+        "/blog",
+        "/blog/fault-codes",
+        "/privacy",
+        "/terms"
+      ],
+      "links_external": [
+        "mailto:contact@factorylm.com"
+      ],
+      "body_text_len": 2642,
+      "has_main_landmark": true,
+      "has_nav_landmark": true,
+      "has_footer_landmark": true
+    },
+    "dom_mobile": {
+      "url": "https://factorylm.com/cmms",
+      "images_total": 0,
+      "images_no_alt": [],
+      "images_empty_alt": 0,
+      "h1_count": 1,
+      "h1_text": [
+        "The AI troubleshooter that knows your equipment."
+      ],
+      "heading_skips": [],
+      "meta": {
+        "title": "FactoryLM CMMS — Work Orders, PM Scheduling & AI Diagnostics",
+        "description": "Maintenance management with AI diagnostics built in. Work orders, PM scheduling, asset registry, and Mira AI troubleshooting. $97/mo per facility.",
+        "canonical": "https://factorylm.com/cmms",
+        "og_title": "FactoryLM CMMS — Work Orders, PM Scheduling & AI Diagnostics",
+        "og_image": "https://factorylm.com/og-image.png",
+        "og_url": "https://factorylm.com/cmms",
+        "twitter_card": "summary_large_image",
+        "viewport": "width=device-width, initial-scale=1.0",
+        "lang": "en",
+        "favicon": "https://factorylm.com/public/icons/mira-192.png"
+      },
+      "deprecated_meta": [],
+      "external_no_noopener": [],
+      "mixed_content": [],
+      "tap_targets_too_small": [
+        {
+          "tag": "A",
+          "text": "Blog",
+          "w": 42,
+          "h": 44
+        },
+        {
+          "tag": "A",
+          "text": "PRIVACY POLICY",
+          "w": 60,
+          "h": 37
+        },
+        {
+          "tag": "A",
+          "text": "Fault Code Library",
+          "w": 111,
+          "h": 17
+        },
+        {
+          "tag": "A",
+          "text": "maintenance blog",
+          "w": 108,
+          "h": 17
+        },
+        {
+          "tag": "A",
+          "text": "Home",
+          "w": 44,
+          "h": 44
+        },
+        {
+          "tag": "A",
+          "text": "Blog",
+          "w": 34,
+          "h": 44
+        }
+      ],
+      "buttons_no_name": 0,
+      "forms": [
+        {
+          "action": "https://factorylm.com/cmms",
+          "method": "get",
+          "inputs_unlabelled": 0,
+          "input_types": [
+            "email",
+            "text",
+            "text",
+            "checkbox"
+          ]
+        }
+      ],
+      "jsonld_types": [
+        "SoftwareApplication",
+        "FAQPage"
+      ],
+      "ctas": [],
+      "links_total": 14,
+      "links_internal": [
+        "/",
+        "/blog",
+        "/blog/fault-codes",
+        "/terms",
+        "/privacy",
+        "/blog/fault-codes",
+        "/blog",
+        "/",
+        "/",
+        "/blog",
+        "/blog/fault-codes",
+        "/privacy",
+        "/terms"
+      ],
+      "links_external": [
+        "mailto:contact@factorylm.com"
+      ],
+      "body_text_len": 2642,
+      "has_main_landmark": true,
+      "has_nav_landmark": true,
+      "has_footer_landmark": true
+    },
+    "focus_after_3tab": {
+      "tag": "A",
+      "text": "Fault Codes",
+      "in_viewport": true,
+      "rect": {
+        "x": 340,
+        "y": 4,
+        "w": 55,
+        "h": 44
+      }
+    },
+    "focus_before": "BODY",
+    "scroll_introduced_errors": 0,
+    "console_errors": [],
+    "console_warnings": [],
+    "page_errors": [],
+    "failed_responses": [],
+    "failed_requests": [
+      {
+        "url": "https://fonts.gstatic.com/s/dmsans/v17/rP2Yp2ywxg089UriI5-g4vlH9VoD8CmcqYu28qmR9A.woff2",
+        "method": "GET",
+        "failure": "net::ERR_ABORTED"
+      },
+      {
+        "url": "https://fonts.gstatic.com/s/dmsans/v17/rP2Yp2ywxg089UriI5-g4vlH9VoD8CmcqYu28qmR9A.woff2",
+        "method": "GET",
+        "failure": "net::ERR_ABORTED"
+      },
+      {
+        "url": "https://fonts.gstatic.com/s/dmsans/v17/rP2Yp2ywxg089UriI5-g4vlH9VoD8CmcqYu28qmR9A.woff2",
+        "method": "GET",
+        "failure": "net::ERR_ABORTED"
+      },
+      {
+        "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n5i0g0F9l.woff2",
+        "method": "GET",
+        "failure": "net::ERR_ABORTED"
+      },
+      {
+        "url": "https://fonts.gstatic.com/s/ibmplexserif/v20/jizBREVNn1dOx-zrZ2X3pZvkTiUa2zcZiVbJ.woff2",
+        "method": "GET",
+        "failure": "net::ERR_ABORTED"
+      },
+      {
+        "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJ8lJPheIV.woff2",
+        "method": "GET",
+        "failure": "net::ERR_ABORTED"
+      }
+    ],
+    "finished_at": "2026-04-26T08:31:05.840Z"
+  }
+]

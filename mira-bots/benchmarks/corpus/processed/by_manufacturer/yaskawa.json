@@ -1,0 +1,48 @@
+[
+  {
+    "id": "1recr7h",
+    "title": "Weintek HMI - Omron CQM1H - 7x Yaskawa V1000 (Modbus RTU) comms error that doesn\u2019t behave consistently Post: I\u2019m troubleshooting a comms issue between a Weintek HMI, an Omron CQM1H-CPU61 PLC, and seven Yaskawa V1000 VFDs on RS-485 (Modbus RTU)",
+    "selftext": "Symptoms are inconsistent, sometimes I get clean reads from a few drives, other times I get timeouts or values that clearly don\u2019t make sense, and it\u2019s not consistently tied to one specific drive. Serial settings match across the network, slave IDs are unique, wiring/termination looks fine, and I\u2019m not seeing obvious noise\nWhat I can\u2019t separate is whether this is actually a physical-layer problem (biasing/termination/shield/grounding), timing/polling behavior (HMI scan rate, short timeouts, missing silent interval), or something wrong in my HMI macros (address base/offset, word order, scaling, request logic). I\u2019m mostly self-taught on the macro side, so I\u2019m not ruling out that the \u201cline issue\u201d is self-inflicted.\n\nHow do you usually validate this kind of stack without buying extra protocol analyzer hardware?",
+    "score": 6,
+    "num_comments": 6,
+    "created_utc": 1772024943,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "controls",
+    "urgency": "medium",
+    "quality_score": 0.75,
+    "quality_pass": true,
+    "quality_reasons": [],
+    "manufacturer": "Yaskawa",
+    "equipment_type": "PLC",
+    "model_number": "RS-485",
+    "fault_codes": []
+  },
+  {
+    "id": "1qnio5o",
+    "title": "SigmaWin+ Yaskawa servomotor, how to alarm servo when collision occurs",
+    "selftext": "Hello guys, hope you've been well, right now I'm working with yaskawa motor in a Chinnesse machine, and the software we're using to controlled the motors setup etc. is SigmaWin+ Right now I'm trying to figure out how to alarm the servodrive when an crash or collision occurs, I'm thinking using editing parameters but I would like to know if someone here has experience in that could help me.\n\n(the image is just an example how looks the software)\n\nhttps://preview.redd.it/ay1jqfmrmpfg1.png?width=3811&amp;format=png&amp;auto=webp&amp;s=fca3e23490c2e77b928bf2e7811eb3502508bd0b",
+    "score": 1,
+    "num_comments": 3,
+    "created_utc": 1769440372,
+    "subreddit": "PLC",
+    "top_comment": "",
+    "category": "mechanical",
+    "urgency": "medium",
+    "quality_score": 0.85,
+    "quality_pass": false,
+    "quality_reasons": [
+      "low score (1)"
+    ],
+    "manufacturer": "Yaskawa",
+    "equipment_type": "servo",
+    "model_number": "",
+    "fault_codes": [
+      {
+        "code": "3811",
+        "manufacturer": "ABB",
+        "description": "Unknown fault code"
+      }
+    ]
+  }
+]

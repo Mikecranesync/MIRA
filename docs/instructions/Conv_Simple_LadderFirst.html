@@ -1,0 +1,1019 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Conv_Simple — Ladder-First Edition: every program drawn as rungs</title>
+<style>
+  @page { size: Letter; margin: 0.45in 0.55in; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 10.5pt; color: #111; line-height: 1.42; }
+  h1 { font-size: 19pt; margin: 0 0 4pt 0; border-bottom: 2pt solid #111; padding-bottom: 6pt; }
+  h2 { font-size: 14pt; margin: 18pt 0 6pt 0; padding: 6pt 10pt; background: #1f3a5f; color: #fff; }
+  h2.part { background: #2f6f3f; font-size: 16pt; padding: 8pt 12pt; }
+  h3 { font-size: 12pt; margin: 14pt 0 4pt 0; color: #1f3a5f; }
+  h4 { font-size: 11pt; margin: 10pt 0 2pt 0; color: #333; }
+  .meta { font-size: 9.5pt; color: #555; margin-bottom: 10pt; }
+  .meta strong { color: #111; }
+  ol, ul { margin: 4pt 0 6pt 22pt; }
+  li { margin-bottom: 4pt; }
+  code, pre { font-family: 'Consolas', 'Courier New', monospace; }
+  pre { background: #f4f5f7; border: 1pt solid #d0d5dc; border-radius: 3pt; padding: 8pt; font-size: 9pt; white-space: pre; overflow-x: auto; tab-size: 2; -webkit-tab-size: 2; line-height: 1.25; }
+  pre.ladder { background: #fafbfd; border: 1pt solid #1f3a5f; font-size: 9pt; line-height: 1.15; padding: 10pt 12pt; }
+  pre.wiring { background: #fff8e8; border: 1pt solid #b9882a; padding: 10pt; font-size: 9.5pt; }
+  pre.bits { background: #f0f4fa; border: 1pt solid #1f3a5f; padding: 10pt; font-size: 9.5pt; }
+  code { background: #f4f5f7; padding: 1pt 3pt; border-radius: 2pt; font-size: 10pt; }
+  table { border-collapse: collapse; width: 100%; margin: 4pt 0 8pt 0; font-size: 9.5pt; }
+  th, td { border: 1pt solid #b5bcc4; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #e8edf3; }
+  .callout { border-left: 4pt solid #d9822b; background: #fff7eb; padding: 8pt 12pt; margin: 8pt 0; }
+  .callout-title { font-weight: bold; color: #a55a14; display: block; margin-bottom: 2pt; }
+  .danger { border-left: 4pt solid #c5392c; background: #fdecea; padding: 8pt 12pt; margin: 8pt 0; }
+  .danger-title { font-weight: bold; color: #8a1a10; display: block; margin-bottom: 2pt; }
+  .ok { border-left: 4pt solid #2f8f3a; background: #ecf6ee; padding: 8pt 12pt; margin: 8pt 0; }
+  .ok-title { font-weight: bold; color: #1f5f24; display: block; margin-bottom: 2pt; }
+  .bug { border-left: 4pt solid #8a1a10; background: #fff5f3; padding: 10pt 12pt; margin: 10pt 0; }
+  .bug-title { font-weight: bold; color: #8a1a10; display: block; margin-bottom: 3pt; font-size: 11pt; }
+  .why { background: #eef2f9; padding: 6pt 10pt; margin: 4pt 0 6pt 0; border-radius: 3pt; font-size: 10pt; }
+  .why::before { content: 'Why this matters: '; font-weight: bold; color: #1f3a5f; }
+  .check { background: #f7fff8; border: 1pt dashed #2f8f3a; padding: 5pt 9pt; border-radius: 3pt; margin: 4pt 0; font-size: 10pt; }
+  .check::before { content: '\2713 You should see: '; font-weight: bold; color: #2f8f3a; }
+  .pageref { font-size: 8.5pt; color: #888; font-style: italic; }
+  hr { border: 0; border-top: 1pt solid #b5bcc4; margin: 12pt 0; }
+  .step { background: #1f3a5f; color: #fff; border-radius: 50%; display: inline-block; width: 20pt; height: 20pt; line-height: 20pt; text-align: center; font-weight: bold; margin-right: 7pt; }
+  .checkbox { display: inline-block; width: 11pt; height: 11pt; border: 1.5pt solid #111; margin-right: 6pt; vertical-align: middle; }
+  .small { font-size: 9.5pt; color: #555; }
+  .page-break { page-break-before: always; }
+  .compact td, .compact th { padding: 3pt 6pt; font-size: 9.5pt; }
+  .rung-caption { font-style: italic; color: #555; font-size: 9.5pt; margin: 2pt 0 6pt 0; }
+  .cheatsheet { background: #fffaf0; border: 2pt solid #1f3a5f; padding: 12pt 14pt; margin: 10pt 0; }
+  .cheatsheet h3 { margin-top: 8pt; color: #1f3a5f; }
+  .cheatsheet table { margin: 4pt 0; }
+  .cheatsheet th { background: #1f3a5f; color: #fff; }
+  .toc { background: #f7f8fa; border: 1pt solid #b5bcc4; padding: 10pt 14pt; margin: 10pt 0 18pt 0; }
+  .toc h3 { margin: 0 0 6pt 0; color: #1f3a5f; }
+  .toc ol { margin: 4pt 0 0 22pt; }
+  .toc li { margin-bottom: 2pt; }
+  .primitives { background: #f0f4fa; border: 1pt solid #1f3a5f; padding: 8pt 12pt; margin: 8pt 0; }
+  .primitives table th { background: #1f3a5f; color: #fff; }
+</style>
+</head>
+<body>
+
+<h1>Conv_Simple — Ladder-First Edition<br/><span style="font-size:13pt;font-weight:normal;color:#555;">Every program drawn as ladder rungs. No Structured Text until you ask for it.</span></h1>
+<div class="meta">
+  <strong>Audience:</strong> First-time PLC programmer who wants to learn ladder before structured text &nbsp;|&nbsp;
+  <strong>PLC:</strong> Allen-Bradley Micro 820 (2080-LC20-20QBB)<br/>
+  <strong>Drive:</strong> AutomationDirect GS10 DURApulse, Modbus RTU slave node 1<br/>
+  <strong>Project:</strong> <code>MIRA_v5_LD</code> (new project, doesn't touch deployed <code>MIRA_v5</code>)<br/>
+  <strong>IDE:</strong> Connected Components Workbench (CCW) v22+<br/>
+  <strong>Companion doc:</strong> <code>Conv_Simple_Complete.pdf</code> — the ST version of the same logic (read after you outgrow ladder)<br/>
+  <strong>Reference program:</strong> <code>plc/Micro820_v4.1.8_Program.st</code> (deployed, in ST — this doc is a parallel teaching mirror, not a replacement)<br/>
+  <strong>You will understand after reading:</strong> how to draw the entire conveyor program — e-stop supervision, I/O decoding, state machine, Modbus polling, motor-control UDFB — as ladder rungs. Where ladder is clear, and where it gets painful enough that ST starts to look attractive.
+</div>
+
+<div class="callout">
+  <span class="callout-title">Why a ladder-first edition exists at all</span>
+  Maintenance technicians who came up before 2010 read ladder fluently and find ST alien. Half the panels in the field are still pure ladder. Even if you eventually adopt ST for state machines, you'll spend the rest of your career reading and modifying other people's ladder logic. Learning ladder first means: every contact, every coil, every timer, every MSG block has an unambiguous visual shape that you can point at on a printout and discuss with an electrician. ST has the same logic compressed into text — faster to write once you're fluent, slower to teach and slower to share with a tech who doesn't program.
+</div>
+
+<div class="primitives">
+<h3 style="margin-top:0;">📐 Ladder primitives you'll use in this doc</h3>
+<table class="compact">
+<thead><tr><th>Symbol</th><th>Name</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><code>─[ ]─</code></td><td>XIC (eXamine If Closed)</td><td>NO contact. Passes power when bit is TRUE.</td></tr>
+<tr><td><code>─[/]─</code></td><td>XIO (eXamine If Open)</td><td>NC contact. Passes power when bit is FALSE.</td></tr>
+<tr><td><code>─( )─</code></td><td>OTE (Output Energize)</td><td>Coil. Bit follows rung state.</td></tr>
+<tr><td><code>─(S)─</code></td><td>OTL (Latch / Set)</td><td>Sets bit TRUE when rung true. Stays set after.</td></tr>
+<tr><td><code>─(R)─</code></td><td>OTU (Unlatch / Reset)</td><td>Sets bit FALSE when rung true. Stays clear after.</td></tr>
+<tr><td><code>[ONS]</code></td><td>One-Shot</td><td>Passes power for exactly one scan on rising edge.</td></tr>
+<tr><td><code>[EQU A,B]</code></td><td>Equal</td><td>Compare contact. Passes power when A = B.</td></tr>
+<tr><td><code>[GRT A,B]</code></td><td>Greater Than</td><td>Compare contact. Passes power when A &gt; B.</td></tr>
+<tr><td><code>[MOV S,D]</code></td><td>Move</td><td>Output instruction. Copies source value into dest.</td></tr>
+<tr><td><code>[ADD A,B,D]</code></td><td>Add</td><td>D := A + B. Output instruction.</td></tr>
+<tr><td><code>[COP S,D,N]</code></td><td>Copy block</td><td>Copies N elements from S array to D array.</td></tr>
+<tr><td><code>[TON t,PT]</code></td><td>Timer-On-Delay</td><td>Output FB. <code>.Q</code> goes TRUE after PT elapsed with IN high.</td></tr>
+<tr><td><code>[CTU c,PV]</code></td><td>Count Up</td><td>Output FB. <code>.CV</code> increments on rising edge of CU.</td></tr>
+<tr><td><code>[MSG_MODBUS m]</code></td><td>Modbus messenger</td><td>Output FB. Sends one Modbus packet when IN rises.</td></tr>
+</tbody>
+</table>
+<p style="font-size:9pt; color:#555; margin: 4pt 0 0 0;">CCW exposes all of these in the Toolbox of any LD editor. Drag → drop → wire variable names.</p>
+</div>
+
+<div class="cheatsheet">
+<h3 style="margin-top:0;">🛈 One-page cheat sheet — values and tags used throughout</h3>
+
+<h4>Bench wiring + serial parameters</h4>
+<table class="compact">
+<thead><tr><th>What</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>PLC serial channel (embedded RS-485)</td><td><code>2</code> <span style="color:#c5392c;font-weight:bold;">(NOT 0)</span></td></tr>
+<tr><td>Drive RJ45 pin 5 = SG+, pin 4 = SG-, pin 3 = SGND</td><td>—</td></tr>
+<tr><td>Baud / format</td><td><code>9600 8N2 RTU</code> (P09.01=96, P09.04=13)</td></tr>
+<tr><td>Drive Modbus node</td><td><code>1</code> (P09.00)</td></tr>
+</tbody>
+</table>
+
+<h4>GS10 registers</h4>
+<table class="compact">
+<tbody>
+<tr><td>FC03 monitor block</td><td><code>0x2103</code> (8451), ElementCnt = 4</td></tr>
+<tr><td>FC03 status word</td><td><code>0x2101</code> (8449), ElementCnt = 1</td></tr>
+<tr><td>FC06 Control Command</td><td><code>0x2000</code> (8192)</td></tr>
+<tr><td>FC06 Frequency Setpoint</td><td><code>0x2001</code> (8193), value = Hz × 10</td></tr>
+<tr><td>FC06 Fault Reset</td><td><code>0x2002</code> (8194), data = <code>2</code></td></tr>
+</tbody>
+</table>
+
+<h4>Command word values (bench-verify before relying)</h4>
+<table class="compact">
+<tbody>
+<tr><td>STOP</td><td><code>1</code></td></tr>
+<tr><td>FWD + RUN</td><td><code>18</code></td></tr>
+<tr><td>REV + RUN</td><td><code>20</code></td></tr>
+</tbody>
+</table>
+
+<h4>Physical I/O map (Micro 820 embedded)</h4>
+<table class="compact">
+<thead><tr><th>I/O</th><th>Tag</th><th>Use</th></tr></thead>
+<tbody>
+<tr><td><code>_IO_EM_DI_00</code></td><td>SelectorFWD</td><td>NO contact, closed when knob LEFT</td></tr>
+<tr><td><code>_IO_EM_DI_01</code></td><td>SelectorREV</td><td>NO contact, closed when knob RIGHT</td></tr>
+<tr><td><code>_IO_EM_DI_02</code></td><td>EStopNC</td><td>NC contact (healthy = 1, pressed = 0)</td></tr>
+<tr><td><code>_IO_EM_DI_03</code></td><td>EStopNO</td><td>NO contact (healthy = 0, pressed = 1)</td></tr>
+<tr><td><code>_IO_EM_DI_04</code></td><td>PBRun</td><td>Illuminated green pushbutton, NO momentary</td></tr>
+<tr><td><code>_IO_EM_DI_05</code></td><td>Sensor_1</td><td>Entry photoeye</td></tr>
+<tr><td><code>_IO_EM_DI_06</code></td><td>Sensor_2</td><td>Exit photoeye</td></tr>
+<tr><td><code>_IO_EM_DO_00</code></td><td>LightGreen</td><td>Running pilot light</td></tr>
+<tr><td><code>_IO_EM_DO_01</code></td><td>LightRed</td><td>Fault / e-stop pilot light</td></tr>
+<tr><td><code>_IO_EM_DO_02</code></td><td>ContactorQ1</td><td>Safety contactor coil (drops 3-phase power)</td></tr>
+<tr><td><code>_IO_EM_DO_03</code></td><td>PBRunLED</td><td>Green pushbutton's internal lamp</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="toc">
+<h3>📖 Reading map (6 parts)</h3>
+<ol>
+  <li><strong>Part 1 — Setup + prerequisites.</strong> Wiring, drive keypad, fresh CCW project. Sections 1–3.</li>
+  <li><strong>Part 2 — Prog2-Safety in ladder.</strong> E-stop XOR, I/O decoding, edge detection, contactor, state machine, LEDs. Sections 4–10.</li>
+  <li><strong>Part 3 — Prog3-Modbus in ladder.</strong> Config loading via MOV, COP write buffers, polling timer, 4 MSG rungs. Sections 11–15.</li>
+  <li><strong>Part 4 — Prog4-Motor: build motor_starter as an LD UDFB.</strong> Same pattern as the ST version, but every rung drawn. Sections 16–18.</li>
+  <li><strong>Part 5 — Test + troubleshoot.</strong> Sections 19–20.</li>
+  <li><strong>Part 6 — When ladder hurts and ST starts to look attractive.</strong> Honest map of which sections compress best. Sections 21–22.</li>
+</ol>
+</div>
+
+<div class="page-break"></div>
+
+<h2 class="part">PART 1 — Setup + prerequisites</h2>
+
+<h2><span class="step">1</span> RS-485 wiring (same prerequisite as the ST edition)</h2>
+
+<pre class="wiring">  GS10 RJ45 Serial Comm Port pinout (looking into jack on drive):
+
+      ┌──────────────────────────────────────┐
+   →  │   1   2   3   4   5   6   7   8      │   ← pin numbers
+      │   ─   ─   ─   ─   ─   ─   ─   ─      │
+      │   ░   ░   ●   ●   ●   ░   ░   ░      │
+      │           │   │   │                  │
+      │           │   │   └── PIN 5 = SG+  (D+, non-inverting)
+      │           │   └────── PIN 4 = SG-  (D-, inverting)
+      │           └────────── PIN 3 = SGND (signal ground)
+      └──────────────────────────────────────┘
+                                              <span class="pageref">[GS10 manual p.10]</span></pre>
+
+<div class="danger">
+  <span class="danger-title">GS10 pin order is REVERSED from Allen-Bradley PowerFlex</span>
+  Pin 5 = D+, Pin 4 = D-. AB convention is the opposite — follow AB by mistake and you get silence on the wire (no error, just no traffic). Verify with multimeter: 2.0–2.5V DC idle bias measured pin 5 (+) to pin 4 (-), drive powered, PLC offline.
+</div>
+
+<h2><span class="step">2</span> GS10 keypad parameters (set once, save, power-cycle)</h2>
+
+<table class="compact">
+<thead><tr><th>Param</th><th>Value</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>P00.20</td><td><code>3</code></td><td>Frequency source = RS-485 comms</td></tr>
+<tr><td>P00.21</td><td><code>3</code></td><td>Run command source = RS-485 comms</td></tr>
+<tr><td>P09.00</td><td><code>1</code></td><td>Modbus slave address</td></tr>
+<tr><td>P09.01</td><td><code>96</code></td><td>9600 baud</td></tr>
+<tr><td>P09.04</td><td><code>13</code></td><td>RTU 8N2 format</td></tr>
+<tr><td>P09.07</td><td><code>2</code></td><td>Comm-loss = stop the drive on timeout</td></tr>
+</tbody>
+</table>
+
+<h2><span class="step">3</span> Fresh CCW project for the ladder edition</h2>
+
+<p>This doc builds a parallel project so you don't disturb the deployed <code>MIRA_v5</code> ST project. New tags, new program names, new UDFB — everything ends in <code>_LD</code> or <code>_ladder</code> to make it obvious which world you're in.</p>
+
+<ol>
+  <li><span class="checkbox"></span> CCW → File → New Project → name <code>MIRA_v5_LD</code>.</li>
+  <li><span class="checkbox"></span> Controller type: <strong>2080-LC20-20QBB</strong>.</li>
+  <li><span class="checkbox"></span> <strong>Embedded Serial Port</strong> → <strong>Properties</strong>: Protocol = Modbus RTU, Mode = Master, Baud = 9600, Parity = None, Stop Bits = 2, Handshake = None.</li>
+  <li><span class="checkbox"></span> Project Organizer → Programs → right-click → <strong>Add → New LD: Ladder Diagram</strong>. Create three:
+    <ul>
+      <li><code>Prog2-Safety</code> — e-stop, I/O decode, state machine, LEDs</li>
+      <li><code>Prog3-Modbus-LD</code> — config loading, polling timer, 4 MSG rungs</li>
+      <li><code>Prog4-Motor-LD</code> — UDFB instance call</li>
+    </ul>
+  </li>
+  <li><span class="checkbox"></span> Execution order: Prog2-Safety first, Prog3-Modbus-LD second, Prog4-Motor-LD third. Set in Programs → Properties → Order.</li>
+  <li><span class="checkbox"></span> Global Variables → declare every tag listed in the cheatsheet plus the structs in Section 11. (Or import via CSV — see the deployed project's <code>VARIABLES_IMPORT.csv</code> for shape.)</li>
+</ol>
+
+<div class="why">Keeping the LD project separate from the deployed ST project means you can fail freely. Download the LD project to the bench PLC, learn, break it, reload the deployed ST project anytime you want production back. No risk to existing work.</div>
+
+<div class="page-break"></div>
+
+<h2 class="part">PART 2 — Prog2-Safety (all in ladder)</h2>
+
+<h2><span class="step">4</span> E-stop XOR supervision — 4 rungs</h2>
+
+<p>The dual-channel e-stop has one NC contact (<code>_IO_EM_DI_02</code>) and one NO contact (<code>_IO_EM_DI_03</code>). In a healthy installation they're always complementary: NC closed + NO open (released), or NC open + NO closed (pressed). If they're ever the same state, a wire broke or a contact welded — that's a wiring fault, latch the alarm and refuse to run until manually cleared.</p>
+
+<h3>Rung 4-1 — Released (NC closed + NO open)</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[ ]─_IO_EM_DI_02─[/]─_IO_EM_DI_03─┬─(R)─e_stop_active
+    │                                    │
+    │                                    └─(R)─estop_wiring_fault
+    │                                                              │
+</pre>
+<p class="rung-caption">Both branches of the rung output. Two coils to the right of one composite contact group.</p>
+
+<h3>Rung 4-2 — Pressed (NC open + NO closed)</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[/]─_IO_EM_DI_02─[ ]─_IO_EM_DI_03─┬─(S)─e_stop_active
+    │                                    │
+    │                                    └─(R)─estop_wiring_fault
+    │                                                              │
+</pre>
+
+<h3>Rung 4-3 — Wiring fault (both closed)</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[ ]─_IO_EM_DI_02─[ ]─_IO_EM_DI_03─┬─(S)─e_stop_active
+    │                                    ├─(S)─estop_wiring_fault
+    │                                    └─(S)─fault_alarm
+    │                                                              │
+</pre>
+
+<h3>Rung 4-4 — Wiring fault (both open)</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[/]─_IO_EM_DI_02─[/]─_IO_EM_DI_03─┬─(S)─e_stop_active
+    │                                    ├─(S)─estop_wiring_fault
+    │                                    └─(S)─fault_alarm
+    │                                                              │
+</pre>
+
+<div class="why">Four rungs cover all four quadrants of the XOR truth table. The deployed ST version uses one <code>IF (_IO_EM_DI_02 XOR _IO_EM_DI_03)</code> statement — same logic, three lines instead of four rungs. The ladder version is more visual and easier for an electrician to verify with a multimeter, but four rungs is the price.</div>
+
+<h3>Rung 4-5 — Compute e_stop_ok (used later by the UDFB)</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[/]─e_stop_active─[/]─estop_wiring_fault─( )─e_stop_ok
+    │                                                              │
+</pre>
+
+<h2><span class="step">5</span> Direction selector decoding — 4 rungs</h2>
+
+<p>The 3-position selector has two NO contacts wired to <code>_IO_EM_DI_00</code> (FWD) and <code>_IO_EM_DI_01</code> (REV). Center = both open. Left = FWD closed only. Right = REV closed only. Both-closed is a wiring fault (selector failed).</p>
+
+<h3>Rung 5-1 — dir_fwd</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[ ]─_IO_EM_DI_00─[/]─_IO_EM_DI_01─( )─dir_fwd
+    │                                                              │
+</pre>
+
+<h3>Rung 5-2 — dir_rev</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[/]─_IO_EM_DI_00─[ ]─_IO_EM_DI_01─( )─dir_rev
+    │                                                              │
+</pre>
+
+<h3>Rung 5-3 — dir_off</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[/]─_IO_EM_DI_00─[/]─_IO_EM_DI_01─( )─dir_off
+    │                                                              │
+</pre>
+
+<h3>Rung 5-4 — dir_fault</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[ ]─_IO_EM_DI_00─[ ]─_IO_EM_DI_01─( )─dir_fault
+    │                                                              │
+</pre>
+
+<h2><span class="step">6</span> Rising-edge on the green pushbutton — 2 rungs</h2>
+
+<p>You need a one-scan "the button just got pressed" bit so a stuck-PB doesn't auto-restart the motor every scan. Ladder has two ways: an explicit ONS instruction, or a manual prev-value pattern. CCW supports both; ONS is more idiomatic.</p>
+
+<h3>Rung 6-1 — Using ONS (preferred)</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[ ]─_IO_EM_DI_04─[ONS pb_ons_storage]─( )─button_rising
+    │                                                              │
+</pre>
+<p class="rung-caption">ONS needs its own storage bit (<code>pb_ons_storage : BOOL</code>) — declare it as a global. The instruction handles the prev-value tracking internally.</p>
+
+<h3>Rung 6-1 alternate — Manual prev pattern (works if ONS isn't available)</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[ ]─_IO_EM_DI_04─[/]─prev_button─( )─button_rising
+    │
+    ├─[ ]─_IO_EM_DI_04─( )─prev_button
+    │                                                              │
+</pre>
+<p class="rung-caption">Two rungs. First produces the edge bit. Second shifts current value into prev for next scan. <strong>Order matters</strong> — edge rung must execute before the prev-update rung.</p>
+
+<div class="why">Without rising-edge detection, holding the green PB while the latch is FALSE would re-fire the start every scan as long as the PB stays pressed. With rising-edge, the start only happens once per physical button press.</div>
+
+<h2><span class="step">7</span> Safety contactor output — 1 rung</h2>
+
+<p>The hard-wired safety contactor (Q1, controlled by <code>_IO_EM_DO_02</code>) physically cuts 3-phase power to the VFD when de-energized. Energize it only when e-stop healthy and no wiring fault.</p>
+
+<pre class="ladder">
+    │                                                              │
+    ├─[/]─e_stop_active─[/]─estop_wiring_fault─( )─_IO_EM_DO_02
+    │                                                              │
+</pre>
+
+<div class="danger">
+  <span class="danger-title">Contactor logic must be hardwired AND PLC-controlled</span>
+  This rung is the PLC's view. The actual safety circuit ALSO must route the e-stop's hard contacts in series with the contactor coil so the PLC failing (powered off, frozen scan, downloaded with wrong logic) cannot leave the contactor energized while the e-stop is pressed. The PLC rung is a redundant guard, not the primary safety chain. See NFPA 79 §9.2.5 for the architectural requirement.
+</div>
+
+<h2><span class="step">8</span> State machine in ladder — 5 states, ~20 transition rungs</h2>
+
+<p>The conveyor has 5 states: <code>0 = IDLE</code>, <code>1 = STARTING</code>, <code>2 = RUNNING</code>, <code>3 = STOPPING</code>, <code>4 = FAULT</code>. The state variable is <code>conv_state : INT</code>. Each transition is a rung that, when its conditions are met, uses <code>[MOV new_state, conv_state]</code> to change states.</p>
+
+<div class="callout">
+  <span class="callout-title">Heads-up: ladder state machines get verbose fast</span>
+  The deployed ST version is one <code>CASE conv_state OF</code> block with ~80 lines. The ladder version is ~20 rungs that all reference the state via EQU compare contacts. Both are correct; the ladder version is more visual and easier to step through with a finger on a printout, but every new state means N more transition rungs. Five states is the sweet spot; ten states starts to feel painful.
+</div>
+
+<h3>Transitions out of state 0 (IDLE)</h3>
+
+<h4>Rung 8-1 — IDLE → FAULT on any fault condition</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU conv_state, 0]─┬─[ ]─fault_alarm─────┬─[MOV 4, conv_state]
+    │                     ├─[ ]─e_stop_active───┤
+    │                     └─[ ]─dir_fault───────┘
+    │                                                              │
+</pre>
+<p class="rung-caption">Three parallel branches OR'd together — any one TRUE means transition to state 4.</p>
+
+<h4>Rung 8-2 — IDLE → STARTING on button + direction selected + no fault</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU conv_state, 0]─[/]─fault_alarm─[/]─e_stop_active─[/]─dir_fault─[ ]─button_rising─┬─[ ]─dir_fwd─┬─[MOV 1, conv_state]
+    │                                                                                       │             │
+    │                                                                                       └─[ ]─dir_rev─┘
+    │                                                              │
+</pre>
+<p class="rung-caption">All conditions must be true. Direction selector parallel: FWD OR REV (but not OFF).</p>
+
+<h3>Transitions out of state 1 (STARTING)</h3>
+
+<h4>Rung 8-3 — STARTING → FAULT</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU conv_state, 1]─┬─[ ]─e_stop_active─┬─[MOV 4, conv_state]
+    │                     ├─[ ]─fault_alarm───┤
+    │                     └─[ ]─dir_fault─────┘
+    │                                                              │
+</pre>
+
+<h4>Rung 8-4 — STARTING → RUNNING on start_timer.Q</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU conv_state, 1]─[/]─e_stop_active─[/]─fault_alarm─[/]─dir_fault─[ ]─start_timer.Q─[MOV 2, conv_state]
+    │                                                              │
+</pre>
+
+<h4>Rung 8-5 — Start timer drives</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU conv_state, 1]─[TON start_timer, PT := T#3000ms]
+    │                                                              │
+</pre>
+<p class="rung-caption">TON is called every scan; IN tied to "are we in state 1?". When IN drops (state moves on), TON resets automatically.</p>
+
+<h3>Transitions out of state 2 (RUNNING)</h3>
+
+<h4>Rung 8-6 — RUNNING → FAULT</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU conv_state, 2]─┬─[ ]─e_stop_active─┬─[MOV 4, conv_state]
+    │                     ├─[ ]─fault_alarm───┤
+    │                     └─[ ]─dir_fault─────┘
+    │                                                              │
+</pre>
+
+<h4>Rung 8-7 — RUNNING → STOPPING on dir_off (normal stop)</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU conv_state, 2]─[/]─e_stop_active─[/]─fault_alarm─[/]─dir_fault─[ ]─dir_off─[MOV 3, conv_state]
+    │                                                              │
+</pre>
+
+<h3>Transitions out of state 3 (STOPPING)</h3>
+
+<h4>Rung 8-8 — STOPPING → FAULT</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU conv_state, 3]─┬─[ ]─e_stop_active─┬─[MOV 4, conv_state]
+    │                     └─[ ]─fault_alarm───┘
+    │                                                              │
+</pre>
+
+<h4>Rung 8-9 — STOPPING → IDLE on stop_timer.Q</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU conv_state, 3]─[/]─e_stop_active─[/]─fault_alarm─[ ]─stop_timer.Q─[MOV 0, conv_state]
+    │                                                              │
+</pre>
+
+<h4>Rung 8-10 — Stop timer drives</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU conv_state, 3]─[TON stop_timer, PT := T#2000ms]
+    │                                                              │
+</pre>
+
+<h3>Transitions out of state 4 (FAULT)</h3>
+
+<h4>Rung 8-11 — FAULT → IDLE on reset (PB + e-stop clear + selector not OFF)</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU conv_state, 4]─[ ]─button_rising─[/]─e_stop_active─[/]─estop_wiring_fault─[/]─dir_off─┬─(R)─fault_alarm
+    │                                                                                            ├─[MOV 0, conv_state]
+    │                                                                                            ├─[MOV 0, error_code]
+    │                                                                                            └─(S)─vfd_fault_reset_pending
+    │                                                              │
+</pre>
+
+<h3>Error-code tagging while in FAULT</h3>
+
+<h4>Rung 8-12 — Identify fault source (lower-priority faults at bottom)</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU conv_state, 4]─[ ]─e_stop_active────────────[MOV 6, error_code]
+    │
+    ├─[EQU conv_state, 4]─[/]─e_stop_active─[ ]─estop_wiring_fault─[MOV 7, error_code]
+    │
+    ├─[EQU conv_state, 4]─[/]─e_stop_active─[/]─estop_wiring_fault─[ ]─dir_fault─[MOV 8, error_code]
+    │
+    ├─[EQU conv_state, 4]─[/]─e_stop_active─[/]─estop_wiring_fault─[/]─dir_fault─[ ]─vfd_comm_err─[MOV 9, error_code]
+    │                                                              │
+</pre>
+<p class="rung-caption">XIO chains to make the priority explicit — first-true-wins.</p>
+
+<h2><span class="step">9</span> motor_running and conveyor_running bits — 4 rungs</h2>
+
+<h4>Rung 9-1 — motor_running while in STARTING or RUNNING</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─┬─[EQU conv_state, 1]─┬─( )─motor_running
+    │ └─[EQU conv_state, 2]─┘
+    │                                                              │
+</pre>
+
+<h4>Rung 9-2 — conveyor_running in RUNNING only</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU conv_state, 2]─( )─conveyor_running
+    │                                                              │
+</pre>
+
+<h4>Rung 9-3 — Item count on rising-edge of exit sensor (RUNNING only)</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU conv_state, 2]─[ ]─_IO_EM_DI_06─[ONS sensor_ons]─[ADD item_count, 1, item_count]
+    │                                                              │
+</pre>
+
+<h4>Rung 9-4 — Speed setpoint pass-through (RUNNING only)</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU conv_state, 2]─[MOV conveyor_speed_cmd, motor_speed]
+    │                                                              │
+</pre>
+
+<h2><span class="step">10</span> LED indicators — 3 rungs</h2>
+
+<h4>Rung 10-1 — Green pilot (running)</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─┬─[ ]─ALL_LEDS_ON─┬───────────────( )─_IO_EM_DO_00
+    │ └─[ ]─motor_running─┘
+    │                                                              │
+</pre>
+
+<h4>Rung 10-2 — Red pilot (fault / e-stop)</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─┬─[ ]─ALL_LEDS_ON───────┬─( )─_IO_EM_DO_01
+    │ ├─[ ]─e_stop_active─────┤
+    │ ├─[ ]─fault_alarm───────┤
+    │ ├─[ ]─estop_wiring_fault┤
+    │ ├─[ ]─dir_fault─────────┤
+    │ └─[GRT vfd_fault_code, 0]─┘
+    │                                                              │
+</pre>
+
+<h4>Rung 10-3 — Pushbutton lamp (mirrors motor_running)</h4>
+<pre class="ladder">
+    │                                                              │
+    ├─┬─[ ]─ALL_LEDS_ON──┬─( )─_IO_EM_DO_03
+    │ └─[ ]─motor_running─┘
+    │                                                              │
+</pre>
+
+<div class="page-break"></div>
+
+<h2 class="part">PART 3 — Prog3-Modbus-LD (all in ladder)</h2>
+
+<h2><span class="step">11</span> Config struct loading — one rung per field</h2>
+
+<p>The four <code>MSG_MODBUS</code> instances each need a <code>LocalCfg</code> struct (channel, function code, element count) and a <code>TargetCfg</code> struct (register address, slave node). In ST these load with simple assignments; in ladder each field is one MOV rung.</p>
+
+<div class="why">CCW lets you tag a rung as "First Scan only" or you can wire to an "always TRUE" bit, but most programmers just leave the MOV rungs unconditioned and let them load every scan. The performance cost is negligible (~1 μs per MOV) and it means a runtime corruption can't leave stale config values in a struct.</div>
+
+<h3>Read monitor cfg — 5 rungs</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[MOV 2,    read_local_cfg.Channel]
+    ├─[MOV 0,    read_local_cfg.TriggerType]
+    ├─[MOV 3,    read_local_cfg.Cmd]              (* FC03 = read holding *)
+    ├─[MOV 4,    read_local_cfg.ElementCnt]       (* 4 regs: 0x2103..0x2106 *)
+    ├─[MOV 8451, read_target_cfg.Addr]            (* 0x2103 *)
+    ├─[MOV 1,    read_target_cfg.Node]
+    │                                                              │
+</pre>
+
+<h3>Write command cfg — 5 rungs</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[MOV 2,    write_cmd_local_cfg.Channel]
+    ├─[MOV 0,    write_cmd_local_cfg.TriggerType]
+    ├─[MOV 6,    write_cmd_local_cfg.Cmd]         (* FC06 = write single *)
+    ├─[MOV 1,    write_cmd_local_cfg.ElementCnt]
+    ├─[MOV 8192, write_cmd_target_cfg.Addr]       (* 0x2000 control *)
+    ├─[MOV 1,    write_cmd_target_cfg.Node]
+    │                                                              │
+</pre>
+
+<h3>Write frequency cfg — 5 rungs</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[MOV 2,    write_freq_local_cfg.Channel]
+    ├─[MOV 0,    write_freq_local_cfg.TriggerType]
+    ├─[MOV 6,    write_freq_local_cfg.Cmd]
+    ├─[MOV 1,    write_freq_local_cfg.ElementCnt]
+    ├─[MOV 8193, write_freq_target_cfg.Addr]      (* 0x2001 freq setpoint *)
+    ├─[MOV 1,    write_freq_target_cfg.Node]
+    │                                                              │
+</pre>
+
+<h3>Fault reset cfg — 5 rungs</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[MOV 2,    fault_reset_local_cfg.Channel]
+    ├─[MOV 0,    fault_reset_local_cfg.TriggerType]
+    ├─[MOV 6,    fault_reset_local_cfg.Cmd]
+    ├─[MOV 1,    fault_reset_local_cfg.ElementCnt]
+    ├─[MOV 8194, fault_reset_target_cfg.Addr]     (* 0x2002 fault reset *)
+    ├─[MOV 1,    fault_reset_target_cfg.Node]
+    │                                                              │
+</pre>
+
+<div class="callout">
+  <span class="callout-title">20 MOV rungs to do what 20 ST lines do</span>
+  ST version: 20 assignments in 20 lines. LD version: 20 rungs, each with one MOV instruction. The visual chrome takes more space but you can put a finger on a printout and verify each value against the cheatsheet. This is exactly where ST starts to feel attractive — see Part 6 §21.
+</div>
+
+<h2><span class="step">12</span> COP write-buffer loading — 3 rungs</h2>
+
+<p>Each FC06 write needs its payload (one register) in an array slot the MSG block reads from. Use COP to copy the source variable into <code>*_data(1)</code>.</p>
+
+<pre class="ladder">
+    │                                                              │
+    ├─[COP vfd_cmd_word,      write_cmd_data,    1]   (* command word *)
+    ├─[COP vfd_freq_setpoint, write_freq_data,   1]   (* freq × 10 *)
+    ├─[COP fault_reset_cmd,   fault_reset_data,  1]   (* always 2 *)
+    │                                                              │
+</pre>
+
+<h3>Also load the constants once</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[MOV 2, fault_reset_cmd]                  (* always 2 to clear faults *)
+    │                                                              │
+</pre>
+
+<h3>Frequency setpoint computation</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[ ]─motor_running─[GRT conveyor_speed_cmd, 0]─[MUL conveyor_speed_cmd, 10, vfd_freq_setpoint]
+    │
+    ├─[ ]─motor_running─[EQU conveyor_speed_cmd, 0]─[MOV 300, vfd_freq_setpoint]
+    │                                                              │
+</pre>
+<p class="rung-caption">If a non-zero speed is commanded, scale Hz×10. If zero while motor_running (operator forgot to set speed), default to 30.0 Hz so the motor doesn't sit at 0 Hz dancing.</p>
+
+<h2><span class="step">13</span> Polling timer + step advance — 3 rungs</h2>
+
+<h3>Rung 13-1 — Poll timer ticks while not actively polling</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[/]─vfd_poll_active─[TON vfd_poll_timer, PT := T#500ms]
+    │                                                              │
+</pre>
+
+<h3>Rung 13-2 — On timer.Q: arm next poll, increment step</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[ ]─vfd_poll_timer.Q─[/]─vfd_poll_active─┬─(S)─vfd_poll_active
+    │                                          ├─(R)─vfd_msg_done
+    │                                          └─[ADD vfd_poll_step, 1, vfd_poll_step]
+    │                                                              │
+</pre>
+
+<h3>Rung 13-3 — Wrap step 5+ back to 1</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[GRT vfd_poll_step, 4]─[MOV 1, vfd_poll_step]
+    │                                                              │
+</pre>
+
+<h3>Rung 13-4 — Skip fault-reset step (step 4) unless a reset is pending</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU vfd_poll_step, 4]─[/]─vfd_fault_reset_pending─[MOV 1, vfd_poll_step]
+    │                                                              │
+</pre>
+
+<h2><span class="step">14</span> The 4 polling MSG rungs</h2>
+
+<h3>Rung 14-1 — Read monitor block (step 1)</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU vfd_poll_step, 1]─[ ]─vfd_poll_active─[MSG_MODBUS mb_read_monitor]
+    │                                              │
+    │                                              ├─ LocalCfg  := read_local_cfg
+    │                                              ├─ TargetCfg := read_target_cfg
+    │                                              └─ LocalAddr := read_data
+    │                                                              │
+</pre>
+
+<h3>Rung 14-2 — Write command (step 2)</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU vfd_poll_step, 2]─[ ]─vfd_poll_active─[MSG_MODBUS mb_write_cmd]
+    │                                              │
+    │                                              ├─ LocalCfg  := write_cmd_local_cfg
+    │                                              ├─ TargetCfg := write_cmd_target_cfg
+    │                                              └─ LocalAddr := write_cmd_data
+    │                                                              │
+</pre>
+
+<h3>Rung 14-3 — Write frequency (step 3)</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU vfd_poll_step, 3]─[ ]─vfd_poll_active─[MSG_MODBUS mb_write_freq]
+    │                                              │
+    │                                              ├─ LocalCfg  := write_freq_local_cfg
+    │                                              ├─ TargetCfg := write_freq_target_cfg
+    │                                              └─ LocalAddr := write_freq_data
+    │                                                              │
+</pre>
+
+<h3>Rung 14-4 — Fault reset (step 4)</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU vfd_poll_step, 4]─[ ]─vfd_poll_active─[MSG_MODBUS mb_fault_reset]
+    │                                              │
+    │                                              ├─ LocalCfg  := fault_reset_local_cfg
+    │                                              ├─ TargetCfg := fault_reset_target_cfg
+    │                                              └─ LocalAddr := fault_reset_data
+    │                                                              │
+</pre>
+
+<h2><span class="step">15</span> Check MSG results — per-step result rungs</h2>
+
+<h3>Rung 15-1 — Step 1 read success</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU vfd_poll_step, 1]─[ ]─mb_read_monitor.Q─┬─[COP read_data, vfd_frequency, 1]   (* Hz × 10 *)
+    │                                              ├─[COP read_data[1], vfd_current,  1]
+    │                                              ├─[COP read_data[2], vfd_dc_bus,   1]
+    │                                              ├─[COP read_data[3], vfd_voltage,  1]
+    │                                              ├─(S)─vfd_comm_ok
+    │                                              ├─(R)─vfd_comm_err
+    │                                              ├─(S)─vfd_msg_done
+    │                                              └─(R)─vfd_poll_active
+    │                                                              │
+</pre>
+
+<h3>Rung 15-2 — Step 1 read error</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU vfd_poll_step, 1]─[ ]─mb_read_monitor.Error─┬─(R)─vfd_comm_ok
+    │                                                  ├─(S)─vfd_comm_err
+    │                                                  ├─(S)─vfd_msg_done
+    │                                                  └─(R)─vfd_poll_active
+    │                                                              │
+</pre>
+
+<h3>Rung 15-3..5 — Steps 2/3/4 done (same pattern, condensed)</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[EQU vfd_poll_step, 2]─┬─[ ]─mb_write_cmd.Q─────┬─(S)─vfd_msg_done
+    │                        └─[ ]─mb_write_cmd.Error─┘   └─(R)─vfd_poll_active
+    │
+    ├─[EQU vfd_poll_step, 2]─[ ]─mb_write_cmd.Error─(S)─vfd_comm_err
+    │
+    ├─[EQU vfd_poll_step, 3]─┬─[ ]─mb_write_freq.Q─────┬─(S)─vfd_msg_done
+    │                        └─[ ]─mb_write_freq.Error─┘   └─(R)─vfd_poll_active
+    │
+    ├─[EQU vfd_poll_step, 3]─[ ]─mb_write_freq.Error─(S)─vfd_comm_err
+    │
+    ├─[EQU vfd_poll_step, 4]─┬─[ ]─mb_fault_reset.Q─────┬─(R)─vfd_fault_reset_pending
+    │                        └─[ ]─mb_fault_reset.Error─┘   ├─(S)─vfd_msg_done
+    │                                                       └─(R)─vfd_poll_active
+    │                                                              │
+</pre>
+
+<h3>Rung 15-6 — Watchdog: latch fault_alarm if comm error persists 5s</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[ ]─vfd_comm_err─[TON vfd_err_timer, PT := T#5000ms]
+    │
+    ├─[ ]─vfd_err_timer.Q─┬─(S)─fault_alarm
+    │                     └─[MOV 9, error_code]
+    │                                                              │
+</pre>
+
+<div class="page-break"></div>
+
+<h2 class="part">PART 4 — motor_starter as an LD UDFB</h2>
+
+<h2><span class="step">16</span> Create the UDFB in ladder language</h2>
+
+<p>CCW supports User-Defined Function Blocks written in any IEC 61131-3 language — Ladder Diagram included. Same external interface as the ST version (same pins, same instance variables), just the body is drawn as rungs instead of typed as ST.</p>
+
+<h4>Step 1 — Create the LD UDFB</h4>
+<ol>
+  <li><span class="checkbox"></span> Project Organizer → right-click <strong>User-Defined Function Blocks</strong> → <strong>Add → New Function Block</strong>.</li>
+  <li><span class="checkbox"></span> Language: <strong>Ladder Diagram</strong>. (Not Structured Text — that's the other doc.)</li>
+  <li><span class="checkbox"></span> Name: <code>motor_starter_LD</code>. The <code>_LD</code> suffix prevents collision with the ST version if both projects ever merge.</li>
+  <li><span class="checkbox"></span> Empty variable list + empty rung area opens.</li>
+</ol>
+
+<h4>Step 2 — Declare variables (same as the ST version)</h4>
+
+<table class="compact">
+<thead><tr><th>Section</th><th>Name</th><th>Type</th><th>Initial</th></tr></thead>
+<tbody>
+<tr><td>VAR_INPUT</td><td><code>Enable</code></td><td><code>BOOL</code></td><td><code>TRUE</code></td></tr>
+<tr><td>VAR_INPUT</td><td><code>StartPB</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR_INPUT</td><td><code>DirFwdSw</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR_INPUT</td><td><code>DirRevSw</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR_INPUT</td><td><code>EStopOK</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR_OUTPUT</td><td><code>VFDCmdWord</code></td><td><code>INT</code></td><td><code>1</code></td></tr>
+<tr><td>VAR_OUTPUT</td><td><code>RunLamp</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR</td><td><code>RunLatch</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR</td><td><code>DirLatchFwd</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR</td><td><code>DirLatchRev</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR</td><td><code>StartPBOnsStore</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR</td><td><code>StartPBRising</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+<tr><td>VAR</td><td><code>RunOK</code></td><td><code>BOOL</code></td><td><code>FALSE</code></td></tr>
+</tbody>
+</table>
+
+<div class="why">Notable change from the ST version: <code>DirLatch : INT</code> (0/1/2) becomes two BOOLs <code>DirLatchFwd</code> + <code>DirLatchRev</code>. Ladder works better with bool latches than with integer compares for state this small. ST's integer is more compact in text; ladder's two bools are easier to draw and easier to debug visually.</div>
+
+<h2><span class="step">17</span> The 5 UDFB body rungs</h2>
+
+<h3>Rung 17-1 — Rising edge on StartPB</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[ ]─StartPB─[ONS StartPBOnsStore]─( )─StartPBRising
+    │                                                              │
+</pre>
+
+<h3>Rung 17-2 — RunOK composite (master enable + safety + direction selected)</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[ ]─Enable─[ ]─EStopOK─┬─[ ]─DirFwdSw─[/]─DirRevSw─┬─( )─RunOK
+    │                        │                           │
+    │                        └─[/]─DirFwdSw─[ ]─DirRevSw─┘
+    │                                                              │
+</pre>
+<p class="rung-caption">Parallel branch: FWD-only OR REV-only. Both-true (wiring fault) and neither-true (OFF) both produce RunOK = FALSE.</p>
+
+<h3>Rung 17-3 — Seal-in latch on RunLatch</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─┬─[ ]─StartPBRising─┬─[ ]─RunOK─( )─RunLatch
+    │ │                   │
+    │ └─[ ]─RunLatch──────┘
+    │                                                              │
+</pre>
+<p class="rung-caption">Classic seal-in. Once RunLatch sets, it holds itself through the lower branch as long as RunOK stays TRUE. The moment RunOK drops (any drop condition), RunLatch coils OFF.</p>
+
+<h3>Rung 17-4 — Capture direction at the moment RunLatch sets</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[ ]─StartPBRising─[ ]─DirFwdSw─[/]─DirRevSw─(S)─DirLatchFwd
+    │
+    ├─[ ]─StartPBRising─[/]─DirFwdSw─[ ]─DirRevSw─(S)─DirLatchRev
+    │
+    ├─[/]─RunLatch─┬─(R)─DirLatchFwd
+    │              └─(R)─DirLatchRev
+    │                                                              │
+</pre>
+<p class="rung-caption">Set the appropriate direction latch on the edge; clear both whenever RunLatch drops.</p>
+
+<h3>Rung 17-5 — Output assignment: VFDCmdWord + RunLamp</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[/]─RunLatch───────────────────────────[MOV 1,  VFDCmdWord]    (* STOP *)
+    │
+    ├─[ ]─RunLatch─[ ]─DirLatchFwd───────────[MOV 18, VFDCmdWord]    (* FWD+RUN *)
+    │
+    ├─[ ]─RunLatch─[ ]─DirLatchRev───────────[MOV 20, VFDCmdWord]    (* REV+RUN *)
+    │
+    ├─[ ]─RunLatch─( )─RunLamp
+    │                                                              │
+</pre>
+
+<div class="callout">
+  <span class="callout-title">Drop-on-direction-change handled by Rung 17-2 alone</span>
+  In the ST version, "drop on direction change while running" was a named local (<code>DirChangedWhileRunning</code>) computed before the latch IF. In ladder, it's implicit: if the operator flips the selector mid-run, RunOK's parallel branch fails (e.g., DirLatchFwd is still TRUE but DirFwdSw is now FALSE → neither parallel branch passes → RunOK drops → seal-in coils OFF). One rung, no extra named bool needed.
+</div>
+
+<h4>Step 3 — Build the UDFB</h4>
+<ol>
+  <li><span class="checkbox"></span> Press <strong>F8</strong>. Look for <strong>0 errors</strong>.</li>
+  <li><span class="checkbox"></span> Errors? Typo in a variable name on a rung vs the variable list. CCW is spelling-sensitive even though it's case-insensitive.</li>
+</ol>
+
+<h2><span class="step">18</span> Call the UDFB from Prog4-Motor-LD</h2>
+
+<h3>Rung 18-1 — One instance, all pins wired</h3>
+<pre class="ladder">
+    │                                                              │
+    ├─[ ]─enable_motor_ctrl─[motor_starter_LD  motor_starter_inst]
+    │                          │
+    │                          ├─ Enable     := enable_motor_ctrl
+    │                          ├─ StartPB    := _IO_EM_DI_04
+    │                          ├─ DirFwdSw   := dir_fwd
+    │                          ├─ DirRevSw   := dir_rev
+    │                          ├─ EStopOK    := e_stop_ok
+    │                          ├─ VFDCmdWord => vfd_cmd_word
+    │                          └─ RunLamp    => _IO_EM_DO_00
+    │                                                              │
+</pre>
+
+<div class="why">Dragging the UDFB onto the rung gives you a box with one pin per input/output. <code>:=</code> for inputs, <code>=&gt;</code> for outputs. CCW also lets you skip the leading enable contact if Enable defaults to TRUE — but wiring an explicit enable bit makes it easy to globally pause motor control without touching the field switches.</div>
+
+<h2><span class="step">19</span> Important — comment out the old state-machine writes to vfd_cmd_word</h2>
+
+<p>If you ported the deployed Prog2 ST state machine to Prog2-Safety LD per Section 8, then Section 8 doesn't actually write <code>vfd_cmd_word</code> anywhere — clean. Skip this step.</p>
+
+<p>If instead you're running the deployed Prog2 ST <em>and</em> this new Prog4-Motor-LD side-by-side in the same project (mixed-mode), you have to comment out the same six sites from the ST version that the Complete doc §20 Fix 5 lists. Two writers in one scan = last-writer-wins = random behavior.</p>
+
+<div class="page-break"></div>
+
+<h2 class="part">PART 5 — Test + troubleshoot</h2>
+
+<h2><span class="step">20</span> Test procedure (LD edition)</h2>
+
+<ol>
+  <li><span class="checkbox"></span> Build (F8). 0 errors. Unknown-variable errors mean a global is missing from the Controller Variables table — declare it and rebuild.</li>
+  <li><span class="checkbox"></span> Download via USB.</li>
+  <li><span class="checkbox"></span> PLC to Run.</li>
+  <li><span class="checkbox"></span> Online → Variable Monitor. Pin <code>conv_state</code>, <code>vfd_cmd_word</code>, <code>vfd_poll_step</code>, <code>motor_starter_inst.RunLatch</code>.</li>
+</ol>
+
+<h4>Test 1 — E-stop XOR proves all four quadrants</h4>
+<div class="check">Released → <code>e_stop_active</code> = FALSE, <code>estop_wiring_fault</code> = FALSE. Pressed → <code>e_stop_active</code> = TRUE, <code>estop_wiring_fault</code> = FALSE. Wire-cut one channel (simulate by forcing one of the inputs) → both bits latch TRUE, <code>fault_alarm</code> latches TRUE, requires reset.</div>
+
+<h4>Test 2 — State machine cycles IDLE → STARTING → RUNNING → STOPPING → IDLE</h4>
+<div class="check">Selector FWD, press PB. <code>conv_state</code>: 0 → 1 (for 3 sec while <code>start_timer</code> runs) → 2 (running). Flip selector to OFF. <code>conv_state</code>: 2 → 3 (for 2 sec while <code>stop_timer</code> runs) → 0.</div>
+
+<h4>Test 3 — State machine catches every fault</h4>
+<div class="check">Press e-stop from any non-FAULT state. <code>conv_state</code> → 4 within one scan. <code>error_code</code> = 6 (e-stop). Press PB while e-stop is released + selector not OFF → <code>conv_state</code> → 0, <code>error_code</code> → 0, <code>fault_alarm</code> → FALSE.</div>
+
+<h4>Test 4 — Modbus sequencer rotates 1→4 (or 1→3 when no reset pending)</h4>
+<div class="check"><code>vfd_poll_step</code> visibly cycles. <code>mb_read_monitor.ErrorID</code> = 0 sustained. <code>read_data(1)</code> &gt; 0 when motor running.</div>
+
+<h4>Test 5 — UDFB seal-in works</h4>
+<div class="check">Selector FWD, press PB. <code>motor_starter_inst.RunLatch</code> goes TRUE for one scan and stays TRUE. <code>motor_starter_inst.DirLatchFwd</code> = TRUE. <code>vfd_cmd_word</code> = 18. Flip selector to REV mid-run — RunLatch drops within one scan, motor stops, must re-press PB.</div>
+
+<h4>Test 6 — E-stop drops UDFB latch</h4>
+<div class="check">Motor running, press e-stop. <code>e_stop_ok</code> → FALSE → UDFB's <code>EStopOK</code> pin → FALSE → RunOK FALSE → RunLatch drops. <code>vfd_cmd_word</code> = 1.</div>
+
+<h4>Test 7 — E-stop release alone does NOT auto-restart</h4>
+<div class="check">Release e-stop. RunLatch stays FALSE because StartPBRising is FALSE (you haven't pressed PB again). Operator must press PB to restart.</div>
+
+<h2><span class="step">21</span> Troubleshooting — ladder-specific gotchas</h2>
+
+<table class="compact">
+<thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td>State machine "stuck" in one state forever</td><td>Transition rung for that state is wrong; or the condition contact's underlying global isn't being driven</td><td>Variable monitor: watch the transition rung's conditions one by one. Whichever XIC/XIO is the wrong color (red = TRUE in CCW online) is the contact blocking progress.</td></tr>
+<tr><td>Two state-transition rungs fire on the same scan</td><td>Rung order matters — earlier rungs win in CCW. If rung 8-1 (IDLE→FAULT) and rung 8-2 (IDLE→STARTING) both true (e.g., button pressed at the moment a fault appears), 8-1 wins because it executes first.</td><td>Order from highest priority (faults) to lowest (normal transitions) within each state. The existing ordering is correct — keep it.</td></tr>
+<tr><td>Edge bit (button_rising) stays TRUE for multiple scans</td><td>Using OTE pattern (rung 6-1 alternate) but the two rungs are in the wrong order. Edge rung must run BEFORE prev-shift rung.</td><td>Reorder the rungs in Prog2-Safety. ONS instruction (rung 6-1 preferred) avoids this entirely.</td></tr>
+<tr><td>MOV rung loads stale value</td><td>You wired the MOV source to a tag that isn't being driven this scan</td><td>Verify the source variable updates somewhere upstream. <code>conveyor_speed_cmd</code> for instance — does anything assign it? If no, it sits at zero.</td></tr>
+<tr><td>UDFB instance pin shows "no variable" in monitor</td><td>You opened the UDFB <strong>definition</strong>, not the instance</td><td>Project Organizer → Prog4-Motor-LD → expand → <code>motor_starter_inst</code> in locals → monitor it.</td></tr>
+<tr><td>RunLatch stays TRUE on first scan after download even though motor wasn't running before</td><td>CCW retained instance memory across download</td><td>Project → Clear Memory Retention → re-download. Or power-cycle PLC.</td></tr>
+<tr><td>Build error: "unknown identifier <code>ONS_storage_bit</code>"</td><td>ONS instruction needs its storage bit declared as a global</td><td>Global Variables → declare <code>pb_ons_storage : BOOL</code> (or whatever name the rung uses). Rebuild.</td></tr>
+<tr><td>Modbus rungs fire but ErrorID = 255 on every one</td><td>Channel := 0 instead of 2</td><td>Verify Rung 11-* MOVs all load value <strong>2</strong> into the .Channel field. Re-download.</td></tr>
+<tr><td>Two rungs both drive the same output coil (e.g., <code>_IO_EM_DO_00</code>)</td><td>CCW silently OR's them. Sometimes intentional; usually a mistake. Last-rung-wins is NOT how it works — both rungs are evaluated and the output reflects the OR.</td><td>Audit Prog2-Safety §10 rungs. The green pilot should only be driven from one place (Rung 10-1).</td></tr>
+</tbody>
+</table>
+
+<div class="page-break"></div>
+
+<h2 class="part">PART 6 — When ladder hurts (and where ST starts to look attractive)</h2>
+
+<h2><span class="step">22</span> Honest map of where each language wins</h2>
+
+<table class="compact">
+<thead><tr><th>Concern</th><th>Ladder</th><th>ST</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td>E-stop XOR supervision</td><td>4 rungs, very visual</td><td>1 IF, 6 lines</td><td>Ladder if the electrician will be the one tracing it. ST if it's pure code review.</td></tr>
+<tr><td>I/O decoding (dir_fwd / dir_rev / dir_off / dir_fault)</td><td>4 rungs, dead simple</td><td>4 assignments, even simpler</td><td>Toss-up. Use the project's primary language.</td></tr>
+<tr><td>Edge detection on a pushbutton</td><td>1 ONS rung</td><td>2 lines (current + prev)</td><td>Ladder is more idiomatic. Both fine.</td></tr>
+<tr><td><strong>5-state state machine</strong></td><td><strong>~20 transition rungs + 5 sub-state output rungs</strong></td><td><strong>One CASE block, ~30 lines</strong></td><td><strong>ST wins decisively at 5+ states. Ladder still fine at 2–3 states.</strong></td></tr>
+<tr><td>Modbus config struct loading (20+ fields)</td><td>20+ MOV rungs</td><td>20+ assignments, half the page space</td><td>ST wins on space, but ladder lets a tech verify each value against a cheatsheet without scrolling.</td></tr>
+<tr><td>COP buffer loading (3 sites)</td><td>3 COP rungs</td><td>3 cop_*(...) calls</td><td>Toss-up.</td></tr>
+<tr><td>Polling timer + step advance</td><td>3 rungs</td><td>4 lines + 1 IF</td><td>Toss-up.</td></tr>
+<tr><td>MSG_MODBUS calls (4 sites)</td><td>4 rungs, very clear</td><td>4 FB calls, also clear</td><td>Ladder slightly clearer for first-time readers.</td></tr>
+<tr><td>MSG result handling (4 steps × ok/err)</td><td>~10 rungs total</td><td>One CASE block, ~30 lines</td><td>ST is more compact. Ladder is more visual. Either works.</td></tr>
+<tr><td>UDFB body (motor_starter)</td><td>5 rungs</td><td>~30 lines of ST</td><td>Ladder wins on visual clarity for this size. ST wins if the UDFB grows past ~10 internal states.</td></tr>
+<tr><td>LED indicator outputs</td><td>3 rungs with OR branches</td><td>3 IF lines</td><td>Toss-up.</td></tr>
+<tr><td>Error-code tagging in FAULT state</td><td>4 priority rungs with XIO chains</td><td>4 ELSIF lines, much tighter</td><td>ST wins on conciseness; ladder wins on visual priority chain.</td></tr>
+</tbody>
+</table>
+
+<h3>The honest summary</h3>
+
+<p><strong>Ladder wins</strong> when: a 3rd party (electrician, maintenance tech, safety auditor) will read the program; the logic is parallel and short; you want a printout that can be verified contact-by-contact against the field wiring.</p>
+
+<p><strong>ST wins</strong> when: state machines have more than ~3 states; you're doing arithmetic, scaling, or formatted output; the function has 20+ variables interacting and ladder's spatial layout would force horizontal scrolling.</p>
+
+<p><strong>Most production programs are mixed.</strong> The deployed <code>Micro820_v4.1.8_Program.st</code> uses ST for the state machine (where it shines) and the same project has ladder for the Modbus polling rungs (where the MSG block calls read most naturally). That's not a code smell; it's IEC 61131-3 design intent. The deployed program leans ST-heavy because it grew organically from a CCW template; a from-scratch design today might lean more ladder for the safety/I/O sections and keep ST only for the state machine + Modbus result CASE.</p>
+
+<h3>When you finish this doc — what to read next</h3>
+
+<ol>
+  <li><strong><code>Conv_Simple_Complete.pdf</code></strong> — read the ST version of the same logic. You'll see exactly which ladder rungs collapse into one ST line and where the trade-offs sit.</li>
+  <li><strong><code>plc/Micro820_v4.1.8_Program.st</code></strong> — the deployed program. By the time you can read both languages, this file should look familiar to you — every section maps to a Part in this doc.</li>
+  <li><strong><code>plc/LD_BUILD_GUIDE_v5.md</code></strong> — the older partial ladder reference. Superseded by this doc (which corrects the Channel = 0 / ElementCnt = 6 / mb_read_status bugs), but historically useful.</li>
+</ol>
+
+<hr/>
+
+<div class="cheatsheet">
+<h3 style="margin-top:0;">🛈 Tear-off appendix — ladder edition</h3>
+
+<h4>Three programs, in execution order</h4>
+<ol>
+  <li><strong>Prog2-Safety</strong> — e-stop XOR (4 rungs), dir decode (4), edge detect (1–2), contactor (1), state machine (~20), motor flags (4), LEDs (3) = ~37 rungs</li>
+  <li><strong>Prog3-Modbus-LD</strong> — cfg loading (20), COP buffers (3), freq scaling (2), poll timer (4), MSG calls (4), result handling (~10), watchdog (2) = ~45 rungs</li>
+  <li><strong>Prog4-Motor-LD</strong> — UDFB instance call (1 rung); UDFB body internal (5 rungs)</li>
+</ol>
+
+<h4>Critical values (must be right)</h4>
+<table class="compact">
+<tbody>
+<tr><td>All four .Channel MOVs load value</td><td><code>2</code></td></tr>
+<tr><td>read_local_cfg.ElementCnt MOV loads</td><td><code>4</code></td></tr>
+<tr><td>MSG instance name for monitor read</td><td><code>mb_read_monitor</code> (NOT <code>mb_read_status</code>)</td></tr>
+<tr><td>Frequency setpoint scaling</td><td>Hz × 10 (30 Hz → 300)</td></tr>
+<tr><td>Cmd words (bench-verify)</td><td>STOP=1, FWD+RUN=18, REV+RUN=20</td></tr>
+</tbody>
+</table>
+
+<h4>Ladder gotchas worth taping to the wall</h4>
+<ul>
+  <li>Rung execution order matters for state-machine transitions. Faults first, normals second.</li>
+  <li>Two rungs to the same coil = OR, not last-wins. Audit your outputs.</li>
+  <li>ONS storage bit MUST be a unique global per ONS instance. Sharing one means edge detection bleeds across rungs.</li>
+  <li>UDFB instance vs definition: monitor the instance, not the definition.</li>
+  <li>EQU/GRT compare contacts are FALSE when comparing to an uninitialized INT (typically 0). Initialize your state variable.</li>
+</ul>
+</div>
+
+</body>
+</html>

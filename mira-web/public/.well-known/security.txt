@@ -1,0 +1,14 @@
+# FactoryLM / MIRA security contact
+# RFC 9116 — https://www.rfc-editor.org/rfc/rfc9116
+
+Contact: mailto:security@factorylm.com
+Expires: 2027-04-25T00:00:00Z
+Preferred-Languages: en
+Canonical: https://factorylm.com/.well-known/security.txt
+Policy: https://factorylm.com/trust#disclosure
+Acknowledgments: https://factorylm.com/trust#thanks
+
+# If you've found a security issue in FactoryLM/MIRA, please email
+# security@factorylm.com. We aim to acknowledge reports within 72 hours
+# and follow a 90-day coordinated disclosure window. We don't currently
+# operate a paid bug bounty program.

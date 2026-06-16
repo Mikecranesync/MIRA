@@ -1,0 +1,50 @@
+services:
+  mira-hub:
+    mem_limit: 1g
+    memswap_limit: 1g
+    build:
+      context: ./mira-hub
+      dockerfile: Dockerfile
+    container_name: mira-hub
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3101:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_PIPELINE_API_URL=${NEXT_PUBLIC_PIPELINE_API_URL:-http://mira-pipeline:9099}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3100}
+      # Hub auth reads AUTH_SECRET first, falls back to NEXTAUTH_SECRET (see
+      # mira-hub/src/auth.ts:141, middleware.ts:44, lib/session.ts:47). Use the
+      # canonical Doppler key — same shape as docker-compose.saas.yml:403.
+      - AUTH_SECRET=${AUTH_SECRET}
+      # Bearer-token gate for /api/uploads/folder (mira-drop-watcher).
+      # See tools/mira-drop-watcher/ + /api/uploads/folder/route.ts.
+      - HUB_INGEST_TOKEN=${HUB_INGEST_TOKEN}
+      # Downstream mira-ingest endpoint used by both /api/uploads/local + folder.
+      - INGEST_URL=${INGEST_URL:-http://mira-ingest:8001}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://app.factorylm.com}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_CLIENT_ID=${SLACK_CLIENT_ID}
+      - SLACK_CLIENT_SECRET=${SLACK_CLIENT_SECRET}
+      - MICROSOFT_CLIENT_ID=${MICROSOFT_CLIENT_ID}
+      - MICROSOFT_CLIENT_SECRET=${MICROSOFT_CLIENT_SECRET}
+      - DROPBOX_APP_KEY=${DROPBOX_APP_KEY}
+      - DROPBOX_APP_SECRET=${DROPBOX_APP_SECRET}
+      - ATLASSIAN_CLIENT_ID=${ATLASSIAN_CLIENT_ID}
+      - ATLASSIAN_CLIENT_SECRET=${ATLASSIAN_CLIENT_SECRET}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:3000/api/health/ || wget -qO- http://127.0.0.1:3000/hub/api/health/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - core-net
+
+networks:
+  core-net:
+    external: true

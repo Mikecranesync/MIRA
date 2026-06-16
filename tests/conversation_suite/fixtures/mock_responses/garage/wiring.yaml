@@ -1,0 +1,19 @@
+# Mock LLM replies for wiring questions. Loaded by FakeInferenceRouter when a
+# fixture sets `mock_responses: garage/wiring`. Match order is preserved.
+- match_substring: "Micro820 to the GS10"
+  reply: |
+    Wire it like this (Cat5e shielded twisted pair):
+
+    - Micro820 Pin 1 (TXD+) → GS10 Pin 3 (S+) — RS-485 A
+    - Micro820 Pin 2 (TXD-) → GS10 Pin 4 (S-) — RS-485 B
+    - Micro820 Pin 5 (COM)  → GS10 Pin 5 (SG) — signal ground
+
+    Set both sides to 9600/8N2 (VFD: P09.00=1, P09.01=1). Install a 120Ω
+    termination resistor across S+ and S- at the VFD end if the run is over 30 ft.
+    Route the RS-485 cable away from the VFD output power cables.
+    [Source: docs/legacy/gist-master-wiring-guide.md §RS-485 Wiring]
+
+- match_substring: "wire the GS10"
+  reply: |
+    See the wiring guide — confirm the asset first: is this the conveyor GS10?
+    [Source: docs/legacy/gist-master-wiring-guide.md §RS-485 Wiring]

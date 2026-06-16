@@ -1,0 +1,312 @@
+row_id,manufacturer,model_number,equipment_type,condition,has_nameplate,priority,search_query,url_hint,sources_yaml_key,status,notes
+mac_motor_damaged,MAC,,motor,damaged,true,1,MAC motor service manual repair guide,https://www.mac-corp.com,mac_motor,portal_no_pdf,Two damaged MAC motors in field — NP present on both. OCR returned no model number.
+motor_damaged_unknown_001,,motor,motor,damaged,false,1,industrial motor troubleshooting repair manual,,motor_unknown_damaged_001,to_find,Unknown mfr motor with visible damage. No nameplate readable.
+other_damaged_unknown_001,,other,other,damaged,false,1,industrial equipment fault diagnosis manual,,other_unknown_damaged_001,to_find,Unknown type/mfr damaged — fault visible
+other_damaged_unknown_002,,other,other,damaged,false,1,industrial equipment fault diagnosis manual,,other_unknown_damaged_002,to_find,Unknown type/mfr damaged
+other_damaged_unknown_003,,other,other,damaged,false,1,industrial equipment fault diagnosis manual,,other_unknown_damaged_003,to_find,Unknown type/mfr damaged
+other_fault_visible_001,,other,other,fault_visible,false,1,industrial equipment fault diagnosis manual,,other_fault_visible_001,to_find,Fault visibly present — unidentified equipment type
+siemens_3rv1935,Siemens,3RV1935-5A,contactor,normal,true,2,Siemens 3RV1935-5A contactor wiring installation manual,https://support.industry.siemens.com/cs/attachments/60279172/manual_SIRIUS_circuit_breaker_3RV_en-US.pdf,siemens_3rv1935,ingested,NP confirmed. SIRIUS circuit breaker/contactor combination. Search Siemens Industry portal.
+deshao_dh8116500,DESHAO,DH 8116500,motor,normal,true,2,DESHAO DH8116500 motor manual specifications nameplate,,deshao_dh8116500,to_find,Chinese OEM motor. NP confirmed. Try deshao.com or alibaba product listings for spec sheet.
+deshao_ws160,DESHAO,WS-160,motor,normal,true,2,DESHAO WS-160 motor manual specifications,,deshao_ws160,to_find,Likely same brand as DH 8116500 — OCR variant. Verify model.
+deshao_wp5160p,DESHAO,WP5-160P,motor,normal,true,2,DESHAO WP5-160P motor manual specifications,,deshao_wp5160p,to_find,OCR variant of DESHAO brand. May be DESHA-O misread.
+deshao_sm302100,DESHAO,SM302-100,motor,normal,true,2,DESHAO SM302-100 motor specifications,,deshao_sm302100,to_find,OCR may be DESHAZZO. Cross-check with deshao_dh8116500 manufacturer.
+erroll_ec310,ERROLL,EC310,motor,normal,true,2,ERROLL EC310 motor manual wiring nameplate,,erroll_ec310,to_find,NP confirmed. May be ERROLL brand or OCR variant of another name. Cross-check with INTERRA EC310.
+interra_ec310,INTERRA,EC310,motor,normal,true,2,INTERRA EC310 motor manual specifications,,interra_ec310,to_find,NP confirmed. Same model as ERROLL EC310 — possibly same OEM with different label.
+demag_dccom2,Demag,DC-Com 2 250 1/1 H5,crane_controller,normal,true,2,Demag DC-Com 2 crane controller manual programming fault codes,https://www.tsoverheadcrane.com/pdf/demag-dc-com-manual.pdf,demag_dccom2,ingested,Full nameplate: DC-Com 2 250 1/1 H5 V7.2/1.8. Demag Cranes & Components GmbH.
+magnetek_flex6ex2,Magnetek,FLEX 6EX2,crane_control,normal,true,2,Magnetek FLEX 6EX2 crane control system manual,https://www.hoosiercrane.com/media/wysiwyg/Manuals/Magnetek/Flex-6EX2-System-Radio-Control-Equipment-Manual-191-50600-M000F.pdf,magnetek_flex6ex2,ingested,NP confirmed. Magnetek variable frequency crane drives — likely has published PDF manual.
+lt_lr7827,L&T,LR7827,sensor,normal,true,2,L&T LR7827 sensor datasheet installation manual,,lt_lr7827,to_find,NP confirmed. Larsen & Toubro (L&T) or different L&T brand. Check lntecc.com or lntiescl.com.
+accolift_2330020,ACCOLIFT,2330020,hoist,normal,true,2,ACCOLIFT 2330020 hoist manual parts diagram,,accolift_2330020,to_find,NP confirmed. ACCOLIFT overhead hoist — search cmco.com or spanco.com (possible reseller brands).
+legacy_mfg_8346,Legacy Manufacturing,8346,other,normal,true,2,Legacy Manufacturing 8346 manual specifications,,legacy_mfg_8346,to_find,NP confirmed. Legacy Manufacturing Company industrial part.
+zeit_fzelt010,ZEIT,fzelt010,plc,normal,true,2,ZEIT fzelt010 PLC controller manual programming,,zeit_fzelt010,to_find,NP confirmed. ZEIT industrial controller — likely German or European origin.
+interroll_multicontrol,Interroll,MultiControl Analog Interface,control_module,normal,true,2,Interroll MultiControl Analog Interface manual installation,https://www.interroll.com/fileadmin/Downloads/User_Manuals/Controls/MultiControl/User_Manual_MultiControl_EN.pdf,interroll_multicontrol,ingested,NP confirmed. Interroll conveyor system control module. Check interroll.com downloads.
+forward_mfg_9472,Forward Manufacturing,9472,motor,normal,true,2,Forward Manufacturing 9472 motor manual specifications,,forward_mfg_9472,to_find,NP confirmed. Forward Manufacturing industrial motor.
+aetra_bvrl01,AETRA,B VRL 01,motor,normal,true,2,AETRA B VRL 01 motor manual nameplate specifications,,aetra_bvrl01,to_find,NP confirmed. May be Brazilian brand AETRA (electrical equipment). Verify region.
+ari_hetra,ARI,hetra,motor,normal,true,2,ARI hetra motor specifications manual,,ari_hetra,to_find,NP confirmed. Two photos — one motor one other type. May be ARI-Armaturen or different ARI. Cross check with AETRA.
+allen_bradley_plc,Allen-Bradley,,plc,normal,true,3,Allen-Bradley PLC manual programming instruction set,https://literature.rockwellautomation.com,allen_bradley_plc,portal_no_pdf,NP confirmed — no model number captured. Search Rockwell literature library by product family once model identified from photo review.
+allen_bradley_other,Allen-Bradley,,other,normal,true,3,Allen-Bradley industrial equipment manual,https://literature.rockwellautomation.com,allen_bradley_other,portal_no_pdf,Two photos — both NP but no model. Portal index crawl candidate once models known.
+atlas_copco_plc,Atlas Copco,,plc,normal,true,3,Atlas Copco controller PLC manual programming,https://www.atlascopco.com/en-uk/itba/products/power-tools/controllers,atlas_copco_plc,portal_no_pdf,NP confirmed — Atlas Copco industrial controller. No model captured.
+brogen_plc,BROGEN,,plc,normal,false,3,BROGEN PLC controller manual,,brogen_plc,to_find,No nameplate. BROGEN — may be small OEM or reseller. Search broadly.
+dassen_panel,DASSEN,,panel,normal,false,3,DASSEN electrical panel wiring diagram manual,,dassen_panel,to_find,Two photos (panel + wiring). No model. DASSEN may be regional integrator — confirm if brand or custom label.
+dayton_other,Dayton,,other,normal,false,3,Dayton industrial equipment manual,https://www.grainger.com/search?searchQuery=dayton+user+manual,dayton_other,portal_no_pdf,Dayton brand (Grainger house brand). No model. Wide product range — narrow from photo review.
+deshazo_crane,DESHAZO,,other,normal,false,3,DESHAZO overhead crane hoist manual,,deshazo_crane,to_find,DESHAZO overhead crane manufacturer. No model. Check deshazo.com.
+budgit_hoist,Budgit,,hoist,normal,true,3,Budgit hoist chain electric manual parts,https://www.cmco.com/en-us/resources/doc-library/,budgit_hoist,portal_no_pdf,Three photos — one is 5 ton. NP present but no model series captured. CM (Columbus McKinnon) brand — check cmco.com resource library.
+twin_city_panel,Twin City,,panel,normal,true,3,Twin City electrical panel manual wiring,,twin_city_panel,to_find,NP confirmed — Twin City panel. May be Twin City Fan or different Twin City brand. No model.
+trambeam_other,TRAMBEAM,,other,normal,false,3,TRAMBEAM overhead crane beam runway manual,,trambeam_other,to_find,TRAMBEAM — overhead monorail/runway system brand. No model.
+stahl_other,STAHL,,other,normal,false,3,R. STAHL crane hoist manual,https://www.r-stahl.com/en/global/downloads,stahl_other,fetch_failed,R. STAHL crane/hoist equipment. No model. Strong documentation portal at r-stahl.com.
+yale_hoist,Yale,,hoist,normal,true,3,Yale hoist chain electric manual parts,https://www.cmco.com/en-us/resources/doc-library/,yale_hoist,portal_no_pdf,Two photos — NP present but no model. Yale (Columbus McKinnon brand) — same portal as Budgit.
+demag_other,Demag,,other,unknown,false,3,Demag crane hoist equipment manual,https://www.demagcranes.com/sites/default/files/media/documents/21115144_100331_2.pdf,demag_other,ingested,Separate from DC-Com entry — additional Demag equipment with no model captured.
+arburg_other,Arburg,,other,normal,false,3,Arburg injection molding machine manual,,arburg_other,to_find,Arburg injection molding/industrial equipment. No model. Check arburg.com downloads.
+interroll_plc,Interroll,,plc,normal,true,3,Interroll conveyor controller PLC manual,https://www.interroll.com/fileadmin/Downloads/User_Manuals/Controls/MultiControl/User_Manual_MultiControl_EN.pdf,interroll_plc,to_find,Interroll Engineering GmbH PLC controller — separate from MultiControl entry. NP confirmed.
+modern_industries,Modern Industries,,other,normal,true,3,Modern Industries industrial equipment manual,,modern_industries,to_find,NP confirmed — Modern Industries. No model. Regional manufacturer — may need direct contact.
+overhead_crane_svc,Overhead Crane Service,,other,normal,true,3,Overhead Crane Service equipment manual,,overhead_crane_svc,to_find,NP confirmed — may be a service company label rather than OEM manufacturer.
+ace_engineering_co_inc_t_30_hp2,"ACE Engineering Co., Inc.",T 30 HP2,other,normal,true,2,"ACE Engineering Co., Inc. T 30 HP2 other manual",,ace_engineering_co_inc_t_30_hp2,to_find,
+columbus_mckinnon_flex_ex2,Columbus McKinnon,Flex EX2,other,normal,true,2,Columbus McKinnon Flex EX2 other manual,https://www.hoosiercrane.com/media/wysiwyg/Manuals/Magnetek/Flex-6EX2-System-Radio-Control-Equipment-Manual-191-50600-M000F.pdf,columbus_mckinnon_flex_ex2,to_find,
+magnetek_flex_ex2,Magnetek,Flex EX2,other,normal,false,3,Magnetek Flex EX2 other manual,https://www.hoosiercrane.com/media/wysiwyg/Manuals/Magnetek/Flex-6EX2-System-Radio-Control-Equipment-Manual-191-50600-M000F.pdf,magnetek_flex_ex2,to_find,
+herc,HERC,,other,normal,true,3,HERC other manual,,herc,to_find,
+ando_rigging,ANDO RIGGING,,other,normal,true,3,ANDO RIGGING other manual,,ando_rigging,to_find,
+crosby,CROSBY,,other,normal,true,3,CROSBY other manual,,crosby,to_find,
+safety_clamps_inc_ulr,"Safety Clamps, Inc",ULR,other,normal,true,2,"Safety Clamps, Inc ULR other manual",,safety_clamps_inc_ulr,to_find,
+vulcan,VULCAN,,other,normal,true,3,VULCAN other manual,,vulcan,to_find,
+columbus_mckinnon,Columbus McKinnon,,other,normal,true,3,Columbus McKinnon other manual,,columbus_mckinnon,to_find,
+gunnebo_johnson,Gunnebo Johnson,,other,normal,true,3,Gunnebo Johnson other manual,,gunnebo_johnson,to_find,
+low_peak,Low-Peak,,other,normal,true,3,Low-Peak other manual,,low_peak,to_find,
+ferraz_shawmut_atdr,Ferraz Shawmut,ATDR,starter,normal,true,2,Ferraz Shawmut ATDR starter manual,,ferraz_shawmut_atdr,to_find,
+remtron,REMTRON,,panel,normal,true,3,REMTRON panel manual,,remtron,to_find,
+laird_21t34a_3,Laird,21T34A-3,sensor,normal,true,2,Laird 21T34A-3 sensor manual,,laird_21t34a_3,to_find,
+terrier_tnmk,TERRIER,TNMK,other,normal,true,2,TERRIER TNMK other manual,,terrier_tnmk,to_find,
+letellier,LETELLIER,,other,damaged,true,1,LETELLIER other manual,,letellier,to_find,
+chard,Chard,,other,normal,true,3,Chard other manual,,chard,to_find,
+bmg,BMG,,other,normal,true,3,BMG other manual,,bmg,to_find,
+elephant,ELEPHANT,,other,unknown,true,3,ELEPHANT other manual,,elephant,to_find,
+southeast_rigging_inc,Southeast Rigging Inc,,other,normal,true,3,Southeast Rigging Inc other manual,,southeast_rigging_inc,to_find,
+wright,WRIGHT,,other,normal,true,3,WRIGHT other manual,,wright,to_find,
+hcco_470,HCCO,470,other,damaged,true,1,HCCO 470 other manual,,hcco_470,to_find,
+acco_3670061,ACCO,3670061,other,normal,true,2,ACCO 3670061 other manual,,acco_3670061,to_find,
+eriez_manufacturing_co_apl_36,ERIEZ MANUFACTURING CO,APL-36,other,damaged,true,1,ERIEZ MANUFACTURING CO APL-36 other manual,,eriez_manufacturing_co_apl_36,to_find,
+southeast_rigging,Southeast Rigging,,other,normal,true,3,Southeast Rigging other manual,,southeast_rigging,to_find,
+work_rated,WORK-RATED,,other,normal,true,3,WORK-RATED other manual,,work_rated,to_find,
+new_glenn,New Glenn,,other,normal,false,3,New Glenn other manual,,new_glenn,to_find,
+shaw_box_1050205121701z,Shaw-Box,1050205121701Z,other,normal,true,2,Shaw-Box 1050205121701Z other manual,,shaw_box_1050205121701z,to_find,
+jcb,JCB,,panel,normal,false,3,JCB panel manual,,jcb,to_find,
+deshazo_d511868,DESHAZO,D511868,other,normal,true,2,DESHAZO D511868 other manual,,deshazo_d511868,to_find,
+buss_foo,BUSS,FOO,other,normal,true,2,BUSS FOO other manual,,buss_foo,to_find,
+uright,URIGHT,,other,normal,true,3,URIGHT other manual,,uright,to_find,
+wiskam_electric_corporation_cmrp_vu440018aa,WISKAM ELECTRIC CORPORATION,CMRP-VU440018AA,other,normal,true,2,WISKAM ELECTRIC CORPORATION CMRP-VU440018AA other manual,,wiskam_electric_corporation_cmrp_vu440018aa,to_find,
+magnetek_impulse_g_mini,Magnetek,Impulse G+ Mini,vfd,damaged,true,1,Magnetek Impulse G+ Mini vfd manual,https://www.magnetekdrives.com/wp-content/uploads/sites/7/drives-g-mini-manual.pdf,magnetek_impulse_g_mini,ingested,
+ace_engineering_co_inc_a_150_ip2,"ACE Engineering Co., Inc.",A 150 IP2,other,normal,true,2,"ACE Engineering Co., Inc. A 150 IP2 other manual",,ace_engineering_co_inc_a_150_ip2,to_find,
+stearns_208708200glf,Stearns,208708200GLF,motor,normal,true,2,Stearns 208708200GLF motor manual,,stearns_208708200glf,to_find,
+deshazo,DESHAZO,,other,normal,true,3,DESHAZO other manual,,deshazo,to_find,
+aes_engineered_systems,AES Engineered Systems,,other,normal,true,3,AES Engineered Systems other manual,,aes_engineered_systems,to_find,
+telemecanique,Telemecanique,,sensor,normal,true,3,Telemecanique sensor manual,,telemecanique,to_find,
+ace_world_companies,ace World Companies,,other,normal,true,3,ace World Companies other manual,,ace_world_companies,to_find,
+ace_engineering_co_inc_four_part_double,"ACE Engineering Co., Inc.",Four Part Double,other,normal,true,2,"ACE Engineering Co., Inc. Four Part Double other manual",,ace_engineering_co_inc_four_part_double,to_find,
+engineered_systems_inc,Engineered Systems Inc.,,other,normal,true,3,Engineered Systems Inc. other manual,,engineered_systems_inc,to_find,
+harrington_rhn10l35cc20dd4,HARRINGTON,RHN10L35CC20DD4,other,normal,true,2,HARRINGTON RHN10L35CC20DD4 other manual,,harrington_rhn10l35cc20dd4,to_find,
+ace_engineering_co_inc_a_160_tp2,"ACE Engineering Co., Inc.",A 160 TP2,other,normal,true,2,"ACE Engineering Co., Inc. A 160 TP2 other manual",,ace_engineering_co_inc_a_160_tp2,to_find,
+schneider_electric_lc1f265,Schneider Electric,LC1F265,contactor,normal,true,2,Schneider Electric LC1F265 contactor manual,https://docs.rs-online.com/be0c/0900766b81395ea3.pdf,schneider_electric_lc1f265,ingested,
+schneider_electric,Schneider Electric,,contactor,normal,true,3,Schneider Electric contactor manual,https://docs.rs-online.com/990e/A700000008089667.pdf,schneider_electric,ingested,
+schneider,Schneider,,contactor,normal,true,3,Schneider contactor manual,https://docs.rs-online.com/990e/A700000008089667.pdf,schneider,to_find,
+esi_inc,ESI Inc.,,other,normal,true,3,ESI Inc. other manual,,esi_inc,to_find,
+doosan,Doosan,,other,normal,false,3,Doosan other manual,,doosan,to_find,
+esco,ESCO,,other,normal,true,3,ESCO other manual,,esco,to_find,
+konecranes_slx108110m5inv054_8bn254458c72,Konecranes,SLX108110M5INV054.8BN254458C72,other,normal,true,2,Konecranes SLX108110M5INV054.8BN254458C72 other manual,,konecranes_slx108110m5inv054_8bn254458c72,to_find,
+emc_el1271,EMC,EL1271,motor,normal,true,2,EMC EL1271 motor manual,,emc_el1271,to_find,
+deshazo_d528602,DESHAZO,D528602,other,normal,true,2,DESHAZO D528602 other manual,,deshazo_d528602,to_find,
+unic_spydercrane,UNIC,Spydercrane,other,normal,false,3,UNIC Spydercrane other manual,,unic_spydercrane,to_find,
+coffing,Coffing,,other,damaged,true,1,Coffing other manual,,coffing,to_find,
+deshazo_d528604,DESHAZO,D528604,other,normal,true,2,DESHAZO D528604 other manual,,deshazo_d528604,to_find,
+kone_cranes,Kone Cranes,,other,normal,false,3,Kone Cranes other manual,,kone_cranes,to_find,
+deshazo_d528600,DESHAZO,D528600,other,normal,true,2,DESHAZO D528600 other manual,,deshazo_d528600,to_find,
+man_guard,MAN GUARD,,other,normal,false,3,MAN GUARD other manual,,man_guard,to_find,
+columbus_mckinnon_corporation_jlc2016_3_lcx,Columbus McKinnon Corporation,JLC2016 3 LCX,other,normal,true,2,Columbus McKinnon Corporation JLC2016 3 LCX other manual,,columbus_mckinnon_corporation_jlc2016_3_lcx,to_find,
+zenar,ZENAR,,other,normal,true,3,ZENAR other manual,,zenar,to_find,
+zenar_corp_303a101b,ZENAR CORP,303A101B,other,normal,true,2,ZENAR CORP 303A101B other manual,,zenar_corp_303a101b,to_find,
+mazzella,Mazzella,,other,normal,false,3,Mazzella other manual,,mazzella,to_find,
+square_d,Square D,,panel,normal,true,3,Square D panel manual,https://download.schneider-electric.com,square_d,portal_no_pdf,
+deshazo_d552099,DESHAZO,D552099,breaker,normal,true,2,DESHAZO D552099 breaker manual,,deshazo_d552099,to_find,
+duff_norton,Duff-Norton,,other,normal,true,3,Duff-Norton other manual,,duff_norton,to_find,
+philadelphia,Philadelphia,,other,normal,true,3,Philadelphia other manual,,philadelphia,to_find,
+cm_ut2,CM,UT2,motor,normal,true,2,CM UT2 motor manual,,cm_ut2,to_find,
+cm,CM,,other,normal,true,3,CM other manual,,cm,to_find,
+mid_state,MID-STATE,,other,normal,true,3,MID-STATE other manual,,mid_state,to_find,
+stahl_as6045,STAHL,AS6045,motor,damaged,true,1,STAHL AS6045 motor manual,,stahl_as6045,to_find,
+deshazio_crane_company,DESHAZIO CRANE COMPANY,,other,normal,true,3,DESHAZIO CRANE COMPANY other manual,,deshazio_crane_company,to_find,
+duff_norton_company,Duff-Norton Company,,other,normal,true,3,Duff-Norton Company other manual,,duff_norton_company,to_find,
+baldor,BALDOR,,motor,normal,true,3,BALDOR motor manual,,baldor,to_find,
+harrington_hoists_er010l,Harrington Hoists,ER010L,other,normal,true,2,Harrington Hoists ER010L other manual,,harrington_hoists_er010l,to_find,
+harrington_ts2_616,Harrington,TS2-616,other,normal,true,2,Harrington TS2-616 other manual,,harrington_ts2_616,to_find,
+r_m_materials_handling_inc_sx3_electric_hoist,R&M Materials Handling Inc,SX3 Electric Hoist,motor,normal,true,2,R&M Materials Handling Inc SX3 Electric Hoist motor manual,,r_m_materials_handling_inc_sx3_electric_hoist,to_find,
+sbp2_sbp2_8_wh,SBP2,SBP2-8-WH,other,normal,true,2,SBP2 SBP2-8-WH other manual,,sbp2_sbp2_8_wh,to_find,
+yale,Yale,,other,normal,true,3,Yale other manual,,yale,to_find,
+harrington_er020l,Harrington,ER020L,other,normal,true,2,Harrington ER020L other manual,,harrington_er020l,to_find,
+deshazo_d552110,DESHAZO,D552110,other,normal,false,3,DESHAZO D552110 other manual,,deshazo_d552110,to_find,
+harrington,Harrington,,other,normal,true,3,Harrington other manual,,harrington,to_find,
+acco_80,ACCO,80,other,normal,true,2,ACCO 80 other manual,,acco_80,to_find,
+yale_kel3_15lg1053,Yale,KEL3-15LG1053,other,normal,true,2,Yale KEL3-15LG1053 other manual,,yale_kel3_15lg1053,to_find,
+sbp2,SBP2,,other,damaged,true,1,SBP2 other manual,,sbp2,to_find,
+r_m_materials_handling_inc_sx500150p55ffd0s,R&M MATERIALS HANDLING INC.,SX500150P55FFD0S,other,normal,true,2,R&M MATERIALS HANDLING INC. SX500150P55FFD0S other manual,,r_m_materials_handling_inc_sx500150p55ffd0s,to_find,
+acco_c2405,ACCO,C2405,other,normal,true,2,ACCO C2405 other manual,,acco_c2405,to_find,
+allen_bradley_c30,Allen-Bradley,C30,contactor,normal,false,3,Allen-Bradley C30 contactor manual,https://literature.rockwellautomation.com/idc/groups/literature/documents/td/100-td013_-en-p.pdf,allen_bradley_c30,ingested,
+allen_bradley_msm1a,Allen-Bradley,MSM1A,panel,normal,true,2,Allen-Bradley MSM1A panel manual,https://literature.rockwellautomation.com,allen_bradley_msm1a,portal_no_pdf,
+harrington_er005l,Harrington,ER005L,other,normal,true,2,Harrington ER005L other manual,,harrington_er005l,to_find,
+harrington_pt005,Harrington,PT005,other,normal,true,2,Harrington PT005 other manual,,harrington_pt005,to_find,
+ford,Ford,,other,damaged,true,1,Ford other manual,,ford,to_find,
+abell_howe,Abell-Howe,,other,normal,true,3,Abell-Howe other manual,,abell_howe,to_find,
+harrington_638_007,Harrington,638-007,other,normal,true,2,Harrington 638-007 other manual,,harrington_638_007,to_find,
+allift_cranes_inc,"ALLIFT CRANES, INC.",,other,normal,true,3,"ALLIFT CRANES, INC. other manual",,allift_cranes_inc,to_find,
+shaw_box_050205121791,Shaw-Box,050205121791,other,normal,true,2,Shaw-Box 050205121791 other manual,,shaw_box_050205121791,to_find,
+deshazo_d552120,DESHAZO,D552120,other,normal,true,2,DESHAZO D552120 other manual,,deshazo_d552120,to_find,
+caterpillar,Caterpillar,,other,normal,true,3,Caterpillar other manual,,caterpillar,to_find,
+yale_hoists_cew5x54rt190z,Yale Hoists,CEW5X54RT190Z,other,normal,true,2,Yale Hoists CEW5X54RT190Z other manual,,yale_hoists_cew5x54rt190z,to_find,
+dings_1114_m1_c5,Dings,1114 M1 C5,motor,normal,true,2,Dings 1114 M1 C5 motor manual,,dings_1114_m1_c5,to_find,
+astro_crane_hoist_services_inc,"Astro Crane & Hoist Services, Inc.",,other,normal,true,3,"Astro Crane & Hoist Services, Inc. other manual",,astro_crane_hoist_services_inc,to_find,
+zephyr,ZEPHYR,,other,normal,true,3,ZEPHYR other manual,,zephyr,to_find,
+harrington_hoists_inc,"Harrington Hoists, Inc.",,other,normal,true,3,"Harrington Hoists, Inc. other manual",,harrington_hoists_inc,to_find,
+lbs,LBS,,other,normal,false,3,LBS other manual,,lbs,to_find,
+deshazo_r_150,DESHAZO,R-150,other,normal,false,3,DESHAZO R-150 other manual,,deshazo_r_150,to_find,
+r_m,R&M,,other,normal,false,3,R&M other manual,,r_m,to_find,
+r_m_materials_handling_inc_sx4_electric_hoist,R&M Materials Handling Inc,SX4 Electric Hoist,other,normal,true,2,R&M Materials Handling Inc SX4 Electric Hoist other manual,,r_m_materials_handling_inc_sx4_electric_hoist,to_find,
+hoist,HOIST,,contactor,normal,true,3,HOIST contactor manual,,hoist,to_find,
+square_d_company,Square D Company,,contactor,normal,true,3,Square D Company contactor manual,https://docs.rs-online.com/990e/A700000008089667.pdf,square_d_company,to_find,
+electro_lift_inc,Electro Lift Inc.,,other,normal,true,3,Electro Lift Inc. other manual,,electro_lift_inc,to_find,
+cofing,COFING,,other,normal,false,3,COFING other manual,,cofing,to_find,
+golfing,GOLFING,,other,normal,false,3,GOLFING other manual,,golfing,to_find,
+spanco,Spanco,,other,normal,false,3,Spanco other manual,,spanco,to_find,
+jet,JET,,other,normal,false,3,JET other manual,,jet,to_find,S/N: 552136
+jet_1_2ss_3_15,JET,1/2SS-3-15,other,damaged,true,1,JET 1/2SS-3-15 other manual,,jet_1_2ss_3_15,to_find,S/N: 151115  230/460V  2.9A  1.2HP  3420rpm  60Hz
+yale_kel1_10h15s1,Yale,KEL1-10H15S1,other,normal,true,2,Yale KEL1-10H15S1 other manual,,yale_kel1_10h15s1,to_find,S/N: D 9/74  230/460V  31/15.5A  60Hz
+jet_1_2ss_3_10,JET,1/2SS-3-10,other,normal,true,2,JET 1/2SS-3-10 other manual,,jet_1_2ss_3_10,to_find,S/N: 980536  230/460V  2.9A  1.2HP  3420rpm  60Hz
+beacon,Beacon,,motor,normal,true,3,Beacon motor manual,,beacon,to_find,15 TA
+harrington_es3b_2_13,Harrington,ES3B-2/13,other,normal,true,2,Harrington ES3B-2/13 other manual,,harrington_es3b_2_13,to_find,S/N: 5203343
+yale_kel2,Yale,KEL2,other,damaged,true,1,Yale KEL2 other manual,,yale_kel2,to_find,S/N: 9/78  Cat: 01717252  60Hz
+yale_kel2_20lg71_232,Yale,KEL2-20LG71/232,other,normal,true,2,Yale KEL2-20LG71/232 other manual,,yale_kel2_20lg71_232,to_find,S/N: K-192799D  230/460V  60Hz
+northern,Northern,,other,normal,true,3,Northern other manual,,northern,to_find,Cat: H-212
+snorkel,Snorkel,,other,normal,false,3,Snorkel other manual,,snorkel,to_find,
+mazella,MAZELLA,,other,normal,true,3,MAZELLA other manual,,mazella,to_find,S/N: 376RHEL
+furnas,FURNAS,,starter,normal,true,3,FURNAS starter manual,,furnas,to_find,Cat: 43DF107093  200-230/460-575V  30A  3/7.5/10HP
+robbins_myers_inc_75dgt,Robbins & Myers Inc.,75DGT,other,normal,true,2,Robbins & Myers Inc. 75DGT other manual,,robbins_myers_inc_75dgt,to_find,S/N: 67903  460V  60Hz
+harrington_es3b_243,Harrington,ES3B-243,other,normal,true,2,Harrington ES3B-243 other manual,,harrington_es3b_243,to_find,S/N: 523347
+coffing_hoists_ecmt6016_3,Coffing Hoists,ECMT6016 3,other,normal,true,2,Coffing Hoists ECMT6016 3 other manual,,coffing_hoists_ecmt6016_3,to_find,S/N: EC3G2497WB  460-3-60V  4.3A  3HP  60Hz
+yale_kel2_15l71_232,Yale,KEL2-15L71/232,other,damaged,true,1,Yale KEL2-15L71/232 other manual,,yale_kel2_15l71_232,to_find,S/N: B-4-84  230/460V  60Hz
+coffing_hoists_ecvmt6016_3,Coffing Hoists,ECVMT6016-3,other,normal,true,2,Coffing Hoists ECVMT6016-3 other manual,,coffing_hoists_ecvmt6016_3,to_find,S/N: EC3G6804TF  460/3/60V  4.3A  3HP  60Hz
+eastern_crane_hoist,Eastern Crane & Hoist,,other,normal,true,3,Eastern Crane & Hoist other manual,,eastern_crane_hoist,to_find,
+crane_systems_inc,"CRANE SYSTEMS, INC.",,other,normal,true,3,"CRANE SYSTEMS, INC. other manual",,crane_systems_inc,to_find,S/N: 12014-2
+g_h_ghip,G.H.,GHIP,other,normal,true,2,G.H. GHIP other manual,,g_h_ghip,to_find,S/N: 80529
+cutler_hammer_c25dnd330,Cutler-Hammer,C25DND330,contactor,normal,true,2,Cutler-Hammer C25DND330 contactor manual,https://www.eaton.com/content/dam/eaton/products/industrialcontrols-drives-automation-sensors/definite-purpose-motor-control/c25-definite-purpose-contactors-mz03507001e.pdf,cutler_hammer_c25dnd330,to_find,Cat: C25DND330  30 AMPA
+cm_1_2ss_3_15,CM,1/2SS-3-15,other,damaged,true,1,CM 1/2SS-3-15 other manual,,cm_1_2ss_3_15,to_find,Cat: 1E1115  230/460V  2.9A  1.2HP  3420rpm  60Hz
+jei,JEI,,other,normal,true,3,JEI other manual,,jei,to_find,
+jet_1_2ss_2_10,JET,1/2SS-2 10,motor,normal,true,2,JET 1/2SS-2 10 motor manual,,jet_1_2ss_2_10,to_find,S/N: 930516  Cat: 151110  230/460V  2.9A  1.2HP  3420rpm  60Hz
+delco,DELCO,,motor,unknown,true,3,DELCO motor manual,,delco,to_find,S/N: 00624709
+equipment_fabricators_inc,"Equipment Fabricators, Inc.",,other,normal,false,3,"Equipment Fabricators, Inc. other manual",,equipment_fabricators_inc,to_find,
+magnetek_sbp240l3bl_h2_s_s,MAGNETEKĀ®,SBP240L3BL-H2-S-S,other,normal,true,2,MAGNETEKĀ® SBP240L3BL-H2-S-S other manual,,magnetek_sbp240l3bl_h2_s_s,to_find,Cat: SBP-2
+yale_cew71_2x25cb1404,Yale,CEW71/2X25CB1404,other,normal,true,2,Yale CEW71/2X25CB1404 other manual,,yale_cew71_2x25cb1404,to_find,S/N: BC235726B  460V  5.3A  14rpm  60Hz
+eaton_corporation_cew7172x25cb14d4,Eaton Corporation,CEW7172X25CB14D4,motor,damaged,true,1,Eaton Corporation CEW7172X25CB14D4 motor manual,https://www.eaton.com/us/en-us/catalog,eaton_corporation_cew7172x25cb14d4,fetch_failed,S/N: BC235725D  460V  19.3A  60Hz
+johnson_a48596,Johnson,A48596,other,normal,true,2,Johnson A48596 other manual,,johnson_a48596,to_find,24VV  2840rpm  50Hz
+virginia_crane,Virginia Crane,,other,normal,true,3,Virginia Crane other manual,,virginia_crane,to_find,S/N: VC05-1418
+demag_d511866,Demag,D511866,other,damaged,true,1,Demag D511866 other manual,,demag_d511866,to_find,Cat: D511866
+p_h_harnischfeger,P&H,Harnischfeger,other,normal,true,2,P&H Harnischfeger other manual,,p_h_harnischfeger,to_find,S/N: CB26548
+stanley,Stanley,,other,normal,false,3,Stanley other manual,,stanley,to_find,
+power_electronics_international_inc_m1546cx,"Power Electronics International, Inc.",M1546CX,vfd,normal,true,2,"Power Electronics International, Inc. M1546CX vfd manual",,power_electronics_international_inc_m1546cx,to_find,S/N: 1102-91671-421  460 VACV  24 AMPA  15 HPHP
+morris,Morris,,contactor,normal,true,3,Morris contactor manual,,morris,to_find,Cat: 47SU198-D11  600V MAXV  30 AMPA
+cutler_hammer,Cutler-Hammer,,other,normal,true,3,Cutler-Hammer other manual,https://www.eaton.com/us/en-us/catalog,cutler_hammer,fetch_failed,S/N: D652161  600 Volts ACV  30 AmpA
+deshazo_d552162,DESHAZO,D552162,other,normal,true,2,DESHAZO D552162 other manual,,deshazo_d552162,to_find,S/N: D552162
+skyjack,SkyJack,,other,normal,false,3,SkyJack other manual,,skyjack,to_find,
+p_h,P&H,,other,normal,false,3,P&H other manual,,p_h,to_find,
+cat,CAT,,other,normal,false,3,CAT other manual,,cat,to_find,
+little_mule,LITTLE MULE,,other,damaged,true,1,LITTLE MULE other manual,,little_mule,to_find,
+ge,GE,,other,normal,true,3,GE other manual,,ge,to_find,S/N: D551903
+shaw_box_d5020s1220000,Shaw-Box,D5020S1220000,other,normal,true,2,Shaw-Box D5020S1220000 other manual,,shaw_box_d5020s1220000,to_find,S/N: K6-88405
+harrington_er010l,Harrington,ER010L,other,normal,true,2,Harrington ER010L other manual,,harrington_er010l,to_find,S/N: 00069436  Cat: ER010L
+fhs,FHS,,other,normal,false,3,FHS other manual,,fhs,to_find,
+little_mule_flc2016_1,Little Mule,FLC2016-1,other,normal,true,2,Little Mule FLC2016-1 other manual,,little_mule_flc2016_1,to_find,S/N: JMA5301WE  115-230/1/60V  14.8/7.4A  1HP  60Hz
+deshazo_d528605,DESHAZO,D528605,other,normal,true,2,DESHAZO D528605 other manual,,deshazo_d528605,to_find,S/N: D528605
+yale_wc3t,Yale,WC3T,other,normal,true,2,Yale WC3T other manual,,yale_wc3t,to_find,S/N: C351890A  480/3/60V  15HP  60Hz
+crane_hoist_corporation,Crane Hoist Corporation,,panel,normal,true,3,Crane Hoist Corporation panel manual,,crane_hoist_corporation,to_find,"S/N: B-3911  480V supply, 120V controlV  7.5 HP main hoist, 0.5 HP 1st trolleyHP  60 cyclesHz"
+wright_r288,Wright,R288,other,normal,false,3,Wright R288 other manual,,wright_r288,to_find,
+conductix_wampfler,CONDUCTIX,wampfler,other,normal,false,3,CONDUCTIX wampfler other manual,,conductix_wampfler,to_find,
+chisholm_moore_hoist_corp,Chisholm-Moore Hoist Corp.,,other,normal,true,3,Chisholm-Moore Hoist Corp. other manual,,chisholm_moore_hoist_corp,to_find,
+r_m_materials_handling_sx504101c0p55fed0s,R&M Materials Handling,SX504101C0P55FED0S,other,normal,true,2,R&M Materials Handling SX504101C0P55FED0S other manual,,r_m_materials_handling_sx504101c0p55fed0s,to_find,"S/N: 58355174  Cat: SX504101C0P55FED0S  460V 3-phase main, 115V 1-phase controlV  22.40 AA  11KW hoisting motor, 2 X 37KW traversing motorHP  20/3.2 FPM hoisting, 65/- FPM trolleyrpm  60 HzHz"
+r_m_materials_handling,R&M Materials Handling,,other,normal,true,3,R&M Materials Handling other manual,,r_m_materials_handling,to_find,S/N: 1007516008  Cat: 8X40410050P35FCN0S  460 V / 3~V  11.80 AA  60 HzHz
+jes_deshazo,JES DESHAZO,,other,normal,true,3,JES DESHAZO other manual,,jes_deshazo,to_find,S/N: D552172
+eaton_corporation_bfw1_33st22s2,Eaton Corporation,BFW1-33ST22S2,motor,damaged,true,1,Eaton Corporation BFW1-33ST22S2 motor manual,https://www.eaton.com/us/en-us/catalog,eaton_corporation_bfw1_33st22s2,fetch_failed,S/N: A2228280  480V  3.23A  1HP  22rpm  60Hz
+columbus_mckinnon_corporation_ml155,Columbus McKinnon Corporation,ML155,motor,damaged,true,1,Columbus McKinnon Corporation ML155 motor manual,,columbus_mckinnon_corporation_ml155,to_find,S/N: I-598  208/220/440V  1.7/85A  1/2HP  60Hz
+gorbel,GORBEL,,other,normal,true,3,GORBEL other manual,,gorbel,to_find,
+harrington_er030l,Harrington,ER030L,other,normal,true,2,Harrington ER030L other manual,,harrington_er030l,to_find,Cat: ER030L
+yale_kel5_12th1453,Yale,KEL5-12TH1453,other,normal,true,2,Yale KEL5-12TH1453 other manual,,yale_kel5_12th1453,to_find,S/N: KL54960  Cat: KEL5-12TH1453  220/460V  60Hz
+cotting,Cotting,,other,normal,true,3,Cotting other manual,,cotting,to_find,
+jet_1_2ss_3_1c,JET,1/2SS 3-1C,other,damaged,true,1,JET 1/2SS 3-1C other manual,,jet_1_2ss_3_1c,to_find,S/N: 980538  230/460V  3420rpm  60Hz
+orlando_rigging_wl_2600,Orlando Rigging,WL 2600,other,normal,true,2,Orlando Rigging WL 2600 other manual,,orlando_rigging_wl_2600,to_find,S/N: 12588
+peerless_chain,Peerless Chain,,other,normal,true,3,Peerless Chain other manual,,peerless_chain,to_find,S/N: 1197770
+the_caldwell_group,The Caldwell Group,,other,normal,true,3,The Caldwell Group other manual,,the_caldwell_group,to_find,S/N: 3431
+reach,REACH,,other,normal,true,3,REACH other manual,,reach,to_find,S/N: 26000LB3
+the_caldwell_group_40_15_10,The Caldwell Group,40-15-10,other,normal,true,2,The Caldwell Group 40-15-10 other manual,,the_caldwell_group_40_15_10,to_find,S/N: 14-25607
+sos,SOS,,other,normal,true,3,SOS other manual,,sos,to_find,S/N: 15004043
+holland,HOLLAND,,other,normal,true,3,HOLLAND other manual,,holland,to_find,S/N: 233252D  20A
+slingshot_rebar,Slingshot Rebar,,other,unknown,true,3,Slingshot Rebar other manual,,slingshot_rebar,to_find,S/N: 1105516-10
+peerless,Peerless,,other,normal,true,3,Peerless other manual,,peerless,to_find,S/N: 552712-3
+peco,PECO,,other,damaged,true,1,PECO other manual,,peco,to_find,Cat: ALLOY 80C
+hercules,HERCULES,,other,normal,true,3,HERCULES other manual,,hercules,to_find,S/N: 170190080
+spalding_hoists_inc,Spalding Hoists Inc.,,other,normal,true,3,Spalding Hoists Inc. other manual,,spalding_hoists_inc,to_find,S/N: 128409-1
+leeson,LEESON,,motor,normal,true,3,LEESON motor manual,,leeson,to_find,
+herc_alloy,HERC-ALLOY,,other,normal,true,3,HERC-ALLOY other manual,,herc_alloy,to_find,S/N: 01300002
+ang_wl9000,ANG,WL9000,other,unknown,true,2,ANG WL9000 other manual,,ang_wl9000,to_find,
+gunnebo,GUNNEBO,,other,normal,false,3,GUNNEBO other manual,,gunnebo,to_find,
+eriez_safehold,ERIEZ,SAFEHOLD,other,damaged,false,1,ERIEZ SAFEHOLD other manual,,eriez_safehold,to_find,
+eriez_manufacturing_co_apl_38,Eriez Manufacturing Co.,APL-38,other,normal,true,2,Eriez Manufacturing Co. APL-38 other manual,,eriez_manufacturing_co_apl_38,to_find,
+southeast_refining,Southeast Refining,,other,normal,true,3,Southeast Refining other manual,,southeast_refining,to_find,S/N: 01053416.9
+the_caldwell_group_20s_10_300,The Caldwell Group,20S-10-300,other,normal,true,2,The Caldwell Group 20S-10-300 other manual,,the_caldwell_group_20s_10_300,to_find,S/N: 10-18915-2
+mckissick,McKissick,,other,normal,true,3,McKissick other manual,,mckissick,to_find,S/N: 561358 1-8-1
+schlumberger,Schlumberger,,other,normal,true,3,Schlumberger other manual,,schlumberger,to_find,S/N: 141923
+golden_cone,GOLDEN CONE,,other,damaged,true,1,GOLDEN CONE other manual,,golden_cone,to_find,
+hercalloy,HERCALLOY,,other,normal,true,3,HERCALLOY other manual,,hercalloy,to_find,S/N: 010337
+kingswill,KINGSWILL,,other,normal,true,3,KINGSWILL other manual,,kingswill,to_find,
+magnetek_impulse_vg_series_4,Magnetek,IMPULSE VG+ Series 4,vfd,normal,true,2,Magnetek IMPULSE VG+ Series 4 vfd manual,,magnetek_impulse_vg_series_4,to_find,
+yaskawa_electric_corporation_cimr_au4a0058aaa,Yaskawa Electric Corporation,CIMR-AU4A0058AAA,vfd,normal,true,2,Yaskawa Electric Corporation CIMR-AU4A0058AAA vfd manual,https://www.yaskawa.com/delegate/getAttachment?documentId=TM.A1000SW.029&cmd=documents&documentName=TM.A1000SW.029.pdf,yaskawa_electric_corporation_cimr_au4a0058aaa,ingested,S/N: 1W163116258007  Cat: CIMR-AU4A0058AAA  AC 3PH 380-480VV  58A/43AA  50/60HzHz
+k_bler,Kübler,,motor,normal,true,3,Kübler motor manual,,k_bler,to_find,S/N: 10-30.VDC-H  Cat: 178-402PH5430.1024.P09.50S019  10-30 VDCV
+globe,GLOBE,,motor,normal,true,3,GLOBE motor manual,,globe,to_find,S/N: 7081089306  60Hz
+acco_jw15,Acco,JW15,other,normal,true,2,Acco JW15 other manual,,acco_jw15,to_find,
+yale_eldctl19,Yale,ELDCTL19,other,damaged,true,1,Yale ELDCTL19 other manual,,yale_eldctl19,to_find,S/N: V56312  208VV  52AA  15HP  60Hz
+cottins,Cottins,,other,unknown,true,3,Cottins other manual,,cottins,to_find,S/N: BC1616WKD
+arel_howe,AREL-HOWE,,other,normal,false,3,AREL-HOWE other manual,,arel_howe,to_find,
+sbp_z,SBP'Z,,other,normal,true,3,SBP'Z other manual,,sbp_z,to_find,
+harbell_howe,Harbell-Howe,,other,normal,true,3,Harbell-Howe other manual,,harbell_howe,to_find,S/N: 69781-2
+yale_lb1c15l19,Yale,LB1C15L19,other,normal,true,2,Yale LB1C15L19 other manual,,yale_lb1c15l19,to_find,S/N: 656372  208V  7.4A  1.5HP  45rpm
+yale_lb1c45e19,Yale,LB1C45E19,other,damaged,true,1,Yale LB1C45E19 other manual,,yale_lb1c45e19,to_find,S/N: 56370  208V  17A  1.5HP  60Hz
+jwg,JWG,,other,normal,false,3,JWG other manual,,jwg,to_find,
+jet_25s_2_5,JET,25S-2-5,other,normal,true,2,JET 25S-2-5 other manual,,jet_25s_2_5,to_find,S/N: 290110  230/460V  5.8A  3420rpm  60Hz
+yale_gkcm,Yale,GKCM,other,normal,true,2,Yale GKCM other manual,,yale_gkcm,to_find,"S/N: YK1439YM  460/3/60V  14.8 HP hoist, 1.2 HP trolleyHP  20 FPM hoist, 80 FPM trolleyrpm  60Hz"
+cavo_type_a,CAVO,Type A,panel,normal,true,2,CAVO Type A panel manual,,cavo_type_a,to_find,"S/N: SN-5167  440-480V supply, 110-120V controlV  12.85A full load, 12.2A largest motor FLAA  60HzHz"
+westward,Westward,,other,normal,false,3,Westward other manual,,westward,to_find,
+westward_3zc68c_and_3zc69c,Westward,3ZC68C and 3ZC69C,other,normal,false,3,Westward 3ZC68C and 3ZC69C other manual,,westward_3zc68c_and_3zc69c,to_find,
+detroit,Detroit,,other,normal,true,3,Detroit other manual,,detroit,to_find,S/N: 292555
+hamilton,Hamilton,,other,normal,true,3,Hamilton other manual,,hamilton,to_find,S/N: B3104-001-A
+harrington_cf010,Harrington,CF010,other,normal,true,2,Harrington CF010 other manual,,harrington_cf010,to_find,
+adams_inc,ADAMS INC,,motor,damaged,true,1,ADAMS INC motor manual,,adams_inc,to_find,"Cat: 350-355  12,400 LBSA"
+harrington_cf4,Harrington,CF4,other,damaged,true,1,Harrington CF4 other manual,,harrington_cf4,to_find,Cat: CF020
+harrington_lb060,Harrington,LB060,other,normal,true,2,Harrington LB060 other manual,,harrington_lb060,to_find,S/N: 452888
+harrington_l4_261,Harrington,L4-261,other,normal,true,2,Harrington L4-261 other manual,,harrington_l4_261,to_find,S/N: 605245  Cat: LB015
+harrington_3_4_ton,Harrington,3/4 TON,other,normal,true,2,Harrington 3/4 TON other manual,,harrington_3_4_ton,to_find,Cat: LB008
+harrington_l4b,Harrington,L4B,other,normal,true,2,Harrington L4B other manual,,harrington_l4b,to_find,S/N: 85844  Cat: LB015
+harrington_lx4261,Harrington,LX4261,other,normal,true,2,Harrington LX4261 other manual,,harrington_lx4261,to_find,S/N: 61981
+harrington_lb008,Harrington,LB008,other,normal,true,2,Harrington LB008 other manual,,harrington_lb008,to_find,S/N: 22410KXN  50/60Hz
+westinghouse,Westinghouse,,other,normal,true,3,Westinghouse other manual,,westinghouse,to_find,"Cat: HUN561  600VAC, 250VAC, 600VDCV  30A  20-30, 10-15, 5HP"
+gaffey,Gaffey,,other,normal,false,3,Gaffey other manual,,gaffey,to_find,
+shaw_box_2t,SHAW-BOX,2T,other,normal,true,2,SHAW-BOX 2T other manual,,shaw_box_2t,to_find,S/N: K686192
+shaw_box_2000ts13120000,Shaw-Box,2000TS13120000,other,normal,true,2,Shaw-Box 2000TS13120000 other manual,,shaw_box_2000ts13120000,to_find,S/N: K686192
+grudfos,GRUDFOS,,motor,normal,true,3,GRUDFOS motor manual,,grudfos,to_find,S/N: 548971
+spacemaster,SPACEMASTER,,other,normal,true,3,SPACEMASTER other manual,,spacemaster,to_find,S/N: 268959538
+shaw_box_m5730_2,Shaw-Box,M5730-2,other,normal,true,2,Shaw-Box M5730-2 other manual,,shaw_box_m5730_2,to_find,S/N: K1572384
+accolift_2730070,ACCOLIFT,2730070,other,normal,true,2,ACCOLIFT 2730070 other manual,,accolift_2730070,to_find,S/N: EC18070072  115V 208-230VV  1PhHP  60HzHz
+skyjack_sj45_aj,SkyJack,SJ45 AJ+,other,normal,true,2,SkyJack SJ45 AJ+ other manual,,skyjack_sj45_aj,to_find,S/N: 352022
+robbins_myers_inc,Robbins & Myers Inc.,,other,damaged,true,1,Robbins & Myers Inc. other manual,,robbins_myers_inc,to_find,S/N: 40287JL4  480 voltsV  60Hz
+shaw_box,SHAW-BOX,,other,normal,false,3,SHAW-BOX other manual,,shaw_box,to_find,
+hevi_duty,HEVI-DUTY,,transformer,normal,true,3,HEVI-DUTY transformer manual,,hevi_duty,to_find,S/N: HUC4096  Cat: E180  480VV
+cofemo,COFEMO,,other,damaged,true,1,COFEMO other manual,,cofemo,to_find,
+detroit_hoist,Detroit Hoist,,other,damaged,true,1,Detroit Hoist other manual,,detroit_hoist,to_find,S/N: 148033
+kranco,Kranco,,other,normal,true,3,Kranco other manual,,kranco,to_find,
+genuine,Genuine,,motor,damaged,true,1,Genuine motor manual,,genuine,to_find,"S/N: 65846060682  380 VAC 60 HZ, 460 VAC 60 HZV  60Hz"
+eaton,EATON,,other,normal,true,3,EATON other manual,https://www.eaton.com/us/en-us/catalog,eaton,fetch_failed,480V  60Hz
+konecranes,Konecranes,,other,normal,true,3,Konecranes other manual,,konecranes,to_find,"S/N: HSN  600V, 250VV  30AA  60HzHz"
+ko,KO,,motor,normal,false,3,KO motor manual,,ko,to_find,
+safety_clamps_inc_02474,Safety Clamps Inc,02474,other,normal,true,2,Safety Clamps Inc 02474 other manual,,safety_clamps_inc_02474,to_find,
+mlt,MLT,,other,damaged,true,1,MLT other manual,,mlt,to_find,S/N: 19-01724
+the_caldwell_group_20_15_10,The Caldwell Group,20-15-10,other,normal,true,2,The Caldwell Group 20-15-10 other manual,,the_caldwell_group_20_15_10,to_find,S/N: 14-25607
+enerpro,ENERPRO,,motor,normal,true,3,ENERPRO motor manual,,enerpro,to_find,
+southeast,Southeast,,motor,normal,true,3,Southeast motor manual,,southeast,to_find,S/N: 282405-1
+wll_520,WLL,520,other,normal,true,2,WLL 520 other manual,,wll_520,to_find,S/N: 013511
+forged_lifting,FORGED LIFTING,,other,normal,true,3,FORGED LIFTING other manual,,forged_lifting,to_find,S/N: 1569079-3.1
+southwire,Southwire,,other,normal,true,3,Southwire other manual,,southwire,to_find,S/N: 0618962-0-96
+bridon,Bridon,,other,normal,true,3,Bridon other manual,,bridon,to_find,S/N: 110835168
+russell_sayings_6900,RUSSELL SAYINGS,6900,other,normal,true,2,RUSSELL SAYINGS 6900 other manual,,russell_sayings_6900,to_find,
+orldndo_rigging,ORLDNDO RIGGING,,other,normal,true,3,ORLDNDO RIGGING other manual,,orldndo_rigging,to_find,S/N: 37656-16
+the_caldwell_group_275_10_30,The Caldwell Group,275-10-30,other,normal,true,2,The Caldwell Group 275-10-30 other manual,,the_caldwell_group_275_10_30,to_find,S/N: 02-12395-2
+mannesmann_demag,Mannesmann Demag,,panel,normal,true,3,Mannesmann Demag panel manual,,mannesmann_demag,to_find,"S/N: 00704949  15 AMP, 2.0 AMP, 3 AMPA"
+siemens_3tf81_33_0a,Siemens,3TF81 33-0A,contactor,normal,true,2,Siemens 3TF81 33-0A contactor manual,https://support.industry.siemens.com,siemens_3tf81_33_0a,portal_no_pdf,
+mannesmann_demag_df_63,Mannesmann Demag,DF 63,motor,normal,true,2,Mannesmann Demag DF 63 motor manual,,mannesmann_demag_df_63,to_find,S/N: 6430  400VV  50Hz
+mannesman_demag,Mannesman Demag,,pump,normal,true,3,Mannesman Demag pump manual,,mannesman_demag,to_find,S/N: 711360-1
+siemens_3tx7402_3h,Siemens,3TX7402-3H,contactor,normal,true,2,Siemens 3TX7402-3H contactor manual,https://support.industry.siemens.com,siemens_3tx7402_3h,portal_no_pdf,"Cat: 3TX7402-3H  48-127V AC, 70-150V DCV"
+siemens_3tf4222_0a,Siemens,3TF4222-0A,contactor,normal,true,2,Siemens 3TF4222-0A contactor manual,https://support.industry.siemens.com,siemens_3tf4222_0a,portal_no_pdf,Cat: 3TF4222-0A  600V ACV  30AA  50/60 HzHz
+southeast_crane_monorail_systems_inc,"Southeast Crane & Monorail Systems, Inc.",,other,normal,true,3,"Southeast Crane & Monorail Systems, Inc. other manual",,southeast_crane_monorail_systems_inc,to_find,
+konecranes_slx05_08_1_050_5,KONECRANES,SLX05 08 1 050 5,other,normal,true,2,KONECRANES SLX05 08 1 050 5 other manual,,konecranes_slx05_08_1_050_5,to_find,S/N: 100478129  480V 115VV  10.0AA  1 HPHP  2611 FPMrpm  60 HzHz
+sunbelt,Sunbelt,,other,normal,false,3,Sunbelt other manual,,sunbelt,to_find,
+ace_engineering_co_inc_m40_e_1108,ACE Engineering Co. Inc,M40-E-1108,other,normal,true,2,ACE Engineering Co. Inc M40-E-1108 other manual,,ace_engineering_co_inc_m40_e_1108,to_find,S/N: 2600

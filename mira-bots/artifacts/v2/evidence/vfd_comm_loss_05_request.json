@@ -1,0 +1,5 @@
+{
+  "asset_tag": "vfd_comm_loss_05",
+  "notes": "PLC lost comms to the drive, drive shows CE fault, running in local mode now",
+  "image": "<67628 chars b64>"
+}

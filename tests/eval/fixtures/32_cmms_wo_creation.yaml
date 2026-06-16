@@ -1,0 +1,26 @@
+id: cmms_wo_creation_32
+description: >
+  UC-5 — Full diagnosis ending with CMMS work-order creation.
+  GS10 VFD overcurrent, tech confirms fix, says yes to work-order prompt.
+  Pass: final reply contains "Work order #" and the pipeline returns 200.
+expected_final_state: RESOLVED
+max_turns: 8
+expected_keywords: [work order, created, CMMS]
+wo_expected: true
+safety_expected: false
+tags: [cmms, work-order, uc5, integration, gs10]
+turns:
+  - role: user
+    content: "GS10 VFD throwing OC fault on startup, 5HP 460V centrifugal pump"
+  - role: user
+    content: "1"
+  - role: user
+    content: "Trips within 3 seconds, no output reactor, factory default settings"
+  - role: user
+    content: "2"
+  - role: user
+    content: "Got it, increasing accel time from P1-09 now"
+  - role: user
+    content: "That fixed it, drive is running clean"
+  - role: user
+    content: "yes"

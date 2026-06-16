@@ -1,0 +1,102 @@
+Connecting to Micro820 at 169.254.32.93:502...
+Connected!
+
+=======================================================
+  READ 1
+=======================================================
+
+  COILS (booleans):
+  ---------------------------------------------
+  [  ] C1  motor_running                   = False
+  [  ] C2  conveyor_running                = False
+  [ON] C3  fault_alarm                     = True
+  [  ] C4  vfd_comm_ok                     = False
+  [  ] C5  system_ready                    = False
+  [  ] C6  e_stop_active                   = False
+  [  ] C7  dir_fwd                         = False
+  [ON] C8  dir_rev                         = True
+  [  ] C9  heartbeat                       = False
+  [  ] C10 estop_wiring_fault              = False
+  [  ] C11 dir_fault                       = False
+  [  ] C12 DI_00 (SelectorFWD)             = False
+  [ON] C13 DI_01 (SelectorREV)             = True
+  [ON] C14 DI_02 (EStopNC)                 = True
+  [  ] C15 DI_03 (EStopNO)                 = False
+  [  ] C16 DI_04 (PBRun)                   = False
+  [  ] C17 DO_00 (LightGreen)              = False
+  [ON] C18 DO_01 (LightRed)                = True
+  [ON] C19 DO_02 (ContactorQ1)             = True
+  [  ] C20 DO_03 (PBRunLED)                = False
+
+  HOLDING REGISTERS (integers):
+  ---------------------------------------------
+  HR400101 motor_speed                       =     0
+  HR400102 motor_current                     =     0
+  HR400103 temperature                       =     0
+  HR400104 pressure                          =     0
+  HR400105 conveyor_speed                    =     0
+  HR400106 error_code                        =     0  (none)
+  HR400107 vfd_frequency                     =     0  (0.0 Hz)
+  HR400108 vfd_current                       =     0  (0.0 A)
+  HR400109 vfd_voltage                       =     0  (0.0 V)
+  HR400110 vfd_dc_bus                        =     0  (0.0 V)
+  HR400111 item_count                        =     0
+  HR400112 uptime_seconds                    =  1202
+  HR400113 conveyor_speed_cmd                =     0
+  HR400114 conv_state                        =     0  (IDLE)
+  HR400115 vfd_cmd_word                      =     5
+  HR400116 vfd_freq_setpoint                 =     0  (0.0 Hz)
+
+  Waiting 1.5s for heartbeat toggle...
+
+=======================================================
+  READ 2
+=======================================================
+
+  COILS (booleans):
+  ---------------------------------------------
+  [  ] C1  motor_running                   = False
+  [  ] C2  conveyor_running                = False
+  [ON] C3  fault_alarm                     = True
+  [  ] C4  vfd_comm_ok                     = False
+  [  ] C5  system_ready                    = False
+  [  ] C6  e_stop_active                   = False
+  [  ] C7  dir_fwd                         = False
+  [ON] C8  dir_rev                         = True
+  [ON] C9  heartbeat                       = True
+  [  ] C10 estop_wiring_fault              = False
+  [  ] C11 dir_fault                       = False
+  [  ] C12 DI_00 (SelectorFWD)             = False
+  [ON] C13 DI_01 (SelectorREV)             = True
+  [ON] C14 DI_02 (EStopNC)                 = True
+  [  ] C15 DI_03 (EStopNO)                 = False
+  [  ] C16 DI_04 (PBRun)                   = False
+  [  ] C17 DO_00 (LightGreen)              = False
+  [ON] C18 DO_01 (LightRed)                = True
+  [ON] C19 DO_02 (ContactorQ1)             = True
+  [  ] C20 DO_03 (PBRunLED)                = False
+
+  HOLDING REGISTERS (integers):
+  ---------------------------------------------
+  HR400101 motor_speed                       =     0
+  HR400102 motor_current                     =     0
+  HR400103 temperature                       =     0
+  HR400104 pressure                          =     0
+  HR400105 conveyor_speed                    =     0
+  HR400106 error_code                        =     0  (none)
+  HR400107 vfd_frequency                     =     0  (0.0 Hz)
+  HR400108 vfd_current                       =     0  (0.0 A)
+  HR400109 vfd_voltage                       =     0  (0.0 V)
+  HR400110 vfd_dc_bus                        =     0  (0.0 V)
+  HR400111 item_count                        =     0
+  HR400112 uptime_seconds                    =  1204
+  HR400113 conveyor_speed_cmd                =     0
+  HR400114 conv_state                        =     0  (IDLE)
+  HR400115 vfd_cmd_word                      =     5
+  HR400116 vfd_freq_setpoint                 =     0  (0.0 Hz)
+
+=======================================================
+  HEARTBEAT: TOGGLED (False -> True) — PLC scan is RUNNING
+=======================================================
+
+Connection closed.

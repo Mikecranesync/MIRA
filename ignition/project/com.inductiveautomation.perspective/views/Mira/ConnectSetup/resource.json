@@ -1,0 +1,284 @@
+{
+  "custom": {},
+  "params": {},
+  "props": {
+    "defaultSize": {
+      "height": 600,
+      "width": 800
+    }
+  },
+  "root": {
+    "children": [
+      {
+        "meta": { "name": "Title" },
+        "position": { "basis": "48px", "shrink": 0 },
+        "props": {
+          "style": {
+            "color": "#FFFFFF",
+            "fontSize": "22px",
+            "fontWeight": "bold",
+            "letterSpacing": "3px",
+            "padding": "8px 16px"
+          },
+          "text": "MIRA CONNECT SETUP"
+        },
+        "type": "ia.display.label"
+      },
+      {
+        "meta": { "name": "StatusBanner" },
+        "position": { "basis": "80px", "shrink": 0 },
+        "propConfig": {
+          "props.style.backgroundColor": {
+            "binding": {
+              "config": {
+                "expression": "if({view.custom.connected}, '#28A745', '#6C757D')"
+              },
+              "type": "expr"
+            }
+          }
+        },
+        "children": [
+          {
+            "meta": { "name": "StatusText" },
+            "position": { "basis": "auto" },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "expression": "if({view.custom.connected}, 'CONNECTED TO MIRA CLOUD', 'NOT CONNECTED')"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "color": "#FFFFFF",
+                "fontSize": "24px",
+                "fontWeight": "bold",
+                "letterSpacing": "2px"
+              },
+              "text": "NOT CONNECTED"
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "props": {
+          "align": "center",
+          "direction": "row",
+          "justify": "center",
+          "style": {
+            "backgroundColor": "#6C757D",
+            "borderRadius": "6px",
+            "margin": "4px 16px",
+            "padding": "8px"
+          }
+        },
+        "type": "ia.container.flex"
+      },
+      {
+        "meta": { "name": "InputSection" },
+        "position": { "basis": "200px", "shrink": 0 },
+        "children": [
+          {
+            "meta": { "name": "InstructionText" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "color": "#AAAAAA",
+                "fontSize": "14px",
+                "marginBottom": "16px"
+              },
+              "text": "Enter the activation code from MIRA to connect this Ignition Gateway to your MIRA cloud account."
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "CodeInput" },
+            "position": { "basis": "48px", "shrink": 0 },
+            "props": {
+              "placeholder": "MIRA-XXXX-XXXX-XXXX",
+              "style": {
+                "backgroundColor": "#333333",
+                "border": "2px solid #555555",
+                "borderRadius": "6px",
+                "color": "#FFFFFF",
+                "fontSize": "20px",
+                "fontFamily": "monospace",
+                "letterSpacing": "3px",
+                "padding": "8px 16px",
+                "textAlign": "center"
+              }
+            },
+            "type": "ia.input.text-field"
+          },
+          {
+            "meta": { "name": "ActivateButton" },
+            "position": { "basis": "48px", "shrink": 0 },
+            "events": {
+              "dom": {
+                "onClick": {
+                  "config": {
+                    "script": "\n\timport json\n\tcode = self.getSibling('CodeInput').props.text.strip()\n\tif not code:\n\t\tself.getSibling('ResultText').props.text = 'Please enter an activation code'\n\t\treturn\n\tself.getSibling('ResultText').props.text = 'Activating...'\n\ttry:\n\t\turl = system.net.getHostName() + ':8088/system/webdev/FactoryLM/api/connect'\n\t\tclient = system.net.httpClient()\n\t\tresp = client.post('http://localhost:8088/system/webdev/FactoryLM/api/connect', data=system.util.jsonEncode({'code': code}), headers={'Content-Type': 'application/json'}, timeout=15000)\n\t\tresult = json.loads(resp.text)\n\t\tif result.get('status') == 'activated':\n\t\t\tself.getSibling('ResultText').props.text = 'Connected! Tenant: ' + result.get('tenant_id', '')\n\t\t\tself.view.custom.connected = True\n\t\telse:\n\t\t\tself.getSibling('ResultText').props.text = 'Error: ' + result.get('error', 'Unknown error')\n\texcept Exception as e:\n\t\tself.getSibling('ResultText').props.text = 'Failed: ' + str(e)\n"
+                  },
+                  "type": "script"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "backgroundColor": "#007BFF",
+                "borderRadius": "6px",
+                "color": "#FFFFFF",
+                "cursor": "pointer",
+                "fontSize": "16px",
+                "fontWeight": "bold",
+                "marginTop": "12px",
+                "padding": "12px 32px",
+                "textAlign": "center"
+              },
+              "text": "ACTIVATE"
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "ResultText" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "color": "#AAAAAA",
+                "fontSize": "14px",
+                "marginTop": "12px",
+                "textAlign": "center"
+              },
+              "text": ""
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "props": {
+          "align": "center",
+          "direction": "column",
+          "justify": "center",
+          "style": {
+            "backgroundColor": "#2a2a2a",
+            "borderRadius": "8px",
+            "margin": "16px",
+            "padding": "24px"
+          }
+        },
+        "type": "ia.container.flex"
+      },
+      {
+        "meta": { "name": "InfoSection" },
+        "position": { "basis": "120px", "shrink": 0 },
+        "children": [
+          {
+            "meta": { "name": "TagCountPill" },
+            "position": { "basis": "auto", "grow": 1 },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "expression": "if({view.custom.connected}, 'Streaming tags to MIRA', 'Waiting for activation')"
+                  },
+                  "type": "expr"
+                }
+              },
+              "props.style.backgroundColor": {
+                "binding": {
+                  "config": {
+                    "expression": "if({view.custom.connected}, '#28A745', '#555555')"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "backgroundColor": "#555555",
+                "borderRadius": "20px",
+                "color": "#FFFFFF",
+                "fontSize": "14px",
+                "fontWeight": "bold",
+                "margin": "4px",
+                "padding": "10px 20px",
+                "textAlign": "center"
+              },
+              "text": "Waiting for activation"
+            },
+            "type": "ia.display.label"
+          },
+          {
+            "meta": { "name": "RelayPill" },
+            "position": { "basis": "auto", "grow": 1 },
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "config": {
+                    "expression": "if({view.custom.connected}, 'Relay: connect.factorylm.com', 'Relay: not configured')"
+                  },
+                  "type": "expr"
+                }
+              },
+              "props.style.backgroundColor": {
+                "binding": {
+                  "config": {
+                    "expression": "if({view.custom.connected}, '#007BFF', '#555555')"
+                  },
+                  "type": "expr"
+                }
+              }
+            },
+            "props": {
+              "style": {
+                "backgroundColor": "#555555",
+                "borderRadius": "20px",
+                "color": "#FFFFFF",
+                "fontSize": "14px",
+                "fontWeight": "bold",
+                "margin": "4px",
+                "padding": "10px 20px",
+                "textAlign": "center"
+              },
+              "text": "Relay: not configured"
+            },
+            "type": "ia.display.label"
+          }
+        ],
+        "props": {
+          "direction": "row",
+          "style": { "margin": "8px 16px" },
+          "wrap": "nowrap"
+        },
+        "type": "ia.container.flex"
+      },
+      {
+        "meta": { "name": "Footer" },
+        "position": { "basis": "40px", "shrink": 0 },
+        "props": {
+          "style": {
+            "borderTop": "1px solid #333333",
+            "color": "#666666",
+            "fontSize": "12px",
+            "margin": "8px 16px",
+            "padding": "8px 0"
+          },
+          "text": "MIRA Connect by FactoryLM  |  factorylm.com"
+        },
+        "type": "ia.display.label"
+      }
+    ],
+    "meta": { "name": "root" },
+    "position": { "basis": "auto" },
+    "props": {
+      "direction": "column",
+      "style": {
+        "backgroundColor": "#1a1a1a",
+        "height": "100%",
+        "padding": "8px"
+      }
+    },
+    "type": "ia.container.flex"
+  }
+}

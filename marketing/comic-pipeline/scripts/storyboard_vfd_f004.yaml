@@ -1,0 +1,424 @@
+# MIRA Comic Explainer — VFD Fault F004 (PowerFlex 525 UnderVoltage)
+#
+# Companion to storyboard_v2.yaml. Same v2 pipeline schema. Different scenario:
+# Rico has a faulted VFD (PowerFlex 525, F004 UnderVoltage trip on Cell B
+# drive 7). He has the manual. The manual gives a generic single-drive
+# checklist (input voltage, phase loss, DC bus) — Rico checks all three,
+# everything's clean, the fault still recurs. MIRA reveals the pattern that
+# no single-drive manual can show: same fault, same time-of-day, across drives
+# 7/8/9 in Cell B for six weeks straight — simultaneous morning startup
+# inrush dragging the bus low. Fix: stagger the startup sequence in the line
+# PLC by 0.5s per drive.
+#
+# Why F004: most common VFD fault in the Rockwell PowerFlex family (which
+# accounts for ~13,686 chunks of MIRA's KB per CLAUDE.md). High recognition
+# value with maintenance technicians, plant engineers, and ops managers who
+# are the target audience. Dramatically illustrates the gap between
+# single-document help (manual) and fleet-history-grounded help (MIRA).
+#
+# COMIC PAGES TO GENERATE (drop into reference/ before building):
+#   - reference/vfd_shot_01.png  (Cell B, drive 7 stopped, F004 on keypad)
+#   - reference/vfd_shot_02.png  (Rico with the open manual, multimeter)
+#   - reference/vfd_shot_03.png  (multi-character pressure vignette)
+#   - reference/vfd_shot_04.png  (Rico + tablet showing MIRA's pattern recall)
+#   - reference/vfd_shot_05.png  (PLC reprogrammed, pattern broken, leadership)
+# Per-shot generation prompts are in the YAML comment block above each shot.
+#
+# Focals here are first-pass guesses for 1536×1024 source pages. After
+# generating each comic page, re-eyeball the focals against the actual
+# panel layout (same calibration step v2 went through).
+#
+# Build:
+#   doppler run --project factorylm --config prd -- \
+#     .venv/bin/python build_video_v2.py --storyboard scripts/storyboard_vfd_f004.yaml --skip-verify
+#   (NOTE: build_video_v2.py currently has STORYBOARD_PATH hardcoded to
+#   storyboard_v2.yaml — see "How to actually run this" at the bottom of
+#   this file.)
+
+title: "MIRA Comic Explainer — VFD Fault F004"
+version: 2
+
+video:
+  width: 1920
+  height: 1080
+  fps: 24
+  shot_xfade_duration: 0.6
+  intra_beat_pan_duration: 0.6
+  output_name: mira_explainer_vfd_f004.mp4
+
+audio:
+  tts_model: tts-1-hd
+  tts_voice: onyx
+  tts_speed: 0.90
+  pause_within_shot: 0.5
+  pause_between_shots: 1.0
+  style_instruction: |
+    Speak in a calm, confident, floor-level industrial professional tone.
+    Slow, deliberate pace. Pause naturally between thoughts. This is
+    documentary, not advertising — measured, weighty, and patient.
+
+music:
+  bed_volume_db: -18
+  duck_threshold: 0.05
+  duck_ratio: 6
+  duck_attack_ms: 80
+  duck_release_ms: 400
+  crossfade_seconds: 3.0
+
+  moods:
+    problem:
+      sines:
+        - {freq: 55.0,  weight: 0.45}
+        - {freq: 82.4,  weight: 0.30}
+        - {freq: 87.3,  weight: 0.15}
+      noise:
+        color: brown
+        weight: 0.10
+    resolution:
+      sines:
+        - {freq: 65.4,  weight: 0.30}
+        - {freq: 98.0,  weight: 0.25}
+        - {freq: 130.8, weight: 0.25}
+        - {freq: 164.8, weight: 0.20}
+      noise:
+        color: pink
+        weight: 0.05
+
+  cues:
+    - shot_id: 1
+      mood: problem
+    - shot_id: 4
+      mood: resolution
+
+shots:
+
+  # =========================================================================
+  # SHOT 1 — Cell B, drive 7 down (problem setup)
+  # ─────────────────────────────────────────────────────────────────────────
+  # COMIC PAGE PROMPT (paste into ChatGPT, gpt-image-1, etc.):
+  #
+  # Industrial comic book single-page layout, gritty 1990s Vertigo aesthetic,
+  # dark steel blue + amber + high-contrast black palette, bold panel borders.
+  # Wide establishing shot of an industrial cell labeled "CELL B" — three
+  # parallel conveyor lines visible, drive cabinets on the right side. Cell
+  # B drive 7 is dark — its red fault light is on. Top-right corner: large
+  # red metal sign "CELL B — DRIVE 7 STOPPED". Foreground close-up: the
+  # PowerFlex 525 keypad showing "F004" in red on its small LCD, with
+  # "UNDERVOLT" subtext below. Mid-foreground: Rico (mid-30s, dark hair,
+  # glasses, navy blue coveralls with "RICO" name patch) standing tense in
+  # front of drive 7's cabinet, hand on hip, looking at the keypad.
+  # Background: idle workers in soft focus. Dramatic chiaroscuro lighting,
+  # amber fault-light glow.
+  - id: 1
+    file: "vfd_shot_01.png"
+    role: "Setup — F004 on Cell B drive 7"
+    qc:
+      required_strings: ["F004", "UNDERVOLT", "CELL B", "DRIVE 7", "RICO", "STOPPED", "525"]
+      forbidden_strings: ["Cell 6", "LINDERVOLT", "F00 4", "Drive 8", "Drive 6"]
+      style_anchor: "ChatGPT Image Apr 24, 2026 at 02_05_37 PM.png"
+      prompt_summary: "Wide establishing — Cell B with drive 7 stopped, PowerFlex 525 keypad showing F004 UNDERVOLT, Rico in foreground."
+    beats:
+      - text: "Cell B. Six in the morning. Drive seven is down again."
+        focal: {cx: 0.50, cy: 0.50, zoom: 1.0}
+        target: "wide establish — Cell B, three drives, drive 7 dark"
+        duration: 4.5
+      - text: "PowerFlex five-twenty-five. Fault code F-zero-zero-four."
+        focal: {cx: 0.30, cy: 0.65, zoom: 2.5}
+        target: "drive 7 keypad close-up — F004 display"
+        duration: 5.0
+      - text: "Undervoltage trip. The line stops cold."
+        focal: {cx: 0.65, cy: 0.45, zoom: 1.8}
+        target: "Rico looking at the stopped cell"
+        duration: 4.5
+
+  # =========================================================================
+  # SHOT 2 — The manual is not enough (frustration)
+  # ─────────────────────────────────────────────────────────────────────────
+  # COMIC PAGE PROMPT:
+  #
+  # Industrial comic book multi-panel layout, same Rico character as shot 1.
+  # Maintenance workshop bench, late dawn, fluorescent overhead light.
+  # LEFT 50%: Rico hunched over an open paper manual labeled "PowerFlex 525
+  # User Manual — 750-RM001". Page visible: section header "F004
+  # UNDERVOLTAGE TRIP", bullet list readable: "• Check input line voltage
+  # • Check for phase loss • Verify DC bus voltage > 333 VDC". Multimeter
+  # on bench beside manual. Focused expression on Rico's face.
+  # RIGHT 50% (split into 3 stacked panels):
+  #   PANEL A (top): close-up of Rico's hand holding multimeter probes on
+  #   drive input terminals, display reading "480 V — OK". Speech bubble:
+  #   "Voltage is fine."
+  #   PANEL B (middle): drive cabinet open showing all three input legs lit
+  #   on a phase-loss indicator. Speech bubble: "All three phases present."
+  #   PANEL C (bottom): drive's diagnostic screen showing DC bus reading
+  #   "650 VDC". Speech bubble: "Bus is healthy."
+  # Bottom of page: Rico closing the manual, his expression resigned.
+  # Caption (large, bold, hand-lettered): "THE MANUAL ENDS HERE. THE FAULT
+  # DOESN'T."
+  - id: 2
+    file: "vfd_shot_02.png"
+    role: "Frustration — manual gives a checklist, all checks pass, fault returns"
+    qc:
+      required_strings: ["MANUAL", "VOLTAGE", "PHASES", "BUS", "FAULT", "480", "RICO"]
+      forbidden_strings: ["MIKUTES", "WEEEKS", "VOLATGE", "FUALT"]
+      style_anchor: "ChatGPT Image Apr 24, 2026 at 02_11_45 PM.png"
+      prompt_summary: "Rico at maintenance bench with PowerFlex 525 manual open; right-side panels show multimeter readings — voltage fine, all 3 phases present, DC bus healthy. Caption: THE MANUAL ENDS HERE. THE FAULT DOESN'T."
+    beats:
+      - text: "He pulls the manual. Section seven point three."
+        focal: {cx: 0.25, cy: 0.50, zoom: 1.6}
+        target: "open manual, section header visible"
+        duration: 4.0
+      - text: "Check input voltage. Check phase loss. Verify DC bus."
+        focal: {cx: 0.30, cy: 0.55, zoom: 2.2}
+        target: "manual page bullet list"
+        duration: 5.0
+      - text: "He checks all three. Voltage fine. No phase loss. Bus healthy."
+        focal: {cx: 0.78, cy: 0.50, zoom: 2.0}
+        target: "right column — three test panels"
+        duration: 6.0
+      - text: "The manual ends here. The fault doesn't."
+        focal: {cx: 0.50, cy: 0.85, zoom: 1.8}
+        target: "bottom caption — manual ends here"
+        duration: 4.5
+
+  # =========================================================================
+  # SHOT 3 — Pressure mounts (multi-character vignette, mirrors v2 shot 3)
+  # ─────────────────────────────────────────────────────────────────────────
+  # COMIC PAGE PROMPT:
+  #
+  # Industrial comic book multi-panel layout. TOP BANNER (full width, bold
+  # red sign-style): "CELL B — F004 — REPEAT FAULT — 14× IN 6 WEEKS",
+  # ticking clock graphic showing "07:14".
+  # LEFT 30% (vertical column): wide overhead of Cell B, drive 7 cabinet
+  # foregrounded with red fault light, idle line behind. Time-pressure mood.
+  # RIGHT 70% (4 stacked horizontal vignette panels):
+  #   PANEL A (top): operator with radio, frustrated. Speech bubble: "Rico,
+  #   this is the THIRD time this week."
+  #   PANEL B: Marcus (40s, dark complexion, thoughtful) at laptop — Cell B
+  #   downtime spreadsheet on screen, line "30 min lost since Monday" in
+  #   amber. Speech bubble: "Cell B has eaten thirty minutes since Monday."
+  #   PANEL C: Elena (30s, on phone, professional) with a tablet — fleet
+  #   fault-history bar chart showing F004 spikes for drives 7, 8, 9.
+  #   Speech bubble: "Same fault. Drives seven, eight, nine."
+  #   PANEL D (bottom): Director Holt (senior, grey hair, suit) at office
+  #   monitor, calm but serious. Speech bubble: "Customer's on the line.
+  #   We're missing the morning lot."
+  # Style: dark steel blue + amber palette, bold panel borders, Vertigo comic.
+  - id: 3
+    file: "vfd_shot_03.png"
+    role: "Pressure — repeat offender across drives, leadership reacts"
+    qc:
+      required_strings: ["WEEKS", "MINUTES", "SINCE", "MARCUS", "ELENA", "HOLT", "MAINTENANCE MANAGER", "ENGINEERING MANAGER", "DIRECTOR", "F004", "FAULT", "07:14"]
+      forbidden_strings: ["WEEEKS", "MIKUTES", "SN CE", "HOLT — ENGINEERING MANAGER", "DIRECTOR HOLT — ENGINEERING"]
+      style_anchor: "ChatGPT Image Apr 24, 2026 at 02_22_55 PM.png"
+      prompt_summary: "Multi-panel pressure scene: top banner CELL B F004 REPEAT FAULT 14× IN 6 WEEKS 07:14; left wide panel of stopped Cell B; right column FOUR character panels — Operator (radio), Marcus (Maintenance Manager), Elena (Engineering Manager), Director Holt (grey-haired senior in suit, distinct from Elena)."
+    beats:
+      - text: "The operator is on the radio. Third time this week."
+        focal: {cx: 0.78, cy: 0.20, zoom: 2.5}
+        target: "operator panel — radio frustrated"
+        duration: 4.5
+      - text: "Marcus: Cell B has eaten thirty minutes since Monday."
+        focal: {cx: 0.78, cy: 0.40, zoom: 2.5}
+        target: "Marcus panel — downtime spreadsheet"
+        duration: 5.0
+      - text: "Elena pulls fault history. Same code. Drives seven, eight, and nine."
+        focal: {cx: 0.78, cy: 0.60, zoom: 2.5}
+        target: "Elena panel — fleet history chart"
+        duration: 5.5
+      - text: "Director Holt: customer's on the line. We're missing the morning lot."
+        focal: {cx: 0.78, cy: 0.83, zoom: 2.5}
+        target: "Holt panel — office monitor"
+        duration: 5.0
+      - text: "And the manual still says: check input voltage."
+        focal: {cx: 0.20, cy: 0.50, zoom: 1.8}
+        target: "left column — Cell B foreground"
+        duration: 4.5
+
+  # =========================================================================
+  # SHOT 4 — MIRA reveals the pattern (the pivot — music switches to resolution)
+  # ─────────────────────────────────────────────────────────────────────────
+  # COMIC PAGE PROMPT:
+  #
+  # Industrial comic book multi-panel layout, mood pivot — warmer tones,
+  # green LED accents replacing the red fault lights. Same Rico character.
+  # TOP HALF (wide establishing): Rico standing at a maintenance bench,
+  # holding a tablet, posture confident. Cell B visible in background.
+  # BOTTOM-LEFT panel: tablet screen close-up showing the MIRA app — dark
+  # theme UI, amber accents. Readable screen content (large, sharp):
+  #   "MIRA — FAULT INTELLIGENCE
+  #    F004 UNDERVOLTAGE — Cell B Drive 7
+  #    HISTORY: 14 occurrences in 6 weeks
+  #    PATTERN: All Mondays 07:00–07:30
+  #    AFFECTED: Drives 7, 8, 9 (same shifts)
+  #    SUGGESTED CAUSE: Simultaneous start —
+  #    combined inrush sags the line bus
+  #    RECOMMENDED FIX: stagger startup
+  #    +0.5s per drive in line PLC"
+  # BOTTOM-RIGHT panel: zoom on Rico's face — expression shifting from
+  # weary to focused. Speech bubble: "It's not the drive. It's the
+  # sequence." A small inset shows a mini timeline graphic with the three
+  # drives starting simultaneously (red) vs staggered (green).
+  # Style: same gritty Vertigo aesthetic, but the MIRA app is the only
+  # spot of clean modern UI in an otherwise grimy industrial scene.
+  - id: 4
+    file: "vfd_shot_04.png"
+    role: "Pivot — MIRA shows the pattern across the fleet"
+    qc:
+      required_strings: ["MIRA", "F004", "UNDERVOLTAGE", "Cell B", "Drive 7", "PATTERN", "STOPPED", "RICO", "stagger", "RECOMMENDED", "Mondays"]
+      forbidden_strings: ["LINDERVOLTAGE", "LINDERVOLT", "Cell 6", "Drives 7, 0, 3", "Drive 0", "Drive 3", "CELL B — RUNNING", "Cell B Running"]
+      style_anchor: "ChatGPT Image Apr 24, 2026 at 11_53_02 AM.png"
+      prompt_summary: "Rico holding tablet at maintenance bench; bottom-left panel shows MIRA app screen with F004 UNDERVOLTAGE / Cell B Drive 7 / pattern Mondays 7-7:30 / drives 7, 8, 9 affected / fix: stagger startup; bottom-right is a TIMING DIAGRAM of three vertical bars (simultaneous=red vs staggered=green). Cell B sign overhead is RED STOPPED — line still down."
+    beats:
+      - text: "This time, Rico tries something different. He asks MIRA."
+        focal: {cx: 0.50, cy: 0.25, zoom: 1.5}
+        target: "wide top — Rico with tablet"
+        duration: 4.5
+      - text: "Fault F-zero-zero-four. Drive seven. Cell B."
+        focal: {cx: 0.30, cy: 0.78, zoom: 2.5}
+        target: "MIRA app — fault summary header"
+        duration: 4.5
+      - text: "MIRA answers in seconds. Fourteen occurrences. All Monday mornings between seven and seven thirty. Drives seven, eight, and nine."
+        focal: {cx: 0.30, cy: 0.78, zoom: 2.5}
+        target: "MIRA app — pattern detail"
+        duration: 8.5
+      - text: "Suggested cause: simultaneous startup. Fix: stagger drive starts by half a second."
+        focal: {cx: 0.70, cy: 0.78, zoom: 2.5}
+        target: "Rico face + inset timing graphic"
+        duration: 6.5
+
+  # =========================================================================
+  # SHOT 5 — The fix + pattern resolved + CTA
+  # ─────────────────────────────────────────────────────────────────────────
+  # COMIC PAGE PROMPT:
+  #
+  # Industrial comic book multi-panel layout. Mood: confident, forward,
+  # warm green LED accent throughout — the cell is RUNNING.
+  # TOP ROW (2 large panels):
+  #   LEFT: Rico at a laptop running RSLogix 5000 / Studio 5000. PLC ladder
+  #   logic on screen, three new rungs visible labeled "DRIVE 7 START +0.0s
+  #   / DRIVE 8 START +0.5s / DRIVE 9 START +1.0s". Hand on keyboard,
+  #   posture deliberate. Speech bubble: "Staging the startup."
+  #   RIGHT: Cell B running — all three drives green, conveyor moving in
+  #   sequence. Wall sign reads "CELL B — RUNNING". Workers active in
+  #   background. Speech bubble (caption): "Monday, 07:00. No fault."
+  # BOTTOM ROW (3 smaller reaction panels side by side):
+  #   LEFT: Marcus at laptop, downtime chart now showing "Cell B — 0 min
+  #   lost this week" in green. Speech bubble: "Pattern broken. Eighteen
+  #   minutes a week back."
+  #   CENTER: Elena on phone, holding the MIRA fault history view.
+  #   Speech bubble: "The manual was right. The story was incomplete."
+  #   RIGHT: Director Holt at his desk, calm and informed. Speech bubble:
+  #   "This is what happens when your data tells the story."
+  # BOTTOM CTA (large hand-lettered caption across full width):
+  #   "MIRA. BUILT FOR THE FLOOR. CONNECTED TO WHAT ACTUALLY MATTERS.
+  #    factorylm.com"
+  - id: 5
+    file: "vfd_shot_05.png"
+    role: "Resolution — staggered start, pattern broken, leadership aligned"
+    qc:
+      required_strings: ["factorylm.com", "MIRA", "RUNNING", "CELL B", "ELENA", "MARCUS", "HOLT", "DATA", "STORY", "BUILT FOR THE FLOOR", "INCOMPLETE", "WAS RIGHT", "Pattern broken"]
+      forbidden_strings: ["WANT WAS RIGHT", "STOPPED", "F004"]
+      style_anchor: "ChatGPT Image Apr 24, 2026 at 12_12_29 PM.png"
+      prompt_summary: "Resolution. Top: Rico at PLC laptop staging startup; Cell B running with green CELL B - RUNNING sign. Bottom: three reaction panels (Marcus, Elena, Holt). MASSIVE bottom CTA caption: MIRA. BUILT FOR THE FLOOR. CONNECTED TO WHAT MATTERS. factorylm.com"
+    beats:
+      - text: "Rico stages the startup sequence in the line PLC."
+        focal: {cx: 0.25, cy: 0.25, zoom: 2.0}
+        target: "Rico at PLC laptop with ladder logic"
+        duration: 4.5
+      - text: "Monday morning. Drives seven, eight, and nine power up in sequence."
+        focal: {cx: 0.75, cy: 0.25, zoom: 2.0}
+        target: "Cell B running, all green"
+        duration: 5.0
+      - text: "No fault."
+        focal: {cx: 0.75, cy: 0.25, zoom: 2.5}
+        target: "tight on the green run sign"
+        duration: 2.5
+      - text: "Marcus: pattern broken. Eighteen minutes a week back."
+        focal: {cx: 0.165, cy: 0.625, zoom: 2.5}
+        target: "Marcus reaction"
+        duration: 4.5
+      - text: "Elena: the manual was right. The story was incomplete."
+        focal: {cx: 0.50, cy: 0.625, zoom: 2.5}
+        target: "Elena reaction"
+        duration: 4.5
+      - text: "Holt: this is what happens when your data tells the story."
+        focal: {cx: 0.83, cy: 0.625, zoom: 2.5}
+        target: "Holt reaction"
+        duration: 4.5
+
+  # =========================================================================
+  # SHOT 6 — How MIRA solved it (explicit explainer + aftermath stats + CTA)
+  # ─────────────────────────────────────────────────────────────────────────
+  # COMIC PAGE PROMPT:
+  # See PANEL_PROMPTS[6] in scripts/generate_vfd_comic.py — a stat-reveal
+  # explainer page (BEFORE/AFTER style) that ties the bow on the story.
+  - id: 6
+    file: "vfd_shot_06.png"
+    role: "Explainer — how MIRA solved the underlying issue + aftermath stats + CTA"
+    qc:
+      required_strings: ["MIRA", "F004", "BEFORE", "AFTER", "PATTERN", "STAGGER", "factorylm.com", "BUILT FOR THE FLOOR"]
+      forbidden_strings: ["UNDERVLL", "LINDERVOLT", "Cell 6", "Drive 0", "WANT WAS", "WAS RIGTH"]
+      style_anchor: "ChatGPT Image Apr 24, 2026 at 12_12_29 PM.png"
+      prompt_summary: "Stat-reveal explainer page. BEFORE/AFTER columns showing F004 14→0, downtime 21min→6min, weekly uptime +18min. Bottom CTA: MIRA / BUILT FOR THE FLOOR / factorylm.com"
+    beats:
+      - text: "Six weeks. Same fault. Same time. Same cell."
+        focal: {cx: 0.50, cy: 0.20, zoom: 1.5}
+        target: "top header — six weeks pattern"
+        duration: 4.5
+      - text: "MIRA pulled the history. The manual saw one drive. MIRA saw the pattern."
+        focal: {cx: 0.50, cy: 0.40, zoom: 1.8}
+        target: "MIRA found the pattern"
+        duration: 6.0
+      - text: "Half a second of patience between starts. Pattern: gone."
+        focal: {cx: 0.50, cy: 0.55, zoom: 2.0}
+        target: "the fix — stagger startup"
+        duration: 5.0
+      - text: "F-zero-zero-four trips: fourteen, to zero. Eighteen minutes a week, back where it belongs."
+        focal: {cx: 0.50, cy: 0.70, zoom: 2.0}
+        target: "stat reveal — 14→0, 18 min/week"
+        duration: 6.5
+      - text: "MIRA. Built for the floor. Connected to what actually matters."
+        focal: {cx: 0.50, cy: 0.88, zoom: 1.5}
+        target: "bottom CTA strip"
+        duration: 5.0
+
+# =============================================================================
+# How to actually run this storyboard
+# =============================================================================
+#
+# 1. Generate the 5 comic pages.
+#    For each shot above, copy its COMIC PAGE PROMPT block into ChatGPT (or
+#    gpt-image-1 directly via the OpenAI API). Save each result to:
+#      reference/vfd_shot_01.png
+#      reference/vfd_shot_02.png
+#      reference/vfd_shot_03.png
+#      reference/vfd_shot_04.png
+#      reference/vfd_shot_05.png
+#    Reuse Rico's appearance from the existing v2 references for character
+#    continuity (drop one of those into ChatGPT alongside the prompt).
+#
+# 2. Calibrate focal coordinates against the actual generated images.
+#    The focals above are first-pass guesses for 1536×1024 pages. After
+#    seeing the real images, tune cx / cy / zoom so the camera lands on
+#    the intended target (the comments in `target:` describe what should
+#    be in frame at that beat).
+#
+# 3. Build.
+#    `build_video_v2.py` currently has STORYBOARD_PATH hardcoded to
+#    storyboard_v2.yaml. Two ways to use this file:
+#
+#    A. Quick swap (one-off run): in build_video_v2.py, change line 40:
+#         STORYBOARD_PATH = PROJECT_ROOT / "scripts" / "storyboard_vfd_f004.yaml"
+#       Also update line 43 if you want the output in a separate dir:
+#         FINAL_DIR = (PROJECT_ROOT / ".." / "videos" / "comic-vfd-f004").resolve()
+#       Then:
+#         doppler run --project factorylm --config prd -- \
+#             .venv/bin/python build_video_v2.py --skip-verify
+#
+#    B. Permanent (for repeated builds across multiple storyboards): add a
+#       --storyboard PATH CLI flag to build_video_v2.py. ~5-line patch;
+#       worth doing once you have 3+ storyboards in scripts/.
+#
+# 4. Iterate.
+#    The pipeline is idempotent — TTS hashes its inputs, beat clips cache by
+#    filename. Edit a beat's `text:` and only that beat's TTS re-runs.
+#    Edit a focal and only that beat's clip re-renders.

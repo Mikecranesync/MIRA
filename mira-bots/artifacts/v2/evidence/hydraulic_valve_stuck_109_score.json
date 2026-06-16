@@ -1,0 +1,37 @@
+{
+  "case": "hydraulic_valve_stuck_109",
+  "passed": true,
+  "failure_bucket": null,
+  "fix_suggestion": "",
+  "word_count": 72,
+  "elapsed": 14.912226915359497,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [],
+    "fault_cause_found": [
+      "likely",
+      "phase",
+      "most likely"
+    ],
+    "next_step_found": [
+      "check",
+      "verify",
+      "ensure"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

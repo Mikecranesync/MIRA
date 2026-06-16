@@ -1,0 +1,25 @@
+id: photo_pilz_pnoz_x3
+description: "Photo of Pilz PNOZ X3 safety relay nameplate — vendor + model extraction"
+expected_final_state: Q1
+max_turns: 3
+expected_keywords: [Pilz, PNOZ, safety, relay]
+expected_vendor: Pilz
+wo_expected: false
+safety_expected: false
+honesty_required: false
+tags: [photo, nameplate, pilz, safety-relay]
+
+# Vendor/model fields checked by the photo grader (not the binary checkpoint grader)
+photo_expected:
+  vendor: Pilz
+  model: PNOZ X3
+  voltage: 24VDC
+
+turns:
+  - role: user
+    content: "What is this?"
+    photo: pilz_pnoz_x3.jpg
+  - role: user
+    content: "The green LED is off and the contactor dropped out"
+  - role: user
+    content: "We had a door switch trip but it's been reset"

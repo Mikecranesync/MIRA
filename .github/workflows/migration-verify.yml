@@ -1,0 +1,184 @@
+name: Migration Verify
+
+# Apply + verify mira-hub/db/migrations/*.sql against the NeonDB staging
+# branch on every PR that touches the migrations directory.
+#
+# Companion to `staging-gate.yml` (which runs the live E2E rubric against the
+# same staging Neon branch). This workflow lands first so the gate sees the
+# new schema, then `tools/verify_phase0_deploy.py` re-asserts the schema
+# matches the migrations declared in source.
+#
+# This is intentionally auto-apply (no required reviewers on the `staging`
+# environment) — the migrations are idempotent (CREATE … IF NOT EXISTS) and
+# the staging Neon branch is a forked clone of prod, easy to reset.
+# Production migrations still go through `apply-migrations.yml`
+# (workflow_dispatch, environment=production, required-reviewers).
+#
+# Failure modes:
+#   * psql fails on a malformed migration → red, blocks deploy-vps.yml
+#   * verify_phase0_deploy.py reports drift → red, blocks deploy-vps.yml
+#   * Phase 0 integration tests fail (RLS / round-trip) → red
+#   * Phase 1 RLS integration tests fail (tag/trace family, issue #1664) → red
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'mira-hub/db/migrations/**'
+      - 'tools/verify_phase0_deploy.py'
+      - 'tests/integration/**'
+      - '.github/workflows/migration-verify.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: migration-verify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  apply-and-verify:
+    name: apply-and-verify
+    # Dependabot PRs cannot access GitHub environment secrets — the staging
+    # `NEON_STG_DATABASE_URL` is empty, psql fails, and the job goes red.
+    # CI lint/unit and the staging-gate dependabot-skip already gate the
+    # dependency-bump risk. Skip the job-level run so the merge can proceed.
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Uses the same `staging` environment as staging-gate.yml so we can read
+    # NEON_STG_DATABASE_URL from secrets. No required reviewers on staging.
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Full history so the "Resolve migration plan" step can diff
+          # against the merge-base SHA. Shallow clone (default depth=1)
+          # fails with "Invalid symmetric difference expression".
+          fetch-depth: 0
+
+      - name: Install postgresql-client-16
+        # Match Neon's server version family for ltree/jsonb parity.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          psql --version
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install verify + test deps
+        run: |
+          python -m pip install --upgrade pip
+          # psycopg2-binary is the only runtime dep of the verify script
+          # and the integration tests. pytest comes along for the tests;
+          # pyyaml because tests/conftest.py imports yaml at collection.
+          pip install 'psycopg2-binary>=2.9' pytest pyyaml
+
+      - name: Resolve migration plan
+        id: plan
+        run: |
+          set -euo pipefail
+          MIG_DIR="mira-hub/db/migrations"
+          # Apply every Phase 0 migration the PR touched. Use git diff
+          # against the merge-base so we don't miss files added on top of
+          # an older base.
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$BASE_SHA" ]; then
+            # workflow_dispatch path — fall back to "all 025-up".
+            CHANGED=$(ls "$MIG_DIR"/02[5-9]_*.sql "$MIG_DIR"/0[3-9]?_*.sql 2>/dev/null | sort || true)
+          else
+            CHANGED=$(git diff --name-only --diff-filter=AM "$BASE_SHA"...HEAD -- "$MIG_DIR" | sort)
+          fi
+          if [ -z "$CHANGED" ]; then
+            echo "::notice::No migration files touched by this PR — nothing to apply."
+            echo "files=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s\n' "$CHANGED" > .migration_plan
+          echo "Plan:"
+          cat .migration_plan
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          cat .migration_plan >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Apply migrations to staging Neon
+        if: steps.plan.outputs.files != ''
+        env:
+          DATABASE_URL: ${{ secrets.NEON_STG_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "::error::NEON_STG_DATABASE_URL secret not set on the staging environment."
+            exit 1
+          fi
+          echo "::add-mask::$DATABASE_URL"
+          echo "### Migration apply" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| File | Status | Duration |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|--------|----------|" >> "$GITHUB_STEP_SUMMARY"
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            echo "::group::Applying $f"
+            START=$(date +%s)
+            if psql "$DATABASE_URL" \
+                 --single-transaction \
+                 --set ON_ERROR_STOP=1 \
+                 --no-psqlrc -v ECHO=errors -f "$f"; then
+              DUR=$(( $(date +%s) - START ))
+              echo "| \`$f\` | OK | ${DUR}s |" >> "$GITHUB_STEP_SUMMARY"
+              echo "::endgroup::"
+            else
+              DUR=$(( $(date +%s) - START ))
+              echo "| \`$f\` | FAILED | ${DUR}s |" >> "$GITHUB_STEP_SUMMARY"
+              echo "::endgroup::"
+              echo "::error file=$f::psql failed on $f after ${DUR}s"
+              exit 1
+            fi
+          done < .migration_plan
+
+      - name: Verify Phase 0 schema (tools/verify_phase0_deploy.py)
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_STG_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          echo "### Schema verification" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          python tools/verify_phase0_deploy.py | tee verify.out
+          echo '```' >> "$GITHUB_STEP_SUMMARY" || true
+          cat verify.out >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Run integration tests (Phase 0 round-trip + Phase 1 RLS)
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_STG_DATABASE_URL }}
+          STAGING_TENANT_ID: ${{ secrets.STAGING_TENANT_ID || '78917b56-f85f-43bb-9a08-1bb98a6cd6c3' }}
+        run: |
+          set -euo pipefail
+          echo "### Integration tests" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          # test_phase0_schema.py  — round-trip + RLS for migrations 025-031
+          # test_rls_tag_trace_tables.py — RLS for migrations 032-036 (#1664)
+          # test_write_paths.py is excluded: it needs httpx + a live BASE_URL
+          python -m pytest \
+            tests/integration/test_phase0_schema.py \
+            tests/integration/test_rls_tag_trace_tables.py \
+            -v 2>&1 | tee tests.out
+          echo '```' >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Post / update PR comment
+        if: always() && github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v3
+        with:
+          header: migration-verify
+          message: |
+            ### Migration Verify — Phase 0 + Phase 1
+
+            * Applied: ${{ steps.plan.outputs.files == '' && '_no migration files touched_' || 'see step summary' }}
+            * Schema verification: see the **Schema verification** section of [the job summary](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+            * Integration tests: Phase 0 round-trip + RLS (migrations 025-031) + Phase 1 RLS (migrations 032-036, issue #1664) against the staging Neon branch.
+
+            Re-runs on every push to this PR. Production migrations still go through `apply-migrations.yml` (`workflow_dispatch`).

@@ -1,0 +1,81 @@
+# v2 — playbook-conforming. Same source screenshots as ux_demo_full.yaml,
+# restructured into Hook → Pain → Reveal → Demo → Proof → CTA per
+# PROMO_DIRECTOR_PLAYBOOK.md. First manifest produced under the new
+# director skill.
+#
+# A/B against:
+# - v1: marketing/videos/ux-demo-full-2026-04-27/ux-demo-full-2026-04-27.mp4 (19 frames, 73s, sequential narration)
+# - v2: marketing/videos/ux-demo-v2-2026-04-27/ux-demo-v2-2026-04-27.mp4 (9 frames, ~55s, 6-step structure)
+
+slug: ux-demo-v2-2026-04-27
+output_dir: marketing/videos/ux-demo-v2-2026-04-27
+width: 1920
+height: 1080
+zoom_amount: 0.014       # playbook default — about 1.4% over a 5s shot
+transition_duration: 0.4
+fit_mode: letterbox
+tts_voice: onyx
+tts_model: gpt-4o-mini-tts
+
+voiceover_style: |
+  Adult male, 40s, calm and direct. Sounds like a senior field engineer who
+  has worked in heavy manufacturing for 15 years — knowledgeable without
+  being academic, confident without being aggressive. Does not perform
+  enthusiasm. States facts and lets the listener draw conclusions.
+
+  Pacing: 130-140 words per minute. Steady. Slight pause after key claims —
+  functional, not dramatic. No acceleration on product names or feature
+  callouts; treat them as nouns, not reveals.
+
+  Tone: neutral American accent, no regional markers. Clean consonants.
+  Comfortable with industrial vocabulary (fault codes, torque specs, PLC,
+  CMMS, VFD, MTBF). Does not soften or inflate language.
+
+  Avoid: upward inflection on statements, marketing superlatives, breathless
+  pacing on product reveals, hesitation fillers.
+
+frames:
+  # ─── HOOK ─────────────────────────────────────────────────
+  - image: tools/audit/app-screenshots/ux-03-oc-fault.png
+    narration: "Overcurrent fault on a five-horse drive. Tech already replaced it last month. Same fault."
+
+  # ─── PAIN ─────────────────────────────────────────────────
+  - image: marketing/comic-pipeline/assets/cards/pain-cost-of-downtime.png
+    narration: "Drive down. Hour two. Every hour costs more than a year of MIRA."
+
+  # ─── REVEAL ───────────────────────────────────────────────
+  - image: tools/audit/app-screenshots/ux-00-initial-load.png
+    narration: "MIRA reads your manuals, your fault history, and your equipment specs — and tells you which page the answer's on."
+
+  # ─── DEMO ─────────────────────────────────────────────────
+  - image: tools/audit/app-screenshots/ux-01-photo-upload.png
+    narration: "Snap a photo of the equipment from the floor."
+
+  - image: tools/audit/app-screenshots/ux-09-wiring-question.png
+    narration: "MIRA cross-checks the wiring against your four-sixty supply."
+
+  - image: tools/audit/app-screenshots/ux-12-voltage-reading.png
+    narration: "Walks you through what to measure — and what your readings mean."
+
+  - image: tools/audit/app-screenshots/ux-15-param-settings.png
+    narration: "Pulls the drive parameters you need to adjust, with the page from your manual."
+
+  # ─── PROOF ────────────────────────────────────────────────
+  - image: tools/audit/app-screenshots/ux-16-summary.png
+    narration: "Root cause, fix, and the manual citation — one chat thread. Your equipment, not generic guesses."
+
+  # ─── CTA ──────────────────────────────────────────────────
+  - image: marketing/comic-pipeline/assets/cards/cta-factorylm-demo.png
+    narration: "Ninety-seven a month. Fourteen days free. factorylm dot com slash demo."
+
+# Playbook compliance
+# - Hook: opens on UI mid-fault before any logo, contains specific OEM-class context. ✓
+# - Pain: cost-of-inaction text card with a number, ≤8 words per line. ✓
+# - Reveal: product name + clean shot + 3 explicit value components (manuals/fault history/equipment specs). ✓
+# - Demo: 4 sequential shots with outcome-narration. ✓
+# - Proof: text-frame proof with named context (manual citation, "your equipment"), removes one objection. ✓
+# - CTA: solid dark background, single URL, price anchor before trial framing. ✓
+# - No banned phrases. ✓
+# - All narration ≤25 words per frame. ✓
+# - Voice prompt passed via gpt-4o-mini-tts `instructions` (not concatenated). ✓
+playbook_overrides: []

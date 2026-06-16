@@ -1,0 +1,366 @@
+"use client";
+
+import { useState, Suspense } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { signIn } from "next-auth/react";
+import { Factory, Loader2, Eye, EyeOff, Mail, ChevronDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { API_BASE } from "@/lib/config";
+
+const MIN_PW = 8;
+// Matches the server-side check in api/auth/magic-link.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isValidEmail(value: string): boolean {
+  return EMAIL_RE.test(value.trim());
+}
+
+// NextAuth surfaces raw provider error codes (e.g. "CredentialsSignin") via the
+// `result.error` / `?error=` channels. Customers shouldn't see auth-provider
+// codes (#1893 dogfood / #1957) — translate the ones we expect to plain text.
+function friendlyAuthError(code: string | null | undefined): string {
+  switch (code) {
+    case "CredentialsSignin":
+      return "Email or password is incorrect.";
+    case "AccessDenied":
+      return "This account isn't allowed to sign in.";
+    case "Configuration":
+    case "OAuthSignin":
+    case "OAuthCallback":
+      return "Sign-in is temporarily unavailable. Please try again.";
+    default:
+      return "Email or password is incorrect.";
+  }
+}
+
+function LoginFormInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get("callbackUrl") || "/feed";
+  const initialError = searchParams.get("error");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  // #1956: email is captured ONCE in `email` and shared by the magic-link and
+  // password forms, so switching method never asks the user to retype it.
+  const [magicLoading, setMagicLoading] = useState(false);
+  const [magicSent, setMagicSent] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  // Inline, app-level validation (#1957) — no browser-native popups.
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [error, setError] = useState(initialError ? friendlyAuthError(initialError) : "");
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setEmailError("");
+    setPasswordError("");
+    let ok = true;
+    if (!isValidEmail(email)) {
+      setEmailError("Enter a valid work email.");
+      ok = false;
+    }
+    if (password.length < MIN_PW) {
+      setPasswordError(`Password must be at least ${MIN_PW} characters.`);
+      ok = false;
+    }
+    if (!ok) return;
+
+    setLoading(true);
+    const result = await signIn("credentials", {
+      email: email.trim(),
+      password,
+      redirect: false,
+    });
+    setLoading(false);
+    if (!result || result.error) {
+      setError(friendlyAuthError(result?.error));
+      return;
+    }
+    router.push(callbackUrl);
+    router.refresh();
+  }
+
+  async function handleGoogle() {
+    setGoogleLoading(true);
+    setError("");
+    await signIn("google", { callbackUrl });
+  }
+
+  async function handleMagicLink(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setEmailError("");
+    if (!isValidEmail(email)) {
+      setEmailError("Enter a valid work email.");
+      return;
+    }
+    setMagicLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/magic-link/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      // The route returns 200 for any valid email whether or not the account
+      // exists (anti-enumeration by construction), 400 for a malformed email.
+      if (res.ok) {
+        setMagicSent(true);
+      } else if (res.status === 400) {
+        setEmailError("Enter a valid work email.");
+      } else {
+        setError("Couldn't send the link. Try again.");
+      }
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setMagicLoading(false);
+    }
+  }
+
+  return (
+    <div
+      className="min-h-screen flex flex-col items-center justify-center px-4 py-12"
+      style={{ background: "linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #0F172A 100%)" }}
+    >
+      <div
+        className="absolute inset-0 opacity-5"
+        style={{
+          backgroundImage: "radial-gradient(circle at 1px 1px, #fff 1px, transparent 0)",
+          backgroundSize: "32px 32px",
+        }}
+      />
+
+      <div className="relative w-full max-w-sm">
+        <div className="flex flex-col items-center mb-8">
+          <div
+            className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+            style={{
+              background: "linear-gradient(135deg, #2563EB, #0891B2)",
+              boxShadow: "0 0 32px rgba(37,99,235,0.4)",
+            }}
+          >
+            <Factory className="w-8 h-8 text-white" />
+          </div>
+          <h1 className="text-2xl font-bold text-white tracking-tight">FactoryLM</h1>
+          <p className="text-slate-400 text-sm mt-1">Sign in to your maintenance workspace</p>
+          <p className="text-slate-500 text-xs mt-2 max-w-xs text-center">
+            Faults, work orders, assets, manuals, and shift handoffs — grounded in your factory namespace.
+          </p>
+        </div>
+
+        <div
+          className="rounded-2xl border border-slate-700/50 p-8"
+          style={{
+            background: "rgba(26,29,35,0.95)",
+            backdropFilter: "blur(12px)",
+            boxShadow: "0 24px 64px rgba(0,0,0,0.4)",
+          }}
+        >
+          {/* Google */}
+          <button
+            type="button"
+            onClick={handleGoogle}
+            disabled={googleLoading}
+            className="w-full h-11 min-h-[44px] mb-4 flex items-center justify-center gap-3 rounded-md bg-white text-slate-900 font-medium hover:bg-slate-100 transition-colors disabled:opacity-60"
+          >
+            {googleLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <svg className="w-5 h-5" viewBox="0 0 48 48" aria-hidden="true">
+                <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303C33.972 32.91 29.418 36 24 36c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z" />
+                <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z" />
+                <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.398 0-9.937-3.057-11.291-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z" />
+                <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z" />
+              </svg>
+            )}
+            <span>Continue with Google</span>
+          </button>
+
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex-1 h-px bg-slate-700/50" />
+            <span className="text-xs text-slate-500">or</span>
+            <div className="flex-1 h-px bg-slate-700/50" />
+          </div>
+
+          {/* Magic link */}
+          {magicSent ? (
+            <div className="text-center py-2 mb-4">
+              <Mail className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+              <p className="text-white font-semibold text-sm">Check your inbox</p>
+              <p className="text-slate-400 text-xs mt-1">
+                If an account exists for <strong>{email}</strong>, a sign-in link is on its way.
+              </p>
+              <button onClick={() => setMagicSent(false)} className="inline-flex items-center justify-center min-h-[44px] px-4 mt-1 text-blue-400 text-sm font-medium hover:text-blue-300">
+                Send again
+              </button>
+            </div>
+          ) : (
+            /* noValidate suppresses browser-native popups in favour of inline errors (#1957) */
+            <form onSubmit={handleMagicLink} method="post" noValidate className="mb-4">
+              <label htmlFor="magic-email" className="block text-xs font-medium text-slate-400 mb-1.5">Email magic link</label>
+              <div className="space-y-2">
+                <Input
+                  id="magic-email"
+                  type="email"
+                  inputMode="email"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (emailError) setEmailError("");
+                  }}
+                  placeholder="you@company.com"
+                  autoComplete="email"
+                  aria-invalid={!!emailError}
+                  aria-describedby={emailError ? "login-email-error" : undefined}
+                  className="w-full h-11 min-h-[44px] bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
+                />
+                <button
+                  type="submit"
+                  disabled={magicLoading}
+                  className="w-full h-11 min-h-[44px] rounded-md font-semibold text-white text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                  style={{ background: "linear-gradient(135deg,#2563EB,#0891B2)" }}
+                >
+                  {magicLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> <span>Sending link…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="w-4 h-4" /> <span>Send link</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              {emailError && (
+                <p id="login-email-error" className="text-xs text-red-400 mt-1.5">
+                  {emailError}
+                </p>
+              )}
+            </form>
+          )}
+
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex-1 h-px bg-slate-700/50" />
+            <span className="text-xs text-slate-500">or</span>
+            <div className="flex-1 h-px bg-slate-700/50" />
+          </div>
+
+          {/* Password — collapsible */}
+          <button
+            type="button"
+            onClick={() => setShowPasswordForm(v => !v)}
+            aria-expanded={showPasswordForm}
+            aria-controls="password-signin-form"
+            className="w-full flex items-center justify-between min-h-[44px] px-4 py-2 rounded-md border border-slate-700 bg-slate-800/40 text-sm font-medium text-slate-200 hover:bg-slate-800/70 hover:border-slate-600 transition-colors mb-3"
+          >
+            <span>Sign in with password</span>
+            <ChevronDown className={`w-4 h-4 transition-transform ${showPasswordForm ? "rotate-180" : ""}`} />
+          </button>
+
+          {showPasswordForm && (
+            <form id="password-signin-form" onSubmit={handleSubmit} method="post" noValidate className="space-y-4">
+              <div>
+                <label htmlFor="login-email" className="block text-xs font-medium text-slate-400 mb-1.5">Email</label>
+                <Input
+                  id="login-email"
+                  type="email"
+                  inputMode="email"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (emailError) setEmailError("");
+                  }}
+                  placeholder="you@company.com"
+                  autoComplete="email"
+                  aria-invalid={!!emailError}
+                  aria-describedby={emailError ? "login-pw-email-error" : undefined}
+                  className="h-11 min-h-[44px] bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
+                />
+                {emailError && (
+                  <p id="login-pw-email-error" className="text-xs text-red-400 mt-1.5">
+                    {emailError}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="login-password" className="block text-xs font-medium text-slate-400 mb-1.5">Password</label>
+                <div className="relative">
+                  <Input
+                    id="login-password"
+                    type={showPw ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (passwordError) setPasswordError("");
+                    }}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    aria-invalid={!!passwordError}
+                    aria-describedby={passwordError ? "login-password-error" : undefined}
+                    className="h-11 min-h-[44px] pr-11 bg-slate-800/60 border-slate-700 text-white placeholder:text-slate-500 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    aria-label={showPw ? "Hide password" : "Show password"}
+                    onClick={() => setShowPw((v) => !v)}
+                    className="absolute inset-y-0 right-0 flex items-center justify-center w-11 min-w-[44px] text-slate-400 hover:text-slate-200 transition-colors"
+                  >
+                    {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {passwordError && (
+                  <p id="login-password-error" className="text-xs text-red-400 mt-1.5">
+                    {passwordError}
+                  </p>
+                )}
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full h-11 min-h-[44px] text-base font-semibold"
+                disabled={loading}
+                style={{ background: loading ? undefined : "linear-gradient(135deg, #2563EB, #0891B2)" }}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Signing in…
+                  </>
+                ) : (
+                  "Sign in"
+                )}
+              </Button>
+            </form>
+          )}
+
+          {error && (
+            <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400 mt-4">
+              {error}
+            </div>
+          )}
+
+          <p className="text-center text-sm text-slate-400 mt-6">
+            Don&apos;t have an account?{" "}
+            <Link href="/signup" className="text-blue-400 hover:text-blue-300 font-medium">
+              Start free trial
+            </Link>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function LoginForm() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-900" />}>
+      <LoginFormInner />
+    </Suspense>
+  );
+}

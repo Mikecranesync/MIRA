@@ -1,0 +1,19 @@
+# Mock replies for I/O assignment questions.
+- match_substring: "PE-001"
+  reply: |
+    PE-001 is the exit photoeye on the conveyor — wired to Micro820 input I-05
+    (24VDC sinking, shares COM0 with I-00..I-06). Its raw bit is exposed at
+    coil C16 (_IO_EM_DI_05) for external clients.
+    [Source: docs/legacy/IO_Table.md §Digital Inputs]
+
+- match_substring: "I/O"
+  reply: |
+    Conveyor I/O on the Micro820:
+    - I-00 SelectorFWD
+    - I-01 SelectorREV
+    - I-02 EStopNC, I-03 EStopNO (dual-channel)
+    - I-04 PBRun (start button)
+    - I-05 PE-001 exit prox, I-06 PE-002 entry prox
+    - O-02 ContactorQ1 (safety contactor coil)
+    - O-00 LightGreen, O-01 LightRed (pilot lights)
+    [Source: docs/legacy/IO_Table.md]

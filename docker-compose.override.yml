@@ -1,0 +1,21 @@
+services:
+  # mira-docling override removed 2026-06-06 — base mira-docling service was
+  # replaced by mira-tika. See docs/known-issues/2026-06-06-hub-upload-
+  # failures-docling-oom.md.
+
+  mira-relay:
+    build: ./mira-relay
+    container_name: mira-relay
+    mem_limit: 256m
+    memswap_limit: 256m
+    ports:
+      - "127.0.0.1:8765:8765"
+    environment:
+      - MIRA_DB_PATH=/mira-db/mira.db
+      - RELAY_PORT=8765
+      - RELAY_API_KEY=
+    volumes:
+      - ./mira-bridge/data:/mira-db
+    networks:
+      - core-net
+    restart: unless-stopped

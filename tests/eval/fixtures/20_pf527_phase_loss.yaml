@@ -1,0 +1,17 @@
+id: pf527_phase_loss_20
+description: "PowerFlex 527 F48 phase loss — input contactor and fuse diagnosis"
+expected_final_state: Q2
+max_turns: 6
+expected_keywords: [phase, loss, F48, input, fuse, contactor]
+forbidden_keywords: [GS20, Yaskawa, Danfoss, Siemens]
+expected_vendor: Rockwell Automation
+wo_expected: false
+safety_expected: false
+tags: [vfd, phase-loss, pf527, allen-bradley, sprint-a]
+turns:
+  - role: user
+    content: "PF527 tripping F48, phase loss"
+  - role: user
+    content: "480V three-phase supply, been running fine for 2 years"
+  - role: user
+    content: "Checked the disconnect, all three phases read within 2V of each other"

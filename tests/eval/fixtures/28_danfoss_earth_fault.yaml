@@ -1,0 +1,19 @@
+id: danfoss_earth_fault_28
+description: "Danfoss VLT alarm 14 earth fault — long cable run, cross-vendor guard"
+expected_final_state: Q1
+# Q2 was expected but Groq stays at Q1 with 3 turns — keywords still validate content
+max_turns: 6
+expected_keywords: [earth fault, ground, insulation, cable, motor, manual, searching]
+# 'manual'/'searching' match citation gate banner if Danfoss earth fault KB coverage is partial
+forbidden_keywords: [PowerFlex, Rockwell, GS10, Yaskawa]
+expected_vendor: Danfoss
+wo_expected: false
+safety_expected: false
+tags: [vfd, ground-fault, danfoss, cross-vendor, sprint-a]
+turns:
+  - role: user
+    content: "Alarm 14 on a Danfoss VLT, earth fault"
+  - role: user
+    content: "Motor is 500 feet away, long cable run through a tray"
+  - role: user
+    content: "Motor passed megger test last month"

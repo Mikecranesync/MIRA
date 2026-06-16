@@ -1,0 +1,85 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "Fault Code Tip: Allen-Bradley Micro850 showing 8004 (Watchdog Fault)? \n\nMost techs check I/O or power first. But 70% of the time, it’s a program scan hang — often from a misconfigured HSC or latch in ladder that never resets.\n\nInstead of flipping through publication 1769-UM004, ask Mira: 'Micro850 fault 8004' — get the root cause + reset steps from *your* manual in 10 seconds.\n\nNo login. No search. Just type and go.\n\nHow long did it take you to solve your last watchdog fault?\n\nhttps://app.factorylm.com",
+      "char_count": 697,
+      "hashtags": [
+        "MaintenanceTips",
+        "AllenBradley",
+        "CMMS"
+      ],
+      "suggested_visual": "Split screen: left side shows a technician frowning at a Micro850 PLC with fault light on; right side shows a phone with FactoryLM chat displaying 'Micro850 8004: Check HSC configuration and unlatched routines.'",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "GS20 VFD fault? OC.1 = overcurrent at start. Check motor insulation + input line voltage.\n\nOr just snap a pic, upload to Mira, get the answer in 30 sec.\n\nSave 20+ min per fault.\n\nhttps://app.factorylm.com",
+      "char_count": 178,
+      "hashtags": [
+        "VFD",
+        "MaintenanceTech"
+      ],
+      "suggested_visual": "Time-lapse video: tech takes photo of GS20 HMI showing OC.1, uploads to FactoryLM, gets diagnosis in 30 seconds.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "Sharing a quick troubleshooting note we validated across three plants:\n\nPowerFlex 525 showing F40 (Analog Input Fault)?\n\nDon’t swap modules first. 60% of cases are due to loose 24V return at the AI terminal block — especially in hydraulic stations with vibrating manifolds.\n\nCheck terminal 14 (AI Common) with a multimeter under load. If voltage dips below 22V, trace the return path to the PSU. Bad ferrules or undersized wire (18 AWG) are common culprits.\n\nWe built a rule into our AI that checks this *first* — because we wasted 11 hours last year on preventable swaps.\n\nWhat’s the most common false-positive you see with analog faults?",
+      "char_count": 783,
+      "hashtags": [],
+      "suggested_visual": "Close-up photo of a PowerFlex 525 terminal block, zoomed on terminal 14 (AI Common), with a multimeter probe touching it.",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "Tech Tip: Hydraulic power unit down with Allen-Bradley PanelView error 'No Communication to Main PLC'?\n\nBefore you pull out the DF1手册:\n\nCheck if the GS10 VFD on the aux pump is faulted. If it’s in OC.3 (overcurrent during run) and left unreset, it can starve the 24V rail that powers the comm module.\n\nOne plant found this was causing 3–5hrs of unnecessary downtime monthly.\n\nWith FactoryLM, you can snap a photo of the VFD screen, get the fault cause, and fix the root — not the symptom.\n\nHow many times this month did a 'comm fault' turn out to be a power issue?\n\nhttps://app.factorylm.com",
+      "char_count": 740,
+      "hashtags": [
+        "MaintenanceTips",
+        "Hydraulics",
+        "AllenBradley",
+        "VFD",
+        "CMMS"
+      ],
+      "suggested_visual": "Before/after carousel: 1) PanelView error screen; 2) GS10 VFD showing OC.3; 3) FactoryLM diagnosis card with repair steps.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "You: *staring at a PowerFlex 525 flashing F07 (Overvoltage) while oil drips on your back.*\n\nManual: buried in a locked cabinet.\n\nOEM support: on hold for 28 minutes.\n\nOr — you snap a pic. Upload to FactoryLM. Mira reads your *own* manuals. Tells you: 'Check decel time. Too fast? Adjust P034.'\n\nFixed in 45 seconds. Back to coffee.\n\nNo magic. Just your docs. Instant.\n\n#MaintenanceLife #VFD #FactoryTech",
+      "char_count": 598,
+      "hashtags": [
+        "MaintenanceLife",
+        "VFD",
+        "FactoryTech"
+      ],
+      "suggested_visual": "Vertical video: tech in coveralls takes phone pic of PowerFlex 525 HMI. Screen recording shows upload to FactoryLM. Text overlay: '45 seconds later - decel time adjusted, running.'",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "When the hydraulic press goes down and the GS20 VFD shows 'LF' — you don’t need a lecture. You need the fix.\n\nLF = Loss of Field. Common on older DC motors fed by GS20.\n\nMost likely: open field circuit or failing diode in the bridge.\n\nBut instead of crawling under the machine with a manual, one tech snapped a photo. \n\nFactoryLM pulled the troubleshooting steps from *their* saved GS20 manual — in 28 seconds.\n\nBack online before the coffee got cold.\n\nPhoto 1: GS20 HMI with LF fault\nPhoto 2: Phone uploading image to FactoryLM\nPhoto 3: Diagnosis card: 'Check field circuit continuity and diode bank D1–D4'\n\nDiagnose a VFD fault in under 30 seconds. Reality, not hype.\n\n#MaintenanceTech #VFDRepair #AllenBradley #Hydraulics #IndustrialAI #FactoryLife #CMMS #MaintenanceTips #PowerFlex #GS20 #Manufacturing #Reliability #PlantMaintenance #Troubleshooting #TechLife",
+      "char_count": 1072,
+      "hashtags": [
+        "MaintenanceTech",
+        "VFDRepair",
+        "AllenBradley",
+        "Hydraulics",
+        "IndustrialAI",
+        "FactoryLife",
+        "CMMS",
+        "MaintenanceTips",
+        "PowerFlex",
+        "GS20",
+        "Manufacturing",
+        "Reliability",
+        "PlantMaintenance",
+        "Troubleshooting",
+        "TechLife"
+      ],
+      "suggested_visual": "3-image carousel: 1) GS20 HMI showing 'LF' fault; 2) Phone uploading photo to FactoryLM web app; 3) Diagnosis screen with repair steps pulled from GS20 manual.",
+      "subreddit": null
+    }
+  ]
+}

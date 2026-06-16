@@ -1,0 +1,83 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "You’re at a PowerFlex 525 with an F001 fault. No manual. No signal.\nYour phone shows one page of the PDF from 2017.\n\nHow long does it take you to figure out it’s under-voltage?\n\n• 5–10 min\n• 11–20 min\n• 21+ min — I call the electrician\n\nWe tested this with 14 maintenance techs last week. 11 took over 15 min. One waited 37.\n\nNow try it with a photo:\n- Snap the display\n- Upload to Mira\n- Get the exact cause + fix from YOUR manual in <30 sec\n\nSame data. Just faster access.\n\nWhat’s your go-to when the manual’s MIA?\n\nTry it yourself: https://app.factorylm.com",
+      "char_count": 673,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#VFD",
+        "#CMMS"
+      ],
+      "suggested_visual": "Split-screen video: left side showing a technician flipping through a printed manual, right side showing a phone uploading a photo of a PowerFlex VFD with F001 fault, then displaying AI diagnosis in seconds.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "F001 on a PowerFlex 525.\nNo manual. Dead zone.\n\nYou:\nA) Dig through binder\nB) Call OEM (hold music)\nC) Snap pic → AI pulls fix from YOUR manual in 23 sec\n\nWe timed it. Most take >20 min.\nWhat’s your move?\n\nhttps://app.factorylm.com",
+      "char_count": 276,
+      "hashtags": [
+        "#VFD",
+        "#Maintenance"
+      ],
+      "suggested_visual": "15-second time-lapse: hand holding phone snaps VFD display with F001, uploads, gets AI response showing 'Input voltage below 85% of rated'.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "r/maintenance\n\nRan a test this week with a real problem:\n\nTech approaches a GS20 VFD showing OC trip. Manual is on a shared drive. No tag number. They find the PDF, search fails, end up scrolling through 147 pages.\n\nAverage time to confirm: 28 minutes.\n\nSo we tried something dumb-simple: took the same manual, dumped it into a local vector index, queried with 'GS20 OC fault cause'. Returned the correct page + paragraph in 8 seconds.\n\nNo cloud. No training. Just semantic search over their own docs.\n\nWe now do this in FactoryLM via Mira: photo of the fault → OCR → query your uploaded manuals → return exact fix.\n\nNot magic. Just stops the 30-min lookup for a $2 sensor.\n\nIf you’re dealing with old PDFs and broken search, this might help: https://app.factorylm.com\nBut even if not, your team probably wastes 1–2 hrs/week on this kind of lookup. Track it next week. Report back.",
+      "char_count": 1023,
+      "hashtags": [],
+      "suggested_visual": "Screen recording: drag and drop GS20 manual PDF into interface, type 'OC fault', get instant highlight on 'Output short circuit or ground fault' section.",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "Raise your hand if you’ve stood at an Allen-Bradley PanelView with a fault code and zero idea where the manual is.\n\nWe asked 12 techs how they handle this:\n- 4 said: “I call the OEM”\n- 5 said: “I Google it”\n- 3 said: “I walk back to the office and dig through files”\n\nNone said “I have it on my phone.”\n\nWhat’s your move when the manual’s gone?\n\nWe built something that uses your own manuals — no more 20-min searches. Snap a photo of the fault, get the fix from YOUR file in seconds.\n\nTry it: https://app.factorylm.com",
+      "char_count": 647,
+      "hashtags": [
+        "#Maintenance",
+        "#Reliability",
+        "#CMMS"
+      ],
+      "suggested_visual": "Technician in coveralls using phone to take photo of Allen-Bradley HMI fault screen, then showing app response with highlighted text from uploaded manual.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "You see F001 on a PowerFlex VFD.\nManual? Lost.\nOEM support? On hold.\n\nSo you do this:\n1. Open FactoryLM\n2. Snap the display\n3. Get the fix in 27 seconds\n\nVideo shows: phone camera focuses on VFD screen with 'F001', uploads, AI returns 'Main power too low. Check input voltage at terminals.'\n\nNo magic. Just stops wasting time.\n\nWhat fault code wastes your time the most?\n\n#MaintenanceTech #VFD #FactoryLM\nhttps://app.factorylm.com",
+      "char_count": 596,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#VFD",
+        "#FactoryLM"
+      ],
+      "suggested_visual": "Fast-cut video: hand points at flashing F001 on VFD, switches to phone camera snapping it, app processes, reveals diagnosis text. Clock overlay shows 0:00 → 0:27.",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "F001 on a PowerFlex 525.\n\nMost techs: spend 20+ minutes finding the manual.\nYou: snap a photo → get the fix from YOUR manual in under 30 seconds.\n\nNo internet? No problem. Mira works offline with your uploaded files.\n\nThis isn’t theory. We timed it with 14 real techs. Average manual lookup: 24 min. AI-assisted: 26 sec.\n\nWhat fault code do you hate seeing?\n\nImage 1: VFD display with F001\nImage 2: Phone uploading photo\nImage 3: AI response highlighting 'Undervoltage on DC bus'\nImage 4: Technician nodding, walking back to panel\n\nStop searching. Start fixing.",
+      "char_count": 1038,
+      "hashtags": [
+        "#MaintenanceLife",
+        "#VFDRepair",
+        "#PowerFlex",
+        "#AllenBradley",
+        "#Hydraulics",
+        "#CMMS",
+        "#MaintenanceTech",
+        "#IndustrialAI",
+        "#FactoryLM",
+        "#Reliability",
+        "#Troubleshooting",
+        "#PWA",
+        "#NoAppStore",
+        "#KeepItRunning",
+        "#TechLife"
+      ],
+      "suggested_visual": "4-image carousel: (1) close-up of PowerFlex 525 with F001 fault, (2) phone screen showing photo upload, (3) AI response with highlighted text from manual, (4) technician closing cabinet door after fix.",
+      "subreddit": null
+    }
+  ]
+}

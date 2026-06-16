@@ -1,0 +1,11 @@
+[
+  {"id": "CRA-25", "identifier": "CRA-25", "title": "[P0] nginx routes /sample and /activated to Open WebUI — mira-web never reached"},
+  {"id": "CRA-27", "identifier": "CRA-27", "title": "[P2] sitemap.xml missing or invalid on app.factorylm.com"},
+  {"id": "CRA-26", "identifier": "CRA-26", "title": "[P2] Unknown paths return 308 instead of 404"},
+  {"id": "CRA-28", "identifier": "CRA-28", "title": "[P3] robots.txt missing Sitemap directive"},
+  {"id": "CRA-19", "identifier": "CRA-19", "title": "WO detail page — fetch real WO from NeonDB"},
+  {"id": "CRA-6",  "identifier": "CRA-6",  "title": "Move NEXTAUTH_SECRET from docker-compose.hub.yml to Doppler"},
+  {"id": "CRA-21", "identifier": "CRA-21", "title": "[P0] Magic link flow broken — JWT not forwarded to client"},
+  {"id": "CRA-23", "identifier": "CRA-23", "title": "[P1] Atlas CMMS has no link back to MIRA app"},
+  {"id": "CRA-20", "identifier": "CRA-20", "title": "[P0] Asset scan pages (/m/:tag/*) missing Atlas CMMS button"}
+]

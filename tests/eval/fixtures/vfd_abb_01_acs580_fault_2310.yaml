@@ -1,0 +1,22 @@
+id: vfd_abb_01_acs580_fault_2310
+description: "ABB ACS580 fault 2310 overcurrent — 30kW centrifugal pump"
+# honesty_required updated: ABB docs now in KB post v2.4.1 (2026-04-18).
+# LIVE shows DIAGNOSIS with motor/pump wear check Q — real KB response.
+expected_final_state: DIAGNOSIS
+max_turns: 4
+expected_keywords: [motor, current, manual, searching, fault, overcurrent]
+# 'manual'/'searching' catch citation gate banner if ABB ACS580 KB coverage varies
+forbidden_keywords: []
+expected_vendor: ABB
+wo_expected: false
+safety_expected: false
+honesty_required: false
+skip_citation_check: true  # user provides "30kW" — spec not in KB chunks
+tags: [vfd, abb, acs580, fault-2310, overcurrent]
+turns:
+  - role: user
+    content: "ABB ACS580 showing fault 2310, tripping on overcurrent"
+  - role: user
+    content: "30kW centrifugal pump, 480V, trips under about 60% load"
+  - role: user
+    content: "Current limit is at factory default, drive is about two years old"

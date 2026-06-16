@@ -1,0 +1,22 @@
+[
+  {
+    "source": "docs/legacy/Modbus_Register_Map.md",
+    "section": "Write Registers (Function Code 06)",
+    "text": "0x2100 | HR8448 | VFD Command | 0x0001 = FWD run, 0x0002 = REV run, 0x0005 = stop, 0x0007 = fault reset"
+  },
+  {
+    "source": "docs/legacy/Modbus_Register_Map.md",
+    "section": "Write Registers (Function Code 06)",
+    "text": "0x2101 | HR8449 | Frequency Setpoint | 0-400 = 0.0-40.0 Hz (value x10)"
+  },
+  {
+    "source": "docs/legacy/Modbus_Register_Map.md",
+    "section": "Read Registers (Function Code 03)",
+    "text": "0x2103 | HR8451 | Output Frequency | Hz | divided by 10. 0x2104 HR8452 Output Current Amps divided by 10. 0x2105 HR8453 DC Bus Voltage. 0x210F HR8463 Fault Code 0=no fault."
+  },
+  {
+    "source": "docs/legacy/Modbus_Register_Map.md",
+    "section": "TCP Holding Register Map",
+    "text": "HR400107 vfd_frequency Hz divided by 10. HR400115 vfd_cmd_word 1=fwd 2=rev 5=stop. HR400116 vfd_freq_setpoint Hz divided by 10."
+  }
+]

@@ -1,0 +1,208 @@
+name: Apply mira-ingest Migrations
+
+# Applies migrations under mira-core/mira-ingest/db/migrations/*.sql against
+# prod NeonDB. Sister workflow to apply-migrations.yml (which only targets
+# mira-hub/db/migrations/) — closes the orphan-migration gap that left
+# migration 006_knowledge_tsvector unapplied for weeks (#1308 root cause).
+#
+# Migrations in this directory may have a CONCURRENTLY index step that
+# CANNOT run inside a transaction. The runner therefore splits each file
+# on "-- Block 1" / "-- Block 2" comments and applies Block 1 inside a
+# psql -1 (single transaction) and Block 2 outside. Files without those
+# markers run as a single transaction.
+
+on:
+  workflow_dispatch:
+    inputs:
+      migrations:
+        description: 'Migration numbers to apply, comma-separated (e.g. "006" or "006,007"). Use "all" for every file in mira-core/mira-ingest/db/migrations/.'
+        required: true
+        default: '006'
+        type: string
+      mode:
+        description: 'dry-run = print plan + diagnostics. apply = actually run.'
+        required: true
+        default: 'dry-run'
+        type: choice
+        options:
+          - dry-run
+          - apply
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prod-ingest-migrations
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Apply ingest migrations (${{ inputs.mode }})
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v6
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v4
+
+      - name: Install psql 16 (parity with Neon)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          psql --version
+
+      - name: Authenticate Doppler + resolve DATABASE_URL
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DOPPLER_TOKEN:-}" ]; then
+            echo "::error::DOPPLER_TOKEN secret not set."
+            exit 1
+          fi
+          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain)"
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::NEON_DATABASE_URL empty after Doppler fetch — token scope wrong?"
+            exit 1
+          fi
+          echo "::add-mask::$DATABASE_URL"
+          echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
+
+      - name: Resolve migration file list
+        id: resolve
+        run: |
+          set -euo pipefail
+          MIG_DIR="mira-core/mira-ingest/db/migrations"
+          if [ ! -d "$MIG_DIR" ]; then
+            echo "::error::$MIG_DIR not found in checkout"
+            exit 1
+          fi
+          REQUESTED="${{ inputs.migrations }}"
+          FILES=()
+          if [ "$REQUESTED" = "all" ]; then
+            while IFS= read -r f; do
+              FILES+=("$f")
+            done < <(ls "$MIG_DIR"/*.sql | sort)
+          else
+            IFS=',' read -ra NUMS <<< "$REQUESTED"
+            for n in "${NUMS[@]}"; do
+              n_trimmed="$(echo "$n" | xargs)"
+              # match files starting with the number (e.g. "006_*.sql")
+              matched=( "$MIG_DIR"/${n_trimmed}_*.sql )
+              if [ ! -f "${matched[0]}" ]; then
+                echo "::error::No file matched: $MIG_DIR/${n_trimmed}_*.sql"
+                exit 1
+              fi
+              for m in "${matched[@]}"; do
+                FILES+=("$m")
+              done
+            done
+          fi
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "::error::Resolved zero migration files."
+            exit 1
+          fi
+          printf '%s\n' "${FILES[@]}" > .migration_plan
+          echo "Plan:"
+          cat .migration_plan
+
+      - name: Pre-flight — column existence check for tsvector
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "
+          SELECT column_name, data_type, is_generated
+            FROM information_schema.columns
+           WHERE table_name='knowledge_entries'
+             AND column_name IN ('embedding','content_tsv')
+           ORDER BY column_name;
+          " | tee /tmp/preflight.out
+          {
+            echo "## Pre-flight: knowledge_entries column probe"
+            echo ""
+            echo '```'
+            cat /tmp/preflight.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Plan summary
+        run: |
+          {
+            echo "## Plan"
+            echo ""
+            echo "Mode: \`${{ inputs.mode }}\`"
+            echo ""
+            echo "Files (in apply order):"
+            while IFS= read -r f; do
+              SIZE=$(wc -c < "$f" | tr -d ' ')
+              LINES=$(wc -l < "$f" | tr -d ' ')
+              echo "- \`$f\` (${SIZE} bytes, ${LINES} lines)"
+            done < .migration_plan
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dry-run — show file headers only
+        if: inputs.mode == 'dry-run'
+        run: |
+          set -euo pipefail
+          while IFS= read -r f; do
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "#### $f" >> "$GITHUB_STEP_SUMMARY"
+            echo '```sql' >> "$GITHUB_STEP_SUMMARY"
+            head -60 "$f" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          done < .migration_plan
+          echo "Dry-run complete — no SQL executed."
+
+      - name: Apply — split on Block 1 / Block 2 markers
+        if: inputs.mode == 'apply'
+        run: |
+          set -euo pipefail
+          while IFS= read -r f; do
+            echo "=== Applying $f ==="
+            if grep -q "^-- Block 1" "$f" && grep -q "^-- Block 2" "$f"; then
+              # Two-block file (CONCURRENTLY index pattern from 006_knowledge_tsvector.sql).
+              # Split on the literal "-- Block 2" comment marker.
+              awk '
+                /^-- Block 1/ {phase="b1"; next}
+                /^-- Block 2/ {phase="b2"; next}
+                phase=="b1" {print > "/tmp/block1.sql"}
+                phase=="b2" {print > "/tmp/block2.sql"}
+              ' "$f"
+              echo "--- Block 1 (transactional) ---"
+              psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -1 -f /tmp/block1.sql
+              echo "--- Block 2 (non-transactional; CONCURRENTLY index) ---"
+              psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -f /tmp/block2.sql
+              rm -f /tmp/block1.sql /tmp/block2.sql
+            else
+              echo "--- Single transaction ---"
+              psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -1 -f "$f"
+            fi
+            echo "=== $f applied OK ==="
+          done < .migration_plan
+
+      - name: Post-apply verification
+        if: inputs.mode == 'apply'
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "
+          SELECT column_name, data_type, is_generated
+            FROM information_schema.columns
+           WHERE table_name='knowledge_entries'
+             AND column_name IN ('embedding','content_tsv')
+           ORDER BY column_name;
+          " | tee /tmp/post.out
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "
+          SELECT COUNT(*) AS rows_with_content_tsv
+            FROM knowledge_entries
+           WHERE content_tsv IS NOT NULL;
+          " | tee -a /tmp/post.out
+          {
+            echo "## Post-apply verification"
+            echo ""
+            echo '```'
+            cat /tmp/post.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

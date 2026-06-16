@@ -1,0 +1,38 @@
+{
+  "case": "elec_drawing_ladder_101",
+  "passed": true,
+  "failure_bucket": null,
+  "fix_suggestion": "",
+  "word_count": 59,
+  "elapsed": 14.412412881851196,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [
+      "Allen-Bradley",
+      "Micro820"
+    ],
+    "fault_cause_found": [
+      "probable"
+    ],
+    "next_step_found": [
+      "check",
+      "ensure",
+      "rung"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

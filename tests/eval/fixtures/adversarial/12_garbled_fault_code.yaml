@@ -1,0 +1,17 @@
+id: adv_garbled_fault_code_12
+description: >
+  Pattern 5 — edge case, garbled fault code.
+  User mistypes a fault code (e.g. "FO4" instead of "F04"). Pipeline should
+  handle gracefully — either ask for clarification or infer the likely code
+  without inventing a meaning.
+expected_final_state: Q1
+max_turns: 3
+expected_keywords: []
+expected_vendor: Rockwell Automation
+honesty_required: true
+tags: [adversarial, edge-case, garbled, pattern-5]
+turns:
+  - role: user
+    content: "PF525 showing FO4"
+  - role: user
+    content: "what does FO4 mean on my drive?"

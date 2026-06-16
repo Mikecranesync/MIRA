@@ -1,0 +1,105 @@
+================================================================
+  CCW VARIABLE DECLARATIONS — v4.0
+  For: Micro820 2080-LC20-20QBB
+  Updated: 2026-03-16 (matches Micro820_v4.0.0_Program.st)
+================================================================
+
+NEW VARIABLES (add these in CCW Global Variables):
+
+  Name                  Type    Initial   Purpose
+  --------------------  ------  --------  -----------------------------------
+  dir_fwd               BOOL    FALSE     Selector in FWD position
+  dir_rev               BOOL    FALSE     Selector in REV position
+  dir_off               BOOL    FALSE     Selector in OFF position
+  dir_fault             BOOL    FALSE     Invalid selector state (both closed)
+  estop_wiring_fault    BOOL    FALSE     E-stop dual-channel XOR violation
+  prev_button           BOOL    FALSE     RUN pushbutton previous state
+  vfd_poll_active       BOOL    FALSE     Modbus message in progress
+  vfd_poll_step         INT     0         Current poll step (1=read, 2=write_cmd, 3=write_freq)
+  vfd_freq_setpoint     INT     0         Calculated VFD frequency (0-400)
+  vfd_cmd_word          INT     1         VFD command register value (1=GS10 STOP)
+
+NEW MSG INSTANCES (for VFD write commands):
+
+  Name                  Type    Purpose
+  --------------------  ------  -----------------------------------
+  mb_write_cmd          MSG     Write command word to VFD reg 0x2000
+  mb_write_freq         MSG     Write freq setpoint to VFD reg 0x2001
+
+NEW CONFIG STRUCTS:
+
+  Name                     Type              Purpose
+  -----------------------  ----------------  -----------------------------------
+  write_cmd_local_cfg      MSG_MODBUS_LOCAL  Config for command write
+  write_cmd_target_cfg     MSG_MODBUS_TARGET Config for command write
+  write_freq_local_cfg     MSG_MODBUS_LOCAL  Config for freq write
+  write_freq_target_cfg    MSG_MODBUS_TARGET Config for freq write
+
+NEW DATA ARRAYS:
+
+  Name                  Type        Purpose
+  --------------------  ----------  -----------------------------------
+  write_cmd_data        INT[1..10]  Buffer for command write
+  write_freq_data       INT[1..10]  Buffer for freq write
+  fault_reset_data      INT[1..10]  Buffer for fault reset write
+
+================================================================
+NEW IN v4.0 (add these in CCW Global Variables):
+
+  Name                     Type              Initial   Purpose
+  -----------------------  ----------------  --------  -----------------------------------
+  vfd_fault_reset_pending  BOOL              FALSE     Trigger VFD fault reset on next poll
+  mb_fault_reset           MSG               —         Fault reset MSG block (reg 0x2002)
+  fault_reset_local_cfg    MSG_MODBUS_LOCAL  —         Config for fault reset write
+  fault_reset_target_cfg   MSG_MODBUS_TARGET —         Config for fault reset write
+
+================================================================
+RENAMED/REMAPPED VARIABLES (from v2.0):
+
+  v2.0 Name         v3.0 Name        Change
+  ----------------  ----------------  -----------------------------------
+  auto_mode         dir_fwd           FWD replaces AUTO
+  manual_mode       dir_rev           REV replaces MANUAL
+  off_mode          dir_off           Same concept, new selector logic
+  prev_button3      prev_button       Renamed for clarity
+  button_rising     button_rising     Same (no change)
+
+================================================================
+I/O MAPPING (v3.1 — physical terminal labels from PLC silk-screen):
+
+  Terminal   CCW Tag          v3.1 Function                  Common
+  --------   ---------------  ----------------------------   ------
+  I-00       _IO_EM_DI_00     SelectorFWD (NO, knob LEFT)    COM0
+  I-01       _IO_EM_DI_01     SelectorREV (NO, knob RIGHT)   COM0
+  I-02       _IO_EM_DI_02     EStopNC (opens when pressed)   COM0
+  I-03       _IO_EM_DI_03     EStopNO (closes when pressed)  COM0
+  I-04       _IO_EM_DI_04     PBRun (illuminated momentary)  COM0
+  I-05       _IO_EM_DI_05     Entry sensor (spare)           COM0
+  I-06       _IO_EM_DI_06     Exit sensor (spare)            COM0
+  I-07..I-11 —                (spare)                        COM0
+
+  O-00       _IO_EM_DO_00     LightGreen (running)           +CM0/-CM0
+  O-01       _IO_EM_DO_01     LightRed (fault/e-stop)        +CM0/-CM0
+  O-02       _IO_EM_DO_02     ContactorQ1 (safety power)     +CM0/-CM0
+  O-03       _IO_EM_DO_03     PBRunLED (pushbutton light)    +CM0/-CM0
+  O-04..O-06 —                (spare)                        +CM1/-CM1
+
+================================================================
+EXISTING VARIABLES (DO NOT MODIFY — carry forward from v2.0):
+
+  motor_running, motor_stopped, conveyor_running, fault_alarm,
+  sensor_1_active, sensor_2_active, e_stop_active, RunCommand,
+  Conveyor, Emitter, SensorStart, SensorEnd, ItemCount,
+  SensorEnd_Prev, ALL_LEDS_ON, vfd_comm_ok, vfd_comm_err,
+  vfd_msg_done, vfd_write_trig, motor_speed, motor_current,
+  temperature, pressure, conveyor_speed, error_code,
+  vfd_frequency, vfd_current, vfd_dc_bus, vfd_voltage,
+  vfd_fault_code, conv_state, system_ready, heartbeat,
+  cycle_count, uptime_seconds, item_count, conveyor_speed_cmd,
+  start_timer, stop_timer, uptime_timer, vfd_err_timer,
+  vfd_poll_timer, mb_read_status, read_local_cfg, read_target_cfg,
+  read_data, write_data
+
+================================================================
+TOTAL TAG COUNT: ~80 tags (64 existing + ~16 new)
+================================================================

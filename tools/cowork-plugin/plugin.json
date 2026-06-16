@@ -1,0 +1,13 @@
+{
+  "name": "mira-autonomous-run",
+  "version": "0.1.0",
+  "description": "MIRA-specific operating discipline for autonomous/overnight Claude sessions. Enforces PLAN.md scope-lock, worktree isolation, Stop-hook + prod-guard validation, commit cadence, and HANDOFF discipline. Born from the 2026-04-25 14-branch / 18-bug regression.",
+  "author": "Mike Harper (FactoryLM)",
+  "license": "MIT",
+  "skills": [
+    {
+      "name": "autonomous-run",
+      "path": "skills/autonomous-run/SKILL.md"
+    }
+  ]
+}

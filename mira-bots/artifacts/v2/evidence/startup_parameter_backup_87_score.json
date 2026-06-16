@@ -1,0 +1,39 @@
+{
+  "case": "startup_parameter_backup_87",
+  "passed": true,
+  "failure_bucket": null,
+  "fix_suggestion": "",
+  "word_count": 52,
+  "elapsed": 13.909877061843872,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [
+      "AutomationDirect",
+      "GS10"
+    ],
+    "fault_cause_found": [
+      "likely",
+      "most likely"
+    ],
+    "next_step_found": [
+      "check",
+      "set",
+      "save"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

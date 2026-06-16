@@ -1,0 +1,349 @@
+name: Apply KB Seeds
+
+# Manually-triggered workflow to apply tools/seeds/*.sql against prod NeonDB.
+# All target seeds use WHERE NOT EXISTS guards keyed on
+# (tenant_id, source_url, source_page) and are idempotent — re-running is safe.
+#
+# Pre-reqs:
+#   - GitHub secret `DOPPLER_TOKEN` set to a Doppler service token scoped to
+#     `factorylm/prd`. (Same secret apply-migrations.yml already uses.)
+#   - Repo admin runs the workflow. workflow_dispatch already restricts to
+#     users with write access; the `production` environment gate adds an
+#     audit-log entry in the deployments tab.
+
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: 'Seeds to apply (comma-separated basenames without .sql, or "all"). Choices: gs10-vfd-knowledge, gs11-field-guide-knowledge, demo-conveyor-001, simlab-docs, all. NOTE: simlab-docs is a Python seed (tools/seeds/seed-simlab-docs.py) with its own fixed SimLab tenant — it ignores the tenant_id input and only runs once PR #1816 (simlab/docs/) is on the checked-out ref.'
+        required: true
+        default: 'all'
+        type: string
+      tenant_id:
+        description: 'Tenant identifier to seed under. knowledge_entries.tenant_id is TEXT NOT NULL — pass a string slug, not a UUID.'
+        required: true
+        default: 'mike-garage-demo'
+        type: string
+      mode:
+        description: 'dry-run = print plan + show pre-flight diagnostics only. apply = actually run.'
+        required: true
+        default: 'dry-run'
+        type: choice
+        options:
+          - dry-run
+          - apply
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prod-seeds
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Apply seeds (${{ inputs.mode }})
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v6
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v4
+
+      - name: Install psql (postgresql-client-16 for ltree/jsonb parity with Neon)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client-16
+          psql --version
+
+      - name: Authenticate Doppler + resolve DATABASE_URL
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DOPPLER_TOKEN:-}" ]; then
+            echo "::error::DOPPLER_TOKEN secret not set."
+            exit 1
+          fi
+          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain)"
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::NEON_DATABASE_URL empty after Doppler fetch — token scope wrong?"
+            exit 1
+          fi
+          echo "::add-mask::$DATABASE_URL"
+          echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
+          HOST=$(printf '%s' "$DATABASE_URL" | sed -E 's|.*@([^/:]+).*|\1|')
+          echo "DB host: $HOST"
+          echo "DB_HOST=$HOST" >> "$GITHUB_ENV"
+
+      - name: Pre-flight diagnostic — verify tenant_id column type + existing rows
+        run: |
+          set -euo pipefail
+          # This step's output is the proof that resolves the
+          # "is tenant_id UUID or TEXT?" question in the workflow log.
+          cat > /tmp/preflight.sql <<'SQL'
+          \echo === knowledge_entries column types ===
+          SELECT column_name, data_type, is_nullable
+            FROM information_schema.columns
+           WHERE table_name='knowledge_entries'
+             AND column_name IN ('id','tenant_id','source_url','source_page')
+           ORDER BY ordinal_position;
+
+          \echo === top tenants by row count ===
+          SELECT tenant_id, count(*) AS rows
+            FROM knowledge_entries
+           GROUP BY tenant_id
+           ORDER BY count(*) DESC
+           LIMIT 10;
+
+          \echo === existing rows for requested tenant ===
+          SELECT count(*) AS rows_for_tenant
+            FROM knowledge_entries
+           WHERE tenant_id = :'tid';
+          SQL
+
+          set +e
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 \
+               -v "tid=${{ inputs.tenant_id }}" \
+               -f /tmp/preflight.sql 2>&1 | tee /tmp/preflight.out
+          PSQL_EXIT=${PIPESTATUS[0]}
+          set -e
+          {
+            echo "## Pre-flight diagnostic"
+            echo ""
+            echo "DB host: \`${DB_HOST}\`"
+            echo ""
+            echo "Tenant id under test: \`${{ inputs.tenant_id }}\`"
+            echo ""
+            echo '```'
+            cat /tmp/preflight.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PSQL_EXIT" -ne 0 ]; then
+            echo "::error::psql pre-flight failed with exit $PSQL_EXIT — see step output above for the actual error"
+            exit "$PSQL_EXIT"
+          fi
+
+      - name: Resolve seed file list
+        id: resolve
+        run: |
+          set -euo pipefail
+          SEED_DIR="tools/seeds"
+          if [ ! -d "$SEED_DIR" ]; then
+            echo "::error::$SEED_DIR not found in checkout"
+            exit 1
+          fi
+          REQUESTED="${{ inputs.seeds }}"
+          FILES=()
+          # simlab-docs is a Python seed, not a .sql file — it's resolved into
+          # its own apply step, never the psql plan. Track it separately.
+          RUN_SIMLAB=false
+          if [ "$REQUESTED" = "all" ]; then
+            for f in "$SEED_DIR/gs10-vfd-knowledge.sql" \
+                     "$SEED_DIR/gs11-field-guide-knowledge.sql" \
+                     "$SEED_DIR/demo-conveyor-001.sql"; do
+              if [ -f "$f" ]; then
+                FILES+=("$f")
+              else
+                echo "::warning::expected seed missing: $f"
+              fi
+            done
+            RUN_SIMLAB=true
+          else
+            IFS=',' read -ra NAMES <<< "$REQUESTED"
+            for n in "${NAMES[@]}"; do
+              n_trimmed="$(echo "$n" | xargs)"
+              if [ "$n_trimmed" = "simlab-docs" ]; then
+                RUN_SIMLAB=true
+                continue
+              fi
+              candidate="$SEED_DIR/${n_trimmed}.sql"
+              if [ ! -f "$candidate" ]; then
+                echo "::error::No seed file matched: $candidate"
+                exit 1
+              fi
+              FILES+=("$candidate")
+            done
+          fi
+          echo "run_simlab=$RUN_SIMLAB" >> "$GITHUB_OUTPUT"
+          if [ "${#FILES[@]}" -eq 0 ] && [ "$RUN_SIMLAB" != "true" ]; then
+            echo "::error::Resolved zero seeds (no .sql files and no simlab-docs)."
+            exit 1
+          fi
+          # .seed_plan may be empty when only simlab-docs was requested — the
+          # psql steps below loop over zero files, which is a safe no-op. Write a
+          # truly-empty file (no blank line) so `while read` reads nothing.
+          : > .seed_plan
+          if [ "${#FILES[@]}" -gt 0 ]; then
+            printf '%s\n' "${FILES[@]}" > .seed_plan
+          fi
+          echo "Plan (.sql):"
+          cat .seed_plan
+          echo "Run SimLab Python seed: $RUN_SIMLAB"
+
+      - name: Summarise plan
+        run: |
+          {
+            echo "## Seed plan"
+            echo ""
+            echo "Mode: \`${{ inputs.mode }}\`"
+            echo ""
+            echo "Tenant: \`${{ inputs.tenant_id }}\`"
+            echo ""
+            echo "Files (in apply order):"
+            echo ""
+            while IFS= read -r f; do
+              SIZE=$(wc -c < "$f" | tr -d ' ')
+              LINES=$(wc -l < "$f" | tr -d ' ')
+              echo "- \`$f\` (${SIZE} bytes, ${LINES} lines)"
+            done < .seed_plan
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dry-run — show seed headers only (no execution)
+        if: inputs.mode == 'dry-run'
+        run: |
+          set -euo pipefail
+          echo "### Dry-run: SQL preview" >> "$GITHUB_STEP_SUMMARY"
+          while IFS= read -r f; do
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "#### $f" >> "$GITHUB_STEP_SUMMARY"
+            echo '```sql' >> "$GITHUB_STEP_SUMMARY"
+            head -40 "$f" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          done < .seed_plan
+          echo ""
+          echo "Dry-run complete. Re-run with mode=apply to execute against $DB_HOST."
+
+      - name: Apply seeds (ON_ERROR_STOP=1, single transaction per file)
+        if: inputs.mode == 'apply'
+        run: |
+          set -euo pipefail
+          echo "### Apply results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| File | Status | Duration |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|--------|----------|" >> "$GITHUB_STEP_SUMMARY"
+          while IFS= read -r f; do
+            echo "::group::Applying $f"
+            START=$(date +%s)
+            # Each seed declares \set tenant_id_default '''…''' internally and
+            # then \set tenant_id :tenant_id_default. We override with our own
+            # quoted tenant_id BEFORE the file is processed so it wins.
+            TENANT_QUOTED="'${{ inputs.tenant_id }}'"
+            if psql "$DATABASE_URL" \
+                 --single-transaction \
+                 --set ON_ERROR_STOP=1 \
+                 --no-psqlrc \
+                 -v ECHO=errors \
+                 -v "tenant_id=${TENANT_QUOTED}" \
+                 -f "$f"; then
+              END=$(date +%s)
+              DUR=$((END-START))
+              echo "| \`$f\` | OK | ${DUR}s |" >> "$GITHUB_STEP_SUMMARY"
+              echo "::endgroup::"
+            else
+              END=$(date +%s)
+              DUR=$((END-START))
+              echo "| \`$f\` | FAILED | ${DUR}s |" >> "$GITHUB_STEP_SUMMARY"
+              echo "::endgroup::"
+              echo "::error file=$f::psql failed on $f after ${DUR}s"
+              exit 1
+            fi
+          done < .seed_plan
+
+      - name: Post-apply row counts (proof)
+        if: inputs.mode == 'apply'
+        run: |
+          set -euo pipefail
+          cat > /tmp/postcheck.sql <<'SQL'
+          \echo === total rows for tenant ===
+          SELECT count(*) AS total
+            FROM knowledge_entries
+           WHERE tenant_id = :'tid';
+
+          \echo === rows by manufacturer + model ===
+          SELECT manufacturer, model_number, equipment_type, count(*) AS rows
+            FROM knowledge_entries
+           WHERE tenant_id = :'tid'
+           GROUP BY 1,2,3
+           ORDER BY 1,2,3;
+
+          \echo === rows by source_type ===
+          SELECT source_type, count(*) AS rows
+            FROM knowledge_entries
+           WHERE tenant_id = :'tid'
+           GROUP BY 1
+           ORDER BY 2 DESC;
+
+          \echo === recent rows (last 15 min) ===
+          SELECT count(*) AS just_seeded
+            FROM knowledge_entries
+           WHERE tenant_id = :'tid'
+             AND created_at > now() - interval '15 minutes';
+          SQL
+
+          set +e
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 \
+               -v "tid=${{ inputs.tenant_id }}" \
+               -f /tmp/postcheck.sql 2>&1 | tee /tmp/postcheck.out
+          PSQL_EXIT=${PIPESTATUS[0]}
+          set -e
+          {
+            echo ""
+            echo "### Post-apply row counts"
+            echo ""
+            echo '```'
+            cat /tmp/postcheck.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PSQL_EXIT" -ne 0 ]; then
+            echo "::error::psql post-check failed with exit $PSQL_EXIT"
+            exit "$PSQL_EXIT"
+          fi
+
+      # ── SimLab doc seed (Python) ───────────────────────────────────────────
+      # Separate from the psql plan: reads the 77 markdown fixtures under
+      # simlab/docs/, chunks them, and inserts under its OWN fixed SimLab tenant
+      # (ignores inputs.tenant_id). Guarded — no-ops with a warning until PR
+      # #1816 (simlab/docs/) is on the checked-out ref.
+      - name: Apply SimLab doc seed (Python)
+        if: steps.resolve.outputs.run_simlab == 'true'
+        run: |
+          set -euo pipefail
+          SEED_PY="tools/seeds/seed-simlab-docs.py"
+          if [ ! -f "$SEED_PY" ] || [ ! -d "simlab/docs" ]; then
+            echo "::warning::SimLab seed skipped — $SEED_PY or simlab/docs/ not on this ref (merge PR #1816 first)."
+            echo "### SimLab doc seed: SKIPPED (simlab/docs not present on ref)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          python3 -m pip install --quiet 'psycopg[binary]==3.*'
+          export NEON_DATABASE_URL="$DATABASE_URL"
+          if [ "${{ inputs.mode }}" = "apply" ]; then
+            echo "::group::SimLab seed --commit"
+            python3 "$SEED_PY" --commit
+            echo "::endgroup::"
+            echo "::group::SimLab seed --verify (BM25 retrievability proof)"
+            python3 "$SEED_PY" --verify | tee /tmp/simlab_verify.out
+            echo "::endgroup::"
+            {
+              echo ""
+              echo "### SimLab doc seed (Python) — applied + verified"
+              echo '```'
+              cat /tmp/simlab_verify.out
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::group::SimLab seed --dry-run"
+            python3 "$SEED_PY" --dry-run | tee /tmp/simlab_dry.out
+            echo "::endgroup::"
+            {
+              echo ""
+              echo "### SimLab doc seed (Python) — dry-run (rolled back)"
+              echo '```'
+              cat /tmp/simlab_dry.out
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

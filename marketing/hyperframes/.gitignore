@@ -1,0 +1,10 @@
+# HyperFrames render artifacts and node_modules
+demo-project/node_modules/
+demo-project/output/
+demo-project/.hyperframes/
+demo-project/dist/
+node_modules/
+
+# Keep the curated output (smoke MP4) for benchmark reference
+!output/
+!output/*.mp4

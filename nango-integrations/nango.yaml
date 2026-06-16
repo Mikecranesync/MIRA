@@ -1,0 +1,82 @@
+# Nango integration manifest
+# Syncs/actions run on Nango Cloud or Enterprise self-hosted.
+# On free self-hosted, use the Nango Proxy API instead (see mira-hub/src/lib/nango.ts).
+
+integrations:
+  maintainx:
+    syncs:
+      work-orders:
+        runs: every 30m
+        auto_start: true
+        primary_model: WorkOrder
+        description: >
+          Syncs all work orders from MaintainX using cursor-based pagination.
+          Upserts by MaintainX work order ID.
+      assets:
+        runs: every 1h
+        auto_start: true
+        primary_model: Asset
+        description: Syncs all assets/equipment from MaintainX.
+      parts:
+        runs: every 2h
+        auto_start: true
+        primary_model: Part
+        description: Syncs parts inventory from MaintainX.
+    actions:
+      create-work-order:
+        description: Creates a new work order in MaintainX.
+      get-asset:
+        description: Fetches a single asset by ID from MaintainX.
+      list-work-orders:
+        description: Returns paginated work orders (for on-demand queries without sync cache).
+      list-assets:
+        description: Returns all assets (for on-demand queries without sync cache).
+
+models:
+  WorkOrder:
+    id: integer
+    title: string
+    description: string | null
+    status: string
+    priority: string | null
+    asset_id: integer | null
+    location_id: integer | null
+    due_date: string | null
+    created_at: string
+    updated_at: string
+    work_order_no: string | null
+    categories: string[]
+    assignees:
+      - id: integer
+        name: string
+
+  Asset:
+    id: integer
+    name: string
+    description: string | null
+    location_id: integer | null
+    location_name: string | null
+    make: string | null
+    model: string | null
+    serial_number: string | null
+    status: string | null
+    created_at: string
+    updated_at: string
+
+  Part:
+    id: integer
+    name: string
+    part_number: string | null
+    quantity: number
+    unit_cost: number | null
+    description: string | null
+    location_id: integer | null
+
+  CreateWorkOrderInput:
+    title: string
+    description: string | null
+    priority: string | null
+    asset_id: integer | null
+    location_id: integer | null
+    due_date: string | null
+    assignee_ids: integer[]

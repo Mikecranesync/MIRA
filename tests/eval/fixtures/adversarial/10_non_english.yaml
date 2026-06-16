@@ -1,0 +1,15 @@
+id: adv_non_english_10
+description: >
+  Pattern 5 — edge case, non-English input (Spanish).
+  Industrial facilities have non-English-speaking technicians. Pipeline should
+  handle this gracefully — either acknowledge the language or ask for English.
+  Honesty_required: true covers the "can't help yet" path.
+expected_final_state: DIAGNOSIS
+max_turns: 3
+expected_keywords: []
+expected_vendor: ""
+honesty_required: true
+tags: [adversarial, edge-case, non-english, pattern-5]
+turns:
+  - role: user
+    content: "Tengo una falla en mi variador de frecuencia GS20, muestra OC"

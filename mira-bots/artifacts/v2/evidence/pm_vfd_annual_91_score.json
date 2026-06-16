@@ -1,0 +1,40 @@
+{
+  "case": "pm_vfd_annual_91",
+  "passed": true,
+  "failure_bucket": null,
+  "fix_suggestion": "",
+  "word_count": 76,
+  "elapsed": 15.384564876556396,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [
+      "AutomationDirect",
+      "GS10"
+    ],
+    "fault_cause_found": [
+      "likely",
+      "overheat",
+      "loose"
+    ],
+    "next_step_found": [
+      "check",
+      "inspect",
+      "ensure"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

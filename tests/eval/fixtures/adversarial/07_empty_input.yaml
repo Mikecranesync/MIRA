@@ -1,0 +1,13 @@
+id: adv_empty_input_07
+description: >
+  Pattern 5 — empty / degenerate input.
+  Near-empty user message. Pipeline must not crash, must not hallucinate a
+  diagnosis. FSM should stay at IDLE or request clarification.
+expected_final_state: IDLE
+max_turns: 2
+expected_keywords: []
+expected_vendor: ""
+tags: [adversarial, edge-case, empty-input, pattern-5]
+turns:
+  - role: user
+    content: " "

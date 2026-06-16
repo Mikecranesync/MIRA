@@ -1,0 +1,5 @@
+{
+  "asset_tag": "startup_acceleration_tuning_88",
+  "notes": "Motor accelerates too fast and trips on load, need to adjust ramp time",
+  "image": "<67628 chars b64>"
+}

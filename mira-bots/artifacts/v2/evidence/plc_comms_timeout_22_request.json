@@ -1,0 +1,5 @@
+{
+  "asset_tag": "plc_comms_timeout_22",
+  "notes": "SCADA losing connection to PLC every few hours, comms timeout alarm",
+  "image": "<66920 chars b64>"
+}

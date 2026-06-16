@@ -1,0 +1,260 @@
+"""MIRA FSM — state machine constants, aliases, and transition logic.
+
+Extracted from engine.py to be independently testable.
+engine.py delegates state-transition work here.
+
+Dependency direction: fsm ← guardrails (for SAFETY_KEYWORDS)
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+
+from .guardrails import SAFETY_KEYWORDS
+
+logger = logging.getLogger("mira-gsd")
+
+# Ordered diagnostic ladder — the happy path advances through these states
+STATE_ORDER = ["IDLE", "Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP", "RESOLVED"]
+
+ACTIVE_DIAGNOSTIC_STATES = frozenset({"Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"})
+
+HISTORY_LIMIT = int(os.getenv("MIRA_HISTORY_LIMIT", "20"))
+
+PHOTO_MEMORY_TURNS = int(os.getenv("MIRA_PHOTO_MEMORY_TURNS", "10"))
+
+_Q_STATES = frozenset({"Q1", "Q2", "Q3"})
+_MAX_Q_ROUNDS = int(os.getenv("MIRA_MAX_Q_ROUNDS", "3"))
+
+# Per-state loop guard: if the FSM stays in the same state for this many
+# consecutive turns, force-advance to the next STATE_ORDER entry (or RESOLVED).
+_MAX_TURNS_PER_STATE = int(os.getenv("MIRA_MAX_TURNS_PER_STATE", "6"))
+
+# All valid FSM states (used in transition validation)
+# AWAITING_UNS_CONFIRMATION is a side state entered by the UNS Confirmation Gate
+# in engine._handle_uns_confirmation_request; cleared back to IDLE by
+# _handle_uns_confirmation_response on yes/no/fallthrough. Not part of STATE_ORDER,
+# so the backward-transition guard never sees it.
+# Spec: docs/specs/maintenance-namespace-builder-spec.md §"The UNS Location-Confirmation Gate"
+VALID_STATES = frozenset(
+    STATE_ORDER
+    + [
+        "ASSET_IDENTIFIED",
+        "ELECTRICAL_PRINT",
+        "SAFETY_ALERT",
+        "DIAGNOSIS_REVISION",
+        "QUERY_UNDERSTANDING",
+        "AWAITING_UNS_CONFIRMATION",
+    ]
+)
+
+# Fuzzy-match common LLM-invented state names to valid FSM states
+_STATE_ALIASES: dict[str, str] = {
+    "CLARIFY_QUERY": "QUERY_UNDERSTANDING",
+    "CLARIFICATION_NEEDED": "QUERY_UNDERSTANDING",
+    "DIAGNOSTICS": "DIAGNOSIS",
+    "DIAGNOSTIC": "DIAGNOSIS",
+    "DIAGNOSTIC_STEP": "DIAGNOSIS",
+    "DIAGNOSIS_SUMMARY": "DIAGNOSIS",
+    "FAULT_ANALYSIS": "DIAGNOSIS",
+    "FAULT_DIAGNOSIS": "DIAGNOSIS",
+    "ANALYZING": "DIAGNOSIS",
+    "ANALYSIS": "DIAGNOSIS",
+    "ROOT_CAUSE": "DIAGNOSIS",
+    "TROUBLESHOOT": "Q1",
+    "TROUBLESHOOTING": "Q1",
+    "QUESTION": "Q1",
+    "USER_QUERY": "Q1",
+    "INQUIRY": "Q1",
+    "NEED_MORE_INFO": "Q1",
+    "NEED_INFO": "Q1",
+    "PARAMETER_IDENTIFIED": "Q1",
+    "READING_IDENTIFIED": "Q1",
+    "INSTALLATION_GUIDANCE": "FIX_STEP",
+    "INSTALLATION": "FIX_STEP",
+    "WIRING_CHECK": "Q2",
+    "CONFIGURATION": "Q2",
+    "GATHERING_INFO": "Q2",
+    "INSPECT": "Q2",
+    "VERIFY": "Q2",
+    "CHECK_OUTPUT_REACTOR": "Q2",
+    "Q4": "Q3",
+    "Q5": "Q3",
+    "FIX": "FIX_STEP",
+    "REPAIR": "FIX_STEP",
+    "REPAIR_INQUIRY": "FIX_STEP",
+    "ACTION": "FIX_STEP",
+    "CONFIG_STEP": "FIX_STEP",
+    "PARAMETER_SETTINGS": "FIX_STEP",
+    "IN_PROGRESS": "FIX_STEP",
+    "SUMMARY": "RESOLVED",
+    "COMPLETE": "RESOLVED",
+    "DONE": "RESOLVED",
+    "CLOSED": "RESOLVED",
+    "DIAGNOSIS_REVISION": "DIAGNOSIS",
+    # LLM-invented states observed in corpus loop run (2026-04-28)
+    "LISTEN": "Q1",
+    "CONTINUE": "Q2",
+    "INVESTIGATING": "Q2",
+    "IDEA_GENERATION": "DIAGNOSIS",
+    "ASSESS": "Q2",
+    "CLARIFY": "Q1",
+    "GATHER": "Q1",
+    "ESCALATE": "SAFETY_ALERT",
+    # LLM-invented states observed in benchmark v1.2.0 (issue #867)
+    "DEBUG": "DIAGNOSIS",
+    "TEST_PREP": "Q2",
+    "TRIP_CLASS_INQUIRY": "DIAGNOSIS",
+    "CHECKING_CONTACTOR": "DIAGNOSIS",
+    "INSPECTION": "Q3",
+}
+
+import re  # noqa: E402
+
+# Patterns that indicate the user has already supplied fault/alarm specifics
+_FAULT_INFO_RE = re.compile(
+    r"""
+    (?:[A-Z]{1,3}-?\d{3,})              # F30001, AL-14, E001
+    | \b[A-Z]{2,3}\b(?=\s+fault)        # OC fault, OL fault (common VFD 2-letter codes)
+    | \b(?:fault\s+code|alarm\s+(?:code|number)|error\s+code|fault\s+number)\b
+    | \b(?:tripping\s+on|tripped\s+on|showing\s+(?:fault|error|alarm))\b
+    | \b(?:displays?|shows?|reading)\s+[A-Z0-9]{2,}  # "shows OC", "displays F7"
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def advance_state(state: dict, parsed: dict) -> dict:
+    """Advance FSM state based on parsed LLM response.
+
+    Mutates and returns state dict.
+    Caller is responsible for persisting the returned state.
+    """
+    current = state["state"]
+    reply_lower = parsed.get("reply", "").lower()
+
+    if (
+        any(kw in reply_lower for kw in SAFETY_KEYWORDS)
+        or parsed.get("next_state") == "SAFETY_ALERT"
+    ):
+        state["state"] = "SAFETY_ALERT"
+        state["final_state"] = "SAFETY_ALERT"
+        state["exchange_count"] += 1
+        return state
+
+    if current == "ELECTRICAL_PRINT":
+        state["state"] = "ELECTRICAL_PRINT"
+        state["exchange_count"] += 1
+        return state
+
+    if parsed.get("next_state"):
+        proposed = _STATE_ALIASES.get(parsed["next_state"], parsed["next_state"])
+        if proposed in VALID_STATES:
+            # Backward-transition guard: once the FSM has advanced past Q-states
+            # (i.e. current is DIAGNOSIS or later in STATE_ORDER), the LLM must
+            # not be allowed to walk the state backward to Q1/Q2/Q3.  This
+            # prevented the Q-trap from re-arming after a natural DIAGNOSIS turn
+            # followed by a hesitant LLM reply suggesting "more info needed"
+            # (returning next_state=Q2).  We clamp the proposed state to at
+            # least the current position in STATE_ORDER.
+            if current in STATE_ORDER and proposed in STATE_ORDER:
+                curr_idx = STATE_ORDER.index(current)
+                prop_idx = STATE_ORDER.index(proposed)
+                if prop_idx < curr_idx:
+                    logger.debug(
+                        "FSM_BACKWARD_GUARD chat_id=%s %s→%s clamped to %s",
+                        state.get("chat_id", "?"),
+                        current,
+                        proposed,
+                        current,
+                    )
+                    proposed = current
+            state["state"] = proposed
+        else:
+            logger.warning(
+                "Invalid FSM state '%s' from LLM (current: %s) — holding at %s",
+                proposed,
+                current,
+                current,
+            )
+    else:
+        if current == "ASSET_IDENTIFIED":
+            state["state"] = "Q1"
+        elif current == "DIAGNOSIS_REVISION":
+            state["state"] = "DIAGNOSIS"
+        elif current in STATE_ORDER:
+            idx = STATE_ORDER.index(current)
+            if idx + 1 < len(STATE_ORDER):
+                state["state"] = STATE_ORDER[idx + 1]
+
+    if state["state"] in ("RESOLVED", "SAFETY_ALERT"):
+        state["final_state"] = state["state"]
+
+    ctx_q = state.get("context") or {}
+
+    # Q-trap escape: if FSM has been in Q-states for _MAX_Q_ROUNDS consecutive
+    # turns, force a commit to DIAGNOSIS so the technician gets an answer.
+    if state["state"] in _Q_STATES:
+        ctx_q["q_rounds"] = ctx_q.get("q_rounds", 0) + 1
+        if ctx_q["q_rounds"] >= _MAX_Q_ROUNDS:
+            logger.info(
+                "Q_TRAP_COMMIT chat_id=%s q_rounds=%d current=%s → DIAGNOSIS",
+                state.get("chat_id", "?"),
+                ctx_q["q_rounds"],
+                state["state"],
+            )
+            state["state"] = "DIAGNOSIS"
+            ctx_q["q_rounds"] = 0
+    else:
+        ctx_q.pop("q_rounds", None)
+
+    # Per-state loop guard: if the FSM stays in the same state for
+    # _MAX_TURNS_PER_STATE consecutive turns, force-advance to break the loop.
+    tracker = ctx_q.get("state_turns", {})
+    if tracker.get("state") == state["state"]:
+        tracker["count"] = tracker.get("count", 1) + 1
+    else:
+        tracker = {"state": state["state"], "count": 1}
+    if tracker["count"] >= _MAX_TURNS_PER_STATE and state["state"] in STATE_ORDER:
+        idx = STATE_ORDER.index(state["state"])
+        forced = STATE_ORDER[idx + 1] if idx + 1 < len(STATE_ORDER) else "RESOLVED"
+        logger.warning(
+            "TURN_LOOP_ESCAPE chat_id=%s state=%s turns=%d → %s",
+            state.get("chat_id", "?"),
+            state["state"],
+            tracker["count"],
+            forced,
+        )
+        state["state"] = forced
+        tracker = {"state": forced, "count": 1}
+    ctx_q["state_turns"] = tracker
+
+    state["context"] = ctx_q
+
+    if not state.get("fault_category"):
+        for cat in (
+            "comms",
+            "communication",
+            "power",
+            "electrical",
+            "mechanical",
+            "vibration",
+            "thermal",
+            "temperature",
+            "hydraulic",
+            "pressure",
+        ):
+            if cat in reply_lower:
+                normalized = {
+                    "communication": "comms",
+                    "electrical": "power",
+                    "vibration": "mechanical",
+                    "temperature": "thermal",
+                    "pressure": "hydraulic",
+                }
+                state["fault_category"] = normalized.get(cat, cat)
+                break
+
+    state["exchange_count"] += 1
+    return state

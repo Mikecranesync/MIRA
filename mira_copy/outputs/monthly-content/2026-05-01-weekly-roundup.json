@@ -1,0 +1,84 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "This week on the FactoryLM feed:\n\n- How a maintenance tech in Ohio cut VFD downtime by diagnosing PowerFlex fault F3 in 32 seconds using a photo\n- AI vs OEM manual: Finding an Allen-Bradley 1769-IE8 module issue took 1 minute with Mira, 37 minutes with PDF search\n- Behind the build: Why we chose Claude API over Llama for RAG accuracy on hydraulic schematics\n- Poll results: 78% of you said you’ve ever jury-rigged a fix because the manual was missing\n\nWe also shared a user’s real shift log: resolved 4 faults in 90 minutes — all without leaving the floor.\n\nYour CMMS doesn’t need a deployment team. Setup takes 2 minutes. No call. No provisioning.\n\nWhat single task wastes the most time during your troubleshooting? Is it document search, parts lookup, or waiting on approvals?\n\nCheck this week’s tips: https://app.factorylm.com",
+      "char_count": 1020,
+      "hashtags": [
+        "MaintenanceTech",
+        "CMMS",
+        "FactoryAutomation"
+      ],
+      "suggested_visual": "Carousel: 1) Phone showing photo diagnosis of a PowerFlex VFD with fault F3, 2) Side-by-side timer: 0:32 AI vs 37:00 manual, 3) Mira chat response pulling from RAB manual, 4) Mockup of CMMS setup screen with '2 min' timer",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "F3 on a PowerFlex? Don’t dig through manuals.\n\nSnap it. Upload. Get the fix in <30 sec.\n\nAI pulls from YOUR manuals — not generic tips.\n\nPhoto-to-Work Order in seconds.\n\nhttps://app.factorylm.com",
+      "char_count": 219,
+      "hashtags": [
+        "VFD",
+        "Maintenance"
+      ],
+      "suggested_visual": "15-second screen recording: photo of PowerFlex HMI with F3 fault → upload → Mira response with probable cause (DC bus overvoltage) and link to work order",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "r/maintenance\n\nSharing a troubleshooting pattern we keep seeing with GS20 VFDs:\n\nFault: OC (Overcurrent)\nSymptoms: Trips at startup, no grinding or binding\nCommon miss: Techs check motor leads and bearings — but skip the brake release timing\n\nRoot cause: Hydraulic press cycle finishes, but brake engages before motor spins down. Motor tries to reverse against brake drag = OC fault\n\nFix: Adjust brake timer in GS20 to delay engagement by 1.2–1.5 sec. Test at 50% speed first.\n\nWe see this in 30% of photo diagnoses where motor and drive test fine standalone.\n\nIf you’re pulling hydraulic schematics from a binder in a back office, you’re losing time. Even digital PDFs take 20+ minutes to search.\n\nInstead, one user started sending photos of fault codes to a private Slack channel. AI cross-references internal manuals and pulls the right page in <10 seconds.\n\nNot promoting — just sharing what’s working in the wild.",
+      "char_count": 1089,
+      "hashtags": [],
+      "suggested_visual": "Before/after split-screen: left shows technician flipping through binder near hydraulic unit, right shows phone with AI returning brake timer fix from manual extract",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "This week:\n\n- Quick fix: PowerFlex F3? Check rectifier input — not just motor leads\n- Real data: Allen-Bradley 1769-IE8 analog card errors take 8 to 42 minutes to trace with manuals. With AI? 1–2 minutes\n- Case: Tech in Indiana diagnosed a GS20 overcurrent fault using a photo. Found brake timer misalignment in 28 seconds.\n\nWe’re building tools that work like your best senior tech — fast, precise, knows your equipment.\n\nYou don’t need another CMMS that takes weeks to set up. Ours goes live in 2 minutes. No vendor call. No onboarding team.\n\nWhat’s one thing you wish your CMMS could do tomorrow?\n\nSee this week’s tips: https://app.factorylm.com",
+      "char_count": 874,
+      "hashtags": [
+        "MaintenanceLife",
+        "VFDRepair",
+        "ReliabilityEngineering"
+      ],
+      "suggested_visual": "Video montage: technician snaps photo of GS20 VFD, AI responds with brake timer fix, work order auto-generates, hydraulic press restarts smoothly",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "When the PowerFlex trips and the manual’s in the office…\n\nYou don’t have 30 minutes.\n\nHere’s what you do:\n1. Snap photo of the HMI\n2. Upload to Mira\n3. Get the fix — from YOUR manual — in under 30 seconds\n\nThis week we helped:\n- Diagnose F3 faults in under 35 sec\n- Cut Allen-Bradley analog input debugging from 40 min to 90 sec\n- Auto-generate work orders for hydraulic unit PMs\n\nNo waiting. No PDFs. Just answers.\n\n#MaintenanceTips #FactoryTech",
+      "char_count": 643,
+      "hashtags": [
+        "MaintenanceTips",
+        "FactoryTech",
+        "VFD",
+        "Troubleshooting"
+      ],
+      "suggested_visual": "Fast-paced 30-second clip: tech at machine, pulls phone, snaps photo of VFD, gets AI response, smiles, writes fix on tag. Text overlays: 'F3 Fault → 32 sec → Fixed'",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "This week on the floor:\n\n▶️ Diagnosed a PowerFlex F3 in 32 seconds — not 40 minutes\n▶️ Solved Allen-Bradley analog card drift using RAG on internal manuals\n▶️ Found missed brake timer issue on GS20 driving hydraulic press OC trips\n▶️ CMMS setup in 2 minutes — no provisioning, no call\n\nYour knowledge shouldn’t live in binders or email chains.\n\nIt should be in your pocket. Ready when the line stops.\n\nMira reads your manuals. So you don’t have to.\n\nTap link for this week’s tips ↓",
+      "char_count": 687,
+      "hashtags": [
+        "MaintenanceLife",
+        "CMMS",
+        "VFD",
+        "PowerFlex",
+        "AllenBradley",
+        "HydraulicSystems",
+        "FactoryTech",
+        "WorkOrder",
+        "FaultCode",
+        "MiraAI",
+        "TechLife",
+        "Manufacturing",
+        "Reliability",
+        "NoDowntime",
+        "PlantMaintenance"
+      ],
+      "suggested_visual": "4-slide carousel: 1) Phone showing AI diagnosis of PowerFlex F3, 2) Mira response highlighting analog card section from PDF, 3) Hydraulic press with brake timer fix note, 4) Screen recording of 2-minute CMMS onboarding",
+      "subreddit": null
+    }
+  ]
+}

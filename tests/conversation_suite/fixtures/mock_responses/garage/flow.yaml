@@ -1,0 +1,47 @@
+# Mock replies for multi-turn conversation flow cases.
+
+- match_substring: "PowerFlex 525 F004"
+  reply: |
+    PowerFlex 525 F004 — UnderVoltage. Confirm: which PowerFlex on the conveyor
+    are you looking at, and what's the incoming voltage at the drive terminals?
+    Check L1/L2/L3 → R/S/T and verify DC bus voltage at the keypad.
+
+- match_substring: "GS10 OC"
+  reply: |
+    Got it — GS10 overcurrent. Confirm: this is the conveyor GS10? If yes, the
+    motor nameplate (HP/voltage) helps me size up whether the OC is genuine
+    or a startup transient.
+
+- match_substring: "yeah"
+  match_role: user
+  reply: |
+    Confirmed — conveyor GS10. What's the motor nameplate (HP and voltage)?
+
+- match_substring: "yes"
+  match_role: user
+  reply: |
+    Confirmed. What's the motor nameplate (HP and voltage)?
+
+- match_substring: "5HP 460V"
+  reply: |
+    OK, 5HP 460V three-phase. For a healthy startup on this size, P00.10
+    (accel time) at 10s and P00.12 (current limit) at 130% are the usual
+    starting points. What's tripping — OC during accel, run, or decel?
+    [Source: docs/legacy/VFD_Parameters.md §Motor Nameplate Parameters]
+
+- match_substring: "other sensor"
+  reply: |
+    You're still on the conveyor GS10 — which sensor are you asking about?
+    PE-001 (exit prox) or PE-002 (entry prox)?
+    [Source: docs/legacy/IO_Table.md §Digital Inputs]
+
+- match_substring: "now help me with the motor"
+  reply: |
+    Switching focus to the motor itself. Same conveyor motor, or a different one?
+    What's it doing — not turning, drawing too much current, overheating?
+
+- match_substring: "how many times did I flag"
+  reply: |
+    I don't have signal-event history loaded for this session — once we wire
+    up Atlas CMMS for this asset I can pull the flag count. For now: any recent
+    work orders you remember filing?

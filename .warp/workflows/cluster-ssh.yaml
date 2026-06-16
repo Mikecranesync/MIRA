@@ -1,0 +1,8 @@
+---
+name: SSH to cluster node
+command: ssh {{node}}
+tags: [cluster, ssh, ops]
+description: SSH into a FactoryLM cluster node
+arguments:
+  - name: node
+    description: "Node alias: factorylm@100.107.140.12 (Alpha), bravonode@100.86.236.11 (Bravo)"

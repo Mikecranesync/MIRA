@@ -1,0 +1,30 @@
+# Trivy ignore list — vulnerabilities accepted with justification.
+# Format: one CVE/GHSA id per line, optional comment.
+# Trivy reads this file from the working directory (repo root in our CI).
+# Reviewed periodically when bumping container deps.
+
+# litellm CVEs — transitive dep via fastmcp==3.2.* in mira-mcp.
+# mira-mcp does NOT directly use litellm and does NOT expose the vulnerable
+# litellm endpoints (/prompts/test, MCP stdio, data APIs).
+# Upgrade blocked: litellm>=1.83.7 requires python-dotenv==1.0.1 which
+# conflicts with fastmcp==3.2.0's python-dotenv>=1.1.0 requirement.
+# Re-evaluate every fastmcp bump.
+
+# CVE-2026-42203 / GHSA-xqmj-j6mv-4862 — LiteLLM SSTI in /prompts/test (HIGH)
+GHSA-xqmj-j6mv-4862
+CVE-2026-42203
+
+# CVE-2026-42208 — LiteLLM Unauthorized data access and modification (CRITICAL)
+CVE-2026-42208
+
+# CVE-2026-42271 — LiteLLM Authenticated command execution via MCP stdio test
+CVE-2026-42271
+
+# CVE-2026-40217 — LiteLLM Arbitrary Code Execution via bytecode (HIGH)
+# Present in litellm 1.83.0 (pulled in via openviking==0.3.9, the version
+# we held back to). Fixed upstream in litellm 1.83.10, but litellm
+# 1.83.7+ pins python-dotenv==1.0.1 which conflicts with fastmcp 3.x's
+# python-dotenv>=1.1.0 — same chain documented above.
+# mira-mcp does not call litellm directly and does not expose its
+# vulnerable endpoints. Re-evaluate every openviking / fastmcp bump.
+CVE-2026-40217

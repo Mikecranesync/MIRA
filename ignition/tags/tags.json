@@ -1,0 +1,355 @@
+{
+  "name": "default",
+  "tagType": "Provider",
+  "tags": [
+    {
+      "name": "Conveyor",
+      "tagType": "Folder",
+      "tags": [
+        {
+          "name": "Motor_Running",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C1",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "Motor is running (conv_state=1 or 2)"
+        },
+        {
+          "name": "Conveyor_Running",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C2",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "Conveyor at speed (conv_state=2)"
+        },
+        {
+          "name": "Fault_Alarm",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C3",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "Fault latched — C3"
+        },
+        {
+          "name": "VFD_Comm_OK",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C4",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "Modbus RTU communication healthy"
+        },
+        {
+          "name": "System_Ready",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C5",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "No fault, no e-stop, ready to run"
+        },
+        {
+          "name": "EStop_Active",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C6",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "E-stop pressed — C6 (NOT C3)"
+        },
+        {
+          "name": "Dir_FWD",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C7",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "Selector in FWD position"
+        },
+        {
+          "name": "Dir_REV",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C8",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "Selector in REV position"
+        },
+        {
+          "name": "Heartbeat",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C9",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "PLC scan heartbeat — toggles every scan"
+        },
+        {
+          "name": "EStop_Wiring_Fault",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C10",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "E-stop dual-channel XOR violation"
+        },
+        {
+          "name": "Dir_Fault",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C11",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "Both FWD and REV contacts closed simultaneously"
+        },
+        {
+          "name": "Raw_I00",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C12",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "Raw I-00 (SelectorFWD)"
+        },
+        {
+          "name": "Raw_I01",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C13",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "Raw I-01 (SelectorREV)"
+        },
+        {
+          "name": "Raw_I02",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C14",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "Raw I-02 (EStopNC)"
+        },
+        {
+          "name": "Raw_I03",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C15",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "Raw I-03 (EStopNO)"
+        },
+        {
+          "name": "Raw_I04",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C16",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "Raw I-04 (PBRun)"
+        },
+        {
+          "name": "Raw_O00",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C17",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "Raw O-00 (LightGreen)"
+        },
+        {
+          "name": "Raw_O01",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C18",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "Raw O-01 (LightRed)"
+        },
+        {
+          "name": "Raw_O02",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C19",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "Raw O-02 (ContactorQ1) — NOT C9"
+        },
+        {
+          "name": "Raw_O03",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C20",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "Raw O-03 (PBRunLED)"
+        },
+        {
+          "name": "VFD_Poll_Active",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C21",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "VFD Modbus RTU poll cycle is active"
+        },
+        {
+          "name": "VFD_Fault_Reset_Pending",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]C22",
+          "dataType": "Boolean",
+          "scanClass": "Default",
+          "tooltip": "VFD fault reset command pending"
+        },
+        {
+          "name": "VFD_OutputFreq_Raw",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]HR400107",
+          "dataType": "Int4",
+          "scanClass": "Default",
+          "tooltip": "VFD output frequency raw (÷10 = Hz)"
+        },
+        {
+          "name": "VFD_OutputCurrent_Raw",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]HR400108",
+          "dataType": "Int4",
+          "scanClass": "Default",
+          "tooltip": "VFD output current raw (÷10 = A)"
+        },
+        {
+          "name": "VFD_DCBusVoltage_Raw",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]HR400109",
+          "dataType": "Int4",
+          "scanClass": "Default",
+          "tooltip": "VFD output voltage raw (÷10 = V) — HR400109=vfd_voltage"
+        },
+        {
+          "name": "VFD_DCBus_Raw",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]HR400110",
+          "dataType": "Int4",
+          "scanClass": "Default",
+          "tooltip": "VFD DC bus voltage raw (÷10 = V) — HR400110=vfd_dc_bus"
+        },
+        {
+          "name": "VFD_FaultCode",
+          "tagType": "ExpressionTag",
+          "dataType": "Int4",
+          "expression": "{Conveyor/Error_Code}",
+          "tooltip": "VFD fault code — mirrors Error_Code (vfd_fault_code has no dedicated HR register)"
+        },
+        {
+          "name": "Error_Code",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]HR400106",
+          "dataType": "Int4",
+          "scanClass": "Default",
+          "tooltip": "PLC error code: 0=none, 6=estop, 7=wiring, 8=dir, 9=vfd"
+        },
+        {
+          "name": "Item_Count",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]HR400111",
+          "dataType": "Int4",
+          "scanClass": "Default",
+          "tooltip": "Items counted at exit sensor"
+        },
+        {
+          "name": "Uptime_Seconds",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]HR400112",
+          "dataType": "Int4",
+          "scanClass": "Default",
+          "tooltip": "PLC uptime in seconds"
+        },
+        {
+          "name": "Speed_Cmd",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]HR400113",
+          "dataType": "Int4",
+          "scanClass": "Default",
+          "tooltip": "Speed command input (writable, 0-4095)"
+        },
+        {
+          "name": "Conv_State",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]HR400114",
+          "dataType": "Int4",
+          "scanClass": "Default",
+          "tooltip": "State machine: 0=idle, 1=starting, 2=running, 3=stopping, 4=fault"
+        },
+        {
+          "name": "VFD_CmdWord",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]HR400115",
+          "dataType": "Int4",
+          "scanClass": "Default",
+          "readOnly": false,
+          "tooltip": "VFD command: 18=FWD+RUN, 20=REV+RUN, 1=STOP, 2=FAULT_RESET → maps to GS10 0x2000"
+        },
+        {
+          "name": "VFD_FreqSetpoint_Raw",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]HR400116",
+          "dataType": "Int4",
+          "scanClass": "Default",
+          "readOnly": false,
+          "tooltip": "Frequency setpoint raw (×10, e.g. 300=30.0 Hz) → maps to GS10 0x2001"
+        },
+        {
+          "name": "VFD_Poll_Step",
+          "tagType": "OpcTag",
+          "opcServer": "Ignition OPC-UA Server",
+          "opcItemPath": "ns=1;s=[Micro820_Conveyor]HR400117",
+          "dataType": "Int4",
+          "scanClass": "Default",
+          "tooltip": "VFD Modbus poll step (0-3: cmd/freq/read/reset)"
+        },
+        {
+          "name": "VFD_Hz",
+          "tagType": "ExpressionTag",
+          "dataType": "Float4",
+          "expression": "{Conveyor/VFD_OutputFreq_Raw} / 10.0",
+          "tooltip": "VFD output frequency in Hz (scaled)"
+        },
+        {
+          "name": "VFD_Amps",
+          "tagType": "ExpressionTag",
+          "dataType": "Float4",
+          "expression": "{Conveyor/VFD_OutputCurrent_Raw} / 10.0",
+          "tooltip": "VFD output current in amps (scaled)"
+        },
+        {
+          "name": "VFD_DCBus_V",
+          "tagType": "ExpressionTag",
+          "dataType": "Float4",
+          "expression": "{Conveyor/VFD_DCBusVoltage_Raw} / 10.0",
+          "tooltip": "VFD DC bus voltage in volts (scaled from HR400109)"
+        },
+        {
+          "name": "VFD_Setpoint_Hz",
+          "tagType": "ExpressionTag",
+          "dataType": "Float4",
+          "expression": "{Conveyor/VFD_FreqSetpoint_Raw} / 10.0",
+          "tooltip": "VFD frequency setpoint in Hz (scaled from HR400116)"
+        }
+      ]
+    }
+  ]
+}

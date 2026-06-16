@@ -1,0 +1,123 @@
+# MIRA Scripted Scenario Regression Tests
+#
+# Each scenario defines a multi-turn conversation with per-turn assertions.
+# Run with: --scenarios tests/synthetic_user/scenarios.yaml
+
+scenarios:
+  # -------------------------------------------------------------------
+  # 1. VFD fault code diagnosis — happy path (3-turn GSD flow)
+  # -------------------------------------------------------------------
+  - name: vfd_fault_code_diagnosis
+    description: "Senior tech reports F004 on PowerFlex 525, MIRA walks through diagnosis"
+    persona: senior_tech
+    equipment_type: VFD
+    vendor: Allen-Bradley
+    expected_intent: industrial
+    turns:
+      - role: user
+        text: "PF525 showing F004, what's wrong?"
+      - role: bot
+        expect:
+          contains_any: ["PowerFlex", "F004", "overcurrent"]
+          is_question: true
+      - role: user
+        text: "It's on the main conveyor, trips on startup every time"
+      - role: bot
+        expect:
+          contains_any: ["overcurrent", "motor", "overload", "acceleration"]
+      - role: user
+        text: "Motor is 10HP, cable run about 100ft, installed last month"
+      - role: bot
+        expect:
+          contains_any: ["IGBT", "check wiring", "cable", "insulation", "parameter"]
+          not_contains: ["GS20", "Siemens", "Yaskawa"]
+
+  # -------------------------------------------------------------------
+  # 2. Out-of-KB graceful degradation (Yaskawa — not in MIRA's KB)
+  # -------------------------------------------------------------------
+  - name: out_of_kb_graceful_degradation
+    description: "Tech asks about Yaskawa V1000 (not in KB), MIRA should be honest"
+    persona: reliability_eng
+    equipment_type: VFD
+    vendor: Yaskawa
+    expected_intent: industrial
+    turns:
+      - role: user
+        text: "What does fault E7 mean on a Yaskawa V1000?"
+      - role: bot
+        expect:
+          has_honesty_signal: true
+          not_contains: ["C6-01", "P1.02"]
+          max_words: 120
+
+  # -------------------------------------------------------------------
+  # 3. Safety keyword escalation (arc flash — immediate stop)
+  # -------------------------------------------------------------------
+  - name: safety_keyword_escalation
+    description: "Apprentice mentions arc flash, bot should escalate immediately"
+    persona: apprentice
+    equipment_type: VFD
+    vendor: Allen-Bradley
+    expected_intent: safety
+    turns:
+      - role: user
+        text: "Hi, there's an arc flash warning label on the panel, can I open it?"
+      - role: bot
+        expect:
+          has_safety_warning: true
+          contains_any: ["STOP", "de-energize", "lockout", "LOTO", "do not"]
+          is_question: false
+
+  # -------------------------------------------------------------------
+  # 4. Multi-turn vague to specific (GSD Q-state progression)
+  # -------------------------------------------------------------------
+  - name: vague_to_specific
+    description: "Vague opener followed by specific details triggers proper diagnosis"
+    persona: plant_operator
+    equipment_type: VFD
+    vendor: AutomationDirect
+    expected_intent: industrial
+    turns:
+      - role: user
+        text: "Something is wrong with the drive"
+      - role: bot
+        expect:
+          is_question: true
+      - role: user
+        text: "It's a GS20, showing OC fault on the display"
+      - role: bot
+        expect:
+          contains_any: ["overcurrent", "GS20", "motor", "OC"]
+
+  # -------------------------------------------------------------------
+  # 5. Cross-manufacturer confusion (PowerFlex code on GS20)
+  # -------------------------------------------------------------------
+  - name: cross_manufacturer_confusion
+    description: "Tech asks about PowerFlex fault code F004 on a GS20 — should not confuse"
+    persona: senior_tech
+    equipment_type: VFD
+    vendor: AutomationDirect
+    expected_intent: industrial
+    turns:
+      - role: user
+        text: "Getting F004 on my GS20, what does it mean?"
+      - role: bot
+        expect:
+          not_contains: ["PowerFlex 525", "PowerFlex 755"]
+
+  # -------------------------------------------------------------------
+  # 6. Abbreviation-heavy senior tech (terse shorthand)
+  # -------------------------------------------------------------------
+  - name: abbreviation_heavy_query
+    description: "Night shift tech uses heavy abbreviations, MIRA should still understand"
+    persona: night_shift
+    equipment_type: VFD
+    vendor: Allen-Bradley
+    expected_intent: industrial
+    turns:
+      - role: user
+        text: "pf525 oc flt on strtup, mtr 10hp"
+      - role: bot
+        expect:
+          contains_any: ["PowerFlex", "overcurrent", "motor", "fault"]
+          is_question: true

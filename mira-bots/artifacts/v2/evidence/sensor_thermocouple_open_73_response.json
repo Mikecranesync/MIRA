@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This device is an Allen-Bradley Micro820 Programmable Logic Controller (PLC). It's used to control and monitor industrial processes.\n\n(2) The most probable fault cause is a thermocouple input module failure, as the PLC is showing an incorrect temperature reading.\n\n(3) The tech should check the thermocouple input module for any obvious damage or loose connections. If the module is damaged, replace it. If connections are loose, secure them."
+}

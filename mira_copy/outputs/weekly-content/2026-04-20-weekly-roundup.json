@@ -1,0 +1,83 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "This week on the FactoryLM feed:\n\n- How we cut a GS20 VFD 'OC-A' fault diagnosis from 35 minutes to 22 seconds\n- AI vs manual lookup: Allen-Bradley PLC 'F7' error — find the cause in your manual or ask Mira\n- Why hydraulic unit thermal relief trips get misdiagnosed 3 out of 5 times\n- New carousel: 3 photo-to-diagnosis examples from real users\n\nAll powered by RAG over your actual equipment manuals — not generic AI guesses.\n\nWe’re shipping photo diagnosis to more facilities this week. Set up your CMMS in 2 minutes, no sales call.\n\nWhat’s the most frustrating fault code you’ve seen this week?\n\nhttps://app.factorylm.com",
+      "char_count": 684,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#CMMS",
+        "#VFD"
+      ],
+      "suggested_visual": "Carousel: 4 cards — 1) Mira AI chat showing OC-A fault response, 2) side-by-side timer (manual vs AI), 3) hydraulic schematic with relief valve, 4) user-uploaded photo of faulted HPU with AI diagnosis overlay",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "GS20 tripped on OC-A? \nManual lookup: ~34 min\nMira AI + your manual: 22 sec\n\nNo OEM call. No binder flipping. Just snap, ask, fix.\n\nPhoto diagnosis + work order in under 30 seconds.\n\nfactorylm.com",
+      "char_count": 256,
+      "hashtags": [
+        "#VFD",
+        "#Maintenance"
+      ],
+      "suggested_visual": "6-second screen recording: technician snaps photo of GS20 display, uploads to Mira, gets AI diagnosis and work order draft in seconds",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "Sharing a few real fault patterns we’ve seen this week from user-uploaded diagnostics — figured it might help your troubleshooting.\n\nAllen-Bradley PLC F7 (Input Power Loss):\n- 68% of cases traced to loose 24V return at I/O rack\n- Not always a power supply fault — check terminal blocks first\n- One user found cold splice in conduit with voltage drop under load\n\nGS10/20 OC-A (Overcurrent at Acceleration):\n- 41% linked to seized couplings, not motor or drive\n- Motor tested fine, drive cleared, but shaft wouldn’t turn by hand\n- Manual says “check motor current” — but doesn’t ask “is the load free?”\n\nHydraulic power unit thermal relief:\n- Tripping within 10 min of startup?\n- Check reservoir level before assuming pump cavitation\n- One user had 3” below minimum — refilled, ran 8 hrs no trip\n\nWe’re aggregating these from photo diagnoses where users opted in. No PII, just patterns.\n\nIf you’re documenting recurring issues, tagging root cause, and saving the write-ups — you’re already doing what a good CMMS should make easier.",
+      "char_count": 1372,
+      "hashtags": [],
+      "suggested_visual": "Three-panel image: 1) PLC F7 error screen + note: 'check 24V return', 2) GS20 OC-A with sticky coupling photo, 3) HPU reservoir dipstick below min line",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "We just wrapped up another week of real-world fault tracking — here’s what we saw:\n\n• GS20 OC-A faults mostly from mechanical binding, not drive faults\n• Allen-Bradley F7 errors? Usually a terminal block issue, not power supply\n• Hydraulic relief trips often ignored reservoir level\n\nWe’re turning these into quick reference cards for our users. \n\nPhoto diagnosis + AI from your own manuals cuts lookup time from 30+ minutes to under 30 seconds. Set up your CMMS in 2 minutes — no sales call, no provisioning.\n\nWhat fault code gave you the runaround this week?\n\nhttps://app.factorylm.com",
+      "char_count": 690,
+      "hashtags": [
+        "#MaintenanceLife",
+        "#TechTips",
+        "#CMMS"
+      ],
+      "suggested_visual": "Carousel: 1) GS20 display with OC-A, 2) close-up of seized coupling, 3) PLC with F7 code, 4) HPU dipstick low-level, 5) Mira AI response with diagnosis",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "This week in real technician pain:\n\n- GS20 tripped on OC-A? It’s probably not the drive. \n- Allen-Bradley PLC F7? Check the 24V return. \n- Hydraulic relief popping? Don’t assume it’s the pump.\n\nWe pulled these from actual photo diagnoses this week. \n\nSnap the fault. AI reads YOUR manual. Get a work order in seconds — not 30 minutes.\n\nNo app store download. Works on your phone now as a PWA.\n\n#MaintenanceTech #VFD #FactoryLM",
+      "char_count": 643,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#VFD",
+        "#FactoryLM"
+      ],
+      "suggested_visual": "Fast cuts: technician at machine, close-ups of fault codes, photo snap, AI diagnosis on phone, work order generated, machine restarting",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "Weekly roundup: real faults, real fixes.\n\n📸 OC-A on GS20? 7 of 10 cases this week were mechanical — seized couplings, locked bearings.\n\nPLC F7 error? Most weren’t power supplies — loose 24V returns at the I/O rack.\n\nHydraulic thermal relief trips? 3 out of 5 had low reservoir levels — not pump issues.\n\nWe process these daily through photo diagnosis and Mira AI, using your actual manuals.\n\nSet up full CMMS + AI in 2 minutes. No waiting.\n\nWhat’s your most stubborn fault this week?",
+      "char_count": 721,
+      "hashtags": [
+        "#Maintenance",
+        "#VFD",
+        "#Hydraulics",
+        "#PLC",
+        "#AllenBradley",
+        "#PowerFlex",
+        "#GS20",
+        "#CMMS",
+        "#MiraAI",
+        "#FactoryLM",
+        "#MaintenanceTech",
+        "#IndustrialAI",
+        "#NoMoreManuals",
+        "#Reliability",
+        "#PWA"
+      ],
+      "suggested_visual": "5-image carousel: 1) GS20 display with OC-A, 2) seized coupling, 3) PLC terminal block with loose wire, 4) HPU dipstick below min, 5) split screen: manual page vs Mira AI response",
+      "subreddit": null
+    }
+  ]
+}

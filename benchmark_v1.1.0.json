@@ -1,0 +1,1577 @@
+{
+  "version": "1.1.0",
+  "timestamp": "20260428T140332Z",
+  "dimension_scores": {
+    "technical": 60.9,
+    "conversational": 87.7,
+    "wo_quality": 52.0,
+    "fsm": 86.7,
+    "response_quality": 96.7
+  },
+  "dimension_case_counts": {
+    "technical": 20,
+    "conversational": 20,
+    "wo_quality": 15,
+    "fsm": 15,
+    "response_quality": 10
+  },
+  "overall_score": 73.3,
+  "grade": "C",
+  "total_cases": 80,
+  "passed_cases": 59,
+  "total_ms": 872163,
+  "groq_model": "llama-3.3-70b-versatile",
+  "case_results": [
+    {
+      "case_id": "tech-01",
+      "dimension": "technical",
+      "score": 0.5,
+      "latency_ms": 9713,
+      "error": null,
+      "reasoning": "The answer acknowledges the E-OC fault code but fails to provide a clear explanation or actionable steps, such as referencing the overcurrent condition as defined in the context.",
+      "turns": [
+        {
+          "user": "My VFD is showing E-OC fault code, what does that mean?",
+          "bot": "You're seeing an E-OC fault code on your variable frequency drive.\n\n--- Sources ---\n[1] 20a um001  en p\n[2] Rockwell Automation PowerFlex 70\n[3] 150 um011  en p"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-02",
+      "dimension": "technical",
+      "score": 0.9,
+      "latency_ms": 9198,
+      "error": null,
+      "reasoning": "The answer provides correct and specific symptoms of a failing motor bearing, including increased vibration, abnormal noise, temperature rise, and decreased performance, which demonstrates a strong understanding of the topic.",
+      "turns": [
+        {
+          "user": "What are the symptoms of a failing motor bearing?",
+          "bot": "You're looking for symptoms of a failing motor bearing. \n1. Increased vibration \n2. Abnormal noise \n3. Temperature rise \n4. Decreased performance \n\nWhat type of vibration analysis would you use to detect a bearing defect?\n\n--- Sources ---\n[1] SKF \u2014 BEARING DEFECT LIFE CYCLE\n[2] knowledge base \u2014 BEARING DEFECT LIFE CYCLE\n[3] SKF \u2014 NOTE:"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-03",
+      "dimension": "technical",
+      "score": 0.0,
+      "latency_ms": 9857,
+      "error": null,
+      "reasoning": "The answer does not provide a diagnosis or solution to the centrifugal pump cavitation issue, instead requesting additional information without addressing the problem directly.",
+      "turns": [
+        {
+          "user": "Centrifugal pump is cavitating. What's causing it and how do I fix it?",
+          "bot": "Before I can give you a confident diagnosis, could you share one more detail \u2014 what exact fault code, alarm number, or behaviour is the equipment showing right now?\n\n1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n2. Visible symptom (e.g. trips on start, runs slow, won't start)\n3. Sensor reading (e.g. pressure at 120 PSI, temp at 90\u00b0C)\n4. Other \u2014 describe what you're seeing\n\n1. Yes, they are within range\n2. No, they are not within range\n3. Not measured\n\n--- Sources ---\n[1] 150 td009  en p\n[2] Rockwell Automation SMC-3 Soft Starter\n[3] knowledge base \u2014 Functionality"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-04",
+      "dimension": "technical",
+      "score": 0.7,
+      "latency_ms": 2673,
+      "error": null,
+      "reasoning": "The answer provides a general safety awareness and a starting point for the LOTO procedure, but lacks specific actionable steps and correct terminology for a 480V motor starter.",
+      "turns": [
+        {
+          "user": "How do I do a LOTO procedure on a 480V motor starter?",
+          "bot": "STOP \u2014 describe the hazard. De-energize the equipment first. Do not proceed until the area is safe."
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-05",
+      "dimension": "technical",
+      "score": 0.9,
+      "latency_ms": 9551,
+      "error": null,
+      "reasoning": "The answer correctly identifies the potential cause of a slipping belt drive on a conveyor by inquiring about the current tension of the belt and its recent adjustment, which is a crucial and actionable step in troubleshooting the issue.",
+      "turns": [
+        {
+          "user": "Belt drive is slipping on conveyor. What should I check?",
+          "bot": "What is the current tension of the belt, and has it been adjusted recently?\n\n1. Low tension\n2. Normal tension\n3. High tension\n\n--- Sources ---\n[1] SEW-Eurodrive R47 DRE80M4\n[2] Rockwell Automation PowerMonitor 5000 \u2014 Options\n[3] 750 in001  en p"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-06",
+      "dimension": "technical",
+      "score": 0.98,
+      "latency_ms": 8221,
+      "error": null,
+      "reasoning": "The answer accurately explains the meaning of OL trip on a motor overload relay, identifies the cause of the trip, and implies a safety awareness by mentioning protection of the motor from damage due to overheating.",
+      "turns": [
+        {
+          "user": "What does OL trip mean on a motor overload relay?",
+          "bot": "OL trip on a motor overload relay stands for \"Overload\" trip. It indicates that the relay has detected excessive current flowing through the motor, exceeding its rated capacity, and has tripped to protect the motor from damage due to overheating. This can be caused by factors such as overloading, low voltage, or high ambient temperature.\n\n---\n*Diagnose a specific machine* | *Find documentation* | *Log a work order*"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-07",
+      "dimension": "technical",
+      "score": 0.8,
+      "latency_ms": 9172,
+      "error": null,
+      "reasoning": "The answer provides mostly correct causes for short cycling in an air compressor, but lacks specificity and does not address safety awareness or provide actionable steps for the user's specific situation.",
+      "turns": [
+        {
+          "user": "Air compressor is short cycling. What are the causes?",
+          "bot": "You've identified short cycling in the air compressor. \n1. Low refrigerant\n2. Clogged air filter\n3. Faulty thermostat \nWhat could be causing the compressor to short cycle in your specific situation?\n\n--- Sources ---\n[1] 150 td009  en p\n[2] knowledge base"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-08",
+      "dimension": "technical",
+      "score": 0.0,
+      "latency_ms": 1956,
+      "error": "argument of type 'NoneType' is not iterable",
+      "reasoning": "",
+      "turns": [],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-09",
+      "dimension": "technical",
+      "score": 0.95,
+      "latency_ms": 8179,
+      "error": null,
+      "reasoning": "The answer accurately distinguishes between a contactor and a motor starter using correct terminology and provides a clear explanation of their functions, including safety-related aspects like overload protection.",
+      "turns": [
+        {
+          "user": "What is the difference between a contactor and a motor starter?",
+          "bot": "A contactor is an electrically controlled switch that connects and disconnects power to a circuit. A motor starter, on the other hand, is a device that not only connects and disconnects power but also provides overload protection and control functions for a motor. A motor starter typically includes a contactor, along with other components such as overload relays and circuit breakers.\n\n---\n*Diagnose a specific machine* | *Find documentation* | *Log a work order*"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-10",
+      "dimension": "technical",
+      "score": 0.0,
+      "latency_ms": 9738,
+      "error": null,
+      "reasoning": "The answer is unhelpful and does not address the question about the normal temperature of a gearbox, instead asking for additional information without providing any relevant context or explanation.",
+      "turns": [
+        {
+          "user": "Gearbox temperature is 95\u00b0C. Is that normal?",
+          "bot": "Before I can give you a confident diagnosis, could you share one more detail \u2014 what exact fault code, alarm number, or behaviour is the equipment showing right now?\n\n1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n2. Visible symptom (e.g. trips on start, runs slow, won't start)\n3. Sensor reading (e.g. pressure at 120 PSI, temp at 90\u00b0C)\n4. Other \u2014 describe what you're seeing\n\n--- Sources ---\n[1] knowledge base \u2014 sensor\n[2] Yaskawa V1000 \u2014 Back Cover Revision: Address\n[3] Danfoss FC102 \u2014 Option: Function:"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-11",
+      "dimension": "technical",
+      "score": 0.95,
+      "latency_ms": 7642,
+      "error": null,
+      "reasoning": "The answer provides a comprehensive explanation of the causes of dropped insulation resistance in a motor winding, including moisture, contamination, thermal degradation, and mechanical stress, and also mentions the importance of regular maintenance and testing.",
+      "turns": [
+        {
+          "user": "What causes insulation resistance to drop on a motor winding?",
+          "bot": "Insulation resistance in a motor winding can drop due to moisture, contamination, or thermal degradation. Moisture ingress, dirt, or oil can reduce the insulation's dielectric strength. Prolonged exposure to high temperatures can also cause the insulation to break down, leading to a decrease in resistance. Additionally, mechanical stress or vibration can damage the insulation, further reducing its resistance. Regular maintenance and testing can help identify and address these issues before they cause motor failure.\n\n---\n*Diagnose a specific machine* | *Find documentation* | *Log a work order*"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-12",
+      "dimension": "technical",
+      "score": 0.0,
+      "latency_ms": 9231,
+      "error": null,
+      "reasoning": "The answer provided does not address the question of why hydraulic system pressure drops when load increases, instead asking about a specific parameter setting unrelated to the context of the question.",
+      "turns": [
+        {
+          "user": "Hydraulic system pressure drops when load increases. Why?",
+          "bot": "What is the current setting of the P1067 [PID Ref Sel] parameter in your system?\n\n1. It's set to a fixed value\n2. It's set to follow a pressure curve\n3. It's set to a dynamic value based on load\n4. You're not sure what it's set to\n\n--- Sources ---\n[1] Allen-Bradley PowerFlex 753 \u2014 Motor\n[2] AutomationDirect drives g vg 4 manual\n[3] Allen-Bradley PowerFlex 753"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-13",
+      "dimension": "technical",
+      "score": 0.0,
+      "latency_ms": 9697,
+      "error": null,
+      "reasoning": "The answer given does not provide any actionable steps to diagnose the issue with the PLC input card, instead it asks for more information, which is not a solution to the problem presented.",
+      "turns": [
+        {
+          "user": "PLC input card showing no LED on channel 4. Steps to diagnose?",
+          "bot": "Before I can give you a confident diagnosis, could you share one more detail \u2014 what exact fault code, alarm number, or behaviour is the equipment showing right now?\n\n1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n2. Visible symptom (e.g. trips on start, runs slow, won't start)\n3. Sensor reading (e.g. pressure at 120 PSI, temp at 90\u00b0C)\n4. Other \u2014 describe what you're seeing\n\n--- Sources ---\n[1] knowledge base \u2014 Indicator Condition Interpretation\n[2] Rockwell Automation 1756 UM001  EN P\n[3] pflex rm001  en e"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-14",
+      "dimension": "technical",
+      "score": 1.0,
+      "latency_ms": 2337,
+      "error": null,
+      "reasoning": "The answer prioritizes safety by instructing to de-energize the equipment first, demonstrating a strong awareness of the hazards associated with working on energized 480V equipment.",
+      "turns": [
+        {
+          "user": "What PPE is required when working on energized 480V equipment?",
+          "bot": "STOP \u2014 describe the hazard. De-energize the equipment first. Do not proceed until the area is safe."
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-15",
+      "dimension": "technical",
+      "score": 0.7,
+      "latency_ms": 9089,
+      "error": null,
+      "reasoning": "The answer acknowledges the importance of vibration levels and requests the manufacturer's recommended maximum vibration level, but lacks specific knowledge about the cooling tower fan and does not provide a clear answer to whether 12mm/s RMS is acceptable.",
+      "turns": [
+        {
+          "user": "Cooling tower fan vibration spiked to 12mm/s RMS. Acceptable?",
+          "bot": "I don't have documentation for this equipment in my knowledge base. Based on general knowledge (not from specific documentation), vibration levels can be critical for equipment health. What is the manufacturer's recommended maximum vibration level for this cooling tower fan model?"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-16",
+      "dimension": "technical",
+      "score": 0.8,
+      "latency_ms": 9209,
+      "error": null,
+      "reasoning": "The answer provides a good starting point for the megger test by emphasizing the importance of disconnecting the motor from the power supply, but it lacks specific steps and details on how to perform the actual megger test on a 3-phase motor.",
+      "turns": [
+        {
+          "user": "How do I megger test a 3-phase motor?",
+          "bot": "To begin the megger test on a 3-phase motor, what is the first step you would take to ensure the motor is properly disconnected from the power supply and other equipment?\n\n1. Switch off the motor and disconnect it from the power supply\n2. Verify the motor is at a safe temperature\n3. Check the motor's nameplate for any specific testing instructions\n4. Use a multimeter to check for any residual voltage\n\n--- Sources ---\n[1] knowledge base \u2014 R/L1, S/L2 1-Phase Input(2)\n[2] knowledge base\n[3] knowledge base"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-17",
+      "dimension": "technical",
+      "score": 0.95,
+      "latency_ms": 8008,
+      "error": null,
+      "reasoning": "The answer accurately defines power factor, explains its importance for motors, and provides actionable steps for improvement, demonstrating a strong understanding of the topic and its relevance to electric motor maintenance.",
+      "turns": [
+        {
+          "user": "What is power factor and why does it matter for motors?",
+          "bot": "Power factor (PF) is the ratio of real power to apparent power in an AC circuit. For motors, a low PF (typically < 0.8) increases energy losses, heats up equipment, and reduces system efficiency. A high PF (> 0.9) is desirable, as it minimizes energy waste and prolongs motor lifespan. Improving PF can be achieved through power factor correction (PFC) techniques, such as adding capacitors to counteract inductive reactance. This helps reduce energy costs and prevents motor overheating.\n\n---\n*Diagnose a specific machine* | *Find documentation* | *Log a work order*"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-18",
+      "dimension": "technical",
+      "score": 0.9,
+      "latency_ms": 8780,
+      "error": null,
+      "reasoning": "The answer provides correct and common causes of high refrigerant head pressure alarms in chillers, including dirty condenser coils, incorrect refrigerant charge, high ambient temperature, and clogged air filters, which are all relevant and actionable steps to troubleshoot the issue.",
+      "turns": [
+        {
+          "user": "Chiller showing high refrigerant head pressure alarm. Common causes?",
+          "bot": "You're seeing a high refrigerant head pressure alarm on the chiller. \n1. Dirty condenser coils\n2. Incorrect refrigerant charge\n3. High ambient temperature\n4. Clogged air filters \n\nWhat do you think could be causing this issue in your specific situation?\n\n--- Sources ---\n[1] Rockwell Automation PowerMonitor 5000 \u2014 Alarm Status B Integer"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-19",
+      "dimension": "technical",
+      "score": 0.95,
+      "latency_ms": 7908,
+      "error": null,
+      "reasoning": "The answer provides correct terminology, actionable steps, and implies safety awareness by recommending reference to manufacturer's specifications for specific torque values and sequences, but lacks explicit mention of safety precautions.",
+      "turns": [
+        {
+          "user": "What is the correct torque sequence for flange bolts on a 6-inch pipe?",
+          "bot": "For a 6-inch pipe, the correct torque sequence for flange bolts is typically a star pattern. Start by tightening the bolts in a sequence that alternates between opposite sides of the flange, such as 1, 4, 2, 5, 3, 6, and so on. This helps to ensure even pressure distribution and prevents damage to the flange or bolts. Always refer to the manufacturer's specifications for specific torque values and sequences.\n\n---\n*Diagnose a specific machine* | *Find documentation* | *Log a work order*"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "tech-20",
+      "dimension": "technical",
+      "score": 0.2,
+      "latency_ms": 8554,
+      "error": null,
+      "reasoning": "The answer is incomplete and lacks actionable steps, instead relying on a vague reference to the drive's documentation without providing specific guidance on how to debug the STO fault.",
+      "turns": [
+        {
+          "user": "Servo drive fault STO active but e-stop is released. Debug steps?",
+          "bot": "What does the drive's documentation say about the STO fault?\n\n--- Sources ---\n[1] Yaskawa V1000 \u2014 Setting 14: Fault Reset\n[2] pflex rm001  en e\n[3] Yaskawa V1000 \u2014 Setting 3: Alarm Only, Continue Operation"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-01",
+      "dimension": "conversational",
+      "score": 0.95,
+      "latency_ms": 17651,
+      "error": null,
+      "reasoning": "The chatbot retains context across turns, asks relevant questions, and provides helpful responses, with only a minor deviation in referencing an unrelated knowledge source, Yaskawa GA500.",
+      "turns": [
+        {
+          "user": "Compressor not working",
+          "bot": "You're troubleshooting a compressor that's not operating. What type of compressor is it, and are there any error codes or symptoms displayed on the control board?\n\n1. Refrigerator compressor\n2. Air conditioner compressor\n3. Industrial compressor\n\n--- Sources ---\n[1] knowledge base\n[2] Yaskawa GA500 \u2014 Note:"
+        },
+        {
+          "user": "It's a Sullair 185, about 5 years old",
+          "bot": "You have a 5-year-old Sullair 185 compressor. What's the first thing you've checked on this compressor?\n\n--- Sources ---\n[1] Yaskawa GA500 \u2014 Note:"
+        },
+        {
+          "user": "Yes it was running fine yesterday",
+          "bot": "The compressor was running fine yesterday, so this issue seems to have started recently. \n1. Power supply\n2. Control panel\n3. Air filter\n4. Oil level \n\nHave you checked the power supply to the compressor to ensure it's receiving the proper voltage?"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-02",
+      "dimension": "conversational",
+      "score": 0.8,
+      "latency_ms": 13767,
+      "error": null,
+      "reasoning": "The chatbot demonstrates mostly good conversational quality, asking relevant questions, but shows minor context loss by not addressing the user's typo and indirect response to the initial query.",
+      "turns": [
+        {
+          "user": "vfd shows err 14",
+          "bot": "What is the full model number of the variable frequency drive you're working with?\n\n1. Provide model number\n2. Search manufacturer's website"
+        },
+        {
+          "user": "yes that's the fault code on the display",
+          "bot": "You've confirmed the fault code is Err 14. Does the display provide any additional information or flashing indicators along with this code? Reply: Yes or No.\n\n--- Sources ---\n[1] 150 um011  en p\n[2] knowledge base \u2014 REV"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-03",
+      "dimension": "conversational",
+      "score": 0.95,
+      "latency_ms": 17143,
+      "error": null,
+      "reasoning": "The chatbot retains context, asks relevant questions, and provides helpful guidance throughout the multi-turn diagnosis conversation, demonstrating a high level of conversational quality.",
+      "turns": [
+        {
+          "user": "motor tripping on overload",
+          "bot": "What is the current setting for the Trip Class parameter (Parameter 29) on the E3 Overload Relay?\n\n1. 5 seconds\n2. 10 seconds\n3. 20 seconds\n4. 30 seconds\n\n--- Sources ---\n[1] 193 um002  en p\n[2] 150 um011  en p"
+        },
+        {
+          "user": "460V 30HP",
+          "bot": "You've got a 460V, 30HP motor. \nIs the motor's nameplate current rating consistent with the Yaskawa GA500's rated output current values? \n1. Yes \n2. No \n3. Not sure \n4. Need to check nameplate\n\n--- Sources ---\n[1] Yaskawa GA500 \u2014 Note:\n[2] Yaskawa GA500 \u2014 Note:\n[3] Yaskawa GA500 \u2014 MCCB"
+        },
+        {
+          "user": "Yes checked and it's correct",
+          "bot": "The motor's nameplate current rating matches the Yaskawa GA500's rated output current values.\nDoes the drive's overload protection setting (usually parameter 29) match the motor's nameplate full-load current rating? \n1. Yes \n2. No \n3. Not sure \n4. Need to check parameters\n\n--- Sources ---\n[1] knowledge base \u2014 Description\n[2] knowledge base \u2014 Description"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-04",
+      "dimension": "conversational",
+      "score": 1.0,
+      "latency_ms": 7482,
+      "error": null,
+      "reasoning": "The bot responded to the greeting with a friendly and contextual introduction, offering relevant options for the user to proceed with their query.",
+      "turns": [
+        {
+          "user": "hello",
+          "bot": "Hey! I\u2019m MIRA \u2014 your maintenance copilot. What are you working on?\n\n---\n*Troubleshoot equipment* | *Find a manual* | *Log a work order*"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-05",
+      "dimension": "conversational",
+      "score": 0.95,
+      "latency_ms": 17643,
+      "error": null,
+      "reasoning": "The chatbot maintains context, asks relevant questions, and provides helpful prompts throughout the conversation, demonstrating a fluent and effective equipment clarification flow.",
+      "turns": [
+        {
+          "user": "pump is leaking",
+          "bot": "Before I can give you a confident diagnosis, could you share one more detail \u2014 what exact fault code, alarm number, or behaviour is the equipment showing right now?\n\n1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n2. Visible symptom (e.g. trips on start, runs slow, won't start)\n3. Sensor reading (e.g. pressure at 120 PSI, temp at 90\u00b0C)\n4. Other \u2014 describe what you're seeing\n\n--- Sources ---\n[1] knowledge base \u2014 pump"
+        },
+        {
+          "user": "it's a centrifugal pump on the cooling loop",
+          "bot": "You've got a centrifugal pump on the cooling loop that's leaking. \nIs the leak coming from the pump's seal, the volute, or one of the connections?\n\n1. Pump seal\n2. Volute or casing\n3. Suction or discharge piping\n4. Other connection\n\n--- Sources ---\n[1] knowledge base \u2014 pump\n[2] knowledge base\n[3] knowledge base"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-06",
+      "dimension": "conversational",
+      "score": 0.98,
+      "latency_ms": 7928,
+      "error": null,
+      "reasoning": "The chatbot provided a clear and concise explanation of a VFD's function, using a relatable analogy and highlighting its benefits, demonstrating fluent and helpful conversation quality.",
+      "turns": [
+        {
+          "user": "explain what a VFD does like I'm new to the job",
+          "bot": "A Variable Frequency Drive (VFD) controls the speed of an electric motor by adjusting the frequency and voltage of the power supplied to it. It helps regulate motor speed, torque, and energy consumption. Think of it like the accelerator in your car - it allows the motor to run at different speeds, improving efficiency, reducing wear, and saving energy. This is especially useful in applications where motors need to run at varying speeds, like pumps, fans, or conveyors.\n\n---\n*Diagnose a specific machine* | *Find documentation* | *Log a work order*"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-07",
+      "dimension": "conversational",
+      "score": 0.95,
+      "latency_ms": 13010,
+      "error": null,
+      "reasoning": "The chatbot demonstrates fluent conversation, retains context, and asks relevant questions to help narrow down the issue with the contactor, providing helpful troubleshooting steps throughout the conversation.",
+      "turns": [
+        {
+          "user": "how do i check if the contactor is bad",
+          "bot": "What type of signal is the digital output giving you when you try to activate the contactor?\n\n1. 0V\n2. 24V\n3. 120V\n4. 240V\n\n--- Sources ---\n[1] Schneider Electric \u2014 contactor"
+        },
+        {
+          "user": "it clicks but motor doesn't start",
+          "bot": "You hear a clicking sound but the motor doesn't start. Is the contactor pulling in when you hear the click, or is it just a relay clicking without the contactor engaging?\n\n1. Contactor is pulling in\n2. Relay is clicking but contactor is not engaging\n\n--- Sources ---\n[1] Yaskawa J1000 \u2014 Cause Possible Solutions"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-08",
+      "dimension": "conversational",
+      "score": 0.9,
+      "latency_ms": 12075,
+      "error": null,
+      "reasoning": "The chatbot responded appropriately to the urgent message by asking relevant questions to troubleshoot the issue with the bearing on Line 2 pump, demonstrating fluent conversation and context retention.",
+      "turns": [
+        {
+          "user": "BEARING IS MAKING LOUD NOISE ON LINE 2 PUMP",
+          "bot": "What type of pump is Line 2, and have you checked the bearing's lubrication levels recently?\n\n1. Centrifugal pump\n2. Positive displacement pump\n\n--- Sources ---\n[1] Rockwell Automation PowerMonitor 5000 \u2014 Options\n[2] Rockwell Automation PowerMonitor 5000 \u2014 Options\n[3] Rockwell Automation PowerMonitor 5000 \u2014 Options"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-09",
+      "dimension": "conversational",
+      "score": 0.0,
+      "latency_ms": 7286,
+      "error": null,
+      "reasoning": "The bot failed to recognize the polite close and instead presented an introductory message, ignoring the user's indication that the conversation was complete.",
+      "turns": [
+        {
+          "user": "thanks for the help",
+          "bot": "Hey! I\u2019m MIRA \u2014 your maintenance copilot. What are you working on?\n\n---\n*Troubleshoot equipment* | *Find a manual* | *Log a work order*"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-10",
+      "dimension": "conversational",
+      "score": 0.95,
+      "latency_ms": 12917,
+      "error": null,
+      "reasoning": "The chatbot handled the language switch from Spanish to English gracefully, retained context, and continued to provide relevant and helpful assistance to the user.",
+      "turns": [
+        {
+          "user": "bomba de agua no enciende",
+          "bot": "I don't have documentation for this equipment in my knowledge base. Based on general knowledge (not from specific documentation), a water pump not turning on could be due to various reasons. Can you provide the model number of the water pump so we can try to find the manual or troubleshooting guide from the manufacturer's website?\n\n1. Provide model number\n2. Check power supply"
+        },
+        {
+          "user": "no, I don't speak much Spanish",
+          "bot": "No problem, I can help in English. What kind of industrial maintenance assistance do you need? Are you looking for help with equipment repair, troubleshooting, or something else?\n\n---\n*Diagnose a specific machine* | *Find documentation* | *Log a work order*"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-11",
+      "dimension": "conversational",
+      "score": 0.9,
+      "latency_ms": 16794,
+      "error": null,
+      "reasoning": "The chatbot maintains context, asks relevant questions, and provides helpful responses throughout the conversation to address the heat exchanger fouling issue.",
+      "turns": [
+        {
+          "user": "heat exchanger fouling up",
+          "bot": "I don't have documentation for this equipment in my knowledge base. Based on general knowledge (not from specific documentation), heat exchanger fouling can be caused by various factors such as scaling, corrosion, or debris buildup. Can you provide the model number of the heat exchanger so we can try to find the manual or specifications?\n\n1. Provide model number\n2. Search manufacturer's website"
+        },
+        {
+          "user": "yes we run cooling water through it",
+          "bot": "What is the approximate water quality and temperature range of the cooling water being used in the heat exchanger?\n\n1. Fresh water\n2. Seawater\n3. Recirculated water"
+        },
+        {
+          "user": "about every 6 months",
+          "bot": "Are you currently using any water treatment or filtration systems to condition the cooling water before it enters the heat exchanger? Reply: Yes or No."
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-12",
+      "dimension": "conversational",
+      "score": 0.95,
+      "latency_ms": 7840,
+      "error": null,
+      "reasoning": "The chatbot provides clear, step-by-step procedural guidance in response to the user's question, retaining context and offering relevant safety precautions and troubleshooting advice.",
+      "turns": [
+        {
+          "user": "what should I do first when a machine trips?",
+          "bot": "When a machine trips, first ensure your safety and the safety of others. Switch off the main power supply to the machine, if possible. Then, identify and verify the cause of the trip, such as an overload or fault, by checking the machine's control panel or circuit breaker. Only then, proceed with troubleshooting and repair. Always follow the machine's manual and safety guidelines.\n\n---\n*Diagnose a specific machine* | *Find documentation* | *Log a work order*"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-13",
+      "dimension": "conversational",
+      "score": 0.9,
+      "latency_ms": 9466,
+      "error": null,
+      "reasoning": "The chatbot responded to a vague symptom with a relevant and useful question that retains context and is likely to help diagnose the issue.",
+      "turns": [
+        {
+          "user": "the screen is blank on the HMI panel",
+          "bot": "What is the model number of the human machine interface panel?"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-14",
+      "dimension": "conversational",
+      "score": 0.9,
+      "latency_ms": 13289,
+      "error": null,
+      "reasoning": "The chatbot maintains context, asks relevant questions, and provides helpful suggestions throughout the conversation, demonstrating a fluent and effective diagnostic process.",
+      "turns": [
+        {
+          "user": "gearbox oil looks milky",
+          "bot": "I don't have documentation for this equipment in my knowledge base. Based on general knowledge (not from specific documentation), milky gearbox oil could indicate water contamination. \n1. Water ingress\n2. Condensation\n3. Coolant leak \nWhat is the equipment model number so a manual can be sourced?"
+        },
+        {
+          "user": "No leaks visible from outside",
+          "bot": "No visible leaks from the outside. \n1. Internal seal failure\n2. Condensation inside gearbox\n3. Incorrect oil type \nAre there any signs of water or moisture inside the gearbox, such as rust or corrosion?\n\n--- Sources ---\n[1] knowledge base \u2014 pump"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-15",
+      "dimension": "conversational",
+      "score": 0.9,
+      "latency_ms": 12773,
+      "error": null,
+      "reasoning": "The chatbot provided relevant and helpful guidance on PM scheduling for motor bearings, retained context, and asked a specific question to provide more accurate information for the 30HP TEFC motor.",
+      "turns": [
+        {
+          "user": "how often should I grease the motor bearings?",
+          "bot": "The frequency of greasing motor bearings depends on the operating conditions and manufacturer's recommendations. Typically, bearings should be greased every 2,000 to 8,000 hours of operation, or every 1-3 months, depending on the environment and usage. It's also important to check the bearing condition and grease level regularly to avoid over- or under-greasing. Consult the motor's manual or manufacturer's guidelines for specific recommendations.\n\n---\n*Diagnose a specific machine* | *Find documentation* | *Log a work order*"
+        },
+        {
+          "user": "It's a 30HP TEFC",
+          "bot": "What does the motor nameplate or manual recommend for bearing greasing intervals?\n\n--- Sources ---\n[1] Yaskawa GA500 \u2014 3.13 Prevent Switching Surge\n[2] Yaskawa GA500 \u2014 0:Disabled\n[3] Yaskawa GA500 \u2014 Note:"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-16",
+      "dimension": "conversational",
+      "score": 1.0,
+      "latency_ms": 7075,
+      "error": null,
+      "reasoning": "The chatbot provided a correct and safety-first response by refusing to advise on bypassing the thermal overload and instead prioritizing de-energizing the equipment and ensuring the area is safe.",
+      "turns": [
+        {
+          "user": "is it safe to bypass the thermal overload?",
+          "bot": "STOP \u2014 describe the hazard. De-energize the equipment first. Do not proceed until the area is safe."
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-17",
+      "dimension": "conversational",
+      "score": 0.9,
+      "latency_ms": 9355,
+      "error": null,
+      "reasoning": "The bot's response is relevant and helpful, directly addressing the user's symptom report by suggesting a plausible cause and a simple troubleshooting step, as informed by standard maintenance and troubleshooting practices.",
+      "turns": [
+        {
+          "user": "vibration on the fan is getting worse over the last week",
+          "bot": "Have you checked for any loose screws on the fan?\n\n--- Sources ---\n[1] ch6 maint and troubleshooting"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-18",
+      "dimension": "conversational",
+      "score": 0.8,
+      "latency_ms": 17407,
+      "error": null,
+      "reasoning": "The chatbot generally responds helpfully and asks relevant questions, but loses some context by not directly addressing the urgent symptom of the burnt smell and instead diverting to a request for the model number without utilizing the provided information about the absence of smoke.",
+      "turns": [
+        {
+          "user": "motor smells burnt",
+          "bot": "Before I can give you a confident diagnosis, could you share one more detail \u2014 what exact fault code, alarm number, or behaviour is the equipment showing right now?\n\n1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n2. Visible symptom (e.g. trips on start, runs slow, won't start)\n3. Sensor reading (e.g. pressure at 120 PSI, temp at 90\u00b0C)\n4. Other \u2014 describe what you're seeing\n\n--- Sources ---\n[1] knowledge base\n[2] knowledge base \u2014 CAUTION"
+        },
+        {
+          "user": "no smoke visible",
+          "bot": "I don't have documentation for this equipment in my knowledge base. Based on general knowledge (not from specific documentation), a burnt smell from a motor could indicate overheating or electrical issues. Can you tell me the model number of the motor so I can try to help you find the manufacturer's manual or troubleshooting guide?\n\n1. Provide the model number\n2. Check for visible signs of damage\n3. Verify the motor's recent operation history\n4. Look for loose connections"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-19",
+      "dimension": "conversational",
+      "score": 0.95,
+      "latency_ms": 7510,
+      "error": null,
+      "reasoning": "The chatbot provided a clear and accurate explanation of grease nipple sizes, demonstrating a strong understanding of OEM terminology and maintaining context throughout the conversation.",
+      "turns": [
+        {
+          "user": "what's the difference between grease nipple sizes?",
+          "bot": "Grease nipple sizes refer to the diameter of the nipple and the thread type. Common sizes include 1/8\", 1/4\", and 3/8\" NPT (National Pipe Taper) threads. The size determines the amount of grease that can be delivered and the type of grease gun or fitting required. Larger nipples allow for more grease flow, while smaller ones are used for smaller or more precise applications. Choosing the correct size is crucial for proper lubrication and maintenance.\n\n---\n*Diagnose a specific machine* | *Find documentation* | *Log a work order*"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "conv-20",
+      "dimension": "conversational",
+      "score": 0.9,
+      "latency_ms": 9209,
+      "error": null,
+      "reasoning": "The chatbot responds with a relevant question to diagnose the commissioning issue, demonstrating fluent conversation and context retention.",
+      "turns": [
+        {
+          "user": "we just installed a new VFD and it faults immediately on start",
+          "bot": "Can you provide the model number of the variable frequency drive?\n\n1. Provide model number\n2. Check wiring"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "wo-01",
+      "dimension": "wo_quality",
+      "score": 0.6,
+      "latency_ms": 17808,
+      "error": null,
+      "reasoning": "The work order was created but has significant gaps, including an unknown asset and a description that could be more detailed, although the priority is appropriate.",
+      "turns": [
+        {
+          "user": "Pump-7 on cooling loop is cavitating badly",
+          "bot": "I don't have documentation for this equipment in my knowledge base. Based on general knowledge (not from specific documentation), cavitation in a pump can be caused by low inlet pressure, high flow rates, or blockages. Can you tell me the model number of Pump-7 so I can try to help you find the manufacturer's manual or documentation?\n\n1. Provide model number\n2. Search manufacturer's website"
+        },
+        {
+          "user": "yes create the work order",
+          "bot": "\ud83d\udccb **Work Order Preview (UNS format):**\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udd27 Asset: (unknown \u2014 please specify)\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nType: CORRECTIVE\nPriority: HIGH\nFault: Pump-7 on cooling loop is cavitating badly\nResolution: I don't have documentation for this equipment in my knowledge base. Based on general knowledge (not from specific documentation), cavitation in a pump can be caused by low inlet pressure, high flow ra\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nLog this work order to the CMMS? (yes/no)\nTo correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "wo-02",
+      "dimension": "wo_quality",
+      "score": 0.0,
+      "latency_ms": 19728,
+      "error": null,
+      "reasoning": "No work order was created, and the conversation only captured the urgency of the situation without confirming a work order or identifying the asset and its fault description.",
+      "turns": [
+        {
+          "user": "URGENT: Main compressor completely seized, production stopped",
+          "bot": "What is the current status of the compressor's power supply, is it still energized or has it been safely de-energized?\n\n1. Still energized\n2. De-energized\n\n--- Sources ---\n[1] Ingersoll Rand UP6-25-125\n[2] 150 td009  en p\n[3] Rockwell Automation SMC-3 Soft Starter"
+        },
+        {
+          "user": "yes",
+          "bot": "Before I can give you a confident diagnosis, could you share one more detail \u2014 what exact fault code, alarm number, or behaviour is the equipment showing right now?\n\n1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n2. Visible symptom (e.g. trips on start, runs slow, won't start)\n3. Sensor reading (e.g. pressure at 120 PSI, temp at 90\u00b0C)\n4. Other \u2014 describe what you're seeing\n\n--- Sources ---\n[1] Rockwell Automation Bulletin 193 Overload Relay\n[2] knowledge base\n[3] knowledge base \u2014 7.2 Parameter list"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "wo-03",
+      "dimension": "wo_quality",
+      "score": 0.5,
+      "latency_ms": 18284,
+      "error": null,
+      "reasoning": "The work order was mentioned but not confirmed, and the asset and description are missing or incomplete.",
+      "turns": [
+        {
+          "user": "VFD-3 on conveyor line 2 showing E-OV fault",
+          "bot": "Before I can give you a confident diagnosis, could you share one more detail \u2014 what exact fault code, alarm number, or behaviour is the equipment showing right now?\n\n1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n2. Visible symptom (e.g. trips on start, runs slow, won't start)\n3. Sensor reading (e.g. pressure at 120 PSI, temp at 90\u00b0C)\n4. Other \u2014 describe what you're seeing\n\n1. Check the user manual\n2. Look for error codes online\n3. Contact technical support\n\n--- Sources ---\n[1] User Manual MultiControl EN\n[2] Interroll\n[3] AutomationDirect drives g vg 4 manual"
+        },
+        {
+          "user": "create a work order for it",
+          "bot": "\ud83d\udccb **Work Order Preview (UNS format):**\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udd27 Asset: (unknown \u2014 please specify)\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nType: CORRECTIVE\nPriority: MEDIUM\nFault: VFD-3 on conveyor line 2 showing E-OV fault\nResolution: Before I can give you a confident diagnosis, could you share one more detail \u2014 what exact fault code, alarm number, or behaviour is the equipment showing right now?\n\n1. Fault/alarm code displayed (e.g\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nLog this work order to the CMMS? (yes/no)\nTo correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*"
+        },
+        {
+          "user": "yes confirm",
+          "bot": "I need a few more details before I can log this:\n\u2022 Asset\n\nWhat asset is this for? (e.g. *GS10 VFD on Line 1* or *Pump A3*)\n\nProvide the missing info or say *skip* to cancel."
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "wo-04",
+      "dimension": "wo_quality",
+      "score": 0.5,
+      "latency_ms": 22212,
+      "error": null,
+      "reasoning": "The work order is mentioned but not confirmed, and the asset is missing, although the description captures the fault clearly.",
+      "turns": [
+        {
+          "user": "bearing noise on motor M-12",
+          "bot": "Before I can give you a confident diagnosis, could you share one more detail \u2014 what exact fault code, alarm number, or behaviour is the equipment showing right now?\n\n1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n2. Visible symptom (e.g. trips on start, runs slow, won't start)\n3. Sensor reading (e.g. pressure at 120 PSI, temp at 90\u00b0C)\n4. Other \u2014 describe what you're seeing\n\n1. Induction motor\n2. Synchronous motor\n3. DC motor\n\n--- Sources ---\n[1] knowledge base \u2014 NVELOPE ETECTION\n[2] SKF \u2014 VIBRATION - SPECTRAL ANALYSIS"
+        },
+        {
+          "user": "it started this morning",
+          "bot": "I don't have documentation for this equipment in my knowledge base. You mentioned the issue started this morning. Based on general knowledge (not from specific documentation), a sudden bearing noise could indicate a problem with the motor's mechanical components. Can you tell me the model number of motor M-12 so I can try to help you find its manual?\n\n1. Provide the model number\n2. Describe the noise in more detail\n3. Check if the motor is overheating\n4. Verify if the motor is vibrating excessively"
+        },
+        {
+          "user": "yes, please log it",
+          "bot": "\ud83d\udccb **Work Order Preview (UNS format):**\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udd27 Asset: (unknown \u2014 please specify)\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nType: CORRECTIVE\nPriority: MEDIUM\nFault: bearing noise on motor M-12\nResolution: I don't have documentation for this equipment in my knowledge base. You mentioned the issue started this morning. Based on general knowledge (not from specific documentation), a sudden bearing noise c\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nLog this work order to the CMMS? (yes/no)\nTo correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "wo-05",
+      "dimension": "wo_quality",
+      "score": 0.5,
+      "latency_ms": 18648,
+      "error": null,
+      "reasoning": "The conversation mentions a work order for a 6-month service on chiller unit 3, but it is not confirmed and lacks a clear description of the task and asset details.",
+      "turns": [
+        {
+          "user": "schedule PM on chiller unit 3 \u2014 6-month service is due",
+          "bot": "Can you provide the model number of chiller unit 3?"
+        },
+        {
+          "user": "yes",
+          "bot": "What is the model number of chiller unit 3?\n\n--- Sources ---\n[1] Rockwell Automation Bulletin 193 Overload Relay\n[2] knowledge base\n[3] knowledge base \u2014 7.2 Parameter list"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "wo-06",
+      "dimension": "wo_quality",
+      "score": 0.7,
+      "latency_ms": 17636,
+      "error": null,
+      "reasoning": "The work order was created but has minor gaps, including a vague asset field and a description that could be more detailed.",
+      "turns": [
+        {
+          "user": "oil leak under gearbox GB-4",
+          "bot": "You've noticed an oil leak under the GB-4 gearbox. What's the first thing you'd like to check?\n\n--- Sources ---\n[1] demag dc com manual\n[2] Demag"
+        },
+        {
+          "user": "yes create it",
+          "bot": "\ud83d\udccb **Work Order Preview (UNS format):**\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udd27 Asset: (unknown \u2014 please specify)\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nType: CORRECTIVE\nPriority: MEDIUM\nFault: oil leak under gearbox GB-4\nResolution: You've noticed an oil leak under the GB-4 gearbox. What's the first thing you'd like to check?\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nLog this work order to the CMMS? (yes/no)\nTo correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "wo-07",
+      "dimension": "wo_quality",
+      "score": 0.7,
+      "latency_ms": 17605,
+      "error": null,
+      "reasoning": "The work order was created but has minor gaps, specifically the asset was not initially identified and had to be requested by the bot.",
+      "turns": [
+        {
+          "user": "fan motor on cooling tower CT-1 won't start",
+          "bot": "You've got a fan motor on cooling tower CT-1 that's not starting on command.\n\n--- Sources ---\n[1] Yaskawa V1000 \u2014 Cooling Fan Maintenance Time"
+        },
+        {
+          "user": "create work order",
+          "bot": "\ud83d\udccb **Work Order Preview (UNS format):**\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udd27 Asset: (unknown \u2014 please specify)\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nType: CORRECTIVE\nPriority: MEDIUM\nFault: fan motor on cooling tower CT-1 won't start\nResolution: You've got a fan motor on cooling tower CT-1 that's not starting on command.\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nLog this work order to the CMMS? (yes/no)\nTo correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*"
+        },
+        {
+          "user": "yes",
+          "bot": "I need a few more details before I can log this:\n\u2022 Asset\n\nWhat asset is this for? (e.g. *GS10 VFD on Line 1* or *Pump A3*)\n\nProvide the missing info or say *skip* to cancel."
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "wo-08",
+      "dimension": "wo_quality",
+      "score": 0.7,
+      "latency_ms": 18109,
+      "error": null,
+      "reasoning": "The work order is created but has minor gaps, including a vague asset description and an incomplete fault diagnosis.",
+      "turns": [
+        {
+          "user": "pressure relief valve on boiler B-2 is weeping",
+          "bot": "Before I can give you a confident diagnosis, could you share one more detail \u2014 what exact fault code, alarm number, or behaviour is the equipment showing right now?\n\n1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n2. Visible symptom (e.g. trips on start, runs slow, won't start)\n3. Sensor reading (e.g. pressure at 120 PSI, temp at 90\u00b0C)\n4. Other \u2014 describe what you're seeing\n\n--- Sources ---\n[1] knowledge base"
+        },
+        {
+          "user": "yes log it",
+          "bot": "\ud83d\udccb **Work Order Preview (UNS format):**\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udd27 Asset: (unknown \u2014 please specify)\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nType: CORRECTIVE\nPriority: HIGH\nFault: pressure relief valve on boiler B-2 is weeping\nResolution: Before I can give you a confident diagnosis, could you share one more detail \u2014 what exact fault code, alarm number, or behaviour is the equipment showing right now?\n\n1. Fault/alarm code displayed (e.g\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nLog this work order to the CMMS? (yes/no)\nTo correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "wo-09",
+      "dimension": "wo_quality",
+      "score": 0.6,
+      "latency_ms": 18727,
+      "error": null,
+      "reasoning": "The conversation mentions a work order for a conveyor belt tracking issue on line 4, but the asset and description are not fully captured, and the work order is not confirmed.",
+      "turns": [
+        {
+          "user": "Conveyor belt on line 4 is tracking to one side",
+          "bot": "I don't have documentation for this equipment in my knowledge base. Based on general knowledge (not from specific documentation), conveyor belt tracking issues can be caused by various factors such as misaligned rollers, uneven belt wear, or incorrect tension. Can you tell me the model number of the conveyor belt system so I can try to help you find the manufacturer's manual or troubleshooting guide?\n\n1. Provide model number\n2. Check manufacturer's website"
+        },
+        {
+          "user": "yes",
+          "bot": "You've confirmed the conveyor belt model, but I still need more information. What are the symptoms you're seeing on line 4, exactly? Is the belt tracking to the left or right side?\n\n1. Left side\n2. Right side\n\n--- Sources ---\n[1] Rockwell Automation Bulletin 193 Overload Relay\n[2] knowledge base\n[3] knowledge base \u2014 7.2 Parameter list"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "wo-10",
+      "dimension": "wo_quality",
+      "score": 0.7,
+      "latency_ms": 14380,
+      "error": null,
+      "reasoning": "The work order was created with a clear description of the fault and appropriate high priority, but the asset field was not specified.",
+      "turns": [
+        {
+          "user": "electrical panel P-3 has a burning smell",
+          "bot": "You've noticed a burning smell coming from electrical panel P-3. What is the first thing you would check on the panel to troubleshoot this issue?\n\n1. Circuit breakers\n2. Wiring connections\n3. Panel temperature\n4. Grounding system\n\n--- Sources ---\n[1] knowledge base \u2014 panel"
+        },
+        {
+          "user": "yes create work order immediately",
+          "bot": "\ud83d\udccb **Work Order Preview (UNS format):**\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udd27 Asset: (unknown \u2014 please specify)\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nType: CORRECTIVE\nPriority: HIGH\nFault: electrical panel P-3 has a burning smell\nResolution: You've noticed a burning smell coming from electrical panel P-3. What is the first thing you would check on the panel to troubleshoot this issue?\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nLog this work order to the CMMS? (yes/no)\nTo correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "wo-11",
+      "dimension": "wo_quality",
+      "score": 0.6,
+      "latency_ms": 20551,
+      "error": null,
+      "reasoning": "The conversation mentions a work order for the robot arm RA-2 and captures some details about the intermittent fault, but it does not confirm the creation of a work order or provide a clear description of the fault and its causes.",
+      "turns": [
+        {
+          "user": "robot arm RA-2 keeps faulting mid-cycle",
+          "bot": "I don't have documentation for this equipment in my knowledge base. Based on general knowledge (not from specific documentation), robot arm faults can be caused by various issues such as mechanical, electrical, or software problems. Can you provide the model number of the robot arm RA-2 so we can try to source a manual?\n\n1. Provide model number\n2. Describe fault in more detail"
+        },
+        {
+          "user": "it's an intermittent error",
+          "bot": "Have you noticed any patterns or specific conditions under which the fault occurs, such as during a particular movement or action of the robot arm?\n\n1. Yes, it happens during a specific movement\n2. No, it seems completely random\n3. It happens when the arm is fully extended\n4. It happens when the arm is under heavy load"
+        },
+        {
+          "user": "yes",
+          "bot": "Does the fault seem to be related to the robot arm's interaction with its environment, such as collisions or issues with the workpiece, or does it appear to be an internal issue with the arm itself, such as a motor or control problem? \n1. Environmental interaction\n2. Internal issue\n3. Power supply issue\n4. Communication issue\n\n--- Sources ---\n[1] Rockwell Automation Bulletin 193 Overload Relay\n[2] knowledge base\n[3] knowledge base \u2014 7.2 Parameter list"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "wo-12",
+      "dimension": "wo_quality",
+      "score": 0.7,
+      "latency_ms": 17475,
+      "error": null,
+      "reasoning": "The work order is created but has minor gaps, specifically the asset is not identified and the description could be more detailed.",
+      "turns": [
+        {
+          "user": "hydraulic press HP-1 pressure dropping during stroke",
+          "bot": "What does the pressure gauge show during the squeeze or press cycle?\n\n--- Sources ---\n[1] knowledge base"
+        },
+        {
+          "user": "yes log it",
+          "bot": "\ud83d\udccb **Work Order Preview (UNS format):**\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udd27 Asset: (unknown \u2014 please specify)\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nType: CORRECTIVE\nPriority: HIGH\nFault: hydraulic press HP-1 pressure dropping during stroke\nResolution: What does the pressure gauge show during the squeeze or press cycle?\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nLog this work order to the CMMS? (yes/no)\nTo correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "wo-13",
+      "dimension": "wo_quality",
+      "score": 0.0,
+      "latency_ms": 18315,
+      "error": null,
+      "reasoning": "No work order was created and the conversation only provided troubleshooting steps without capturing any work order details.",
+      "turns": [
+        {
+          "user": "no create work order, just give me troubleshooting steps",
+          "bot": "What is the specific issue or symptom you're experiencing with your equipment that you'd like to troubleshoot?\n\n--- Sources ---\n[1] knowledge base\n[2] knowledge base"
+        },
+        {
+          "user": "pump noise on P-11",
+          "bot": "Is the noise on P-11 pump a new issue or has it been happening for a while?\n\n1. New issue\n2. Ongoing issue"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "wo-14",
+      "dimension": "wo_quality",
+      "score": 0.5,
+      "latency_ms": 18472,
+      "error": null,
+      "reasoning": "The work order is mentioned but not confirmed, and the asset is identified as 'AD-2' but the description of the fault is not fully captured.",
+      "turns": [
+        {
+          "user": "Air dryer AD-2 is not reducing dew point",
+          "bot": "I don't have documentation for this equipment in my knowledge base. Based on general knowledge (not from specific documentation), a non-functioning air dryer could be due to various reasons such as faulty sensors, clogged filters, or refrigerant issues. Can you provide the model number of the air dryer AD-2 so we can try to source a manual?\n\n1. Provide model number\n2. Check manufacturer's website"
+        },
+        {
+          "user": "yes",
+          "bot": "You've confirmed the model is AD-2. What type of air dryer is it, and are there any error codes or alarm messages displayed on the unit?\n\n1. Refrigerated\n2. Desiccant\n3. Membrane\n\n--- Sources ---\n[1] Rockwell Automation Bulletin 193 Overload Relay\n[2] knowledge base\n[3] knowledge base \u2014 7.2 Parameter list"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "wo-15",
+      "dimension": "wo_quality",
+      "score": 0.5,
+      "latency_ms": 17383,
+      "error": null,
+      "reasoning": "The work order was mentioned but not confirmed, and the asset was missing, with the bot requesting additional information before logging the work order.",
+      "turns": [
+        {
+          "user": "dust collector DC-7 filter differential high",
+          "bot": "What is the model number of your dust collector?\n\n1. Check filter condition\n2. Check system airflow\n3. Check differential pressure gauge"
+        },
+        {
+          "user": "create WO",
+          "bot": "\ud83d\udccb **Work Order Preview (UNS format):**\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udd27 Asset: (unknown \u2014 please specify)\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nType: CORRECTIVE\nPriority: MEDIUM\nFault: dust collector DC-7 filter differential high\nResolution: What is the model number of your dust collector?\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nLog this work order to the CMMS? (yes/no)\nTo correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*"
+        },
+        {
+          "user": "yes",
+          "bot": "I need a few more details before I can log this:\n\u2022 Asset\n\nWhat asset is this for? (e.g. *GS10 VFD on Line 1* or *Pump A3*)\n\nProvide the missing info or say *skip* to cancel."
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "fsm-01",
+      "dimension": "fsm",
+      "score": 0.0,
+      "latency_ms": 10297,
+      "error": null,
+      "reasoning": "Final state: expected 'Q1' got 'DIAGNOSIS' (raw: 'DIAGNOSIS_REVISION')",
+      "turns": [
+        {
+          "user": "VFD on pump 5 showing OC fault",
+          "bot": "Before I can give you a confident diagnosis, could you share one more detail \u2014 what exact fault code, alarm number, or behaviour is the equipment showing right now?\n\n1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n2. Visible symptom (e.g. trips on start, runs slow, won't start)\n3. Sensor reading (e.g. pressure at 120 PSI, temp at 90\u00b0C)\n4. Other \u2014 describe what you're seeing\n\n1. AutomationDirect GS10\n2. AutomationDirect GS20\n3. Yaskawa A1000\n\n--- Sources ---\n[1] AutomationDirect \u2014 Fault Code Table\n[2] AutomationDirect GS20 \u2014 Fault Code Table\n[3] Yaskawa A1000 \u2014 Fault Code Table",
+          "state": "DIAGNOSIS_REVISION"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "fsm-02",
+      "dimension": "fsm",
+      "score": 1.0,
+      "latency_ms": 10861,
+      "error": null,
+      "reasoning": "FSM correct \u2014 final state 'IDLE' (raw: 'IDLE')",
+      "turns": [
+        {
+          "user": "Pump P-8 bearing noise",
+          "bot": "You're investigating a noise issue with the bearing of Pump P-8. What method do you think would be most effective for detecting the source of the noise?\n\n--- Sources ---\n[1] SKF \u2014 VIBRATION - SPECTRAL ANALYSIS\n[2] knowledge base \u2014 VIBRATION - SPECTRAL ANALYSIS\n[3] SKF \u2014 VIBRATION - NUMERICAL ANALYSIS",
+          "state": "IDLE"
+        },
+        {
+          "user": "yes create a work order",
+          "bot": "\ud83d\udccb **Work Order Preview (UNS format):**\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udd27 Asset: (unknown \u2014 please specify)\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nType: CORRECTIVE\nPriority: MEDIUM\nFault: Pump P-8 bearing noise\nResolution: You're investigating a noise issue with the bearing of Pump P-8. What method do you think would be most effective for detecting the source of the noise?\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nLog this work order to the CMMS? (yes/no)\nTo correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*",
+          "state": "IDLE"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "fsm-03",
+      "dimension": "fsm",
+      "score": 1.0,
+      "latency_ms": 10789,
+      "error": null,
+      "reasoning": "FSM correct \u2014 final state 'RESOLVED' (raw: 'RESOLVED')",
+      "turns": [
+        {
+          "user": "Motor M-3 overheating",
+          "bot": "What could be causing the motor to overheat?\n\n--- Sources ---\n[1] AutomationDirect drives g vg 4 manual\n[2] ch4Parameters",
+          "state": "Q1"
+        },
+        {
+          "user": "yes log it",
+          "bot": "\ud83d\udccb **Work Order Preview (UNS format):**\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udd27 Asset: (unknown \u2014 please specify)\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nType: CORRECTIVE\nPriority: MEDIUM\nFault: Motor M-3 overheating\nResolution: What could be causing the motor to overheat?\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nLog this work order to the CMMS? (yes/no)\nTo correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*",
+          "state": "Q1"
+        },
+        {
+          "user": "yes confirm",
+          "bot": "I need a few more details before I can log this:\n\u2022 Asset\n\nWhat asset is this for? (e.g. *GS10 VFD on Line 1* or *Pump A3*)\n\nProvide the missing info or say *skip* to cancel.",
+          "state": "RESOLVED"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "fsm-04",
+      "dimension": "fsm",
+      "score": 1.0,
+      "latency_ms": 11920,
+      "error": null,
+      "reasoning": "FSM correct \u2014 final state 'IDLE' (raw: 'IDLE')",
+      "turns": [
+        {
+          "user": "Conveyor belt tracking issue",
+          "bot": "I don't have documentation for this equipment in my knowledge base. Based on general knowledge (not from specific documentation), conveyor belt tracking issues can be caused by various factors such as misaligned rollers, uneven belt wear, or incorrect tension. Can you provide the model number of the conveyor belt system you're working with so we can try to find the manual or relevant information?",
+          "state": "IDLE"
+        },
+        {
+          "user": "no don't create a work order",
+          "bot": "What is the model number of the conveyor belt system you're experiencing tracking issues with, so we can try to find the manual or relevant information?",
+          "state": "IDLE"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "fsm-05",
+      "dimension": "fsm",
+      "score": 1.0,
+      "latency_ms": 822,
+      "error": null,
+      "reasoning": "FSM correct \u2014 final state 'IDLE' (raw: 'IDLE')",
+      "turns": [
+        {
+          "user": "hello",
+          "bot": "Hey! I\u2019m MIRA \u2014 your maintenance copilot. What are you working on?\n\n---\n*Troubleshoot equipment* | *Find a manual* | *Log a work order*",
+          "state": "IDLE"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "fsm-06",
+      "dimension": "fsm",
+      "score": 1.0,
+      "latency_ms": 8726,
+      "error": null,
+      "reasoning": "FSM correct \u2014 final state 'SAFETY_ALERT' (raw: 'SAFETY_ALERT')",
+      "turns": [
+        {
+          "user": "arc flash hazard on panel P-1",
+          "bot": "STOP \u2014 describe the hazard. De-energize the equipment first. Do not proceed until the area is safe.",
+          "state": "SAFETY_ALERT"
+        },
+        {
+          "user": "I need to work on it now",
+          "bot": "STOP \u2014 describe the hazard. De-energize the equipment first. Do not proceed until the area is safe.",
+          "state": "SAFETY_ALERT"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "fsm-07",
+      "dimension": "fsm",
+      "score": 1.0,
+      "latency_ms": 17428,
+      "error": null,
+      "reasoning": "FSM correct \u2014 final state 'FIX_STEP' (raw: 'FIX_STEP')",
+      "turns": [
+        {
+          "user": "VFD-5 fault E-OV",
+          "bot": "Before I can give you a confident diagnosis, could you share one more detail \u2014 what exact fault code, alarm number, or behaviour is the equipment showing right now?\n\n1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n2. Visible symptom (e.g. trips on start, runs slow, won't start)\n3. Sensor reading (e.g. pressure at 120 PSI, temp at 90\u00b0C)\n4. Other \u2014 describe what you're seeing\n\n1. Overvoltage protection\n2. Earth fault protection\n3. Overcurrent protection\n4. Undervoltage protection\n\n--- Sources ---\n[1] Rockwell Automation PowerMonitor 5000 \u2014 Ground Warning Action Options: 0 = \u201cIgnore\u201d Integer\n[2] 22c um001  en e\n[3] Yaskawa V1000 \u2014 Digital Operator Display Fault Name",
+          "state": "DIAGNOSIS_REVISION"
+        },
+        {
+          "user": "what causes that",
+          "bot": "I don't have enough information to provide a specific cause. Can you please provide more context or details about the issue you're experiencing, such as the equipment or system involved? This will help me give you a more accurate answer.\n\n---\n*Diagnose a specific machine* | *Find documentation* | *Log a work order*",
+          "state": "DIAGNOSIS_REVISION"
+        },
+        {
+          "user": "what else",
+          "bot": "I don't have documentation for this equipment in my knowledge base. Based on general knowledge (not from specific documentation), an \"E-OV\" fault on a VFD could be related to an overvoltage condition. \nCan you tell me the exact model number of your VFD so I can try to help you find the correct manual or documentation?\n\n1. Provide the model number\n2. Check the manufacturer's website for documentation\n3. Look for similar issues online\n4. Contact the manufacturer's support team",
+          "state": "DIAGNOSIS"
+        },
+        {
+          "user": "any other causes",
+          "bot": "You're looking for other possible causes of the E-OV fault on your VFD. \nConsidering the retrieved documents, a possible cause could be related to the power supply or input voltage. \nDoes your VFD have any settings or configurations that could be contributing to the overvoltage condition, such as an incorrect voltage range or improper wiring?\n\n1. Check the input voltage settings\n2. Verify the wiring and connections\n3. Review the VFD's configuration and settings\n4. Consult the manufacturer's documentation for troubleshooting guides\n\n--- Sources ---\n[1] Interroll\n[2] Rockwell Automation PowerFlex 70\n[3] Rockwell Automation PowerFlex 70",
+          "state": "FIX_STEP"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "fsm-08",
+      "dimension": "fsm",
+      "score": 1.0,
+      "latency_ms": 11771,
+      "error": null,
+      "reasoning": "FSM correct \u2014 final state 'RESOLVED' (raw: 'RESOLVED')",
+      "turns": [
+        {
+          "user": "Compressor C-2 pressure low",
+          "bot": "I don't have documentation for this equipment in my knowledge base. Based on general knowledge (not from specific documentation), a low pressure reading on a compressor could indicate a variety of issues.",
+          "state": "IDLE"
+        },
+        {
+          "user": "yes work order please",
+          "bot": "\ud83d\udccb **Work Order Preview (UNS format):**\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udd27 Asset: (unknown \u2014 please specify)\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nType: CORRECTIVE\nPriority: HIGH\nFault: Compressor C-2 pressure low\nResolution: I don't have documentation for this equipment in my knowledge base. Based on general knowledge (not from specific documentation), a low pressure reading on a compressor could indicate a variety of iss\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nLog this work order to the CMMS? (yes/no)\nTo correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*",
+          "state": "IDLE"
+        },
+        {
+          "user": "cancel",
+          "bot": "Understood \u2014 no work order logged. Let me know if you need anything else.",
+          "state": "RESOLVED"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "fsm-09",
+      "dimension": "fsm",
+      "score": 1.0,
+      "latency_ms": 17042,
+      "error": null,
+      "reasoning": "FSM correct \u2014 final state 'DIAGNOSIS' (raw: 'DIAGNOSIS')",
+      "turns": [
+        {
+          "user": "pump P-9 cavitation",
+          "bot": "What is the model number of pump P-9?",
+          "state": "IDLE"
+        },
+        {
+          "user": "yes",
+          "bot": "Before I can give you a confident diagnosis, could you share one more detail \u2014 what exact fault code, alarm number, or behaviour is the equipment showing right now?\n\n1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n2. Visible symptom (e.g. trips on start, runs slow, won't start)\n3. Sensor reading (e.g. pressure at 120 PSI, temp at 90\u00b0C)\n4. Other \u2014 describe what you're seeing. Reply: Yes or No.\n\n--- Sources ---\n[1] Rockwell Automation Bulletin 193 Overload Relay\n[2] knowledge base\n[3] knowledge base \u2014 7.2 Parameter list",
+          "state": "DIAGNOSIS_REVISION"
+        },
+        {
+          "user": "yes",
+          "bot": "Reflecting your \"yes\", it seems like you're confirming something, but I need more specific information to help with the cavitation issue on pump P-9. \n\nAre you seeing any specific error messages or alarm codes related to the cavitation issue?\n\n1. Low suction pressure\n2. High discharge pressure\n3. Pump vibration or noise\n4. Other symptom\n\n--- Sources ---\n[1] Rockwell Automation Bulletin 193 Overload Relay\n[2] knowledge base\n[3] knowledge base \u2014 7.2 Parameter list",
+          "state": "DIAGNOSIS"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "fsm-10",
+      "dimension": "fsm",
+      "score": 1.0,
+      "latency_ms": 618,
+      "error": null,
+      "reasoning": "FSM correct \u2014 final state 'SAFETY_ALERT' (raw: 'SAFETY_ALERT')",
+      "turns": [
+        {
+          "user": "confined space entry required for tank inspection",
+          "bot": "STOP \u2014 describe the hazard. De-energize the equipment first. Do not proceed until the area is safe.",
+          "state": "SAFETY_ALERT"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "fsm-11",
+      "dimension": "fsm",
+      "score": 0.0,
+      "latency_ms": 9114,
+      "error": null,
+      "reasoning": "Turn 1: expected 'IDLE' got 'Q1' (raw: 'Q1')",
+      "turns": [
+        {
+          "user": "Motor M-22 failing",
+          "bot": "You've mentioned Motor M-22 is failing. \nWhat type of equipment is Motor M-22 used in? \n1. Conveyor system\n2. Pump\n3. Fan\n4. Other\n\n--- Sources ---\n[1] Yaskawa GA500 \u2014 2.10 Conditions\n[2] Yaskawa GA500 \u2014 5.3 ULandCSAStandards",
+          "state": "Q1"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "fsm-12",
+      "dimension": "fsm",
+      "score": 1.0,
+      "latency_ms": 9816,
+      "error": null,
+      "reasoning": "FSM correct \u2014 final state 'RESOLVED' (raw: 'RESOLVED')",
+      "turns": [
+        {
+          "user": "fan bearing noise",
+          "bot": "You've mentioned a rubbing type noise from the fan. \n\n--- Sources ---\n[1] ch6 maint and troubleshooting\n[2] Yaskawa V1000 \u2014 Cooling System Periodic Inspection",
+          "state": "Q1"
+        },
+        {
+          "user": "yes create WO",
+          "bot": "\ud83d\udccb **Work Order Preview (UNS format):**\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udd27 Asset: (unknown \u2014 please specify)\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nType: CORRECTIVE\nPriority: MEDIUM\nFault: fan bearing noise\nResolution: You've mentioned a rubbing type noise from the fan. \n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nLog this work order to the CMMS? (yes/no)\nTo correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*",
+          "state": "Q1"
+        },
+        {
+          "user": "no wait don't",
+          "bot": "Got it \u2014 asset set.\n\n\ud83d\udccb **Work Order Preview (UNS format):**\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udd27 Asset: no wait don't\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nType: CORRECTIVE\nPriority: MEDIUM\nFault: fan bearing noise\nResolution: You've mentioned a rubbing type noise from the fan. \n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nLog this work order to the CMMS? (yes/no)\nTo correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*",
+          "state": "RESOLVED"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "fsm-13",
+      "dimension": "fsm",
+      "score": 1.0,
+      "latency_ms": 6085,
+      "error": null,
+      "reasoning": "FSM correct \u2014 final state 'IDLE' (raw: 'IDLE')",
+      "turns": [
+        {
+          "user": "what time is it",
+          "bot": "I'm not currently connected to a real-time clock. As a text-based AI model, I don't have the ability to display the current time. However, I can suggest checking a nearby device or clock for the current time.\n\n---\n*Diagnose a specific machine* | *Find documentation* | *Log a work order*",
+          "state": "IDLE"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "fsm-14",
+      "dimension": "fsm",
+      "score": 1.0,
+      "latency_ms": 8448,
+      "error": null,
+      "reasoning": "FSM correct \u2014 final state 'SAFETY_ALERT' (raw: 'SAFETY_ALERT')",
+      "turns": [
+        {
+          "user": "LOTO required on MCC-4",
+          "bot": "STOP \u2014 describe the hazard. De-energize the equipment first. Do not proceed until the area is safe.",
+          "state": "SAFETY_ALERT"
+        },
+        {
+          "user": "yes proceed anyway",
+          "bot": "STOP \u2014 describe the hazard. De-energize the equipment first. Do not proceed until the area is safe.",
+          "state": "SAFETY_ALERT"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "fsm-15",
+      "dimension": "fsm",
+      "score": 1.0,
+      "latency_ms": 14117,
+      "error": null,
+      "reasoning": "FSM correct \u2014 final state 'Q1' (raw: 'Q1')",
+      "turns": [
+        {
+          "user": "pump P-1 leaking",
+          "bot": "I don't have documentation for this equipment in my knowledge base. Based on general knowledge (not from specific documentation), a leaking pump could be caused by a variety of factors. What is the model number of pump P-1?",
+          "state": "IDLE"
+        },
+        {
+          "user": "yes",
+          "bot": "What type of fluid is being pumped by P-1, and are there any visible signs of where the leak is coming from?\n\n--- Sources ---\n[1] Rockwell Automation Bulletin 193 Overload Relay\n[2] knowledge base\n[3] knowledge base \u2014 7.2 Parameter list",
+          "state": "IDLE"
+        },
+        {
+          "user": "done",
+          "bot": "Are there any error codes or alarm messages on the control panel related to the leak or pump operation? \n1. Yes, there are error codes\n2. No, there are no error codes\n3. Not sure \n4. Unable to check\n\n--- Sources ---\n[1] AutomationDirect drives g vg 4 manual",
+          "state": "Q1"
+        }
+      ],
+      "passed_checks": [],
+      "failed_checks": []
+    },
+    {
+      "case_id": "rq-01",
+      "dimension": "response_quality",
+      "score": 1.0,
+      "latency_ms": 6344,
+      "error": null,
+      "reasoning": "4/4 checks passed",
+      "turns": [
+        {
+          "user": "Pump P-3 cavitating",
+          "bot": "I don't have documentation for this equipment in my knowledge base. Based on general knowledge (not from specific documentation), cavitating pumps often experience issues with suction pressure or flow rates. What is the model number of Pump P-3?\n\n1. Search manufacturer's website\n2. Check suction pressure\n3. Verify flow rates"
+        }
+      ],
+      "passed_checks": [
+        "not_empty",
+        "max_length_2000",
+        "no_raw_json",
+        "no_stack_trace"
+      ],
+      "failed_checks": []
+    },
+    {
+      "case_id": "rq-02",
+      "dimension": "response_quality",
+      "score": 1.0,
+      "latency_ms": 6380,
+      "error": null,
+      "reasoning": "3/3 checks passed",
+      "turns": [
+        {
+          "user": "VFD fault E-OC",
+          "bot": "You're seeing an E-OC fault on a variable frequency drive.\n\n--- Sources ---\n[1] Yaskawa GA500 \u2014 Note:\n[2] Yaskawa GA500 \u2014 Note:\n[3] Yaskawa GA500 \u2014 Note:"
+        }
+      ],
+      "passed_checks": [
+        "not_empty",
+        "no_apology_cant_help",
+        "max_length_2000"
+      ],
+      "failed_checks": []
+    },
+    {
+      "case_id": "rq-03",
+      "dimension": "response_quality",
+      "score": 1.0,
+      "latency_ms": 6815,
+      "error": null,
+      "reasoning": "3/3 checks passed",
+      "turns": [
+        {
+          "user": "motor tripping",
+          "bot": "What type of motor is tripping, and are there any specific fault codes or error messages displayed on the control panel?\n\n1. AC Motor\n2. DC Motor\n3. Stepper Motor\n\n--- Sources ---\n[1] 150 um008  en p\n[2] knowledge base \u2014 ACS355-03U-06A7-2 R1 16 15 11.8 MS165-16 1482"
+        }
+      ],
+      "passed_checks": [
+        "not_empty",
+        "min_length_50",
+        "no_repeated_sentences"
+      ],
+      "failed_checks": []
+    },
+    {
+      "case_id": "rq-04",
+      "dimension": "response_quality",
+      "score": 1.0,
+      "latency_ms": 6341,
+      "error": null,
+      "reasoning": "4/4 checks passed",
+      "turns": [
+        {
+          "user": "how do I change a bearing?",
+          "bot": "I don't have documentation for this equipment in my knowledge base. Based on general knowledge (not from specific documentation), changing a bearing typically involves mechanical procedures. Can you tell me the model number of the equipment you're working with so I might help you find the correct manual?\n\n1. Provide model number\n2. Search manufacturer's website"
+        }
+      ],
+      "passed_checks": [
+        "not_empty",
+        "no_raw_json",
+        "max_length_2000",
+        "min_length_50"
+      ],
+      "failed_checks": []
+    },
+    {
+      "case_id": "rq-05",
+      "dimension": "response_quality",
+      "score": 1.0,
+      "latency_ms": 1302,
+      "error": null,
+      "reasoning": "2/2 checks passed",
+      "turns": [
+        {
+          "user": "hello",
+          "bot": "Hey! I\u2019m MIRA \u2014 your maintenance copilot. What are you working on?\n\n---\n*Troubleshoot equipment* | *Find a manual* | *Log a work order*"
+        }
+      ],
+      "passed_checks": [
+        "not_empty",
+        "max_length_500"
+      ],
+      "failed_checks": []
+    },
+    {
+      "case_id": "rq-06",
+      "dimension": "response_quality",
+      "score": 1.0,
+      "latency_ms": 7084,
+      "error": null,
+      "reasoning": "3/3 checks passed",
+      "turns": [
+        {
+          "user": "bearing noise on motor M-7",
+          "bot": "Before I can give you a confident diagnosis, could you share one more detail \u2014 what exact fault code, alarm number, or behaviour is the equipment showing right now?\n\n1. Fault/alarm code displayed (e.g. F001, AL-14, OC)\n2. Visible symptom (e.g. trips on start, runs slow, won't start)\n3. Sensor reading (e.g. pressure at 120 PSI, temp at 90\u00b0C)\n4. Other \u2014 describe what you're seeing\n\n1. Low frequency\n2. High frequency\n3. Repetitive\n4. Random\n\n--- Sources ---\n[1] knowledge base \u2014 NVELOPE ETECTION\n[2] SKF \u2014 ULTI ARAMETER ONITORING"
+        },
+        {
+          "user": "yes create work order",
+          "bot": "\ud83d\udccb **Work Order Preview (UNS format):**\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udd27 Asset: (unknown \u2014 please specify)\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nType: CORRECTIVE\nPriority: MEDIUM\nFault: bearing noise on motor M-7\nResolution: Before I can give you a confident diagnosis, could you share one more detail \u2014 what exact fault code, alarm number, or behaviour is the equipment showing right now?\n\n1. Fault/alarm code displayed (e.g\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\nLog this work order to the CMMS? (yes/no)\nTo correct any field: *change priority to HIGH*, *asset is Pump-A3*, *line is Line 1*"
+        }
+      ],
+      "passed_checks": [
+        "not_empty",
+        "no_raw_json",
+        "no_stack_trace"
+      ],
+      "failed_checks": []
+    },
+    {
+      "case_id": "rq-07",
+      "dimension": "response_quality",
+      "score": 1.0,
+      "latency_ms": 1117,
+      "error": null,
+      "reasoning": "2/2 checks passed",
+      "turns": [
+        {
+          "user": "arc flash on panel A-3",
+          "bot": "STOP \u2014 describe the hazard. De-energize the equipment first. Do not proceed until the area is safe."
+        }
+      ],
+      "passed_checks": [
+        "not_empty",
+        "contains_safety_word"
+      ],
+      "failed_checks": []
+    },
+    {
+      "case_id": "rq-08",
+      "dimension": "response_quality",
+      "score": 1.0,
+      "latency_ms": 5215,
+      "error": null,
+      "reasoning": "3/3 checks passed",
+      "turns": [
+        {
+          "user": "what's a PLC?",
+          "bot": "A PLC (Programmable Logic Controller) is an industrial computer that controls and monitors machinery and processes. It receives input from sensors, executes programmed instructions, and sends output to actuators, valves, and motors to perform specific tasks. PLCs are widely used in manufacturing, automation, and process control applications due to their reliability, flexibility, and ease of programming.\n\n---\n*Diagnose a specific machine* | *Find documentation* | *Log a work order*"
+        }
+      ],
+      "passed_checks": [
+        "not_empty",
+        "min_length_30",
+        "no_raw_json"
+      ],
+      "failed_checks": []
+    },
+    {
+      "case_id": "rq-09",
+      "dimension": "response_quality",
+      "score": 1.0,
+      "latency_ms": 6161,
+      "error": null,
+      "reasoning": "2/2 checks passed",
+      "turns": [
+        {
+          "user": "compressor won't start, won't start, won't start",
+          "bot": "What could be causing the compressor to not start on command?\n\n--- Sources ---\n[1] knowledge base\n[2] knowledge base"
+        }
+      ],
+      "passed_checks": [
+        "not_empty",
+        "no_repeated_sentences"
+      ],
+      "failed_checks": []
+    },
+    {
+      "case_id": "rq-10",
+      "dimension": "response_quality",
+      "score": 0.6666666666666666,
+      "latency_ms": 5884,
+      "error": null,
+      "reasoning": "2/3 checks passed",
+      "turns": [
+        {
+          "user": "fan vibration 18mm/s",
+          "bot": "What is the model number of the fan?"
+        }
+      ],
+      "passed_checks": [
+        "not_empty",
+        "no_raw_json"
+      ],
+      "failed_checks": [
+        "min_length_50"
+      ]
+    }
+  ]
+}

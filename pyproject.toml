@@ -1,0 +1,50 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Honor `exclude` even when a file is passed explicitly on the command line
+# (pre-commit / the stop-gate pass changed files by path). Without this, the
+# Ignition Jython scripts below get linted anyway and fail on `system.*`.
+force-exclude = true
+exclude = [
+    "mira-bots-phase1",
+    "mira-bots-phase2",
+    "mira-bots-phase3",
+    "archives",
+    # Jython 2.7 — runs inside the Ignition Gateway JVM, not CPython.
+    # Uses Java imports (java.io.*) and Ignition globals (system.*), which
+    # ruff cannot model. Lint these in their own Jython environment, not here.
+    "ignition/webdev",
+    "ignition/gateway-scripts",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]  # line length handled by formatter
+
+[tool.ruff.lint.per-file-ignores]
+# Test files commonly insert sys.path before importing the target module.
+"tests/**/*.py" = ["E402", "I001"]
+"mira-*/tests/**/*.py" = ["E402", "I001"]
+
+# mira-copy CLI: run with `python -m mira_copy` (no [project] table needed)
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["mira-bots/shared", "mira-core/mira-ingest"]
+omit = ["*/tests/*", "*/test_*", "*/conftest.py"]
+
+[tool.coverage.report]
+fail_under = 25  # baseline 2026-04-17: ingest=20%, shared=27%. Ratchet up as tests are added.
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
+[tool.hypothesis]
+database_backend = "directory"
+max_examples = 200

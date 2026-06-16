@@ -1,0 +1,352 @@
+{
+  "The Electrical Craftsman": {
+    "channel_url": "https://www.youtube.com/@UnityBuildEstimation",
+    "video_count": 1,
+    "chunk_count": 7,
+    "topics": [
+      "general",
+      "installation",
+      "troubleshooting"
+    ],
+    "manufacturers": [],
+    "equipment_types": [
+      "motor"
+    ]
+  },
+  "The Electrical Guy": {
+    "channel_url": "https://www.youtube.com/@TheElectricalGuy",
+    "video_count": 1,
+    "chunk_count": 4,
+    "topics": [
+      "installation",
+      "troubleshooting"
+    ],
+    "manufacturers": [],
+    "equipment_types": [
+      "motor"
+    ]
+  },
+  "Electrical Talks": {
+    "channel_url": "https://www.youtube.com/@electricaltalks33",
+    "video_count": 1,
+    "chunk_count": 2,
+    "topics": [
+      "troubleshooting"
+    ],
+    "manufacturers": [],
+    "equipment_types": [
+      "motor"
+    ]
+  },
+  "eMotors Direct": {
+    "channel_url": "https://www.youtube.com/@emotorsdirect",
+    "video_count": 1,
+    "chunk_count": 3,
+    "topics": [
+      "troubleshooting"
+    ],
+    "manufacturers": [
+      "ABB"
+    ],
+    "equipment_types": [
+      "VFD"
+    ]
+  },
+  "The Engineering Mindset": {
+    "channel_url": "https://www.youtube.com/@EngineeringMindset",
+    "video_count": 1,
+    "chunk_count": 6,
+    "topics": [
+      "installation",
+      "theory"
+    ],
+    "manufacturers": [
+      "Danfoss"
+    ],
+    "equipment_types": [
+      "VFD",
+      "motor"
+    ]
+  },
+  "WARHAMMER ELECTRIC": {
+    "channel_url": "https://www.youtube.com/@WARHAMMERELECTRIC",
+    "video_count": 1,
+    "chunk_count": 4,
+    "topics": [
+      "general",
+      "theory",
+      "troubleshooting"
+    ],
+    "manufacturers": [],
+    "equipment_types": [
+      "VFD",
+      "motor"
+    ]
+  },
+  "RealPars": {
+    "channel_url": "https://www.youtube.com/@realpars",
+    "video_count": 2,
+    "chunk_count": 6,
+    "topics": [
+      "maintenance",
+      "theory",
+      "troubleshooting"
+    ],
+    "manufacturers": [
+      "Allen-Bradley"
+    ],
+    "equipment_types": [
+      "HMI",
+      "PLC",
+      "VFD"
+    ]
+  },
+  "Radwell International": {
+    "channel_url": "https://www.youtube.com/@RadwellTV",
+    "video_count": 1,
+    "chunk_count": 5,
+    "topics": [
+      "installation",
+      "maintenance",
+      "troubleshooting"
+    ],
+    "manufacturers": [
+      "Danfoss"
+    ],
+    "equipment_types": [
+      "PLC",
+      "VFD",
+      "motor"
+    ]
+  },
+  "Eaton": {
+    "channel_url": "https://www.youtube.com/@eatoncorp",
+    "video_count": 1,
+    "chunk_count": 5,
+    "topics": [
+      "general",
+      "installation",
+      "theory"
+    ],
+    "manufacturers": [],
+    "equipment_types": [
+      "VFD",
+      "motor",
+      "overload"
+    ]
+  },
+  "Shane Welcher SR": {
+    "channel_url": "https://www.youtube.com/@ShaneWelcher",
+    "video_count": 2,
+    "chunk_count": 6,
+    "topics": [
+      "general",
+      "installation",
+      "theory"
+    ],
+    "manufacturers": [],
+    "equipment_types": [
+      "PLC",
+      "conveyor"
+    ]
+  },
+  "This is Automation": {
+    "channel_url": "https://www.youtube.com/@ThisisAutomation",
+    "video_count": 1,
+    "chunk_count": 11,
+    "topics": [
+      "general",
+      "theory",
+      "troubleshooting"
+    ],
+    "manufacturers": [],
+    "equipment_types": [
+      "PLC"
+    ]
+  },
+  "SolisPLC": {
+    "channel_url": "https://www.youtube.com/@SolisPLC",
+    "video_count": 1,
+    "chunk_count": 9,
+    "topics": [
+      "general",
+      "installation",
+      "theory"
+    ],
+    "manufacturers": [
+      "Allen-Bradley",
+      "Siemens"
+    ],
+    "equipment_types": [
+      "PLC"
+    ]
+  },
+  "ELECTRICAL LAD": {
+    "channel_url": "https://www.youtube.com/@Electrical-lad",
+    "video_count": 2,
+    "chunk_count": 6,
+    "topics": [
+      "general",
+      "installation",
+      "theory",
+      "troubleshooting"
+    ],
+    "manufacturers": [],
+    "equipment_types": [
+      "PLC",
+      "motor",
+      "starter"
+    ]
+  },
+  "OTEC Engineering": {
+    "channel_url": "https://www.youtube.com/@OTECEngineering",
+    "video_count": 1,
+    "chunk_count": 4,
+    "topics": [
+      "installation",
+      "theory"
+    ],
+    "manufacturers": [
+      "Schneider"
+    ],
+    "equipment_types": [
+      "PLC"
+    ]
+  },
+  "Tim Wilborne": {
+    "channel_url": "https://www.youtube.com/@TimWilborne",
+    "video_count": 1,
+    "chunk_count": 5,
+    "topics": [
+      "general",
+      "installation",
+      "maintenance",
+      "troubleshooting"
+    ],
+    "manufacturers": [
+      "Allen-Bradley"
+    ],
+    "equipment_types": [
+      "PLC"
+    ]
+  },
+  "Instrumentation & Control": {
+    "channel_url": "https://www.youtube.com/@InstrumentationControl",
+    "video_count": 1,
+    "chunk_count": 3,
+    "topics": [
+      "troubleshooting"
+    ],
+    "manufacturers": [],
+    "equipment_types": [
+      "HMI",
+      "PLC"
+    ]
+  },
+  "Instrumentation Academy": {
+    "channel_url": "https://www.youtube.com/@instrumentationacademy",
+    "video_count": 1,
+    "chunk_count": 2,
+    "topics": [
+      "installation",
+      "troubleshooting"
+    ],
+    "manufacturers": [],
+    "equipment_types": [
+      "PLC",
+      "instrument"
+    ]
+  },
+  "Keith Rucker - VintageMachinery.org": {
+    "channel_url": "https://www.youtube.com/@VintageMachinery",
+    "video_count": 1,
+    "chunk_count": 11,
+    "topics": [
+      "general",
+      "installation",
+      "theory",
+      "troubleshooting"
+    ],
+    "manufacturers": [
+      "Allen-Bradley"
+    ],
+    "equipment_types": [
+      "circuit breaker",
+      "contactor",
+      "starter"
+    ]
+  },
+  "AccessToPower": {
+    "channel_url": "https://www.youtube.com/@AccessToPower",
+    "video_count": 2,
+    "chunk_count": 7,
+    "topics": [
+      "installation",
+      "troubleshooting"
+    ],
+    "manufacturers": [],
+    "equipment_types": [
+      "contactor",
+      "overload",
+      "starter"
+    ]
+  },
+  "Randy Barnett": {
+    "channel_url": "https://www.youtube.com/@electricrb",
+    "video_count": 1,
+    "chunk_count": 4,
+    "topics": [
+      "installation",
+      "troubleshooting"
+    ],
+    "manufacturers": [],
+    "equipment_types": [
+      "contactor",
+      "starter"
+    ]
+  },
+  "Greg Roche Automation": {
+    "channel_url": "https://www.youtube.com/@gregroche7323",
+    "video_count": 1,
+    "chunk_count": 4,
+    "topics": [
+      "installation",
+      "troubleshooting"
+    ],
+    "manufacturers": [],
+    "equipment_types": [
+      "contactor",
+      "starter"
+    ]
+  },
+  "IMAT ": {
+    "channel_url": "https://www.youtube.com/@Mikesfilmss",
+    "video_count": 1,
+    "chunk_count": 6,
+    "topics": [
+      "installation",
+      "theory",
+      "troubleshooting"
+    ],
+    "manufacturers": [],
+    "equipment_types": [
+      "contactor"
+    ]
+  },
+  "The Maintenance Factory": {
+    "channel_url": "https://www.youtube.com/@themaintenancefactory2592",
+    "video_count": 1,
+    "chunk_count": 5,
+    "topics": [
+      "general",
+      "theory",
+      "troubleshooting"
+    ],
+    "manufacturers": [],
+    "equipment_types": [
+      "contactor",
+      "motor",
+      "starter"
+    ]
+  }
+}

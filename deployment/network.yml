@@ -1,0 +1,81 @@
+# FactoryLM Network Topology
+# Canonical source — other files reference this.
+# Update here first, then propagate to CLAUDE.md and Doppler.
+#
+# Parseable: python3 -c "import yaml; print(yaml.safe_load(open('deployment/network.yml')))"
+
+nodes:
+  alpha:
+    hostname: Michaels-Mac-mini-2.local
+    role: orchestrator
+    user: factorylm
+    services: [celery-worker, celery-beat, docker-desktop]
+    addresses:
+      tailscale: 100.107.140.12
+      lan: 192.168.4.28
+    subnet: 192.168.4.0/24
+    ssh_key_fingerprint: "SHA256:V7RlFNOQbo6Rq7Ky3/QDEhrRIy4IH/CsuCx9GBvMBQA"
+    doppler_key_name: SSH_ALPHA_PRIVATE_KEY
+    notes: "Different subnet from Bravo/Charlie — Tailscale only for cross-node"
+
+  bravo:
+    hostname: FactoryLM-Bravo.local
+    role: compute
+    user: bravonode
+    services: [ollama, mira-mcp]
+    addresses:
+      tailscale: 100.86.236.11
+      lan: 192.168.1.11
+    subnet: 192.168.1.0/24
+    ssh_key_fingerprint: "SHA256:Mfl3AcJv/7TFuft6nQ8JUCK0mtacx1xIlK+vnFf1NLc"
+    doppler_key_name: SSH_BRAVO_PRIVATE_KEY
+    notes: "LAN reachable from Charlie only. Ollama models: qwen2.5vl, nomic-embed-text, mira, glm-ocr"
+
+  charlie:
+    hostname: CharlieNodes-Mac-mini.local
+    role: kb-host
+    user: charlienode
+    services: [mira-core, mira-ingest, mira-bots, atlas-cmms, open-webui]
+    addresses:
+      tailscale: 100.70.49.126
+      lan: 192.168.1.12
+    subnet: 192.168.1.0/24
+    ssh_key_fingerprint: "SHA256:9QDfp5OukFjZhXId3Muy+gxU1HFrRcXY165MBuJeWGY"
+    doppler_key_name: SSH_CHARLIE_PRIVATE_KEY
+    notes: "Primary MIRA host. LAN reachable from Bravo only."
+
+connectivity:
+  - from: alpha
+    to: bravo
+    transport: tailscale
+    lan_fallback: false
+  - from: alpha
+    to: charlie
+    transport: tailscale
+    lan_fallback: false
+  - from: bravo
+    to: charlie
+    transport: lan
+    lan_fallback: true
+  - from: charlie
+    to: bravo
+    transport: lan
+    lan_fallback: true
+
+doppler:
+  project: factorylm
+  config: prd
+  ssh_secrets:
+    - SSH_ALPHA_PRIVATE_KEY
+    - SSH_ALPHA_PUBLIC_KEY
+    - SSH_ALPHA_CONFIG
+    - SSH_ALPHA_AUTHORIZED_KEYS
+    - SSH_BRAVO_PRIVATE_KEY
+    - SSH_BRAVO_PUBLIC_KEY
+    - SSH_BRAVO_CONFIG
+    - SSH_BRAVO_AUTHORIZED_KEYS
+    - SSH_CHARLIE_PRIVATE_KEY
+    - SSH_CHARLIE_PUBLIC_KEY
+    - SSH_CHARLIE_CONFIG
+    - SSH_CHARLIE_AUTHORIZED_KEYS
+    - SSH_NETWORK_TOPOLOGY

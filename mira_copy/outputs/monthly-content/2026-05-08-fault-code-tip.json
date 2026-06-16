@@ -1,0 +1,84 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "Fault Code: PowerFlex 525 - F41 (Motor Overtemperature)\n\nYou're at the line. Light's red. No manual. You call support, wait 30 minutes.\n\nOr: snap a photo with FactoryLM.\n\nAI pulls the exact troubleshooting steps from *your* manual in 12 seconds.\n\n- Check thermistor continuity (pin 14-15)\n- Verify ambient temp < 40°C\n- Inspect motor cooling fins\n\nNo digging. No hold. Diagnosis starts now.\n\nWhat's the last fault code you wasted time on?\n\nhttps://app.factorylm.com",
+      "char_count": 542,
+      "hashtags": [
+        "#MaintenanceTech",
+        "#VFD",
+        "#CMMS"
+      ],
+      "suggested_visual": "Technician holding phone taking photo of PowerFlex 525 display showing F41, app overlay shows troubleshooting checklist.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "F41 on a PowerFlex 525?\n\nCheck the thermistor wiring between terminals 14-15. Loose connection = false overtemp.\n\nMost fixes take <10 min once you find the manual.\n\nProblem: finding it takes 35.\n\nPhoto the drive. Get steps in 10 sec.\n\nfactorylm.com",
+      "char_count": 251,
+      "hashtags": [
+        "#Maintenance",
+        "#VFD"
+      ],
+      "suggested_visual": "Split screen: left shows F41 error on VFD, right shows mobile app returning fix steps.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "Sharing a tip from yesterday's outage.\n\nMachine down: GS20 VFD (Automation Direct) showing \"OC\" flash.\n\nTech spent 22 minutes pulling manuals from cabinet, another 15 on hold with AD support.\n\nOC on GS20 usually means one of three things:\n\n1. DC bus voltage spike (check input line quality)\n2. Short in output cabling (measure phase-phase resistance)\n3. Ground fault in motor leads (test to ground, 500V megger)\n\nWe tested phase-ground: 0.3 MΩ. Replaced conduit — fixed.\n\nPro tip: label your test results in the CMMS. Next time, it's 2-minute recall.\n\nFor Allen-Bradley users: log resolution notes in RSLogix comments. Saved us twice last month.",
+      "char_count": 852,
+      "hashtags": [],
+      "suggested_visual": "Close-up of GS20 display showing OC, then multimeter testing motor leads.",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "Techs: you see 'SF' flashing on an Allen-Bradley Micro850.\n\nNo manual. No senior on shift.\n\nWhat’s your first move?\n\nMost common cause: lost serial communication with HMI (Modbus RTU timeout).\n\nQuick check:\n- Verify 24V on terminal 2 (comm power)\n- Inspect DB9 pin 3 (RX) continuity\n- Cycle HMI power\n\nFix takes 7 minutes. Finding the page? 28.\n\nWhat’s the weirdest 'SF' fix you’ve seen?\n\nhttps://app.factorylm.com",
+      "char_count": 648,
+      "hashtags": [
+        "#MaintenanceLife",
+        "#PLCTroubleshooting",
+        "#AllenBradley"
+      ],
+      "suggested_visual": "Micro850 PLC with SF blink, technician scrolling through FactoryLM app on phone showing fix steps.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "You're staring at a red light on a hydraulic power unit. 'P2' error.\n\nNo binder. No time.\n\nInstead of searching: open FactoryLM, snap a pic.\n\nApp finds P2 = 'Pump inlet filter clogged' in your Parker Hydraulics manual.\n\nClean filter, restart, back in 15 minutes.\n\nNo reading 187 pages. No call.\n\nReal fix. Real manual. 11 seconds.\n\n#MaintenanceTips #Hydraulics #TechLife",
+      "char_count": 590,
+      "hashtags": [
+        "#MaintenanceTips",
+        "#Hydraulics",
+        "#TechLife",
+        "#PlantMaintenance"
+      ],
+      "suggested_visual": "Video: shaky cam walking to hydraulic unit, close-up of 'P2' error, phone snap, app returns 'clean inlet filter' with diagram.",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "When 'P2' hits on your hydraulic power unit, don’t panic.\n\nIt’s not the pump. It’s not the motor.\n\nFactoryLM pulls from your equipment manual: P2 = 'Inlet filter restriction'.\n\n90% of cases: clean the filter, reset, back online.\n\nPhoto the display. Get the fix. No binders.\n\nThis is how maintenance gets faster.\n\n📸 Carousel:\n1. Hydraulic unit error light\n2. Close-up of P2 code\n3. Phone camera focusing on display\n4. App screen: 'P2 – Inlet filter clogged'\n5. Tech cleaning filter, smiling\n\n",
+      "char_count": 858,
+      "hashtags": [
+        "#Maintenance",
+        "#Hydraulics",
+        "#PlantFloor",
+        "#VFD",
+        "#PLC",
+        "#FactoryLM",
+        "#PowerFlex",
+        "#AllenBradley",
+        "#AutomationDirect",
+        "#CMMS",
+        "#TechLife",
+        "#Troubleshooting",
+        "#IndustrialMaintenance",
+        "#NoMoreBinders",
+        "#MiraAI"
+      ],
+      "suggested_visual": "Carousel post: 5 images showing error, photo capture, app diagnosis, fix, result.",
+      "subreddit": null
+    }
+  ]
+}

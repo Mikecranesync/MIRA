@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This is an AutomationDirect GS10 Variable Frequency Drive. It controls motor speed by adjusting voltage and frequency. (2) The issue might be due to incorrect ramp time settings or a mismatch between the drive and motor capacity. (3) Adjust the ramp time settings on the drive. For an unknown fault, check the drive's input and output connections and ensure the motor rating matches the drive's capacity."
+}

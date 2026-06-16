@@ -1,0 +1,318 @@
+"use client";
+
+import { useState, useEffect, useCallback, useRef } from "react";
+import Link from "next/link";
+import { useTranslations } from "next-intl";
+import { Search, FileText, BookOpen, Zap, ShieldCheck, ClipboardCheck, Truck, MapPin, Bot, Upload } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { DOCS, CAT_COLOR, CAT_BG } from "@/lib/documents-data";
+import { UploadPicker } from "@/components/UploadPicker";
+import { UploadBlock, type UploadBlockData } from "@/components/UploadBlock";
+import { useToast } from "@/providers/toast-provider";
+import { LabsStub } from "@/components/labs-stub";
+import { API_BASE, MAX_UPLOAD_MB } from "@/lib/config";
+
+const NON_TERMINAL: ReadonlyArray<UploadBlockData["status"]> = [
+  "queued",
+  "fetching",
+  "parsing",
+];
+
+const CATEGORIES = [
+  { key: "all",        labelKey: "filterLabels.all",        Icon: FileText,       color: "#2563EB" },
+  { key: "Manuals",    labelKey: "filterLabels.manuals",    Icon: BookOpen,       color: "#7C3AED" },
+  { key: "Schematics", labelKey: "filterLabels.schematics", Icon: Zap,            color: "#0891B2" },
+  { key: "Parts",      labelKey: "filterLabels.parts",      Icon: ClipboardCheck, color: "#EA580C" },
+  { key: "Safety",     labelKey: "filterLabels.safety",     Icon: ShieldCheck,    color: "#DC2626" },
+  { key: "Inspection", labelKey: "filterLabels.inspection", Icon: ClipboardCheck, color: "#16A34A" },
+  { key: "Vendor",     labelKey: "filterLabels.vendor",     Icon: Truck,          color: "#64748B" },
+  { key: "Site",       labelKey: "filterLabels.site",       Icon: MapPin,         color: "#EAB308" },
+  { key: "MIRA",       labelKey: "filterLabels.mira",       Icon: Bot,            color: "#16A34A" },
+];
+
+const DOC_STATE_VARIANT: Record<string, "indexed" | "partial" | "superseded"> = {
+  indexed: "indexed", partial: "partial", superseded: "superseded",
+};
+
+export default function DocumentsPage() {
+  // Gated behind Labs flag (ADR-0014). Mock-data UI hidden on prod builds.
+  if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
+    return <LabsStub feature="Documents" />;
+  }
+  const t = useTranslations("documents");
+  const { toast } = useToast();
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("all");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [uploads, setUploads] = useState<UploadBlockData[]>([]);
+  const prevStatuses = useRef<Map<string, UploadBlockData["status"]>>(new Map());
+
+  const fetchUploads = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/uploads/`, { cache: "no-store" });
+      if (!res.ok) return;
+      const rows = (await res.json()) as Array<{
+        id: string;
+        provider: "google" | "dropbox" | "local";
+        kind?: "document" | "photo";
+        filename: string;
+        sizeBytes: number | null;
+        externalCreatedAt: string | null;
+        status: UploadBlockData["status"];
+        statusDetail: string | null;
+        kbChunkCount: number | null;
+        assetTag: string | null;
+      }>;
+      const next: UploadBlockData[] = rows.map((r) => ({
+        id: r.id,
+        provider: r.provider,
+        kind: r.kind ?? "document",
+        filename: r.filename,
+        sizeBytes: r.sizeBytes,
+        externalCreatedAt: r.externalCreatedAt,
+        status: r.status,
+        statusDetail: r.statusDetail,
+        kbChunkCount: r.kbChunkCount,
+        assetTag: r.assetTag,
+      }));
+
+      // Toast on terminal-state transitions
+      const seen = prevStatuses.current;
+      for (const u of next) {
+        const prev = seen.get(u.id);
+        if (prev && prev !== u.status) {
+          if (u.status === "parsed") {
+            const chunks = u.kbChunkCount != null ? ` · ${u.kbChunkCount} chunks indexed` : "";
+            toast(`Processed: ${u.filename}${chunks}`, "success");
+          } else if (u.status === "failed") {
+            toast(`Failed: ${u.filename}${u.statusDetail ? ` — ${u.statusDetail}` : ""}`, "error");
+          }
+        }
+        seen.set(u.id, u.status);
+      }
+      setUploads(next);
+    } catch {
+      /* swallow — poll will retry */
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    void fetchUploads();
+  }, [fetchUploads]);
+
+  useEffect(() => {
+    const hasActive = uploads.some((u) => NON_TERMINAL.includes(u.status));
+    if (!hasActive) return;
+    const iv = setInterval(fetchUploads, 2000);
+    return () => clearInterval(iv);
+  }, [uploads, fetchUploads]);
+
+  const handleLocalFiles = useCallback(
+    async (files: File[], assetTag: string | null) => {
+      for (const file of files) {
+        const form = new FormData();
+        form.append("file", file);
+        if (assetTag) form.append("assetTag", assetTag);
+        const res = await fetch(`${API_BASE}/api/uploads/local/`, { method: "POST", body: form });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+          const msg =
+            body.error === "unsupported_mime"
+              ? `Unsupported file type: ${(body.got as string | undefined) || file.type || "unknown"}`
+              : body.error === "exceeds_size_limit"
+                ? `File too large (max ${MAX_UPLOAD_MB} MB): ${file.name}`
+                : typeof body.error === "string"
+                  ? body.error
+                  : `Upload failed (${res.status})`;
+          toast(msg, "error");
+          throw new Error(msg);
+        }
+      }
+      toast(`Uploading ${files.length} file${files.length === 1 ? "" : "s"}…`, "info");
+      await fetchUploads();
+    },
+    [fetchUploads, toast],
+  );
+
+  const handleCloudPicks = useCallback(
+    async (
+      results: Array<{
+        provider: "google" | "dropbox";
+        externalFileId?: string;
+        externalDownloadUrl?: string;
+        filename: string;
+        mimeType: string;
+        sizeBytes: number;
+        externalCreatedAt: string | null;
+      }>,
+      assetTag: string | null,
+    ) => {
+      for (const result of results) {
+        await fetch(`${API_BASE}/api/uploads/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...result, assetTag: assetTag ?? undefined }),
+        });
+      }
+      toast(`Queued ${results.length} file${results.length === 1 ? "" : "s"} from cloud`, "info");
+      await fetchUploads();
+    },
+    [fetchUploads, toast],
+  );
+
+  const handleRetry = useCallback(
+    async (id: string) => {
+      const res = await fetch(`${API_BASE}/api/uploads/${id}/retry/`, { method: "POST" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        toast(typeof body.error === "string" ? body.error : "Retry failed", "error");
+        return;
+      }
+      toast("Retrying…", "info");
+      await fetchUploads();
+    },
+    [fetchUploads, toast],
+  );
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      await fetch(`${API_BASE}/api/uploads/${id}/`, { method: "DELETE" });
+      await fetchUploads();
+    },
+    [fetchUploads],
+  );
+
+  const recentUploads = uploads.slice(0, 8);
+  const hasActiveUpload = uploads.some((u) => NON_TERMINAL.includes(u.status));
+
+  const visible = DOCS.filter((d) => {
+    const matchCat = category === "all" || d.category === category;
+    const matchQ = !query || d.title.toLowerCase().includes(query.toLowerCase()) || d.assets.some(a => a.toLowerCase().includes(query.toLowerCase()));
+    return matchCat && matchQ;
+  });
+
+  return (
+    <div className="min-h-full" style={{ backgroundColor: "var(--background)" }}>
+      <div className="sticky top-0 z-20 border-b" style={{ backgroundColor: "var(--surface-0)", borderColor: "var(--border)" }}>
+        <div className="px-4 md:px-6 pt-3 pb-3">
+          <div className="flex items-center justify-between mb-3">
+            <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>{t("title")}</h1>
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setPickerOpen(true)}>
+              <Upload className="w-3.5 h-3.5" />{t("upload")}
+              {hasActiveUpload && (
+                <span className="ml-1 inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: "#2563EB" }} />
+              )}
+            </Button>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--foreground-subtle)" }} />
+            <Input placeholder={t("searchPlaceholder")} value={query} onChange={e => setQuery(e.target.value)} className="pl-9" />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col md:flex-row">
+        {/* Category sidebar (desktop) / chips (mobile) */}
+        <div className="md:w-52 md:flex-shrink-0 px-4 md:px-4 py-4">
+          <div className="flex md:hidden gap-2 overflow-x-auto scrollbar-none pb-1">
+            {CATEGORIES.map((cat) => (
+              <button key={cat.key} onClick={() => setCategory(cat.key)}
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all"
+                style={{ backgroundColor: category === cat.key ? cat.color : "var(--surface-1)", color: category === cat.key ? "white" : "var(--foreground-muted)" }}>
+                <cat.Icon className="w-3 h-3" />{t(cat.labelKey)}
+              </button>
+            ))}
+          </div>
+
+          <div className="hidden md:flex flex-col gap-1">
+            <p className="text-[10px] uppercase tracking-wider font-semibold mb-2 px-2" style={{ color: "var(--foreground-subtle)" }}>{t("categoriesHeading")}</p>
+            {CATEGORIES.map((cat) => {
+              const count = cat.key === "all" ? DOCS.length : DOCS.filter(d => d.category === cat.key).length;
+              return (
+                <button key={cat.key} onClick={() => setCategory(cat.key)}
+                  className="flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-all text-left"
+                  style={{ backgroundColor: category === cat.key ? cat.color + "15" : "transparent", color: category === cat.key ? cat.color : "var(--foreground-muted)", fontWeight: category === cat.key ? 600 : 400 }}>
+                  <span className="flex items-center gap-2">
+                    <cat.Icon className="w-3.5 h-3.5 flex-shrink-0" />{t(cat.labelKey)}
+                  </span>
+                  <span className="text-xs opacity-60">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Document grid */}
+        <div className="flex-1 px-4 md:px-6 py-4 md:pt-4">
+          {recentUploads.length > 0 && (
+            <div className="mb-5">
+              <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: "var(--foreground-subtle)" }}>
+                Recent Uploads
+              </p>
+              <div className="flex flex-col gap-2">
+                {recentUploads.map((u) => (
+                  <UploadBlock key={u.id} upload={u} onDelete={handleDelete} onRetry={handleRetry} />
+                ))}
+              </div>
+            </div>
+          )}
+          <p className="text-xs mb-4" style={{ color: "var(--foreground-muted)" }}>
+            {visible.length} document{visible.length !== 1 ? "s" : ""}
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {visible.map((doc) => (
+              <Link key={doc.id} href={`/documents/${doc.id}`}>
+                <div className="card card-hover p-4 flex flex-col gap-3 hover:shadow-md transition-shadow cursor-pointer">
+                  <div className="flex items-start justify-between">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: CAT_BG[doc.category] ?? "#F8FAFC" }}>
+                      <FileText className="w-5 h-5" style={{ color: CAT_COLOR[doc.category] ?? "#64748B" }} />
+                    </div>
+                    <Badge variant={DOC_STATE_VARIANT[doc.state]} className="capitalize text-[10px]">{doc.state}</Badge>
+                  </div>
+
+                  <div className="flex-1">
+                    <p className="text-sm font-medium leading-snug" style={{ color: "var(--foreground)" }}>{doc.title}</p>
+                    <p className="text-[11px] mt-1" style={{ color: "var(--foreground-subtle)" }}>
+                      {doc.pages}p · {doc.size} · {doc.date}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: CAT_BG[doc.category] ?? "#F8FAFC", color: CAT_COLOR[doc.category] ?? "#64748B" }}>
+                      {doc.category}
+                    </span>
+                    {doc.assets.map(a => (
+                      <span key={a} className="text-[10px] px-2 py-0.5 rounded-full"
+                        style={{ backgroundColor: "var(--surface-1)", color: "var(--foreground-muted)" }}>
+                        {a}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+
+          {visible.length === 0 && (
+            <div className="text-center py-16">
+              <FileText className="w-10 h-10 mx-auto mb-3" style={{ color: "var(--foreground-subtle)" }} />
+              <p className="font-medium" style={{ color: "var(--foreground-muted)" }}>{t("noDocuments")}</p>
+              <p className="text-xs mt-1" style={{ color: "var(--foreground-subtle)" }}>{t("tryDifferent")}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <UploadPicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onLocalFiles={handleLocalFiles}
+        onCloudPicks={handleCloudPicks}
+      />
+    </div>
+  );
+}

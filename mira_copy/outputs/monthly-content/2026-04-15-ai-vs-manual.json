@@ -1,0 +1,85 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "You’re standing in front of a faulted PowerFlex 525. Red light blinking. No manual. \n\nYou call the electrician. Wait 30 minutes. Then dig through 200 pages of PDFs to find the fault code.\n\nOr… you snap a photo in FactoryLM. \n\nAI pulls the exact page from *your* manual. Diagnoses overvoltage. Recommends checking incoming line. \n\nDone in 30 seconds. \n\nNo more scrolling. No more holds with OEM support. \n\nWe built this because we’ve been stuck at that panel too. \n\nWhat’s the longest you’ve waited to find a fix for an Allen-Bradley fault? \n\nhttps://app.factorylm.com",
+      "char_count": 598,
+      "hashtags": [
+        "MaintenanceTech",
+        "CMMS",
+        "IndustrialAI"
+      ],
+      "suggested_visual": "Split-screen video: left side shows someone flipping through a printed manual, frustrated; right side shows a phone opening FactoryLM, snapping a photo of a PowerFlex drive, and displaying the exact troubleshooting step.",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "Allen-Bradley PLC fault code S204. \n\nManual lookup: 28min avg. \n\nFactoryLM photo + AI: 14sec. \n\nOne finds the cause (blown fuse in I/O module). The other finds dust. \n\nStop searching. Start fixing. https://app.factorylm.com",
+      "char_count": 246,
+      "hashtags": [
+        "Maintenance",
+        "VFD"
+      ],
+      "suggested_visual": "Time-lapse screen recording: left shows browser tab hopping through PDF pages; right shows FactoryLM returning exact fault cause from photo.",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "r/maintenance\n\nSharing something that changed how I troubleshoot: AI-powered RAG over equipment manuals. \n\nScenario: GS20 VFD throws 'OC-A' fault. No manual on site. \n\nInstead of calling Automation Direct or hunting PDFs, I used a tool that indexes my actual manuals. Snapped a photo of the display. \n\nIn 12 seconds: \n- Identified OC-A = overcurrent during acceleration\n- Suggested checking mechanical binding, motor insulation, and accel time\n- Linked to page 87 of *my* GS20 manual\n\nThis isn’t generic AI. It reads your documents. \n\nIf you’re tired of digging through 10 folders on a shared drive just to find a fault code, tools like this are starting to close the gap. \n\nNo affiliate. No pitch. Just saved me 35 minutes last week during a hydraulic press downtime.",
+      "char_count": 964,
+      "hashtags": [],
+      "suggested_visual": "Screen recording: user uploads a photo of a GS20 VFD display showing 'OC-A', app returns diagnosis and highlighted manual excerpt.",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "Raise your hand if you’ve ever:\n• Waited on hold with Rockwell support\n• Searched for 'PowerFlex 40 fault code F4' at 2AM\n• Found the wrong manual (again)\n\nWe did too. \n\nNow, we snap a photo. FactoryLM’s AI scans your uploaded manuals — not generic knowledge — and finds the exact page with the fix. \n\nFor example: Allen-Bradley PLC fault 'FNC8' → points to faulty communication adapter, not processor. Saves the guesswork. \n\nUsed it on a hydraulic power unit last week. Found the sensor wiring error in 20 seconds. \n\nWhat’s one fault code that always wastes your time? Let’s swap stories. \n\nhttps://app.factorylm.com",
+      "char_count": 827,
+      "hashtags": [
+        "MaintenanceLife",
+        "Troubleshooting",
+        "FactoryLM"
+      ],
+      "suggested_visual": "Short video: tech in coveralls takes phone out, snaps photo of hydraulic unit fault display, shows app returning wiring diagram and fix steps.",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "Ever spend 30 minutes looking for a VFD fault fix? \n\nThis is a PowerFlex 525 with fault code 'F7'. \n\nOld way: Google it, open 6 tabs, find the wrong manual. \n\nNew way: Snap a photo in FactoryLM. \n\nAI reads YOUR uploaded manual. Returns the exact page. Says: 'Check DC bus voltage. Inspect input power.' \n\nFrom fault to fix in 22 seconds. \n\nNo app store download. Works right in your phone’s browser. \n\nReal tool. Real manuals. Real fast. \n\n#MaintenanceTech #FactoryLM #VFD #PLC",
+      "char_count": 682,
+      "hashtags": [
+        "MaintenanceTech",
+        "FactoryLM",
+        "VFD",
+        "PLC",
+        "Hydraulics"
+      ],
+      "suggested_visual": "Fast-cut video: hand points to blinking VFD, phone opens FactoryLM, photo snap, app shows diagnosis and manual page, timer shows 22 seconds elapsed.",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "When the hydraulic press trips — again — and no one knows the code:\n\n📸 Snap a photo of the display\n⚡️ Mira (our AI) reads YOUR equipment manual\n📄 Gets you the exact fix — same as flipping to page 42, but takes 10 seconds\n\nNo more digging. No more waiting. \n\nThis is FactoryLM: AI that works like a second set of eyes — but faster. \n\nBuilt for real machines: Allen-Bradley, PowerFlex, GS10/GS20, hydraulic units. \n\nTry it the next time a fault brings the line down. \n\nLink in bio: app.factorylm.com",
+      "char_count": 648,
+      "hashtags": [
+        "MaintenanceLife",
+        "CMMS",
+        "IndustrialMaintenance",
+        "VFDRepair",
+        "PLCTech",
+        "FactoryAutomation",
+        "HydraulicSystems",
+        "Downtime",
+        "TechLife",
+        "MiraAI",
+        "PowerFlex",
+        "AllenBradley",
+        "GS20",
+        "NoAppStore",
+        "WebApp"
+      ],
+      "suggested_visual": "3-panel carousel: 1) Close-up of hydraulic unit fault display, 2) Phone screen showing FactoryLM processing photo, 3) App result with highlighted manual excerpt and repair step.",
+      "subreddit": null
+    }
+  ]
+}

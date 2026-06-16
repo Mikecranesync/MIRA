@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This is an Allen-Bradley Micro820 Programmable Logic Controller (PLC). It's used to control and automate industrial processes.\n\n(2) The most likely cause is a version mismatch between the PLC and the programming software. Ensure the software version matches the PLC's firmware.\n\n(3) The tech should check the PLC's programming software version and update it if necessary."
+}

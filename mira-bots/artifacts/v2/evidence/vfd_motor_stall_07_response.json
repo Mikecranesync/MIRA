@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This is an AutomationDirect GS10 Variable Frequency Drive, used to control motor speed. (2) The high current and trip likely indicate a drive is trying to start a motor that's not connected or has a mechanical issue. (3) Check the motor connections and ensure the motor is properly installed."
+}

@@ -1,0 +1,3 @@
+{
+  "reply": "(1) This is an Allen-Bradley Micro820 Programmable Logic Controller (PLC). It's used to control machinery and processes.\n\n(2) The most likely cause is a voltage drop to 23V on the 24V input, which could be due to a power supply not providing the correct voltage or a input wiring issue.\n\n(3) The tech should check the power supply and the input wiring for any damage or loose connections."
+}

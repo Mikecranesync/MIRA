@@ -1,0 +1,18 @@
+{
+  "name": "mira-hud-dev",
+  "description": "AR HUD and Ignition HMI development. Works on mira-hud/, ignition/, ignition-sdk-examples/.",
+  "adapter": "claude_local",
+  "model": "claude-sonnet-4-6",
+  "effort": "high",
+  "maxTurnsPerRun": 50,
+  "timeoutSec": 600,
+  "graceSec": 30,
+  "cwd": "__MIRA_HOME__",
+  "instructionsFilePath": "__MIRA_HOME__/paperclip/instructions/hud-dev.md",
+  "workspaceStrategy": { "type": "git_worktree" },
+  "extraArgs": [
+    "--mcp-config", "__MIRA_HOME__/paperclip/mcp-config.json"
+  ],
+  "env": {},
+  "dangerouslySkipPermissions": false
+}

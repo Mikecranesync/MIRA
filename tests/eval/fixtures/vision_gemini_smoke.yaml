@@ -1,0 +1,64 @@
+# Gemini Vision Smoke Fixture
+# Exercises the vision path: image input → InferenceRouter → Gemini 2.5 Flash
+#
+# Runner: tests/eval/run_vision_fixture.py (or ad-hoc via POST /v1/chat/completions)
+# Prereq: GEMINI_API_KEY set in environment / Doppler; mira-pipeline-saas running
+
+fixture_id: gemini-vision-smoke-v1
+description: >
+  Sends a GS10 VFD nameplate image to the pipeline and verifies that the
+  InferenceRouter routes through Gemini (first-in-cascade) and returns a
+  diagnosis mentioning the drive and voltage specs.
+
+image_source:
+  type: file
+  path: tests/fixtures/nameplate_gs10.jpg          # 43 KB, real GS10 VFD nameplate
+  mime_type: image/jpeg
+
+request:
+  endpoint: POST /v1/chat/completions
+  model: mira-diagnostic
+  messages:
+    - role: user
+      content:
+        - type: image_url
+          image_url:
+            url: "data:image/jpeg;base64,{{base64_encode(image_source.path)}}"
+        - type: text
+          text: "What is this device and what are its key electrical specs?"
+
+expected:
+  provider: gemini                       # Must appear in INFER_CALL log line
+  must_contain_any:
+    - GS10
+    - AutomationDirect
+    - VFD
+    - variable frequency
+    - AC drive
+  must_not_contain:
+    - "I cannot"
+    - "I'm unable to"
+  max_words: 200
+  response_timeout_s: 30
+
+log_signal:
+  # Verify routing via container logs — grep for this pattern after the call:
+  grep_pattern: "LLM_CALL provider=gemini"
+  source: "docker logs mira-pipeline-saas --since=1m"
+
+fallback_behavior:
+  # If GEMINI_API_KEY absent or rate-limited, cascade proceeds to Groq → Claude
+  # Accept any provider from the cascade — key assertion is non-empty response
+  when_gemini_absent:
+    accept_providers: [groq, claude]
+    must_contain_any:
+      - GS10
+      - AutomationDirect
+      - VFD
+
+notes: |
+  - Image file ships with the repo at tests/fixtures/nameplate_gs10.jpg
+  - No live API call in CI — this fixture is consumed by ad-hoc eval scripts
+    and the future Regime 8 vision runner (docs/wip/regime8-conversational/)
+  - GEMINI_API_KEY lives in Doppler factorylm/prd — set via
+    doppler run --project factorylm --config prd -- docker compose ...

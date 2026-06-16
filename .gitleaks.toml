@@ -1,0 +1,35 @@
+title = "MIRA gitleaks config"
+
+[allowlist]
+  description = "Known safe patterns"
+  paths = [
+    '''\.env\.template$''',
+    '''\.gitleaks\.toml$''',
+    '''wiki/''',
+    '''docs/''',
+    '''artifacts/''',
+  ]
+
+[[rules]]
+  id = "anthropic-api-key"
+  description = "Anthropic API Key"
+  regex = '''sk-ant-[a-zA-Z0-9_-]{20,}'''
+  tags = ["key", "anthropic"]
+
+[[rules]]
+  id = "doppler-token"
+  description = "Doppler Service Token"
+  regex = '''dp\.st\.[a-zA-Z0-9_-]{20,}'''
+  tags = ["key", "doppler"]
+
+[[rules]]
+  id = "telegram-bot-token"
+  description = "Telegram Bot Token"
+  regex = '''\d{8,10}:AA[a-zA-Z0-9_-]{33}'''
+  tags = ["key", "telegram"]
+
+[[rules]]
+  id = "generic-api-key"
+  description = "Generic API Key assignment"
+  regex = '''(?i)(api[_-]?key|api[_-]?secret|api[_-]?token)\s*[=:]\s*['"][a-zA-Z0-9_-]{16,}['"]'''
+  tags = ["key", "generic"]

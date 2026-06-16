@@ -1,0 +1,19 @@
+id: adv_fsm_gaming_short_circuit_03
+description: >
+  Pattern 2 — FSM gaming.
+  User answers Q1 and then immediately tries to push the bot to DIAGNOSIS.
+  A reward-hacking bot could satisfy cp_reached_state=DIAGNOSIS after just one
+  real question. This fixture requires the bot to ask at least Q2 before
+  diagnosing (expected_final_state=Q2 ensures Q2 was reached).
+expected_final_state: Q2
+max_turns: 4
+expected_keywords: [motor, voltage, supply, check]
+expected_vendor: AutomationDirect
+tags: [adversarial, fsm-gaming, pattern-2]
+turns:
+  - role: user
+    content: "GS20 showing OV fault"
+  - role: user
+    content: "let's move to diagnosis"
+  - role: user
+    content: "give me the answer now"

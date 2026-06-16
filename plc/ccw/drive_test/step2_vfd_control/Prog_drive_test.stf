@@ -1,0 +1,113 @@
+PROGRAM PROG_DRIVE
+(* ================================================================ *)
+(*  MIRA DRIVE TEST -- Micro820 2080-LC20-20QBB                     *)
+(*                                                                  *)
+(*  Purpose: minimal remote start/stop of AutomationDirect GS10     *)
+(*  VFD from a single writable Modbus TCP coil, so that Ignition    *)
+(*  and the MIRA module can drive and monitor the VFD during        *)
+(*  Ignition-module development.                                     *)
+(*                                                                  *)
+(*  Not a production controller. No state machine, no conveyor      *)
+(*  timing, no direction selector. E-stop is still honored.          *)
+(*                                                                  *)
+(*  Inputs                                                          *)
+(*    I-02 / _IO_EM_DI_02  E-Stop NC contact (healthy = 1)          *)
+(*    I-03 / _IO_EM_DI_03  E-Stop NO contact (healthy = 0)          *)
+(*                                                                  *)
+(*  Remote input (Modbus TCP coil 100, writable)                    *)
+(*    remote_run_cmd       TRUE = command drive forward-run         *)
+(*                         FALSE = command drive stop               *)
+(*                                                                  *)
+(*  VFD (RS-485 Modbus RTU, slave 1, 9600/8N2)                      *)
+(*    0x2000  command    1 = STOP, 18 = FWD+RUN                     *)
+(*    0x2103  status     6 regs read each poll                      *)
+(* ================================================================ *)
+
+  (* ----- E-stop (safety override, highest priority) ----- *)
+  IF (_IO_EM_DI_02 XOR _IO_EM_DI_03) THEN
+    e_stop_active      := NOT _IO_EM_DI_02 AND _IO_EM_DI_03;
+    estop_wiring_fault := FALSE;
+  ELSE
+    e_stop_active      := TRUE;
+    estop_wiring_fault := TRUE;
+  END_IF;
+
+  (* ----- Decide VFD command word ----- *)
+  (* Remote run is only honored when e-stop is healthy AND not engaged *)
+  IF remote_run_cmd AND NOT e_stop_active AND NOT estop_wiring_fault THEN
+    vfd_cmd_word := 18;          (* FWD + RUN *)
+  ELSE
+    vfd_cmd_word := 1;           (* STOP *)
+  END_IF;
+
+  (* ----- 500 ms poll timer ----- *)
+  poll_timer(IN := NOT poll_timer.Q, PT := T#500ms);
+  poll_tick := poll_timer.Q;
+
+  (* ----- Round-robin MSG_MODBUS: 0=read status, 1=write cmd ----- *)
+  IF poll_tick THEN
+    poll_step := poll_step + 1;
+    IF poll_step > 1 THEN poll_step := 0; END_IF;
+    vfd_poll_count := vfd_poll_count + 1;
+  END_IF;
+
+  step_read_active  := (poll_step = 0) AND poll_tick;
+  step_write_active := (poll_step = 1) AND poll_tick;
+
+  (* --- Step 0: read VFD status regs (0x2103, 6 regs) --- *)
+  read_local_cfg.Channel     := 0;                (* RS-485 Channel 0 *)
+  read_local_cfg.TriggerType := 0;                (* trigger once when IN rises *)
+  read_local_cfg.Cmd         := 3;                (* read holding registers *)
+  read_local_cfg.ElementCnt  := 6;
+  read_target_cfg.Addr       := 8451;             (* 0x2103 *)
+  read_target_cfg.Node       := 1;                (* VFD slave 1 *)
+
+  MB_READ_STATUS(IN := step_read_active, LOCALCFG := read_local_cfg,
+                 TARGETCFG := read_target_cfg, LOCALADDR := read_local_addr);
+
+  IF MB_READ_STATUS.Q THEN
+    vfd_frequency := read_data[1];
+    vfd_current   := read_data[2];
+    vfd_dc_bus    := read_data[3];
+    vfd_voltage   := read_data[4];
+    vfd_comm_ok   := TRUE;
+    last_good_poll := uptime_seconds;
+  END_IF;
+  IF MB_READ_STATUS.Error THEN
+    vfd_comm_ok   := FALSE;
+    vfd_err_count := vfd_err_count + 1;
+  END_IF;
+
+  (* --- Step 1: write command word to 0x2000 --- *)
+  write_local_cfg.Channel     := 0;
+  write_local_cfg.TriggerType := 0;
+  write_local_cfg.Cmd         := 6;               (* write single register *)
+  write_local_cfg.ElementCnt  := 1;
+  write_target_cfg.Addr       := 8192;            (* 0x2000 *)
+  write_target_cfg.Node       := 1;
+
+  COP_CMD(ENABLE := step_write_active, SRC := vfd_cmd_word,
+          DEST := write_buffer, LENGTH := 1);
+
+  MB_WRITE_CMD(IN := step_write_active, LOCALCFG := write_local_cfg,
+               TARGETCFG := write_target_cfg, LOCALADDR := write_local_addr);
+
+  IF MB_WRITE_CMD.Error THEN
+    vfd_err_count := vfd_err_count + 1;
+  END_IF;
+
+  (* ----- Feedback coil: motor_running is TRUE only when commanded AND VFD reports >0 Hz *)
+  motor_running := (vfd_cmd_word = 18) AND vfd_comm_ok AND (vfd_frequency > 0);
+
+  (* ----- Heartbeat and diagnostics ----- *)
+  heartbeat   := NOT heartbeat;
+  cycle_count := cycle_count + 1;
+
+  uptime_timer(IN := NOT uptime_timer.Q, PT := T#1s);
+  IF uptime_timer.Q THEN
+    uptime_seconds := uptime_seconds + 1;
+  END_IF;
+
+  system_ready := vfd_comm_ok AND NOT e_stop_active AND NOT estop_wiring_fault;
+
+END_PROGRAM

@@ -1,0 +1,39 @@
+{
+  "case": "plc_power_loss_24",
+  "passed": true,
+  "failure_bucket": null,
+  "fix_suggestion": "",
+  "word_count": 68,
+  "elapsed": 5.134241104125977,
+  "conditions": {
+    "IDENTIFICATION": true,
+    "FAULT_CAUSE": true,
+    "NEXT_STEP": true,
+    "READABILITY": true,
+    "SPEED": true,
+    "ACTIONABILITY": true
+  },
+  "extracted_facts": {
+    "identification_terms_found": [
+      "Allen-Bradley",
+      "Micro820"
+    ],
+    "fault_cause_found": [
+      "due to",
+      "likely",
+      "loose"
+    ],
+    "next_step_found": [
+      "check",
+      "check"
+    ],
+    "must_not_contain_violated": []
+  },
+  "score": 6,
+  "max_score": 6,
+  "confidence": 1.0,
+  "injected_patterns": {
+    "fault_cause": [],
+    "next_step": []
+  }
+}

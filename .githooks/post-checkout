@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# MIRA post-checkout hook — refresh CodeGraph index after branch switches.
+# Installed via: git config core.hooksPath .githooks
+#
+# Git invokes post-checkout with: $1 = prev HEAD, $2 = new HEAD,
+# $3 = 1 for branch checkout / 0 for file checkout. We only sync on
+# branch checkouts ($3 == 1) — a `git checkout -- somefile` would
+# otherwise trigger a sync on every file restore.
+#
+# Same two-step refresh as post-merge: sync (git stamps every file at
+# checkout time, so the watcher sees a churn) then the corruption canary,
+# and a freshness marker so the next AI task can detect staleness. Never
+# blocks the checkout — detached, all failure modes degrade to a logged line.
+
+set -u
+
+# $3 is set by git; default to 0 if invoked manually for testing.
+IS_BRANCH_CHECKOUT="${3:-0}"
+if [ "$IS_BRANCH_CHECKOUT" != "1" ]; then
+  exit 0
+fi
+
+# Skip when CodeGraph isn't installed in this checkout (e.g. a worktree
+# created without an index — the next preflight will report it missing).
+if [ ! -d ".codegraph" ]; then
+  exit 0
+fi
+
+# Skip when npx is unavailable.
+if ! command -v npx >/dev/null 2>&1; then
+  exit 0
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+(
+  LOG="$REPO_ROOT/.codegraph/hook.log"
+  CANARY=skipped
+  {
+    echo "[$(date '+%Y-%m-%dT%H:%M:%S')] post-checkout: codegraph sync"
+    npx -y @colbymchenry/codegraph sync >/dev/null 2>&1 || true
+
+    if [ -x "$REPO_ROOT/tools/codegraph-canary.sh" ]; then
+      "$REPO_ROOT/tools/codegraph-canary.sh"
+      case $? in
+        0) CANARY=healthy; echo "post-checkout: canary healthy" ;;
+        1) CANARY=repaired; echo "post-checkout: canary detected corruption and repaired via index --force" ;;
+        *) CANARY=failed; echo "post-checkout: canary FAILED to repair — run tools/codegraph-force-reindex.sh by hand" ;;
+      esac
+    else
+      echo "post-checkout: canary script absent — skipped corruption check"
+    fi
+
+    {
+      echo "ts=$(date '+%Y-%m-%dT%H:%M:%S')"
+      echo "head=$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null)"
+      echo "event=post-checkout"
+      echo "npx=ok"
+      echo "index=present"
+      echo "canary=$CANARY"
+    } > "$REPO_ROOT/.codegraph/.last-sync" 2>/dev/null || true
+  } >>"$LOG" 2>&1
+) &
+disown 2>/dev/null || true
+
+exit 0

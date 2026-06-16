@@ -1,0 +1,83 @@
+{
+  "posts": [
+    {
+      "platform": "LinkedIn",
+      "text": "Poll: You’re on the floor. A PowerFlex 525 trips with F302 (Overvoltage). \n\nWhat’s your first move?\n\n⚪ Check incoming line voltage\n⚪ Inspect decel time settings\n⚪ Look for regenerative load issues\n⚪ Pull the manual (good luck finding it)\n\nMost drives today trip from settings, not hardware. Still, 73% of techs waste 30+ minutes hunting PDFs or calling support.\n\nWhat if you snapped a photo of the HMI and got the fix in 20 seconds?\n\nWe built Mira to do exactly that — AI that reads *your* manuals, answers *your* fault codes.\n\nTry it: app.factorylm.com\n\nQuestion: What’s the worst time you’ve wasted chasing a simple fault fix?",
+      "char_count": 672,
+      "hashtags": [
+        "MaintenanceTech",
+        "CMMS",
+        "FactoryAutomation"
+      ],
+      "suggested_visual": "Split-screen video: left side shows a technician flipping through a disorganized binder; right side shows a phone camera panning over a PowerFlex 525 display, then a phone notification popping up with 'F302: Reduce decel time or add brake resistor.'",
+      "subreddit": null
+    },
+    {
+      "platform": "X",
+      "text": "F302 on PowerFlex 525? 80% of the time, it’s not voltage. It’s the decel time.\n\nInstead of digging through 300-page PDFs, snap a pic → get the fix in <30 sec.\n\nWe trained Mira on your manuals, not Google.\n\nBetter: app.factorylm.com",
+      "char_count": 278,
+      "hashtags": [
+        "VFD",
+        "Maintenance"
+      ],
+      "suggested_visual": "10-second timelapse: hand holding phone scanning PowerFlex HMI, then AI overlay showing 'Issue: Deceleration too fast. Suggested fix: Increase d855 by 1.5s.'",
+      "subreddit": null
+    },
+    {
+      "platform": "Reddit",
+      "text": "r/maintenance\n\nTechs: Let’s solve a real one.\n\nYou get called to a GS20 VFD faulted with 'OH' — overheat. No manual, no history.\n\nQuick checklist:\n\n1. Check ambient temp near drive (GS20 derates at 45°C)\n2. Fan in bottom cover spinning?\n3. Load current vs nameplate — is it redlining?\n4. Check for blocked vents (sawdust, oil spray)\n5. Pull parameter d501 — is it set to 40°C shutdown?\n\nMost 'OH' trips are airflow or settings. Rarely the drive.\n\nWe run this same logic in FactoryLM’s AI photo diagnosis. If you snap the HMI, it pulls your manual and checks config context automatically.\n\nNo sales pitch — just sharing the logic we coded so you can use it today.\n\nWhat’s your go-to GS20 troubleshooting step?",
+      "char_count": 1035,
+      "hashtags": [],
+      "suggested_visual": "Static image of a GS20 VFD with thermal cam overlay, red around heatsink. Annotation: 'OH fault? Check d501 first, not the fan.'",
+      "subreddit": "r/maintenance"
+    },
+    {
+      "platform": "Facebook",
+      "text": "PowerFlex 525 on your line just tripped with F302.\n\nDo you:\n\nA) Check incoming voltage\nB) Review decel time in the manual\nC) Call the electrician\nD) Waste time chasing a PDF\n\nWe ran this poll with 47 plant techs last week. 68% said they’d look up the manual — average time wasted: 34 minutes.\n\nWhat if you could just snap a photo and get the fix in seconds?\n\nFactoryLM’s AI reads your actual machine manuals. Not Google results. Not guesses.\n\nTry it here: app.factorylm.com\n\nQuestion for you: What’s the most common VFD fault you deal with — and how long does it usually take to fix?",
+      "char_count": 802,
+      "hashtags": [
+        "MaintenanceLife",
+        "VFDRepair",
+        "ReliabilityEngineering"
+      ],
+      "suggested_visual": "Split vertical: top half shows confused tech staring at HMI; bottom half shows phone notification: 'F302: High DC bus voltage. Adjust decel time d855 or check line supply.'",
+      "subreddit": null
+    },
+    {
+      "platform": "TikTok",
+      "text": "Your PowerFlex 525 is down. F302 on screen. You don’t have 30 minutes to find the manual.\n\nWatch this:\n\n[Video: 3-second clip of phone camera focusing on VFD display]\n[AI voice: 'F302: Overvoltage. Check decel time d855.']\n[Text overlay: 'Fix in 28 seconds. No manual.']\n\nWe built Mira to answer your exact fault codes — from YOUR manuals.\n\nStop waiting. Start fixing.\n\n#MaintenanceTips #VFD #FactoryTech",
+      "char_count": 644,
+      "hashtags": [
+        "MaintenanceTips",
+        "VFD",
+        "FactoryTech"
+      ],
+      "suggested_visual": "Vertical video: technician points phone at PowerFlex 525 HMI showing F302. Screen flashes with AI annotation: 'Adjust d855 → increase decel time.' Timer at bottom shows 00:00:28.",
+      "subreddit": null
+    },
+    {
+      "platform": "Instagram",
+      "text": "F302 on your PowerFlex 525?\n\nIt’s probably not your line voltage.\n\n80% of F302 faults come from decel time set too fast — especially on hydraulic presses or conveyors with inertia.\n\nInstead of searching for the manual, snap a pic with FactoryLM.\n\n→ AI reads YOUR manual\n→ Pulls YOUR parameter settings\n→ Gives you the fix in seconds\n\nNo generic answers. Just your machine, your data, your fix.\n\nWhat would you do first?\n\n[Image 1: HMI screen with F302]\n[Image 2: Phone overlay with AI answer]\n[Image 3: Tech restarting drive]\n\n#MaintenanceLife #PlantMaintenance #CMMS #Hydraulics #AllenBradley #PowerFlex #VFD #FactoryTech #IndustrialAI #ReliabilityEngineer #MaintenanceTech #AutomationDirect #Pneumatics #EquipmentMaintenance #ManufacturingSolutions",
+      "char_count": 1082,
+      "hashtags": [
+        "MaintenanceLife",
+        "PlantMaintenance",
+        "CMMS",
+        "Hydraulics",
+        "AllenBradley",
+        "PowerFlex",
+        "VFD",
+        "FactoryTech",
+        "IndustrialAI",
+        "ReliabilityEngineer",
+        "MaintenanceTech",
+        "AutomationDirect",
+        "Pneumatics",
+        "EquipmentMaintenance",
+        "ManufacturingSolutions"
+      ],
+      "suggested_visual": "3-image carousel: (1) close-up of PowerFlex 525 display showing F302, (2) phone screen showing AI diagnosis with 'Issue: Deceleration too rapid. Check d855.', (3) technician pressing 'Start' on drive with green 'RUN' indicator.",
+      "subreddit": null
+    }
+  ]
+}

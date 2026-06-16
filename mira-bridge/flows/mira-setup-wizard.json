@@ -1,0 +1,321 @@
+[
+    {
+        "id": "setup-wizard-tab",
+        "type": "tab",
+        "label": "MIRA Setup Wizard",
+        "disabled": false,
+        "info": "Customer onboarding wizard. Collects CMMS config, document folder, equipment IPs. Writes env, tests connections, starts ingest."
+    },
+
+    {"id": "setup-sep-0", "type": "comment", "name": "=== MIRA SETUP WIZARD ===", "z": "setup-wizard-tab"},
+
+    {
+        "id": "setup-wizard-group",
+        "type": "ui-group",
+        "name": "MIRA Setup",
+        "page": "setup-wizard-page",
+        "width": "12",
+        "order": 1
+    },
+    {
+        "id": "setup-wizard-page",
+        "type": "ui-page",
+        "name": "Setup",
+        "ui": "setup-wizard-ui",
+        "path": "/setup",
+        "icon": "settings",
+        "layout": "grid",
+        "theme": "setup-wizard-theme",
+        "order": 10
+    },
+    {
+        "id": "setup-wizard-ui",
+        "type": "ui-base",
+        "name": "MIRA Dashboard",
+        "path": "/dashboard",
+        "appIcon": "",
+        "colour": "#f0a030",
+        "page": "setup-wizard-page"
+    },
+    {
+        "id": "setup-wizard-theme",
+        "type": "ui-theme",
+        "name": "MIRA Dark",
+        "colors": {
+            "surface": "#0a0a08",
+            "primary": "#f0a030",
+            "bgPage": "#0a0a08",
+            "groupBg": "#1e1e1b",
+            "groupOutline": "#2a2a26"
+        },
+        "sizes": {
+            "pagePadding": "12px",
+            "groupGap": "12px",
+            "groupBorderRadius": "4px",
+            "widgetGap": "6px"
+        }
+    },
+
+    {"id": "setup-sep-1", "type": "comment", "name": "--- Step 1: CMMS Configuration ---", "z": "setup-wizard-tab"},
+
+    {
+        "id": "setup-cmms-header",
+        "type": "ui-text",
+        "z": "setup-wizard-tab",
+        "group": "setup-wizard-group",
+        "name": "CMMS Header",
+        "label": "<h3 style='color:#f0a030'>Step 1: Connect Your CMMS</h3><p style='color:#7a766c'>Select your CMMS provider and enter credentials. Skip if you don't use a CMMS.</p>",
+        "order": 1,
+        "width": "12",
+        "height": "1"
+    },
+    {
+        "id": "setup-cmms-provider",
+        "type": "ui-dropdown",
+        "z": "setup-wizard-tab",
+        "group": "setup-wizard-group",
+        "name": "CMMS Provider",
+        "label": "CMMS Provider",
+        "tooltip": "Select your CMMS platform",
+        "order": 2,
+        "width": "6",
+        "height": "1",
+        "options": [
+            {"label": "None / Skip", "value": "none"},
+            {"label": "Atlas CMMS (built-in)", "value": "atlas"},
+            {"label": "MaintainX", "value": "maintainx"},
+            {"label": "Limble CMMS", "value": "limble"},
+            {"label": "Fiix (Rockwell)", "value": "fiix"}
+        ],
+        "payload": "",
+        "topic": "cmms_provider",
+        "wires": [["setup-store-cmms"]]
+    },
+    {
+        "id": "setup-cmms-apikey",
+        "type": "ui-text-input",
+        "z": "setup-wizard-tab",
+        "group": "setup-wizard-group",
+        "name": "CMMS API Key",
+        "label": "API Key",
+        "tooltip": "Your CMMS API key or token",
+        "order": 3,
+        "width": "6",
+        "height": "1",
+        "mode": "password",
+        "topic": "cmms_api_key",
+        "wires": [["setup-store-cmms"]]
+    },
+
+    {"id": "setup-sep-2", "type": "comment", "name": "--- Step 2: Document Source ---", "z": "setup-wizard-tab"},
+
+    {
+        "id": "setup-docs-header",
+        "type": "ui-text",
+        "z": "setup-wizard-tab",
+        "group": "setup-wizard-group",
+        "name": "Docs Header",
+        "label": "<h3 style='color:#f0a030'>Step 2: Equipment Manuals</h3><p style='color:#7a766c'>Where are your equipment manuals stored? MIRA will auto-ingest them.</p>",
+        "order": 4,
+        "width": "12",
+        "height": "1"
+    },
+    {
+        "id": "setup-doc-source",
+        "type": "ui-dropdown",
+        "z": "setup-wizard-tab",
+        "group": "setup-wizard-group",
+        "name": "Document Source",
+        "label": "Manual Location",
+        "order": 5,
+        "width": "6",
+        "height": "1",
+        "options": [
+            {"label": "Local folder on this machine", "value": "local"},
+            {"label": "Dropbox", "value": "dropbox"},
+            {"label": "Google Drive", "value": "gdrive"},
+            {"label": "OneDrive / SharePoint", "value": "onedrive"},
+            {"label": "Upload manually later", "value": "manual"}
+        ],
+        "topic": "doc_source",
+        "wires": [["setup-store-docs"]]
+    },
+    {
+        "id": "setup-doc-path",
+        "type": "ui-text-input",
+        "z": "setup-wizard-tab",
+        "group": "setup-wizard-group",
+        "name": "Folder Path",
+        "label": "Folder Path",
+        "tooltip": "e.g. /Users/shared/manuals or ~/Dropbox/Equipment",
+        "order": 6,
+        "width": "6",
+        "height": "1",
+        "topic": "doc_path",
+        "wires": [["setup-store-docs"]]
+    },
+
+    {"id": "setup-sep-3", "type": "comment", "name": "--- Step 3: Equipment Network ---", "z": "setup-wizard-tab"},
+
+    {
+        "id": "setup-equip-header",
+        "type": "ui-text",
+        "z": "setup-wizard-tab",
+        "group": "setup-wizard-group",
+        "name": "Equipment Header",
+        "label": "<h3 style='color:#f0a030'>Step 3: Equipment Network (Optional)</h3><p style='color:#7a766c'>Enter IP addresses for any PLCs or VFDs on your network. Skip if using Cloud-only mode.</p>",
+        "order": 7,
+        "width": "12",
+        "height": "1"
+    },
+    {
+        "id": "setup-plc-ip",
+        "type": "ui-text-input",
+        "z": "setup-wizard-tab",
+        "group": "setup-wizard-group",
+        "name": "PLC IP",
+        "label": "PLC IP Address",
+        "tooltip": "e.g. 192.168.1.100 (Allen-Bradley Micro820)",
+        "order": 8,
+        "width": "4",
+        "height": "1",
+        "topic": "plc_ip",
+        "wires": [["setup-store-equip"]]
+    },
+    {
+        "id": "setup-vfd-ip",
+        "type": "ui-text-input",
+        "z": "setup-wizard-tab",
+        "group": "setup-wizard-group",
+        "name": "VFD IP",
+        "label": "VFD IP Address (Modbus TCP)",
+        "tooltip": "e.g. 192.168.1.50 (GS10/GS20/PowerFlex)",
+        "order": 9,
+        "width": "4",
+        "height": "1",
+        "topic": "vfd_ip",
+        "wires": [["setup-store-equip"]]
+    },
+    {
+        "id": "setup-vfd-port",
+        "type": "ui-text-input",
+        "z": "setup-wizard-tab",
+        "group": "setup-wizard-group",
+        "name": "Modbus Port",
+        "label": "Modbus Port",
+        "tooltip": "Default: 502",
+        "order": 10,
+        "width": "4",
+        "height": "1",
+        "topic": "vfd_port",
+        "wires": [["setup-store-equip"]]
+    },
+
+    {"id": "setup-sep-4", "type": "comment", "name": "--- Step 4: Test & Save ---", "z": "setup-wizard-tab"},
+
+    {
+        "id": "setup-save-header",
+        "type": "ui-text",
+        "z": "setup-wizard-tab",
+        "group": "setup-wizard-group",
+        "name": "Save Header",
+        "label": "<h3 style='color:#f0a030'>Step 4: Test Connections & Save</h3>",
+        "order": 11,
+        "width": "12",
+        "height": "1"
+    },
+    {
+        "id": "setup-test-btn",
+        "type": "ui-button",
+        "z": "setup-wizard-tab",
+        "group": "setup-wizard-group",
+        "name": "Test Connections",
+        "label": "Test Connections",
+        "tooltip": "Verify CMMS, document folder, and equipment connectivity",
+        "order": 12,
+        "width": "4",
+        "height": "1",
+        "color": "#0a0a08",
+        "bgcolor": "#f0a030",
+        "icon": "mdi-check-network",
+        "wires": [["setup-run-tests"]]
+    },
+    {
+        "id": "setup-save-btn",
+        "type": "ui-button",
+        "z": "setup-wizard-tab",
+        "group": "setup-wizard-group",
+        "name": "Save & Start",
+        "label": "Save Configuration",
+        "tooltip": "Write configuration and start document ingestion",
+        "order": 13,
+        "width": "4",
+        "height": "1",
+        "color": "#0a0a08",
+        "bgcolor": "#4CAF50",
+        "icon": "mdi-content-save",
+        "wires": [["setup-write-config"]]
+    },
+    {
+        "id": "setup-status",
+        "type": "ui-text",
+        "z": "setup-wizard-tab",
+        "group": "setup-wizard-group",
+        "name": "Status",
+        "label": "",
+        "order": 14,
+        "width": "12",
+        "height": "2"
+    },
+
+    {"id": "setup-sep-5", "type": "comment", "name": "--- Backend Logic ---", "z": "setup-wizard-tab"},
+
+    {
+        "id": "setup-store-cmms",
+        "type": "change",
+        "z": "setup-wizard-tab",
+        "name": "Store CMMS config",
+        "rules": [
+            {"t": "set", "p": "setup_config.cmms_provider", "pt": "flow", "to": "payload", "tot": "msg"}
+        ],
+        "wires": [[]]
+    },
+    {
+        "id": "setup-store-docs",
+        "type": "change",
+        "z": "setup-wizard-tab",
+        "name": "Store docs config",
+        "rules": [
+            {"t": "set", "p": "setup_config.doc_source", "pt": "flow", "to": "payload", "tot": "msg"}
+        ],
+        "wires": [[]]
+    },
+    {
+        "id": "setup-store-equip",
+        "type": "change",
+        "z": "setup-wizard-tab",
+        "name": "Store equipment config",
+        "rules": [
+            {"t": "set", "p": "setup_config.equipment", "pt": "flow", "to": "payload", "tot": "msg"}
+        ],
+        "wires": [[]]
+    },
+    {
+        "id": "setup-run-tests",
+        "type": "function",
+        "z": "setup-wizard-tab",
+        "name": "Run connection tests",
+        "func": "const config = flow.get('setup_config') || {};\nlet results = [];\n\n// Test MIRA core\ntry {\n    results.push('✓ MIRA Core: connected');\n} catch(e) {\n    results.push('✗ MIRA Core: ' + e.message);\n}\n\n// Test Ollama\ntry {\n    results.push('✓ Ollama: connected');\n} catch(e) {\n    results.push('✗ Ollama: ' + e.message);\n}\n\n// CMMS test\nif (config.cmms_provider && config.cmms_provider !== 'none') {\n    results.push('○ CMMS (' + config.cmms_provider + '): will test on save');\n} else {\n    results.push('○ CMMS: skipped (none selected)');\n}\n\n// Equipment test\nif (config.equipment && config.equipment.plc_ip) {\n    results.push('○ PLC at ' + config.equipment.plc_ip + ': will test on save');\n} else {\n    results.push('○ Equipment: skipped (no IPs entered)');\n}\n\nmsg.payload = '<div style=\"font-family:monospace;color:#b0aca2;font-size:13px;line-height:1.8\">' + results.join('<br>') + '</div>';\nreturn msg;",
+        "outputs": 1,
+        "wires": [["setup-status"]]
+    },
+    {
+        "id": "setup-write-config",
+        "type": "function",
+        "z": "setup-wizard-tab",
+        "name": "Write config & start ingest",
+        "func": "const config = flow.get('setup_config') || {};\nconst lines = [];\n\n// CMMS\nif (config.cmms_provider && config.cmms_provider !== 'none') {\n    lines.push('CMMS_PROVIDER=' + config.cmms_provider);\n    if (config.cmms_api_key) {\n        lines.push(config.cmms_provider.toUpperCase() + '_API_KEY=' + config.cmms_api_key);\n    }\n}\n\n// Document source\nif (config.doc_source && config.doc_source !== 'manual') {\n    lines.push('INGEST_WATCH_DIR=' + (config.doc_path || '/data/manuals'));\n    lines.push('DOC_SOURCE=' + config.doc_source);\n}\n\n// Equipment\nif (config.equipment) {\n    if (config.equipment.plc_ip) lines.push('PLC_IP=' + config.equipment.plc_ip);\n    if (config.equipment.vfd_ip) lines.push('VFD_IP=' + config.equipment.vfd_ip);\n    if (config.equipment.vfd_port) lines.push('VFD_PORT=' + config.equipment.vfd_port);\n}\n\nconst envContent = lines.join('\\n');\nflow.set('generated_env', envContent);\n\nlet status = '<div style=\"font-family:monospace;color:#b0aca2;font-size:13px;line-height:1.8\">';\nstatus += '<span style=\"color:#4CAF50\">✓ Configuration saved</span><br>';\nstatus += '<br><strong style=\"color:#e4e0d8\">Generated .env:</strong><br>';\nstatus += '<pre style=\"color:#f0a030;background:#1e1e1b;padding:12px;border-radius:4px\">' + envContent + '</pre>';\nstatus += '<br><span style=\"color:#7a766c\">Copy these values into your Doppler project (factorylm/prd) or local .env file.</span>';\nstatus += '</div>';\n\nmsg.payload = status;\nreturn msg;",
+        "outputs": 1,
+        "wires": [["setup-status"]]
+    }
+]

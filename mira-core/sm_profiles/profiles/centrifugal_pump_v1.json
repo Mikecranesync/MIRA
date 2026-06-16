@@ -1,0 +1,16 @@
+{
+  "type": "CentrifugalPump",
+  "version": "1.0.0",
+  "description": "Centrifugal pump moving process fluid between tanks.",
+  "properties": [
+    {"name": "dischargePressure", "engineeringUnit": "psi", "normalRangeMin": 40.0, "normalRangeMax": 85.0, "alarmHigh": 100.0, "alarmLow": 20.0, "description": "Pump discharge pressure."},
+    {"name": "flowRate", "engineeringUnit": "gpm", "normalRangeMin": 50.0, "normalRangeMax": 300.0, "alarmHigh": 350.0, "alarmLow": 10.0, "description": "Volumetric flow rate."},
+    {"name": "motorCurrent", "engineeringUnit": "A", "normalRangeMin": 8.0, "normalRangeMax": 40.0, "alarmHigh": 48.0, "alarmLow": 1.0, "description": "Pump motor current."},
+    {"name": "suctionPressure", "engineeringUnit": "psi", "normalRangeMin": 10.0, "normalRangeMax": 40.0, "alarmHigh": 50.0, "alarmLow": 2.0, "description": "Pump suction pressure."}
+  ],
+  "relationships": [
+    {"edge": "partOf", "targetType": "PumpSkid"},
+    {"edge": "feedsInto", "targetType": "ProcessTank"},
+    {"edge": "monitoredBy", "targetType": "VibrationSensor"}
+  ]
+}
