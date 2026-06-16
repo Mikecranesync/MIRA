@@ -16,6 +16,17 @@
 
 import json
 
+# Dual Py2.7/3.12 string check: under Jython 2.7 (the live gateway) json.loads and
+# Perspective table values arrive as `unicode`, which is NOT an instance of `str` -- so a
+# plain isinstance(x, str) wrongly rejects every config read back from the tag (the
+# manual map pick and the accept-all read-back both failed live for this reason). Accept
+# both. Under CPython 3.12 (where the tests run) `unicode` doesn't exist, so this collapses
+# to (str,) and behavior is unchanged.
+try:
+    string_types = (str, unicode)  # noqa: F821 -- Jython 2.7 / Python 2 only
+except NameError:
+    string_types = (str,)          # CPython 3.12
+
 SCHEMA_VERSION = 1
 
 
@@ -48,7 +59,7 @@ def load_config(text_or_dict, valid_keys=None):
                           % (cfg.get("schemaVersion"), SCHEMA_VERSION))
 
     asset_id = cfg.get("assetId")
-    if not isinstance(asset_id, str) or not asset_id.strip():
+    if not isinstance(asset_id, string_types) or not asset_id.strip():
         raise ConfigError("assetId is required and must be a non-empty string")
 
     roles = cfg.get("roles")
@@ -62,7 +73,7 @@ def load_config(text_or_dict, valid_keys=None):
         if not isinstance(entry, dict):
             raise ConfigError("role %s must be an object" % (key,))
         tag = entry.get("tag")
-        if not isinstance(tag, str) or not tag.strip():
+        if not isinstance(tag, string_types) or not tag.strip():
             raise ConfigError("role %s is missing a non-empty 'tag'" % (key,))
         if "divisor" not in entry:
             raise ConfigError("role %s is missing 'divisor'" % (key,))
