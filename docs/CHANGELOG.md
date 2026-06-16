@@ -3,7 +3,7 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
-### v3.24.8 (2026-06-16) — fix(ci): deploy-staging honors dispatched `--ref`
+### v3.24.9 (2026-06-16) — fix(ci): deploy-staging honors dispatched `--ref`
 - **`.github/workflows/deploy-staging.yml`** — the VPS deploy step runs over an ssh heredoc quoted with `<< 'ENDSSH'`, so `GITHUB_REF_NAME` was evaluated *on the VPS* (where it's unset) and the deploy ref always fell back to `staging`. Every `workflow_dispatch --ref <X>` silently deployed the `staging` branch regardless of `X`. Fix threads the runner's `github.ref_name` through the ssh command line as `DEPLOY_REF`, and the heredoc now reads `REF="${DEPLOY_REF:-${GITHUB_REF_NAME:-staging}}"`. Unblocks `--ref main` staging deploys. Cherry-picked from `test/staging-1901-deploy` (`a5cd0fcc`) to land on main independently of the #1901 onboarding stack.
 
 ### ops/kiosk-runbook (2026-06-06) — AskMira / mira-ask deploy + prod verify runbook + close `services` gap
