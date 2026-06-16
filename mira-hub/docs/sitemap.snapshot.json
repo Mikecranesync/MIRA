@@ -110,6 +110,7 @@
     "/api/cmms/stats",
     "/api/command-center/display",
     "/api/command-center/display/[id]",
+    "/api/command-center/gateways",
     "/api/command-center/tree",
     "/api/components/[id]",
     "/api/connections",
