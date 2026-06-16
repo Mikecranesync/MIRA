@@ -295,6 +295,41 @@ def rows_markdown(asset):
     return "\n".join(parts)
 
 
+def rows_table(asset):
+    """The map as STRUCTURED rows for a dark-themed ia.display.table (the Save-step review):
+    [{role, req, tag, scale, live}]. Same data as rows_markdown, but a real table renders with
+    readable contrast on the dark theme (the markdown table rendered light-on-light). A required
+    role with no tag shows '! needs a tag' so it stands out; mapped rows show the leaf tag + scale
+    + live scaled value (or 'BAD QUALITY')."""
+    cfg = _load(asset)
+    roles_map = (cfg or {}).get("roles", {})
+    rows = []
+    for r in _roles.ROLES:
+        key = r["key"]
+        req = {"required": "REQUIRED", "recommended": "rec", "optional": ""}.get(r["requirement"], "")
+        ent = roles_map.get(key)
+        if ent is None:
+            tag_disp = "! needs a tag" if r["requirement"] == "required" else "(unmapped)"
+            scale = ""
+            live = ""
+        else:
+            tag = ent.get("tag", "")
+            div = ent.get("divisor")
+            tag_disp = str(tag).rsplit("/", 1)[-1]
+            scale = "1x" if div in (None, 1.0) else ("/%s" % div)
+            val, good = _live(tag, div)
+            if good is False:
+                live = "BAD QUALITY"
+            elif val is None:
+                live = "-"
+            else:
+                unit = (" " + r["unit"]) if r.get("unit") else ""
+                live = "%s%s" % (val, unit)
+        rows.append({"role": r["display"], "req": req, "tag": tag_disp,
+                     "scale": scale, "live": live})
+    return rows
+
+
 def _ensure_tag(asset):
     """Create the String memory config tag for `asset` if it does not exist yet."""
     path = CONFIG_TAG % asset

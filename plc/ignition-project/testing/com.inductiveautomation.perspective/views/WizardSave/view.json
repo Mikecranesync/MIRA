@@ -46,9 +46,20 @@
         "children": [
           { "type": "ia.display.label", "meta": { "name": "title" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "Review the map and finish", "style": { "color": "#e6edf3", "fontSize": "22px", "fontWeight": 700 } } },
           {
-            "type": "ia.display.markdown", "meta": { "name": "map" }, "position": { "grow": 1, "shrink": 1 },
-            "props": { "source": "Loading…", "style": { "backgroundColor": "#0d1117", "color": "#ffffff", "border": "1px solid #30363d", "borderRadius": "8px", "padding": "12px", "fontSize": "14px", "overflow": "auto" } },
-            "propConfig": { "props.source": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.rows_markdown\", {session.custom.pollMs}, {session.custom.assetId})" } } } }
+            "type": "ia.display.table", "meta": { "name": "map" }, "position": { "grow": 1, "shrink": 1 },
+            "props": {
+              "data": [],
+              "columns": [
+                { "field": "role", "header": { "title": "Role" }, "align": "left" },
+                { "field": "req", "header": { "title": "Req" }, "align": "left" },
+                { "field": "tag", "header": { "title": "Mapped tag" }, "align": "left" },
+                { "field": "scale", "header": { "title": "Scale" }, "align": "left" },
+                { "field": "live", "header": { "title": "Live" }, "align": "left" }
+              ],
+              "rows": { "pageSize": 0 },
+              "style": { "border": "1px solid #30363d", "borderRadius": "8px", "fontSize": "14px" }
+            },
+            "propConfig": { "props.data": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.rows_table\", {session.custom.pollMs}, {session.custom.assetId})" } } } }
           },
           {
             "type": "ia.container.flex", "meta": { "name": "approveRow" }, "position": { "basis": "auto", "shrink": 0 },
