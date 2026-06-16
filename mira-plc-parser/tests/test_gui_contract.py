@@ -43,3 +43,18 @@ def test_conveyor_fixture_yields_at_least_one_yellow_suggestion():
     # The proof's headline behavior: the parser pre-fills at least one role for the user.
     rep = _report()
     assert len(rep["vfd_signal_candidates"]) >= 1
+
+
+def test_report_exposes_uns_candidates_for_namespace_builder():
+    # The Namespace Builder GUI reads uns_candidates + uns_prefix and recomputes paths live from
+    # the per-tag segments. Pin the fields it depends on.
+    rep = _report()
+    pref = rep.get("uns_prefix")
+    assert isinstance(pref, dict) and {"enterprise", "site", "area", "line"} <= set(pref)
+    cands = rep.get("uns_candidates")
+    assert isinstance(cands, list) and cands, "Namespace Builder needs uns_candidates"
+    for c in cands:
+        assert "tag" in c and "data_type" in c
+        assert "asset" in c and "signal" in c, "GUI rebuilds the path from asset + signal segments"
+        assert "confidence" in c, "GUI highlights high/medium proposals"
+        assert "segments" in c

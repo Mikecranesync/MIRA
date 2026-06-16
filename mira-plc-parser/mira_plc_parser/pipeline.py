@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from . import analyze as _analyze
+from . import uns as _uns
 from .detect import Detection, detect
 from .ir import PLCProject
 from .parsers import csv_tags, rockwell_l5x
@@ -107,6 +108,20 @@ def render_markdown(result: ParseResult) -> str:
         for f in r.vfd_signal_candidates[:40]:
             lines.append("- **%s** — %s" % (f.name, f.detail))
 
+    uns = _uns.propose_uns({
+        "handled": True, "controller": r.controller,
+        "tag_dictionary": r.tag_dictionary,
+        "vfd_signal_candidates": [_finding(f) for f in r.vfd_signal_candidates],
+        "asset_candidates": [_finding(f) for f in r.asset_candidates],
+    })
+    if uns:
+        lines.append("")
+        lines.append("## Proposed UNS namespace (enterprise / site / area / line / asset / signal)")
+        lines.append("_Upper levels are placeholders — set your real site / area / line in the "
+                     "Namespace Builder, then export._")
+        for u in uns[:60]:
+            lines.append("- `%s`  ←  **%s** (%s)" % (u["path"], u["tag"], u["confidence"]))
+
     if r.routine_summaries:
         lines.append("")
         lines.append("## Routines")
@@ -134,7 +149,7 @@ def render_json(result: ParseResult) -> dict:
         return {"schema": "mira-plc-parser/report@1", "detection": detection, "handled": False,
                 "warnings": list(result.project.warnings)}
     r = result.report
-    return {
+    out = {
         "schema": "mira-plc-parser/report@1",
         "detection": detection,
         "handled": True,
@@ -150,3 +165,9 @@ def render_json(result: ParseResult) -> dict:
         "tag_dictionary": r.tag_dictionary,
         "warnings": list(r.warnings),
     }
+    # standardized-namespace proposal: per-tag UNS / ISA-95 paths (the Namespace Builder consumes this)
+    pref = _uns.default_prefix(out)
+    out["uns_prefix"] = pref
+    out["uns_candidates"] = _uns.propose_uns(out, pref)
+    out["counts"]["uns_candidates"] = len(out["uns_candidates"])
+    return out

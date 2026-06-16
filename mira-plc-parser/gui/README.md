@@ -1,55 +1,65 @@
-# MIRA Tag Mapper — desktop-style GUI (proof)
+# MIRA Namespace Builder — desktop-style GUI
 
-A self-contained, **offline** front end for the MIRA PLC Parser. It reads a `*.report.json`
-produced by `mira-plc-parser analyze` and presents the classic two-pane mapper:
+A self-contained, **offline** front end for the MIRA PLC Parser. It reads a `*.report.json` produced
+by `mira-plc-parser analyze` and helps you turn a customer's raw PLC tags into a **standardized UNS /
+ISA-95 namespace** — and export it toward the CESMII **i3X** API shape.
 
 ```
-Customer tags  (left)   ⇄   Analyzer roles  (right)
-                 swap        auto-suggestions highlighted yellow
+Namespace:  enterprise / site / area / line  /  asset / signal   (set the top, the parse fills the rest)
+
+  PLC tag         Type   Proposed UNS path                                   Conf.
+  VFD_Frequency   REAL   enterprise/site1/area1/conveyorcell/vfd/frequency   HIGH   <- yellow
+  Motor_Run       BOOL   enterprise/site1/area1/conveyorcell/motor/motor_run MEDIUM <- yellow
+  Start_PB        BOOL   enterprise/site1/area1/conveyorcell/start_pb        LOW
 ```
 
-- **Left pane** — the customer's tags (`tag_dictionary` from the report).
-- **Right pane** — the analyzer's signal roles (Output frequency, Output current, Fault code, …).
-- **Yellow rows** — the parser's auto-suggestions (`vfd_signal_candidates`), pre-linked for the
-  user to confirm or change. "Accept all suggestions" confirms them in one click.
-- **Map ⇄** — select a tag and a role, then map them by hand.
+- **Namespace prefix** (top) — type your Enterprise / Site / Area / Line **once**; every path
+  recomputes live (and is slugged to UNS segments as you type).
+- **Per-tag path** — the parser fills the lower levels it can see: the `asset` (from asset candidates
+  / tag-name prefixes) and a standardized `signal` leaf (from VFD signal roles, else the slugged tag).
+- **Yellow rows** — the parser's confident proposals (HIGH = standardized signal **and** an asset
+  matched; MEDIUM = one of the two). LOW rows sit directly under the line for you to refine.
+- **Export** — UNS JSON (tag → path + segments), **i3X JSON** (CESMII `objectInstances` with a
+  `parentId` hierarchy + the `objectTypes` they reference), or CSV. All client-side; nothing leaves
+  the machine.
 
 ## Run it
 
-It's a single static file — no build, no server, no network, no LLM.
+Single static file — no build, no server, no network, no LLM.
 
 ```
-# just open it:
-start gui/index.html            # Windows
-# or serve locally if your browser blocks file:// JSON loads:
-python -m http.server -d gui 8901   # then open http://127.0.0.1:8901/index.html
+start gui/index.html                       # Windows: just open it
+python -m http.server -d gui 8902          # or serve locally, then open http://127.0.0.1:8902/index.html
 ```
 
-It boots with a small embedded sample so the window works immediately. Use **File ▸ Open
-report.json…** (or the toolbar button) to load a real report you generated with:
+It boots with an embedded sample so the window works immediately. **File ▸ Open report.json…** loads a
+real report you generated with:
 
 ```
 mira-plc-parser analyze C:\path\to\export.L5X --out C:\reports --format json
 ```
 
+The packaged desktop app (`MIRA-Tag-Mapper.exe`, see `../MIRA-Tag-Mapper.spec` + `PACKAGING.md`) opens
+this same page in a chromeless window.
+
+## Standards
+
+- **UNS / ISA-95** — `enterprise/site/area/line/asset/signal`, lowercase slugged segments.
+- **CESMII i3X** (https://www.i3x.dev, https://github.com/cesmii/API) — the i3X export emits
+  `objectInstances` (each ISA-95 level a container, each tag a leaf) linked by `parentId`, plus the
+  minimal `objectTypes` they reference. Field names follow the public i3X OpenAPI for interoperability;
+  the backend equivalents live in `mira_plc_parser/uns.py` and `mira_plc_parser/i3x.py`.
+
 ## Styling
 
-The window chrome (beveled gray panels, title bar, resizable frame, sunken list fields) is an
-**original CSS implementation** of the classic desktop look — no third-party or proprietary
-stylesheet is copied, and nothing is fetched from the network. If you'd rather use a ready-made
-classic skin, the MIT-licensed `98.css` / `7.css` libraries are drop-in alternatives; this proof
-keeps its own CSS so it stays dependency-free.
+The window chrome (beveled gray panels, title bar, resizable frame, sunken fields) is an **original
+CSS implementation** of the classic desktop look — no third-party or proprietary stylesheet is copied,
+and nothing is fetched from the network. If you'd rather use a ready-made classic skin, the
+MIT-licensed `98.css` / `7.css` libraries are drop-in alternatives; this keeps its own CSS so it stays
+dependency-free.
 
 ## Contract with the parser
 
-The GUI consumes a stable subset of the report JSON: `tag_dictionary[].{name,data_type}`,
-`vfd_signal_candidates[].{name,detail}`, and `controller` / `vendor`. That contract is guarded by
+The GUI consumes a stable subset of the report JSON: `uns_prefix`, `uns_candidates[].{tag, data_type,
+asset, signal, confidence, segments}`, plus `controller` / `vendor`. That contract is guarded by
 `tests/test_gui_contract.py` so a parser change can't silently break the GUI.
-
-## Toward a real Windows window
-
-This proof runs in a browser. To ship it as an actual resizable OS window with no browser visible,
-wrap this same HTML in a thin shell — e.g. **pywebview** (MIT, pure-Python) or **Tauri** — both load
-the local file and give a native, resizable, minimize/maximize window. The HTML/CSS/JS does not
-change; only the host does. That packaging step is the next phase (sibling to the CLI's PyInstaller
-`.exe` foundation in `../PACKAGING.md`).
