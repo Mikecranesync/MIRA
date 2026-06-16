@@ -114,3 +114,39 @@ def render_markdown(result: ParseResult) -> str:
             lines.append("- **%s / %s** (%s, %d rungs) — %s"
                          % (s["program"], s["routine"], s["type"], s["rungs"], s["purpose_hint"] or ""))
     return "\n".join(lines)
+
+
+def _finding(f) -> dict:
+    """One analyze.Finding -> a plain JSON-safe dict (confidence is already a .value string)."""
+    return {"kind": f.kind, "name": f.name, "detail": f.detail,
+            "confidence": f.confidence, "evidence": list(f.evidence)}
+
+
+def render_json(result: ParseResult) -> dict:
+    """A machine-consumable report from a ParseResult -- the structured sibling of render_markdown().
+
+    Built explicitly from known fields (NOT dataclasses.asdict, which would choke on the Confidence
+    enum). Stdlib-only and json.dumps-safe; downstream tools / the Hub consume this shape."""
+    det = result.detection
+    detection = {"fmt": det.fmt, "confidence": det.confidence, "reason": det.reason,
+                 "needs_export": det.needs_export}
+    if not result.handled:
+        return {"schema": "mira-plc-parser/report@1", "detection": detection, "handled": False,
+                "warnings": list(result.project.warnings)}
+    r = result.report
+    return {
+        "schema": "mira-plc-parser/report@1",
+        "detection": detection,
+        "handled": True,
+        "controller": r.controller,
+        "vendor": r.vendor,
+        "counts": dict(r.counts),
+        "review_required": [_finding(f) for f in r.review_required],
+        "output_dependencies": [_finding(f) for f in r.output_dependencies],
+        "fault_candidates": [_finding(f) for f in r.fault_candidates],
+        "asset_candidates": [_finding(f) for f in r.asset_candidates],
+        "vfd_signal_candidates": [_finding(f) for f in r.vfd_signal_candidates],
+        "routine_summaries": r.routine_summaries,
+        "tag_dictionary": r.tag_dictionary,
+        "warnings": list(r.warnings),
+    }
