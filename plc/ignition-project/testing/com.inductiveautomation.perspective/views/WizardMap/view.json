@@ -169,6 +169,11 @@
                 "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "\"for:  \" + runScript(\"mira_setup.role_display\", 0, {view.custom.selRole}) + \"      (showing \" + runScript(\"mira_setup.role_typehint\", 0, {view.custom.selRole}) + \")\"" } } } }
               },
               {
+                "type": "ia.display.label", "meta": { "name": "pickAbout" }, "position": { "basis": "auto", "shrink": 0 },
+                "props": { "text": "", "style": { "color": "#8b949e", "fontSize": "13px", "fontStyle": "italic", "lineHeight": "1.35" } },
+                "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.role_about\", 0, {view.custom.selRole})" } } } }
+              },
+              {
                 "type": "ia.input.text-field", "meta": { "name": "search" }, "position": { "basis": "auto", "shrink": 0 },
                 "props": { "text": "", "placeholder": "search tag name…  (already filtered to fitting types)" },
                 "propConfig": { "props.text": { "binding": { "type": "property", "config": { "path": "view.custom.selSearch" }, "bidirectional": true } } }
