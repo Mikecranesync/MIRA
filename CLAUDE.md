@@ -170,6 +170,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 
 - **Architecture (layer map + dependency rules):** `docs/ARCHITECTURE.md`
 - **Quality score (domain grades):** `docs/QUALITY_SCORE.md`
+- **Agent eval / tracing / observability audit + decision:** `docs/observability/mira-agent-eval-audit.md` — KEEP RAGAS/DeepEval/5-regime evals; EXTEND with `mira-bots/shared/agent_trace.py` (cloud-free per-turn trace + JSONL + optional OTel/Phoenix via `MIRA_OTEL_ENDPOINT`, off by default). Phoenix optional; no LangGraph (ADR-0011).
 - **Harness plan (security/measurement/arch phases):** `docs/superpowers/plans/2026-04-17-harness-engineering-industrial-grade.md`
 - **Release notes:** `docs/CHANGELOG.md`
 - **Versioning & rollback (every merge bumps `/VERSION`, auto-tags `vX.Y.Z` + a rollback checkpoint):** `docs/versioning.md` — enforced by `version-gate.yml` (required) + `version-tag.yml`
