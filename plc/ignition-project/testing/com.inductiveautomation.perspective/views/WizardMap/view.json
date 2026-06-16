@@ -82,7 +82,7 @@
                   },
                   {
                     "type": "ia.display.label", "meta": { "name": "fq_status" }, "position": { "basis": "auto", "shrink": 0 },
-                    "props": { "text": "…", "style": { "color": "#f0a90e", "fontSize": "14px", "fontWeight": 600, "fontFamily": "Consolas, monospace" } },
+                    "props": { "text": "…", "style": { "color": "#f0a90e", "fontSize": "14px", "fontWeight": 600, "fontFamily": "inherit" } },
                     "propConfig": {
                       "props.text": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.slot_text\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/freq\")" } } },
                       "props.style.color": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.slot_color\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/freq\")" } } }
@@ -108,7 +108,7 @@
                   },
                   {
                     "type": "ia.display.label", "meta": { "name": "cu_status" }, "position": { "basis": "auto", "shrink": 0 },
-                    "props": { "text": "…", "style": { "color": "#f0a90e", "fontSize": "14px", "fontWeight": 600, "fontFamily": "Consolas, monospace" } },
+                    "props": { "text": "…", "style": { "color": "#f0a90e", "fontSize": "14px", "fontWeight": 600, "fontFamily": "inherit" } },
                     "propConfig": {
                       "props.text": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.slot_text\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/current_a\")" } } },
                       "props.style.color": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.slot_color\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/current_a\")" } } }
@@ -134,7 +134,7 @@
                   },
                   {
                     "type": "ia.display.label", "meta": { "name": "ft_status" }, "position": { "basis": "auto", "shrink": 0 },
-                    "props": { "text": "…", "style": { "color": "#f0a90e", "fontSize": "14px", "fontWeight": 600, "fontFamily": "Consolas, monospace" } },
+                    "props": { "text": "…", "style": { "color": "#f0a90e", "fontSize": "14px", "fontWeight": 600, "fontFamily": "inherit" } },
                     "propConfig": {
                       "props.text": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.slot_text\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/fault_code\")" } } },
                       "props.style.color": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.slot_color\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/fault_code\")" } } }
@@ -150,7 +150,7 @@
               },
               {
                 "type": "ia.input.dropdown", "meta": { "name": "optDrop" }, "position": { "basis": "auto", "shrink": 0 },
-                "props": { "value": "", "visible": false },
+                "props": { "value": "", "visible": false, "placeholder": "Choose an optional signal to add…" },
                 "propConfig": {
                   "props.visible": { "binding": { "type": "property", "config": { "path": "view.custom.showOptional" } } },
                   "props.value": { "binding": { "type": "property", "config": { "path": "view.custom.selRole" }, "bidirectional": true } },
@@ -200,12 +200,12 @@
                       { "type": "ia.display.label", "meta": { "name": "chosenLbl" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "Chosen:", "style": { "color": "#8b949e", "fontSize": "13px" } } },
                       {
                         "type": "ia.display.label", "meta": { "name": "chosenVal" }, "position": { "basis": "auto", "shrink": 0 },
-                        "props": { "text": "(tap a tag)", "style": { "color": "#e6edf3", "fontSize": "14px", "fontWeight": 700, "fontFamily": "Consolas, monospace" } },
+                        "props": { "text": "(tap a tag)", "style": { "color": "#e6edf3", "fontSize": "14px", "fontWeight": 700, "fontFamily": "inherit" } },
                         "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "if(len({view.custom.selTag})>0, {view.custom.selTag}, \"(tap a tag — or a suggestion is pre-filled)\")" } } } }
                       },
                       {
                         "type": "ia.display.label", "meta": { "name": "preview" }, "position": { "grow": 1, "shrink": 1 },
-                        "props": { "text": "", "style": { "color": "#58a6ff", "fontSize": "15px", "fontWeight": 700, "fontFamily": "Consolas, monospace", "textAlign": "right" } },
+                        "props": { "text": "", "style": { "color": "#58a6ff", "fontSize": "15px", "fontWeight": 700, "fontFamily": "inherit", "textAlign": "right" } },
                         "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.preview\", 1000, {view.custom.selTag}, {view.custom.selDivisor}, {view.custom.selRole})" } } } }
                       }
                     ]
@@ -214,7 +214,7 @@
                     "type": "ia.container.flex", "meta": { "name": "actionRow" }, "position": { "basis": "auto", "shrink": 0 },
                     "props": { "direction": "row", "alignItems": "center", "style": { "gap": "10px" } },
                     "children": [
-                      { "type": "ia.display.label", "meta": { "name": "scaleLbl" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "Scale ÷", "style": { "color": "#8b949e", "fontSize": "12px" } } },
+                      { "type": "ia.display.label", "meta": { "name": "scaleLbl" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "Scale ÷  (raw ÷ this = value at right)", "style": { "color": "#8b949e", "fontSize": "12px" } } },
                       {
                         "type": "ia.input.numeric-entry-field", "meta": { "name": "scale" }, "position": { "basis": "85px", "shrink": 0 },
                         "props": { "value": 100 },

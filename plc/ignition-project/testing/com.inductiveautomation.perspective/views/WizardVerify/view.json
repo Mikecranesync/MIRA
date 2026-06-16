@@ -91,7 +91,7 @@
             "props": { "text": "◂ Back", "style": { "backgroundColor": "#30363d", "color": "#c9d1d9", "fontSize": "14px", "borderRadius": "8px", "border": "none", "padding": "11px" } },
             "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tp = {\"assetId\": self.session.custom.assetId, \"folder\": mira_setup.get_setup_folder(), \"pollMs\": self.session.custom.pollMs}\n\tsystem.perspective.navigate(page=\"/setup\")\n" } } } }
           },
-          { "type": "ia.display.label", "meta": { "name": "fspacer" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "Step 2 of 4 — Verify", "style": { "color": "#6e7d90", "fontSize": "13px", "textAlign": "center" } } },
+          { "type": "ia.display.label", "meta": { "name": "fspacer" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "Step 2 of 4 — Verify", "style": { "color": "#6e7d90", "fontSize": "13px", "textAlign": "center" } }, "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "if({view.custom.verifyRan}, \"Step 2 of 4 — Verify\", \"Click ‘Test data source’ above to continue →\")" } } }, "props.style.color": { "binding": { "type": "expr", "config": { "expression": "if({view.custom.verifyRan}, \"#6e7d90\", \"#f0a90e\")" } } } } },
           {
             "type": "ia.input.button", "meta": { "name": "next" }, "position": { "basis": "200px", "shrink": 0 },
             "props": { "text": "Next: Map ▸", "enabled": false, "style": { "backgroundColor": "#238636", "color": "#fff", "fontSize": "15px", "fontWeight": 700, "borderRadius": "8px", "border": "none", "padding": "11px" } },

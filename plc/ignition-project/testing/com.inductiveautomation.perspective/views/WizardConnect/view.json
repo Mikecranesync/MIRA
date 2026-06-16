@@ -38,7 +38,7 @@
         "props": { "direction": "column", "style": { "padding": "16px 18px", "gap": "12px", "overflow": "hidden" } },
         "children": [
           { "type": "ia.display.label", "meta": { "name": "title" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "Where are this drive's tags?", "style": { "color": "#e6edf3", "fontSize": "22px", "fontWeight": 700 } } },
-          { "type": "ia.display.label", "meta": { "name": "subtitle" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "Pick the tag provider, then open the folder that holds this drive's tags. Click a [+] folder to go into it.", "style": { "color": "#8b949e", "fontSize": "14px" } } },
+          { "type": "ia.display.label", "meta": { "name": "subtitle" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "Open the folder that holds this drive's signals — usually named after the drive or VFD. Tap a [+] to go in, then Use this folder. (Most plants have one tag source; leave it on ‘default’ unless told otherwise.)", "style": { "color": "#8b949e", "fontSize": "14px" } } },
           {
             "type": "ia.container.flex", "meta": { "name": "provRow" }, "position": { "basis": "auto", "shrink": 0 },
             "props": { "direction": "row", "alignItems": "center", "style": { "gap": "10px" } },
@@ -85,7 +85,7 @@
                 "props": { "text": "Use this folder", "style": { "backgroundColor": "#1f6feb", "color": "#fff", "fontSize": "14px", "fontWeight": 700, "borderRadius": "8px", "border": "none", "padding": "11px" } },
                 "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tself.view.custom.selectedFolder = self.view.custom.browseBase\n\tmira_setup.set_setup_folder(self.view.custom.browseBase)\n" } } } }
               },
-              { "type": "ia.display.label", "meta": { "name": "chosen" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "", "style": { "color": "#7ee787", "fontSize": "15px", "fontWeight": 600, "fontFamily": "Consolas, monospace" } }, "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "if(len({view.custom.selectedFolder})>0, \"✓  source:  \" + {view.custom.selectedFolder}, \"open a folder above, then Use this folder\")" } } } } }
+              { "type": "ia.display.label", "meta": { "name": "chosen" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "", "style": { "color": "#3fb950", "fontSize": "15px", "fontWeight": 600, "fontFamily": "inherit" } }, "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "if(len({view.custom.selectedFolder})>0, \"✓  source:  \" + {view.custom.selectedFolder}, \"Open a folder above, then choose Use this folder\")" } } } } }
             ]
           }
         ]
