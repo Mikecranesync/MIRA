@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -54,16 +55,17 @@ async def connector_ignition_import(body: ConnectorImportRequest) -> ConnectorIm
 
     # Validate tenant_id is UUID-shaped (matches Hub session enforcement).
     import re
+
     if not re.match(r"^[0-9a-f-]{36}$", body.tenant_id, re.I):
         raise HTTPException(status_code=400, detail="tenant_id must be a UUID")
 
     try:
-        from mira_connectors.canonical import RecordType
         from mira_connectors.base import ConnectorConfig
-        from mira_connectors.mocks.ignition_mock import IgnitionMockConnector
+        from mira_connectors.canonical import RecordType
         from mira_connectors.confirmation_gate import ConnectorConfirmationGate
-        from mira_connectors.store import PostgresProposalStore
+        from mira_connectors.mocks.ignition_mock import IgnitionMockConnector
         from mira_connectors.service import import_and_propose
+        from mira_connectors.store import PostgresProposalStore
     except ImportError as exc:
         logger.error("mira-connectors package not installed: %s", exc)
         raise HTTPException(

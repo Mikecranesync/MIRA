@@ -282,9 +282,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="MIRA Pipeline", docs_url=None, redoc_url=None, lifespan=lifespan)
 
+from connector_import import router as _connector_import_router  # noqa: E402
 from eval_api import router as _eval_router  # noqa: E402
 from ignition_chat import build_router as _build_ignition_chat_router  # noqa: E402
-from connector_import import router as _connector_import_router  # noqa: E402
 
 app.include_router(_eval_router)
 app.include_router(_connector_import_router)
