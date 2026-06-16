@@ -5,8 +5,12 @@ description = "Read-only, vendor-agnostic PLC program-export analysis (parse -> 
 requires-python = ">=3.12"
 dependencies = []   # Phase 1 is stdlib-only (xml.etree, re); LLM explanation is a later layer
 
+[project.scripts]
+mira-plc-parser = "mira_plc_parser.cli:main"
+
 [project.optional-dependencies]
 test = ["pytest"]
+packaging = ["pyinstaller"]   # only needed to build the standalone Windows .exe (see PACKAGING.md)
 
 [build-system]
 requires = ["setuptools>=68"]

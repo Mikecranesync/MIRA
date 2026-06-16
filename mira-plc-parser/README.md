@@ -36,13 +36,38 @@ upload → detect format → vendor parser → MIRA PLC IR → deterministic ana
 | **Deterministic analysis**: tag dictionary, routine summaries, output-dependency map, fault candidates, asset candidates, VFD-signal candidates, usage cross-reference, safety **review** flags | ✅ |
 | Markdown report renderer | ✅ |
 
-## Quickstart
+## Install & CLI
+
+Run it from source (no install needed), or install the console command:
+
+```bash
+# from mira-plc-parser/
+python -m mira_plc_parser analyze tests/fixtures/conveyor.L5X --out ./_out   # from source
+pip install -e .                                                              # then:
+mira-plc-parser analyze tests/fixtures/conveyor.L5X --out ./_out              # console command
+```
+
+`analyze` runs the read-only detect → parse → IR → analysis pipeline and writes local report files
+into `--out` (default: current dir):
+
+- `<stem>.report.md` — the maintenance-readable Markdown report.
+- `<stem>.report.json` — the same findings as structured JSON (`--format md|json|both`, default
+  `both`).
+
+The CLI is **offline by construction** — stdlib-only, no LLM, no network. Exit codes: `0` parsed ·
+`3` a closed vendor **project** file (it prints the precise export instructions and still writes a
+report) · `1` unrecognized format or read error.
+
+Building a standalone Windows `.exe` (no Python needed on the target): see [PACKAGING.md](PACKAGING.md).
+
+## Quickstart (library)
 
 ```python
-from mira_plc_parser import run, render_markdown
+from mira_plc_parser import run, render_markdown, render_json
 
 result = run("conveyor.L5X", open("conveyor.L5X").read())
 print(render_markdown(result))           # maintenance-readable report
+print(render_json(result))               # structured, json.dumps-safe dict
 print(result.report.output_dependencies) # structured findings
 print(result.project.all_tags())         # the IR
 ```
@@ -92,5 +117,8 @@ mira_plc_parser/
     rockwell_l5x.py  # L5X → IR
     csv_tags.py      # CSV → IR (reuses ignition/.../diagnose/tag_csv.py)
   analyze.py         # deterministic maintenance analysis
-  pipeline.py        # detect → parse → analyze → report
+  pipeline.py        # detect → parse → analyze → report (render_markdown / render_json)
+  cli.py             # offline CLI (analyze → local report files)
+  __main__.py        # `python -m mira_plc_parser`
+mira-plc-parser.spec # PyInstaller spec for the standalone .exe (see PACKAGING.md)
 ```
