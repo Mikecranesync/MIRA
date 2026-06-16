@@ -14,11 +14,17 @@ Reuses the project's aiomqtt pattern (see plc/live-plc-bridge/bridge.py, mira-fa
 NOTE: not exercised in CI yet (needs a broker). The pure rule logic is covered by test_rules.py.
 """
 from __future__ import annotations
-import asyncio, json, logging, os, sqlite3, time, urllib.request
+
+import asyncio
+import json
+import logging
+import os
+import sqlite3
+import time
+import urllib.request
 from pathlib import Path
 
 import aiomqtt  # type: ignore
-
 import rules
 
 # Broker host must be set via env (MQTT_HOST) at deploy time; "localhost" is a safe
