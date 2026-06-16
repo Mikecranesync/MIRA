@@ -1,0 +1,55 @@
+name: Build MIRA Tag Mapper (Windows .exe)
+
+# Produces the downloadable desktop app: a single Windows executable a customer can run with
+# nothing installed. Build it on demand (workflow_dispatch) or cut a release by pushing a tag
+# like `tag-mapper-v0.1.0` -- the tag build attaches the .exe to the GitHub Release.
+#
+# PyInstaller is not a cross-compiler, so this runs on a Windows runner.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "tag-mapper-v*"
+
+permissions:
+  contents: write   # needed to attach the .exe to a Release on tag builds
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: mira-plc-parser
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"   # stable target; the app itself is stdlib-only
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: Build the one-file windowed exe
+        run: pyinstaller MIRA-Tag-Mapper.spec
+
+      - name: Smoke-check the artifact exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path dist/MIRA-Tag-Mapper.exe)) { throw "exe not produced" }
+          Get-Item dist/MIRA-Tag-Mapper.exe | Select-Object Name,Length
+
+      - name: Upload build artifact (downloadable from the run)
+        uses: actions/upload-artifact@v4
+        with:
+          name: MIRA-Tag-Mapper-windows
+          path: mira-plc-parser/dist/MIRA-Tag-Mapper.exe
+          if-no-files-found: error
+
+      - name: Attach exe to the Release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/tag-mapper-v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$env:GITHUB_REF_NAME" dist/MIRA-Tag-Mapper.exe --clobber
