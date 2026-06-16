@@ -30,13 +30,15 @@ def _read_text(path: Path) -> str:
 
 def _summary(result, written: list[Path]) -> str:
     det = result.detection
-    lines = ["Format: %s (%s) — %s" % (det.fmt, det.confidence, det.reason)]
+    # ASCII-only console output: a stock Windows console (cp1252/cp437) garbles em-dash/middot,
+    # so the printed summary stays 7-bit. The report FILES (render_markdown/json) keep full UTF-8.
+    lines = ["Format: %s (%s) -- %s" % (det.fmt, det.confidence, det.reason)]
     if result.handled:
         c = result.report.counts
-        lines.append("Controller: %s · Vendor: %s" % (result.report.controller or "(unnamed)",
+        lines.append("Controller: %s | Vendor: %s" % (result.report.controller or "(unnamed)",
                                                        result.report.vendor or "?"))
-        lines.append("Counts: %d tags · %d routines · %d outputs · %d fault · %d asset · "
-                     "%d vfd-signal · %d review"
+        lines.append("Counts: %d tags | %d routines | %d outputs | %d fault | %d asset | "
+                     "%d vfd-signal | %d review"
                      % (c.get("tags", 0), c.get("routines", 0), c.get("outputs", 0),
                         c.get("fault_candidates", 0), c.get("asset_candidates", 0),
                         c.get("vfd_signal_candidates", 0), c.get("review_required", 0)))
@@ -76,7 +78,7 @@ def _cmd_analyze(ns: argparse.Namespace) -> int:
 
     # closed/binary vendor PROJECT file -> reject with the export instructions, distinct exit code.
     if result.detection.needs_export:
-        print("\nACTION NEEDED — not a parseable export:\n%s" % result.detection.needs_export,
+        print("\nACTION NEEDED -- not a parseable export:\n%s" % result.detection.needs_export,
               file=sys.stderr)
         return 3
     # recognized-but-unsupported / unknown format
