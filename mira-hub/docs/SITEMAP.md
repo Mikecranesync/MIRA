@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **57** (6 dynamic) |
-| API routes | **118** (33 dynamic) |
+| API routes | **129** (33 dynamic) |
 
 ## Pages (57)
 
@@ -75,7 +75,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (118)
+## API routes (129)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -141,6 +141,17 @@
 | `/api/events/[id]` | dynamic | `api/events/[id]/route.ts` |
 | `/api/export` | static | `api/export/route.ts` |
 | `/api/health` | static | `api/health/route.ts` |
+| `/api/i3x/v1/info` | static | `api/i3x/v1/info/route.ts` |
+| `/api/i3x/v1/namespaces` | static | `api/i3x/v1/namespaces/route.ts` |
+| `/api/i3x/v1/objects` | static | `api/i3x/v1/objects/route.ts` |
+| `/api/i3x/v1/objects/history` | static | `api/i3x/v1/objects/history/route.ts` |
+| `/api/i3x/v1/objects/list` | static | `api/i3x/v1/objects/list/route.ts` |
+| `/api/i3x/v1/objects/related` | static | `api/i3x/v1/objects/related/route.ts` |
+| `/api/i3x/v1/objects/value` | static | `api/i3x/v1/objects/value/route.ts` |
+| `/api/i3x/v1/objecttypes` | static | `api/i3x/v1/objecttypes/route.ts` |
+| `/api/i3x/v1/objecttypes/query` | static | `api/i3x/v1/objecttypes/query/route.ts` |
+| `/api/i3x/v1/relationshiptypes` | static | `api/i3x/v1/relationshiptypes/route.ts` |
+| `/api/i3x/v1/relationshiptypes/query` | static | `api/i3x/v1/relationshiptypes/query/route.ts` |
 | `/api/integrations/nango/callback` | static | `api/integrations/nango/callback/route.ts` |
 | `/api/integrations/nango/connect` | static | `api/integrations/nango/connect/route.ts` |
 | `/api/internal/kg` | static | `api/internal/kg/route.ts` |

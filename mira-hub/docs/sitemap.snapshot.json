@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 57,
-    "apiRoutes": 118
+    "apiRoutes": 129
   },
   "pages": [
     "/admin",
@@ -126,6 +126,17 @@
     "/api/events/[id]",
     "/api/export",
     "/api/health",
+    "/api/i3x/v1/info",
+    "/api/i3x/v1/namespaces",
+    "/api/i3x/v1/objects",
+    "/api/i3x/v1/objects/history",
+    "/api/i3x/v1/objects/list",
+    "/api/i3x/v1/objects/related",
+    "/api/i3x/v1/objects/value",
+    "/api/i3x/v1/objecttypes",
+    "/api/i3x/v1/objecttypes/query",
+    "/api/i3x/v1/relationshiptypes",
+    "/api/i3x/v1/relationshiptypes/query",
     "/api/integrations/nango/callback",
     "/api/integrations/nango/connect",
     "/api/internal/kg",
