@@ -83,9 +83,9 @@
               {
                 "type": "ia.input.button", "meta": { "name": "useBtn" }, "position": { "basis": "220px", "shrink": 0 },
                 "props": { "text": "Use this folder", "style": { "backgroundColor": "#1f6feb", "color": "#fff", "fontSize": "14px", "fontWeight": 700, "borderRadius": "8px", "border": "none", "padding": "11px" } },
-                "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tself.view.custom.selectedFolder = self.view.custom.browseBase\n\tself.session.custom.folder = self.view.custom.browseBase\n" } } } }
+                "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tself.view.custom.selectedFolder = self.view.custom.browseBase\n\tmira_setup.set_setup_folder(self.view.custom.browseBase)\n" } } } }
               },
-              { "type": "ia.display.label", "meta": { "name": "chosen" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "", "style": { "color": "#7ee787", "fontSize": "15px", "fontWeight": 600, "fontFamily": "Consolas, monospace" } }, "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "if(len({session.custom.folder})>0, \"✓  source:  \" + {session.custom.folder}, \"open a folder above, then Use this folder\")" } } } } }
+              { "type": "ia.display.label", "meta": { "name": "chosen" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "", "style": { "color": "#7ee787", "fontSize": "15px", "fontWeight": 600, "fontFamily": "Consolas, monospace" } }, "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "if(len({view.custom.selectedFolder})>0, \"✓  source:  \" + {view.custom.selectedFolder}, \"open a folder above, then Use this folder\")" } } } } }
             ]
           }
         ]
@@ -98,7 +98,7 @@
           {
             "type": "ia.input.button", "meta": { "name": "next" }, "position": { "basis": "200px", "shrink": 0 },
             "props": { "text": "Next: Verify ▸", "enabled": false, "style": { "backgroundColor": "#238636", "color": "#fff", "fontSize": "15px", "fontWeight": 700, "borderRadius": "8px", "border": "none", "padding": "11px" } },
-            "propConfig": { "props.enabled": { "binding": { "type": "expr", "config": { "expression": "len({session.custom.folder}) > 0" } } } },
+            "propConfig": { "props.enabled": { "binding": { "type": "expr", "config": { "expression": "len({view.custom.selectedFolder}) > 0" } } } },
             "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tsystem.perspective.navigate(page=\"/verify\")\n" } } } }
           }
         ]

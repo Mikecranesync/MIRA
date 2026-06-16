@@ -23,7 +23,7 @@
         "props": { "direction": "row", "alignItems": "center", "style": { "backgroundColor": "#161b22", "borderBottom": "1px solid #30363d", "padding": "0 18px", "gap": "14px" } },
         "children": [
           { "type": "ia.display.label", "meta": { "name": "brand" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "VFD ANALYZER — SETUP", "style": { "color": "#e6edf3", "fontSize": "16px", "fontWeight": 700, "letterSpacing": "0.08em" } } },
-          { "type": "ia.display.label", "meta": { "name": "assetLbl" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "asset", "style": { "color": "#8b949e", "fontSize": "13px" } }, "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "\"asset: \" + {session.custom.assetId} + \"     source: \" + {session.custom.folder}" } } } } },
+          { "type": "ia.display.label", "meta": { "name": "assetLbl" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "asset", "style": { "color": "#8b949e", "fontSize": "13px" } }, "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "\"asset: \" + {session.custom.assetId} + \"     source: \" + runScript(\"mira_setup.get_setup_folder\", 0)" } } } } },
           {
             "type": "ia.display.label", "meta": { "name": "progress" }, "position": { "basis": "auto", "shrink": 0 },
             "props": { "text": "…", "style": { "color": "#f0a90e", "fontSize": "14px", "fontWeight": 700, "borderRadius": "13px", "backgroundColor": "#21262d", "padding": "5px 14px" } },
@@ -52,7 +52,7 @@
           {
             "type": "ia.input.button", "meta": { "name": "acceptAll" }, "position": { "basis": "230px", "shrink": 0 },
             "props": { "text": "✦ Accept all suggestions", "style": { "backgroundColor": "#6e40c9", "color": "#fff", "fontSize": "13px", "fontWeight": 700, "borderRadius": "8px", "border": "none", "padding": "9px" } },
-            "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tasset = self.session.custom.assetId or \"conveyor\"\n\tfolder = self.session.custom.folder or \"[default]\"\n\tself.view.custom.status = mira_setup.accept_all_suggestions(asset, folder)\n" } } } }
+            "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tasset = self.session.custom.assetId or \"conveyor\"\n\tfolder = mira_setup.get_setup_folder() or \"[default]\"\n\tself.view.custom.status = mira_setup.accept_all_suggestions(asset, folder)\n" } } } }
           }
         ]
       },
@@ -68,7 +68,7 @@
                 "type": "ia.container.flex", "meta": { "name": "slotFreq" }, "position": { "basis": "auto", "shrink": 0 },
                 "props": { "direction": "column", "style": { "backgroundColor": "#161b22", "border": "2px solid #f0a90e", "borderRadius": "10px", "padding": "12px", "gap": "5px", "cursor": "pointer" } },
                 "propConfig": { "props.style.border": { "binding": { "type": "expr", "config": { "expression": "\"2px solid \" + if({view.custom.selRole} = \"vfd/vfd101/freq\", \"#58a6ff\", runScript(\"mira_setup.slot_color\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/freq\"))" } } } },
-                "events": { "dom": { "onClick": [ { "type": "script", "scope": "G", "config": { "script": "\tself.view.custom.selRole = \"vfd/vfd101/freq\"\n\tself.view.custom.selSearch = \"\"\n\tself.view.custom.status = \"\"\n\tself.view.custom.selDivisor = mira_setup.slot_divisor(\"vfd/vfd101/freq\", self.session.custom.assetId)\n\tself.view.custom.selTag = mira_setup.suggest_for_role(self.session.custom.folder or \"[default]\", \"vfd/vfd101/freq\")\n" } } ] } },
+                "events": { "dom": { "onClick": [ { "type": "script", "scope": "G", "config": { "script": "\tself.view.custom.selRole = \"vfd/vfd101/freq\"\n\tself.view.custom.selSearch = \"\"\n\tself.view.custom.status = \"\"\n\tself.view.custom.selDivisor = mira_setup.slot_divisor(\"vfd/vfd101/freq\", self.session.custom.assetId)\n\tself.view.custom.selTag = mira_setup.suggest_for_role(mira_setup.get_setup_folder() or \"[default]\", \"vfd/vfd101/freq\")\n" } } ] } },
                 "children": [
                   {
                     "type": "ia.container.flex", "meta": { "name": "fq_top" }, "position": { "basis": "auto", "shrink": 0 },
@@ -94,7 +94,7 @@
                 "type": "ia.container.flex", "meta": { "name": "slotCurrent" }, "position": { "basis": "auto", "shrink": 0 },
                 "props": { "direction": "column", "style": { "backgroundColor": "#161b22", "border": "2px solid #f0a90e", "borderRadius": "10px", "padding": "12px", "gap": "5px", "cursor": "pointer" } },
                 "propConfig": { "props.style.border": { "binding": { "type": "expr", "config": { "expression": "\"2px solid \" + if({view.custom.selRole} = \"vfd/vfd101/current_a\", \"#58a6ff\", runScript(\"mira_setup.slot_color\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/current_a\"))" } } } },
-                "events": { "dom": { "onClick": [ { "type": "script", "scope": "G", "config": { "script": "\tself.view.custom.selRole = \"vfd/vfd101/current_a\"\n\tself.view.custom.selSearch = \"\"\n\tself.view.custom.status = \"\"\n\tself.view.custom.selDivisor = mira_setup.slot_divisor(\"vfd/vfd101/current_a\", self.session.custom.assetId)\n\tself.view.custom.selTag = mira_setup.suggest_for_role(self.session.custom.folder or \"[default]\", \"vfd/vfd101/current_a\")\n" } } ] } },
+                "events": { "dom": { "onClick": [ { "type": "script", "scope": "G", "config": { "script": "\tself.view.custom.selRole = \"vfd/vfd101/current_a\"\n\tself.view.custom.selSearch = \"\"\n\tself.view.custom.status = \"\"\n\tself.view.custom.selDivisor = mira_setup.slot_divisor(\"vfd/vfd101/current_a\", self.session.custom.assetId)\n\tself.view.custom.selTag = mira_setup.suggest_for_role(mira_setup.get_setup_folder() or \"[default]\", \"vfd/vfd101/current_a\")\n" } } ] } },
                 "children": [
                   {
                     "type": "ia.container.flex", "meta": { "name": "cu_top" }, "position": { "basis": "auto", "shrink": 0 },
@@ -120,7 +120,7 @@
                 "type": "ia.container.flex", "meta": { "name": "slotFault" }, "position": { "basis": "auto", "shrink": 0 },
                 "props": { "direction": "column", "style": { "backgroundColor": "#161b22", "border": "2px solid #f0a90e", "borderRadius": "10px", "padding": "12px", "gap": "5px", "cursor": "pointer" } },
                 "propConfig": { "props.style.border": { "binding": { "type": "expr", "config": { "expression": "\"2px solid \" + if({view.custom.selRole} = \"vfd/vfd101/fault_code\", \"#58a6ff\", runScript(\"mira_setup.slot_color\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/fault_code\"))" } } } },
-                "events": { "dom": { "onClick": [ { "type": "script", "scope": "G", "config": { "script": "\tself.view.custom.selRole = \"vfd/vfd101/fault_code\"\n\tself.view.custom.selSearch = \"\"\n\tself.view.custom.status = \"\"\n\tself.view.custom.selDivisor = mira_setup.slot_divisor(\"vfd/vfd101/fault_code\", self.session.custom.assetId)\n\tself.view.custom.selTag = mira_setup.suggest_for_role(self.session.custom.folder or \"[default]\", \"vfd/vfd101/fault_code\")\n" } } ] } },
+                "events": { "dom": { "onClick": [ { "type": "script", "scope": "G", "config": { "script": "\tself.view.custom.selRole = \"vfd/vfd101/fault_code\"\n\tself.view.custom.selSearch = \"\"\n\tself.view.custom.status = \"\"\n\tself.view.custom.selDivisor = mira_setup.slot_divisor(\"vfd/vfd101/fault_code\", self.session.custom.assetId)\n\tself.view.custom.selTag = mira_setup.suggest_for_role(mira_setup.get_setup_folder() or \"[default]\", \"vfd/vfd101/fault_code\")\n" } } ] } },
                 "children": [
                   {
                     "type": "ia.container.flex", "meta": { "name": "ft_top" }, "position": { "basis": "auto", "shrink": 0 },
@@ -186,7 +186,7 @@
                   "rows": { "pageSize": 0 },
                   "style": { "border": "1px solid #30363d", "borderRadius": "8px", "fontSize": "14px" }
                 },
-                "propConfig": { "props.data": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.scan_for_role\", {session.custom.pollMs}, {session.custom.folder}, {view.custom.selSearch}, {view.custom.selRole})" } } } },
+                "propConfig": { "props.data": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.scan_for_role\", {session.custom.pollMs}, runScript(\"mira_setup.get_setup_folder\", 0), {view.custom.selSearch}, {view.custom.selRole})" } } } },
                 "events": { "component": { "onRowClick": { "type": "script", "scope": "G", "config": { "script": "\ttry:\n\t\tself.view.custom.selTag = event.value['path']\n\t\tself.view.custom.status = \"\"\n\texcept Exception:\n\t\tpass\n" } } } }
               },
               {
@@ -250,14 +250,14 @@
           {
             "type": "ia.input.button", "meta": { "name": "back" }, "position": { "basis": "140px", "shrink": 0 },
             "props": { "text": "◂ Back", "style": { "backgroundColor": "#30363d", "color": "#c9d1d9", "fontSize": "14px", "borderRadius": "8px", "border": "none", "padding": "11px" } },
-            "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tp = {\"assetId\": self.session.custom.assetId, \"folder\": self.session.custom.folder, \"pollMs\": self.session.custom.pollMs}\n\tsystem.perspective.navigate(page=\"/verify\")\n" } } } }
+            "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tp = {\"assetId\": self.session.custom.assetId, \"folder\": mira_setup.get_setup_folder(), \"pollMs\": self.session.custom.pollMs}\n\tsystem.perspective.navigate(page=\"/verify\")\n" } } } }
           },
           { "type": "ia.display.label", "meta": { "name": "fspacer" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "Step 3 of 4 — Map", "style": { "color": "#6e7d90", "fontSize": "13px", "textAlign": "center" } } },
           {
             "type": "ia.input.button", "meta": { "name": "next" }, "position": { "basis": "200px", "shrink": 0 },
             "props": { "text": "Next: Save ▸", "enabled": false, "style": { "backgroundColor": "#238636", "color": "#fff", "fontSize": "15px", "fontWeight": 700, "borderRadius": "8px", "border": "none", "padding": "11px" } },
             "propConfig": { "props.enabled": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.is_ready\", {session.custom.pollMs}, {session.custom.assetId})" } } } },
-            "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tp = {\"assetId\": self.session.custom.assetId, \"folder\": self.session.custom.folder, \"pollMs\": self.session.custom.pollMs}\n\tsystem.perspective.navigate(page=\"/save\")\n" } } } }
+            "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tp = {\"assetId\": self.session.custom.assetId, \"folder\": mira_setup.get_setup_folder(), \"pollMs\": self.session.custom.pollMs}\n\tsystem.perspective.navigate(page=\"/save\")\n" } } } }
           }
         ]
       }
