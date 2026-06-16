@@ -1,0 +1,14 @@
+{
+  "pages": {
+    "/": {
+      "title": "GS10 Trend (sandbox)",
+      "viewPath": "TrendChart",
+      "docks": {}
+    },
+    "/help": {
+      "title": "MIRA Sandbox",
+      "viewPath": "Sandbox",
+      "docks": {}
+    }
+  }
+}

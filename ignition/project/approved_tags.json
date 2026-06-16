@@ -59,6 +59,12 @@
     "[default]MIRA_IOCheck/VFD/vfd_fault_code",
     "[default]MIRA_IOCheck/VFD/vfd_freq_sp",
     "[default]MIRA_IOCheck/VFD/vfd_frequency",
-    "[default]MIRA_IOCheck/VFD/vfd_status_word"
+    "[default]MIRA_IOCheck/VFD/vfd_status_word",
+    "[default]MIRA_IOCheck/VFD/vfd_warn_code",
+    "[default]MIRA_IOCheck/VFD/vfd_freq_cmd",
+    "[default]MIRA_IOCheck/VFD/vfd_torque",
+    "[default]MIRA_IOCheck/VFD/vfd_motor_rpm",
+    "[default]MIRA_IOCheck/VFD/vfd_power",
+    "[default]MIRA_IOCheck/VFD/vfd_last_fault"
   ]
 }
