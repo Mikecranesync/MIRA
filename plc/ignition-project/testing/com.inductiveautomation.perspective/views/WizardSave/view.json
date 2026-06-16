@@ -47,7 +47,7 @@
           { "type": "ia.display.label", "meta": { "name": "title" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "Review the map and finish", "style": { "color": "#e6edf3", "fontSize": "22px", "fontWeight": 700 } } },
           {
             "type": "ia.display.markdown", "meta": { "name": "map" }, "position": { "grow": 1, "shrink": 1 },
-            "props": { "source": "Loading…", "style": { "backgroundColor": "#0d1117", "color": "#e6edf3", "border": "1px solid #30363d", "borderRadius": "8px", "padding": "12px", "fontSize": "13px", "overflow": "auto" } },
+            "props": { "source": "Loading…", "style": { "backgroundColor": "#0d1117", "color": "#ffffff", "border": "1px solid #30363d", "borderRadius": "8px", "padding": "12px", "fontSize": "14px", "overflow": "auto" } },
             "propConfig": { "props.source": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.rows_markdown\", {session.custom.pollMs}, {session.custom.assetId})" } } } }
           },
           {
@@ -80,7 +80,8 @@
           { "type": "ia.display.label", "meta": { "name": "status" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "", "style": { "color": "#7ee787", "fontSize": "15px", "fontWeight": 600, "textAlign": "center" } }, "propConfig": { "props.text": { "binding": { "type": "property", "config": { "path": "view.custom.status" } } } } },
           {
             "type": "ia.input.button", "meta": { "name": "finish" }, "position": { "basis": "220px", "shrink": 0 },
-            "props": { "text": "✓ Save & Finish", "style": { "backgroundColor": "#238636", "color": "#fff", "fontSize": "15px", "fontWeight": 700, "borderRadius": "8px", "border": "none", "padding": "12px" } },
+            "props": { "text": "✓ Save & Finish", "enabled": false, "style": { "backgroundColor": "#238636", "color": "#fff", "fontSize": "15px", "fontWeight": 700, "borderRadius": "8px", "border": "none", "padding": "12px" } },
+            "propConfig": { "props.enabled": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.is_ready\", {session.custom.pollMs}, {session.custom.assetId})" } } } },
             "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tasset = self.session.custom.assetId or \"conveyor\"\n\tuser = \"operator\"\n\ttry:\n\t\tu = self.session.props.auth.user.userName\n\t\tif u:\n\t\t\tuser = u\n\texcept Exception:\n\t\tuser = \"operator\"\n\tself.view.custom.status = mira_setup.finalize(asset, self.view.custom.approved, user)\n" } } } }
           }
         ]

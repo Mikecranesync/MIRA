@@ -641,6 +641,8 @@ def browse_nodes(base):
         leaf = full.rsplit("/", 1)[-1]
         if leaf.startswith("[") and "]" in leaf:
             leaf = leaf.split("]", 1)[1]   # strip the "[provider]" prefix on root-level nodes
+        if leaf.startswith("_"):
+            continue   # hide Ignition system nodes (e.g. _types_) -- noise for the installer
         if children:
             out.append({"label": "[+]  " + leaf, "path": full, "kind": "folder"})
         else:
