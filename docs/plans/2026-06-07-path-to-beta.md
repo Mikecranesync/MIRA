@@ -34,6 +34,20 @@ The upload→retrieval gap (full trace: `docs/research/2026-06-07-upload-retriev
 `knowledge_entries` keyed to a UNS node, subtree-grounded chat. **DRAFT** as of 2026-06-07.
 This plan assesses #1592 as the right fix; the minimal close path is in the research doc.
 
+> **UPDATE 2026-06-16 — the upload→retrieval gap is CLOSED at the code level (Hub NodeChat path).**
+> #1592 merged 2026-06-07, followed by #1807 (natural-question BM25), #1861 (GRANT INSERT),
+> #1863 (#1806 Inbox node), #1907/#1910 (upload-500 fixes), #1889 (E2E green on prod). I ran the
+> **real** chain end-to-end on dev — `ingestPdfToNode` (real fixture PDF) → `retrieveNodeChunks`
+> under `factorylm_app` RLS → cited chunk — and it passes:
+> `mira-hub/scripts/verify-upload-retrieval-citation.ts` (PR #2076). So the data-layer half (upload
+> writes node-scoped `knowledge_entries`; retrieval returns a citable chunk) is **done**.
+> **Remaining to flip the `xfail`:** the *HTTP* beta gate (`tests/beta/`) is still xfail **by env**
+> — it needs a live Hub surface + a minted `next-auth` session cookie + a node id (`BETA_GATE_*`),
+> which nobody has provisioned and run. That's an integration/ops step, not a code gap. (Note: this
+> closes the gap on the **Hub NodeChat** surface — the **bot/chat** path `neon_recall` is a separate
+> retrieval model and does not yet read folder=brain node uploads; tracked separately, not a
+> beta-gate blocker.)
+
 ---
 
 ## 4-week plan
