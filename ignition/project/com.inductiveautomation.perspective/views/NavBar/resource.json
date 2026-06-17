@@ -105,6 +105,31 @@
             "events": {
               "component": {
                 "onActionPerformed": {
+                  "script": "system.perspective.navigate('/Trends/TrendPanel')"
+                }
+              }
+            },
+            "meta": { "name": "TrendsNav" },
+            "position": { "basis": "auto" },
+            "props": {
+              "style": {
+                "backgroundColor": "transparent",
+                "border": "1px solid #444444",
+                "borderRadius": "4px",
+                "color": "#FFFFFF",
+                "fontSize": "14px",
+                "fontWeight": "bold",
+                "margin": "0 4px",
+                "padding": "6px 18px"
+              },
+              "text": "TRENDS"
+            },
+            "type": "ia.input.button"
+          },
+          {
+            "events": {
+              "component": {
+                "onActionPerformed": {
                   "script": "    system.perspective.navigate('/Mira/MiraPanel')\n"
                 }
               }

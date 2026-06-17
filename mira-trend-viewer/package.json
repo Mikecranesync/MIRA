@@ -1,0 +1,10 @@
+{
+  "name": "mira-trend-viewer",
+  "version": "0.1.0",
+  "description": "Platform-agnostic industrial trend viewer for FactoryLM/MIRA (ISA-101 / High-Performance HMI). Dependency-free static app + vendor-neutral data-source adapters.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}

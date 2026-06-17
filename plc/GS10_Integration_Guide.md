@@ -59,15 +59,28 @@
 | 1 | External terminals (DI1/DI2) | Hardwired start/stop |
 | **2** | **RS-485 Modbus** | **PLC controls motor via serial** |
 
-### Motor Nameplate Parameters (P01.xx)
+### Motor Nameplate Parameters (P05.xx)
 
-| Param | Name | Set To |
-|-------|------|--------|
-| P01.00 | Rated Power (kW) | Read from motor nameplate |
-| P01.01 | Rated Voltage (V) | Read from motor nameplate (230 or 460) |
-| P01.02 | Rated Current (A) | Read from motor nameplate |
-| P01.03 | Rated Frequency (Hz) | 60 (North America) |
-| P01.04 | Rated RPM | Read from motor nameplate |
+> ⚠️ **CORRECTED 2026-06-13 from the GS10 User Manual (1st Ed Rev B, p.4‑21).** Motor
+> nameplate is group **P05.xx**, NOT P01.xx. (P01.xx is the V/F curve / frequency-limit
+> group — writing motor values there mis-sets the drive.) The earlier P01.00–P01.04
+> table here was a GS1 carryover and was wrong.
+
+Induction motor (IM). Set on the keypad; the derived monitor registers (rpm 0x210C,
+torque 0x210B, power 0x210F) read 0 until these are set.
+
+| Param | Modbus (hex) | Name | Set To |
+|-------|------|------|--------|
+| P05.01 | 0x0501 | IM1 Full-load amps (FLA) | Motor nameplate amps |
+| P05.02 | 0x0502 | IM1 Rated power (kW) | Motor nameplate kW |
+| P05.03 | 0x0503 | IM1 Rated speed (rpm) | Nameplate (default 1710 = 60 Hz/4-pole) |
+| P05.04 | 0x0504 | IM1 Number of poles | 4 (typical) |
+| P05.00 | 0x0500 | Auto-tune | 2 = static (no spin) / 1 = dynamic (spins motor) |
+| P00.11 | 0x000B | Speed control mode | **2 = IM/PM SVC** for torque/accurate speed (0 = V/F default barely estimates torque) |
+
+**Register dependencies:** `0x210C` motor rpm needs P05.03+P05.04 (works in V/F);
+`0x210B` torque % needs SVC mode (P00.11=2) + an auto-tune (P05.00 → fills P05.05–09
+Rs/Rr/Lm); `0x210F` power computes from V×I once running. (P05.33 = IM/PM select, 0=IM.)
 
 ---
 
@@ -261,7 +274,7 @@ STOP:     vfd_cmd_word := 1;    (* 0x0001 = Stop *)
 - [ ] P09.03 = 5 (5 sec timeout)
 - [ ] P09.04 = 13 (8N2 RTU)
 - [ ] P00.21 = 2 (run source = RS-485)
-- [ ] P01.00-P01.04 set to motor nameplate values
+- [ ] P05.01-P05.04 set to motor nameplate (FLA/kW/rpm/poles); P05.00 auto-tune + P00.11=2 (SVC) for torque/rpm
 - [ ] Power cycle VFD after param changes
 
 ### Phase 2: PLC Program

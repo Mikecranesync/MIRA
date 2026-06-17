@@ -1,0 +1,8 @@
+Tag Name,Address,Data Type,Respect Data Type,Client Access,Scan Rate,Scaling,Description
+VFD_Frequency,40001,Float,1,R,100,None,Drive output frequency Hz
+VFD_Current,40003,Float,1,R,100,None,Drive output current Amps
+VFD_DCBus,40005,Float,1,R,100,None,DC bus voltage
+VFD_FaultCode,40007,Word,1,R,100,None,Active fault code
+VFD_CommOK,000001,Boolean,1,R,100,None,Drive comms healthy
+Conveyor_Run,000002,Boolean,1,RW,100,None,Conveyor run command
+EStop_OK,000003,Boolean,1,R,100,None,Emergency stop healthy
