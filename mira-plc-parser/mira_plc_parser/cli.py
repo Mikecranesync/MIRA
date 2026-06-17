@@ -86,10 +86,58 @@ def _cmd_analyze(ns: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_i3x_check(ns: argparse.Namespace) -> int:
+    """Handshake a live i3X server: GET /info + list its namespaces. Network, opt-in."""
+    from . import i3x_client as client
+    try:
+        srv = client.info(ns.server)
+        namespaces = client.list_namespaces(ns.server)
+    except client.I3XError as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return 2
+    print("i3X server: %s" % ns.server.rstrip("/"))
+    print("  spec %s | server %s | %s"
+          % (srv.get("specVersion", "?"), srv.get("serverVersion", "?"), srv.get("serverName", "?")))
+    print("  namespaces: %d" % len(namespaces))
+    for n in namespaces[:20]:
+        print("    - %s (%s)" % (n.get("uri", ""), n.get("displayName", "")))
+    return 0
+
+
+def _cmd_i3x_reconcile(ns: argparse.Namespace) -> int:
+    """Check a report's proposed i3X namespace against a live server (which nodes already exist)."""
+    from . import i3x as i3xmod
+    from . import i3x_client as client
+    src = Path(ns.report)
+    if not src.is_file():
+        print("error: report not found: %s" % src, file=sys.stderr)
+        return 1
+    try:
+        report = json.loads(src.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        print("error: cannot read report JSON %s (%s)" % (src, exc), file=sys.stderr)
+        return 1
+    prefix = {k: getattr(ns, k) for k in ("enterprise", "site", "area", "line") if getattr(ns, k)}
+    payload = i3xmod.to_i3x(report, prefix or None)
+    try:
+        rec = client.reconcile(ns.server, payload)
+    except client.I3XError as exc:
+        print("error: %s" % exc, file=sys.stderr)
+        return 2
+    print("Reconcile %s against %s" % (src.name, rec["server"]))
+    print("  proposed nodes:    %d" % rec["total"])
+    print("  already on server: %d" % rec["existing_count"])
+    print("  new (to provision): %d" % rec["new_count"])
+    for nid in rec["new"][:30]:
+        print("    + %s" % nid)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mira-plc-parser",
-        description="Read-only, offline analysis of PLC program exports (no LLM, no network).",
+        description="Read-only, offline PLC-export analysis (no LLM). The optional i3x-* commands "
+                    "are the only networked part -- they reconcile against a live i3X server.",
     )
     parser.add_argument("--version", action="version", version="mira-plc-parser %s" % __version__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -102,6 +150,22 @@ def build_parser() -> argparse.ArgumentParser:
                            help="Which report file(s) to write (default: both).")
     p_analyze.add_argument("--quiet", action="store_true", help="Suppress the stdout summary.")
     p_analyze.set_defaults(func=_cmd_analyze)
+
+    p_check = sub.add_parser("i3x-check",
+                             help="Handshake a live i3X server (GET /info + namespaces). [network]")
+    p_check.add_argument("--server", required=True,
+                         help="i3X base URL, e.g. https://api.i3x.dev/v1")
+    p_check.set_defaults(func=_cmd_i3x_check)
+
+    p_rec = sub.add_parser("i3x-reconcile",
+                           help="Check a report's proposed namespace against a live i3X server. [network]")
+    p_rec.add_argument("report", help="A *.report.json produced by `analyze`.")
+    p_rec.add_argument("--server", required=True, help="i3X base URL.")
+    p_rec.add_argument("--enterprise", help="Override the enterprise namespace level.")
+    p_rec.add_argument("--site", help="Override the site level.")
+    p_rec.add_argument("--area", help="Override the area level.")
+    p_rec.add_argument("--line", help="Override the line level.")
+    p_rec.set_defaults(func=_cmd_i3x_reconcile)
     return parser
 
 
