@@ -79,6 +79,7 @@ class Tag:
     description: str = ""
     address: str = ""           # physical / IO address when known
     alias_for: str = ""         # if this is an alias tag, its target
+    tag_type: str = ""          # "Base" | "Alias" | "Produced" | "Consumed" (from @TagType)
     external_access: str = ""   # Read/Write, Read Only, None
     radix: str = ""             # Decimal, Float, Binary, ...
     initial_value: str = ""

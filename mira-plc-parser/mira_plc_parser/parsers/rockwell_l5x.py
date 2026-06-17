@@ -155,6 +155,7 @@ def _parse_tag(el: ET.Element, scope: str, src: str) -> Tag:
         scope=scope,
         description=_txt(desc_el),
         alias_for=el.get("AliasFor", ""),
+        tag_type=el.get("TagType", ""),
         external_access=el.get("ExternalAccess", ""),
         radix=el.get("Radix", ""),
         provenance=_prov(src, "Tag[@Name='%s']" % name),

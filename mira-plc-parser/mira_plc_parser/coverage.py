@@ -235,6 +235,7 @@ class Extraction:
     aoi_local_tags: int = 0
     modules: int = 0
     fbd_sheets: int = 0
+    produced_consumed: int = 0
     # False-positive flag: parser extracted Context tags instead of Target
     context_leak: int = 0    # number of Context tags incorrectly surfaced as output
 
@@ -317,6 +318,7 @@ def coverage_report(text: str, source_file: str = "") -> CoverageReport:
         aoi_local_tags=rep.counts.get("aoi_local_tags", 0),
         modules=rep.counts.get("module_definitions", 0),
         fbd_sheets=rep.counts.get("fbd_sheets", 0),
+        produced_consumed=rep.counts.get("produced_consumed", 0),
     )
 
     # Detect false positives: parser extracted Context tags when the Target
@@ -402,8 +404,8 @@ def coverage_report(text: str, source_file: str = "") -> CoverageReport:
     if sfc_routines:
         gaps.append("%d SFC routine%s (SFCContent) — silently skipped"
                     % (len(sfc_routines), "s" if len(sfc_routines) > 1 else ""))
-    if inv.has_produced_consumed:
-        gaps.append("Produced/Consumed tags present — not classified (cross-controller data sharing invisible)")
+    if inv.has_produced_consumed and ext.produced_consumed == 0:
+        gaps.append("Produced/Consumed tags present — not extracted (cross-controller data sharing invisible)")
     if inv.has_alarm_defs:
         gaps.append("AlarmDefinitions present — not extracted")
     report.gaps = gaps

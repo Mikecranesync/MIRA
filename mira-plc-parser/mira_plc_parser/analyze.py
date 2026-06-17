@@ -105,6 +105,9 @@ def analyze(proj: PLCProject) -> AnalysisReport:
         "fbd_sheets": sum(
             len(r.rungs) for _, r in proj.all_routines() if r.type == "FBD"
         ),
+        "produced_consumed": sum(
+            1 for t in proj.all_tags() if t.tag_type in ("Produced", "Consumed")
+        ),
         "outputs": len(rep.output_dependencies),
         "fault_candidates": len(rep.fault_candidates),
         "asset_candidates": len(rep.asset_candidates),
