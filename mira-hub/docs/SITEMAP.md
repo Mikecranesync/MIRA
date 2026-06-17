@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **57** (6 dynamic) |
-| API routes | **130** (33 dynamic) |
+| API routes | **133** (35 dynamic) |
 
 ## Pages (57)
 
@@ -75,7 +75,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (130)
+## API routes (133)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -125,11 +125,14 @@
 | `/api/cmms/stats` | static | `api/cmms/stats/route.ts` |
 | `/api/command-center/display` | static | `api/command-center/display/route.ts` |
 | `/api/command-center/display/[id]` | dynamic | `api/command-center/display/[id]/route.ts` |
+| `/api/command-center/gateways` | static | `api/command-center/gateways/route.ts` |
 | `/api/command-center/tree` | static | `api/command-center/tree/route.ts` |
 | `/api/components/[id]` | dynamic | `api/components/[id]/route.ts` |
 | `/api/connections` | static | `api/connections/route.ts` |
 | `/api/connections/[provider]` | dynamic | `api/connections/[provider]/route.ts` |
 | `/api/conversations` | static | `api/conversations/route.ts` |
+| `/api/decision-trace/[id]` | dynamic | `api/decision-trace/[id]/route.ts` |
+| `/api/decision-trace/[id]/feedback` | dynamic | `api/decision-trace/[id]/feedback/route.ts` |
 | `/api/demo/customer` | static | `api/demo/customer/route.ts` |
 | `/api/demo/signals/events` | static | `api/demo/signals/events/route.ts` |
 | `/api/demo/signals/set` | static | `api/demo/signals/set/route.ts` |
