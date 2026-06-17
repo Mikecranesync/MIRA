@@ -1,5 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
+import { plcReportToSuggestions, insertPlcSuggestions } from "@/lib/plc-proposals";
+
+function isTruthy(v: FormDataEntryValue | null): boolean {
+  return ["1", "true", "yes", "on"].includes(((v as string | null) ?? "").trim().toLowerCase());
+}
 
 // Parsing is fast + deterministic (stdlib-only), so a generous-but-bounded ceiling is plenty.
 const PLC_PARSE_TIMEOUT_MS = 30_000;
@@ -25,14 +30,17 @@ function ingestBase(): string {
  * `POST /ingest/plc-parse`, which runs the stdlib-only parser and returns
  * `{report, i3x?}` — the report carries proposed UNS candidates (one ISA-95 path per tag).
  *
- * PR-B scope: parse + return only. No DB writes, no `ai_suggestions` (that is PR-C). The handler
- * passes the sidecar's status + body straight through so the parser stays the single authority:
- *   200  parsed
- *   422  closed/binary project (body.detail = actionable export guidance) OR unsupported format
- *   413  too large
- *   503  parser not wired into the ingest image yet
+ * By default (PR-B) the handler passes the sidecar's status + body straight through so the parser
+ * stays the single authority:
+ *   200  parsed     ·  422  closed/binary project (body.detail = export guidance) / unsupported
+ *   413  too large  ·  503  parser not wired into the ingest image yet
+ *
+ * When the multipart carries `commit=true` (PR-C) AND the parse succeeds, the report's proposed UNS
+ * candidates are written to `ai_suggestions` (status `pending`) for `tenantId`, so they surface in
+ * the `/proposals` review queue. The response then also carries `committed`, `proposalsCreated`, and
+ * `suggestionIds`. Nothing is ever auto-verified — approval is a separate human action.
  */
-export async function handlePlcImport(req: NextRequest): Promise<NextResponse> {
+export async function handlePlcImport(req: NextRequest, tenantId: string): Promise<NextResponse> {
   let form: FormData;
   try {
     form = await req.formData();
@@ -94,6 +102,32 @@ export async function handlePlcImport(req: NextRequest): Promise<NextResponse> {
   }
 
   const body = await res.json().catch(() => ({}));
+
+  // PR-C: on a successful parse with commit=true, persist the proposals to the /proposals queue.
+  // Any other status (422/413/503) is passed straight through — there is nothing to commit.
+  if (res.ok && isTruthy(form.get("commit"))) {
+    const report = (body as { report?: unknown }).report;
+    try {
+      const rows = plcReportToSuggestions(report as Parameters<typeof plcReportToSuggestions>[0]);
+      const suggestionIds = await insertPlcSuggestions(tenantId, rows);
+      return NextResponse.json(
+        { ...body, committed: true, proposalsCreated: suggestionIds.length, suggestionIds },
+        { status: 200 },
+      );
+    } catch (err) {
+      // The parse succeeded; only the DB write failed. Return the report + a non-fatal commit error
+      // so the caller still gets the analysis and can retry the commit.
+      console.error("[plc-import] proposal commit failed", {
+        tenantId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return NextResponse.json(
+        { ...body, committed: false, commitError: "proposal_write_failed" },
+        { status: 200 },
+      );
+    }
+  }
+
   // Pass the parser's status + body straight through — the Hub adds no semantics of its own here.
   return NextResponse.json(body, { status: res.status });
 }

@@ -5,9 +5,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextResponse } from "next/server";
 
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
+// Mock the proposals layer so the commit path is tested without a DB.
+vi.mock("@/lib/plc-proposals", () => ({
+  plcReportToSuggestions: vi.fn(() => [{ suggestionType: "tag_mapping" }, { suggestionType: "kg_entity" }]),
+  insertPlcSuggestions: vi.fn(async () => ["s1", "s2"]),
+}));
 
 import { POST } from "../route";
 import { sessionOr401 } from "@/lib/session";
+import { insertPlcSuggestions } from "@/lib/plc-proposals";
 
 const goodSession = {
   tenantId: "11111111-1111-1111-1111-111111111111",
@@ -64,6 +70,40 @@ describe("POST /api/connectors/plc/import", () => {
     const sentForm = fetchSpy.mock.calls[0][1].body as FormData;
     expect(sentForm.get("site")).toBe("Plant 2");
     expect(sentForm.get("line")).toBe("Line 3");
+  });
+
+  it("commit=true persists proposals and reports the count", async () => {
+    const upstream = { report: { handled: true, uns_candidates: [{ tag: "VFD_Frequency" }] } };
+    fetchSpy.mockResolvedValue(new Response(JSON.stringify(upstream), { status: 200 }));
+
+    const res = await POST(req(l5xForm({ commit: "true" })) as never);
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.committed).toBe(true);
+    expect(json.proposalsCreated).toBe(2);
+    expect(json.suggestionIds).toEqual(["s1", "s2"]);
+    // scoped to the authenticated tenant
+    expect(vi.mocked(insertPlcSuggestions).mock.calls[0][0]).toBe(goodSession.tenantId);
+  });
+
+  it("does NOT persist when commit is absent (preview/PR-B behavior)", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify({ report: { handled: true } }), { status: 200 }),
+    );
+    const res = await POST(req(l5xForm()) as never);
+    expect(res.status).toBe(200);
+    expect((await res.json()).committed).toBeUndefined();
+    expect(vi.mocked(insertPlcSuggestions)).not.toHaveBeenCalled();
+  });
+
+  it("does NOT persist on a non-200 parse even with commit=true", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify({ detail: "export it to L5X first" }), { status: 422 }),
+    );
+    const res = await POST(req(l5xForm({ commit: "true" })) as never);
+    expect(res.status).toBe(422);
+    expect(vi.mocked(insertPlcSuggestions)).not.toHaveBeenCalled();
   });
 
   it("passes a closed-project 422 (export guidance) straight through", async () => {

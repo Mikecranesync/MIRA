@@ -9,13 +9,12 @@ export const dynamic = "force-dynamic";
  * tag CSV) and get back the parser's maintenance-intelligence report + proposed UNS namespace
  * (and optional CESMII i3X payload). Forwards to mira-ingest `/ingest/plc-parse`.
  *
- * PR-B: parse + return only (no DB writes). Writing the proposals to `ai_suggestions` for the
- * `/proposals` approval queue is PR-C.
+ * Default: parse + return only (preview). With `commit=true` (PR-C), the proposed UNS candidates
+ * are also written to `ai_suggestions` (status `pending`) for the caller's tenant, surfacing in the
+ * `/proposals` review queue. Nothing is auto-verified.
  */
 export async function POST(req: NextRequest) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
-  // Auth-gated (401 above); PR-B parses + returns only, so the tenant isn't used yet. PR-C will
-  // thread ctx.tenantId through to scope the ai_suggestions write.
-  return handlePlcImport(req);
+  return handlePlcImport(req, ctx.tenantId);
 }
