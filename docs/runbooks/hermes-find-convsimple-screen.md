@@ -94,9 +94,46 @@ Go to **`https://app.factorylm.com/command-center`**.
 - **Live tags rendering:** GS10 VFD Hz/A/Vdc-bus, E-STOP ARMED/OK, MLC1 CLOSED·ENERGIZED,
   pilot lights — DC-bus voltage changed between captures (323→322 Vdc), confirming
   live OPC data, not a static page.
-- **Caveat:** a headless browser briefly shows a "No Connection to Gateway" banner
-  while the WebSocket settles; values still render. A real browser on Tailscale
-  connects normally — ignore that banner if it flashes.
+- **Caveat — "No Connection to Gateway" in the DOM:** Ignition's Perspective
+  client ALWAYS renders this overlay in the HTML on page load. When the WebSocket
+  connects (~1–3 s), Ignition hides it via a CSS class change — but the text
+  REMAINS in the DOM. An accessibility snapshot or `document.body.innerText` will
+  therefore include `"No Connection to Gateway"` even when the gateway is fully
+  connected and showing live OPC tag values. **This is not a fault.** See
+  issue #2064 and the disambiguation algorithm below.
+
+---
+
+## 4b. Disambiguation — "No Connection to Gateway" vs actual disconnect
+
+When reading a Perspective screen via a headless browser (Playwright, accessibility
+snapshot, etc.), use this decision rule to determine true connection state:
+
+**Step 1 — wait for the WebSocket to settle (up to ~15 s).**
+Use `page.waitForFunction` to check whether the overlay element's computed style is
+`display:none` / `visibility:hidden` / `opacity:0`. If the computed style switches to
+hidden, the WS connected → screen is live.
+
+**Step 2 — check for live tag values as a secondary signal.**
+If the page text contains any of these, the screen is live regardless of the banner:
+- `<number> Hz` or `<number> A` (VFD output)
+- `<number> Vdc` (DC bus voltage)
+- `E-STOP`, `MLC`, `STOPPED`, `RUNNING`, `FAULTED`
+- `COMM OK`, `PE-01`
+- `Connected: Ignition-LAPTOP-…` (footer)
+
+**Step 3 — call the utility helper.**
+`mira-hub/tests/e2e/ignition-display-health.ts` exports `evaluateIgnitionDisplay(page, url)`
+which encodes steps 1–2 and returns `{ connected, liveValues, gateway }`. Use it
+instead of a raw accessibility snapshot to evaluate Ignition displays.
+
+**Only call the screen "disconnected" if:**
+- The `"No Connection to Gateway"` overlay is still VISIBLE (not hidden) AND
+- No live tag value patterns are found in the rendered text AND
+- No `"Connected: <host>"` footer is present.
+
+A snapshot that leads with `"No Connection to Gateway"` but also contains `"321.9 Vdc"` or
+`"E-STOP ARMED"` is a **live connected screen** — the banner text is vestigial.
 
 ---
 

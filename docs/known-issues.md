@@ -5,6 +5,17 @@ Updated: 2026-05-26
 
 ## Known Broken / Incomplete
 
+- **Ignition Perspective "No Connection to Gateway" always in DOM** — Ignition's
+  Perspective client renders this WebSocket-init overlay in the DOM on every page
+  load, hiding it via CSS when the WS connects. Accessibility snapshots and
+  headless browser `innerText` therefore always include the string even when the
+  screen is live. This is an Ignition framework behavior; the ConvSimpleLive view
+  was built in Designer on the PLC laptop and cannot be patched from CHARLIE without
+  Designer access. Workaround: use `evaluateIgnitionDisplay()` from
+  `mira-hub/tests/e2e/ignition-display-health.ts`, which disambiguates by checking
+  computed CSS visibility AND live tag value patterns. See issue #2064 and the
+  disambiguation section in `docs/runbooks/hermes-find-convsimple-screen.md`.
+
 - **Gemini key blocked** — `GEMINI_API_KEY` in Doppler returns 403 "Your project has been denied access". Get fresh key from aistudio.google.com and update Doppler `factorylm/prd`. Cascade falls through to Groq/Cerebras in the meantime (smoke-tested OK).
 - **Teams + WhatsApp** — Code-complete, pending **cloud setup only** (Azure Bot Service for Teams; Twilio account + public domain for WhatsApp). WhatsApp FastAPI webhook is wired (`mira-bots/whatsapp/bot.py:96-113`); it just needs Twilio to point at it.
 - **PLC at 192.168.1.100** — Unreachable from PLC laptop; needs physical check (power/switch/cable).
