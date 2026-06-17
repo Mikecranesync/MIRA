@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .compiler import compile_folder, write_outputs
 from .correlate import correlate
 from .i3x import render_i3x
 from .pipeline import render_json, render_markdown, run
@@ -129,6 +130,29 @@ def _slug_for_file(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "_", name).strip("_").lower() or "asset"
 
 
+def _cmd_compile(ns: argparse.Namespace) -> int:
+    """Compile a FOLDER of PLC/SCADA exports into asset_graph.json + signals/registers/edges + report."""
+    folder = Path(ns.folder)
+    if not folder.is_dir():
+        print("error: not a folder: %s" % folder, file=sys.stderr)
+        return 1
+    graph, items = compile_folder(folder, asset_name=ns.asset, namespace_root=ns.namespace_root)
+    written = write_outputs(graph, ns.out)
+
+    if not ns.quiet:
+        disc = graph["discovery"]["counts"]
+        fz = graph["fusion"]
+        print("Asset: %s (%s)" % (graph["asset"]["name"], graph["asset"]["namespace"]))
+        print("Discovered: %s" % (" ".join("%d %s" % (v, k) for k, v in disc.items()) or "(nothing)"))
+        print("Signals: %d (%d typed, %d addressed, %d conflicts) | review: %d"
+              % (fz["signals"], fz["typed"], fz["addressed"], fz["conflicts"],
+                 sum(1 for n in graph["nodes"] if n["type"] == "Signal" and n["review"])))
+        print("Wrote: %s" % ", ".join(written))
+        print("  -> %s" % Path(ns.out).resolve())
+    # exit 0 if at least one file compiled; else 1 (nothing parseable in the folder)
+    return 0 if any(it["classification"] == "parseable" for it in items) else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mira-plc-parser",
@@ -159,6 +183,18 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Root for the proposed ISA-95 namespace (default: plc).")
     p_corr.add_argument("--quiet", action="store_true", help="Suppress the stdout summary.")
     p_corr.set_defaults(func=_cmd_correlate)
+
+    p_comp = sub.add_parser("compile",
+                            help="Compile a FOLDER of PLC/SCADA exports into an asset model "
+                                 "(asset_graph.json + signals/registers/edges.csv + report).")
+    p_comp.add_argument("folder", help="Folder of customer exports (scanned recursively, read-only).")
+    p_comp.add_argument("--out", default="./out", help="Output directory (default: ./out).")
+    p_comp.add_argument("--asset", default=None,
+                        help="Asset name (default: first parsed controller name).")
+    p_comp.add_argument("--namespace-root", default="plc", dest="namespace_root",
+                        help="Root for the proposed ISA-95 namespace (default: plc).")
+    p_comp.add_argument("--quiet", action="store_true", help="Suppress the stdout summary.")
+    p_comp.set_defaults(func=_cmd_compile)
     return parser
 
 

@@ -59,7 +59,7 @@ def test_type_filled_by_cross_file_fusion():
 
 def test_control_logic_becomes_dependson_edges():
     g = correlate(SOURCES)
-    deps = {(e["from"], e["to"]) for e in g["edges"] if e["type"] == "DependsOn"}
+    deps = {(e["from"], e["to"]) for e in g["edges"] if e["type"] == "DEPENDS_ON"}
     motor = _node(g, "motor_run", "Signal")["id"]
     start = _node(g, "start_pb", "Signal")["id"]
     estop = _node(g, "e_stop_ok", "Signal")["id"]
@@ -100,4 +100,4 @@ def test_three_way_fusion_adds_addresses_and_mappedto_edges(fixtures):
     regs = {n["name"] for n in g["nodes"] if n["type"] == "Register"}
     assert "400107" in regs
     reg_id = next(n["id"] for n in g["nodes"] if n["type"] == "Register" and n["name"] == "400107")
-    assert {"type": "MappedTo", "from": vfd["id"], "to": reg_id} in g["edges"]
+    assert {"type": "MAPPED_TO", "from": vfd["id"], "to": reg_id} in g["edges"]

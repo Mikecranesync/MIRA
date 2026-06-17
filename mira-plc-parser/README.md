@@ -40,6 +40,7 @@ upload → detect format → vendor parser → MIRA PLC IR → deterministic ana
 | **CCW "no VAR block" recovery**: synthesize tags from ST assignment targets so real CCW exports analyze | ✅ |
 | Markdown + JSON + **i3X** report renderers; JSON & i3X shapes pinned by **golden snapshots** (`report@1`, `i3x@1`) | ✅ |
 | **Multi-source correlation** (`correlate`): fuse `.st` + variables CSV + Modbus map about one asset into a knowledge graph (`asset-graph@1`) — types/addresses/roles fused by name, control logic → `DependsOn` edges | ✅ |
+| **Offline PLC Asset Compiler** (`compile <folder>`): discover → parse → fuse a folder of exports → `asset_graph.json` + `signals/registers/edges.csv` + `compiler_report.md`; per-field confidence + conflict flagging + safety review; runtime value dumps ignored. See [COMPILER.md](COMPILER.md) | ✅ |
 
 ## Install & CLI
 
@@ -170,7 +171,10 @@ mira_plc_parser/
   pipeline.py        # detect → parse → analyze → report (render_markdown / render_json)
   i3x.py             # project a report → i3X object graph (render_i3x)
   correlate.py       # fuse N exports about ONE asset → knowledge graph (correlate)
-  cli.py             # offline CLI: `analyze` (--format md|json|i3x|both|all) + `correlate`
+  roles.py           # deterministic signal categorization (safety/fault/motion/... ) for review
+  discovery.py       # recursive folder scan + classify (parseable / value_dump / closed / unknown)
+  compiler.py        # offline PLC Asset Compiler: folder → asset_graph.json + CSVs + report
+  cli.py             # offline CLI: `analyze` · `correlate` · `compile` (folder → asset model)
   __main__.py        # `python -m mira_plc_parser`
 mira-plc-parser.spec # PyInstaller spec for the standalone .exe (see PACKAGING.md)
 ```

@@ -16,12 +16,14 @@ Quickstart:
 """
 from __future__ import annotations
 
+from .compiler import compile_folder, write_outputs
 from .correlate import correlate
 from .detect import detect
+from .discovery import scan
 from .i3x import render_i3x
 from .ir import PLCProject
 from .pipeline import ParseResult, render_json, render_markdown, run
 
-__all__ = ["run", "render_markdown", "render_json", "render_i3x", "correlate", "detect",
-           "ParseResult", "PLCProject"]
+__all__ = ["run", "render_markdown", "render_json", "render_i3x", "correlate",
+           "compile_folder", "write_outputs", "scan", "detect", "ParseResult", "PLCProject"]
 __version__ = "0.1.0"

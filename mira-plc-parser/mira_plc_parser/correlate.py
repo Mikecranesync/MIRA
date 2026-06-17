@@ -16,6 +16,7 @@ how cross-file correlation fills gaps no single export could. Read-only, stdlib-
 """
 from __future__ import annotations
 
+from . import roles as _roles
 from .i3x import _eid, _severity, _slug
 from .pipeline import run
 
@@ -53,13 +54,14 @@ def correlate(sources, asset_name=None, namespace_root="plc"):
         nodes.append({"id": nid, "type": "Component", "name": name, "namespace": ns,
                       "attributes": {"detail": components[name]["detail"]},
                       "sources": components[name]["sources"]})
-        edges.append({"type": "HasComponent", "from": asset_eid, "to": nid})
+        edges.append({"type": "HAS_COMPONENT", "from": asset_eid, "to": nid})
 
     registers = {}  # address -> register node id (Modbus registers as first-class graph nodes)
     for name in sorted(signals):
         s = signals[name]
         ns = "%s.%s" % (asset_ns, _slug(name))
         nid = s["id"]
+        categories = _roles.categorize(name, s["description"])
         nodes.append({
             "id": nid, "type": "Signal", "name": name, "namespace": ns,
             "attributes": {
@@ -67,17 +69,21 @@ def correlate(sources, asset_name=None, namespace_root="plc"):
                 "roles": sorted(s["roles"]), "vfd_role": s["vfd_role"],
                 "description": s["description"], "used_count": s["used_count"],
             },
-            "completeness": s["completeness"],
+            "categories": categories,
+            "review": _roles.needs_review(categories),
+            "status": s["status"],
+            "confidence": s["confidence"],
+            "conflicts": s["conflicts"],
             "provenance": {"name_from": s["sources"], "type_from": s["type_sources"],
                            "address_from": s["addr_sources"]},
         })
-        edges.append({"type": "BelongsTo", "from": nid, "to": asset_eid})
+        edges.append({"type": "HAS_SIGNAL", "from": asset_eid, "to": nid})
         if s["address"]:
             rid = registers.get(s["address"])
             if rid is None:
                 rid = _eid("%s.modbus.%s" % (asset_ns, _slug(s["address"])))
                 registers[s["address"]] = rid
-            edges.append({"type": "MappedTo", "from": nid, "to": rid})
+            edges.append({"type": "MAPPED_TO", "from": nid, "to": rid})
 
     for address in sorted(registers):
         nodes.append({"id": registers[address], "type": "Register",
@@ -91,10 +97,10 @@ def correlate(sources, asset_name=None, namespace_root="plc"):
                       "severity": _severity(ev["confidence"]),
                       "attributes": {"kind": ev["kind"], "detail": ev["detail"]}})
         target = signals[ev["name"]]["id"] if ev["name"] in signals else asset_eid
-        edges.append({"type": "RelatesTo", "from": nid, "to": target})
+        edges.append({"type": "RELATES_TO", "from": nid, "to": target})
 
     for out, ref in depends:
-        edges.append({"type": "DependsOn", "from": signals[out]["id"], "to": signals[ref]["id"]})
+        edges.append({"type": "DEPENDS_ON", "from": signals[out]["id"], "to": signals[ref]["id"]})
 
     return {
         "schema": ASSET_GRAPH_SCHEMA,
@@ -110,7 +116,12 @@ def correlate(sources, asset_name=None, namespace_root="plc"):
 
 
 def _fuse_signals(handled):
-    """Merge tag dictionaries across sources by name; first non-empty wins per field, roles union."""
+    """Merge tag dictionaries across sources by name. First non-empty wins per field; roles union.
+
+    Disagreement is NOT silently overwritten: distinct non-empty values for data_type/address are
+    collected per source so a conflict can be flagged. Each field gets a confidence label
+    (exact / inferred / name_only / missing / conflict) so every value is auditable.
+    """
     merged = {}
     for fn, r in handled:
         vfd_role = {f.name: f.detail for f in r.report.vfd_signal_candidates}
@@ -120,15 +131,20 @@ def _fuse_signals(handled):
             if m is None:
                 m = {"data_type": "", "address": "", "scope": "", "description": "",
                      "roles": set(), "vfd_role": "", "used_count": 0,
-                     "sources": [], "type_sources": [], "addr_sources": []}
+                     "sources": [], "type_sources": [], "addr_sources": [],
+                     "type_values": {}, "addr_values": {}}
                 merged[name] = m
             m["sources"].append(fn)
-            if t.get("data_type"):
+            dt = t.get("data_type")
+            if dt:
                 m["type_sources"].append(fn)
-                m["data_type"] = m["data_type"] or t["data_type"]
-            if t.get("address"):
+                m["type_values"].setdefault(dt, []).append(fn)
+                m["data_type"] = m["data_type"] or dt
+            addr = t.get("address")
+            if addr:
                 m["addr_sources"].append(fn)
-                m["address"] = m["address"] or t["address"]
+                m["addr_values"].setdefault(addr, []).append(fn)
+                m["address"] = m["address"] or addr
             m["scope"] = m["scope"] or t.get("scope", "")
             m["description"] = m["description"] or t.get("description", "")
             m["roles"].update(t.get("roles") or [])
@@ -136,8 +152,24 @@ def _fuse_signals(handled):
             m["used_count"] = max(m["used_count"], t.get("used_count", 0))
     for name, m in merged.items():
         m["id"] = _eid("%s" % name)  # stable per-name handle within this graph
-        # completeness: a real declaration gives a type; logic-only (CCW .st) gives a bare name
-        m["completeness"] = "typed" if m["data_type"] else "name_only"
+        # conflict = a genuine disagreement, not just spelling: compare data types case-insensitively
+        # (WORD vs Word is not a conflict) and addresses trimmed. Only distinct *meanings* flag.
+        type_conflict = len({v.strip().upper() for v in m["type_values"]}) > 1
+        addr_conflict = len({v.strip() for v in m["addr_values"]}) > 1
+        m["confidence"] = {
+            "name": "exact",
+            "data_type": "conflict" if type_conflict else ("exact" if m["data_type"] else "missing"),
+            "address": "conflict" if addr_conflict else ("exact" if m["address"] else "missing"),
+            "role": "inferred" if (m["roles"] or m["vfd_role"]) else "missing",
+        }
+        # signal-level status: a real declaration gives a type; logic-only (CCW .st) is name_only
+        m["status"] = ("resolved" if (m["data_type"] and m["address"])
+                       else "partial" if (m["data_type"] or m["address"]) else "name_only")
+        m["conflicts"] = []
+        if type_conflict:
+            m["conflicts"].append({"field": "data_type", "values": dict(m["type_values"])})
+        if addr_conflict:
+            m["conflicts"].append({"field": "address", "values": dict(m["addr_values"])})
     return merged
 
 
@@ -201,5 +233,7 @@ def _fusion_summary(signals):
     # supplied by a DIFFERENT source (i.e. cross-file fusion actually filled a gap).
     type_filled = sum(1 for s in signals.values()
                       if s["data_type"] and set(s["sources"]) - set(s["type_sources"]))
+    conflicts = sum(1 for s in signals.values() if s["conflicts"])
     return {"signals": total, "typed": typed, "name_only": total - typed,
-            "addressed": addressed, "multi_source": multi, "type_filled_by_fusion": type_filled}
+            "addressed": addressed, "multi_source": multi, "type_filled_by_fusion": type_filled,
+            "conflicts": conflicts}

@@ -7,6 +7,9 @@ dependencies = []   # Phase 1 is stdlib-only (xml.etree, re); LLM explanation is
 
 [project.scripts]
 mira-plc-parser = "mira_plc_parser.cli:main"
+# The offline PLC Asset Compiler is the `compile` subcommand of this same CLI; this alias exposes
+# it under the product name. `plc-asset-compiler compile <folder> --out <dir>`.
+plc-asset-compiler = "mira_plc_parser.cli:main"
 
 [project.optional-dependencies]
 test = ["pytest"]
