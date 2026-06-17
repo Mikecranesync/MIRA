@@ -4,8 +4,10 @@
 /build/
 /dist/
 
-# CLI report outputs written during local runs / tests (<stem>.report.md / .json).
+# CLI report outputs written during local runs / tests (<stem>.report.md/.json, <stem>.i3x.json).
 *.report.md
 *.report.json
-# ...EXCEPT the golden snapshots, which are the committed report@1 contract (not run output).
+*.i3x.json
+# ...EXCEPT the golden snapshots, which are the committed report@1 / i3x@1 contracts (not run output).
 !tests/fixtures/golden/*.report.json
+!tests/fixtures/golden/*.i3x.json

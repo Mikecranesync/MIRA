@@ -1,0 +1,511 @@
+{
+  "asset_namespace": "plc.conveyorcell",
+  "counts": {
+    "Asset": 1,
+    "Component": 3,
+    "Event": 5,
+    "Signal": 11
+  },
+  "detection": {
+    "confidence": "high",
+    "fmt": "rockwell_l5x"
+  },
+  "handled": true,
+  "objects": [
+    {
+      "attributes": {
+        "source_format": "rockwell_l5x",
+        "vendor": "Rockwell Automation"
+      },
+      "display_name": "ConveyorCell",
+      "element_id": "16827ee1-0507-589e-8206-253b1b6a8f91",
+      "namespace": "plc.conveyorcell",
+      "object_type": "Asset",
+      "relationships": []
+    },
+    {
+      "attributes": {
+        "confidence": "medium",
+        "detail": "candidate asset (keyword: conv)"
+      },
+      "display_name": "Conv",
+      "element_id": "de9dfb06-7b4d-50d0-aa2b-014bcf8eda1e",
+      "evidence": [
+        "Conv_Fault"
+      ],
+      "namespace": "plc.conveyorcell.conv",
+      "object_type": "Component",
+      "relationships": [
+        {
+          "from": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "to": "de9dfb06-7b4d-50d0-aa2b-014bcf8eda1e",
+          "type": "HasComponent"
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "confidence": "medium",
+        "detail": "candidate asset (keyword: motor)"
+      },
+      "display_name": "Motor",
+      "element_id": "e384390b-0527-59ad-8453-1707bfb56c84",
+      "evidence": [
+        "Motor_Run"
+      ],
+      "namespace": "plc.conveyorcell.motor",
+      "object_type": "Component",
+      "relationships": [
+        {
+          "from": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "to": "e384390b-0527-59ad-8453-1707bfb56c84",
+          "type": "HasComponent"
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "confidence": "medium",
+        "detail": "candidate asset (keyword: vfd)"
+      },
+      "display_name": "VFD",
+      "element_id": "8502219c-b29d-5a72-ad75-64217f54f306",
+      "evidence": [
+        "VFD_Frequency",
+        "VFD_Current",
+        "VFD_FaultCode"
+      ],
+      "namespace": "plc.conveyorcell.vfd",
+      "object_type": "Component",
+      "relationships": [
+        {
+          "from": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "to": "8502219c-b29d-5a72-ad75-64217f54f306",
+          "type": "HasComponent"
+        }
+      ]
+    },
+    {
+      "attributes": {
+        "address": "",
+        "data_type": "BOOL",
+        "roles": [
+          "output"
+        ],
+        "scope": "controller",
+        "source_variable": "Motor_Run",
+        "used_count": 3
+      },
+      "display_name": "Motor_Run",
+      "element_id": "bc958e90-6c35-5d52-80d5-54c17b31c85e",
+      "namespace": "plc.conveyorcell.motor_run",
+      "object_type": "Signal",
+      "relationships": [
+        {
+          "from": "bc958e90-6c35-5d52-80d5-54c17b31c85e",
+          "to": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "type": "BelongsTo"
+        }
+      ],
+      "vqt": {
+        "quality": "unknown",
+        "timestamp": null,
+        "value": null
+      }
+    },
+    {
+      "attributes": {
+        "address": "",
+        "data_type": "BOOL",
+        "roles": [
+          "output",
+          "fault"
+        ],
+        "scope": "controller",
+        "source_variable": "Conv_Fault",
+        "used_count": 2
+      },
+      "display_name": "Conv_Fault",
+      "element_id": "cf477a8f-2e30-5238-a8d5-79799681f02d",
+      "namespace": "plc.conveyorcell.conv_fault",
+      "object_type": "Signal",
+      "relationships": [
+        {
+          "from": "cf477a8f-2e30-5238-a8d5-79799681f02d",
+          "to": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "type": "BelongsTo"
+        }
+      ],
+      "vqt": {
+        "quality": "unknown",
+        "timestamp": null,
+        "value": null
+      }
+    },
+    {
+      "attributes": {
+        "address": "",
+        "data_type": "BOOL",
+        "roles": [
+          "mode"
+        ],
+        "scope": "controller",
+        "source_variable": "Auto_Mode",
+        "used_count": 1
+      },
+      "display_name": "Auto_Mode",
+      "element_id": "34e294df-0ad4-5855-b447-1fb6093df02f",
+      "namespace": "plc.conveyorcell.auto_mode",
+      "object_type": "Signal",
+      "relationships": [
+        {
+          "from": "34e294df-0ad4-5855-b447-1fb6093df02f",
+          "to": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "type": "BelongsTo"
+        }
+      ],
+      "vqt": {
+        "quality": "unknown",
+        "timestamp": null,
+        "value": null
+      }
+    },
+    {
+      "attributes": {
+        "address": "",
+        "data_type": "BOOL",
+        "roles": [
+          "fault",
+          "safety"
+        ],
+        "scope": "controller",
+        "source_variable": "EStop_OK",
+        "used_count": 1
+      },
+      "display_name": "EStop_OK",
+      "element_id": "fa1f598f-aaa1-5f2f-999f-d9ee828654f7",
+      "namespace": "plc.conveyorcell.estop_ok",
+      "object_type": "Signal",
+      "relationships": [
+        {
+          "from": "fa1f598f-aaa1-5f2f-999f-d9ee828654f7",
+          "to": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "type": "BelongsTo"
+        }
+      ],
+      "vqt": {
+        "quality": "unknown",
+        "timestamp": null,
+        "value": null
+      }
+    },
+    {
+      "attributes": {
+        "address": "",
+        "data_type": "BOOL",
+        "roles": [
+          "fault",
+          "input"
+        ],
+        "scope": "controller",
+        "source_variable": "Photoeye_1",
+        "used_count": 1
+      },
+      "display_name": "Photoeye_1",
+      "element_id": "ee92fe0f-27d3-5e27-8f8b-7a2bb470e447",
+      "namespace": "plc.conveyorcell.photoeye_1",
+      "object_type": "Signal",
+      "relationships": [
+        {
+          "from": "ee92fe0f-27d3-5e27-8f8b-7a2bb470e447",
+          "to": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "type": "BelongsTo"
+        }
+      ],
+      "vqt": {
+        "quality": "unknown",
+        "timestamp": null,
+        "value": null
+      }
+    },
+    {
+      "attributes": {
+        "address": "",
+        "data_type": "TIMER",
+        "roles": [
+          "output",
+          "timer"
+        ],
+        "scope": "controller",
+        "source_variable": "Run_Timer",
+        "used_count": 1
+      },
+      "display_name": "Run_Timer",
+      "element_id": "67235ba2-091a-56cc-8e50-288f327ae3a0",
+      "namespace": "plc.conveyorcell.run_timer",
+      "object_type": "Signal",
+      "relationships": [
+        {
+          "from": "67235ba2-091a-56cc-8e50-288f327ae3a0",
+          "to": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "type": "BelongsTo"
+        }
+      ],
+      "vqt": {
+        "quality": "unknown",
+        "timestamp": null,
+        "value": null
+      }
+    },
+    {
+      "attributes": {
+        "address": "",
+        "data_type": "BOOL",
+        "roles": [
+          "input"
+        ],
+        "scope": "controller",
+        "source_variable": "Start_PB",
+        "used_count": 1
+      },
+      "display_name": "Start_PB",
+      "element_id": "792bead6-fa31-502b-b70d-f5a79f1075ad",
+      "namespace": "plc.conveyorcell.start_pb",
+      "object_type": "Signal",
+      "relationships": [
+        {
+          "from": "792bead6-fa31-502b-b70d-f5a79f1075ad",
+          "to": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "type": "BelongsTo"
+        }
+      ],
+      "vqt": {
+        "quality": "unknown",
+        "timestamp": null,
+        "value": null
+      }
+    },
+    {
+      "attributes": {
+        "address": "",
+        "data_type": "BOOL",
+        "roles": [
+          "input"
+        ],
+        "scope": "controller",
+        "source_variable": "Stop_PB",
+        "used_count": 1
+      },
+      "display_name": "Stop_PB",
+      "element_id": "5272c55f-d51d-5e9c-8ad9-4655a18271f7",
+      "namespace": "plc.conveyorcell.stop_pb",
+      "object_type": "Signal",
+      "relationships": [
+        {
+          "from": "5272c55f-d51d-5e9c-8ad9-4655a18271f7",
+          "to": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "type": "BelongsTo"
+        }
+      ],
+      "vqt": {
+        "quality": "unknown",
+        "timestamp": null,
+        "value": null
+      }
+    },
+    {
+      "attributes": {
+        "address": "",
+        "data_type": "REAL",
+        "roles": [],
+        "scope": "controller",
+        "source_variable": "VFD_Current",
+        "used_count": 0,
+        "vfd_role": "candidate role: current_a"
+      },
+      "display_name": "VFD_Current",
+      "element_id": "6ab1e460-01fc-582b-98b5-bf6764b7a6cf",
+      "namespace": "plc.conveyorcell.vfd_current",
+      "object_type": "Signal",
+      "relationships": [
+        {
+          "from": "6ab1e460-01fc-582b-98b5-bf6764b7a6cf",
+          "to": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "type": "BelongsTo"
+        }
+      ],
+      "vqt": {
+        "quality": "unknown",
+        "timestamp": null,
+        "value": null
+      }
+    },
+    {
+      "attributes": {
+        "address": "",
+        "data_type": "DINT",
+        "roles": [
+          "fault"
+        ],
+        "scope": "controller",
+        "source_variable": "VFD_FaultCode",
+        "used_count": 0,
+        "vfd_role": "candidate role: fault_code"
+      },
+      "display_name": "VFD_FaultCode",
+      "element_id": "2011f6e9-efb7-54a2-af95-be875b91ea83",
+      "namespace": "plc.conveyorcell.vfd_faultcode",
+      "object_type": "Signal",
+      "relationships": [
+        {
+          "from": "2011f6e9-efb7-54a2-af95-be875b91ea83",
+          "to": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "type": "BelongsTo"
+        }
+      ],
+      "vqt": {
+        "quality": "unknown",
+        "timestamp": null,
+        "value": null
+      }
+    },
+    {
+      "attributes": {
+        "address": "",
+        "data_type": "REAL",
+        "roles": [],
+        "scope": "controller",
+        "source_variable": "VFD_Frequency",
+        "used_count": 0,
+        "vfd_role": "candidate role: frequency"
+      },
+      "display_name": "VFD_Frequency",
+      "element_id": "a38ddd90-45c5-5f60-af51-296bfcc3354c",
+      "namespace": "plc.conveyorcell.vfd_frequency",
+      "object_type": "Signal",
+      "relationships": [
+        {
+          "from": "a38ddd90-45c5-5f60-af51-296bfcc3354c",
+          "to": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "type": "BelongsTo"
+        }
+      ],
+      "vqt": {
+        "quality": "unknown",
+        "timestamp": null,
+        "value": null
+      }
+    },
+    {
+      "attributes": {
+        "confidence": "review",
+        "detail": "Emergency stop healthy (safety circuit)",
+        "kind": "fault"
+      },
+      "display_name": "EStop_OK",
+      "element_id": "675b789f-74c2-523d-be31-555ab322c3f3",
+      "evidence": [
+        "Tag[@Name='EStop_OK']"
+      ],
+      "namespace": "plc.conveyorcell.event.fault.estop_ok",
+      "object_type": "Event",
+      "relationships": [
+        {
+          "from": "675b789f-74c2-523d-be31-555ab322c3f3",
+          "to": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "type": "RelatesTo"
+        }
+      ],
+      "severity": "high"
+    },
+    {
+      "attributes": {
+        "confidence": "medium",
+        "detail": "Jam detection photo-eye",
+        "kind": "fault"
+      },
+      "display_name": "Photoeye_1",
+      "element_id": "4697a00e-3f5f-5504-ae03-af248ad067a7",
+      "evidence": [
+        "Tag[@Name='Photoeye_1']"
+      ],
+      "namespace": "plc.conveyorcell.event.fault.photoeye_1",
+      "object_type": "Event",
+      "relationships": [
+        {
+          "from": "4697a00e-3f5f-5504-ae03-af248ad067a7",
+          "to": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "type": "RelatesTo"
+        }
+      ],
+      "severity": "medium"
+    },
+    {
+      "attributes": {
+        "confidence": "medium",
+        "detail": "Conveyor fault latch",
+        "kind": "fault"
+      },
+      "display_name": "Conv_Fault",
+      "element_id": "0606ca82-5261-5fa3-a992-9829804f42b6",
+      "evidence": [
+        "Tag[@Name='Conv_Fault']"
+      ],
+      "namespace": "plc.conveyorcell.event.fault.conv_fault",
+      "object_type": "Event",
+      "relationships": [
+        {
+          "from": "0606ca82-5261-5fa3-a992-9829804f42b6",
+          "to": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "type": "RelatesTo"
+        }
+      ],
+      "severity": "medium"
+    },
+    {
+      "attributes": {
+        "confidence": "medium",
+        "detail": "Active drive fault code",
+        "kind": "fault"
+      },
+      "display_name": "VFD_FaultCode",
+      "element_id": "46117f8b-725c-58d5-8a59-a34f56c17b96",
+      "evidence": [
+        "Tag[@Name='VFD_FaultCode']"
+      ],
+      "namespace": "plc.conveyorcell.event.fault.vfd_faultcode",
+      "object_type": "Event",
+      "relationships": [
+        {
+          "from": "46117f8b-725c-58d5-8a59-a34f56c17b96",
+          "to": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "type": "RelatesTo"
+        }
+      ],
+      "severity": "medium"
+    },
+    {
+      "attributes": {
+        "confidence": "review",
+        "detail": "Emergency stop healthy (safety circuit)",
+        "kind": "safety"
+      },
+      "display_name": "EStop_OK",
+      "element_id": "b7b8a05b-4d08-5ee7-bbb9-5cd2d381d875",
+      "evidence": [
+        "Tag[@Name='EStop_OK']"
+      ],
+      "namespace": "plc.conveyorcell.event.safety.estop_ok",
+      "object_type": "Event",
+      "relationships": [
+        {
+          "from": "b7b8a05b-4d08-5ee7-bbb9-5cd2d381d875",
+          "to": "16827ee1-0507-589e-8206-253b1b6a8f91",
+          "type": "RelatesTo"
+        }
+      ],
+      "severity": "high"
+    }
+  ],
+  "schema": "mira-plc-parser/i3x@1"
+}

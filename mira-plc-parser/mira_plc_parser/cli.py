@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .i3x import render_i3x
 from .pipeline import render_json, render_markdown, run
 
 
@@ -64,14 +65,18 @@ def _cmd_analyze(ns: argparse.Namespace) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = src.stem
     written: list[Path] = []
-    if ns.format in ("md", "both"):
+    if ns.format in ("md", "both", "all"):
         md_path = out_dir / ("%s.report.md" % stem)
         md_path.write_text(render_markdown(result), encoding="utf-8")
         written.append(md_path)
-    if ns.format in ("json", "both"):
+    if ns.format in ("json", "both", "all"):
         json_path = out_dir / ("%s.report.json" % stem)
         json_path.write_text(json.dumps(render_json(result), indent=2), encoding="utf-8")
         written.append(json_path)
+    if ns.format in ("i3x", "all"):
+        i3x_path = out_dir / ("%s.i3x.json" % stem)
+        i3x_path.write_text(json.dumps(render_i3x(result), indent=2), encoding="utf-8")
+        written.append(i3x_path)
 
     if not ns.quiet:
         print(_summary(result, written))
@@ -100,8 +105,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_analyze.add_argument("file", help="Path to a PLC program export (L5X, CSV, ...).")
     p_analyze.add_argument("--out", default=".",
                            help="Directory to write report files into (default: current dir).")
-    p_analyze.add_argument("--format", choices=("md", "json", "both"), default="both",
-                           help="Which report file(s) to write (default: both).")
+    p_analyze.add_argument("--format", choices=("md", "json", "i3x", "both", "all"), default="both",
+                           help="Which report file(s) to write: md, json, i3x (i3X object graph), "
+                                "both (md+json), or all (default: both).")
     p_analyze.add_argument("--quiet", action="store_true", help="Suppress the stdout summary.")
     p_analyze.set_defaults(func=_cmd_analyze)
     return parser

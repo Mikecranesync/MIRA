@@ -82,13 +82,21 @@ def parse(text: str, source_file: str = "") -> PLCProject:
         software="Structured Text (IEC 61131-3)",
         provenance=_prov(source_file, "POU[%s]" % pous[0].group(2)),
     )
+    inferred = 0
     for m in pous:
-        _parse_pou(m.group(1), m.group(2), m.group(0), ctrl, source_file)
+        inferred += _parse_pou(m.group(1), m.group(2), m.group(0), ctrl, source_file)
+    if inferred:
+        proj.warnings.append(
+            "%d variable(s) inferred from ST assignments (no VAR block in this export); "
+            "types/addresses unknown -- supply the CCW Controller-Variables CSV to enrich them"
+            % inferred
+        )
     proj.controllers.append(ctrl)
     return proj
 
 
-def _parse_pou(kind: str, name: str, block: str, ctrl: Controller, src: str) -> None:
+def _parse_pou(kind: str, name: str, block: str, ctrl: Controller, src: str) -> int:
+    """Parse one POU into ctrl. Returns the count of tags synthesized from undeclared assignments."""
     prog = Program(name=name)
     body = block
     for vm in _VAR_BLOCK_RE.finditer(block):
@@ -106,7 +114,41 @@ def _parse_pou(kind: str, name: str, block: str, ctrl: Controller, src: str) -> 
     )
     routine.rungs = _statements_to_rungs(routine.st_text, name, src)
     prog.routines.append(routine)
+    inferred = _synthesize_undeclared_tags(prog, ctrl, name, src)
     ctrl.programs.append(prog)
+    return inferred
+
+
+def _synthesize_undeclared_tags(prog: Program, ctrl: Controller, pou: str, src: str) -> int:
+    """Recover variables that the ST body assigns to but never declares (the CCW case).
+
+    Real Allen-Bradley CCW (Micro8xx) exports keep the variable table OUT of the .st -- it lives in
+    CCW's Controller Variables grid (a separate CSV). So a declared-VAR pass finds nothing and the
+    whole analysis comes back empty. The assignment targets ARE the controlled variables, so we lift
+    each undeclared one into a tag with unknown type and MEDIUM confidence (it's a real symbol, but
+    we don't have its declaration). Supply the companion CCW variables CSV for types/addresses.
+
+    No-op when every assigned symbol is already declared (the full-VAR case) -- so declared-VAR
+    fixtures, and their golden reports, are unaffected.
+    """
+    declared = {t.name for t in ctrl.tags} | {t.name for t in prog.tags}
+    assigned: list[str] = []
+    seen: set[str] = set(declared)
+    for routine in prog.routines:
+        for rung in routine.rungs:
+            for out in rung.outputs:
+                if out and out not in seen:
+                    seen.add(out)
+                    assigned.append(out)
+    for sym in assigned:
+        prog.tags.append(Tag(
+            name=sym, data_type="", scope=TagScope.PROGRAM.value,
+            description="(inferred from ST assignment; not declared in this export)",
+            provenance=Provenance(source_file=src, source_format=FORMAT,
+                                  locator="%s/AssignedSymbol[%s]" % (pou, sym),
+                                  confidence=Confidence.MEDIUM),
+        ))
+    return len(assigned)
 
 
 def _parse_var_block(block: str, scope: str, pou: str, src: str) -> list[Tag]:

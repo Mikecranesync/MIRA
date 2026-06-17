@@ -17,8 +17,10 @@ Quickstart:
 from __future__ import annotations
 
 from .detect import detect
+from .i3x import render_i3x
 from .ir import PLCProject
 from .pipeline import ParseResult, render_json, render_markdown, run
 
-__all__ = ["run", "render_markdown", "render_json", "detect", "ParseResult", "PLCProject"]
+__all__ = ["run", "render_markdown", "render_json", "render_i3x", "detect",
+           "ParseResult", "PLCProject"]
 __version__ = "0.1.0"

@@ -69,3 +69,40 @@ def test_body_preserved_as_st_text(conveyor_st):
     routine = proj.controllers[0].programs[0].routines[0]
     assert routine.type == "ST"
     assert ":=" in routine.st_text          # the executable body is retained for later reasoning
+
+
+# ---- CCW-style: NO VAR block (variables live in CCW's separate table) ----
+
+@pytest.fixture(scope="module")
+def ccw_novar(fixtures):
+    return (fixtures / "ccw_micro820_novar.st").read_text(encoding="utf-8")
+
+
+def test_novar_synthesizes_tags_from_assignments(ccw_novar):
+    proj = structured_text.parse(ccw_novar, "ccw_micro820_novar.st")
+    tags = {t.name: t for t in proj.all_tags()}
+    # no VAR block, yet the assignment targets are recovered as (undeclared) tags
+    assert {"e_stop_active", "fault_alarm", "vfd_frequency", "motor_running", "conv_state"} <= set(tags)
+    # synthesized tags are MEDIUM confidence with unknown type, and a warning is raised
+    assert tags["vfd_frequency"].data_type == ""
+    assert tags["vfd_frequency"].provenance.confidence.value == "medium"
+    assert any("no VAR" in w or "inferred" in w for w in proj.warnings)
+
+
+def test_novar_analysis_reaches_findings(ccw_novar):
+    r = A.analyze(structured_text.parse(ccw_novar, "ccw_micro820_novar.st"))
+    faults = {f.name for f in r.fault_candidates}
+    assert {"fault_alarm", "vfd_comm_err", "vfd_drive_fault"} <= faults
+    assert {"e_stop_active", "estop_wiring_fault"} <= {f.name for f in r.review_required}
+    sig = {f.name for f in r.vfd_signal_candidates}
+    assert {"vfd_frequency", "vfd_current", "vfd_dc_bus"} <= sig
+    assets = {f.name for f in r.asset_candidates}
+    assert any(a.startswith("motor") or a == "vfd" or a.startswith("conv") for a in assets)
+
+
+def test_declared_vars_are_not_double_synthesized(conveyor_st):
+    # the full-VAR fixture: every assignment target is already declared, so NO synthetic tag is
+    # added and NO "inferred" warning is raised (this is what keeps the goldens stable).
+    proj = structured_text.parse(conveyor_st, "conveyor.st")
+    assert not any("inferred" in w or "no VAR" in w for w in proj.warnings)
+    assert len(proj.all_tags()) == 12

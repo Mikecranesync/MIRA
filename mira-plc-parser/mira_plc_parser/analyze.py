@@ -37,20 +37,25 @@ def _kw(words):
     return re.compile(_LEFT_BOUND + r"(?i:" + "|".join(words) + r")" + _RIGHT_BOUND)
 
 
-_FAULT_PAT = _kw(["fault", "trip", "alarm", "estop", "fail", "error", "overload", "jam"])
+# "e[_ -]?stop" matches both the contiguous (EStop) and separated (e_stop / e-stop) spellings; the
+# "_" word-break in _kw means a plain "estop" token would otherwise miss the common "e_stop_active".
+_FAULT_PAT = _kw(["fault", "trip", "alarm", "e[_ -]?stop", "fail", "error", "err", "overload", "jam"])
 _MODE_PAT = _kw(["auto", "manual", "jog", "hand", "maint", "maintenance", "bypass", "reset", "mode"])
-_SAFETY_PAT = _kw(["estop", "emergency", "guard", "safety", "lightcurtain", "interlock", "lockout", "loto"])
+_SAFETY_PAT = _kw(["e[_ -]?stop", "emergency", "guard", "safety", "lightcurtain", "interlock", "lockout", "loto"])
 _ASSET_PAT = _kw(["motor", "conv", "conveyor", "pump", "valve", "solenoid", "vfd", "drive", "fan",
                   "heater", "horn", "light", "lamp", "cylinder", "gate", "damper", "mixer", "agitator"])
 _INPUT_PAT = _kw(["pb", "push", "switch", "sensor", "prox", "photoeye", "limit", "input"])
 
 # VFD signal-role hints (mirrors the gateway suggest_for_role vocabulary so the parser and the
 # VFD-Analyzer wizard agree on what a "frequency"/"current"/... tag looks like).
+# Full words AND abbreviations: "freq" can't match "frequency" (a lowercase run is not a boundary),
+# and "dcbus" can't span "dc_bus" -- so include both forms. Real CCW names are bare (no description),
+# so the role has to be readable from the identifier alone.
 _VFD_ROLES = [
-    ("frequency", _kw(["freq", "hz", "outputhz", "speedhz"])),
+    ("frequency", _kw(["freq", "frequency", "hz", "outputhz", "speedhz"])),
     ("current_a", _kw(["current", "amp", "amps", "iout"])),
     ("fault_code", _kw(["faultcode", "tripcode"])),
-    ("dc_bus_v", _kw(["dcbus", "busv", "vdc", "dclink"])),
+    ("dc_bus_v", _kw(["dcbus", "dc[_ -]?bus", "busv", "vdc", "dclink"])),
     ("freq_setpoint", _kw(["setpoint", "freqcmd", "cmdfreq", "freqref", "freqsp"])),
     ("comm_ok", _kw(["comm", "online", "heartbeat", "linkok"])),
 ]

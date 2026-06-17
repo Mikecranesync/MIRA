@@ -37,7 +37,8 @@ upload → detect format → vendor parser → MIRA PLC IR → deterministic ana
 | **MIRA PLC IR** (Controller → Program → Routine → Rung → Tag, + provenance + confidence) | ✅ |
 | **Deterministic analysis**: tag dictionary, routine summaries, output-dependency map, fault candidates, asset candidates, VFD-signal candidates, usage cross-reference, safety **review** flags | ✅ |
 | Name tokenizer handles **camelCase humps** (`fault` in `FaultRoutine`) as well as `_`/digit breaks | ✅ |
-| Markdown + JSON report renderers; JSON shape pinned by **golden snapshots** (`report@1`) | ✅ |
+| **CCW "no VAR block" recovery**: synthesize tags from ST assignment targets so real CCW exports analyze | ✅ |
+| Markdown + JSON + **i3X** report renderers; JSON & i3X shapes pinned by **golden snapshots** (`report@1`, `i3x@1`) | ✅ |
 
 ## Install & CLI
 
@@ -105,6 +106,17 @@ fields, counts, ordering, or candidate sets is a deliberate, reviewed bump.
 An unhandled result (`handled: false`) carries only `schema`, `detection`, `handled`, and
 `warnings` — e.g. a closed `.ACD` returns `detection.needs_export` with the precise export steps.
 
+### i3X projection (`render_i3x`, schema `mira-plc-parser/i3x@1`)
+
+`render_i3x(result)` (also `--format i3x` / `--format all`) projects the report onto the **i3X**
+interoperability shape — Objects with deterministic ElementIds, hierarchical namespaces, VQT values,
+and relationships (`docs/specs/public-ingest-api-spec.md` §10): the controller → an `Asset` Object,
+asset candidates → `Component` Objects (`HasComponent`), tags → `Signal` Objects (ISA-95 namespace +
+empty VQT, `BelongsTo`), faults/review → `Event` Objects (`severity`, `RelatesTo`). It is a
+forward-compatible **proposal**: VQT values are empty (static analysis), and the namespace is rooted
+at a caller-supplied `namespace_root` — canonical UNS assignment happens engine-side. See
+[PHASE2_PROOF.md](PHASE2_PROOF.md) for the mapping demonstrated on a real Micro820 program.
+
 ## Confidence grading
 
 Every extracted/inferred fact is graded (this protects you and looks professional):
@@ -155,7 +167,8 @@ mira_plc_parser/
     plcopen_xml.py   # PLCopen tc6 XML → IR (reuses the ST body lift)
   analyze.py         # deterministic maintenance analysis (camelCase-aware tokenizer)
   pipeline.py        # detect → parse → analyze → report (render_markdown / render_json)
-  cli.py             # offline CLI (analyze → local report files)
+  i3x.py             # project a report → i3X object graph (render_i3x)
+  cli.py             # offline CLI (analyze → local report files; --format md|json|i3x|both|all)
   __main__.py        # `python -m mira_plc_parser`
 mira-plc-parser.spec # PyInstaller spec for the standalone .exe (see PACKAGING.md)
 ```
