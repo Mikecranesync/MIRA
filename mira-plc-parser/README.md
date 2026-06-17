@@ -39,6 +39,7 @@ upload → detect format → vendor parser → MIRA PLC IR → deterministic ana
 | Name tokenizer handles **camelCase humps** (`fault` in `FaultRoutine`) as well as `_`/digit breaks | ✅ |
 | **CCW "no VAR block" recovery**: synthesize tags from ST assignment targets so real CCW exports analyze | ✅ |
 | Markdown + JSON + **i3X** report renderers; JSON & i3X shapes pinned by **golden snapshots** (`report@1`, `i3x@1`) | ✅ |
+| **Multi-source correlation** (`correlate`): fuse `.st` + variables CSV + Modbus map about one asset into a knowledge graph (`asset-graph@1`) — types/addresses/roles fused by name, control logic → `DependsOn` edges | ✅ |
 
 ## Install & CLI
 
@@ -168,7 +169,8 @@ mira_plc_parser/
   analyze.py         # deterministic maintenance analysis (camelCase-aware tokenizer)
   pipeline.py        # detect → parse → analyze → report (render_markdown / render_json)
   i3x.py             # project a report → i3X object graph (render_i3x)
-  cli.py             # offline CLI (analyze → local report files; --format md|json|i3x|both|all)
+  correlate.py       # fuse N exports about ONE asset → knowledge graph (correlate)
+  cli.py             # offline CLI: `analyze` (--format md|json|i3x|both|all) + `correlate`
   __main__.py        # `python -m mira_plc_parser`
 mira-plc-parser.spec # PyInstaller spec for the standalone .exe (see PACKAGING.md)
 ```

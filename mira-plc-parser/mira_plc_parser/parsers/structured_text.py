@@ -51,7 +51,7 @@ _DECL_RE = re.compile(
 _BLOCK_COMMENT_RE = re.compile(r"\(\*.*?\*\)", re.DOTALL)
 _LINE_COMMENT_RE = re.compile(r"//[^\n]*")
 _IDENT_RE = re.compile(r"[A-Za-z_]\w*")
-_ASSIGN_LHS_RE = re.compile(r"([A-Za-z_][\w.\[\]]*)\s*:=")
+_LHS_TAIL_RE = re.compile(r"([A-Za-z_][\w.\[\]]*)\s*$")
 
 # ST control keywords, boolean literals, and elementary types -- never IR tag references.
 _STOPWORDS = {
@@ -188,6 +188,27 @@ def _strip_comments(text: str) -> str:
     return _LINE_COMMENT_RE.sub("", _BLOCK_COMMENT_RE.sub(" ", text))
 
 
+def _top_level_assign_lhs(stmt: str) -> str | None:
+    """The assigned variable of a real `LHS := RHS` statement, or None.
+
+    Only a `:=` at parenthesis depth 0 is a statement assignment. ST function-block calls use
+    NAMED-ARGUMENT syntax -- `mb_read(IN := x, LocalCfg := y)` -- whose `:=` sit inside the call
+    parens; treating those as assignments would mint bogus signals (IN, LocalCfg, Cmd, ...) and
+    bogus dependency edges. Skipping depth>0 `:=` keeps only genuine assignments.
+    """
+    depth = 0
+    for i in range(len(stmt) - 1):
+        ch = stmt[i]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        elif ch == ":" and stmt[i + 1] == "=" and depth == 0:
+            m = _LHS_TAIL_RE.search(stmt[:i])
+            return m.group(1) if m else None
+    return None
+
+
 def _statements_to_rungs(st_text: str, pou: str, src: str) -> list[Rung]:
     """Lift `LHS := expr;` assignments into synthetic rungs so rung-based analysis works on ST.
 
@@ -199,12 +220,10 @@ def _statements_to_rungs(st_text: str, pou: str, src: str) -> list[Rung]:
     rungs: list[Rung] = []
     n = 0
     for stmt in code.split(";"):
-        if ":=" not in stmt:
+        lhs = _top_level_assign_lhs(stmt)
+        if lhs is None:
             continue
-        lhs_m = _ASSIGN_LHS_RE.search(stmt)
-        if not lhs_m:
-            continue
-        output = lhs_m.group(1).split(".")[0].split("[")[0]
+        output = lhs.split(".")[0].split("[")[0]
         refs: list[str] = []
         seen: set[str] = set()
         for im in _IDENT_RE.finditer(stmt):

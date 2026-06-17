@@ -16,10 +16,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
 from . import __version__
+from .correlate import correlate
 from .i3x import render_i3x
 from .pipeline import render_json, render_markdown, run
 
@@ -93,6 +95,40 @@ def _cmd_analyze(ns: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_correlate(ns: argparse.Namespace) -> int:
+    """Fuse several exports about ONE asset into a single knowledge graph (<asset>.graph.json)."""
+    sources = []
+    for f in ns.files:
+        p = Path(f)
+        if not p.is_file():
+            print("error: file not found: %s" % p, file=sys.stderr)
+            return 1
+        sources.append((p.name, _read_text(p)))
+
+    graph = correlate(sources, asset_name=ns.asset, namespace_root=ns.namespace_root)
+    out_dir = Path(ns.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / ("%s.graph.json" % _slug_for_file(graph["asset"]["name"]))
+    out_path.write_text(json.dumps(graph, indent=2), encoding="utf-8")
+
+    if not ns.quiet:
+        nc, ec = graph["counts"]["nodes"], graph["counts"]["edges"]
+        fz = graph["fusion"]
+        print("Asset: %s (%s)" % (graph["asset"]["name"], graph["asset"]["namespace"]))
+        print("Sources: %d (%d parsed)" % (len(graph["sources"]),
+                                           sum(1 for s in graph["sources"] if s["handled"])))
+        print("Nodes: %s" % " ".join("%d %s" % (v, k) for k, v in sorted(nc.items())))
+        print("Edges: %s" % " ".join("%d %s" % (v, k) for k, v in sorted(ec.items())))
+        print("Fusion: %d signals | %d typed | %d typed-by-fusion | %d name-only"
+              % (fz["signals"], fz["typed"], fz["type_filled_by_fusion"], fz["name_only"]))
+        print("Wrote: %s" % out_path)
+    return 0 if any(s["handled"] for s in graph["sources"]) else 1
+
+
+def _slug_for_file(name: str) -> str:
+    return re.sub(r"[^A-Za-z0-9]+", "_", name).strip("_").lower() or "asset"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mira-plc-parser",
@@ -110,6 +146,19 @@ def build_parser() -> argparse.ArgumentParser:
                                 "both (md+json), or all (default: both).")
     p_analyze.add_argument("--quiet", action="store_true", help="Suppress the stdout summary.")
     p_analyze.set_defaults(func=_cmd_analyze)
+
+    p_corr = sub.add_parser("correlate",
+                            help="Fuse several exports about ONE asset into a knowledge graph.")
+    p_corr.add_argument("files", nargs="+",
+                        help="Two or more exports for the same asset (e.g. CCW .st + variables CSV "
+                             "+ Modbus map CSV).")
+    p_corr.add_argument("--out", default=".", help="Directory for <asset>.graph.json (default: cwd).")
+    p_corr.add_argument("--asset", default=None,
+                        help="Asset name (default: first parsed controller name).")
+    p_corr.add_argument("--namespace-root", default="plc", dest="namespace_root",
+                        help="Root for the proposed ISA-95 namespace (default: plc).")
+    p_corr.add_argument("--quiet", action="store_true", help="Suppress the stdout summary.")
+    p_corr.set_defaults(func=_cmd_correlate)
     return parser
 
 

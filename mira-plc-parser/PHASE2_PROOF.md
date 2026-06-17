@@ -71,8 +71,41 @@ build UNS paths). (3) The Asset name is whatever the POU declares (`Prog2` on th
 human/engine still maps it to the real equipment identity. (4) No WorkOrder objects — those come from
 the CMMS, not a program export.
 
+## Multi-source correlation — the conveyor knowledge graph
+
+The PLC program is one source among several; no single file is complete. `correlate()` (CLI
+`correlate <f1> <f2> ...`, schema `mira-plc-parser/asset-graph@1`) fuses several exports about ONE
+asset into a single graph: it runs each through the pipeline, fuses Signals by variable name (type/
+address/scope/role/description filled from whichever source has them, with per-field provenance and a
+completeness flag), lifts the control logic into Signal→`DependsOn`→Signal edges (from the IR rungs),
+and hangs Components + Fault Events off one Asset.
+
+On the **real conveyor** (`Prog_init_ConvSimple_v2.1.st` + `vars_ConvSimple_v1.9.csv` +
+`MbSrvConf_import.csv`), via the frozen exe from a clean dir:
+
+```
+Asset: Conveyor (plc.conveyor)   Sources: 3 (3 parsed)
+Nodes: 1 Asset · 2 Component · 53 Signal · 4 Event
+Edges: 53 BelongsTo · 22 DependsOn · 2 HasComponent · 4 RelatesTo
+Fusion: 53 signals | 9 typed | 7 typed-by-fusion | 44 name-only
+```
+
+The win: 7 signals the CCW `.st` could only NAME (`vfd_torque`, `vfd_power`, `vfd_motor_rpm`,
+`vfd_freq_cmd`, `vfd_last_fault`, …) got their `WORD`/`BOOL` **type from the Controller-Variables
+CSV** — pure cross-file fusion. The control logic became real graph structure
+(`motor_running` DependsOn `dir_fwd`/`dir_rev`/`vfd_run_permit`; `dir_fwd` DependsOn the selector
+inputs `_IO_EM_DI_00/01`).
+
+**Honest gaps the run exposes (next levers):** `addressed = 0` — the CCW Modbus export
+(`MbSrvConf_import.csv`) uses `Variable`/`Mapping Address` headers that the CSV parser doesn't yet
+recognize, so addresses were dropped (and its `_IO_EM_*` names don't overlap the ConvSimple `vfd_*`
+vars). And 44 signals stay `name_only` because the variables CSV is **v1.9** while the ST is **v2.1**
+— a version mismatch, not a parser failure. Matched-version companion files + a Modbus-CSV dialect
+fix close both. (`LogicalValues.csv` is a runtime *value* dump, not a declaration table — excluded;
+its earlier "1251 tags" was a CSV-dialect false positive worth fixing.)
+
 ## Verification
 
-73 tests pass; ruff clean. `report@1` and `i3x@1` shapes are pinned by golden snapshots for all four
+78 tests pass; ruff clean. `report@1` and `i3x@1` shapes are pinned by golden snapshots for all four
 fixtures (`tests/fixtures/golden/`). The standalone exe builds and runs the real Micro820 program
 end-to-end from a clean directory (no repo, no Python), emitting md + json + i3x reports.

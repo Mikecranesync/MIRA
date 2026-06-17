@@ -98,6 +98,26 @@ def test_missing_file_returns_1(tmp_path):
     assert rc == 1
 
 
+# ---- correlate subcommand: fuse several exports about one asset into a knowledge graph ----
+
+def test_correlate_writes_graph(tmp_path):
+    st = tmp_path / "cell.st"
+    st.write_text("PROGRAM Cell\n vfd_frequency := read_data(1);\n motor_run := TRUE;\nEND_PROGRAM\n",
+                  encoding="utf-8")
+    csv = tmp_path / "vars.csv"
+    csv.write_text("Name,Data Type,Dimension,Initial Value,Attribute,Comment,X\n"
+                   "vfd_frequency,REAL,,0,Read Only,drive Hz,\n"
+                   "motor_run,BOOL,,FALSE,Read/Write,run cmd,\n", encoding="utf-8")
+    out = tmp_path / "out"
+    rc = main(["correlate", str(st), str(csv), "--asset", "Cell", "--out", str(out), "--quiet"])
+    assert rc == 0
+    graph = json.loads((out / "cell.graph.json").read_text(encoding="utf-8"))
+    assert graph["schema"] == "mira-plc-parser/asset-graph@1"
+    assert graph["asset"]["name"] == "Cell"
+    # the .st named the signals, the CSV typed them -> fusion
+    assert graph["fusion"]["type_filled_by_fusion"] >= 2
+
+
 # ---- packaging: the reused CSV parser resolves in both source and frozen (PyInstaller) modes ----
 
 def test_tag_csv_path_source_mode(monkeypatch):
