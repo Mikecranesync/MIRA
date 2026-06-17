@@ -80,29 +80,30 @@ address/scope/role/description filled from whichever source has them, with per-f
 completeness flag), lifts the control logic into Signal→`DependsOn`→Signal edges (from the IR rungs),
 and hangs Components + Fault Events off one Asset.
 
-On the **real conveyor** (`Prog_init_ConvSimple_v2.1.st` + `vars_ConvSimple_v1.9.csv` +
-`MbSrvConf_import.csv`), via the frozen exe from a clean dir:
+On the **real conveyor** — `Prog_init_ConvSimple_v2.1.st` (logic) + `vars_ConvSimple_v1.9.csv`
+(types) + `MbSrvConf_ConvSimple_v1.9.csv` (Modbus addresses, generated from the authoritative CCW
+`MbSrvConf_ConvSimple_v1.9.xml` server map) — via the frozen exe from a clean dir:
 
 ```
 Asset: Conveyor (plc.conveyor)   Sources: 3 (3 parsed)
-Nodes: 1 Asset · 2 Component · 53 Signal · 4 Event
-Edges: 53 BelongsTo · 22 DependsOn · 2 HasComponent · 4 RelatesTo
-Fusion: 53 signals | 9 typed | 7 typed-by-fusion | 44 name-only
+Nodes: 1 Asset · 2 Component · 42 Signal · 27 Register · 8 Event
+Edges: 42 BelongsTo · 27 MappedTo · 21 DependsOn · 8 RelatesTo · 2 HasComponent
+Fusion: 42 signals | 29 typed | 27 addressed | 16 typed-by-fusion
 ```
 
-The win: 7 signals the CCW `.st` could only NAME (`vfd_torque`, `vfd_power`, `vfd_motor_rpm`,
-`vfd_freq_cmd`, `vfd_last_fault`, …) got their `WORD`/`BOOL` **type from the Controller-Variables
-CSV** — pure cross-file fusion. The control logic became real graph structure
-(`motor_running` DependsOn `dir_fwd`/`dir_rev`/`vfd_run_permit`; `dir_fwd` DependsOn the selector
-inputs `_IO_EM_DI_00/01`).
+The full three-way fusion: 16 signals the CCW `.st` could only NAME (`vfd_torque`, `vfd_power`,
+`vfd_motor_rpm`, `e_stop_active`, `motor_running`, …) got their type AND Modbus address from the two
+CSVs — e.g. `e_stop_active` = `Bool` + coil `000006` + roles `fault,safety` (type/address from the
+Modbus map, role from the ST logic); `vfd_cmd_word` = `Word` + HR `400115` + `output`. Every
+addressed signal gets a `MappedTo` edge to a first-class `Register` node, and the control logic is
+`DependsOn` structure (`motor_running` DependsOn `dir_fwd`/`dir_rev`/`vfd_run_permit`).
 
-**Honest gaps the run exposes (next levers):** `addressed = 0` — the CCW Modbus export
-(`MbSrvConf_import.csv`) uses `Variable`/`Mapping Address` headers that the CSV parser doesn't yet
-recognize, so addresses were dropped (and its `_IO_EM_*` names don't overlap the ConvSimple `vfd_*`
-vars). And 44 signals stay `name_only` because the variables CSV is **v1.9** while the ST is **v2.1**
-— a version mismatch, not a parser failure. Matched-version companion files + a Modbus-CSV dialect
-fix close both. (`LogicalValues.csv` is a runtime *value* dump, not a declaration table — excluded;
-its earlier "1251 tags" was a CSV-dialect false positive worth fixing.)
+**The address layer (earlier `addressed = 0`) is now closed.** The CCW Modbus export uses
+`Variable`/`Mapping Address` headers; teaching `tag_csv` those two aliases makes the real
+`MbSrvConf_*.csv` exports parse with addresses (the existing `MbSrvConf_import.csv` now yields 21
+addressed tags too). The 13 remaining `name_only` signals are intermediate ST variables not exposed
+on the Modbus map (correct — they have no address). (`LogicalValues.csv` is a runtime *value* dump,
+not a declaration table — excluded; its earlier "1251 tags" was a CSV-dialect false positive.)
 
 ## Verification
 

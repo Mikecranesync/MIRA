@@ -55,6 +55,7 @@ def correlate(sources, asset_name=None, namespace_root="plc"):
                       "sources": components[name]["sources"]})
         edges.append({"type": "HasComponent", "from": asset_eid, "to": nid})
 
+    registers = {}  # address -> register node id (Modbus registers as first-class graph nodes)
     for name in sorted(signals):
         s = signals[name]
         ns = "%s.%s" % (asset_ns, _slug(name))
@@ -71,6 +72,17 @@ def correlate(sources, asset_name=None, namespace_root="plc"):
                            "address_from": s["addr_sources"]},
         })
         edges.append({"type": "BelongsTo", "from": nid, "to": asset_eid})
+        if s["address"]:
+            rid = registers.get(s["address"])
+            if rid is None:
+                rid = _eid("%s.modbus.%s" % (asset_ns, _slug(s["address"])))
+                registers[s["address"]] = rid
+            edges.append({"type": "MappedTo", "from": nid, "to": rid})
+
+    for address in sorted(registers):
+        nodes.append({"id": registers[address], "type": "Register",
+                      "name": address, "namespace": "%s.modbus.%s" % (asset_ns, _slug(address)),
+                      "attributes": {"address": address}})
 
     for ev in events:
         ns = "%s.event.%s.%s" % (asset_ns, ev["kind"], _slug(ev["name"]))

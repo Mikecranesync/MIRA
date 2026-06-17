@@ -1,0 +1,28 @@
+Variable,Data Type,Mapping Address,Mapping Type,Read Only
+motor_running,Bool,000001,Coil,TRUE
+vfd_comm_ok,Bool,000004,Coil,TRUE
+e_stop_active,Bool,000006,Coil,TRUE
+estop_wiring_fault,Bool,000010,Coil,TRUE
+_IO_EM_DI_00,Bool,000012,Coil,TRUE
+_IO_EM_DI_01,Bool,000013,Coil,TRUE
+_IO_EM_DI_02,Bool,000014,Coil,TRUE
+_IO_EM_DI_03,Bool,000015,Coil,TRUE
+_IO_EM_DI_04,Bool,000016,Coil,TRUE
+_IO_EM_DO_00,Bool,000017,Coil,FALSE
+_IO_EM_DO_01,Bool,000018,Coil,FALSE
+_IO_EM_DO_02,Bool,000019,Coil,FALSE
+_IO_EM_DO_03,Bool,000020,Coil,FALSE
+last_fault_clear,Bool,000024,Coil,FALSE
+vfd_frequency,Word,400107,Holding Register,TRUE
+vfd_current,Word,400108,Holding Register,TRUE
+vfd_voltage,Word,400109,Holding Register,TRUE
+vfd_dc_bus,Word,400110,Holding Register,TRUE
+vfd_cmd_word,Word,400115,Holding Register,FALSE
+vfd_status_word,Word,400118,Holding Register,TRUE
+vfd_fault_code,Word,400119,Holding Register,TRUE
+vfd_warn_code,Word,400120,Holding Register,TRUE
+vfd_freq_cmd,Word,400121,Holding Register,TRUE
+vfd_torque,Word,400122,Holding Register,TRUE
+vfd_motor_rpm,Word,400123,Holding Register,TRUE
+vfd_power,Word,400124,Holding Register,TRUE
+vfd_last_fault,Word,400125,Holding Register,TRUE

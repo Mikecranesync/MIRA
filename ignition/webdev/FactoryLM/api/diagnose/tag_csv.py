@@ -97,10 +97,11 @@ def _norm_key(s):
 #  * 'path' is LAST in address -- Siemens has both 'Path' (folder) and 'Logical Address' (the PLC
 #    address we want), so the strong address aliases must win over 'path'.
 _ALIASES = {
-    "name": ["name", "tagname", "tag", "symbol", "identifier", "alias", "pointname", "point"],
+    "name": ["name", "tagname", "tag", "variable", "symbol", "identifier", "alias",
+             "pointname", "point"],
     "datatype": ["datatype", "datatyp", "valuetype"],
-    "address": ["logicaladdress", "address", "register", "modbusaddress", "plcaddress",
-                "specifier", "offset", "item", "itemid", "path"],
+    "address": ["logicaladdress", "address", "register", "modbusaddress", "mappingaddress",
+                "plcaddress", "specifier", "offset", "item", "itemid", "path"],
     "description": ["description", "comment", "comments", "desc", "remark", "notes"],
     "unit": ["unit", "units", "engineeringunit", "engineeringunits", "eu", "uom"],
     "sample": ["value", "sample", "samplevalue", "currentvalue", "initialvalue",

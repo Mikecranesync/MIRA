@@ -4,7 +4,7 @@ The key behavior: a CCW-style .st (logic + variable names, no types) plus a Cont
 (types) fuse into one graph where every assigned signal gets its type from the CSV and its role from
 the logic, and the control logic becomes Signal->DependsOn->Signal edges.
 """
-from mira_plc_parser import correlate
+from mira_plc_parser import correlate, run
 
 # CCW-style ST: no VAR block, just logic. Assigns motor_run / vfd_frequency / fault_alarm.
 ST = """PROGRAM ConveyorCell
@@ -75,3 +75,29 @@ def test_vfd_and_fault_surface_as_graph_objects():
     assert "frequency" in sig["attributes"]["vfd_role"]
     events = {n["name"] for n in g["nodes"] if n["type"] == "Event"}
     assert "fault_alarm" in events and "vfd_comm_err" in events
+
+
+# ---- the third source: a CCW MbSrvConf Modbus map (Variable / Mapping Address dialect) ----
+
+def test_ccw_modbus_csv_dialect_parses_addresses(fixtures):
+    # the real CCW export header is "Variable,...,Mapping Address,..." -- must parse with addresses
+    res = run("conveyor_modbus_map.csv", (fixtures / "conveyor_modbus_map.csv").read_text("utf-8"))
+    assert res.handled
+    addr = {t["name"]: t["address"] for t in res.report.tag_dictionary}
+    assert addr["vfd_frequency"] == "400107"
+    assert addr["e_stop_ok"] == "000006"
+
+
+def test_three_way_fusion_adds_addresses_and_mappedto_edges(fixtures):
+    modbus = (fixtures / "conveyor_modbus_map.csv").read_text("utf-8")
+    g = correlate(SOURCES + [("conveyor_modbus_map.csv", modbus)], asset_name="ConveyorCell")
+    # vfd_frequency: name from ST, type from vars CSV, address from the Modbus map -- all three fused
+    vfd = _node(g, "vfd_frequency", "Signal")
+    assert vfd["attributes"]["data_type"] == "REAL"
+    assert vfd["attributes"]["address"] == "400107"
+    assert g["fusion"]["addressed"] >= 5
+    # the address became a first-class Register node reached by a MappedTo edge
+    regs = {n["name"] for n in g["nodes"] if n["type"] == "Register"}
+    assert "400107" in regs
+    reg_id = next(n["id"] for n in g["nodes"] if n["type"] == "Register" and n["name"] == "400107")
+    assert {"type": "MappedTo", "from": vfd["id"], "to": reg_id} in g["edges"]
