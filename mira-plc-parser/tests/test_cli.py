@@ -9,6 +9,7 @@ import shutil
 
 from mira_plc_parser import render_json, run
 from mira_plc_parser.cli import main
+from mira_plc_parser.parsers import csv_tags
 
 
 def _copy_fixture(fixtures, name, dest_dir):
@@ -95,6 +96,25 @@ def test_closed_acd_is_rejected_with_guidance(tmp_path, capsys):
 def test_missing_file_returns_1(tmp_path):
     rc = main(["analyze", str(tmp_path / "nope.L5X"), "--out", str(tmp_path / "out"), "--quiet"])
     assert rc == 1
+
+
+# ---- packaging: the reused CSV parser resolves in both source and frozen (PyInstaller) modes ----
+
+def test_tag_csv_path_source_mode(monkeypatch):
+    # not frozen -> the single-source gateway file, three levels up from the package
+    monkeypatch.delattr(csv_tags.sys, "frozen", raising=False)
+    p = csv_tags._tag_csv_path()
+    assert p.name == "tag_csv.py"
+    assert p.parent.parts[-5:] == ("ignition", "webdev", "FactoryLM", "api", "diagnose")
+
+
+def test_tag_csv_path_frozen_mode(monkeypatch, tmp_path):
+    # frozen onefile exe -> bundled data dir; the subdir MUST match the spec's datas= dest
+    # ("vendor_tag_csv") or CSV parsing breaks only in the built exe, never in tests.
+    monkeypatch.setattr(csv_tags.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(csv_tags.sys, "_MEIPASS", str(tmp_path), raising=False)
+    p = csv_tags._tag_csv_path()
+    assert p == tmp_path / "vendor_tag_csv" / "tag_csv.py"
 
 
 # ---- report generation unit: render_json round-trips (guards enum serialization) ----

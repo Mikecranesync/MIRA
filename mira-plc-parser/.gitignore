@@ -1,0 +1,9 @@
+# Standalone-exe build artifacts — built on demand, never committed (see PACKAGING.md).
+# Only the spec (mira-plc-parser.spec) and PACKAGING.md are tracked; the per-platform
+# binary and PyInstaller's working dir are not.
+/build/
+/dist/
+
+# CLI report outputs written during local runs / tests (<stem>.report.md / .json).
+*.report.md
+*.report.json

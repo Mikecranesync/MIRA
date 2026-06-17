@@ -25,8 +25,18 @@ pyinstaller --onefile --console --name mira-plc-parser mira_plc_parser/__main__.
 - **Stdlib-only.** The parser uses only `xml.etree`, `re`, `json`, `argparse`, `pathlib` — no
   third-party runtime deps, so there are **no hidden imports** to declare and no native libraries to
   bundle.
-- **No data files.** Everything is code; nothing to ship alongside the binary.
+- **One bundled data file.** The CSV parser reuses the gateway's single-source
+  `ignition/webdev/FactoryLM/api/diagnose/tag_csv.py` (zero-import, dual-Py) by path instead of
+  duplicating it. The spec ships that one file as bundled data under `vendor_tag_csv/`, and
+  `parsers/csv_tags._tag_csv_path()` resolves it from `sys._MEIPASS` when frozen — so the exe stays
+  portable without forking the parser. No other data files.
 - **`--onefile`** therefore yields one small, portable executable.
+
+> **Entry point note.** The spec builds from `mira_plc_parser/__main__.py`, which uses an
+> **absolute** import (`from mira_plc_parser.cli import main`). PyInstaller runs the entry script as
+> a package-less top-level `__main__`, so a relative import (`from .cli import …`) raises
+> "attempted relative import with no known parent package". The absolute import works in both the
+> frozen exe and `python -m mira_plc_parser`.
 
 ## Using the built executable
 

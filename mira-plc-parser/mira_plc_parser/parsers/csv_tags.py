@@ -11,26 +11,38 @@ we load it by path rather than duplicating it.
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 from ..ir import Confidence, Controller, PLCProject, Provenance, Tag, TagScope
 
 FORMAT = "csv_tags"
 
-# tag_csv.py relative to the repo root (this file: mira-plc-parser/mira_plc_parser/parsers/)
-_TAG_CSV_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "ignition" / "webdev" / "FactoryLM" / "api" / "diagnose" / "tag_csv.py"
-)
-
 _tag_csv = None
+
+
+def _tag_csv_path() -> Path:
+    """Locate the reused, single-source CSV parser (gateway tree) in both source and frozen modes.
+
+    Source checkout: tag_csv.py lives in the gateway tree, three levels up from this package.
+    PyInstaller bundle: the spec ships that same file as bundled data under `vendor_tag_csv/`
+    (see mira-plc-parser.spec), so resolve it from the extraction dir -- a onefile `__file__`
+    points into the temp _MEIPASS dir, not the repo, so the source-relative path won't exist.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS")) / "vendor_tag_csv" / "tag_csv.py"
+    # this file: mira-plc-parser/mira_plc_parser/parsers/ -> repo root is parents[3]
+    return (
+        Path(__file__).resolve().parents[3]
+        / "ignition" / "webdev" / "FactoryLM" / "api" / "diagnose" / "tag_csv.py"
+    )
 
 
 def _load_tag_csv():
     global _tag_csv
     if _tag_csv is not None:
         return _tag_csv
-    spec = importlib.util.spec_from_file_location("mira_tag_csv_reuse", str(_TAG_CSV_PATH))
+    spec = importlib.util.spec_from_file_location("mira_tag_csv_reuse", str(_tag_csv_path()))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     _tag_csv = mod
