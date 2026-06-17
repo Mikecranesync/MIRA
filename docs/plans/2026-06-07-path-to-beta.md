@@ -41,12 +41,30 @@ This plan assesses #1592 as the right fix; the minimal close path is in the rese
 > under `factorylm_app` RLS → cited chunk — and it passes:
 > `mira-hub/scripts/verify-upload-retrieval-citation.ts` (PR #2077). So the data-layer half (upload
 > writes node-scoped `knowledge_entries`; retrieval returns a citable chunk) is **done**.
-> **Remaining to flip the `xfail`:** the *HTTP* beta gate (`tests/beta/`) is still xfail **by env**
-> — it needs a live Hub surface + a minted `next-auth` session cookie + a node id (`BETA_GATE_*`),
-> which nobody has provisioned and run. That's an integration/ops step, not a code gap. (Note: this
-> closes the gap on the **Hub NodeChat** surface — the **bot/chat** path `neon_recall` is a separate
-> retrieval model and does not yet read folder=brain node uploads; tracked separately, not a
-> beta-gate blocker.)
+> **UPDATE 2026-06-17 — the HTTP beta gate RAN GREEN end-to-end. The gate is MET.**
+> Built the Hub locally (`next build && next start` at `basePath=''`) on dev Neon, provisioned a
+> real *stranger* run (`mira-hub/scripts/provision-beta-gate.ts`: register → mirror tenant FK → mint
+> next-auth cookie → create node), and ran `tests/beta/beta_ready_upload_retrieval_citation.py`. It
+> **`XPASS(strict)`** — the gate's own success signal ("flips RED the instant it passes"). The
+> stranger uploaded the fixture manual through the **real** `/files/` door (wrote 2 node-scoped
+> `knowledge_entries`), asked, and got a **cited** answer: *"GS10 fault code oC means the drive
+> output current exceeded 200% of the rated current [1] … short acceleration time, shorted
+> output/motor winding, mechanical jam, or a ground fault [1]."* — grounded in the uploaded manual,
+> `[1]` citation present. Zero manual fixing. **The data-layer chain AND the full HTTP path both work.**
+>
+> **`xfail` NOT removed (deliberately).** The marker stays until *durable* provisioning exists — a
+> standing dev/staging endpoint OR this run wired into CI with secrets. A one-shot local green
+> doesn't survive server teardown; removing the marker now would turn the suite RED in normal CI
+> (the gate raises `GateUnavailable` without `BETA_GATE_*` env). The reproducible recipe lives in
+> `mira-hub/scripts/provision-beta-gate.ts`. **The remaining work to *remove* the marker is a CI
+> job, not a product gap — the product capability is proven.**
+>
+> Scope note: this is the **Hub NodeChat** surface (what the gate tests). The **bot/chat** path
+> `neon_recall` is a separate retrieval model that doesn't read folder=brain node uploads — tracked
+> separately (`docs/research/2026-06-16_kg-kb-growth-and-quality-audit.md`), not a beta-gate blocker.
+> Minor robustness note: the gate's `EXPECTED_CONTENT="overcurrent"` literal match is mildly
+> LLM-phrasing-dependent (the answer is *always* correctly grounded + `[1]`-cited; the poll loop
+> absorbs the wording variance). Consider broadening it to accept the semantic equivalent.
 
 ---
 
