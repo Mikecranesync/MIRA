@@ -10,8 +10,12 @@
 // kg_entities.uns_path, so subtree retrieval (Slice 3) rides the existing GIST index.
 //
 // content_tsv is GENERATED ALWAYS from content, so inserted chunks are searchable
-// immediately. embedding is left NULL (BM25 needs only content_tsv; pgvector backfill
-// is a later concern, and avoids the GS11 embed-gate fragility).
+// (BM25) immediately. A best-effort trailing pass (embedPendingNodeChunks) then
+// fills `embedding` so the chunks are ALSO visible to the KB vector ranker
+// (asset-intelligence.searchKB filters `embedding IS NOT NULL` — NULL-embedding
+// rows are silently excluded from vector results; #2099). The pass is decoupled
+// from the insert and never blocks/fails ingest, so it cannot recreate the
+// embed-gate fragility (#1385): a down embedder just leaves chunks BM25-only.
 
 import { randomUUID } from "crypto";
 import { withTenantContext } from "@/lib/tenant-context";
@@ -94,6 +98,100 @@ export function chunkText(text: string, size = CHUNK_CHARS, overlap = CHUNK_OVER
   return chunks;
 }
 
+// Embedding contract — MUST match the query path or cosine is meaningless
+// (asset-intelligence.searchKB embeds with nomic-embed-text; column is vector(768)).
+const EMBED_MODEL = "nomic-embed-text";
+const EMBED_DIM = 768;
+const EMBED_BATCH = 16; // chunks embedded per SELECT→embed→UPDATE round
+// Kill switch (default ON). Set NODE_EMBED_ON_WRITE=0 to disable the trailing
+// embed pass without a redeploy if the embedder is ever overloaded — chunks stay
+// BM25-live regardless. Honors the #1385 caution: ingest never depends on embeds.
+const EMBED_ON_WRITE = (process.env.NODE_EMBED_ON_WRITE ?? "1") !== "0";
+
+/**
+ * Best-effort embed of one chunk with the SAME model + dim the query path uses.
+ * Returns null on ANY failure — no embedder configured, HTTP/timeout error, or a
+ * dimension mismatch (a wrong-dim vector makes cosine meaningless, so we refuse to
+ * store it). A null just leaves the chunk BM25-only; ingest never hard-depends on
+ * the embedder (#1385).
+ */
+async function embedText(text: string): Promise<number[] | null> {
+  const base = process.env.OLLAMA_BASE_URL;
+  if (!base) return null;
+  try {
+    const resp = await fetch(`${base}/api/embeddings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: EMBED_MODEL, prompt: text }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as { embedding?: number[] };
+    const vec = data.embedding;
+    if (!Array.isArray(vec) || vec.length !== EMBED_DIM) return null;
+    return vec;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Best-effort trailing pass: embed the just-written node_attachment chunks for one
+ * upload so they're visible to the KB VECTOR ranker (asset-intelligence.searchKB
+ * filters `embedding IS NOT NULL`), not only the BM25/text fallback (#2099).
+ *
+ * Runs AFTER the chunks are inserted (already BM25-live) and OUTSIDE the insert
+ * transaction: withTenantContext wraps BEGIN/COMMIT on a POOLED connection, so we
+ * must never hold one across N embed HTTP calls. Each round SELECTs a bounded
+ * batch of NULL-embedding rows (memory-safe), embeds them with no DB connection
+ * held, then reopens a short transaction to UPDATE the ones that returned a valid
+ * 768-vec. The loop stops when no NULL rows remain OR a batch yields zero writable
+ * vectors (embedder down) — so it can't spin on a persistently-failing embedder.
+ * Never throws; the #2098 canary + tools/backfill_knowledge_embeddings.py are the
+ * net for anything left dark (e.g. a server restart mid-pass). Returns rows embedded.
+ */
+export async function embedPendingNodeChunks(tenantId: string, sourceUrl: string): Promise<number> {
+  if (!EMBED_ON_WRITE) return 0;
+  let embedded = 0;
+  try {
+    for (;;) {
+      const rows = await withTenantContext(tenantId, async (c) => {
+        const res = await c.query<{ id: string; content: string }>(
+          `SELECT id::text, content FROM knowledge_entries
+            WHERE tenant_id = $1 AND source_url = $2
+              AND source_type = 'node_attachment' AND embedding IS NULL
+            LIMIT $3`,
+          [tenantId, sourceUrl, EMBED_BATCH],
+        );
+        return res.rows;
+      });
+      if (rows.length === 0) break;
+
+      // Embed with NO DB connection held.
+      const vecs = await Promise.all(rows.map((r) => embedText(r.content)));
+      const writable = rows
+        .map((r, i) => ({ id: r.id, vec: vecs[i] }))
+        .filter((x): x is { id: string; vec: number[] } => x.vec !== null);
+      if (writable.length === 0) break; // embedder unavailable — leave NULL (BM25-live)
+
+      await withTenantContext(tenantId, async (c) => {
+        for (const w of writable) {
+          await c.query(
+            `UPDATE knowledge_entries SET embedding = $2::vector
+              WHERE id = $1 AND embedding IS NULL`,
+            [w.id, `[${w.vec.join(",")}]`],
+          );
+        }
+      });
+      embedded += writable.length;
+    }
+  } catch (err) {
+    // A trailing embed failure must never surface to the upload caller.
+    console.warn(`[node-ingest] embed-on-write pass failed for ${sourceUrl}: ${(err as Error).message}`);
+  }
+  return embedded;
+}
+
 /**
  * Extract + chunk a PDF buffer and write per-chunk knowledge_entries rows bound
  * to an EXISTING upload + node. Single source of v2 chunk-writing, shared by
@@ -101,6 +199,9 @@ export function chunkText(text: string, size = CHUNK_CHARS, overlap = CHUNK_OVER
  * route un-addressed PDFs into the per-tenant Inbox node). Does NOT create or
  * update a hub_uploads row — the caller owns the upload lifecycle. Returns the
  * chunk count. Throws on extraction/insert error (caller marks the upload).
+ *
+ * After the chunks land (BM25-live), kicks off a fire-and-forget embed pass so
+ * they also enter the vector ranker — the upload response never blocks on it.
  */
 export async function writePdfChunksForNode(opts: {
   tenantId: string;
@@ -184,6 +285,14 @@ export async function writePdfChunksForNode(opts: {
       }
       await flush();
     });
+
+    // Fire-and-forget embed pass — chunks are already BM25-live, so the upload
+    // response must not block on embedding a large manual (and a slow/dead
+    // embedder must not delay it). The Hub runs as a long-lived standalone Node
+    // server, so this continues after the caller returns; embedPendingNodeChunks
+    // is self-contained (own short transactions) and never throws. Anything left
+    // dark (e.g. a restart mid-pass) is caught by the #2098 canary + backfill.
+    void embedPendingNodeChunks(tenantId, sourceUrl);
 
     // Generated-chunk count (matches the historical `rows.length` semantics: the
     // number attempted, not the number actually inserted after ON CONFLICT).

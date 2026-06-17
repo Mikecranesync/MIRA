@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.12.0 — 2026-06-17
+- fix(hub): node-attachment chunks are now embedded on write (`embedPendingNodeChunks`) so a tenant's uploaded-manual chunks reach the KB vector ranker (`searchKB`), not just the text fallback — they previously landed `embedding = NULL` and were silently excluded from vector results. Best-effort + decoupled from the insert (embedder down → chunks stay BM25-live, upload never blocks/fails; #1385). `NODE_EMBED_ON_WRITE=0` kill switch. (#2099)
+
 ## v2.8.0 — 2026-06-15
 - feat(hub): onboarding now guides a fresh customer to upload their manual and ask MIRA a cited question about it; un-onboarded tenants are auto-sent to the wizard (#1901).
 

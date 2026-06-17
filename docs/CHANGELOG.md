@@ -3,6 +3,12 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.28.0 (2026-06-17) — fix(hub): embed-on-write for node-attachment chunks (#2099)
+- Closes #2099. `writePdfChunksForNode` (`mira-hub/src/lib/node-knowledge-ingest.ts`) inserted node-attachment chunks with `embedding = NULL` by design — but `asset-intelligence.searchKB` runs a tenant-scoped vector query filtering `embedding IS NOT NULL`, so a tenant's own uploaded-manual chunks were **silently excluded from the KB vector ranker** (surfaced only via the lower-quality text fallback). Confirmed in prod during #2093: `node_attachment` NULL-embedding rows grew 1 → 60.
+- **`embedPendingNodeChunks`** (new, exported) — best-effort trailing pass: after chunks are inserted (BM25-live, hot insert path untouched), it SELECTs NULL-embedding `node_attachment` rows in bounded batches, embeds them with `nomic-embed-text` (768-dim asserted) **outside** the `withTenantContext` transaction (never holds a pooled connection across embed HTTP), and UPDATEs the valid vectors. Fired and-forget from `writePdfChunksForNode` so the upload never blocks on it; covers both callers (node-attach door + `local-upload.ts` blind door).
+- **Resilient by construction (#1385):** embedder down/unset/wrong-dim → chunks stay BM25-live, upload succeeds, nothing throws. `NODE_EMBED_ON_WRITE=0` kill switch. The #2098 canary + `tools/backfill_knowledge_embeddings.py` remain the net.
+- Tests: 4 new cases (768 happy-path, throw-resilience, wrong-dim refusal, kill switch); existing batching test unchanged + green.
+
 ### v3.27.9 (2026-06-19) — fix(hub): unbreak repo-wide Hub E2E — stale onboarding specs (#2108)
 - The `Hub E2E (command-center + onboarding)` check had been failing on every hub PR since the onboarding-flow change. Two stale assumptions in the e2e specs: #1993 inserted an upload step between Review and Try (so `step-try` no longer appears right after `onboarding-finish`), and #1976 routed client fetches through `${API_BASE}/api/assets/` (trailing slash, which the bare `**/api/assets` route mock no longer matched).
 - Walk the new upload step (`step-upload` → `onboarding-upload-continue`) and mock the trailing-slash assets path in `onboarding-validate.spec.ts` + `onboarding-walkthrough.spec.ts`. Test-only; no product behavior change. Unblocks Hub E2E for all open hub PRs.
