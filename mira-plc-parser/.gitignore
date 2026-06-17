@@ -7,3 +7,5 @@
 # CLI report outputs written during local runs / tests (<stem>.report.md / .json).
 *.report.md
 *.report.json
+# ...EXCEPT the golden snapshots, which are the committed report@1 contract (not run output).
+!tests/fixtures/golden/*.report.json
