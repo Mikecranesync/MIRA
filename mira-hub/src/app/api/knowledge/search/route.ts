@@ -7,8 +7,10 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/knowledge/search?q=<text>&limit=<n>
  *
- * Full-text search across all knowledge_entries (no tenant filter —
- * OEM manuals are universal; see /api/knowledge/route.ts rationale).
+ * Full-text search across the shared OEM corpus (`is_private = false`).
+ * Per-tenant uploaded manuals (`is_private = true`) are excluded — they are
+ * scoped to the owning tenant and must not appear in cross-tenant search results
+ * (see knowledge-entries-tenant-scoping rule, #1833, migration 052).
  *
  * Uses Postgres BM25 (`content_tsv @@ plainto_tsquery`) with an ILIKE
  * fallback for short/noisy terms that don't tokenise well. Returns
@@ -65,6 +67,7 @@ export async function GET(req: Request) {
          ts_rank_cd(content_tsv, plainto_tsquery('english', $1)) AS rank
        FROM knowledge_entries
        WHERE content_tsv @@ plainto_tsquery('english', $1)
+         AND is_private = false  -- shared OEM corpus only; never leak per-tenant uploads (#1833 / mig 052)
        ORDER BY source_url, rank DESC
        LIMIT $2`,
       [q, limit],
@@ -94,11 +97,12 @@ export async function GET(req: Request) {
            LEFT(content, 220)  AS snippet,
            0.0                 AS rank
          FROM knowledge_entries
-         WHERE (
-           manufacturer ILIKE $1
-           OR model_number ILIKE $1
-           OR metadata->>'title' ILIKE $1
-         )
+         WHERE is_private = false  -- shared OEM corpus only (#1833 / mig 052)
+           AND (
+             manufacturer ILIKE $1
+             OR model_number ILIKE $1
+             OR metadata->>'title' ILIKE $1
+           )
          ORDER BY source_url
          LIMIT $2`,
         [`%${q}%`, remaining * 3],
