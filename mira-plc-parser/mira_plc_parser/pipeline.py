@@ -10,15 +10,17 @@ from dataclasses import dataclass
 from . import analyze as _analyze
 from .detect import Detection, detect
 from .ir import PLCProject
-from .parsers import csv_tags, rockwell_l5x
+from .parsers import csv_tags, plcopen_xml, rockwell_l5x, structured_text
 
 # format key -> parser module (each exposes parse(text, source_file) -> PLCProject)
 _PARSERS = {
     "rockwell_l5x": rockwell_l5x,
     "csv_tags": csv_tags,
+    "structured_text": structured_text,
+    "plcopen_xml": plcopen_xml,
 }
 # recognized-but-not-yet-built parsers (routing is ready; extraction is a later phase)
-_PLANNED = {"plcopen_xml", "siemens_tia_xml", "structured_text"}
+_PLANNED = {"siemens_tia_xml"}
 
 
 @dataclass

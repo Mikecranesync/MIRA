@@ -18,13 +18,23 @@ from dataclasses import dataclass, field
 
 from .ir import Confidence, PLCProject, Tag
 
-
 # --- name-pattern vocabularies (MEDIUM-confidence inference) ---
 # PLC tag names are underscore/camelCase (Motor_Run, VFD_FaultCode), so a plain \b boundary fails
-# (underscore is a \w char). _kw() builds a LETTER-boundary matcher: a keyword matches when it is
-# not flanked by other letters -- so '_' , digits, spaces, and camelCase humps all act as breaks.
+# (underscore is a \w char). _kw() builds a word matcher whose boundaries are: a non-letter neighbor
+# (`_`, digit, space, symbol, start/end) OR a camelCase hump -- a lowercase/digit -> Uppercase
+# transition. Without the hump rule, "fault" fused into "FaultRoutine"/"MotorFault" was missed.
+# The boundaries only ADD matches (each is a `non-letter OR hump` alternation), so underscore-style
+# names behave exactly as before. A keyword buried in a lowercase run ("defaulting") still won't
+# match -- there is no boundary on either side.
+# Boundaries are case-SENSITIVE (a hump is literally lowercase/digit -> Uppercase), so they must
+# not be compiled under re.I -- otherwise [a-z]/[A-Z] would match either case and "defaulting" would
+# match "fault". Case-insensitivity is scoped to just the keyword body via an inline (?i:...) group.
+_LEFT_BOUND = r"(?:(?<![A-Za-z])|(?<=[a-z0-9])(?=[A-Z]))"
+_RIGHT_BOUND = r"(?:(?![A-Za-z])|(?<=[a-z0-9])(?=[A-Z]))"
+
+
 def _kw(words):
-    return re.compile(r"(?<![A-Za-z])(?:" + "|".join(words) + r")(?![A-Za-z])", re.I)
+    return re.compile(_LEFT_BOUND + r"(?i:" + "|".join(words) + r")" + _RIGHT_BOUND)
 
 
 _FAULT_PAT = _kw(["fault", "trip", "alarm", "estop", "fail", "error", "overload", "jam"])
