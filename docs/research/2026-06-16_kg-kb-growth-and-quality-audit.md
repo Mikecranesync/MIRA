@@ -156,8 +156,11 @@ were stable):**
 **Qualitative pattern (matches eval-failure cluster #1948):**
 - Realistic tech phrasing breaks retrieval. `"PF525 showing F004, what's wrong?"` → `manual_evidence:
   []`, KB-gap, **no citation** — even though the corpus *has* the PF525 manual (the eyeball proved
-  it). Cause: BM25 `plainto_tsquery` ANDs terms, and `PF525`≠`PowerFlex 525`, `F004`≠`F0004`
-  (fault-code normalization). This is the #1807/#1808 BM25 AND-ing issue.
+  it). **Verified cause: the model-name alias** — `PF525` ≠ `PowerFlex 525`, so BM25/vector never
+  matched the manual. (NOT a fault-code issue: a corpus probe confirmed the content uses **`F004`**,
+  not `F0004` — techs and the corpus already agree on the short form, and the structured `fault_codes`
+  table holds PF525 `F004` under manufacturer `Allen-Bradley`. The `F0004` in the original benchmark
+  was the *fixture's* synthesized UNS-path metadata, not corpus reality.)
 - When it *does* cite, it can **cross-cite the wrong model**: `"pf525 oc flt…"` cited PowerFlex 525
   **and** PowerFlex 700, with an off-topic chunk (RS485 addr / skip-frequency, not the OC fault).
   This is the #1948 "wrong-vendor / VFD doc-routing-miss" cluster.
@@ -185,9 +188,12 @@ scoring).
   nothing trustworthy to contribute.
 
 **Highest-leverage fixes, in order:**
-1. **Retrieval robustness to real phrasing** — model-alias + fault-code normalization before BM25
-   (`PF525`→`PowerFlex 525`, `F004`→`F0004`); the AND→OR fallback already exists in the Hub path,
-   port/verify it on the bot path. (Closes most of the 42%→higher gap.)
+1. **Retrieval robustness to real phrasing** — model-alias expansion before BM25
+   (`PF525`→`PowerFlex 525`). **SHIPPED on `feat/retrieval-grounding-fix` / PR #2075:** added curated
+   drive shorthands to `guardrails.MAINTENANCE_ABBREVIATIONS`; verified end-to-end the PF525 case goes
+   from 1→3 PowerFlex-525-relevant chunks. (Fault-code padding was investigated and found
+   **unnecessary** — corpus uses the short `F004` form already; see Part 3.) The BM25 AND→OR fallback
+   already exists on both paths.
 2. **Close the upload→retrieval gap** (PR #1592 / beta gate) so *uploaded* manuals are citable on
    the bot path, not just the Hub node path.
 3. **Make the KG earn its keep** — 0% KG-evidence means `kg_relationships` is currently inert for
