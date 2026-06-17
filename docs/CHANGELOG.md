@@ -3,6 +3,13 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.26.1 (2026-06-17) — security(ignition): customer-shipped Ignition bundle is read-only (no plant writes)
+- **`ignition/project/com.inductiveautomation.perspective/`** — removed all `system.tag.writeBlocking` plant-write paths from the customer-shipped Perspective bundle, per `docs/mira-ignition-secure-architecture.md` ("read-only by default") and `.claude/rules/fieldbus-readonly.md`. VFD control (speed setpoint, FWD/STOP/REV, fault reset) is **bench-only** — it lives in `plc/live_monitor.py` / the ConvSimpleLive bench project, never in the shipped bundle.
+  - **SpeedControl** view (pure VFD control: speed slider/numeric + FWD/STOP/REV writing `VFD_CmdWord`) **removed** from the bundle — view deleted + dropped from `page-config/config.json` and the `NavBar`. It was never in the intended read-only bundle (`ConveyorStatus`/`Chat`/`FaultLog`/`NavBar`).
+  - **FaultLog** view kept but made **read-only**: removed the `ClearFaultsButton` (`writeBlocking VFD_CmdWord 2`); the accompanying note now directs operators to clear faults at the VFD keypad (MIRA is read-only). No faked/inert STOP/CLEAR controls remain.
+- **`tests/regime7_ignition/test_no_customer_write_paths.py`** (new) — CI guard: fails if any shipped Perspective view re-introduces `system.tag.write*`, or if `SpeedControl` reappears in the bundle. Prevents the read-only HMI from silently becoming a control surface again.
+- Note: gateway-script writes to `[default]Mira_Alerts/*` **memory** tags (`tag-change-fsm-monitor.py`, `timer-stuck-state.py`) are internal anomaly alerts, not plant writes, and are intentionally out of scope of this guard.
+
 ### v3.25.0 (2026-06-16) — feat(staging): digital-twin review layer + migration-collision doctrine
 - **`tools/staging/staging-smoke.sh`** — deterministic curl-and-assert health gate for the staging twin (Cluster Law 2: a binary check is a script, not an LLM). Asserts the externally-reachable review surfaces (Hub 4101, Web 4200) return 200; probes pipeline/atlas best-effort (the deploy workflow is authoritative for those on `127.0.0.1`). shellcheck-clean; verified live (Hub+Web PASS).
 - **`tools/staging/hermes-staging-review.sh`** — async qualitative review: runs the smoke gate first, and only on PASS asks Hermes (on CHARLIE) to browse the staging Hub and post a terse verdict to Telegram. Advisory, never a CI gate.
