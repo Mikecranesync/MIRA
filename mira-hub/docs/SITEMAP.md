@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **57** (6 dynamic) |
-| API routes | **133** (35 dynamic) |
+| API routes | **134** (35 dynamic) |
 
 ## Pages (57)
 
@@ -75,7 +75,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (133)
+## API routes (134)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -130,6 +130,7 @@
 | `/api/components/[id]` | dynamic | `api/components/[id]/route.ts` |
 | `/api/connections` | static | `api/connections/route.ts` |
 | `/api/connections/[provider]` | dynamic | `api/connections/[provider]/route.ts` |
+| `/api/connectors/plc/import` | static | `api/connectors/plc/import/route.ts` |
 | `/api/conversations` | static | `api/conversations/route.ts` |
 | `/api/decision-trace/[id]` | dynamic | `api/decision-trace/[id]/route.ts` |
 | `/api/decision-trace/[id]/feedback` | dynamic | `api/decision-trace/[id]/feedback/route.ts` |
