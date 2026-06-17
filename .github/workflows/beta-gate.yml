@@ -97,8 +97,10 @@ jobs:
 
           # 4. Provision a real stranger run → BETA_GATE_* env lines.
           ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts ) > /tmp/gate-env.out
-          # shellcheck disable=SC1090  # sourcing a generated env file is intentional
-          set -a; . <(grep '^ENV:' /tmp/gate-env.out | sed 's/^ENV://'); set +a
+          set -a
+          # shellcheck disable=SC1090
+          . <(grep '^ENV:' /tmp/gate-env.out | sed 's/^ENV://')
+          set +a
           echo "::notice::provisioned tenant=$BETA_GATE_TENANT node=$BETA_GATE_NODE"
 
           # 5. Run the gate (pure HTTP — no doppler needed).
