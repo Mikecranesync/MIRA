@@ -5,20 +5,21 @@ name: Beta Gate (upload → retrieval → citation)
 #    question, and MIRA returns a grounded answer with citations from that
 #    uploaded manual — without Mike manually fixing anything."
 #
-# It builds a Hub on the runner against the DEV Neon branch (NEVER prod —
-# staging is not publicly reachable, #2023), provisions a real *stranger* run
+# It builds a Hub on the runner against the STAGING Neon branch (NEVER prod;
+# staging is "safe to break" and has the factorylm_app INSERT grant from mig
+# 049), provisions a real *stranger* run
 # (register → tenant FK → next-auth cookie → namespace node), uploads the
 # fixture manual through the REAL `/files/` door, and runs
 # tests/beta/beta_ready_upload_retrieval_citation.py against it.
 #
 # This is the DURABLE surface that justifies removing the gate's old xfail: the
 # gate now skips when BETA_GATE_* is unset (plain local pytest) and asserts for
-# real here, where CI provisions it. Dev rows are cleaned up afterwards.
+# real here, where CI provisions it. Staging rows are cleaned up afterwards.
 #
-# Secret: DOPPLER_TOKEN (same one db-inspect.yml uses) must be able to read the
-# `factorylm/dev` config. If the token is environment-scoped, this job inherits
-# it via `environment: staging` (matching db-inspect's working pattern); it only
-# ever resolves the *dev* config — it never touches staging or prod data.
+# Secret: DOPPLER_TOKEN (the same one db-inspect.yml uses) — it can read the
+# `factorylm/stg` config. The job inherits it via `environment: staging`
+# (matching db-inspect's working pattern). It only ever resolves the *stg*
+# config — never prod.
 
 on:
   workflow_dispatch:
@@ -39,9 +40,9 @@ concurrency:
 
 jobs:
   beta-gate:
-    name: Stranger upload → cited answer (dev Neon)
+    name: Stranger upload → cited answer (staging Neon)
     runs-on: ubuntu-latest
-    environment: staging # only to inherit DOPPLER_TOKEN; resolves the dev config
+    environment: staging # only to inherit DOPPLER_TOKEN; resolves the stg config
     timeout-minutes: 25
 
     steps:
@@ -70,13 +71,17 @@ jobs:
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
           DOPPLER_PROJECT: factorylm
-          DOPPLER_CONFIG: dev
+          # staging, not dev: the shared DOPPLER_TOKEN (same one db-inspect.yml uses)
+          # can read stg+prd but NOT dev. The gate contract allows dev OR staging
+          # (never prod); staging Neon has the factorylm_app INSERT grant (mig 049),
+          # the OEM corpus, and is "safe to break". Verified green locally on stg.
+          DOPPLER_CONFIG: stg
         run: |
           set -euo pipefail
           [ -n "${DOPPLER_TOKEN:-}" ] || { echo "::error::DOPPLER_TOKEN not set"; exit 1; }
 
-          # 1. Build the Hub at basePath='' (routes at root) against dev.
-          echo "::group::next build (dev)"
+          # 1. Build the Hub at basePath='' (routes at root) against staging.
+          echo "::group::next build (staging)"
           ( cd mira-hub && NEXT_PUBLIC_BASE_PATH='' NEXT_PUBLIC_API_BASE='' NODE_ENV=production \
               doppler run -- ./node_modules/.bin/next build )
           echo "::endgroup::"
@@ -109,7 +114,7 @@ jobs:
           GATE_RC=$?
           set -e
 
-          # 6. Clean up the dev rows we created (best-effort, never fail the job).
+          # 6. Clean up the staging rows we created (best-effort, never fail the job).
           ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts --cleanup "$BETA_GATE_TENANT" ) || true
 
           # 7. Tear down the server.
