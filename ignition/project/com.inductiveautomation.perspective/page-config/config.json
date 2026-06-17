@@ -20,14 +20,6 @@
       }
     },
     {
-      "id": "page-speed-control",
-      "url": "/speed",
-      "primaryView": {
-        "viewPath": "SpeedControl",
-        "params": {}
-      }
-    },
-    {
       "id": "page-fault-log",
       "url": "/faults",
       "primaryView": {
