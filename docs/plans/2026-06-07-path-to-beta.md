@@ -39,7 +39,7 @@ This plan assesses #1592 as the right fix; the minimal close path is in the rese
 > #1863 (#1806 Inbox node), #1907/#1910 (upload-500 fixes), #1889 (E2E green on prod). I ran the
 > **real** chain end-to-end on dev — `ingestPdfToNode` (real fixture PDF) → `retrieveNodeChunks`
 > under `factorylm_app` RLS → cited chunk — and it passes:
-> `mira-hub/scripts/verify-upload-retrieval-citation.ts` (PR #2076). So the data-layer half (upload
+> `mira-hub/scripts/verify-upload-retrieval-citation.ts` (PR #2077). So the data-layer half (upload
 > writes node-scoped `knowledge_entries`; retrieval returns a citable chunk) is **done**.
 > **Remaining to flip the `xfail`:** the *HTTP* beta gate (`tests/beta/`) is still xfail **by env**
 > — it needs a live Hub surface + a minted `next-auth` session cookie + a node id (`BETA_GATE_*`),
