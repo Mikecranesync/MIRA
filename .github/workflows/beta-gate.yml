@@ -65,7 +65,7 @@ jobs:
         run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Install gate python deps
-        run: pip install --quiet httpx pytest
+        run: pip install --quiet httpx pytest pyyaml
 
       - name: Build · provision · run gate · cleanup
         env:
@@ -108,9 +108,12 @@ jobs:
           set +a
           echo "::notice::provisioned tenant=$BETA_GATE_TENANT node=$BETA_GATE_NODE"
 
-          # 5. Run the gate (pure HTTP — no doppler needed).
+          # 5. Run the gate (pure HTTP — no doppler needed). --confcutdir keeps
+          #    pytest from ascending into tests/conftest.py (which imports the
+          #    full test harness); the beta gate is self-contained (_gate = httpx).
           set +e
-          python -m pytest tests/beta/beta_ready_upload_retrieval_citation.py -v -rs
+          python -m pytest tests/beta/beta_ready_upload_retrieval_citation.py \
+            --confcutdir=tests/beta -v -rs
           GATE_RC=$?
           set -e
 
