@@ -125,6 +125,44 @@ def _cmd_benchmark(ns: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_i3x_export(ns: argparse.Namespace) -> int:
+    """Offline: parse an export, propose its UNS namespace, and write a CESMII i3X-shaped payload
+    (<stem>.i3x.json). No network -- this is the local transform, not a push to a live i3X server."""
+    from . import i3x as i3xmod
+
+    src = Path(ns.file)
+    if not src.is_file():
+        print("error: file not found: %s" % src, file=sys.stderr)
+        return 1
+    try:
+        text = _read_text(src)
+    except OSError as exc:
+        print("error: cannot read %s: %s" % (src, exc), file=sys.stderr)
+        return 1
+
+    result = run(src.name, text)
+    if not result.handled:
+        print("error: not a parseable export: %s" % "; ".join(result.project.warnings),
+              file=sys.stderr)
+        return 1
+
+    prefix = {k: getattr(ns, k) for k in ("enterprise", "site", "area", "line") if getattr(ns, k)}
+    payload = i3xmod.to_i3x(render_json(result), prefix or None)
+
+    out_dir = Path(ns.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / ("%s.i3x.json" % src.stem)
+    out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    if not ns.quiet:
+        containers = sum(1 for i in payload["objectInstances"] if i["isComposition"])
+        leaves = len(payload["objectInstances"]) - containers
+        print("i3X namespace: %d object types · %d containers · %d tag instances"
+              % (len(payload["objectTypes"]), containers, leaves))
+        print("Wrote: %s" % out_path)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mira-plc-parser",
@@ -155,6 +193,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_bench.add_argument("--out", default="", metavar="FILE",
                          help="Optional path to write the markdown benchmark report.")
     p_bench.set_defaults(func=_cmd_benchmark)
+
+    p_i3x = sub.add_parser("i3x-export",
+                           help="Propose a UNS namespace and write a CESMII i3X payload (offline).")
+    p_i3x.add_argument("file", help="Path to a PLC program export (L5X, CSV, ...).")
+    p_i3x.add_argument("--out", default=".", help="Directory to write the i3X payload into.")
+    p_i3x.add_argument("--enterprise", help="Override the enterprise UNS level.")
+    p_i3x.add_argument("--site", help="Override the site UNS level.")
+    p_i3x.add_argument("--area", help="Override the area UNS level.")
+    p_i3x.add_argument("--line", help="Override the line UNS level (defaults to controller name).")
+    p_i3x.add_argument("--quiet", action="store_true", help="Suppress the stdout summary.")
+    p_i3x.set_defaults(func=_cmd_i3x_export)
 
     return parser
 

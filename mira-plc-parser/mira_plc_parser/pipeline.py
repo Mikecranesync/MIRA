@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from . import analyze as _analyze
+from . import uns as _uns
 from .detect import Detection, detect
 from .ir import PLCProject
 from .parsers import csv_tags, plcopen_xml, rockwell_l5x, structured_text
@@ -136,7 +137,7 @@ def render_json(result: ParseResult) -> dict:
         return {"schema": "mira-plc-parser/report@1", "detection": detection, "handled": False,
                 "warnings": list(result.project.warnings)}
     r = result.report
-    return {
+    report = {
         "schema": "mira-plc-parser/report@1",
         "detection": detection,
         "handled": True,
@@ -152,3 +153,9 @@ def render_json(result: ParseResult) -> dict:
         "tag_dictionary": r.tag_dictionary,
         "warnings": list(r.warnings),
     }
+    # UNS / ISA-95 proposal layer: one candidate path per tag (deterministic, offline). The upper
+    # levels come from `uns_prefix` (seeded from the controller name; user-overridable downstream).
+    report["uns_prefix"] = _uns.default_prefix(report)
+    report["uns_candidates"] = _uns.propose_uns(report)
+    report["counts"]["uns_candidates"] = len(report["uns_candidates"])
+    return report
