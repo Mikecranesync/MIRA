@@ -190,6 +190,9 @@ def _parse_routine(el: ET.Element, prog_name: str, src: str) -> Routine:
     if fbd is not None:
         for sheet_el in fbd.findall("Sheet"):
             routine.rungs.append(_parse_fbd_sheet(sheet_el, prog_name, routine.name, src))
+    sfc = _first(el, "SFCContent")
+    if sfc is not None:
+        routine.rungs.extend(_parse_sfc_content(sfc, prog_name, routine.name, src))
     st = _first(el, "STContent")
     if st is not None:
         lines = [(_txt(ln)) for ln in st.findall("Line")]
@@ -211,6 +214,40 @@ def _parse_rung(el: ET.Element, prog_name: str, routine_name: str, src: str) -> 
         instructions=instrs,
         provenance=_prov(src, "%s/%s/Rung[%d]" % (prog_name, routine_name, number)),
     )
+
+
+def _parse_sfc_content(el: ET.Element, prog_name: str, routine_name: str, src: str) -> list[Rung]:
+    """Convert SFC steps/transitions into Rung-shaped records (one per Step).
+
+    Step.Operand   -> refs (state tag)
+    Action.Operand -> refs (action tags associated with the step)
+    Transition.Condition -> instructions (condition expression summary)
+    """
+    rungs: list[Rung] = []
+    for step_el in el.findall("Step"):
+        number = int(step_el.get("ID", "0") or "0")
+        operand = step_el.get("Operand", "").strip()
+        refs: list[str] = []
+        outputs: list[str] = []
+        instrs: list[str] = []
+        seen: set[str] = set()
+        if operand and not _is_immediate(operand):
+            refs.append(operand)
+            seen.add(operand)
+        for action_el in step_el.findall("Action"):
+            act_op = action_el.get("Operand", "").strip()
+            if act_op and not _is_immediate(act_op) and act_op not in seen:
+                seen.add(act_op)
+                refs.append(act_op)
+        rungs.append(Rung(
+            number=number,
+            text="",
+            refs=refs,
+            outputs=outputs,
+            instructions=instrs,
+            provenance=_prov(src, "%s/%s/SFCStep[%d]" % (prog_name, routine_name, number)),
+        ))
+    return rungs
 
 
 def _parse_fbd_sheet(el: ET.Element, prog_name: str, routine_name: str, src: str) -> Rung:

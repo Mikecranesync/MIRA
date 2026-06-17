@@ -236,6 +236,7 @@ class Extraction:
     modules: int = 0
     fbd_sheets: int = 0
     produced_consumed: int = 0
+    sfc_steps: int = 0
     # False-positive flag: parser extracted Context tags instead of Target
     context_leak: int = 0    # number of Context tags incorrectly surfaced as output
 
@@ -319,6 +320,7 @@ def coverage_report(text: str, source_file: str = "") -> CoverageReport:
         modules=rep.counts.get("module_definitions", 0),
         fbd_sheets=rep.counts.get("fbd_sheets", 0),
         produced_consumed=rep.counts.get("produced_consumed", 0),
+        sfc_steps=rep.counts.get("sfc_steps", 0),
     )
 
     # Detect false positives: parser extracted Context tags when the Target
@@ -401,7 +403,8 @@ def coverage_report(text: str, source_file: str = "") -> CoverageReport:
         gaps.append("%d FBD routine%s (FBDContent) — silently skipped"
                     % (len(fbd_routines), "s" if len(fbd_routines) > 1 else ""))
     sfc_routines = [r for r in inv.routines if r.type == "SFC"]
-    if sfc_routines:
+    sfc_step_count = sum(r.step_count for r in sfc_routines)
+    if sfc_routines and sfc_step_count > 0 and ext.sfc_steps == 0:
         gaps.append("%d SFC routine%s (SFCContent) — silently skipped"
                     % (len(sfc_routines), "s" if len(sfc_routines) > 1 else ""))
     if inv.has_produced_consumed and ext.produced_consumed == 0:
