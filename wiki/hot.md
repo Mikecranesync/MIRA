@@ -1,3 +1,40 @@
+# Hot Cache — 2026-06-16 — CHARLIE
+
+## Session — 2026-06-16 (Ignition #2064 fix + Command Center e2e cleanup)
+
+**Version:** 3.25.1
+
+**PR #2060 MERGED** (`test(hub): fix Command Center e2e route mocks + add gateway bar test`):
+- Route mocks in `mira-hub/tests/e2e/command-center.spec.ts` switched from glob patterns to
+  `RegExp` (`/\/api\/command-center\/tree/` etc.) — glob patterns silently failed against
+  Playwright's internal URL-matching layer.
+- Added `ConnectedGatewaysBar` E2E test (gateway registry sidebar renders connected gateways).
+- Sitemap snapshot updated.
+
+**PR #2067 MERGED** (`fix(ignition): document + handle Perspective 'No Connection to Gateway' DOM false-positive (#2064)`):
+- Root cause: Ignition's `PerspectiveClient.*.js` **framework bundle** always renders a
+  "No Connection to Gateway" WebSocket-init overlay at the app level — NOT a view component.
+  When the WS connects, Ignition hides it via CSS class change but the DOM node stays. This
+  confused Hermes + any headless browser accessibility snapshot (`page.innerText` always
+  includes the string even when the screen is live with real OPC tag values). The view is
+  built in Designer on the PLC laptop; there is no REST API to patch it from MIRA.
+- Fix: `mira-hub/tests/e2e/ignition-display-health.ts` — new `evaluateIgnitionDisplay(page, url)` helper:
+  1. `waitForFunction` checks computed CSS visibility of the overlay (`display:none` / `visibility:hidden` / `opacity:0`);
+  2. Falls back to live tag value fingerprints (`Hz`, `Vdc`, `E-STOP`, `MLC`, `COMM OK`, etc.);
+  3. Falls back to `Connected: <host>` footer.
+  Returns `{ connected: "connected"|"disconnected"|"timeout", liveValues, gateway, pageText }`.
+- `docs/runbooks/hermes-find-convsimple-screen.md` §4b added — disambiguation decision tree.
+- `docs/known-issues.md` — entry for the permanent Ignition DOM behavior.
+- Issue #2064 closed by PR #2067.
+
+**Ignition trial:** Gateway at `100.72.2.99:8088` shows "Trial Expired" — Perspective 2-hour
+trial lapsed on the PLC laptop. Reset manually on the PLC laptop before next live-screen session.
+
+**Orchestrator state files:** committed this session — BETA_READINESS.md, HISTORY.md,
+hourly_state.json, hardening-alerts.jsonl, plus 2026-06-16 KG run artifacts.
+
+---
+
 # Hot Cache — 2026-06-08 — CHARLIE
 
 ## ⭐ MASTER GTM CHECKLIST — `docs/gtm/go-to-market-hardening-checklist.md`

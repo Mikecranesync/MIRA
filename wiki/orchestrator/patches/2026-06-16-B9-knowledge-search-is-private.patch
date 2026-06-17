@@ -1,0 +1,82 @@
+# B9 — /api/knowledge/search cross-tenant content leak (add `is_private = false`)
+#
+# LENS: B (Hub functional readiness), round 9, audited vs origin/main @dfa51f1c
+# SEVERITY: P1  [beta-path: yes]  — LEAK class (#1833), NEW this window (#2044)
+#
+# WHAT: `GET /api/knowledge/search` (added #2044, commit 8743139e) selects
+#   `LEFT(content, 220) AS snippet` + source_url + title across ALL
+#   `knowledge_entries` rows with NO `is_private` predicate and NO tenant
+#   predicate. It is `sessionOr401`-gated (any authenticated tenant) and
+#   reachable from the Knowledge -> Manuals UI (knowledge/manuals/page.tsx:131).
+#
+# WHY IT LEAKS: `knowledge_entries` is a HYBRID corpus. Per-tenant uploads now
+#   land with `is_private = true` (node-attach door node-knowledge-ingest.ts:160-167
+#   #1903; migration 052_privatize_node_attachment_chunks.sql; /api/documents/upload
+#   route.ts:67). A content search with no `is_private` filter returns one
+#   tenant's PRIVATE uploaded-manual content (snippet + source_url + title) to
+#   any other authenticated tenant => the #1833 cross-tenant content-leak class,
+#   on the beta money-path corpus. Breaks the North Star "nothing ... leaks".
+#
+# WHY THE ROUTE'S OWN RATIONALE DOESN'T HOLD: the comment cites
+#   `/api/knowledge/route.ts` ("OEM manuals are universal; no tenant filter").
+#   But that sibling returns ONLY COUNTs (COUNT(*), COUNT(DISTINCT source_url))
+#   — it never surfaces content. The knowledge_entries-tenant-scoping rule
+#   (.claude/rules/knowledge-entries-tenant-scoping.md) is explicit: aggregate
+#   OEM surfaces "must NOT surface per-tenant upload CONTENT". This route does.
+#   The same sibling even says: "If per-tenant private docs are added later,
+#   switch to filtering on is_private rather than tenant_id." Migration 052 +
+#   #1903 are exactly that day.
+#
+# FIX (surgical, 2 predicates): add `AND is_private = false` to BOTH the BM25
+#   query and the ILIKE fallback. This keeps the universal shared-OEM-corpus
+#   search intact and does NOT add `tenant_id = $caller` (which would reintroduce
+#   the #1761 "OEM corpus returns 0 rows" regression). Matches migration 052's
+#   stated contract and /api/documents reference impl.
+#
+# APPLY (from repo root, on a fresh branch off origin/main):
+#   git fetch origin main && git switch -c fix/B9-knowledge-search-is-private origin/main
+#   git apply wiki/orchestrator/patches/2026-06-16-B9-knowledge-search-is-private.patch
+#
+# VERIFY (no DB needed for the static guard; full check needs Neon):
+#   1. grep -n "is_private = false" mira-hub/src/app/api/knowledge/search/route.ts   # expect 2 hits
+#   2. (optional) add a vitest mirroring node-knowledge-ingest-is-private.test.ts:
+#      assert the route SQL contains "is_private = false" in both query strings
+#      (fails loudly if a future edit drops it, same pattern as #1903 guard).
+#   3. (live) seed one is_private=true row for tenant A + one is_private=false OEM
+#      row, search as tenant B for a term in A's row -> expect 0 A-rows, OEM row present.
+#   4. npx vitest run src/app/api/knowledge   &&   npx tsc --noEmit (skipLibCheck)
+#
+# NOTE: audit-only session did NOT edit the route in place. This patch is the
+#   deliverable. Pairs with the standing canary reverse-drift patch
+#   (2026-06-10-canary-reverse-drift-check.patch) — independent.
+
+diff --git a/mira-hub/src/app/api/knowledge/search/route.ts b/mira-hub/src/app/api/knowledge/search/route.ts
+index f7eb681..c36f5c7 100644
+--- a/mira-hub/src/app/api/knowledge/search/route.ts
++++ b/mira-hub/src/app/api/knowledge/search/route.ts
+@@ -65,6 +65,7 @@ export async function GET(req: Request) {
+          ts_rank_cd(content_tsv, plainto_tsquery('english', $1)) AS rank
+        FROM knowledge_entries
+        WHERE content_tsv @@ plainto_tsquery('english', $1)
++         AND is_private = false  -- shared OEM corpus only; never leak per-tenant uploads (#1833 / mig 052)
+        ORDER BY source_url, rank DESC
+        LIMIT $2`,
+       [q, limit],
+@@ -94,11 +95,12 @@ export async function GET(req: Request) {
+            LEFT(content, 220)  AS snippet,
+            0.0                 AS rank
+          FROM knowledge_entries
+-         WHERE (
+-           manufacturer ILIKE $1
+-           OR model_number ILIKE $1
+-           OR metadata->>'title' ILIKE $1
+-         )
++         WHERE is_private = false  -- shared OEM corpus only (#1833 / mig 052)
++           AND (
++             manufacturer ILIKE $1
++             OR model_number ILIKE $1
++             OR metadata->>'title' ILIKE $1
++           )
+          ORDER BY source_url
+          LIMIT $2`,
+         [`%${q}%`, remaining * 3],
