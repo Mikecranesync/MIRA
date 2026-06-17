@@ -51,6 +51,16 @@ fi
 [ -z "$cmd" ] && cmd="${CLAUDE_TOOL_INPUT:-}"
 [ -z "$cmd" ] && exit 0  # Nothing to inspect; allow.
 
+# Rebase-control commands ALWAYS pass — they are the ONLY commands that EXIT a
+# wedged rebase, and the deny message below recommends them by name. Blocking
+# them (the MUTATOR regex matches `git rebase` generically) strands the repo
+# mid-rebase with no git-native way out (#2071). These can only ever leave the
+# in-progress state, never deepen it, so they are safe in any repo state.
+REBASE_CONTROL='git([[:space:]]+-[^[:space:]]+)*[[:space:]]+rebase[[:space:]]+--(continue|abort|skip|quit)([[:space:]]|$)'
+if printf '%s' "$cmd" | grep -qE "$REBASE_CONTROL"; then
+  exit 0
+fi
+
 # Is this a git *mutator*? Match `git ... <verb>` and `git stash drop`/`pop`.
 # Read-only verbs (status/log/diff/show/fetch/branch/rev-parse) are NOT matched.
 MUTATOR='git([[:space:]]+-[^[:space:]]+)*[[:space:]]+(commit|rebase|merge|push|reset|cherry-pick|revert|am)([[:space:]]|$)|git[[:space:]]+stash[[:space:]]+(drop|pop|clear)'
@@ -64,7 +74,7 @@ GITDIR=$(git rev-parse --git-dir 2>/dev/null || true)
 
 reason=""
 if [ -d "${GITDIR}/rebase-merge" ] || [ -d "${GITDIR}/rebase-apply" ]; then
-  reason="repository is mid-rebase (${GITDIR}/rebase-merge or rebase-apply exists). Finish it with 'git rebase --continue' or abandon it with 'git rebase --abort' before running git mutators."
+  reason="repository is mid-rebase (${GITDIR}/rebase-merge or rebase-apply exists). Finish it with 'git rebase --continue' or abandon it with 'git rebase --abort' (both now pass through this guard) before running other git mutators. For a deliberate mid-rebase commit, set MIRA_ALLOW_GIT_WEDGE=1."
 elif ! git symbolic-ref -q HEAD >/dev/null 2>&1; then
   reason="HEAD is detached. Check out a branch ('git checkout <branch>') before running git mutators, or your commit will be orphaned."
 fi
