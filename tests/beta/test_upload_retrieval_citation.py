@@ -24,7 +24,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ._gate import run_beta_gate
+from ._gate import GateUnavailable, run_beta_gate
 
 
 # ── Check 1: runnable, no live stack — where does retrieval read from? ────────
@@ -92,17 +92,17 @@ def test_retrieval_reads_only_knowledge_entries():
 
 
 @pytest.mark.beta_gate
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "BETA GATE (upload→retrieval gap, PR #1592): a stranger's uploaded manual "
-        "is not yet citable in chat. Expected to fail until the gap closes AND a "
-        "dev/staging integration env is provided (BETA_GATE_* env vars). When this "
-        "starts passing, strict-xfail flips the suite RED — remove the marker and "
-        "confirm beta readiness."
-    ),
-)
 def test_uploaded_manual_is_citable():
-    """Upload the GS10 fixture → ask 'what does oC mean?' → expect a cited answer."""
-    result = run_beta_gate()
+    """Upload the GS10 fixture → ask 'what does oC mean?' → expect a cited answer.
+
+    Skips when the integration env (BETA_GATE_*) is not provisioned, so a plain
+    local/CI ``pytest tests/`` run stays green; with the env present (the
+    `beta-gate.yml` CI job stands up a live Hub on dev Neon) it asserts for real.
+    Was ``xfail(strict)`` until the upload→retrieval gap closed and the gate ran
+    green end-to-end 2026-06-17.
+    """
+    try:
+        result = run_beta_gate()
+    except GateUnavailable as exc:
+        pytest.skip(str(exc))
     assert result.cited, result.explain
