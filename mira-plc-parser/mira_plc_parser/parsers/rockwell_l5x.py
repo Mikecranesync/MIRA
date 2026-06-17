@@ -185,6 +185,10 @@ def _parse_routine(el: ET.Element, prog_name: str, src: str) -> Routine:
     if rll is not None:
         for rung_el in rll.findall("Rung"):
             routine.rungs.append(_parse_rung(rung_el, prog_name, routine.name, src))
+    fbd = _first(el, "FBDContent")
+    if fbd is not None:
+        for sheet_el in fbd.findall("Sheet"):
+            routine.rungs.append(_parse_fbd_sheet(sheet_el, prog_name, routine.name, src))
     st = _first(el, "STContent")
     if st is not None:
         lines = [(_txt(ln)) for ln in st.findall("Line")]
@@ -205,6 +209,62 @@ def _parse_rung(el: ET.Element, prog_name: str, routine_name: str, src: str) -> 
         outputs=outputs,
         instructions=instrs,
         provenance=_prov(src, "%s/%s/Rung[%d]" % (prog_name, routine_name, number)),
+    )
+
+
+def _parse_fbd_sheet(el: ET.Element, prog_name: str, routine_name: str, src: str) -> Rung:
+    """Convert one FBD Sheet into a Rung-shaped record.
+
+    IRef.Operand  -> refs (inputs)
+    ORef.Operand  -> outputs (driven tags)
+    Block.Operand -> refs (the tag the block instance is bound to)
+    Block.Type    -> instructions (mnemonics like MAVE, TONR, ESEL)
+    """
+    number = int(el.get("Number", "0") or "0")
+    refs: list[str] = []
+    outputs: list[str] = []
+    instrs: list[str] = []
+    seen_ref: set[str] = set()
+    seen_out: set[str] = set()
+
+    for child in el:
+        tag = child.tag
+        if tag == "IRef":
+            op = child.get("Operand", "").strip()
+            if op and not _is_immediate(op) and op not in seen_ref:
+                seen_ref.add(op)
+                refs.append(op)
+        elif tag == "ORef":
+            op = child.get("Operand", "").strip()
+            if op and not _is_immediate(op):
+                if op not in seen_out:
+                    seen_out.add(op)
+                    outputs.append(op)
+                if op not in seen_ref:
+                    seen_ref.add(op)
+                    refs.append(op)
+        elif tag in ("Block", "Function"):
+            btype = child.get("Type", "")
+            if btype and btype not in instrs:
+                instrs.append(btype)
+            op = child.get("Operand", "").strip()
+            if op and not _is_immediate(op) and op not in seen_ref:
+                seen_ref.add(op)
+                refs.append(op)
+            # Nested Array operands (e.g. StorageArray, WeightArray on MAVE)
+            for sub in child:
+                sub_op = sub.get("Operand", "").strip()
+                if sub_op and not _is_immediate(sub_op) and sub_op not in seen_ref:
+                    seen_ref.add(sub_op)
+                    refs.append(sub_op)
+
+    return Rung(
+        number=number,
+        text="",
+        refs=refs,
+        outputs=outputs,
+        instructions=instrs,
+        provenance=_prov(src, "%s/%s/FBDSheet[%d]" % (prog_name, routine_name, number)),
     )
 
 

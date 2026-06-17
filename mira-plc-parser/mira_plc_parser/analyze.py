@@ -102,6 +102,9 @@ def analyze(proj: PLCProject) -> AnalysisReport:
             len(aoi.local_tags) for c in proj.controllers for aoi in c.aoi_definitions
         ),
         "module_definitions": sum(len(c.module_definitions) for c in proj.controllers),
+        "fbd_sheets": sum(
+            len(r.rungs) for _, r in proj.all_routines() if r.type == "FBD"
+        ),
         "outputs": len(rep.output_dependencies),
         "fault_candidates": len(rep.fault_candidates),
         "asset_candidates": len(rep.asset_candidates),

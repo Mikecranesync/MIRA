@@ -234,6 +234,7 @@ class Extraction:
     aoi_parameters: int = 0
     aoi_local_tags: int = 0
     modules: int = 0
+    fbd_sheets: int = 0
     # False-positive flag: parser extracted Context tags instead of Target
     context_leak: int = 0    # number of Context tags incorrectly surfaced as output
 
@@ -315,6 +316,7 @@ def coverage_report(text: str, source_file: str = "") -> CoverageReport:
         aoi_parameters=rep.counts.get("aoi_parameters", 0),
         aoi_local_tags=rep.counts.get("aoi_local_tags", 0),
         modules=rep.counts.get("module_definitions", 0),
+        fbd_sheets=rep.counts.get("fbd_sheets", 0),
     )
 
     # Detect false positives: parser extracted Context tags when the Target
@@ -367,9 +369,13 @@ def coverage_report(text: str, source_file: str = "") -> CoverageReport:
     elif "module" in tt_lower:
         report.coverage_pct = _pct(ext.modules, available_modules)
     else:
-        # Routine/Program/unknown — effective extraction after removing context leak
+        # Routine/Program/unknown — effective extraction after removing context leak.
+        # Use only the program's own tags (ctrl_tags_target + prog_tags); exclude
+        # aoi_parameters and aoi_local_tags which belong to context AOI definitions
+        # bundled as supporting references, not as the export's target content.
         real_tags = max(0, ext.tags - ext.context_leak)
-        report.coverage_pct = _pct(real_tags, available_tags) if available_tags > 0 else (
+        prog_available = inv.ctrl_tags_target + inv.prog_tags
+        report.coverage_pct = _pct(real_tags, prog_available) if prog_available > 0 else (
             _pct(ext.routines, available_routines)
         )
 
@@ -388,7 +394,8 @@ def coverage_report(text: str, source_file: str = "") -> CoverageReport:
         gaps.append("%d Module element%s — not parsed (hardware topology invisible)"
                     % (inv.ctrl_modules, "s" if inv.ctrl_modules > 1 else ""))
     fbd_routines = [r for r in inv.routines if r.type == "FBD"]
-    if fbd_routines:
+    fbd_sheet_count = sum(r.sheet_count for r in fbd_routines)
+    if fbd_routines and fbd_sheet_count > 0 and ext.fbd_sheets == 0:
         gaps.append("%d FBD routine%s (FBDContent) — silently skipped"
                     % (len(fbd_routines), "s" if len(fbd_routines) > 1 else ""))
     sfc_routines = [r for r in inv.routines if r.type == "SFC"]
