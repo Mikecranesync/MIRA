@@ -181,6 +181,15 @@ function buildSystemPrompt(asset: Record<string, unknown>): string {
 - If the question involves lockout/tagout, arc flash, confined space, or electrical safety, stop and instruct the tech to follow site safety procedures before proceeding.`;
 }
 
+// Light PII scrub for the persisted question (mirrors the engine's intent —
+// IP/MAC out of stored troubleshooting context). The question already went to
+// the LLM providers; this only governs what we write to our own trace store.
+function sanitizePII(text: string): string {
+  return text
+    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g, "[IP]")
+    .replace(/\b(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}\b/g, "[MAC]");
+}
+
 // ── Route handler ──────────────────────────────────────────────────────────
 export async function POST(
   req: Request,
@@ -194,6 +203,7 @@ export async function POST(
   if (ctx instanceof NextResponse) return ctx;
 
   const { id } = await params;
+  const startedAt = Date.now();
 
   let body: { messages?: ChatMessage[] };
   try {
@@ -293,10 +303,17 @@ export async function POST(
   const providers = getProviders();
 
   const conversationId = crypto.randomUUID();
+  // Stable id for this answer's decision trace; emitted to the client up-front
+  // (before any [DONE]) and used as the PK of the row written at stream end.
+  const traceId = crypto.randomUUID();
   const responseBuffer: string[] = [];
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      // Emit the trace id up-front (before any [DONE]) so the client can later
+      // open "Why MIRA Thinks This". The row itself is written at stream end.
+      controller.enqueue(enc.encode(`data: ${JSON.stringify({ traceId })}\n\n`));
+
       // Emit retrieved sources up front so the UI can render citation chips
       // alongside the streaming answer.
       if (manualSources.length > 0) {
@@ -306,10 +323,14 @@ export async function POST(
       }
 
       let served = false;
+      let servedBy: string | null = null;
       for (const provider of providers) {
         try {
           served = await streamFromProvider(provider, fullMessages, controller, enc, responseBuffer);
-          if (served) break;
+          if (served) {
+            servedBy = provider.name;
+            break;
+          }
         } catch {
           // cascade
         }
@@ -328,6 +349,45 @@ export async function POST(
       if (safetyAlert) {
         controller.enqueue(enc.encode(safetyAlertSseChunk(safetyAlert)));
         handleSafetyAlert(safetyAlert, ctx.tenantId).catch(() => {});
+      }
+
+      // Persist a decision trace so this answer can be explained via the
+      // "Why MIRA Thinks This" panel. Best-effort: never block/break the stream.
+      try {
+        const manualEvidence = manualChunks.map((mc) => ({
+          doc:
+            [mc.manufacturer, mc.modelNumber].filter(Boolean).join(" ") ||
+            mc.title ||
+            mc.sourceUrl ||
+            "OEM document",
+          page: mc.sourcePage,
+          url: mc.sourceUrl || null,
+          rank: mc.rank,
+        }));
+        const grounded = manualSources.length > 0;
+        await withTenantContext(ctx.tenantId, (c) =>
+          c.query(
+            `INSERT INTO decision_traces
+               (trace_id, tenant_id, platform, user_question, manual_evidence,
+                recommendation, citations_present, confidence, outcome,
+                model_used, latency_ms)
+             VALUES ($1, $2, 'hub', $3, $4::jsonb, $5, $6, $7, $8, $9, $10)`,
+            [
+              traceId,
+              ctx.tenantId,
+              sanitizePII(lastUser.content),
+              JSON.stringify(manualEvidence),
+              fullResponse,
+              grounded,
+              grounded ? "medium" : "low",
+              grounded ? "resolved" : "kb_gap",
+              servedBy,
+              Date.now() - startedAt,
+            ],
+          ),
+        );
+      } catch {
+        // non-fatal: the panel simply won't be available for this answer
       }
 
       controller.close();

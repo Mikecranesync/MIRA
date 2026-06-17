@@ -3,6 +3,15 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.27.0 (2026-06-17) — feat(mira): "Why MIRA Thinks This" decision-trace panel (Phase 2)
+- **Northstar alignment Phase 2** (`docs/specs/why-mira-thinks-this-spec.md`, PRD §11). Every Hub `AssetChat` answer can now expand into an evidence + confidence + missing-context + feedback panel, turning MIRA into a *challengeable* agent.
+- **`mira-hub/src/app/api/assets/[id]/chat/route.ts`** — the Hub chat route now writes its own `decision_traces` row (`platform='hub'`) at stream end (best-effort, never blocks the stream) and emits the `trace_id` up-front over SSE. (The Hub chat previously wrote no trace at all — only the engine surfaces did.)
+- **`mira-hub/src/app/api/decision-trace/[id]/route.ts`** (new) — tenant-scoped read API (`withTenantContext`; cross-tenant → 404).
+- **`mira-hub/src/app/api/decision-trace/[id]/feedback/route.ts`** (new) — `POST` records trace-linked feedback (`good`/`bad`/`missing_context`/`needs_review`); the trace must belong to the caller's tenant.
+- **`mira-hub/src/components/WhyMiraThinksThis.tsx`** (new) + **`AssetChat.tsx`** — the expandable panel, in house style. Renders **only real data** (manual/tag/KG evidence, citations badge, heuristic confidence, `outcome='kb_gap'`→missing-context); PRD §11 `decision_path`/`context_ignored`/`next_check` are **deferred (Phase 2.1)** and intentionally not faked.
+- **`mira-hub/db/migrations/055_decision_trace_confidence_and_feedback.sql`** (new) — adds `decision_traces.confidence` + the `decision_trace_feedback` table (UUID tenant family; RLS + grants; idempotent). Seeds Phase 10 (feedback consolidation).
+- Tests: 7 new vitest route tests (tenant-scoping 404s, verdict validation, ownership checks). Full Hub unit suite green (719 passing; 1 pre-existing unrelated `sitemap-drift` failure).
+
 ### v3.26.1 (2026-06-17) — security(ignition): customer-shipped Ignition bundle is read-only (no plant writes)
 - **`ignition/project/com.inductiveautomation.perspective/`** — removed all `system.tag.writeBlocking` plant-write paths from the customer-shipped Perspective bundle, per `docs/mira-ignition-secure-architecture.md` ("read-only by default") and `.claude/rules/fieldbus-readonly.md`. VFD control (speed setpoint, FWD/STOP/REV, fault reset) is **bench-only** — it lives in `plc/live_monitor.py` / the ConvSimpleLive bench project, never in the shipped bundle.
   - **SpeedControl** view (pure VFD control: speed slider/numeric + FWD/STOP/REV writing `VFD_CmdWord`) **removed** from the bundle — view deleted + dropped from `page-config/config.json` and the `NavBar`. It was never in the intended read-only bundle (`ConveyorStatus`/`Chat`/`FaultLog`/`NavBar`).

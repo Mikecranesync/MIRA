@@ -4,12 +4,14 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Bot, Send, AlertTriangle, RotateCcw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/config";
+import WhyMiraThinksThis from "@/components/WhyMiraThinksThis";
 
 interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   isSafetyStop?: boolean;
+  traceId?: string;
 }
 
 interface AssetChatProps {
@@ -57,15 +59,18 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
           <Bot className="w-3.5 h-3.5" style={{ color: "var(--brand-blue)" }} />
         )}
       </div>
-      <div
-        className="flex-1 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm whitespace-pre-wrap"
-        style={{
-          background: isSafety ? "#FEF2F2" : "var(--surface-1)",
-          color: isSafety ? "#991B1B" : "var(--foreground)",
-          border: isSafety ? "1px solid #FECACA" : "1px solid var(--border)",
-        }}
-      >
-        {msg.content || <span style={{ color: "var(--foreground-subtle)" }}>…</span>}
+      <div className="flex-1 min-w-0">
+        <div
+          className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm whitespace-pre-wrap"
+          style={{
+            background: isSafety ? "#FEF2F2" : "var(--surface-1)",
+            color: isSafety ? "#991B1B" : "var(--foreground)",
+            border: isSafety ? "1px solid #FECACA" : "1px solid var(--border)",
+          }}
+        >
+          {msg.content || <span style={{ color: "var(--foreground-subtle)" }}>…</span>}
+        </div>
+        {msg.traceId && !isSafety && <WhyMiraThinksThis traceId={msg.traceId} />}
       </div>
     </div>
   );
@@ -168,13 +173,24 @@ export function AssetChat({ assetId, assetName, assetTag }: AssetChatProps) {
           const data = trimmed.slice(5).trim();
           if (data === "[DONE]") break;
           try {
-            const parsed = JSON.parse(data) as { content?: string };
+            const parsed = JSON.parse(data) as { content?: string; traceId?: string };
             if (parsed.content) {
               setMessages((prev) => {
                 const next = [...prev];
                 const last = next[next.length - 1];
                 if (last && last.role === "assistant") {
                   next[next.length - 1] = { ...last, content: last.content + parsed.content };
+                }
+                return next;
+              });
+            }
+            if (parsed.traceId) {
+              const tid = parsed.traceId;
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last && last.role === "assistant") {
+                  next[next.length - 1] = { ...last, traceId: tid };
                 }
                 return next;
               });
