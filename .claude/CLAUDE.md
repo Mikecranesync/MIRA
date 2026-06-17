@@ -206,6 +206,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - `docs/THEORY_OF_OPERATIONS.md` — primary product doctrine
 - `docs/specs/maintenance-namespace-builder-spec.md` — UNS gate, AI proposals, readiness levels (subsumes the older `uns-message-resolver-spec.md` reference)
 - `docs/plans/2026-05-15-maintenance-namespace-builder.md` — phased execution
+- `docs/RESUME_2026-06-14_maintenance-intelligence-module.md` — the self-onboarding Ignition module ("detect AND explain": in-gateway A0–A12 anomaly detection + grounded Ask MIRA + auto-classify install). Phase 1 done (`83ea8e81`); rules in `plc/conv_simple_anomaly/rules_core.py` (dual Py2.7/3.12) + `ignition/webdev/FactoryLM/api/diagnose/`. The HMI deployment surface, productized.
 - `.claude/rules/uns-compliance.md` — UNS data-shape enforcement
 - `.claude/rules/uns-confirmation-gate.md` — chat-surface UNS gate (Slack/Telegram/email/web)
 - `.claude/rules/direct-connection-uns-certified.md` — direct-connection UNS certification (Ignition/MQTT/PLC/Hub/QR)

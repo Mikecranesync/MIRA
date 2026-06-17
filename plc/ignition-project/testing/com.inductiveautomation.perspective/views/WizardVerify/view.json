@@ -1,0 +1,105 @@
+{
+  "custom": {
+    "verifyRan": false,
+    "verifyCount": 0,
+    "verifyGood": 0,
+    "verifyBad": 0
+  },
+  "params": {
+    "assetId": "conveyor",
+    "folder": "[default]",
+    "pollMs": 2000
+  },
+  "props": { "defaultSize": { "width": 1360, "height": 980 } },
+  "root": {
+    "type": "ia.container.flex",
+    "meta": { "name": "root" },
+    "props": { "direction": "column", "style": { "backgroundColor": "#0d1117", "height": "100%" } },
+    "children": [
+      {
+        "type": "ia.container.flex", "meta": { "name": "header" }, "position": { "basis": "52px", "shrink": 0 },
+        "props": { "direction": "row", "alignItems": "center", "style": { "backgroundColor": "#161b22", "borderBottom": "1px solid #30363d", "padding": "0 18px", "gap": "14px" } },
+        "children": [
+          { "type": "ia.display.label", "meta": { "name": "brand" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "VFD ANALYZER — SETUP", "style": { "color": "#e6edf3", "fontSize": "16px", "fontWeight": 700, "letterSpacing": "0.08em" } } },
+          { "type": "ia.display.label", "meta": { "name": "assetLbl" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "asset", "style": { "color": "#8b949e", "fontSize": "13px" } }, "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "\"asset: \" + {session.custom.assetId} + \"     source: \" + runScript(\"mira_setup.get_setup_folder\", 0)" } } } } }
+        ]
+      },
+      {
+        "type": "ia.container.flex", "meta": { "name": "steps" }, "position": { "basis": "42px", "shrink": 0 },
+        "props": { "direction": "row", "alignItems": "stretch", "style": { "backgroundColor": "#0d1117", "padding": "8px 14px", "gap": "8px" } },
+        "children": [
+          { "type": "ia.display.label", "meta": { "name": "sp1" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "1  Connect ✓", "style": { "color": "#7ee787", "backgroundColor": "#1a4d2e", "fontSize": "13px", "fontWeight": 600, "borderRadius": "8px", "textAlign": "center", "padding": "6px 0" } } },
+          { "type": "ia.display.label", "meta": { "name": "sp2" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "2  VERIFY", "style": { "color": "#fff", "backgroundColor": "#1f6feb", "fontSize": "13px", "fontWeight": 700, "borderRadius": "8px", "textAlign": "center", "padding": "6px 0" } } },
+          { "type": "ia.display.label", "meta": { "name": "sp3" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "3  Map", "style": { "color": "#8b949e", "backgroundColor": "#21262d", "fontSize": "13px", "fontWeight": 600, "borderRadius": "8px", "textAlign": "center", "padding": "6px 0" } } },
+          { "type": "ia.display.label", "meta": { "name": "sp4" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "4  Save", "style": { "color": "#8b949e", "backgroundColor": "#21262d", "fontSize": "13px", "fontWeight": 600, "borderRadius": "8px", "textAlign": "center", "padding": "6px 0" } } }
+        ]
+      },
+      {
+        "type": "ia.container.flex", "meta": { "name": "content" }, "position": { "grow": 1, "shrink": 1 },
+        "props": { "direction": "column", "style": { "padding": "16px 18px", "gap": "12px", "overflow": "hidden" } },
+        "children": [
+          { "type": "ia.display.label", "meta": { "name": "title" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "Is the source live?", "style": { "color": "#e6edf3", "fontSize": "22px", "fontWeight": 700 } } },
+          { "type": "ia.display.label", "meta": { "name": "subtitle" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "Test the folder before mapping. We'll show how many tags are there and whether they're reading good live values.", "style": { "color": "#8b949e", "fontSize": "14px" } } },
+          {
+            "type": "ia.container.flex", "meta": { "name": "testRow" }, "position": { "basis": "auto", "shrink": 0 },
+            "props": { "direction": "row", "alignItems": "center", "style": { "gap": "14px" } },
+            "children": [
+              {
+                "type": "ia.input.button", "meta": { "name": "testBtn" }, "position": { "basis": "210px", "shrink": 0 },
+                "props": { "text": "⟳ Test data source", "style": { "backgroundColor": "#1f6feb", "color": "#fff", "fontSize": "15px", "fontWeight": 700, "borderRadius": "8px", "border": "none", "padding": "12px" } },
+                "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tfolder = mira_setup.get_setup_folder() or \"[default]\"\n\ts = mira_setup.verify_summary(folder)\n\tself.view.custom.verifyCount = s['count']\n\tself.view.custom.verifyGood = s['good']\n\tself.view.custom.verifyBad = s['bad']\n\tself.view.custom.verifyRan = True\n" } } } }
+              },
+              {
+                "type": "ia.display.label", "meta": { "name": "summary" }, "position": { "grow": 1, "shrink": 1 },
+                "props": { "text": "Click Test data source to scan the folder.", "style": { "color": "#8b949e", "fontSize": "18px", "fontWeight": 700 } },
+                "propConfig": {
+                  "props.text": { "binding": { "type": "expr", "config": { "expression": "if({view.custom.verifyRan}, \"Found \" + {view.custom.verifyCount} + \" tags   —   \" + {view.custom.verifyGood} + \" good, \" + {view.custom.verifyBad} + \" bad\", \"Click Test data source to scan the folder.\")" } } },
+                  "props.style.color": { "binding": { "type": "expr", "config": { "expression": "if({view.custom.verifyRan} && {view.custom.verifyGood} >= 1, \"#1a7f37\", if({view.custom.verifyRan}, \"#f0a90e\", \"#8b949e\"))" } } }
+                }
+              }
+            ]
+          },
+          {
+            "type": "ia.display.markdown", "meta": { "name": "breakdown" }, "position": { "basis": "30px", "shrink": 0 },
+            "props": { "source": "", "style": { "backgroundColor": "#0d1117", "color": "#c9d1d9", "fontSize": "14px", "padding": "2px 4px" } },
+            "propConfig": { "props.source": { "binding": { "type": "expr", "config": { "expression": "if({view.custom.verifyRan}, runScript(\"mira_setup.verify_breakdown_md\", 0, runScript(\"mira_setup.get_setup_folder\", 0)), \"\")" } } } }
+          },
+          { "type": "ia.display.label", "meta": { "name": "sampleLbl" }, "position": { "basis": "20px", "shrink": 0 }, "props": { "text": "LIVE SAMPLE  (watch the values move)", "style": { "color": "#8b949e", "fontSize": "11px", "fontWeight": 700, "letterSpacing": "0.08em" } } },
+          {
+            "type": "ia.display.table", "meta": { "name": "sampleTable" }, "position": { "grow": 1, "shrink": 1 },
+            "props": {
+              "data": [],
+              "columns": [
+                { "field": "path", "header": { "title": "Tag" }, "align": "left" },
+                { "field": "type", "header": { "title": "Type" }, "align": "left" },
+                { "field": "value", "header": { "title": "Live value" }, "align": "left" },
+                { "field": "quality", "header": { "title": "Quality" }, "align": "left" }
+              ],
+              "rows": { "pageSize": 0 },
+              "style": { "border": "1px solid #30363d", "borderRadius": "8px", "fontSize": "14px" }
+            },
+            "propConfig": { "props.data": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.verify_sample\", {session.custom.pollMs}, runScript(\"mira_setup.get_setup_folder\", 0))" } } } }
+          }
+        ]
+      },
+      {
+        "type": "ia.container.flex", "meta": { "name": "footer" }, "position": { "basis": "60px", "shrink": 0 },
+        "props": { "direction": "row", "alignItems": "center", "style": { "backgroundColor": "#161b22", "borderTop": "1px solid #30363d", "padding": "0 18px", "gap": "12px" } },
+        "children": [
+          {
+            "type": "ia.input.button", "meta": { "name": "back" }, "position": { "basis": "140px", "shrink": 0 },
+            "props": { "text": "◂ Back", "style": { "backgroundColor": "#30363d", "color": "#c9d1d9", "fontSize": "14px", "borderRadius": "8px", "border": "none", "padding": "11px" } },
+            "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tp = {\"assetId\": self.session.custom.assetId, \"folder\": mira_setup.get_setup_folder(), \"pollMs\": self.session.custom.pollMs}\n\tsystem.perspective.navigate(page=\"/setup\")\n" } } } }
+          },
+          { "type": "ia.display.label", "meta": { "name": "fspacer" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "Step 2 of 4 — Verify", "style": { "color": "#6e7d90", "fontSize": "13px", "textAlign": "center" } }, "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "if({view.custom.verifyRan}, \"Step 2 of 4 — Verify\", \"Click ‘Test data source’ above to continue →\")" } } }, "props.style.color": { "binding": { "type": "expr", "config": { "expression": "if({view.custom.verifyRan}, \"#6e7d90\", \"#f0a90e\")" } } } } },
+          {
+            "type": "ia.input.button", "meta": { "name": "next" }, "position": { "basis": "200px", "shrink": 0 },
+            "props": { "text": "Next: Map ▸", "enabled": false, "style": { "backgroundColor": "#238636", "color": "#fff", "fontSize": "15px", "fontWeight": 700, "borderRadius": "8px", "border": "none", "padding": "11px" } },
+            "propConfig": { "props.enabled": { "binding": { "type": "expr", "config": { "expression": "{view.custom.verifyRan} && {view.custom.verifyGood} >= 1" } } } },
+            "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tp = {\"assetId\": self.session.custom.assetId, \"folder\": mira_setup.get_setup_folder(), \"pollMs\": self.session.custom.pollMs}\n\tsystem.perspective.navigate(page=\"/map\")\n" } } } }
+          }
+        ]
+      }
+    ]
+  }
+}

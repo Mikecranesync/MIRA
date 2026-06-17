@@ -1,4 +1,77 @@
-# Hot Cache — 2026-06-08 — CHARLIE
+# Hot Cache — 2026-06-12 — PLC laptop
+
+## Session — 2026-06-13 (Trends V2 layer-1 CORRECTED — built on the REAL Prog_init)
+
+**Mike caught a version mismatch mid-walkthrough; verified against the live CCW project.**
+The deployed **Conv_Simple_1.8** runs **Prog1 (ladder I/O) + Prog_init (ST comms, V1.8) on
+Channel 2** — NOT a monolithic "Prog2" ST on Channel 0. The repo `plc/Prog2.stf` /
+`Micro820_v4.1.9_Program.st` are a dead pre-1.8 lineage. My 2026-06-12b "deployed = v5.0.0
+Channel 0" claim was **backwards**; live is Channel 2 (serial_sniff 2026-05-26). Fixed the
+`feedback_micro820_channel0` memory (was asserting Channel 0).
+
+**Rebuilt layer 1 (commit after `35c0549b`):**
+- `plc/Prog_init_ConvSimple_v1.9.st` — extends the REAL V1.8 POU. **Option C** tiered polling
+  (researched industry standard — flowfuse/dpstele): one MSG per 500ms tick on shared Ch2, so
+  monitor block keeps 2 of 3 read-ticks (~1.5s; faults+freq/current/DC-bus), torque/rpm + power
+  interleaved (~6s); **writes unchanged ~1Hz**. Keeps bench-proven **Addr = wire+1** off-by-one.
+  Splits 0x2100 → fault(low)/warn(high), captures 0x2102 freq-cmd echo, latches vfd_last_fault
+  (operator clear coil 24).
+- `plc/MbSrvConf_ConvSimple_v1.9.xml` — surgical superset of the LIVE map (Version 2.0, 13 coils
+  + 5 HRs) + 8 new HRs (offsets 117-124 = HR_SPECS) + clear coil. Drops v4-lineage vars that may
+  not exist in 1.8. Dry-run verified vs the live project.
+- `plc/CCW_VARIABLES_ConvSimple_v1.9_DELTA.md` — real CCW types + the deploy sequence.
+- Removed the wrong `Micro820_v5.1.0_Program.st` / `MbSrvConf_v5.1.xml` / v5.1.0 delta.
+- Layers 2+3 unchanged (48 pytest / 41 node green; offsets line up). Historian left RUNNING.
+- **Next:** Mike runs the delta-doc deploy sequence on Conv_Simple_1.8 (declare 17 vars → paste
+  Prog_init V1.9 → build/download/Run), then live acceptance (freq-scale check).
+
+## Session — 2026-06-12b (Trends V2 — SUPERSEDED by the 2026-06-13 correction above)
+
+**Shipped (commits `215f0f2a` + `9cda0169`, branch `docs/plc-1668-feed-resume`):**
+- **Layer 2 (historian):** `live_logger.py` HR_SPECS 117–124 (`vfd_status_word`/`error_code`/
+  `warn_code`/`freq_cmd`÷100/`torque_pct`÷10/`motor_rpm`/`power_kw`÷1000/`last_fault`);
+  `trend_accumulator.py` units + `torque_hi_pct` 150% threshold + rpm-lags-cmd slip note.
+  48/48 pytest. Tags silently absent until reflash. ⚠ plan said power ÷100 — manual says
+  X.XXX kW (÷1000); manual won.
+- **Layer 3 (viewer):** `mira-trend-viewer/js/adapters/gs10.js` — REAL GS10 tables transcribed
+  from `conveyor-evidence/manuals/GS10_UM.pdf` (faults p5-4, warning IDs ch6 — warn ids ≠ fault
+  ids! CE10 warn=5 fault=58; SM2 bits p4-196). New WORD `fields` decode for the 2-bit packed
+  enums (op_status, direction) → ENUM child lanes; single-bit decode would lie. 41/41 node tests.
+- **Layer 1 PREP (flash-ready, Mike's CCW step remains):** `plc/Micro820_v5.1.0_Program.st` —
+  based on DEPLOYED v5.0.0 `Prog2.stf` (Channel 0!), NOT the stale v4.1.9 .st (Channel 2 +
+  bogus SM2 bit-13-fault comment). Step-1 read widened to 0x2100×7; SM1 byte-split feeds
+  vfd_fault_code (red light finally live) + vfd_warn_code; last-fault latch w/ operator clear
+  coil C24; steps 5/6 read torque/rpm (0x210B×2) + power (0x210F×1). `plc/MbSrvConf_v5.1.xml`
+  24 coils + 25 HRs (vfd_* = Word per deployed CCW truth); `deploy_modbus_map.py` dry-run
+  verified vs `CCW/MIRA_PLC/Conv_Simple_1.8`. Sequence: `plc/CCW_VARIABLES_v5.1.0_DELTA.md`.
+- **Next:** Mike runs the delta-doc deploy sequence (stop historian → deploy map → declare vars
+  → paste v5.1.0 → flash). Then live acceptance per the plan doc (freq-cmd-vs-actual scale
+  check step 6!) + screenshots. Same flash wakes dormant A2/A12.
+
+## Session — 2026-06-12 (trend-viewer v2 — last-fault + status-bit decode + Perspective embed)
+
+**Shipped (commit `a55bf2f3`, branch `docs/plc-1668-feed-resume`, 33/33 node tests):**
+- `mira-trend-viewer/` v2: per-VFD `last_fault` ENUM register (persists trip cause after
+  `fault_code` resets — the intermittent-trip workhorse); status-word **bit decode** — a WORD
+  tag declaring `bits:{0:"Running",5:"Faulted",…}` expands ONCE in the store (like scaling)
+  into named boolean child tags, each an indented checkbox row + digital step lane, parent
+  updates fan out with honest null/quality.
+- **Perspective wiring:** `trend_historian.py` now mounts the viewer at `/viewer` (same origin
+  as `/trends/summary` → no CORS, no extra server); `app.js` auto-targets the serving origin;
+  `Trends/TrendPanel` embeds `/viewer/index.html?source=historian` alongside Ask MIRA (route
+  `/trends` + NavBar TRENDS unchanged). Deploy to gateway: `ignition\deploy_ignition.ps1`.
+- Verified: live browser check (Fault Code "No fault" + Last Fault "ocA"; 0x0007 →
+  Running/At Speed/Ready ON) + smoke of `/viewer` mount on scratch port 8799; promo screenshots
+  in `docs/promo-screenshots/2026-06-12_trend-viewer-v2-*`.
+- **LIVE DEPLOY (same day, tagged `trends-v1` / MIRA_PLC `trends-hmi-v1`):** the real gateway
+  project is **ConvSimpleLive** (NOT monorepo `ignition/project/` ConveyorMIRA — never loads on
+  8.3.4; `ia.display.webBrowser` isn't a Perspective component, `ia.display.iframe` is).
+  Shipped + browser-verified: `/trends` page + **≋ TRENDS toggle buttons** (Ask-MIRA popup
+  pattern) on Conveyor + home; DC bus 321.6 V GOOD drawing live in the popup. Source:
+  `CCW/MIRA_PLC/ignition/ConvSimpleLive` @ `a3f79b0`; deploy = `gsudo APPLY_TRENDS.cmd`.
+- **Next: Trends V2 — full GS10 monitoring.** Plan: `docs/plans/2026-06-12-trends-v2-full-vfd-monitoring.md`;
+  resume prompt: `plc/RESUME_TRENDS_V2.md`. Blocked on the slave-map reflash for layer 1;
+  layers 2–3 (historian HR_SPECS/UNITS + viewer GS10 bits/fault tables) buildable now.
 
 ## ⭐ MASTER GTM CHECKLIST — `docs/gtm/go-to-market-hardening-checklist.md`
 
