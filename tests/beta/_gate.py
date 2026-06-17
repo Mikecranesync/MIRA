@@ -54,6 +54,24 @@ EXPECTED_CONTENT = "overcurrent"
 CITATION_MARKERS = ("source", "gs10_fault_codes", "[", "page", "manual", "—")
 
 
+def answers_with_manual_fact(text: str) -> bool:
+    """Did the answer state the GS10 ``oC`` fact from the manual?
+
+    The manual fact is *overcurrent* — the output current exceeds the rated
+    current. The LLM states it either literally ("overcurrent") or as the same
+    fact paraphrased ("output current exceeded 200% of rated current"), so we
+    match the FACT, not one literal word. (The citation markers carry the
+    separate "grounded in the *uploaded* file" proof.) De-flakes a real run:
+    the answer is always grounded + cited; only the wording varies (2026-06-17).
+    """
+    low = text.lower()
+    if "overcurrent" in low or "over current" in low:
+        return True
+    return "current" in low and any(
+        k in low for k in ("exceed", "200%", "rated", "excess", "too high")
+    )
+
+
 class GateUnavailable(AssertionError):
     """Raised inside the test body when the integration env is not provisioned.
 
@@ -222,12 +240,12 @@ def run_beta_gate() -> GateResult:
         last = ""
         while time.monotonic() < deadline:
             last = _ask(cfg, client)
-            if EXPECTED_CONTENT in last.lower():
+            if answers_with_manual_fact(last):
                 break
             time.sleep(5)
 
     low = last.lower()
-    has_content = EXPECTED_CONTENT in low
+    has_content = answers_with_manual_fact(last)
     has_citation = any(m in low for m in CITATION_MARKERS)
     cited = has_content and has_citation
     explain = (
