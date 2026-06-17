@@ -202,7 +202,8 @@ def _format_tag_preamble(tag_snapshot: dict[str, Any], asset_id: str) -> str:
     """Render the tag snapshot as a short, deterministic preamble the engine can read.
 
     Keep it compact — the engine adds RAG context separately. Sort keys for
-    reproducibility in tests.
+    reproducibility in tests. Renders units and data_type when enriched by
+    _enrich_tag_snapshot_with_semantics.
     """
     if not tag_snapshot:
         return ""
@@ -214,11 +215,82 @@ def _format_tag_preamble(tag_snapshot: dict[str, Any], asset_id: str) -> str:
         if isinstance(entry, dict):
             value = entry.get("value", "")
             quality = entry.get("quality", "")
-            lines.append(f"  {path} = {value} ({quality})")
+            units = entry.get("units")
+            data_type = entry.get("data_type")
+            units_str = f" {units}" if units else ""
+            dtype_str = f" · {data_type}" if data_type else ""
+            lines.append(f"  {path} = {value}{units_str} ({quality}{dtype_str})")
         else:
             lines.append(f"  {path} = {entry}")
     lines.append("[END LIVE TAGS]")
     return "\n".join(lines)
+
+
+async def _enrich_tag_snapshot_with_semantics(
+    tag_snapshot: dict[str, Any], tenant_id: str
+) -> dict[str, Any]:
+    """Join verified tag_entities rows to add units and data_type to the snapshot.
+
+    Fails open — returns the raw snapshot unchanged when NEON_DATABASE_URL is
+    unset or the DB is unreachable. Only 'verified' rows contribute; proposed
+    mappings must never influence live diagnostic answers (grounded troubleshooting
+    doctrine, .claude/CLAUDE.md §"Component profiles").
+
+    Join key: tag_entities.source_address. Phase 1's tag_classifier MUST write
+    the Ignition browse path (e.g. '[default]Bench/Motor/Speed') into source_address
+    for this join to match. The idx_tag_entities_source_address index covers this
+    lookup (migration 025).
+    """
+    if not tag_snapshot:
+        return tag_snapshot
+    neon_url = os.getenv("NEON_DATABASE_URL", "")
+    if not neon_url:
+        return tag_snapshot
+
+    tag_paths = list(tag_snapshot.keys())
+    try:
+        from sqlalchemy import NullPool, create_engine, text
+
+        _engine = create_engine(
+            neon_url,
+            poolclass=NullPool,
+            connect_args={"sslmode": "require"},
+            pool_pre_ping=True,
+        )
+        try:
+            with _engine.connect() as conn:
+                rows = conn.execute(
+                    text(
+                        "SELECT source_address, units, data_type "
+                        "FROM tag_entities "
+                        "WHERE tenant_id::text = :tid "
+                        "  AND source_address = ANY(:paths) "
+                        "  AND approval_state = 'verified'"
+                    ),
+                    {"tid": tenant_id, "paths": tag_paths},
+                ).fetchall()
+        finally:
+            _engine.dispose()
+    except Exception:
+        logger.debug("_enrich_tag_snapshot: DB unavailable, enrichment skipped")
+        return tag_snapshot
+
+    enrichment: dict[str, dict[str, Any]] = {
+        row[0]: {k: v for k, v in {"units": row[1], "data_type": row[2]}.items() if v is not None}
+        for row in rows
+        if row[0]
+    }
+    if not enrichment:
+        return tag_snapshot
+
+    return {
+        path: (
+            {**entry, **enrichment[path]}
+            if isinstance(entry, dict) and path in enrichment
+            else entry
+        )
+        for path, entry in tag_snapshot.items()
+    }
 
 
 # ── Asset-agent deployment gate (train-before-deploy) ────────────────────────
@@ -365,7 +437,10 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
         asset_id = (req.asset_id or "").strip()
         chat_id = f"ignition:{tenant_id}:{asset_id or 'default'}"
 
-        preamble = _format_tag_preamble(req.tag_snapshot or {}, asset_id)
+        enriched_snapshot = await _enrich_tag_snapshot_with_semantics(
+            req.tag_snapshot or {}, tenant_id
+        )
+        preamble = _format_tag_preamble(enriched_snapshot, asset_id)
         message = f"{preamble}\n\n{question}" if preamble else question
 
         tag_reads = sorted((req.tag_snapshot or {}).keys())

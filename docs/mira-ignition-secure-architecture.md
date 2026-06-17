@@ -247,16 +247,16 @@ These are the anti-patterns that fall out of the architecture above. Each is a h
 
 Ordered. Each item is independently shippable.
 
-- [ ] **D1 — Allowlist enforcement** (`ignition/project/` + `ignition/webdev/FactoryLM/api/tags/doGet.py`). Add `approved_tags.json`, filter tag-browse to allowlist, reject `/chat` snapshots containing non-allowlisted paths. Add unit test in `ignition/tests/test_allowlist.py`.
-- [ ] **D2 — Repoint WebDev `/chat` to MIRA Cloud.** Change [`ignition/webdev/FactoryLM/api/chat/doPost.py:73`](ignition/webdev/FactoryLM/api/chat/doPost.py:73) from `http://localhost:5000/rag` to `https://api.factorylm.com/api/v1/ignition/chat`. Add HMAC signing. Env-var the URL.
-- [ ] **D3 — Cloud chat endpoint** `POST /api/v1/ignition/chat` in `mira-mcp` or `mira-hub` that takes `{query, asset_id, tag_snapshot, tenant_id, signed_with}`, calls `mira-bots/shared/engine.py` through the existing engine entrypoint, returns `{answer, sources, confidence, suggested_actions}`. Citation compliance flips to enforcing for this path.
-- [ ] **D4 — `mira-relay` HMAC upgrade.** Replace bearer token with HMAC+nonce+tenant header in [`mira-relay/relay_server.py:154`](mira-relay/relay_server.py:154). Keep bearer as a fallback for the existing bench bridge until D5 migrates it.
+- [x] **D1 — Allowlist enforcement** (`ignition/webdev/FactoryLM/api/tags/allowlist.py` — module-level allowlist with lazy cache, env-var path override, unit-testable in standard Python 3; integrated into `doGet.py`).
+- [x] **D2 — Repoint WebDev `/chat` to MIRA Cloud.** `ignition/webdev/FactoryLM/api/chat/doPost.py:54-57` reads `MIRA_CLOUD_URL` env var (default `https://api.factorylm.com/api/v1/ignition/chat`); HMAC signing live.
+- [x] **D3 — Cloud chat endpoint** `POST /api/v1/ignition/chat` — implemented as `mira-pipeline/ignition_chat.py` (300+ lines); UNS gate, tag snapshot ingestion, citation compliance enforcing.
+- [x] **D4 — `mira-relay` HMAC upgrade.** `mira-relay/relay_server.py:192-195` tries HMAC first (`X-MIRA-Signature` header + `verify_hmac()`); bearer retained as fallback per original plan.
 - [ ] **D5 — Move `plc/live-plc-bridge/bridge.py` out of the customer-shipped story.** Rename / fence under `bench/` or document it as "bench developer tool, never deployed". This is the bench harness, not the product. Update `docker-compose.fault-detective.yml` comments accordingly.
 - [ ] **D6 — Perspective ChatPanel view.** New view under `ignition/project/com.inductiveautomation.perspective/views/ChatPanel/resource.json`. Input box + answer pane with clickable citations.
 - [ ] **D7 — Audit log.** Append `(tenant_id, user, channel='ignition', prompt, sources_json, tag_reads, latency_ms)` for every chat round-trip. Surface via `/api/v1/audit` and a Perspective admin view.
-- [ ] **D8 — Tag-import wizard MVP slice.** CSV upload in Hub → `ai_suggestions` of type `tag_mapping` per [`docs/specs/maintenance-namespace-builder-spec.md`](specs/maintenance-namespace-builder-spec.md) §AI Pipeline. Manual approval in `/proposals`.
+- [x] **D8 — Tag-import wizard MVP slice.** `tag-import` wizard step + connector POST endpoint + `tag_mapping` accept/reject in `/api/proposals/[id]/decide` (commit `874f770a`). Tag snapshot semantic enrichment (`_enrich_tag_snapshot_with_semantics` joining `tag_entities.source_address` for verified rows) wired in `mira-pipeline/ignition_chat.py` (Phase 4a, unit-tested 9/9 green).
 - [ ] **D9 — Ignition Exchange manifest.** `ignition/EXCHANGE/manifest.json`, screenshots in `docs/promo-screenshots/`, install doc, license, listing copy.
-- [ ] **D10 — End-to-end bench test.** Single script that: deploys module, posts a chat, asserts grounded answer with citations + audit_log row. Lives in `tests/e2e/ignition_chat_roundtrip.py`.
+- [ ] **D10 — End-to-end bench test.** Single script that: deploys module, posts a chat, asserts grounded answer with citations + audit_log row. Lives in `tests/e2e/ignition_chat_roundtrip.py`. Script exists + skips cleanly without `MIRA_IGNITION_HMAC_KEY` + live pipeline; bench run needed to earn ✅.
 - [ ] **D11 — Sparkplug B subscriber spec** `docs/specs/sparkplug-uns-bridge-spec.md`. Design only, no code yet. Establishes `mira-connect` as the non-Ignition path.
 - [ ] **D12 — Document & ADR.** New ADR-0019 (or 0020) "Ignition-Module-First Edge Architecture" capturing the decisions in this doc as durable record.
 
