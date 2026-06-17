@@ -92,6 +92,38 @@ The 2026-06-10 investigation got the cause wrong by skipping this. Two rules:
 Read-only schema inspection of staging is the sanctioned check (`db-inspect.yml`,
 or psql against `factorylm/stg`). Never psql prod.
 
+## 7. Duplicate numeric prefixes are COSMETIC — do NOT renumber applied migrations
+
+`mira-hub/db/migrations/` has several duplicate-prefix pairs from parallel
+branches landing concurrently — e.g. `021_namespace_builder` + `021_pm_schedules_updated_at`,
+`025_kg_entities_natural_key` + `025_tag_entities`, `032_decision_traces` +
+`032_inferred_relationship_types`, `033_kg_query_traces` + `033_tag_events`. This
+looks like a bug. **It is not, and "renumber to fix it" is the actual footgun.**
+
+Why it's harmless — read what `apply-migrations.yml` actually does:
+- It discovers files with `ls "$MIG_DIR"/*.sql | sort` and tracks each in
+  `schema_migrations` by **full basename** (`migration_name varchar NOT NULL UNIQUE`,
+  inserted as `'$(basename "$f")'`). The numeric prefix is **not** the key.
+- So both files in a `NNN_` pair are distinct migrations, both run, each gets its
+  own ledger row. The shared prefix only affects **sort order**, broken
+  deterministically by the alphabetical suffix (`decision` < `inferred`). The
+  known pairs are independent feature areas with no cross-ordering dependency, so
+  order doesn't matter.
+
+Why renumbering is DANGEROUS:
+- The ledger key is the filename. Renaming `032_decision_traces.sql` →
+  `035_decision_traces.sql` makes the runner see a **new, unapplied** migration
+  (`035_…` isn't in `schema_migrations`) and **re-run it** on the next
+  `mode=apply migrations=all`. Safe only if the body is perfectly idempotent;
+  otherwise it errors or drifts. On an already-applied migration you gain nothing
+  and risk a re-run.
+
+**Rule:** leave duplicate-prefix files as-is. Pick the **next free integer** for a
+genuinely new migration (don't reuse a colliding number going forward), but never
+rename a migration that has already been applied to any environment. If ordering
+between two same-prefix files ever actually matters, encode it in the suffix, not
+by renumbering an applied file.
+
 ## When this applies
 - Any new or altered file under `mira-hub/db/migrations/`.
 - Any new Hub table/column that is tenant-scoped or RLS-protected.
