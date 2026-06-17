@@ -19,20 +19,87 @@ import csv
 import json
 from pathlib import Path
 
-from .correlate import correlate
+from .correlate import ASSET_GRAPH_SCHEMA, correlate
 from .discovery import scan
 
 
-def compile_folder(folder, asset_name=None, namespace_root="plc"):
-    """Discover -> parse -> fuse a folder of exports into one asset graph (augmented with discovery).
+def compile_folder(folder, asset_name=None, namespace_root="plc", asset_by="folder"):
+    """Discover -> parse -> fuse a folder of exports into a (possibly multi-asset) graph.
 
-    Returns (graph, items): the asset-graph dict and the raw discovery items.
+    A folder may hold more than one machine. Files are partitioned into assets (default: by
+    subfolder), each group is fused INDEPENDENTLY (so two machines that both have `motor_run` never
+    collapse), and the per-asset graphs are combined. A flat single-asset folder behaves as before.
+
+    Returns (graph, items): the combined asset-graph dict and the raw discovery items.
     """
     items = scan(folder)
-    parseable = [(it["name"], it["text"]) for it in items if it["classification"] == "parseable"]
-    graph = correlate(parseable, asset_name=asset_name, namespace_root=namespace_root)
-    graph["discovery"] = _discovery_summary(items)
-    return graph, items
+    parseable = [it for it in items if it["classification"] == "parseable"]
+    groups = _partition(parseable, asset_by)
+    multi = len(groups) > 1
+    graphs = []
+    for key in sorted(groups):
+        sources = [(it["name"], it["text"]) for it in groups[key]]
+        graphs.append(correlate(sources, asset_name=_group_asset_name(key, asset_name, multi),
+                                namespace_root=namespace_root))
+    return _combine(graphs, items), items
+
+
+def _partition(items, mode) -> dict:
+    """Group parseable items into assets. mode 'folder' (default) groups by subdirectory; 'file'
+    makes each file its own asset."""
+    groups: dict[str, list] = {}
+    for it in items:
+        if mode == "file":
+            key = it["rel"]
+        else:
+            parent = str(Path(it["rel"]).parent)
+            key = "" if parent == "." else parent
+        groups.setdefault(key, []).append(it)
+    return groups or {"": []}
+
+
+def _group_asset_name(key, asset_name, multi):
+    """Per-group asset name: a subfolder's basename when splitting a multi-asset folder; otherwise
+    the caller's --asset (or None, letting correlate use the parsed controller name)."""
+    if not multi:
+        return asset_name
+    return (Path(key).name if key else "") or asset_name or None
+
+
+def _combine(graphs, items) -> dict:
+    nodes, edges, assets, sources = [], [], [], []
+    for g in graphs:
+        aname = g["asset"]["name"]
+        for n in g["nodes"]:
+            n["asset"] = aname
+            nodes.append(n)
+        edges.extend(g["edges"])
+        sources.extend(g["sources"])
+        assets.append({"name": aname, "namespace": g["asset"]["namespace"],
+                       "element_id": g["asset"]["element_id"],
+                       "counts": g["counts"], "fusion": g["fusion"]})
+    return {"schema": ASSET_GRAPH_SCHEMA, "assets": assets, "sources": sources,
+            "nodes": nodes, "edges": edges, "counts": _counts(nodes, edges),
+            "fusion": _aggregate_fusion(graphs), "discovery": _discovery_summary(items)}
+
+
+def _counts(nodes, edges) -> dict:
+    nt, et = {}, {}
+    for n in nodes:
+        nt[n["type"]] = nt.get(n["type"], 0) + 1
+    for e in edges:
+        et[e["type"]] = et.get(e["type"], 0) + 1
+    return {"nodes": nt, "edges": et}
+
+
+def _aggregate_fusion(graphs) -> dict:
+    keys = ("signals", "typed", "name_only", "addressed", "multi_source",
+            "type_filled_by_fusion", "conflicts")
+    agg = {k: 0 for k in keys}
+    for g in graphs:
+        for k in keys:
+            agg[k] += g["fusion"].get(k, 0)
+    return agg
 
 
 def _discovery_summary(items) -> dict:
@@ -52,17 +119,17 @@ def _node_index(graph):
 
 
 def signals_rows(graph):
-    rows = [("name", "status", "data_type", "data_type_confidence", "address", "address_confidence",
-             "scope", "categories", "roles", "vfd_role", "review",
+    rows = [("asset", "name", "status", "data_type", "data_type_confidence", "address",
+             "address_confidence", "scope", "categories", "roles", "vfd_role", "review",
              "name_from", "type_from", "address_from", "description")]
     for n in graph["nodes"]:
         if n["type"] != "Signal":
             continue
         a, c, p = n["attributes"], n["confidence"], n["provenance"]
         rows.append((
-            n["name"], n["status"], a["data_type"], c["data_type"], a["address"], c["address"],
-            a["scope"], "|".join(n["categories"]), "|".join(a["roles"]), a["vfd_role"],
-            "yes" if n["review"] else "", "|".join(sorted(set(p["name_from"]))),
+            n.get("asset", ""), n["name"], n["status"], a["data_type"], c["data_type"],
+            a["address"], c["address"], a["scope"], "|".join(n["categories"]), "|".join(a["roles"]),
+            a["vfd_role"], "yes" if n["review"] else "", "|".join(sorted(set(p["name_from"]))),
             "|".join(sorted(set(p["type_from"]))), "|".join(sorted(set(p["address_from"]))),
             a["description"],
         ))
@@ -71,26 +138,26 @@ def signals_rows(graph):
 
 def registers_rows(graph):
     idx = _node_index(graph)
-    mapped: dict[str, list[str]] = {}
+    mapped: dict[tuple, list[str]] = {}
     for e in graph["edges"]:
         if e["type"] == "MAPPED_TO":
-            reg = idx[e["to"]]
-            mapped.setdefault(reg["name"], []).append(idx[e["from"]]["name"])
-    rows = [("address", "signal_count", "signals")]
-    for address in sorted(mapped):
-        sigs = sorted(mapped[address])
-        rows.append((address, str(len(sigs)), "|".join(sigs)))
+            reg, sig = idx[e["to"]], idx[e["from"]]
+            mapped.setdefault((reg.get("asset", ""), reg["name"]), []).append(sig["name"])
+    rows = [("asset", "address", "signal_count", "signals")]
+    for (asset, address) in sorted(mapped):
+        sigs = sorted(mapped[(asset, address)])
+        rows.append((asset, address, str(len(sigs)), "|".join(sigs)))
     return rows
 
 
 def edges_rows(graph):
     idx = _node_index(graph)
-    rows = [("type", "from_type", "from_name", "to_type", "to_name")]
+    rows = [("asset", "type", "from_type", "from_name", "to_type", "to_name")]
     out = []
     for e in graph["edges"]:
         f, t = idx.get(e["from"]), idx.get(e["to"])
         if f and t:
-            out.append((e["type"], f["type"], f["name"], t["type"], t["name"]))
+            out.append((f.get("asset", ""), e["type"], f["type"], f["name"], t["type"], t["name"]))
     rows.extend(sorted(out))
     return rows
 
@@ -103,17 +170,25 @@ def _write_csv(path, rows):
 # ---- report ----
 
 def report_md(graph) -> str:
-    asset = graph["asset"]
     fz = graph["fusion"]
     disc = graph["discovery"]
+    assets = graph["assets"]
+    nc, ec = graph["counts"]["nodes"], graph["counts"]["edges"]
     L = ["# PLC Asset Compiler report", ""]
-    L.append("**Asset:** %s  ·  **namespace:** `%s`" % (asset["name"], asset["namespace"]))
+    L.append("**%d asset(s):** %s" % (len(assets), ", ".join("`%s`" % a["name"] for a in assets)))
     L.append("")
     L.append("Deterministic offline compile -- no LLM, no cloud, no live PLC. Values (VQT) are NOT "
              "sampled here; live attachment happens later (mira-relay / mira-connect).")
     L.append("")
 
-    L.append("## Sources discovered")
+    L.append("## Overview")
+    L.append("")
+    L.append("- **%d** signals — %d typed, %d addressed, %d typed-by-cross-file-fusion, "
+             "%d name-only, **%d conflicts**" % (fz["signals"], fz["typed"], fz["addressed"],
+             fz["type_filled_by_fusion"], fz["name_only"], fz["conflicts"]))
+    L.append("- Graph: %d nodes (%s); %d edges (%s)" % (
+        sum(nc.values()), ", ".join("%d %s" % (v, k) for k, v in sorted(nc.items())),
+        sum(ec.values()), ", ".join("%d %s" % (v, k) for k, v in sorted(ec.items()))))
     L.append("")
     L.append("| file | classification | format |")
     L.append("|---|---|---|")
@@ -122,44 +197,39 @@ def report_md(graph) -> str:
             L.append("| `%s` | %s | %s |" % (f["file"], cls, f["fmt"]))
     L.append("")
 
-    L.append("## Fusion summary")
-    L.append("")
-    L.append("- **%d** signals — %d typed, %d addressed, %d typed-by-cross-file-fusion, "
-             "%d name-only, **%d conflicts**" % (fz["signals"], fz["typed"], fz["addressed"],
-             fz["type_filled_by_fusion"], fz["name_only"], fz["conflicts"]))
-    nc = graph["counts"]["nodes"]
-    ec = graph["counts"]["edges"]
-    L.append("- Graph: %s nodes (%s); %s edges (%s)" % (
-        sum(nc.values()), ", ".join("%d %s" % (v, k) for k, v in sorted(nc.items())),
-        sum(ec.values()), ", ".join("%d %s" % (v, k) for k, v in sorted(ec.items()))))
-    L.append("")
-
-    review = [n for n in graph["nodes"] if n["type"] == "Signal" and n["review"]]
-    L.append("## Needs human review (%d safety / fault / control signals)" % len(review))
-    L.append("")
-    if review:
-        L.append("| signal | categories | type | address | confidence |")
-        L.append("|---|---|---|---|---|")
-        for n in review:
-            a, c = n["attributes"], n["confidence"]
-            L.append("| `%s` | %s | %s | %s | type:%s addr:%s |" % (
-                n["name"], ", ".join(n["categories"]), a["data_type"] or "?",
-                a["address"] or "-", c["data_type"], c["address"]))
-    else:
-        L.append("_None flagged._")
-    L.append("")
-
-    conflicts = [n for n in graph["nodes"] if n["type"] == "Signal" and n["conflicts"]]
-    L.append("## Conflicts (%d) — sources disagree, NOT silently overwritten" % len(conflicts))
-    L.append("")
-    if conflicts:
-        for n in conflicts:
-            for cf in n["conflicts"]:
-                vals = "; ".join("%s (%s)" % (v, ",".join(srcs)) for v, srcs in cf["values"].items())
-                L.append("- `%s` **%s**: %s" % (n["name"], cf["field"], vals))
-    else:
-        L.append("_None._")
-    L.append("")
+    signals = [n for n in graph["nodes"] if n["type"] == "Signal"]
+    for a in assets:
+        aname = a["name"]
+        af = a["fusion"]
+        asigs = [n for n in signals if n.get("asset") == aname]
+        L.append("## Asset: `%s`  (namespace `%s`)" % (aname, a["namespace"]))
+        L.append("")
+        L.append("%d signals — %d typed, %d addressed, %d conflicts." % (
+            af["signals"], af["typed"], af["addressed"], af["conflicts"]))
+        L.append("")
+        review = [n for n in asigs if n["review"]]
+        L.append("**Needs human review (%d safety / fault / control):**" % len(review))
+        L.append("")
+        if review:
+            L.append("| signal | categories | type | address | confidence |")
+            L.append("|---|---|---|---|---|")
+            for n in review:
+                at, c = n["attributes"], n["confidence"]
+                L.append("| `%s` | %s | %s | %s | type:%s addr:%s |" % (
+                    n["name"], ", ".join(n["categories"]), at["data_type"] or "?",
+                    at["address"] or "-", c["data_type"], c["address"]))
+        else:
+            L.append("_None flagged._")
+        L.append("")
+        conflicts = [n for n in asigs if n["conflicts"]]
+        if conflicts:
+            L.append("**Conflicts (sources disagree, NOT silently overwritten):**")
+            L.append("")
+            for n in conflicts:
+                for cf in n["conflicts"]:
+                    vals = "; ".join("%s (%s)" % (v, ",".join(s)) for v, s in cf["values"].items())
+                    L.append("- `%s` **%s**: %s" % (n["name"], cf["field"], vals))
+            L.append("")
 
     ignored = disc["files"].get("value_dump", [])
     closed = disc["files"].get("closed_project", [])
@@ -176,7 +246,8 @@ def report_md(graph) -> str:
     L.append("")
     L.append("Every signal field is labelled: **exact** (read from a declaration), **inferred** "
              "(from logic/name), **name_only** (referenced but undeclared), **missing**, or "
-             "**conflict** (sources disagree). `signals.csv` carries the per-field source(s).")
+             "**conflict** (sources disagree). `signals.csv` carries the per-field source(s) and the "
+             "owning asset.")
     return "\n".join(L)
 
 

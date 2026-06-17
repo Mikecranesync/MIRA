@@ -142,7 +142,8 @@ def _cmd_compile(ns: argparse.Namespace) -> int:
     if not ns.quiet:
         disc = graph["discovery"]["counts"]
         fz = graph["fusion"]
-        print("Asset: %s (%s)" % (graph["asset"]["name"], graph["asset"]["namespace"]))
+        assets = graph["assets"]
+        print("Assets: %d (%s)" % (len(assets), ", ".join(a["name"] for a in assets)))
         print("Discovered: %s" % (" ".join("%d %s" % (v, k) for k, v in disc.items()) or "(nothing)"))
         print("Signals: %d (%d typed, %d addressed, %d conflicts) | review: %d"
               % (fz["signals"], fz["typed"], fz["addressed"], fz["conflicts"],

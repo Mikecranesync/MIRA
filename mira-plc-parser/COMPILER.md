@@ -87,8 +87,10 @@ roles union. Safety / fault / control signals are flagged `review = yes`.
   GS10 RTU `0x2103`), distinct from the PLC's Modbus-TCP server map.
 - **Siemens TIA Openness XML** parser (recognized + rejected today; no fixture yet).
 - **ST type inference** from usage when neither a VAR block nor a variables CSV is present.
-- **Cross-asset folders:** today one folder = one asset; multi-asset discovery (split by controller)
-  is future.
+- **Multi-asset folders:** DONE — a folder is partitioned into assets by subfolder (each subdir =
+  one asset; signals are asset-scoped so two machines' `motor_run` never collide; CSVs carry an
+  `asset` column). Remaining refinement: splitting *multiple controllers inside one flat folder*
+  (today a flat folder fuses to one asset).
 - **Live VQT attachment:** wiring `asset_graph.json` registers to `mira-relay` / `mira-connect` so
   the static model lights up with live values.
 - **Ground-truth eval corpus:** labeled tag sets per program to measure extraction accuracy.

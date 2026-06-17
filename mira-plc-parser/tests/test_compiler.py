@@ -117,6 +117,45 @@ def test_safety_signal_requires_review(tmp_path):
 
 # ---- conflict flagging (sources disagree, not silently overwritten) ----
 
+def test_single_flat_folder_is_one_asset(tmp_path):
+    graph, _ = compile_folder(_write_export(tmp_path), asset_name="ConveyorCell")
+    assert len(graph["assets"]) == 1
+    assert graph["assets"][0]["name"] == "ConveyorCell"
+
+
+def test_multi_asset_folder_splits_by_subfolder(tmp_path):
+    # two machines in two subfolders, both declaring a "motor_run" signal
+    (tmp_path / "LineA").mkdir()
+    (tmp_path / "LineB").mkdir()
+    (tmp_path / "LineA" / "a.st").write_text(
+        "PROGRAM A\n motor_run := TRUE;\n vfd_a_speed := read(1);\nEND_PROGRAM\n", encoding="utf-8")
+    (tmp_path / "LineB" / "b.st").write_text(
+        "PROGRAM B\n motor_run := TRUE;\n vfd_b_speed := read(1);\nEND_PROGRAM\n", encoding="utf-8")
+    graph, _ = compile_folder(tmp_path)
+
+    assert {a["name"] for a in graph["assets"]} == {"LineA", "LineB"}
+    # both assets have a motor_run, but they are TWO distinct nodes (no cross-asset collision)
+    motors = [n for n in graph["nodes"] if n["type"] == "Signal" and n["name"] == "motor_run"]
+    assert len(motors) == 2
+    assert {n["asset"] for n in motors} == {"LineA", "LineB"}
+    assert len({n["id"] for n in motors}) == 2
+    # there are two Asset nodes
+    assert sum(1 for n in graph["nodes"] if n["type"] == "Asset") == 2
+
+
+def test_multi_asset_csv_has_asset_column(tmp_path):
+    from mira_plc_parser.compiler import signals_rows
+    (tmp_path / "LineA").mkdir()
+    (tmp_path / "LineB").mkdir()
+    (tmp_path / "LineA" / "a.st").write_text("PROGRAM A\n motor_run := TRUE;\nEND_PROGRAM\n", "utf-8")
+    (tmp_path / "LineB" / "b.st").write_text("PROGRAM B\n pump_run := TRUE;\nEND_PROGRAM\n", "utf-8")
+    graph, _ = compile_folder(tmp_path)
+    rows = signals_rows(graph)
+    assert rows[0][0] == "asset"
+    assets_in_rows = {r[0] for r in rows[1:]}
+    assert assets_in_rows == {"LineA", "LineB"}
+
+
 def test_conflicting_types_are_flagged_not_overwritten():
     a = "Name,Data Type,Comment\nwidget,REAL,from A\n"
     b = "Name,Data Type,Comment\nwidget,BOOL,from B\n"

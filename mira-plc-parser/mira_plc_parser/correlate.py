@@ -37,7 +37,7 @@ def correlate(sources, asset_name=None, namespace_root="plc"):
     asset_ns = "%s.%s" % (_slug(namespace_root), _slug(asset_name))
     asset_eid = _eid(asset_ns)
 
-    signals = _fuse_signals(handled)
+    signals = _fuse_signals(handled, asset_ns)
     components = _union_components(handled)
     events = _union_events(handled)
     depends = _dependency_edges(handled, set(signals))
@@ -115,7 +115,7 @@ def correlate(sources, asset_name=None, namespace_root="plc"):
     }
 
 
-def _fuse_signals(handled):
+def _fuse_signals(handled, asset_ns):
     """Merge tag dictionaries across sources by name. First non-empty wins per field; roles union.
 
     Disagreement is NOT silently overwritten: distinct non-empty values for data_type/address are
@@ -151,7 +151,9 @@ def _fuse_signals(handled):
             m["vfd_role"] = m["vfd_role"] or vfd_role.get(name, "")
             m["used_count"] = max(m["used_count"], t.get("used_count", 0))
     for name, m in merged.items():
-        m["id"] = _eid("%s" % name)  # stable per-name handle within this graph
+        # asset-SCOPED id: two assets that both have e.g. "motor_run" must NOT collapse to one node
+        # when several asset graphs are combined (multi-asset folders).
+        m["id"] = _eid("%s.signal.%s" % (asset_ns, name))
         # conflict = a genuine disagreement, not just spelling: compare data types case-insensitively
         # (WORD vs Word is not a conflict) and addresses trimmed. Only distinct *meanings* flag.
         type_conflict = len({v.strip().upper() for v in m["type_values"]}) > 1
