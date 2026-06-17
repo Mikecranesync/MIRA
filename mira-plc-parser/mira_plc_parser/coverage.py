@@ -233,6 +233,7 @@ class Extraction:
     aoi_defs: int = 0
     aoi_parameters: int = 0
     aoi_local_tags: int = 0
+    modules: int = 0
     # False-positive flag: parser extracted Context tags instead of Target
     context_leak: int = 0    # number of Context tags incorrectly surfaced as output
 
@@ -313,6 +314,7 @@ def coverage_report(text: str, source_file: str = "") -> CoverageReport:
         aoi_defs=rep.counts.get("aoi_definitions", 0),
         aoi_parameters=rep.counts.get("aoi_parameters", 0),
         aoi_local_tags=rep.counts.get("aoi_local_tags", 0),
+        modules=rep.counts.get("module_definitions", 0),
     )
 
     # Detect false positives: parser extracted Context tags when the Target
@@ -363,7 +365,7 @@ def coverage_report(text: str, source_file: str = "") -> CoverageReport:
     elif "datatype" in tt_lower:
         report.coverage_pct = _pct(ext.datatypes, available_datatypes)
     elif "module" in tt_lower:
-        report.coverage_pct = 0.0  # not extracted at all yet
+        report.coverage_pct = _pct(ext.modules, available_modules)
     else:
         # Routine/Program/unknown — effective extraction after removing context leak
         real_tags = max(0, ext.tags - ext.context_leak)
@@ -382,7 +384,7 @@ def coverage_report(text: str, source_file: str = "") -> CoverageReport:
     if inv.aoi_local_tags > 0 and ext.aoi_local_tags == 0:
         gaps.append("%d AOI local tag%s — not extracted"
                     % (inv.aoi_local_tags, "s" if inv.aoi_local_tags > 1 else ""))
-    if inv.ctrl_modules > 0 and ext.datatypes == 0:
+    if inv.ctrl_modules > 0 and ext.modules == 0:
         gaps.append("%d Module element%s — not parsed (hardware topology invisible)"
                     % (inv.ctrl_modules, "s" if inv.ctrl_modules > 1 else ""))
     fbd_routines = [r for r in inv.routines if r.type == "FBD"]
@@ -519,7 +521,9 @@ def format_report(r: CoverageReport, width: int = 72) -> str:
     if ext.aoi_defs:
         lines.append("  AOI defs               : %d  (%d params, %d local)" %
                      (ext.aoi_defs, ext.aoi_parameters, ext.aoi_local_tags))
-    if not any([ext.tags, ext.datatypes, ext.routines, ext.aoi_defs]):
+    if ext.modules:
+        lines.append("  Module defs            : %d" % ext.modules)
+    if not any([ext.tags, ext.datatypes, ext.routines, ext.aoi_defs, ext.modules]):
         lines.append("  (nothing)")
 
     if r.false_positives:

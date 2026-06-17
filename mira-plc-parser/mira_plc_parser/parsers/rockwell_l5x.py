@@ -35,6 +35,8 @@ from ..ir import (
     Controller,
     DataType,
     DataTypeMember,
+    ModuleDefinition,
+    ModulePort,
     PLCProject,
     Program,
     Provenance,
@@ -125,6 +127,13 @@ def _parse_controller(el: ET.Element, software: str, src: str) -> Controller:
             if aoi_el.get("Use") == "Context":
                 continue
             ctrl.aoi_definitions.append(_parse_aoi_definition(aoi_el, src))
+    # module definitions (I/O hardware topology)
+    mods_el = _first(el, "Modules")
+    if mods_el is not None:
+        for mod_el in mods_el.findall("Module"):
+            if mod_el.get("Use") == "Context":
+                continue
+            ctrl.module_definitions.append(_parse_module_definition(mod_el, src))
     return ctrl
 
 
@@ -231,6 +240,33 @@ def _extract_rung_logic(text: str) -> tuple[list[str], list[str], list[str]]:
                 seen_out.add(driven)
                 outputs.append(driven)
     return refs, outputs, instrs
+
+
+def _parse_module_definition(el: ET.Element, src: str) -> ModuleDefinition:
+    name = el.get("Name", "")
+    mod = ModuleDefinition(
+        name=name,
+        catalog_number=el.get("CatalogNumber", ""),
+        vendor=el.get("Vendor", ""),
+        product_type=el.get("ProductType", ""),
+        product_code=el.get("ProductCode", ""),
+        major=el.get("Major", ""),
+        minor=el.get("Minor", ""),
+        parent_module=el.get("ParentModule", ""),
+        parent_port=el.get("ParentModPortId", ""),
+        inhibited=el.get("Inhibited", "false").lower() == "true",
+        provenance=_prov(src, "Module[@Name='%s']" % name),
+    )
+    ports_el = _first(el, "Ports")
+    if ports_el is not None:
+        for p_el in ports_el.findall("Port"):
+            mod.ports.append(ModulePort(
+                id=p_el.get("Id", ""),
+                address=p_el.get("Address", ""),
+                type=p_el.get("Type", ""),
+                upstream=p_el.get("Upstream", "false").lower() == "true",
+            ))
+    return mod
 
 
 def _parse_aoi_definition(el: ET.Element, src: str) -> AOIDefinition:

@@ -182,3 +182,84 @@ class TestAOICoverage:
         assert report.extraction.aoi_local_tags == 2
 
 
+
+
+# --- Module parsing tests ---
+
+MODULE_XML = """\
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="35.01"
+    TargetType="Module" TargetName="DI_01" ContainsContext="true">
+  <Controller Use="Context" Name="MyPLC">
+    <Modules Use="Context">
+      <Module Use="Target" Name="DI_01" CatalogNumber="1756-IB16/A"
+          Vendor="1" ProductType="10" ProductCode="55"
+          Major="2" Minor="1"
+          ParentModule="Local" ParentModPortId="0"
+          Inhibited="false" MajorFault="false">
+        <EKey State="CompatibleModule"/>
+        <Ports>
+          <Port Id="1" Address="1" Type="ICP" Upstream="true"/>
+        </Ports>
+        <Communications>
+          <Connections>
+            <Connection Name="Input" RPI="10000" Type="Input" InputSize="4">
+            </Connection>
+          </Connections>
+        </Communications>
+      </Module>
+    </Modules>
+  </Controller>
+</RSLogix5000Content>
+"""
+
+
+class TestModuleIR:
+    def test_module_definition_present(self):
+        proj = parse(MODULE_XML, "DI_01.L5X")
+        ctrl = proj.controllers[0]
+        assert len(ctrl.module_definitions) == 1
+        mod = ctrl.module_definitions[0]
+        assert mod.name == "DI_01"
+        assert mod.catalog_number == "1756-IB16/A"
+        assert mod.major == "2"
+        assert mod.parent_module == "Local"
+        assert not mod.inhibited
+
+    def test_module_ports(self):
+        proj = parse(MODULE_XML, "DI_01.L5X")
+        mod = proj.controllers[0].module_definitions[0]
+        assert len(mod.ports) == 1
+        assert mod.ports[0].address == "1"
+        assert mod.ports[0].upstream is True
+
+    def test_context_module_not_extracted(self):
+        proj = parse(MODULE_XML, "DI_01.L5X")
+        ctrl = proj.controllers[0]
+        assert len(ctrl.module_definitions) == 1  # only Use="Target"
+
+
+class TestModuleAnalyze:
+    def test_analyze_module_count(self):
+        from mira_plc_parser.analyze import analyze
+        proj = parse(MODULE_XML, "DI_01.L5X")
+        rep = analyze(proj)
+        assert rep.counts["module_definitions"] == 1
+
+
+class TestModuleCoverage:
+    def test_coverage_full(self):
+        from mira_plc_parser.coverage import coverage_report
+        report = coverage_report(MODULE_XML, "DI_01.L5X")
+        assert report.status == "FULL"
+        assert report.coverage_pct == 100.0
+
+    def test_coverage_target_type(self):
+        from mira_plc_parser.coverage import coverage_report
+        report = coverage_report(MODULE_XML, "DI_01.L5X")
+        assert report.target_type == "Module"
+
+    def test_coverage_module_counts(self):
+        from mira_plc_parser.coverage import coverage_report
+        report = coverage_report(MODULE_XML, "DI_01.L5X")
+        assert report.extraction.modules == 1

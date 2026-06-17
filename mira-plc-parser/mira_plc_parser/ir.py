@@ -124,6 +124,31 @@ class Program:
 
 
 @dataclass
+class ModulePort:
+    id: str = ""
+    address: str = ""
+    type: str = ""
+    upstream: bool = False
+
+
+@dataclass
+class ModuleDefinition:
+    """A Rockwell I/O module — physical hardware in the chassis or on an EtherNet/IP network."""
+    name: str
+    catalog_number: str = ""
+    vendor: str = ""
+    product_type: str = ""
+    product_code: str = ""
+    major: str = ""
+    minor: str = ""
+    parent_module: str = ""
+    parent_port: str = ""
+    inhibited: bool = False
+    ports: list[ModulePort] = field(default_factory=list)
+    provenance: Provenance | None = None
+
+
+@dataclass
 class AOIDefinition:
     """A Rockwell Add-On Instruction definition — a reusable function block."""
     name: str
@@ -145,6 +170,7 @@ class Controller:
     programs: list[Program] = field(default_factory=list)
     datatypes: list[DataType] = field(default_factory=list)
     aoi_definitions: list[AOIDefinition] = field(default_factory=list)
+    module_definitions: list[ModuleDefinition] = field(default_factory=list)
     provenance: Provenance | None = None
 
 

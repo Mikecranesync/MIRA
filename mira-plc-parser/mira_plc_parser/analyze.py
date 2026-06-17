@@ -101,6 +101,7 @@ def analyze(proj: PLCProject) -> AnalysisReport:
         "aoi_local_tags": sum(
             len(aoi.local_tags) for c in proj.controllers for aoi in c.aoi_definitions
         ),
+        "module_definitions": sum(len(c.module_definitions) for c in proj.controllers),
         "outputs": len(rep.output_dependencies),
         "fault_candidates": len(rep.fault_candidates),
         "asset_candidates": len(rep.asset_candidates),
