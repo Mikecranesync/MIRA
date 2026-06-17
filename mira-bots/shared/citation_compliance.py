@@ -42,37 +42,22 @@ def citation_enforce_enabled() -> bool:
     return os.getenv("MIRA_CITATION_ENFORCE", "1") != "0"
 
 
-# Lazy, cached, fail-open import of the canonical vendor-alias table so this
-# module stays import-light (uns_resolver pulls neon_recall / DB deps).
-_VENDOR_ALIASES: dict[str, str] | None = None
-
-
-def _vendor_aliases() -> dict[str, str]:
-    global _VENDOR_ALIASES
-    if _VENDOR_ALIASES is None:
-        try:
-            from .uns_resolver import VENDOR_ALIASES
-
-            _VENDOR_ALIASES = {k.lower(): v for k, v in VENDOR_ALIASES.items()}
-        except Exception:  # pragma: no cover - only when resolver unimportable
-            _VENDOR_ALIASES = {}
-    return _VENDOR_ALIASES
-
-
 def _canonical_vendor(text: str) -> str | None:
-    """Canonical manufacturer for a vendor/alias/label string, or None if no
-    known vendor is named. Scans longest aliases first so 'rockwell automation'
-    wins over 'rockwell'."""
+    """Canonical manufacturer for a vendor/alias/label string, or None.
+
+    Delegates to ``uns_resolver.canonical_vendor`` — the single source of truth
+    so the citation-relevance gate and the retrieval cross-vendor filter agree
+    on "same vendor" (Allen-Bradley ≡ Rockwell, etc.). The import is lazy and
+    fail-open so this module stays import-light (uns_resolver pulls neon_recall
+    / DB deps) and never hard-fails if the resolver is unimportable.
+    """
     if not text:
         return None
-    low = text.strip().lower()
-    aliases = _vendor_aliases()
-    if low in aliases:
-        return aliases[low]
-    for alias in sorted(aliases, key=len, reverse=True):
-        if alias in low:
-            return aliases[alias]
-    return None
+    try:
+        from .uns_resolver import canonical_vendor
+    except Exception:  # pragma: no cover - only when resolver unimportable
+        return None
+    return canonical_vendor(text)
 
 
 def _tag_label(tag: str) -> str:
