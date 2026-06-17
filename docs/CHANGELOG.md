@@ -3,6 +3,12 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.27.8 (2026-06-17) — chore(qa): land Hermes outside-in QA tooling + durable login helper on main (#2013)
+- Cherry-picks the validated Hermes QA scaffolding out of the mixed `chore/hermes-qa-durable-account` branch onto `main`, so any checkout (and the Hermes dogfood agent) actually has it — the tooling existed only on an unmerged branch, which is why #2013 read as "still blocked" even though the durable test account + login path were live.
+- **`dogfood-output/qa-login-save-state.mjs`** — durable-account Playwright login helper: signs into `app.factorylm.com` with the password flow and saves `dogfood-output/.auth/app-state.json` for reuse. Re-verified against prod from a clean checkout (`ok:true`, lands authenticated; `/hub`→`/onboarding/`, `/command-center/` + `/namespace/` authenticated).
+- **`tools/qa/`** — `README.md` runbook (durable `hermes-qa-maint@example.com` account + Doppler `factorylm/dev` creds + mint command), `lib.mjs` (Playwright resolver), browser-smoke, console/network capture, manual-upload smoke, and the dedupe-first issue creator.
+- No engine/prod/runtime code; additive QA tooling only.
+
 ### v3.27.0 (2026-06-17) — feat(mira): "Why MIRA Thinks This" decision-trace panel (Phase 2)
 - **Northstar alignment Phase 2** (`docs/specs/why-mira-thinks-this-spec.md`, PRD §11). Every Hub `AssetChat` answer can now expand into an evidence + confidence + missing-context + feedback panel, turning MIRA into a *challengeable* agent.
 - **`mira-hub/src/app/api/assets/[id]/chat/route.ts`** — the Hub chat route now writes its own `decision_traces` row (`platform='hub'`) at stream end (best-effort, never blocks the stream) and emits the `trace_id` up-front over SSE. (The Hub chat previously wrote no trace at all — only the engine surfaces did.)
