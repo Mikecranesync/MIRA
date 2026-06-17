@@ -208,12 +208,12 @@ The minimum customer-deployable artifact for **first paying customer**:
 | 4 | Gateway tag-change script → outbound POST | `ignition/gateway-scripts/tag-stream.py` | ⚠️ Exists. Verify it batches + uses HMAC + respects allowlist. |
 | 5 | `deploy_ignition.ps1` — 3-command installer | `ignition/deploy_ignition.ps1` | ✅ Exists. Idempotent. |
 | 6 | `mira-relay` — cloud tag ingest + auth | `mira-relay/` | ✅ Exists. Bearer auth + WebSocket + REST. Needs HMAC upgrade. |
-| 7 | Cloud chat endpoint that the WebDev `/chat` calls | `mira-mcp` or `mira-hub` API | ⚠️ Engine exists; needs an Ignition-shaped wrapper (`POST /api/v1/ignition/chat`). |
+| 7 | Cloud chat endpoint that the WebDev `/chat` calls | `mira-mcp` or `mira-hub` API | ✅ Built: `mira-pipeline/ignition_chat.py` — HMAC-signed POST /api/v1/ignition/chat + /api/v1/audit (commit `48e2685c`). |
 | 8 | UNS gate, citation compliance, cascade | `mira-bots/shared/engine.py` | ✅ Active on Slack today. Adapter-agnostic. |
-| 9 | Tag-import wizard (CSV → `ai_suggestions` of type `tag_mapping`) | `mira-hub` + `mira-mcp` | 🔲 Spec'd in `maintenance-namespace-builder-spec.md`; not built. |
-| 10 | Admin audit view in Perspective + cloud audit query | new | 🔲 Not built. |
+| 9 | Tag-import wizard (CSV → `ai_suggestions` of type `tag_mapping`) | `mira-hub` + `mira-mcp` | ✅ Built: tag-import wizard step + connector POST + tag_mapping accept/reject + semantic enrichment (commit `874f770a`, `48e2685c`). |
+| 10 | Admin audit view in Perspective + cloud audit query | new | ⚠️ `/api/v1/audit` endpoint live (migration 031 + ignition_audit.py). Perspective admin view not yet built. |
 | 11 | Ignition Exchange listing (manifest + screenshots + install doc) | `ignition/EXCHANGE/` | 🔲 Not built. Gate to first customer install. |
-| 12 | One real end-to-end test on the bench: Micro 820 → Ignition (laptop) → MIRA Cloud → grounded answer back in Perspective | live | 🔲 Done partial (live tag stream works; chat round-trip not verified end-to-end). |
+| 12 | One real end-to-end test on the bench: Micro 820 → Ignition (laptop) → MIRA Cloud → grounded answer back in Perspective | live | ✅ Cloud API verified: `ignition_chat_roundtrip.py` 4/4 green (HMAC sign → `/api/v1/ignition/chat` → engine → audit_log). Full Micro 820 → Ignition hardware loop deferred to next bench session. |
 
 **Single demo loop that defines MVP done:**
 
@@ -253,10 +253,10 @@ Ordered. Each item is independently shippable.
 - [x] **D4 — `mira-relay` HMAC upgrade.** `mira-relay/relay_server.py:192-195` tries HMAC first (`X-MIRA-Signature` header + `verify_hmac()`); bearer retained as fallback per original plan.
 - [ ] **D5 — Move `plc/live-plc-bridge/bridge.py` out of the customer-shipped story.** Rename / fence under `bench/` or document it as "bench developer tool, never deployed". This is the bench harness, not the product. Update `docker-compose.fault-detective.yml` comments accordingly.
 - [ ] **D6 — Perspective ChatPanel view.** New view under `ignition/project/com.inductiveautomation.perspective/views/ChatPanel/resource.json`. Input box + answer pane with clickable citations.
-- [ ] **D7 — Audit log.** Append `(tenant_id, user, channel='ignition', prompt, sources_json, tag_reads, latency_ms)` for every chat round-trip. Surface via `/api/v1/audit` and a Perspective admin view.
+- [x] **D7 — Audit log.** Migration 031 (`ignition_audit_log`) shipped. `ignition_audit.py` appends `(tenant_id, user, channel='ignition', prompt, sources_json, tag_reads, latency_ms)` for every round-trip. `/api/v1/audit` live. Perspective admin view deferred (item 10 above).
 - [x] **D8 — Tag-import wizard MVP slice.** `tag-import` wizard step + connector POST endpoint + `tag_mapping` accept/reject in `/api/proposals/[id]/decide` (commit `874f770a`). Tag snapshot semantic enrichment (`_enrich_tag_snapshot_with_semantics` joining `tag_entities.source_address` for verified rows) wired in `mira-pipeline/ignition_chat.py` (Phase 4a, unit-tested 9/9 green).
 - [ ] **D9 — Ignition Exchange manifest.** `ignition/EXCHANGE/manifest.json`, screenshots in `docs/promo-screenshots/`, install doc, license, listing copy.
-- [ ] **D10 — End-to-end bench test.** Single script that: deploys module, posts a chat, asserts grounded answer with citations + audit_log row. Lives in `tests/e2e/ignition_chat_roundtrip.py`. Script exists + skips cleanly without `MIRA_IGNITION_HMAC_KEY` + live pipeline; bench run needed to earn ✅.
+- [x] **D10 — End-to-end bench test.** `tests/e2e/ignition_chat_roundtrip.py` — 4/4 green on bench (2026-06-16): signed chat round-trip ✅, unsigned 401 ✅, audit row written ✅, tag allowlist integrity ✅. Run: `MIRA_IGNITION_HMAC_KEY=<key> NEON_DATABASE_URL=<dev> PIPELINE_URL=http://localhost:9099 python3.12 -m pytest tests/e2e/ignition_chat_roundtrip.py -v`.
 - [ ] **D11 — Sparkplug B subscriber spec** `docs/specs/sparkplug-uns-bridge-spec.md`. Design only, no code yet. Establishes `mira-connect` as the non-Ignition path.
 - [ ] **D12 — Document & ADR.** New ADR-0019 (or 0020) "Ignition-Module-First Edge Architecture" capturing the decisions in this doc as durable record.
 
