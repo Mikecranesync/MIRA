@@ -3,6 +3,9 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.27.0 (2026-06-17) — feat(plc-parser): PLC → UNS / i3X Namespace Builder (parser + desktop GUI unified)
+- **`mira-plc-parser/`** — read-only PLC export parser + unified desktop GUI for building UNS / i3X namespace from PLC programs and tag exports. Version bumped over `main` (3.26.0) after merging the rebased VFD-analyzer base branch (#2065) so the monotonic VERSION gate passes.
+
 ### v3.25.0 (2026-06-16) — feat(staging): digital-twin review layer + migration-collision doctrine
 - **`tools/staging/staging-smoke.sh`** — deterministic curl-and-assert health gate for the staging twin (Cluster Law 2: a binary check is a script, not an LLM). Asserts the externally-reachable review surfaces (Hub 4101, Web 4200) return 200; probes pipeline/atlas best-effort (the deploy workflow is authoritative for those on `127.0.0.1`). shellcheck-clean; verified live (Hub+Web PASS).
 - **`tools/staging/hermes-staging-review.sh`** — async qualitative review: runs the smoke gate first, and only on PASS asks Hermes (on CHARLIE) to browse the staging Hub and post a terse verdict to Telegram. Advisory, never a CI gate.
