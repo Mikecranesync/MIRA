@@ -42,6 +42,23 @@ function extractSession(raw: string): string | null {
   return matches.length ? matches[matches.length - 1][1] : null;
 }
 
+// Delete every row a provisioned run created for a tenant. Used by the CI job
+// (`--cleanup <tenantId>`) so dev Neon doesn't accumulate gate fixtures.
+async function cleanup(tenantId: string) {
+  if (!tenantId) throw new Error("--cleanup requires a tenant id");
+  const c = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  await c.connect();
+  try {
+    for (const tbl of ["knowledge_entries", "hub_uploads", "kg_entities"]) {
+      await c.query(`DELETE FROM ${tbl} WHERE tenant_id = $1`, [tenantId]);
+    }
+    await c.query(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
+  } finally {
+    await c.end();
+  }
+  console.error(`cleaned tenant ${tenantId}`);
+}
+
 async function main() {
   // 1. Register a fresh stranger tenant (auth side: hub_tenants).
   const reg = await fetch(`${HUB}/api/auth/register/`, {
@@ -113,7 +130,9 @@ async function main() {
   console.log(`ENV:BETA_GATE_NODE=${nodeId}`);
 }
 
-main().catch((e) => {
+const cleanupIdx = process.argv.indexOf("--cleanup");
+const run = cleanupIdx !== -1 ? cleanup(process.argv[cleanupIdx + 1]) : main();
+run.catch((e) => {
   console.error(e);
   process.exit(1);
 });

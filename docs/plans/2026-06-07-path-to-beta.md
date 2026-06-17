@@ -52,19 +52,18 @@ This plan assesses #1592 as the right fix; the minimal close path is in the rese
 > output/motor winding, mechanical jam, or a ground fault [1]."* — grounded in the uploaded manual,
 > `[1]` citation present. Zero manual fixing. **The data-layer chain AND the full HTTP path both work.**
 >
-> **`xfail` NOT removed (deliberately).** The marker stays until *durable* provisioning exists — a
-> standing dev/staging endpoint OR this run wired into CI with secrets. A one-shot local green
-> doesn't survive server teardown; removing the marker now would turn the suite RED in normal CI
-> (the gate raises `GateUnavailable` without `BETA_GATE_*` env). The reproducible recipe lives in
-> `mira-hub/scripts/provision-beta-gate.ts`. **The remaining work to *remove* the marker is a CI
-> job, not a product gap — the product capability is proven.**
+> **`xfail` REMOVED + the gate is now CI-enforced.** The marker is gone; the gate is restructured to
+> **skip** when `BETA_GATE_*` is unset (so plain local/CI `pytest` stays green) and **assert for real**
+> when provisioned. `.github/workflows/beta-gate.yml` provides the durable surface: it builds a Hub on
+> dev Neon, runs `mira-hub/scripts/provision-beta-gate.ts` (the reproducible stranger-run harness), runs
+> this gate, and cleans up — on dispatch, weekly, and on PRs touching the chain. Verified locally: the
+> hardened gate **PASSES as a real assertion in ~2s**. The content match was de-flaked
+> (`_gate.answers_with_manual_fact`) to accept the manual *fact* ("overcurrent" OR the LLM's paraphrase
+> "current exceeded …rated") — the `[1]` citation carries the "grounded in the uploaded file" proof.
 >
 > Scope note: this is the **Hub NodeChat** surface (what the gate tests). The **bot/chat** path
 > `neon_recall` is a separate retrieval model that doesn't read folder=brain node uploads — tracked
 > separately (`docs/research/2026-06-16_kg-kb-growth-and-quality-audit.md`), not a beta-gate blocker.
-> Minor robustness note: the gate's `EXPECTED_CONTENT="overcurrent"` literal match is mildly
-> LLM-phrasing-dependent (the answer is *always* correctly grounded + `[1]`-cited; the poll loop
-> absorbs the wording variance). Consider broadening it to accept the semantic equivalent.
 
 ---
 
