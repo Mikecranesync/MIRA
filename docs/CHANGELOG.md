@@ -3,6 +3,15 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.28.2 (2026-06-17) — feat(plc-parser): offline UNS/i3X proposal layer (L5X → ISA-95 → i3X)
+- Closes the missing middle link in the **offline PLC Program Teacher** chain identified by `docs/research/plc-program-teacher-status.md`: the merged #2065 parser extracted maintenance context but emitted no UNS/i3X and was wired to nothing. Ports the proven, deterministic, stdlib-only transform from PR #2068 onto the merged parser core and exposes it from the terminal.
+- **`mira-plc-parser/mira_plc_parser/uns.py`** (new) — propose one ISA-95 UNS path per tag (`enterprise/site/area/line/asset/signal`). Upper levels from a controller-seeded, user-overridable prefix; lower levels from VFD-signal roles + asset candidates; `high`/`medium`/`low` confidence; `source: proposed` (never auto-verified).
+- **`mira-plc-parser/mira_plc_parser/i3x.py`** (new) — transform the proposals into a CESMII i3X-shaped payload (ObjectTypes + ObjectInstances, container hierarchy via `parentId`, `elementId` = UNS path). Offline, read-only — no push to a live i3X server.
+- **`mira_plc_parser/pipeline.py`** — `render_json()` now embeds `uns_candidates` + `uns_prefix` (and `counts.uns_candidates`), so `analyze --format json` emits the full chain.
+- **`mira_plc_parser/cli.py`** — new offline `i3x-export` subcommand writes `<stem>.i3x.json`.
+- No network, no LLM, no PLC writes (honors `.claude/rules/fieldbus-readonly.md`). The networked i3x reconcile client + desktop GUI from #2068, and the Hub `/api/connectors/plc/import` → `ai_suggestions` write path, are deferred follow-ups.
+- Tests: `mira-plc-parser/tests/` 52 passed (15 new: 7 `test_uns` + 8 `test_i3x` incl. an offline CLI test); ruff clean. Demo (`conveyor.L5X`): 11 tags → 11 UNS paths (3 high / 2 medium / 6 low) → i3X payload (6 types, 7 containers, 11 instances).
+
 ### v3.28.1 (2026-06-19) — feat(seeds): seed-path guarantee — embedding-coverage gate + discipline (#2094)
 - Closes the remaining **seed-path guarantee** ask in #2094 (PR #2085 shipped the backfill tool + canary). SQL seeds insert text-only `knowledge_entries` rows (no `embedding` column) → `embedding = NULL` → invisible to the vector + product-name retrieval streams (`neon_recall._product_search` filters `embedding IS NOT NULL`); nothing guaranteed a seed got embedded, silently degrading retrieval (root cause of the 2026-06-17 Q01/Q10 miss; same class as #1385).
 - **`.github/workflows/apply-seeds.yml`** — adds a read-only **embedding-coverage gate** after the apply step (mode=apply): a corpus-wide `count(*) WHERE embedding IS NULL AND source_type IN ('field-guide','integration_guide','component_template')`, mirroring the canary's definition of "dark". Goes RED with the off-CI backfill command when any curated chunk is unembedded. Count-only — no Ollama needed.
