@@ -1212,9 +1212,16 @@ async def ingest_plc_parse(
     # Apply any caller-supplied UNS prefix overrides to BOTH the embedded uns_candidates and the
     # i3X payload, so the returned report and namespace are consistent. With no overrides this
     # reproduces render_json's default (line seeded from the controller name).
-    prefix = {k: v for k, v in (
-        ("enterprise", enterprise), ("site", site), ("area", area), ("line", line),
-    ) if v.strip()}
+    prefix = {
+        k: v
+        for k, v in (
+            ("enterprise", enterprise),
+            ("site", site),
+            ("area", area),
+            ("line", line),
+        )
+        if v.strip()
+    }
     effective_prefix = _uns.default_prefix(report)
     effective_prefix.update(prefix)
     report["uns_prefix"] = effective_prefix

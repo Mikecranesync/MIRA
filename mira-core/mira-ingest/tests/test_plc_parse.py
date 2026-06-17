@@ -75,7 +75,9 @@ def test_plc_parse_include_i3x_false_omits_payload():
 def test_plc_parse_closed_project_rejected_with_export_guidance():
     resp = client.post(
         "/ingest/plc-parse",
-        files={"file": ("Line.ACD", b"\x00\x01binary rockwell project\x00", "application/octet-stream")},
+        files={
+            "file": ("Line.ACD", b"\x00\x01binary rockwell project\x00", "application/octet-stream")
+        },
     )
     assert resp.status_code == 422
     # actionable guidance, not a crash or a bare "unknown"
