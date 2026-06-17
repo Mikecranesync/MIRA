@@ -30,6 +30,7 @@ import re
 import xml.etree.ElementTree as ET
 
 from ..ir import (
+    AOIDefinition,
     Confidence,
     Controller,
     DataType,
@@ -117,6 +118,13 @@ def _parse_controller(el: ET.Element, software: str, src: str) -> Controller:
     if progs_el is not None:
         for prog_el in progs_el.findall("Program"):
             ctrl.programs.append(_parse_program(prog_el, src))
+    # add-on instruction definitions (skip Use="Context" — those are supporting references)
+    aoi_defs_el = _first(el, "AddOnInstructionDefinitions")
+    if aoi_defs_el is not None:
+        for aoi_el in aoi_defs_el.findall("AddOnInstructionDefinition"):
+            if aoi_el.get("Use") == "Context":
+                continue
+            ctrl.aoi_definitions.append(_parse_aoi_definition(aoi_el, src))
     return ctrl
 
 
@@ -223,6 +231,62 @@ def _extract_rung_logic(text: str) -> tuple[list[str], list[str], list[str]]:
                 seen_out.add(driven)
                 outputs.append(driven)
     return refs, outputs, instrs
+
+
+def _parse_aoi_definition(el: ET.Element, src: str) -> AOIDefinition:
+    name = el.get("Name", "")
+    desc_el = _first(el, "Description")
+    aoi = AOIDefinition(
+        name=name,
+        revision=el.get("Revision", ""),
+        description=_txt(desc_el),
+        provenance=_prov(src, "AddOnInstructionDefinition[@Name='%s']" % name),
+    )
+    # parameters (the interface: Input / Output / InOut)
+    params_el = _first(el, "Parameters")
+    if params_el is not None:
+        for p_el in params_el.findall("Parameter"):
+            aoi.parameters.append(_parse_aoi_param(p_el, name, src))
+    # local tags (internal state, not part of the interface)
+    local_el = _first(el, "LocalTags")
+    if local_el is not None:
+        for lt_el in local_el.findall("LocalTag"):
+            aoi.local_tags.append(_parse_aoi_local_tag(lt_el, name, src))
+    # routines (Logic, Prescan, Postscan, EnableInFalse)
+    routines_el = _first(el, "Routines")
+    if routines_el is not None:
+        for r_el in routines_el.findall("Routine"):
+            aoi.routines.append(_parse_routine(r_el, name, src))
+    return aoi
+
+
+def _parse_aoi_param(el: ET.Element, aoi_name: str, src: str) -> Tag:
+    name = el.get("Name", "")
+    desc_el = _first(el, "Description")
+    usage = el.get("Usage", "")   # Input, Output, InOut
+    return Tag(
+        name=name,
+        data_type=el.get("DataType", ""),
+        scope=TagScope.AOI_PARAMETER.value,
+        description=_txt(desc_el),
+        external_access=el.get("ExternalAccess", ""),
+        radix=el.get("Radix", ""),
+        usage=[usage] if usage else [],
+        provenance=_prov(src, "AOI[%s]/Parameter[@Name='%s']" % (aoi_name, name)),
+    )
+
+
+def _parse_aoi_local_tag(el: ET.Element, aoi_name: str, src: str) -> Tag:
+    name = el.get("Name", "")
+    desc_el = _first(el, "Description")
+    return Tag(
+        name=name,
+        data_type=el.get("DataType", ""),
+        scope=TagScope.AOI_LOCAL.value,
+        description=_txt(desc_el),
+        radix=el.get("Radix", ""),
+        provenance=_prov(src, "AOI[%s]/LocalTag[@Name='%s']" % (aoi_name, name)),
+    )
 
 
 def _is_immediate(op: str) -> bool:

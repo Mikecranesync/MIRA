@@ -1,0 +1,5 @@
+# Downloaded test corpus — large external files, not source-controlled
+tests/corpus/*.L5X
+tests/corpus/*.md
+tests/corpus/*.txt
+tests/corpus/*.csv
