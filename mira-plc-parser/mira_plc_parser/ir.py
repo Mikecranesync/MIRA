@@ -41,6 +41,8 @@ class RoutineType(str, Enum):
 class TagScope(str, Enum):
     CONTROLLER = "controller"
     PROGRAM = "program"
+    AOI_PARAMETER = "aoi_parameter"
+    AOI_LOCAL = "aoi_local"
 
 
 @dataclass
@@ -122,6 +124,43 @@ class Program:
 
 
 @dataclass
+class ModulePort:
+    id: str = ""
+    address: str = ""
+    type: str = ""
+    upstream: bool = False
+
+
+@dataclass
+class ModuleDefinition:
+    """A Rockwell I/O module — physical hardware in the chassis or on an EtherNet/IP network."""
+    name: str
+    catalog_number: str = ""
+    vendor: str = ""
+    product_type: str = ""
+    product_code: str = ""
+    major: str = ""
+    minor: str = ""
+    parent_module: str = ""
+    parent_port: str = ""
+    inhibited: bool = False
+    ports: list[ModulePort] = field(default_factory=list)
+    provenance: Provenance | None = None
+
+
+@dataclass
+class AOIDefinition:
+    """A Rockwell Add-On Instruction definition — a reusable function block."""
+    name: str
+    revision: str = ""
+    description: str = ""
+    parameters: list[Tag] = field(default_factory=list)   # interface tags (Input/Output/InOut)
+    local_tags: list[Tag] = field(default_factory=list)   # internal state tags
+    routines: list[Routine] = field(default_factory=list)
+    provenance: Provenance | None = None
+
+
+@dataclass
 class Controller:
     name: str = ""
     processor_type: str = ""
@@ -130,6 +169,8 @@ class Controller:
     tags: list[Tag] = field(default_factory=list)   # controller-scoped tags
     programs: list[Program] = field(default_factory=list)
     datatypes: list[DataType] = field(default_factory=list)
+    aoi_definitions: list[AOIDefinition] = field(default_factory=list)
+    module_definitions: list[ModuleDefinition] = field(default_factory=list)
     provenance: Provenance | None = None
 
 
@@ -151,12 +192,15 @@ class PLCProject:
         return out
 
     def all_routines(self) -> list[tuple[str, Routine]]:
-        """(program_name, routine) pairs across every controller/program."""
+        """(program_name, routine) pairs across every controller/program and AOI definition."""
         out: list[tuple[str, Routine]] = []
         for c in self.controllers:
             for p in c.programs:
                 for r in p.routines:
                     out.append((p.name, r))
+            for aoi in c.aoi_definitions:
+                for r in aoi.routines:
+                    out.append((aoi.name, r))
         return out
 
     def all_rungs(self) -> list[tuple[str, str, Rung]]:

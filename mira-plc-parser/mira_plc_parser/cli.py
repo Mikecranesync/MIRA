@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .coverage import coverage_report, format_benchmark, format_report, run_benchmark
 from .pipeline import render_json, render_markdown, run
 
 
@@ -86,6 +87,44 @@ def _cmd_analyze(ns: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_inspect(ns: argparse.Namespace) -> int:
+    src = Path(ns.file)
+    if not src.is_file():
+        print("error: file not found: %s" % src, file=sys.stderr)
+        return 1
+    try:
+        text = src.read_bytes().decode("utf-8", errors="replace")
+    except OSError as exc:
+        print("error: cannot read %s: %s" % (src, exc), file=sys.stderr)
+        return 1
+    report = coverage_report(text, src.name)
+    print(format_report(report))
+    if ns.out:
+        out_path = Path(ns.out) / ("%s.coverage.json" % src.stem)
+        import dataclasses
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(dataclasses.asdict(report), indent=2), encoding="utf-8")
+        print("Wrote: %s" % out_path)
+    return 0 if report.status not in ("ERROR",) else 1
+
+
+def _cmd_benchmark(ns: argparse.Namespace) -> int:
+    import os
+    directory = ns.directory
+    if not os.path.isdir(directory):
+        print("error: not a directory: %s" % directory, file=sys.stderr)
+        return 1
+    entries = run_benchmark(directory)
+    report_text = format_benchmark(entries, title="MIRA PLC Parser — Benchmark: %s" % directory)
+    print(report_text)
+    if ns.out:
+        out_path = Path(ns.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(report_text, encoding="utf-8")
+        print("\nWrote: %s" % out_path)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mira-plc-parser",
@@ -102,6 +141,21 @@ def build_parser() -> argparse.ArgumentParser:
                            help="Which report file(s) to write (default: both).")
     p_analyze.add_argument("--quiet", action="store_true", help="Suppress the stdout summary.")
     p_analyze.set_defaults(func=_cmd_analyze)
+
+    p_inspect = sub.add_parser("inspect",
+        help="Show coverage report: what the parser can and cannot extract from a file.")
+    p_inspect.add_argument("file", help="Path to an L5X file.")
+    p_inspect.add_argument("--out", default="", metavar="DIR",
+                           help="Optional directory to also write a JSON coverage report.")
+    p_inspect.set_defaults(func=_cmd_inspect)
+
+    p_bench = sub.add_parser("benchmark",
+        help="Run coverage report over every L5X in a directory and print a summary table.")
+    p_bench.add_argument("directory", help="Directory containing L5X files.")
+    p_bench.add_argument("--out", default="", metavar="FILE",
+                         help="Optional path to write the markdown benchmark report.")
+    p_bench.set_defaults(func=_cmd_benchmark)
+
     return parser
 
 

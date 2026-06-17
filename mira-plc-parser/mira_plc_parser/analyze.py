@@ -94,6 +94,17 @@ def analyze(proj: PLCProject) -> AnalysisReport:
         "programs": sum(len(c.programs) for c in proj.controllers),
         "routines": len(proj.all_routines()),
         "rungs": len(proj.all_rungs()),
+        "aoi_definitions": sum(len(c.aoi_definitions) for c in proj.controllers),
+        "aoi_parameters": sum(
+            len(aoi.parameters) for c in proj.controllers for aoi in c.aoi_definitions
+        ),
+        "aoi_local_tags": sum(
+            len(aoi.local_tags) for c in proj.controllers for aoi in c.aoi_definitions
+        ),
+        "module_definitions": sum(len(c.module_definitions) for c in proj.controllers),
+        "fbd_sheets": sum(
+            len(r.rungs) for _, r in proj.all_routines() if r.type == "FBD"
+        ),
         "outputs": len(rep.output_dependencies),
         "fault_candidates": len(rep.fault_candidates),
         "asset_candidates": len(rep.asset_candidates),

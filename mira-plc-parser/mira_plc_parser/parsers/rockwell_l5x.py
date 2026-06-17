@@ -30,10 +30,13 @@ import re
 import xml.etree.ElementTree as ET
 
 from ..ir import (
+    AOIDefinition,
     Confidence,
     Controller,
     DataType,
     DataTypeMember,
+    ModuleDefinition,
+    ModulePort,
     PLCProject,
     Program,
     Provenance,
@@ -117,6 +120,20 @@ def _parse_controller(el: ET.Element, software: str, src: str) -> Controller:
     if progs_el is not None:
         for prog_el in progs_el.findall("Program"):
             ctrl.programs.append(_parse_program(prog_el, src))
+    # add-on instruction definitions (skip Use="Context" — those are supporting references)
+    aoi_defs_el = _first(el, "AddOnInstructionDefinitions")
+    if aoi_defs_el is not None:
+        for aoi_el in aoi_defs_el.findall("AddOnInstructionDefinition"):
+            if aoi_el.get("Use") == "Context":
+                continue
+            ctrl.aoi_definitions.append(_parse_aoi_definition(aoi_el, src))
+    # module definitions (I/O hardware topology)
+    mods_el = _first(el, "Modules")
+    if mods_el is not None:
+        for mod_el in mods_el.findall("Module"):
+            if mod_el.get("Use") == "Context":
+                continue
+            ctrl.module_definitions.append(_parse_module_definition(mod_el, src))
     return ctrl
 
 
@@ -168,6 +185,10 @@ def _parse_routine(el: ET.Element, prog_name: str, src: str) -> Routine:
     if rll is not None:
         for rung_el in rll.findall("Rung"):
             routine.rungs.append(_parse_rung(rung_el, prog_name, routine.name, src))
+    fbd = _first(el, "FBDContent")
+    if fbd is not None:
+        for sheet_el in fbd.findall("Sheet"):
+            routine.rungs.append(_parse_fbd_sheet(sheet_el, prog_name, routine.name, src))
     st = _first(el, "STContent")
     if st is not None:
         lines = [(_txt(ln)) for ln in st.findall("Line")]
@@ -188,6 +209,62 @@ def _parse_rung(el: ET.Element, prog_name: str, routine_name: str, src: str) -> 
         outputs=outputs,
         instructions=instrs,
         provenance=_prov(src, "%s/%s/Rung[%d]" % (prog_name, routine_name, number)),
+    )
+
+
+def _parse_fbd_sheet(el: ET.Element, prog_name: str, routine_name: str, src: str) -> Rung:
+    """Convert one FBD Sheet into a Rung-shaped record.
+
+    IRef.Operand  -> refs (inputs)
+    ORef.Operand  -> outputs (driven tags)
+    Block.Operand -> refs (the tag the block instance is bound to)
+    Block.Type    -> instructions (mnemonics like MAVE, TONR, ESEL)
+    """
+    number = int(el.get("Number", "0") or "0")
+    refs: list[str] = []
+    outputs: list[str] = []
+    instrs: list[str] = []
+    seen_ref: set[str] = set()
+    seen_out: set[str] = set()
+
+    for child in el:
+        tag = child.tag
+        if tag == "IRef":
+            op = child.get("Operand", "").strip()
+            if op and not _is_immediate(op) and op not in seen_ref:
+                seen_ref.add(op)
+                refs.append(op)
+        elif tag == "ORef":
+            op = child.get("Operand", "").strip()
+            if op and not _is_immediate(op):
+                if op not in seen_out:
+                    seen_out.add(op)
+                    outputs.append(op)
+                if op not in seen_ref:
+                    seen_ref.add(op)
+                    refs.append(op)
+        elif tag in ("Block", "Function"):
+            btype = child.get("Type", "")
+            if btype and btype not in instrs:
+                instrs.append(btype)
+            op = child.get("Operand", "").strip()
+            if op and not _is_immediate(op) and op not in seen_ref:
+                seen_ref.add(op)
+                refs.append(op)
+            # Nested Array operands (e.g. StorageArray, WeightArray on MAVE)
+            for sub in child:
+                sub_op = sub.get("Operand", "").strip()
+                if sub_op and not _is_immediate(sub_op) and sub_op not in seen_ref:
+                    seen_ref.add(sub_op)
+                    refs.append(sub_op)
+
+    return Rung(
+        number=number,
+        text="",
+        refs=refs,
+        outputs=outputs,
+        instructions=instrs,
+        provenance=_prov(src, "%s/%s/FBDSheet[%d]" % (prog_name, routine_name, number)),
     )
 
 
@@ -223,6 +300,89 @@ def _extract_rung_logic(text: str) -> tuple[list[str], list[str], list[str]]:
                 seen_out.add(driven)
                 outputs.append(driven)
     return refs, outputs, instrs
+
+
+def _parse_module_definition(el: ET.Element, src: str) -> ModuleDefinition:
+    name = el.get("Name", "")
+    mod = ModuleDefinition(
+        name=name,
+        catalog_number=el.get("CatalogNumber", ""),
+        vendor=el.get("Vendor", ""),
+        product_type=el.get("ProductType", ""),
+        product_code=el.get("ProductCode", ""),
+        major=el.get("Major", ""),
+        minor=el.get("Minor", ""),
+        parent_module=el.get("ParentModule", ""),
+        parent_port=el.get("ParentModPortId", ""),
+        inhibited=el.get("Inhibited", "false").lower() == "true",
+        provenance=_prov(src, "Module[@Name='%s']" % name),
+    )
+    ports_el = _first(el, "Ports")
+    if ports_el is not None:
+        for p_el in ports_el.findall("Port"):
+            mod.ports.append(ModulePort(
+                id=p_el.get("Id", ""),
+                address=p_el.get("Address", ""),
+                type=p_el.get("Type", ""),
+                upstream=p_el.get("Upstream", "false").lower() == "true",
+            ))
+    return mod
+
+
+def _parse_aoi_definition(el: ET.Element, src: str) -> AOIDefinition:
+    name = el.get("Name", "")
+    desc_el = _first(el, "Description")
+    aoi = AOIDefinition(
+        name=name,
+        revision=el.get("Revision", ""),
+        description=_txt(desc_el),
+        provenance=_prov(src, "AddOnInstructionDefinition[@Name='%s']" % name),
+    )
+    # parameters (the interface: Input / Output / InOut)
+    params_el = _first(el, "Parameters")
+    if params_el is not None:
+        for p_el in params_el.findall("Parameter"):
+            aoi.parameters.append(_parse_aoi_param(p_el, name, src))
+    # local tags (internal state, not part of the interface)
+    local_el = _first(el, "LocalTags")
+    if local_el is not None:
+        for lt_el in local_el.findall("LocalTag"):
+            aoi.local_tags.append(_parse_aoi_local_tag(lt_el, name, src))
+    # routines (Logic, Prescan, Postscan, EnableInFalse)
+    routines_el = _first(el, "Routines")
+    if routines_el is not None:
+        for r_el in routines_el.findall("Routine"):
+            aoi.routines.append(_parse_routine(r_el, name, src))
+    return aoi
+
+
+def _parse_aoi_param(el: ET.Element, aoi_name: str, src: str) -> Tag:
+    name = el.get("Name", "")
+    desc_el = _first(el, "Description")
+    usage = el.get("Usage", "")   # Input, Output, InOut
+    return Tag(
+        name=name,
+        data_type=el.get("DataType", ""),
+        scope=TagScope.AOI_PARAMETER.value,
+        description=_txt(desc_el),
+        external_access=el.get("ExternalAccess", ""),
+        radix=el.get("Radix", ""),
+        usage=[usage] if usage else [],
+        provenance=_prov(src, "AOI[%s]/Parameter[@Name='%s']" % (aoi_name, name)),
+    )
+
+
+def _parse_aoi_local_tag(el: ET.Element, aoi_name: str, src: str) -> Tag:
+    name = el.get("Name", "")
+    desc_el = _first(el, "Description")
+    return Tag(
+        name=name,
+        data_type=el.get("DataType", ""),
+        scope=TagScope.AOI_LOCAL.value,
+        description=_txt(desc_el),
+        radix=el.get("Radix", ""),
+        provenance=_prov(src, "AOI[%s]/LocalTag[@Name='%s']" % (aoi_name, name)),
+    )
 
 
 def _is_immediate(op: str) -> bool:
