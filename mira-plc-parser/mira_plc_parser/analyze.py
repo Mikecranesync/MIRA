@@ -99,6 +99,9 @@ def analyze(proj: PLCProject) -> AnalysisReport:
         "asset_candidates": len(rep.asset_candidates),
         "vfd_signal_candidates": len(rep.vfd_signal_candidates),
         "review_required": len(rep.review_required),
+        "aoi_definitions": len(proj.aoi_definitions),
+        "aoi_parameters": sum(len(a.parameters) for a in proj.aoi_definitions),
+        "aoi_local_tags": sum(len(a.local_tags) for a in proj.aoi_definitions),
     }
     return rep
 

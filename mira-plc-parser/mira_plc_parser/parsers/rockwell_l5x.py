@@ -30,6 +30,7 @@ import re
 import xml.etree.ElementTree as ET
 
 from ..ir import (
+    AOIDefinition,
     Confidence,
     Controller,
     DataType,
@@ -82,11 +83,20 @@ def parse(text: str, source_file: str = "") -> PLCProject:
         proj.warnings.append("root is <%s>, expected <RSLogix5000Content>" % root.tag)
 
     software = "RSLogix 5000 v%s" % root.get("SoftwareRevision", "?")
+
+    # AOI-only export: root-level <AddOnInstructionDefinitions>
+    aoi_defs_el = _first(root, "AddOnInstructionDefinitions")
+    if aoi_defs_el is not None:
+        for aoi_el in aoi_defs_el.findall("AddOnInstructionDefinition"):
+            proj.aoi_definitions.append(_parse_aoi_definition(aoi_el, source_file))
+
     for ctrl_el in root.iter("Controller"):
-        proj.controllers.append(_parse_controller(ctrl_el, software, source_file))
+        ctrl, ctrl_aois = _parse_controller(ctrl_el, software, source_file)
+        proj.controllers.append(ctrl)
+        proj.aoi_definitions.extend(ctrl_aois)
         break  # a project export has exactly one target Controller
-    if not proj.controllers:
-        proj.warnings.append("no <Controller> element found")
+    if not proj.controllers and not proj.aoi_definitions:
+        proj.warnings.append("no <Controller> or <AddOnInstructionDefinitions> element found")
     return proj
 
 
@@ -94,7 +104,7 @@ def _prov(source_file: str, locator: str, conf: Confidence = Confidence.HIGH) ->
     return Provenance(source_file=source_file, source_format=FORMAT, locator=locator, confidence=conf)
 
 
-def _parse_controller(el: ET.Element, software: str, src: str) -> Controller:
+def _parse_controller(el: ET.Element, software: str, src: str) -> tuple[Controller, list[AOIDefinition]]:
     ctrl = Controller(
         name=el.get("Name", ""),
         processor_type=el.get("ProcessorType", ""),
@@ -117,7 +127,13 @@ def _parse_controller(el: ET.Element, software: str, src: str) -> Controller:
     if progs_el is not None:
         for prog_el in progs_el.findall("Program"):
             ctrl.programs.append(_parse_program(prog_el, src))
-    return ctrl
+    # in-controller AOI definitions
+    aois: list[AOIDefinition] = []
+    in_ctrl_aois = _first(el, "AddOnInstructionDefinitions")
+    if in_ctrl_aois is not None:
+        for aoi_el in in_ctrl_aois.findall("AddOnInstructionDefinition"):
+            aois.append(_parse_aoi_definition(aoi_el, src))
+    return ctrl, aois
 
 
 def _parse_datatype(el: ET.Element, src: str) -> DataType:
@@ -142,6 +158,54 @@ def _parse_tag(el: ET.Element, scope: str, src: str) -> Tag:
         radix=el.get("Radix", ""),
         provenance=_prov(src, "Tag[@Name='%s']" % name),
     )
+
+
+def _parse_aoi_parameter(el: ET.Element, aoi_name: str, src: str) -> Tag:
+    pname = el.get("Name", "")
+    desc_el = _first(el, "Description")
+    return Tag(
+        name=pname,
+        data_type=el.get("DataType", ""),
+        scope=TagScope.AOI_PARAMETER.value,
+        description=_txt(desc_el),
+        external_access=el.get("Usage", ""),
+        radix=el.get("Radix", ""),
+        provenance=_prov(src, "AddOnInstructionDefinition[@Name='%s']/Parameter[@Name='%s']" % (aoi_name, pname)),
+    )
+
+
+def _parse_aoi_local_tag(el: ET.Element, aoi_name: str, src: str) -> Tag:
+    ltname = el.get("Name", "")
+    return Tag(
+        name=ltname,
+        data_type=el.get("DataType", ""),
+        scope=TagScope.AOI_LOCAL.value,
+        provenance=_prov(src, "AddOnInstructionDefinition[@Name='%s']/LocalTag[@Name='%s']" % (aoi_name, ltname)),
+    )
+
+
+def _parse_aoi_definition(el: ET.Element, src: str) -> AOIDefinition:
+    name = el.get("Name", "")
+    desc_el = _first(el, "Description")
+    aoi = AOIDefinition(
+        name=name,
+        revision=el.get("Revision", ""),
+        description=_txt(desc_el),
+        provenance=_prov(src, "AddOnInstructionDefinition[@Name='%s']" % name),
+    )
+    params_el = _first(el, "Parameters")
+    if params_el is not None:
+        for p_el in params_el.findall("Parameter"):
+            aoi.parameters.append(_parse_aoi_parameter(p_el, name, src))
+    local_el = _first(el, "LocalTags")
+    if local_el is not None:
+        for lt_el in local_el.findall("LocalTag"):
+            aoi.local_tags.append(_parse_aoi_local_tag(lt_el, name, src))
+    routines_el = _first(el, "Routines")
+    if routines_el is not None:
+        for r_el in routines_el.findall("Routine"):
+            aoi.routines.append(_parse_routine(r_el, "AOI:" + name, src))
+    return aoi
 
 
 def _parse_program(el: ET.Element, src: str) -> Program:
