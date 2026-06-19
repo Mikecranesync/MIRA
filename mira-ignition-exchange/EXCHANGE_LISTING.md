@@ -10,17 +10,17 @@ Copy/paste-ready content for the [Ignition Exchange submission form](https://ind
 
 ## Tagline (≤ 100 chars)
 
-Embed an AI maintenance assistant + nameplate scanner in any Perspective project. Free.
+AI maintenance assistant + tag namespace mapper for any Perspective project. Free.
 
 ## Short Description (≤ 280 chars)
 
-Two drop-in Perspective views that bring AI-powered troubleshooting and nameplate OCR into your plant. Pin the Chat Dock to any page, scan equipment with a phone, and instantly look up manuals, prior work orders, and OEM specs. Powered by FactoryLM.
+Three drop-in Perspective views: AI chat for troubleshooting, nameplate OCR scanner, and a UNS/i3X namespace mapper that maps your Ignition tags to ISA-95 + CESMII i3X frameworks with one click. Powered by FactoryLM.
 
 ## Long Description
 
 MIRA brings the kind of AI maintenance assistant your phone gives you for everything else into the place you actually need it — next to your HMI.
 
-This bundle ships two Perspective views that import as one Exchange resource:
+This bundle ships three Perspective views that import as one Exchange resource:
 
 **1. MIRA Chat Dock**
 A 400-pixel right-side dock that embeds the MIRA chat assistant directly into your project. Operators ask questions in plain English ("why is conveyor 3 alarming?"), MIRA cross-references the live tag context, equipment knowledge base, and a vision-language cascade to answer. Pin it once at the page-config level and it's available on every screen — no extra navigation.
@@ -30,17 +30,21 @@ Drop this template into any view to add a one-tap nameplate scanner. The compone
 
 **Why it's free:** This is the lightweight, on-Exchange version of MIRA. It calls FactoryLM's hosted backend (no Anthropic key, no model server, no GPU required). Plants that want full per-asset memory, OEM manual ingest, work-order history, and CMMS integration upgrade to the FactoryLM workspace — but everything in this Exchange listing works as-is, forever, at zero cost.
 
+**3. MIRA Namespace Mapper** *(requires WebDev module)*
+A full-width Perspective view that reads every tag in any folder you point it at, applies MIRA's signal-role vocabulary (fault / vfd_signal / output / timer / asset), and proposes a complete ISA-95 UNS path and CESMII i3X element for each tag. Review proposals in the UNS or i3X tab, Accept/Reject per tag or bulk, then Save to Gateway (persists to `[default]MIRA/namespace_map` + `namespace_map_i3x`) or Export as JSON. The saved map is consumed by mira-hub and mira-pipeline to resolve tag→UNS paths for grounded AI troubleshooting. Follows the Cognite entity-matching proposed→verified pattern: MIRA proposes, you verify.
+
 **What's inside:**
 - `MIRA/ChatDock` — Perspective view with header bar, embedded Web Browser, and a 10-question soft upsell banner
 - `MIRA/ScanWidget` — Camera capture, base64 POST, AssetPlate result card, conditional CTAs
 - `MIRA/ScanWidget/components/FieldRow` — reusable label/value row, embedded inside the result card
-- Gateway startup script that creates `[default]MIRA/endpoint_url`, `scan_api_url`, and `factorylm_onboard_url` (idempotent — safe to re-run)
-- Tag JSON export (alternative install path)
+- `MIRA/NamespaceMapper` — Tag discovery, UNS/i3X proposals, Accept/Reject review, Save + Export
+- Gateway startup script (idempotent, creates all 10 MIRA tags)
+- Tag JSON export (alternative install path — includes uns_enterprise/site/area/line config and namespace_map storage tags)
 - 5-minute README with setup steps and screenshots
 
-**Endpoints used:** `POST <scan_api_url>/scan/extract` (vision OCR + KB lookup). All URLs are tag-driven, so self-hosters can point at their own MIRA backend.
+**Endpoints used:** `POST <scan_api_url>/scan/extract` (vision OCR + KB lookup); `GET/POST <namespace_map_api_url>` (tag→UNS mapping; WebDev module required). All URLs are tag-driven, so self-hosters point at their own MIRA backend.
 
-**Configurable per gateway:** Three Memory tags. No code changes needed.
+**Configurable per gateway:** Ten Memory tags. No code changes needed.
 
 **Safety:** Arc flash, LOTO, and confined-space queries trigger STOP escalations, never auto-generated procedures. Inference cascades through Groq → Cerebras → Gemini for low latency and zero single-vendor lock-in.
 
@@ -57,10 +61,13 @@ perspective, ai, ml, llm, chatbot, maintenance, ocr, computer-vision, nameplate,
 
 ## Feature List (bullet-friendly)
 
-- Drop-in Perspective views — no Java code, no module install required beyond Perspective itself
+- Drop-in Perspective views — no Java code, no module install required beyond Perspective itself (Namespace Mapper needs WebDev)
 - AI chat assistant pinnable to any page via Perspective's built-in dock system
 - Mobile camera nameplate scanner with sub-2-second OCR (make / model / serial / voltage / HP)
-- Per-gateway configuration via three Memory tags — no JSON or code edits to deploy
+- **One-click namespace mapper** — points at any tag folder, proposes ISA-95 UNS paths + CESMII i3X elements for every tag
+- UNS tab + i3X tab with per-tag Accept/Reject and bulk Accept All / Reject All actions
+- Saves accepted namespace map to gateway Memory Tags; exports UNS JSON or i3X JSON for integration
+- Per-gateway configuration via ten Memory tags — no JSON or code edits to deploy
 - Hosted backend at `app.factorylm.com/api/scanbe` — no GPU, no model server, no API keys to provision
 - Self-hostable — point the three tags at your own MIRA instance
 - Idempotent gateway startup script for clean installs and upgrades
@@ -101,6 +108,9 @@ Open issues at [github.com/Mikecranesync/MIRA](https://github.com/Mikecranesync/
 4. `screenshot-scanwidget-result-unmatched.png` — AssetPlate card with "Add to FactoryLM" CTA
 5. `screenshot-chatdock-mobile.png` — Chat Dock on a Perspective mobile session
 6. `screenshot-upsell-banner.png` — Soft upsell after 10 questions
+7. `screenshot-namespacemapper-table-uns.png` — NamespaceMapper showing UNS tab with proposed paths
+8. `screenshot-namespacemapper-table-i3x.png` — NamespaceMapper showing i3X tab
+9. `screenshot-namespacemapper-saved.png` — After Save to Gateway — SAVED badge + stats
 
 ## Submission Checklist
 

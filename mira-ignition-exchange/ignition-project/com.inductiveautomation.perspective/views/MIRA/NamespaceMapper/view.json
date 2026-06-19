@@ -1,0 +1,974 @@
+{
+  "custom": {
+    "tagFolder": "[default]",
+    "activeTab": "uns",
+    "mapState": "idle",
+    "errorMessage": "",
+    "proposals": [],
+    "selectedRows": [],
+    "stats": {"accepted": 0, "rejected": 0, "pending": 0},
+    "unsPrefix": {"enterprise": "enterprise", "site": "site", "area": "area", "line": "line"}
+  },
+  "params": {
+    "tagFolder": {
+      "type": "string",
+      "value": "[default]",
+      "description": "Initial tag provider+folder to map (e.g. [default]MyPLC). Passed by embedding views."
+    }
+  },
+  "props": {
+    "defaultSize": {
+      "width": 1100,
+      "height": 720
+    }
+  },
+  "root": {
+    "type": "ia.container.flex",
+    "version": 0,
+    "props": {
+      "direction": "column",
+      "alignItems": "stretch",
+      "justifyContent": "flex-start",
+      "style": {
+        "backgroundColor": "#F4F6F8",
+        "fontFamily": "Roboto, sans-serif",
+        "height": "100%"
+      }
+    },
+    "meta": {"name": "root"},
+    "position": {"grow": 1},
+    "children": [
+
+      {
+        "type": "ia.container.flex",
+        "version": 0,
+        "props": {
+          "direction": "row",
+          "alignItems": "center",
+          "justifyContent": "space-between",
+          "style": {
+            "backgroundColor": "#0E1A2B",
+            "color": "#FFFFFF",
+            "padding": "12px 16px",
+            "borderBottom": "1px solid #1B2A41"
+          }
+        },
+        "meta": {"name": "headerBar"},
+        "position": {"basis": "56px", "shrink": 0},
+        "children": [
+          {
+            "type": "ia.container.flex",
+            "version": 0,
+            "props": {
+              "direction": "row",
+              "alignItems": "center",
+              "style": {"gap": "10px"}
+            },
+            "meta": {"name": "logoGroup"},
+            "position": {"grow": 0},
+            "children": [
+              {
+                "type": "ia.display.icon",
+                "version": 0,
+                "props": {
+                  "path": "material/account_tree",
+                  "color": "#5BC0EB",
+                  "style": {"width": "28px", "height": "28px"}
+                },
+                "meta": {"name": "mapperIcon"},
+                "position": {"basis": "28px", "shrink": 0}
+              },
+              {
+                "type": "ia.display.label",
+                "version": 0,
+                "props": {
+                  "text": "MIRA Namespace Mapper",
+                  "style": {
+                    "color": "#FFFFFF",
+                    "fontSize": "18px",
+                    "fontWeight": "700",
+                    "letterSpacing": "1px"
+                  }
+                },
+                "meta": {"name": "title"},
+                "position": {"shrink": 0}
+              }
+            ]
+          },
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {
+              "text": "Powered by FactoryLM",
+              "style": {
+                "color": "#A8B5C7",
+                "fontSize": "11px",
+                "fontWeight": "400",
+                "textTransform": "uppercase",
+                "letterSpacing": "0.5px"
+              }
+            },
+            "meta": {"name": "poweredBy"},
+            "position": {"shrink": 0}
+          }
+        ]
+      },
+
+      {
+        "type": "ia.container.flex",
+        "version": 0,
+        "props": {
+          "direction": "row",
+          "alignItems": "center",
+          "style": {
+            "backgroundColor": "#FFFFFF",
+            "borderBottom": "1px solid #E0E0E0",
+            "padding": "8px 16px",
+            "gap": "10px"
+          }
+        },
+        "meta": {"name": "configBar"},
+        "position": {"basis": "52px", "shrink": 0},
+        "children": [
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {
+              "text": "Tag Folder:",
+              "style": {"fontSize": "13px", "color": "#374151", "fontWeight": "500", "whiteSpace": "nowrap"}
+            },
+            "meta": {"name": "folderLabel"},
+            "position": {"shrink": 0}
+          },
+          {
+            "type": "ia.input.text-field",
+            "version": 0,
+            "props": {
+              "value": "",
+              "placeholderText": "[default]  or  [default]MyPLC/ConveyorLine",
+              "style": {"fontSize": "13px", "minWidth": "280px"}
+            },
+            "meta": {"name": "folderInput"},
+            "position": {"grow": 1},
+            "propConfig": {
+              "props.value": {
+                "binding": {
+                  "type": "property",
+                  "config": {"path": "view.custom.tagFolder"}
+                }
+              }
+            },
+            "events": {
+              "component": {
+                "onValueChange": [
+                  {
+                    "type": "script",
+                    "scope": "G",
+                    "config": {
+                      "script": "self.view.custom.tagFolder = str(currentValue.value)"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "ia.input.button",
+            "version": 0,
+            "props": {
+              "text": "Map Tags",
+              "style": {
+                "backgroundColor": "#0E1A2B",
+                "color": "#FFFFFF",
+                "fontWeight": "600",
+                "padding": "8px 18px",
+                "borderRadius": "5px",
+                "fontSize": "13px"
+              }
+            },
+            "meta": {"name": "mapButton"},
+            "position": {"shrink": 0},
+            "events": {
+              "component": {
+                "onActionPerformed": [
+                  {
+                    "type": "script",
+                    "scope": "G",
+                    "config": {
+                      "script": "import system\n\nfolder = str(self.view.custom.tagFolder).strip()\nif not folder:\n    self.view.custom.errorMessage = 'Enter a tag folder path (e.g. [default]MyPLC).'\n    self.view.custom.mapState = 'error'\n    return\n\nself.view.custom.mapState = 'loading'\nself.view.custom.errorMessage = ''\n\ntry:\n    api_url = str(system.tag.readBlocking(['[default]MIRA/namespace_map_api_url'])[0].value).strip()\n    if not api_url or api_url in ('null', 'None', ''):\n        api_url = 'http://localhost:8088/system/webdev/FactoryLM/api/namespace'\n    url = api_url + '?folder=' + folder + '&recurse=true'\n    client = system.net.httpClient(timeout=30000)\n    resp = client.get(url=url, headers={'Accept': 'application/json'})\n    if resp.good:\n        data = resp.getJson()\n        proposals = list(data.get('proposals', []))\n        self.view.custom.proposals = proposals\n        pfix = data.get('uns_prefix', {})\n        self.view.custom.unsPrefix = {\n            'enterprise': str(pfix.get('enterprise', 'enterprise')),\n            'site': str(pfix.get('site', 'site')),\n            'area': str(pfix.get('area', 'area')),\n            'line': str(pfix.get('line', 'line'))\n        }\n        accepted = sum(1 for p in proposals if str(p.get('status', '')) == 'accepted')\n        rejected = sum(1 for p in proposals if str(p.get('status', '')) == 'rejected')\n        pending  = len(proposals) - accepted - rejected\n        self.view.custom.stats = {'accepted': accepted, 'rejected': rejected, 'pending': pending}\n        self.view.custom.mapState = 'mapped'\n    else:\n        self.view.custom.errorMessage = 'Map request failed: HTTP ' + str(resp.statusCode)\n        self.view.custom.mapState = 'error'\nexcept Exception as e:\n    self.view.custom.errorMessage = 'Error mapping tags: ' + str(e)\n    self.view.custom.mapState = 'error'\n"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {
+              "text": "|",
+              "style": {"color": "#D1D5DB", "fontSize": "18px", "padding": "0 4px"}
+            },
+            "meta": {"name": "divider1"},
+            "position": {"shrink": 0}
+          },
+          {
+            "type": "ia.input.button",
+            "version": 0,
+            "props": {
+              "text": "UNS Namespace",
+              "style": {
+                "fontWeight": "600",
+                "fontSize": "13px",
+                "padding": "8px 14px",
+                "borderRadius": "5px",
+                "border": "2px solid transparent"
+              }
+            },
+            "meta": {"name": "tabUns"},
+            "position": {"shrink": 0},
+            "propConfig": {
+              "props.style.backgroundColor": {
+                "binding": {
+                  "type": "expr",
+                  "config": {
+                    "expression": "if({view.custom.activeTab} = 'uns', '#0E1A2B', '#F3F4F6')"
+                  }
+                }
+              },
+              "props.style.color": {
+                "binding": {
+                  "type": "expr",
+                  "config": {
+                    "expression": "if({view.custom.activeTab} = 'uns', '#FFFFFF', '#374151')"
+                  }
+                }
+              }
+            },
+            "events": {
+              "component": {
+                "onActionPerformed": [
+                  {
+                    "type": "script",
+                    "scope": "G",
+                    "config": {"script": "self.view.custom.activeTab = 'uns'"}
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "ia.input.button",
+            "version": 0,
+            "props": {
+              "text": "i3X",
+              "style": {
+                "fontWeight": "600",
+                "fontSize": "13px",
+                "padding": "8px 14px",
+                "borderRadius": "5px"
+              }
+            },
+            "meta": {"name": "tabI3x"},
+            "position": {"shrink": 0},
+            "propConfig": {
+              "props.style.backgroundColor": {
+                "binding": {
+                  "type": "expr",
+                  "config": {
+                    "expression": "if({view.custom.activeTab} = 'i3x', '#0E1A2B', '#F3F4F6')"
+                  }
+                }
+              },
+              "props.style.color": {
+                "binding": {
+                  "type": "expr",
+                  "config": {
+                    "expression": "if({view.custom.activeTab} = 'i3x', '#FFFFFF', '#374151')"
+                  }
+                }
+              }
+            },
+            "events": {
+              "component": {
+                "onActionPerformed": [
+                  {
+                    "type": "script",
+                    "scope": "G",
+                    "config": {"script": "self.view.custom.activeTab = 'i3x'"}
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+
+      {
+        "type": "ia.container.flex",
+        "version": 0,
+        "props": {
+          "direction": "row",
+          "alignItems": "center",
+          "style": {
+            "backgroundColor": "#ECFDF5",
+            "borderBottom": "1px solid #A7F3D0",
+            "padding": "8px 16px",
+            "gap": "16px"
+          },
+          "visible": false
+        },
+        "meta": {"name": "statusBanner"},
+        "position": {"basis": "40px", "shrink": 0},
+        "propConfig": {
+          "props.visible": {
+            "binding": {
+              "type": "expr",
+              "config": {
+                "expression": "{view.custom.mapState} = 'mapped' or {view.custom.mapState} = 'saved'"
+              }
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "ia.display.icon",
+            "version": 0,
+            "props": {"path": "material/check_circle", "color": "#059669", "style": {"width": "18px", "height": "18px"}},
+            "meta": {"name": "statusIcon"},
+            "position": {"shrink": 0}
+          },
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {"text": "", "style": {"color": "#065F46", "fontSize": "13px", "fontWeight": "500"}},
+            "meta": {"name": "statusText"},
+            "position": {"grow": 1},
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "type": "expr",
+                  "config": {
+                    "expression": "toStr({view.custom.stats.accepted}) + ' accepted  ·  ' + toStr({view.custom.stats.rejected}) + ' rejected  ·  ' + toStr({view.custom.stats.pending}) + ' pending'"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {
+              "text": "SAVED",
+              "style": {
+                "backgroundColor": "#059669",
+                "color": "#FFFFFF",
+                "fontSize": "11px",
+                "fontWeight": "700",
+                "padding": "2px 8px",
+                "borderRadius": "4px",
+                "letterSpacing": "0.5px"
+              },
+              "visible": false
+            },
+            "meta": {"name": "savedBadge"},
+            "position": {"shrink": 0},
+            "propConfig": {
+              "props.visible": {
+                "binding": {
+                  "type": "expr",
+                  "config": {"expression": "{view.custom.mapState} = 'saved'"}
+                }
+              }
+            }
+          }
+        ]
+      },
+
+      {
+        "type": "ia.container.flex",
+        "version": 0,
+        "props": {
+          "direction": "row",
+          "alignItems": "center",
+          "style": {
+            "backgroundColor": "#FEF3C7",
+            "borderBottom": "1px solid #FDE68A",
+            "padding": "8px 16px",
+            "gap": "8px"
+          },
+          "visible": false
+        },
+        "meta": {"name": "loadingBanner"},
+        "position": {"basis": "40px", "shrink": 0},
+        "propConfig": {
+          "props.visible": {
+            "binding": {
+              "type": "expr",
+              "config": {"expression": "{view.custom.mapState} = 'loading'"}
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "ia.display.icon",
+            "version": 0,
+            "props": {"path": "material/autorenew", "color": "#92400E", "style": {"width": "18px", "height": "18px"}},
+            "meta": {"name": "loadingIcon"},
+            "position": {}
+          },
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {"text": "Analyzing tags and building namespace proposals...", "style": {"color": "#92400E", "fontSize": "13px"}},
+            "meta": {"name": "loadingText"},
+            "position": {}
+          }
+        ]
+      },
+
+      {
+        "type": "ia.container.flex",
+        "version": 0,
+        "props": {
+          "direction": "row",
+          "alignItems": "center",
+          "style": {
+            "backgroundColor": "#FEE2E2",
+            "borderBottom": "1px solid #FECACA",
+            "padding": "8px 16px",
+            "gap": "8px"
+          },
+          "visible": false
+        },
+        "meta": {"name": "errorBanner"},
+        "position": {"basis": "auto", "shrink": 0},
+        "propConfig": {
+          "props.visible": {
+            "binding": {
+              "type": "expr",
+              "config": {"expression": "{view.custom.mapState} = 'error'"}
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "ia.display.icon",
+            "version": 0,
+            "props": {"path": "material/error_outline", "color": "#991B1B", "style": {"width": "18px", "height": "18px"}},
+            "meta": {"name": "errorIcon"},
+            "position": {"shrink": 0}
+          },
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {"text": "", "style": {"color": "#991B1B", "fontSize": "13px"}},
+            "meta": {"name": "errorText"},
+            "position": {"grow": 1},
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "type": "property",
+                  "config": {"path": "view.custom.errorMessage"}
+                }
+              }
+            }
+          }
+        ]
+      },
+
+      {
+        "type": "ia.container.flex",
+        "version": 0,
+        "props": {
+          "direction": "column",
+          "alignItems": "stretch",
+          "style": {"padding": "8px 16px"}
+        },
+        "meta": {"name": "idleHint"},
+        "position": {"grow": 1},
+        "propConfig": {
+          "props.visible": {
+            "binding": {
+              "type": "expr",
+              "config": {
+                "expression": "{view.custom.mapState} = 'idle'"
+              }
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {
+              "text": "Enter a tag folder path above and click Map Tags to discover and propose UNS + i3X namespace mappings for every tag in that folder.",
+              "style": {
+                "color": "#6B7280",
+                "fontSize": "14px",
+                "marginTop": "24px",
+                "textAlign": "center"
+              }
+            },
+            "meta": {"name": "idleLabel"},
+            "position": {}
+          },
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {
+              "text": "Example folders: [default]   [default]MyPLC   [default]Conveyors/Line1",
+              "style": {"color": "#9CA3AF", "fontSize": "12px", "textAlign": "center", "marginTop": "8px"}
+            },
+            "meta": {"name": "examplesLabel"},
+            "position": {}
+          }
+        ]
+      },
+
+      {
+        "type": "ia.display.table",
+        "version": 0,
+        "props": {
+          "data": [],
+          "columns": [
+            {
+              "field": "tag_name",
+              "header": {"title": "Tag Name"},
+              "width": 180
+            },
+            {
+              "field": "uns_path",
+              "header": {"title": "UNS Path (proposed)"},
+              "width": 340
+            },
+            {
+              "field": "data_type",
+              "header": {"title": "Type"},
+              "width": 90
+            },
+            {
+              "field": "roles",
+              "header": {"title": "Roles"},
+              "width": 140
+            },
+            {
+              "field": "status",
+              "header": {"title": "Status"},
+              "width": 90
+            }
+          ],
+          "selection": {
+            "mode": "MULTIPLE",
+            "selected": []
+          },
+          "style": {"backgroundColor": "#FFFFFF"}
+        },
+        "meta": {"name": "unsTable"},
+        "position": {"grow": 1},
+        "propConfig": {
+          "props.data": {
+            "binding": {
+              "type": "property",
+              "config": {"path": "view.custom.proposals"}
+            }
+          },
+          "props.visible": {
+            "binding": {
+              "type": "expr",
+              "config": {
+                "expression": "{view.custom.activeTab} = 'uns' and ({view.custom.mapState} = 'mapped' or {view.custom.mapState} = 'saved')"
+              }
+            }
+          }
+        },
+        "events": {
+          "component": {
+            "onSelectionChanged": [
+              {
+                "type": "script",
+                "scope": "G",
+                "config": {
+                  "script": "try:\n    self.view.custom.selectedRows = list(event.selectedRows)\nexcept Exception:\n    self.view.custom.selectedRows = []\n"
+                }
+              }
+            ]
+          }
+        }
+      },
+
+      {
+        "type": "ia.display.table",
+        "version": 0,
+        "props": {
+          "data": [],
+          "columns": [
+            {
+              "field": "tag_name",
+              "header": {"title": "Tag Name"},
+              "width": 160
+            },
+            {
+              "field": "i3x_element_id",
+              "header": {"title": "i3X elementId"},
+              "width": 320
+            },
+            {
+              "field": "i3x_type_id",
+              "header": {"title": "typeElementId"},
+              "width": 200
+            },
+            {
+              "field": "roles",
+              "header": {"title": "Roles"},
+              "width": 130
+            },
+            {
+              "field": "status",
+              "header": {"title": "Status"},
+              "width": 90
+            }
+          ],
+          "selection": {
+            "mode": "MULTIPLE",
+            "selected": []
+          },
+          "style": {"backgroundColor": "#FFFFFF"}
+        },
+        "meta": {"name": "i3xTable"},
+        "position": {"grow": 1},
+        "propConfig": {
+          "props.data": {
+            "binding": {
+              "type": "property",
+              "config": {"path": "view.custom.proposals"}
+            }
+          },
+          "props.visible": {
+            "binding": {
+              "type": "expr",
+              "config": {
+                "expression": "{view.custom.activeTab} = 'i3x' and ({view.custom.mapState} = 'mapped' or {view.custom.mapState} = 'saved')"
+              }
+            }
+          }
+        },
+        "events": {
+          "component": {
+            "onSelectionChanged": [
+              {
+                "type": "script",
+                "scope": "G",
+                "config": {
+                  "script": "try:\n    self.view.custom.selectedRows = list(event.selectedRows)\nexcept Exception:\n    self.view.custom.selectedRows = []\n"
+                }
+              }
+            ]
+          }
+        }
+      },
+
+      {
+        "type": "ia.container.flex",
+        "version": 0,
+        "props": {
+          "direction": "row",
+          "alignItems": "center",
+          "style": {
+            "backgroundColor": "#FFFFFF",
+            "borderTop": "1px solid #E5E7EB",
+            "padding": "8px 16px",
+            "gap": "8px"
+          },
+          "visible": false
+        },
+        "meta": {"name": "actionBar"},
+        "position": {"basis": "52px", "shrink": 0},
+        "propConfig": {
+          "props.visible": {
+            "binding": {
+              "type": "expr",
+              "config": {
+                "expression": "{view.custom.mapState} = 'mapped' or {view.custom.mapState} = 'saved'"
+              }
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "ia.input.button",
+            "version": 0,
+            "props": {
+              "text": "Accept Selected",
+              "style": {
+                "backgroundColor": "#059669",
+                "color": "#FFFFFF",
+                "fontWeight": "600",
+                "padding": "7px 14px",
+                "borderRadius": "5px",
+                "fontSize": "13px"
+              }
+            },
+            "meta": {"name": "acceptSelectedBtn"},
+            "position": {"shrink": 0},
+            "events": {
+              "component": {
+                "onActionPerformed": [
+                  {
+                    "type": "script",
+                    "scope": "G",
+                    "config": {
+                      "script": "selected_paths = set()\nfor row in self.view.custom.selectedRows:\n    try:\n        tp = str(row.get('tag_path', '') or '')\n        if tp:\n            selected_paths.add(tp)\n    except Exception:\n        pass\nif not selected_paths:\n    return\nproposals = [dict(p) for p in self.view.custom.proposals]\nupdated = []\nfor p in proposals:\n    if str(p.get('tag_path', '')) in selected_paths:\n        p['status'] = 'accepted'\n    updated.append(p)\nself.view.custom.proposals = updated\naccepted = sum(1 for p in updated if str(p.get('status', '')) == 'accepted')\nrejected = sum(1 for p in updated if str(p.get('status', '')) == 'rejected')\npending  = len(updated) - accepted - rejected\nself.view.custom.stats = {'accepted': accepted, 'rejected': rejected, 'pending': pending}\n"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "ia.input.button",
+            "version": 0,
+            "props": {
+              "text": "Reject Selected",
+              "style": {
+                "backgroundColor": "#DC2626",
+                "color": "#FFFFFF",
+                "fontWeight": "600",
+                "padding": "7px 14px",
+                "borderRadius": "5px",
+                "fontSize": "13px"
+              }
+            },
+            "meta": {"name": "rejectSelectedBtn"},
+            "position": {"shrink": 0},
+            "events": {
+              "component": {
+                "onActionPerformed": [
+                  {
+                    "type": "script",
+                    "scope": "G",
+                    "config": {
+                      "script": "selected_paths = set()\nfor row in self.view.custom.selectedRows:\n    try:\n        tp = str(row.get('tag_path', '') or '')\n        if tp:\n            selected_paths.add(tp)\n    except Exception:\n        pass\nif not selected_paths:\n    return\nproposals = [dict(p) for p in self.view.custom.proposals]\nupdated = []\nfor p in proposals:\n    if str(p.get('tag_path', '')) in selected_paths:\n        p['status'] = 'rejected'\n    updated.append(p)\nself.view.custom.proposals = updated\naccepted = sum(1 for p in updated if str(p.get('status', '')) == 'accepted')\nrejected = sum(1 for p in updated if str(p.get('status', '')) == 'rejected')\npending  = len(updated) - accepted - rejected\nself.view.custom.stats = {'accepted': accepted, 'rejected': rejected, 'pending': pending}\n"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {"text": "|", "style": {"color": "#D1D5DB", "fontSize": "18px", "padding": "0 4px"}},
+            "meta": {"name": "divider2"},
+            "position": {"shrink": 0}
+          },
+          {
+            "type": "ia.input.button",
+            "version": 0,
+            "props": {
+              "text": "Accept All",
+              "style": {
+                "backgroundColor": "#D1FAE5",
+                "color": "#065F46",
+                "fontWeight": "600",
+                "padding": "7px 14px",
+                "borderRadius": "5px",
+                "fontSize": "13px"
+              }
+            },
+            "meta": {"name": "acceptAllBtn"},
+            "position": {"shrink": 0},
+            "events": {
+              "component": {
+                "onActionPerformed": [
+                  {
+                    "type": "script",
+                    "scope": "G",
+                    "config": {
+                      "script": "updated = []\nfor p in self.view.custom.proposals:\n    row = dict(p)\n    row['status'] = 'accepted'\n    updated.append(row)\nself.view.custom.proposals = updated\nself.view.custom.stats = {'accepted': len(updated), 'rejected': 0, 'pending': 0}\n"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "ia.input.button",
+            "version": 0,
+            "props": {
+              "text": "Reject All",
+              "style": {
+                "backgroundColor": "#FEE2E2",
+                "color": "#991B1B",
+                "fontWeight": "600",
+                "padding": "7px 14px",
+                "borderRadius": "5px",
+                "fontSize": "13px"
+              }
+            },
+            "meta": {"name": "rejectAllBtn"},
+            "position": {"shrink": 0},
+            "events": {
+              "component": {
+                "onActionPerformed": [
+                  {
+                    "type": "script",
+                    "scope": "G",
+                    "config": {
+                      "script": "updated = []\nfor p in self.view.custom.proposals:\n    row = dict(p)\n    row['status'] = 'rejected'\n    updated.append(row)\nself.view.custom.proposals = updated\nself.view.custom.stats = {'accepted': 0, 'rejected': len(updated), 'pending': 0}\n"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {"text": "", "style": {}},
+            "meta": {"name": "spacer"},
+            "position": {"grow": 1}
+          },
+          {
+            "type": "ia.display.label",
+            "version": 0,
+            "props": {"text": "", "style": {"color": "#6B7280", "fontSize": "12px"}},
+            "meta": {"name": "prefixLabel"},
+            "position": {"shrink": 0},
+            "propConfig": {
+              "props.text": {
+                "binding": {
+                  "type": "expr",
+                  "config": {
+                    "expression": "'UNS prefix: ' + {view.custom.unsPrefix.enterprise} + '.' + {view.custom.unsPrefix.site} + '.' + {view.custom.unsPrefix.area} + '.' + {view.custom.unsPrefix.line} + '.<asset>.<signal>'"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+
+      {
+        "type": "ia.container.flex",
+        "version": 0,
+        "props": {
+          "direction": "row",
+          "alignItems": "center",
+          "style": {
+            "backgroundColor": "#F9FAFB",
+            "borderTop": "1px solid #E5E7EB",
+            "padding": "8px 16px",
+            "gap": "8px"
+          },
+          "visible": false
+        },
+        "meta": {"name": "saveBar"},
+        "position": {"basis": "52px", "shrink": 0},
+        "propConfig": {
+          "props.visible": {
+            "binding": {
+              "type": "expr",
+              "config": {
+                "expression": "{view.custom.mapState} = 'mapped' or {view.custom.mapState} = 'saved'"
+              }
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "ia.input.button",
+            "version": 0,
+            "props": {
+              "text": "Save to Gateway",
+              "style": {
+                "backgroundColor": "#1D4ED8",
+                "color": "#FFFFFF",
+                "fontWeight": "700",
+                "padding": "7px 16px",
+                "borderRadius": "5px",
+                "fontSize": "13px"
+              }
+            },
+            "meta": {"name": "saveGatewayBtn"},
+            "position": {"shrink": 0},
+            "events": {
+              "component": {
+                "onActionPerformed": [
+                  {
+                    "type": "script",
+                    "scope": "G",
+                    "config": {
+                      "script": "import json\nimport system\n\nproposals = list(self.view.custom.proposals)\nif not proposals:\n    return\n\ndecisions = {}\nuns_map   = []\nfor p in proposals:\n    d = dict(p)\n    tp = str(d.get('tag_path', ''))\n    status = str(d.get('status', 'pending'))\n    if tp:\n        decisions[tp] = status\n        if status == 'accepted':\n            uns_map.append(d)\n\nbody = {\n    'folder':    str(self.view.custom.tagFolder),\n    'decisions': decisions,\n    'uns_map':   uns_map,\n    'i3x_map':   {}\n}\n\ntry:\n    api_url = str(system.tag.readBlocking(['[default]MIRA/namespace_map_api_url'])[0].value).strip()\n    if not api_url or api_url in ('null', 'None', ''):\n        api_url = 'http://localhost:8088/system/webdev/FactoryLM/api/namespace'\n    client = system.net.httpClient(timeout=30000)\n    resp = client.post(\n        url=api_url,\n        data=json.dumps(body),\n        headers={'Content-Type': 'application/json', 'Accept': 'application/json'}\n    )\n    if resp.good:\n        result = resp.getJson()\n        self.view.custom.mapState = 'saved'\n        stats = dict(self.view.custom.stats)\n        self.view.custom.stats = {\n            'accepted': int(result.get('accepted_count', stats.get('accepted', 0))),\n            'rejected': stats.get('rejected', 0),\n            'pending':  0\n        }\n    else:\n        self.view.custom.errorMessage = 'Save failed: HTTP ' + str(resp.statusCode)\n        self.view.custom.mapState = 'error'\nexcept Exception as e:\n    self.view.custom.errorMessage = 'Save error: ' + str(e)\n    self.view.custom.mapState = 'error'\n"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "ia.input.button",
+            "version": 0,
+            "props": {
+              "text": "Export UNS JSON",
+              "style": {
+                "backgroundColor": "#DBEAFE",
+                "color": "#1E40AF",
+                "fontWeight": "600",
+                "padding": "7px 14px",
+                "borderRadius": "5px",
+                "fontSize": "13px"
+              }
+            },
+            "meta": {"name": "exportUnsBtn"},
+            "position": {"shrink": 0},
+            "events": {
+              "component": {
+                "onActionPerformed": [
+                  {
+                    "type": "script",
+                    "scope": "G",
+                    "config": {
+                      "script": "import json\nimport system\n\nproposals = list(self.view.custom.proposals)\naccepted = [dict(p) for p in proposals if str(p.get('status', '')) == 'accepted']\n\nuns_output = {\n    'version':    '1.0',\n    'generator':  'MIRA NamespaceMapper',\n    'folder':     str(self.view.custom.tagFolder),\n    'uns_prefix': dict(self.view.custom.unsPrefix),\n    'entries':    accepted\n}\n\ncontent = json.dumps(uns_output, indent=2)\ntry:\n    system.perspective.download('namespace_map.json', content)\nexcept Exception as e:\n    self.view.custom.errorMessage = 'Export error: ' + str(e)\n    self.view.custom.mapState = 'error'\n"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "ia.input.button",
+            "version": 0,
+            "props": {
+              "text": "Export i3X JSON",
+              "style": {
+                "backgroundColor": "#EDE9FE",
+                "color": "#5B21B6",
+                "fontWeight": "600",
+                "padding": "7px 14px",
+                "borderRadius": "5px",
+                "fontSize": "13px"
+              }
+            },
+            "meta": {"name": "exportI3xBtn"},
+            "position": {"shrink": 0},
+            "events": {
+              "component": {
+                "onActionPerformed": [
+                  {
+                    "type": "script",
+                    "scope": "G",
+                    "config": {
+                      "script": "import json\nimport system\n\nproposals = list(self.view.custom.proposals)\naccepted = [dict(p) for p in proposals if str(p.get('status', '')) == 'accepted']\n\ninstances = []\ncontainers = {}\nfor p in accepted:\n    eid    = str(p.get('i3x_element_id', ''))\n    parent = str(p.get('i3x_parent_id', ''))\n    parts  = eid.split('.')\n    for depth in range(2, len(parts)):\n        cid = '.'.join(parts[:depth])\n        if cid not in containers:\n            pid = '.'.join(parts[:depth - 1]) if depth > 2 else ''\n            containers[cid] = {\n                'elementId':    cid,\n                'displayName':  parts[depth - 1],\n                'typeElementId':'urn:mira:type:container',\n                'parentId':     pid,\n                'isComposition': True,\n                'namespaceUri': 'urn:mira:ignition:uns'\n            }\n    instances.append({\n        'elementId':    eid,\n        'displayName':  str(p.get('tag_name', '')),\n        'typeElementId':str(p.get('i3x_type_id', 'urn:mira:type:signal')),\n        'parentId':     parent,\n        'isComposition': False,\n        'namespaceUri': 'urn:mira:ignition:uns',\n        'metadata': {\n            'tagPath':  str(p.get('tag_path', '')),\n            'dataType': str(p.get('data_type', '')),\n            'roles':    list(p.get('roles', [])),\n            'source':   'ignition'\n        }\n    })\n\ni3x_output = {\n    'namespace': {\n        'namespaceUri': 'urn:mira:ignition:uns',\n        'displayName':  'MIRA Ignition Namespace',\n        'version':      '1.0'\n    },\n    'objectTypes': [\n        {'elementId': 'urn:mira:type:fault',      'displayName': 'Fault Signal',   'isComposition': False},\n        {'elementId': 'urn:mira:type:vfd_signal', 'displayName': 'VFD Signal',     'isComposition': False},\n        {'elementId': 'urn:mira:type:output',     'displayName': 'Output Signal',  'isComposition': False},\n        {'elementId': 'urn:mira:type:timer',      'displayName': 'Timer Signal',   'isComposition': False},\n        {'elementId': 'urn:mira:type:asset_state','displayName': 'Asset State',    'isComposition': False},\n        {'elementId': 'urn:mira:type:signal',     'displayName': 'Generic Signal', 'isComposition': False},\n        {'elementId': 'urn:mira:type:container',  'displayName': 'Container',      'isComposition': True}\n    ],\n    'objectInstances': list(containers.values()) + instances\n}\n\ncontent = json.dumps(i3x_output, indent=2)\ntry:\n    system.perspective.download('namespace_map_i3x.json', content)\nexcept Exception as e:\n    self.view.custom.errorMessage = 'Export error: ' + str(e)\n    self.view.custom.mapState = 'error'\n"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+
+    ]
+  }
+}

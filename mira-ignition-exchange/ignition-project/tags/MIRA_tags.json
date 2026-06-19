@@ -25,6 +25,62 @@
       "dataType": "String",
       "value": "https://factorylm.com/onboard",
       "documentation": "FactoryLM onboarding URL — opened from the upsell banner and the 'Add to FactoryLM' CTA."
+    },
+    {
+      "name": "namespace_map_api_url",
+      "tagType": "AtomicTag",
+      "valueSource": "memory",
+      "dataType": "String",
+      "value": "http://localhost:8088/system/webdev/FactoryLM/api/namespace",
+      "documentation": "WebDev endpoint for the NamespaceMapper view. Change to your gateway's hostname+port. Requires WebDev module installed (CRA-245)."
+    },
+    {
+      "name": "uns_enterprise",
+      "tagType": "AtomicTag",
+      "valueSource": "memory",
+      "dataType": "String",
+      "value": "enterprise",
+      "documentation": "UNS enterprise slug used by the NamespaceMapper to build ISA-95 paths. Example: 'acme_corp'."
+    },
+    {
+      "name": "uns_site",
+      "tagType": "AtomicTag",
+      "valueSource": "memory",
+      "dataType": "String",
+      "value": "site",
+      "documentation": "UNS site slug. Example: 'chicago_plant'."
+    },
+    {
+      "name": "uns_area",
+      "tagType": "AtomicTag",
+      "valueSource": "memory",
+      "dataType": "String",
+      "value": "area",
+      "documentation": "UNS area slug. Example: 'packaging'."
+    },
+    {
+      "name": "uns_line",
+      "tagType": "AtomicTag",
+      "valueSource": "memory",
+      "dataType": "String",
+      "value": "line",
+      "documentation": "UNS line slug. Example: 'conveyor_line_1'."
+    },
+    {
+      "name": "namespace_map",
+      "tagType": "AtomicTag",
+      "valueSource": "memory",
+      "dataType": "String",
+      "value": "",
+      "documentation": "JSON: aggregate UNS namespace mapping produced by the NamespaceMapper. Written by POST /api/namespace. Read by mira-hub and mira-pipeline to resolve tag→UNS paths."
+    },
+    {
+      "name": "namespace_map_i3x",
+      "tagType": "AtomicTag",
+      "valueSource": "memory",
+      "dataType": "String",
+      "value": "",
+      "documentation": "JSON: i3X objectInstances aggregate produced by the NamespaceMapper. Written by POST /api/namespace. Conforms to CESMII i3X OpenAPI schema (elementId, typeElementId, parentId, isComposition, metadata)."
     }
   ]
 }
