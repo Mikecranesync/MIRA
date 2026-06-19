@@ -48,6 +48,11 @@
   .toast{ position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:#111827; color:#fff; padding:8px 14px; border-radius:6px; font-size:13px; box-shadow:0 4px 14px rgba(0,0,0,.25); }
   .toolbar{ display:flex; gap:8px; align-items:center; margin-bottom:10px; }
   .muted{ color:var(--muted); }
+  .work.drag{ outline:2px dashed var(--accent); outline-offset:-6px; background:#f5f3ff; }
+  .sources{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  .src{ font-size:11px; padding:2px 8px; border-radius:10px; border:1px solid var(--line); background:#fafafa; }
+  .src.done{ border-color:#bbf7d0; background:#f0fdf4; } .src.error{ border-color:#fecaca; background:#fef2f2; }
+  td.tag{ cursor:help; }
 </style>
 </head>
 <body>
@@ -73,8 +78,9 @@
     </div>
 
     <!-- Work area -->
-    <div class="panel work">
+    <div class="panel work" id="work">
       <div id="banner" class="banner" style="display:none"></div>
+      <div class="sources" id="sources"></div>
       <div class="toolbar">
         <strong id="projTitle" class="muted">Select or create a project</strong>
         <span style="flex:1"></span>
@@ -142,11 +148,26 @@ async function createProject(){
 }
 async function openProject(id){
   CURRENT=id;
+  if(location.hash !== "#p="+id) location.hash = "p="+id;  // shareable in-app deep link
   const p = PROJECTS.find(x=>x.id===id);
   $("projTitle").textContent = p? p.name : "Project";
   $("projTitle").classList.remove("muted");
   ["uploadBtn","refreshBtn","exportBtn"].forEach(b=>$(b).disabled=false);
-  await loadProjects(); await loadExtractions();
+  await loadProjects(); await loadSources(); await loadExtractions();
+}
+async function loadSources(){
+  const el=$("sources"); el.innerHTML="";
+  if(!CURRENT) return;
+  try{
+    const j = await api(`/api/projects/${CURRENT}`);
+    for(const s of (j.project.sources||[])){
+      const sp=document.createElement("span");
+      sp.className = "src "+(s.status||"");
+      sp.title = s.errorMessage || "";
+      sp.textContent = `${s.fileName} · ${s.status}`;
+      el.appendChild(sp);
+    }
+  }catch(e){ /* sources strip is best-effort */ }
 }
 async function loadExtractions(){
   if(!CURRENT) return;
@@ -161,11 +182,13 @@ function renderRows(rows){
     tr.className = e.status==="accepted"?"accepted":e.status==="rejected"?"rejected":"";
     const conf = e.confidence==null?"—":e.confidence>=0.85?'<span class="conf-high">high</span>':e.confidence>=0.5?'<span class="conf-med">med</span>':'<span class="conf-low">low</span>';
     const roles = (e.roles||[]).map(r=>`<span class="chip">${escapeHtml(r)}</span>`).join("")||'<span class="muted">—</span>';
+    const ment = (e.evidenceJson&&e.evidenceJson.mentions&&e.evidenceJson.mentions[0])||null;
+    const prov = ment ? `${ment.file}${ment.page?(" p."+ment.page):""}: ${ment.snippet}` : (e.evidenceJson&&e.evidenceJson.source_format?("format: "+e.evidenceJson.source_format):"");
     const decision = e.status==="pending"
       ? `<button class="btn" onclick="decide('${e.id}','accepted')">Accept</button>
          <button class="btn" onclick="decide('${e.id}','rejected')">Reject</button>`
       : `<span class="pill ${e.status}">${e.status}</span>`;
-    tr.innerHTML = `<td class="tag">${escapeHtml(e.tagName)}</td><td>${roles}</td>
+    tr.innerHTML = `<td class="tag" title="${escapeHtml(prov)}">${escapeHtml(e.tagName)}</td><td>${roles}</td>
       <td class="uns">${escapeHtml(e.unsPathProposed||"—")}</td><td>${conf}</td>
       <td class="muted">${escapeHtml(e.fileName||"—")}</td><td style="text-align:right">${decision}</td>`;
     tb.appendChild(tr);
@@ -177,8 +200,8 @@ async function decide(id,status){
   }catch(e){ toast(e.message); }
 }
 const PLC_TEXT = /\.(l5x|csv|st|xml)$/i;
-function uploadFile(ev){
-  const file = ev.target.files[0]; ev.target.value="";
+function uploadFile(ev){ const f=ev.target.files[0]; ev.target.value=""; doUpload(f); }
+function doUpload(file){
   if(!file || !CURRENT) return;
   const reader = new FileReader();
   const isPlc = PLC_TEXT.test(file.name);
@@ -191,17 +214,26 @@ function uploadFile(ev){
           body:JSON.stringify({fileName:file.name, text:reader.result})});
         toast(j.extractions ? `Extracted ${j.extractions} tags from ${file.name}` : (j.note||`Uploaded ${file.name}`));
       } else {
-        // Documents: send raw bytes; the server runs OCR/extraction → Document IR.
+        // Documents: send raw bytes; the server runs OCR/extraction → Document IR → candidates.
         j = await api(`/api/projects/${CURRENT}/sources`,{method:"POST",
           headers:{"Content-Type":"application/octet-stream","X-File-Name":file.name},
           body:reader.result});
-        toast(`Read ${file.name}: ${j.chars} chars, ${j.blocks} blocks${j.warnings&&j.warnings.length?" ("+j.warnings[0]+")":""}`);
+        toast(`Read ${file.name}: ${j.chars} chars → ${j.extractions} candidates${j.warnings&&j.warnings.length?" ("+j.warnings[0]+")":""}`);
       }
-      await loadExtractions(); await loadProjects();
+      await loadSources(); await loadExtractions(); await loadProjects();
     }catch(e){ toast(e.message); }
   };
   if(isPlc) reader.readAsText(file); else reader.readAsArrayBuffer(file);
 }
+// Drag-and-drop: drop any file(s) onto the work panel to ingest.
+(function initDrop(){
+  const work=$("work");
+  const stop=(e)=>{ e.preventDefault(); e.stopPropagation(); };
+  ["dragenter","dragover"].forEach(ev=>work.addEventListener(ev,(e)=>{ stop(e); if(CURRENT) work.classList.add("drag"); }));
+  ["dragleave","drop"].forEach(ev=>work.addEventListener(ev,(e)=>{ stop(e); work.classList.remove("drag"); }));
+  work.addEventListener("drop",(e)=>{ if(!CURRENT){ toast("Open a project first"); return; }
+    for(const f of e.dataTransfer.files) doUpload(f); });
+})();
 async function exportUns(){
   if(!CURRENT) return;
   try{
@@ -214,8 +246,11 @@ async function exportUns(){
 }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
+function routeHash(){ const m=location.hash.match(/p=([0-9a-f]+)/); if(m) openProject(m[1]); }
+window.addEventListener("hashchange", routeHash);
+
 setMode("plc");
-loadProjects();
+loadProjects().then(routeHash);
 </script>
 </body>
 </html>
