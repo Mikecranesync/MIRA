@@ -92,7 +92,8 @@ test("onboarding walkthrough — full reel through Train & approve", async ({ pa
   await page.route("**/api/assets/*/validation-qa/**", (r) =>
     r.fulfill({ contentType: "application/json", body: JSON.stringify(QA) }),
   );
-  await page.route("**/api/assets", (r) =>
+  // Trailing slash required (#1976 routed client fetches through `${API_BASE}/api/assets/`).
+  await page.route("**/api/assets/", (r) =>
     r.fulfill({ contentType: "application/json", body: JSON.stringify(ASSETS) }),
   );
 
@@ -129,6 +130,12 @@ test("onboarding walkthrough — full reel through Train & approve", async ({ pa
   await expect(page.getByTestId("step-review")).toBeVisible();
   await shot("04-review");
   await page.getByTestId("onboarding-finish").click();
+
+  // 4b) Upload step (#1993, inserted between Review and Try). Wizard-finish is mocked
+  // empty so lineNode is null → UploadStep's no-manual branch → Continue → Try.
+  await expect(page.getByTestId("step-upload")).toBeVisible();
+  await shot("04b-upload");
+  await page.getByTestId("onboarding-upload-continue").click();
 
   // 5) Try MIRA
   await expect(page.getByTestId("step-try")).toBeVisible();
