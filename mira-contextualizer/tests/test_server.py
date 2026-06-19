@@ -75,11 +75,15 @@ def _upload_bytes(base, pid, file_name, raw):
         return r.status, json.loads(r.read().decode())
 
 
-def test_document_upload_extracts_text(base):
+def test_document_upload_extracts_text_and_contextualizes(base):
     _, j = _req(f"{base}/api/projects", "POST", {"name": "Docs"})
     pid = j["project"]["id"]
     st, j = _upload_bytes(base, pid, "notes.txt", b"VFD overload fault F0004 on CV-101")
-    assert st == 201 and j["extractor"] == "text" and j["chars"] > 0 and j["blocks"] >= 1
+    assert st == 201 and j["extractor"] == "text" and j["chars"] > 0
+    assert j["extractions"] >= 1  # deterministic contextualization fired
+    _, ext = _req(f"{base}/api/projects/{pid}/extractions")
+    assert any(e["tagName"] == "F0004" and "fault_code" in e["roles"]
+               for e in ext["extractions"])
 
 
 def test_image_upload_degrades_gracefully(base):

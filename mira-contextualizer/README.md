@@ -7,7 +7,15 @@ bundle for import into MIRA Hub. **No internet, no LLM** in the reasoning path.
 Plan: `C:\Users\hharp\.claude\plans\offline-factory-contextualizer.md`. Composes the stdlib-only
 `mira-plc-parser` engine.
 
-## Status — P0 (scaffold) + P1 (heavy extraction) ✅
+## Status — P0 + P1 + P2 ✅
+
+**P2:** `contextualize.py` runs deterministic rules (regex + curated vocab + table awareness) over the
+Document IR → reviewable candidates with provenance + confidence: fault codes, drive parameters,
+catalog numbers, model families, manufacturers, and cross-references to the project's PLC tags. No
+LLM. Wired into the document upload path, so dropping a manual immediately yields candidates in the
+shared accept/reject review table. 21 tests green.
+
+
 
 **P1:** `extract.py` reads ANY document → a normalized **Document IR** (`document@1`): digital +
 scanned PDF (pypdfium2 rasterize → Tesseract OCR), Word, Excel, CSV, HTML, text, images. OCR is

@@ -195,6 +195,15 @@ class Store:
         ).fetchall()
         return [self._extraction_row(r) for r in rows]
 
+    def plc_tag_names(self, pid: str) -> list[str]:
+        """Distinct tag names extracted from PLC sources — cross-reference targets for documents."""
+        rows = self._conn.execute(
+            """SELECT DISTINCT e.tag_name FROM extractions e JOIN sources s ON s.id = e.source_id
+                WHERE e.project_id = ? AND s.source_type IN ('l5x','csv','st','plcopen')""",
+            (pid,),
+        ).fetchall()
+        return [r["tag_name"] for r in rows]
+
     def set_extraction_status(self, eid: str, status: str) -> dict | None:
         if status not in ("pending", "accepted", "rejected"):
             raise ValueError("invalid status")

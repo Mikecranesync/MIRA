@@ -12,7 +12,7 @@ import re
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import engine, extract
+from . import contextualize, engine, extract
 from .store import Store
 
 _RE_PROJECT = re.compile(r"^/api/projects/([0-9a-f]+)$")
@@ -186,15 +186,19 @@ def make_handler(store: Store, gui_dir: str):
             finally:
                 if tmp and _os.path.exists(tmp):
                     _os.unlink(tmp)
-            store.set_source_extraction(src["id"], result.to_dict())
+            ir = result.to_dict()
+            store.set_source_extraction(src["id"], ir)
+            # Deterministic contextualization → candidates (fault codes, params, catalog #s,
+            # manufacturers, and cross-references to the project's PLC tags).
+            cands = contextualize.contextualize_blocks(
+                ir["blocks"], file_name, store.plc_tag_names(pid))
+            n = store.add_extractions(pid, src["id"], cands)
             store.set_source_status(src["id"], "done" if result.full_text else "error",
                                     "; ".join(result.warnings) or None)
             self._json({
                 "source": src, "extractor": result.extractor,
                 "chars": len(result.full_text), "blocks": len(result.blocks),
-                "warnings": result.warnings,
-                # P2 turns this extracted text into UNS/role candidates.
-                "extractions": 0, "note": "document extracted; contextualization lands in P2",
+                "extractions": n, "warnings": result.warnings,
             }, 201)
 
         def _export(self, pid: str, fmt: str) -> None:
