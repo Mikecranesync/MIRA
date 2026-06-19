@@ -85,7 +85,9 @@
         <strong id="projTitle" class="muted">Select or create a project</strong>
         <span style="flex:1"></span>
         <input id="fileInput" type="file" multiple style="display:none" onchange="uploadFile(event)" />
+        <input id="dirInput" type="file" webkitdirectory directory multiple style="display:none" onchange="importCcwFolder(event)" />
         <button class="btn" id="uploadBtn" onclick="document.getElementById('fileInput').click()" disabled>Upload source</button>
+        <button class="btn" id="ccwBtn" onclick="document.getElementById('dirInput').click()" disabled title="Pick a CCW project folder — parses MbSrvConf.xml, LogicalValues.csv, .st/.stf/.iecst, .ccwmod, RmcVariables and merges them">CCW Project</button>
         <button class="btn" id="refreshBtn" onclick="loadExtractions()" disabled>Refresh</button>
         <button class="btn" id="exportBtn" onclick="exportUns()" disabled>Export UNS</button>
         <button class="btn primary" id="bundleBtn" onclick="exportBundle()" disabled>Export Bundle</button>
@@ -155,7 +157,7 @@ async function openProject(id){
   const p = PROJECTS.find(x=>x.id===id);
   $("projTitle").textContent = p? p.name : "Project";
   $("projTitle").classList.remove("muted");
-  ["uploadBtn","refreshBtn","exportBtn","bundleBtn"].forEach(b=>$(b).disabled=false);
+  ["uploadBtn","ccwBtn","refreshBtn","exportBtn","bundleBtn"].forEach(b=>$(b).disabled=false);
   await loadProjects(); await loadSources(); await loadExtractions();
 }
 async function loadSources(){
@@ -202,9 +204,42 @@ async function decide(id,status){
     await loadExtractions(); await loadProjects();
   }catch(e){ toast(e.message); }
 }
+function isCcwProjectFile(name){
+  const n=name.toLowerCase(), base=n.split(/[\\/]/).pop();
+  return /\.(st|stf|iecst|ccwmod|acfproj|ccwsln)$/.test(n)
+    || base==="rmcvariables" || base==="logicalvalues.csv"
+    || (base.startsWith("mbsrvconf") && base.endsWith(".xml"))
+    || base==="logicview.xml" || base==="devicepref.xml";
+}
+async function importCcwFolder(ev){
+  const all=[...ev.target.files]; ev.target.value="";
+  if(!CURRENT || !all.length) return;
+  const picked=all.filter(f=>isCcwProjectFile(f.name));
+  if(!picked.length){ toast("No CCW files found in that folder"); return; }
+  const projectName=((all[0].webkitRelativePath||"").split("/")[0])||"CCW project";
+  toast(`Reading ${picked.length} CCW files…`);
+  const files=[];
+  for(const f of picked){ files.push({name:f.name, text: await f.text()}); }
+  try{
+    const j=await api(`/api/projects/${CURRENT}/ccw-import`,{method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({files, projectName})});
+    toast(`Imported ${projectName}: ${j.extractions} tags from ${j.fileCount} files${j.controller?(" · "+j.controller):""}`);
+    await loadSources(); await loadExtractions(); await loadProjects();
+  }catch(e){ toast(e.message); }
+}
 function uploadFile(ev){ const files=[...ev.target.files]; ev.target.value=""; files.forEach(doUpload); }
 function doUpload(file){
   if(!file || !CURRENT) return;
+  if(/\.(zip|ccwx)$/i.test(file.name)){   // CCW archive → unzip server-side, import whole project
+    const zr=new FileReader();
+    zr.onload=async()=>{ try{
+      const j=await api(`/api/projects/${CURRENT}/ccw-import`,{method:"POST",
+        headers:{"Content-Type":"application/octet-stream","X-Project-Name":file.name}, body:zr.result});
+      toast(`Imported ${file.name}: ${j.extractions} tags from ${j.fileCount} files${j.controller?(" · "+j.controller):""}`);
+      await loadSources(); await loadExtractions(); await loadProjects();
+    }catch(e){ toast(e.message); } };
+    zr.readAsArrayBuffer(file); return;
+  }
   const reader = new FileReader();
   const isText = (MODE === "plc");   // PLC/CCW = text; Documents = bytes
   reader.onload = async () => {

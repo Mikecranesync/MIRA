@@ -12,14 +12,22 @@ import re
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import bundle, contextualize, engine, extract
+from . import bundle, ccw, contextualize, engine, extract
 from .store import Store
 
 _RE_PROJECT = re.compile(r"^/api/projects/([0-9a-f]+)$")
 _RE_SOURCES = re.compile(r"^/api/projects/([0-9a-f]+)/sources$")
 _RE_EXTRACTIONS = re.compile(r"^/api/projects/([0-9a-f]+)/extractions$")
 _RE_EXPORT = re.compile(r"^/api/projects/([0-9a-f]+)/export$")
+_RE_CCW_IMPORT = re.compile(r"^/api/projects/([0-9a-f]+)/ccw-import$")
 _RE_DECISION = re.compile(r"^/api/extractions/([0-9a-f]+)$")
+
+
+def _decode(data: bytes) -> str:
+    """Decode a CCW file: most are UTF-8; .ccwsln is UTF-16 LE (BOM)."""
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return data.decode("utf-16", errors="replace")
+    return data.decode("utf-8", errors="replace")
 
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css",
@@ -110,6 +118,10 @@ def make_handler(store: Store, gui_dir: str):
             m = _RE_SOURCES.match(path)
             if m:
                 self._add_source(m.group(1))
+                return
+            m = _RE_CCW_IMPORT.match(path)
+            if m:
+                self._ccw_import(m.group(1))
                 return
             self._err("not found", 404)
 
@@ -206,6 +218,55 @@ def make_handler(store: Store, gui_dir: str):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
+
+        def _ccw_import(self, pid: str) -> None:
+            """Import a whole CCW project: JSON {files:[{name,text}], projectName} from a folder pick,
+            or a zip (.ccwx / Controller_Backup.zip / zipped folder) as octet-stream. Parses every
+            recognized file, merges into one deduped tag set + controller metadata."""
+            if not store.get_project(pid):
+                self._err("project not found", 404)
+                return
+            ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
+            files: dict[str, str] = {}
+            project_name = "CCW project"
+            if ctype == "application/octet-stream":
+                length = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(length) if length else b""
+                import io  # noqa: PLC0415
+                import zipfile  # noqa: PLC0415
+                try:
+                    zf = zipfile.ZipFile(io.BytesIO(raw))
+                except Exception:  # noqa: BLE001
+                    self._err("not a readable zip/.ccwx archive", 400)
+                    return
+                for info in zf.infolist():
+                    if info.is_dir():
+                        continue
+                    base = os.path.basename(info.filename)
+                    if ccw.is_ccw_project_file(base):
+                        files[base] = _decode(zf.read(info))
+                project_name = self.headers.get("X-Project-Name") or "CCW archive"
+            else:
+                body = self._read_json()
+                for f in body.get("files") or []:
+                    nm, tx = f.get("name"), f.get("text")
+                    if nm and isinstance(tx, str) and ccw.is_ccw_project_file(nm):
+                        files[os.path.basename(nm)] = tx
+                project_name = (body.get("projectName") or "CCW project").strip() or "CCW project"
+
+            if not files:
+                self._err("no recognized CCW files found (need MbSrvConf.xml / LogicalValues.csv / "
+                          ".st / .stf / .iecst / .ccwmod / RmcVariables)", 400)
+                return
+            result = ccw.parse_project(files)
+            src = store.create_source(pid, "other", "%s (%d files)" % (project_name, len(files)))
+            n = store.add_extractions(pid, src["id"], result["rows"])
+            store.set_source_extraction(src["id"], {"meta": result["meta"], "files": result["files"]})
+            store.set_source_status(src["id"], "done", "; ".join(result["notes"]) or None)
+            self._json({"source": src, "extractions": n, "fileCount": len(files),
+                        "controller": result["meta"].get("controller_model"),
+                        "ip": result["meta"].get("ip"), "files": result["files"],
+                        "notes": result["notes"]}, 201)
 
         def _export(self, pid: str, fmt: str) -> None:
             proj = store.get_project(pid)

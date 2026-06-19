@@ -62,6 +62,49 @@ def test_guidance_for_settings_and_solution():
     assert ccw.guidance("ccw_modbus") is None
 
 
+ST = """(* Conveyor program for 2080-LC20-20QBB   PLC IP: 192.168.1.100 *)
+PROGRAM Conv
+VAR
+  motor_running : BOOL; (* main drive run feedback *)
+  speed_sp : INT;
+END_VAR
+(* terminal map: I-02 = e_stop_active   O-00 = LightGreen *)
+  motor_running := conveyor_running AND NOT fault_alarm;
+  _IO_EM_DO_00 := motor_running;
+END_PROGRAM"""
+
+
+def test_parse_st_decls_comments_controller_and_terminals():
+    rows, meta = ccw.parse_st(ST, "Conv.st")
+    assert meta["controller_model"] == "2080-LC20-20QBB"
+    assert meta["ip"] == "192.168.1.100"
+    by = {r["tag_name"]: r for r in rows}
+    assert by["motor_running"]["evidence_json"]["comment"] == "main drive run feedback"
+    assert by["motor_running"]["evidence_json"]["data_type"] == "BOOL"
+    assert "safety" in by["e_stop_active"]["roles"]                 # from terminal I-02 label
+    assert by["e_stop_active"]["evidence_json"]["terminal"] == "I-02"
+    assert "_IO_EM_DO_00" in by                                     # logic-referenced I/O
+
+
+def test_parse_project_merges_and_enriches():
+    res = ccw.parse_project({"MbSrvConf.xml": MODBUS, "Conv.st": ST, "LogicalValues.csv": LOGICAL})
+    by = {r["tag_name"]: r for r in res["rows"]}
+    mr = by["motor_running"]
+    assert mr["evidence_json"]["modbus_address"] == "000001"        # from MbSrvConf.xml
+    assert mr["evidence_json"]["comment"] == "main drive run feedback"  # from the .st
+    assert {"ccw_modbus", "ccw_st_decl"} <= set(mr["evidence_json"]["sources"])
+    assert res["meta"]["controller_model"] == "2080-LC20-20QBB"
+    assert any(r["tag_name"] == "2080-LC20-20QBB" and "controller" in r["roles"] for r in res["rows"])
+
+
+def test_is_ccw_project_file():
+    for ok in ("MbSrvConf.xml", "LogicalValues.csv", "Prog2.stf", "spec.iecst",
+               "Modbus_6.ccwmod", "RmcVariables", "LogicView.xml"):
+        assert ccw.is_ccw_project_file(ok), ok
+    for no in ("notes.pdf", "PrjLibrary.accdb", "persist.ccwx", "DlgCfg.xml"):
+        assert not ccw.is_ccw_project_file(no), no
+
+
 def test_engine_analyze_text_routes_everything():
     assert engine.analyze_text("MbSrvConf.xml", MODBUS)["kind"] == "ccw_modbus"
     assert len(engine.analyze_text("MbSrvConf.xml", MODBUS)["rows"]) == 4

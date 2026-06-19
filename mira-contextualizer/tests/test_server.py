@@ -85,6 +85,40 @@ def test_bundle_and_i3x_export(base):
         assert "manifest.json" in zf.namelist() and "uns.json" in zf.namelist()
 
 
+def test_ccw_project_import_json_and_zip(base):
+    import io
+    import zipfile
+    from test_ccw import LOGICAL, MODBUS, ST  # reuse the CCW fixtures (tests dir on sys.path)
+
+    _, j = _req(f"{base}/api/projects", "POST", {"name": "CCW Co"})
+    pid = j["project"]["id"]
+
+    # folder pick → JSON file array
+    st, j = _req(f"{base}/api/projects/{pid}/ccw-import", "POST",
+                 {"projectName": "FactoryLM_PLC",
+                  "files": [{"name": "MbSrvConf.xml", "text": MODBUS},
+                            {"name": "Conv.st", "text": ST},
+                            {"name": "LogicalValues.csv", "text": LOGICAL}]})
+    assert st == 201 and j["extractions"] >= 5
+    assert j["controller"] == "2080-LC20-20QBB" and j["fileCount"] == 3
+    _, ext = _req(f"{base}/api/projects/{pid}/extractions")
+    mr = next(e for e in ext["extractions"] if e["tagName"] == "motor_running")
+    assert mr["evidenceJson"]["modbus_address"] == "000001"  # merged across files
+
+    # zip / .ccwx archive
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("Controller/Controller/MbSrvConf.xml", MODBUS)
+        zf.writestr("Controller/Controller/Micro820/Micro820/Prog.stf", ST)
+        zf.writestr("PrjLibrary.accdb", b"\x00\x01binary")  # ignored (not a CCW text file)
+    req = urllib.request.Request(f"{base}/api/projects/{pid}/ccw-import", data=buf.getvalue(),
+                                 method="POST", headers={"Content-Type": "application/octet-stream",
+                                                         "X-Project-Name": "backup.zip"})
+    with urllib.request.urlopen(req) as r:
+        zj = json.loads(r.read().decode())
+    assert zj["fileCount"] == 2 and zj["extractions"] >= 4 and zj["controller"] == "2080-LC20-20QBB"
+
+
 def test_static_index_served(base):
     with urllib.request.urlopen(f"{base}/index.html") as r:
         assert r.status == 200 and b"FactoryLM Contextualizer" in r.read()
