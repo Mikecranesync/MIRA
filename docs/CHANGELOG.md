@@ -3,6 +3,10 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.27.9 (2026-06-19) — fix(hub): unbreak repo-wide Hub E2E — stale onboarding specs (#2108)
+- The `Hub E2E (command-center + onboarding)` check had been failing on every hub PR since the onboarding-flow change. Two stale assumptions in the e2e specs: #1993 inserted an upload step between Review and Try (so `step-try` no longer appears right after `onboarding-finish`), and #1976 routed client fetches through `${API_BASE}/api/assets/` (trailing slash, which the bare `**/api/assets` route mock no longer matched).
+- Walk the new upload step (`step-upload` → `onboarding-upload-continue`) and mock the trailing-slash assets path in `onboarding-validate.spec.ts` + `onboarding-walkthrough.spec.ts`. Test-only; no product behavior change. Unblocks Hub E2E for all open hub PRs.
+
 ### v3.27.8 (2026-06-17) — chore(qa): land Hermes outside-in QA tooling + durable login helper on main (#2013)
 - Cherry-picks the validated Hermes QA scaffolding out of the mixed `chore/hermes-qa-durable-account` branch onto `main`, so any checkout (and the Hermes dogfood agent) actually has it — the tooling existed only on an unmerged branch, which is why #2013 read as "still blocked" even though the durable test account + login path were live.
 - **`dogfood-output/qa-login-save-state.mjs`** — durable-account Playwright login helper: signs into `app.factorylm.com` with the password flow and saves `dogfood-output/.auth/app-state.json` for reuse. Re-verified against prod from a clean checkout (`ok:true`, lands authenticated; `/hub`→`/onboarding/`, `/command-center/` + `/namespace/` authenticated).
