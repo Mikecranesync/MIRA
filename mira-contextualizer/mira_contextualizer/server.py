@@ -176,6 +176,14 @@ def make_handler(store: Store, gui_dir: str):
             # Unified deterministic analysis — handles L5X, CCW Modbus/LogicalValues, and returns a
             # human note for IDE-settings / unrecognized files (never a silent no-op).
             result = engine.analyze_text(file_name, text)
+            # Fallback: a text file that isn't a PLC/CCW export is still run through document
+            # contextualization (fault codes, params, catalog #s, tag refs) so "accept anything" works.
+            if not result["rows"] and result["kind"] in ("unknown", "plc_unhandled"):
+                rows = contextualize.contextualize_blocks(
+                    [{"text": text, "kind": "text", "page": None}], file_name, store.plc_tag_names(pid))
+                if rows or result["kind"] == "unknown":
+                    result = {"kind": "document_text", "rows": rows,
+                              "note": None if rows else "no recognized PLC tags or entities found"}
             n = store.add_extractions(pid, src["id"], result["rows"])
             store.set_source_status(
                 src["id"], "error" if result["kind"] == "error" else "done", result.get("note"))

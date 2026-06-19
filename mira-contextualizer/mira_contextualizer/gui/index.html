@@ -128,12 +128,12 @@ function setMode(m){
   MODE = m;
   $("tab-plc").classList.toggle("active", m==="plc");
   $("tab-doc").classList.toggle("active", m==="doc");
-  $("fileInput").setAttribute("accept", m==="plc"
-    ? ".l5x,.csv,.xml,.st,.vssettings,.ccwsln"
-    : ".pdf,.docx,.xlsx,.txt,.md,.png,.jpg,.jpeg,.tiff");
+  // Accept ALL file types — we route by content/extension, not by a picker filter. (Setting no
+  // `accept` makes the OS dialog show every file instead of preferencing a subset.)
+  $("fileInput").removeAttribute("accept");
   const b=$("banner");
-  if(m==="plc"){ b.style.display="block"; b.textContent="PLC mode: upload Rockwell L5X, or a CCW project's MbSrvConf.xml (Modbus map) and LogicalValues.csv (variables). You can select/drop several files at once."; }
-  else { b.style.display="block"; b.textContent="Documents mode: drop manuals/datasheets (PDF/Word/Excel/images). Digital docs extract now; scanned-image OCR needs the bundled Tesseract."; }
+  if(m==="plc"){ b.style.display="block"; b.textContent="Upload anything — PLC exports (L5X), CCW files (MbSrvConf.xml, LogicalValues.csv, .st/.stf/.iecst, .ccwmod), or a whole CCW folder / .zip / .ccwx. Multiple files OK."; }
+  else { b.style.display="block"; b.textContent="Upload anything — manuals/datasheets (PDF/Word/Excel/images) are extracted (OCR for scans). Any file type is accepted."; }
 }
 
 async function loadProjects(){
@@ -247,6 +247,9 @@ async function importCcwFolder(ev){
     await loadSources(); await loadExtractions(); await loadProjects();
   }catch(e){ toast(e.message); }
 }
+// PLC/CCW text formats → analyzed as text; everything else (pdf/docx/xlsx/images/etc) → extracted as bytes.
+const TEXT_SOURCE = /\.(l5x|csv|xml|st|stf|iecst|ccwmod|ccwsln|acfproj|vssettings)$/i;
+function isTextSource(name){ return TEXT_SOURCE.test(name) || name.toLowerCase().split(/[\\/]/).pop()==="rmcvariables"; }
 function uploadFile(ev){ const files=[...ev.target.files]; ev.target.value=""; files.forEach(doUpload); }
 function doUpload(file){
   if(!file || !CURRENT) return;
@@ -261,7 +264,7 @@ function doUpload(file){
     zr.readAsArrayBuffer(file); return;
   }
   const reader = new FileReader();
-  const isText = (MODE === "plc");   // PLC/CCW = text; Documents = bytes
+  const isText = isTextSource(file.name);   // routed by file type, not by the active tab
   reader.onload = async () => {
     try{
       let j;

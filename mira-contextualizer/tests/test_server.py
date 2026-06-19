@@ -119,6 +119,17 @@ def test_ccw_project_import_json_and_zip(base):
     assert zj["fileCount"] == 2 and zj["extractions"] >= 4 and zj["controller"] == "2080-LC20-20QBB"
 
 
+def test_text_upload_falls_back_to_document_contextualization(base):
+    # A text file that is not a PLC/CCW export still yields candidates (accept-anything path).
+    _, j = _req(f"{base}/api/projects", "POST", {"name": "Fallback"})
+    pid = j["project"]["id"]
+    st, j = _req(f"{base}/api/projects/{pid}/sources", "POST",
+                 {"fileName": "notes.xml", "text": "<x>drive fault F0004 overload trip</x>"})
+    assert st == 201 and j["extractions"] >= 1
+    _, ext = _req(f"{base}/api/projects/{pid}/extractions")
+    assert any(e["tagName"] == "F0004" for e in ext["extractions"])
+
+
 def test_scorecard_endpoint(base):
     _, j = _req(f"{base}/api/projects", "POST", {"name": "Scored"})
     pid = j["project"]["id"]
