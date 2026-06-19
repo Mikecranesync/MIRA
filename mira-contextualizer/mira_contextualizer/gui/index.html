@@ -87,7 +87,8 @@
         <input id="fileInput" type="file" style="display:none" onchange="uploadFile(event)" />
         <button class="btn" id="uploadBtn" onclick="document.getElementById('fileInput').click()" disabled>Upload source</button>
         <button class="btn" id="refreshBtn" onclick="loadExtractions()" disabled>Refresh</button>
-        <button class="btn primary" id="exportBtn" onclick="exportUns()" disabled>Export UNS</button>
+        <button class="btn" id="exportBtn" onclick="exportUns()" disabled>Export UNS</button>
+        <button class="btn primary" id="bundleBtn" onclick="exportBundle()" disabled>Export Bundle</button>
       </div>
       <table>
         <thead><tr><th>Tag</th><th>Roles</th><th>Proposed UNS</th><th>Conf.</th><th>Source</th><th style="text-align:right">Decision</th></tr></thead>
@@ -152,7 +153,7 @@ async function openProject(id){
   const p = PROJECTS.find(x=>x.id===id);
   $("projTitle").textContent = p? p.name : "Project";
   $("projTitle").classList.remove("muted");
-  ["uploadBtn","refreshBtn","exportBtn"].forEach(b=>$(b).disabled=false);
+  ["uploadBtn","refreshBtn","exportBtn","bundleBtn"].forEach(b=>$(b).disabled=false);
   await loadProjects(); await loadSources(); await loadExtractions();
 }
 async function loadSources(){
@@ -243,6 +244,11 @@ async function exportUns(){
     const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="uns.json"; a.click();
     toast(`Exported ${j.signals.length} accepted signals`);
   }catch(e){ toast(e.message); }
+}
+function exportBundle(){
+  if(!CURRENT) return;
+  window.location.href = `/api/projects/${CURRENT}/export?format=bundle`;  // server sends a zip download
+  toast("Building Factory Context Bundle…");
 }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 

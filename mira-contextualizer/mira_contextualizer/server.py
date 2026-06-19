@@ -12,7 +12,7 @@ import re
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import contextualize, engine, extract
+from . import bundle, contextualize, engine, extract
 from .store import Store
 
 _RE_PROJECT = re.compile(r"^/api/projects/([0-9a-f]+)$")
@@ -201,20 +201,32 @@ def make_handler(store: Store, gui_dir: str):
                 "extractions": n, "warnings": result.warnings,
             }, 201)
 
+        def _send_bytes(self, data: bytes, content_type: str, filename: str) -> None:
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Disposition", 'attachment; filename="%s"' % filename)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
         def _export(self, pid: str, fmt: str) -> None:
-            if not store.get_project(pid):
+            proj = store.get_project(pid)
+            if not proj:
                 self._err("project not found", 404)
                 return
             accepted = [e for e in store.list_extractions(pid) if e["status"] == "accepted"]
             if fmt == "uns":
-                payload = [
+                self._json({"schema": "mira-contextualizer/uns@1", "signals": [
                     {"tag": e["tagName"], "unsPath": e["unsPathProposed"], "roles": e["roles"],
-                     "confidence": e["confidence"]}
-                    for e in accepted if e["unsPathProposed"]
-                ]
-                self._json({"schema": "mira-contextualizer/uns@1", "signals": payload})
+                     "confidence": e["confidence"]} for e in accepted if e["unsPathProposed"]]})
+            elif fmt == "i3x":
+                self._json(bundle._i3x(accepted))
+            elif fmt == "bundle":
+                data = bundle.zip_bytes(bundle.build_bundle(store, pid))
+                self._send_bytes(data, "application/zip",
+                                 "%s-context-bundle.zip" % bundle._safe(proj["name"]))
             else:
-                self._err("unsupported format (P0 supports uns; i3x + bundle land in P4)", 400)
+                self._err("unsupported format (uns | i3x | bundle)", 400)
 
     return Handler
 

@@ -62,6 +62,29 @@ def test_full_flow(base):
     assert any(s["tag"] == target["tagName"] for s in j["signals"])
 
 
+def test_bundle_and_i3x_export(base):
+    import io
+    import zipfile
+    _, j = _req(f"{base}/api/projects", "POST", {"name": "Bundle Co"})
+    pid = j["project"]["id"]
+    _req(f"{base}/api/projects/{pid}/sources", "POST",
+         {"fileName": FIXTURE.name, "text": FIXTURE.read_text(encoding="utf-8")})
+    _, ext = _req(f"{base}/api/projects/{pid}/extractions")
+    target = next(e for e in ext["extractions"] if e["unsPathProposed"])
+    _req(f"{base}/api/extractions/{target['id']}", "PATCH", {"status": "accepted"})
+
+    # i3x
+    st, j = _req(f"{base}/api/projects/{pid}/export?format=i3x")
+    assert st == 200 and j["schema"] == "mira-contextualizer/i3x@1"
+
+    # bundle (zip)
+    with urllib.request.urlopen(f"{base}/api/projects/{pid}/export?format=bundle") as r:
+        assert r.status == 200 and r.headers["Content-Type"] == "application/zip"
+        data = r.read()
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        assert "manifest.json" in zf.namelist() and "uns.json" in zf.namelist()
+
+
 def test_static_index_served(base):
     with urllib.request.urlopen(f"{base}/index.html") as r:
         assert r.status == 200 and b"FactoryLM Contextualizer" in r.read()

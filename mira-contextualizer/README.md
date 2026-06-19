@@ -7,7 +7,16 @@ bundle for import into MIRA Hub. **No internet, no LLM** in the reasoning path.
 Plan: `C:\Users\hharp\.claude\plans\offline-factory-contextualizer.md`. Composes the stdlib-only
 `mira-plc-parser` engine.
 
-## Status — P0 + P1 + P2 ✅
+## Status — P0 + P1 + P2 + P4 ✅
+
+**P4:** `bundle.py` exports a portable **Factory Context Bundle** (`bundle@1`) as a zip —
+`manifest.json` (+ source sha256), `uns.json`, `i3x.json` (CESMII objectInstances projected from the
+UNS hierarchy), `kg_entities.json` + `kg_relationships.json` (proposed; offline twin of Promote, with
+HAS_SIGNAL / MENTIONS edges), `signals.csv`, `documents/*.json` (extracted IR), `review.json` (audit),
+`report.md`, `IMPORT.md`. Download via the GUI "Export Bundle" button or
+`GET /api/projects/{id}/export?format=bundle` (also `uns` / `i3x`). 25 tests green.
+
+
 
 **P2:** `contextualize.py` runs deterministic rules (regex + curated vocab + table awareness) over the
 Document IR → reviewable candidates with provenance + confidence: fault codes, drive parameters,
