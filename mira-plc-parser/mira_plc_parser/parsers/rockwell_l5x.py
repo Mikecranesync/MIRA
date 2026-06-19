@@ -274,6 +274,14 @@ def _parse_routine(el: ET.Element, prog_name: str, src: str) -> Routine:
     if st is not None:
         lines = [(_txt(ln)) for ln in st.findall("Line")]
         routine.st_text = "\n".join(lines)
+    fbd = _first(el, "FBDContent")
+    if fbd is not None:
+        for sheet_el in fbd.findall("Sheet"):
+            sheet_num = int(sheet_el.get("Number", "0") or "0")
+            for block_idx, block_el in enumerate(sheet_el.findall("Block")):
+                routine.rungs.append(
+                    _parse_fbd_block(block_el, sheet_num, block_idx, prog_name, routine.name, src)
+                )
     return routine
 
 
@@ -290,6 +298,42 @@ def _parse_rung(el: ET.Element, prog_name: str, routine_name: str, src: str) -> 
         outputs=outputs,
         instructions=instrs,
         provenance=_prov(src, "%s/%s/Rung[%d]" % (prog_name, routine_name, number)),
+    )
+
+
+def _parse_fbd_block(
+    block_el: ET.Element, sheet_num: int, block_idx: int, prog_name: str, routine_name: str, src: str
+) -> Rung:
+    bname = block_el.get("Name", "")
+    btype = block_el.get("Type", "")
+    refs: list[str] = []
+    outputs: list[str] = []
+    inp_el = block_el.find("InputPins")
+    if inp_el is not None:
+        for pin in inp_el.findall("InputPin"):
+            expr = pin.get("Expression", "").strip()
+            if expr and pin.get("Connected") == "true" and "." not in expr:
+                refs.append(expr)
+    out_el = block_el.find("OutputPins")
+    if out_el is not None:
+        for pin in out_el.findall("OutputPin"):
+            expr = pin.get("Expression", "").strip()
+            if expr and pin.get("Connected") == "true" and "." not in expr:
+                outputs.append(expr)
+    in_str = ",".join(refs) if refs else ""
+    out_str = ",".join(outputs) if outputs else ""
+    text = "FBD:%s(Type=%s)" % (bname, btype)
+    if in_str:
+        text += " IN=[%s]" % in_str
+    if out_str:
+        text += " OUT=[%s]" % out_str
+    return Rung(
+        number=sheet_num * 1000 + block_idx,
+        text=text,
+        refs=refs,
+        outputs=outputs,
+        instructions=[btype] if btype else [],
+        provenance=_prov(src, "FBD/%s/%s" % (routine_name, bname)),
     )
 
 
