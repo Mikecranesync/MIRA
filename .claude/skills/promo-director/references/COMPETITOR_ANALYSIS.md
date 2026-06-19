@@ -1,8 +1,29 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-06-19
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-06-19
+
+### Most actionable change for MIRA playbook
+MaintainX shipped AI Procedure Recommendations (May 2026) — in-work-order retrieval that matches title + description against the customer's own procedure library. This is MIRA's diagnostic KB citation pattern, now live in the leading CMMS competitor. Counter-positioning window: MIRA cites OEM manuals + work-order history with evidence + confidence bands; MaintainX surfaces procedure forms. "We tell you *why* and *where in the manual* — not just which checklist to open."
+
+### New findings
+
+**CMMS / EAM**
+- **UpKeep** — "AI May" webinar series (May 2026): https://upkeep.com/lp/ai-may/og/s1/ — "Your First Look at Nova and Studio" session 1; educational register targeting new Nova adopters. Video-webinar format, not YouTube promo. Nova credit efficiency improved 3x in the same release.
+- **UpKeep** — Nova PDF Builder (Jun 12, 2026): https://upkeep.com/product-releases/upkeep-product-release-june-12-2026/ — AI generates maintenance PDFs from work orders; fleet warranty tracking added. No standalone YouTube launch video. Product velocity pattern: one release every ~2 weeks.
+- **MaintainX** — Root Cause Analysis + AI Procedure Recommendations (Apr–May 2026): https://www.getmaintainx.com/blog/whats-new-at-maintainx-may-2026 — RCA brings structured failure analysis into work order flow (Enterprise plan). AI Procedure Recommendations searches existing procedure library by work order title + description, surfaces best match at creation time. Blog-native launch, no dedicated YouTube video confirmed.
+
+**Automation / SCADA**
+- **Rockwell Automation** — ROKStudios new season, Interpack 2026 (Jun 4, 2026): https://www.prnewswire.com/news-releases/rockwell-automation-launches-new-season-of-rokstudios-video-series-highlighting-oem-leaders-on-machine-lifecycle-innovation-302788178.html — recorded in Düsseldorf; OEM leaders on machine lifecycle (design → commissioning → long-term operation); joins 150+ prior recordings; peer-register executive interviews, no hard CTA. Topic shift from prior season's "automation to autonomy" framing toward lifecycle economics for packaging OEMs.
+
+**B2B SaaS / Dev-tools**
+- **Notion** — 3.5 Developer Platform (May 13, 2026): https://www.notion.com/releases/2026-05-13 — Ivan Zhao livestreamed. Adds Workers (cloud runtime for custom code), External Agent API (third-party AI agents — Claude Code, Cursor, Codex, Decagon — operate inside Notion), Database sync (live external data pulls). Built on Custom Agents (Feb 2026, 1M+ agents created). Framing shifted from "delegation" (3.0: agents do busywork) to "orchestration platform" (3.5: Notion becomes the place where work *executes*, not just *documents*).
+- **Vercel** — Ship 2026, London (Jun 17, 2026): https://vercel.com/blog/vercel-ship-2026-recap — First international Ship conference; 2,500+ attendees. Launches: "eve" open-source TypeScript agent framework (agents = a directory of files + markdown instructions + TypeScript tools); Vercel Connect + Passport (enterprise controls, Public Beta); Vercel Services (July 1). Headline stat from CEO Guillermo Rauch: "agents now trigger more than half of all commits on Vercel's platform, up from under three percent six months ago." Founder-led on stage; no hard CTA.
 
 ---
 
@@ -55,7 +76,19 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - UpKeep Studio: build custom apps with AI, no code; Nova Model Switcher: speed vs depth tradeoff
 - No dedicated YouTube video confirmed
 
-**Pattern note:** UpKeep shifted from feature-demo VO to autonomous-agent narrative between 2024 and Sep 2025. The "acts on it" vs "analyzes" dichotomy is a direct steal target for MIRA.
+**AI May webinar series (May 2026)**
+- URL: https://upkeep.com/lp/ai-may/og/s1/
+- Session 1: "Your First Look at Nova and Studio" — introductory/educational; peer-register
+- Format: webinar, not standalone YouTube promo
+- Same release: Nova credit efficiency 3x improvement; multi-entity Access Points
+
+**Nova PDF Builder + Fleet (Jun 12, 2026)**
+- URL: https://upkeep.com/product-releases/upkeep-product-release-june-12-2026/
+- Nova generates maintenance PDFs from work orders; fleet adds warranty tracking + Samsara DVIR capture
+- No standalone YouTube promo video confirmed
+- Release cadence: ~biweekly; product velocity is the signal
+
+**Pattern note:** UpKeep shifted from feature-demo VO to autonomous-agent narrative between 2024 and Sep 2025. The "acts on it" vs "analyzes" dichotomy is a direct steal target for MIRA. May–Jun 2026 releases are deepening document-generation and fleet intelligence — Nova is expanding from task-creation to report-generation.
 
 ---
 
@@ -85,6 +118,13 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - Voice-to-text work order feature: https://www.youtube.com/watch?v=GY3AGGukQM8
 - "Digitize Fast with MaintainX and AI": https://www.youtube.com/watch?v=X8cY-d-_KZM
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
+
+**Root Cause Analysis + AI Procedure Recommendations (Apr–May 2026)**
+- Blog: https://www.getmaintainx.com/blog/whats-new-at-maintainx-may-2026
+- RCA: structured failure analysis built into work order flow; Enterprise plan only
+- AI Procedure Recommendations: searches customer's procedure library by work order title + description; surfaces best-match procedure at creation time
+- No dedicated YouTube launch video confirmed; blog-native launch
+- Competitive note: MaintainX is implementing MIRA's in-context KB retrieval pattern. Their version is form-fill + procedure matching; MIRA's is cited OEM manual + evidence band. Differentiation: cite *where in the manual* and *why*, not just *which checklist*.
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
 
@@ -200,6 +240,14 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - VO register: corporate executive
 - CTA: soft brand / thought leadership
 
+**ROKStudios Interpack 2026 (Jun 4, 2026)**
+- URL: https://www.prnewswire.com/news-releases/rockwell-automation-launches-new-season-of-rokstudios-video-series-highlighting-oem-leaders-on-machine-lifecycle-innovation-302788178.html
+- Recorded at Interpack in Düsseldorf; joins 150+ prior recordings
+- Theme: machine lifecycle innovation — design → commissioning → long-term operation; packaging/manufacturing OEM audience
+- Format: in-depth executive interviews with machine builders and industry associations
+- VO register: corporate executive, peer-level; no commercial pitch
+- Topic shift from prior season: moved from "automation to autonomy" framing toward lifecycle economics for packaging OEMs — a narrower, more practitioner-relevant angle
+
 **Automation Fair 2025 (Nov 17–20, Chicago)**
 - 30+ new products: ControlLogix 5590 (integrated functional safety), OptixEdge gateway, Armor PowerFlex 330, Asset+ managed service
 - NVIDIA NeMoTron partnership: edge-based generative AI for industrial intelligence
@@ -277,6 +325,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 6M developers on platform (Mar 2026)
 - No branded YouTube promo video confirmed; Vercel is developer-word-of-mouth first
 
+**Ship 2026, London (Jun 17, 2026)**
+- Recap: https://vercel.com/blog/vercel-ship-2026-recap
+- First international Ship conference; 2,500+ attendees
+- Headline launches: "eve" — open-source TypeScript agent framework ("agents as a directory of files + markdown instructions + TypeScript tools"; durable execution built in); Vercel Connect + Passport (enterprise controls, Public Beta); Vercel Services (microservices, launching Jul 1)
+- Headline stat: "agents now trigger more than half of all commits on Vercel's platform, up from under three percent six months ago" — Guillermo Rauch, CEO
+- Format: founder-led conference keynote; no hard CTA
+- Pattern note: "half of all commits triggered by agents" is a proof-template stat worth mirroring for MIRA — e.g., "X% of fault resolutions in the plant begin with a MIRA diagnostic"
+
 ---
 
 ### Supabase
@@ -340,6 +396,14 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**Notion 3.5 Developer Platform (May 13, 2026)**
+- URL: https://www.notion.com/releases/2026-05-13
+- Announcement: Ivan Zhao livestreamed; no specific YouTube URL found [transcript not verified]
+- New capabilities: Workers (cloud runtime for deploying custom code within Notion), External Agent API (third-party AI agents operate inside Notion workspaces), Database sync (live external data from any API-enabled source), Partner agents: Claude Code, Cursor, Codex, Decagon
+- Scale claim: 1M+ Custom Agents created since Feb 2026 launch
+- Framing shift: moved from "delegation" (3.0: agents do busywork) to "orchestration platform" (3.5: Notion is where work *executes*, not just where it's *documented*). Audience expanded from knowledge workers to technical teams building agent workflows.
+- Pattern note for MIRA: the "execution layer" framing (vs. "documentation/chat layer") is a frame MIRA should claim for maintenance — MIRA is the execution layer for fault resolution, not a chatbot.
+
 ---
 
 ### Figma
@@ -385,6 +449,7 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| Platform-as-execution-layer stat | Vercel Ship 2026: "agents trigger half of all commits, up from 3% six months ago" | "X% of fault resolutions in this plant start with a MIRA diagnostic" — a metric MIRA should begin tracking |
 
 ### Anti-patterns (avoid)
 
@@ -394,7 +459,9 @@ No video content surfaced for 2025–2026.
 
 ### Vendor style drift (notable shifts)
 
-- **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement. May–Jun 2026: expanding into document-generation (PDF Builder) and fleet intelligence.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; RCA in Apr 2026; AI Procedure Recommendations in May 2026. Trajectory: workflow CMMS → AI knowledge retrieval → structured failure analysis. Now has all three components of MIRA's diagnostic stack — but no citations or evidence bands. That gap is MIRA's counter-positioning.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Notion**: shifted audience from knowledge workers (3.0: agents do busywork) to technical teams and developers (3.5: Developer Platform, Workers, External Agent API). "Execution layer" framing — work is done in Notion, not just documented there. MIRA equivalent: MIRA is the diagnostic execution layer, not a maintenance chatbot.
+- **Vercel**: elevated Ship conference to international format (London, 2,500+ attendees); moved from product feature release events to "infrastructure for the agent era" positioning. Ship 2026 is the clearest B2B-SaaS example of a company claiming an architectural role vs. a tooling role.
