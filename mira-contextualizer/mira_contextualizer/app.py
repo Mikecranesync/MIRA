@@ -83,15 +83,23 @@ def _wait_for_server(port: int, timeout: float = 5.0) -> bool:
 
 
 def main() -> int:
+    # ABSOLUTE imports below — this module is the PyInstaller entry, so it runs as a package-less
+    # __main__ where `from .x import y` raises "attempted relative import with no known parent
+    # package" in the frozen exe (see memory pyinstaller-frozen-path-gotchas #1).
     if "--version" in sys.argv:
-        from . import __version__
+        from mira_contextualizer import __version__
         print("%s %s" % (APP_NAME, __version__))
         return 0
 
     _ensure_parser_on_path()
     _configure_bundled_tesseract()
-    from .server import serve
-    from .store import Store
+    from mira_contextualizer.server import serve
+    from mira_contextualizer.store import Store
+
+    # Headless self-test: exercise the full frozen import chain and exit 0 (no server, no window).
+    # Lets packaging verification distinguish success (exit 0) from the import-failure dialog.
+    if "--selftest" in sys.argv or os.environ.get("MIRA_CTX_SELFTEST"):
+        return 0
 
     gui = _gui_dir()
     if not os.path.isfile(os.path.join(gui, "index.html")):

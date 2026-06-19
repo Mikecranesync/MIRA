@@ -20,10 +20,19 @@ def test_gui_dir_from_source_points_at_real_index():
     assert os.path.isfile(os.path.join(app._gui_dir(), "index.html"))
 
 
-def test_entry_module_uses_absolute_import():
+def test_pyinstaller_entry_uses_no_relative_imports():
+    # The spec entry runs as a package-less __main__ in the frozen exe; ANY `from .` relative
+    # import there raises "attempted relative import with no known parent package" (gotcha #1).
+    spec = (_ROOT / "MIRA-Contextualizer.spec").read_text(encoding="utf-8")
+    assert '"mira_contextualizer/app.py"' in spec  # confirm the entry we're guarding
+    app_src = (_ROOT / "mira_contextualizer" / "app.py").read_text(encoding="utf-8")
+    assert "from . " not in app_src and "from .server" not in app_src and "from .store" not in app_src
+    assert "from mira_contextualizer.server import serve" in app_src
+
+
+def test_main_module_uses_absolute_import():
     src = (_ROOT / "mira_contextualizer" / "__main__.py").read_text(encoding="utf-8")
-    assert "from mira_contextualizer.app import main" in src
-    assert "from .app" not in src  # relative import breaks the frozen package-less __main__
+    assert "from mira_contextualizer.app import main" in src and "from .app" not in src
 
 
 def test_spec_ships_gui_as_dest_named_gui():
