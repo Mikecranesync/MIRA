@@ -38,8 +38,11 @@ def test_bundle_contents(seeded):
     store, pid = seeded
     files = bundle.build_bundle(store, pid)
     for key in ("manifest.json", "uns.json", "i3x.json", "kg_entities.json",
-                "kg_relationships.json", "signals.csv", "review.json", "report.md", "IMPORT.md"):
+                "kg_relationships.json", "signals.csv", "review.json", "report.md", "IMPORT.md",
+                "scorecard.json"):
         assert key in files, key
+    sc = json.loads(files["scorecard.json"])
+    assert sc["schema"] == "mira-contextualizer/scorecard@1" and "score" in sc
     assert any(k.startswith("documents/") for k in files)
 
     man = json.loads(files["manifest.json"])

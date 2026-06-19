@@ -45,6 +45,11 @@
   .pill{ border-radius:4px; padding:2px 8px; font-size:11px; font-weight:600; }
   .pill.accepted{ background:#dcfce7; color:#166534; } .pill.rejected{ background:#fee2e2; color:#991b1b; }
   .banner{ background:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:8px 10px; border-radius:6px; font-size:12px; margin-bottom:10px; }
+  .score{ display:flex; align-items:center; gap:12px; background:#fff; border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin-bottom:10px; }
+  .score .grade{ font-size:13px; font-weight:700; white-space:nowrap; }
+  .score .bar{ flex:1; height:8px; background:#eee; border-radius:4px; overflow:hidden; }
+  .score .bar>span{ display:block; height:100%; }
+  .score .gaps{ font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:46%; }
   .toast{ position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:#111827; color:#fff; padding:8px 14px; border-radius:6px; font-size:13px; box-shadow:0 4px 14px rgba(0,0,0,.25); }
   .toolbar{ display:flex; gap:8px; align-items:center; margin-bottom:10px; }
   .muted{ color:var(--muted); }
@@ -80,6 +85,7 @@
     <!-- Work area -->
     <div class="panel work" id="work">
       <div id="banner" class="banner" style="display:none"></div>
+      <div id="scorecard"></div>
       <div class="sources" id="sources"></div>
       <div class="toolbar">
         <strong id="projTitle" class="muted">Select or create a project</strong>
@@ -178,6 +184,20 @@ async function loadExtractions(){
   if(!CURRENT) return;
   const j = await api(`/api/projects/${CURRENT}/extractions`);
   renderRows(j.extractions||[]);
+  loadScorecard();
+}
+async function loadScorecard(){
+  const el=$("scorecard"); if(!el) return;
+  if(!CURRENT){ el.innerHTML=""; return; }
+  try{
+    const s=await api(`/api/projects/${CURRENT}/scorecard`);
+    const color = s.score>=85?"#16a34a":s.score>=65?"#4f46e5":s.score>=45?"#d97706":"#9ca3af";
+    const gaps=(s.topGaps||[]).slice(0,3).map(g=>g.label).join(" · ");
+    el.innerHTML = `<div class="score" title="${escapeHtml(s.summary||'')}">
+      <span class="grade" style="color:${color}">${escapeHtml(s.grade)} · ${s.score}/100</span>
+      <span class="bar"><span style="width:${s.score}%;background:${color}"></span></span>
+      <span class="gaps">${gaps?("Next: "+escapeHtml(gaps)):"Looking good"}</span></div>`;
+  }catch(e){ el.innerHTML=""; }
 }
 function renderRows(rows){
   const tb=$("rows"); tb.innerHTML="";

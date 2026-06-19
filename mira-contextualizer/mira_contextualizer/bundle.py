@@ -30,7 +30,7 @@ import re
 import zipfile
 from datetime import datetime, timezone
 
-from . import __version__
+from . import __version__, scorecard as _scorecard
 
 SCHEMA = "mira-contextualizer/bundle@1"
 _TYPE_URI = "urn:mira:type:%s"
@@ -169,11 +169,16 @@ def build_bundle(store, project_id: str) -> dict[str, str]:
         src_meta.append({"file": s["fileName"], "type": s["sourceType"], "status": s["status"],
                          "sha256": hashlib.sha256(blob).hexdigest()})
 
+    sc = _scorecard.compute_scorecard(exts, sources)
+    files["scorecard.json"] = json.dumps(sc, indent=2)
+
     files["manifest.json"] = json.dumps({
         "schema": SCHEMA, "tool": "mira-contextualizer", "tool_version": __version__,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "project": {"id": proj["id"], "name": proj["name"], "description": proj.get("description")},
         "counts": {"sources": len(sources), "candidates": len(exts), "accepted": len(accepted)},
+        # answerability snapshot so a consumer can gate on it without re-deriving
+        "scorecard": {"score": sc["score"], "grade": sc["grade"]},
         "sources": src_meta,
     }, indent=2)
     files["uns.json"] = json.dumps({

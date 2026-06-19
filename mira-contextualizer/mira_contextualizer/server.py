@@ -12,13 +12,14 @@ import re
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import bundle, ccw, contextualize, engine, extract
+from . import bundle, ccw, contextualize, engine, extract, scorecard
 from .store import Store
 
 _RE_PROJECT = re.compile(r"^/api/projects/([0-9a-f]+)$")
 _RE_SOURCES = re.compile(r"^/api/projects/([0-9a-f]+)/sources$")
 _RE_EXTRACTIONS = re.compile(r"^/api/projects/([0-9a-f]+)/extractions$")
 _RE_EXPORT = re.compile(r"^/api/projects/([0-9a-f]+)/export$")
+_RE_SCORECARD = re.compile(r"^/api/projects/([0-9a-f]+)/scorecard$")
 _RE_CCW_IMPORT = re.compile(r"^/api/projects/([0-9a-f]+)/ccw-import$")
 _RE_DECISION = re.compile(r"^/api/extractions/([0-9a-f]+)$")
 
@@ -99,6 +100,14 @@ def make_handler(store: Store, gui_dir: str):
             m = _RE_EXTRACTIONS.match(path)
             if m:
                 self._json({"extractions": store.list_extractions(m.group(1))})
+                return
+            m = _RE_SCORECARD.match(path)
+            if m:
+                if not store.get_project(m.group(1)):
+                    self._err("project not found", 404)
+                    return
+                self._json(scorecard.compute_scorecard(
+                    store.list_extractions(m.group(1)), store.list_sources(m.group(1))))
                 return
             m = _RE_EXPORT.match(path)
             if m:

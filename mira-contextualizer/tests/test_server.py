@@ -119,6 +119,16 @@ def test_ccw_project_import_json_and_zip(base):
     assert zj["fileCount"] == 2 and zj["extractions"] >= 4 and zj["controller"] == "2080-LC20-20QBB"
 
 
+def test_scorecard_endpoint(base):
+    _, j = _req(f"{base}/api/projects", "POST", {"name": "Scored"})
+    pid = j["project"]["id"]
+    _req(f"{base}/api/projects/{pid}/sources", "POST",
+         {"fileName": FIXTURE.name, "text": FIXTURE.read_text(encoding="utf-8")})
+    st, sc = _req(f"{base}/api/projects/{pid}/scorecard")
+    assert st == 200 and sc["schema"] == "mira-contextualizer/scorecard@1"
+    assert 0 <= sc["score"] <= 100 and "grade" in sc and isinstance(sc["topGaps"], list)
+
+
 def test_static_index_served(base):
     with urllib.request.urlopen(f"{base}/index.html") as r:
         assert r.status == 200 and b"FactoryLM Contextualizer" in r.read()
