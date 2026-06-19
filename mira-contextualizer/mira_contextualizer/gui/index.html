@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FactoryLM Contextualizer</title>
+<style>
+  :root { --bg:#f3f4f6; --ink:#1f2937; --muted:#6b7280; --line:#e5e7eb; --accent:#4f46e5;
+          --green:#16a34a; --red:#dc2626; --amber:#d97706; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 "Segoe UI",system-ui,sans-serif; color:var(--ink); background:var(--bg); }
+  header { background:#111827; color:#fff; padding:10px 16px; display:flex; align-items:center; gap:14px; }
+  header h1 { font-size:15px; margin:0; font-weight:600; letter-spacing:.2px; }
+  header .sub { color:#9ca3af; font-size:12px; }
+  .tabs { display:flex; gap:2px; background:#1f2937; }
+  .tabs button { background:transparent; color:#cbd5e1; border:0; padding:8px 16px; cursor:pointer; font-size:13px; }
+  .tabs button.active { background:var(--bg); color:var(--ink); font-weight:600; }
+  main { padding:16px; max-width:1100px; margin:0 auto; }
+  .row { display:flex; gap:16px; align-items:flex-start; }
+  .panel { background:#fff; border:1px solid var(--line); border-radius:8px; padding:14px; }
+  .projects { width:300px; flex:none; }
+  .work { flex:1; min-width:0; }
+  h2 { font-size:13px; text-transform:uppercase; color:var(--muted); margin:0 0 10px; letter-spacing:.4px; }
+  input,button,select { font:inherit; }
+  input[type=text]{ width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; }
+  .btn { border:1px solid var(--line); background:#fff; border-radius:6px; padding:6px 10px; cursor:pointer; }
+  .btn:hover{ background:#f9fafb; }
+  .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .btn.primary:hover{ background:#4338ca; }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+  ul.plist{ list-style:none; margin:0; padding:0; }
+  ul.plist li{ padding:8px; border-radius:6px; cursor:pointer; border:1px solid transparent; }
+  ul.plist li:hover{ background:#f9fafb; }
+  ul.plist li.sel{ background:#eef2ff; border-color:#c7d2fe; }
+  ul.plist .meta{ color:var(--muted); font-size:12px; }
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  th,td{ text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+  th{ font-size:11px; text-transform:uppercase; color:var(--muted); }
+  td.tag{ font-family:Consolas,monospace; font-weight:600; }
+  td.uns{ font-family:Consolas,monospace; color:#374151; word-break:break-all; }
+  tr.accepted{ background:#f0fdf4; } tr.rejected{ background:#fef2f2; opacity:.6; }
+  .chip{ background:#eef2ff; color:#3730a3; border-radius:4px; padding:1px 6px; font-size:11px; margin-right:3px; }
+  .conf-high{ color:var(--green); font-weight:600; } .conf-med{ color:var(--amber); font-weight:600; }
+  .conf-low{ color:var(--muted); }
+  .pill{ border-radius:4px; padding:2px 8px; font-size:11px; font-weight:600; }
+  .pill.accepted{ background:#dcfce7; color:#166534; } .pill.rejected{ background:#fee2e2; color:#991b1b; }
+  .banner{ background:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:8px 10px; border-radius:6px; font-size:12px; margin-bottom:10px; }
+  .toast{ position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:#111827; color:#fff; padding:8px 14px; border-radius:6px; font-size:13px; box-shadow:0 4px 14px rgba(0,0,0,.25); }
+  .toolbar{ display:flex; gap:8px; align-items:center; margin-bottom:10px; }
+  .muted{ color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>FactoryLM Contextualizer</h1>
+  <span class="sub">offline · deterministic · no internet required</span>
+</header>
+<div class="tabs">
+  <button id="tab-plc" class="active" onclick="setMode('plc')">PLC Tag Mapper</button>
+  <button id="tab-doc" onclick="setMode('doc')">Documents</button>
+</div>
+
+<main>
+  <div class="row">
+    <!-- Projects -->
+    <div class="panel projects">
+      <h2>Projects</h2>
+      <div style="display:flex; gap:6px; margin-bottom:10px;">
+        <input id="newName" type="text" placeholder="New project name" />
+        <button class="btn primary" onclick="createProject()">+</button>
+      </div>
+      <ul class="plist" id="projectList"></ul>
+    </div>
+
+    <!-- Work area -->
+    <div class="panel work">
+      <div id="banner" class="banner" style="display:none"></div>
+      <div class="toolbar">
+        <strong id="projTitle" class="muted">Select or create a project</strong>
+        <span style="flex:1"></span>
+        <input id="fileInput" type="file" style="display:none" onchange="uploadFile(event)" />
+        <button class="btn" id="uploadBtn" onclick="document.getElementById('fileInput').click()" disabled>Upload source</button>
+        <button class="btn" id="refreshBtn" onclick="loadExtractions()" disabled>Refresh</button>
+        <button class="btn primary" id="exportBtn" onclick="exportUns()" disabled>Export UNS</button>
+      </div>
+      <table>
+        <thead><tr><th>Tag</th><th>Roles</th><th>Proposed UNS</th><th>Conf.</th><th>Source</th><th style="text-align:right">Decision</th></tr></thead>
+        <tbody id="rows"><tr><td colspan="6" class="muted" style="padding:24px; text-align:center">No project open.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+let MODE = "plc";
+let CURRENT = null;        // current project id
+let PROJECTS = [];
+
+const $ = (id) => document.getElementById(id);
+
+function toast(msg){
+  const t = document.createElement("div"); t.className="toast"; t.textContent=msg;
+  document.body.appendChild(t); setTimeout(()=>t.remove(), 2600);
+}
+async function api(path, opts){
+  const res = await fetch(path, opts);
+  const j = await res.json().catch(()=> ({}));
+  if(!res.ok) throw new Error(j.error || ("HTTP "+res.status));
+  return j;
+}
+
+function setMode(m){
+  MODE = m;
+  $("tab-plc").classList.toggle("active", m==="plc");
+  $("tab-doc").classList.toggle("active", m==="doc");
+  $("fileInput").setAttribute("accept", m==="plc" ? ".l5x,.csv,.st,.xml" : ".pdf,.docx,.xlsx,.txt,.md,.png,.jpg,.tiff");
+  const b=$("banner");
+  if(m==="doc"){ b.style.display="block"; b.textContent="Documents mode: any-document extraction (PDF/Word/Excel/scans) lands in P1. Files upload now but won't yield tags yet."; }
+  else { b.style.display="none"; }
+}
+
+async function loadProjects(){
+  const j = await api("/api/projects");
+  PROJECTS = j.projects || [];
+  const ul = $("projectList"); ul.innerHTML="";
+  if(!PROJECTS.length){ ul.innerHTML='<li class="meta">No projects yet.</li>'; return; }
+  for(const p of PROJECTS){
+    const li=document.createElement("li");
+    li.className = p.id===CURRENT ? "sel":"";
+    li.onclick=()=>openProject(p.id);
+    li.innerHTML = `<div>${escapeHtml(p.name)}</div>
+      <div class="meta">${p.sourceCount} files · ${p.extractionCount} tags · ${p.acceptedCount} accepted</div>`;
+    ul.appendChild(li);
+  }
+}
+async function createProject(){
+  const name = $("newName").value.trim();
+  if(!name) return;
+  try{ const j = await api("/api/projects",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name})});
+    $("newName").value=""; CURRENT=j.project.id; await loadProjects(); await openProject(CURRENT); toast("Project created");
+  }catch(e){ toast(e.message); }
+}
+async function openProject(id){
+  CURRENT=id;
+  const p = PROJECTS.find(x=>x.id===id);
+  $("projTitle").textContent = p? p.name : "Project";
+  $("projTitle").classList.remove("muted");
+  ["uploadBtn","refreshBtn","exportBtn"].forEach(b=>$(b).disabled=false);
+  await loadProjects(); await loadExtractions();
+}
+async function loadExtractions(){
+  if(!CURRENT) return;
+  const j = await api(`/api/projects/${CURRENT}/extractions`);
+  renderRows(j.extractions||[]);
+}
+function renderRows(rows){
+  const tb=$("rows"); tb.innerHTML="";
+  if(!rows.length){ tb.innerHTML='<tr><td colspan="6" class="muted" style="padding:24px; text-align:center">No tags yet — upload a PLC export.</td></tr>'; return; }
+  for(const e of rows){
+    const tr=document.createElement("tr");
+    tr.className = e.status==="accepted"?"accepted":e.status==="rejected"?"rejected":"";
+    const conf = e.confidence==null?"—":e.confidence>=0.85?'<span class="conf-high">high</span>':e.confidence>=0.5?'<span class="conf-med">med</span>':'<span class="conf-low">low</span>';
+    const roles = (e.roles||[]).map(r=>`<span class="chip">${escapeHtml(r)}</span>`).join("")||'<span class="muted">—</span>';
+    const decision = e.status==="pending"
+      ? `<button class="btn" onclick="decide('${e.id}','accepted')">Accept</button>
+         <button class="btn" onclick="decide('${e.id}','rejected')">Reject</button>`
+      : `<span class="pill ${e.status}">${e.status}</span>`;
+    tr.innerHTML = `<td class="tag">${escapeHtml(e.tagName)}</td><td>${roles}</td>
+      <td class="uns">${escapeHtml(e.unsPathProposed||"—")}</td><td>${conf}</td>
+      <td class="muted">${escapeHtml(e.fileName||"—")}</td><td style="text-align:right">${decision}</td>`;
+    tb.appendChild(tr);
+  }
+}
+async function decide(id,status){
+  try{ await api(`/api/extractions/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});
+    await loadExtractions(); await loadProjects();
+  }catch(e){ toast(e.message); }
+}
+function uploadFile(ev){
+  const file = ev.target.files[0]; ev.target.value="";
+  if(!file || !CURRENT) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try{
+      const j = await api(`/api/projects/${CURRENT}/sources`,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({fileName:file.name, text:reader.result})});
+      toast(j.extractions ? `Extracted ${j.extractions} tags from ${file.name}` : (j.note||`Uploaded ${file.name}`));
+      await loadExtractions(); await loadProjects();
+    }catch(e){ toast(e.message); }
+  };
+  reader.readAsText(file);
+}
+async function exportUns(){
+  if(!CURRENT) return;
+  try{
+    const res = await fetch(`/api/projects/${CURRENT}/export?format=uns`);
+    const j = await res.json(); if(!res.ok) throw new Error(j.error||"export failed");
+    const blob = new Blob([JSON.stringify(j,null,2)],{type:"application/json"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="uns.json"; a.click();
+    toast(`Exported ${j.signals.length} accepted signals`);
+  }catch(e){ toast(e.message); }
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+setMode("plc");
+loadProjects();
+</script>
+</body>
+</html>

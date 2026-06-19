@@ -1,0 +1,25 @@
+[project]
+name = "mira-contextualizer"
+version = "0.1.0"
+description = "Offline-first Windows factory contextualizer: ingest any document, deterministically propose UNS/i3X/roles, export a portable bundle for MIRA Hub. Composes mira-plc-parser."
+requires-python = ">=3.12"
+# P0 core is stdlib-only (sqlite3, http.server). The mira-plc-parser engine is resolved via
+# sys.path (see tests/conftest.py and app.py) or bundled by PyInstaller — same pattern as the
+# Hub worker. The heavy document-extraction stack arrives in P1 under the [docs] extra below.
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest"]
+packaging = ["pyinstaller"]
+# P1 — heavy, OCR-built-in extraction (lean Tesseract; final engine decided at P1 spike).
+# docs = ["pypdf", "pdfminer.six", "pytesseract", "Pillow", "python-docx", "openpyxl"]
+
+[project.scripts]
+mira-contextualizer = "mira_contextualizer.app:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["mira_contextualizer*"]
