@@ -148,10 +148,26 @@ class AOIDefinition:
 
 
 @dataclass
+class HardwareModule:
+    """A hardware module entry from a module-only or full-controller L5X export."""
+    name: str
+    catalog_number: str = ""
+    vendor_id: int = 0
+    product_type: int = 0
+    product_code: int = 0
+    major_revision: int = 0
+    minor_revision: int = 0
+    parent_module: str = ""
+    slot: int = -1
+    provenance: Provenance | None = None
+
+
+@dataclass
 class PLCProject:
     """Top of the IR. One parsed export package (may carry >1 controller in theory; usually one)."""
     controllers: list[Controller] = field(default_factory=list)
     aoi_definitions: list[AOIDefinition] = field(default_factory=list)
+    modules: list[HardwareModule] = field(default_factory=list)
     source_format: str = ""
     source_files: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)

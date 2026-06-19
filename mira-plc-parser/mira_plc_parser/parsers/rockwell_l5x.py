@@ -35,6 +35,7 @@ from ..ir import (
     Controller,
     DataType,
     DataTypeMember,
+    HardwareModule,
     PLCProject,
     Program,
     Provenance,
@@ -90,18 +91,55 @@ def parse(text: str, source_file: str = "") -> PLCProject:
         for aoi_el in aoi_defs_el.findall("AddOnInstructionDefinition"):
             proj.aoi_definitions.append(_parse_aoi_definition(aoi_el, source_file))
 
+    # Module-only export: root-level <Modules>
+    modules_el = _first(root, "Modules")
+    if modules_el is not None:
+        prov = _prov(source_file, "Modules")
+        for mod_el in modules_el.findall("Module"):
+            proj.modules.append(_parse_module(mod_el, prov, source_file))
+
     for ctrl_el in root.iter("Controller"):
         ctrl, ctrl_aois = _parse_controller(ctrl_el, software, source_file)
         proj.controllers.append(ctrl)
         proj.aoi_definitions.extend(ctrl_aois)
         break  # a project export has exactly one target Controller
-    if not proj.controllers and not proj.aoi_definitions:
-        proj.warnings.append("no <Controller> or <AddOnInstructionDefinitions> element found")
+    if not proj.controllers and not proj.aoi_definitions and not proj.modules:
+        proj.warnings.append(
+            "no <Controller>, <AddOnInstructionDefinitions>, or <Modules> element found"
+        )
     return proj
 
 
 def _prov(source_file: str, locator: str, conf: Confidence = Confidence.HIGH) -> Provenance:
     return Provenance(source_file=source_file, source_format=FORMAT, locator=locator, confidence=conf)
+
+
+def _parse_module(el: ET.Element, parent_prov: Provenance, src: str) -> HardwareModule:
+    name = el.get("Name", "")
+    # Revision may live as top-level attribs (Major/Minor) or under <EKey>
+    major = int(el.get("Major", "0") or "0")
+    minor = int(el.get("Minor", "0") or "0")
+    # Slot: look for an upstream=true ICP port whose Address is the slot number
+    slot = -1
+    for port_el in el.findall("Ports/Port"):
+        if port_el.get("Upstream", "").lower() == "true" and port_el.get("Type", "") == "ICP":
+            try:
+                slot = int(port_el.get("Address", "-1"))
+            except ValueError:
+                pass
+            break
+    return HardwareModule(
+        name=name,
+        catalog_number=el.get("CatalogNumber", ""),
+        vendor_id=int(el.get("Vendor", "0") or "0"),
+        product_type=int(el.get("ProductType", "0") or "0"),
+        product_code=int(el.get("ProductCode", "0") or "0"),
+        major_revision=major,
+        minor_revision=minor,
+        parent_module=el.get("ParentModule", ""),
+        slot=slot,
+        provenance=_prov(src, "Module[@Name='%s']" % name),
+    )
 
 
 def _parse_controller(el: ET.Element, software: str, src: str) -> tuple[Controller, list[AOIDefinition]]:

@@ -102,6 +102,7 @@ def analyze(proj: PLCProject) -> AnalysisReport:
         "aoi_definitions": len(proj.aoi_definitions),
         "aoi_parameters": sum(len(a.parameters) for a in proj.aoi_definitions),
         "aoi_local_tags": sum(len(a.local_tags) for a in proj.aoi_definitions),
+        "modules": len(proj.modules),
     }
     return rep
 
