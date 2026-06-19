@@ -14,11 +14,16 @@
   The window chrome is ORIGINAL CSS evoking the classic desktop look (no third-party stylesheet is
   copied or fetched). i3X field names follow the public CESMII i3X OpenAPI for interoperability.
 -->
+<link rel="stylesheet" href="factorylm-tokens.css">
 <style>
   :root{
-    --face:#c0c0c0; --hi:#ffffff; --sh:#808080; --sh-dark:#404040;
-    --title1:#0a3d6e; --title2:#1d7fc7; --sel:#0a3d6e; --suggest:#fff19a; --suggest-edge:#e3c400;
-    --field:#ffffff; --ink:#000; --font:"Segoe UI","Tahoma","MS Sans Serif",sans-serif;
+    /* The original Win95 3D variables now point at flat FactoryLM tokens
+       (docs/design/factorylm-tokens.css), so the bevelled chrome renders flat and on-brand
+       without changing any component rule or the JS. Style guide: docs/design/factorylm-style.md. */
+    --face:var(--fl-surface); --hi:var(--fl-line); --sh:var(--fl-line); --sh-dark:var(--fl-line);
+    --title1:var(--fl-header); --title2:var(--fl-header); --sel:var(--fl-accent);
+    --suggest:var(--fl-warn-bg); --suggest-edge:var(--fl-warn);
+    --field:var(--fl-surface); --ink:var(--fl-ink); --font:var(--fl-font);
   }
   *{box-sizing:border-box;}
   html,body{height:100%;margin:0;}
@@ -71,6 +76,24 @@
   .status .cell{flex:1 1 auto;padding:3px 8px;font-size:11px;border-top:1px solid var(--sh);border-left:1px solid var(--sh);margin:2px 0 2px 2px;}
   .status .cell:last-child{margin-right:2px;flex:0 0 auto;min-width:120px;}
   input[type=file]{display:none;}
+  /* ── flat FactoryLM polish (overrides the residual 3D bevels) ── */
+  body{background:var(--fl-bg);}
+  .window{border:1px solid var(--fl-line);border-radius:var(--fl-radius);box-shadow:var(--fl-shadow);}
+  .titlebar{background:var(--fl-header);}
+  .menubar{background:var(--fl-surface);border-bottom:1px solid var(--fl-line);}
+  .toolbar{border-top:0;border-bottom:1px solid var(--fl-line);}
+  .btn,.tbtn{border:1px solid var(--fl-line-strong);border-radius:var(--fl-radius-sm);background:var(--fl-surface);}
+  .btn:hover{background:#f9fafb;}
+  .btn:active{background:#eef2ff;border-color:var(--fl-accent);}
+  .prefix{background:var(--fl-bg);border:1px solid var(--fl-line);border-radius:var(--fl-radius-sm);}
+  .prefix input,.list{border:1px solid var(--fl-line);border-radius:var(--fl-radius-sm);}
+  thead th{background:#f9fafb;color:var(--fl-muted);text-transform:uppercase;font-size:11px;}
+  tbody tr.suggest,tbody tr.suggest.med{background:var(--fl-warn-bg);}
+  .chip{border-radius:var(--fl-radius-sm);}
+  .chip.high{background:var(--fl-ok-bg);border-color:var(--fl-ok);color:#166534;}
+  .chip.medium{background:var(--fl-warn-bg);border-color:var(--fl-warn);color:#92400e;}
+  .chip.low{background:var(--fl-bg);border-color:var(--fl-line);color:var(--fl-muted);}
+  .path{color:var(--fl-accent-ink);}
 </style>
 </head>
 <body>

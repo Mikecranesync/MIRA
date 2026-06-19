@@ -4,9 +4,12 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>FactoryLM Contextualizer</title>
+<link rel="stylesheet" href="factorylm-tokens.css" />
 <style>
-  :root { --bg:#f3f4f6; --ink:#1f2937; --muted:#6b7280; --line:#e5e7eb; --accent:#4f46e5;
-          --green:#16a34a; --red:#dc2626; --amber:#d97706; }
+  /* Local names alias the shared FactoryLM tokens (docs/design/factorylm-tokens.css) so the
+     component CSS below is unchanged while every color comes from one source of truth. */
+  :root { --bg:var(--fl-bg); --ink:var(--fl-ink); --muted:var(--fl-muted); --line:var(--fl-line);
+          --accent:var(--fl-accent); --green:var(--fl-ok); --red:var(--fl-fault); --amber:var(--fl-warn); }
   * { box-sizing: border-box; }
   body { margin:0; font:14px/1.45 "Segoe UI",system-ui,sans-serif; color:var(--ink); background:var(--bg); }
   header { background:#111827; color:#fff; padding:10px 16px; display:flex; align-items:center; gap:14px; }

@@ -18,7 +18,8 @@ a = Analysis(
     ["gui/desktop.py"],
     pathex=[],
     binaries=[],
-    datas=[("gui/index.html", "gui")],   # -> _MEIPASS/gui/index.html
+    datas=[("gui/index.html", "gui"),
+           ("gui/factorylm-tokens.css", "gui")],   # -> _MEIPASS/gui/* (shared style tokens)
     hiddenimports=[],
     hookspath=[],
     runtime_hooks=[],
