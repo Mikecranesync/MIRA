@@ -11,8 +11,9 @@ dependencies = []
 [project.optional-dependencies]
 test = ["pytest"]
 packaging = ["pyinstaller"]
-# P1 — heavy, OCR-built-in extraction (lean Tesseract; final engine decided at P1 spike).
-# docs = ["pypdf", "pdfminer.six", "pytesseract", "Pillow", "python-docx", "openpyxl"]
+# P1 — heavy, OCR-built-in extraction. Scanned-PDF pages rasterize via pypdfium2 (Apache-2.0, no
+# poppler) and OCR through Tesseract (pytesseract); the Tesseract engine binary is bundled at P5.
+docs = ["pdfminer.six", "pypdfium2", "pytesseract", "Pillow", "python-docx", "openpyxl"]
 
 [project.scripts]
 mira-contextualizer = "mira_contextualizer.app:main"

@@ -67,8 +67,27 @@ def test_static_index_served(base):
         assert r.status == 200 and b"FactoryLM Contextualizer" in r.read()
 
 
-def test_document_upload_is_accepted_but_pending(base):
+def _upload_bytes(base, pid, file_name, raw):
+    req = urllib.request.Request(
+        f"{base}/api/projects/{pid}/sources", data=raw, method="POST",
+        headers={"Content-Type": "application/octet-stream", "X-File-Name": file_name})
+    with urllib.request.urlopen(req) as r:
+        return r.status, json.loads(r.read().decode())
+
+
+def test_document_upload_extracts_text(base):
     _, j = _req(f"{base}/api/projects", "POST", {"name": "Docs"})
     pid = j["project"]["id"]
-    st, j = _req(f"{base}/api/projects/{pid}/sources", "POST", {"fileName": "manual.pdf", "text": ""})
-    assert st == 201 and j["extractions"] == 0 and "P1" in j.get("note", "")
+    st, j = _upload_bytes(base, pid, "notes.txt", b"VFD overload fault F0004 on CV-101")
+    assert st == 201 and j["extractor"] == "text" and j["chars"] > 0 and j["blocks"] >= 1
+
+
+def test_image_upload_degrades_gracefully(base):
+    # PNG with no Tesseract engine → extracted, zero text, a warning, but never a crash.
+    from PIL import Image
+    import io
+    buf = io.BytesIO(); Image.new("RGB", (40, 20), "white").save(buf, format="PNG")
+    _, j = _req(f"{base}/api/projects", "POST", {"name": "Scans"})
+    pid = j["project"]["id"]
+    st, j = _upload_bytes(base, pid, "scan.png", buf.getvalue())
+    assert st == 201 and j["extractor"] == "image-ocr"

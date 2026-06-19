@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS sources (
     file_path     TEXT,
     status        TEXT NOT NULL DEFAULT 'pending',
     error_message TEXT,
+    extracted_json TEXT,
     created_at    TEXT NOT NULL,
     updated_at    TEXT NOT NULL
 );
@@ -143,6 +144,23 @@ class Store:
             "SELECT * FROM sources WHERE project_id = ? ORDER BY created_at", (pid,)
         ).fetchall()
         return [self._source_row(r) for r in rows]
+
+    def set_source_extraction(self, sid: str, ir: dict | None) -> None:
+        """Persist a document's extracted Document IR (P2 contextualization reads it)."""
+        with self._lock:
+            self._conn.execute(
+                "UPDATE sources SET extracted_json = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(ir) if ir is not None else None, _now(), sid),
+            )
+            self._conn.commit()
+
+    def get_source(self, sid: str) -> dict | None:
+        r = self._conn.execute("SELECT * FROM sources WHERE id = ?", (sid,)).fetchone()
+        if not r:
+            return None
+        row = self._source_row(r)
+        row["extracted"] = json.loads(r["extracted_json"]) if r["extracted_json"] else None
+        return row
 
     # ── extractions ─────────────────────────────────────────────────────────────
     def add_extractions(self, pid: str, sid: str, rows: list[dict]) -> int:

@@ -7,7 +7,15 @@ bundle for import into MIRA Hub. **No internet, no LLM** in the reasoning path.
 Plan: `C:\Users\hharp\.claude\plans\offline-factory-contextualizer.md`. Composes the stdlib-only
 `mira-plc-parser` engine.
 
-## Status — P0 (scaffold) ✅
+## Status — P0 (scaffold) + P1 (heavy extraction) ✅
+
+**P1:** `extract.py` reads ANY document → a normalized **Document IR** (`document@1`): digital +
+scanned PDF (pypdfium2 rasterize → Tesseract OCR), Word, Excel, CSV, HTML, text, images. OCR is
+built in and **degrades gracefully** when the Tesseract engine binary is absent (bundled at P5).
+Heavy deps are lazy-imported (the `[docs]` extra) so the core stays dependency-free. Documents
+upload as raw bytes; extracted text persists on the source for P2 contextualization. 17 tests green.
+
+### P0
 - Local **SQLite** store mirroring the Hub contextualization schema (`store.py`).
 - Stdlib **HTTP API** mirroring the Hub routes (`server.py`): projects, sources, extractions,
   decisions, UNS export.

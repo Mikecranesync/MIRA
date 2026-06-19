@@ -12,7 +12,7 @@ import re
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import engine
+from . import engine, extract
 from .store import Store
 
 _RE_PROJECT = re.compile(r"^/api/projects/([0-9a-f]+)$")
@@ -135,6 +135,13 @@ def make_handler(store: Store, gui_dir: str):
             if not store.get_project(pid):
                 self._err("project not found", 404)
                 return
+            ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
+            if ctype == "application/octet-stream":
+                self._add_document(pid)
+            else:
+                self._add_plc_text(pid)
+
+        def _add_plc_text(self, pid: str) -> None:
             body = self._read_json()
             file_name = (body.get("fileName") or "").strip()
             text = body.get("text")
@@ -152,9 +159,43 @@ def make_handler(store: Store, gui_dir: str):
                     store.set_source_status(src["id"], "error", str(exc))
                     self._err("parse failed: %s" % exc, 500)
                 return
-            # Non-PLC (documents) — accepted, awaits the P1 extraction layer.
-            store.set_source_status(src["id"], "pending", "document extraction lands in P1")
-            self._json({"source": src, "extractions": 0, "note": "document extraction not yet available (P1)"}, 201)
+            # A document posted as JSON without bytes — nothing to extract.
+            store.set_source_status(src["id"], "pending", "post documents as application/octet-stream")
+            self._json({"source": src, "extractions": 0, "note": "send document bytes as octet-stream"}, 201)
+
+        def _add_document(self, pid: str) -> None:
+            file_name = (self.headers.get("X-File-Name") or "").strip()
+            if not file_name:
+                self._err("X-File-Name header is required", 400)
+                return
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length else b""
+            if not raw:
+                self._err("empty upload", 400)
+                return
+            src = store.create_source(pid, engine.source_type_for(file_name), file_name)
+            import os as _os  # noqa: PLC0415
+            import tempfile  # noqa: PLC0415
+            tmp = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix=_os.path.splitext(file_name)[1],
+                                                 delete=False) as tf:
+                    tf.write(raw)
+                    tmp = tf.name
+                result = extract.extract(tmp, file_name)
+            finally:
+                if tmp and _os.path.exists(tmp):
+                    _os.unlink(tmp)
+            store.set_source_extraction(src["id"], result.to_dict())
+            store.set_source_status(src["id"], "done" if result.full_text else "error",
+                                    "; ".join(result.warnings) or None)
+            self._json({
+                "source": src, "extractor": result.extractor,
+                "chars": len(result.full_text), "blocks": len(result.blocks),
+                "warnings": result.warnings,
+                # P2 turns this extracted text into UNS/role candidates.
+                "extractions": 0, "note": "document extracted; contextualization lands in P2",
+            }, 201)
 
         def _export(self, pid: str, fmt: str) -> None:
             if not store.get_project(pid):

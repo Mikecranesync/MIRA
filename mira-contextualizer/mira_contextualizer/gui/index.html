@@ -176,19 +176,31 @@ async function decide(id,status){
     await loadExtractions(); await loadProjects();
   }catch(e){ toast(e.message); }
 }
+const PLC_TEXT = /\.(l5x|csv|st|xml)$/i;
 function uploadFile(ev){
   const file = ev.target.files[0]; ev.target.value="";
   if(!file || !CURRENT) return;
   const reader = new FileReader();
+  const isPlc = PLC_TEXT.test(file.name);
   reader.onload = async () => {
     try{
-      const j = await api(`/api/projects/${CURRENT}/sources`,{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({fileName:file.name, text:reader.result})});
-      toast(j.extractions ? `Extracted ${j.extractions} tags from ${file.name}` : (j.note||`Uploaded ${file.name}`));
+      let j;
+      if(isPlc){
+        j = await api(`/api/projects/${CURRENT}/sources`,{method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({fileName:file.name, text:reader.result})});
+        toast(j.extractions ? `Extracted ${j.extractions} tags from ${file.name}` : (j.note||`Uploaded ${file.name}`));
+      } else {
+        // Documents: send raw bytes; the server runs OCR/extraction → Document IR.
+        j = await api(`/api/projects/${CURRENT}/sources`,{method:"POST",
+          headers:{"Content-Type":"application/octet-stream","X-File-Name":file.name},
+          body:reader.result});
+        toast(`Read ${file.name}: ${j.chars} chars, ${j.blocks} blocks${j.warnings&&j.warnings.length?" ("+j.warnings[0]+")":""}`);
+      }
       await loadExtractions(); await loadProjects();
     }catch(e){ toast(e.message); }
   };
-  reader.readAsText(file);
+  if(isPlc) reader.readAsText(file); else reader.readAsArrayBuffer(file);
 }
 async function exportUns(){
   if(!CURRENT) return;
