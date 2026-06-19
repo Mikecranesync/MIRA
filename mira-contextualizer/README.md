@@ -7,7 +7,19 @@ bundle for import into MIRA Hub. **No internet, no LLM** in the reasoning path.
 Plan: `C:\Users\hharp\.claude\plans\offline-factory-contextualizer.md`. Composes the stdlib-only
 `mira-plc-parser` engine.
 
-## Status — P0 + P1 + P2 + P4 ✅
+## Status — P0 + P1 + P2 + P4 + P5 + P6 ✅
+
+**P5 (packaging):** `MIRA-Contextualizer.spec` (PyInstaller **onedir**) bundles the GUI, the
+`mira_plc_parser` engine, and the document stack; `installer.iss` (Inno Setup) makes a real Windows
+program (shortcuts, file associations, per-user install). Optional Tesseract bundled from
+`vendor/tesseract/`. A real build was produced and the frozen exe launches (engine imports verified);
+`tests/test_packaging.py` pins the frozen-path contracts. See `PACKAGING.md`.
+
+**P6 (Hub import bridge):** `POST /api/contextualization/import` in mira-hub ingests a bundle zip
+(dependency-free reader → `parseBundle`) and recreates project + sources + extractions (preserving
+offline accept/reject), so the existing Promote flow lands signals in the KG. 5 hub tests green.
+
+
 
 **P4:** `bundle.py` exports a portable **Factory Context Bundle** (`bundle@1`) as a zip —
 `manifest.json` (+ source sha256), `uns.json`, `i3x.json` (CESMII objectInstances projected from the

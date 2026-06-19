@@ -40,6 +40,22 @@ def _gui_dir() -> str:
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui")
 
 
+def _configure_bundled_tesseract() -> None:
+    """Point pytesseract at the Tesseract engine bundled next to the frozen exe (if present).
+    The installer drops it under ``tesseract/`` (see MIRA-Contextualizer.spec / PACKAGING.md)."""
+    if not getattr(sys, "frozen", False):
+        return
+    base = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+    exe = os.path.join(base, "tesseract", "tesseract.exe")
+    if os.path.isfile(exe):
+        try:
+            import pytesseract
+            pytesseract.pytesseract.tesseract_cmd = exe
+            os.environ.setdefault("TESSDATA_PREFIX", os.path.join(base, "tesseract", "tessdata"))
+        except Exception:  # noqa: BLE001 — OCR just stays unavailable
+            pass
+
+
 def _db_path() -> str:
     """A per-user, writable DB location. Override with MIRA_CONTEXTUALIZER_DB."""
     override = os.environ.get("MIRA_CONTEXTUALIZER_DB")
@@ -73,6 +89,7 @@ def main() -> int:
         return 0
 
     _ensure_parser_on_path()
+    _configure_bundled_tesseract()
     from .server import serve
     from .store import Store
 
