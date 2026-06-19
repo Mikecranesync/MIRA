@@ -13,7 +13,13 @@ from __future__ import annotations
 
 import re
 
+from . import manuals
+
 _BAND_TO_NUM = {"high": 0.9, "medium": 0.6, "low": 0.3}
+
+# Depth keys the manual miner adds; merged into a matching spotting candidate (never overwritten).
+_DEPTH_KEYS = ("cause", "next_check", "description", "units", "range", "setpoint",
+               "subject", "parameter", "match")
 
 # Fault codes: E/F/A + 2–4 digits are distinctive (PowerFlex F004, GS10 E.x, etc.).
 _RE_FAULT = re.compile(r"\b([EFA]\d{2,4})\b")
@@ -98,6 +104,23 @@ def contextualize_blocks(blocks: list[dict], file_name: str,
         for tag, rex in tag_res.items():
             if rex.search(line):
                 add(tag, "tag_reference", "high", line, page)
+
+    # Depth pass: mine fault tables (cause/next-check) + spec/param tables (units/range/setpoint),
+    # tied to the project's tags. Merge each enriched row into the matching spotting candidate so
+    # the review surface + scorecard see one diagnosable signal, not a duplicate.
+    for mr in manuals.mine(blocks, file_name, plc_tags):
+        key = (mr["roles"][0], mr["tag_name"].lower())
+        mev = mr["evidence_json"]
+        if key in found:
+            c = found[key]
+            cev = c["evidence_json"]
+            for k in _DEPTH_KEYS:
+                if mev.get(k) and not cev.get(k):
+                    cev[k] = mev[k]
+            cev.setdefault("mentions", []).extend(mev.get("mentions", []))
+            c["confidence"] = max(c["confidence"], mr["confidence"])
+        else:
+            found[key] = mr
 
     # finalize: drop the internal band marker
     out = []
