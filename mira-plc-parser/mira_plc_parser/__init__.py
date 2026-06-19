@@ -23,7 +23,9 @@ from .discovery import scan
 from .i3x import render_i3x
 from .ir import PLCProject
 from .pipeline import ParseResult, render_json, render_markdown, run
+from .vqt_attach import attach_values, load_snapshot
 
 __all__ = ["run", "render_markdown", "render_json", "render_i3x", "correlate",
-           "compile_folder", "write_outputs", "scan", "detect", "ParseResult", "PLCProject"]
+           "compile_folder", "write_outputs", "scan", "attach_values", "load_snapshot",
+           "detect", "ParseResult", "PLCProject"]
 __version__ = "0.1.0"

@@ -25,6 +25,7 @@ from .compiler import compile_folder, write_outputs
 from .correlate import correlate
 from .i3x import render_i3x
 from .pipeline import render_json, render_markdown, run
+from .vqt_attach import attach_values, load_snapshot
 
 
 def _read_text(path: Path) -> str:
@@ -154,6 +155,35 @@ def _cmd_compile(ns: argparse.Namespace) -> int:
     return 0 if any(it["classification"] == "parseable" for it in items) else 1
 
 
+def _cmd_attach(ns: argparse.Namespace) -> int:
+    """Attach a values snapshot onto a compiled asset_graph.json -> asset_graph.live.json (VQT)."""
+    gpath, spath = Path(ns.graph), Path(ns.snapshot)
+    if not gpath.is_file():
+        print("error: graph not found: %s" % gpath, file=sys.stderr)
+        return 1
+    if not spath.is_file():
+        print("error: snapshot not found: %s" % spath, file=sys.stderr)
+        return 1
+    graph = json.loads(gpath.read_text(encoding="utf-8"))
+    readings = load_snapshot(_read_text(spath), by=ns.by)
+    live = attach_values(graph, readings, as_of=ns.as_of, max_age=ns.max_age, by=ns.by)
+
+    out_dir = Path(ns.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "asset_graph.live.json"
+    out_path.write_text(json.dumps(live, indent=2), encoding="utf-8")
+
+    if not ns.quiet:
+        s = live["live_summary"]
+        print("Readings: %d | attached: %d | unsampled: %d | unmatched: %d"
+              % (s["readings"], s["signals_attached"], s["signals_unsampled"],
+                 len(s["unmatched_readings"])))
+        print("Quality: %s | freshness: %s"
+              % (s["quality"] or "(none)", s["freshness"] or "(none)"))
+        print("Wrote: %s" % out_path)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mira-plc-parser",
@@ -196,6 +226,21 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Root for the proposed ISA-95 namespace (default: plc).")
     p_comp.add_argument("--quiet", action="store_true", help="Suppress the stdout summary.")
     p_comp.set_defaults(func=_cmd_compile)
+
+    p_att = sub.add_parser("attach",
+                           help="Attach a values snapshot (address->value) onto a compiled "
+                                "asset_graph.json, populating each mapped signal's VQT.")
+    p_att.add_argument("graph", help="A compiled asset_graph.json (from `compile`).")
+    p_att.add_argument("snapshot", help="Values snapshot CSV/JSON (address,value[,quality,timestamp]).")
+    p_att.add_argument("--out", default="./out", help="Output directory (default: ./out).")
+    p_att.add_argument("--by", choices=("address", "name"), default="address",
+                       help="Bind readings by Modbus address (default) or by signal name.")
+    p_att.add_argument("--as-of", default=None, dest="as_of",
+                       help="ISO8601 reference time for freshness (default: max snapshot timestamp).")
+    p_att.add_argument("--max-age", type=float, default=30.0, dest="max_age",
+                       help="Seconds within --as-of that counts as 'current' (default: 30).")
+    p_att.add_argument("--quiet", action="store_true", help="Suppress the stdout summary.")
+    p_att.set_defaults(func=_cmd_attach)
     return parser
 
 

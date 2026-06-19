@@ -40,7 +40,8 @@ upload → detect format → vendor parser → MIRA PLC IR → deterministic ana
 | **CCW "no VAR block" recovery**: synthesize tags from ST assignment targets so real CCW exports analyze | ✅ |
 | Markdown + JSON + **i3X** report renderers; JSON & i3X shapes pinned by **golden snapshots** (`report@1`, `i3x@1`) | ✅ |
 | **Multi-source correlation** (`correlate`): fuse `.st` + variables CSV + Modbus map about one asset into a knowledge graph (`asset-graph@1`) — types/addresses/roles fused by name, control logic → `DependsOn` edges | ✅ |
-| **Offline PLC Asset Compiler** (`compile <folder>`): discover → parse → fuse a folder of exports → `asset_graph.json` + `signals/registers/edges.csv` + `compiler_report.md`; per-field confidence + conflict flagging + safety review; runtime value dumps ignored. See [COMPILER.md](COMPILER.md) | ✅ |
+| **Offline PLC Asset Compiler** (`compile <folder>`): discover → parse → fuse a folder of exports → `asset_graph.json` + `signals/registers/edges.csv` + `compiler_report.md`; per-field confidence + conflict flagging + safety review; runtime value dumps ignored; multi-asset by subfolder. See [COMPILER.md](COMPILER.md) | ✅ |
+| **Offline VQT attachment** (`attach <graph> <snapshot>`): bind an address→value snapshot onto the compiled graph's `MAPPED_TO` signals → `asset_graph.live.json` with per-signal Value/Quality/Timestamp + freshness. The offline slice of live data binding. See [VQT_ATTACH_SPEC.md](VQT_ATTACH_SPEC.md) | ✅ |
 
 ## Install & CLI
 
@@ -174,7 +175,8 @@ mira_plc_parser/
   roles.py           # deterministic signal categorization (safety/fault/motion/... ) for review
   discovery.py       # recursive folder scan + classify (parseable / value_dump / closed / unknown)
   compiler.py        # offline PLC Asset Compiler: folder → asset_graph.json + CSVs + report
-  cli.py             # offline CLI: `analyze` · `correlate` · `compile` (folder → asset model)
+  vqt_attach.py      # bind a values snapshot onto a compiled graph (offline VQT slice)
+  cli.py             # offline CLI: `analyze` · `correlate` · `compile` · `attach`
   __main__.py        # `python -m mira_plc_parser`
 mira-plc-parser.spec # PyInstaller spec for the standalone .exe (see PACKAGING.md)
 ```

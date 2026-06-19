@@ -91,6 +91,9 @@ roles union. Safety / fault / control signals are flagged `review = yes`.
   one asset; signals are asset-scoped so two machines' `motor_run` never collide; CSVs carry an
   `asset` column). Remaining refinement: splitting *multiple controllers inside one flat folder*
   (today a flat folder fuses to one asset).
-- **Live VQT attachment:** wiring `asset_graph.json` registers to `mira-relay` / `mira-connect` so
-  the static model lights up with live values.
+- **Live VQT attachment:** the OFFLINE slice is DONE — `attach <asset_graph.json> <snapshot>` binds a
+  values snapshot (address→value) onto the graph's `MAPPED_TO` signals, writing `asset_graph.live.json`
+  with per-signal VQT + quality + freshness (see `VQT_ATTACH_SPEC.md`). Remaining (issue #2102): a
+  real `live_logger`-CSV adapter (friendly-name + scale/offset), live Modbus polling via
+  `mira-connect`, engineering-unit scaling, and pushing live VQT to `mira-relay`'s `live_signal_cache`.
 - **Ground-truth eval corpus:** labeled tag sets per program to measure extraction accuracy.
