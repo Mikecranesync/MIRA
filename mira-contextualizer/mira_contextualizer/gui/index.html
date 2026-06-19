@@ -84,7 +84,7 @@
       <div class="toolbar">
         <strong id="projTitle" class="muted">Select or create a project</strong>
         <span style="flex:1"></span>
-        <input id="fileInput" type="file" style="display:none" onchange="uploadFile(event)" />
+        <input id="fileInput" type="file" multiple style="display:none" onchange="uploadFile(event)" />
         <button class="btn" id="uploadBtn" onclick="document.getElementById('fileInput').click()" disabled>Upload source</button>
         <button class="btn" id="refreshBtn" onclick="loadExtractions()" disabled>Refresh</button>
         <button class="btn" id="exportBtn" onclick="exportUns()" disabled>Export UNS</button>
@@ -120,10 +120,12 @@ function setMode(m){
   MODE = m;
   $("tab-plc").classList.toggle("active", m==="plc");
   $("tab-doc").classList.toggle("active", m==="doc");
-  $("fileInput").setAttribute("accept", m==="plc" ? ".l5x,.csv,.st,.xml" : ".pdf,.docx,.xlsx,.txt,.md,.png,.jpg,.tiff");
+  $("fileInput").setAttribute("accept", m==="plc"
+    ? ".l5x,.csv,.xml,.st,.vssettings,.ccwsln"
+    : ".pdf,.docx,.xlsx,.txt,.md,.png,.jpg,.jpeg,.tiff");
   const b=$("banner");
-  if(m==="doc"){ b.style.display="block"; b.textContent="Documents mode: any-document extraction (PDF/Word/Excel/scans) lands in P1. Files upload now but won't yield tags yet."; }
-  else { b.style.display="none"; }
+  if(m==="plc"){ b.style.display="block"; b.textContent="PLC mode: upload Rockwell L5X, or a CCW project's MbSrvConf.xml (Modbus map) and LogicalValues.csv (variables). You can select/drop several files at once."; }
+  else { b.style.display="block"; b.textContent="Documents mode: drop manuals/datasheets (PDF/Word/Excel/images). Digital docs extract now; scanned-image OCR needs the bundled Tesseract."; }
 }
 
 async function loadProjects(){
@@ -200,20 +202,21 @@ async function decide(id,status){
     await loadExtractions(); await loadProjects();
   }catch(e){ toast(e.message); }
 }
-const PLC_TEXT = /\.(l5x|csv|st|xml)$/i;
-function uploadFile(ev){ const f=ev.target.files[0]; ev.target.value=""; doUpload(f); }
+function uploadFile(ev){ const files=[...ev.target.files]; ev.target.value=""; files.forEach(doUpload); }
 function doUpload(file){
   if(!file || !CURRENT) return;
   const reader = new FileReader();
-  const isPlc = PLC_TEXT.test(file.name);
+  const isText = (MODE === "plc");   // PLC/CCW = text; Documents = bytes
   reader.onload = async () => {
     try{
       let j;
-      if(isPlc){
+      if(isText){
         j = await api(`/api/projects/${CURRENT}/sources`,{method:"POST",
           headers:{"Content-Type":"application/json"},
           body:JSON.stringify({fileName:file.name, text:reader.result})});
-        toast(j.extractions ? `Extracted ${j.extractions} tags from ${file.name}` : (j.note||`Uploaded ${file.name}`));
+        if(j.extractions){ toast(`Extracted ${j.extractions} tags from ${file.name}`); }
+        else if(j.note){ toast(`${file.name}: ${j.note}`); }   // never silent (e.g. .vssettings guidance)
+        else { toast(`Uploaded ${file.name}`); }
       } else {
         // Documents: send raw bytes; the server runs OCR/extraction → Document IR → candidates.
         j = await api(`/api/projects/${CURRENT}/sources`,{method:"POST",
@@ -224,7 +227,7 @@ function doUpload(file){
       await loadSources(); await loadExtractions(); await loadProjects();
     }catch(e){ toast(e.message); }
   };
-  if(isPlc) reader.readAsText(file); else reader.readAsArrayBuffer(file);
+  if(isText) reader.readAsText(file); else reader.readAsArrayBuffer(file);
 }
 // Drag-and-drop: drop any file(s) onto the work panel to ingest.
 (function initDrop(){

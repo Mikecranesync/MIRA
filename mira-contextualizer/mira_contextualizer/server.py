@@ -139,29 +139,27 @@ def make_handler(store: Store, gui_dir: str):
             if ctype == "application/octet-stream":
                 self._add_document(pid)
             else:
-                self._add_plc_text(pid)
+                self._add_text_source(pid)
 
-        def _add_plc_text(self, pid: str) -> None:
+        def _add_text_source(self, pid: str) -> None:
             body = self._read_json()
             file_name = (body.get("fileName") or "").strip()
             text = body.get("text")
             if not file_name:
                 self._err("fileName is required", 400)
                 return
-            src = store.create_source(pid, engine.source_type_for(file_name), file_name)
-            if engine.is_plc_text(file_name) and isinstance(text, str):
-                try:
-                    rows, _report = engine.extract_plc(file_name, text)
-                    n = store.add_extractions(pid, src["id"], rows)
-                    store.set_source_status(src["id"], "done")
-                    self._json({"source": src, "extractions": n}, 201)
-                except Exception as exc:  # noqa: BLE001 — record, don't crash the server
-                    store.set_source_status(src["id"], "error", str(exc))
-                    self._err("parse failed: %s" % exc, 500)
+            if not isinstance(text, str):
+                self._err("text is required for a PLC/CCW source", 400)
                 return
-            # A document posted as JSON without bytes — nothing to extract.
-            store.set_source_status(src["id"], "pending", "post documents as application/octet-stream")
-            self._json({"source": src, "extractions": 0, "note": "send document bytes as octet-stream"}, 201)
+            src = store.create_source(pid, engine.source_type_for(file_name), file_name)
+            # Unified deterministic analysis — handles L5X, CCW Modbus/LogicalValues, and returns a
+            # human note for IDE-settings / unrecognized files (never a silent no-op).
+            result = engine.analyze_text(file_name, text)
+            n = store.add_extractions(pid, src["id"], result["rows"])
+            store.set_source_status(
+                src["id"], "error" if result["kind"] == "error" else "done", result.get("note"))
+            self._json({"source": src, "extractions": n, "kind": result["kind"],
+                        "note": result.get("note")}, 201)
 
         def _add_document(self, pid: str) -> None:
             file_name = (self.headers.get("X-File-Name") or "").strip()

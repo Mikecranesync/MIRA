@@ -11,6 +11,8 @@ import os
 # Resolved via sys.path (tests/conftest.py, app.py) or the PyInstaller bundle — see pyproject note.
 from mira_plc_parser import pipeline  # type: ignore
 
+from . import ccw
+
 _CONFIDENCE_MAP = {"high": 0.9, "medium": 0.6, "med": 0.6, "low": 0.3}
 
 # file extension -> source_type label (advisory; the parser detects format from content too)
@@ -72,3 +74,34 @@ def extract_plc(file_name: str, text: str) -> tuple[list[dict], dict]:
             "confidence": _confidence(band),
         })
     return rows, report
+
+
+def analyze_text(file_name: str, text: str) -> dict:
+    """Unified deterministic analysis of a text source. NEVER silent — always returns a kind, the
+    extraction rows, and a human note when there are none. Routes: CCW Modbus/LogicalValues, CCW
+    settings/solution (guidance), then the L5X/CSV PLC pipeline, else an explanatory note.
+
+    Returns {kind, rows, note}.
+    """
+    kind = ccw.detect_ccw(file_name, text)
+    if kind == "ccw_modbus":
+        return {"kind": kind, "rows": ccw.parse_modbus(text), "note": None}
+    if kind == "ccw_logicalvalues":
+        return {"kind": kind, "rows": ccw.parse_logicalvalues(text), "note": None}
+    if kind in ("ccw_settings", "ccw_solution"):
+        return {"kind": kind, "rows": [], "note": ccw.guidance(kind)}
+
+    if is_plc_text(file_name):
+        try:
+            rows, report = extract_plc(file_name, text)
+        except Exception as exc:  # noqa: BLE001
+            return {"kind": "error", "rows": [], "note": "parse failed: %s" % exc}
+        if report.get("handled"):
+            return {"kind": "plc", "rows": rows, "note": None}
+        warn = "; ".join(report.get("warnings") or []) or "format not recognized"
+        return {"kind": "plc_unhandled", "rows": rows, "note": warn}
+
+    return {"kind": "unknown", "rows": [], "note": (
+        "Not a recognized PLC export. Supported here: Rockwell L5X, CCW MbSrvConf.xml (Modbus map), "
+        "CCW LogicalValues.csv (variables), or a tag CSV. For manuals/PDFs use the Documents tab.")}
+
