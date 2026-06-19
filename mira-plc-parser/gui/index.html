@@ -3,16 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MIRA Namespace Builder</title>
+<title>MIRA Tag Mapper</title>
 <!--
-  MIRA Namespace Builder — offline, no-network, no-LLM front end for the MIRA PLC Parser.
-  Reads a *.report.json from `mira-plc-parser analyze` and helps you stand up a standardized UNS:
-  set your enterprise / site / area / line once (top), and every PLC tag's ISA-95 path recomputes
-  live. The parser's confident proposals are highlighted yellow. Export to UNS JSON, CESMII i3X
-  JSON (objectInstances + parentId hierarchy), or CSV — all client-side, nothing leaves the machine.
+  MIRA Tag Mapper — offline, no-network, no-LLM front end for the MIRA PLC Parser.
+  Reads a *.report.json from `mira-plc-parser analyze`.
 
-  The window chrome is ORIGINAL CSS evoking the classic desktop look (no third-party stylesheet is
-  copied or fetched). i3X field names follow the public CESMII i3X OpenAPI for interoperability.
+  Tab 1 — Tag Roles (Mapper): shows every tag from tag_dictionary with its
+  analyzer-assigned roles (fault / vfd_signal / output / asset / timer); accept
+  or reject each role assignment interactively. Exports accepted decisions as CSV.
+
+  Tab 2 — UNS Namespace Builder: set enterprise/site/area/line prefix; every
+  PLC tag's ISA-95 path recomputes live. The parser's confident proposals are
+  highlighted yellow. Export to UNS JSON, CESMII i3X JSON, or CSV.
+
+  All client-side; nothing leaves the machine. No third-party stylesheets fetched.
+  Window chrome is ORIGINAL CSS evoking the classic desktop look.
+  i3X field names follow the public CESMII i3X OpenAPI for interoperability.
 -->
 <style>
   :root{
@@ -23,7 +29,7 @@
   *{box-sizing:border-box;}
   html,body{height:100%;margin:0;}
   body{background:#0a7d7d;font-family:var(--font);font-size:12px;color:var(--ink);overflow:hidden;user-select:none;}
-  .window{position:absolute;top:30px;left:40px;width:880px;height:560px;min-width:620px;min-height:380px;
+  .window{position:absolute;top:30px;left:40px;width:960px;height:580px;min-width:660px;min-height:400px;
     background:var(--face);display:flex;flex-direction:column;resize:both;overflow:hidden;
     border-top:2px solid var(--hi);border-left:2px solid var(--hi);
     border-right:2px solid var(--sh-dark);border-bottom:2px solid var(--sh-dark);box-shadow:1px 1px 0 0 #000;}
@@ -45,6 +51,17 @@
     border-top:2px solid var(--hi);border-left:2px solid var(--hi);border-right:2px solid var(--sh-dark);border-bottom:2px solid var(--sh-dark);}
   .btn:active{border-color:var(--sh-dark) var(--hi) var(--hi) var(--sh-dark);}
   .meta{margin-left:auto;color:#222;font-size:11px;}
+  /* Tabs */
+  .tabs{flex:0 0 auto;display:flex;align-items:flex-end;padding:0 8px;gap:0;background:var(--face);
+    border-bottom:2px solid var(--sh-dark);}
+  .tab{padding:4px 14px;cursor:pointer;font-family:var(--font);font-size:12px;font-weight:700;
+    margin-right:2px;margin-bottom:-2px;
+    border-top:2px solid var(--sh-dark);border-left:2px solid var(--sh-dark);
+    border-right:2px solid var(--hi);border-bottom:2px solid var(--face);
+    background:var(--face);}
+  .tab:not(.active){border-top-color:var(--sh);border-left-color:var(--sh);
+    border-bottom:2px solid var(--sh-dark);background:#b0b8c0;margin-bottom:0;}
+  /* Prefix bar */
   .prefix{flex:0 0 auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px;margin:8px 8px 0;
     background:#cfd6dd;border-top:2px solid var(--sh-dark);border-left:2px solid var(--sh-dark);
     border-right:2px solid var(--hi);border-bottom:2px solid var(--hi);}
@@ -52,24 +69,48 @@
   .prefix .sepr{color:#555;font-weight:700;}
   .prefix input{font-family:var(--font);font-size:12px;width:120px;padding:2px 4px;background:var(--field);
     border-top:2px solid var(--sh-dark);border-left:2px solid var(--sh-dark);border-right:2px solid var(--hi);border-bottom:2px solid var(--hi);}
+  /* Panels */
+  .panel{display:none;flex-direction:column;flex:1 1 auto;min-height:0;}
+  .panel.active{display:flex;}
   .body{flex:1 1 auto;display:flex;flex-direction:column;min-height:0;padding:8px;gap:4px;}
   .body h2{margin:0;font-size:12px;font-weight:700;}
   .list{flex:1 1 auto;overflow:auto;background:var(--field);
     border-top:2px solid var(--sh-dark);border-left:2px solid var(--sh-dark);border-right:2px solid var(--hi);border-bottom:2px solid var(--hi);}
   table{border-collapse:collapse;width:100%;font-size:12px;}
   thead th{position:sticky;top:0;background:#dfe4ea;text-align:left;padding:4px 8px;border-bottom:1px solid var(--sh);white-space:nowrap;}
-  tbody td{padding:3px 8px;border-bottom:1px solid #eee;white-space:nowrap;}
+  tbody td{padding:3px 8px;border-bottom:1px solid #eee;white-space:nowrap;vertical-align:middle;}
+  /* UNS confidence highlights */
   tbody tr.suggest{background:var(--suggest);}
   tbody tr.suggest.med{background:#fff7c2;}
+  /* Mapper row states */
+  tbody tr.accepted{background:#d6f5d6!important;}
+  tbody tr.rejected{background:#f0f0f0!important;color:#999;}
+  tbody tr.rejected td{text-decoration:line-through;}
+  tbody tr.rejected td:last-child{text-decoration:none;}
   .path{font-family:"Consolas","Courier New",monospace;color:#0a3d6e;}
   .seg-sig{font-weight:700;}
-  .chip{font-size:10px;font-weight:700;padding:0 5px;border-radius:2px;border:1px solid #999;}
+  /* Confidence chips (UNS tab) */
+  .chip{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:2px;border:1px solid #999;margin:1px 2px;}
   .chip.high{background:#d6f5d6;border-color:#3aa33a;color:#1a5e1a;}
   .chip.medium{background:#fff7c2;border-color:var(--suggest-edge);color:#6a5300;}
   .chip.low{background:#eee;color:#555;}
+  /* Role chips (Mapper tab) */
+  .role{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:2px;border:1px solid;margin:1px 2px;}
+  .role.fault{background:#ffd6d6;border-color:#cc2222;color:#7a0000;}
+  .role.vfd_signal{background:#d0e8ff;border-color:#1155cc;color:#003399;}
+  .role.output{background:#e8d6ff;border-color:#7722cc;color:#440077;}
+  .role.asset{background:#ffe0c8;border-color:#cc5500;color:#7a2e00;}
+  .role.timer{background:#eee;border-color:#888;color:#444;}
+  .role.review{background:#fff7c2;border-color:#cc9900;color:#665000;}
+  /* Accept/Reject action buttons */
+  .abtn{font-family:var(--font);font-size:11px;padding:1px 7px;cursor:pointer;
+    border-top:1px solid var(--hi);border-left:1px solid var(--hi);border-right:1px solid var(--sh-dark);border-bottom:1px solid var(--sh-dark);
+    background:var(--face);margin-right:3px;}
+  .abtn:active{border-color:var(--sh-dark) var(--hi) var(--hi) var(--sh-dark);}
+  .abtn.undo{background:#d6d6d6;}
   .status{flex:0 0 auto;display:flex;border-top:1px solid var(--hi);}
   .status .cell{flex:1 1 auto;padding:3px 8px;font-size:11px;border-top:1px solid var(--sh);border-left:1px solid var(--sh);margin:2px 0 2px 2px;}
-  .status .cell:last-child{margin-right:2px;flex:0 0 auto;min-width:120px;}
+  .status .cell:last-child{margin-right:2px;flex:0 0 auto;min-width:180px;}
   input[type=file]{display:none;}
 </style>
 </head>
@@ -77,7 +118,7 @@
 <div class="window" id="win">
   <div class="titlebar" id="titlebar">
     <span class="ic">&#9783;</span>
-    <span class="ttl" id="winTitle">MIRA Namespace Builder &mdash; (sample)</span>
+    <span class="ttl" id="winTitle">MIRA Tag Mapper &mdash; (sample)</span>
     <span class="tbtn" title="Minimize">_</span>
     <span class="tbtn" id="maxBtn" title="Maximize">&#9633;</span>
     <span class="tbtn" id="closeBtn" title="Close">&#10005;</span>
@@ -85,28 +126,51 @@
   <div class="menubar"><span class="mi" id="fileMenu"><u>F</u>ile</span><span class="mi">View</span><span class="mi">Help</span></div>
   <div class="toolbar">
     <button class="btn" id="openBtn">Open report.json&hellip;</button>
+    <button class="btn" id="expMapCsv">Export Mapped (CSV)</button>
     <button class="btn" id="expUns">Export UNS (JSON)</button>
     <button class="btn" id="expI3x">Export i3X (JSON)</button>
     <button class="btn" id="expCsv">Export CSV</button>
     <span class="meta" id="metaLine">&nbsp;</span>
   </div>
-  <div class="prefix">
-    <label>Namespace:</label>
-    <input id="pEnt" title="Enterprise"><span class="sepr">/</span>
-    <input id="pSite" title="Site"><span class="sepr">/</span>
-    <input id="pArea" title="Area"><span class="sepr">/</span>
-    <input id="pLine" title="Line"><span class="sepr">/</span>
-    <span style="color:#555">&hellip; asset / signal (from the parse)</span>
+  <div class="tabs">
+    <span class="tab active" id="tab-mapper" data-panel="panel-mapper">Tag Roles (Mapper)</span>
+    <span class="tab" id="tab-uns" data-panel="panel-uns">UNS Namespace</span>
   </div>
-  <div class="body">
-    <h2>Tags &rarr; UNS namespace</h2>
-    <div class="list">
-      <table>
-        <thead><tr><th>PLC tag</th><th>Type</th><th>Proposed UNS path</th><th>Conf.</th></tr></thead>
-        <tbody id="rows"></tbody>
-      </table>
+
+  <!-- Tab 1: Mapper — tag roles with Accept/Reject -->
+  <div class="panel active" id="panel-mapper">
+    <div class="body">
+      <h2>Tag roles &rarr; accept or reject analyzer assignments</h2>
+      <div class="list">
+        <table>
+          <thead><tr><th>PLC tag</th><th>Type</th><th>Scope</th><th>Description</th><th>Roles</th><th>Action</th></tr></thead>
+          <tbody id="mapRows"></tbody>
+        </table>
+      </div>
     </div>
   </div>
+
+  <!-- Tab 2: UNS Namespace Builder -->
+  <div class="panel" id="panel-uns">
+    <div class="prefix">
+      <label>Namespace:</label>
+      <input id="pEnt" title="Enterprise"><span class="sepr">/</span>
+      <input id="pSite" title="Site"><span class="sepr">/</span>
+      <input id="pArea" title="Area"><span class="sepr">/</span>
+      <input id="pLine" title="Line"><span class="sepr">/</span>
+      <span style="color:#555">&hellip; asset / signal (from the parse)</span>
+    </div>
+    <div class="body">
+      <h2>Tags &rarr; UNS namespace</h2>
+      <div class="list">
+        <table>
+          <thead><tr><th>PLC tag</th><th>Type</th><th>Proposed UNS path</th><th>Conf.</th></tr></thead>
+          <tbody id="unsRows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <div class="status">
     <span class="cell" id="statusMain">Ready.</span>
     <span class="cell" id="statusCount">0 tags</span>
@@ -117,29 +181,41 @@
 <script>
 "use strict";
 
-/* ---- embedded sample (the conveyor fixture) so the window works on open, no server ---- */
-function seg(tag,type,asset,signal,std,conf){
-  return {tag:tag,data_type:type,asset:asset,signal:signal,standardized:std,confidence:conf,
-          segments:{enterprise:"enterprise",site:"site1",area:"area1",line:"conveyorcell",asset:asset,signal:signal}};
-}
+/* ---- embedded sample so the window works on open, no server ---- */
 var SAMPLE = {
   controller:"ConveyorCell", vendor:"Rockwell Automation",
   uns_prefix:{enterprise:"enterprise",site:"site1",area:"area1",line:"conveyorcell"},
   uns_candidates:[
-    seg("Motor_Run","BOOL","motor","motor_run",false,"medium"),
-    seg("Conv_Fault","BOOL","conv","conv_fault",false,"medium"),
-    seg("Auto_Mode","BOOL","","auto_mode",false,"low"),
-    seg("EStop_OK","BOOL","","estop_ok",false,"low"),
-    seg("Photoeye_1","BOOL","","photoeye_1",false,"low"),
-    seg("VFD_Current","REAL","vfd","current",true,"high"),
-    seg("VFD_FaultCode","DINT","vfd","fault",true,"high"),
-    seg("VFD_Frequency","REAL","vfd","frequency",true,"high")
+    {tag:"Motor_Run",data_type:"BOOL",asset:"motor",signal:"motor_run",standardized:false,confidence:"medium",
+     segments:{enterprise:"enterprise",site:"site1",area:"area1",line:"conveyorcell",asset:"motor",signal:"motor_run"}},
+    {tag:"Conv_Fault",data_type:"BOOL",asset:"conv",signal:"conv_fault",standardized:false,confidence:"medium",
+     segments:{enterprise:"enterprise",site:"site1",area:"area1",line:"conveyorcell",asset:"conv",signal:"conv_fault"}},
+    {tag:"Auto_Mode",data_type:"BOOL",asset:"",signal:"auto_mode",standardized:false,confidence:"low",
+     segments:{enterprise:"enterprise",site:"site1",area:"area1",line:"conveyorcell",asset:"",signal:"auto_mode"}},
+    {tag:"VFD_FaultCode",data_type:"DINT",asset:"vfd",signal:"fault",standardized:true,confidence:"high",
+     segments:{enterprise:"enterprise",site:"site1",area:"area1",line:"conveyorcell",asset:"vfd",signal:"fault"}},
+    {tag:"VFD_Frequency",data_type:"REAL",asset:"vfd",signal:"frequency",standardized:true,confidence:"high",
+     segments:{enterprise:"enterprise",site:"site1",area:"area1",line:"conveyorcell",asset:"vfd",signal:"frequency"}}
+  ],
+  tag_dictionary:[
+    {name:"Motor_Run",data_type:"BOOL",scope:"program",description:"Motor run output coil",address:"O:0/0",roles:["output"],used_count:3,confidence:"high"},
+    {name:"Conv_Fault",data_type:"BOOL",scope:"controller",description:"Conveyor fault latch",address:"",roles:["fault"],used_count:2,confidence:"high"},
+    {name:"Auto_Mode",data_type:"BOOL",scope:"controller",description:"",address:"",roles:[],used_count:1,confidence:"high"},
+    {name:"VFD_FaultCode",data_type:"DINT",scope:"controller",description:"VFD active fault code",address:"N7:0",roles:["fault","vfd_signal"],used_count:1,confidence:"high"},
+    {name:"VFD_Frequency",data_type:"REAL",scope:"controller",description:"VFD output frequency Hz",address:"N7:2",roles:["vfd_signal"],used_count:1,confidence:"high"}
   ]
 };
 
-var state = { cands:[], prefix:{enterprise:"enterprise",site:"site1",area:"area1",line:"line1"}, title:"(sample)", controller:"", vendor:"" };
+var state = {
+  cands:[], tags:[], decisions:{},
+  prefix:{enterprise:"enterprise",site:"site1",area:"area1",line:"line1"},
+  title:"(sample)", controller:"", vendor:""
+};
+
+var KNOWN_ROLES = ["fault","vfd_signal","output","asset","timer"];
 
 function slug(s){ s=(s==null?"":String(s)).toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,""); return s||"x"; }
+function esc(s){ return String(s==null?"":s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];}); }
 
 function pathOf(c){
   var p=state.prefix;
@@ -150,7 +226,9 @@ function pathOf(c){
 }
 
 function load(rep){
-  state.cands = rep.uns_candidates || [];
+  state.cands     = rep.uns_candidates  || [];
+  state.tags      = rep.tag_dictionary  || [];
+  state.decisions = {};
   state.controller = rep.controller||""; state.vendor = rep.vendor||"";
   var pf = rep.uns_prefix || (state.cands[0] && state.cands[0].segments) || state.prefix;
   state.prefix = {enterprise:pf.enterprise||"enterprise",site:pf.site||"site1",area:pf.area||"area1",line:pf.line||"line1"};
@@ -158,19 +236,84 @@ function load(rep){
   document.getElementById("pSite").value=state.prefix.site;
   document.getElementById("pArea").value=state.prefix.area;
   document.getElementById("pLine").value=state.prefix.line;
-  document.getElementById("winTitle").innerHTML="MIRA Namespace Builder &mdash; "+state.title;
-  document.getElementById("metaLine").textContent=(state.controller||"(unnamed)")+"  ·  "+(state.vendor||"?");
-  render();
+  document.getElementById("winTitle").innerHTML="MIRA Tag Mapper &mdash; "+esc(state.title);
+  document.getElementById("metaLine").textContent=(state.controller||"(unnamed)")+"  \xb7  "+(state.vendor||"?");
+  renderMapper();
+  renderUns();
 }
 
 function val(id){ return document.getElementById(id).value || ""; }
 function readPrefix(){
   state.prefix={enterprise:val("pEnt"),site:val("pSite"),area:val("pArea"),line:val("pLine")};
-  render();
+  renderUns();
 }
 
-function render(){
-  var tb=document.getElementById("rows"); tb.innerHTML="";
+/* ---- Mapper tab ---- */
+function renderMapper(){
+  var tb=document.getElementById("mapRows"); tb.innerHTML="";
+  var accepted=0, rejected=0;
+  state.tags.forEach(function(t){
+    var dec=state.decisions[t.name]||"pending";
+    var roles=t.roles||[];
+    var tr=document.createElement("tr");
+    if(dec==="accepted") { tr.className="accepted"; accepted++; }
+    else if(dec==="rejected") { tr.className="rejected"; rejected++; }
+
+    var roleHtml="";
+    if(roles.length===0){
+      roleHtml='<span class="role review">review</span>';
+    } else {
+      roles.forEach(function(r){
+        var cls=KNOWN_ROLES.indexOf(r)>=0?r:"timer";
+        roleHtml+='<span class="role '+cls+'">'+esc(r)+'</span>';
+      });
+    }
+
+    var actHtml;
+    if(dec==="pending"){
+      actHtml='<button class="abtn accept-btn" data-tag="'+esc(t.name)+'">Accept ✓</button>'+
+              '<button class="abtn reject-btn" data-tag="'+esc(t.name)+'"">Reject ✗</button>';
+    } else {
+      var label=dec==="accepted"?"Accepted ✓":"Rejected ✗";
+      actHtml='<span style="margin-right:6px;">'+label+'</span>'+
+              '<button class="abtn undo" data-tag="'+esc(t.name)+'">Undo</button>';
+    }
+
+    tr.innerHTML='<td>'+esc(t.name)+'</td>'+
+      '<td>'+esc(t.data_type||"")+'</td>'+
+      '<td>'+esc(t.scope||"")+'</td>'+
+      '<td>'+esc(t.description||"")+'</td>'+
+      '<td>'+roleHtml+'</td>'+
+      '<td>'+actHtml+'</td>';
+    tb.appendChild(tr);
+  });
+  var total=state.tags.length;
+  var pending=total-accepted-rejected;
+  if(document.getElementById("tab-mapper").classList.contains("active")){
+    document.getElementById("statusCount").textContent=total+" tags \xb7 "+accepted+" accepted \xb7 "+rejected+" rejected \xb7 "+pending+" pending";
+    var faults=countRole("fault"), vfds=countRole("vfd_signal"), outs=countRole("output"), assets=countRole("asset");
+    document.getElementById("statusMain").textContent=
+      total? ("Roles: "+faults+" fault \xb7 "+vfds+" VFD \xb7 "+outs+" output \xb7 "+assets+" asset") : "Open a report.json to begin.";
+  }
+}
+
+function countRole(role){
+  return state.tags.filter(function(t){ return (t.roles||[]).indexOf(role)>=0; }).length;
+}
+
+/* delegate accept/reject/undo clicks via bubbling */
+document.getElementById("mapRows").addEventListener("click",function(e){
+  var btn=e.target; if(btn.tagName!=="BUTTON") return;
+  var tag=btn.getAttribute("data-tag"); if(!tag) return;
+  if(btn.classList.contains("accept-btn")) state.decisions[tag]="accepted";
+  if(btn.classList.contains("reject-btn")) state.decisions[tag]="rejected";
+  if(btn.classList.contains("undo"))       state.decisions[tag]="pending";
+  renderMapper();
+});
+
+/* ---- UNS tab ---- */
+function renderUns(){
+  var tb=document.getElementById("unsRows"); tb.innerHTML="";
   var std=0;
   state.cands.forEach(function(c){
     if(c.standardized) std++;
@@ -187,13 +330,25 @@ function render(){
       '<td><span class="chip '+conf+'">'+conf.toUpperCase()+'</span></td>';
     tb.appendChild(tr);
   });
-  document.getElementById("statusCount").textContent=state.cands.length+" tags";
-  document.getElementById("statusMain").textContent=
-    state.cands.length? (std+" standardized · prefix "+[state.prefix.enterprise,state.prefix.site,state.prefix.area,state.prefix.line].map(slug).join("/")) : "Open a report.json to begin.";
+  if(document.getElementById("tab-uns").classList.contains("active")){
+    document.getElementById("statusCount").textContent=state.cands.length+" UNS candidates";
+    document.getElementById("statusMain").textContent=
+      state.cands.length? (std+" standardized \xb7 prefix "+[state.prefix.enterprise,state.prefix.site,state.prefix.area,state.prefix.line].map(slug).join("/")) : "Open a report.json to begin.";
+  }
 }
-function esc(s){ return String(s==null?"":s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];}); }
 
-/* ---- exports (all client-side; download a Blob) ---- */
+/* ---- tab switching ---- */
+document.querySelectorAll(".tab").forEach(function(tab){
+  tab.onclick=function(){
+    document.querySelectorAll(".tab").forEach(function(t){ t.classList.remove("active"); });
+    document.querySelectorAll(".panel").forEach(function(p){ p.classList.remove("active"); });
+    tab.classList.add("active");
+    document.getElementById(tab.getAttribute("data-panel")).classList.add("active");
+    if(tab.id==="tab-uns") renderUns(); else renderMapper();
+  };
+});
+
+/* ---- exports (all client-side) ---- */
 function download(name,text,type){
   var b=new Blob([text],{type:type||"application/json"});
   var a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=name;
@@ -201,6 +356,19 @@ function download(name,text,type){
   setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
   document.getElementById("statusMain").textContent="Exported "+name;
 }
+
+function mappedCsv(){
+  var out=["plc_tag,data_type,scope,description,roles,status"];
+  state.tags.forEach(function(t){
+    var dec=state.decisions[t.name]||"pending";
+    var roles=(t.roles||[]).join("|");
+    out.push([t.name, t.data_type||"", t.scope||"",
+      '"'+(t.description||"").replace(/"/g,'""')+'"',
+      roles, dec].join(","));
+  });
+  return out.join("\n");
+}
+
 function unsJson(){
   var p=state.prefix;
   return state.cands.map(function(c){
@@ -209,11 +377,13 @@ function unsJson(){
       confidence:c.confidence};
   });
 }
-function csv(){
+
+function unsCsv(){
   var out=["plc_tag,uns_path,confidence"];
   state.cands.forEach(function(c){ out.push([c.tag,pathOf(c),c.confidence].join(",")); });
   return out.join("\n");
 }
+
 /* i3X objectInstances tree: containers (deduped) + leaf tags, parentId-linked. Mirrors i3x.py. */
 function i3xPayload(){
   var NS="urn:mira:plc-parser:uns";
@@ -241,9 +411,10 @@ function i3xPayload(){
 
 /* ---- wiring ---- */
 ["pEnt","pSite","pArea","pLine"].forEach(function(id){ document.getElementById(id).oninput=readPrefix; });
+document.getElementById("expMapCsv").onclick=function(){ download("mapped_roles.csv",mappedCsv(),"text/csv"); };
 document.getElementById("expUns").onclick=function(){ download("namespace.uns.json",JSON.stringify(unsJson(),null,2)); };
 document.getElementById("expI3x").onclick=function(){ download("namespace.i3x.json",JSON.stringify(i3xPayload(),null,2)); };
-document.getElementById("expCsv").onclick=function(){ download("namespace.csv",csv(),"text/csv"); };
+document.getElementById("expCsv").onclick=function(){ download("namespace.csv",unsCsv(),"text/csv"); };
 document.getElementById("openBtn").onclick=function(){ document.getElementById("fileInput").click(); };
 document.getElementById("fileMenu").onclick=function(){ document.getElementById("fileInput").click(); };
 document.getElementById("fileInput").onchange=function(e){
