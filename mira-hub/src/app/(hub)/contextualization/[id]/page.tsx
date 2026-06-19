@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { Check, ChevronDown, ChevronUp, Loader2, X } from "lucide-react";
+import { ArrowUpCircle, Check, ChevronDown, ChevronUp, FileUp, Loader2, X } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 
 interface Extraction {
@@ -90,6 +90,9 @@ export default function ContextualizationProjectPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
   const [expandedEvidence, setExpandedEvidence] = useState<Record<string, boolean>>({});
+  const [promoting, setPromoting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -147,6 +150,70 @@ export default function ContextualizationProjectPage() {
     [projectId],
   );
 
+  const promote = useCallback(async () => {
+    setPromoting(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/contextualization/${projectId}/promote`,
+        { method: "POST" },
+      );
+      const j = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        promoted?: number;
+        skipped?: number;
+        total?: number;
+      };
+      if (!res.ok) throw new Error(j.error ?? "Promotion failed");
+      const promoted = j.promoted ?? 0;
+      const skipped = j.skipped ?? 0;
+      showToast(
+        promoted + skipped === 0
+          ? "No accepted tags to promote"
+          : `Promoted ${promoted} signal${promoted === 1 ? "" : "s"} to the knowledge graph${skipped ? ` (${skipped} already present)` : ""}`,
+      );
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Error promoting tags");
+    } finally {
+      setPromoting(false);
+    }
+  }, [projectId]);
+
+  const onUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      // Reset the input so selecting the same file again re-triggers onChange.
+      e.target.value = "";
+      if (!file) return;
+
+      setUploading(true);
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch(
+          `${API_BASE}/api/contextualization/${projectId}/sources`,
+          { method: "POST", body: fd },
+        );
+        const j = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          workerStarted?: boolean;
+        };
+        if (!res.ok) throw new Error(j.error ?? "Upload failed");
+        showToast(
+          j.workerStarted
+            ? `Uploaded ${file.name} — parsing… tags will appear shortly`
+            : `Uploaded ${file.name}, but the parser didn't start (check worker)`,
+        );
+        // The worker writes extractions asynchronously; give it a moment, then refresh.
+        setTimeout(fetchExtractions, 4000);
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : "Error uploading file");
+      } finally {
+        setUploading(false);
+      }
+    },
+    [projectId, fetchExtractions],
+  );
+
   const filtered = extractions.filter(
     (e) => filter === "all" || e.status === filter,
   );
@@ -167,12 +234,51 @@ export default function ContextualizationProjectPage() {
             Accept or reject proposed UNS paths for each extracted PLC tag.
           </p>
         </div>
-        <button
-          onClick={fetchExtractions}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".l5x,.st,.xml,.csv,.pdf,.txt,.md,.aoi"
+            onChange={onUpload}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            title="Upload a PLC export or manual to extract tags"
+            className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {uploading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileUp className="h-4 w-4" />
+            )}
+            Upload source
+          </button>
+          <button
+            onClick={fetchExtractions}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            Refresh
+          </button>
+          <button
+            onClick={promote}
+            disabled={promoting || counts.accepted === 0}
+            title={
+              counts.accepted === 0
+                ? "Accept at least one tag before promoting"
+                : "Promote accepted tags into the knowledge graph"
+            }
+            className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {promoting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ArrowUpCircle className="h-4 w-4" />
+            )}
+            Promote {counts.accepted > 0 ? `(${counts.accepted})` : ""}
+          </button>
+        </div>
       </div>
 
       {/* Status filter tabs */}
