@@ -41,6 +41,8 @@ class RoutineType(str, Enum):
 class TagScope(str, Enum):
     CONTROLLER = "controller"
     PROGRAM = "program"
+    AOI_PARAMETER = "aoi_parameter"
+    AOI_LOCAL = "aoi_local"
 
 
 @dataclass
@@ -134,9 +136,38 @@ class Controller:
 
 
 @dataclass
+class AOIDefinition:
+    """A single Add-On Instruction definition parsed from an AOI-only or full-controller L5X."""
+    name: str
+    revision: str = ""
+    description: str = ""
+    parameters: list[Tag] = field(default_factory=list)
+    local_tags: list[Tag] = field(default_factory=list)
+    routines: list[Routine] = field(default_factory=list)
+    provenance: Provenance | None = None
+
+
+@dataclass
+class HardwareModule:
+    """A hardware module entry from a module-only or full-controller L5X export."""
+    name: str
+    catalog_number: str = ""
+    vendor_id: int = 0
+    product_type: int = 0
+    product_code: int = 0
+    major_revision: int = 0
+    minor_revision: int = 0
+    parent_module: str = ""
+    slot: int = -1
+    provenance: Provenance | None = None
+
+
+@dataclass
 class PLCProject:
     """Top of the IR. One parsed export package (may carry >1 controller in theory; usually one)."""
     controllers: list[Controller] = field(default_factory=list)
+    aoi_definitions: list[AOIDefinition] = field(default_factory=list)
+    modules: list[HardwareModule] = field(default_factory=list)
     source_format: str = ""
     source_files: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -148,6 +179,9 @@ class PLCProject:
             out.extend(c.tags)
             for p in c.programs:
                 out.extend(p.tags)
+        for aoi in self.aoi_definitions:
+            out.extend(aoi.parameters)
+            out.extend(aoi.local_tags)
         return out
 
     def all_routines(self) -> list[tuple[str, Routine]]:
@@ -157,6 +191,9 @@ class PLCProject:
             for p in c.programs:
                 for r in p.routines:
                     out.append((p.name, r))
+        for aoi in self.aoi_definitions:
+            for r in aoi.routines:
+                out.append(("AOI:" + aoi.name, r))
         return out
 
     def all_rungs(self) -> list[tuple[str, str, Rung]]:

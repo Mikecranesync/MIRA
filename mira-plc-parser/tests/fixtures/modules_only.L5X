@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="32.00" TargetName="IO_Config" TargetType="Modules" ContainsContext="false" Owner="Demo" ExportDate="Fri Jun 19 10:00:00 2026">
+  <Modules>
+    <Module Name="Local" CatalogNumber="1769-L18ER/A" Vendor="1" ProductType="14" ProductCode="109" Major="32" Minor="11" ParentModule="" ParentModPortId="0" Inhibited="false" MajorFault="true">
+      <EKey State="ExactMatch"/>
+      <Ports>
+        <Port Id="1" Address="0" Type="ICP" Upstream="false">
+          <Bus Size="18"/>
+        </Port>
+        <Port Id="2" Address="192.168.1.10" Type="Ethernet" Upstream="false"/>
+      </Ports>
+    </Module>
+    <Module Name="DI_01" CatalogNumber="1769-IQ16/A" Vendor="1" ProductType="7" ProductCode="94" Major="3" Minor="3" ParentModule="Local" ParentModPortId="1" Inhibited="false" MajorFault="false">
+      <EKey State="CompatibleModule"/>
+      <Ports>
+        <Port Id="1" Address="1" Type="ICP" Upstream="true"/>
+      </Ports>
+    </Module>
+    <Module Name="DO_01" CatalogNumber="1769-OW16/A" Vendor="1" ProductType="8" ProductCode="33" Major="2" Minor="1" ParentModule="Local" ParentModPortId="1" Inhibited="false" MajorFault="false">
+      <EKey State="CompatibleModule"/>
+      <Ports>
+        <Port Id="1" Address="2" Type="ICP" Upstream="true"/>
+      </Ports>
+    </Module>
+  </Modules>
+</RSLogix5000Content>

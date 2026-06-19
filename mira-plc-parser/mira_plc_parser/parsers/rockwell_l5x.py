@@ -30,10 +30,12 @@ import re
 import xml.etree.ElementTree as ET
 
 from ..ir import (
+    AOIDefinition,
     Confidence,
     Controller,
     DataType,
     DataTypeMember,
+    HardwareModule,
     PLCProject,
     Program,
     Provenance,
@@ -82,11 +84,29 @@ def parse(text: str, source_file: str = "") -> PLCProject:
         proj.warnings.append("root is <%s>, expected <RSLogix5000Content>" % root.tag)
 
     software = "RSLogix 5000 v%s" % root.get("SoftwareRevision", "?")
+
+    # AOI-only export: root-level <AddOnInstructionDefinitions>
+    aoi_defs_el = _first(root, "AddOnInstructionDefinitions")
+    if aoi_defs_el is not None:
+        for aoi_el in aoi_defs_el.findall("AddOnInstructionDefinition"):
+            proj.aoi_definitions.append(_parse_aoi_definition(aoi_el, source_file))
+
+    # Module-only export: root-level <Modules>
+    modules_el = _first(root, "Modules")
+    if modules_el is not None:
+        prov = _prov(source_file, "Modules")
+        for mod_el in modules_el.findall("Module"):
+            proj.modules.append(_parse_module(mod_el, prov, source_file))
+
     for ctrl_el in root.iter("Controller"):
-        proj.controllers.append(_parse_controller(ctrl_el, software, source_file))
+        ctrl, ctrl_aois = _parse_controller(ctrl_el, software, source_file)
+        proj.controllers.append(ctrl)
+        proj.aoi_definitions.extend(ctrl_aois)
         break  # a project export has exactly one target Controller
-    if not proj.controllers:
-        proj.warnings.append("no <Controller> element found")
+    if not proj.controllers and not proj.aoi_definitions and not proj.modules:
+        proj.warnings.append(
+            "no <Controller>, <AddOnInstructionDefinitions>, or <Modules> element found"
+        )
     return proj
 
 
@@ -94,7 +114,35 @@ def _prov(source_file: str, locator: str, conf: Confidence = Confidence.HIGH) ->
     return Provenance(source_file=source_file, source_format=FORMAT, locator=locator, confidence=conf)
 
 
-def _parse_controller(el: ET.Element, software: str, src: str) -> Controller:
+def _parse_module(el: ET.Element, parent_prov: Provenance, src: str) -> HardwareModule:
+    name = el.get("Name", "")
+    # Revision may live as top-level attribs (Major/Minor) or under <EKey>
+    major = int(el.get("Major", "0") or "0")
+    minor = int(el.get("Minor", "0") or "0")
+    # Slot: look for an upstream=true ICP port whose Address is the slot number
+    slot = -1
+    for port_el in el.findall("Ports/Port"):
+        if port_el.get("Upstream", "").lower() == "true" and port_el.get("Type", "") == "ICP":
+            try:
+                slot = int(port_el.get("Address", "-1"))
+            except ValueError:
+                pass
+            break
+    return HardwareModule(
+        name=name,
+        catalog_number=el.get("CatalogNumber", ""),
+        vendor_id=int(el.get("Vendor", "0") or "0"),
+        product_type=int(el.get("ProductType", "0") or "0"),
+        product_code=int(el.get("ProductCode", "0") or "0"),
+        major_revision=major,
+        minor_revision=minor,
+        parent_module=el.get("ParentModule", ""),
+        slot=slot,
+        provenance=_prov(src, "Module[@Name='%s']" % name),
+    )
+
+
+def _parse_controller(el: ET.Element, software: str, src: str) -> tuple[Controller, list[AOIDefinition]]:
     ctrl = Controller(
         name=el.get("Name", ""),
         processor_type=el.get("ProcessorType", ""),
@@ -117,7 +165,13 @@ def _parse_controller(el: ET.Element, software: str, src: str) -> Controller:
     if progs_el is not None:
         for prog_el in progs_el.findall("Program"):
             ctrl.programs.append(_parse_program(prog_el, src))
-    return ctrl
+    # in-controller AOI definitions
+    aois: list[AOIDefinition] = []
+    in_ctrl_aois = _first(el, "AddOnInstructionDefinitions")
+    if in_ctrl_aois is not None:
+        for aoi_el in in_ctrl_aois.findall("AddOnInstructionDefinition"):
+            aois.append(_parse_aoi_definition(aoi_el, src))
+    return ctrl, aois
 
 
 def _parse_datatype(el: ET.Element, src: str) -> DataType:
@@ -142,6 +196,54 @@ def _parse_tag(el: ET.Element, scope: str, src: str) -> Tag:
         radix=el.get("Radix", ""),
         provenance=_prov(src, "Tag[@Name='%s']" % name),
     )
+
+
+def _parse_aoi_parameter(el: ET.Element, aoi_name: str, src: str) -> Tag:
+    pname = el.get("Name", "")
+    desc_el = _first(el, "Description")
+    return Tag(
+        name=pname,
+        data_type=el.get("DataType", ""),
+        scope=TagScope.AOI_PARAMETER.value,
+        description=_txt(desc_el),
+        external_access=el.get("Usage", ""),
+        radix=el.get("Radix", ""),
+        provenance=_prov(src, "AddOnInstructionDefinition[@Name='%s']/Parameter[@Name='%s']" % (aoi_name, pname)),
+    )
+
+
+def _parse_aoi_local_tag(el: ET.Element, aoi_name: str, src: str) -> Tag:
+    ltname = el.get("Name", "")
+    return Tag(
+        name=ltname,
+        data_type=el.get("DataType", ""),
+        scope=TagScope.AOI_LOCAL.value,
+        provenance=_prov(src, "AddOnInstructionDefinition[@Name='%s']/LocalTag[@Name='%s']" % (aoi_name, ltname)),
+    )
+
+
+def _parse_aoi_definition(el: ET.Element, src: str) -> AOIDefinition:
+    name = el.get("Name", "")
+    desc_el = _first(el, "Description")
+    aoi = AOIDefinition(
+        name=name,
+        revision=el.get("Revision", ""),
+        description=_txt(desc_el),
+        provenance=_prov(src, "AddOnInstructionDefinition[@Name='%s']" % name),
+    )
+    params_el = _first(el, "Parameters")
+    if params_el is not None:
+        for p_el in params_el.findall("Parameter"):
+            aoi.parameters.append(_parse_aoi_parameter(p_el, name, src))
+    local_el = _first(el, "LocalTags")
+    if local_el is not None:
+        for lt_el in local_el.findall("LocalTag"):
+            aoi.local_tags.append(_parse_aoi_local_tag(lt_el, name, src))
+    routines_el = _first(el, "Routines")
+    if routines_el is not None:
+        for r_el in routines_el.findall("Routine"):
+            aoi.routines.append(_parse_routine(r_el, "AOI:" + name, src))
+    return aoi
 
 
 def _parse_program(el: ET.Element, src: str) -> Program:
@@ -172,6 +274,14 @@ def _parse_routine(el: ET.Element, prog_name: str, src: str) -> Routine:
     if st is not None:
         lines = [(_txt(ln)) for ln in st.findall("Line")]
         routine.st_text = "\n".join(lines)
+    fbd = _first(el, "FBDContent")
+    if fbd is not None:
+        for sheet_el in fbd.findall("Sheet"):
+            sheet_num = int(sheet_el.get("Number", "0") or "0")
+            for block_idx, block_el in enumerate(sheet_el.findall("Block")):
+                routine.rungs.append(
+                    _parse_fbd_block(block_el, sheet_num, block_idx, prog_name, routine.name, src)
+                )
     return routine
 
 
@@ -188,6 +298,42 @@ def _parse_rung(el: ET.Element, prog_name: str, routine_name: str, src: str) -> 
         outputs=outputs,
         instructions=instrs,
         provenance=_prov(src, "%s/%s/Rung[%d]" % (prog_name, routine_name, number)),
+    )
+
+
+def _parse_fbd_block(
+    block_el: ET.Element, sheet_num: int, block_idx: int, prog_name: str, routine_name: str, src: str
+) -> Rung:
+    bname = block_el.get("Name", "")
+    btype = block_el.get("Type", "")
+    refs: list[str] = []
+    outputs: list[str] = []
+    inp_el = block_el.find("InputPins")
+    if inp_el is not None:
+        for pin in inp_el.findall("InputPin"):
+            expr = pin.get("Expression", "").strip()
+            if expr and pin.get("Connected") == "true" and "." not in expr:
+                refs.append(expr)
+    out_el = block_el.find("OutputPins")
+    if out_el is not None:
+        for pin in out_el.findall("OutputPin"):
+            expr = pin.get("Expression", "").strip()
+            if expr and pin.get("Connected") == "true" and "." not in expr:
+                outputs.append(expr)
+    in_str = ",".join(refs) if refs else ""
+    out_str = ",".join(outputs) if outputs else ""
+    text = "FBD:%s(Type=%s)" % (bname, btype)
+    if in_str:
+        text += " IN=[%s]" % in_str
+    if out_str:
+        text += " OUT=[%s]" % out_str
+    return Rung(
+        number=sheet_num * 1000 + block_idx,
+        text=text,
+        refs=refs,
+        outputs=outputs,
+        instructions=[btype] if btype else [],
+        provenance=_prov(src, "FBD/%s/%s" % (routine_name, bname)),
     )
 
 

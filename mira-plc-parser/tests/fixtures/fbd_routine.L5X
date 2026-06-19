@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="32.00" TargetName="ConveyorCell"
+    TargetType="Controller" ContainsContext="true" ExportDate="Thu Jun 19 00:00:00 2026"
+    ExportOptions="NoRawData NoL5KData NoAttributeList NoPassThroughAttributes">
+<Controller Use="Target" Name="ConveyorCell" ProcessorType="1756-L73" MajorRev="32" MinorRev="11"
+    TimeSlice="20" ShareUnusedTimeSlice="1" ProjectCreationDate="Tue Jan 01 00:00:00 2026"
+    LastModifiedDate="Thu Jun 19 00:00:00 2026" SFCExecutionControl="CurrentActive"
+    SFCRestartPosition="MostRecent" SFCLastScan="DontScan" ProjectSN="16#0000_0000"
+    MatchProjectToController="false" CanUseRPIFromProducer="false" InhibitAutomaticFirmwareUpdate="0"
+    PassThroughConfiguration="EnabledWithAppend" DownloadProjectDocumentationAndExtendedProperties="true"
+    DownloadProjectCustomProperties="true" ReportMinorOverflow="false">
+<DataTypes/>
+<Modules/>
+<AddOnInstructionDefinitions/>
+<Tags/>
+<Programs>
+  <Program Use="Target" Name="MainProgram" TestEdits="false" MainRoutineName="MainRoutine"
+      Disabled="false" UseAsFolder="false">
+    <Tags>
+      <Tag Name="RunCmd" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write">
+        <Description><![CDATA[Conveyor run command]]></Description>
+      </Tag>
+      <Tag Name="StopCmd" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write">
+        <Description><![CDATA[Conveyor stop command]]></Description>
+      </Tag>
+      <Tag Name="FaultReset" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write">
+        <Description><![CDATA[Fault reset input]]></Description>
+      </Tag>
+      <Tag Name="MotorOutput" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write">
+        <Description><![CDATA[Motor drive enable output]]></Description>
+      </Tag>
+      <Tag Name="FaultStatus" TagType="Base" DataType="BOOL" Radix="Decimal" Constant="false" ExternalAccess="Read/Write">
+        <Description><![CDATA[Fault status flag]]></Description>
+      </Tag>
+      <Tag Name="SpeedRef" TagType="Base" DataType="REAL" Radix="Float" Constant="false" ExternalAccess="Read/Write">
+        <Description><![CDATA[Speed reference Hz]]></Description>
+      </Tag>
+    </Tags>
+    <Routines>
+      <Routine Use="Target" Name="MainRoutine" Type="FBD">
+        <FBDContent>
+          <Sheet Number="1">
+            <Block Name="AND1" Type="AND" X="200" Y="150">
+              <InputPins>
+                <InputPin Name="In1" Connected="true" Expression="RunCmd"/>
+                <InputPin Name="In2" Connected="true" Expression="StopCmd"/>
+                <InputPin Name="In3" Connected="false" Expression=""/>
+              </InputPins>
+              <OutputPins>
+                <OutputPin Name="Out" Connected="true" Expression="MotorOutput"/>
+              </OutputPins>
+            </Block>
+            <Block Name="TON1" Type="TON" X="400" Y="150">
+              <InputPins>
+                <InputPin Name="TimerEnable" Connected="true" Expression="RunCmd"/>
+                <InputPin Name="Preset" Connected="false" Expression="5000"/>
+              </InputPins>
+              <OutputPins>
+                <OutputPin Name="Done" Connected="false" Expression=""/>
+              </OutputPins>
+            </Block>
+            <Block Name="SR1" Type="SR" X="600" Y="300">
+              <InputPins>
+                <InputPin Name="Set" Connected="true" Expression="FaultReset"/>
+                <InputPin Name="Reset1" Connected="false" Expression=""/>
+              </InputPins>
+              <OutputPins>
+                <OutputPin Name="Q1" Connected="true" Expression="FaultStatus"/>
+              </OutputPins>
+            </Block>
+          </Sheet>
+          <Sheet Number="2">
+            <Block Name="MOV1" Type="MOV" X="200" Y="150">
+              <InputPins>
+                <InputPin Name="Source" Connected="true" Expression="SpeedRef"/>
+                <InputPin Name="Dest" Connected="false" Expression=""/>
+              </InputPins>
+              <OutputPins>
+                <OutputPin Name="Dest" Connected="false" Expression=""/>
+              </OutputPins>
+            </Block>
+          </Sheet>
+        </FBDContent>
+      </Routine>
+      <Routine Use="Target" Name="FaultHandler" Type="RLL">
+        <RLLContent>
+          <Rung Number="0" Type="N">
+            <Text><![CDATA[XIC(FaultStatus)OTE(FaultReset);]]></Text>
+          </Rung>
+        </RLLContent>
+      </Routine>
+    </Routines>
+  </Program>
+</Programs>
+<Tasks>
+  <Task Name="MainTask" Type="CONTINUOUS" Priority="10" Watchdog="500" DisableUpdateOutputs="false"
+      InhibitTask="false">
+    <ScheduledPrograms>
+      <ScheduledProgram Name="MainProgram"/>
+    </ScheduledPrograms>
+  </Task>
+</Tasks>
+</Controller>
+</RSLogix5000Content>

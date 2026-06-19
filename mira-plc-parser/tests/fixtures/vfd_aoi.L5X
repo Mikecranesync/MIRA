@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RSLogix5000Content SchemaRevision="1.0" SoftwareRevision="34.00"
+    TargetName="VFD_Control" TargetType="AddOnInstructionDefinition"
+    ContainsContext="false" ExportDate="Thu Jun 19 2026" ExportOptions="References NoRawData L5KData DecoratedData ForceProtectedEncoding AllProjDocTrans">
+  <AddOnInstructionDefinitions Use="Context">
+    <AddOnInstructionDefinition Name="VFD_Control" Revision="1.2"
+        ExecutePrescan="false" ExecutePostscan="false" ExecuteEnableInFalse="false">
+      <Description><![CDATA[Controls a GS-Series VFD via Modbus]]></Description>
+      <Parameters>
+        <Parameter Name="EnableIn" TagType="Base" DataType="BOOL" Usage="Input"
+            Radix="Decimal" Required="false" Visible="false" ExternalAccess="None">
+          <Description><![CDATA[Enable Input]]></Description>
+        </Parameter>
+        <Parameter Name="EnableOut" TagType="Base" DataType="BOOL" Usage="Output"
+            Radix="Decimal" Required="false" Visible="false" ExternalAccess="None">
+          <Description><![CDATA[Enable Output]]></Description>
+        </Parameter>
+        <Parameter Name="RunCmd" TagType="Base" DataType="BOOL" Usage="Input"
+            Radix="Decimal" Required="true" Visible="true" ExternalAccess="None">
+          <Description><![CDATA[Run command to VFD]]></Description>
+        </Parameter>
+        <Parameter Name="FaultCode" TagType="Base" DataType="INT" Usage="Output"
+            Radix="Decimal" Required="false" Visible="true" ExternalAccess="None">
+          <Description><![CDATA[Active fault code from drive]]></Description>
+        </Parameter>
+        <Parameter Name="FreqCmd" TagType="Base" DataType="REAL" Usage="InOut"
+            Radix="Float" Required="false" Visible="true" ExternalAccess="None">
+          <Description><![CDATA[Frequency command to VFD (Hz)]]></Description>
+        </Parameter>
+      </Parameters>
+      <LocalTags>
+        <LocalTag Name="Ramp_Timer" DataType="TIMER" ExternalAccess="None"/>
+        <LocalTag Name="Prev_Fault" DataType="INT" Radix="Decimal" ExternalAccess="None"/>
+      </LocalTags>
+      <Routines>
+        <Routine Name="Logic" Type="RLL">
+          <RLLContent>
+            <Rung Number="0" Type="N">
+              <Text><![CDATA[XIC(RunCmd)OTE(EnableOut);]]></Text>
+            </Rung>
+            <Rung Number="1" Type="N">
+              <Text><![CDATA[XIC(EnableIn)MOV(FaultCode,Prev_Fault);]]></Text>
+            </Rung>
+          </RLLContent>
+        </Routine>
+      </Routines>
+    </AddOnInstructionDefinition>
+  </AddOnInstructionDefinitions>
+</RSLogix5000Content>
