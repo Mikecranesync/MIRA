@@ -108,7 +108,8 @@ test("onboarding wizard — Train & approve step renders the asset-agent lifecyc
   await page.route("**/api/assets/*/validation-qa/**", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(QA) }),
   );
-  await page.route("**/api/assets", (route) =>
+  // Trailing slash required (#1976 routed client fetches through `${API_BASE}/api/assets/`).
+  await page.route("**/api/assets/", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(ASSETS) }),
   );
   await page.route("**/api/wizard/**", (route) => {
