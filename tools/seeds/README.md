@@ -56,6 +56,52 @@ Expected on success:
 ✔ kg_relationships (demo tenant)                      12
 ```
 
+## Seed-path guarantee — a seed is not live until embedded
+
+**SQL can't compute an embedding.** Every `tools/seeds/*.sql` text seed inserts
+`knowledge_entries` rows with **no `embedding` column**, so they land with
+`embedding = NULL`. NULL-embedding rows are **invisible to the vector and
+product-name retrieval streams** (`mira-bots/shared/neon_recall.py` —
+`_product_search` filters `embedding IS NOT NULL`); they can only surface via
+BM25/ILIKE, where the fully-embedded OEM manuals out-rank them. The result: the
+engine refuses asset-specific answers it should have grounded (the 2026-06-17
+Q01/Q10 regression — spec
+`docs/superpowers/specs/2026-06-17-retrieval-null-embedding-coverage-gap.md`,
+issues #2085/#2093/#2094; same bug class as #1385).
+
+So **applying a text seed is two steps, not one** — seed → **backfill** → verify:
+
+```bash
+# 1. SEED — apply the SQL (CI dispatch apply-seeds.yml, or run_demo_seed.py above).
+
+# 2. BACKFILL — embed the dark rows. MUST run from a Tailnet node
+#    (Charlie / Alpha / Bravo) — these are the only hosts that reach the
+#    nomic-embed-text Ollama. GitHub-hosted CI runners CANNOT embed.
+doppler run -p factorylm -c <env> -- \
+  python tools/backfill_knowledge_embeddings.py --dry-run  # count first, write nothing
+doppler run -p factorylm -c <env> -- \
+  python tools/backfill_knowledge_embeddings.py            # idempotent; only NULLs
+
+# 3. VERIFY — 0 dark rows in the curated retrieval types.
+NEON_DATABASE_URL=<dev/stg url> pytest tests/test_embedding_coverage_canary.py -v
+```
+
+**Enforcement:** `apply-seeds.yml` (mode=apply) runs a read-only
+**embedding-coverage gate** after seeding — it goes **RED** if the rows it just
+seeded still have NULL embeddings, with the backfill command in the error. The
+gate can't embed (no Ollama on CI runners), so its job is to *block loudly*, not
+to fix; run the backfill off-CI and re-dispatch. The canary
+(`tests/test_embedding_coverage_canary.py`) is the corpus-wide backstop for the
+same bug class.
+
+> **SimLab docs are the exception** — `seed-simlab-docs.py` is BM25-only by design
+> (its `--verify` proves BM25 retrievability, not vector recall) and is *not* in
+> the curated types the gate/canary check, so it does not require the backfill.
+
+> *Long-term (deferred, not built here):* route seeds through the real ingest path
+> (`mira-core/mira-ingest`), which embeds on write — then "seed" and "embed" are a
+> single step. Tracked as Option B in #2094.
+
 ## Idempotency
 
 Every INSERT uses `ON CONFLICT DO NOTHING` keyed on a stable natural key
