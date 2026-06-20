@@ -17,6 +17,7 @@ import httpx
 from . import quality_gate
 from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
+from .ctx_enrichment import fetch_ctx_approved_signals as _fetch_ctx_approved_signals
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
 from .conversation_router import route_intent
@@ -367,6 +368,14 @@ _MIRA_HUB_URL = os.getenv("MIRA_HUB_URL", "http://mira-hub:3000")
 _LIVE_DATA_ENABLED = os.getenv("MIRA_LIVE_DATA_ENABLED", "0") == "1"
 _FAULT_DETECTIVE_URL = os.getenv("FAULT_DETECTIVE_URL", "http://mira-fault-detective:8077")
 _LIVE_DATA_TIMEOUT_S = float(os.getenv("MIRA_LIVE_DATA_TIMEOUT_S", "2.0"))
+
+# Contextualization-signals enrichment (additive, OFF by default). When on,
+# queries kg_entities for approved ctx signals under the resolved UNS path and
+# injects a [APPROVED PLC SIGNALS] block before the RAG call. Best-effort: ""
+# on any miss (flag off, no tenant/asset, NeonDB unreachable). Enabled by
+# MIRA_CTX_SIGNALS_ENABLED=1.
+_CTX_SIGNALS_ENABLED = os.getenv("MIRA_CTX_SIGNALS_ENABLED", "0") == "1"
+_CTX_SIGNALS_TIMEOUT_S = float(os.getenv("MIRA_CTX_SIGNALS_TIMEOUT_S", "3.0"))
 
 # Single-shot kiosk mode (e.g. the Ignition Ask-MIRA panel). When on, MIRA
 # answers directly (see rag_worker DIRECT_ANSWER_SYSTEM_PROMPT) AND the engine
@@ -3470,6 +3479,56 @@ class Supervisor:
             lines.append("Safety: " + safety)
         return "\n--- LIVE EQUIPMENT STATUS ---\n" + "\n".join(lines) + "\n---\n"
 
+    # ------------------------------------------------------------------
+    # Contextualization-signals enrichment (additive, flag-gated)
+    # ------------------------------------------------------------------
+    async def _build_ctx_signals_context(self, state: dict, tenant_id: str | None) -> str:
+        """Best-effort approved PLC-signal context from kg_entities.
+
+        Queries for signals (entity_type='signal', approval_state IN
+        ('proposed','verified')) whose uns_path is a descendant of the asset's
+        resolved UNS path.  Returns a labeled block for prompt injection, or ""
+        on any miss.  Never raises.
+        """
+        if not _CTX_SIGNALS_ENABLED:
+            return ""
+        if not tenant_id:
+            return ""
+        asset = (state.get("asset_identified") or "").strip()
+        if not asset:
+            return ""
+        try:
+            uns_path = resolve_uns_path(asset).uns_path
+            if not uns_path:
+                return ""
+            ltree_prefix = uns_path.replace("/", ".")
+            signals = await asyncio.wait_for(
+                asyncio.to_thread(_fetch_ctx_approved_signals, tenant_id, ltree_prefix),
+                timeout=_CTX_SIGNALS_TIMEOUT_S,
+            )
+            return self._format_ctx_signals(signals)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("CTX_SIGNALS miss asset=%r: %s", asset, exc)
+            return ""
+
+    @staticmethod
+    def _format_ctx_signals(signals: list[dict]) -> str:
+        """Render approved ctx signals as a compact prompt block. Never raises."""
+        if not signals:
+            return ""
+        lines = ["\n--- APPROVED PLC SIGNALS ---"]
+        for s in signals:
+            roles = s.get("roles") or []
+            roles_str = ", ".join(roles) if roles else "unknown"
+            conf = s.get("confidence")
+            try:
+                conf_str = f" ({float(conf):.0%})" if conf is not None else ""
+            except (TypeError, ValueError):
+                conf_str = ""
+            lines.append(f"  {s['name']}: {s['uns_path']} [{roles_str}]{conf_str}")
+        lines.append("---\n")
+        return "\n".join(lines)
+
     async def _call_with_correction(
         self,
         message: str,
@@ -3493,7 +3552,8 @@ class Supervisor:
         # pre-formatted, self-labeled blocks; concatenate and inject as one.
         kg_context = await self._build_kg_context(state, tenant_id)
         live_context = await self._build_live_data_context(state)
-        extra_context = kg_context + live_context
+        ctx_signals_context = await self._build_ctx_signals_context(state, tenant_id)
+        extra_context = kg_context + live_context + ctx_signals_context
 
         for attempt in range(max_attempts):
             try:
