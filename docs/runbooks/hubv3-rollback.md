@@ -21,7 +21,7 @@
 
 Recorded (baseline confirmed 2026-06-20 via `ssh root@165.245.138.91 "cd /opt/mira && git describe --tags"` → `mira-web/v0.7.1-610-g529d62e2`):
 - Prod-deployed commit BEFORE this release: **`529d62e2`** = `v3.28.3` = `checkpoint/pre-hubv3-2026-06-20` ✅
-- Neon prod snapshot / branch id: `________` ← **still to create (Phase 5 prereq)**
+- Neon prod snapshot / branch id: **`br-square-cake-ah54ijqu`** (branch `pre-hubv3-2026-06-20`, parent `production`, forked 2026-06-20 15:55 -04:00, auto-delete never) ✅
 - Merge commit SHA on main: `________` ← fill at Phase 4 merge
 
 ---
@@ -78,7 +78,7 @@ DELETE FROM schema_migrations WHERE filename LIKE '056_%';
 ```
 Run it through the sanctioned path (NOT hand `psql` prod) — staging first to confirm, then prod via the migration runner / a reviewed one-off job against `factorylm/prd`. **055 and earlier stay — only `056` is HubV3.**
 
-**Option B2 — restore the Neon prod snapshot** taken in Phase 5 (cleanest if `056` left bad data). Neon console → Branches/Restore → the recorded snapshot id. This reverts ALL writes since the snapshot, so prefer B1 unless data is corrupt.
+**Option B2 — restore the Neon prod snapshot** `br-square-cake-ah54ijqu` (branch `pre-hubv3-2026-06-20`, cleanest if `056` left bad data). Neon console → **Backup & Restore** → **Restore from branch** → restore `production` from `br-square-cake-ah54ijqu`. This reverts **ALL** prod writes since 2026-06-20 15:55 (not just `056`), so prefer B1 unless data is corrupt. After restore, redeploy the matching app tag (ROLLBACK A).
 
 After either: **ROLLBACK A** (redeploy prior tag) so app code matches the schema.
 
