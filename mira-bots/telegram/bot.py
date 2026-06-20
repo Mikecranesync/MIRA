@@ -194,12 +194,15 @@ def _intake_meta(update: Update) -> tuple[str, str, str]:
     """(uploader_id, captured_at_iso, tenant_id) from a Telegram update.
 
     Uploader is the numeric Telegram id (pseudonymous) — never a name — to keep
-    PII out of provenance. Tenant is resolved per-chat for Hub-side scoping.
+    PII out of provenance. Tenant is resolved by the **uploader's user id**, the
+    same key the chat adapter uses (``chat_adapter.py`` → ``chat_tenant.resolve``)
+    and that onboarding maps; ``effective_chat.id`` is the (negative) group id in
+    group chats and would miss the mapping.
     """
     uploader = str(update.effective_user.id) if update.effective_user else ""
     msg_date = getattr(update.message, "date", None)
     captured_at = msg_date.isoformat() if msg_date else ""
-    tenant_id = chat_tenant.resolve(str(update.effective_chat.id))
+    tenant_id = chat_tenant.resolve(uploader)
     return uploader, captured_at, tenant_id
 
 

@@ -46,10 +46,18 @@ async def test_submit_photo_to_hub_builds_telegram_envelope(monkeypatch):
 
     monkeypatch.setattr(bot, "submit_intake_to_hub", _fake_submit)
     monkeypatch.setattr(bot, "HUB_IMPORT_URL", "https://hub.example.com")
-    monkeypatch.setattr(bot.chat_tenant, "resolve", lambda cid: "tenant-x")
+
+    def _capture_resolve(cid):
+        seen["resolve_arg"] = cid
+        return "tenant-x"
+
+    monkeypatch.setattr(bot.chat_tenant, "resolve", _capture_resolve)
 
     raw = b"\xff\xd8\xff conveyor photo bytes"
-    await bot._submit_photo_to_hub(raw, "conveyor-1 nameplate", _fake_update())
+    # user_id != chat_id so a wrong resolve key is caught.
+    await bot._submit_photo_to_hub(
+        raw, "conveyor-1 nameplate", _fake_update(user_id=789, chat_id=-100200)
+    )
 
     env = seen["envelope"]
     assert env["ingest_route"] == "telegram"
@@ -59,6 +67,8 @@ async def test_submit_photo_to_hub_builds_telegram_envelope(monkeypatch):
     assert env["source_metadata"]["mime"] == "image/jpeg"
     assert seen["kwargs"]["raw_bytes"] == raw
     assert seen["kwargs"]["tenant_id"] == "tenant-x"
+    # Tenant resolves by uploader user id, NOT the (group) chat id.
+    assert seen["resolve_arg"] == "789"
 
 
 async def test_submit_doc_to_hub_builds_telegram_envelope(monkeypatch):

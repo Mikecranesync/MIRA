@@ -14,8 +14,10 @@ Design rules honored here:
   ``proposed_*`` / ``entities`` domain lists are empty (the client submits
   evidence, the Hub derives proposals on approval).
 - **Bytes travel.** The §2 envelope is metadata-only, so the raw document/photo
-  bytes are carried alongside the JSON contract as a multipart ``file`` field —
-  the same multipart shape the Hub import endpoint already speaks.
+  bytes are carried alongside the JSON contract as a multipart ``file`` field.
+  (The import endpoint is multipart today but reads ``file`` as a *zip* and
+  ignores ``contract``/``tenant_id``; it consumes this contract field only after
+  HubV3 Phase 2.)
 - **PII sanitization** (`.claude/rules/security-boundaries.md`): free-text fields
   (caption / field notes / OCR) are scrubbed via
   ``InferenceRouter.sanitize_text`` (IPv4 → ``[IP]``, MAC → ``[MAC]``,
