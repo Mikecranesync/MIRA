@@ -5,16 +5,23 @@ back online. Built entirely from the local store (accepted extractions + extract
 deterministic projections — no network, no LLM.
 
 Contents:
-  manifest.json            tool/version/time, source list + sha256, counts
+  manifest.json            tool/version/time, mode, source list + sha256, counts
   uns.json                 accepted signals as UNS paths
-  i3x.json                 CESMII i3X objectInstances projected from the UNS hierarchy
+  i3x.json                 CESMII i3X objectInstances projected from the UNS hierarchy (uns_node_uuid)
   kg_entities.json         accepted extractions as proposed kg_entities (offline twin of Promote)
   kg_relationships.json    HAS_SIGNAL (asset→signal) + MENTIONS (document→tag) edges, status=proposed
   signals.csv              flat tag / uns / roles / confidence / source
+  evidence.json            aggregate provenance index: source(sha256) → evidence(uuid) → entity
   documents/<file>.json    extracted Document IR per uploaded document (knowledge_entries seed)
   review.json              full accept/reject audit trail with provenance
   report.md                human-readable summary
   IMPORT.md                how to load the bundle into MIRA Hub
+
+Export modes (``build_bundle(..., sanitized=…)``):
+  full       Full Evidence Bundle — raw documents/*.json + verbatim evidence text. (default)
+  sanitized  Sanitized Structured Context Bundle — derived structured context only: no raw document
+             payloads, refs-only evidence.json (uuids + source sha256, no verbatim text). NOT
+             "anonymous" — identity hints (asset_match, profile) are retained.
 
 Note (branch): the richer asset_graph/registers/edges emitters live on the parser's
 feat/vfd-analyzer-auto-map branch; bundle@1 derives signals.csv from accepted extractions and defers
@@ -27,6 +34,7 @@ import hashlib
 import io
 import json
 import re
+import uuid
 import zipfile
 from datetime import datetime, timezone
 
@@ -35,6 +43,16 @@ from . import scorecard as _scorecard
 
 SCHEMA = "mira-contextualizer/bundle@1"
 _TYPE_URI = "urn:mira:type:%s"
+
+# Fixed namespace for the UUID-first identity model (§2 of the HubV3 intake contract). Entity ids are
+# minted with uuid5 over a stable key so a re-export of the same project yields the SAME bundle — the
+# bundle's determinism property must hold for these too. ``.hex`` matches the store's uuid4().hex form.
+_NS = uuid.uuid5(uuid.NAMESPACE_URL, "urn:mira:contextualizer:bundle")
+
+
+def _eid(kind: str, *parts: object) -> str:
+    """Deterministic 32-char entity id for ``kind`` over ``parts`` (project-scoped, stable per content)."""
+    return uuid.uuid5(_NS, kind + ":" + ":".join(str(p) for p in parts)).hex
 
 
 def _safe(name: str) -> str:
@@ -45,7 +63,7 @@ def _uns_segments(path: str) -> list[str]:
     return [s for s in re.split(r"[/.]", path) if s]
 
 
-def _i3x(accepted: list[dict], quantities: dict | None = None) -> dict:
+def _i3x(accepted: list[dict], quantities: dict | None = None, project_id: str = "") -> dict:
     """Project accepted UNS paths into CESMII i3X objectInstances (containers + signal leaves).
 
     ``quantities`` maps a signal's tag name → its UCUM-coded quantity (from ``standards``); when a
@@ -70,6 +88,7 @@ def _i3x(accepted: list[dict], quantities: dict | None = None) -> dict:
                     meta["quantity"] = q
             instances[elem_id] = {
                 "elementId": elem_id,
+                "uns_node_uuid": _eid("uns_node", project_id, elem_id),
                 "name": segs[i],
                 "typeElementId": _TYPE_URI % ("signal" if is_leaf else "container"),
                 "parentId": "/".join(segs[:i]) or None,
@@ -118,6 +137,7 @@ def _kg(accepted: list[dict], project_id: str, quantities: dict | None = None) -
         node = ent("signal", path, e["tagName"],
                    {"roles": e.get("roles") or [], "confidence": e.get("confidence"),
                     "provenance": prov(e)})
+        node.setdefault("signal_uuid", _eid("signal", project_id, path))
         signal_by_tag.setdefault(e["tagName"], node)
         segs = _uns_segments(path)
         if len(segs) >= 2:
@@ -164,10 +184,16 @@ def _kg(accepted: list[dict], project_id: str, quantities: dict | None = None) -
             node = ent(primary, e["tagName"], e["tagName"],
                        {"confidence": e.get("confidence"), "provenance": prov(e)})
             if primary == "tag_reference":
-                for m in ev.get("mentions", []):
+                # one MENTIONS edge per mention; its id derives from the per-mention evidence_uuid
+                # (same key as _evidence) so the same tag mentioned N times yields N distinct, linkable
+                # edges instead of one colliding id.
+                for i, m in enumerate(ev.get("mentions", [])):
+                    euid = _eid("evidence", e["id"], i)
                     relationships.append({
                         "type": "MENTIONS", "source": "document:%s" % m.get("file"),
                         "target": e["tagName"], "approval_state": "proposed",
+                        "evidence_uuid": euid,
+                        "relationship_uuid": _eid("relationship", "MENTIONS", euid),
                         "evidence": {"page": m.get("page"), "snippet": m.get("snippet")}})
 
         # UCUM quantity: carry it on the document entity, and attach it to the matching UNS signal.
@@ -177,6 +203,11 @@ def _kg(accepted: list[dict], project_id: str, quantities: dict | None = None) -
             sig = signal_by_tag.get(e["tagName"])
             if sig:
                 sig["properties"]["quantity"] = q
+
+    # stamp a stable id on every edge that didn't already derive one (MENTIONS derives from evidence).
+    for r in relationships:
+        r.setdefault("relationship_uuid",
+                     _eid("relationship", project_id, r["type"], r["source"], r["target"]))
 
     return ({"schema": "mira-contextualizer/kg_entities@1", "entities": entities},
             {"schema": "mira-contextualizer/kg_relationships@1", "relationships": relationships})
@@ -221,6 +252,40 @@ def _parameters(accepted: list[dict], quantities: dict) -> dict:
                 entry["quantity"] = raw
         params.append(entry)
     return {"schema": "mira-contextualizer/parameters@1", "parameters": params}
+
+
+def _evidence(accepted: list[dict], src_meta: list[dict], sanitized: bool = False) -> dict:
+    """Aggregate the evidence that today is scattered across ``review.json`` + ``documents/*.json`` into
+    one provenance index: **source (sha256) → evidence (evidence_uuid) → entity (tag/extraction)**.
+
+    One block per document mention (so each is independently addressable), or one block per extraction
+    when there are no mentions (PLC/CCW signals carry their extractor evidence as ``raw``). Full mode
+    keeps the verbatim text (``snippet`` / ``raw``); the **sanitized** mode keeps only refs, uuids, and
+    the source sha256 — no verbatim document payload."""
+    sha_by_file = {s["file"]: s["sha256"] for s in src_meta}
+    blocks: list[dict] = []
+    for e in accepted:
+        ev = e.get("evidenceJson") or {}
+        mentions = ev.get("mentions") or []
+        common: dict = {"tag": e["tagName"], "roles": e.get("roles") or [],
+                        "confidence": e.get("confidence"), "extraction_id": e["id"]}
+        if mentions:
+            for i, m in enumerate(mentions):
+                src_file = m.get("file") or e.get("fileName")
+                block = dict(common, evidence_uuid=_eid("evidence", e["id"], i),
+                             source_file=src_file, source_sha256=sha_by_file.get(src_file),
+                             page=m.get("page"))
+                if not sanitized:
+                    block["snippet"] = m.get("snippet")
+                blocks.append(block)
+        else:
+            src_file = e.get("fileName")
+            block = dict(common, evidence_uuid=_eid("evidence", e["id"], 0),
+                         source_file=src_file, source_sha256=sha_by_file.get(src_file), page=None)
+            if not sanitized:
+                block["raw"] = ev
+            blocks.append(block)
+    return {"schema": "mira-contextualizer/evidence@1", "evidence": blocks}
 
 
 def _profile_json(proj: dict) -> dict:
@@ -294,8 +359,13 @@ _IMPORT_MD = (
 )
 
 
-def build_bundle(store, project_id: str) -> dict[str, str]:
-    """Return a mapping of bundle-relative path → file content (str). Caller writes or zips it."""
+def build_bundle(store, project_id: str, sanitized: bool = False) -> dict[str, str]:
+    """Return a mapping of bundle-relative path → file content (str). Caller writes or zips it.
+
+    ``sanitized=False`` → **Full Evidence Bundle**: raw ``documents/*.json`` + verbatim evidence text.
+    ``sanitized=True``  → **Sanitized Structured Context Bundle**: the derived structured context only
+    (UNS/i3X/kg/faults/parameters/scorecard + source refs/hashes), with no raw document payloads and
+    refs-only evidence. It is *not* anonymous — identity hints (asset_match, profile) are retained."""
     proj = store.get_project(project_id)
     if not proj:
         raise ValueError("project not found")
@@ -308,9 +378,9 @@ def build_bundle(store, project_id: str) -> dict[str, str]:
     for s in sources:
         full = store.get_source(s["id"])
         ir = full.get("extracted") if full else None
-        if ir:
+        if ir and not sanitized:  # raw document IR is omitted from the sanitized bundle
             files["documents/%s.json" % _safe(s["fileName"])] = json.dumps(ir, indent=2)
-        blob = json.dumps(ir or {}, sort_keys=True).encode()
+        blob = json.dumps(ir or {}, sort_keys=True).encode()  # sha is identical in both modes
         src_meta.append({"file": s["fileName"], "type": s["sourceType"], "status": s["status"],
                          "sha256": hashlib.sha256(blob).hexdigest()})
 
@@ -332,6 +402,8 @@ def build_bundle(store, project_id: str) -> dict[str, str]:
     files["manifest.json"] = json.dumps({
         "schema": SCHEMA, "tool": "mira-contextualizer", "tool_version": __version__,
         "created_at": datetime.now(timezone.utc).isoformat(),
+        # which export mode produced this bundle (raw documents + verbatim evidence, or refs-only)
+        "mode": "sanitized" if sanitized else "full",
         "project": {"id": proj["id"], "name": proj["name"], "description": proj.get("description")},
         "counts": {"sources": len(sources), "candidates": len(exts), "accepted": len(accepted),
                    "uns_signals": n_uns, "iso14224_faults": n_iso,
@@ -352,13 +424,14 @@ def build_bundle(store, project_id: str) -> dict[str, str]:
                      "confidence": e.get("confidence")}
                     for e in accepted if e.get("unsPathProposed")],
     }, indent=2)
-    files["i3x.json"] = json.dumps(_i3x(accepted, quantities), indent=2)
+    files["i3x.json"] = json.dumps(_i3x(accepted, quantities, project_id), indent=2)
     ents, rels = _kg(accepted, project_id, quantities)
     files["kg_entities.json"] = json.dumps(ents, indent=2)
     files["kg_relationships.json"] = json.dumps(rels, indent=2)
     files["signals.csv"] = _signals_csv(accepted)
     files["fault_catalog.json"] = json.dumps(_fault_catalog(accepted), indent=2)
     files["parameters.json"] = json.dumps(_parameters(accepted, quantities), indent=2)
+    files["evidence.json"] = json.dumps(_evidence(accepted, src_meta, sanitized), indent=2)
     files["review.json"] = json.dumps({
         "schema": "mira-contextualizer/review@1",
         "decisions": [{"tag": e["tagName"], "roles": e.get("roles", []), "status": e["status"],
