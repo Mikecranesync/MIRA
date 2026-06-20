@@ -140,9 +140,9 @@ export default function ContextualizationProjectPage() {
         setExtractions((prev) =>
           prev.map((e) => (e.id === id ? { ...e, status } : e)),
         );
-        showToast(status === "accepted" ? "Tag accepted" : "Tag rejected");
+        showToast(status === "accepted" ? "Signal accepted" : "Signal rejected");
       } catch (e) {
-        showToast(e instanceof Error ? e.message : "Error updating tag");
+        showToast(e instanceof Error ? e.message : "Error updating signal");
       } finally {
         setDeciding((d) => ({ ...d, [id]: undefined }));
       }
@@ -168,11 +168,11 @@ export default function ContextualizationProjectPage() {
       const skipped = j.skipped ?? 0;
       showToast(
         promoted + skipped === 0
-          ? "No accepted tags to promote"
+          ? "No accepted signals to promote"
           : `Promoted ${promoted} signal${promoted === 1 ? "" : "s"} to the knowledge graph${skipped ? ` (${skipped} already present)` : ""}`,
       );
     } catch (e) {
-      showToast(e instanceof Error ? e.message : "Error promoting tags");
+      showToast(e instanceof Error ? e.message : "Error promoting signals");
     } finally {
       setPromoting(false);
     }
@@ -200,7 +200,7 @@ export default function ContextualizationProjectPage() {
         if (!res.ok) throw new Error(j.error ?? "Upload failed");
         showToast(
           j.workerStarted
-            ? `Uploaded ${file.name} — parsing… tags will appear shortly`
+            ? `Uploaded ${file.name} — parsing… signals will appear shortly`
             : `Uploaded ${file.name}, but the parser didn't start (check worker)`,
         );
         // The worker writes extractions asynchronously; give it a moment, then refresh.
@@ -229,9 +229,9 @@ export default function ContextualizationProjectPage() {
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Tag Review</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">Extracted Signals</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Accept or reject proposed UNS paths for each extracted PLC tag.
+            Accept or reject the proposed UNS path for each extracted signal.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -245,7 +245,7 @@ export default function ContextualizationProjectPage() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            title="Upload a PLC export or manual to extract tags"
+            title="Upload a source (PLC export or manual) to extract signals"
             className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {uploading ? (
@@ -266,8 +266,8 @@ export default function ContextualizationProjectPage() {
             disabled={promoting || counts.accepted === 0}
             title={
               counts.accepted === 0
-                ? "Accept at least one tag before promoting"
-                : "Promote accepted tags into the knowledge graph"
+                ? "Accept at least one signal before promoting"
+                : "Promote accepted signals into the knowledge graph"
             }
             className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -304,7 +304,7 @@ export default function ContextualizationProjectPage() {
       {loading && (
         <div className="flex items-center justify-center py-16 text-gray-400">
           <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-          Loading tags…
+          Loading signals…
         </div>
       )}
 
@@ -313,7 +313,7 @@ export default function ContextualizationProjectPage() {
       )}
 
       {!loading && !error && filtered.length === 0 && (
-        <div className="py-16 text-center text-sm text-gray-400">No tags in this view.</div>
+        <div className="py-16 text-center text-sm text-gray-400">No signals in this view.</div>
       )}
 
       {!loading && !error && filtered.length > 0 && (

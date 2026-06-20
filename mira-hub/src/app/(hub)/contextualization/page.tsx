@@ -95,9 +95,9 @@ export default function ContextualizationPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-white">PLC Tag Import</h1>
+          <h1 className="text-2xl font-semibold text-white">Contextualization Projects</h1>
           <p className="text-sm text-gray-400 mt-1">
-            Upload PLC exports, review AI-proposed UNS paths, and promote approved signals to the knowledge graph.
+            Import equipment sources, review the proposed UNS paths for extracted signals, and promote approved signals to the knowledge graph.
           </p>
         </div>
         <button
