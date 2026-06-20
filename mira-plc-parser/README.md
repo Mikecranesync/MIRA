@@ -25,16 +25,19 @@ upload → detect format → vendor parser → MIRA PLC IR → deterministic ana
                                           (the neutral model)   (rule-based first; LLM explains later)
 ```
 
-## What's built (Phase 1)
+## What's built (Phase 1–2)
 
 | Stage | Status |
 |---|---|
-| File-format / vendor **detector** (content-first) | ✅ L5X, CSV, +routing stubs for PLCopen XML / Siemens / ST |
+| File-format / vendor **detector** (content-first) | ✅ L5X, CSV, PLCopen XML, ST; +routing stub for Siemens |
 | **Rockwell L5X parser** → IR (controller, datatypes, tags, programs, routines, rungs, rung logic) | ✅ |
 | **CSV tag-export** → IR (reuses the tested `tag_csv` multi-vendor parser) | ✅ |
+| **Structured Text (.st) parser** → IR (VAR decls → tags, POU body → ST routine, assignments → synthetic rungs) | ✅ |
+| **PLCopen XML parser** → IR (namespace-agnostic tc6; interface vars → tags, ST body reuses the ST lift) | ✅ |
 | **MIRA PLC IR** (Controller → Program → Routine → Rung → Tag, + provenance + confidence) | ✅ |
 | **Deterministic analysis**: tag dictionary, routine summaries, output-dependency map, fault candidates, asset candidates, VFD-signal candidates, usage cross-reference, safety **review** flags | ✅ |
-| Markdown report renderer | ✅ |
+| Name tokenizer handles **camelCase humps** (`fault` in `FaultRoutine`) as well as `_`/digit breaks | ✅ |
+| Markdown + JSON report renderers; JSON shape pinned by **golden snapshots** (`report@1`) | ✅ |
 
 ## Install & CLI
 
@@ -72,6 +75,36 @@ print(result.report.output_dependencies) # structured findings
 print(result.project.all_tags())         # the IR
 ```
 
+## Report schema (`mira-plc-parser/report@1`)
+
+`render_json(result)` returns a stable, `json.dumps`-safe dict — the contract downstream MIRA
+ingest consumes. Its shape is pinned by golden snapshots (`tests/fixtures/golden/`); any change to
+fields, counts, ordering, or candidate sets is a deliberate, reviewed bump.
+
+```jsonc
+{
+  "schema": "mira-plc-parser/report@1",
+  "detection": { "fmt": "structured_text", "confidence": "high", "reason": "...", "needs_export": "" },
+  "handled": true,                       // false for closed-project / unknown (then only the keys below it)
+  "controller": "ConveyorControl",
+  "vendor": "IEC 61131-3",
+  "counts": { "controllers": 1, "tags": 12, "programs": 1, "routines": 1, "rungs": 3,
+              "outputs": 2, "fault_candidates": 4, "asset_candidates": 3,
+              "vfd_signal_candidates": 4, "review_required": 1 },
+  "review_required":      [ {"kind","name","detail","confidence","evidence":[...]} ],
+  "output_dependencies":  [ {"kind":"output","name","detail":"true when: ...","confidence","evidence"} ],
+  "fault_candidates":     [ {"kind":"fault", ...} ],
+  "asset_candidates":     [ {"kind":"asset", ...} ],
+  "vfd_signal_candidates":[ {"kind":"vfd_signal","detail":"candidate role: frequency", ...} ],
+  "routine_summaries":    [ {"program","routine","type","rungs","outputs_controlled",...} ],
+  "tag_dictionary":       [ {"name","data_type","scope","description","address","roles","used_count",...} ],
+  "warnings": [ ... ]
+}
+```
+
+An unhandled result (`handled: false`) carries only `schema`, `detection`, `handled`, and
+`warnings` — e.g. a closed `.ACD` returns `detection.needs_export` with the precise export steps.
+
 ## Confidence grading
 
 Every extracted/inferred fact is graded (this protects you and looks professional):
@@ -90,11 +123,11 @@ product is **read-only analysis of exported programs** — safer and easier to s
 ## Roadmap
 
 1. **Phase 1 (done):** Rockwell L5X + CSV → IR + deterministic analysis.
-2. **Eval dataset:** public + synthetic L5X / OpenPLC / PLCopen / ST samples.
-3. **IR hardening:** the schema is the asset; grow it as new formats arrive.
-4. **Analysis depth:** timers→fault chains, permissives/interlocks, sequence/state extraction.
-5. **PLCopen XML + Structured Text** parsers (ST becomes the reasoning bridge).
-6. **Siemens** via TIA Portal Openness XML exports (not closed project files).
+2. **Eval dataset (done):** synthetic L5X / CSV / ST / PLCopen fixtures + golden `report@1` snapshots.
+3. **IR hardening (done):** `report@1` shape pinned by golden tests; camelCase tokenizer fix.
+4. **PLCopen XML + Structured Text (done):** ST is the reasoning bridge; PLCopen reuses the ST lift.
+5. **Analysis depth (next):** timers→fault chains, permissives/interlocks, sequence/state extraction.
+6. **Siemens** via TIA Portal Openness XML exports (not closed project files) — recognized, parser pending.
 7. **PDF / screenshot** fallback (OCR, low confidence) — last.
 
 ## Tests
@@ -103,9 +136,11 @@ product is **read-only analysis of exported programs** — safer and easier to s
 python -m pytest mira-plc-parser/tests/ -q
 ```
 
-Fixture-based: a synthetic conveyor `conveyor.L5X` (VFD tags + an e-stop to exercise the review
-path) and a Kepware-dialect `gs10_tags.csv`. 25 tests cover detection, L5X extraction, rung-logic
-parsing, the full analysis, and graceful handling of unknown/planned formats.
+Fixture-based across all four formats: a synthetic conveyor `conveyor.L5X` (VFD tags + an e-stop to
+exercise the review path), a Kepware-dialect `gs10_tags.csv`, a camelCase `conveyor.st`, and a
+`conveyor.plcopen.xml`. The suite covers detection, every parser's extraction, rung-logic parsing,
+the tokenizer's camelCase handling, the full analysis, golden `report@1` snapshots, graceful
+handling of unknown/planned/closed-project formats, and the CLI/packaging path resolution.
 
 ## Layout
 
@@ -116,7 +151,9 @@ mira_plc_parser/
   parsers/
     rockwell_l5x.py  # L5X → IR
     csv_tags.py      # CSV → IR (reuses ignition/.../diagnose/tag_csv.py)
-  analyze.py         # deterministic maintenance analysis
+    structured_text.py # IEC 61131-3 ST → IR (VAR decls + assignments → rungs)
+    plcopen_xml.py   # PLCopen tc6 XML → IR (reuses the ST body lift)
+  analyze.py         # deterministic maintenance analysis (camelCase-aware tokenizer)
   pipeline.py        # detect → parse → analyze → report (render_markdown / render_json)
   cli.py             # offline CLI (analyze → local report files)
   __main__.py        # `python -m mira_plc_parser`

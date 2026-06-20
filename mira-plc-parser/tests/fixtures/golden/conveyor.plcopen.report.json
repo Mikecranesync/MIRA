@@ -1,0 +1,328 @@
+{
+  "asset_candidates": [
+    {
+      "confidence": "medium",
+      "detail": "candidate asset (keyword: conv)",
+      "evidence": [
+        "ConvFault"
+      ],
+      "kind": "asset",
+      "name": "ConvFault"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate asset (keyword: motor)",
+      "evidence": [
+        "MotorRun"
+      ],
+      "kind": "asset",
+      "name": "MotorRun"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate asset (keyword: vfd)",
+      "evidence": [
+        "VFD_Frequency",
+        "VFD_Current",
+        "VFD_FaultCode"
+      ],
+      "kind": "asset",
+      "name": "VFD"
+    }
+  ],
+  "controller": "ConveyorCellPLCopen",
+  "counts": {
+    "aoi_definitions": 0,
+    "aoi_local_tags": 0,
+    "aoi_parameters": 0,
+    "asset_candidates": 3,
+    "controllers": 1,
+    "fault_candidates": 4,
+    "fbd_sheets": 0,
+    "module_definitions": 0,
+    "outputs": 2,
+    "programs": 1,
+    "review_required": 1,
+    "routines": 1,
+    "rungs": 2,
+    "tags": 10,
+    "vfd_signal_candidates": 4
+  },
+  "detection": {
+    "confidence": "high",
+    "fmt": "plcopen_xml",
+    "needs_export": "",
+    "reason": "found PLCopen XML namespace"
+  },
+  "fault_candidates": [
+    {
+      "confidence": "review",
+      "detail": "emergency-stop circuit healthy",
+      "evidence": [
+        "ConveyorControl/Var[EStopOK]"
+      ],
+      "kind": "fault",
+      "name": "EStopOK"
+    },
+    {
+      "confidence": "medium",
+      "detail": "name/desc matches fault/alarm pattern",
+      "evidence": [
+        "ConveyorControl/Var[JamPhotoeye]"
+      ],
+      "kind": "fault",
+      "name": "JamPhotoeye"
+    },
+    {
+      "confidence": "medium",
+      "detail": "name/desc matches fault/alarm pattern",
+      "evidence": [
+        "ConveyorControl/Var[ConvFault]"
+      ],
+      "kind": "fault",
+      "name": "ConvFault"
+    },
+    {
+      "confidence": "medium",
+      "detail": "active drive fault code",
+      "evidence": [
+        "ConveyorControl/Var[VFD_FaultCode]"
+      ],
+      "kind": "fault",
+      "name": "VFD_FaultCode"
+    }
+  ],
+  "handled": true,
+  "output_dependencies": [
+    {
+      "confidence": "high",
+      "detail": "true when: VFD_FaultCode, MotorRun, JamPhotoeye",
+      "evidence": [
+        "ConveyorControl/ConveyorControl/Rung[1]"
+      ],
+      "kind": "output",
+      "name": "ConvFault"
+    },
+    {
+      "confidence": "high",
+      "detail": "true when: StartPB, EStopOK, AutoMode, ConvFault",
+      "evidence": [
+        "ConveyorControl/ConveyorControl/Rung[0]"
+      ],
+      "kind": "output",
+      "name": "MotorRun"
+    }
+  ],
+  "review_required": [
+    {
+      "confidence": "review",
+      "detail": "emergency-stop circuit healthy",
+      "evidence": [
+        "ConveyorControl/Var[EStopOK]"
+      ],
+      "kind": "safety",
+      "name": "EStopOK"
+    }
+  ],
+  "routine_summaries": [
+    {
+      "comment_digest": [],
+      "confidence": "high",
+      "outputs_controlled": [
+        "ConvFault",
+        "MotorRun"
+      ],
+      "program": "ConveyorControl",
+      "purpose_hint": "",
+      "routine": "ConveyorControl",
+      "rungs": 2,
+      "type": "ST"
+    }
+  ],
+  "schema": "mira-plc-parser/report@1",
+  "tag_dictionary": [
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "BOOL",
+      "description": "",
+      "name": "ConvFault",
+      "roles": [
+        "output",
+        "fault"
+      ],
+      "scope": "program",
+      "used_count": 2,
+      "used_in": [
+        "ConveyorControl/ConveyorControl/Rung[0]",
+        "ConveyorControl/ConveyorControl/Rung[1]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "BOOL",
+      "description": "conveyor VFD run command",
+      "name": "MotorRun",
+      "roles": [
+        "output"
+      ],
+      "scope": "program",
+      "used_count": 2,
+      "used_in": [
+        "ConveyorControl/ConveyorControl/Rung[0]",
+        "ConveyorControl/ConveyorControl/Rung[1]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "BOOL",
+      "description": "",
+      "name": "AutoMode",
+      "roles": [
+        "mode"
+      ],
+      "scope": "program",
+      "used_count": 1,
+      "used_in": [
+        "ConveyorControl/ConveyorControl/Rung[0]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "BOOL",
+      "description": "emergency-stop circuit healthy",
+      "name": "EStopOK",
+      "roles": [
+        "fault",
+        "safety"
+      ],
+      "scope": "program",
+      "used_count": 1,
+      "used_in": [
+        "ConveyorControl/ConveyorControl/Rung[0]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "BOOL",
+      "description": "",
+      "name": "JamPhotoeye",
+      "roles": [
+        "fault",
+        "input"
+      ],
+      "scope": "program",
+      "used_count": 1,
+      "used_in": [
+        "ConveyorControl/ConveyorControl/Rung[1]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "BOOL",
+      "description": "operator start pushbutton",
+      "name": "StartPB",
+      "roles": [
+        "input"
+      ],
+      "scope": "program",
+      "used_count": 1,
+      "used_in": [
+        "ConveyorControl/ConveyorControl/Rung[0]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "DINT",
+      "description": "active drive fault code",
+      "name": "VFD_FaultCode",
+      "roles": [
+        "fault"
+      ],
+      "scope": "program",
+      "used_count": 1,
+      "used_in": [
+        "ConveyorControl/ConveyorControl/Rung[1]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "REAL",
+      "description": "",
+      "name": "LineSpeedSetpoint",
+      "roles": [],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "REAL",
+      "description": "",
+      "name": "VFD_Current",
+      "roles": [],
+      "scope": "program",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "REAL",
+      "description": "drive output frequency Hz",
+      "name": "VFD_Frequency",
+      "roles": [],
+      "scope": "program",
+      "used_count": 0,
+      "used_in": []
+    }
+  ],
+  "vendor": "OpenPLC",
+  "vfd_signal_candidates": [
+    {
+      "confidence": "medium",
+      "detail": "candidate role: freq_setpoint",
+      "evidence": [
+        "ConveyorControl/Var[LineSpeedSetpoint]"
+      ],
+      "kind": "vfd_signal",
+      "name": "LineSpeedSetpoint"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate role: frequency",
+      "evidence": [
+        "ConveyorControl/Var[VFD_Frequency]"
+      ],
+      "kind": "vfd_signal",
+      "name": "VFD_Frequency"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate role: current_a",
+      "evidence": [
+        "ConveyorControl/Var[VFD_Current]"
+      ],
+      "kind": "vfd_signal",
+      "name": "VFD_Current"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate role: fault_code",
+      "evidence": [
+        "ConveyorControl/Var[VFD_FaultCode]"
+      ],
+      "kind": "vfd_signal",
+      "name": "VFD_FaultCode"
+    }
+  ],
+  "warnings": []
+}

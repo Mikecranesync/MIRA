@@ -94,10 +94,11 @@ def test_unknown_format_handled_gracefully():
 
 
 def test_planned_format_routes_but_defers():
-    xml = '<?xml version="1.0"?><project xmlns="http://www.plcopen.org/xml/tc6_0201"></project>'
-    res = run("p.xml", xml)
+    # Siemens TIA/Openness XML is recognized but its parser is a later phase (still in _PLANNED).
+    xml = '<?xml version="1.0"?><Document><SW.Blocks.FB ID="0"></SW.Blocks.FB></Document>'
+    res = run("Block.xml", xml)
     assert not res.handled
-    assert res.detection.fmt == "plcopen_xml"
+    assert res.detection.fmt == "siemens_tia_xml"
     assert any("later phase" in w for w in res.project.warnings)
 
 
