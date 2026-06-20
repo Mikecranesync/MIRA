@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS projects (
     name        TEXT NOT NULL,
     description TEXT,
     status      TEXT NOT NULL DEFAULT 'active',
+    profile_json TEXT,
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
 );
@@ -51,7 +52,25 @@ CREATE TABLE IF NOT EXISTS extractions (
 );
 CREATE INDEX IF NOT EXISTS idx_extractions_project ON extractions(project_id);
 CREATE INDEX IF NOT EXISTS idx_extractions_source ON extractions(source_id);
+CREATE TABLE IF NOT EXISTS exports (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    kind        TEXT NOT NULL,
+    target      TEXT,
+    detail_json TEXT NOT NULL DEFAULT '{}',
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_exports_project ON exports(project_id);
 """
+
+# Machine-profile identity / metadata stored as a JSON dict in projects.profile_json. These are the
+# fields a saved .miraprofile carries and the bundle's asset-matching block reads for Hub import.
+PROFILE_FIELDS = (
+    "machine_name", "asset_type", "manufacturer", "model", "serial_number",
+    "controller_type", "controller_ip", "plc_program_name",
+    "customer", "site", "area", "line",
+    "proposed_uns_path", "hub_asset_id",
+)
 
 
 def _now() -> str:
@@ -72,23 +91,34 @@ class Store:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(SCHEMA)
+        self._migrate()
         self._conn.commit()
         self._lock = threading.Lock()
+
+    def _migrate(self) -> None:
+        """Additive migrations for stores created before a column/table existed (SQLite's
+        CREATE TABLE IF NOT EXISTS won't add columns to an existing table)."""
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(projects)").fetchall()}
+        if "profile_json" not in cols:
+            self._conn.execute("ALTER TABLE projects ADD COLUMN profile_json TEXT")
 
     def close(self) -> None:
         self._conn.close()
 
     # ── projects ──────────────────────────────────────────────────────────────
-    def create_project(self, name: str, description: str | None = None) -> dict:
+    def create_project(self, name: str, description: str | None = None,
+                       profile: dict | None = None, pid: str | None = None) -> dict:
         name = (name or "").strip()
         if not name:
             raise ValueError("name is required")
-        pid, now = _uid(), _now()
+        pid, now = pid or _uid(), _now()
+        prof = {k: v for k, v in (profile or {}).items() if k in PROFILE_FIELDS and v not in (None, "")}
         with self._lock:
             self._conn.execute(
-                "INSERT INTO projects (id, name, description, status, created_at, updated_at)"
-                " VALUES (?, ?, ?, 'active', ?, ?)",
-                (pid, name, (description or "").strip() or None, now, now),
+                "INSERT INTO projects (id, name, description, status, profile_json, created_at,"
+                " updated_at) VALUES (?, ?, ?, 'active', ?, ?, ?)",
+                (pid, name, (description or "").strip() or None,
+                 json.dumps(prof) if prof else None, now, now),
             )
             self._conn.commit()
         return self.get_project(pid)  # type: ignore[return-value]
@@ -170,7 +200,9 @@ class Store:
             (
                 _uid(), pid, sid, r["tag_name"], json.dumps(r.get("roles") or []),
                 r.get("uns_path_proposed"), r.get("i3x_element_id"),
-                json.dumps(r.get("evidence_json") or {}), r.get("confidence"), "pending", ts, ts,
+                json.dumps(r.get("evidence_json") or {}), r.get("confidence"),
+                r.get("status") if r.get("status") in ("pending", "accepted", "rejected") else "pending",
+                ts, ts,
             )
             for r in rows
         ]
@@ -222,13 +254,60 @@ class Store:
         ).fetchone()
         return self._extraction_row(r) if r else None
 
+    # ── profile identity / metadata ─────────────────────────────────────────────
+    def set_profile(self, pid: str, identity: dict) -> dict | None:
+        """Merge machine-profile identity/metadata onto a project. Unknown keys are ignored so the
+        stored shape stays the known PROFILE_FIELDS set; empty strings clear a field."""
+        cur = self.get_profile(pid)
+        for k, v in (identity or {}).items():
+            if k in PROFILE_FIELDS:
+                cur[k] = v
+        clean = {k: v for k, v in cur.items() if v not in (None, "")}
+        with self._lock:
+            n = self._conn.execute(
+                "UPDATE projects SET profile_json = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(clean), _now(), pid),
+            ).rowcount
+            self._conn.commit()
+        return self.get_project(pid) if n else None
+
+    def get_profile(self, pid: str) -> dict:
+        r = self._conn.execute("SELECT profile_json FROM projects WHERE id = ?", (pid,)).fetchone()
+        if not r or not r["profile_json"]:
+            return {}
+        return json.loads(r["profile_json"])
+
+    # ── export history ──────────────────────────────────────────────────────────
+    def add_export(self, pid: str, kind: str, target: str | None = None,
+                   detail: dict | None = None) -> dict:
+        eid, now = _uid(), _now()
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO exports (id, project_id, kind, target, detail_json, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (eid, pid, kind, target, json.dumps(detail or {}), now),
+            )
+            self._conn.commit()
+        return {"id": eid, "kind": kind, "target": target, "detail": detail or {}, "createdAt": now}
+
+    def list_exports(self, pid: str) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM exports WHERE project_id = ? ORDER BY created_at DESC", (pid,)
+        ).fetchall()
+        return [{"id": r["id"], "kind": r["kind"], "target": r["target"],
+                 "detail": json.loads(r["detail_json"] or "{}"), "createdAt": r["created_at"]}
+                for r in rows]
+
     # ── row mappers ───────────────────────────────────────────────────────────
     @staticmethod
     def _project_row(r: sqlite3.Row) -> dict:
+        keys = r.keys()
         return {
             "id": r["id"], "name": r["name"], "description": r["description"],
             "status": r["status"], "sourceCount": r["source_count"],
             "extractionCount": r["extraction_count"], "acceptedCount": r["accepted_count"],
+            "profile": json.loads(r["profile_json"]) if ("profile_json" in keys and r["profile_json"])
+            else {},
             "createdAt": r["created_at"], "updatedAt": r["updated_at"],
         }
 
