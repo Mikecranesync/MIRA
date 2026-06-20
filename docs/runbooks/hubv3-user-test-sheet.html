@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HubV3 User Test Sheet</title>
+<style>
+  @page { size: letter; margin: 14mm 14mm 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1a1a1a; font-size: 10.5pt; line-height: 1.4; margin: 0;
+  }
+  h1 { font-size: 21pt; margin: 0 0 2px; color: #0b3d2e; }
+  h1 .v { font-size: 11pt; color: #6b7280; font-weight: 600; }
+  .sub { color: #4b5563; font-size: 9.5pt; margin: 0 0 12px; }
+  h2 {
+    font-size: 13pt; margin: 20px 0 6px; padding: 6px 10px; color: #fff;
+    background: #0b3d2e; border-radius: 5px;
+  }
+  h2 .tag { float: right; font-size: 9pt; font-weight: 500; opacity: .85; }
+  .why {
+    background: #f0f7f4; border-left: 4px solid #0b3d2e; padding: 7px 11px;
+    margin: 0 0 10px; font-size: 9.5pt; border-radius: 0 4px 4px 0;
+  }
+  .pass {
+    background: #fffbe6; border: 1px solid #f0d97a; border-radius: 4px;
+    padding: 6px 10px; margin: 8px 0 4px; font-size: 9.5pt; font-weight: 600;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 4px 0 6px; }
+  th, td { border: 1px solid #cbd5e1; padding: 5px 7px; vertical-align: top; text-align: left; }
+  th { background: #e8efeb; font-size: 8.5pt; text-transform: uppercase; letter-spacing: .3px; color: #374151; }
+  td.step { font-weight: 700; width: 34px; text-align: center; background: #f8fafc; }
+  td.expect { width: 33%; color: #374151; }
+  td.res { width: 92px; text-align: center; }
+  .box { display: inline-block; width: 13px; height: 13px; border: 1.5px solid #475569; border-radius: 3px; vertical-align: middle; margin: 0 3px; }
+  .pf { font-size: 8pt; color: #64748b; }
+  code, .mono {
+    font-family: "Consolas", "SF Mono", monospace; font-size: 9pt;
+    background: #f1f5f9; padding: 1px 4px; border-radius: 3px; word-break: break-all;
+  }
+  .cmd {
+    display: block; background: #0f172a; color: #e2e8f0; font-family: Consolas, monospace;
+    font-size: 8.7pt; padding: 8px 11px; border-radius: 5px; margin: 6px 0; white-space: pre-wrap; word-break: break-all;
+  }
+  .fail { font-size: 9pt; color: #7c2d12; background: #fff4ed; border: 1px solid #fed7aa; border-radius: 4px; padding: 6px 10px; margin: 6px 0; }
+  .notes-line { border-bottom: 1px dotted #94a3b8; height: 15px; margin: 3px 0; }
+  .meta { display: flex; gap: 24px; font-size: 9.5pt; margin: 4px 0 14px; color: #374151; }
+  .meta b { color: #0b3d2e; }
+  .rollback td { font-size: 9pt; }
+  .rollback td:first-child { font-weight: 600; }
+  footer { margin-top: 18px; font-size: 8.5pt; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 6px; }
+  .pagebreak { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<h1>HubV3 User Test Sheet <span class="v">prod v3.29.0 · shipped 2026-06-20</span></h1>
+<p class="sub">Contextualization intake — <b>upload evidence → Hub stages it → a human reviews → approve → it goes live.</b> Three ingest surfaces (offline app, Hub, Telegram) + automated suite. Companion: <span class="mono">hubv3-rollback.md</span>, <span class="mono">garage-conveyor-demo.md</span>.</p>
+
+<div class="meta">
+  <span><b>Tester:</b> ___________________</span>
+  <span><b>Date:</b> ___________________</span>
+  <span><b>Build:</b> ___________________</span>
+</div>
+
+<div class="why"><b>What you are proving:</b> nothing a user uploads reaches MIRA's answers until a human approves it. Test A = evidence in. Test B = Hub owns the truth (review→approve→publish). Test C = the guarantees that make it safe. Test D = fast automated proof. <b>At ship, only A &amp; D were run live — B &amp; C need an authed Hub session and are unconfirmed on prod. You are the one confirming them.</b></div>
+
+<h2>TEST A — Offline Contextualizer <span class="tag">local desktop app · ✅ verified at ship</span></h2>
+<div class="why">Start it (the venv carries the PDF/OCR deps — launching any other way makes A4 fail):</div>
+<span class="cmd">cd /c/Users/hharp/Documents/MIRA-pr2068/mira-contextualizer &amp;&amp; .venv/Scripts/python.exe -m mira_contextualizer</span>
+<div class="why">An Edge app-window opens on localhost.</div>
+<table>
+  <tr><th>#</th><th>Do</th><th class="expect">Expect</th><th class="res">Pass / Fail</th></tr>
+  <tr><td class="step">A1</td><td>File → New profile → "Garage Demo / Micro820 Conveyor"</td><td class="expect">empty profile + identity editor</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+  <tr><td class="step">A2</td><td>Import Files → <span class="mono">MIRA\plc\Micro820_v4.1.9_Program.st</span></td><td class="expect">status <b>done</b>, ~62 signals in Extracted Signals</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+  <tr><td class="step">A3</td><td>Import Files → <span class="mono">MIRA\plc\MbSrvConf_v4.xml</span></td><td class="expect">Modbus tags added, no dup of A2</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+  <tr><td class="step">A4</td><td>Import Files → <span class="mono">Downloads\gs10usermanual.pdf</span></td><td class="expect"><b>done</b> (not "error") — wait ~1 min, 453 pages</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+  <tr><td class="step">A5</td><td>Click UNS Map / Fault Catalog (ISO 14224) / Parameters (UCUM) / Scorecard</td><td class="expect">populated, not empty</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+  <tr><td class="step">A6</td><td><b>Export Bundle</b> (full)</td><td class="expect"><span class="mono">machine_context_bundle.zip</span> downloads</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+  <tr><td class="step">A7</td><td><b>Export Bundle</b> → sanitized mode</td><td class="expect">smaller zip; <b>no</b> <span class="mono">documents/*.json</span> raw payloads, but <span class="mono">evidence.json</span> + <span class="mono">uns.json</span> present</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+</table>
+<div class="pass">PASS = A4 done (not error) + A6/A7 both produce zips + A7 has no raw docs.</div>
+<div class="fail"><b>Common failures:</b> A4 "error: No module named 'pdfminer'" → app launched without the <span class="mono">[docs]</span> extra; use the venv path above. CCW <span class="mono">.ccwsln</span> imports as "other" with 0 signals → that's a solution-pointer file; import the <span class="mono">.st</span> / <span class="mono">MbSrvConf.xml</span> instead.</div>
+<div class="pf">Notes:</div><div class="notes-line"></div><div class="notes-line"></div>
+
+<h2 class="pagebreak">TEST B — Hub import → review → approve <span class="tag">app.factorylm.com/hub · ⚠ unconfirmed on prod</span></h2>
+<div class="why">The core "Hub owns truth" flow. Be logged in at <span class="mono">https://app.factorylm.com/hub</span>.</div>
+<table>
+  <tr><th>#</th><th>Do</th><th class="expect">Expect</th><th class="res">Pass / Fail</th></tr>
+  <tr><td class="step">B1</td><td>Find <b>Contextualization</b> / <b>Import Review</b> in the sidebar</td><td class="expect">nav link present (P7)</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+  <tr><td class="step">B2</td><td>Import the <span class="mono">machine_context_bundle.zip</span> from A6</td><td class="expect">creates an <b>import batch</b>, status <span class="mono">proposed</span></td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+  <tr><td class="step">B3</td><td>Open the <b>Review Queue</b></td><td class="expect">staged signals / UNS / faults / params, all <b>pending</b>; shared labels (Sources, Evidence, Extracted Signals, Fault Catalog, Parameters, UNS Map, Scorecard)</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+  <tr><td class="step">B4</td><td>Re-import the <b>same</b> zip</td><td class="expect"><b>no duplicate</b> sources (sha256 dedup)</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+  <tr><td class="step">B5</td><td><b>Approve</b> the batch</td><td class="expect">staged items publish; <span class="mono">kg_entities</span> <span class="mono">proposed → verified</span>, available to MIRA</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+  <tr><td class="step">B6</td><td>Re-import after approve</td><td class="expect">does <b>not overwrite</b> approved data — skip reason shown, not silent</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+</table>
+<div class="pass">PASS = B2 creates a batch, B4 no dup, B5 publishes, B6 no overwrite. This is the whole product thesis.</div>
+<div class="pf">Notes:</div><div class="notes-line"></div><div class="notes-line"></div>
+
+<h2>TEST C — The guarantees ("train before deploy") <span class="tag">⚠ unconfirmed on prod</span></h2>
+<table>
+  <tr><th>#</th><th>Check</th><th class="expect">Expect</th><th class="res">Pass / Fail</th></tr>
+  <tr><td class="step">C1</td><td><b>Nothing auto-promotes:</b> between B2 and B5, read the staged items</td><td class="expect">everything reads <span class="mono">proposed</span> — MIRA cannot answer from it yet</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+  <tr><td class="step">C2</td><td><b>Asset matching:</b> import against existing conveyor asset / brand-new machine / ambiguous</td><td class="expect">existing → stages <b>under it</b> (strong match); new → <b>draft asset proposal</b>; ambiguous → <b>needs confirmation</b></td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+  <tr><td class="step">C3</td><td><b>Telegram (if wired):</b> send a nameplate photo + caption to the bot</td><td class="expect">lands in the <b>same Review Queue</b> as <span class="mono">proposed</span> (ingest_route=telegram); does <b>not</b> bypass to the KB</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+</table>
+<div class="pass">PASS = staged data stays <span class="mono">proposed</span> until B5; matching routes correctly; Telegram cannot skip review.</div>
+<div class="pf">Notes:</div><div class="notes-line"></div><div class="notes-line"></div>
+
+<h2>TEST D — Automated proof <span class="tag">fast, no UI · ✅ verified at ship</span></h2>
+<div class="why">The §6 acceptance matrix — re-run anytime:</div>
+<span class="cmd">cd /c/Users/hharp/Documents/MIRA-pr2068/mira-hub &amp;&amp; bun run test src/lib/contextualization/</span>
+<table>
+  <tr><th>#</th><th>Suite</th><th class="expect">Expect green</th><th class="res">Pass / Fail</th></tr>
+  <tr><td class="step">D1</td><td>asset-matcher</td><td class="expect">11 pass</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+  <tr><td class="step">D2</td><td>acceptance-matrix</td><td class="expect">11 pass</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+  <tr><td class="step">D3</td><td>approval</td><td class="expect">12 pass</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+  <tr><td class="step">D4</td><td>intake-contract</td><td class="expect">8 pass</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+  <tr><td class="step">D5</td><td>bundle-import / promote / routes</td><td class="expect">5 / 6 / all pass</td><td class="res"><span class="box"></span><span class="box"></span></td></tr>
+</table>
+<div class="pass">PASS = every suite green. Scripted end-to-end demo: <span class="mono">docs/runbooks/garage-conveyor-demo.md</span>.</div>
+<div class="pf">Notes:</div><div class="notes-line"></div><div class="notes-line"></div>
+
+<h2>If it breaks → rollback</h2>
+<table class="rollback">
+  <tr><th>Symptom</th><th>Layer</th><th>Action</th></tr>
+  <tr><td><span class="mono">/hub/api/contextualization</span> <b>500s</b> (not 401)</td><td>DB / migration</td><td><b>ROLLBACK B</b> — <span class="mono">056</span> down-SQL or Neon <span class="mono">br-square-cake-ah54ijqu</span></td></tr>
+  <tr><td>Hub won't load / bad bundle after deploy</td><td>deploy</td><td><b>ROLLBACK A</b> — redeploy <span class="mono">checkpoint/pre-hubv3-2026-06-20</span></td></tr>
+  <tr><td>Code must leave main</td><td>git</td><td><b>ROLLBACK C</b> — revert the merge</td></tr>
+</table>
+<div class="why"><b>Healthy prod check:</b> <span class="mono">/hub/api/contextualization</span> returns <b>401</b> (alive + auth-gated, tables present). Full procedure: <span class="mono">docs/runbooks/hubv3-rollback.md</span>.</div>
+
+<footer>MIRA HubV3 contextualization intake · PRD: docs/plans/2026-06-20-hubv3-contextualization-intake-prd.md · Generated from docs/runbooks/hubv3-testing-guide.md (PR #2142)</footer>
+
+</body>
+</html>
