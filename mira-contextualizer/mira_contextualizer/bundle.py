@@ -294,8 +294,20 @@ _IMPORT_MD = (
 )
 
 
-def build_bundle(store, project_id: str) -> dict[str, str]:
-    """Return a mapping of bundle-relative path → file content (str). Caller writes or zips it."""
+# Export modes (PRD §3). "full" = raw document IR + rich provenance; "sanitized" = the same derived
+# structured context (hashes, source refs, UNS/i3X, faults, params, scorecard) WITHOUT raw documents.
+# Never "anonymous" — it isn't (asset identity + hashes remain).
+EXPORT_MODES = ("full", "sanitized")
+
+
+def build_bundle(store, project_id: str, mode: str = "full") -> dict[str, str]:
+    """Return a mapping of bundle-relative path → file content (str). Caller writes or zips it.
+
+    ``mode`` selects the export contract: ``"full"`` (default) ships raw ``documents/*.json`` payloads
+    alongside the derived structured context; ``"sanitized"`` ships only the derived structured context
+    (kept hashes/source-refs/UNS/i3X/faults/params/scorecard) and omits the raw document payloads."""
+    if mode not in EXPORT_MODES:
+        raise ValueError("unknown export mode %r (expected one of %r)" % (mode, EXPORT_MODES))
     proj = store.get_project(project_id)
     if not proj:
         raise ValueError("project not found")
@@ -308,7 +320,7 @@ def build_bundle(store, project_id: str) -> dict[str, str]:
     for s in sources:
         full = store.get_source(s["id"])
         ir = full.get("extracted") if full else None
-        if ir:
+        if ir and mode == "full":  # sanitized mode keeps the source hash below but drops the raw IR
             files["documents/%s.json" % _safe(s["fileName"])] = json.dumps(ir, indent=2)
         blob = json.dumps(ir or {}, sort_keys=True).encode()
         src_meta.append({"file": s["fileName"], "type": s["sourceType"], "status": s["status"],
@@ -338,6 +350,8 @@ def build_bundle(store, project_id: str) -> dict[str, str]:
                    "ucum_quantities": len(quantities)},
         # answerability snapshot so a consumer can gate on it without re-deriving
         "scorecard": {"score": sc["score"], "grade": sc["grade"]},
+        # export contract: "full" carries raw documents/*.json; "sanitized" is derived context only
+        "export": {"mode": mode, "raw_documents": mode == "full"},
         # how the Hub should land this: match an existing asset or create a draft (proposed only)
         "asset_match": asset_match,
         "import": import_intent,

@@ -333,12 +333,15 @@ def make_handler(store: Store, gui_dir: str, recents_path: str | None = None):
                      "confidence": e["confidence"]} for e in accepted if e["unsPathProposed"]]})
             elif fmt == "i3x":
                 self._json(bundle._i3x(accepted))
-            elif fmt == "bundle":
-                data = bundle.zip_bytes(bundle.build_bundle(store, pid))
-                store.add_export(pid, "bundle", "machine_context_bundle.zip",
-                                 {"bytes": len(data), "accepted": sum(
+            elif fmt in ("bundle", "bundle-sanitized"):
+                mode = "sanitized" if fmt == "bundle-sanitized" else "full"
+                fname = ("machine_context_bundle.sanitized.zip" if mode == "sanitized"
+                         else "machine_context_bundle.zip")
+                data = bundle.zip_bytes(bundle.build_bundle(store, pid, mode=mode))
+                store.add_export(pid, fmt, fname,
+                                 {"bytes": len(data), "mode": mode, "accepted": sum(
                                      1 for e in store.list_extractions(pid) if e["status"] == "accepted")})
-                self._send_bytes(data, "application/zip", "machine_context_bundle.zip")
+                self._send_bytes(data, "application/zip", fname)
             elif fmt == "profile":
                 data = json.dumps(profile.save_profile(store, pid), indent=2).encode("utf-8")
                 store.add_export(pid, "profile", "%s%s" % (proj["name"], profile.EXT))
@@ -347,7 +350,7 @@ def make_handler(store: Store, gui_dir: str, recents_path: str | None = None):
                 self._send_bytes(data, "application/json",
                                  "%s%s" % (bundle._safe(proj["name"]), profile.EXT))
             else:
-                self._err("unsupported format (uns | i3x | bundle | profile)", 400)
+                self._err("unsupported format (uns | i3x | bundle | bundle-sanitized | profile)", 400)
 
     return Handler
 

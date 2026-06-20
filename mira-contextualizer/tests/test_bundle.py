@@ -248,3 +248,64 @@ def test_build_unknown_project_raises(seeded):
     store, _ = seeded
     with pytest.raises(ValueError):
         bundle.build_bundle(store, "deadbeef")
+
+
+# --- Export modes: full (default) vs sanitized structured context (PRD §3, §6 tests 10/11) ---
+
+# The derived structured context a sanitized bundle keeps — Hub-importable without raw documents.
+_STRUCTURED = ("manifest.json", "profile.json", "sources.json", "uns.json", "i3x.json",
+               "kg_entities.json", "kg_relationships.json", "signals.csv",
+               "fault_catalog.json", "parameters.json", "scorecard.json", "report.md", "IMPORT.md")
+
+
+def test_sanitized_bundle_omits_raw_document_payloads(seeded):
+    """PRD §6 test 10 — the sanitized structured-context mode ships derived context (UNS, i3X, kg,
+    faults, params, hashes) but NO raw ``documents/*.json`` payloads."""
+    store, pid = seeded
+    # the seeded project has a manual source whose IR would emit a documents/ payload in full mode
+    full = bundle.build_bundle(store, pid, mode="full")
+    assert any(k.startswith("documents/") for k in full), "fixture must exercise a raw document"
+
+    files = bundle.build_bundle(store, pid, mode="sanitized")
+    assert not any(k.startswith("documents/") for k in files), "sanitized must drop raw documents"
+    for key in _STRUCTURED:
+        assert key in files, "sanitized must keep derived structured context: %s" % key
+
+    man = json.loads(files["manifest.json"])
+    assert man["export"]["mode"] == "sanitized"
+    assert man["export"]["raw_documents"] is False
+    # derived context survives: UNS signal, i3X leaf, proposed kg entities
+    assert json.loads(files["uns.json"])["signals"][0]["unsPath"] == UNS
+    assert json.loads(files["kg_entities.json"])["entities"]
+
+
+def test_full_bundle_preserves_provenance(seeded):
+    """PRD §6 test 11 — the full evidence bundle keeps the raw documents AND the source→evidence→
+    entity provenance chain (kg provenance, MENTIONS evidence, review audit)."""
+    store, pid = seeded
+    files = bundle.build_bundle(store, pid)  # default mode is full
+    assert any(k.startswith("documents/") for k in files), "full keeps raw document payloads"
+
+    man = json.loads(files["manifest.json"])
+    assert man["export"]["mode"] == "full" and man["export"]["raw_documents"] is True
+
+    # entity provenance: every accepted signal carries its ctx extraction id + evidence
+    ents = json.loads(files["kg_entities.json"])["entities"]
+    sig = next(e for e in ents if e["entity_type"] == "signal" and e["entity_id"] == UNS)
+    prov = sig["properties"]["provenance"]
+    assert prov["ctx_project_id"] == pid and prov["ctx_extraction_id"]
+
+    # relationship provenance: the document→tag MENTIONS edge keeps page + snippet
+    rels = json.loads(files["kg_relationships.json"])["relationships"]
+    mention = next(r for r in rels if r["type"] == "MENTIONS" and r["target"] == "Conv_Run")
+    assert mention["evidence"]["page"] == 2 and mention["evidence"]["snippet"]
+
+    # review audit: per-decision evidence is retained
+    review = json.loads(files["review.json"])["decisions"]
+    assert any(d["evidence"] for d in review)
+
+
+def test_build_rejects_unknown_mode(seeded):
+    store, pid = seeded
+    with pytest.raises(ValueError):
+        bundle.build_bundle(store, pid, mode="anonymous")

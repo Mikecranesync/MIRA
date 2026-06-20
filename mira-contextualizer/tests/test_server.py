@@ -83,6 +83,19 @@ def test_bundle_and_i3x_export(base):
         data = r.read()
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         assert "manifest.json" in zf.namelist() and "uns.json" in zf.namelist()
+        full_man = json.loads(zf.read("manifest.json"))
+        assert full_man["export"]["mode"] == "full"
+
+    # sanitized structured-context bundle: same derived context, no raw documents/*.json
+    with urllib.request.urlopen(f"{base}/api/projects/{pid}/export?format=bundle-sanitized") as r:
+        assert r.status == 200 and r.headers["Content-Type"] == "application/zip"
+        assert "sanitized" in r.headers.get("Content-Disposition", "")
+        sdata = r.read()
+    with zipfile.ZipFile(io.BytesIO(sdata)) as zf:
+        names = zf.namelist()
+        assert "manifest.json" in names and "uns.json" in names
+        assert not any(n.startswith("documents/") for n in names)
+        assert json.loads(zf.read("manifest.json"))["export"]["mode"] == "sanitized"
 
 
 def test_ccw_project_import_json_and_zip(base):
