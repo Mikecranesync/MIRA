@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.13.0 — 2026-06-20
+- feat(hub): HubV3 contextualization intake complete (P0–P8). Adds the shared intake contract (`src/lib/contextualization/intake-contract.ts`), migration `056` staging schema (`ctx_import_batches`, `ctx_extraction_asset_matches`, sha256 dedup), the contract-accepting `/api/contextualization/import` with source dedup (all rows land `proposed`), the asset-matching engine (`src/lib/contextualization/asset-matcher.ts` — strong/probable/none vs `cmms_equipment`), the §6 acceptance matrix (`src/lib/contextualization/acceptance-matrix.test.ts`), Hub↔offline label parity, and the "Import Review" sidebar link → Review Queue. Builds on the P4 review/approval gate (v2.12.0). PRD: `docs/plans/2026-06-20-hubv3-contextualization-intake-prd.md`.
+
 ## v2.12.0 — 2026-06-20
 - feat(hub): HubV3 Phase 4 — batch Review Queue + approval gate. New `Review Queue` screen (`/contextualization/review`) drives `ctx_import_batches.review_status` (proposed→approved|rejected|needs_review) over the shared vocabulary (Sources, Evidence, Extracted Signals, Fault Catalog, Parameters, UNS Map, Scorecard). Approve **publishes** a batch's accepted staged proposals into the live model: `kg_entities` go proposed→verified (the engine's grounding surface) with the paired `ai_suggestions` moved pending→accepted in lockstep (ADR-0017). The `/contextualization/[id]/promote` route is now approval-aware: it reads `kg_entities.approval_state` and refuses to overwrite verified/deprecated rows (returns skip reasons instead of a silent `ON CONFLICT DO NOTHING`), and uses the live `(tenant_id, entity_type, name)` conflict target (mig 026). Nothing auto-promotes — import stages `proposed`; only a human approve verifies. No migration. (HubV3 §5 Phase 4)
 

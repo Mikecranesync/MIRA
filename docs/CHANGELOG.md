@@ -3,6 +3,12 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.29.0 (2026-06-20) — feat(hubv3): Hub-centered contextualization intake (P0–P8)
+- **Hub = system of record for contextualization.** Offline Contextualizer + Telegram are now ingest clients submitting one shared **Contextualization Intake Contract** (`contracts/contextualization/intake_contract.py` + `mira-hub/src/lib/contextualization/intake-contract.ts` + JSON Schema; ADR-0023). All ingest enters as `proposed`/pending; Hub does final merge, approval, and publish to the project model / UNS / i3X / MIRA KB.
+- **Migration `056`** — staging schema: `ctx_import_batches` (review_status proposed→approved|rejected|needs_review, ingest_route), `ctx_extraction_asset_matches` (match_strength strong|probable|none, candidate_asset_id), source/bundle `sha256` dedup keys, RLS + grants. Reversible (rollback block in-file).
+- **P2** import endpoint accepts the contract + sha256 dedup. **P3** asset-matching engine (strong/probable/none vs `cmms_equipment`). **P4** batch Review Queue + approval-aware promote (no overwrite of verified — see `mira-hub/v2.13.0`). **P5** offline bundle: `evidence.json` + entity UUIDs + sanitized/derived-context export mode (`mira-contextualizer/v2.3.0`). **P6** Telegram thin evidence client → Hub intake. **P7** Hub↔offline UI label parity + Import Review nav link. **P8** garage-conveyor demo + §6 acceptance test matrix + `docs/runbooks/garage-conveyor-demo.md`.
+- Bumped past `main` (3.28.3) so the monotonic VERSION gate passes (branch base was 3.27.0). PRD: `docs/plans/2026-06-20-hubv3-contextualization-intake-prd.md`.
+
 ### v3.27.0 (2026-06-17) — feat(plc-parser): PLC → UNS / i3X Namespace Builder (parser + desktop GUI unified)
 - **`mira-plc-parser/`** — read-only PLC export parser + unified desktop GUI for building UNS / i3X namespace from PLC programs and tag exports. Version bumped over `main` (3.26.0) after merging the rebased VFD-analyzer base branch (#2065) so the monotonic VERSION gate passes.
 

@@ -1,6 +1,6 @@
 [project]
 name = "mira-contextualizer"
-version = "2.2.0"
+version = "2.3.0"
 description = "Offline-first Windows factory contextualizer: ingest any document, deterministically propose UNS/i3X/roles, export a portable bundle for MIRA Hub. Composes mira-plc-parser."
 requires-python = ">=3.12"
 # P0 core is stdlib-only (sqlite3, http.server). The mira-plc-parser engine is resolved via
