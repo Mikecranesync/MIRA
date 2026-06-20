@@ -46,6 +46,7 @@
     "routines": 2,
     "rungs": 3,
     "tags": 11,
+    "uns_candidates": 11,
     "vfd_signal_candidates": 3
   },
   "detection": {
@@ -328,6 +329,223 @@
       "used_in": []
     }
   ],
+  "uns_candidates": [
+    {
+      "asset": "motor",
+      "confidence": "medium",
+      "data_type": "BOOL",
+      "evidence": "tag name + asset 'motor'",
+      "path": "enterprise/site1/area1/conveyorcell/motor/motor_run",
+      "segments": {
+        "area": "area1",
+        "asset": "motor",
+        "enterprise": "enterprise",
+        "line": "conveyorcell",
+        "signal": "motor_run",
+        "site": "site1"
+      },
+      "signal": "motor_run",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "Motor_Run"
+    },
+    {
+      "asset": "conv",
+      "confidence": "medium",
+      "data_type": "BOOL",
+      "evidence": "tag name + asset 'conv'",
+      "path": "enterprise/site1/area1/conveyorcell/conv/conv_fault",
+      "segments": {
+        "area": "area1",
+        "asset": "conv",
+        "enterprise": "enterprise",
+        "line": "conveyorcell",
+        "signal": "conv_fault",
+        "site": "site1"
+      },
+      "signal": "conv_fault",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "Conv_Fault"
+    },
+    {
+      "asset": "",
+      "confidence": "low",
+      "data_type": "BOOL",
+      "evidence": "tag name",
+      "path": "enterprise/site1/area1/conveyorcell/auto_mode",
+      "segments": {
+        "area": "area1",
+        "asset": "",
+        "enterprise": "enterprise",
+        "line": "conveyorcell",
+        "signal": "auto_mode",
+        "site": "site1"
+      },
+      "signal": "auto_mode",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "Auto_Mode"
+    },
+    {
+      "asset": "",
+      "confidence": "low",
+      "data_type": "BOOL",
+      "evidence": "tag name",
+      "path": "enterprise/site1/area1/conveyorcell/estop_ok",
+      "segments": {
+        "area": "area1",
+        "asset": "",
+        "enterprise": "enterprise",
+        "line": "conveyorcell",
+        "signal": "estop_ok",
+        "site": "site1"
+      },
+      "signal": "estop_ok",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "EStop_OK"
+    },
+    {
+      "asset": "",
+      "confidence": "low",
+      "data_type": "BOOL",
+      "evidence": "tag name",
+      "path": "enterprise/site1/area1/conveyorcell/photoeye_1",
+      "segments": {
+        "area": "area1",
+        "asset": "",
+        "enterprise": "enterprise",
+        "line": "conveyorcell",
+        "signal": "photoeye_1",
+        "site": "site1"
+      },
+      "signal": "photoeye_1",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "Photoeye_1"
+    },
+    {
+      "asset": "",
+      "confidence": "low",
+      "data_type": "TIMER",
+      "evidence": "tag name",
+      "path": "enterprise/site1/area1/conveyorcell/run_timer",
+      "segments": {
+        "area": "area1",
+        "asset": "",
+        "enterprise": "enterprise",
+        "line": "conveyorcell",
+        "signal": "run_timer",
+        "site": "site1"
+      },
+      "signal": "run_timer",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "Run_Timer"
+    },
+    {
+      "asset": "",
+      "confidence": "low",
+      "data_type": "BOOL",
+      "evidence": "tag name",
+      "path": "enterprise/site1/area1/conveyorcell/start_pb",
+      "segments": {
+        "area": "area1",
+        "asset": "",
+        "enterprise": "enterprise",
+        "line": "conveyorcell",
+        "signal": "start_pb",
+        "site": "site1"
+      },
+      "signal": "start_pb",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "Start_PB"
+    },
+    {
+      "asset": "",
+      "confidence": "low",
+      "data_type": "BOOL",
+      "evidence": "tag name",
+      "path": "enterprise/site1/area1/conveyorcell/stop_pb",
+      "segments": {
+        "area": "area1",
+        "asset": "",
+        "enterprise": "enterprise",
+        "line": "conveyorcell",
+        "signal": "stop_pb",
+        "site": "site1"
+      },
+      "signal": "stop_pb",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "Stop_PB"
+    },
+    {
+      "asset": "vfd",
+      "confidence": "high",
+      "data_type": "REAL",
+      "evidence": "VFD signal role + asset 'vfd'",
+      "path": "enterprise/site1/area1/conveyorcell/vfd/current",
+      "segments": {
+        "area": "area1",
+        "asset": "vfd",
+        "enterprise": "enterprise",
+        "line": "conveyorcell",
+        "signal": "current",
+        "site": "site1"
+      },
+      "signal": "current",
+      "source": "proposed",
+      "standardized": true,
+      "tag": "VFD_Current"
+    },
+    {
+      "asset": "vfd",
+      "confidence": "high",
+      "data_type": "DINT",
+      "evidence": "VFD signal role + asset 'vfd'",
+      "path": "enterprise/site1/area1/conveyorcell/vfd/fault",
+      "segments": {
+        "area": "area1",
+        "asset": "vfd",
+        "enterprise": "enterprise",
+        "line": "conveyorcell",
+        "signal": "fault",
+        "site": "site1"
+      },
+      "signal": "fault",
+      "source": "proposed",
+      "standardized": true,
+      "tag": "VFD_FaultCode"
+    },
+    {
+      "asset": "vfd",
+      "confidence": "high",
+      "data_type": "REAL",
+      "evidence": "VFD signal role + asset 'vfd'",
+      "path": "enterprise/site1/area1/conveyorcell/vfd/frequency",
+      "segments": {
+        "area": "area1",
+        "asset": "vfd",
+        "enterprise": "enterprise",
+        "line": "conveyorcell",
+        "signal": "frequency",
+        "site": "site1"
+      },
+      "signal": "frequency",
+      "source": "proposed",
+      "standardized": true,
+      "tag": "VFD_Frequency"
+    }
+  ],
+  "uns_prefix": {
+    "area": "area1",
+    "enterprise": "enterprise",
+    "line": "conveyorcell",
+    "site": "site1"
+  },
   "vendor": "Rockwell Automation",
   "vfd_signal_candidates": [
     {

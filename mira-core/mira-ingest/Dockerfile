@@ -11,6 +11,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py crawl_verifier.py route_fallback.py asset_tag.py crawl_routes.yaml ./
 COPY db/ db/
 
+# DEPLOY WIRING (follow-up): the /ingest/plc-parse endpoint imports the stdlib-only
+# `mira_plc_parser` package (repo-root/mira-plc-parser/). It is NOT yet on this image, so the
+# endpoint returns HTTP 503 until wired. To enable it, change this service's build context to the
+# repo root (docker-compose `build: { context: ., dockerfile: mira-core/mira-ingest/Dockerfile }`),
+# then add: `COPY mira-plc-parser/mira_plc_parser/ ./mira_plc_parser/`. The package has no
+# third-party deps (stdlib only), so nothing else changes. Verify on staging before prod.
+
 RUN addgroup --system --gid 1001 mira && \
     adduser --system --uid 1001 --ingroup mira mira
 

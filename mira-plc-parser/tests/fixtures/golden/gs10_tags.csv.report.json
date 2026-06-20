@@ -39,6 +39,7 @@
     "routines": 0,
     "rungs": 0,
     "tags": 7,
+    "uns_candidates": 7,
     "vfd_signal_candidates": 5
   },
   "detection": {
@@ -166,6 +167,147 @@
       "used_in": []
     }
   ],
+  "uns_candidates": [
+    {
+      "asset": "conveyor",
+      "confidence": "medium",
+      "data_type": "Boolean",
+      "evidence": "tag name + asset 'conveyor'",
+      "path": "enterprise/site1/area1/gs10_tags/conveyor/conveyor_run",
+      "segments": {
+        "area": "area1",
+        "asset": "conveyor",
+        "enterprise": "enterprise",
+        "line": "gs10_tags",
+        "signal": "conveyor_run",
+        "site": "site1"
+      },
+      "signal": "conveyor_run",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "Conveyor_Run"
+    },
+    {
+      "asset": "",
+      "confidence": "low",
+      "data_type": "Boolean",
+      "evidence": "tag name",
+      "path": "enterprise/site1/area1/gs10_tags/estop_ok",
+      "segments": {
+        "area": "area1",
+        "asset": "",
+        "enterprise": "enterprise",
+        "line": "gs10_tags",
+        "signal": "estop_ok",
+        "site": "site1"
+      },
+      "signal": "estop_ok",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "EStop_OK"
+    },
+    {
+      "asset": "vfd",
+      "confidence": "high",
+      "data_type": "Boolean",
+      "evidence": "VFD signal role + asset 'vfd'",
+      "path": "enterprise/site1/area1/gs10_tags/vfd/comm",
+      "segments": {
+        "area": "area1",
+        "asset": "vfd",
+        "enterprise": "enterprise",
+        "line": "gs10_tags",
+        "signal": "comm",
+        "site": "site1"
+      },
+      "signal": "comm",
+      "source": "proposed",
+      "standardized": true,
+      "tag": "VFD_CommOK"
+    },
+    {
+      "asset": "vfd",
+      "confidence": "high",
+      "data_type": "Float",
+      "evidence": "VFD signal role + asset 'vfd'",
+      "path": "enterprise/site1/area1/gs10_tags/vfd/current",
+      "segments": {
+        "area": "area1",
+        "asset": "vfd",
+        "enterprise": "enterprise",
+        "line": "gs10_tags",
+        "signal": "current",
+        "site": "site1"
+      },
+      "signal": "current",
+      "source": "proposed",
+      "standardized": true,
+      "tag": "VFD_Current"
+    },
+    {
+      "asset": "vfd",
+      "confidence": "high",
+      "data_type": "Float",
+      "evidence": "VFD signal role + asset 'vfd'",
+      "path": "enterprise/site1/area1/gs10_tags/vfd/dc",
+      "segments": {
+        "area": "area1",
+        "asset": "vfd",
+        "enterprise": "enterprise",
+        "line": "gs10_tags",
+        "signal": "dc",
+        "site": "site1"
+      },
+      "signal": "dc",
+      "source": "proposed",
+      "standardized": true,
+      "tag": "VFD_DCBus"
+    },
+    {
+      "asset": "vfd",
+      "confidence": "high",
+      "data_type": "Word",
+      "evidence": "VFD signal role + asset 'vfd'",
+      "path": "enterprise/site1/area1/gs10_tags/vfd/fault",
+      "segments": {
+        "area": "area1",
+        "asset": "vfd",
+        "enterprise": "enterprise",
+        "line": "gs10_tags",
+        "signal": "fault",
+        "site": "site1"
+      },
+      "signal": "fault",
+      "source": "proposed",
+      "standardized": true,
+      "tag": "VFD_FaultCode"
+    },
+    {
+      "asset": "vfd",
+      "confidence": "high",
+      "data_type": "Float",
+      "evidence": "VFD signal role + asset 'vfd'",
+      "path": "enterprise/site1/area1/gs10_tags/vfd/frequency",
+      "segments": {
+        "area": "area1",
+        "asset": "vfd",
+        "enterprise": "enterprise",
+        "line": "gs10_tags",
+        "signal": "frequency",
+        "site": "site1"
+      },
+      "signal": "frequency",
+      "source": "proposed",
+      "standardized": true,
+      "tag": "VFD_Frequency"
+    }
+  ],
+  "uns_prefix": {
+    "area": "area1",
+    "enterprise": "enterprise",
+    "line": "gs10_tags",
+    "site": "site1"
+  },
   "vendor": "Kepware / PTC",
   "vfd_signal_candidates": [
     {

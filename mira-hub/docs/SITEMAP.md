@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **57** (6 dynamic) |
-| API routes | **133** (35 dynamic) |
+| API routes | **135** (36 dynamic) |
 
 ## Pages (57)
 
@@ -75,7 +75,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (133)
+## API routes (135)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -130,6 +130,7 @@
 | `/api/components/[id]` | dynamic | `api/components/[id]/route.ts` |
 | `/api/connections` | static | `api/connections/route.ts` |
 | `/api/connections/[provider]` | dynamic | `api/connections/[provider]/route.ts` |
+| `/api/connectors/plc/import` | static | `api/connectors/plc/import/route.ts` |
 | `/api/conversations` | static | `api/conversations/route.ts` |
 | `/api/decision-trace/[id]` | dynamic | `api/decision-trace/[id]/route.ts` |
 | `/api/decision-trace/[id]/feedback` | dynamic | `api/decision-trace/[id]/feedback/route.ts` |
@@ -197,6 +198,7 @@
 | `/api/scanbe/healthz` | static | `api/scanbe/healthz/route.ts` |
 | `/api/sessions/[id]` | dynamic | `api/sessions/[id]/route.ts` |
 | `/api/sessions/confirm` | static | `api/sessions/confirm/route.ts` |
+| `/api/suggestions/[id]/decide` | dynamic | `api/suggestions/[id]/decide/route.ts` |
 | `/api/team` | static | `api/team/route.ts` |
 | `/api/uns/browse` | static | `api/uns/browse/route.ts` |
 | `/api/uns/subtree` | static | `api/uns/subtree/route.ts` |
