@@ -46,6 +46,7 @@
     "routines": 1,
     "rungs": 3,
     "tags": 12,
+    "uns_candidates": 12,
     "vfd_signal_candidates": 4
   },
   "detection": {
@@ -314,6 +315,242 @@
       "used_in": []
     }
   ],
+  "uns_candidates": [
+    {
+      "asset": "motorrun",
+      "confidence": "medium",
+      "data_type": "BOOL",
+      "evidence": "tag name + asset 'motorrun'",
+      "path": "enterprise/site1/area1/conveyorcontrol/motorrun/motorrun",
+      "segments": {
+        "area": "area1",
+        "asset": "motorrun",
+        "enterprise": "enterprise",
+        "line": "conveyorcontrol",
+        "signal": "motorrun",
+        "site": "site1"
+      },
+      "signal": "motorrun",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "MotorRun"
+    },
+    {
+      "asset": "convfault",
+      "confidence": "medium",
+      "data_type": "BOOL",
+      "evidence": "tag name + asset 'convfault'",
+      "path": "enterprise/site1/area1/conveyorcontrol/convfault/convfault",
+      "segments": {
+        "area": "area1",
+        "asset": "convfault",
+        "enterprise": "enterprise",
+        "line": "conveyorcontrol",
+        "signal": "convfault",
+        "site": "site1"
+      },
+      "signal": "convfault",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "ConvFault"
+    },
+    {
+      "asset": "",
+      "confidence": "low",
+      "data_type": "BOOL",
+      "evidence": "tag name",
+      "path": "enterprise/site1/area1/conveyorcontrol/estopok",
+      "segments": {
+        "area": "area1",
+        "asset": "",
+        "enterprise": "enterprise",
+        "line": "conveyorcontrol",
+        "signal": "estopok",
+        "site": "site1"
+      },
+      "signal": "estopok",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "EStopOK"
+    },
+    {
+      "asset": "",
+      "confidence": "low",
+      "data_type": "BOOL",
+      "evidence": "tag name",
+      "path": "enterprise/site1/area1/conveyorcontrol/automode",
+      "segments": {
+        "area": "area1",
+        "asset": "",
+        "enterprise": "enterprise",
+        "line": "conveyorcontrol",
+        "signal": "automode",
+        "site": "site1"
+      },
+      "signal": "automode",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "AutoMode"
+    },
+    {
+      "asset": "",
+      "confidence": "low",
+      "data_type": "BOOL",
+      "evidence": "tag name",
+      "path": "enterprise/site1/area1/conveyorcontrol/jamphotoeye",
+      "segments": {
+        "area": "area1",
+        "asset": "",
+        "enterprise": "enterprise",
+        "line": "conveyorcontrol",
+        "signal": "jamphotoeye",
+        "site": "site1"
+      },
+      "signal": "jamphotoeye",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "JamPhotoeye"
+    },
+    {
+      "asset": "",
+      "confidence": "low",
+      "data_type": "BOOL",
+      "evidence": "tag name",
+      "path": "enterprise/site1/area1/conveyorcontrol/startpb",
+      "segments": {
+        "area": "area1",
+        "asset": "",
+        "enterprise": "enterprise",
+        "line": "conveyorcontrol",
+        "signal": "startpb",
+        "site": "site1"
+      },
+      "signal": "startpb",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "StartPB"
+    },
+    {
+      "asset": "",
+      "confidence": "low",
+      "data_type": "BOOL",
+      "evidence": "tag name",
+      "path": "enterprise/site1/area1/conveyorcontrol/stoppb",
+      "segments": {
+        "area": "area1",
+        "asset": "",
+        "enterprise": "enterprise",
+        "line": "conveyorcontrol",
+        "signal": "stoppb",
+        "site": "site1"
+      },
+      "signal": "stoppb",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "StopPB"
+    },
+    {
+      "asset": "vfd",
+      "confidence": "high",
+      "data_type": "DINT",
+      "evidence": "VFD signal role + asset 'vfd'",
+      "path": "enterprise/site1/area1/conveyorcontrol/vfd/fault",
+      "segments": {
+        "area": "area1",
+        "asset": "vfd",
+        "enterprise": "enterprise",
+        "line": "conveyorcontrol",
+        "signal": "fault",
+        "site": "site1"
+      },
+      "signal": "fault",
+      "source": "proposed",
+      "standardized": true,
+      "tag": "VFD_FaultCode"
+    },
+    {
+      "asset": "",
+      "confidence": "medium",
+      "data_type": "REAL",
+      "evidence": "VFD signal role",
+      "path": "enterprise/site1/area1/conveyorcontrol/frequency",
+      "segments": {
+        "area": "area1",
+        "asset": "",
+        "enterprise": "enterprise",
+        "line": "conveyorcontrol",
+        "signal": "frequency",
+        "site": "site1"
+      },
+      "signal": "frequency",
+      "source": "proposed",
+      "standardized": true,
+      "tag": "LineSpeedSetpoint"
+    },
+    {
+      "asset": "",
+      "confidence": "low",
+      "data_type": "TON",
+      "evidence": "tag name",
+      "path": "enterprise/site1/area1/conveyorcontrol/runtimer",
+      "segments": {
+        "area": "area1",
+        "asset": "",
+        "enterprise": "enterprise",
+        "line": "conveyorcontrol",
+        "signal": "runtimer",
+        "site": "site1"
+      },
+      "signal": "runtimer",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "RunTimer"
+    },
+    {
+      "asset": "vfd",
+      "confidence": "high",
+      "data_type": "REAL",
+      "evidence": "VFD signal role + asset 'vfd'",
+      "path": "enterprise/site1/area1/conveyorcontrol/vfd/current",
+      "segments": {
+        "area": "area1",
+        "asset": "vfd",
+        "enterprise": "enterprise",
+        "line": "conveyorcontrol",
+        "signal": "current",
+        "site": "site1"
+      },
+      "signal": "current",
+      "source": "proposed",
+      "standardized": true,
+      "tag": "VFD_Current"
+    },
+    {
+      "asset": "vfd",
+      "confidence": "high",
+      "data_type": "REAL",
+      "evidence": "VFD signal role + asset 'vfd'",
+      "path": "enterprise/site1/area1/conveyorcontrol/vfd/frequency",
+      "segments": {
+        "area": "area1",
+        "asset": "vfd",
+        "enterprise": "enterprise",
+        "line": "conveyorcontrol",
+        "signal": "frequency",
+        "site": "site1"
+      },
+      "signal": "frequency",
+      "source": "proposed",
+      "standardized": true,
+      "tag": "VFD_Frequency"
+    }
+  ],
+  "uns_prefix": {
+    "area": "area1",
+    "enterprise": "enterprise",
+    "line": "conveyorcontrol",
+    "site": "site1"
+  },
   "vendor": "IEC 61131-3",
   "vfd_signal_candidates": [
     {
