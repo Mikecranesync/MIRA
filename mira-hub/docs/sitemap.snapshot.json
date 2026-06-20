@@ -1,8 +1,8 @@
 {
   "basePath": "/hub",
   "counts": {
-    "pages": 57,
-    "apiRoutes": 135
+    "pages": 61,
+    "apiRoutes": 145
   },
   "pages": [
     "/admin",
@@ -16,6 +16,10 @@
     "/channels",
     "/cmms",
     "/command-center",
+    "/contextualization",
+    "/contextualization/[id]",
+    "/contextualization/review",
+    "/contextualization/review/[batchId]",
     "/conversations",
     "/demo/conveyor/[tag]",
     "/documents",
@@ -116,6 +120,16 @@
     "/api/connections",
     "/api/connections/[provider]",
     "/api/connectors/plc/import",
+    "/api/contextualization",
+    "/api/contextualization/[id]/export",
+    "/api/contextualization/[id]/extractions",
+    "/api/contextualization/[id]/extractions/[eid]",
+    "/api/contextualization/[id]/promote",
+    "/api/contextualization/[id]/sources",
+    "/api/contextualization/batches",
+    "/api/contextualization/batches/[batchId]",
+    "/api/contextualization/batches/[batchId]/review",
+    "/api/contextualization/import",
     "/api/conversations",
     "/api/decision-trace/[id]",
     "/api/decision-trace/[id]/feedback",

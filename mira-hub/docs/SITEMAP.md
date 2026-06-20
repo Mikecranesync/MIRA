@@ -10,10 +10,10 @@
 
 | Surface | Count |
 |---|---|
-| Pages | **57** (6 dynamic) |
-| API routes | **135** (36 dynamic) |
+| Pages | **61** (8 dynamic) |
+| API routes | **145** (43 dynamic) |
 
-## Pages (57)
+## Pages (61)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -28,6 +28,10 @@
 | `/channels` | static | `(hub)/channels/page.tsx` |
 | `/cmms` | static | `(hub)/cmms/page.tsx` |
 | `/command-center` | static | `(hub)/command-center/page.tsx` |
+| `/contextualization` | static | `(hub)/contextualization/page.tsx` |
+| `/contextualization/[id]` | dynamic | `(hub)/contextualization/[id]/page.tsx` |
+| `/contextualization/review` | static | `(hub)/contextualization/review/page.tsx` |
+| `/contextualization/review/[batchId]` | dynamic | `(hub)/contextualization/review/[batchId]/page.tsx` |
 | `/conversations` | static | `(hub)/conversations/page.tsx` |
 | `/demo/conveyor/[tag]` | dynamic | `demo/conveyor/[tag]/page.tsx` |
 | `/documents` | static | `(hub)/documents/page.tsx` |
@@ -75,7 +79,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (135)
+## API routes (145)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -131,6 +135,16 @@
 | `/api/connections` | static | `api/connections/route.ts` |
 | `/api/connections/[provider]` | dynamic | `api/connections/[provider]/route.ts` |
 | `/api/connectors/plc/import` | static | `api/connectors/plc/import/route.ts` |
+| `/api/contextualization` | static | `api/contextualization/route.ts` |
+| `/api/contextualization/[id]/export` | dynamic | `api/contextualization/[id]/export/route.ts` |
+| `/api/contextualization/[id]/extractions` | dynamic | `api/contextualization/[id]/extractions/route.ts` |
+| `/api/contextualization/[id]/extractions/[eid]` | dynamic | `api/contextualization/[id]/extractions/[eid]/route.ts` |
+| `/api/contextualization/[id]/promote` | dynamic | `api/contextualization/[id]/promote/route.ts` |
+| `/api/contextualization/[id]/sources` | dynamic | `api/contextualization/[id]/sources/route.ts` |
+| `/api/contextualization/batches` | static | `api/contextualization/batches/route.ts` |
+| `/api/contextualization/batches/[batchId]` | dynamic | `api/contextualization/batches/[batchId]/route.ts` |
+| `/api/contextualization/batches/[batchId]/review` | dynamic | `api/contextualization/batches/[batchId]/review/route.ts` |
+| `/api/contextualization/import` | static | `api/contextualization/import/route.ts` |
 | `/api/conversations` | static | `api/conversations/route.ts` |
 | `/api/decision-trace/[id]` | dynamic | `api/decision-trace/[id]/route.ts` |
 | `/api/decision-trace/[id]/feedback` | dynamic | `api/decision-trace/[id]/feedback/route.ts` |
