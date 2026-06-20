@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+import {
+  IMPORT_APPROVAL_STATE,
+  buildEntityInsert,
+  decidePromotion,
+  type EntityApprovalState,
+} from "@/lib/contextualization/approval";
 
 export const dynamic = "force-dynamic";
 
@@ -10,16 +16,21 @@ interface ExtractionRow {
   roles: string[];
   uns_path_proposed: string | null;
   confidence: string | null;
+  import_batch_id: string | null;
 }
 
 /**
  * POST /api/contextualization/[id]/promote
  *
- * Promotes all accepted ctx_extractions for a project into kg_entities
+ * Stages all accepted ctx_extractions for a project into kg_entities
  * (type=signal, approval_state=proposed) and creates a paired ai_suggestions
- * row (type=kg_entity, status=pending) so the Hub proposals queue picks them up.
+ * row (type=kg_entity, status=pending). This is import-time STAGING — it never
+ * publishes. Publishing (proposed → verified) is a human action via the batch
+ * review-queue (POST .../batches/[batchId]/review {decision:"approve"}).
  *
- * Idempotent: ON CONFLICT DO NOTHING on both tables.
+ * Approval-aware: before writing, it reads the existing kg_entities.approval_state
+ * and REFUSES to overwrite approved data (verified/deprecated). Skipped rows are
+ * reported with a reason instead of a silent ON CONFLICT DO NOTHING.
  */
 export async function POST(
   _req: Request,
@@ -46,27 +57,31 @@ export async function POST(
       );
       if (proj.rows.length === 0) return null;
 
-      // Fetch accepted extractions with proposed UNS paths
+      // Fetch accepted extractions with proposed UNS paths + their import batch
+      // (the batch comes from the source the extraction was parsed from).
       const rows = await c
         .query<ExtractionRow>(
-          `SELECT id, tag_name, roles, uns_path_proposed, confidence::text
-             FROM ctx_extractions
-            WHERE project_id = $1
-              AND tenant_id = $2::uuid
-              AND status = 'accepted'
-              AND uns_path_proposed IS NOT NULL
-            ORDER BY tag_name`,
+          `SELECT e.id, e.tag_name, e.roles, e.uns_path_proposed,
+                  e.confidence::text AS confidence, s.import_batch_id
+             FROM ctx_extractions e
+             LEFT JOIN ctx_sources s ON s.id = e.source_id
+            WHERE e.project_id = $1
+              AND e.tenant_id = $2::uuid
+              AND e.status = 'accepted'
+              AND e.uns_path_proposed IS NOT NULL
+            ORDER BY e.tag_name`,
           [projectId, ctx.tenantId],
         )
         .then((r) => r.rows);
 
       if (rows.length === 0) {
-        return { projectName: proj.rows[0].name, promoted: 0, skipped: 0 };
+        return { projectName: proj.rows[0].name, promoted: 0, skipped: 0, skips: [] };
       }
 
       const actorLabel = `import:ctx_project:${projectId}`;
       let promoted = 0;
       let skipped = 0;
+      const skips: { tag_name: string; reason: string; protected: boolean }[] = [];
 
       for (const row of rows) {
         const unsPath = row.uns_path_proposed!;
@@ -77,31 +92,53 @@ export async function POST(
         const properties = {
           roles: row.roles ?? [],
           confidence,
-          provenance: { ctx_extraction_id: row.id, ctx_project_id: projectId },
+          provenance: {
+            ctx_extraction_id: row.id,
+            ctx_project_id: projectId,
+            ctx_import_batch_id: row.import_batch_id, // audit link, not a lookup key
+          },
         };
 
-        // Upsert kg_entities: entity_type=signal, entity_id=uns_path (unique within tenant)
-        const ent = await c.query<{ id: string; was_new: boolean }>(
-          `INSERT INTO kg_entities
-               (tenant_id, entity_type, entity_id, name, properties,
-                approval_state, uns_path)
-             VALUES ($1::uuid, 'signal', $2, $3, $4::jsonb,
-                     'proposed', $5::ltree)
-             ON CONFLICT (tenant_id, entity_type, entity_id) DO NOTHING
-             RETURNING id, TRUE AS was_new`,
-          [ctx.tenantId, unsPath, row.tag_name, JSON.stringify(properties), ltreePath],
+        // Approval gate: read existing approval_state on the live natural key
+        // (tenant_id, entity_type, name) and refuse to overwrite approved data.
+        const existing = await c.query<{ approval_state: EntityApprovalState }>(
+          `SELECT approval_state FROM kg_entities
+            WHERE tenant_id = $1::uuid AND entity_type = 'signal' AND name = $2`,
+          [ctx.tenantId, row.tag_name],
         );
+        const decision = decidePromotion(existing.rows[0] ?? null);
 
-        if (ent.rows.length === 0) {
-          // Row already existed — still wire up ai_suggestions below (idempotent)
+        if (decision.action === "skip") {
           skipped++;
-        } else {
-          promoted++;
+          skips.push({
+            tag_name: row.tag_name,
+            reason: decision.reason ?? "skipped",
+            protected: decision.protectedRow ?? false,
+          });
+          continue; // do not touch the row, do not create a new suggestion
         }
 
-        // Create an ai_suggestions row only when one doesn't exist for this extraction yet.
-        // ai_suggestions has no unique constraint beyond PK, so we check first.
-        const existing = await c.query<{ id: string }>(
+        // Stage a fresh proposed entity (correct conflict target — migration 026).
+        const ins = buildEntityInsert({
+          tenantId: ctx.tenantId,
+          name: row.tag_name,
+          unsPath,
+          ltreePath,
+          propertiesJson: JSON.stringify(properties),
+          approvalState: IMPORT_APPROVAL_STATE,
+        });
+        const ent = await c.query<{ id: string }>(ins.text, ins.values);
+        if (ent.rows.length === 0) {
+          // Lost a race to a concurrent insert — treat as already-staged.
+          skipped++;
+          skips.push({ tag_name: row.tag_name, reason: "already staged (race)", protected: false });
+          continue;
+        }
+        promoted++;
+
+        // Paired ai_suggestions row (one review surface stays in lockstep on
+        // approve — see batches/[batchId]/review). Create only when absent.
+        const existingSug = await c.query<{ id: string }>(
           `SELECT id FROM ai_suggestions
             WHERE tenant_id = $1::uuid
               AND suggestion_type = 'kg_entity'
@@ -110,7 +147,7 @@ export async function POST(
           [ctx.tenantId, row.id],
         );
 
-        if (existing.rows.length === 0) {
+        if (existingSug.rows.length === 0) {
           await c.query(
             `INSERT INTO ai_suggestions
                (tenant_id, suggestion_type, extracted_data,
@@ -138,7 +175,7 @@ export async function POST(
         }
       }
 
-      return { projectName: proj.rows[0].name, promoted, skipped, total: rows.length };
+      return { projectName: proj.rows[0].name, promoted, skipped, total: rows.length, skips };
     });
 
     if (!result) {
