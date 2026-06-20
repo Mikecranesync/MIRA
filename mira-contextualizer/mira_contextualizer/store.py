@@ -199,7 +199,7 @@ class Store:
         """Distinct tag names extracted from PLC sources — cross-reference targets for documents."""
         rows = self._conn.execute(
             """SELECT DISTINCT e.tag_name FROM extractions e JOIN sources s ON s.id = e.source_id
-                WHERE e.project_id = ? AND s.source_type IN ('l5x','csv','st','plcopen')""",
+                WHERE e.project_id = ? AND s.source_type IN ('l5x','csv','st','plcopen','ccw')""",
             (pid,),
         ).fetchall()
         return [r["tag_name"] for r in rows]

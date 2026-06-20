@@ -11,7 +11,7 @@ import os
 # Resolved via sys.path (tests/conftest.py, app.py) or the PyInstaller bundle — see pyproject note.
 from mira_plc_parser import pipeline  # type: ignore
 
-from . import ccw
+from . import ccw, placement
 
 _CONFIDENCE_MAP = {"high": 0.9, "medium": 0.6, "med": 0.6, "low": 0.3}
 
@@ -85,9 +85,9 @@ def analyze_text(file_name: str, text: str) -> dict:
     """
     kind = ccw.detect_ccw(file_name, text)
     if kind == "ccw_modbus":
-        return {"kind": kind, "rows": ccw.parse_modbus(text), "note": None}
+        return {"kind": kind, "rows": placement.place_rows(ccw.parse_modbus(text)), "note": None}
     if kind == "ccw_logicalvalues":
-        return {"kind": kind, "rows": ccw.parse_logicalvalues(text), "note": None}
+        return {"kind": kind, "rows": placement.place_rows(ccw.parse_logicalvalues(text)), "note": None}
     if kind in ("ccw_settings", "ccw_solution"):
         return {"kind": kind, "rows": [], "note": ccw.guidance(kind)}
 

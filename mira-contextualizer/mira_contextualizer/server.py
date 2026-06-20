@@ -276,7 +276,7 @@ def make_handler(store: Store, gui_dir: str):
                           ".st / .stf / .iecst / .ccwmod / RmcVariables)", 400)
                 return
             result = ccw.parse_project(files)
-            src = store.create_source(pid, "other", "%s (%d files)" % (project_name, len(files)))
+            src = store.create_source(pid, "ccw", "%s (%d files)" % (project_name, len(files)))
             n = store.add_extractions(pid, src["id"], result["rows"])
             store.set_source_extraction(src["id"], {"meta": result["meta"], "files": result["files"]})
             store.set_source_status(src["id"], "done", "; ".join(result["notes"]) or None)

@@ -19,6 +19,8 @@ import os
 import re
 import xml.etree.ElementTree as ET
 
+from . import placement
+
 # role keyword vocab → role label (first match wins, multiple may apply)
 _ROLE_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"(?i)e[_-]?stop|emergency"), "safety"),
@@ -309,6 +311,10 @@ def parse_project(files: dict[str, str]) -> dict:
         if meta.get("ip"):
             ev["ip"] = meta["ip"]
         merged.insert(0, _row(meta["controller_model"], ["controller"], 0.9, ev))
+    # Deterministic UNS placement: give every CCW signal a UNS path (asset-prefix + standardized leaf
+    # + controller-derived prefix), the same way the L5X path gets one — so uns.json / i3x.json /
+    # HAS_SIGNAL are populated for a CCW project, not empty.
+    placement.place_rows(merged, meta)
     return {"rows": merged, "meta": meta, "files": file_report, "notes": notes}
 
 
