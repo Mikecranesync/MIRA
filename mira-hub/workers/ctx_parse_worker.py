@@ -10,6 +10,7 @@ Env:
     NEON_DATABASE_URL  — NeonDB connection string (psycopg2 format)
     MIRA_PARSER_ROOT   — optional override for the mira-plc-parser package root
 """
+
 from __future__ import annotations
 
 import json
@@ -105,18 +106,20 @@ def _run(source_id: str) -> None:
                 "confidence_source": confidence_str,
                 "uns_evidence": uns.get("evidence"),
             }
-            extractions.append((
-                str(uuid.uuid4()),
-                tenant_id,
-                project_id,
-                source_id,
-                tag_name,
-                roles,
-                uns_path,
-                i3x_element_id,
-                json.dumps(evidence),
-                confidence,
-            ))
+            extractions.append(
+                (
+                    str(uuid.uuid4()),
+                    tenant_id,
+                    project_id,
+                    source_id,
+                    tag_name,
+                    roles,
+                    uns_path,
+                    i3x_element_id,
+                    json.dumps(evidence),
+                    confidence,
+                )
+            )
 
         with conn:
             with conn.cursor() as cur:

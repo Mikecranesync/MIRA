@@ -1,4 +1,5 @@
 """Deterministic contextualization rules — entities + provenance, no guessing on bare prose."""
+
 from mira_contextualizer import contextualize
 
 

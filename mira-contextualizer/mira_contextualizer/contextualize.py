@@ -9,6 +9,7 @@ row so it lands in the same accept/reject/promote review surface.
 Design stance: strong on tables/codes/params/catalog-numbers; deliberately silent on free prose it
 can't ground (no guessing). Auditable and reproducible — the honest tradeoff of the no-LLM choice.
 """
+
 from __future__ import annotations
 
 import re
@@ -18,8 +19,17 @@ from . import manuals
 _BAND_TO_NUM = {"high": 0.9, "medium": 0.6, "low": 0.3}
 
 # Depth keys the manual miner adds; merged into a matching spotting candidate (never overwritten).
-_DEPTH_KEYS = ("cause", "next_check", "description", "units", "range", "setpoint",
-               "subject", "parameter", "match")
+_DEPTH_KEYS = (
+    "cause",
+    "next_check",
+    "description",
+    "units",
+    "range",
+    "setpoint",
+    "subject",
+    "parameter",
+    "match",
+)
 
 # Fault codes: E/F/A + 2–4 digits are distinctive (PowerFlex F004, GS10 E.x, etc.).
 _RE_FAULT = re.compile(r"\b([EFA]\d{2,4})\b")
@@ -33,11 +43,29 @@ _RE_CATALOG = re.compile(r"\b(\d{4}-[A-Z0-9]{2,}(?:-[A-Z0-9]+)?)\b")
 # Known product families (case-insensitive).
 _RE_FAMILY = re.compile(
     r"(?i)\b(PowerFlex\s?\d{2,3}|SINAMICS\s?\w+|Micro8\d0|MicroLogix|CompactLogix|ControlLogix"
-    r"|GS\d{1,2}|ATV\d{2,3}|ACS\d{2,3}|VLT)\b")
+    r"|GS\d{1,2}|ATV\d{2,3}|ACS\d{2,3}|VLT)\b"
+)
 _MANUFACTURERS = [
-    "rockwell", "allen-bradley", "allen bradley", "siemens", "abb", "schneider electric",
-    "schneider", "yaskawa", "danfoss", "automationdirect", "mitsubishi", "omron", "fanuc",
-    "lenze", "eaton", "weg", "delta electronics", "parker", "festo", "sick",
+    "rockwell",
+    "allen-bradley",
+    "allen bradley",
+    "siemens",
+    "abb",
+    "schneider electric",
+    "schneider",
+    "yaskawa",
+    "danfoss",
+    "automationdirect",
+    "mitsubishi",
+    "omron",
+    "fanuc",
+    "lenze",
+    "eaton",
+    "weg",
+    "delta electronics",
+    "parker",
+    "festo",
+    "sick",
 ]
 
 
@@ -59,8 +87,9 @@ def _iter_lines(blocks: list[dict]):
                 yield line, page
 
 
-def contextualize_blocks(blocks: list[dict], file_name: str,
-                         plc_tags: list[str] | None = None) -> list[dict]:
+def contextualize_blocks(
+    blocks: list[dict], file_name: str, plc_tags: list[str] | None = None
+) -> list[dict]:
     """Run every rule over the Document IR. Returns deduped candidate rows (store.add_extractions
     shape): tag_name, roles, uns_path_proposed, i3x_element_id, evidence_json, confidence."""
     plc_tags = [t for t in (plc_tags or []) if re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{2,}", t)]
@@ -79,10 +108,13 @@ def contextualize_blocks(blocks: list[dict], file_name: str,
                 c["_band"], c["confidence"] = band, band_to_num(band)
         else:
             found[key] = {
-                "tag_name": value, "roles": [role], "uns_path_proposed": None,
-                "i3x_element_id": None, "confidence": band_to_num(band), "_band": band,
-                "evidence_json": {"source": "document", "entity_type": role,
-                                  "mentions": [ev]},
+                "tag_name": value,
+                "roles": [role],
+                "uns_path_proposed": None,
+                "i3x_element_id": None,
+                "confidence": band_to_num(band),
+                "_band": band,
+                "evidence_json": {"source": "document", "entity_type": role, "mentions": [ev]},
             }
 
     for line, page in _iter_lines(blocks):

@@ -17,10 +17,10 @@ import httpx
 from . import quality_gate
 from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
-from .ctx_enrichment import fetch_ctx_approved_signals as _fetch_ctx_approved_signals
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
 from .conversation_router import route_intent
+from .ctx_enrichment import fetch_ctx_approved_signals as _fetch_ctx_approved_signals
 from .detection.recurring_fault import check_recurring_and_annotate
 from .dialogue_state import (
     DialogueState,

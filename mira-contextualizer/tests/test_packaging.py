@@ -1,5 +1,6 @@
 """Frozen-path guards. Source tests can't catch PyInstaller-only failures, so pin the two contracts
 the spec depends on (see memory pyinstaller-frozen-path-gotchas)."""
+
 import os
 import pathlib
 import sys
@@ -26,7 +27,9 @@ def test_pyinstaller_entry_uses_no_relative_imports():
     spec = (_ROOT / "MIRA-Contextualizer.spec").read_text(encoding="utf-8")
     assert '"mira_contextualizer/app.py"' in spec  # confirm the entry we're guarding
     app_src = (_ROOT / "mira_contextualizer" / "app.py").read_text(encoding="utf-8")
-    assert "from . " not in app_src and "from .server" not in app_src and "from .store" not in app_src
+    assert (
+        "from . " not in app_src and "from .server" not in app_src and "from .store" not in app_src
+    )
     assert "from mira_contextualizer.server import serve" in app_src
 
 
@@ -37,7 +40,9 @@ def test_main_module_uses_absolute_import():
 
 def test_spec_ships_gui_as_dest_named_gui():
     spec = (_ROOT / "MIRA-Contextualizer.spec").read_text(encoding="utf-8")
-    assert '("mira_contextualizer/gui", "gui")' in spec  # dest name must match _gui_dir()'s _MEIPASS/gui
+    assert (
+        '("mira_contextualizer/gui", "gui")' in spec
+    )  # dest name must match _gui_dir()'s _MEIPASS/gui
 
 
 def test_configure_bundled_tesseract_is_noop_when_not_frozen(monkeypatch):

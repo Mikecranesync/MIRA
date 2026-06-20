@@ -12,6 +12,7 @@ a scorecard, and a review audit. Also pins the full-vs-sanitized export contract
 This is the offline half of the demo; the Hub import → batch/dedupe/match/stage/review half is proven
 in mira-hub/src/app/api/contextualization/import/import.integration.test.ts (DB-backed).
 """
+
 import json
 import pathlib
 import zipfile
@@ -43,16 +44,26 @@ def demo_bundle(tmp_path):
     s = Store(str(tmp_path / "garage.db"))
     p = s.create_project("Garage Demo / Micro820 Conveyor")
     # the technician's machine identity (what the Hub asset_match keys on)
-    s.set_profile(p["id"], {"machine_name": "Garage Conveyor", "asset_type": "conveyor",
-                            "manufacturer": "Allen-Bradley", "model": "2080-LC20-20QBB",
-                            "controller_type": "Micro820", "serial_number": "MCR-820-0007",
-                            "site": "Garage"})
+    s.set_profile(
+        p["id"],
+        {
+            "machine_name": "Garage Conveyor",
+            "asset_type": "conveyor",
+            "manufacturer": "Allen-Bradley",
+            "model": "2080-LC20-20QBB",
+            "controller_type": "Micro820",
+            "serial_number": "MCR-820-0007",
+            "site": "Garage",
+        },
+    )
 
     # 1) the Micro820 CCW project (ST controller header + Modbus map) → proposed signals
-    res = ccw.parse_project({
-        _MODBUS.name: _MODBUS.read_text(encoding="utf-8", errors="replace"),
-        _ST.name: _ST.read_text(encoding="utf-8", errors="replace"),
-    })
+    res = ccw.parse_project(
+        {
+            _MODBUS.name: _MODBUS.read_text(encoding="utf-8", errors="replace"),
+            _ST.name: _ST.read_text(encoding="utf-8", errors="replace"),
+        }
+    )
     ccw_src = s.create_source(p["id"], "ccw", "Micro820 CCW project (ST + Modbus)")
     s.add_extractions(p["id"], ccw_src["id"], res["rows"])
 
@@ -60,7 +71,9 @@ def demo_bundle(tmp_path):
     blocks = [{"text": _GS10_MANUAL, "page": 1, "kind": "text"}]
     doc_src = s.create_source(p["id"], "manual", "gs10_manual_excerpt.txt")
     s.set_source_extraction(doc_src["id"], {"blocks": blocks})
-    cands = contextualize.contextualize_blocks(blocks, "gs10_manual_excerpt.txt", s.plc_tag_names(p["id"]))
+    cands = contextualize.contextualize_blocks(
+        blocks, "gs10_manual_excerpt.txt", s.plc_tag_names(p["id"])
+    )
     s.add_extractions(p["id"], doc_src["id"], cands)
 
     for e in s.list_extractions(p["id"]):
@@ -118,16 +131,29 @@ def test_demo_full_vs_sanitized_export(demo_bundle, tmp_path):
     s = Store(str(tmp_path / "garage2.db"))
     p = s.create_project("Garage Demo / Micro820 Conveyor")
     ccw_src = s.create_source(p["id"], "ccw", "Micro820 CCW project (ST + Modbus)")
-    s.add_extractions(p["id"], ccw_src["id"], ccw.parse_project({
-        _MODBUS.name: _MODBUS.read_text(encoding="utf-8", errors="replace"),
-        _ST.name: _ST.read_text(encoding="utf-8", errors="replace"),
-    })["rows"])
+    s.add_extractions(
+        p["id"],
+        ccw_src["id"],
+        ccw.parse_project(
+            {
+                _MODBUS.name: _MODBUS.read_text(encoding="utf-8", errors="replace"),
+                _ST.name: _ST.read_text(encoding="utf-8", errors="replace"),
+            }
+        )["rows"],
+    )
     doc_src = s.create_source(p["id"], "manual", "gs10_manual_excerpt.txt")
-    s.set_source_extraction(doc_src["id"], {"blocks": [{"text": _GS10_MANUAL, "page": 1, "kind": "text"}]})
-    s.add_extractions(p["id"], doc_src["id"],
-                      contextualize.contextualize_blocks(
-                          [{"text": _GS10_MANUAL, "page": 1, "kind": "text"}],
-                          "gs10_manual_excerpt.txt", s.plc_tag_names(p["id"])))
+    s.set_source_extraction(
+        doc_src["id"], {"blocks": [{"text": _GS10_MANUAL, "page": 1, "kind": "text"}]}
+    )
+    s.add_extractions(
+        p["id"],
+        doc_src["id"],
+        contextualize.contextualize_blocks(
+            [{"text": _GS10_MANUAL, "page": 1, "kind": "text"}],
+            "gs10_manual_excerpt.txt",
+            s.plc_tag_names(p["id"]),
+        ),
+    )
     for e in s.list_extractions(p["id"]):
         s.set_extraction_status(e["id"], "accepted")
 

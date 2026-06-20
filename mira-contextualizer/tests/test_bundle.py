@@ -1,4 +1,5 @@
 """Factory Context Bundle (bundle@1) — schemas, projections, and zip round-trip."""
+
 import io
 import json
 import zipfile
@@ -34,18 +35,41 @@ def seeded(tmp_path):
     s = Store(str(tmp_path / "t.db"))
     p = s.create_project("Line A")
     plc = s.create_source(p["id"], "l5x", "conveyor.L5X")
-    s.add_extractions(p["id"], plc["id"], [
-        {"tag_name": "Conv_Run", "roles": ["output"], "uns_path_proposed": UNS,
-         "i3x_element_id": UNS, "evidence_json": {"source_format": "rockwell_l5x"}, "confidence": 0.9},
-    ])
+    s.add_extractions(
+        p["id"],
+        plc["id"],
+        [
+            {
+                "tag_name": "Conv_Run",
+                "roles": ["output"],
+                "uns_path_proposed": UNS,
+                "i3x_element_id": UNS,
+                "evidence_json": {"source_format": "rockwell_l5x"},
+                "confidence": 0.9,
+            },
+        ],
+    )
     doc = s.create_source(p["id"], "manual", "gs10.pdf")
-    s.set_source_extraction(doc["id"], {"blocks": [{"text": "Conv_Run energizes the motor.", "page": 2}]})
-    s.add_extractions(p["id"], doc["id"], [
-        {"tag_name": "Conv_Run", "roles": ["tag_reference"], "uns_path_proposed": None,
-         "evidence_json": {"source": "document", "entity_type": "tag_reference",
-                           "mentions": [{"file": "gs10.pdf", "page": 2, "snippet": "Conv_Run energizes"}]},
-         "confidence": 0.9},
-    ])
+    s.set_source_extraction(
+        doc["id"], {"blocks": [{"text": "Conv_Run energizes the motor.", "page": 2}]}
+    )
+    s.add_extractions(
+        p["id"],
+        doc["id"],
+        [
+            {
+                "tag_name": "Conv_Run",
+                "roles": ["tag_reference"],
+                "uns_path_proposed": None,
+                "evidence_json": {
+                    "source": "document",
+                    "entity_type": "tag_reference",
+                    "mentions": [{"file": "gs10.pdf", "page": 2, "snippet": "Conv_Run energizes"}],
+                },
+                "confidence": 0.9,
+            },
+        ],
+    )
     for e in s.list_extractions(p["id"]):
         s.set_extraction_status(e["id"], "accepted")
     yield s, p["id"]
@@ -55,9 +79,19 @@ def seeded(tmp_path):
 def test_bundle_contents(seeded):
     store, pid = seeded
     files = bundle.build_bundle(store, pid)
-    for key in ("manifest.json", "uns.json", "i3x.json", "kg_entities.json",
-                "kg_relationships.json", "signals.csv", "review.json", "report.md", "IMPORT.md",
-                "scorecard.json", "evidence.json"):
+    for key in (
+        "manifest.json",
+        "uns.json",
+        "i3x.json",
+        "kg_entities.json",
+        "kg_relationships.json",
+        "signals.csv",
+        "review.json",
+        "report.md",
+        "IMPORT.md",
+        "scorecard.json",
+        "evidence.json",
+    ):
         assert key in files, key
     sc = json.loads(files["scorecard.json"])
     assert sc["schema"] == "mira-contextualizer/scorecard@1" and "score" in sc
@@ -72,7 +106,10 @@ def test_bundle_contents(seeded):
 
     i3x = json.loads(files["i3x.json"])
     leaf = next(o for o in i3x["objectInstances"] if o["elementId"] == UNS)
-    assert leaf["typeElementId"].endswith("signal") and leaf["parentId"] == "enterprise/site/area/line/cv_101"
+    assert (
+        leaf["typeElementId"].endswith("signal")
+        and leaf["parentId"] == "enterprise/site/area/line/cv_101"
+    )
 
     ents = json.loads(files["kg_entities.json"])["entities"]
     assert any(e["entity_type"] == "signal" and e["entity_id"] == UNS for e in ents)
@@ -93,23 +130,58 @@ def test_iso14224_and_ucum_projections(tmp_path):
     s = Store(str(tmp_path / "std.db"))
     p = s.create_project("Drive cell")
     plc = s.create_source(p["id"], "ccw", "ccw project")
-    s.add_extractions(p["id"], plc["id"], [
-        {"tag_name": "drive_current", "roles": ["motor", "analog"], "uns_path_proposed": UNS,
-         "i3x_element_id": UNS, "evidence_json": {"source": "ccw_modbus"}, "confidence": 0.9},
-    ])
+    s.add_extractions(
+        p["id"],
+        plc["id"],
+        [
+            {
+                "tag_name": "drive_current",
+                "roles": ["motor", "analog"],
+                "uns_path_proposed": UNS,
+                "i3x_element_id": UNS,
+                "evidence_json": {"source": "ccw_modbus"},
+                "confidence": 0.9,
+            },
+        ],
+    )
     doc = s.create_source(p["id"], "manual", "pf525.pdf")
-    s.add_extractions(p["id"], doc["id"], [
-        {"tag_name": "PowerFlex 525", "roles": ["model_family"], "uns_path_proposed": None,
-         "evidence_json": {"source": "document", "entity_type": "model_family"}, "confidence": 0.9},
-        {"tag_name": "F004", "roles": ["fault_code"], "uns_path_proposed": None,
-         "evidence_json": {"description": "Overcurrent", "cause": "motor cable shorted",
-                           "next_check": "check wiring"}, "confidence": 0.9},
-        {"tag_name": "drive_current", "roles": ["tag_reference"], "uns_path_proposed": None,
-         "evidence_json": {"source": "document", "entity_type": "tag_reference",
-                           "units": "A", "range": "0-9.6",
-                           "mentions": [{"file": "pf525.pdf", "page": 3, "snippet": "rated 9.6 A"}]},
-         "confidence": 0.9},
-    ])
+    s.add_extractions(
+        p["id"],
+        doc["id"],
+        [
+            {
+                "tag_name": "PowerFlex 525",
+                "roles": ["model_family"],
+                "uns_path_proposed": None,
+                "evidence_json": {"source": "document", "entity_type": "model_family"},
+                "confidence": 0.9,
+            },
+            {
+                "tag_name": "F004",
+                "roles": ["fault_code"],
+                "uns_path_proposed": None,
+                "evidence_json": {
+                    "description": "Overcurrent",
+                    "cause": "motor cable shorted",
+                    "next_check": "check wiring",
+                },
+                "confidence": 0.9,
+            },
+            {
+                "tag_name": "drive_current",
+                "roles": ["tag_reference"],
+                "uns_path_proposed": None,
+                "evidence_json": {
+                    "source": "document",
+                    "entity_type": "tag_reference",
+                    "units": "A",
+                    "range": "0-9.6",
+                    "mentions": [{"file": "pf525.pdf", "page": 3, "snippet": "rated 9.6 A"}],
+                },
+                "confidence": 0.9,
+            },
+        ],
+    )
     for e in s.list_extractions(p["id"]):
         s.set_extraction_status(e["id"], "accepted")
 
@@ -120,17 +192,27 @@ def test_iso14224_and_ucum_projections(tmp_path):
     # ISO 14224 failure mode + HAS_FAILURE_MODE edge from the (sole) component
     fault = next(e for e in ents if e["entity_type"] == "fault_code" and e["entity_id"] == "F004")
     assert fault["properties"]["iso14224"] == {
-        "standard": "ISO 14224", "fault_code": "F004", "failure_mode": "Overcurrent",
-        "failure_mechanism": "motor cable shorted", "maintenance_action": "check wiring"}
+        "standard": "ISO 14224",
+        "fault_code": "F004",
+        "failure_mode": "Overcurrent",
+        "failure_mechanism": "motor cable shorted",
+        "maintenance_action": "check wiring",
+    }
     assert any(e["entity_type"] == "component" and e["entity_id"] == "PowerFlex 525" for e in ents)
-    assert any(r["type"] == "HAS_FAILURE_MODE" and r["source"] == "PowerFlex 525"
-               and r["target"] == "F004" for r in rels)
+    assert any(
+        r["type"] == "HAS_FAILURE_MODE" and r["source"] == "PowerFlex 525" and r["target"] == "F004"
+        for r in rels
+    )
 
     # UCUM quantity attached to the matching signal entity + the i3X leaf
     sig = next(e for e in ents if e["entity_type"] == "signal" and e["entity_id"] == UNS)
-    assert sig["properties"]["quantity"] == {"unit": "A", "ucum_code": "A",
-                                             "quantity_kind": "electric current", "standard": "UCUM",
-                                             "range": "0-9.6"}
+    assert sig["properties"]["quantity"] == {
+        "unit": "A",
+        "ucum_code": "A",
+        "quantity_kind": "electric current",
+        "standard": "UCUM",
+        "range": "0-9.6",
+    }
     i3x = json.loads(files["i3x.json"])
     leaf = next(o for o in i3x["objectInstances"] if o["elementId"] == UNS)
     assert leaf["metadata"]["quantity"]["ucum_code"] == "A"
@@ -188,20 +270,43 @@ def test_end_to_end_ccw_plus_manual_to_bundle(tmp_path):
     assert sig["properties"]["quantity"]["quantity_kind"] == "electric current"
 
     counts = json.loads(files["manifest.json"])["counts"]
-    assert counts["uns_signals"] >= 4 and counts["iso14224_faults"] >= 1 and counts["ucum_quantities"] >= 1
+    assert (
+        counts["uns_signals"] >= 4
+        and counts["iso14224_faults"] >= 1
+        and counts["ucum_quantities"] >= 1
+    )
     s.close()
 
 
 def test_bundle_carries_profile_identity_and_new_asset_intent(tmp_path):
     s = Store(str(tmp_path / "id.db"))
     p = s.create_project("Garage Demo / Micro820 Conveyor")
-    s.set_profile(p["id"], {"machine_name": "Conveyor 1", "manufacturer": "Allen-Bradley",
-                            "model": "2080-LC50-24QWB", "controller_type": "Micro820",
-                            "serial_number": "SN-123", "site": "Garage"})
+    s.set_profile(
+        p["id"],
+        {
+            "machine_name": "Conveyor 1",
+            "manufacturer": "Allen-Bradley",
+            "model": "2080-LC50-24QWB",
+            "controller_type": "Micro820",
+            "serial_number": "SN-123",
+            "site": "Garage",
+        },
+    )
     plc = s.create_source(p["id"], "ccw", "ccw project")
-    s.add_extractions(p["id"], plc["id"], [
-        {"tag_name": "motor_running", "roles": ["motor"], "uns_path_proposed": UNS,
-         "i3x_element_id": UNS, "evidence_json": {"source": "ccw_modbus"}, "confidence": 0.9}])
+    s.add_extractions(
+        p["id"],
+        plc["id"],
+        [
+            {
+                "tag_name": "motor_running",
+                "roles": ["motor"],
+                "uns_path_proposed": UNS,
+                "i3x_element_id": UNS,
+                "evidence_json": {"source": "ccw_modbus"},
+                "confidence": 0.9,
+            }
+        ],
+    )
     for e in s.list_extractions(p["id"]):
         s.set_extraction_status(e["id"], "accepted")
 
@@ -216,8 +321,8 @@ def test_bundle_carries_profile_identity_and_new_asset_intent(tmp_path):
     man = json.loads(files["manifest.json"])
     am = man["asset_match"]
     assert am["manufacturer"] == "Allen-Bradley" and am["serial_number"] == "SN-123"
-    assert am["proposed_uns_path"]                       # derived from the accepted signal
-    assert am["source_file_hashes"]                      # at least one source fingerprint
+    assert am["proposed_uns_path"]  # derived from the accepted signal
+    assert am["source_file_hashes"]  # at least one source fingerprint
     # no hub_asset_id → create a draft asset; never overwrite verified data
     assert man["import"]["intent"] == "new_asset"
     assert man["import"]["policy"] == "propose_only"
@@ -254,7 +359,7 @@ def test_full_bundle_emits_evidence_and_preserves_provenance(seeded):
     # chain: signal entity → evidence block (same extraction id) → manifest source sha256
     ents = json.loads(files["kg_entities.json"])["entities"]
     sig = next(e for e in ents if e["entity_type"] == "signal" and e["entity_id"] == UNS)
-    assert sig["signal_uuid"]                                       # stable signal identity
+    assert sig["signal_uuid"]  # stable signal identity
     xid = sig["properties"]["provenance"]["ctx_extraction_id"]
     block = next(b for b in ev["evidence"] if b["extraction_id"] == xid)
     man_shas = {s["sha256"] for s in json.loads(files["manifest.json"])["sources"]}
@@ -285,8 +390,16 @@ def test_sanitized_bundle_has_no_raw_document_payloads(seeded):
     assert san_ev and all("snippet" not in b and "raw" not in b for b in san_ev)
 
     # derived structured context is still fully present (this is "sanitized", not "anonymous")
-    for key in ("uns.json", "i3x.json", "kg_entities.json", "kg_relationships.json",
-                "fault_catalog.json", "parameters.json", "scorecard.json", "signals.csv"):
+    for key in (
+        "uns.json",
+        "i3x.json",
+        "kg_entities.json",
+        "kg_relationships.json",
+        "fault_catalog.json",
+        "parameters.json",
+        "scorecard.json",
+        "signals.csv",
+    ):
         assert key in san, key
     # source refs + hashes survive sanitization (provenance chain still resolves)
     assert all(b["source_sha256"] for b in san_ev)
@@ -301,30 +414,55 @@ def test_entity_uuids_present_and_unique(tmp_path):
     s = Store(str(tmp_path / "uuids.db"))
     p = s.create_project("UUID cell")
     plc = s.create_source(p["id"], "ccw", "ccw")
-    s.add_extractions(p["id"], plc["id"], [
-        {"tag_name": "Conv_Run", "roles": ["motor"], "uns_path_proposed": UNS,
-         "i3x_element_id": UNS, "evidence_json": {"source": "ccw_modbus"}, "confidence": 0.9}])
+    s.add_extractions(
+        p["id"],
+        plc["id"],
+        [
+            {
+                "tag_name": "Conv_Run",
+                "roles": ["motor"],
+                "uns_path_proposed": UNS,
+                "i3x_element_id": UNS,
+                "evidence_json": {"source": "ccw_modbus"},
+                "confidence": 0.9,
+            }
+        ],
+    )
     doc = s.create_source(p["id"], "manual", "m.pdf")
-    s.add_extractions(p["id"], doc["id"], [
-        {"tag_name": "Conv_Run", "roles": ["tag_reference"], "uns_path_proposed": None,
-         "evidence_json": {"source": "document", "entity_type": "tag_reference", "mentions": [
-             {"file": "m.pdf", "page": 2, "snippet": "Conv_Run energizes the motor"},
-             {"file": "m.pdf", "page": 7, "snippet": "Conv_Run de-energizes on stop"}]},
-         "confidence": 0.9}])
+    s.add_extractions(
+        p["id"],
+        doc["id"],
+        [
+            {
+                "tag_name": "Conv_Run",
+                "roles": ["tag_reference"],
+                "uns_path_proposed": None,
+                "evidence_json": {
+                    "source": "document",
+                    "entity_type": "tag_reference",
+                    "mentions": [
+                        {"file": "m.pdf", "page": 2, "snippet": "Conv_Run energizes the motor"},
+                        {"file": "m.pdf", "page": 7, "snippet": "Conv_Run de-energizes on stop"},
+                    ],
+                },
+                "confidence": 0.9,
+            }
+        ],
+    )
     for e in s.list_extractions(p["id"]):
         s.set_extraction_status(e["id"], "accepted")
     files = bundle.build_bundle(s, p["id"])
 
     nodes = json.loads(files["i3x.json"])["objectInstances"]
     assert nodes and all(n["uns_node_uuid"] for n in nodes)
-    assert len({n["uns_node_uuid"] for n in nodes}) == len(nodes)   # one stable id per UNS node
+    assert len({n["uns_node_uuid"] for n in nodes}) == len(nodes)  # one stable id per UNS node
 
     rels = json.loads(files["kg_relationships.json"])["relationships"]
     assert rels and all(r["relationship_uuid"] for r in rels)
     assert len({r["relationship_uuid"] for r in rels}) == len(rels)  # no edge-id collisions
 
     mentions = [r for r in rels if r["type"] == "MENTIONS" and r["target"] == "Conv_Run"]
-    assert len(mentions) == 2                                        # two distinct mention edges
+    assert len(mentions) == 2  # two distinct mention edges
     assert mentions[0]["relationship_uuid"] != mentions[1]["relationship_uuid"]
 
     # each MENTIONS edge links back to a real evidence block (relationship_uuid derives from evidence)

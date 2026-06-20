@@ -4,6 +4,7 @@ These are the two dimensions that lift a project from "Inventory" to "Diagnosabl
 so the assertions mirror the evidence keys scorecard.compute_scorecard reads (cause/next_check;
 units/range/setpoint). Deterministic, no LLM — every case is a fixed string in → fixed rows out.
 """
+
 from mira_contextualizer import contextualize, manuals, scorecard
 
 
@@ -46,7 +47,8 @@ def test_fault_markdown_pipe_table():
 def test_fault_cue_prose():
     blocks = _blocks(
         "F030 Ground fault. Cause: insulation breakdown in motor leads. "
-        "Remedy: megger the motor and replace the cable if shorted.")
+        "Remedy: megger the motor and replace the cable if shorted."
+    )
     faults = _faults(manuals.mine(blocks, "m.pdf"))
     assert faults["F030"]["cause"].startswith("insulation breakdown")
     assert "megger the motor" in faults["F030"]["next_check"]
@@ -84,8 +86,9 @@ def test_bare_number_with_no_engineering_subject_is_ignored():
 
 
 def test_spec_tied_to_plc_tag_by_quantity():
-    rows = manuals.mine(_blocks("Drive speed range 0-1800 RPM"), "m.pdf",
-                        plc_tags=["drive_speed", "fault_alarm"])
+    rows = manuals.mine(
+        _blocks("Drive speed range 0-1800 RPM"), "m.pdf", plc_tags=["drive_speed", "fault_alarm"]
+    )
     tied = [r for r in rows if r["roles"][0] == "tag_reference"]
     assert tied and tied[0]["tag_name"] == "drive_speed"
     assert tied[0]["evidence_json"]["range"] == "0-1800"
@@ -93,8 +96,9 @@ def test_spec_tied_to_plc_tag_by_quantity():
 
 
 def test_spec_tied_to_plc_tag_by_exact_name():
-    rows = manuals.mine(_blocks("conveyor_speed nominal 60 Hz"), "m.pdf",
-                        plc_tags=["conveyor_speed"])
+    rows = manuals.mine(
+        _blocks("conveyor_speed nominal 60 Hz"), "m.pdf", plc_tags=["conveyor_speed"]
+    )
     tied = [r for r in rows if r["tag_name"] == "conveyor_speed"]
     assert tied and tied[0]["evidence_json"]["units"] == "Hz"
 
@@ -123,9 +127,17 @@ def test_contextualize_adds_units_and_lifts_scorecard():
     )
     cands = contextualize.contextualize_blocks(blocks, "manual.pdf", plc_tags=["drive_speed"])
     # shape it like stored rows (camelCase evidenceJson) for the scorecard
-    exts = [{"tagName": c["tag_name"], "roles": c["roles"], "unsPathProposed": None,
-             "evidenceJson": c["evidence_json"], "confidence": c["confidence"], "status": "accepted"}
-            for c in cands]
+    exts = [
+        {
+            "tagName": c["tag_name"],
+            "roles": c["roles"],
+            "unsPathProposed": None,
+            "evidenceJson": c["evidence_json"],
+            "confidence": c["confidence"],
+            "status": "accepted",
+        }
+        for c in cands
+    ]
     sc = scorecard.compute_scorecard(exts, [{"sourceType": "manual"}])
     dims = {d["key"]: d for d in sc["dimensions"]}
     assert dims["units_ranges"]["coverage"] == 1.0

@@ -1,4 +1,5 @@
 """Tests for ctx_enrichment helpers — offline, no DB required."""
+
 from __future__ import annotations
 
 import sys
@@ -9,9 +10,6 @@ _MIRA_BOTS = Path(__file__).resolve().parent.parent.parent  # mira-bots/
 if str(_MIRA_BOTS) not in sys.path:
     sys.path.insert(0, str(_MIRA_BOTS))
 
-import os
-
-import pytest
 
 from shared.ctx_enrichment import fetch_ctx_approved_signals
 
@@ -53,7 +51,14 @@ class TestFormatCtxSignals:
 
     def test_single_signal_produces_labeled_block(self):
         result = _format_ctx_signals(
-            [{"name": "Conv_Run", "uns_path": "enterprise/site1/area1/run", "roles": ["output"], "confidence": "0.9"}]
+            [
+                {
+                    "name": "Conv_Run",
+                    "uns_path": "enterprise/site1/area1/run",
+                    "roles": ["output"],
+                    "confidence": "0.9",
+                }
+            ]
         )
         assert "APPROVED PLC SIGNALS" in result
         assert "Conv_Run" in result

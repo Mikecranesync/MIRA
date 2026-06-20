@@ -1,4 +1,5 @@
 """CCW (Micro8xx) export support — matches the real MbSrvConf.xml / LogicalValues.csv formats."""
+
 from mira_contextualizer import ccw, engine
 
 MODBUS = """<modbusServer Version="2.0">
@@ -18,10 +19,12 @@ MODBUS = """<modbusServer Version="2.0">
   </modbusRegister>
 </modbusServer>"""
 
-LOGICAL = ("[Version1]\nFullName,Value\n"
-           "Controller.Micro820.Micro820.__SYSVA_FIRST_SCAN,\n"
-           "Controller.Micro820.Micro820._IO_EM_DI_00,\n"
-           "Controller.Micro820.Micro820.conveyor_running,1\n")
+LOGICAL = (
+    "[Version1]\nFullName,Value\n"
+    "Controller.Micro820.Micro820.__SYSVA_FIRST_SCAN,\n"
+    "Controller.Micro820.Micro820._IO_EM_DI_00,\n"
+    "Controller.Micro820.Micro820.conveyor_running,1\n"
+)
 
 VSSETTINGS = '<UserSettings><ApplicationIdentity version="14.0"/><ToolsOptions></ToolsOptions></UserSettings>'
 
@@ -43,15 +46,15 @@ def test_parse_modbus_names_addresses_roles_and_skips_system():
     assert "safety" in by["e_stop_active"]["roles"]
     assert by["motor_running"]["evidence_json"]["modbus_address"] == "000001"
     assert by["motor_running"]["evidence_json"]["data_type"] == "Bool"
-    assert by["motor_running"]["confidence"] == 0.9          # named user variable
+    assert by["motor_running"]["confidence"] == 0.9  # named user variable
     assert "digital_input" in by["_IO_EM_DI_00"]["roles"]
-    assert by["_IO_EM_DI_00"]["confidence"] == 0.6           # physical I/O point
+    assert by["_IO_EM_DI_00"]["confidence"] == 0.6  # physical I/O point
 
 
 def test_parse_logicalvalues_strips_prefix_and_skips_system():
     rows = ccw.parse_logicalvalues(LOGICAL)
     names = {r["tag_name"] for r in rows}
-    assert names == {"_IO_EM_DI_00", "conveyor_running"}     # __SYSVA dropped, prefix stripped
+    assert names == {"_IO_EM_DI_00", "conveyor_running"}  # __SYSVA dropped, prefix stripped
     conv = next(r for r in rows if r["tag_name"] == "conveyor_running")
     assert "conveyor" in conv["roles"] and conv["evidence_json"]["source"] == "ccw_logicalvalues"
 
@@ -81,25 +84,34 @@ def test_parse_st_decls_comments_controller_and_terminals():
     by = {r["tag_name"]: r for r in rows}
     assert by["motor_running"]["evidence_json"]["comment"] == "main drive run feedback"
     assert by["motor_running"]["evidence_json"]["data_type"] == "BOOL"
-    assert "safety" in by["e_stop_active"]["roles"]                 # from terminal I-02 label
+    assert "safety" in by["e_stop_active"]["roles"]  # from terminal I-02 label
     assert by["e_stop_active"]["evidence_json"]["terminal"] == "I-02"
-    assert "_IO_EM_DO_00" in by                                     # logic-referenced I/O
+    assert "_IO_EM_DO_00" in by  # logic-referenced I/O
 
 
 def test_parse_project_merges_and_enriches():
     res = ccw.parse_project({"MbSrvConf.xml": MODBUS, "Conv.st": ST, "LogicalValues.csv": LOGICAL})
     by = {r["tag_name"]: r for r in res["rows"]}
     mr = by["motor_running"]
-    assert mr["evidence_json"]["modbus_address"] == "000001"        # from MbSrvConf.xml
+    assert mr["evidence_json"]["modbus_address"] == "000001"  # from MbSrvConf.xml
     assert mr["evidence_json"]["comment"] == "main drive run feedback"  # from the .st
     assert {"ccw_modbus", "ccw_st_decl"} <= set(mr["evidence_json"]["sources"])
     assert res["meta"]["controller_model"] == "2080-LC20-20QBB"
-    assert any(r["tag_name"] == "2080-LC20-20QBB" and "controller" in r["roles"] for r in res["rows"])
+    assert any(
+        r["tag_name"] == "2080-LC20-20QBB" and "controller" in r["roles"] for r in res["rows"]
+    )
 
 
 def test_is_ccw_project_file():
-    for ok in ("MbSrvConf.xml", "LogicalValues.csv", "Prog2.stf", "spec.iecst",
-               "Modbus_6.ccwmod", "RmcVariables", "LogicView.xml"):
+    for ok in (
+        "MbSrvConf.xml",
+        "LogicalValues.csv",
+        "Prog2.stf",
+        "spec.iecst",
+        "Modbus_6.ccwmod",
+        "RmcVariables",
+        "LogicView.xml",
+    ):
         assert ccw.is_ccw_project_file(ok), ok
     for no in ("notes.pdf", "PrjLibrary.accdb", "persist.ccwx", "DlgCfg.xml"):
         assert not ccw.is_ccw_project_file(no), no

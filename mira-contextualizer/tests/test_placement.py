@@ -1,5 +1,6 @@
 """CCW → UNS placement: a CCW project import now fills uns.json / i3x.json / HAS_SIGNAL, and the
 scorecard placement dimension rises — the gap this work closes."""
+
 from mira_contextualizer import ccw, placement, scorecard
 
 # A small but realistic Micro820 CCW project: a Modbus map (engineering names + types + addresses) and
@@ -31,10 +32,16 @@ def test_ccw_project_rows_get_uns_paths():
     for tag in ("motor_running", "fault_alarm", "drive_current", "motor_speed"):
         assert by[tag]["uns_path_proposed"], tag
     # controller name seeds the line; asset-prefix + standardized leaf are applied
-    assert by["motor_running"]["uns_path_proposed"] == "enterprise/site1/area1/2080_lc50_24qwb/motor/running"
+    assert (
+        by["motor_running"]["uns_path_proposed"]
+        == "enterprise/site1/area1/2080_lc50_24qwb/motor/running"
+    )
     assert by["drive_current"]["uns_path_proposed"].endswith("/drive/current")
     # paths are unique (no collision dropped a signal)
-    paths = [by[t]["uns_path_proposed"] for t in ("motor_running", "fault_alarm", "drive_current", "motor_speed")]
+    paths = [
+        by[t]["uns_path_proposed"]
+        for t in ("motor_running", "fault_alarm", "drive_current", "motor_speed")
+    ]
     assert len(set(paths)) == 4
 
 
@@ -51,9 +58,17 @@ def test_scorecard_placement_dimension_rises_for_ccw_project():
     unplaced = [{**r, "uns_path_proposed": None} for r in placed]
 
     def cov(rows):
-        exts = [{"tagName": r["tag_name"], "roles": r["roles"],
-                 "unsPathProposed": r["uns_path_proposed"], "evidenceJson": r["evidence_json"],
-                 "confidence": r["confidence"], "status": "accepted"} for r in rows]
+        exts = [
+            {
+                "tagName": r["tag_name"],
+                "roles": r["roles"],
+                "unsPathProposed": r["uns_path_proposed"],
+                "evidenceJson": r["evidence_json"],
+                "confidence": r["confidence"],
+                "status": "accepted",
+            }
+            for r in rows
+        ]
         sc = scorecard.compute_scorecard(exts, [{"sourceType": "other"}])
         return next(d["coverage"] for d in sc["dimensions"] if d["key"] == "placement")
 

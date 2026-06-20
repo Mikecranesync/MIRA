@@ -1,4 +1,5 @@
 """Local SQLite store — project/source/extraction CRUD + counts + decision transitions."""
+
 import pytest
 
 from mira_contextualizer.store import Store
@@ -29,12 +30,28 @@ def test_source_and_extraction_flow_with_counts(store):
     p = store.create_project("P")
     src = store.create_source(p["id"], "l5x", "conveyor.L5X")
     assert src["status"] == "pending"
-    n = store.add_extractions(p["id"], src["id"], [
-        {"tag_name": "Conveyor_Run", "roles": ["motor"], "uns_path_proposed": "e/s/a/l/cv/run",
-         "i3x_element_id": "e/s/a/l/cv/run", "evidence_json": {"x": 1}, "confidence": 0.9},
-        {"tag_name": "Scratch", "roles": [], "uns_path_proposed": None,
-         "i3x_element_id": None, "evidence_json": {}, "confidence": 0.3},
-    ])
+    n = store.add_extractions(
+        p["id"],
+        src["id"],
+        [
+            {
+                "tag_name": "Conveyor_Run",
+                "roles": ["motor"],
+                "uns_path_proposed": "e/s/a/l/cv/run",
+                "i3x_element_id": "e/s/a/l/cv/run",
+                "evidence_json": {"x": 1},
+                "confidence": 0.9,
+            },
+            {
+                "tag_name": "Scratch",
+                "roles": [],
+                "uns_path_proposed": None,
+                "i3x_element_id": None,
+                "evidence_json": {},
+                "confidence": 0.3,
+            },
+        ],
+    )
     assert n == 2
     store.set_source_status(src["id"], "done")
 
@@ -51,9 +68,19 @@ def test_source_and_extraction_flow_with_counts(store):
 def test_decision_transitions_and_accepted_count(store):
     p = store.create_project("P")
     src = store.create_source(p["id"], "l5x", "f.L5X")
-    store.add_extractions(p["id"], src["id"], [
-        {"tag_name": "A", "roles": [], "uns_path_proposed": "x", "evidence_json": {}, "confidence": 0.9},
-    ])
+    store.add_extractions(
+        p["id"],
+        src["id"],
+        [
+            {
+                "tag_name": "A",
+                "roles": [],
+                "uns_path_proposed": "x",
+                "evidence_json": {},
+                "confidence": 0.9,
+            },
+        ],
+    )
     eid = store.list_extractions(p["id"])[0]["id"]
     updated = store.set_extraction_status(eid, "accepted")
     assert updated["status"] == "accepted"

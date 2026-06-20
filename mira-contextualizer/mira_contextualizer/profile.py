@@ -14,6 +14,7 @@ normalized extraction with its review decision and provenance, and the export hi
   open_profile(store, data)        -> restore the profile into the store, return the new project
   recents_load / recents_add       -> the File ▸ Recent Profiles list (a small JSON sidecar)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -58,17 +59,28 @@ def save_profile(store: Store, project_id: str) -> dict:
         full = store.get_source(s["id"])
         ir = full.get("extracted") if full else None
         rows = by_source.get(s["id"], [])
-        src_out.append({
-            "fileName": s["fileName"], "sourceType": s["sourceType"], "status": s["status"],
-            "errorMessage": s.get("errorMessage"),
-            "sha256": _fingerprint(ir, rows),
-            "extracted": ir,
-            "extractions": [{
-                "tagName": e["tagName"], "roles": e["roles"], "unsPathProposed": e["unsPathProposed"],
-                "i3xElementId": e["i3xElementId"], "evidenceJson": e["evidenceJson"],
-                "confidence": e["confidence"], "status": e["status"],
-            } for e in rows],
-        })
+        src_out.append(
+            {
+                "fileName": s["fileName"],
+                "sourceType": s["sourceType"],
+                "status": s["status"],
+                "errorMessage": s.get("errorMessage"),
+                "sha256": _fingerprint(ir, rows),
+                "extracted": ir,
+                "extractions": [
+                    {
+                        "tagName": e["tagName"],
+                        "roles": e["roles"],
+                        "unsPathProposed": e["unsPathProposed"],
+                        "i3xElementId": e["i3xElementId"],
+                        "evidenceJson": e["evidenceJson"],
+                        "confidence": e["confidence"],
+                        "status": e["status"],
+                    }
+                    for e in rows
+                ],
+            }
+        )
 
     return {
         "schema": SCHEMA,
@@ -76,10 +88,16 @@ def save_profile(store: Store, project_id: str) -> dict:
         "tool_version": __version__,
         "saved_at": _now(),
         "profile": {
-            "id": proj["id"], "name": proj["name"], "description": proj.get("description"),
-            "identity": {k: proj.get("profile", {}).get(k) for k in PROFILE_FIELDS
-                         if proj.get("profile", {}).get(k) not in (None, "")},
-            "createdAt": proj.get("createdAt"), "updatedAt": proj.get("updatedAt"),
+            "id": proj["id"],
+            "name": proj["name"],
+            "description": proj.get("description"),
+            "identity": {
+                k: proj.get("profile", {}).get(k)
+                for k in PROFILE_FIELDS
+                if proj.get("profile", {}).get(k) not in (None, "")
+            },
+            "createdAt": proj.get("createdAt"),
+            "updatedAt": proj.get("updatedAt"),
         },
         "sources": src_out,
         "exports": store.list_exports(project_id),
@@ -104,19 +122,28 @@ def open_profile(store: Store, data: dict | str) -> dict:
     if (data or {}).get("schema") != SCHEMA:
         raise ValueError("not a %s document" % SCHEMA)
     prof = data.get("profile") or {}
-    proj = store.create_project(prof.get("name") or "Imported profile",
-                                prof.get("description"), profile=prof.get("identity") or {})
+    proj = store.create_project(
+        prof.get("name") or "Imported profile",
+        prof.get("description"),
+        profile=prof.get("identity") or {},
+    )
     pid = proj["id"]
     for s in data.get("sources") or []:
         src = store.create_source(pid, s.get("sourceType") or "other", s["fileName"])
         if s.get("extracted") is not None:
             store.set_source_extraction(src["id"], s["extracted"])
-        rows = [{
-            "tag_name": e["tagName"], "roles": e.get("roles") or [],
-            "uns_path_proposed": e.get("unsPathProposed"), "i3x_element_id": e.get("i3xElementId"),
-            "evidence_json": e.get("evidenceJson") or {}, "confidence": e.get("confidence"),
-            "status": e.get("status") or "pending",
-        } for e in (s.get("extractions") or [])]
+        rows = [
+            {
+                "tag_name": e["tagName"],
+                "roles": e.get("roles") or [],
+                "uns_path_proposed": e.get("unsPathProposed"),
+                "i3x_element_id": e.get("i3xElementId"),
+                "evidence_json": e.get("evidenceJson") or {},
+                "confidence": e.get("confidence"),
+                "status": e.get("status") or "pending",
+            }
+            for e in (s.get("extractions") or [])
+        ]
         store.add_extractions(pid, src["id"], rows)
         store.set_source_status(src["id"], s.get("status") or "done", s.get("errorMessage"))
     return store.get_project(pid)

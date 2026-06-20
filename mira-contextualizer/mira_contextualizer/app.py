@@ -3,6 +3,7 @@
 Same stdlib + Edge app-mode pattern as mira-plc-parser/gui/desktop.py, but the server carries a JSON
 API over a local SQLite store, not just static files. Fully offline (127.0.0.1 only).
 """
+
 from __future__ import annotations
 
 import os
@@ -50,6 +51,7 @@ def _configure_bundled_tesseract() -> None:
     if os.path.isfile(exe):
         try:
             import pytesseract
+
             pytesseract.pytesseract.tesseract_cmd = exe
             os.environ.setdefault("TESSDATA_PREFIX", os.path.join(base, "tesseract", "tessdata"))
         except Exception:  # noqa: BLE001 — OCR just stays unavailable
@@ -88,6 +90,7 @@ def main() -> int:
     # package" in the frozen exe (see memory pyinstaller-frozen-path-gotchas #1).
     if "--version" in sys.argv:
         from mira_contextualizer import __version__
+
         print("%s %s" % (APP_NAME, __version__))
         return 0
 
@@ -118,10 +121,15 @@ def main() -> int:
     try:
         if edge:
             profile = tempfile.mkdtemp(prefix="mira-contextualizer-")
-            subprocess.Popen([
-                edge, "--app=%s" % url, "--window-size=%d,%d" % WINDOW_SIZE,
-                "--user-data-dir=%s" % profile, "--no-first-run",
-            ]).wait()
+            subprocess.Popen(
+                [
+                    edge,
+                    "--app=%s" % url,
+                    "--window-size=%d,%d" % WINDOW_SIZE,
+                    "--user-data-dir=%s" % profile,
+                    "--no-first-run",
+                ]
+            ).wait()
         else:
             print("%s: Edge not found; opening in your default browser. Ctrl+C to quit." % APP_NAME)
             webbrowser.open(url)

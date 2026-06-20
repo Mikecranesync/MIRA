@@ -245,9 +245,7 @@ async def _submit_photo_to_hub(raw_bytes: bytes, caption: str, update: Update) -
     )
 
 
-async def _submit_doc_to_hub(
-    pdf_bytes: bytes, filename: str, caption: str, update: Update
-) -> bool:
+async def _submit_doc_to_hub(pdf_bytes: bytes, filename: str, caption: str, update: Update) -> bool:
     """Build the §2 intake envelope for a PDF and POST it to the Hub.
 
     Returns True on a 2xx Hub response. Never raises.

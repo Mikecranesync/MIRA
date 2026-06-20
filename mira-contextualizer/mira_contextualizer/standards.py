@@ -16,6 +16,7 @@ maintenance knowledge graph is expected to speak — it adds NO new extraction:
 Pure lookup + reshape; stdlib only; offline. Everything produced is *proposed* — a human approves it
 in the Hub. Used by ``bundle.py`` to enrich the i3X + kg_entities / kg_relationships projections.
 """
+
 from __future__ import annotations
 
 # unit symbol (lower-cased, as the miner captures it) -> (UCUM case-sensitive code, quantity kind).
@@ -98,6 +99,6 @@ def iso14224_fault(code: str, evidence: dict | None) -> dict | None:
         "standard": "ISO 14224",
         "fault_code": code,
         "failure_mode": ev.get("description") or code,
-        "failure_mechanism": cause,        # ISO 14224 "failure mechanism / cause"
-        "maintenance_action": action,      # the corrective / next-check step
+        "failure_mechanism": cause,  # ISO 14224 "failure mechanism / cause"
+        "maintenance_action": action,  # the corrective / next-check step
     }

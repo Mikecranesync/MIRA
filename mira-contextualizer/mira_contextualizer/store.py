@@ -5,6 +5,7 @@ the tenant_id / RLS columns (a desktop install is single-user). Stdlib-only (sql
 JSON-encoded list/dict columns. Writes are serialized with a lock because the local HTTP server is
 multi-threaded and shares one connection.
 """
+
 from __future__ import annotations
 
 import json
@@ -66,10 +67,20 @@ CREATE INDEX IF NOT EXISTS idx_exports_project ON exports(project_id);
 # Machine-profile identity / metadata stored as a JSON dict in projects.profile_json. These are the
 # fields a saved .miraprofile carries and the bundle's asset-matching block reads for Hub import.
 PROFILE_FIELDS = (
-    "machine_name", "asset_type", "manufacturer", "model", "serial_number",
-    "controller_type", "controller_ip", "plc_program_name",
-    "customer", "site", "area", "line",
-    "proposed_uns_path", "hub_asset_id",
+    "machine_name",
+    "asset_type",
+    "manufacturer",
+    "model",
+    "serial_number",
+    "controller_type",
+    "controller_ip",
+    "plc_program_name",
+    "customer",
+    "site",
+    "area",
+    "line",
+    "proposed_uns_path",
+    "hub_asset_id",
 )
 
 
@@ -106,19 +117,32 @@ class Store:
         self._conn.close()
 
     # ── projects ──────────────────────────────────────────────────────────────
-    def create_project(self, name: str, description: str | None = None,
-                       profile: dict | None = None, pid: str | None = None) -> dict:
+    def create_project(
+        self,
+        name: str,
+        description: str | None = None,
+        profile: dict | None = None,
+        pid: str | None = None,
+    ) -> dict:
         name = (name or "").strip()
         if not name:
             raise ValueError("name is required")
         pid, now = pid or _uid(), _now()
-        prof = {k: v for k, v in (profile or {}).items() if k in PROFILE_FIELDS and v not in (None, "")}
+        prof = {
+            k: v for k, v in (profile or {}).items() if k in PROFILE_FIELDS and v not in (None, "")
+        }
         with self._lock:
             self._conn.execute(
                 "INSERT INTO projects (id, name, description, status, profile_json, created_at,"
                 " updated_at) VALUES (?, ?, ?, 'active', ?, ?, ?)",
-                (pid, name, (description or "").strip() or None,
-                 json.dumps(prof) if prof else None, now, now),
+                (
+                    pid,
+                    name,
+                    (description or "").strip() or None,
+                    json.dumps(prof) if prof else None,
+                    now,
+                    now,
+                ),
             )
             self._conn.commit()
         return self.get_project(pid)  # type: ignore[return-value]
@@ -148,8 +172,12 @@ class Store:
 
     # ── sources ───────────────────────────────────────────────────────────────
     def create_source(
-        self, pid: str, source_type: str, file_name: str,
-        file_path: str | None = None, status: str = "pending",
+        self,
+        pid: str,
+        source_type: str,
+        file_name: str,
+        file_path: str | None = None,
+        status: str = "pending",
     ) -> dict:
         sid, now = _uid(), _now()
         with self._lock:
@@ -159,7 +187,9 @@ class Store:
                 (sid, pid, source_type, file_name, file_path, status, now, now),
             )
             self._conn.commit()
-        return self._source_row(self._conn.execute("SELECT * FROM sources WHERE id = ?", (sid,)).fetchone())
+        return self._source_row(
+            self._conn.execute("SELECT * FROM sources WHERE id = ?", (sid,)).fetchone()
+        )
 
     def set_source_status(self, sid: str, status: str, error: str | None = None) -> None:
         with self._lock:
@@ -198,11 +228,20 @@ class Store:
         ts = _now()
         params = [
             (
-                _uid(), pid, sid, r["tag_name"], json.dumps(r.get("roles") or []),
-                r.get("uns_path_proposed"), r.get("i3x_element_id"),
-                json.dumps(r.get("evidence_json") or {}), r.get("confidence"),
-                r.get("status") if r.get("status") in ("pending", "accepted", "rejected") else "pending",
-                ts, ts,
+                _uid(),
+                pid,
+                sid,
+                r["tag_name"],
+                json.dumps(r.get("roles") or []),
+                r.get("uns_path_proposed"),
+                r.get("i3x_element_id"),
+                json.dumps(r.get("evidence_json") or {}),
+                r.get("confidence"),
+                r.get("status")
+                if r.get("status") in ("pending", "accepted", "rejected")
+                else "pending",
+                ts,
+                ts,
             )
             for r in rows
         ]
@@ -278,8 +317,9 @@ class Store:
         return json.loads(r["profile_json"])
 
     # ── export history ──────────────────────────────────────────────────────────
-    def add_export(self, pid: str, kind: str, target: str | None = None,
-                   detail: dict | None = None) -> dict:
+    def add_export(
+        self, pid: str, kind: str, target: str | None = None, detail: dict | None = None
+    ) -> dict:
         eid, now = _uid(), _now()
         with self._lock:
             self._conn.execute(
@@ -294,38 +334,63 @@ class Store:
         rows = self._conn.execute(
             "SELECT * FROM exports WHERE project_id = ? ORDER BY created_at DESC", (pid,)
         ).fetchall()
-        return [{"id": r["id"], "kind": r["kind"], "target": r["target"],
-                 "detail": json.loads(r["detail_json"] or "{}"), "createdAt": r["created_at"]}
-                for r in rows]
+        return [
+            {
+                "id": r["id"],
+                "kind": r["kind"],
+                "target": r["target"],
+                "detail": json.loads(r["detail_json"] or "{}"),
+                "createdAt": r["created_at"],
+            }
+            for r in rows
+        ]
 
     # ── row mappers ───────────────────────────────────────────────────────────
     @staticmethod
     def _project_row(r: sqlite3.Row) -> dict:
         keys = r.keys()
         return {
-            "id": r["id"], "name": r["name"], "description": r["description"],
-            "status": r["status"], "sourceCount": r["source_count"],
-            "extractionCount": r["extraction_count"], "acceptedCount": r["accepted_count"],
-            "profile": json.loads(r["profile_json"]) if ("profile_json" in keys and r["profile_json"])
+            "id": r["id"],
+            "name": r["name"],
+            "description": r["description"],
+            "status": r["status"],
+            "sourceCount": r["source_count"],
+            "extractionCount": r["extraction_count"],
+            "acceptedCount": r["accepted_count"],
+            "profile": json.loads(r["profile_json"])
+            if ("profile_json" in keys and r["profile_json"])
             else {},
-            "createdAt": r["created_at"], "updatedAt": r["updated_at"],
+            "createdAt": r["created_at"],
+            "updatedAt": r["updated_at"],
         }
 
     @staticmethod
     def _source_row(r: sqlite3.Row) -> dict:
         return {
-            "id": r["id"], "projectId": r["project_id"], "sourceType": r["source_type"],
-            "fileName": r["file_name"], "filePath": r["file_path"], "status": r["status"],
-            "errorMessage": r["error_message"], "createdAt": r["created_at"],
+            "id": r["id"],
+            "projectId": r["project_id"],
+            "sourceType": r["source_type"],
+            "fileName": r["file_name"],
+            "filePath": r["file_path"],
+            "status": r["status"],
+            "errorMessage": r["error_message"],
+            "createdAt": r["created_at"],
             "updatedAt": r["updated_at"],
         }
 
     @staticmethod
     def _extraction_row(r: sqlite3.Row) -> dict:
         return {
-            "id": r["id"], "sourceId": r["source_id"], "fileName": r["file_name"],
-            "tagName": r["tag_name"], "roles": json.loads(r["roles"] or "[]"),
-            "unsPathProposed": r["uns_path_proposed"], "i3xElementId": r["i3x_element_id"],
-            "evidenceJson": json.loads(r["evidence_json"] or "{}"), "confidence": r["confidence"],
-            "status": r["status"], "createdAt": r["created_at"], "updatedAt": r["updated_at"],
+            "id": r["id"],
+            "sourceId": r["source_id"],
+            "fileName": r["file_name"],
+            "tagName": r["tag_name"],
+            "roles": json.loads(r["roles"] or "[]"),
+            "unsPathProposed": r["uns_path_proposed"],
+            "i3xElementId": r["i3x_element_id"],
+            "evidenceJson": json.loads(r["evidence_json"] or "{}"),
+            "confidence": r["confidence"],
+            "status": r["status"],
+            "createdAt": r["created_at"],
+            "updatedAt": r["updated_at"],
         }

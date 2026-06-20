@@ -27,6 +27,7 @@ Note (branch): the richer asset_graph/registers/edges emitters live on the parse
 feat/vfd-analyzer-auto-map branch; bundle@1 derives signals.csv from accepted extractions and defers
 the full asset graph until those emitters merge.
 """
+
 from __future__ import annotations
 
 import csv
@@ -115,15 +116,23 @@ def _kg(accepted: list[dict], project_id: str, quantities: dict | None = None) -
     index: dict[str, dict] = {}
 
     def prov(e: dict) -> dict:
-        return {"ctx_project_id": project_id, "ctx_extraction_id": e["id"],
-                "evidence": e.get("evidenceJson", {})}
+        return {
+            "ctx_project_id": project_id,
+            "ctx_extraction_id": e["id"],
+            "evidence": e.get("evidenceJson", {}),
+        }
 
     def ent(entity_type: str, entity_id: str, name: str, props: dict) -> dict:
         key = "%s:%s" % (entity_type, entity_id)
         if key not in seen:
             seen.add(key)
-            index[key] = {"entity_type": entity_type, "entity_id": entity_id, "name": name,
-                          "approval_state": "proposed", "properties": props}
+            index[key] = {
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+                "name": name,
+                "approval_state": "proposed",
+                "properties": props,
+            }
             entities.append(index[key])
         return index[key]
 
@@ -134,17 +143,31 @@ def _kg(accepted: list[dict], project_id: str, quantities: dict | None = None) -
         path = e.get("unsPathProposed")
         if not path:
             continue
-        node = ent("signal", path, e["tagName"],
-                   {"roles": e.get("roles") or [], "confidence": e.get("confidence"),
-                    "provenance": prov(e)})
+        node = ent(
+            "signal",
+            path,
+            e["tagName"],
+            {
+                "roles": e.get("roles") or [],
+                "confidence": e.get("confidence"),
+                "provenance": prov(e),
+            },
+        )
         node.setdefault("signal_uuid", _eid("signal", project_id, path))
         signal_by_tag.setdefault(e["tagName"], node)
         segs = _uns_segments(path)
         if len(segs) >= 2:
             asset = "/".join(segs[:-1])
             ent("asset", asset, segs[-2], {"provenance": prov(e)})
-            relationships.append({"type": "HAS_SIGNAL", "source": asset, "target": path,
-                                  "approval_state": "proposed", "evidence": prov(e)})
+            relationships.append(
+                {
+                    "type": "HAS_SIGNAL",
+                    "source": asset,
+                    "target": path,
+                    "approval_state": "proposed",
+                    "evidence": prov(e),
+                }
+            )
 
     # Component identity (ISO 14224 "equipment unit") from model / catalog mentions — the thing
     # failure modes hang off. Faults link only when there is exactly one, to avoid wrong attributions.
@@ -154,8 +177,16 @@ def _kg(accepted: list[dict], project_id: str, quantities: dict | None = None) -
             continue
         primary = (e.get("roles") or ["signal"])[0]
         if primary in ("model_family", "catalog_number"):
-            ent("component", e["tagName"], e["tagName"],
-                {"identifier_type": primary, "confidence": e.get("confidence"), "provenance": prov(e)})
+            ent(
+                "component",
+                e["tagName"],
+                e["tagName"],
+                {
+                    "identifier_type": primary,
+                    "confidence": e.get("confidence"),
+                    "provenance": prov(e),
+                },
+            )
             if e["tagName"] not in component_ids:
                 component_ids.append(e["tagName"])
     sole_component = component_ids[0] if len(component_ids) == 1 else None
@@ -177,24 +208,39 @@ def _kg(accepted: list[dict], project_id: str, quantities: dict | None = None) -
                 props["iso14224"] = iso
             node = ent("fault_code", e["tagName"], e["tagName"], props)
             if iso and sole_component:
-                relationships.append({"type": "HAS_FAILURE_MODE", "source": sole_component,
-                                      "target": e["tagName"], "approval_state": "proposed",
-                                      "evidence": prov(e)})
+                relationships.append(
+                    {
+                        "type": "HAS_FAILURE_MODE",
+                        "source": sole_component,
+                        "target": e["tagName"],
+                        "approval_state": "proposed",
+                        "evidence": prov(e),
+                    }
+                )
         else:
-            node = ent(primary, e["tagName"], e["tagName"],
-                       {"confidence": e.get("confidence"), "provenance": prov(e)})
+            node = ent(
+                primary,
+                e["tagName"],
+                e["tagName"],
+                {"confidence": e.get("confidence"), "provenance": prov(e)},
+            )
             if primary == "tag_reference":
                 # one MENTIONS edge per mention; its id derives from the per-mention evidence_uuid
                 # (same key as _evidence) so the same tag mentioned N times yields N distinct, linkable
                 # edges instead of one colliding id.
                 for i, m in enumerate(ev.get("mentions", [])):
                     euid = _eid("evidence", e["id"], i)
-                    relationships.append({
-                        "type": "MENTIONS", "source": "document:%s" % m.get("file"),
-                        "target": e["tagName"], "approval_state": "proposed",
-                        "evidence_uuid": euid,
-                        "relationship_uuid": _eid("relationship", "MENTIONS", euid),
-                        "evidence": {"page": m.get("page"), "snippet": m.get("snippet")}})
+                    relationships.append(
+                        {
+                            "type": "MENTIONS",
+                            "source": "document:%s" % m.get("file"),
+                            "target": e["tagName"],
+                            "approval_state": "proposed",
+                            "evidence_uuid": euid,
+                            "relationship_uuid": _eid("relationship", "MENTIONS", euid),
+                            "evidence": {"page": m.get("page"), "snippet": m.get("snippet")},
+                        }
+                    )
 
         # UCUM quantity: carry it on the document entity, and attach it to the matching UNS signal.
         q = quantities.get(e["tagName"])
@@ -206,11 +252,15 @@ def _kg(accepted: list[dict], project_id: str, quantities: dict | None = None) -
 
     # stamp a stable id on every edge that didn't already derive one (MENTIONS derives from evidence).
     for r in relationships:
-        r.setdefault("relationship_uuid",
-                     _eid("relationship", project_id, r["type"], r["source"], r["target"]))
+        r.setdefault(
+            "relationship_uuid",
+            _eid("relationship", project_id, r["type"], r["source"], r["target"]),
+        )
 
-    return ({"schema": "mira-contextualizer/kg_entities@1", "entities": entities},
-            {"schema": "mira-contextualizer/kg_relationships@1", "relationships": relationships})
+    return (
+        {"schema": "mira-contextualizer/kg_entities@1", "entities": entities},
+        {"schema": "mira-contextualizer/kg_relationships@1", "relationships": relationships},
+    )
 
 
 def _fault_catalog(accepted: list[dict]) -> dict:
@@ -223,12 +273,19 @@ def _fault_catalog(accepted: list[dict]) -> dict:
             continue
         ev = e.get("evidenceJson") or {}
         iso = standards.iso14224_fault(e["tagName"], ev) or {
-            "standard": "ISO 14224", "fault_code": e["tagName"],
+            "standard": "ISO 14224",
+            "fault_code": e["tagName"],
             "failure_mode": ev.get("description") or e["tagName"],
-            "failure_mechanism": None, "maintenance_action": None}
+            "failure_mechanism": None,
+            "maintenance_action": None,
+        }
         iso["provenance"] = {"mentions": ev.get("mentions", []), "confidence": e.get("confidence")}
         faults.append(iso)
-    return {"schema": "mira-contextualizer/fault_catalog@1", "standard": "ISO 14224", "faults": faults}
+    return {
+        "schema": "mira-contextualizer/fault_catalog@1",
+        "standard": "ISO 14224",
+        "faults": faults,
+    }
 
 
 def _parameters(accepted: list[dict], quantities: dict) -> dict:
@@ -242,8 +299,12 @@ def _parameters(accepted: list[dict], quantities: dict) -> dict:
         is_param = bool({"parameter", "spec"} & set(roles))
         if not (q or is_param):
             continue
-        entry = {"name": e["tagName"], "roles": roles, "confidence": e.get("confidence"),
-                 "provenance": {"mentions": ev.get("mentions", [])}}
+        entry = {
+            "name": e["tagName"],
+            "roles": roles,
+            "confidence": e.get("confidence"),
+            "provenance": {"mentions": ev.get("mentions", [])},
+        }
         if q:
             entry["quantity"] = q
         else:  # a parameter without a UCUM-recognized unit — keep the raw captured spec
@@ -267,21 +328,34 @@ def _evidence(accepted: list[dict], src_meta: list[dict], sanitized: bool = Fals
     for e in accepted:
         ev = e.get("evidenceJson") or {}
         mentions = ev.get("mentions") or []
-        common: dict = {"tag": e["tagName"], "roles": e.get("roles") or [],
-                        "confidence": e.get("confidence"), "extraction_id": e["id"]}
+        common: dict = {
+            "tag": e["tagName"],
+            "roles": e.get("roles") or [],
+            "confidence": e.get("confidence"),
+            "extraction_id": e["id"],
+        }
         if mentions:
             for i, m in enumerate(mentions):
                 src_file = m.get("file") or e.get("fileName")
-                block = dict(common, evidence_uuid=_eid("evidence", e["id"], i),
-                             source_file=src_file, source_sha256=sha_by_file.get(src_file),
-                             page=m.get("page"))
+                block = dict(
+                    common,
+                    evidence_uuid=_eid("evidence", e["id"], i),
+                    source_file=src_file,
+                    source_sha256=sha_by_file.get(src_file),
+                    page=m.get("page"),
+                )
                 if not sanitized:
                     block["snippet"] = m.get("snippet")
                 blocks.append(block)
         else:
             src_file = e.get("fileName")
-            block = dict(common, evidence_uuid=_eid("evidence", e["id"], 0),
-                         source_file=src_file, source_sha256=sha_by_file.get(src_file), page=None)
+            block = dict(
+                common,
+                evidence_uuid=_eid("evidence", e["id"], 0),
+                source_file=src_file,
+                source_sha256=sha_by_file.get(src_file),
+                page=None,
+            )
             if not sanitized:
                 block["raw"] = ev
             blocks.append(block)
@@ -292,7 +366,8 @@ def _profile_json(proj: dict) -> dict:
     """The machine identity + site/line metadata a Hub import keys on."""
     return {
         "schema": "mira-contextualizer/profile-summary@1",
-        "name": proj["name"], "description": proj.get("description"),
+        "name": proj["name"],
+        "description": proj.get("description"),
         "identity": dict(proj.get("profile") or {}),
     }
 
@@ -302,14 +377,26 @@ def _asset_match(proj: dict, src_meta: list[dict], accepted: list[dict]) -> tupl
     proposed; verified Hub data is never overwritten."""
     ident = proj.get("profile") or {}
     proposed = ident.get("proposed_uns_path")
-    if not proposed:  # derive the asset container from the accepted signals when not set by the user
+    if (
+        not proposed
+    ):  # derive the asset container from the accepted signals when not set by the user
         placed = [e["unsPathProposed"] for e in accepted if e.get("unsPathProposed")]
         if placed:
             segs = _uns_segments(sorted(placed)[0])
             proposed = "/".join(segs[:-1]) if len(segs) >= 2 else placed[0]
-    match = {k: ident.get(k) for k in (
-        "machine_name", "asset_type", "manufacturer", "model", "serial_number",
-        "controller_type", "controller_ip", "plc_program_name")}
+    match = {
+        k: ident.get(k)
+        for k in (
+            "machine_name",
+            "asset_type",
+            "manufacturer",
+            "model",
+            "serial_number",
+            "controller_type",
+            "controller_ip",
+            "plc_program_name",
+        )
+    }
     match["proposed_uns_path"] = proposed
     match["source_file_hashes"] = [s["sha256"] for s in src_meta]
     intent = "existing_asset" if ident.get("hub_asset_id") else "new_asset"
@@ -322,9 +409,15 @@ def _signals_csv(accepted: list[dict]) -> str:
     w = csv.writer(buf)
     w.writerow(["tag", "uns_path", "roles", "confidence", "source"])
     for e in accepted:
-        w.writerow([e["tagName"], e.get("unsPathProposed") or "", "|".join(e.get("roles") or []),
-                    e.get("confidence") if e.get("confidence") is not None else "",
-                    e.get("fileName") or ""])
+        w.writerow(
+            [
+                e["tagName"],
+                e.get("unsPathProposed") or "",
+                "|".join(e.get("roles") or []),
+                e.get("confidence") if e.get("confidence") is not None else "",
+                e.get("fileName") or "",
+            ]
+        )
     return buf.getvalue()
 
 
@@ -332,8 +425,12 @@ def _report_md(proj: dict, sources: list[dict], exts: list[dict], accepted: list
     lines = ["# Factory Context Bundle — %s" % proj["name"], ""]
     if proj.get("description"):
         lines += [proj["description"], ""]
-    lines += ["**Sources:** %d  ·  **Candidates:** %d  ·  **Accepted:** %d"
-              % (len(sources), len(exts), len(accepted)), "", "## Sources"]
+    lines += [
+        "**Sources:** %d  ·  **Candidates:** %d  ·  **Accepted:** %d"
+        % (len(sources), len(exts), len(accepted)),
+        "",
+        "## Sources",
+    ]
     lines += ["- %s (%s) — %s" % (s["fileName"], s["sourceType"], s["status"]) for s in sources]
     lines += ["", "## Accepted signals & entities"]
     for e in accepted:
@@ -381,8 +478,14 @@ def build_bundle(store, project_id: str, sanitized: bool = False) -> dict[str, s
         if ir and not sanitized:  # raw document IR is omitted from the sanitized bundle
             files["documents/%s.json" % _safe(s["fileName"])] = json.dumps(ir, indent=2)
         blob = json.dumps(ir or {}, sort_keys=True).encode()  # sha is identical in both modes
-        src_meta.append({"file": s["fileName"], "type": s["sourceType"], "status": s["status"],
-                         "sha256": hashlib.sha256(blob).hexdigest()})
+        src_meta.append(
+            {
+                "file": s["fileName"],
+                "type": s["sourceType"],
+                "status": s["status"],
+                "sha256": hashlib.sha256(blob).hexdigest(),
+            }
+        )
 
     sc = _scorecard.compute_scorecard(exts, sources)
     files["scorecard.json"] = json.dumps(sc, indent=2)
@@ -395,35 +498,61 @@ def build_bundle(store, project_id: str, sanitized: bool = False) -> dict[str, s
         if q:
             quantities.setdefault(e["tagName"], q)
     n_uns = sum(1 for e in accepted if e.get("unsPathProposed"))
-    n_iso = sum(1 for e in accepted
-                if standards.iso14224_fault(e["tagName"], e.get("evidenceJson") or {}))
+    n_iso = sum(
+        1 for e in accepted if standards.iso14224_fault(e["tagName"], e.get("evidenceJson") or {})
+    )
 
     asset_match, import_intent = _asset_match(proj, src_meta, accepted)
-    files["manifest.json"] = json.dumps({
-        "schema": SCHEMA, "tool": "mira-contextualizer", "tool_version": __version__,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        # which export mode produced this bundle (raw documents + verbatim evidence, or refs-only)
-        "mode": "sanitized" if sanitized else "full",
-        "project": {"id": proj["id"], "name": proj["name"], "description": proj.get("description")},
-        "counts": {"sources": len(sources), "candidates": len(exts), "accepted": len(accepted),
-                   "uns_signals": n_uns, "iso14224_faults": n_iso,
-                   "ucum_quantities": len(quantities)},
-        # answerability snapshot so a consumer can gate on it without re-deriving
-        "scorecard": {"score": sc["score"], "grade": sc["grade"]},
-        # how the Hub should land this: match an existing asset or create a draft (proposed only)
-        "asset_match": asset_match,
-        "import": import_intent,
-        "sources": src_meta,
-    }, indent=2)
+    files["manifest.json"] = json.dumps(
+        {
+            "schema": SCHEMA,
+            "tool": "mira-contextualizer",
+            "tool_version": __version__,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            # which export mode produced this bundle (raw documents + verbatim evidence, or refs-only)
+            "mode": "sanitized" if sanitized else "full",
+            "project": {
+                "id": proj["id"],
+                "name": proj["name"],
+                "description": proj.get("description"),
+            },
+            "counts": {
+                "sources": len(sources),
+                "candidates": len(exts),
+                "accepted": len(accepted),
+                "uns_signals": n_uns,
+                "iso14224_faults": n_iso,
+                "ucum_quantities": len(quantities),
+            },
+            # answerability snapshot so a consumer can gate on it without re-deriving
+            "scorecard": {"score": sc["score"], "grade": sc["grade"]},
+            # how the Hub should land this: match an existing asset or create a draft (proposed only)
+            "asset_match": asset_match,
+            "import": import_intent,
+            "sources": src_meta,
+        },
+        indent=2,
+    )
     files["profile.json"] = json.dumps(_profile_json(proj), indent=2)
-    files["sources.json"] = json.dumps({
-        "schema": "mira-contextualizer/sources@1", "sources": src_meta}, indent=2)
-    files["uns.json"] = json.dumps({
-        "schema": "mira-contextualizer/uns@1",
-        "signals": [{"tag": e["tagName"], "unsPath": e["unsPathProposed"], "roles": e.get("roles", []),
-                     "confidence": e.get("confidence")}
-                    for e in accepted if e.get("unsPathProposed")],
-    }, indent=2)
+    files["sources.json"] = json.dumps(
+        {"schema": "mira-contextualizer/sources@1", "sources": src_meta}, indent=2
+    )
+    files["uns.json"] = json.dumps(
+        {
+            "schema": "mira-contextualizer/uns@1",
+            "signals": [
+                {
+                    "tag": e["tagName"],
+                    "unsPath": e["unsPathProposed"],
+                    "roles": e.get("roles", []),
+                    "confidence": e.get("confidence"),
+                }
+                for e in accepted
+                if e.get("unsPathProposed")
+            ],
+        },
+        indent=2,
+    )
     files["i3x.json"] = json.dumps(_i3x(accepted, quantities, project_id), indent=2)
     ents, rels = _kg(accepted, project_id, quantities)
     files["kg_entities.json"] = json.dumps(ents, indent=2)
@@ -432,13 +561,24 @@ def build_bundle(store, project_id: str, sanitized: bool = False) -> dict[str, s
     files["fault_catalog.json"] = json.dumps(_fault_catalog(accepted), indent=2)
     files["parameters.json"] = json.dumps(_parameters(accepted, quantities), indent=2)
     files["evidence.json"] = json.dumps(_evidence(accepted, src_meta, sanitized), indent=2)
-    files["review.json"] = json.dumps({
-        "schema": "mira-contextualizer/review@1",
-        "decisions": [{"tag": e["tagName"], "roles": e.get("roles", []), "status": e["status"],
-                       "confidence": e.get("confidence"), "unsPath": e.get("unsPathProposed"),
-                       "source": e.get("fileName"), "evidence": e.get("evidenceJson", {})}
-                      for e in exts],
-    }, indent=2)
+    files["review.json"] = json.dumps(
+        {
+            "schema": "mira-contextualizer/review@1",
+            "decisions": [
+                {
+                    "tag": e["tagName"],
+                    "roles": e.get("roles", []),
+                    "status": e["status"],
+                    "confidence": e.get("confidence"),
+                    "unsPath": e.get("unsPathProposed"),
+                    "source": e.get("fileName"),
+                    "evidence": e.get("evidenceJson", {}),
+                }
+                for e in exts
+            ],
+        },
+        indent=2,
+    )
     files["report.md"] = _report_md(proj, sources, exts, accepted)
     files["IMPORT.md"] = _IMPORT_MD
     return files

@@ -3,6 +3,7 @@
 Called from engine.py's _build_ctx_signals_context() via asyncio.to_thread
 (psycopg2 is synchronous). Never raises — returns [] on any miss.
 """
+
 from __future__ import annotations
 
 import json
@@ -66,7 +67,5 @@ def fetch_ctx_approved_signals(tenant_id: str, ltree_prefix: str) -> list[dict]:
             )
         return result
     except Exception as exc:  # noqa: BLE001
-        logger.debug(
-            "ctx_enrichment miss tenant=%r prefix=%r: %s", tenant_id, ltree_prefix, exc
-        )
+        logger.debug("ctx_enrichment miss tenant=%r prefix=%r: %s", tenant_id, ltree_prefix, exc)
         return []

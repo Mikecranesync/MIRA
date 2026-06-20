@@ -4,6 +4,7 @@ Stdlib ``http.server`` only. The route table deliberately mirrors the Hub's
 ``/api/contextualization/*`` shape so the offline and online twins stay interchangeable. No auth,
 no tenant — a desktop install is single-user and local.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,9 +32,14 @@ def _decode(data: bytes) -> str:
         return data.decode("utf-16", errors="replace")
     return data.decode("utf-8", errors="replace")
 
+
 _CONTENT_TYPES = {
-    ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css",
-    ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png",
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript",
+    ".css": "text/css",
+    ".json": "application/json",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
 }
 
 
@@ -74,7 +80,10 @@ def make_handler(store: Store, gui_dir: str, recents_path: str | None = None):
             with open(full, "rb") as fh:
                 data = fh.read()
             self.send_response(200)
-            self.send_header("Content-Type", _CONTENT_TYPES.get(os.path.splitext(full)[1], "application/octet-stream"))
+            self.send_header(
+                "Content-Type",
+                _CONTENT_TYPES.get(os.path.splitext(full)[1], "application/octet-stream"),
+            )
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
@@ -117,8 +126,11 @@ def make_handler(store: Store, gui_dir: str, recents_path: str | None = None):
                 if not store.get_project(m.group(1)):
                     self._err("project not found", 404)
                     return
-                self._json(scorecard.compute_scorecard(
-                    store.list_extractions(m.group(1)), store.list_sources(m.group(1))))
+                self._json(
+                    scorecard.compute_scorecard(
+                        store.list_extractions(m.group(1)), store.list_sources(m.group(1))
+                    )
+                )
                 return
             m = _RE_EXPORT.match(path)
             if m:
@@ -131,7 +143,14 @@ def make_handler(store: Store, gui_dir: str, recents_path: str | None = None):
             if path == "/api/projects":
                 body = self._read_json()
                 try:
-                    self._json({"project": store.create_project(body.get("name", ""), body.get("description"))}, 201)
+                    self._json(
+                        {
+                            "project": store.create_project(
+                                body.get("name", ""), body.get("description")
+                            )
+                        },
+                        201,
+                    )
                 except ValueError as e:
                     self._err(str(e), 400)
                 return
@@ -202,15 +221,29 @@ def make_handler(store: Store, gui_dir: str, recents_path: str | None = None):
             # contextualization (fault codes, params, catalog #s, tag refs) so "accept anything" works.
             if not result["rows"] and result["kind"] in ("unknown", "plc_unhandled"):
                 rows = contextualize.contextualize_blocks(
-                    [{"text": text, "kind": "text", "page": None}], file_name, store.plc_tag_names(pid))
+                    [{"text": text, "kind": "text", "page": None}],
+                    file_name,
+                    store.plc_tag_names(pid),
+                )
                 if rows or result["kind"] == "unknown":
-                    result = {"kind": "document_text", "rows": rows,
-                              "note": None if rows else "no recognized PLC tags or entities found"}
+                    result = {
+                        "kind": "document_text",
+                        "rows": rows,
+                        "note": None if rows else "no recognized PLC tags or entities found",
+                    }
             n = store.add_extractions(pid, src["id"], result["rows"])
             store.set_source_status(
-                src["id"], "error" if result["kind"] == "error" else "done", result.get("note"))
-            self._json({"source": src, "extractions": n, "kind": result["kind"],
-                        "note": result.get("note")}, 201)
+                src["id"], "error" if result["kind"] == "error" else "done", result.get("note")
+            )
+            self._json(
+                {
+                    "source": src,
+                    "extractions": n,
+                    "kind": result["kind"],
+                    "note": result.get("note"),
+                },
+                201,
+            )
 
         def _add_document(self, pid: str) -> None:
             file_name = (self.headers.get("X-File-Name") or "").strip()
@@ -225,10 +258,12 @@ def make_handler(store: Store, gui_dir: str, recents_path: str | None = None):
             src = store.create_source(pid, engine.source_type_for(file_name), file_name)
             import os as _os  # noqa: PLC0415
             import tempfile  # noqa: PLC0415
+
             tmp = None
             try:
-                with tempfile.NamedTemporaryFile(suffix=_os.path.splitext(file_name)[1],
-                                                 delete=False) as tf:
+                with tempfile.NamedTemporaryFile(
+                    suffix=_os.path.splitext(file_name)[1], delete=False
+                ) as tf:
                     tf.write(raw)
                     tmp = tf.name
                 result = extract.extract(tmp, file_name)
@@ -240,15 +275,25 @@ def make_handler(store: Store, gui_dir: str, recents_path: str | None = None):
             # Deterministic contextualization → candidates (fault codes, params, catalog #s,
             # manufacturers, and cross-references to the project's PLC tags).
             cands = contextualize.contextualize_blocks(
-                ir["blocks"], file_name, store.plc_tag_names(pid))
+                ir["blocks"], file_name, store.plc_tag_names(pid)
+            )
             n = store.add_extractions(pid, src["id"], cands)
-            store.set_source_status(src["id"], "done" if result.full_text else "error",
-                                    "; ".join(result.warnings) or None)
-            self._json({
-                "source": src, "extractor": result.extractor,
-                "chars": len(result.full_text), "blocks": len(result.blocks),
-                "extractions": n, "warnings": result.warnings,
-            }, 201)
+            store.set_source_status(
+                src["id"],
+                "done" if result.full_text else "error",
+                "; ".join(result.warnings) or None,
+            )
+            self._json(
+                {
+                    "source": src,
+                    "extractor": result.extractor,
+                    "chars": len(result.full_text),
+                    "blocks": len(result.blocks),
+                    "extractions": n,
+                    "warnings": result.warnings,
+                },
+                201,
+            )
 
         def _send_bytes(self, data: bytes, content_type: str, filename: str) -> None:
             self.send_response(200)
@@ -273,6 +318,7 @@ def make_handler(store: Store, gui_dir: str, recents_path: str | None = None):
                 raw = self.rfile.read(length) if length else b""
                 import io  # noqa: PLC0415
                 import zipfile  # noqa: PLC0415
+
                 try:
                     zf = zipfile.ZipFile(io.BytesIO(raw))
                 except Exception:  # noqa: BLE001
@@ -294,18 +340,31 @@ def make_handler(store: Store, gui_dir: str, recents_path: str | None = None):
                 project_name = (body.get("projectName") or "CCW project").strip() or "CCW project"
 
             if not files:
-                self._err("no recognized CCW files found (need MbSrvConf.xml / LogicalValues.csv / "
-                          ".st / .stf / .iecst / .ccwmod / RmcVariables)", 400)
+                self._err(
+                    "no recognized CCW files found (need MbSrvConf.xml / LogicalValues.csv / "
+                    ".st / .stf / .iecst / .ccwmod / RmcVariables)",
+                    400,
+                )
                 return
             result = ccw.parse_project(files)
             src = store.create_source(pid, "ccw", "%s (%d files)" % (project_name, len(files)))
             n = store.add_extractions(pid, src["id"], result["rows"])
-            store.set_source_extraction(src["id"], {"meta": result["meta"], "files": result["files"]})
+            store.set_source_extraction(
+                src["id"], {"meta": result["meta"], "files": result["files"]}
+            )
             store.set_source_status(src["id"], "done", "; ".join(result["notes"]) or None)
-            self._json({"source": src, "extractions": n, "fileCount": len(files),
-                        "controller": result["meta"].get("controller_model"),
-                        "ip": result["meta"].get("ip"), "files": result["files"],
-                        "notes": result["notes"]}, 201)
+            self._json(
+                {
+                    "source": src,
+                    "extractions": n,
+                    "fileCount": len(files),
+                    "controller": result["meta"].get("controller_model"),
+                    "ip": result["meta"].get("ip"),
+                    "files": result["files"],
+                    "notes": result["notes"],
+                },
+                201,
+            )
 
         def _open_profile(self) -> None:
             """Open a .miraprofile (raw JSON body) → restore into the store as a project."""
@@ -328,35 +387,64 @@ def make_handler(store: Store, gui_dir: str, recents_path: str | None = None):
                 return
             accepted = [e for e in store.list_extractions(pid) if e["status"] == "accepted"]
             if fmt == "uns":
-                self._json({"schema": "mira-contextualizer/uns@1", "signals": [
-                    {"tag": e["tagName"], "unsPath": e["unsPathProposed"], "roles": e["roles"],
-                     "confidence": e["confidence"]} for e in accepted if e["unsPathProposed"]]})
+                self._json(
+                    {
+                        "schema": "mira-contextualizer/uns@1",
+                        "signals": [
+                            {
+                                "tag": e["tagName"],
+                                "unsPath": e["unsPathProposed"],
+                                "roles": e["roles"],
+                                "confidence": e["confidence"],
+                            }
+                            for e in accepted
+                            if e["unsPathProposed"]
+                        ],
+                    }
+                )
             elif fmt == "i3x":
                 self._json(bundle._i3x(accepted, project_id=pid))
             elif fmt in ("bundle", "bundle-sanitized"):
                 sanitized = fmt == "bundle-sanitized"
-                name = ("machine_context_sanitized.zip" if sanitized
-                        else "machine_context_bundle.zip")
+                name = (
+                    "machine_context_sanitized.zip" if sanitized else "machine_context_bundle.zip"
+                )
                 data = bundle.zip_bytes(bundle.build_bundle(store, pid, sanitized=sanitized))
-                store.add_export(pid, fmt, name,
-                                 {"bytes": len(data), "accepted": sum(
-                                     1 for e in store.list_extractions(pid) if e["status"] == "accepted")})
+                store.add_export(
+                    pid,
+                    fmt,
+                    name,
+                    {
+                        "bytes": len(data),
+                        "accepted": sum(
+                            1 for e in store.list_extractions(pid) if e["status"] == "accepted"
+                        ),
+                    },
+                )
                 self._send_bytes(data, "application/zip", name)
             elif fmt == "profile":
                 data = json.dumps(profile.save_profile(store, pid), indent=2).encode("utf-8")
                 store.add_export(pid, "profile", "%s%s" % (proj["name"], profile.EXT))
                 if recents_path:
                     profile.recents_add(recents_path, proj["name"] + profile.EXT, proj["name"])
-                self._send_bytes(data, "application/json",
-                                 "%s%s" % (bundle._safe(proj["name"]), profile.EXT))
+                self._send_bytes(
+                    data, "application/json", "%s%s" % (bundle._safe(proj["name"]), profile.EXT)
+                )
             else:
-                self._err("unsupported format (uns | i3x | bundle | bundle-sanitized | profile)", 400)
+                self._err(
+                    "unsupported format (uns | i3x | bundle | bundle-sanitized | profile)", 400
+                )
 
     return Handler
 
 
-def serve(store: Store, gui_dir: str, host: str = "127.0.0.1", port: int = 0,
-          recents_path: str | None = None):
+def serve(
+    store: Store,
+    gui_dir: str,
+    host: str = "127.0.0.1",
+    port: int = 0,
+    recents_path: str | None = None,
+):
     """Start a threaded server. Returns (httpd, port); caller runs serve_forever or shutdown."""
     httpd = ThreadingHTTPServer((host, port), make_handler(store, gui_dir, recents_path))
     return httpd, httpd.server_address[1]

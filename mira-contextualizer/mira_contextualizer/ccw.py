@@ -13,6 +13,7 @@ Plus two files users often grab by mistake (we detect and guide instead of faili
 
 This module classifies/parses those into extraction rows (store.add_extractions shape). No LLM.
 """
+
 from __future__ import annotations
 
 import os
@@ -29,18 +30,25 @@ _ROLE_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"(?i)motor|vfd|drive|spindle"), "motor"),
     (re.compile(r"(?i)convey|conv\b"), "conveyor"),
     (re.compile(r"(?i)valve|pump|heater|fan|coil|relay|solenoid|output"), "output"),
-    (re.compile(r"(?i)speed|freq|rpm|torque|current|amp|temp|press|level|count|setpoint|analog"), "analog"),
+    (
+        re.compile(r"(?i)speed|freq|rpm|torque|current|amp|temp|press|level|count|setpoint|analog"),
+        "analog",
+    ),
     (re.compile(r"(?i)run|start|stop|active|enable|status|state|ready|busy|done"), "status"),
 ]
 
 # CCW embedded-I/O channel prefixes → role
 _IO_RULES: list[tuple[str, str]] = [
-    ("_IO_EM_DI_", "digital_input"), ("_IO_EM_DO_", "digital_output"),
-    ("_IO_EM_AI_", "analog_input"), ("_IO_EM_AO_", "analog_output"),
+    ("_IO_EM_DI_", "digital_input"),
+    ("_IO_EM_DO_", "digital_output"),
+    ("_IO_EM_AI_", "analog_input"),
+    ("_IO_EM_AO_", "analog_output"),
 ]
 _REGISTER_ROLE = {
-    "COILS": "digital_output", "DISCRETE_INPUTS": "digital_input",
-    "HOLDING_REGISTERS": "register", "INPUT_REGISTERS": "register",
+    "COILS": "digital_output",
+    "DISCRETE_INPUTS": "digital_input",
+    "HOLDING_REGISTERS": "register",
+    "INPUT_REGISTERS": "register",
 }
 _PREFIX = re.compile(r"^Controller\.[^.]+\.[^.]+\.")  # Controller.Micro820.Micro820.
 
@@ -56,7 +64,7 @@ def detect_ccw(file_name: str, text: str) -> str | None:
     if name.endswith(".acfproj"):
         return "ccw_project"
     if "<modbusServer" in head or "<modbusServer" in text[:2000]:
-        return "ccw_modbus"                                  # MbSrvConf*.xml and *.ccwmod
+        return "ccw_modbus"  # MbSrvConf*.xml and *.ccwmod
     if head.startswith("[Version") and "FullName" in text[:200]:
         return "ccw_logicalvalues"
     if name.endswith((".st", ".stf", ".iecst")):
@@ -85,8 +93,8 @@ def _roles_for(name: str, *, register: str | None = None) -> list[str]:
 
 def _confidence(name: str, *, mapped: bool) -> float:
     if name.startswith("_IO_EM_"):
-        return 0.6                      # a physical I/O channel
-    return 0.9 if mapped else 0.6       # a named user variable (real engineering intent)
+        return 0.6  # a physical I/O channel
+    return 0.9 if mapped else 0.6  # a named user variable (real engineering intent)
 
 
 def parse_modbus(text: str) -> list[dict]:
@@ -101,15 +109,21 @@ def parse_modbus(text: str) -> list[dict]:
                 continue
             dt = m.get("dataType")
             addr = m.get("address")
-            rows.append({
-                "tag_name": var,
-                "roles": _roles_for(var, register=rtype),
-                "uns_path_proposed": None,
-                "i3x_element_id": None,
-                "evidence_json": {"source": "ccw_modbus", "register": rtype,
-                                  "modbus_address": addr, "data_type": dt},
-                "confidence": _confidence(var, mapped=True),
-            })
+            rows.append(
+                {
+                    "tag_name": var,
+                    "roles": _roles_for(var, register=rtype),
+                    "uns_path_proposed": None,
+                    "i3x_element_id": None,
+                    "evidence_json": {
+                        "source": "ccw_modbus",
+                        "register": rtype,
+                        "modbus_address": addr,
+                        "data_type": dt,
+                    },
+                    "confidence": _confidence(var, mapped=True),
+                }
+            )
     return rows
 
 
@@ -126,14 +140,16 @@ def parse_logicalvalues(text: str) -> list[dict]:
         short = _PREFIX.sub("", full)
         if short.startswith("__SYSVA"):
             continue  # firmware system variable — not factory context
-        rows.append({
-            "tag_name": short,
-            "roles": _roles_for(short),
-            "uns_path_proposed": None,
-            "i3x_element_id": None,
-            "evidence_json": {"source": "ccw_logicalvalues", "full_name": full},
-            "confidence": _confidence(short, mapped=False),
-        })
+        rows.append(
+            {
+                "tag_name": short,
+                "roles": _roles_for(short),
+                "uns_path_proposed": None,
+                "i3x_element_id": None,
+                "evidence_json": {"source": "ccw_logicalvalues", "full_name": full},
+                "confidence": _confidence(short, mapped=False),
+            }
+        )
     return rows
 
 
@@ -159,14 +175,23 @@ def guidance(kind: str) -> str | None:
 
 # ── Structured Text (.st / .stf / .iecst) + other CCW project files ───────────
 def _row(name: str, roles: list[str], confidence: float, evidence: dict) -> dict:
-    return {"tag_name": name, "roles": roles, "uns_path_proposed": None,
-            "i3x_element_id": None, "evidence_json": evidence, "confidence": confidence}
+    return {
+        "tag_name": name,
+        "roles": roles,
+        "uns_path_proposed": None,
+        "i3x_element_id": None,
+        "evidence_json": evidence,
+        "confidence": confidence,
+    }
 
 
-_RE_VAR_BLOCK = re.compile(r"(?is)\bVAR(?:_INPUT|_OUTPUT|_GLOBAL|_IN_OUT|_EXTERNAL)?\b(.*?)\bEND_VAR\b")
+_RE_VAR_BLOCK = re.compile(
+    r"(?is)\bVAR(?:_INPUT|_OUTPUT|_GLOBAL|_IN_OUT|_EXTERNAL)?\b(.*?)\bEND_VAR\b"
+)
 _RE_VAR_DECL = re.compile(
-    r"^\s*([A-Za-z_]\w*)\s*:\s*([A-Za-z0-9_]+)[^;(]*;?[ \t]*(?:\(\*(.*?)\*\))?", re.M)
-_RE_CTRL_MODEL = re.compile(r"\b(2080-[A-Z0-9]+(?:-[A-Z0-9]+)*)\b")     # Micro8xx catalog number
+    r"^\s*([A-Za-z_]\w*)\s*:\s*([A-Za-z0-9_]+)[^;(]*;?[ \t]*(?:\(\*(.*?)\*\))?", re.M
+)
+_RE_CTRL_MODEL = re.compile(r"\b(2080-[A-Z0-9]+(?:-[A-Z0-9]+)*)\b")  # Micro8xx catalog number
 _RE_IP = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
 _RE_TERMINAL = re.compile(r"\b([IOQ]-?\d{1,2})\s*[=:]\s*([A-Za-z_]\w+)")  # I-02 = EStopNC
 _RE_IOREF = re.compile(r"\b(_IO_EM_[A-Z]+_\d+)\b")
@@ -207,8 +232,14 @@ def parse_st(text: str, file_name: str) -> tuple[list[dict], dict]:
         if name in declared or name.startswith("__SYSVA"):
             continue
         declared.add(name)
-        rows.append(_row(name, _roles_for(name) or ["io"], 0.7,
-                         {"source": "ccw_st_terminal", "terminal": term, "file": file_name}))
+        rows.append(
+            _row(
+                name,
+                _roles_for(name) or ["io"],
+                0.7,
+                {"source": "ccw_st_terminal", "terminal": term, "file": file_name},
+            )
+        )
 
     # 3) logic-referenced signals worth surfacing: embedded I/O + names with a recognized role
     refs = set(_RE_IOREF.findall(text)) | set(_RE_ASSIGN.findall(text))
@@ -233,8 +264,14 @@ def parse_rmcvars(text: str) -> list[dict]:
         short = _PREFIX.sub("", full)
         if short.startswith("__SYSVA") or not short:
             continue
-        rows.append(_row(short, _roles_for(short), _confidence(short, mapped=False),
-                         {"source": "ccw_rmcvars", "full_name": full}))
+        rows.append(
+            _row(
+                short,
+                _roles_for(short),
+                _confidence(short, mapped=False),
+                {"source": "ccw_rmcvars", "full_name": full},
+            )
+        )
     return rows
 
 

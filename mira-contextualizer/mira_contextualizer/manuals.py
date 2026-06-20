@@ -20,6 +20,7 @@ signal per fault/parameter — not a duplicate. The enriched evidence keys (``ca
 ``units``, ``range``, ``setpoint``) are exactly what ``scorecard.compute_scorecard`` reads to lift a
 project from "Inventory" toward "Diagnosable".
 """
+
 from __future__ import annotations
 
 import re
@@ -47,38 +48,46 @@ _RE_FAULT_NUM = re.compile(r"^\s*(\d{1,3})\b")
 # ── units / ranges / setpoints ──────────────────────────────────────────────────────────────────
 # Composite tokens (Vac/Arms…) before bare ones; bare m/s/g/h are only ever matched right after a
 # number, which keeps them from swallowing ordinary words.
-_UNIT = (r"kHz|Hz|kVA|VA|kW|MW|mW|W|VAC|VDC|Vac|Vdc|mA|kA|A|kV|mV|V|rpm|RPM|°C|degC|°F|degF"
-         r"|ms|µs|us|sec|s|min|hr|h|bar|psi|kPa|MPa|Pa|N·m|Nm|mm|cm|µm|m|%|L|gpm|lpm|kg|g")
+_UNIT = (
+    r"kHz|Hz|kVA|VA|kW|MW|mW|W|VAC|VDC|Vac|Vdc|mA|kA|A|kV|mV|V|rpm|RPM|°C|degC|°F|degF"
+    r"|ms|µs|us|sec|s|min|hr|h|bar|psi|kPa|MPa|Pa|N·m|Nm|mm|cm|µm|m|%|L|gpm|lpm|kg|g"
+)
 _NUM = r"-?\d+(?:\.\d+)?"
 # A value immediately followed by a unit: "60 Hz", "9.6A", "5 s".
 _RE_VALUE_UNIT = re.compile(r"(?<![\w.])(%s)\s?(%s)(?![A-Za-z])" % (_NUM, _UNIT))
 # A range: "0...60 s", "0-1800 RPM", "0 to 100 %", "-10 – 50 °C".
 _RE_RANGE = re.compile(
-    r"(?<![\w.])(%s)\s*(?:\.\.\.|…|–|—|-|to)\s*(%s)\s?(%s)?(?![A-Za-z])" % (_NUM, _NUM, _UNIT))
+    r"(?<![\w.])(%s)\s*(?:\.\.\.|…|–|—|-|to)\s*(%s)\s?(%s)?(?![A-Za-z])" % (_NUM, _NUM, _UNIT)
+)
 # A default / preset / rated value: "default 5 s", "factory setting: 60 Hz", "rated 9.6 A".
 _RE_DEFAULT = re.compile(
     r"(?i)\b(?:default|factory(?:\s+setting)?|preset|set\s+to|setpoint|nominal|rated)\b"
-    r"[^\d\n]{0,14}?(%s)\s?(%s)?(?![A-Za-z])" % (_NUM, _UNIT))
+    r"[^\d\n]{0,14}?(%s)\s?(%s)?(?![A-Za-z])" % (_NUM, _UNIT)
+)
 
 # ── cue vocab for splitting a fault row into description / cause / next-check ─────────────────────
 _RE_CAUSE_CUE = re.compile(
-    r"(?i)\b(?:probable\s+cause|possible\s+cause|likely\s+cause|cause|reason|condition)\b\s*[:\-]?\s*")
+    r"(?i)\b(?:probable\s+cause|possible\s+cause|likely\s+cause|cause|reason|condition)\b\s*[:\-]?\s*"
+)
 _RE_REMEDY_CUE = re.compile(
     r"(?i)\b(?:corrective\s+action|countermeasure|remed(?:y|ies)|action|solution|correction"
-    r"|what\s+to\s+do|check|verify|inspect|troubleshoot)\b\s*[:\-]?\s*")
+    r"|what\s+to\s+do|check|verify|inspect|troubleshoot)\b\s*[:\-]?\s*"
+)
 # header-cell classifiers
 _HDR_CODE = re.compile(r"(?i)\b(code|fault|error|alarm|trip|no\.?|number)\b")
 _HDR_DESC = re.compile(r"(?i)\b(description|name|display|meaning|fault\s*name|condition)\b")
 _HDR_CAUSE = re.compile(r"(?i)\b(cause|reason)\b")
 _HDR_REMEDY = re.compile(
-    r"(?i)\b(remed\w*|action|solution|correct\w*|countermeasure|check|corrective)\b")
+    r"(?i)\b(remed\w*|action|solution|correct\w*|countermeasure|check|corrective)\b"
+)
 
 _SPLIT_COLS = re.compile(r"\t+|\s{2,}|\s+\|\s+")  # tabs, 2+ spaces, or " | " markdown pipes
 _WORD = re.compile(r"[a-z0-9]+")
 # spec subjects we'll happily attach units to even without a tag match (named engineering quantities)
 _QUANTITY = re.compile(
     r"(?i)\b(speed|frequency|freq|current|amp|voltage|volt|torque|power|temperature|temp|pressure"
-    r"|level|flow|rpm|accel(?:eration)?|decel(?:eration)?|timeout|time|count|setpoint)\b")
+    r"|level|flow|rpm|accel(?:eration)?|decel(?:eration)?|timeout|time|count|setpoint)\b"
+)
 
 
 def _clean(s: str) -> str:
@@ -177,12 +186,12 @@ def _row_from_cues(rest: str) -> dict:
             ev["description"] = desc.rstrip(".")
     if cause_m:
         end = remedy_m.start() if (remedy_m and remedy_m.start() > cause_m.end()) else len(rest)
-        cause = _clean(rest[cause_m.end():end])
+        cause = _clean(rest[cause_m.end() : end])
         if cause:
             ev["cause"] = cause.rstrip(".")
     if remedy_m:
         end = cause_m.start() if (cause_m and cause_m.start() > remedy_m.end()) else len(rest)
-        nxt = _clean(rest[remedy_m.end():end])
+        nxt = _clean(rest[remedy_m.end() : end])
         if nxt:
             ev["next_check"] = nxt.rstrip(".")
     return ev
@@ -228,11 +237,14 @@ def mine_faults(blocks: list[dict], file_name: str) -> dict[str, dict]:
             # cue-prose fallback (works with or without a table)
             code = _fault_code(ln, table_context=False)
             if not code and len(cells) >= 2:
-                code = _fault_code(cells[0], table_context=True) if _RE_REMEDY_CUE.search(ln) \
-                    or _RE_CAUSE_CUE.search(ln) else None
+                code = (
+                    _fault_code(cells[0], table_context=True)
+                    if _RE_REMEDY_CUE.search(ln) or _RE_CAUSE_CUE.search(ln)
+                    else None
+                )
             if code:
                 # strip the leading code token, parse the remainder by cues / columns
-                rest = ln[ln.find(code) + len(code):]
+                rest = ln[ln.find(code) + len(code) :]
                 ev = _row_from_cues(rest)
                 attach(code, ev, ln, page)
     return out
@@ -251,8 +263,7 @@ def _subject(line: str, param: str | None) -> str:
     return _clean(head)
 
 
-def mine_specs(blocks: list[dict], file_name: str,
-               plc_tags: list[str] | None = None) -> list[dict]:
+def mine_specs(blocks: list[dict], file_name: str, plc_tags: list[str] | None = None) -> list[dict]:
     """Pull units/range/setpoint from spec & parameter lines, tying each to a matching PLC tag when
     the subject overlaps a tag name. Returns store-shaped rows (role parameter|spec|tag_reference)."""
     plc_tags = list(plc_tags or [])
@@ -288,14 +299,27 @@ def mine_specs(blocks: list[dict], file_name: str,
                 continue
             seen.add(key)
 
-            ev = {"source": "manual_spec", "entity_type": role, **units, **extra,
-                  "mentions": [{"file": file_name, "page": page, "snippet": _snippet(line)}]}
+            ev = {
+                "source": "manual_spec",
+                "entity_type": role,
+                **units,
+                **extra,
+                "mentions": [{"file": file_name, "page": page, "snippet": _snippet(line)}],
+            }
             if subject:
                 ev["subject"] = subject
             if param and role != "parameter":
                 ev["parameter"] = param
-            rows.append({"tag_name": value, "roles": [role], "uns_path_proposed": None,
-                         "i3x_element_id": None, "confidence": base_conf, "evidence_json": ev})
+            rows.append(
+                {
+                    "tag_name": value,
+                    "roles": [role],
+                    "uns_path_proposed": None,
+                    "i3x_element_id": None,
+                    "confidence": base_conf,
+                    "evidence_json": ev,
+                }
+            )
     return rows
 
 
@@ -309,8 +333,9 @@ def _match_tag(subject: str, line: str, tag_tokens: dict[str, set]) -> str | Non
     subj_tokens = set(_WORD.findall(subject.lower()))
     if not subj_tokens:
         return None
-    quantities = {m.group(0).lower() for m in _QUANTITY.finditer(subject)} | \
-                 {m.group(0).lower() for m in _QUANTITY.finditer(low)}
+    quantities = {m.group(0).lower() for m in _QUANTITY.finditer(subject)} | {
+        m.group(0).lower() for m in _QUANTITY.finditer(low)
+    }
     if not quantities:
         return None
     best = None
@@ -337,9 +362,21 @@ def mine(blocks: list[dict], file_name: str, plc_tags: list[str] | None = None) 
     rows: list[dict] = []
     for code, ev in mine_faults(blocks, file_name).items():
         mentions = ev.pop("mentions", [])
-        evidence = {"source": "manual_fault", "entity_type": "fault_code",
-                    "mentions": mentions, **ev}
-        rows.append({"tag_name": code, "roles": ["fault_code"], "uns_path_proposed": None,
-                     "i3x_element_id": None, "confidence": 0.9, "evidence_json": evidence})
+        evidence = {
+            "source": "manual_fault",
+            "entity_type": "fault_code",
+            "mentions": mentions,
+            **ev,
+        }
+        rows.append(
+            {
+                "tag_name": code,
+                "roles": ["fault_code"],
+                "uns_path_proposed": None,
+                "i3x_element_id": None,
+                "confidence": 0.9,
+                "evidence_json": evidence,
+            }
+        )
     rows.extend(mine_specs(blocks, file_name, plc_tags))
     return rows

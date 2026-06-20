@@ -4,6 +4,7 @@ P0 handles PLC program exports via the stdlib ``mira_plc_parser`` pipeline (the 
 worker makes). Document formats (PDF/Word/Excel/images) arrive in P1 behind this same interface, so
 the server and store never learn what kind of file they hold.
 """
+
 from __future__ import annotations
 
 import os
@@ -17,8 +18,15 @@ _CONFIDENCE_MAP = {"high": 0.9, "medium": 0.6, "med": 0.6, "low": 0.3}
 
 # file extension -> source_type label (advisory; the parser detects format from content too)
 _EXT_TYPE = {
-    ".l5x": "l5x", ".st": "st", ".xml": "plcopen", ".csv": "csv",
-    ".pdf": "manual", ".txt": "manual", ".md": "manual", ".docx": "manual", ".xlsx": "manual",
+    ".l5x": "l5x",
+    ".st": "st",
+    ".xml": "plcopen",
+    ".csv": "csv",
+    ".pdf": "manual",
+    ".txt": "manual",
+    ".md": "manual",
+    ".docx": "manual",
+    ".xlsx": "manual",
 }
 
 # Formats P0 can actually parse today (text-based PLC exports). Everything else is accepted as a
@@ -60,19 +68,21 @@ def extract_plc(file_name: str, text: str) -> tuple[list[dict], dict]:
         uns = uns_by_tag.get(name, {})
         uns_path = uns.get("path") or None
         band = uns.get("confidence") or tag.get("confidence") or "low"
-        rows.append({
-            "tag_name": name,
-            "roles": tag.get("roles") or [],
-            "uns_path_proposed": uns_path,
-            "i3x_element_id": uns_path,  # UNS leaf doubles as the i3X element id
-            "evidence_json": {
-                "source_format": fmt,
-                "data_type": tag.get("data_type"),
-                "confidence_source": band,
-                "uns_segments": uns.get("segments"),
-            },
-            "confidence": _confidence(band),
-        })
+        rows.append(
+            {
+                "tag_name": name,
+                "roles": tag.get("roles") or [],
+                "uns_path_proposed": uns_path,
+                "i3x_element_id": uns_path,  # UNS leaf doubles as the i3X element id
+                "evidence_json": {
+                    "source_format": fmt,
+                    "data_type": tag.get("data_type"),
+                    "confidence_source": band,
+                    "uns_segments": uns.get("segments"),
+                },
+                "confidence": _confidence(band),
+            }
+        )
     return rows, report
 
 
@@ -87,7 +97,11 @@ def analyze_text(file_name: str, text: str) -> dict:
     if kind == "ccw_modbus":
         return {"kind": kind, "rows": placement.place_rows(ccw.parse_modbus(text)), "note": None}
     if kind == "ccw_logicalvalues":
-        return {"kind": kind, "rows": placement.place_rows(ccw.parse_logicalvalues(text)), "note": None}
+        return {
+            "kind": kind,
+            "rows": placement.place_rows(ccw.parse_logicalvalues(text)),
+            "note": None,
+        }
     if kind in ("ccw_settings", "ccw_solution"):
         return {"kind": kind, "rows": [], "note": ccw.guidance(kind)}
 
@@ -101,7 +115,11 @@ def analyze_text(file_name: str, text: str) -> dict:
         warn = "; ".join(report.get("warnings") or []) or "format not recognized"
         return {"kind": "plc_unhandled", "rows": rows, "note": warn}
 
-    return {"kind": "unknown", "rows": [], "note": (
-        "Not a recognized PLC export. Supported here: Rockwell L5X, CCW MbSrvConf.xml (Modbus map), "
-        "CCW LogicalValues.csv (variables), or a tag CSV. For manuals/PDFs use the Documents tab.")}
-
+    return {
+        "kind": "unknown",
+        "rows": [],
+        "note": (
+            "Not a recognized PLC export. Supported here: Rockwell L5X, CCW MbSrvConf.xml (Modbus map), "
+            "CCW LogicalValues.csv (variables), or a tag CSV. For manuals/PDFs use the Documents tab."
+        ),
+    }

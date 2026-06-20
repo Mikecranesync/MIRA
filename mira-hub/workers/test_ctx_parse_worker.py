@@ -3,6 +3,7 @@
 Tests the extraction logic (pipeline call, UNS mapping, evidence shape) without
 a live database by mocking psycopg2 and testing the helper functions directly.
 """
+
 from __future__ import annotations
 
 import json
@@ -17,8 +18,7 @@ _PARSER_ROOT = os.path.join(_REPO_ROOT, "mira-plc-parser")
 if _PARSER_ROOT not in sys.path:
     sys.path.insert(0, _PARSER_ROOT)
 
-from mira_plc_parser import pipeline
-
+from mira_plc_parser import pipeline  # noqa: E402  (import after sys.path setup)
 
 FIXTURE = os.path.join(_REPO_ROOT, "mira-plc-parser", "tests", "fixtures", "conveyor.L5X")
 

@@ -1,11 +1,14 @@
 """Engine adapter — deterministic PLC extraction against the shared mira-plc-parser fixture."""
+
 import pathlib
 
 import mira_plc_parser
 
 from mira_contextualizer import engine
 
-FIXTURE = pathlib.Path(mira_plc_parser.__file__).parent.parent / "tests" / "fixtures" / "conveyor.L5X"
+FIXTURE = (
+    pathlib.Path(mira_plc_parser.__file__).parent.parent / "tests" / "fixtures" / "conveyor.L5X"
+)
 
 
 def test_source_type_and_plc_detection():

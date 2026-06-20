@@ -114,9 +114,7 @@ class IntakeContract:
                     "source_type": s.source_type,
                     "source_uuid": s.source_uuid,
                     "source_metadata": {
-                        k: v
-                        for k, v in vars(s.source_metadata).items()
-                        if v is not None
+                        k: v for k, v in vars(s.source_metadata).items() if v is not None
                     },
                 }
                 for s in self.sources
@@ -178,7 +176,11 @@ def validate_envelope(payload: dict) -> list[str]:
             if s.get("source_type") not in SOURCE_TYPES:
                 errors.append(f"sources[{i}].source_type must be one of {', '.join(SOURCE_TYPES)}")
             meta = s.get("source_metadata")
-            if not (isinstance(meta, dict) and isinstance(meta.get("file_name"), str) and meta["file_name"].strip()):
+            if not (
+                isinstance(meta, dict)
+                and isinstance(meta.get("file_name"), str)
+                and meta["file_name"].strip()
+            ):
                 errors.append(f"sources[{i}].source_metadata.file_name is required")
 
     return errors
