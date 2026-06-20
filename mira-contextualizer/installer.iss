@@ -4,7 +4,7 @@
 ; Produces a real Windows program: Start-menu + desktop shortcuts, file associations, uninstaller.
 
 #define AppName "FactoryLM Contextualizer"
-#define AppVer "0.1.0"
+#define AppVer "2.0.0"
 #define AppExe "FactoryLM-Contextualizer.exe"
 
 [Setup]

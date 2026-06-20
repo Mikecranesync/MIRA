@@ -5,4 +5,4 @@ local SQLite store. Deterministic only: no LLM, no cloud in the reasoning path. 
 ``C:\\Users\\hharp\\.claude\\plans\\offline-factory-contextualizer.md``.
 """
 
-__version__ = "0.1.0"
+__version__ = "2.0.0"
