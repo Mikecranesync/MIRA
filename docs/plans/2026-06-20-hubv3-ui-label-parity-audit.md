@@ -28,6 +28,8 @@ PLC-tag-centric language instead of the shared "signal" vocabulary.
 |---|---|---|---|---|
 | `contextualization/page.tsx` h1 | Projects/Workspaces | **"PLC Tag Import"** | "Contextualization Projects" | ✅ fixed |
 | `contextualization/page.tsx` subtitle | Sources → Signals → promote | "Upload PLC exports… promote approved signals" | "Import equipment **sources**, review proposed UNS paths for extracted **signals**, promote approved signals" | ✅ fixed |
+| `contextualization/page.tsx` project-card counts | Sources · Extracted Signals | "N **files** · N **tags** · N accepted" | "N **sources** · N **signals** · N accepted" | ✅ fixed (CHARLIE — found via screenshot, after #2137 merged) |
+| `contextualization/page.tsx` empty-state | Sources | "start importing **PLC tags**" | "start importing **equipment sources**" | ✅ fixed (CHARLIE) |
 | `[id]/page.tsx` h1 | Extracted Signals | **"Tag Review"** | "Extracted Signals" | ✅ fixed |
 | `[id]/page.tsx` subtitle / tooltips / toasts / empty-state | Extracted Signals | "tags" throughout | "signal(s)" throughout | ✅ fixed |
 | `[id]/page.tsx` table column | (row-level) | "Tag" | "Tag" (kept) | ✅ intentional — offline keeps `tag` at row level; "Extracted Signals" is the section, a row's PLC **tag** name is accurate |
@@ -42,6 +44,10 @@ PLC-tag-centric language instead of the shared "signal" vocabulary.
 
 ## Gate (PRD §5 P7)
 
-- **Label parity audit** — this document. ✅
-- **Screenshot rule** — owed. Both contextualization screens are auth-gated and fetch live data; capturing them needs a staging deploy of `feat/plc-mapper-gui` with a seeded Garage/Micro820 batch (NeonDB SSL can't connect from the Windows dev host). Folds into the Phase 8 demo seed. ⏳
+- **Label parity audit** — this document, zero mismatches. ✅
+- **Screenshot rule** — ✅ **DONE (CHARLIE, 2026-06-20, PR #2140).** Captured on a local prod build of the branch with a minted next-auth JWE cookie (Hub local-e2e recipe) and `/api/contextualization*` mocked in-spec with realistic Garage/Micro820 data — no DB seed, no migration (the earlier Windows-SSL blocker doesn't apply on CHARLIE/macOS). Both surfaces × both viewports in `docs/promo-screenshots/`:
+  - `2026-06-20_hubv3-label-parity_projects_{desktop,mobile}.png` — "Contextualization Projects" + canonical card counts (sources/signals).
+  - `2026-06-20_hubv3-label-parity_extracted-signals_{desktop,mobile}.png` — "Extracted Signals" table (signals vocabulary; row-level "Tag" retained).
+  - Throwaway capture harness (mirrors `playwright.command-center.config.ts`) not committed — PR stays labels + screenshots.
+  - ⚠️ Known: the list-page h1 renders low-contrast (`text-white` on the light content area) — the **theme follow-up #3 above**, not a label issue. Label proof carried by the detail page, card counts, and subtitle.
 - **Designer review** — open. ⏳

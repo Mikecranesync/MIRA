@@ -120,7 +120,7 @@ export default function ContextualizationPage() {
       ) : projects.length === 0 ? (
         <div className="border border-dashed border-gray-700 rounded-xl py-20 flex flex-col items-center gap-4 text-gray-500">
           <FileUp size={40} className="text-gray-600" />
-          <p className="text-sm">No projects yet. Create one to start importing PLC tags.</p>
+          <p className="text-sm">No projects yet. Create one to start importing equipment sources.</p>
           <button
             onClick={() => setShowModal(true)}
             className="text-blue-400 hover:text-blue-300 text-sm underline underline-offset-2"
@@ -147,10 +147,10 @@ export default function ContextualizationPage() {
                 </div>
                 <div className="flex items-center gap-4 text-xs text-gray-500 shrink-0 mt-0.5">
                   <span>
-                    <span className="text-gray-300 font-medium">{p.sourceCount}</span> file{p.sourceCount !== 1 ? "s" : ""}
+                    <span className="text-gray-300 font-medium">{p.sourceCount}</span> source{p.sourceCount !== 1 ? "s" : ""}
                   </span>
                   <span>
-                    <span className="text-gray-300 font-medium">{p.extractionCount}</span> tags
+                    <span className="text-gray-300 font-medium">{p.extractionCount}</span> signal{p.extractionCount !== 1 ? "s" : ""}
                   </span>
                   <span>
                     <span className="text-green-400 font-medium">{p.acceptedCount}</span> accepted
