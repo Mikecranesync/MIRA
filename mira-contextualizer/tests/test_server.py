@@ -85,6 +85,29 @@ def test_bundle_and_i3x_export(base):
         assert "manifest.json" in zf.namelist() and "uns.json" in zf.namelist()
 
 
+def test_sanitized_bundle_export(base):
+    """The sanitized structured-context bundle is reachable over the API and ships no raw documents."""
+    import io
+    import json as _json
+    import zipfile
+    _, j = _req(f"{base}/api/projects", "POST", {"name": "Sanitized Co"})
+    pid = j["project"]["id"]
+    _req(f"{base}/api/projects/{pid}/sources", "POST",
+         {"fileName": FIXTURE.name, "text": FIXTURE.read_text(encoding="utf-8")})
+    _, ext = _req(f"{base}/api/projects/{pid}/extractions")
+    target = next(e for e in ext["extractions"] if e["unsPathProposed"])
+    _req(f"{base}/api/extractions/{target['id']}", "PATCH", {"status": "accepted"})
+
+    with urllib.request.urlopen(f"{base}/api/projects/{pid}/export?format=bundle-sanitized") as r:
+        assert r.status == 200 and r.headers["Content-Type"] == "application/zip"
+        data = r.read()
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        names = zf.namelist()
+        assert "manifest.json" in names and "evidence.json" in names
+        assert not any(n.startswith("documents/") for n in names)
+        assert _json.loads(zf.read("manifest.json"))["mode"] == "sanitized"
+
+
 def test_ccw_project_import_json_and_zip(base):
     import io
     import zipfile

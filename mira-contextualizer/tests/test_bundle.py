@@ -57,7 +57,7 @@ def test_bundle_contents(seeded):
     files = bundle.build_bundle(store, pid)
     for key in ("manifest.json", "uns.json", "i3x.json", "kg_entities.json",
                 "kg_relationships.json", "signals.csv", "review.json", "report.md", "IMPORT.md",
-                "scorecard.json"):
+                "scorecard.json", "evidence.json"):
         assert key in files, key
     sc = json.loads(files["scorecard.json"])
     assert sc["schema"] == "mira-contextualizer/scorecard@1" and "score" in sc
@@ -231,6 +231,106 @@ def test_bundle_existing_asset_intent_when_hub_asset_id_set(tmp_path):
     man = json.loads(bundle.build_bundle(s, p["id"])["manifest.json"])
     assert man["import"]["intent"] == "existing_asset"
     assert man["import"]["hub_asset_id"] == "asset-abc-123"
+    s.close()
+
+
+def test_full_bundle_emits_evidence_and_preserves_provenance(seeded):
+    """PRD test 11 — the full bundle aggregates evidence into evidence.json and keeps a walkable
+    provenance chain: an entity → its evidence block (by extraction id) → the source sha256 that
+    appears in the manifest. Full mode also carries verbatim document text + raw evidence."""
+    store, pid = seeded
+    files = bundle.build_bundle(store, pid)
+
+    # the previously-missing 16th bundle file now exists, with stable per-block UUIDs
+    assert "evidence.json" in files
+    ev = json.loads(files["evidence.json"])
+    assert ev["schema"] == "mira-contextualizer/evidence@1" and ev["evidence"]
+    assert all(b["evidence_uuid"] for b in ev["evidence"])
+
+    # full mode carries the raw document payload + the verbatim mined snippet
+    assert any(k.startswith("documents/") for k in files)
+    assert any("Conv_Run energizes" in (b.get("snippet") or "") for b in ev["evidence"])
+
+    # chain: signal entity → evidence block (same extraction id) → manifest source sha256
+    ents = json.loads(files["kg_entities.json"])["entities"]
+    sig = next(e for e in ents if e["entity_type"] == "signal" and e["entity_id"] == UNS)
+    assert sig["signal_uuid"]                                       # stable signal identity
+    xid = sig["properties"]["provenance"]["ctx_extraction_id"]
+    block = next(b for b in ev["evidence"] if b["extraction_id"] == xid)
+    man_shas = {s["sha256"] for s in json.loads(files["manifest.json"])["sources"]}
+    assert block["source_sha256"] in man_shas
+
+
+def test_sanitized_bundle_has_no_raw_document_payloads(seeded):
+    """PRD test 10 — the *sanitized structured context* bundle ships the derived structured context but
+    NO raw document payloads: no ``documents/*.json`` files, and ``evidence.json`` carries refs/uuids/
+    sha only — never verbatim mined text. Boundary (narrow §3 reading): the short provenance snippets in
+    review.json/parameters.json/fault_catalog.json are derived structured context and are retained; only
+    the raw document IR and the aggregate evidence text are stripped."""
+    store, pid = seeded
+    full = bundle.build_bundle(store, pid)
+    san = bundle.build_bundle(store, pid, sanitized=True)
+
+    # no raw document IR files, and the manifest declares the mode
+    assert any(k.startswith("documents/") for k in full)
+    assert not any(k.startswith("documents/") for k in san)
+    assert json.loads(san["manifest.json"])["mode"] == "sanitized"
+    assert json.loads(full["manifest.json"])["mode"] == "full"
+
+    # evidence.json present in both, but the verbatim mined sentence appears ONLY in the full bundle
+    SENTINEL = "Conv_Run energizes"
+    assert SENTINEL in full["evidence.json"]
+    assert SENTINEL not in san["evidence.json"]
+    san_ev = json.loads(san["evidence.json"])["evidence"]
+    assert san_ev and all("snippet" not in b and "raw" not in b for b in san_ev)
+
+    # derived structured context is still fully present (this is "sanitized", not "anonymous")
+    for key in ("uns.json", "i3x.json", "kg_entities.json", "kg_relationships.json",
+                "fault_catalog.json", "parameters.json", "scorecard.json", "signals.csv"):
+        assert key in san, key
+    # source refs + hashes survive sanitization (provenance chain still resolves)
+    assert all(b["source_sha256"] for b in san_ev)
+    assert json.loads(san["manifest.json"])["asset_match"]["source_file_hashes"]
+
+
+def test_entity_uuids_present_and_unique(tmp_path):
+    """The 4 missing identity UUIDs (§2) are minted: ``signal_uuid`` on signal entities, ``uns_node_uuid``
+    on every i3X node, ``relationship_uuid`` on every edge, ``evidence_uuid`` per evidence block.
+    Critically, a tag mentioned twice in one document yields two DISTINCT MENTIONS edges whose
+    relationship_uuid derives from (and matches) the per-mention evidence_uuid — no collisions."""
+    s = Store(str(tmp_path / "uuids.db"))
+    p = s.create_project("UUID cell")
+    plc = s.create_source(p["id"], "ccw", "ccw")
+    s.add_extractions(p["id"], plc["id"], [
+        {"tag_name": "Conv_Run", "roles": ["motor"], "uns_path_proposed": UNS,
+         "i3x_element_id": UNS, "evidence_json": {"source": "ccw_modbus"}, "confidence": 0.9}])
+    doc = s.create_source(p["id"], "manual", "m.pdf")
+    s.add_extractions(p["id"], doc["id"], [
+        {"tag_name": "Conv_Run", "roles": ["tag_reference"], "uns_path_proposed": None,
+         "evidence_json": {"source": "document", "entity_type": "tag_reference", "mentions": [
+             {"file": "m.pdf", "page": 2, "snippet": "Conv_Run energizes the motor"},
+             {"file": "m.pdf", "page": 7, "snippet": "Conv_Run de-energizes on stop"}]},
+         "confidence": 0.9}])
+    for e in s.list_extractions(p["id"]):
+        s.set_extraction_status(e["id"], "accepted")
+    files = bundle.build_bundle(s, p["id"])
+
+    nodes = json.loads(files["i3x.json"])["objectInstances"]
+    assert nodes and all(n["uns_node_uuid"] for n in nodes)
+    assert len({n["uns_node_uuid"] for n in nodes}) == len(nodes)   # one stable id per UNS node
+
+    rels = json.loads(files["kg_relationships.json"])["relationships"]
+    assert rels and all(r["relationship_uuid"] for r in rels)
+    assert len({r["relationship_uuid"] for r in rels}) == len(rels)  # no edge-id collisions
+
+    mentions = [r for r in rels if r["type"] == "MENTIONS" and r["target"] == "Conv_Run"]
+    assert len(mentions) == 2                                        # two distinct mention edges
+    assert mentions[0]["relationship_uuid"] != mentions[1]["relationship_uuid"]
+
+    # each MENTIONS edge links back to a real evidence block (relationship_uuid derives from evidence)
+    ev_uuids = {b["evidence_uuid"] for b in json.loads(files["evidence.json"])["evidence"]}
+    for r in mentions:
+        assert r["evidence_uuid"] in ev_uuids
     s.close()
 
 
