@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:integration": "vitest run --testTimeout 30000 '**/*.integration.test.ts'",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "db:check-order": "node db/check-migration-order.mjs",
     "sitemap": "node scripts/sitemap.mjs",
     "sitemap:check": "node scripts/sitemap.mjs --check",
