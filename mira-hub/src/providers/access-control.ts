@@ -95,6 +95,10 @@ export const NAV_ITEMS: ReadonlyArray<{
   { key: "assets",        label: "Assets",        icon: "Wrench",        href: "/assets",        roles: [...ALL_ROLES], group: "secondary" },
   { key: "workorders",    label: "CMMS",          icon: "ClipboardList", href: "/workorders",    roles: [...ALL_ROLES], group: "secondary" },
   { key: "scan",          label: "Scan",          icon: "Cpu",           href: "/scan",          roles: [...ALL_ROLES], group: "secondary" },
+  // HubV3 contextualization Review Queue — approve imported (offline/Telegram)
+  // context batches; approval publishes proposed → verified. Distinct from the
+  // internal staff "Review queue" (admin-review) above.
+  { key: "ctx-review",    label: "Import Review", icon: "Network",       href: "/contextualization/review", roles: [...ADMIN_ROLES], group: "secondary" },
   // Customer-facing workspace admin. Visible to every authenticated tenant user
   // (workspace caps); the page itself shows only what each capability allows.
   { key: "settings",      label: "Settings",      icon: "Settings",      href: "/settings",      roles: [...ALL_ROLES], group: "secondary" },
