@@ -95,6 +95,9 @@ export const NAV_ITEMS: ReadonlyArray<{
   { key: "assets",        label: "Assets",        icon: "Wrench",        href: "/assets",        roles: [...ALL_ROLES], group: "secondary" },
   { key: "workorders",    label: "CMMS",          icon: "ClipboardList", href: "/workorders",    roles: [...ALL_ROLES], group: "secondary" },
   { key: "scan",          label: "Scan",          icon: "Cpu",           href: "/scan",          roles: [...ALL_ROLES], group: "secondary" },
+  // HubV3 contextualization workspace — import equipment sources / offline bundles,
+  // review extracted signals + proposed UNS paths, promote to the KG (staged proposed).
+  { key: "ctx",           label: "Contextualization", icon: "Layers",    href: "/contextualization", roles: [...ADMIN_ROLES], group: "secondary" },
   // HubV3 contextualization Review Queue — approve imported (offline/Telegram)
   // context batches; approval publishes proposed → verified. Distinct from the
   // internal staff "Review queue" (admin-review) above.

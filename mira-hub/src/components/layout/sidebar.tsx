@@ -122,6 +122,7 @@ export function Sidebar() {
       "reports":       t("reports"),
       "team":          t("team"),
       "admin-review":  "Review queue",
+      "ctx":           "Contextualization",
       "ctx-review":    "Import Review",
       "platform-users": "Platform accounts",
       // Legacy routes (still reachable, not in sidebar):
