@@ -85,7 +85,17 @@ export default function ReviewQueuePage() {
       ) : batches.length === 0 ? (
         <div className="border border-dashed border-gray-700 rounded-xl py-20 flex flex-col items-center gap-4 text-gray-500">
           <ClipboardList size={40} className="text-gray-600" />
-          <p className="text-sm">No import batches yet. Import an offline bundle or Telegram capture to populate the queue.</p>
+          <p className="text-sm">
+            No import batches yet. This queue holds Telegram captures and contract imports. Offline{" "}
+            <code className="text-gray-400">.zip</code> bundles import on the{" "}
+            <button
+              onClick={() => router.push("/contextualization")}
+              className="text-blue-400 hover:text-blue-300 underline underline-offset-2"
+            >
+              Contextualization Projects
+            </button>{" "}
+            page.
+          </p>
         </div>
       ) : (
         <div className="grid gap-4">

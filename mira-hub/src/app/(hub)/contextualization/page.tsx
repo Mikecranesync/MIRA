@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileUp, Loader2, Plus, X } from "lucide-react";
+import { FileUp, Loader2, Plus, Upload, X } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 
 interface Project {
@@ -50,6 +50,13 @@ export default function ContextualizationPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
+  // Offline bundle import state. The bundle (multipart) creates a *project*, not a
+  // review-queue batch, so success routes into the new project's signal review.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
   const fetchProjects = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -90,8 +97,51 @@ export default function ContextualizationPage() {
     }
   }
 
+  const importBundle = useCallback(
+    async (file: File) => {
+      if (!file.name.toLowerCase().endsWith(".zip")) {
+        setImportError("Select a Factory Context Bundle (.zip) exported from the offline contextualizer.");
+        return;
+      }
+      setImporting(true);
+      setImportError(null);
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        // Multipart — do NOT set Content-Type; the browser adds the boundary.
+        const res = await fetch(`${API_BASE}/api/contextualization/import`, { method: "POST", body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+        if (!data.projectId) throw new Error("Import returned no project id");
+        router.push(`/contextualization/${data.projectId}`);
+      } catch (e) {
+        setImportError(e instanceof Error ? e.message : "Bundle import failed");
+      } finally {
+        setImporting(false);
+      }
+    },
+    [router],
+  );
+
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div
+      className="p-6 max-w-5xl mx-auto relative"
+      onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+      onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const f = e.dataTransfer.files?.[0];
+        if (f) importBundle(f);
+      }}
+    >
+      {dragOver && (
+        <div className="absolute inset-0 z-40 m-2 rounded-xl border-2 border-dashed border-blue-500 bg-blue-500/10 flex items-center justify-center pointer-events-none">
+          <p className="text-blue-300 text-sm font-medium flex items-center gap-2">
+            <Upload size={18} /> Drop a Factory Context Bundle (.zip) to import
+          </p>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -100,14 +150,42 @@ export default function ContextualizationPage() {
             Import equipment sources, review the proposed UNS paths for extracted signals, and promote approved signals to the knowledge graph.
           </p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-        >
-          <Plus size={16} />
-          New Project
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".zip"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = ""; // allow re-selecting the same file
+              if (f) importBundle(f);
+            }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+            title="Import a Factory Context Bundle (.zip) exported from the offline contextualizer"
+            className="flex items-center gap-2 border border-gray-700 hover:border-gray-500 text-gray-200 text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+            {importing ? "Importing…" : "Import bundle"}
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            <Plus size={16} />
+            New Project
+          </button>
+        </div>
       </div>
+
+      {importError && (
+        <div className="mb-4 text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+          {importError}
+        </div>
+      )}
 
       {/* Body */}
       {loading ? (
@@ -120,7 +198,7 @@ export default function ContextualizationPage() {
       ) : projects.length === 0 ? (
         <div className="border border-dashed border-gray-700 rounded-xl py-20 flex flex-col items-center gap-4 text-gray-500">
           <FileUp size={40} className="text-gray-600" />
-          <p className="text-sm">No projects yet. Create one to start importing PLC tags.</p>
+          <p className="text-sm">No projects yet. Create one to import PLC sources, or drag an offline bundle (.zip) here.</p>
           <button
             onClick={() => setShowModal(true)}
             className="text-blue-400 hover:text-blue-300 text-sm underline underline-offset-2"
