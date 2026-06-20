@@ -30,7 +30,8 @@ import re
 import zipfile
 from datetime import datetime, timezone
 
-from . import __version__, scorecard as _scorecard
+from . import __version__, standards
+from . import scorecard as _scorecard
 
 SCHEMA = "mira-contextualizer/bundle@1"
 _TYPE_URI = "urn:mira:type:%s"
@@ -44,8 +45,12 @@ def _uns_segments(path: str) -> list[str]:
     return [s for s in re.split(r"[/.]", path) if s]
 
 
-def _i3x(accepted: list[dict]) -> dict:
-    """Project accepted UNS paths into CESMII i3X objectInstances (containers + signal leaves)."""
+def _i3x(accepted: list[dict], quantities: dict | None = None) -> dict:
+    """Project accepted UNS paths into CESMII i3X objectInstances (containers + signal leaves).
+
+    ``quantities`` maps a signal's tag name → its UCUM-coded quantity (from ``standards``); when a
+    leaf's tag has one it rides along in the leaf metadata so the i3X consumer sees units + ranges."""
+    quantities = quantities or {}
     instances: dict[str, dict] = {}
     for e in accepted:
         path = e.get("unsPathProposed")
@@ -57,6 +62,12 @@ def _i3x(accepted: list[dict]) -> dict:
             if elem_id in instances:
                 continue
             is_leaf = i == len(segs) - 1
+            meta: dict = {}
+            if is_leaf:
+                meta = {"roles": e.get("roles", []), "confidence": e.get("confidence")}
+                q = quantities.get(e["tagName"])
+                if q:
+                    meta["quantity"] = q
             instances[elem_id] = {
                 "elementId": elem_id,
                 "name": segs[i],
@@ -64,51 +75,109 @@ def _i3x(accepted: list[dict]) -> dict:
                 "parentId": "/".join(segs[:i]) or None,
                 "isComposition": True,
                 "namespaceUri": "urn:mira:uns",
-                "metadata": ({"roles": e.get("roles", []), "confidence": e.get("confidence")}
-                             if is_leaf else {}),
+                "metadata": meta,
             }
     return {"schema": "mira-contextualizer/i3x@1", "objectInstances": list(instances.values())}
 
 
-def _kg(accepted: list[dict], project_id: str) -> tuple[dict, dict]:
-    """Accepted extractions → proposed kg_entities + kg_relationships (offline twin of Promote)."""
+def _kg(accepted: list[dict], project_id: str, quantities: dict | None = None) -> tuple[dict, dict]:
+    """Accepted extractions → proposed kg_entities + kg_relationships (offline twin of Promote).
+
+    Beyond the signal/asset/document graph, this layers two industry-standard projections:
+      * ISO 14224 — a fault with mined cause/next-check gets an ``iso14224`` failure-mode record and,
+        when the project names exactly one component, a ``HAS_FAILURE_MODE`` edge from it.
+      * UCUM       — a unit-bearing value's coded ``quantity`` rides on its document entity and on the
+        matching UNS signal entity, so the unit/range/setpoint is attached where the signal lives.
+    Everything stays ``approval_state="proposed"`` — a human approves it in the Hub.
+    """
+    quantities = quantities or {}
     entities, relationships = [], []
     seen: set[str] = set()
+    index: dict[str, dict] = {}
 
-    def ent(entity_type: str, entity_id: str, name: str, props: dict):
+    def prov(e: dict) -> dict:
+        return {"ctx_project_id": project_id, "ctx_extraction_id": e["id"],
+                "evidence": e.get("evidenceJson", {})}
+
+    def ent(entity_type: str, entity_id: str, name: str, props: dict) -> dict:
         key = "%s:%s" % (entity_type, entity_id)
-        if key in seen:
-            return
-        seen.add(key)
-        entities.append({
-            "entity_type": entity_type, "entity_id": entity_id, "name": name,
-            "approval_state": "proposed", "properties": props,
-        })
+        if key not in seen:
+            seen.add(key)
+            index[key] = {"entity_type": entity_type, "entity_id": entity_id, "name": name,
+                          "approval_state": "proposed", "properties": props}
+            entities.append(index[key])
+        return index[key]
 
+    # Pass 1 — PLC/CCW signals placed in the UNS (asset → signal). Index by tag name so a
+    # document-derived UCUM quantity can later attach to the matching signal.
+    signal_by_tag: dict[str, dict] = {}
     for e in accepted:
+        path = e.get("unsPathProposed")
+        if not path:
+            continue
+        node = ent("signal", path, e["tagName"],
+                   {"roles": e.get("roles") or [], "confidence": e.get("confidence"),
+                    "provenance": prov(e)})
+        signal_by_tag.setdefault(e["tagName"], node)
+        segs = _uns_segments(path)
+        if len(segs) >= 2:
+            asset = "/".join(segs[:-1])
+            ent("asset", asset, segs[-2], {"provenance": prov(e)})
+            relationships.append({"type": "HAS_SIGNAL", "source": asset, "target": path,
+                                  "approval_state": "proposed", "evidence": prov(e)})
+
+    # Component identity (ISO 14224 "equipment unit") from model / catalog mentions — the thing
+    # failure modes hang off. Faults link only when there is exactly one, to avoid wrong attributions.
+    component_ids: list[str] = []
+    for e in accepted:
+        if e.get("unsPathProposed"):
+            continue
+        primary = (e.get("roles") or ["signal"])[0]
+        if primary in ("model_family", "catalog_number"):
+            ent("component", e["tagName"], e["tagName"],
+                {"identifier_type": primary, "confidence": e.get("confidence"), "provenance": prov(e)})
+            if e["tagName"] not in component_ids:
+                component_ids.append(e["tagName"])
+    sole_component = component_ids[0] if len(component_ids) == 1 else None
+
+    # Pass 2 — document-derived entities (manufacturers, faults, params/specs/tag refs) + enrichment.
+    for e in accepted:
+        if e.get("unsPathProposed"):
+            continue
         roles = e.get("roles") or []
         primary = roles[0] if roles else "signal"
-        path = e.get("unsPathProposed")
-        provenance = {"ctx_project_id": project_id, "ctx_extraction_id": e["id"],
-                      "evidence": e.get("evidenceJson", {})}
-        if path:  # a PLC signal placed in the UNS
-            ent("signal", path, e["tagName"],
-                {"roles": roles, "confidence": e.get("confidence"), "provenance": provenance})
-            segs = _uns_segments(path)
-            if len(segs) >= 2:
-                asset = "/".join(segs[:-1])
-                ent("asset", asset, segs[-2], {"provenance": provenance})
-                relationships.append({"type": "HAS_SIGNAL", "source": asset, "target": path,
-                                      "approval_state": "proposed", "evidence": provenance})
-        else:  # a document-derived entity (fault_code / parameter / catalog_number / manufacturer / tag_reference)
-            ent(primary, e["tagName"], e["tagName"],
-                {"confidence": e.get("confidence"), "provenance": provenance})
+        ev = e.get("evidenceJson", {})
+
+        if primary in ("model_family", "catalog_number"):
+            node = index["component:%s" % e["tagName"]]
+        elif primary == "fault_code":
+            props = {"confidence": e.get("confidence"), "provenance": prov(e)}
+            iso = standards.iso14224_fault(e["tagName"], ev)
+            if iso:
+                props["iso14224"] = iso
+            node = ent("fault_code", e["tagName"], e["tagName"], props)
+            if iso and sole_component:
+                relationships.append({"type": "HAS_FAILURE_MODE", "source": sole_component,
+                                      "target": e["tagName"], "approval_state": "proposed",
+                                      "evidence": prov(e)})
+        else:
+            node = ent(primary, e["tagName"], e["tagName"],
+                       {"confidence": e.get("confidence"), "provenance": prov(e)})
             if primary == "tag_reference":
-                for m in e.get("evidenceJson", {}).get("mentions", []):
+                for m in ev.get("mentions", []):
                     relationships.append({
                         "type": "MENTIONS", "source": "document:%s" % m.get("file"),
                         "target": e["tagName"], "approval_state": "proposed",
                         "evidence": {"page": m.get("page"), "snippet": m.get("snippet")}})
+
+        # UCUM quantity: carry it on the document entity, and attach it to the matching UNS signal.
+        q = quantities.get(e["tagName"])
+        if q:
+            node["properties"]["quantity"] = q
+            sig = signal_by_tag.get(e["tagName"])
+            if sig:
+                sig["properties"]["quantity"] = q
+
     return ({"schema": "mira-contextualizer/kg_entities@1", "entities": entities},
             {"schema": "mira-contextualizer/kg_relationships@1", "relationships": relationships})
 
@@ -172,11 +241,24 @@ def build_bundle(store, project_id: str) -> dict[str, str]:
     sc = _scorecard.compute_scorecard(exts, sources)
     files["scorecard.json"] = json.dumps(sc, indent=2)
 
+    # UCUM-coded quantities, keyed by tag name, so the i3X + kg projections can attach units/ranges to
+    # the signal they describe. ISO 14224 faults are projected inline in _kg from the same evidence.
+    quantities = {}
+    for e in accepted:
+        q = standards.ucum_quantity(e.get("evidenceJson") or {})
+        if q:
+            quantities.setdefault(e["tagName"], q)
+    n_uns = sum(1 for e in accepted if e.get("unsPathProposed"))
+    n_iso = sum(1 for e in accepted
+                if standards.iso14224_fault(e["tagName"], e.get("evidenceJson") or {}))
+
     files["manifest.json"] = json.dumps({
         "schema": SCHEMA, "tool": "mira-contextualizer", "tool_version": __version__,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "project": {"id": proj["id"], "name": proj["name"], "description": proj.get("description")},
-        "counts": {"sources": len(sources), "candidates": len(exts), "accepted": len(accepted)},
+        "counts": {"sources": len(sources), "candidates": len(exts), "accepted": len(accepted),
+                   "uns_signals": n_uns, "iso14224_faults": n_iso,
+                   "ucum_quantities": len(quantities)},
         # answerability snapshot so a consumer can gate on it without re-deriving
         "scorecard": {"score": sc["score"], "grade": sc["grade"]},
         "sources": src_meta,
@@ -187,8 +269,8 @@ def build_bundle(store, project_id: str) -> dict[str, str]:
                      "confidence": e.get("confidence")}
                     for e in accepted if e.get("unsPathProposed")],
     }, indent=2)
-    files["i3x.json"] = json.dumps(_i3x(accepted), indent=2)
-    ents, rels = _kg(accepted, project_id)
+    files["i3x.json"] = json.dumps(_i3x(accepted, quantities), indent=2)
+    ents, rels = _kg(accepted, project_id, quantities)
     files["kg_entities.json"] = json.dumps(ents, indent=2)
     files["kg_relationships.json"] = json.dumps(rels, indent=2)
     files["signals.csv"] = _signals_csv(accepted)
