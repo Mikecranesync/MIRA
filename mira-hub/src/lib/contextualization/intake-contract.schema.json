@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://factorylm.com/schemas/contextualization-intake/v1.json",
+  "title": "Contextualization Intake Contract",
+  "description": "HubV3 §2 — the single normalized envelope every ingest route (offline Contextualizer, Telegram thin client, Hub upload) submits to the Hub. Kept in lockstep with intake-contract.ts and contracts/contextualization/intake_contract.py. UUIDs are identity; names/serials/models/IPs/UNS paths are matching evidence. review_status is always 'proposed' on intake.",
+  "type": "object",
+  "required": ["contract_version", "ingest_route", "sources"],
+  "additionalProperties": true,
+  "properties": {
+    "contract_version": { "const": "contextualization-intake/v1" },
+    "ingest_route": { "enum": ["offline", "telegram", "hub_upload"] },
+    "review_status": {
+      "const": "proposed",
+      "description": "Always 'proposed' on intake — nothing is auto-approved (ADR-0017)."
+    },
+    "bundle_sha256": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-fA-F]{64}$",
+      "description": "Whole-submission fingerprint — project/batch dedup key."
+    },
+    "project_hint": { "type": ["string", "null"] },
+    "asset_hints": {
+      "type": "object",
+      "description": "Identity + matching-evidence hints; never the sole key.",
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string" },
+        "number": { "type": "string" },
+        "manufacturer": { "type": "string" },
+        "model": { "type": "string" },
+        "serial": { "type": "string" },
+        "controller": { "type": "string" },
+        "controller_ip": { "type": "string" },
+        "uns_path": { "type": "string" }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["source_sha256", "source_type", "source_metadata"],
+        "additionalProperties": true,
+        "properties": {
+          "source_sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+          "source_type": { "enum": ["l5x", "st", "plcopen", "csv", "manual", "other"] },
+          "source_uuid": { "type": "string" },
+          "source_metadata": {
+            "type": "object",
+            "required": ["file_name"],
+            "additionalProperties": true,
+            "properties": {
+              "file_name": { "type": "string", "minLength": 1 },
+              "mime": { "type": "string" },
+              "size": { "type": "number" },
+              "captured_at": { "type": "string" },
+              "uploader": { "type": "string" },
+              "location": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "evidence": { "type": "array", "items": { "type": "object" } },
+    "entities": { "type": "array", "items": { "type": "object" } },
+    "proposed_signals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tag_name"],
+        "additionalProperties": true,
+        "properties": {
+          "tag_name": { "type": "string" },
+          "roles": { "type": "array", "items": { "type": "string" } },
+          "uns_path": { "type": ["string", "null"] },
+          "i3x_element_id": { "type": ["string", "null"] },
+          "confidence": { "type": ["number", "null"] },
+          "evidence": { "type": "object" },
+          "source_sha256": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "proposed_uns": { "type": "array", "items": { "type": "object" } },
+    "proposed_i3x": { "type": "array", "items": { "type": "object" } },
+    "proposed_faults": { "type": "array", "items": { "type": "object" } },
+    "proposed_parameters": { "type": "array", "items": { "type": "object" } },
+    "proposed_relationships": { "type": "array", "items": { "type": "object" } },
+    "provenance": { "type": "object" },
+    "confidence": { "type": ["string", "number", "null"] }
+  }
+}

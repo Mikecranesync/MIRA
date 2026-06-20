@@ -3,6 +3,12 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.29.0 (2026-06-20) — feat(hubv3): Hub-centered contextualization intake (P0–P8)
+- **Hub = system of record for contextualization.** Offline Contextualizer + Telegram are now ingest clients submitting one shared **Contextualization Intake Contract** (`contracts/contextualization/intake_contract.py` + `mira-hub/src/lib/contextualization/intake-contract.ts` + JSON Schema; ADR-0023). All ingest enters as `proposed`/pending; Hub does final merge, approval, and publish to the project model / UNS / i3X / MIRA KB.
+- **Migration `056`** — staging schema: `ctx_import_batches` (review_status proposed→approved|rejected|needs_review, ingest_route), `ctx_extraction_asset_matches` (match_strength strong|probable|none, candidate_asset_id), source/bundle `sha256` dedup keys, RLS + grants. Reversible (rollback block in-file). Applied + verified on staging 2026-06-20.
+- **P2** import endpoint accepts the contract + sha256 dedup. **P3** asset-matching engine (strong/probable/none vs `cmms_equipment`). **P4** batch Review Queue + approval-aware promote (no overwrite of verified). **P5** offline bundle: `evidence.json` + entity UUIDs + sanitized/derived-context export mode (`mira-contextualizer` v2.3.0). **P6** Telegram thin evidence client → Hub intake. **P7** Hub↔offline UI label parity + Import Review nav link. **P8** garage-conveyor demo + §6 acceptance test matrix + `docs/runbooks/garage-conveyor-demo.md`.
+- Shipped independent of the `mira-plc-parser` desktop feature (`feat/plc-mapper-gui` #2068) to avoid that branch's parser-merge conflict with main's #2091; uses main's parser as the compose dependency. PRD: `docs/plans/2026-06-20-hubv3-contextualization-intake-prd.md`. Rollback: `docs/runbooks/hubv3-rollback.md`.
+
 ### v3.28.4 (2026-06-20) — fix(deploy): pin prod VPS to the release tag, not main HEAD
 - **`.github/workflows/deploy-vps.yml`** — the prod deploy now checks out the `vX.Y.Z` tag that `version-tag.yml` lays on the merge commit (`git checkout <tag>`) instead of `git reset --hard origin/main`. Closes the versioning-discipline gap in `docs/versioning.md`: a rollback target is only real if prod references a tag, not a moving `main` HEAD. Same tree deployed (tag == main HEAD); prod's `git describe` now shows a clean release ref, so `docs/runbooks/hubv3-rollback.md` ROLLBACK-A has a real anchor. Graceful fallback to `origin/main` if the tag hasn't landed yet.
 
