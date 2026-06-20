@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.14.0 — 2026-06-20
+- feat(hub): "Import bundle" control on the Contextualization Projects page — file-picker + page drag-drop that POSTs an offline Factory Context Bundle (`.zip`) to the existing `POST /api/contextualization/import` (multipart) and routes into the new project's signal review. The bundle path creates a project (not a review-queue batch) and parses inline (no host-local worker dependency). Corrected the Review Queue empty-state copy, which falsely promised bundle import there → now points to the Projects page (the queue holds Telegram/contract imports). No backend change; `/import` + `parseBundle` proven against a real 102-signal bundle. See `docs/runbooks/hubv3-e2e-proof-2026-06-20.md`.
+
 ## v2.13.0 — 2026-06-20
 - feat(hub): HubV3 contextualization intake complete (P0–P8). Shared intake contract (`src/lib/contextualization/intake-contract.ts`), migration `056` staging schema (`ctx_import_batches`, `ctx_extraction_asset_matches`, sha256 dedup; applied+verified on staging), contract-accepting `/api/contextualization/import` with source dedup (all rows land `proposed`), asset-matching engine (`src/lib/contextualization/asset-matcher.ts` — strong/probable/none vs `cmms_equipment`), batch Review Queue + approval-aware promote (reads `kg_entities.approval_state`, refuses to overwrite verified — no silent `ON CONFLICT DO NOTHING`), §6 acceptance matrix (`src/lib/contextualization/acceptance-matrix.test.ts`), Hub↔offline label parity, and the "Import Review" sidebar link → Review Queue. Nothing auto-promotes — import stages `proposed`; only a human approve verifies (ADR-0017). PRD: `docs/plans/2026-06-20-hubv3-contextualization-intake-prd.md`.
 
