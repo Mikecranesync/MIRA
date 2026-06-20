@@ -1,6 +1,5 @@
 import * as fs from "node:fs";
 import { describe, expect, it } from "vitest";
-// @ts-expect-error — plain .mjs sibling script, no type decls needed for the test.
 import { discoverRoutes, snapshotOf, SNAPSHOT } from "../../scripts/sitemap.mjs";
 
 /**

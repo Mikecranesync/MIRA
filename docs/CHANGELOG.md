@@ -3,6 +3,12 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.28.3 (2026-06-20) — security(hub): filter private knowledge_entries from /api/knowledge/search (#2044)
+- **Cross-tenant content leak closed.** `/api/knowledge/search` (BM25 + ILIKE fallback paths) queried `knowledge_entries` on the owner pool with no `is_private` filter. Since mig 052, per-tenant uploaded manuals live in this table with `is_private = true`; without the filter any authenticated tenant's search returned another tenant's private manual snippets. Added `AND is_private = false` to both SQL paths.
+- Regression test: `mira-hub/src/app/api/knowledge/search/__tests__/route.is-private.test.ts` asserts the filter is present in every DB-bound query.
+- **chore:** removed 2 stale `@ts-expect-error` directives (TS2578) in `rls-deny.integration.test.ts` + `sitemap-drift.test.ts` — full `tsc --noEmit` is now clean.
+- **docs:** `docs/known-issues.md` refreshed — beta gate PASSING stanza, round 7-9 closures (#1833/#1901/#2020/#2077/#2082), #736 mitigation note, #1858 watch item.
+
 ### v3.28.2 (2026-06-17) — feat(plc-parser): offline UNS/i3X proposal layer (L5X → ISA-95 → i3X)
 - Closes the missing middle link in the **offline PLC Program Teacher** chain identified by `docs/research/plc-program-teacher-status.md`: the merged #2065 parser extracted maintenance context but emitted no UNS/i3X and was wired to nothing. Ports the proven, deterministic, stdlib-only transform from PR #2068 onto the merged parser core and exposes it from the terminal.
 - **`mira-plc-parser/mira_plc_parser/uns.py`** (new) — propose one ISA-95 UNS path per tag (`enterprise/site/area/line/asset/signal`). Upper levels from a controller-seeded, user-overridable prefix; lower levels from VFD-signal roles + asset candidates; `high`/`medium`/`low` confidence; `source: proposed` (never auto-verified).
