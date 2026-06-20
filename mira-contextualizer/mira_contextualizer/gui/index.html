@@ -112,6 +112,7 @@
       <button onclick="act('saveAs')" data-need="profile">Save As…</button>
       <button onclick="act('import')" data-need="profile">Import Files…</button>
       <button onclick="act('exportBundle')" data-need="profile">Export Bundle…</button>
+      <button onclick="act('exportSanitized')" data-need="profile">Export Sanitized Context…</button>
       <div class="sep"></div>
       <div class="sub">Recent Profiles</div>
       <div id="recentList"><button disabled>None yet</button></div>
@@ -231,7 +232,7 @@ async function act(a){
     openProfile:()=>$("profileInput").click(),
     save:saveProfile, saveAs:saveProfile,
     import:()=>$("fileInput").click(),
-    exportBundle:exportBundle,
+    exportBundle:exportBundle, exportSanitized:exportSanitized,
     exit:()=>{ window.close(); toast("You can close this window."); },
     undo:undoDecision, redo:redoDecision,
     find:()=>{ setView(VIEW); const f=$("findBox"); if(f){ f.focus(); } else { setView("signals"); } },
@@ -444,6 +445,8 @@ function openProfileFile(ev){ const f=ev.target.files[0]; ev.target.value=""; if
   r.readAsText(f); }
 function exportBundle(){ if(!CURRENT){ toast("Open a profile first"); return; }
   window.location.href=`/api/projects/${CURRENT}/export?format=bundle`; toast("Building machine_context_bundle.zip…"); }
+function exportSanitized(){ if(!CURRENT){ toast("Open a profile first"); return; }
+  window.location.href=`/api/projects/${CURRENT}/export?format=bundle-sanitized`; toast("Building sanitized structured context…"); }
 async function loadRecents(){
   try{ const j=await api("/api/recents"); const el=$("recentList");
     if(!(j.recents||[]).length){ el.innerHTML='<button disabled>None yet</button>'; return; }
