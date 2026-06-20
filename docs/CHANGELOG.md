@@ -3,6 +3,9 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.28.4 (2026-06-20) — fix(deploy): pin prod VPS to the release tag, not main HEAD
+- **`.github/workflows/deploy-vps.yml`** — the prod deploy now checks out the `vX.Y.Z` tag that `version-tag.yml` lays on the merge commit (`git checkout <tag>`) instead of `git reset --hard origin/main`. Closes the versioning-discipline gap in `docs/versioning.md`: a rollback target is only real if prod references a tag, not a moving `main` HEAD. Same tree deployed (tag == main HEAD); prod's `git describe` now shows a clean release ref, so `docs/runbooks/hubv3-rollback.md` ROLLBACK-A has a real anchor. Graceful fallback to `origin/main` if the tag hasn't landed yet.
+
 ### v3.28.3 (2026-06-20) — security(hub): filter private knowledge_entries from /api/knowledge/search (#2044)
 - **Cross-tenant content leak closed.** `/api/knowledge/search` (BM25 + ILIKE fallback paths) queried `knowledge_entries` on the owner pool with no `is_private` filter. Since mig 052, per-tenant uploaded manuals live in this table with `is_private = true`; without the filter any authenticated tenant's search returned another tenant's private manual snippets. Added `AND is_private = false` to both SQL paths.
 - Regression test: `mira-hub/src/app/api/knowledge/search/__tests__/route.is-private.test.ts` asserts the filter is present in every DB-bound query.
