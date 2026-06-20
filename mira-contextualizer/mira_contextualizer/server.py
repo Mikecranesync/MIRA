@@ -12,13 +12,14 @@ import re
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import bundle, ccw, contextualize, engine, extract, scorecard
+from . import bundle, ccw, contextualize, engine, extract, profile, scorecard
 from .store import Store
 
 _RE_PROJECT = re.compile(r"^/api/projects/([0-9a-f]+)$")
 _RE_SOURCES = re.compile(r"^/api/projects/([0-9a-f]+)/sources$")
 _RE_EXTRACTIONS = re.compile(r"^/api/projects/([0-9a-f]+)/extractions$")
 _RE_EXPORT = re.compile(r"^/api/projects/([0-9a-f]+)/export$")
+_RE_EXPORTS = re.compile(r"^/api/projects/([0-9a-f]+)/exports$")
 _RE_SCORECARD = re.compile(r"^/api/projects/([0-9a-f]+)/scorecard$")
 _RE_CCW_IMPORT = re.compile(r"^/api/projects/([0-9a-f]+)/ccw-import$")
 _RE_DECISION = re.compile(r"^/api/extractions/([0-9a-f]+)$")
@@ -36,7 +37,7 @@ _CONTENT_TYPES = {
 }
 
 
-def make_handler(store: Store, gui_dir: str):
+def make_handler(store: Store, gui_dir: str, recents_path: str | None = None):
     class Handler(BaseHTTPRequestHandler):
         server_version = "MiraContextualizer/0.1"
 
@@ -88,6 +89,16 @@ def make_handler(store: Store, gui_dir: str):
             if path == "/api/projects":
                 self._json({"projects": store.list_projects()})
                 return
+            if path == "/api/recents":
+                self._json({"recents": profile.recents_load(recents_path) if recents_path else []})
+                return
+            m = _RE_EXPORTS.match(path)
+            if m:
+                if not store.get_project(m.group(1)):
+                    self._err("project not found", 404)
+                    return
+                self._json({"exports": store.list_exports(m.group(1))})
+                return
             m = _RE_PROJECT.match(path)
             if m:
                 proj = store.get_project(m.group(1))
@@ -132,10 +143,21 @@ def make_handler(store: Store, gui_dir: str):
             if m:
                 self._ccw_import(m.group(1))
                 return
+            if path == "/api/profiles/open":
+                self._open_profile()
+                return
             self._err("not found", 404)
 
         def do_PATCH(self) -> None:  # noqa: N802
             path = urllib.parse.urlparse(self.path).path
+            m = _RE_PROJECT.match(path)
+            if m:
+                if not store.get_project(m.group(1)):
+                    self._err("project not found", 404)
+                    return
+                proj = store.set_profile(m.group(1), (self._read_json().get("identity") or {}))
+                self._json({"project": proj})
+                return
             m = _RE_DECISION.match(path)
             if m:
                 body = self._read_json()
@@ -285,6 +307,20 @@ def make_handler(store: Store, gui_dir: str):
                         "ip": result["meta"].get("ip"), "files": result["files"],
                         "notes": result["notes"]}, 201)
 
+        def _open_profile(self) -> None:
+            """Open a .miraprofile (raw JSON body) → restore into the store as a project."""
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length else b""
+            try:
+                data = json.loads(_decode(raw))
+                proj = profile.open_profile(store, data)
+            except (ValueError, KeyError) as e:
+                self._err("not a valid .miraprofile: %s" % e, 400)
+                return
+            if recents_path:
+                profile.recents_add(recents_path, proj["name"] + profile.EXT, proj["name"])
+            self._json({"project": proj}, 201)
+
         def _export(self, pid: str, fmt: str) -> None:
             proj = store.get_project(pid)
             if not proj:
@@ -299,15 +335,25 @@ def make_handler(store: Store, gui_dir: str):
                 self._json(bundle._i3x(accepted))
             elif fmt == "bundle":
                 data = bundle.zip_bytes(bundle.build_bundle(store, pid))
-                self._send_bytes(data, "application/zip",
-                                 "%s-context-bundle.zip" % bundle._safe(proj["name"]))
+                store.add_export(pid, "bundle", "machine_context_bundle.zip",
+                                 {"bytes": len(data), "accepted": sum(
+                                     1 for e in store.list_extractions(pid) if e["status"] == "accepted")})
+                self._send_bytes(data, "application/zip", "machine_context_bundle.zip")
+            elif fmt == "profile":
+                data = json.dumps(profile.save_profile(store, pid), indent=2).encode("utf-8")
+                store.add_export(pid, "profile", "%s%s" % (proj["name"], profile.EXT))
+                if recents_path:
+                    profile.recents_add(recents_path, proj["name"] + profile.EXT, proj["name"])
+                self._send_bytes(data, "application/json",
+                                 "%s%s" % (bundle._safe(proj["name"]), profile.EXT))
             else:
-                self._err("unsupported format (uns | i3x | bundle)", 400)
+                self._err("unsupported format (uns | i3x | bundle | profile)", 400)
 
     return Handler
 
 
-def serve(store: Store, gui_dir: str, host: str = "127.0.0.1", port: int = 0):
+def serve(store: Store, gui_dir: str, host: str = "127.0.0.1", port: int = 0,
+          recents_path: str | None = None):
     """Start a threaded server. Returns (httpd, port); caller runs serve_forever or shutdown."""
-    httpd = ThreadingHTTPServer((host, port), make_handler(store, gui_dir))
+    httpd = ThreadingHTTPServer((host, port), make_handler(store, gui_dir, recents_path))
     return httpd, httpd.server_address[1]

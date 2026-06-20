@@ -6,321 +6,520 @@
 <title>FactoryLM Contextualizer</title>
 <link rel="stylesheet" href="factorylm-tokens.css" />
 <style>
-  /* Local names alias the shared FactoryLM tokens (docs/design/factorylm-tokens.css) so the
-     component CSS below is unchanged while every color comes from one source of truth. */
-  :root { --bg:var(--fl-bg); --ink:var(--fl-ink); --muted:var(--fl-muted); --line:var(--fl-line);
-          --accent:var(--fl-accent); --green:var(--fl-ok); --red:var(--fl-fault); --amber:var(--fl-warn); }
+  /* Every value comes from the shared FactoryLM tokens (factorylm-tokens.css) — no hardcoded hex.
+     Document-style desktop shell: menu bar, profile sidebar, switchable views. */
   * { box-sizing: border-box; }
-  body { margin:0; font:14px/1.45 "Segoe UI",system-ui,sans-serif; color:var(--ink); background:var(--bg); }
-  header { background:#111827; color:#fff; padding:10px 16px; display:flex; align-items:center; gap:14px; }
-  header h1 { font-size:15px; margin:0; font-weight:600; letter-spacing:.2px; }
-  header .sub { color:#9ca3af; font-size:12px; }
-  .tabs { display:flex; gap:2px; background:#1f2937; }
-  .tabs button { background:transparent; color:#cbd5e1; border:0; padding:8px 16px; cursor:pointer; font-size:13px; }
-  .tabs button.active { background:var(--bg); color:var(--ink); font-weight:600; }
-  main { padding:16px; max-width:1100px; margin:0 auto; }
-  .row { display:flex; gap:16px; align-items:flex-start; }
-  .panel { background:#fff; border:1px solid var(--line); border-radius:8px; padding:14px; }
-  .projects { width:300px; flex:none; }
+  body { margin:0; font:var(--fl-fs)/1.45 var(--fl-font); color:var(--fl-ink); background:var(--fl-bg); }
+
+  /* title + menu bar */
+  header { background:var(--fl-header); color:var(--fl-header-ink); padding:8px 14px; display:flex; align-items:center; gap:12px; }
+  header h1 { font-size:14px; margin:0; font-weight:600; letter-spacing:.2px; }
+  header .sub { color:var(--fl-header-muted); font-size:var(--fl-fs-xs); }
+  .menubar { display:flex; background:var(--fl-surface); border-bottom:1px solid var(--fl-line); padding:0 6px; }
+  .menu { position:relative; }
+  .menu > button { background:transparent; border:0; padding:7px 12px; cursor:pointer; font:inherit; color:var(--fl-ink); border-radius:var(--fl-radius-sm); }
+  .menu > button:hover, .menu.open > button { background:var(--fl-accent-tint); }
+  .menu .drop { position:absolute; top:100%; left:0; min-width:210px; background:var(--fl-surface);
+    border:1px solid var(--fl-line); border-radius:var(--fl-radius-sm); box-shadow:var(--fl-shadow-pop);
+    padding:4px; display:none; z-index:40; }
+  .menu.open .drop { display:block; }
+  .menu .drop button { display:flex; width:100%; gap:10px; justify-content:space-between; align-items:center;
+    background:transparent; border:0; text-align:left; padding:7px 10px; cursor:pointer; font:inherit;
+    color:var(--fl-ink); border-radius:var(--fl-radius-sm); }
+  .menu .drop button:hover { background:var(--fl-accent-tint); }
+  .menu .drop button:disabled { color:var(--fl-faint); cursor:not-allowed; background:transparent; }
+  .menu .drop .sep { height:1px; background:var(--fl-line); margin:4px 2px; }
+  .menu .drop .kbd { color:var(--fl-faint); font-size:var(--fl-fs-xs); }
+  .menu .drop .sub { padding:6px 10px 2px; font-size:var(--fl-fs-xs); text-transform:uppercase; color:var(--fl-muted); letter-spacing:.4px; }
+
+  .layout { display:flex; gap:14px; padding:14px; max-width:1180px; margin:0 auto; align-items:flex-start; }
+  .panel { background:var(--fl-surface); border:1px solid var(--fl-line); border-radius:var(--fl-radius); padding:var(--fl-pad); box-shadow:var(--fl-shadow); }
+  .sidebar { width:270px; flex:none; }
   .work { flex:1; min-width:0; }
-  h2 { font-size:13px; text-transform:uppercase; color:var(--muted); margin:0 0 10px; letter-spacing:.4px; }
-  input,button,select { font:inherit; }
-  input[type=text]{ width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; }
-  .btn { border:1px solid var(--line); background:#fff; border-radius:6px; padding:6px 10px; cursor:pointer; }
-  .btn:hover{ background:#f9fafb; }
-  .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
-  .btn.primary:hover{ background:#4338ca; }
+  h2 { font-size:var(--fl-fs-sm); text-transform:uppercase; color:var(--fl-muted); margin:0 0 10px; letter-spacing:.4px; }
+  input,button,select,textarea { font:inherit; }
+  input[type=text]{ width:100%; padding:6px 8px; border:1px solid var(--fl-line); border-radius:var(--fl-radius-sm); }
+  .btn { border:1px solid var(--fl-line); background:var(--fl-surface); border-radius:var(--fl-radius-sm); padding:6px 10px; cursor:pointer; }
+  .btn:hover{ background:var(--fl-bg); }
+  .btn.primary{ background:var(--fl-accent); color:var(--fl-header-ink); border-color:var(--fl-accent); }
+  .btn.primary:hover{ background:var(--fl-accent-hover); }
   .btn:disabled{ opacity:.5; cursor:not-allowed; }
+
   ul.plist{ list-style:none; margin:0; padding:0; }
-  ul.plist li{ padding:8px; border-radius:6px; cursor:pointer; border:1px solid transparent; }
-  ul.plist li:hover{ background:#f9fafb; }
-  ul.plist li.sel{ background:#eef2ff; border-color:#c7d2fe; }
-  ul.plist .meta{ color:var(--muted); font-size:12px; }
-  table{ width:100%; border-collapse:collapse; font-size:13px; }
-  th,td{ text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
-  th{ font-size:11px; text-transform:uppercase; color:var(--muted); }
-  td.tag{ font-family:Consolas,monospace; font-weight:600; }
-  td.uns{ font-family:Consolas,monospace; color:#374151; word-break:break-all; }
-  tr.accepted{ background:#f0fdf4; } tr.rejected{ background:#fef2f2; opacity:.6; }
-  .chip{ background:#eef2ff; color:#3730a3; border-radius:4px; padding:1px 6px; font-size:11px; margin-right:3px; }
-  .conf-high{ color:var(--green); font-weight:600; } .conf-med{ color:var(--amber); font-weight:600; }
-  .conf-low{ color:var(--muted); }
-  .pill{ border-radius:4px; padding:2px 8px; font-size:11px; font-weight:600; }
-  .pill.accepted{ background:#dcfce7; color:#166534; } .pill.rejected{ background:#fee2e2; color:#991b1b; }
-  .banner{ background:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:8px 10px; border-radius:6px; font-size:12px; margin-bottom:10px; }
-  .score{ display:flex; align-items:center; gap:12px; background:#fff; border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin-bottom:10px; }
-  .score .grade{ font-size:13px; font-weight:700; white-space:nowrap; }
-  .score .bar{ flex:1; height:8px; background:#eee; border-radius:4px; overflow:hidden; }
+  ul.plist li{ padding:8px; border-radius:var(--fl-radius-sm); cursor:pointer; border:1px solid transparent; }
+  ul.plist li:hover{ background:var(--fl-bg); }
+  ul.plist li.sel{ background:var(--fl-accent-tint); border-color:var(--fl-line-strong); }
+  ul.plist .meta{ color:var(--fl-muted); font-size:var(--fl-fs-sm); }
+
+  table{ width:100%; border-collapse:collapse; font-size:var(--fl-fs-sm); }
+  th,td{ text-align:left; padding:6px 8px; border-bottom:1px solid var(--fl-line); vertical-align:top; }
+  th{ font-size:var(--fl-fs-xs); text-transform:uppercase; color:var(--fl-muted); }
+  td.tag{ font-family:var(--fl-mono); font-weight:600; }
+  td.uns{ font-family:var(--fl-mono); color:var(--fl-ink); word-break:break-all; }
+  tr.accepted{ background:var(--fl-ok-bg); } tr.rejected{ background:var(--fl-fault-bg); opacity:.65; }
+  .chip{ background:var(--fl-accent-tint); color:var(--fl-accent-ink); border-radius:4px; padding:1px 6px; font-size:var(--fl-fs-xs); margin-right:3px; }
+  .conf-high{ color:var(--fl-ok); font-weight:600; } .conf-med{ color:var(--fl-warn); font-weight:600; }
+  .conf-low{ color:var(--fl-off); }
+  .pill{ border-radius:4px; padding:2px 8px; font-size:var(--fl-fs-xs); font-weight:600; }
+  .pill.accepted{ background:var(--fl-ok-bg); color:var(--fl-ok); } .pill.rejected{ background:var(--fl-fault-bg); color:var(--fl-fault); }
+  .pill.pending{ background:var(--fl-bg); color:var(--fl-muted); }
+  .banner{ background:var(--fl-warn-bg); border:1px solid var(--fl-line); color:var(--fl-warn); padding:8px 10px; border-radius:var(--fl-radius-sm); font-size:var(--fl-fs-sm); margin-bottom:10px; }
+  .score{ display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+  .score .grade{ font-size:var(--fl-fs-sm); font-weight:700; white-space:nowrap; }
+  .score .bar{ flex:1; height:8px; background:var(--fl-line); border-radius:4px; overflow:hidden; }
   .score .bar>span{ display:block; height:100%; }
-  .score .gaps{ font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:46%; }
-  .toast{ position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:#111827; color:#fff; padding:8px 14px; border-radius:6px; font-size:13px; box-shadow:0 4px 14px rgba(0,0,0,.25); }
-  .toolbar{ display:flex; gap:8px; align-items:center; margin-bottom:10px; }
-  .muted{ color:var(--muted); }
-  .work.drag{ outline:2px dashed var(--accent); outline-offset:-6px; background:#f5f3ff; }
+  .toast{ position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:var(--fl-header); color:var(--fl-header-ink); padding:8px 14px; border-radius:var(--fl-radius-sm); font-size:var(--fl-fs-sm); box-shadow:var(--fl-shadow-pop); z-index:60; }
+  .toolbar{ display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+  .muted{ color:var(--fl-muted); }
+  .work.drag{ outline:2px dashed var(--fl-accent); outline-offset:-6px; background:var(--fl-accent-tint); }
   .sources{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
-  .src{ font-size:11px; padding:2px 8px; border-radius:10px; border:1px solid var(--line); background:#fafafa; }
-  .src.done{ border-color:#bbf7d0; background:#f0fdf4; } .src.error{ border-color:#fecaca; background:#fef2f2; }
-  td.tag{ cursor:help; }
+  .src{ font-size:var(--fl-fs-xs); padding:2px 8px; border-radius:10px; border:1px solid var(--fl-line); background:var(--fl-bg); }
+  .src.done{ border-color:var(--fl-ok); background:var(--fl-ok-bg); } .src.error{ border-color:var(--fl-fault); background:var(--fl-fault-bg); }
+  .views{ display:flex; gap:2px; flex-wrap:wrap; margin-bottom:12px; border-bottom:1px solid var(--fl-line); }
+  .views button{ background:transparent; border:0; border-bottom:2px solid transparent; padding:7px 11px; cursor:pointer; font:inherit; color:var(--fl-muted); }
+  .views button.active{ color:var(--fl-ink); border-bottom-color:var(--fl-accent); font-weight:600; }
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:10px 18px; }
+  .field label{ display:block; font-size:var(--fl-fs-xs); text-transform:uppercase; color:var(--fl-muted); margin-bottom:3px; letter-spacing:.3px; }
+  .modal-bg{ position:fixed; inset:0; background:rgba(17,24,39,.45); display:none; align-items:flex-start; justify-content:center; z-index:50; }
+  .modal-bg.open{ display:flex; }
+  .modal{ background:var(--fl-surface); border-radius:var(--fl-radius); margin-top:7vh; width:640px; max-width:94vw; max-height:84vh; overflow:auto; box-shadow:var(--fl-shadow-pop); }
+  .modal header{ background:var(--fl-surface); color:var(--fl-ink); border-bottom:1px solid var(--fl-line); justify-content:space-between; }
+  .modal .body{ padding:14px; }
+  .modal .foot{ padding:12px 14px; border-top:1px solid var(--fl-line); display:flex; justify-content:flex-end; gap:8px; }
+  .kv{ font-size:var(--fl-fs-sm); } .kv b{ color:var(--fl-muted); font-weight:600; }
+  .cards{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:12px; }
+  .card{ border:1px solid var(--fl-line); border-radius:var(--fl-radius-sm); padding:10px; }
+  .card .n{ font-size:20px; font-weight:700; } .card .l{ font-size:var(--fl-fs-xs); text-transform:uppercase; color:var(--fl-muted); }
 </style>
 </head>
 <body>
 <header>
   <h1>FactoryLM Contextualizer</h1>
   <span class="sub">offline · deterministic · no internet required</span>
+  <span style="flex:1"></span>
+  <span class="sub" id="profileName">No profile open</span>
 </header>
-<div class="tabs">
-  <button id="tab-plc" class="active" onclick="setMode('plc')">PLC Tag Mapper</button>
-  <button id="tab-doc" onclick="setMode('doc')">Documents</button>
-</div>
 
-<main>
-  <div class="row">
-    <!-- Projects -->
-    <div class="panel projects">
-      <h2>Projects</h2>
-      <div style="display:flex; gap:6px; margin-bottom:10px;">
-        <input id="newName" type="text" placeholder="New project name" />
-        <button class="btn primary" onclick="createProject()">+</button>
-      </div>
-      <ul class="plist" id="projectList"></ul>
-    </div>
-
-    <!-- Work area -->
-    <div class="panel work" id="work">
-      <div id="banner" class="banner" style="display:none"></div>
-      <div id="scorecard"></div>
-      <div class="sources" id="sources"></div>
-      <div class="toolbar">
-        <strong id="projTitle" class="muted">Select or create a project</strong>
-        <span style="flex:1"></span>
-        <input id="fileInput" type="file" multiple style="display:none" onchange="uploadFile(event)" />
-        <input id="dirInput" type="file" webkitdirectory directory multiple style="display:none" onchange="importCcwFolder(event)" />
-        <button class="btn" id="uploadBtn" onclick="document.getElementById('fileInput').click()" disabled>Upload source</button>
-        <button class="btn" id="ccwBtn" onclick="document.getElementById('dirInput').click()" disabled title="Pick a CCW project folder — parses MbSrvConf.xml, LogicalValues.csv, .st/.stf/.iecst, .ccwmod, RmcVariables and merges them">CCW Project</button>
-        <button class="btn" id="refreshBtn" onclick="loadExtractions()" disabled>Refresh</button>
-        <button class="btn" id="exportBtn" onclick="exportUns()" disabled>Export UNS</button>
-        <button class="btn primary" id="bundleBtn" onclick="exportBundle()" disabled>Export Bundle</button>
-      </div>
-      <table>
-        <thead><tr><th>Tag</th><th>Roles</th><th>Proposed UNS</th><th>Conf.</th><th>Source</th><th style="text-align:right">Decision</th></tr></thead>
-        <tbody id="rows"><tr><td colspan="6" class="muted" style="padding:24px; text-align:center">No project open.</td></tr></tbody>
-      </table>
+<!-- Menu bar -->
+<div class="menubar" id="menubar">
+  <div class="menu" data-menu="file">
+    <button onclick="toggleMenu('file')">File</button>
+    <div class="drop">
+      <button onclick="act('newProfile')">New Profile…<span class="kbd">Ctrl+N</span></button>
+      <button onclick="act('openProfile')">Open Profile…<span class="kbd">Ctrl+O</span></button>
+      <div class="sep"></div>
+      <button onclick="act('save')" data-need="profile">Save<span class="kbd">Ctrl+S</span></button>
+      <button onclick="act('saveAs')" data-need="profile">Save As…</button>
+      <button onclick="act('import')" data-need="profile">Import Files…</button>
+      <button onclick="act('exportBundle')" data-need="profile">Export Bundle…</button>
+      <div class="sep"></div>
+      <div class="sub">Recent Profiles</div>
+      <div id="recentList"><button disabled>None yet</button></div>
+      <div class="sep"></div>
+      <button onclick="act('exit')">Exit</button>
     </div>
   </div>
-</main>
+  <div class="menu" data-menu="edit">
+    <button onclick="toggleMenu('edit')">Edit</button>
+    <div class="drop">
+      <button onclick="act('undo')" id="undoBtn" disabled>Undo (last decision)</button>
+      <button onclick="act('redo')" id="redoBtn" disabled>Redo</button>
+      <div class="sep"></div>
+      <button onclick="act('find')" data-need="profile">Find…<span class="kbd">Ctrl+F</span></button>
+      <button onclick="act('preferences')" data-need="profile">Profile Identity / Preferences…</button>
+    </div>
+  </div>
+  <div class="menu" data-menu="view">
+    <button onclick="toggleMenu('view')">View</button>
+    <div class="drop" id="viewMenu"></div>
+  </div>
+  <div class="menu" data-menu="tools">
+    <button onclick="toggleMenu('tools')">Tools</button>
+    <div class="drop">
+      <button onclick="act('reparse')" data-need="profile">Re-parse Sources</button>
+      <button onclick="act('selftest')">Run Self-Test</button>
+      <button onclick="act('validate')" data-need="profile">Validate Bundle</button>
+      <button onclick="act('ocr')">Manage OCR</button>
+      <button onclick="act('diagnostics')">Settings / Diagnostics</button>
+    </div>
+  </div>
+  <div class="menu" data-menu="help">
+    <button onclick="toggleMenu('help')">Help</button>
+    <div class="drop">
+      <button onclick="act('guide')">User Guide</button>
+      <button onclick="act('about')">About</button>
+      <button onclick="act('diagnostics')">Diagnostics</button>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+  <!-- Profiles sidebar -->
+  <div class="panel sidebar">
+    <h2>Machine Profiles</h2>
+    <div style="display:flex; gap:6px; margin-bottom:10px;">
+      <input id="newName" type="text" placeholder="New profile name" onkeydown="if(event.key==='Enter')createProfile()" />
+      <button class="btn primary" onclick="createProfile()" title="New Profile">+</button>
+    </div>
+    <ul class="plist" id="projectList"></ul>
+  </div>
+
+  <!-- Work area -->
+  <div class="panel work" id="work">
+    <div class="views" id="viewTabs"></div>
+    <div id="viewBody"></div>
+  </div>
+</div>
+
+<!-- hidden inputs -->
+<input id="fileInput" type="file" multiple style="display:none" onchange="uploadFile(event)" />
+<input id="dirInput" type="file" webkitdirectory directory multiple style="display:none" onchange="importCcwFolder(event)" />
+<input id="profileInput" type="file" accept=".miraprofile,application/json" style="display:none" onchange="openProfileFile(event)" />
+
+<!-- modal -->
+<div class="modal-bg" id="modalBg" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <header><h1 id="modalTitle">…</h1><button class="btn" onclick="closeModal()">✕</button></header>
+    <div class="body" id="modalBody"></div>
+    <div class="foot" id="modalFoot"></div>
+  </div>
+</div>
 
 <script>
-let MODE = "plc";
-let CURRENT = null;        // current project id
-let PROJECTS = [];
-
+const VIEWS = [
+  ["dashboard","Dashboard"], ["sources","Sources"], ["signals","Extracted Signals"],
+  ["faults","Fault Catalog"], ["parameters","Parameters"], ["uns","UNS Map"],
+  ["scorecard","Scorecard"], ["review","Review Queue"], ["exports","Export History"],
+];
+const IDENTITY_FIELDS = [
+  ["machine_name","Machine name"], ["asset_type","Asset type"], ["manufacturer","Manufacturer"],
+  ["model","Model"], ["serial_number","Serial number"], ["controller_type","Controller type"],
+  ["controller_ip","Controller IP"], ["plc_program_name","PLC program name"],
+  ["customer","Customer"], ["site","Site"], ["area","Area"], ["line","Line"],
+  ["proposed_uns_path","Proposed UNS path"], ["hub_asset_id","Hub asset id (existing asset)"],
+];
+let CURRENT = null, PROJECTS = [], VIEW = "dashboard", FIND = "";
+let EXTS = [], SCORE = null, PROFILE = {}, LAST_DECISION = null, REDO_DECISION = null;
 const $ = (id) => document.getElementById(id);
 
-function toast(msg){
-  const t = document.createElement("div"); t.className="toast"; t.textContent=msg;
-  document.body.appendChild(t); setTimeout(()=>t.remove(), 2600);
+function toast(msg){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg;
+  document.body.appendChild(t); setTimeout(()=>t.remove(), 2800); }
+async function api(path, opts){ const res=await fetch(path,opts); const j=await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(j.error||("HTTP "+res.status)); return j; }
+function escapeHtml(s){ return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* ── menus ─────────────────────────────────────────────────────────────── */
+function toggleMenu(name){
+  document.querySelectorAll(".menu").forEach(m=>m.classList.toggle("open", m.dataset.menu===name && !m.classList.contains("open")));
 }
-async function api(path, opts){
-  const res = await fetch(path, opts);
-  const j = await res.json().catch(()=> ({}));
-  if(!res.ok) throw new Error(j.error || ("HTTP "+res.status));
-  return j;
+document.addEventListener("click",(e)=>{ if(!e.target.closest(".menu")) document.querySelectorAll(".menu").forEach(m=>m.classList.remove("open")); });
+function refreshMenuState(){
+  document.querySelectorAll("[data-need=profile]").forEach(b=>b.disabled=!CURRENT);
+  $("undoBtn").disabled = !LAST_DECISION; $("redoBtn").disabled = !REDO_DECISION;
+}
+function buildViewMenu(){
+  $("viewMenu").innerHTML = VIEWS.map(([k,l])=>`<button onclick="act('view:${k}')">${l}</button>`).join("");
+  $("viewTabs").innerHTML = VIEWS.map(([k,l])=>`<button class="${k===VIEW?'active':''}" onclick="setView('${k}')">${escapeHtml(l)}</button>`).join("");
 }
 
-function setMode(m){
-  MODE = m;
-  $("tab-plc").classList.toggle("active", m==="plc");
-  $("tab-doc").classList.toggle("active", m==="doc");
-  // Accept ALL file types — we route by content/extension, not by a picker filter. (Setting no
-  // `accept` makes the OS dialog show every file instead of preferencing a subset.)
-  $("fileInput").removeAttribute("accept");
-  const b=$("banner");
-  if(m==="plc"){ b.style.display="block"; b.textContent="Upload anything — PLC exports (L5X), CCW files (MbSrvConf.xml, LogicalValues.csv, .st/.stf/.iecst, .ccwmod), or a whole CCW folder / .zip / .ccwx. Multiple files OK."; }
-  else { b.style.display="block"; b.textContent="Upload anything — manuals/datasheets (PDF/Word/Excel/images) are extracted (OCR for scans). Any file type is accepted."; }
+/* ── menu actions ──────────────────────────────────────────────────────── */
+async function act(a){
+  document.querySelectorAll(".menu").forEach(m=>m.classList.remove("open"));
+  if(a.startsWith("view:")) return setView(a.slice(5));
+  const map = {
+    newProfile:()=>{ const n=prompt("New profile name (e.g. Garage Demo / Micro820 Conveyor):"); if(n) createProfile(n); },
+    openProfile:()=>$("profileInput").click(),
+    save:saveProfile, saveAs:saveProfile,
+    import:()=>$("fileInput").click(),
+    exportBundle:exportBundle,
+    exit:()=>{ window.close(); toast("You can close this window."); },
+    undo:undoDecision, redo:redoDecision,
+    find:()=>{ setView(VIEW); const f=$("findBox"); if(f){ f.focus(); } else { setView("signals"); } },
+    preferences:openIdentity,
+    reparse:reparseSources, selftest:selfTest, validate:validateBundle,
+    ocr:()=>infoModal("Manage OCR","OCR (scanned PDFs / nameplate photos) uses a bundled Tesseract engine when present next to the app. Digital PDF/Word/Excel/CSV/text need no OCR. If a scan returns no text, the Tesseract engine is not bundled — see PACKAGING.md. Everything stays offline."),
+    diagnostics:diagnostics,
+    guide:userGuide, about:about,
+  };
+  (map[a]||(()=>toast("Not available")))();
 }
 
+/* ── profiles ──────────────────────────────────────────────────────────── */
 async function loadProjects(){
-  const j = await api("/api/projects");
-  PROJECTS = j.projects || [];
-  const ul = $("projectList"); ul.innerHTML="";
-  if(!PROJECTS.length){ ul.innerHTML='<li class="meta">No projects yet.</li>'; return; }
+  const j=await api("/api/projects"); PROJECTS=j.projects||[];
+  const ul=$("projectList"); ul.innerHTML="";
+  if(!PROJECTS.length){ ul.innerHTML='<li class="meta">No profiles yet.</li>'; }
   for(const p of PROJECTS){
-    const li=document.createElement("li");
-    li.className = p.id===CURRENT ? "sel":"";
+    const li=document.createElement("li"); li.className=p.id===CURRENT?"sel":"";
     li.onclick=()=>openProject(p.id);
-    li.innerHTML = `<div>${escapeHtml(p.name)}</div>
-      <div class="meta">${p.sourceCount} files · ${p.extractionCount} tags · ${p.acceptedCount} accepted</div>`;
+    li.innerHTML=`<div>${escapeHtml(p.name)}</div><div class="meta">${p.sourceCount} files · ${p.extractionCount} items · ${p.acceptedCount} accepted</div>`;
     ul.appendChild(li);
   }
+  await loadRecents();
 }
-async function createProject(){
-  const name = $("newName").value.trim();
-  if(!name) return;
-  try{ const j = await api("/api/projects",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name})});
-    $("newName").value=""; CURRENT=j.project.id; await loadProjects(); await openProject(CURRENT); toast("Project created");
-  }catch(e){ toast(e.message); }
+async function createProfile(name){
+  name = name || $("newName").value.trim(); if(!name) return;
+  try{ const j=await api("/api/projects",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name})});
+    $("newName").value=""; await openProject(j.project.id); toast("Profile created"); }catch(e){ toast(e.message); }
 }
 async function openProject(id){
-  CURRENT=id;
-  if(location.hash !== "#p="+id) location.hash = "p="+id;  // shareable in-app deep link
-  const p = PROJECTS.find(x=>x.id===id);
-  $("projTitle").textContent = p? p.name : "Project";
-  $("projTitle").classList.remove("muted");
-  ["uploadBtn","ccwBtn","refreshBtn","exportBtn","bundleBtn"].forEach(b=>$(b).disabled=false);
-  await loadProjects(); await loadSources(); await loadExtractions();
+  CURRENT=id; LAST_DECISION=REDO_DECISION=null;
+  if(location.hash!=="#p="+id) location.hash="p="+id;
+  await refresh();
 }
-async function loadSources(){
-  const el=$("sources"); el.innerHTML="";
-  if(!CURRENT) return;
+async function refresh(){
+  if(!CURRENT){ render(); return; }
+  const p=PROJECTS.find(x=>x.id===CURRENT);
   try{
-    const j = await api(`/api/projects/${CURRENT}`);
-    for(const s of (j.project.sources||[])){
-      const sp=document.createElement("span");
-      sp.className = "src "+(s.status||"");
-      sp.title = s.errorMessage || "";
-      sp.textContent = `${s.fileName} · ${s.status}`;
-      el.appendChild(sp);
-    }
-  }catch(e){ /* sources strip is best-effort */ }
-}
-async function loadExtractions(){
-  if(!CURRENT) return;
-  const j = await api(`/api/projects/${CURRENT}/extractions`);
-  renderRows(j.extractions||[]);
-  loadScorecard();
-}
-async function loadScorecard(){
-  const el=$("scorecard"); if(!el) return;
-  if(!CURRENT){ el.innerHTML=""; return; }
-  try{
-    const s=await api(`/api/projects/${CURRENT}/scorecard`);
-    const color = s.score>=85?"#16a34a":s.score>=65?"#4f46e5":s.score>=45?"#d97706":"#9ca3af";
-    const gaps=(s.topGaps||[]).slice(0,3).map(g=>g.label).join(" · ");
-    el.innerHTML = `<div class="score" title="${escapeHtml(s.summary||'')}">
-      <span class="grade" style="color:${color}">${escapeHtml(s.grade)} · ${s.score}/100</span>
-      <span class="bar"><span style="width:${s.score}%;background:${color}"></span></span>
-      <span class="gaps">${gaps?("Next: "+escapeHtml(gaps)):"Looking good"}</span></div>`;
-  }catch(e){ el.innerHTML=""; }
-}
-function renderRows(rows){
-  const tb=$("rows"); tb.innerHTML="";
-  if(!rows.length){ tb.innerHTML='<tr><td colspan="6" class="muted" style="padding:24px; text-align:center">No tags yet — upload a PLC export.</td></tr>'; return; }
-  for(const e of rows){
-    const tr=document.createElement("tr");
-    tr.className = e.status==="accepted"?"accepted":e.status==="rejected"?"rejected":"";
-    const conf = e.confidence==null?"—":e.confidence>=0.85?'<span class="conf-high">high</span>':e.confidence>=0.5?'<span class="conf-med">med</span>':'<span class="conf-low">low</span>';
-    const roles = (e.roles||[]).map(r=>`<span class="chip">${escapeHtml(r)}</span>`).join("")||'<span class="muted">—</span>';
-    const ment = (e.evidenceJson&&e.evidenceJson.mentions&&e.evidenceJson.mentions[0])||null;
-    const prov = ment ? `${ment.file}${ment.page?(" p."+ment.page):""}: ${ment.snippet}` : (e.evidenceJson&&e.evidenceJson.source_format?("format: "+e.evidenceJson.source_format):"");
-    const decision = e.status==="pending"
-      ? `<button class="btn" onclick="decide('${e.id}','accepted')">Accept</button>
-         <button class="btn" onclick="decide('${e.id}','rejected')">Reject</button>`
-      : `<span class="pill ${e.status}">${e.status}</span>`;
-    tr.innerHTML = `<td class="tag" title="${escapeHtml(prov)}">${escapeHtml(e.tagName)}</td><td>${roles}</td>
-      <td class="uns">${escapeHtml(e.unsPathProposed||"—")}</td><td>${conf}</td>
-      <td class="muted">${escapeHtml(e.fileName||"—")}</td><td style="text-align:right">${decision}</td>`;
-    tb.appendChild(tr);
-  }
-}
-async function decide(id,status){
-  try{ await api(`/api/extractions/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});
-    await loadExtractions(); await loadProjects();
+    const pj=await api(`/api/projects/${CURRENT}`); PROFILE=pj.project.profile||{}; pj.project.sources=pj.project.sources||[];
+    PROJECTS=PROJECTS.map(x=>x.id===CURRENT?pj.project:x); window.__sources=pj.project.sources;
+    const ej=await api(`/api/projects/${CURRENT}/extractions`); EXTS=ej.extractions||[];
+    try{ SCORE=await api(`/api/projects/${CURRENT}/scorecard`); }catch(e){ SCORE=null; }
   }catch(e){ toast(e.message); }
+  $("profileName").textContent=(p?p.name:"Profile");
+  await loadProjects(); render(); refreshMenuState();
 }
-function isCcwProjectFile(name){
-  const n=name.toLowerCase(), base=n.split(/[\\/]/).pop();
-  return /\.(st|stf|iecst|ccwmod|acfproj|ccwsln)$/.test(n)
-    || base==="rmcvariables" || base==="logicalvalues.csv"
-    || (base.startsWith("mbsrvconf") && base.endsWith(".xml"))
-    || base==="logicview.xml" || base==="devicepref.xml";
+function setView(v){ VIEW=v; buildViewMenu(); render(); }
+
+/* ── render views ──────────────────────────────────────────────────────── */
+function confCell(c){ return c==null?"—":c>=0.85?'<span class="conf-high">high</span>':c>=0.5?'<span class="conf-med">med</span>':'<span class="conf-low">low</span>'; }
+function rolesCell(rs){ return (rs||[]).map(r=>`<span class="chip">${escapeHtml(r)}</span>`).join("")||'<span class="muted">—</span>'; }
+function provOf(e){ const m=e.evidenceJson&&e.evidenceJson.mentions&&e.evidenceJson.mentions[0];
+  return m?`${m.file}${m.page?(" p."+m.page):""}: ${m.snippet}`:(e.evidenceJson&&e.evidenceJson.source_format?("format: "+e.evidenceJson.source_format):""); }
+function matchFind(e){ if(!FIND) return true; const s=(e.tagName+" "+(e.roles||[]).join(" ")+" "+(e.unsPathProposed||"")).toLowerCase(); return s.includes(FIND.toLowerCase()); }
+
+function render(){
+  const body=$("viewBody");
+  if(!CURRENT){ body.innerHTML='<p class="muted" style="padding:24px; text-align:center">Create or open a Machine Profile from the sidebar or the File menu.</p>'; return; }
+  const rows=EXTS.filter(matchFind);
+  const findBar = `<div class="toolbar"><input id="findBox" type="text" placeholder="Find tag / role / UNS…" value="${escapeHtml(FIND)}" style="max-width:280px" oninput="FIND=this.value; render()"/></div>`;
+  if(VIEW==="dashboard") return renderDashboard(body);
+  if(VIEW==="sources") return renderSources(body);
+  if(VIEW==="scorecard") return renderScorecard(body);
+  if(VIEW==="exports") return renderExports(body);
+  if(VIEW==="uns") return renderUns(body, rows.filter(e=>e.unsPathProposed));
+  if(VIEW==="faults") return renderFaults(body, rows.filter(e=>(e.roles||[]).includes("fault_code")||(e.roles||[]).includes("fault")), findBar);
+  if(VIEW==="parameters") return renderParams(body, rows.filter(e=>(e.roles||[]).some(r=>r==="parameter"||r==="spec")|| (e.evidenceJson&&(e.evidenceJson.units||e.evidenceJson.range||e.evidenceJson.setpoint))), findBar);
+  if(VIEW==="review") return renderTable(body, rows.filter(e=>e.status==="pending"), findBar, true);
+  return renderTable(body, rows, findBar, false);   // signals (default)
 }
-async function importCcwFolder(ev){
-  const all=[...ev.target.files]; ev.target.value="";
-  if(!CURRENT || !all.length) return;
-  const picked=all.filter(f=>isCcwProjectFile(f.name));
+function topbar(){
+  return `<div class="toolbar">
+    <button class="btn" onclick="$('fileInput').click()">Import Files</button>
+    <button class="btn" onclick="$('dirInput').click()" title="Pick a CCW project folder">CCW Project</button>
+    <button class="btn" onclick="openIdentity()">Edit Identity</button>
+    <span style="flex:1"></span>
+    <button class="btn" onclick="saveProfile()">Save .miraprofile</button>
+    <button class="btn primary" onclick="exportBundle()">Export Bundle</button></div>`;
+}
+function scoreStrip(){
+  if(!SCORE) return "";
+  const c=SCORE.score>=85?"var(--fl-ok)":SCORE.score>=65?"var(--fl-accent)":SCORE.score>=45?"var(--fl-warn)":"var(--fl-off)";
+  const gaps=(SCORE.topGaps||[]).slice(0,3).map(g=>g.label).join(" · ");
+  return `<div class="score"><span class="grade" style="color:${c}">${escapeHtml(SCORE.grade)} · ${SCORE.score}/100</span>
+    <span class="bar"><span style="width:${SCORE.score}%;background:${c}"></span></span>
+    <span class="muted" style="font-size:var(--fl-fs-xs)">${gaps?("Next: "+escapeHtml(gaps)):"Looking good"}</span></div>`;
+}
+function renderDashboard(body){
+  const id=PROFILE, counts={f:(window.__sources||[]).length, t:EXTS.length, a:EXTS.filter(e=>e.status==="accepted").length, p:EXTS.filter(e=>e.status==="pending").length};
+  const idRows=IDENTITY_FIELDS.filter(([k])=>id[k]).map(([k,l])=>`<div class="kv"><b>${l}:</b> ${escapeHtml(id[k])}</div>`).join("")||'<span class="muted">No identity set yet — Edit Identity.</span>';
+  body.innerHTML=topbar()+scoreStrip()+
+    `<div class="cards">
+       <div class="card"><div class="n">${counts.f}</div><div class="l">Sources</div></div>
+       <div class="card"><div class="n">${counts.t}</div><div class="l">Items</div></div>
+       <div class="card"><div class="n">${counts.a}</div><div class="l">Accepted</div></div>
+       <div class="card"><div class="n">${counts.p}</div><div class="l">Pending</div></div>
+     </div>
+     <div class="panel" style="box-shadow:none"><h2>Machine Identity</h2>${idRows}</div>`;
+}
+function renderTable(body, rows, findBar, reviewOnly){
+  let h=topbar()+scoreStrip()+findBar+`<table><thead><tr><th>Tag</th><th>Roles</th><th>Proposed UNS</th><th>Conf.</th><th>Source</th><th style="text-align:right">Decision</th></tr></thead><tbody>`;
+  if(!rows.length) h+=`<tr><td colspan="6" class="muted" style="padding:24px;text-align:center">${reviewOnly?"Nothing pending — all reviewed.":"No items yet — Import Files."}</td></tr>`;
+  for(const e of rows){
+    const dec=e.status==="pending"
+      ? `<button class="btn" onclick="decide('${e.id}','accepted')">Accept</button> <button class="btn" onclick="decide('${e.id}','rejected')">Reject</button>`
+      : `<span class="pill ${e.status}">${e.status}</span>`;
+    h+=`<tr class="${e.status==='accepted'?'accepted':e.status==='rejected'?'rejected':''}">
+      <td class="tag" title="${escapeHtml(provOf(e))}">${escapeHtml(e.tagName)}</td><td>${rolesCell(e.roles)}</td>
+      <td class="uns">${escapeHtml(e.unsPathProposed||"—")}</td><td>${confCell(e.confidence)}</td>
+      <td class="muted">${escapeHtml(e.fileName||"—")}</td><td style="text-align:right">${dec}</td></tr>`;
+  }
+  body.innerHTML=h+"</tbody></table>";
+}
+function renderFaults(body, rows, findBar){
+  let h=topbar()+findBar+`<p class="muted" style="font-size:var(--fl-fs-sm)">ISO 14224 shape — fault → failure mode → mechanism/cause → maintenance action.</p>
+    <table><thead><tr><th>Fault code</th><th>Failure mode</th><th>Mechanism / cause</th><th>Maintenance action</th><th>Status</th></tr></thead><tbody>`;
+  if(!rows.length) h+=`<tr><td colspan="5" class="muted" style="padding:24px;text-align:center">No faults yet — import a drive/machine manual.</td></tr>`;
+  for(const e of rows){ const v=e.evidenceJson||{};
+    h+=`<tr class="${e.status==='accepted'?'accepted':e.status==='rejected'?'rejected':''}"><td class="tag">${escapeHtml(e.tagName)}</td>
+      <td>${escapeHtml(v.description||"—")}</td><td>${escapeHtml(v.cause||"—")}</td><td>${escapeHtml(v.next_check||"—")}</td>
+      <td><span class="pill ${e.status}">${e.status}</span></td></tr>`; }
+  body.innerHTML=h+"</tbody></table>";
+}
+function renderParams(body, rows, findBar){
+  let h=topbar()+findBar+`<p class="muted" style="font-size:var(--fl-fs-sm)">Parameters & engineering quantities — units/ranges/setpoints (UCUM-coded in the bundle).</p>
+    <table><thead><tr><th>Name</th><th>Roles</th><th>Units</th><th>Range</th><th>Setpoint</th><th>Status</th></tr></thead><tbody>`;
+  if(!rows.length) h+=`<tr><td colspan="6" class="muted" style="padding:24px;text-align:center">No parameters yet.</td></tr>`;
+  for(const e of rows){ const v=e.evidenceJson||{};
+    h+=`<tr class="${e.status==='accepted'?'accepted':e.status==='rejected'?'rejected':''}"><td class="tag">${escapeHtml(e.tagName)}</td>
+      <td>${rolesCell(e.roles)}</td><td>${escapeHtml(v.units||"—")}</td><td>${escapeHtml(v.range||"—")}</td>
+      <td>${escapeHtml(v.setpoint||"—")}</td><td><span class="pill ${e.status}">${e.status}</span></td></tr>`; }
+  body.innerHTML=h+"</tbody></table>";
+}
+function renderUns(body, rows){
+  let h=topbar()+`<p class="muted" style="font-size:var(--fl-fs-sm)">Proposed UNS / ISA-95 placement (enterprise/site/area/line/asset/signal).</p>
+    <table><thead><tr><th>Tag</th><th>UNS path</th><th>Conf.</th><th>Status</th></tr></thead><tbody>`;
+  if(!rows.length) h+=`<tr><td colspan="4" class="muted" style="padding:24px;text-align:center">No UNS paths yet — add a PLC/CCW export.</td></tr>`;
+  for(const e of rows){ h+=`<tr class="${e.status==='accepted'?'accepted':e.status==='rejected'?'rejected':''}">
+    <td class="tag">${escapeHtml(e.tagName)}</td><td class="uns">${escapeHtml(e.unsPathProposed)}</td>
+    <td>${confCell(e.confidence)}</td><td><span class="pill ${e.status}">${e.status}</span></td></tr>`; }
+  body.innerHTML=h+"</tbody></table>";
+}
+function renderSources(body){
+  const ss=window.__sources||[];
+  let h=topbar()+`<table><thead><tr><th>File</th><th>Type</th><th>Status</th><th>Note</th></tr></thead><tbody>`;
+  if(!ss.length) h+=`<tr><td colspan="4" class="muted" style="padding:24px;text-align:center">No sources — Import Files or add a CCW project.</td></tr>`;
+  for(const s of ss){ h+=`<tr><td>${escapeHtml(s.fileName)}</td><td>${escapeHtml(s.sourceType)}</td>
+    <td><span class="pill ${s.status==='done'?'accepted':s.status==='error'?'rejected':'pending'}">${escapeHtml(s.status)}</span></td>
+    <td class="muted">${escapeHtml(s.errorMessage||"")}</td></tr>`; }
+  body.innerHTML=h+"</tbody></table>";
+}
+function renderScorecard(body){
+  if(!SCORE){ body.innerHTML=topbar()+'<p class="muted">No scorecard.</p>'; return; }
+  let h=topbar()+scoreStrip()+`<p class="muted" style="font-size:var(--fl-fs-sm)">${escapeHtml(SCORE.summary||"")}</p>
+    <table><thead><tr><th>Dimension</th><th>Coverage</th><th>What to add</th></tr></thead><tbody>`;
+  for(const d of SCORE.dimensions||[]){ const pct=Math.round(d.coverage*100);
+    h+=`<tr><td>${escapeHtml(d.label)}</td><td style="width:160px"><div class="bar" style="height:8px;background:var(--fl-line);border-radius:4px"><span style="display:block;height:100%;width:${pct}%;background:${pct>=75?'var(--fl-ok)':pct>=40?'var(--fl-warn)':'var(--fl-off)'};border-radius:4px"></span></div><span class="muted" style="font-size:var(--fl-fs-xs)">${pct}%</span></td>
+      <td class="muted">${escapeHtml(d.needed||"")}</td></tr>`; }
+  body.innerHTML=h+"</tbody></table>";
+}
+async function renderExports(body){
+  body.innerHTML=topbar()+'<p class="muted">Loading export history…</p>';
+  try{ const j=await api(`/api/projects/${CURRENT}/exports`);
+    let h=topbar()+`<table><thead><tr><th>When</th><th>Kind</th><th>Target</th><th>Detail</th></tr></thead><tbody>`;
+    if(!(j.exports||[]).length) h+=`<tr><td colspan="4" class="muted" style="padding:24px;text-align:center">No exports yet — Save a profile or Export a bundle.</td></tr>`;
+    for(const x of j.exports||[]){ h+=`<tr><td class="muted">${escapeHtml((x.createdAt||"").replace("T"," ").slice(0,19))}</td>
+      <td>${escapeHtml(x.kind)}</td><td>${escapeHtml(x.target||"")}</td><td class="muted">${escapeHtml(JSON.stringify(x.detail||{}))}</td></tr>`; }
+    body.innerHTML=h+"</tbody></table>";
+  }catch(e){ body.innerHTML=topbar()+'<p class="muted">'+escapeHtml(e.message)+'</p>'; }
+}
+
+/* ── decisions (with undo/redo of the last action) ─────────────────────── */
+async function decide(id,status){
+  const prev=EXTS.find(e=>e.id===id); const was=prev?prev.status:"pending";
+  try{ await api(`/api/extractions/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})});
+    LAST_DECISION={id,was}; REDO_DECISION=null; await refresh(); }catch(e){ toast(e.message); }
+}
+async function undoDecision(){ if(!LAST_DECISION) return; const d=LAST_DECISION; const cur=EXTS.find(e=>e.id===d.id);
+  REDO_DECISION={id:d.id,was:cur?cur.status:"pending"};
+  try{ await api(`/api/extractions/${d.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:d.was})});
+    LAST_DECISION=null; await refresh(); toast("Undone"); }catch(e){ toast(e.message); } }
+async function redoDecision(){ if(!REDO_DECISION) return; const d=REDO_DECISION;
+  try{ await api(`/api/extractions/${d.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:d.was})});
+    LAST_DECISION={id:d.id,was:"pending"}; REDO_DECISION=null; await refresh(); toast("Redone"); }catch(e){ toast(e.message); } }
+
+/* ── identity / preferences modal ──────────────────────────────────────── */
+function openModal(title, bodyHtml, footHtml){ $("modalTitle").textContent=title; $("modalBody").innerHTML=bodyHtml; $("modalFoot").innerHTML=footHtml||`<button class="btn" onclick="closeModal()">Close</button>`; $("modalBg").classList.add("open"); }
+function closeModal(){ $("modalBg").classList.remove("open"); }
+function infoModal(t,b){ openModal(t, `<p>${escapeHtml(b)}</p>`); }
+function openIdentity(){
+  if(!CURRENT){ toast("Open a profile first"); return; }
+  const f=IDENTITY_FIELDS.map(([k,l])=>`<div class="field"><label>${l}</label><input type="text" id="id_${k}" value="${escapeHtml(PROFILE[k]||"")}"/></div>`).join("");
+  openModal("Profile Identity", `<div class="grid2">${f}</div>`,
+    `<button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveIdentity()">Save</button>`);
+}
+async function saveIdentity(){
+  const identity={}; IDENTITY_FIELDS.forEach(([k])=>{ identity[k]=$("id_"+k).value.trim(); });
+  try{ await api(`/api/projects/${CURRENT}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({identity})});
+    closeModal(); await refresh(); toast("Identity saved"); }catch(e){ toast(e.message); }
+}
+
+/* ── save / open / export ──────────────────────────────────────────────── */
+function saveProfile(){ if(!CURRENT){ toast("Open a profile first"); return; }
+  window.location.href=`/api/projects/${CURRENT}/export?format=profile`; toast("Saving .miraprofile…"); loadRecents(); }
+function openProfileFile(ev){ const f=ev.target.files[0]; ev.target.value=""; if(!f) return;
+  const r=new FileReader(); r.onload=async()=>{ try{
+    const j=await api("/api/profiles/open",{method:"POST",headers:{"Content-Type":"application/octet-stream"},body:r.result});
+    await openProject(j.project.id); toast("Opened "+j.project.name); }catch(e){ toast(e.message); } };
+  r.readAsText(f); }
+function exportBundle(){ if(!CURRENT){ toast("Open a profile first"); return; }
+  window.location.href=`/api/projects/${CURRENT}/export?format=bundle`; toast("Building machine_context_bundle.zip…"); }
+async function loadRecents(){
+  try{ const j=await api("/api/recents"); const el=$("recentList");
+    if(!(j.recents||[]).length){ el.innerHTML='<button disabled>None yet</button>'; return; }
+    el.innerHTML=j.recents.map(r=>`<button title="${escapeHtml(r.path)}" onclick="$('profileInput').click()">${escapeHtml(r.name)}</button>`).join("");
+  }catch(e){ /* recents are best-effort */ }
+}
+
+/* ── tools ─────────────────────────────────────────────────────────────── */
+async function selfTest(){ try{ const j=await api("/api/projects"); toast(`Self-test OK — server responding, ${ (j.projects||[]).length } profile(s).`); }catch(e){ toast("Self-test FAILED: "+e.message); } }
+async function validateBundle(){ if(!CURRENT){ toast("Open a profile first"); return; }
+  try{ const r=await fetch(`/api/projects/${CURRENT}/export?format=uns`); const j=await r.json();
+    const n=(j.signals||[]).length; toast(n?`Bundle OK — ${n} accepted signal(s) will export.`:"Bundle empty — accept some items first."); }catch(e){ toast("Validate failed: "+e.message); } }
+function reparseSources(){ infoModal("Re-parse Sources","Parsing is deterministic — the same source always yields the same result, so the current extractions already reflect the latest rules. To re-parse with newer files, re-import the source. (A future build will re-run stored source IR in place.)"); }
+function diagnostics(){ openModal("Diagnostics", `<div class="kv">
+   <div><b>Mode:</b> offline · deterministic · no LLM · no network</div>
+   <div><b>Server:</b> 127.0.0.1 (localhost only)</div>
+   <div><b>Open profile:</b> ${CURRENT?escapeHtml((PROJECTS.find(p=>p.id===CURRENT)||{}).name):"none"}</div>
+   <div><b>Items loaded:</b> ${EXTS.length}</div>
+   <div><b>Scorecard:</b> ${SCORE?escapeHtml(SCORE.grade+" "+SCORE.score+"/100"):"—"}</div></div>`); }
+function userGuide(){ openModal("User Guide", `<div class="kv" style="line-height:1.7">
+  <div><b>1.</b> File ▸ New Profile — name the machine (e.g. “Garage Demo / Micro820 Conveyor”).</div>
+  <div><b>2.</b> Import Files / CCW Project — add PLC exports, manuals, nameplate photos over time.</div>
+  <div><b>3.</b> Review Queue — Accept/Reject proposed signals, faults, parameters.</div>
+  <div><b>4.</b> Edit ▸ Profile Identity — set manufacturer/model/serial/controller for Hub matching.</div>
+  <div><b>5.</b> File ▸ Save — write a .miraprofile you can reopen later and keep working on.</div>
+  <div><b>6.</b> File ▸ Export Bundle — machine_context_bundle.zip for MIRA Hub.</div></div>`); }
+function about(){ openModal("About", `<p><b>FactoryLM Contextualizer</b><br>Offline machine-profile builder for plant-floor contextualization.<br>Deterministic · no LLM · no cloud. UNS/ISA-95 + CESMII i3X, ISO 14224 faults, UCUM units.</p>`); }
+
+/* ── uploads (unchanged routing logic) ─────────────────────────────────── */
+function isCcwProjectFile(name){ const n=name.toLowerCase(), base=n.split(/[\\/]/).pop();
+  return /\.(st|stf|iecst|ccwmod|acfproj|ccwsln)$/.test(n)||base==="rmcvariables"||base==="logicalvalues.csv"||(base.startsWith("mbsrvconf")&&base.endsWith(".xml"))||base==="logicview.xml"||base==="devicepref.xml"; }
+async function importCcwFolder(ev){ const all=[...ev.target.files]; ev.target.value="";
+  if(!CURRENT||!all.length) return; const picked=all.filter(f=>isCcwProjectFile(f.name));
   if(!picked.length){ toast("No CCW files found in that folder"); return; }
   const projectName=((all[0].webkitRelativePath||"").split("/")[0])||"CCW project";
-  toast(`Reading ${picked.length} CCW files…`);
-  const files=[];
-  for(const f of picked){ files.push({name:f.name, text: await f.text()}); }
-  try{
-    const j=await api(`/api/projects/${CURRENT}/ccw-import`,{method:"POST",
-      headers:{"Content-Type":"application/json"}, body:JSON.stringify({files, projectName})});
-    toast(`Imported ${projectName}: ${j.extractions} tags from ${j.fileCount} files${j.controller?(" · "+j.controller):""}`);
-    await loadSources(); await loadExtractions(); await loadProjects();
-  }catch(e){ toast(e.message); }
-}
-// PLC/CCW text formats → analyzed as text; everything else (pdf/docx/xlsx/images/etc) → extracted as bytes.
-const TEXT_SOURCE = /\.(l5x|csv|xml|st|stf|iecst|ccwmod|ccwsln|acfproj|vssettings)$/i;
-function isTextSource(name){ return TEXT_SOURCE.test(name) || name.toLowerCase().split(/[\\/]/).pop()==="rmcvariables"; }
+  toast(`Reading ${picked.length} CCW files…`); const files=[];
+  for(const f of picked){ files.push({name:f.name, text:await f.text()}); }
+  try{ const j=await api(`/api/projects/${CURRENT}/ccw-import`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({files, projectName})});
+    toast(`Imported ${projectName}: ${j.extractions} tags from ${j.fileCount} files${j.controller?(" · "+j.controller):""}`); await refresh(); }catch(e){ toast(e.message); } }
+const TEXT_SOURCE=/\.(l5x|csv|xml|st|stf|iecst|ccwmod|ccwsln|acfproj|vssettings)$/i;
+function isTextSource(name){ return TEXT_SOURCE.test(name)||name.toLowerCase().split(/[\\/]/).pop()==="rmcvariables"; }
 function uploadFile(ev){ const files=[...ev.target.files]; ev.target.value=""; files.forEach(doUpload); }
 function doUpload(file){
-  if(!file || !CURRENT) return;
-  if(/\.(zip|ccwx)$/i.test(file.name)){   // CCW archive → unzip server-side, import whole project
-    const zr=new FileReader();
-    zr.onload=async()=>{ try{
-      const j=await api(`/api/projects/${CURRENT}/ccw-import`,{method:"POST",
-        headers:{"Content-Type":"application/octet-stream","X-Project-Name":file.name}, body:zr.result});
-      toast(`Imported ${file.name}: ${j.extractions} tags from ${j.fileCount} files${j.controller?(" · "+j.controller):""}`);
-      await loadSources(); await loadExtractions(); await loadProjects();
-    }catch(e){ toast(e.message); } };
-    zr.readAsArrayBuffer(file); return;
-  }
-  const reader = new FileReader();
-  const isText = isTextSource(file.name);   // routed by file type, not by the active tab
-  reader.onload = async () => {
-    try{
-      let j;
-      if(isText){
-        j = await api(`/api/projects/${CURRENT}/sources`,{method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({fileName:file.name, text:reader.result})});
-        if(j.extractions){ toast(`Extracted ${j.extractions} tags from ${file.name}`); }
-        else if(j.note){ toast(`${file.name}: ${j.note}`); }   // never silent (e.g. .vssettings guidance)
-        else { toast(`Uploaded ${file.name}`); }
-      } else {
-        // Documents: send raw bytes; the server runs OCR/extraction → Document IR → candidates.
-        j = await api(`/api/projects/${CURRENT}/sources`,{method:"POST",
-          headers:{"Content-Type":"application/octet-stream","X-File-Name":file.name},
-          body:reader.result});
-        toast(`Read ${file.name}: ${j.chars} chars → ${j.extractions} candidates${j.warnings&&j.warnings.length?" ("+j.warnings[0]+")":""}`);
-      }
-      await loadSources(); await loadExtractions(); await loadProjects();
-    }catch(e){ toast(e.message); }
-  };
+  if(!file||!CURRENT) return;
+  if(/\.(zip|ccwx)$/i.test(file.name)){ const zr=new FileReader();
+    zr.onload=async()=>{ try{ const j=await api(`/api/projects/${CURRENT}/ccw-import`,{method:"POST",headers:{"Content-Type":"application/octet-stream","X-Project-Name":file.name},body:zr.result});
+      toast(`Imported ${file.name}: ${j.extractions} tags from ${j.fileCount} files${j.controller?(" · "+j.controller):""}`); await refresh(); }catch(e){ toast(e.message); } };
+    zr.readAsArrayBuffer(file); return; }
+  const reader=new FileReader(); const isText=isTextSource(file.name);
+  reader.onload=async()=>{ try{ let j;
+    if(isText){ j=await api(`/api/projects/${CURRENT}/sources`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fileName:file.name, text:reader.result})});
+      toast(j.extractions?`Extracted ${j.extractions} items from ${file.name}`:(j.note?`${file.name}: ${j.note}`:`Uploaded ${file.name}`)); }
+    else { j=await api(`/api/projects/${CURRENT}/sources`,{method:"POST",headers:{"Content-Type":"application/octet-stream","X-File-Name":file.name},body:reader.result});
+      toast(`Read ${file.name}: ${j.chars} chars → ${j.extractions} candidates${j.warnings&&j.warnings.length?" ("+j.warnings[0]+")":""}`); }
+    await refresh(); }catch(e){ toast(e.message); } };
   if(isText) reader.readAsText(file); else reader.readAsArrayBuffer(file);
 }
-// Drag-and-drop: drop any file(s) onto the work panel to ingest.
-(function initDrop(){
-  const work=$("work");
-  const stop=(e)=>{ e.preventDefault(); e.stopPropagation(); };
+(function initDrop(){ const work=$("work"); const stop=(e)=>{ e.preventDefault(); e.stopPropagation(); };
   ["dragenter","dragover"].forEach(ev=>work.addEventListener(ev,(e)=>{ stop(e); if(CURRENT) work.classList.add("drag"); }));
   ["dragleave","drop"].forEach(ev=>work.addEventListener(ev,(e)=>{ stop(e); work.classList.remove("drag"); }));
-  work.addEventListener("drop",(e)=>{ if(!CURRENT){ toast("Open a project first"); return; }
-    for(const f of e.dataTransfer.files) doUpload(f); });
-})();
-async function exportUns(){
-  if(!CURRENT) return;
-  try{
-    const res = await fetch(`/api/projects/${CURRENT}/export?format=uns`);
-    const j = await res.json(); if(!res.ok) throw new Error(j.error||"export failed");
-    const blob = new Blob([JSON.stringify(j,null,2)],{type:"application/json"});
-    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="uns.json"; a.click();
-    toast(`Exported ${j.signals.length} accepted signals`);
-  }catch(e){ toast(e.message); }
-}
-function exportBundle(){
-  if(!CURRENT) return;
-  window.location.href = `/api/projects/${CURRENT}/export?format=bundle`;  // server sends a zip download
-  toast("Building Factory Context Bundle…");
-}
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+  work.addEventListener("drop",(e)=>{ if(!CURRENT){ toast("Open a profile first"); return; } for(const f of e.dataTransfer.files) doUpload(f); }); })();
+
+/* ── keyboard shortcuts ────────────────────────────────────────────────── */
+document.addEventListener("keydown",(e)=>{ if(!(e.ctrlKey||e.metaKey)) return;
+  const k=e.key.toLowerCase();
+  if(k==="s"){ e.preventDefault(); saveProfile(); }
+  else if(k==="o"){ e.preventDefault(); $("profileInput").click(); }
+  else if(k==="n"){ e.preventDefault(); act("newProfile"); }
+  else if(k==="f"){ e.preventDefault(); setView("signals"); setTimeout(()=>{ const f=$("findBox"); if(f) f.focus(); },0); }
+});
 
 function routeHash(){ const m=location.hash.match(/p=([0-9a-f]+)/); if(m) openProject(m[1]); }
 window.addEventListener("hashchange", routeHash);
 
-setMode("plc");
-loadProjects().then(routeHash);
+buildViewMenu(); refreshMenuState();
+loadProjects().then(()=>{ render(); routeHash(); });
 </script>
 </body>
 </html>

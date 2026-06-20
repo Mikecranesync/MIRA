@@ -106,8 +106,10 @@ def main() -> int:
         print("error: gui/index.html not found (%s)" % gui, file=sys.stderr)
         return 1
 
-    store = Store(_db_path())
-    httpd, port = serve(store, gui)
+    db = _db_path()
+    store = Store(db)
+    recents = os.path.join(os.path.dirname(db), "recent_profiles.json")
+    httpd, port = serve(store, gui, recents_path=recents)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     url = "http://127.0.0.1:%d/index.html" % port
     _wait_for_server(port)
