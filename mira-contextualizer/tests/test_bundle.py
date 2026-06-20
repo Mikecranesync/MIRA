@@ -192,6 +192,48 @@ def test_end_to_end_ccw_plus_manual_to_bundle(tmp_path):
     s.close()
 
 
+def test_bundle_carries_profile_identity_and_new_asset_intent(tmp_path):
+    s = Store(str(tmp_path / "id.db"))
+    p = s.create_project("Garage Demo / Micro820 Conveyor")
+    s.set_profile(p["id"], {"machine_name": "Conveyor 1", "manufacturer": "Allen-Bradley",
+                            "model": "2080-LC50-24QWB", "controller_type": "Micro820",
+                            "serial_number": "SN-123", "site": "Garage"})
+    plc = s.create_source(p["id"], "ccw", "ccw project")
+    s.add_extractions(p["id"], plc["id"], [
+        {"tag_name": "motor_running", "roles": ["motor"], "uns_path_proposed": UNS,
+         "i3x_element_id": UNS, "evidence_json": {"source": "ccw_modbus"}, "confidence": 0.9}])
+    for e in s.list_extractions(p["id"]):
+        s.set_extraction_status(e["id"], "accepted")
+
+    files = bundle.build_bundle(s, p["id"])
+    assert "profile.json" in files and "sources.json" in files
+    assert "fault_catalog.json" in files and "parameters.json" in files
+
+    prof = json.loads(files["profile.json"])
+    assert prof["name"].startswith("Garage Demo")
+    assert prof["identity"]["model"] == "2080-LC50-24QWB"
+
+    man = json.loads(files["manifest.json"])
+    am = man["asset_match"]
+    assert am["manufacturer"] == "Allen-Bradley" and am["serial_number"] == "SN-123"
+    assert am["proposed_uns_path"]                       # derived from the accepted signal
+    assert am["source_file_hashes"]                      # at least one source fingerprint
+    # no hub_asset_id → create a draft asset; never overwrite verified data
+    assert man["import"]["intent"] == "new_asset"
+    assert man["import"]["policy"] == "propose_only"
+    s.close()
+
+
+def test_bundle_existing_asset_intent_when_hub_asset_id_set(tmp_path):
+    s = Store(str(tmp_path / "id2.db"))
+    p = s.create_project("Existing asset profile")
+    s.set_profile(p["id"], {"hub_asset_id": "asset-abc-123", "model": "PowerFlex 525"})
+    man = json.loads(bundle.build_bundle(s, p["id"])["manifest.json"])
+    assert man["import"]["intent"] == "existing_asset"
+    assert man["import"]["hub_asset_id"] == "asset-abc-123"
+    s.close()
+
+
 def test_zip_round_trips(seeded):
     store, pid = seeded
     data = bundle.zip_bytes(bundle.build_bundle(store, pid))
