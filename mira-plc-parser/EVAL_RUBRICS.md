@@ -83,7 +83,17 @@ changes.
 | 5.S1 | **GEN:** real state machine (`conv_state` CASE) detected HIGH, ≥5 transitions | Sequencer extraction on real logic. |
 | 5.S2 | A non-state assignment is **not** mislabeled a sequencer | No false positives. |
 
-### Phase 6 — Siemens TIA Openness XML — *not built* (recognized + routed, no parser).
+### Phase 6 — Siemens TIA Openness XML (SCL)
+*TIA projects are closed; the parseable artifact is the Openness/SimaticML XML export. SCL is Siemens'
+ST dialect, so it lands in the same IR and the whole analysis layer works on it.*
+
+| # | Criterion | Why it matters |
+|---|---|---|
+| 6.1 | Openness FB parsed: interface `<Member>`s + `PlcTagTable` → IR tags | The block's signals + the PLC tag table are the inputs. |
+| 6.2 | Physical `%Q`/`%I` addresses carried from the tag table | A `%Q` point is a real output — the equipment-output anchor. |
+| 6.3 | **Tokenized SCL reconstructs**: permissive+interlock AND FB-call watchdog chain detected | TIA stores SCL as a token stream, not text; if we rebuild it right, permissives/timer-chains/sequences all work on Siemens too. |
+| 6.4 | **GEN:** validated on a **real** Siemens Openness export | Synthetic SimaticML only proves the shape; a real export proves it generalizes. **Owed.** |
+
 ### Phase 7 — PDF / screenshot OCR fallback — *not built*.
 
 ---
@@ -98,7 +108,8 @@ See `evals/EVAL_SCORECARD.md` for the live numbers + evidence. Headline at last 
 | 2 Goldens / 3 IR hardening | **A+** | contract pinned |
 | 4 ST + PLCopen | **A+** | equipment outputs now separated from internal driven signals (8 of 65, precision 1.0) |
 | 5 Analysis depth | **A+** | sequences, IEC-FB watchdog chains, and precise permissives all green on the real program |
-| 6 Siemens / 7 OCR | **F** | not built |
+| 6 Siemens SCL | **C−** | parses + full analysis works on a faithful synthetic Openness fixture; **real export still owed (6.4)** |
+| 7 OCR | **F** | not built |
 
 ## What the benchmark caught — and what we fixed
 
@@ -122,4 +133,10 @@ grade as the before/after proof.
    drives/IO (`_IO_EM_DO_00..03`, `vfd_cmd_word`, `vfd_freq_setpoint`, `dir_fwd/rev`). **Phase 4: B+ → A+,
    Phase 5: A− → A+.** Locked by `test_permissive_precision_on_real_program`.
 
-**Next, with a clean A+ across every built phase:** Phase 6 (Siemens TIA Openness XML parser).
+3. **OPEN — Phase 6 / 6.4: no real Siemens export to grade against.** The Openness parser is validated
+   on a faithful synthetic SimaticML fixture (interface members, tokenized SCL with an FB-call watchdog,
+   `%Q` tag table), but caps at **C− (70%)** until a real TIA Openness export proves it generalizes —
+   exactly the honest gap the rubric is built to expose. → get one real `*.xml` Openness block export
+   into `plc/` and re-grade.
+
+**Next:** Phase 7 (PDF/OCR), or close 6.4 by obtaining a real Siemens Openness export.

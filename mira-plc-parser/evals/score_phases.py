@@ -210,6 +210,39 @@ def phase5() -> Phase:
     return p
 
 
+def phase6() -> Phase:
+    """Siemens TIA Portal Openness XML (SimaticML) parser -> the same IR as Rockwell/ST."""
+    p = Phase("6", "Siemens TIA Openness XML parser (SCL)")
+    sie = _report("siemens_conveyor.xml", FIXTURES / "siemens_conveyor.xml")
+    c = sie.get("counts", {})
+
+    p.criteria.append(Criterion(
+        "6.1", "Openness FB parsed: interface members + PlcTagTable -> IR tags",
+        1.0 if (sie.get("handled") and (c.get("tags") or 0) >= 8 and sie.get("vendor") == "Siemens") else 0.0,
+        "handled=%s tags=%s vendor=%s" % (sie.get("handled"), c.get("tags"), sie.get("vendor"))))
+
+    # physical %Q address survives (the equipment-output anchor)
+    addr_ok = any(t.get("address") == "%Q0.0" for t in sie.get("tag_dictionary", []))
+    p.criteria.append(Criterion(
+        "6.2", "Physical %Q/%I addresses carried from the PLC tag table",
+        1.0 if addr_ok else 0.0, "%%Q0.0 present=%s" % addr_ok))
+
+    # the tokenized SCL body reconstructs and the SHARED analysis runs on it
+    perm_ok = any(f["name"] == "MotorRun" and f["confidence"] == "review" for f in sie.get("permissives", []))
+    chain_ok = any(f["name"] == "vfd_err_timer" and "fault" in f["detail"].lower()
+                   for f in sie.get("timer_chains", []))
+    p.criteria.append(Criterion(
+        "6.3", "Tokenized SCL reconstructs: permissive+interlock AND FB-call watchdog chain detected",
+        1.0 if (perm_ok and chain_ok) else 0.0,
+        "permissive_review=%s timer_chain=%s" % (perm_ok, chain_ok), weight=1.5))
+
+    # honesty: validated on a faithful synthetic Openness shape; no real held-out Siemens export yet
+    p.criteria.append(Criterion(
+        "6.4", "GENERALIZATION: validated on a REAL Siemens export (held-out)", 0.0,
+        "no real Openness export in plc/ yet -- synthetic SimaticML fixture only", weight=1.5))
+    return p
+
+
 def not_built(num: str, title: str, note: str) -> Phase:
     p = Phase(num, title, built=False)
     p.criteria.append(Criterion(num + ".0", "Parser exists and produces a report", 0.0, note))
@@ -277,8 +310,7 @@ def build_phases() -> list[Phase]:
                       "golden regen gate + 111 unit tests")]),
         phase4(),
         phase5(),
-        not_built("6", "Siemens TIA Openness XML parser",
-                  "recognized by detect.py, routed to _PLANNED; no parser yet"),
+        phase6(),
         not_built("7", "PDF / screenshot OCR fallback (low confidence)", "not started"),
     ]
 

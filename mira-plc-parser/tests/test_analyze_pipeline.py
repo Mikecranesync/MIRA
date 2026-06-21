@@ -93,13 +93,15 @@ def test_unknown_format_handled_gracefully():
     assert "Not parsed" in md
 
 
-def test_planned_format_routes_but_defers():
-    # Siemens TIA/Openness XML is recognized but its parser is a later phase (still in _PLANNED).
-    xml = '<?xml version="1.0"?><Document><SW.Blocks.FB ID="0"></SW.Blocks.FB></Document>'
+def test_siemens_openness_now_parses():
+    # Siemens TIA/Openness XML is recognized AND parsed (Phase 6). A minimal FB still handles cleanly.
+    xml = ('<?xml version="1.0"?><Document><Engineering version="V18"/>'
+           '<SW.Blocks.FB ID="0"><AttributeList><Name>Empty</Name>'
+           '<ProgrammingLanguage>SCL</ProgrammingLanguage></AttributeList></SW.Blocks.FB></Document>')
     res = run("Block.xml", xml)
-    assert not res.handled
     assert res.detection.fmt == "siemens_tia_xml"
-    assert any("later phase" in w for w in res.project.warnings)
+    assert res.handled
+    assert res.report.controller == "Empty"
 
 
 def test_acd_pipeline_gives_actionable_guidance():

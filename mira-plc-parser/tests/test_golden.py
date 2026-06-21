@@ -22,6 +22,7 @@ CASES = {
     "gs10_tags.csv": "gs10_tags.csv.report.json",
     "conveyor.st": "conveyor.st.report.json",
     "conveyor.plcopen.xml": "conveyor.plcopen.report.json",
+    "siemens_conveyor.xml": "siemens_conveyor.report.json",
 }
 # the same fixtures, projected to i3X -- both contracts (report@1 and i3x@1) are pinned.
 I3X_CASES = {
@@ -29,6 +30,7 @@ I3X_CASES = {
     "gs10_tags.csv": "gs10_tags.csv.i3x.json",
     "conveyor.st": "conveyor.st.i3x.json",
     "conveyor.plcopen.xml": "conveyor.plcopen.i3x.json",
+    "siemens_conveyor.xml": "siemens_conveyor.i3x.json",
 }
 
 

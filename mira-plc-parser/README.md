@@ -144,7 +144,11 @@ product is **read-only analysis of exported programs** — safer and easier to s
 5. **Analysis depth (done):** permissives/interlocks (safety interlocks → REVIEW), timer→fault chains
    (the watchdog pattern), and sequence/state extraction (CASE / step-counter logic). All deterministic,
    confidence-graded, surfaced in `report@1` (`permissives` / `timer_chains` / `sequences`).
-6. **Siemens** via TIA Portal Openness XML exports (not closed project files) — recognized, parser pending.
+6. **Siemens (done):** TIA Portal Openness XML (SimaticML) exports — `SW.Blocks.FB/FC/OB` interface
+   members → tags, tokenized SCL bodies reconstructed (incl. FB-call watchdogs) → the shared ST rung
+   lift, `SW.Tags.PlcTagTable` `%Q/%I` addresses, graphical LAD/FBD bodies recorded but not faked.
+   Lands in the same IR, so permissives / timer→fault chains / sequences all work on Siemens SCL.
+   *(Validated on a faithful synthetic SimaticML fixture; a real held-out Openness export is still owed.)*
 7. **PDF / screenshot** fallback (OCR, low confidence) — last.
 
 ## Tests

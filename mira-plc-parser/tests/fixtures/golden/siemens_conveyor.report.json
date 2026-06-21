@@ -1,0 +1,317 @@
+{
+  "asset_candidates": [
+    {
+      "confidence": "medium",
+      "detail": "candidate asset (keyword: conv)",
+      "evidence": [
+        "ConvFault"
+      ],
+      "kind": "asset",
+      "name": "ConvFault"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate asset (keyword: motor)",
+      "evidence": [
+        "Motor_Out"
+      ],
+      "kind": "asset",
+      "name": "Motor"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate asset (keyword: motor)",
+      "evidence": [
+        "MotorRun"
+      ],
+      "kind": "asset",
+      "name": "MotorRun"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate asset (keyword: vfd)",
+      "evidence": [
+        "vfd_err_timer"
+      ],
+      "kind": "asset",
+      "name": "vfd"
+    }
+  ],
+  "controller": "ConveyorFB",
+  "counts": {
+    "asset_candidates": 4,
+    "controllers": 1,
+    "fault_candidates": 4,
+    "outputs": 2,
+    "permissives": 1,
+    "programs": 1,
+    "review_required": 1,
+    "routines": 1,
+    "rungs": 2,
+    "sequences": 0,
+    "tags": 9,
+    "timer_chains": 1,
+    "vfd_signal_candidates": 1
+  },
+  "detection": {
+    "confidence": "high",
+    "fmt": "siemens_tia_xml",
+    "needs_export": "",
+    "reason": "found Siemens TIA/Openness XML markers"
+  },
+  "fault_candidates": [
+    {
+      "confidence": "review",
+      "detail": "emergency stop healthy (safety)",
+      "evidence": [
+        "ConveyorFB/Member[EStopOK]"
+      ],
+      "kind": "fault",
+      "name": "EStopOK"
+    },
+    {
+      "confidence": "medium",
+      "detail": "name/desc matches fault/alarm pattern",
+      "evidence": [
+        "ConveyorFB/Member[comm_err]"
+      ],
+      "kind": "fault",
+      "name": "comm_err"
+    },
+    {
+      "confidence": "medium",
+      "detail": "name/desc matches fault/alarm pattern",
+      "evidence": [
+        "ConveyorFB/Member[ConvFault]"
+      ],
+      "kind": "fault",
+      "name": "ConvFault"
+    },
+    {
+      "confidence": "medium",
+      "detail": "name/desc matches fault/alarm pattern",
+      "evidence": [
+        "ConveyorFB/Member[vfd_err_timer]"
+      ],
+      "kind": "fault",
+      "name": "vfd_err_timer"
+    }
+  ],
+  "handled": true,
+  "output_dependencies": [
+    {
+      "confidence": "high",
+      "detail": "true when: vfd_err_timer, Q",
+      "evidence": [
+        "ConveyorFB/ConveyorFB/Net0/Rung[1]"
+      ],
+      "kind": "output",
+      "name": "ConvFault"
+    },
+    {
+      "confidence": "high",
+      "detail": "true when: StartPB, EStopOK, AutoMode, ConvFault",
+      "evidence": [
+        "ConveyorFB/ConveyorFB/Net0/Rung[0]"
+      ],
+      "kind": "output",
+      "name": "MotorRun"
+    }
+  ],
+  "permissives": [
+    {
+      "confidence": "review",
+      "detail": "requires: StartPB, EStopOK, AutoMode, ConvFault | safety interlock (REVIEW): EStopOK | mode: AutoMode",
+      "evidence": [
+        "ConveyorFB/ConveyorFB/Net0/Rung[0]"
+      ],
+      "interlocks": [
+        "EStopOK"
+      ],
+      "kind": "permissive",
+      "name": "MotorRun"
+    }
+  ],
+  "review_required": [
+    {
+      "confidence": "review",
+      "detail": "emergency stop healthy (safety)",
+      "evidence": [
+        "ConveyorFB/Member[EStopOK]"
+      ],
+      "kind": "safety",
+      "name": "EStopOK"
+    }
+  ],
+  "routine_summaries": [
+    {
+      "comment_digest": [],
+      "confidence": "high",
+      "outputs_controlled": [
+        "ConvFault",
+        "MotorRun"
+      ],
+      "program": "ConveyorFB",
+      "purpose_hint": "",
+      "routine": "ConveyorFB/Net0",
+      "rungs": 2,
+      "type": "ST"
+    }
+  ],
+  "schema": "mira-plc-parser/report@1",
+  "sequences": [],
+  "tag_dictionary": [
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "Bool",
+      "description": "",
+      "name": "ConvFault",
+      "roles": [
+        "output",
+        "fault"
+      ],
+      "scope": "program",
+      "used_count": 2,
+      "used_in": [
+        "ConveyorFB/ConveyorFB/Net0/Rung[0]",
+        "ConveyorFB/ConveyorFB/Net0/Rung[1]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "Bool",
+      "description": "",
+      "name": "AutoMode",
+      "roles": [
+        "mode"
+      ],
+      "scope": "program",
+      "used_count": 1,
+      "used_in": [
+        "ConveyorFB/ConveyorFB/Net0/Rung[0]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "Bool",
+      "description": "emergency stop healthy (safety)",
+      "name": "EStopOK",
+      "roles": [
+        "fault",
+        "safety"
+      ],
+      "scope": "program",
+      "used_count": 1,
+      "used_in": [
+        "ConveyorFB/ConveyorFB/Net0/Rung[0]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "Bool",
+      "description": "conveyor VFD run command",
+      "name": "MotorRun",
+      "roles": [
+        "output"
+      ],
+      "scope": "program",
+      "used_count": 1,
+      "used_in": [
+        "ConveyorFB/ConveyorFB/Net0/Rung[0]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "Bool",
+      "description": "operator start pushbutton",
+      "name": "StartPB",
+      "roles": [
+        "input"
+      ],
+      "scope": "program",
+      "used_count": 1,
+      "used_in": [
+        "ConveyorFB/ConveyorFB/Net0/Rung[0]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "TON",
+      "description": "",
+      "name": "vfd_err_timer",
+      "roles": [
+        "fault"
+      ],
+      "scope": "program",
+      "used_count": 1,
+      "used_in": [
+        "ConveyorFB/ConveyorFB/Net0/Rung[1]"
+      ]
+    },
+    {
+      "address": "%Q0.0",
+      "confidence": "high",
+      "data_type": "Bool",
+      "description": "",
+      "name": "Motor_Out",
+      "roles": [],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "%I0.0",
+      "confidence": "high",
+      "data_type": "Bool",
+      "description": "",
+      "name": "Start_In",
+      "roles": [],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "Bool",
+      "description": "",
+      "name": "comm_err",
+      "roles": [
+        "fault"
+      ],
+      "scope": "program",
+      "used_count": 0,
+      "used_in": []
+    }
+  ],
+  "timer_chains": [
+    {
+      "confidence": "medium",
+      "detail": "timer elapsed -> energizes ConvFault (fault)",
+      "evidence": [
+        "ConveyorFB/ConveyorFB/Net0/Rung[1]"
+      ],
+      "kind": "timer_chain",
+      "name": "vfd_err_timer"
+    }
+  ],
+  "vendor": "Siemens",
+  "vfd_signal_candidates": [
+    {
+      "confidence": "medium",
+      "detail": "candidate role: comm_ok",
+      "evidence": [
+        "ConveyorFB/Member[comm_err]"
+      ],
+      "kind": "vfd_signal",
+      "name": "comm_err"
+    }
+  ],
+  "warnings": []
+}

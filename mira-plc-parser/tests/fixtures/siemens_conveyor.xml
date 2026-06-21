@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Document>
+  <Engineering version="V18" />
+  <SW.Blocks.FB ID="0">
+    <AttributeList>
+      <Name>ConveyorFB</Name>
+      <Number>1</Number>
+      <ProgrammingLanguage>SCL</ProgrammingLanguage>
+      <Interface>
+        <Sections xmlns="http://www.siemens.com/automation/Openness/SW/Interface/v5">
+          <Section Name="Input">
+            <Member Name="StartPB" Datatype="Bool"><Comment><MultiLanguageText Lang="en-US">operator start pushbutton</MultiLanguageText></Comment></Member>
+            <Member Name="EStopOK" Datatype="Bool"><Comment><MultiLanguageText Lang="en-US">emergency stop healthy (safety)</MultiLanguageText></Comment></Member>
+            <Member Name="AutoMode" Datatype="Bool" />
+            <Member Name="comm_err" Datatype="Bool" />
+          </Section>
+          <Section Name="Output">
+            <Member Name="MotorRun" Datatype="Bool"><Comment><MultiLanguageText Lang="en-US">conveyor VFD run command</MultiLanguageText></Comment></Member>
+          </Section>
+          <Section Name="Static">
+            <Member Name="ConvFault" Datatype="Bool" />
+            <Member Name="vfd_err_timer" Datatype="TON" />
+          </Section>
+        </Sections>
+      </Interface>
+    </AttributeList>
+    <ObjectList>
+      <SW.Blocks.CompileUnit ID="2">
+        <AttributeList>
+          <NetworkSource>
+            <StructuredText xmlns="http://www.siemens.com/automation/Openness/SW/StructuredText/v3">
+              <Token Text="IF" /><Blank /><Access Scope="LocalVariable"><Symbol><Component Name="StartPB" /></Symbol></Access><Blank /><Token Text="AND" /><Blank /><Access Scope="LocalVariable"><Symbol><Component Name="EStopOK" /></Symbol></Access><Blank /><Token Text="AND" /><Blank /><Access Scope="LocalVariable"><Symbol><Component Name="AutoMode" /></Symbol></Access><Blank /><Token Text="AND" /><Blank /><Token Text="NOT" /><Blank /><Access Scope="LocalVariable"><Symbol><Component Name="ConvFault" /></Symbol></Access><Blank /><Token Text="THEN" /><NewLine />
+              <Blank Num="2" /><Access Scope="LocalVariable"><Symbol><Component Name="MotorRun" /></Symbol></Access><Blank /><Token Text=":=" /><Blank /><Token Text="TRUE" /><Token Text=";" /><NewLine />
+              <Token Text="END_IF" /><Token Text=";" /><NewLine />
+              <Access Scope="Call"><Call><CallInfo Name="vfd_err_timer" BlockType="FB"><Instance Scope="LocalVariable"><Component Name="vfd_err_timer" /></Instance><Parameter Name="IN" Section="Input" Type="Bool"><Access Scope="LocalVariable"><Symbol><Component Name="comm_err" /></Symbol></Access></Parameter><Parameter Name="PT" Section="Input" Type="Time"><Access Scope="LiteralConstant"><Constant><ConstantType>Time</ConstantType><ConstantValue>T#5S</ConstantValue></Constant></Access></Parameter></CallInfo></Call></Access><Token Text=";" /><NewLine />
+              <Token Text="IF" /><Blank /><Access Scope="LocalVariable"><Symbol><Component Name="vfd_err_timer" /><Component Name="Q" /></Symbol></Access><Blank /><Token Text="THEN" /><NewLine />
+              <Blank Num="2" /><Access Scope="LocalVariable"><Symbol><Component Name="ConvFault" /></Symbol></Access><Blank /><Token Text=":=" /><Blank /><Token Text="TRUE" /><Token Text=";" /><NewLine />
+              <Token Text="END_IF" /><Token Text=";" /><NewLine />
+            </StructuredText>
+          </NetworkSource>
+          <ProgrammingLanguage>SCL</ProgrammingLanguage>
+        </AttributeList>
+      </SW.Blocks.CompileUnit>
+    </ObjectList>
+  </SW.Blocks.FB>
+  <SW.Tags.PlcTagTable ID="9">
+    <AttributeList><Name>ConveyorTags</Name></AttributeList>
+    <ObjectList>
+      <SW.Tags.PlcTag ID="10">
+        <AttributeList><Name>Motor_Out</Name><DataTypeName>Bool</DataTypeName><LogicalAddress>%Q0.0</LogicalAddress></AttributeList>
+      </SW.Tags.PlcTag>
+      <SW.Tags.PlcTag ID="11">
+        <AttributeList><Name>Start_In</Name><DataTypeName>Bool</DataTypeName><LogicalAddress>%I0.0</LogicalAddress></AttributeList>
+      </SW.Tags.PlcTag>
+    </ObjectList>
+  </SW.Tags.PlcTagTable>
+</Document>

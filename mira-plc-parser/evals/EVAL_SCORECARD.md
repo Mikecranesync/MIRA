@@ -11,7 +11,7 @@ tuned on. Grades weight the generalization criteria most.
 | 3 | IR hardening (report@1 shape pinned, camelCase tokenizer) | **A+** | 100% |
 | 4 | Structured Text + PLCopen XML parsers | **A+** | 100% |
 | 5 | Analysis depth (permissives, timer->fault chains, sequences) | **A+** | 100% |
-| 6 | Siemens TIA Openness XML parser _(not built)_ | **F** | 0% |
+| 6 | Siemens TIA Openness XML parser (SCL) | **C-** | 70% |
 | 7 | PDF / screenshot OCR fallback (low confidence) _(not built)_ | **F** | 0% |
 
 ## Phase 1 — Structural extraction (Rockwell L5X + CSV -> IR)  →  A+ (100%)
@@ -55,11 +55,14 @@ tuned on. Grades weight the generalization criteria most.
 | 5.S1 | GENERALIZATION: real state machine (conv_state CASE) detected HIGH, >=5 transitions | 1.00 | conv_state conf=high transitions=10 |
 | 5.S2 | Sequence: a non-state assignment (ClampOut) is NOT mislabeled a sequencer | 1.00 | no_false_positive=True |
 
-## Phase 6 — Siemens TIA Openness XML parser  →  F (0%)
+## Phase 6 — Siemens TIA Openness XML parser (SCL)  →  C- (70%)
 
 | Criterion | What it measures | Score | Evidence |
 |---|---|---|---|
-| 6.0 | Parser exists and produces a report | 0.00 | recognized by detect.py, routed to _PLANNED; no parser yet |
+| 6.1 | Openness FB parsed: interface members + PlcTagTable -> IR tags | 1.00 | handled=True tags=9 vendor=Siemens |
+| 6.2 | Physical %Q/%I addresses carried from the PLC tag table | 1.00 | %Q0.0 present=True |
+| 6.3 | Tokenized SCL reconstructs: permissive+interlock AND FB-call watchdog chain detected | 1.00 | permissive_review=True timer_chain=True |
+| 6.4 | GENERALIZATION: validated on a REAL Siemens export (held-out) | 0.00 | no real Openness export in plc/ yet -- synthetic SimaticML fixture only |
 
 ## Phase 7 — PDF / screenshot OCR fallback (low confidence)  →  F (0%)
 
