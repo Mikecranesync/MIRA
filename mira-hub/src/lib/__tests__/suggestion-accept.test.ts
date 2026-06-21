@@ -16,7 +16,7 @@ vi.mock("@/lib/tenant-context", () => ({
 }));
 vi.mock("@/lib/proposal-transition", () => ({ applyHubProposalTransition: transitionMock }));
 
-import { decideSuggestion, unsPathToLtree } from "../suggestion-accept";
+import { decideSuggestion, unsPathToLtree, mapTagDataType } from "../suggestion-accept";
 
 const TENANT = "11111111-1111-1111-1111-111111111111";
 const ID = "22222222-2222-2222-2222-222222222222";
@@ -35,6 +35,27 @@ function kgEntitySuggestion(over: Record<string, unknown> = {}) {
   };
 }
 
+function tagMappingSuggestion(extracted: Record<string, unknown> = {}, over: Record<string, unknown> = {}) {
+  return {
+    id: ID,
+    suggestion_type: "tag_mapping",
+    status: "pending",
+    extracted_data: {
+      tag: "Conv_Fault",
+      uns_path: "enterprise/site1/area1/line1/conv/fault",
+      signal: "fault",
+      asset: "conv",
+      data_type: "BOOL",
+      confidence_band: "high",
+      evidence: "VFD signal role + asset 'conv'",
+      controller: "ConveyorControl",
+      vendor: "Rockwell Automation",
+      ...extracted,
+    },
+    ...over,
+  };
+}
+
 beforeEach(() => {
   queryMock.mockReset();
   queryMock.mockImplementation(async (sql: string) => {
@@ -43,6 +64,9 @@ beforeEach(() => {
     }
     if (/INSERT INTO kg_entities/.test(sql)) {
       return { rows: [{ id: "kg-1" }] };
+    }
+    if (/INSERT INTO tag_entities/.test(sql)) {
+      return { rows: [{ id: "tag-1" }] };
     }
     return { rows: [] };
   });
@@ -57,6 +81,22 @@ describe("unsPathToLtree", () => {
       "enterprise.site1.area1.conveyorcell.vfd",
     );
     expect(unsPathToLtree("/a//b/")).toBe("a.b");
+  });
+});
+
+describe("mapTagDataType", () => {
+  it("maps declared PLC/IEC types to the tag_entities enum (case-insensitive)", () => {
+    expect(mapTagDataType("BOOL")).toBe("BOOL");
+    expect(mapTagDataType("dint")).toBe("INT32");
+    expect(mapTagDataType("WORD")).toBe("UINT16"); // bit-string → unsigned of matching width
+    expect(mapTagDataType("REAL")).toBe("REAL");
+    expect(mapTagDataType("LREAL")).toBe("LREAL");
+  });
+  it("returns null for empty/unknown types so the caller skips materialization", () => {
+    expect(mapTagDataType("")).toBeNull();
+    expect(mapTagDataType("WIDGET_T")).toBeNull();
+    expect(mapTagDataType(undefined)).toBeNull();
+    expect(mapTagDataType(123)).toBeNull();
   });
 });
 
@@ -81,15 +121,53 @@ describe("decideSuggestion", () => {
     ]);
   });
 
-  it("verify of a tag_mapping transitions status but creates no entity", async () => {
-    suggestionRow = kgEntitySuggestion({ suggestion_type: "tag_mapping" });
+  it("verify of a typed tag_mapping creates a VERIFIED tag_entities row (dotted path, mapped type)", async () => {
+    suggestionRow = tagMappingSuggestion();
+    const res = await decideSuggestion(TENANT, "u1", ID, "verify", "");
+    expect(res).toEqual({ kind: "ok", decision: "verify", status: "accepted", entityId: "tag-1" });
+
+    expect(transitionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ trigger: "accept", aiSuggestionId: ID }),
+    );
+    const insert = queryMock.mock.calls.find(([sql]) => /INSERT INTO tag_entities/.test(sql))!;
+    expect(insert[0]).toContain("'verified'");
+    expect(insert[0]).toContain("ON CONFLICT (tenant_id, uns_path)");
+    // [tenantId, unsPath(dotted), symbolic, dataType(mapped), source_address(=symbolic), evidence(json)]
+    expect(insert[1].slice(0, 5)).toEqual([
+      TENANT,
+      "enterprise.site1.area1.line1.conv.fault",
+      "Conv_Fault",
+      "BOOL",
+      "Conv_Fault",
+    ]);
+    // no kg_entities write for a tag_mapping
+    expect(queryMock.mock.calls.some(([sql]) => /INSERT INTO kg_entities/.test(sql))).toBe(false);
+  });
+
+  it("verify of a name-only tag_mapping (no declarable type) transitions but creates no tag_entity", async () => {
+    suggestionRow = tagMappingSuggestion({ data_type: "" });
     const res = await decideSuggestion(TENANT, "u1", ID, "verify", "");
     expect(res).toMatchObject({ kind: "ok", status: "accepted", entityId: null });
     expect(transitionMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ trigger: "accept" }),
     );
-    expect(queryMock.mock.calls.some(([sql]) => /INSERT INTO kg_entities/.test(sql))).toBe(false);
+    expect(queryMock.mock.calls.some(([sql]) => /INSERT INTO tag_entities/.test(sql))).toBe(false);
+  });
+
+  it("verify of a tag_mapping with an unmappable type transitions but creates no tag_entity", async () => {
+    suggestionRow = tagMappingSuggestion({ data_type: "WIDGET_T" });
+    const res = await decideSuggestion(TENANT, "u1", ID, "verify", "");
+    expect(res).toMatchObject({ kind: "ok", entityId: null });
+    expect(queryMock.mock.calls.some(([sql]) => /INSERT INTO tag_entities/.test(sql))).toBe(false);
+  });
+
+  it("reject of a tag_mapping transitions status and creates no tag_entity", async () => {
+    suggestionRow = tagMappingSuggestion();
+    const res = await decideSuggestion(TENANT, "u1", ID, "reject", "wrong tag");
+    expect(res).toMatchObject({ kind: "ok", decision: "reject", status: "rejected", entityId: null });
+    expect(queryMock.mock.calls.some(([sql]) => /INSERT INTO tag_entities/.test(sql))).toBe(false);
   });
 
   it("reject transitions status and creates no entity", async () => {

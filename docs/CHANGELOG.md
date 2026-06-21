@@ -3,6 +3,12 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.33.0 (2026-06-20) — feat(hub): materialize tag_entities on PLC tag_mapping accept (Phase 8)
+- Closes the last functional gap in the offline **PLC Parser → Hub tag-import** chain (Northstar plan Phase 8): approving a parser-proposed `tag_mapping` in `/proposals` now creates a **verified `tag_entities` row** (mig 025), so an approved PLC tag becomes a typed, queryable signal the relay / engine / MCP read — not just a flipped status. Previously `tag_mapping` accept was status-only (only `kg_entity` materialized an entity).
+- **`mira-hub/src/lib/suggestion-accept.ts`** — `decideSuggestion` verify path now branches `tag_mapping` → `createTagEntity()`. New exported `mapTagDataType()` maps the parser's *declared* PLC/IEC/Rockwell type (BOOL/DINT/WORD/REAL/…) to the `tag_entities.data_type` CHECK enum; an export with no declarable type (CCW name-only case) is transitioned but **not** materialized — the typed table never holds an invented type. Insert is `approval_state='verified'`, `proposed_by='import:plc_parser'`, idempotent via `ON CONFLICT (tenant_id, uns_path)`.
+- Verified vs proposed honored: materialization happens only on the explicit human accept (plc-tag-mapper rule — never auto-verify). Read-only; no PLC writes.
+- Tests: `suggestion-accept.test.ts` +6 cases (typed materialization, name-only/unmappable skip, reject, `mapTagDataType`). Full file green (12); adjacent `plc-proposals` suite unchanged (7).
+
 ### v3.32.0 (2026-06-20) — feat(hub): KG navigator Phase 1 — graph↔namespace cross-link UX
 - **Closed-loop graph builder, slice 1.** On `/knowledge/map`, a node's detail panel now has a **"📁 Add documents"** link that deep-links to that node in the namespace (`/namespace?node=<kg_entities.id>`) to attach manuals — the first half of the click-node → add-doc → suggest-connections loop.
 - **Any edge is now inspectable.** Edge click opens a panel for *verified* edges too (was proposed-only): friendly type, source→target, confidence, and the `evidence_summary` snapshot. Proposed-edge confirm/reject unchanged (ADR-0017 — never auto-verify).
