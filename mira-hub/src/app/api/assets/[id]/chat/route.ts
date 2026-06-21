@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+import pool from "@/lib/db";
 import { extractAndStore } from "@/lib/knowledge-graph/extractor";
 import { buildGraphContext } from "@/lib/knowledge-graph/context-builder";
 import { scanBoth, handleSafetyAlert, safetyAlertSseChunk } from "@/lib/agents/safety-alert";
@@ -246,12 +247,24 @@ export async function POST(
     });
   }
 
-  // Fetch asset context + manual chunks in a single tenant-scoped transaction
-  // so RLS applies uniformly. Both are non-fatal: chat still works without them.
+  // Fetch asset context + manual chunks. Both are non-fatal: chat still works
+  // without them.
+  //
+  // #2178 — these run on the RAW owner pool (BYPASSRLS), NOT withTenantContext.
+  // `knowledge_entries` is a hybrid corpus: the shared OEM library lives under
+  // the system tenant (`is_private = false`), and retrieveManualChunks filters
+  // `(is_private = false OR tenant_id = $caller)`. Under withTenantContext the
+  // RLS policy (`tenant_id = app.tenant_id`) hides every is_private=false OEM
+  // row, so a customer's asset chat saw ZERO manuals for every manufacturer and
+  // refused ("I don't have specific information…"). The cmms_equipment lookup
+  // is pure-tenant data, so it keeps an explicit `AND tenant_id = $2` (the IDOR
+  // guard) — exactly the split /api/documents uses. See
+  // `.claude/rules/knowledge-entries-tenant-scoping.md`.
   let assetRow: Record<string, unknown> | null = null;
   let manualChunks: ManualChunk[] = [];
   try {
-    const fetched = await withTenantContext(ctx.tenantId, async (c) => {
+    const c = await pool.connect();
+    try {
       const assetRes = await c.query(
         `SELECT
           equipment_number, manufacturer, model_number, serial_number,
@@ -263,16 +276,15 @@ export async function POST(
         LIMIT 1`,
         [id, ctx.tenantId],
       );
-      const row = (assetRes.rows[0] ?? null) as Record<string, unknown> | null;
-      const mfr = row?.manufacturer ? String(row.manufacturer) : null;
-      const chunks = await retrieveManualChunks(c, ctx.tenantId, lastUser.content, {
+      assetRow = (assetRes.rows[0] ?? null) as Record<string, unknown> | null;
+      const mfr = assetRow?.manufacturer ? String(assetRow.manufacturer) : null;
+      manualChunks = await retrieveManualChunks(c, ctx.tenantId, lastUser.content, {
         manufacturer: mfr,
         allowTenantFallback: false,
       });
-      return { row, chunks };
-    });
-    assetRow = fetched.row;
-    manualChunks = fetched.chunks;
+    } finally {
+      c.release();
+    }
   } catch {
     // Non-fatal: continue without DB context (graceful degradation)
     assetRow = null;
