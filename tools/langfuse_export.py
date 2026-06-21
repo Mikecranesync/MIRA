@@ -38,7 +38,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Make shared.inference.router importable (for the canonical PII scrubber).
@@ -125,7 +125,12 @@ def flatten_row(trace: dict, spans: list[dict]) -> dict:
 
     vsearch = _output(_span_by_name(spans, "vector_search"))
     retrieved = vsearch.get("retrieved") or []
-    scores = [r.get("score") for r in retrieved if isinstance(r, dict) and r.get("score") is not None]
+    scores = [
+        float(r["score"]) for r in retrieved
+        if isinstance(r, dict) and isinstance(r.get("score"), (int, float))
+    ]
+    count = vsearch.get("count")
+    n_chunks = count if isinstance(count, (int, float)) else len(retrieved)
     llm = _output(_span_by_name(spans, "llm_inference"))
     llm_span = _span_by_name(spans, "llm_inference") or {}
 
@@ -138,7 +143,7 @@ def flatten_row(trace: dict, spans: list[dict]) -> dict:
         "latency_ms": llm.get("latency_ms") or llm_span.get("latency") or trace.get("latency") or "",
         "fsm_state": meta.get("fsm_state", ""),
         "prompt_version": meta.get("prompt_version", ""),
-        "n_chunks": vsearch.get("count") if vsearch.get("count") is not None else len(retrieved),
+        "n_chunks": n_chunks,
         "top_score": max(scores) if scores else "",
     }
 
@@ -191,24 +196,34 @@ def _client():
     return httpx.Client(base_url=host, auth=(pk, sk), timeout=60), host
 
 
-def _get_page(client, path: str, params: dict) -> tuple[list[dict], dict]:
-    r = client.get(path, params=params)
-    r.raise_for_status()
-    d = r.json()
-    return (d.get("data") or []), (d.get("meta") or {})
+def _get_page(client, path: str, params: dict, *, retries: int = 7) -> tuple[list[dict], dict]:
+    """GET one page, retrying 429/5xx with Retry-After + exponential backoff."""
+    delay = 2.0
+    last = None
+    for attempt in range(retries):
+        r = client.get(path, params=params)
+        if r.status_code == 429 or r.status_code >= 500:
+            ra = r.headers.get("Retry-After")
+            wait = float(ra) if (ra and ra.replace(".", "", 1).isdigit()) else delay
+            logger.warning("%s on %s p%s — sleep %.1fs (attempt %d/%d)",
+                           r.status_code, path, params.get("page"), wait, attempt + 1, retries)
+            time.sleep(wait)
+            delay = min(delay * 2, 30)
+            last = r
+            continue
+        r.raise_for_status()
+        d = r.json()
+        return (d.get("data") or []), (d.get("meta") or {})
+    if last is not None:
+        last.raise_for_status()
+    return [], {}
 
 
 def _sweep(client, path, base_params, *, limit, max_items, label, sleep) -> list[dict]:
     out: list[dict] = []
     page = 1
     while True:
-        try:
-            data, meta = _get_page(client, path, dict(base_params, page=page, limit=limit))
-        except Exception as exc:  # noqa: BLE001
-            # Back off once on transient errors (429/5xx), then retry the page.
-            logger.warning("%s page %d error: %s — backing off 5s", label, page, exc)
-            time.sleep(5)
-            data, meta = _get_page(client, path, dict(base_params, page=page, limit=limit))
+        data, meta = _get_page(client, path, dict(base_params, page=page, limit=limit))
         out.extend(data)
         total_pages = meta.get("totalPages", page) or page
         logger.info("%s: page %d/%s (+%d, total %d)", label, page, total_pages, len(data), len(out))
@@ -266,13 +281,31 @@ def export(args) -> int:
             if args.sleep:
                 time.sleep(args.sleep)
     else:
-        logger.info("Bulk-sweeping observations…")
-        spans = _sweep(client, "/api/public/observations", {}, limit=args.limit,
-                       max_items=None, label="observations", sleep=args.sleep)
-        for s in spans:
-            tid = s.get("traceId") or s.get("trace_id")
-            if tid in trace_ids and s.get("name") in _SPAN_NAMES:
-                by_trace.setdefault(tid, []).append(s)
+        # Bulk observations, swept in weekly time windows. The list endpoint
+        # rejects deep offset pagination (HTTP 422 past ~page 42), so we keep
+        # each window shallow by bounding fromStartTime/toStartTime.
+        times = sorted(t.get("timestamp") for t in traces if t.get("timestamp"))
+        start = _dt(times[0]) if times else None
+        end = (_dt(times[-1]) + timedelta(days=1)) if times else None
+        if start is None:
+            start, end = datetime(2026, 1, 1, tzinfo=timezone.utc), datetime.now(timezone.utc)
+        cur = start
+        n_spans = 0
+        while cur < end:
+            nxt = min(cur + timedelta(days=7), end)
+            spans = _sweep(
+                client, "/api/public/observations",
+                {"fromStartTime": cur.isoformat(), "toStartTime": nxt.isoformat()},
+                limit=args.limit, max_items=None,
+                label=f"obs {cur.date()}", sleep=args.sleep,
+            )
+            for s in spans:
+                tid = s.get("traceId") or s.get("trace_id")
+                if tid in trace_ids and s.get("name") in _SPAN_NAMES:
+                    by_trace.setdefault(tid, []).append(s)
+                    n_spans += 1
+            cur = nxt
+        logger.info("joined %d spans across %d traces", n_spans, len(by_trace))
 
     new = [t for t in traces if t.get("id") not in seen]
     logger.info("%d traces (%d new after resume)", len(traces), len(new))
@@ -285,7 +318,11 @@ def export(args) -> int:
         for t in new:
             sp = by_trace.get(t.get("id"), [])
             jf.write(json.dumps({"trace": t, "spans": sp}, ensure_ascii=False, default=str) + "\n")
-            rows.append(flatten_row(t, sp))
+            try:
+                rows.append(flatten_row(t, sp))
+            except Exception as exc:  # noqa: BLE001 — one bad row must not lose the run
+                logger.warning("flatten_row failed for %s: %s", t.get("id"), exc)
+                rows.append({"trace_id": t.get("id"), "timestamp": t.get("timestamp")})
 
     with csv_path.open("w", encoding="utf-8", newline="") as cf:
         w = csv.DictWriter(cf, fieldnames=_CSV_FIELDS)
@@ -326,6 +363,11 @@ def _write_evalseed(out_dir: Path, rows: list[dict], ts: str) -> None:
 # --- small io helpers -------------------------------------------------------
 
 
+def _dt(s: str) -> datetime:
+    """Parse a Langfuse ISO timestamp (handles a trailing ``Z``)."""
+    return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
 def _parse_dt(s: str | None) -> str | None:
     """Normalize an ISO date/datetime to a UTC ISO string for the REST filter."""
     if not s:
@@ -357,7 +399,8 @@ def main() -> None:
     p.add_argument("--limit", type=int, default=100, help="Page size (default 100)")
     p.add_argument("--max", type=int, default=None, help="Cap number of traces (testing)")
     p.add_argument("--out-dir", default=str(_REPO_ROOT / "tools" / "langfuse-export"))
-    p.add_argument("--sleep", type=float, default=0.1, help="Inter-page sleep seconds")
+    p.add_argument("--sleep", type=float, default=0.5,
+                   help="Inter-page sleep seconds (raise if you hit 429s)")
     p.add_argument("--dry-run", action="store_true", help="Count + sample only; write nothing")
     p.add_argument("--resume", action="store_true", help="Skip trace IDs already in manifest")
     p.add_argument("--as-evalseed", action="store_true", help="Also emit a draft eval pack YAML")
