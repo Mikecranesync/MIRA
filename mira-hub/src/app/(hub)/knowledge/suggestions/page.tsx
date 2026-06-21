@@ -102,36 +102,6 @@ export default function ProposalsPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const offsetRef = useRef(0);
 
-  async function decideSuggestion(suggestionId: string, decision: "verify" | "reject") {
-    setDeciding((s) => ({ ...s, [suggestionId]: decision }));
-    const previous = suggestions;
-    if (statusFilter === "proposed") {
-      setSuggestions((cur) => cur.filter((s) => s.id !== suggestionId));
-    }
-    try {
-      const res = await fetch(`${API_BASE}/api/proposals/${suggestionId}/decide/`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ decision }),
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? `HTTP ${res.status}`);
-      }
-      setToast(decision === "verify" ? "Tag mapping accepted" : "Tag mapping rejected");
-    } catch (e) {
-      setSuggestions(previous);
-      setToast(`Decide failed: ${(e as Error).message}`);
-    } finally {
-      setDeciding((s) => {
-        const next = { ...s };
-        delete next[suggestionId];
-        return next;
-      });
-      setTimeout(() => setToast(null), 4000);
-    }
-  }
-
   async function decide(proposalId: string, decision: "verify" | "reject") {
     setDeciding((s) => ({ ...s, [proposalId]: decision }));
     const previous = proposals;
@@ -156,6 +126,36 @@ export default function ProposalsPage() {
       setDeciding((s) => {
         const next = { ...s };
         delete next[proposalId];
+        return next;
+      });
+      setTimeout(() => setToast(null), 4000);
+    }
+  }
+
+  async function decideSuggestion(suggestionId: string, decision: "verify" | "reject") {
+    setDeciding((s) => ({ ...s, [suggestionId]: decision }));
+    const previous = suggestions;
+    if (statusFilter === "proposed") {
+      setSuggestions((cur) => cur.filter((x) => x.id !== suggestionId));
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/suggestions/${suggestionId}/decide/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ decision }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      setToast(decision === "verify" ? "Suggestion accepted" : "Suggestion rejected");
+    } catch (e) {
+      setSuggestions(previous);
+      setToast(`Decide failed: ${(e as Error).message}`);
+    } finally {
+      setDeciding((s) => {
+        const next = { ...s };
+        delete next[suggestionId];
         return next;
       });
       setTimeout(() => setToast(null), 4000);
@@ -488,7 +488,7 @@ function EmptyState({ statusFilter }: { statusFilter: string }) {
     <div className="rounded-lg border border-dashed border-slate-300 bg-white p-12 text-center" data-testid="proposals-empty">
       <FileText className="mx-auto h-10 w-10 text-slate-300" />
       <h2 className="mt-4 text-lg font-semibold text-slate-900">
-        No {statusFilter === "all" ? "" : statusFilter} proposals yet
+        No {statusFilter === "all" ? "" : statusFilter === "proposed" ? "pending" : statusFilter} proposals yet
       </h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
         {statusFilter === "proposed"
@@ -513,6 +513,9 @@ function groupByRiskLevel(proposals: Proposal[]): {
   };
 }
 
+// Non-edge ai_suggestions (mig 027). Approve/reject goes through the ADR-0017
+// transition helper via POST /api/suggestions/[id]/decide — accepting a
+// kg_entity creates a verified kg_entities row (served by i3X).
 function SuggestionSection({
   suggestions,
   canDecide,
@@ -530,8 +533,8 @@ function SuggestionSection({
         Suggestions ({suggestions.length})
       </h2>
       <p className="mb-3 text-xs text-slate-400">
-        Entity, tag, component, UNS, and namespace proposals from ingestion and photo scans.
-        Tag-mapping proposals can be accepted or rejected below.
+        Entity, tag, component, UNS, and namespace proposals from ingestion and photo
+        scans. Accepting an entity promotes it into the verified knowledge graph.
       </p>
       <div className="space-y-2">
         {suggestions.map((s) => (
@@ -559,8 +562,8 @@ function SuggestionCard({
   decidingState: "verify" | "reject" | undefined;
   onDecide: (id: string, decision: "verify" | "reject") => void;
 }) {
-  const confidencePct = Math.round(suggestion.confidence * 100);
   const busy = decidingState !== undefined;
+  const confidencePct = Math.round(suggestion.confidence * 100);
   const accent =
     suggestion.riskLevel === "safety_critical"
       ? "border-l-red-500"
@@ -609,7 +612,7 @@ function SuggestionCard({
         <time className="ml-2" dateTime={suggestion.createdAt}>
           {new Date(suggestion.createdAt).toLocaleDateString()}
         </time>
-        {canDecide && suggestion.suggestionType === "tag_mapping" && (
+        {canDecide && (
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <button
               type="button"
@@ -629,8 +632,8 @@ function SuggestionCard({
               type="button"
               disabled={busy}
               onClick={() => onDecide(suggestion.id, "verify")}
-              className="inline-flex items-center gap-1 rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-              data-testid="suggestion-accept"
+              className="inline-flex items-center gap-1 rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              data-testid="suggestion-verify"
             >
               {decidingState === "verify" ? (
                 <Loader2 className="h-3 w-3 animate-spin" />

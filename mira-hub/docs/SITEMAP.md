@@ -10,10 +10,10 @@
 
 | Surface | Count |
 |---|---|
-| Pages | **57** (6 dynamic) |
-| API routes | **118** (33 dynamic) |
+| Pages | **62** (8 dynamic) |
+| API routes | **145** (43 dynamic) |
 
-## Pages (57)
+## Pages (62)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -28,6 +28,10 @@
 | `/channels` | static | `(hub)/channels/page.tsx` |
 | `/cmms` | static | `(hub)/cmms/page.tsx` |
 | `/command-center` | static | `(hub)/command-center/page.tsx` |
+| `/contextualization` | static | `(hub)/contextualization/page.tsx` |
+| `/contextualization/[id]` | dynamic | `(hub)/contextualization/[id]/page.tsx` |
+| `/contextualization/review` | static | `(hub)/contextualization/review/page.tsx` |
+| `/contextualization/review/[batchId]` | dynamic | `(hub)/contextualization/review/[batchId]/page.tsx` |
 | `/conversations` | static | `(hub)/conversations/page.tsx` |
 | `/demo/conveyor/[tag]` | dynamic | `demo/conveyor/[tag]/page.tsx` |
 | `/documents` | static | `(hub)/documents/page.tsx` |
@@ -50,6 +54,7 @@
 | `/parts` | static | `(hub)/parts/page.tsx` |
 | `/parts/[id]` | dynamic | `(hub)/parts/[id]/page.tsx` |
 | `/pending-approval` | static | `(hub)/pending-approval/page.tsx` |
+| `/plc-import` | static | `(hub)/plc-import/page.tsx` |
 | `/proposals` | static | `(hub)/proposals/page.tsx` |
 | `/quickstart` | static | `quickstart/page.tsx` |
 | `/reports` | static | `(hub)/reports/page.tsx` |
@@ -75,7 +80,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (118)
+## API routes (145)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -125,11 +130,25 @@
 | `/api/cmms/stats` | static | `api/cmms/stats/route.ts` |
 | `/api/command-center/display` | static | `api/command-center/display/route.ts` |
 | `/api/command-center/display/[id]` | dynamic | `api/command-center/display/[id]/route.ts` |
+| `/api/command-center/gateways` | static | `api/command-center/gateways/route.ts` |
 | `/api/command-center/tree` | static | `api/command-center/tree/route.ts` |
 | `/api/components/[id]` | dynamic | `api/components/[id]/route.ts` |
 | `/api/connections` | static | `api/connections/route.ts` |
 | `/api/connections/[provider]` | dynamic | `api/connections/[provider]/route.ts` |
+| `/api/connectors/plc/import` | static | `api/connectors/plc/import/route.ts` |
+| `/api/contextualization` | static | `api/contextualization/route.ts` |
+| `/api/contextualization/[id]/export` | dynamic | `api/contextualization/[id]/export/route.ts` |
+| `/api/contextualization/[id]/extractions` | dynamic | `api/contextualization/[id]/extractions/route.ts` |
+| `/api/contextualization/[id]/extractions/[eid]` | dynamic | `api/contextualization/[id]/extractions/[eid]/route.ts` |
+| `/api/contextualization/[id]/promote` | dynamic | `api/contextualization/[id]/promote/route.ts` |
+| `/api/contextualization/[id]/sources` | dynamic | `api/contextualization/[id]/sources/route.ts` |
+| `/api/contextualization/batches` | static | `api/contextualization/batches/route.ts` |
+| `/api/contextualization/batches/[batchId]` | dynamic | `api/contextualization/batches/[batchId]/route.ts` |
+| `/api/contextualization/batches/[batchId]/review` | dynamic | `api/contextualization/batches/[batchId]/review/route.ts` |
+| `/api/contextualization/import` | static | `api/contextualization/import/route.ts` |
 | `/api/conversations` | static | `api/conversations/route.ts` |
+| `/api/decision-trace/[id]` | dynamic | `api/decision-trace/[id]/route.ts` |
+| `/api/decision-trace/[id]/feedback` | dynamic | `api/decision-trace/[id]/feedback/route.ts` |
 | `/api/demo/customer` | static | `api/demo/customer/route.ts` |
 | `/api/demo/signals/events` | static | `api/demo/signals/events/route.ts` |
 | `/api/demo/signals/set` | static | `api/demo/signals/set/route.ts` |
@@ -141,6 +160,17 @@
 | `/api/events/[id]` | dynamic | `api/events/[id]/route.ts` |
 | `/api/export` | static | `api/export/route.ts` |
 | `/api/health` | static | `api/health/route.ts` |
+| `/api/i3x/v1/info` | static | `api/i3x/v1/info/route.ts` |
+| `/api/i3x/v1/namespaces` | static | `api/i3x/v1/namespaces/route.ts` |
+| `/api/i3x/v1/objects` | static | `api/i3x/v1/objects/route.ts` |
+| `/api/i3x/v1/objects/history` | static | `api/i3x/v1/objects/history/route.ts` |
+| `/api/i3x/v1/objects/list` | static | `api/i3x/v1/objects/list/route.ts` |
+| `/api/i3x/v1/objects/related` | static | `api/i3x/v1/objects/related/route.ts` |
+| `/api/i3x/v1/objects/value` | static | `api/i3x/v1/objects/value/route.ts` |
+| `/api/i3x/v1/objecttypes` | static | `api/i3x/v1/objecttypes/route.ts` |
+| `/api/i3x/v1/objecttypes/query` | static | `api/i3x/v1/objecttypes/query/route.ts` |
+| `/api/i3x/v1/relationshiptypes` | static | `api/i3x/v1/relationshiptypes/route.ts` |
+| `/api/i3x/v1/relationshiptypes/query` | static | `api/i3x/v1/relationshiptypes/query/route.ts` |
 | `/api/integrations/nango/callback` | static | `api/integrations/nango/callback/route.ts` |
 | `/api/integrations/nango/connect` | static | `api/integrations/nango/connect/route.ts` |
 | `/api/internal/kg` | static | `api/internal/kg/route.ts` |
@@ -150,6 +180,7 @@
 | `/api/knowledge` | static | `api/knowledge/route.ts` |
 | `/api/knowledge/growth` | static | `api/knowledge/growth/route.ts` |
 | `/api/knowledge/manufacturer` | static | `api/knowledge/manufacturer/route.ts` |
+| `/api/knowledge/search` | static | `api/knowledge/search/route.ts` |
 | `/api/knowledge/stats` | static | `api/knowledge/stats/route.ts` |
 | `/api/library/chunks` | static | `api/library/chunks/route.ts` |
 | `/api/library/documents` | static | `api/library/documents/route.ts` |
@@ -182,6 +213,7 @@
 | `/api/scanbe/healthz` | static | `api/scanbe/healthz/route.ts` |
 | `/api/sessions/[id]` | dynamic | `api/sessions/[id]/route.ts` |
 | `/api/sessions/confirm` | static | `api/sessions/confirm/route.ts` |
+| `/api/suggestions/[id]/decide` | dynamic | `api/suggestions/[id]/decide/route.ts` |
 | `/api/team` | static | `api/team/route.ts` |
 | `/api/uns/browse` | static | `api/uns/browse/route.ts` |
 | `/api/uns/subtree` | static | `api/uns/subtree/route.ts` |

@@ -49,16 +49,26 @@ export default function SettingsUsersPage() {
               {loading ? "" : `${members.length} in your workspace`}
             </p>
           </div>
-          {/* Invite is not wired yet — disabled, honest about it (no fake success). */}
-          <button
-            type="button"
-            disabled
-            title="Inviting users is coming soon"
-            className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md cursor-not-allowed opacity-60"
-            style={{ backgroundColor: "var(--surface-1)", color: "var(--foreground-muted)" }}
+          {/* Request team access via support email. */}
+          <a
+            href="mailto:support@factorylm.com?subject=Team%20access%20request"
+            title="Request to add users to your workspace"
+            className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md transition-colors min-h-[44px]"
+            style={{
+              backgroundColor: "var(--surface-1)",
+              color: "var(--foreground)",
+              display: "inline-flex",
+              alignItems: "center"
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "var(--surface-2)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "var(--surface-1)";
+            }}
           >
-            <UserPlus className="w-3.5 h-3.5" /> Invite (soon)
-          </button>
+            <UserPlus className="w-3.5 h-3.5" /> Request access
+          </a>
         </div>
       </div>
 

@@ -34,6 +34,37 @@ The upload→retrieval gap (full trace: `docs/research/2026-06-07-upload-retriev
 `knowledge_entries` keyed to a UNS node, subtree-grounded chat. **DRAFT** as of 2026-06-07.
 This plan assesses #1592 as the right fix; the minimal close path is in the research doc.
 
+> **UPDATE 2026-06-16 — the upload→retrieval gap is CLOSED at the code level (Hub NodeChat path).**
+> #1592 merged 2026-06-07, followed by #1807 (natural-question BM25), #1861 (GRANT INSERT),
+> #1863 (#1806 Inbox node), #1907/#1910 (upload-500 fixes), #1889 (E2E green on prod). I ran the
+> **real** chain end-to-end on dev — `ingestPdfToNode` (real fixture PDF) → `retrieveNodeChunks`
+> under `factorylm_app` RLS → cited chunk — and it passes:
+> `mira-hub/scripts/verify-upload-retrieval-citation.ts` (PR #2077). So the data-layer half (upload
+> writes node-scoped `knowledge_entries`; retrieval returns a citable chunk) is **done**.
+> **UPDATE 2026-06-17 — the HTTP beta gate RAN GREEN end-to-end. The gate is MET.**
+> Built the Hub locally (`next build && next start` at `basePath=''`) on dev Neon, provisioned a
+> real *stranger* run (`mira-hub/scripts/provision-beta-gate.ts`: register → mirror tenant FK → mint
+> next-auth cookie → create node), and ran `tests/beta/beta_ready_upload_retrieval_citation.py`. It
+> **`XPASS(strict)`** — the gate's own success signal ("flips RED the instant it passes"). The
+> stranger uploaded the fixture manual through the **real** `/files/` door (wrote 2 node-scoped
+> `knowledge_entries`), asked, and got a **cited** answer: *"GS10 fault code oC means the drive
+> output current exceeded 200% of the rated current [1] … short acceleration time, shorted
+> output/motor winding, mechanical jam, or a ground fault [1]."* — grounded in the uploaded manual,
+> `[1]` citation present. Zero manual fixing. **The data-layer chain AND the full HTTP path both work.**
+>
+> **`xfail` REMOVED + the gate is now CI-enforced.** The marker is gone; the gate is restructured to
+> **skip** when `BETA_GATE_*` is unset (so plain local/CI `pytest` stays green) and **assert for real**
+> when provisioned. `.github/workflows/beta-gate.yml` provides the durable surface: it builds a Hub on
+> dev Neon, runs `mira-hub/scripts/provision-beta-gate.ts` (the reproducible stranger-run harness), runs
+> this gate, and cleans up — on dispatch, weekly, and on PRs touching the chain. Verified locally: the
+> hardened gate **PASSES as a real assertion in ~2s**. The content match was de-flaked
+> (`_gate.answers_with_manual_fact`) to accept the manual *fact* ("overcurrent" OR the LLM's paraphrase
+> "current exceeded …rated") — the `[1]` citation carries the "grounded in the uploaded file" proof.
+>
+> Scope note: this is the **Hub NodeChat** surface (what the gate tests). The **bot/chat** path
+> `neon_recall` is a separate retrieval model that doesn't read folder=brain node uploads — tracked
+> separately (`docs/research/2026-06-16_kg-kb-growth-and-quality-audit.md`), not a beta-gate blocker.
+
 ---
 
 ## 4-week plan

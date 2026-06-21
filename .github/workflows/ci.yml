@@ -354,9 +354,12 @@ jobs:
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
 
       - name: Build mira-ingest
+        # Build context is the repo root (`.`) to match docker-compose.saas.yml —
+        # the Dockerfile COPYs `mira-core/mira-ingest/*` AND the stdlib-only
+        # `mira-plc-parser/` package (powers /ingest/plc-parse).
         run: |
           docker buildx build \
-            -f mira-core/mira-ingest/Dockerfile mira-core/mira-ingest/ \
+            -f mira-core/mira-ingest/Dockerfile . \
             --cache-from type=gha,scope=mira-ingest \
             --cache-to type=gha,mode=max,scope=mira-ingest \
             -t mira-ingest:scan --load

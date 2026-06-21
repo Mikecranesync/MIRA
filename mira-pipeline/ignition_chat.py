@@ -18,6 +18,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import time
 from collections import OrderedDict
 from typing import Any, Callable, Optional
@@ -312,30 +313,90 @@ def _asset_context_token(asset_context: Optional[dict[str, Any]]) -> str:
     return ""
 
 
+_SLUG_NON_LABEL = re.compile(r"[^a-z0-9]+")
+
+
+def _slug(value: str) -> str:
+    """ISA-95 UNS label slug: lowercase, runs of non-alphanumeric → '_', trimmed.
+
+    A local copy of `mira-crawler/ingest/uns.py` `slug()` — mira-pipeline must NOT import
+    mira-crawler (architecture contract, `tests/test_architecture.py`). Keep the two in sync; the
+    resolver below relies on matching the exact slug the Hub stored in
+    `cmms_equipment.uns_path` / built from `equipment_number`.
+    """
+    if not value:
+        return ""
+    return _SLUG_NON_LABEL.sub("_", value.strip().lower()).strip("_")
+
+
+# The Phase-4 resolver query. It JOINs the bridge tables so an incoming Ignition token resolves to
+# the asset's lifecycle state by ANY of the forms a direct-connection surface actually sends:
+#   * a canonical `uns_path` string or `equipment_id` UUID (callers that already send the stored key),
+#   * an `asset_context` / display-name token → slug-matched against `cmms_equipment.equipment_number`
+#     (e.g. "GS10-VFD" → "gs10_vfd"); this does NOT depend on the nullable `cmms_equipment.uns_path`
+#     backfill, so it is the robust path,
+#   * a best-effort Ignition tag-path ("[default]Conv/State") → exact match on
+#     `installed_component_instances.plc_tag` when the customer has populated it.
+# `equipment_id` is the UUID PK of cmms_equipment (globally unique), and the row is already
+# tenant-scoped by `aas.tenant_id`, so the bridge JOINs key on `equipment_id` alone — avoiding the
+# TEXT(aas)/UUID(ici) tenant-type mismatch (mig 048 made asset_agent_status.tenant_id TEXT).
+# All comparisons are text (no ltree cast) so a non-ltree token never errors.
+_AGENT_STATE_SQL = """
+SELECT aas.state
+FROM asset_agent_status aas
+LEFT JOIN cmms_equipment e
+  ON e.id = aas.equipment_id
+LEFT JOIN installed_component_instances ici
+  ON ici.asset_id = aas.equipment_id
+WHERE aas.tenant_id = :tid
+  AND (
+        aas.uns_path::text = :token
+     OR aas.equipment_id::text = :token
+     OR trim(both '_' from regexp_replace(lower(trim(e.equipment_number)), '[^a-z0-9]+', '_', 'g')) = :slug
+     OR lower(e.equipment_number) = lower(:token)
+     OR ici.plc_tag = :token
+  )
+LIMIT 1
+"""
+
+
+def _agent_state_from_conn(conn, tenant_id: str, asset_id: str) -> Optional[str]:
+    """Resolve an Ignition token → `asset_agent_status.state` over an open SQLAlchemy connection.
+
+    The pure resolution seam (no engine/secret setup) so the query + param binding is unit-testable
+    with a fake connection. Binds both the raw token (canonical / plc_tag exact match) and its slug
+    (equipment_number fuzzy match). Returns None when nothing matches (→ the gate refuses).
+    """
+    from sqlalchemy import text
+
+    row = conn.execute(
+        text(_AGENT_STATE_SQL),
+        {"tid": tenant_id, "token": asset_id, "slug": _slug(asset_id)},
+    ).fetchone()
+    return row[0] if row else None
+
+
 def _lookup_agent_state(tenant_id: str, asset_id: str) -> Optional[str]:
-    """Return the asset's lifecycle state from `asset_agent_status`, or None.
+    """Return the asset's lifecycle state from `asset_agent_status`, or None (→ the gate refuses).
 
-    Reads the table owned by PR #1783 (migrations 046/047): rows are keyed on
-    `equipment_id` (= cmms_equipment.id) with a carried `uns_path` (LTREE) that
-    that migration designates as the deployment-gate key. We match the caller's
-    token against either, as text (no ltree cast → never errors on a non-ltree
-    token). Returns None when there's no matching agent row (→ the gate refuses).
-    Raises on DB error so the caller can fail OPEN — a Neon blip must not brick
-    a working HMI.
+    Resolves the incoming Ignition identifier via `_agent_state_from_conn` (see its query for the
+    forms supported). Reads the table owned by PR #1783 (migrations 046/047). Raises on DB error so
+    the caller can fail OPEN — a Neon blip must not brick a working HMI.
 
-    NOTE — NON-FUNCTIONAL until an asset_context/asset_id → (uns_path | equipment_id)
-    resolver lands. An Ignition asset_id is a tag path ("[default]Conv/State")
-    and asset_context fields are display names; neither equals a stored
-    `uns_path` or `equipment_id` UUID today, so with the gate ON this returns
-    None for essentially every asset → refuse-all. Do NOT enable
-    ENFORCE_ASSET_AGENT_GATE until that resolver ships. See
-    docs/specs/asset-agent-validation-spec.md §7 and PR #1783.
+    RESOLUTION COVERAGE (Phase 4): a structured `asset_context`/display-name token resolves via
+    `cmms_equipment.equipment_number` (slug-normalized) — the robust path, independent of the
+    nullable `cmms_equipment.uns_path` backfill — plus the canonical `uns_path`/`equipment_id` forms
+    and a best-effort Ignition tag-path via `installed_component_instances.plc_tag`. RESIDUAL GAP:
+    a flat Ignition tag-path ("[default]Conv/State") only resolves when `plc_tag` is populated (e.g.
+    by the Ignition tag-CSV import); absent that, such turns return None → refuse. Keep
+    ENFORCE_ASSET_AGENT_GATE default-OFF until the deployment is proven for a tenant's identifier
+    shape. See docs/specs/asset-agent-validation-spec.md §7.
     """
     neon_url = os.getenv("NEON_DATABASE_URL", "")
     if not neon_url:
         raise RuntimeError("NEON_DATABASE_URL not set")
 
-    from sqlalchemy import NullPool, create_engine, text
+    from sqlalchemy import NullPool, create_engine
 
     engine = create_engine(
         neon_url,
@@ -345,18 +406,9 @@ def _lookup_agent_state(tenant_id: str, asset_id: str) -> Optional[str]:
     )
     try:
         with engine.connect() as conn:
-            row = conn.execute(
-                text(
-                    "SELECT state FROM asset_agent_status "
-                    "WHERE tenant_id = :tid "
-                    "  AND (uns_path::text = :token OR equipment_id::text = :token) "
-                    "LIMIT 1"
-                ),
-                {"tid": tenant_id, "token": asset_id},
-            ).fetchone()
+            return _agent_state_from_conn(conn, tenant_id, asset_id)
     finally:
         engine.dispose()
-    return row[0] if row else None
 
 
 def _mark_deployed(tenant_id: str, asset_id: str) -> bool:

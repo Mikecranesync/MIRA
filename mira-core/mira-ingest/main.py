@@ -1145,6 +1145,96 @@ def _extract_first_pages_text(raw: bytes, n: int = 2) -> str:
 # ---------------------------------------------------------------------------
 
 
+@app.post("/ingest/plc-parse")
+async def ingest_plc_parse(
+    file: UploadFile = File(...),
+    filename: str = Form(default=None),
+    enterprise: str = Form(default=""),
+    site: str = Form(default=""),
+    area: str = Form(default=""),
+    line: str = Form(default=""),
+    include_i3x: str = Form(default="true"),
+):
+    """Parse an offline PLC program export (Rockwell L5X or vendor tag CSV) into a
+    maintenance-intelligence report + a proposed UNS namespace, and (optionally) a CESMII
+    i3X-shaped payload.
+
+    Read-only, offline, deterministic: it runs the stdlib-only `mira_plc_parser` over the
+    uploaded text. No LLM, no network, no PLC writes (honors `.claude/rules/fieldbus-readonly.md`).
+    The parser is imported lazily so the rest of the service is unaffected if it isn't installed.
+
+    Returns JSON: {report, i3x?}. The report carries `uns_candidates` (one proposed ISA-95 path
+    per tag, `source: "proposed"`). HTTP mirrors the CLI exit codes:
+      200  parsed (a real export)
+      422  closed/binary vendor PROJECT file -> `detail` is the export guidance
+      422  unrecognized/unsupported format
+      503  parser dependency unavailable in this deployment
+    """
+    try:
+        from mira_plc_parser import i3x as _i3x
+        from mira_plc_parser import uns as _uns
+        from mira_plc_parser.pipeline import render_json, run
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"PLC parser unavailable in this deployment: {exc}",
+        ) from exc
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=422, detail="Empty file upload")
+
+    MB = 1024 * 1024
+    max_upload_mb = int(os.getenv("MIRA_MAX_UPLOAD_MB", "50"))
+    if len(raw) > max_upload_mb * MB:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds {max_upload_mb}MB limit ({len(raw) // MB}MB)",
+        )
+
+    fname = filename or file.filename or "program"
+    # Decode tolerantly: the parser's detect() handles binary project files via its own heuristic
+    # and returns an actionable "export it to L5X/PLCopen XML" message rather than a crash.
+    text = raw.decode("utf-8", errors="replace")
+    result = run(fname, text)
+
+    # closed/binary vendor PROJECT file -> actionable export guidance (CLI exit 3).
+    needs_export = getattr(result.detection, "needs_export", None)
+    if needs_export:
+        raise HTTPException(status_code=422, detail=needs_export)
+    # recognized-but-unsupported / unknown format (CLI exit 1).
+    if not result.handled:
+        warnings = "; ".join(result.project.warnings) or "unrecognized or unsupported format"
+        raise HTTPException(status_code=422, detail=f"Not a parseable export: {warnings}")
+
+    report = render_json(result)
+
+    # Apply any caller-supplied UNS prefix overrides to BOTH the embedded uns_candidates and the
+    # i3X payload, so the returned report and namespace are consistent. With no overrides this
+    # reproduces render_json's default (line seeded from the controller name).
+    prefix = {
+        k: v
+        for k, v in (
+            ("enterprise", enterprise),
+            ("site", site),
+            ("area", area),
+            ("line", line),
+        )
+        if v.strip()
+    }
+    effective_prefix = _uns.default_prefix(report)
+    effective_prefix.update(prefix)
+    report["uns_prefix"] = effective_prefix
+    report["uns_candidates"] = _uns.propose_uns(report, prefix or None)
+    report["counts"]["uns_candidates"] = len(report["uns_candidates"])
+
+    body = {"report": report}
+    if (include_i3x or "").strip().lower() in ("1", "true", "yes", "on"):
+        body["i3x"] = _i3x.to_i3x(report, prefix or None)
+
+    return body
+
+
 class ScrapeTriggerRequest(BaseModel):
     equipment_id: str  # Full asset_identified string from FSM state
     manufacturer: str  # Parsed manufacturer name

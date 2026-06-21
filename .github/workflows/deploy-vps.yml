@@ -185,9 +185,19 @@ jobs:
           set -euo pipefail
           cd /opt/mira
 
-          echo "=== Pull latest code ==="
-          git fetch origin main
-          git reset --hard origin/main
+          echo "=== Pull latest code (pin to release tag, not main HEAD) ==="
+          # Rollback target is only real if prod references a tag, not a moving main HEAD
+          # (docs/versioning.md). version-tag.yml lays vX.Y.Z on every merge commit, so we
+          # deploy that tag — prod's `git describe` then shows a clean release ref.
+          git fetch origin main --tags --force
+          RELEASE_TAG="$(git tag --points-at origin/main --list 'v[0-9]*' | sort -V | tail -1)"
+          if [ -n "$RELEASE_TAG" ]; then
+            echo "Deploying release tag $RELEASE_TAG (= origin/main HEAD)"
+            git -c advice.detachedHead=false checkout --force "$RELEASE_TAG"
+          else
+            echo "::warning::No vX.Y.Z tag at origin/main HEAD (version-tag.yml may be lagging) — falling back to origin/main"
+            git reset --hard origin/main
+          fi
 
           echo "=== Host permission setup (chown saas data dirs to UID 1001) ==="
           # PR #1219 dropped root in mira-pipeline/mira-mcp/mira-ingest Dockerfiles.

@@ -239,3 +239,30 @@ wiki/orchestrator/STATE.md
 # Eval record/replay stores — record locally (MIRA_EVAL_REPLAY=record); not a
 # bit-stable baseline yet (engine has residual nondeterminism — see HANDOFF).
 tests/eval/fixtures/llm_replay/*.json
+
+# MIRA local AnswerTrace output (observability layer, MIRA_LOCAL_TRACE=1)
+.mira-traces/
+.mira-phase1-traces/
+
+# --- accumulated session artifacts (added 2026-06-16 working-tree untangle) ---
+# Offline eval run logs (regenerated every run by tests/eval/; ~40+ accreted).
+tests/eval/runs/
+
+# Orchestrator-pulse generated findings (per-agent JSONL + git bundle).
+# Hand-authored plans/patches under wiki/orchestrator/ stay tracked — only the
+# generated findings/bundle are noise. (graph.json already ignored above.)
+wiki/orchestrator/kg/*-findings.jsonl
+wiki/orchestrator/kg/*-route-auth.jsonl
+wiki/orchestrator/*.bundle
+
+# Generated reports/exports dropped at repo root (regenerable; never the source).
+# Specific paths only — docs/ PDFs and docs/promo-screenshots/*.png stay tracked.
+/FactoryLM_Lead_Pipeline_2026.xlsx
+/FactoryLM_Path_to_Beta_2026.pdf
+/i3x-strategy-report.pdf
+/ignition-tag-readiness-report.pdf
+/stripe-go-live-guide.pdf
+/xprize-70-day-sprint-plan.pdf
+/xprize-registration-brief.pdf
+/proposal-card-before-after.png
+/err.txt

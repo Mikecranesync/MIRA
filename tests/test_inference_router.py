@@ -231,3 +231,37 @@ class TestCascadeComplete:
             content, _ = await router.complete([{"role": "user", "content": "test"}])
 
         assert content == ""
+
+
+class TestSessionModelCache:
+    """Phase 2 — session-keyed model attribution for the observability trace."""
+
+    def test_record_and_read(self):
+        r = InferenceRouter()
+        r._record_session_model("sess-1", "groq/llama-3.1")
+        assert r.last_model_for("sess-1") == "groq/llama-3.1"
+
+    def test_unknown_session_is_none(self):
+        r = InferenceRouter()
+        assert r.last_model_for("never-seen") is None
+        assert r.last_model_for(None) is None
+
+    def test_noop_on_missing_args(self):
+        r = InferenceRouter()
+        r._record_session_model(None, "groq/x")
+        r._record_session_model("s", None)
+        assert r.last_model_for("s") is None
+
+    def test_last_writer_wins_per_session(self):
+        r = InferenceRouter()
+        r._record_session_model("s", "groq/a")
+        r._record_session_model("s", "cerebras/b")
+        assert r.last_model_for("s") == "cerebras/b"
+
+    def test_cache_is_bounded(self):
+        r = InferenceRouter()
+        for i in range(r._MODEL_CACHE_MAX + 50):
+            r._record_session_model(f"s{i}", "groq/m")
+        assert len(r._last_model_by_session) <= r._MODEL_CACHE_MAX
+        # most-recent sessions survive
+        assert r.last_model_for(f"s{r._MODEL_CACHE_MAX + 49}") == "groq/m"

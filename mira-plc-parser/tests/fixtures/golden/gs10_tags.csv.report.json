@@ -1,0 +1,360 @@
+{
+  "asset_candidates": [
+    {
+      "confidence": "medium",
+      "detail": "candidate asset (keyword: conveyor)",
+      "evidence": [
+        "Conveyor_Run"
+      ],
+      "kind": "asset",
+      "name": "Conveyor"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate asset (keyword: vfd)",
+      "evidence": [
+        "VFD_Frequency",
+        "VFD_Current",
+        "VFD_DCBus",
+        "VFD_FaultCode",
+        "VFD_CommOK"
+      ],
+      "kind": "asset",
+      "name": "VFD"
+    }
+  ],
+  "controller": "gs10_tags",
+  "counts": {
+    "aoi_definitions": 0,
+    "aoi_local_tags": 0,
+    "aoi_parameters": 0,
+    "asset_candidates": 2,
+    "controllers": 1,
+    "fault_candidates": 2,
+    "fbd_sheets": 0,
+    "module_definitions": 0,
+    "outputs": 0,
+    "programs": 0,
+    "review_required": 1,
+    "routines": 0,
+    "rungs": 0,
+    "tags": 7,
+    "uns_candidates": 7,
+    "vfd_signal_candidates": 5
+  },
+  "detection": {
+    "confidence": "high",
+    "fmt": "csv_tags",
+    "needs_export": "",
+    "reason": "delimited rows, no XML root"
+  },
+  "fault_candidates": [
+    {
+      "confidence": "medium",
+      "detail": "Active fault code",
+      "evidence": [
+        "csv:kepware"
+      ],
+      "kind": "fault",
+      "name": "VFD_FaultCode"
+    },
+    {
+      "confidence": "review",
+      "detail": "Emergency stop healthy",
+      "evidence": [
+        "csv:kepware"
+      ],
+      "kind": "fault",
+      "name": "EStop_OK"
+    }
+  ],
+  "handled": true,
+  "output_dependencies": [],
+  "review_required": [
+    {
+      "confidence": "review",
+      "detail": "Emergency stop healthy",
+      "evidence": [
+        "csv:kepware"
+      ],
+      "kind": "safety",
+      "name": "EStop_OK"
+    }
+  ],
+  "routine_summaries": [],
+  "schema": "mira-plc-parser/report@1",
+  "tag_dictionary": [
+    {
+      "address": "000002",
+      "confidence": "high",
+      "data_type": "Boolean",
+      "description": "Conveyor run command",
+      "name": "Conveyor_Run",
+      "roles": [],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "000003",
+      "confidence": "high",
+      "data_type": "Boolean",
+      "description": "Emergency stop healthy",
+      "name": "EStop_OK",
+      "roles": [
+        "fault",
+        "safety"
+      ],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "000001",
+      "confidence": "high",
+      "data_type": "Boolean",
+      "description": "Drive comms healthy",
+      "name": "VFD_CommOK",
+      "roles": [],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "40003",
+      "confidence": "high",
+      "data_type": "Float",
+      "description": "Drive output current Amps",
+      "name": "VFD_Current",
+      "roles": [],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "40005",
+      "confidence": "high",
+      "data_type": "Float",
+      "description": "DC bus voltage",
+      "name": "VFD_DCBus",
+      "roles": [],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "40007",
+      "confidence": "high",
+      "data_type": "Word",
+      "description": "Active fault code",
+      "name": "VFD_FaultCode",
+      "roles": [
+        "fault"
+      ],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "40001",
+      "confidence": "high",
+      "data_type": "Float",
+      "description": "Drive output frequency Hz",
+      "name": "VFD_Frequency",
+      "roles": [],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    }
+  ],
+  "uns_candidates": [
+    {
+      "asset": "conveyor",
+      "confidence": "medium",
+      "data_type": "Boolean",
+      "evidence": "tag name + asset 'conveyor'",
+      "path": "enterprise/site1/area1/gs10_tags/conveyor/conveyor_run",
+      "segments": {
+        "area": "area1",
+        "asset": "conveyor",
+        "enterprise": "enterprise",
+        "line": "gs10_tags",
+        "signal": "conveyor_run",
+        "site": "site1"
+      },
+      "signal": "conveyor_run",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "Conveyor_Run"
+    },
+    {
+      "asset": "",
+      "confidence": "low",
+      "data_type": "Boolean",
+      "evidence": "tag name",
+      "path": "enterprise/site1/area1/gs10_tags/estop_ok",
+      "segments": {
+        "area": "area1",
+        "asset": "",
+        "enterprise": "enterprise",
+        "line": "gs10_tags",
+        "signal": "estop_ok",
+        "site": "site1"
+      },
+      "signal": "estop_ok",
+      "source": "proposed",
+      "standardized": false,
+      "tag": "EStop_OK"
+    },
+    {
+      "asset": "vfd",
+      "confidence": "high",
+      "data_type": "Boolean",
+      "evidence": "VFD signal role + asset 'vfd'",
+      "path": "enterprise/site1/area1/gs10_tags/vfd/comm",
+      "segments": {
+        "area": "area1",
+        "asset": "vfd",
+        "enterprise": "enterprise",
+        "line": "gs10_tags",
+        "signal": "comm",
+        "site": "site1"
+      },
+      "signal": "comm",
+      "source": "proposed",
+      "standardized": true,
+      "tag": "VFD_CommOK"
+    },
+    {
+      "asset": "vfd",
+      "confidence": "high",
+      "data_type": "Float",
+      "evidence": "VFD signal role + asset 'vfd'",
+      "path": "enterprise/site1/area1/gs10_tags/vfd/current",
+      "segments": {
+        "area": "area1",
+        "asset": "vfd",
+        "enterprise": "enterprise",
+        "line": "gs10_tags",
+        "signal": "current",
+        "site": "site1"
+      },
+      "signal": "current",
+      "source": "proposed",
+      "standardized": true,
+      "tag": "VFD_Current"
+    },
+    {
+      "asset": "vfd",
+      "confidence": "high",
+      "data_type": "Float",
+      "evidence": "VFD signal role + asset 'vfd'",
+      "path": "enterprise/site1/area1/gs10_tags/vfd/dc",
+      "segments": {
+        "area": "area1",
+        "asset": "vfd",
+        "enterprise": "enterprise",
+        "line": "gs10_tags",
+        "signal": "dc",
+        "site": "site1"
+      },
+      "signal": "dc",
+      "source": "proposed",
+      "standardized": true,
+      "tag": "VFD_DCBus"
+    },
+    {
+      "asset": "vfd",
+      "confidence": "high",
+      "data_type": "Word",
+      "evidence": "VFD signal role + asset 'vfd'",
+      "path": "enterprise/site1/area1/gs10_tags/vfd/fault",
+      "segments": {
+        "area": "area1",
+        "asset": "vfd",
+        "enterprise": "enterprise",
+        "line": "gs10_tags",
+        "signal": "fault",
+        "site": "site1"
+      },
+      "signal": "fault",
+      "source": "proposed",
+      "standardized": true,
+      "tag": "VFD_FaultCode"
+    },
+    {
+      "asset": "vfd",
+      "confidence": "high",
+      "data_type": "Float",
+      "evidence": "VFD signal role + asset 'vfd'",
+      "path": "enterprise/site1/area1/gs10_tags/vfd/frequency",
+      "segments": {
+        "area": "area1",
+        "asset": "vfd",
+        "enterprise": "enterprise",
+        "line": "gs10_tags",
+        "signal": "frequency",
+        "site": "site1"
+      },
+      "signal": "frequency",
+      "source": "proposed",
+      "standardized": true,
+      "tag": "VFD_Frequency"
+    }
+  ],
+  "uns_prefix": {
+    "area": "area1",
+    "enterprise": "enterprise",
+    "line": "gs10_tags",
+    "site": "site1"
+  },
+  "vendor": "Kepware / PTC",
+  "vfd_signal_candidates": [
+    {
+      "confidence": "medium",
+      "detail": "candidate role: frequency",
+      "evidence": [
+        "csv:kepware"
+      ],
+      "kind": "vfd_signal",
+      "name": "VFD_Frequency"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate role: current_a",
+      "evidence": [
+        "csv:kepware"
+      ],
+      "kind": "vfd_signal",
+      "name": "VFD_Current"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate role: dc_bus_v",
+      "evidence": [
+        "csv:kepware"
+      ],
+      "kind": "vfd_signal",
+      "name": "VFD_DCBus"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate role: fault_code",
+      "evidence": [
+        "csv:kepware"
+      ],
+      "kind": "vfd_signal",
+      "name": "VFD_FaultCode"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate role: comm_ok",
+      "evidence": [
+        "csv:kepware"
+      ],
+      "kind": "vfd_signal",
+      "name": "VFD_CommOK"
+    }
+  ],
+  "warnings": []
+}

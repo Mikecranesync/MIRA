@@ -106,6 +106,28 @@ describe("POST /api/proposals/[id]/decide", () => {
     expect(res.status).toBe(404);
   });
 
+  it("security: NULL-tenant proposal is not decidable by an authenticated tenant (#1894)", async () => {
+    // A proposal with tenant_id IS NULL must NOT be reachable by any tenant.
+    // The query now uses `tenant_id = $2::uuid` (no IS NULL escape hatch).
+    // Simulate DB returning 0 rows — as it will for NULL-tenant rows once the fix is live.
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    let querySql = "";
+    vi.mocked(withTenantContext).mockImplementation(async (_tid, fn) => {
+      const client = {
+        query: vi.fn(async (sql: string) => {
+          querySql = sql;
+          return { rows: [] }; // no rows returned = NULL-tenant proposal correctly excluded
+        }),
+      };
+      return await fn(client as never);
+    });
+    const res = await POST(makeReq({ decision: "verify" }), makeParams(VALID_UUID));
+    expect(res.status).toBe(404);
+    // Confirm the query does NOT contain the IS NULL escape hatch.
+    expect(querySql).not.toContain("IS NULL");
+    expect(querySql).toContain("tenant_id =");
+  });
+
   it("returns 409 when proposal is already in a terminal state", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
     vi.mocked(withTenantContext).mockImplementation(async (_tid, fn) => {

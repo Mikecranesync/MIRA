@@ -110,7 +110,11 @@ services:
   # are referenced only by the legacy directory and migration scripts.
 
   mira-ingest:
-    build: ./mira-core/mira-ingest
+    # Repo-root context so the Dockerfile can COPY mira-plc-parser/ in (powers
+    # /ingest/plc-parse). A repo-root .dockerignore keeps the context small.
+    build:
+      context: .
+      dockerfile: mira-core/mira-ingest/Dockerfile
     container_name: mira-ingest-saas
     extra_hosts:
       - "host.docker.internal:host-gateway"

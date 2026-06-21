@@ -241,6 +241,9 @@ export const config = {
     // service-token ingest + status routes used by tools/mira-drop-watcher —
     // they do their own bearer-token check, so the cookie-based middleware
     // must not intercept them.
-    "/((?!login|signup|magic|m/|quickstart|api/auth|api/public|api/quickstart|api/health|api/scanbe/healthz|api/uploads/folder|api/uploads/[a-f0-9]|_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt).*)",
+    // api/i3x/* is the read-only i3X (CESMII) API — it has its OWN bearer-key
+    // auth (resolveI3xTenant) and GET /info MUST be public, so the session
+    // middleware must not intercept it.
+    "/((?!login|signup|magic|m/|quickstart|api/auth|api/public|api/quickstart|api/health|api/i3x/|api/scanbe/healthz|api/uploads/folder|api/uploads/[a-f0-9]|_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt).*)",
   ],
 };
