@@ -162,7 +162,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 ## Rules for code changes
 
 - **Conventional Commits**: `feat/fix/security/docs/refactor/test/chore/BREAKING`. Scope hint: module name (`feat(slack):`, `fix(uns):`, `fix(engine):`).
-- **No LangChain, TensorFlow, n8n** — see PRD §4 in root CLAUDE.md.
+- **No LangChain, TensorFlow, n8n** — see PRD §4 in root CLAUDE.md. (Bans LLM-orchestration frameworks only. **Langfuse is NOT LangChain** — it is observability/tracing, allowed, and in use. Don't conflate them.)
 - **Doppler for secrets** — `factorylm/dev` (local) / `factorylm/stg` (staging) / `factorylm/prd` (production). Never `.env` files in git. Never copy `prd` values into a dev shell.
 - **Python: ruff + httpx + `Optional[X]` (3.12 target)** — see `.claude/rules/python-standards.md`.
 - **Security boundaries** — see `.claude/rules/security-boundaries.md` (PII sanitization, safety keywords, Doppler).

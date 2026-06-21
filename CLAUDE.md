@@ -26,7 +26,7 @@
 
 1. **Licenses:** Apache 2.0 or MIT ONLY.
 2. **Cloud LLMs:** Groq + Cerebras + Gemini cascade (all free-tier, OpenAI-compat). NeonDB for persistence. Doppler-managed secrets. **No Anthropic** (removed PR #610 — never reintroduce).
-3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the LLM call.
+3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the LLM call. **This bans LLM-orchestration/agent frameworks that wrap the model call — NOT Langfuse. Langfuse ≠ LangChain: Langfuse is observability/tracing, is explicitly ALLOWED, and is in active use (`mira-bots/shared/langfuse_setup.py`). Do not "remove Langfuse" on the strength of this rule.**
 4. **Secrets:** All via Doppler. Config is env-scoped: `factorylm/dev` (local), `factorylm/stg` (staging), `factorylm/prd` (production). Never commit `.env` to git. Never paste prod values into a dev shell — set them in `factorylm/dev`.
 5. **Containers:** One per service. `restart: unless-stopped` + healthcheck. Pinned image versions.
 6. **Commits:** Conventional format (`feat/fix/security/docs/refactor/test/chore/BREAKING`).
