@@ -34,6 +34,63 @@ the answer chunk is present at all. This is the F004/F0004 lesson
 > **NULL embeddings** and never entered the vector/product streams at all — an
 > RRF-reweighting fix would have done nothing. Run it raw first.
 
+## Two retrieval paths — diagnose the one the failing surface uses
+
+There are **two independent retrieval implementations**. A fix in one does NOT touch
+the other. Identify which one the failing surface uses BEFORE you diagnose:
+
+| Path | Code | Method | Surfaces |
+|---|---|---|---|
+| **Python recall** | `mira-bots/shared/neon_recall.recall_knowledge` | vector + product + BM25 + like, RRF-merged (needs embeddings) | Telegram, Slack, scan, `mira-pipeline` chat, the bench |
+| **Hub TS BM25** | `mira-hub/src/lib/manual-rag.ts` (`retrieveManualChunks` → `runBm25Query`) | Postgres BM25 only (`content_tsv @@ plainto_tsquery`, no embeddings) | Hub **asset chat** (`/api/assets/[id]/chat`), **quickstart** (`/api/quickstart/ask`), node chat |
+
+For the Hub path, run the raw diagnostic as the BM25 SQL itself (AND-tsquery then
+OR-fallback) against staging via `node` + `mira-hub`'s `pg` — NOT `recall_knowledge`.
+The public `POST /api/quickstart/ask/` is unauthenticated and a fast prod-side check.
+
+## Failure mode: hybrid-corpus tenant visibility (the surface sees 0 OEM chunks)
+
+**Symptom:** a per-tenant surface refuses for *every* manufacturer ("I don't have
+specific information…") even though `Knowledge → Manuals` shows thousands of chunks.
+
+**Cause:** `knowledge_entries` is a HYBRID corpus — the shared OEM library is owned by
+the **system tenant** (`78917b56…`) with `is_private = false`. A surface that filters
+`WHERE tenant_id = $caller` (or runs under `withTenantContext`, whose RLS policy is
+pure `tenant_id = app.tenant_id`) sees **zero** OEM rows for a real customer tenant.
+This was the secret-shopper P0 (#2178/#2190): the asset chat saw 0 chunks for *every*
+vendor. Discriminate it in one query:
+
+```sql
+-- if the corpus is all one system tenant + is_private=false, a per-tenant
+-- (tenant_id=$caller / RLS) read returns ~0. Hybrid filter is required.
+SELECT tenant_id::text, is_private, count(*) FROM knowledge_entries
+WHERE manufacturer ILIKE '%<vendor>%' GROUP BY 1,2;
+```
+
+**Fix:** the hybrid read law — `(is_private = false OR tenant_id = $1)` on the **raw
+owner pool** (BYPASSRLS), keeping any pure-tenant join (`cmms_equipment`) explicitly
+`tenant_id = $caller`. Full law + reference impl: `.claude/rules/knowledge-entries-tenant-scoping.md`.
+
+## Validity check: does the asked-for vendor/model/code even exist in the corpus?
+
+Before concluding "retrieval is broken", confirm the **query data is valid** and the
+content exists — a refusal can be *correct*. The secret shopper asked about a
+**"Yaskawa GS20 F030"** that doesn't exist (GS20 is an **AutomationDirect** drive;
+the corpus has no Yaskawa GS20 and no Yaskawa F030 — Yaskawa uses oC/oL/GF codes).
+The honest post-fix behavior is to refuse, not fabricate. Discriminators:
+
+```sql
+-- which vendor actually documents this fault code?
+SELECT manufacturer, count(*) FROM knowledge_entries WHERE content ILIKE '%<code>%' GROUP BY 1 ORDER BY 2 DESC;
+-- is this model tagged to the vendor the asset/user claims?
+SELECT manufacturer, model_number, count(*) FROM knowledge_entries
+WHERE model_number ILIKE '%<model>%' OR content ILIKE '%<model>%' GROUP BY 1,2 ORDER BY 3 DESC;
+```
+
+If the model/code is tagged to a *different* vendor than the asset, that's a data
+problem (and `stripConflictingVendors`/`canonical_vendor` will correctly refuse or
+re-scope, #2183/#2083) — not a retrieval bug. Re-test with a vendor/model that exists.
+
 ## When to use
 
 - A bot/chat reply refuses or hedges for a question the KB should cover.
