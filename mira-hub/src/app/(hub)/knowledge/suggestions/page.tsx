@@ -488,7 +488,7 @@ function EmptyState({ statusFilter }: { statusFilter: string }) {
     <div className="rounded-lg border border-dashed border-slate-300 bg-white p-12 text-center" data-testid="proposals-empty">
       <FileText className="mx-auto h-10 w-10 text-slate-300" />
       <h2 className="mt-4 text-lg font-semibold text-slate-900">
-        No {statusFilter === "all" ? "" : statusFilter} proposals yet
+        No {statusFilter === "all" ? "" : statusFilter === "proposed" ? "pending" : statusFilter} proposals yet
       </h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
         {statusFilter === "proposed"

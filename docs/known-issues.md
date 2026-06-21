@@ -1,7 +1,7 @@
 # MIRA Known Issues, Deferred Features, and Abandoned Approaches
 
 Extracted from CLAUDE.md to keep the build-state file lean.
-Updated: 2026-06-19
+Updated: 2026-06-21
 
 ## Beta Gate (North Star) — status
 
@@ -28,7 +28,7 @@ Updated: 2026-06-19
 - **Charlie HUD** — Needs local terminal session to start (keychain blocks SSH start of Doppler).
 - **Reddit benchmark** — 15/16 questions hit intent guard canned responses, not real inference. No recent work on `mira-bots/reddit/`.
 - **NVIDIA NIM / Nemotron** — Runtime code in `mira-bots/shared/nemotron.py` works (falls back gracefully when `NVIDIA_API_KEY` is unset); see "Deferred Features → Active" below. What's blocked is the **Regime 5 eval suite** specifically — it needs a working key to exercise the reranker path.
-- **VPS deploy uses `main` HEAD, not version tags** — Customer-facing components are tagged (`mira-hub/v*`, etc.) but `deploy-vps.yml` checks out `main`, so the namespaced tags are documentation only — they don't enforce reproducible deploys or give us a real rollback target. Tracked in issue [#736](https://github.com/Mikecranesync/MIRA/issues/736). Partially mitigated by #1970: `version-gate.yml` auto-bumps `/VERSION` every code PR and `version-tag.yml` auto-creates `v<VERSION>` + `rollback/<date>` on every merge. Remaining half: `deploy-vps.yml` still checks out main HEAD, not the tag.
+- ~~**VPS deploy uses `main` HEAD, not version tags**~~ — **FIXED** `ffcc8636` (`fix(deploy): pin prod VPS to release tag, not main HEAD`, PR #2139). `deploy-vps.yml` now pins to the release tag.
 - **DOPPLER_TOKEN drift between Doppler config and saas compose** — Secrets set in Doppler `factorylm/prd` don't reach a container unless also listed in the `env:` block of `docker-compose.saas.yml`. Edit both in the same PR.
 - **Default `deploy-vps.yml` TARGETS excludes mira-web** — Marketing-site PRs do not auto-deploy. Manual: `gh workflow run deploy-vps.yml -f services=mira-web`.
 - **`tools/demo_plc_poller.py` ships a colliding `live_signal_cache` DDL** — the poller's embedded `SCHEMA_DDL` creates a `live_signal_cache` shaped `(topic, plc_tag, equipment_id, name, value, quality, updated_at)` keyed on `topic`, which does NOT match Hub migration `020`'s `(tenant_id, plc_tag, …, last_seen_at)`. Against a migrated NeonDB the poller's `CREATE TABLE IF NOT EXISTS` no-ops and its INSERT fails on missing columns. Pre-existing; surfaced 2026-05-29 while building Command Center (which deliberately does NOT read this table — liveness is a reachability probe). Fix the poller to UPSERT the migration-020 shape (with `tenant_id`) before relying on it to feed the Hub.
