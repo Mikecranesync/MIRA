@@ -7,15 +7,39 @@
  *  2. Mints a Hub session via the existing credentials fixture and saves it to
  *     .state/hub.json (storageState) — no Google OAuth.
  */
-import { chromium, request as playwrightRequest } from "@playwright/test";
+import { chromium, request as playwrightRequest, type Page } from "@playwright/test";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import {
-  ensureUserRegistered,
-  loginWithPassword,
-  STORAGE_STATE_PATH,
-} from "./fixtures/auth";
+import { HUB_URL, STORAGE_STATE_PATH } from "./fixtures/auth";
+
+// Shared approved test account (registration is rate-limited 5/hour per IP, so a
+// fresh account per run is not viable; the account is already onboarded + trial-valid).
+// The run stays repeatable because B1 makes a NEW project each time and B3 asserts the
+// verified-in-KG state idempotently (kg_entities dedup by tag within the tenant).
+const RUN_EMAIL = process.env.E2E_HUB_EMAIL ?? "playwright@factorylm.com";
+const RUN_PASSWORD = process.env.E2E_HUB_PASSWORD ?? "TestPass123";
+
+async function registerFresh(): Promise<void> {
+  const api = await playwrightRequest.newContext();
+  const res = await api.post(`${HUB_URL}/api/auth/register/`, {
+    data: { email: RUN_EMAIL, password: RUN_PASSWORD, name: "E2E Laptop->Cloud" },
+    failOnStatusCode: false,
+  });
+  // 201 new / 409 exists / 429 rate-limited are all fine — the account already exists.
+  if (res.status() >= 500) throw new Error(`register returned ${res.status()}: ${await res.text()}`);
+  await api.dispose();
+}
+
+async function loginFresh(page: Page): Promise<void> {
+  await page.goto(`${HUB_URL}/login`, { waitUntil: "domcontentloaded" });
+  await page.click("text=Sign in with password");
+  await page.locator('input[type="email"]').last().fill(RUN_EMAIL);
+  await page.fill('input[type="password"]', RUN_PASSWORD);
+  await page.getByRole("button", { name: /^Sign in$/ }).click();
+  // A fresh trial account may land on /feed or /onboarding — accept any move off /login.
+  await page.waitForURL((u) => !/\/login\b/.test(u.toString()), { timeout: 30_000 });
+}
 
 const STATE_DIR = path.join(__dirname, ".state");
 const OFFLINE_STATE = path.join(STATE_DIR, "offline.json");
@@ -61,16 +85,13 @@ export default async function globalSetup() {
   fs.writeFileSync(OFFLINE_STATE, JSON.stringify(offline, null, 2));
   console.log(`[setup] offline contextualizer up at ${offline.url} (pid ${offline.pid})`);
 
-  // 2) Hub auth -> storageState
-  const api = await playwrightRequest.newContext();
-  await ensureUserRegistered(api);
-  await api.dispose();
-
+  // 2) Fresh Hub tenant -> storageState
+  await registerFresh();
   const browser = await chromium.launch();
   const page = await browser.newPage();
-  await loginWithPassword(page);
+  await loginFresh(page);
   fs.mkdirSync(path.dirname(STORAGE_STATE_PATH), { recursive: true });
   await page.context().storageState({ path: STORAGE_STATE_PATH });
   await browser.close();
-  console.log(`[setup] hub session saved -> ${STORAGE_STATE_PATH}`);
+  console.log(`[setup] hub session ${RUN_EMAIL} -> ${STORAGE_STATE_PATH}`);
 }

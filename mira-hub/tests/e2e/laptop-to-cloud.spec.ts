@@ -95,38 +95,66 @@ test("laptop -> cloud: offline parse to Hub verified", async ({ page }) => {
   });
 
   // ── PHASE B — Hub (real clicks, authenticated via storageState) ───────────
+  let projectId = "";
   await test.step("B1: open Contextualization + import the bundle", async () => {
     await page.goto(`${HUB}/contextualization`, { waitUntil: "domcontentloaded" });
     await page.getByRole("button", { name: /Import bundle/ }).click();
     // modal: leave "Import into: New project", then attach the file to the hidden input.
     await page.locator('input[type="file"][accept=".zip"]').setInputFiles(BUNDLE_PATH);
-    // success routes into the new project's signal review.
+    // success routes into the new project's signal review — capture THIS run's project id.
     await expect(page).toHaveURL(/\/contextualization\/[0-9a-f-]{36}/, { timeout: 30_000 });
+    projectId = page.url().match(/contextualization\/([0-9a-f-]{36})/)?.[1] ?? "";
+    expect(projectId).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  await test.step("B2: review signals + Promote", async () => {
+  await test.step("B2: review signals + Promote (assert it actually staged)", async () => {
     await expect(page.getByRole("heading", { name: /Extracted Signals/ })).toBeVisible();
     await expect.poll(() => page.locator("table tbody tr").count(), { timeout: 20_000 }).toBeGreaterThan(50);
     const promote = page.getByRole("button", { name: /Promote/ });
     await expect(promote).toBeEnabled();
     await promote.click();
+    // Prove Promote succeeded (signals reached the knowledge graph — staged now or
+    // already present from a prior run; kg_entities dedup by tag within the tenant).
+    // The success toast always names the knowledge graph; an error would not.
+    await expect(page.getByText(/to the knowledge graph/i)).toBeVisible({ timeout: 20_000 });
   });
 
-  await test.step("B3: approve a suggestion so kg_entities is verified", async () => {
-    // Promote stages each accepted signal as a kg_entity (proposed) + a paired
-    // ai_suggestion (pending). The verify/approve queue is /knowledge/suggestions
-    // (the "Pending" tab is default). Accepting one promotes its kg_entity to verified.
+  await test.step("B3: a real signal ends verified in the knowledge graph", async () => {
+    // Promote staged each accepted signal as a kg_entity (proposed) + ai_suggestion.
+    // SELECTOR_TAG is a deterministic signal from the .st that HAS a UNS path (the
+    // controller has none, so it isn't promoted). The verify queue (/knowledge/suggestions)
+    // sorts by risk first, so page through "Load more" to find it. Idempotent: approve it
+    // if still pending (first run does the real approve), then assert it's Verified.
+    const SELECTOR_TAG = "SelectorFWD";
     await page.goto(`${HUB}/knowledge/suggestions`, { waitUntil: "domcontentloaded" });
-    const cards = page.locator('[data-testid="suggestion-card"]');
-    const verify = page.locator('[data-testid="suggestion-verify"]').first();
-    await expect(verify).toBeVisible({ timeout: 30_000 });
-    const before = await cards.count();
-    await verify.click();
-    // the accepted suggestion leaves the Pending list → its kg_entity is now verified
-    await expect.poll(() => cards.count(), { timeout: 15_000 }).toBeLessThan(before);
-    // confirm it shows under the Verified filter
+    await expect(page.getByTestId("proposals-list")).toBeVisible({ timeout: 30_000 });
+
+    const findCard = async (label: string) => {
+      const card = page.locator('[data-testid="suggestion-card"]', { hasText: label });
+      const all = page.locator('[data-testid="suggestion-card"]');
+      const more = page.getByTestId("proposals-load-more");
+      for (let i = 0; i < 40 && (await card.count()) === 0; i++) {
+        if ((await more.count()) === 0) break;
+        const grown = await all.count();
+        await more.click();
+        await expect.poll(() => all.count(), { timeout: 15_000 }).toBeGreaterThan(grown);
+      }
+      return card;
+    };
+
+    // Pending tab (default) — approve the tag's suggestion if it's still pending.
+    await page.getByRole("button", { name: /^Pending$/ }).click();
+    const pending = await findCard(SELECTOR_TAG);
+    if ((await pending.count()) > 0) {
+      const before = await pending.count();
+      await pending.first().locator('[data-testid="suggestion-verify"]').click();
+      await expect.poll(() => pending.count(), { timeout: 15_000 }).toBeLessThan(before);
+    }
+
+    // Confirm the signal is verified in the KG (this run approved it, or a prior run did).
     await page.getByRole("button", { name: /^Verified$/ }).click();
-    await expect(page.locator('[data-testid="suggestion-card"]').first()).toBeVisible({ timeout: 15_000 });
+    const verified = await findCard(SELECTOR_TAG);
+    await expect(verified.first()).toBeVisible({ timeout: 15_000 });
   });
 
   // persist captured logs for the /loop to read

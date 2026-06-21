@@ -14,10 +14,23 @@ rerun. **Hard cap: 5 iterations**, then stop and report. Goal = a `kg_entities` 
 ## The goal (success criterion — explicit)
 Phase A (offline app, real clicks): create profile → CCW-import `Micro820_v4.1.9_Program.st` +
 `MbSrvConf_v4.xml` → accept all signals → export bundle.
-Phase B (Hub, real clicks, authed via `storageState`): Import bundle → review (~100 signals) →
-Promote → **approve one suggestion at `/knowledge/suggestions` so its `kg_entity` is `verified`**.
-PASS = the spec's `B3` step goes green (the accepted suggestion leaves the Pending list and appears
-under Verified).
+Phase B (Hub, real clicks, authed via `storageState`): Import bundle → **new** project with ~100
+signals → Promote (assert it reached the knowledge graph) → at `/knowledge/suggestions`, approve the
+`SelectorFWD` signal if it's still pending, then **assert it shows under Verified**.
+PASS = `B3` green: a real promoted signal is `verified` in the KG.
+
+## Design reality (why it's built this way — don't "fix" these)
+- **Shared approved account, not fresh-per-run.** Registration is rate-limited **5/hour per IP**, so a
+  new account each run (and each of the 5 retries) is not viable. `playwright@factorylm.com` is already
+  onboarded + trial-valid.
+- **kg_entities dedup by tag within a tenant** → re-running the same `.st` stages nothing new after the
+  first run. So assertions are **idempotent**: A + B1 are genuinely per-run fresh (new bundle, new
+  project, ~100 parsed signals); B2 proves Promote *succeeds*; B3 proves the signal is *verified*
+  (approving it the first time, asserting verified thereafter).
+- **Known blind spot (documented honestly):** on the shared account a Promote that silently staged
+  *nothing* but reported "already present" would still pass B2. The per-run-fresh coverage (A, B1) and
+  the verified-state check (B3) catch every other regression in the chain. Closing this fully needs an
+  isolated tenant (blocked by the register rate limit).
 
 ## Pre-flight (once per machine)
 - Offline venv runnable: `C:/Users/hharp/Documents/MIRA-pr2068/mira-contextualizer/.venv/Scripts/python.exe`
@@ -52,7 +65,7 @@ mints the Hub session; globalTeardown kills the offline app.
 | `A2` CCW import | `webkitdirectory` input needs a **directory** path, not file paths | stage files in a temp dir, `setInputFiles(dir)` |
 | `A3` accept-all | `decide()` does an async full re-render → detach race | click first, `expect.poll` count strictly decreases, repeat |
 | `B1` import | hub base mismatch (`/hub` basePath vs root) or modal selector | confirm `HUB_APP_BASE`; the file input is `input[type=file][accept=".zip"]` |
-| `B3` approve | wrong route — it's `/knowledge/suggestions` (`/proposals` redirects) | testids `suggestion-verify` / `suggestion-card`; default tab is Pending |
+| `B3` approve | wrong route — it's `/knowledge/suggestions` (`/proposals` redirects); queue sorts by risk first so low-risk signals are deep | testids `suggestion-verify` / `suggestion-card`; page via `proposals-load-more` to find `SelectorFWD`; Pending then Verified tab |
 
 ## Constraints
 - Runs on a feature branch. Product-code fixes it makes are **committed for review, never
