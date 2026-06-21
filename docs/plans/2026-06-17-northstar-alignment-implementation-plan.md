@@ -45,38 +45,38 @@
 
 ## Phase map (at a glance)
 
-| # | Phase | Primary agent | Key skills | Surface | PRD ref |
-|---|---|---|---|---|---|
-| 0 | Land PRD + this plan | (this session) | `mira-platform` | docs | §20.1 |
-| 1 | Fence the Perspective write surface | `feature-dev:code-architect` | `mira-industrial-safety`, `ignition-webdev`, `mira-saas-scope-guard` | Ignition | §20.2 / §18 RISK |
-| 2 | "Why MIRA Thinks This" panel | `feature-dev:code-architect` | `slack-technician-ux-writer`, `bot-grounding-tests` | MIRA + Hub | §20.3 / §11 |
-| 3 | Close upload→retrieval gap (beta gate green) | `maintenance-diagnostician` | `manual-ingestion-extractor`, `knowledge-ingest`, `mira-test-bot-grounding` | FactoryLM+MIRA | §20.4 |
-| 4 | Asset-agent deploy gate resolver | `feature-dev:code-architect` | `uns-location-gate-designer`, `mira-uns-architecture` | MIRA | §20.6 |
-| 5 | Actionable readiness checklist (L0–L6) | `feature-dev:code-architect` | `mira-platform`, `component-profile-builder` | FactoryLM | §20.5 |
-| 6 | ContextPackage compiler | `feature-dev:code-architect` | `managing-the-knowledge-graph`, `mira-uns-architecture` | FactoryLM | §20.7 |
-| 7 | Source-authority ranking | `maintenance-diagnostician` | `bot-grounding-tests`, `knowledge-graph-proposer` | FactoryLM | §20.8 |
-| 8 | Parser→Hub tag-import CSV wizard | `feature-dev:code-architect` | `plc-tag-mapper`, `ignition-webdev` | FactoryLM | §20.9 |
-| 9 | Work-order history mining | `maintenance-diagnostician` | `work-order-history-miner` | FactoryLM | §16 P6 |
-| 10 | Consolidate TechnicianFeedback | `feature-dev:code-architect` | `managing-the-knowledge-graph` (+ `mira-hub-migrations` rule) | both | §20.10 |
+| # | Phase | Primary agent | Key skills | Surface | PRD ref | Status |
+|---|---|---|---|---|---|---|
+| 0 | Land PRD + this plan | (this session) | `mira-platform` | docs | §20.1 | ✅ done (#2078) |
+| 1 | Fence the Perspective write surface | `feature-dev:code-architect` | `mira-industrial-safety`, `ignition-webdev`, `mira-saas-scope-guard` | Ignition | §20.2 / §18 RISK | ✅ done (#2079) |
+| 2 | "Why MIRA Thinks This" panel | `feature-dev:code-architect` | `slack-technician-ux-writer`, `bot-grounding-tests` | MIRA + Hub | §20.3 / §11 | ✅ done (#2081) |
+| 3 | Close upload→retrieval gap (beta gate green) | `maintenance-diagnostician` | `manual-ingestion-extractor`, `knowledge-ingest`, `mira-test-bot-grounding` | FactoryLM+MIRA | §20.4 | ✅ done (#1592/#1863/#1911/#2077/#2100 — gate green pre-plan) |
+| 4 | Asset-agent deploy gate resolver | `feature-dev:code-architect` | `uns-location-gate-designer`, `mira-uns-architecture` | MIRA | §20.6 | ⬜ next |
+| 5 | Actionable readiness checklist (L0–L6) | `feature-dev:code-architect` | `mira-platform`, `component-profile-builder` | FactoryLM | §20.5 | ⬜ |
+| 6 | ContextPackage compiler | `feature-dev:code-architect` | `managing-the-knowledge-graph`, `mira-uns-architecture` | FactoryLM | §20.7 | ⬜ (needs 5 + 8) |
+| 7 | Source-authority ranking | `maintenance-diagnostician` | `bot-grounding-tests`, `knowledge-graph-proposer` | FactoryLM | §20.8 | ⬜ (needs 3) |
+| 8 | Parser→Hub tag-import CSV wizard | `feature-dev:code-architect` | `plc-tag-mapper`, `ignition-webdev` | FactoryLM | §20.9 | ✅ done (#2084/#2145/#2147) |
+| 9 | Work-order history mining | `maintenance-diagnostician` | `work-order-history-miner` | FactoryLM | §16 P6 | ⬜ (needs 6) |
+| 10 | Consolidate TechnicianFeedback | `feature-dev:code-architect` | `managing-the-knowledge-graph` (+ `mira-hub-migrations` rule) | both | §20.10 | ⬜ (needs 2 ✅) |
 
 ---
 
 ## Sequencing & dependencies
 
 ```
-Phase 0 (done in this session)
+Phase 0 ✅ (done)
    │
-   ├─ Phase 1  (independent, do FIRST — safety/anti-goal)
-   ├─ Phase 2  (independent — data already persisted)
-   ├─ Phase 3  (independent — beta blocker; highest product value)
+   ├─ Phase 1 ✅ (#2079 — safety/anti-goal)
+   ├─ Phase 2 ✅ (#2081 — data already persisted)
+   ├─ Phase 3 ✅ (beta gate green pre-plan — #1592/#1863/#2077)
    │
-Phase 3 ──► Phase 7 (authority ranking needs the retrieval path working)
-Phase 4  (independent of 1–3; needs asset_agent_status which exists)
-Phase 5  (independent; reads health_scores)
-Phase 6 ──► consumes outputs of 5 (maturity) and 8 (mappings); start after 5
-Phase 8  (independent; parser exists)
+Phase 3 ✅ ──► Phase 7 (authority ranking needs the retrieval path working — now unblocked)
+Phase 4  ⬜ NEXT (independent of 1–3; needs asset_agent_status which exists)
+Phase 5  ⬜ (independent; reads health_scores)
+Phase 8 ✅ (#2084/#2145/#2147 — parser exists)
+Phase 6 ──► consumes outputs of 5 (maturity) and 8 ✅ (mappings); start after 5
 Phase 6 ──► Phase 9 (historical reasoning sits on the context package)
-Phase 2 + Phase 10 (feedback store) compose: do 10 after 2 so the panel writes somewhere
+Phase 2 ✅ + Phase 10 (feedback store) compose: do 10 after 2 so the panel writes somewhere
 ```
 
 **Parallelizable now (no shared files):** Phases 1, 2, 3, 4, 5, 8 can each run in their own worktree concurrently. Use `superpowers:dispatching-parallel-agents` to fan out the *design+exploration* step of several phases at once; serialize the *merge* step through `ship-pr` to avoid main churn. **Engine-touching phases (2, 3, 4, 7) serialize at the staging gate.**
@@ -175,9 +175,13 @@ def test_no_write_calls_in_shipped_perspective_views():
 
 ## Chunk 2: Beta-critical & enforcement phases (briefs — expand with Plan agent at kickoff)
 
-### Phase 3 — Close the upload→retrieval gap (turn the beta gate green)
+### Phase 3 — Close the upload→retrieval gap (turn the beta gate green)  ✅ DONE (gate was green before this plan landed)
 
-> **Why:** This is the actual beta blocker (PRD §6.5, §20.4). Uploads land in Open WebUI KB; retrieval reads `knowledge_entries`. The two stores aren't bridged for the blind upload doors.
+> **STATUS (verified 2026-06-21): COMPLETE — no code needed.** The upload→retrieval gap closed the *same day this plan was written* via a parallel effort, so the beta gate has been green since 2026-06-17. Evidence: `tests/beta/beta_ready_upload_retrieval_citation.py` is **un-xfailed and a real assertion** (#2077); `.github/workflows/beta-gate.yml` runs it against a stranger on staging Neon and has been **green on its last several runs** (incl. 2026-06-20); `docs/known-issues.md` § "Beta Gate" = *"PASSING on deploy truth"*; `docs/plans/2026-06-07-path-to-beta.md` = *"the HTTP beta gate RAN GREEN end-to-end. The gate is MET."*
+>
+> **Note — the brief below is partly superseded.** Citability was achieved through the **Hub NodeChat node-attach door** (#1592 folder=brain; #1863 routes *blind* uploads through a per-tenant Inbox node, closing #1806; #1911 `is_private=true`; #2100 embed-on-write), **not** by extending `/api/uploads/folder` as the brief proposed — that door writes only the Open WebUI KB and "can never cite" (see the gate test header). Treat the brief as historical context; the exit criterion is met.
+
+> **Why (original):** This was the actual beta blocker (PRD §6.5, §20.4). Uploads land in Open WebUI KB; retrieval reads `knowledge_entries`. The two stores weren't bridged for the blind upload doors.
 
 **Primary agent:** `maintenance-diagnostician`. **Skills:** `manual-ingestion-extractor`, `knowledge-ingest`, `mira-test-bot-grounding`, `bot-grounding-tests`.
 **Doctrine (critical):** `.claude/rules/knowledge-entries-tenant-scoping.md` — per-tenant uploads write `is_private=true`; hybrid reads use raw pool + `(is_private=false OR tenant_id=$caller)`, never `withTenantContext`.
