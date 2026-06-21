@@ -236,10 +236,25 @@ def phase6() -> Phase:
         1.0 if (perm_ok and chain_ok) else 0.0,
         "permissive_review=%s timer_chain=%s" % (perm_ok, chain_ok), weight=1.5))
 
-    # honesty: validated on a faithful synthetic Openness shape; no real held-out Siemens export yet
+    # GENERALIZATION: auto-closes when a real Siemens export is dropped in evals/real_samples/
+    # (gitignored -- public samples are GPL/vendor-licensed; see evals/REAL_SAMPLES.md). Real LAD/GRAPH
+    # exports prove detection+interface+degrade; a real SCL export additionally proves the body lift.
+    real_dir = _PKG_DIR / "evals" / "real_samples"
+    samples = sorted(real_dir.glob("*.xml")) if real_dir.exists() else []
+    real_handled = real_scl = 0
+    for s in samples:
+        rep = _report_text(s.name, s.read_text(encoding="utf-8", errors="replace"))
+        if rep.get("detection", {}).get("fmt") == "siemens_tia_xml" and rep.get("handled"):
+            real_handled += 1
+            if (rep.get("counts", {}).get("rungs") or 0) > 0:   # an SCL body lifted into rungs
+                real_scl += 1
+    score = 1.0 if real_scl else (0.5 if real_handled else 0.0)
     p.criteria.append(Criterion(
-        "6.4", "GENERALIZATION: validated on a REAL Siemens export (held-out)", 0.0,
-        "no real Openness export in plc/ yet -- synthetic SimaticML fixture only", weight=1.5))
+        "6.4", "GENERALIZATION: real Siemens export(s) in evals/real_samples/ (SCL body lifts)",
+        score, "%d real export(s) handled, %d with an SCL body; %s"
+        % (real_handled, real_scl,
+           "drop a real export in evals/real_samples/ (see REAL_SAMPLES.md)" if not samples else "validated"),
+        weight=1.5))
     return p
 
 

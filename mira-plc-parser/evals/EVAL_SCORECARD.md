@@ -62,7 +62,7 @@ tuned on. Grades weight the generalization criteria most.
 | 6.1 | Openness FB parsed: interface members + PlcTagTable -> IR tags | 1.00 | handled=True tags=9 vendor=Siemens |
 | 6.2 | Physical %Q/%I addresses carried from the PLC tag table | 1.00 | %Q0.0 present=True |
 | 6.3 | Tokenized SCL reconstructs: permissive+interlock AND FB-call watchdog chain detected | 1.00 | permissive_review=True timer_chain=True |
-| 6.4 | GENERALIZATION: validated on a REAL Siemens export (held-out) | 0.00 | no real Openness export in plc/ yet -- synthetic SimaticML fixture only |
+| 6.4 | GENERALIZATION: real Siemens export(s) in evals/real_samples/ (SCL body lifts) | 0.00 | 0 real export(s) handled, 0 with an SCL body; drop a real export in evals/real_samples/ (see REAL_SAMPLES.md) |
 
 ## Phase 7 — PDF / screenshot OCR fallback (low confidence)  →  F (0%)
 

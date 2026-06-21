@@ -11,3 +11,6 @@
 # ...EXCEPT the golden snapshots, which are the committed report@1 / i3x@1 contracts (not run output).
 !tests/fixtures/golden/*.report.json
 !tests/fixtures/golden/*.i3x.json
+
+# real vendor exports for local generalization validation (license-restricted -- never commit)
+evals/real_samples/
