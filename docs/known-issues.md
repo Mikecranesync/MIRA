@@ -1,7 +1,7 @@
 # MIRA Known Issues, Deferred Features, and Abandoned Approaches
 
 Extracted from CLAUDE.md to keep the build-state file lean.
-Updated: 2026-06-19
+Updated: 2026-06-21
 
 ## Beta Gate (North Star) — status
 
@@ -28,7 +28,7 @@ Updated: 2026-06-19
 - **Charlie HUD** — Needs local terminal session to start (keychain blocks SSH start of Doppler).
 - **Reddit benchmark** — 15/16 questions hit intent guard canned responses, not real inference. No recent work on `mira-bots/reddit/`.
 - **NVIDIA NIM / Nemotron** — Runtime code in `mira-bots/shared/nemotron.py` works (falls back gracefully when `NVIDIA_API_KEY` is unset); see "Deferred Features → Active" below. What's blocked is the **Regime 5 eval suite** specifically — it needs a working key to exercise the reranker path.
-- **VPS deploy uses `main` HEAD, not version tags** — Customer-facing components are tagged (`mira-hub/v*`, etc.) but `deploy-vps.yml` checks out `main`, so the namespaced tags are documentation only — they don't enforce reproducible deploys or give us a real rollback target. Tracked in issue [#736](https://github.com/Mikecranesync/MIRA/issues/736). Partially mitigated by #1970: `version-gate.yml` auto-bumps `/VERSION` every code PR and `version-tag.yml` auto-creates `v<VERSION>` + `rollback/<date>` on every merge. Remaining half: `deploy-vps.yml` still checks out main HEAD, not the tag.
+- ~~**VPS deploy uses `main` HEAD, not version tags**~~ — **FIXED** `ffcc8636` (`fix(deploy): pin prod VPS to release tag, not main HEAD`, PR #2139). `deploy-vps.yml` now pins to the release tag.
 - **DOPPLER_TOKEN drift between Doppler config and saas compose** — Secrets set in Doppler `factorylm/prd` don't reach a container unless also listed in the `env:` block of `docker-compose.saas.yml`. Edit both in the same PR.
 - **Default `deploy-vps.yml` TARGETS excludes mira-web** — Marketing-site PRs do not auto-deploy. Manual: `gh workflow run deploy-vps.yml -f services=mira-web`.
 - **`tools/demo_plc_poller.py` ships a colliding `live_signal_cache` DDL** — the poller's embedded `SCHEMA_DDL` creates a `live_signal_cache` shaped `(topic, plc_tag, equipment_id, name, value, quality, updated_at)` keyed on `topic`, which does NOT match Hub migration `020`'s `(tenant_id, plc_tag, …, last_seen_at)`. Against a migrated NeonDB the poller's `CREATE TABLE IF NOT EXISTS` no-ops and its INSERT fails on missing columns. Pre-existing; surfaced 2026-05-29 while building Command Center (which deliberately does NOT read this table — liveness is a reachability probe). Fix the poller to UPSERT the migration-020 shape (with `tenant_id`) before relying on it to feed the Hub.
@@ -70,3 +70,19 @@ Updated: 2026-06-19
 - **mira-sidecar (ChromaDB RAG backend)** — Removed from `docker-compose.saas.yml` 2026-05-20 per ADR-0014. Replaced by mira-pipeline + Open WebUI native KB. OEM chunks no longer block sunset.
 - **mira-web → mira-pipeline cutover** — Done. `mira-web/src/lib/mira-chat.ts` now calls mira-pipeline `:9099/v1/chat/completions` (ADR-0008).
 - **No CD pipeline** — Resolved. `deploy-vps.yml` gates on `smoke-test.yml` success and deploys to VPS automatically on push to `main`. Manual fallback: `gh workflow run deploy-vps.yml -f services=<svc>`.
+
+## HubV3 Contextualization + i3x API (2026-06-21)
+
+Migrations 054–056 added the contextualization surface: `054_contextualization_sources_and_tags.sql`, `055_contextualization.sql`, `056_contextualization_intake.sql`. **Migration head: 056.**
+
+**Contextualization routes** (all `sessionOr401`-gated):
+- `POST /api/contextualization/import` — multipart `.zip` Factory Context Bundle → `importFromBundle` → `readZipEntries`
+- `GET/POST /api/contextualization/[id]/sources` — single-source upload (caps at `MAX_UPLOAD_BYTES`/413)
+- `POST /api/contextualization/batches/[batchId]/review` — ADR-0017 publish gate: `proposed` → `verified` kg_entities + ai_suggestions lockstep
+
+**i3x Bearer API:** `GET /api/i3x/[...path]` — read-only external API (Bearer-gated, exposes only `approval_state='verified'` kg_entities).
+
+**Open findings from Round 13 orchestrator audit:**
+- **A13-1** (YELLOW) — zip-bomb / OOM: `importFromBundle` inflates zip entries with no `maxOutputLength` cap and no `file.size` pre-check. Fix in `fix/ctx-zipbomb-cap`: decompression caps in `mira-hub/src/lib/contextualization/unzip.ts` + 413 size pre-check in `import/route.ts`.
+- **B12-1** (YELLOW) — no route-level test for the ADR-0017 publish gate (decision logic unit-tested; route wiring — tenant SQL, insert/update/skip, `applyHubProposalTransition` lockstep — unexercised). Integration test in `fix/publish-gate-integration-test`.
+- **C12-1** (YELLOW, LATENT) — `ctx_enrichment.fetch_ctx_approved_signals` queries `approval_state IN ('proposed','verified')` but renders rows under `"--- APPROVED PLC SIGNALS ---"` with no per-row state shown. Inert in prod (`MIRA_CTX_SIGNALS_ENABLED` default `"0"`). Fix in `fix/ctx-signals-verified-only` (engine change, needs staging gate before merge).
