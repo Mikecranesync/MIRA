@@ -286,4 +286,13 @@ jobs:
           FROM kg_entities
           WHERE uns_path <@ 'enterprise.celestial_park'
           ORDER BY uns_path;
+
+          \echo
+          \echo === who can log in to the Stardust tenant? (users of e88bd0e8) ===
+          \echo 'These are the accounts a secret shopper would use to SEE Stardust on prod.'
+          SELECT u.email, u.name, u.role, u.status,
+                 (u.password_hash IS NOT NULL) AS has_password
+          FROM hub_users u
+          WHERE u.tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'
+          ORDER BY u.email;
           SQL
