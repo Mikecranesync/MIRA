@@ -202,6 +202,14 @@ async function importFromBundle(tenantId: string, req: Request) {
     return NextResponse.json({ error: "file field is required" }, { status: 400 });
   }
 
+  // Optional: import into an existing project instead of creating a new one
+  // (the import target-picker). Empty/absent → create a new project.
+  const rawTarget = form.get("project_id");
+  const targetProjectId = typeof rawTarget === "string" && rawTarget.trim() ? rawTarget.trim() : null;
+  if (targetProjectId && !/^[0-9a-f-]{36}$/i.test(targetProjectId)) {
+    return NextResponse.json({ error: "invalid project_id" }, { status: 400 });
+  }
+
   let parsed;
   try {
     const buf = Buffer.from(await file.arrayBuffer());
@@ -220,14 +228,29 @@ async function importFromBundle(tenantId: string, req: Request) {
 
   try {
     const result = await withTenantContext(tenantId, async (c) => {
-      const proj = await c
-        .query<{ id: string }>(
-          `INSERT INTO contextualization_projects (tenant_id, name, description)
-             VALUES ($1::uuid, $2, $3) RETURNING id`,
-          [tenantId, `${parsed.projectName} (imported)`, parsed.description],
-        )
-        .then((r) => r.rows[0]);
-      const projectId = proj.id;
+      // Target an existing project (RLS scopes the lookup to this tenant) or create one.
+      let projectId: string;
+      if (targetProjectId) {
+        const existing = await c
+          .query<{ id: string }>(
+            `SELECT id FROM contextualization_projects WHERE id = $1::uuid`,
+            [targetProjectId],
+          )
+          .then((r) => r.rows[0]);
+        if (!existing) {
+          throw Object.assign(new Error("target project not found"), { httpStatus: 404 });
+        }
+        projectId = existing.id;
+      } else {
+        const proj = await c
+          .query<{ id: string }>(
+            `INSERT INTO contextualization_projects (tenant_id, name, description)
+               VALUES ($1::uuid, $2, $3) RETURNING id`,
+            [tenantId, `${parsed.projectName} (imported)`, parsed.description],
+          )
+          .then((r) => r.rows[0]);
+        projectId = proj.id;
+      }
 
       // sources → id map
       const fileToSource = new Map<string, string>();
@@ -275,6 +298,10 @@ async function importFromBundle(tenantId: string, req: Request) {
 
     return NextResponse.json({ ok: true, ...result }, { status: 201 });
   } catch (err) {
+    const status = (err as { httpStatus?: number }).httpStatus;
+    if (status === 404) {
+      return NextResponse.json({ error: "target project not found" }, { status: 404 });
+    }
     console.error("[api/contextualization/import POST]", err);
     return NextResponse.json({ error: "Import failed" }, { status: 500 });
   }

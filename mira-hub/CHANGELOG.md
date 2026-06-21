@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.15.0 — 2026-06-20
+- feat(hub): import-bundle **target picker** — the "Import bundle" button now opens a modal with an "Import into" dropdown (existing project or **New project**) before choosing the `.zip`. Importing into an existing project adds the bundle's signals to it instead of always creating a new project, so re-imports don't pile up duplicates. Backend: `POST /api/contextualization/import` (multipart) accepts an optional `project_id` form field — validated UUID, tenant-scoped lookup, 404 if not found; absent → new project (unchanged). Page drag-drop still imports to a new project (quick path).
+
 ## v2.14.1 — 2026-06-20
 - fix(hub): "New Project" on the Contextualization page no longer lands on a broken **"invalid id"** screen. `POST /api/contextualization` returns `{ project: { id } }`, but the create handler read `data.id` (undefined) → routed to `/contextualization/undefined` → the extractions API rejected it. Now reads `data.project.id` with a guard. Pre-existing bug, exposed once the page got a sidebar link in v2.14.0.
 
