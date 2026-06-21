@@ -32,6 +32,7 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
+import { trimTrailingSlash } from "hono/trailing-slash";
 import { renderHome } from "./views/home.js";
 import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
 import { renderLimitations } from "./views/limitations.js";
@@ -170,6 +171,8 @@ setInterval(() => {
 export const app = new Hono();
 
 // Middleware
+// Trim trailing slashes — /pricing/ → /pricing (simplifies routing, fixes #2179)
+app.use(trimTrailingSlash());
 app.use("*", cors());
 
 // Ensure Content-Length is set on all non-streaming text responses.
