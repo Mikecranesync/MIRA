@@ -3,6 +3,12 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.32.0 (2026-06-20) — feat(hub): KG navigator Phase 1 — graph↔namespace cross-link UX
+- **Closed-loop graph builder, slice 1.** On `/knowledge/map`, a node's detail panel now has a **"📁 Add documents"** link that deep-links to that node in the namespace (`/namespace?node=<kg_entities.id>`) to attach manuals — the first half of the click-node → add-doc → suggest-connections loop.
+- **Any edge is now inspectable.** Edge click opens a panel for *verified* edges too (was proposed-only): friendly type, source→target, confidence, and the `evidence_summary` snapshot. Proposed-edge confirm/reject unchanged (ADR-0017 — never auto-verify).
+- **Payload plumbing (additive, no migration):** `/api/kg/graph` selects `entity_id` (→ `GraphNode.entityId`) and `evidence_summary` (→ `GraphLink.evidenceSummary`). Columns pre-exist (mig 001/029).
+- Proof: 158/158 KG unit tests, e2e `tests/e2e/kg-navigator-phase1.spec.ts`, desktop+mobile + verified-edge screenshots. Route SQL run unmocked on dev (200 + valid shape).
+
 ### v3.29.0 (2026-06-20) — feat(hubv3): Hub-centered contextualization intake (P0–P8)
 - **Hub = system of record for contextualization.** Offline Contextualizer + Telegram are now ingest clients submitting one shared **Contextualization Intake Contract** (`contracts/contextualization/intake_contract.py` + `mira-hub/src/lib/contextualization/intake-contract.ts` + JSON Schema; ADR-0023). All ingest enters as `proposed`/pending; Hub does final merge, approval, and publish to the project model / UNS / i3X / MIRA KB.
 - **Migration `056`** — staging schema: `ctx_import_batches` (review_status proposed→approved|rejected|needs_review, ingest_route), `ctx_extraction_asset_matches` (match_strength strong|probable|none, candidate_asset_id), source/bundle `sha256` dedup keys, RLS + grants. Reversible (rollback block in-file). Applied + verified on staging 2026-06-20.

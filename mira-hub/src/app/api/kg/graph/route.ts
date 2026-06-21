@@ -36,7 +36,7 @@ export async function GET(req: Request) {
   try {
     const { entities, rels } = await withTenantContext(ctx.tenantId, async (c) => {
       const e = await c.query<EntityRow>(
-        `SELECT id, entity_type, name, uns_path::text AS uns_path
+        `SELECT id, entity_type, name, uns_path::text AS uns_path, entity_id
            FROM kg_entities
           WHERE tenant_id = $1::uuid
           LIMIT $2`,
@@ -44,15 +44,15 @@ export async function GET(req: Request) {
       );
       const r = await c.query<RelRow>(
         includeProposals
-          ? `SELECT source_id, target_id, relationship_type, confidence, approval_state, NULL::uuid AS proposal_id, NULL::text AS reasoning
+          ? `SELECT source_id, target_id, relationship_type, confidence, approval_state, NULL::uuid AS proposal_id, NULL::text AS reasoning, evidence_summary
                FROM kg_relationships
               WHERE tenant_id = $1::uuid
              UNION ALL
-             SELECT source_entity_id, target_entity_id, relationship_type, confidence, 'proposed' AS approval_state, id AS proposal_id, reasoning
+             SELECT source_entity_id, target_entity_id, relationship_type, confidence, 'proposed' AS approval_state, id AS proposal_id, reasoning, NULL::text AS evidence_summary
                FROM relationship_proposals
               WHERE tenant_id = $1::uuid AND status = 'proposed'
              LIMIT $2`
-          : `SELECT source_id, target_id, relationship_type, confidence, approval_state, NULL::uuid AS proposal_id, NULL::text AS reasoning
+          : `SELECT source_id, target_id, relationship_type, confidence, approval_state, NULL::uuid AS proposal_id, NULL::text AS reasoning, evidence_summary
                FROM kg_relationships
               WHERE tenant_id = $1::uuid
              LIMIT $2`,
