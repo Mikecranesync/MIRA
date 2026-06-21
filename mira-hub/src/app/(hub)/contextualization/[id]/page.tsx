@@ -195,16 +195,19 @@ export default function ContextualizationProjectPage() {
         );
         const j = (await res.json().catch(() => ({}))) as {
           error?: string;
-          workerStarted?: boolean;
+          source?: { status?: string };
+          extractionsCreated?: number;
         };
         if (!res.ok) throw new Error(j.error ?? "Upload failed");
-        showToast(
-          j.workerStarted
-            ? `Uploaded ${file.name} — parsing… signals will appear shortly`
-            : `Uploaded ${file.name}, but the parser didn't start (check worker)`,
-        );
-        // The worker writes extractions asynchronously; give it a moment, then refresh.
-        setTimeout(fetchExtractions, 4000);
+        // Parsing is now inline: the response carries the terminal status.
+        if (j.source?.status === "error") {
+          showToast(`Couldn't parse ${file.name}: ${j.error ?? "see source status"}`);
+        } else {
+          const n = j.extractionsCreated ?? 0;
+          showToast(`Uploaded ${file.name} — ${n} signal${n === 1 ? "" : "s"} extracted`);
+        }
+        // Extractions are already written; refresh now.
+        fetchExtractions();
       } catch (err) {
         showToast(err instanceof Error ? err.message : "Error uploading file");
       } finally {

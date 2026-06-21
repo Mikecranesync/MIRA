@@ -1,19 +1,23 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
+import {
+  parsePlcViaIngest,
+  reportToExtractions,
+  type ExtractionRow,
+} from "@/lib/contextualization/parse-source";
 
 export const dynamic = "force-dynamic";
 
 // Maps a file extension to a ctx_sources.source_type enum value
-// (CHECK: 'l5x' | 'st' | 'plcopen' | 'csv' | 'manual' | 'other'). The worker
-// passes file_name to the parser for format detection, so the stored type is
-// advisory — but keep it accurate for the review UI's "Source" column.
+// (CHECK: 'l5x' | 'st' | 'plcopen' | 'csv' | 'manual' | 'other'). mira-ingest
+// detects the real format from the bytes, so the stored type is advisory — but
+// keep it accurate for the review UI's "Source" column.
 export function sourceTypeFor(fileName: string): string {
   switch (extname(fileName).toLowerCase()) {
     case ".l5x":
@@ -33,34 +37,54 @@ export function sourceTypeFor(fileName: string): string {
   }
 }
 
-// Where uploaded source files land on disk. The parse worker reads
-// ctx_sources.file_path from here, so the worker must run on the same host
-// (true for the demo: Hub + worker on the PLC/travel laptop).
+// Where uploaded source files land on disk. Kept for audit / re-parse and to
+// populate ctx_sources.file_path; parsing itself uses the in-memory bytes (the
+// file is POSTed to mira-ingest, not read back from here).
 function sourcesDir(): string {
   const fromEnv = process.env.CTX_SOURCES_DIR;
   return fromEnv && fromEnv.length > 0 ? fromEnv : join(tmpdir(), "mira-ctx-sources");
 }
 
-/** Fire-and-forget the parse worker. Returns false if the process couldn't be started. */
-function launchWorker(sourceId: string): boolean {
-  const python = process.env.MIRA_PYTHON || "python";
-  const script =
-    process.env.CTX_PARSE_WORKER ||
-    join(process.cwd(), "workers", "ctx_parse_worker.py");
-  try {
-    const child = spawn(python, [script, sourceId], {
-      detached: true,
-      stdio: "ignore",
-      env: process.env, // worker needs NEON_DATABASE_URL (and optional MIRA_PARSER_ROOT)
-    });
-    child.on("error", (err) => {
-      console.error("[ctx sources] worker spawn error", err);
-    });
-    child.unref();
-    return true;
-  } catch (err) {
-    console.error("[ctx sources] worker spawn failed", err);
-    return false;
+// Postgres caps bound parameters at 65535; each extraction row binds 10. Chunk
+// well under that so a large tag dictionary still inserts.
+const INSERT_CHUNK = 500;
+
+/** Bulk-insert extraction rows under an already-tenant-scoped client. */
+async function insertExtractions(
+  c: { query: (sql: string, params: unknown[]) => Promise<unknown> },
+  rows: ExtractionRow[],
+): Promise<void> {
+  for (let i = 0; i < rows.length; i += INSERT_CHUNK) {
+    const chunk = rows.slice(i, i + INSERT_CHUNK);
+    const values = chunk
+      .map((_, j) => {
+        const b = j * 10;
+        return (
+          `($${b + 1}::uuid,$${b + 2}::uuid,$${b + 3}::uuid,$${b + 4}::uuid,` +
+          `$${b + 5},$${b + 6}::text[],$${b + 7},$${b + 8},$${b + 9}::jsonb,$${b + 10})`
+        );
+      })
+      .join(",");
+    const params = chunk.flatMap((r) => [
+      r.id,
+      r.tenantId,
+      r.projectId,
+      r.sourceId,
+      r.tagName,
+      r.roles,
+      r.unsPath,
+      r.i3xElementId,
+      JSON.stringify(r.evidence),
+      r.confidence,
+    ]);
+    await c.query(
+      `INSERT INTO ctx_extractions
+         (id, tenant_id, project_id, source_id, tag_name, roles,
+          uns_path_proposed, i3x_element_id, evidence_json, confidence)
+       VALUES ${values}
+       ON CONFLICT DO NOTHING`,
+      params,
+    );
   }
 }
 
@@ -68,9 +92,12 @@ function launchWorker(sourceId: string): boolean {
  * POST /api/contextualization/[id]/sources
  *
  * Multipart upload of a single PLC export / manual into a contextualization
- * project. Writes the file to disk, inserts a pending ctx_sources row, and
- * launches the parse worker (which fills ctx_extractions and flips the source
- * to done/error). Returns the created source row.
+ * project. Inserts a pending ctx_sources row, parses the file via mira-ingest
+ * `/ingest/plc-parse`, writes the resulting ctx_extractions, and flips the source
+ * to `done` (or `error` with a message on any parse failure — a non-PLC upload
+ * lands `error`, never stuck `pending`). Returns the source row with its final
+ * status; parsing is inline (sub-second, stdlib parser), so the response is
+ * terminal — no async worker to poll.
  */
 export async function POST(
   req: Request,
@@ -113,10 +140,11 @@ export async function POST(
   const sourceId = randomUUID();
   const filePath = join(sourcesDir(), `${sourceId}${extname(fileName).toLowerCase()}`);
 
-  // Write the file to disk before inserting, so the worker never races a
-  // missing file. A write failure means no DB row is created.
+  // Read the bytes once: persisted to disk (file_path / audit) and POSTed to the
+  // parser. A write failure means no DB row is created.
+  let bytes: Uint8Array;
   try {
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    bytes = new Uint8Array(await file.arrayBuffer());
     await mkdir(sourcesDir(), { recursive: true });
     await writeFile(filePath, bytes);
   } catch (err) {
@@ -124,9 +152,16 @@ export async function POST(
     return NextResponse.json({ error: "Could not store upload" }, { status: 500 });
   }
 
+  // 1) Insert the pending source row (verifying the project is this tenant's).
+  let inserted: {
+    id: string;
+    source_type: string;
+    file_name: string;
+    status: string;
+    created_at: string;
+  } | null;
   try {
-    const row = await withTenantContext(ctx.tenantId, async (c) => {
-      // Verify the project belongs to this tenant (FK alone is not tenant-aware).
+    inserted = await withTenantContext(ctx.tenantId, async (c) => {
       const proj = await c.query<{ id: string }>(
         `SELECT id FROM contextualization_projects
           WHERE id = $1 AND tenant_id = $2::uuid`,
@@ -150,28 +185,79 @@ export async function POST(
         )
         .then((r) => r.rows[0]);
     });
-
-    if (!row) {
-      return NextResponse.json({ error: "project not found" }, { status: 404 });
-    }
-
-    const workerStarted = launchWorker(sourceId);
-
-    return NextResponse.json(
-      {
-        source: {
-          id: row.id,
-          sourceType: row.source_type,
-          fileName: row.file_name,
-          status: row.status,
-          createdAt: row.created_at,
-        },
-        workerStarted,
-      },
-      { status: 201 },
-    );
   } catch (err) {
-    console.error("[api/contextualization/[id]/sources POST]", err);
+    console.error("[api/contextualization/[id]/sources POST] insert", err);
     return NextResponse.json({ error: "Insert failed" }, { status: 500 });
   }
+
+  if (!inserted) {
+    return NextResponse.json({ error: "project not found" }, { status: 404 });
+  }
+
+  // 2) Parse via mira-ingest (HTTP, no DB held open), then 3) write the result.
+  // EVERY parse failure flips the source to 'error' so it never sticks at 'pending'.
+  const parsed = await parsePlcViaIngest(fileName, bytes);
+
+  let finalStatus = "done";
+  let extractionsCreated = 0;
+  let parseError: string | undefined;
+  try {
+    await withTenantContext(ctx.tenantId, async (c) => {
+      if (!parsed.ok) {
+        finalStatus = "error";
+        parseError = parsed.error;
+        await c.query(
+          `UPDATE ctx_sources SET status='error', error_message=$2, updated_at=now()
+            WHERE id=$1`,
+          [sourceId, parsed.error.slice(0, 2000)],
+        );
+        return;
+      }
+      const rows = reportToExtractions(parsed.report, {
+        tenantId: ctx.tenantId,
+        projectId,
+        sourceId,
+      });
+      if (rows.length > 0) {
+        await insertExtractions(c, rows);
+      }
+      extractionsCreated = rows.length;
+      await c.query(
+        `UPDATE ctx_sources SET status='done', updated_at=now() WHERE id=$1`,
+        [sourceId],
+      );
+    });
+  } catch (err) {
+    // The parse may have succeeded but the DB write failed — mark error so the
+    // source doesn't linger at pending, and surface it.
+    console.error("[api/contextualization/[id]/sources POST] store", err);
+    finalStatus = "error";
+    parseError = "could not store parse result";
+    try {
+      await withTenantContext(ctx.tenantId, (c) =>
+        c.query(
+          `UPDATE ctx_sources SET status='error', error_message=$2, updated_at=now()
+            WHERE id=$1`,
+          [sourceId, parseError!.slice(0, 2000)],
+        ),
+      );
+    } catch (err2) {
+      console.error("[api/contextualization/[id]/sources POST] error-mark", err2);
+    }
+  }
+
+  return NextResponse.json(
+    {
+      source: {
+        id: inserted.id,
+        sourceType: inserted.source_type,
+        fileName: inserted.file_name,
+        status: finalStatus,
+        createdAt: inserted.created_at,
+      },
+      extractionsCreated,
+      ...(parseError ? { error: parseError } : {}),
+    },
+    { status: 201 },
+  );
 }
