@@ -142,7 +142,7 @@ See `references/environment-doctrine.md` for the full table.
 
 ### 4.8 Frameworks + abstractions
 
-- **PLT-070** `[FATAL]` No LangChain, no TensorFlow, no n8n, no framework that abstracts the LLM call. PRD §4.
+- **PLT-070** `[FATAL]` No LangChain, no TensorFlow, no n8n, no framework that abstracts the LLM call. PRD §4. **Scope: LLM-orchestration/agent frameworks only. Langfuse (observability/tracing) is NOT in scope — it is allowed and in active use. Never flag Langfuse under PLT-070.**
 - **PLT-071** `[STYLE]` Engine layer, bot adapters, and ingest pipelines read top-to-bottom — not chained through indirections.
 
 ### 4.9 Python standards
