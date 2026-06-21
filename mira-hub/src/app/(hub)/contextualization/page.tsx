@@ -56,6 +56,8 @@ export default function ContextualizationPage() {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importTargetId, setImportTargetId] = useState(""); // "" = new project
 
   const fetchProjects = useCallback(async () => {
     setLoading(true);
@@ -103,7 +105,7 @@ export default function ContextualizationPage() {
   }
 
   const importBundle = useCallback(
-    async (file: File) => {
+    async (file: File, targetId?: string) => {
       if (!file.name.toLowerCase().endsWith(".zip")) {
         setImportError("Select a Factory Context Bundle (.zip) exported from the offline contextualizer.");
         return;
@@ -113,11 +115,14 @@ export default function ContextualizationPage() {
       try {
         const fd = new FormData();
         fd.append("file", file);
+        // Empty target → new project; a project id → import into that existing project.
+        if (targetId) fd.append("project_id", targetId);
         // Multipart — do NOT set Content-Type; the browser adds the boundary.
         const res = await fetch(`${API_BASE}/api/contextualization/import`, { method: "POST", body: fd });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
         if (!data.projectId) throw new Error("Import returned no project id");
+        setShowImportModal(false);
         router.push(`/contextualization/${data.projectId}`);
       } catch (e) {
         setImportError(e instanceof Error ? e.message : "Bundle import failed");
@@ -164,11 +169,11 @@ export default function ContextualizationPage() {
             onChange={(e) => {
               const f = e.target.files?.[0];
               e.target.value = ""; // allow re-selecting the same file
-              if (f) importBundle(f);
+              if (f) importBundle(f, importTargetId || undefined);
             }}
           />
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => { setImportError(null); setImportTargetId(""); setShowImportModal(true); }}
             disabled={importing}
             title="Import a Factory Context Bundle (.zip) exported from the offline contextualizer"
             className="flex items-center gap-2 border border-gray-700 hover:border-gray-500 text-gray-200 text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -186,7 +191,7 @@ export default function ContextualizationPage() {
         </div>
       </div>
 
-      {importError && (
+      {importError && !showImportModal && (
         <div className="mb-4 text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
           {importError}
         </div>
@@ -243,6 +248,60 @@ export default function ContextualizationPage() {
               </div>
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Import bundle modal — pick target project (existing or new) */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-white font-semibold">Import bundle</h2>
+              <button onClick={() => { setShowImportModal(false); setImportError(null); }} className="text-gray-500 hover:text-gray-300">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5">Import into</label>
+                <select
+                  value={importTargetId}
+                  onChange={(e) => setImportTargetId(e.target.value)}
+                  disabled={importing}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                >
+                  <option value="">New project</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Add this bundle&apos;s signals to an existing project, or create a new one — so re-imports don&apos;t make duplicate projects.
+                </p>
+              </div>
+
+              {importError && <p className="text-red-400 text-xs">{importError}</p>}
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => { setShowImportModal(false); setImportError(null); }}
+                  disabled={importing}
+                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm py-2 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importing}
+                  className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                  {importing ? "Importing…" : "Choose .zip & import"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
