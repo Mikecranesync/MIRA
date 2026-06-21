@@ -1312,6 +1312,15 @@ class Supervisor:
             retrieved = bool(ev) and not ev.get("no_kb", True)
             manual_sources = (ev.get("sources") or None) if retrieved else None
 
+            # Phase 2 — model attribution. The cascade router caches the model that
+            # answered each session (keyed by session_id, #1704-safe); look it up by
+            # this turn's chat_id. None when the answering call passed no session_id
+            # or fell back to Open WebUI. Feeds both the NeonDB row and the local trace.
+            try:
+                model_used = self.router.last_model_for(str(chat_id))
+            except Exception:  # noqa: BLE001
+                model_used = None
+
             coro = write_trace(
                 tenant_id=tenant_id,
                 user_question=message,
@@ -1321,12 +1330,36 @@ class Supervisor:
                 tag_evidence=tag_evidence,
                 manual_sources=manual_sources,
                 outcome=outcome,
+                model_used=model_used,
                 latency_ms=latency_ms,
             )
             # Hold a reference so the task isn't GC'd before it runs.
             task = asyncio.create_task(coro)
             self._decision_trace_tasks.add(task)
             task.add_done_callback(self._decision_trace_tasks.discard)
+
+            # Phase 1 — local AnswerTrace (off unless MIRA_LOCAL_TRACE=1; fail-open).
+            # Same evidence as the NeonDB row above (incl. model_used from Phase 2),
+            # written as inspectable JSONL so every adapter routing through process()
+            # emits a local trace. Governance/incident checks run in Phase 3.
+            try:
+                from .observe.from_engine import emit_local_trace
+
+                emit_local_trace(
+                    question=message,
+                    reply=reply,
+                    platform=platform,
+                    tenant_id=tenant_id,
+                    uns_context=uns_context,
+                    tag_evidence=tag_evidence,
+                    manual_sources=manual_sources,
+                    confidence=result.get("confidence"),
+                    model_used=model_used,
+                    latency_ms=latency_ms,
+                    outcome=outcome,
+                )
+            except Exception as exc:  # noqa: BLE001 — observational, never block reply
+                logger.debug("local trace emit skipped: %s", exc)
         except Exception as exc:  # noqa: BLE001
             logger.debug("decision_trace schedule skipped: %s", exc)
 

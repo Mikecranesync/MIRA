@@ -205,6 +205,11 @@ class InferenceRouter:
         self.enabled = self.backend == "cloud" and len(self.providers) > 0
         # {provider_name: [monotonic_timestamps_of_calls]}
         self._provider_call_windows: dict[str, list[float]] = {}
+        # {session_id: "provider/model"} — last model that answered each session.
+        # Keyed by session_id (NOT a shared scalar) so concurrent tenants don't
+        # clobber each other's attribution (#1704). Bounded to the most recent
+        # sessions. Read by the engine's trace site via last_model_for().
+        self._last_model_by_session: dict[str, str] = {}
 
         if self.enabled:
             names = [p.name for p in self.providers]
@@ -237,6 +242,33 @@ class InferenceRouter:
                 hourly_limit,
                 100 * len(window) / hourly_limit,
             )
+
+    _MODEL_CACHE_MAX = 512
+
+    def _record_session_model(self, session_id: str | None, model: str | None) -> None:
+        """Cache the model that answered ``session_id`` (bounded, last-writer-wins).
+
+        Keyed by session so the engine can attribute a turn's model #1704-safely.
+        No-op when session_id or model is missing. Evicts oldest when over cap.
+        """
+        if not session_id or not model:
+            return
+        cache = self._last_model_by_session
+        cache[session_id] = model
+        if len(cache) > self._MODEL_CACHE_MAX:
+            # Drop the oldest insertion (dicts preserve insertion order).
+            for old in list(cache.keys())[: len(cache) - self._MODEL_CACHE_MAX]:
+                cache.pop(old, None)
+
+    def last_model_for(self, session_id: str | None) -> str | None:
+        """Return the last model ("provider/model") that answered ``session_id``.
+
+        ``None`` when unknown (e.g. the answering call passed no session_id, or
+        the turn fell back to Open WebUI). Used by the engine's trace site.
+        """
+        if not session_id:
+            return None
+        return self._last_model_by_session.get(session_id)
 
     @staticmethod
     def sanitize_text(text: str) -> str:
@@ -328,6 +360,7 @@ class InferenceRouter:
                         last_error = usage
                         continue
                     self._track_provider_call(provider.name)
+                    self._record_session_model(session_id, usage.get("model"))
                     return content, usage
                 last_error = usage
             except _ProviderSkip:
@@ -380,6 +413,7 @@ class InferenceRouter:
                 "input_tokens": usage.get("prompt_tokens", 0),
                 "output_tokens": usage.get("completion_tokens", 0),
                 "provider": provider.name,
+                "model": f"{provider.name}/{model}",
             }
 
             logger.info(
