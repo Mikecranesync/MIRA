@@ -173,6 +173,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - **Graphify excluded from code navigation** — see `.claude/rules/graphify-excluded.md` (CodeGraph is the single code-nav graph; the orchestrator-pulse product KG is a separate, allowed artifact).
 - **Train before deploy** — see `.claude/rules/train-before-deploy.md` (Command Center builds+validates; Ignition/HMI deploys approved asset agents only; no HMI deployment without grounded docs + validation questions + approved cited answers; read-only in beta).
 - **Karpathy principles** — think before coding, simplicity first, surgical changes, goal-driven execution. See `.claude/rules/karpathy-principles.md`.
+- **FactoryLM UI style** — every front end (mira-contextualizer, mira-plc-parser `gui/`, mira-hub, mira-web, Ignition Perspective) uses the shared design tokens (`docs/design/factorylm-tokens.css`): flat/modern, muted-normal + color-for-state, never hardcode a hex. See `.claude/rules/ui-style.md` + skill `factorylm-ui-style` + runbook `docs/design/factorylm-style.md`.
 - **Debugging & verification** — perf problems are multi-cause (re-measure after each fix); verify exact table/column names + API auth paths from the codebase before guessing. See `.claude/rules/debugging-conventions.md`.
 - **Session discipline** — verify stated premises against the codebase + `git log` before building; re-run the full suite before reporting eval gains; stage only files your change touched (never `git add -A` over foreign WIP); validate migration/seed prerequisites + schema constraints; checkpoint long tasks to `.planning/STATE.md` early. See `.claude/rules/session-discipline.md`.
 - **Don't break the UNS confirmation gate.** Run `mira-run-hallucination-audit` after engine/bot edits.
@@ -206,6 +207,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - `docs/THEORY_OF_OPERATIONS.md` — primary product doctrine
 - `docs/specs/maintenance-namespace-builder-spec.md` — UNS gate, AI proposals, readiness levels (subsumes the older `uns-message-resolver-spec.md` reference)
 - `docs/plans/2026-05-15-maintenance-namespace-builder.md` — phased execution
+- `docs/RESUME_2026-06-14_maintenance-intelligence-module.md` — the self-onboarding Ignition module ("detect AND explain": in-gateway A0–A12 anomaly detection + grounded Ask MIRA + auto-classify install). Phase 1 done (`83ea8e81`); rules in `plc/conv_simple_anomaly/rules_core.py` (dual Py2.7/3.12) + `ignition/webdev/FactoryLM/api/diagnose/`. The HMI deployment surface, productized.
 - `.claude/rules/uns-compliance.md` — UNS data-shape enforcement
 - `.claude/rules/uns-confirmation-gate.md` — chat-surface UNS gate (Slack/Telegram/email/web)
 - `.claude/rules/direct-connection-uns-certified.md` — direct-connection UNS certification (Ignition/MQTT/PLC/Hub/QR)

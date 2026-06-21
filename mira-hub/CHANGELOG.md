@@ -2,6 +2,27 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.17.0 — 2026-06-21
+- feat(hub): KG navigator Phase 2 — parsed node-attached doc auto-proposes a grounded `HAS_DOCUMENT` edge node→manual (evidence = the doc's own chunks, `evidence_type='document_page'`). New `src/lib/node-document-proposals.ts`; fired fire-and-forget from `node-knowledge-ingest.ts` (decoupled, never-throws, `NODE_DOC_PROPOSALS=0` kill switch). Never auto-verified (ADR-0017). Real-DB run caught + fixed an `ON CONFLICT` drift (kg_entities unique key is `(tenant_id, entity_type, name)`). 4 vitest units; no migration.
+
+## v2.16.0 — 2026-06-20
+- feat(hub): KG navigator Phase 1 — graph↔namespace cross-link UX on `/knowledge/map`. Node detail panel gains a "📁 Add documents" deep-link to the namespace (`/namespace?node=<kg_entities.id>`); edge click now opens a panel for *verified* edges (type/source→target/confidence/`evidence_summary`), not just proposed ones. `/api/kg/graph` plumbs `entity_id`→`GraphNode.entityId` + `evidence_summary`→`GraphLink.evidenceSummary` (additive, no migration; cols from mig 001/029). Proposed-edge confirm/reject unchanged (never auto-verify). e2e `tests/e2e/kg-navigator-phase1.spec.ts` + screenshots.
+
+## v2.15.0 — 2026-06-20
+- feat(hub): import-bundle **target picker** — the "Import bundle" button now opens a modal with an "Import into" dropdown (existing project or **New project**) before choosing the `.zip`. Importing into an existing project adds the bundle's signals to it instead of always creating a new project, so re-imports don't pile up duplicates. Backend: `POST /api/contextualization/import` (multipart) accepts an optional `project_id` form field — validated UUID, tenant-scoped lookup, 404 if not found; absent → new project (unchanged). Page drag-drop still imports to a new project (quick path).
+
+## v2.14.1 — 2026-06-20
+- fix(hub): "New Project" on the Contextualization page no longer lands on a broken **"invalid id"** screen. `POST /api/contextualization` returns `{ project: { id } }`, but the create handler read `data.id` (undefined) → routed to `/contextualization/undefined` → the extractions API rejected it. Now reads `data.project.id` with a guard. Pre-existing bug, exposed once the page got a sidebar link in v2.14.0.
+
+## v2.14.0 — 2026-06-20
+- feat(hub): "Import bundle" control on the Contextualization Projects page — file-picker + page drag-drop that POSTs an offline Factory Context Bundle (`.zip`) to the existing `POST /api/contextualization/import` (multipart) and routes into the new project's signal review. Also adds the missing **"Contextualization"** sidebar nav item (`/contextualization`, ADMIN_ROLES) — previously the page had no nav link at all; the only entry was "Import Review" → the Review Queue. The bundle path creates a project (not a review-queue batch) and parses inline (no host-local worker dependency). Corrected the Review Queue empty-state copy, which falsely promised bundle import there → now points to the Projects page (the queue holds Telegram/contract imports). No backend change; `/import` + `parseBundle` proven against a real 102-signal bundle. See `docs/runbooks/hubv3-e2e-proof-2026-06-20.md`.
+
+## v2.13.0 — 2026-06-20
+- feat(hub): HubV3 contextualization intake complete (P0–P8). Shared intake contract (`src/lib/contextualization/intake-contract.ts`), migration `056` staging schema (`ctx_import_batches`, `ctx_extraction_asset_matches`, sha256 dedup; applied+verified on staging), contract-accepting `/api/contextualization/import` with source dedup (all rows land `proposed`), asset-matching engine (`src/lib/contextualization/asset-matcher.ts` — strong/probable/none vs `cmms_equipment`), batch Review Queue + approval-aware promote (reads `kg_entities.approval_state`, refuses to overwrite verified — no silent `ON CONFLICT DO NOTHING`), §6 acceptance matrix (`src/lib/contextualization/acceptance-matrix.test.ts`), Hub↔offline label parity, and the "Import Review" sidebar link → Review Queue. Nothing auto-promotes — import stages `proposed`; only a human approve verifies (ADR-0017). PRD: `docs/plans/2026-06-20-hubv3-contextualization-intake-prd.md`.
+
+## v2.12.0 — 2026-06-17
+- fix(hub): node-attachment chunks are now embedded on write (`embedPendingNodeChunks`) so a tenant's uploaded-manual chunks reach the KB vector ranker (`searchKB`), not just the text fallback — they previously landed `embedding = NULL` and were silently excluded from vector results. Best-effort + decoupled from the insert (embedder down → chunks stay BM25-live, upload never blocks/fails; #1385). `NODE_EMBED_ON_WRITE=0` kill switch. (#2099)
+
 ## v2.8.0 — 2026-06-15
 - feat(hub): onboarding now guides a fresh customer to upload their manual and ask MIRA a cited question about it; un-onboarded tenants are auto-sent to the wizard (#1901).
 

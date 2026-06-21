@@ -20,6 +20,7 @@ from .citation_compliance import check_citation_compliance as _check_citation_co
 from .citation_compliance import citation_enforce_enabled as _citation_enforce_enabled
 from .citation_compliance import enforce_citation_via_rewrite as _enforce_citation_via_rewrite
 from .conversation_router import route_intent
+from .ctx_enrichment import fetch_ctx_approved_signals as _fetch_ctx_approved_signals
 from .detection.recurring_fault import check_recurring_and_annotate
 from .dialogue_state import (
     DialogueState,
@@ -367,6 +368,14 @@ _MIRA_HUB_URL = os.getenv("MIRA_HUB_URL", "http://mira-hub:3000")
 _LIVE_DATA_ENABLED = os.getenv("MIRA_LIVE_DATA_ENABLED", "0") == "1"
 _FAULT_DETECTIVE_URL = os.getenv("FAULT_DETECTIVE_URL", "http://mira-fault-detective:8077")
 _LIVE_DATA_TIMEOUT_S = float(os.getenv("MIRA_LIVE_DATA_TIMEOUT_S", "2.0"))
+
+# Contextualization-signals enrichment (additive, OFF by default). When on,
+# queries kg_entities for approved ctx signals under the resolved UNS path and
+# injects a [APPROVED PLC SIGNALS] block before the RAG call. Best-effort: ""
+# on any miss (flag off, no tenant/asset, NeonDB unreachable). Enabled by
+# MIRA_CTX_SIGNALS_ENABLED=1.
+_CTX_SIGNALS_ENABLED = os.getenv("MIRA_CTX_SIGNALS_ENABLED", "0") == "1"
+_CTX_SIGNALS_TIMEOUT_S = float(os.getenv("MIRA_CTX_SIGNALS_TIMEOUT_S", "3.0"))
 
 # Single-shot kiosk mode (e.g. the Ignition Ask-MIRA panel). When on, MIRA
 # answers directly (see rag_worker DIRECT_ANSWER_SYSTEM_PROMPT) AND the engine
@@ -720,6 +729,13 @@ class Supervisor:
         # Background decision-trace tasks (Phase 9). Holding strong refs keeps
         # fire-and-forget writes from being GC'd before they complete.
         self._decision_trace_tasks: set = set()
+
+        # Troubleshooting-session lifecycle (Phase 7, #1659). Strong refs keep
+        # the fire-and-forget NeonDB writes alive; the dict maps chat_id → the
+        # active troubleshooting_sessions UUID so a session opens once per
+        # confirmed-asset conversation and subsequent turns append to it.
+        self._session_tasks: set = set()
+        self._ts_sessions: dict[str, str] = {}
 
         # Service base URLs for nameplate downstream calls and reactive ingest
         self.mcp_base_url = (
@@ -1259,6 +1275,18 @@ class Supervisor:
             tag_evidence=tag_evidence,
             tenant_id=tenant_id,
         )
+        # Phase 7 (#1659) — troubleshooting-session lifecycle (observational,
+        # fire-and-forget). Opens a session on gate-pass (confirmed asset +
+        # active diagnostic state), appends each turn, closes on RESOLVED.
+        # Idle sessions are abandoned by the nightly cron. Fully guarded.
+        self._schedule_session_lifecycle(
+            chat_id=chat_id,
+            message=message,
+            reply=reply,
+            result=result,
+            platform=platform,
+            tenant_id=tenant_id,
+        )
         return reply
 
     def _schedule_decision_trace(
@@ -1362,6 +1390,98 @@ class Supervisor:
                 logger.debug("local trace emit skipped: %s", exc)
         except Exception as exc:  # noqa: BLE001
             logger.debug("decision_trace schedule skipped: %s", exc)
+
+    def _schedule_session_lifecycle(
+        self,
+        *,
+        chat_id: str,
+        message: str,
+        reply: str,
+        result: dict,
+        platform: str,
+        tenant_id: str | None = None,
+    ) -> None:
+        """Open / append / close a ``troubleshooting_sessions`` row for this turn.
+
+        Phase 7 (#1659). Best-effort and fully guarded — a NeonDB blip must
+        never touch the reply path:
+
+          * **Open** on gate-pass: an asset is confirmed (``asset_identified``),
+            the UNS gate is no longer pending, and the turn is in an active
+            diagnostic state. Opens once per ``chat_id`` (deduped via
+            ``self._ts_sessions``).
+          * **Append** every turn while a session is active — the user message
+            and the assistant reply.
+          * **Close** (``resolved``) on a ``RESOLVED`` next_state. Idle sessions
+            (>24h) are abandoned by ``mira-bots/scripts/nightly_close_sessions.py``.
+
+        Asset context lives in ``metadata`` — chat surfaces carry no asset UUID,
+        so ``asset_id``/``component_id`` stay NULL (the column is nullable).
+        """
+        try:
+            import asyncio  # noqa: PLC0415
+
+            from .fsm import ACTIVE_DIAGNOSTIC_STATES  # noqa: PLC0415
+            from .troubleshooting_session import (  # noqa: PLC0415
+                append_turn_coro,
+                close_session_coro,
+                open_session_coro,
+            )
+
+            tenant_id = tenant_id or self.tenant_id
+            if not tenant_id:
+                return
+
+            state = self._load_state(chat_id)
+            if not isinstance(state, dict):
+                return
+            ctx = state.get("context") or {}
+            uns_context = ctx.get("uns_context") if isinstance(ctx, dict) else None
+            next_state = result.get("next_state") or ""
+            asset_label = state.get("asset_identified") or ""
+            gate_passed = bool(asset_label) and not (
+                isinstance(ctx, dict) and ctx.get("pending_uns_confirm")
+            )
+
+            async def _run() -> None:
+                sid = self._ts_sessions.get(chat_id)
+                if not sid and gate_passed and next_state in ACTIVE_DIAGNOSTIC_STATES:
+                    uc = uns_context if isinstance(uns_context, dict) else {}
+                    metadata = {
+                        "asset_label": asset_label,
+                        "manufacturer": uc.get("manufacturer"),
+                        "model": uc.get("model"),
+                        "uns_path": uc.get("uns_path"),
+                        "fault_code": uc.get("fault_code"),
+                        "source": uc.get("source"),
+                        "fsm_state": next_state,
+                    }
+                    sid = await open_session_coro(
+                        tenant_id=tenant_id,
+                        asset_id=None,
+                        component_id=None,
+                        channel=platform,
+                        metadata=metadata,
+                    )
+                    if sid:
+                        self._ts_sessions[chat_id] = sid
+                if not sid:
+                    return
+                await append_turn_coro(
+                    session_id=sid, tenant_id=tenant_id, role="user", content=message
+                )
+                await append_turn_coro(
+                    session_id=sid, tenant_id=tenant_id, role="assistant", content=reply
+                )
+                if next_state == "RESOLVED":
+                    await close_session_coro(session_id=sid, tenant_id=tenant_id, reason="resolved")
+                    self._ts_sessions.pop(chat_id, None)
+
+            task = asyncio.create_task(_run())
+            self._session_tasks.add(task)
+            task.add_done_callback(self._session_tasks.discard)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("session_lifecycle schedule skipped: %s", exc)
 
     def _maybe_attach_live_snapshot(
         self,
@@ -3392,6 +3512,56 @@ class Supervisor:
             lines.append("Safety: " + safety)
         return "\n--- LIVE EQUIPMENT STATUS ---\n" + "\n".join(lines) + "\n---\n"
 
+    # ------------------------------------------------------------------
+    # Contextualization-signals enrichment (additive, flag-gated)
+    # ------------------------------------------------------------------
+    async def _build_ctx_signals_context(self, state: dict, tenant_id: str | None) -> str:
+        """Best-effort approved PLC-signal context from kg_entities.
+
+        Queries for signals (entity_type='signal', approval_state IN
+        ('proposed','verified')) whose uns_path is a descendant of the asset's
+        resolved UNS path.  Returns a labeled block for prompt injection, or ""
+        on any miss.  Never raises.
+        """
+        if not _CTX_SIGNALS_ENABLED:
+            return ""
+        if not tenant_id:
+            return ""
+        asset = (state.get("asset_identified") or "").strip()
+        if not asset:
+            return ""
+        try:
+            uns_path = resolve_uns_path(asset).uns_path
+            if not uns_path:
+                return ""
+            ltree_prefix = uns_path.replace("/", ".")
+            signals = await asyncio.wait_for(
+                asyncio.to_thread(_fetch_ctx_approved_signals, tenant_id, ltree_prefix),
+                timeout=_CTX_SIGNALS_TIMEOUT_S,
+            )
+            return self._format_ctx_signals(signals)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("CTX_SIGNALS miss asset=%r: %s", asset, exc)
+            return ""
+
+    @staticmethod
+    def _format_ctx_signals(signals: list[dict]) -> str:
+        """Render approved ctx signals as a compact prompt block. Never raises."""
+        if not signals:
+            return ""
+        lines = ["\n--- APPROVED PLC SIGNALS ---"]
+        for s in signals:
+            roles = s.get("roles") or []
+            roles_str = ", ".join(roles) if roles else "unknown"
+            conf = s.get("confidence")
+            try:
+                conf_str = f" ({float(conf):.0%})" if conf is not None else ""
+            except (TypeError, ValueError):
+                conf_str = ""
+            lines.append(f"  {s['name']}: {s['uns_path']} [{roles_str}]{conf_str}")
+        lines.append("---\n")
+        return "\n".join(lines)
+
     async def _call_with_correction(
         self,
         message: str,
@@ -3415,7 +3585,8 @@ class Supervisor:
         # pre-formatted, self-labeled blocks; concatenate and inject as one.
         kg_context = await self._build_kg_context(state, tenant_id)
         live_context = await self._build_live_data_context(state)
-        extra_context = kg_context + live_context
+        ctx_signals_context = await self._build_ctx_signals_context(state, tenant_id)
+        extra_context = kg_context + live_context + ctx_signals_context
 
         for attempt in range(max_attempts):
             try:

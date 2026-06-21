@@ -8,7 +8,7 @@
 ---
 
 ## North Star
-- **🚦 BETA GATE — No beta until a stranger can upload their own equipment manual and get a cited answer without Mike manually fixing anything.** This is the release gate for the "Path to Beta Testers" phase. Tracked by `tests/beta/beta_ready_upload_retrieval_citation.py` (xfail until the gap closes) and `docs/plans/2026-06-07-path-to-beta.md`. Current blocker: upload→retrieval gap (document/manual uploads land in Open WebUI KB via mira-ingest `/ingest/document-kb`; chat retrieval reads only `knowledge_entries`) — see PR #1592.
+- **🚦 BETA GATE — A stranger can upload their own equipment manual and get a cited answer without Mike manually fixing anything.** The release gate for the "Path to Beta Testers" phase. **Status (2026-06-17): MET / PASSING on deploy truth** — the upload→retrieval gap is **closed** (#1592 folder=brain + #1863 blind-upload Inbox node + #1911 `is_private=true` + #2100 embed-on-write; un-xfailed in #2077). `tests/beta/beta_ready_upload_retrieval_citation.py` is now a **real assertion**, CI-enforced by `.github/workflows/beta-gate.yml` against a stranger provisioned on staging Neon. Don't reintroduce the gap: per-tenant uploads land in `knowledge_entries` (`is_private=true`) and are citable on the Hub NodeChat path — `/api/uploads/folder` (Open WebUI KB only) is **not** a citable door. Keep it green; see `docs/plans/2026-06-07-path-to-beta.md` and `.claude/rules/knowledge-entries-tenant-scoping.md`.
 - **🧭 PRODUCT DIRECTION — Train before deploy.** The Command Center (`mira-hub`) builds the namespace and **validates** MIRA. Ignition/HMI **consumes approved intelligence** — it is a deployment surface, not the onboarding system. Doctrine: `.claude/rules/train-before-deploy.md`; lifecycle spec: `docs/specs/asset-agent-validation-spec.md`.
 - **PRIMARY FOCUS — Master implementation plan:** `docs/plans/2026-06-01-mira-master-architecture-plan.md` — 14-phase build plan governing all current development. Every session must align to this plan. No unrelated dev projects until all phases are complete.
 - **PRIMARY:** `docs/THEORY_OF_OPERATIONS.md` — what MIRA is, how it works, why. Read first before any feature work.
@@ -170,6 +170,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 
 - **Architecture (layer map + dependency rules):** `docs/ARCHITECTURE.md`
 - **Quality score (domain grades):** `docs/QUALITY_SCORE.md`
+- **Agent eval / tracing / observability audit + decision:** `docs/observability/mira-agent-eval-audit.md` — KEEP RAGAS/DeepEval/5-regime evals; EXTEND with `mira-bots/shared/agent_trace.py` (cloud-free per-turn trace + JSONL + optional OTel/Phoenix via `MIRA_OTEL_ENDPOINT`, off by default). Phoenix optional; no LangGraph (ADR-0011).
 - **Harness plan (security/measurement/arch phases):** `docs/superpowers/plans/2026-04-17-harness-engineering-industrial-grade.md`
 - **Release notes:** `docs/CHANGELOG.md`
 - **Versioning & rollback (every merge bumps `/VERSION`, auto-tags `vX.Y.Z` + a rollback checkpoint):** `docs/versioning.md` — enforced by `version-gate.yml` (required) + `version-tag.yml`
@@ -185,6 +186,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **Sprint state:** `.planning/STATE.md`
 - **Active 90-day MVP plan:** `docs/plans/2026-04-19-mira-90-day-mvp.md` — locked 2026-04-19 → 2026-07-19; **read its "Currently in-flight" section + run the 3-command coordination check before claiming any work**
 - **Active namespace-builder plan:** `docs/plans/2026-05-15-maintenance-namespace-builder.md` — integrates with the 90-day plan (Units 2/4/9a fold in as Phase 1/2/4 components); has its own "Currently in-flight" section — check both.
+- **Maintenance Intelligence Module (self-onboarding Ignition module — "detect AND explain"):** resume `docs/RESUME_2026-06-14_maintenance-intelligence-module.md`; plan `~/.claude/plans/yes-map-the-path-warm-wadler.md`; proving plan `docs/plans/2026-06-14-proving-test-case-plan.md`. **Phase 1 DONE** (`83ea8e81`): the A0–A12 anomaly rules run **in-gateway** on a live Ignition tag snapshot (`ignition/webdev/FactoryLM/api/diagnose/`; rules in `plc/conv_simple_anomaly/rules_core.py`, dual Py2.7/3.12, drift-guarded by `tests/regime7_ignition/test_diagnose_parity.py`). NOTE: the Ignition **WebDev module is not installed** on the bench gateway (the HTTP endpoint 404s) — Phase 2 panel uses a Perspective project script, no WebDev needed.
 - **Dev loop (pre-commit + watcher):** `wiki/references/dev-loop.md`
 - **Karpathy principles (behavior rules):** `.claude/rules/karpathy-principles.md`
 - **Debugging & verification conventions:** `.claude/rules/debugging-conventions.md` — multi-cause perf debugging; verify schema/API paths before guessing

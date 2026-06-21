@@ -11,8 +11,19 @@ import type { PoolClient } from "pg";
  * `ts_rank_cd`) — the GIN index is already populated by the crawler.
  * No embeddings, no pgvector, no extra service.
  *
- * Caller MUST run this inside `withTenantContext` so RLS scopes rows
- * to the current tenant.
+ * `knowledge_entries` is a HYBRID corpus (see
+ * `.claude/rules/knowledge-entries-tenant-scoping.md`): the shared OEM library
+ * (`is_private = false`, owned by the system tenant) plus each tenant's own
+ * private uploads (`is_private = true`). The BM25 query therefore filters
+ * `(is_private = false OR tenant_id = $1)` — the same law `/api/documents`
+ * uses. This is why callers MUST run on the RAW owner pool (BYPASSRLS), NOT
+ * `withTenantContext`: the RLS policy on `knowledge_entries` is pure
+ * `tenant_id = app.tenant_id`, so under it the shared `is_private = false` OEM
+ * rows are invisible and a per-tenant caller would see ~0 manuals (the #1761 /
+ * #2178 bug — a customer's asset chat returned "no data" for every
+ * manufacturer because the OEM corpus lives under the system tenant).
+ * `cmms_equipment` and other pure-tenant joins still need an explicit
+ * `tenant_id = $caller` predicate (the IDOR half of #1833).
  */
 
 export interface ManualChunk {
@@ -227,7 +238,7 @@ async function runBm25Query(
           metadata->>'title' AS title,
           ts_rank_cd(content_tsv, ${tsquery}) AS rank
         FROM knowledge_entries
-        WHERE tenant_id = $1
+        WHERE (is_private = false OR tenant_id = $1)
           ${mfrClause}
           AND content_tsv @@ ${tsquery}
         ORDER BY rank DESC

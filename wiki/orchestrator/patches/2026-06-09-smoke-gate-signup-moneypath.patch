@@ -1,0 +1,18 @@
+diff --git a/.github/workflows/smoke-test.yml b/.github/workflows/smoke-test.yml
+index 6fdf8ddc..fd737e24 100644
+--- a/.github/workflows/smoke-test.yml
++++ b/.github/workflows/smoke-test.yml
+@@ -63,6 +63,13 @@ jobs:
+           HUB_URL: https://app.factorylm.com
+         run: npx playwright test --config playwright.smoke.config.ts
+ 
++      - name: Run signup money-path tests (pricing → trial CTA → checkout → magic link)
++        working-directory: mira-hub
++        env:
++          WEB_URL: https://factorylm.com
++          HUB_URL: https://app.factorylm.com
++        run: npx playwright test --config playwright.signup.config.ts
++
+       - name: Upload failure screenshots
+         if: failure()
+         uses: actions/upload-artifact@v7

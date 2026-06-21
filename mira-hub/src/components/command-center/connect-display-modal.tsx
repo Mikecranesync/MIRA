@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { X, Loader2, MonitorPlay, Link2, Server, Settings2, ChevronDown } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { X, Loader2, MonitorPlay, Link2, Server, Settings2, ChevronDown, Wifi, WifiOff } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 
 // Minimal node shape needed to pick a UNS target. Mirrors CCNode.
@@ -29,49 +29,43 @@ function flattenPickable(nodes: PickNode[]): FlatNode[] {
   return out;
 }
 
-// ── Known-gateway catalog (issue #2014, Phase 1) ─────────────────────────────
-// A plant user should pick a gateway + a named screen — never type scheme / host
-// / port / path. This static catalog is the Phase-1 stand-in for real gateway
-// discovery: it lists the gateways + Perspective screens MIRA already knows about
-// for this deployment. Selecting one fills the technical fields behind the scenes.
-//
-// Phase 2 replaces this constant with a per-tenant gateway registry populated
-// from mira-web activation (#2014 §1); Phase 3 lets the gateway REPORT its own
-// screens so the list is discovered, not hard-coded (#2014 §2). Until then the
-// "Advanced" escape hatch below covers any gateway/screen not in the catalog.
+// ── Gateway registry (issue #2014, Phase 2) ──────────────────────────────────
+// Gateways are now fetched from GET /api/command-center/gateways which reads
+// activated tenants from plg_activation_codes (mira-web activation flow).
+// Phase 3 will have the gateway report its own screens; until then each
+// activated gateway defaults to the known Ignition Perspective screen list.
 interface CatalogScreen {
   name: string;
   kind: string;
   path: string;
 }
 interface CatalogGateway {
-  id: string;
-  name: string;
+  id: string;       // hostname used as stable id
+  name: string;     // display label
   scheme: "http" | "https";
   host: string;
   port: number;
+  online: boolean;
   screens: CatalogScreen[];
 }
 
-const GATEWAY_CATALOG: CatalogGateway[] = [
-  {
-    id: "plc-laptop",
-    name: "PLC Laptop",
-    scheme: "http",
-    host: "100.72.2.99",
-    port: 8088,
-    screens: [
-      { name: "Conveyor Live", kind: "Ignition Perspective", path: "/data/perspective/client/ConvSimpleLive" },
-      { name: "Conveyor MIRA", kind: "Ignition Perspective", path: "/data/perspective/client/ConveyorMIRA" },
-    ],
-  },
+// Known Ignition Perspective screens for MIRA-connected gateways.
+// Replaced by gateway-reported screens in Phase 3 (#2014 §2).
+const DEFAULT_SCREENS: CatalogScreen[] = [
+  { name: "Conveyor Live",  kind: "Ignition Perspective", path: "/data/perspective/client/ConvSimpleLive" },
+  { name: "Conveyor MIRA",  kind: "Ignition Perspective", path: "/data/perspective/client/ConveyorMIRA" },
 ];
+
+function parseHostname(raw: string): { host: string; port: number } {
+  const [h, p] = raw.split(":");
+  return { host: h, port: p ? parseInt(p, 10) : 8088 };
+}
 
 const DISPLAY_TYPES = [
   { value: "web_iframe", label: "Web / HMI page (Ignition Perspective, panel page)" },
-  { value: "nodered", label: "Node-RED dashboard" },
-  { value: "signals", label: "Hub live-signal panel" },
-  { value: "vnc", label: "VNC (noVNC bridge)" },
+  { value: "nodered",    label: "Node-RED dashboard" },
+  { value: "signals",    label: "Hub live-signal panel" },
+  { value: "vnc",        label: "VNC (noVNC bridge)" },
 ];
 
 /**
@@ -80,9 +74,10 @@ const DISPLAY_TYPES = [
  * refreshes the tree so the new screen appears under "Live Views".
  *
  * SIMPLE mode (default, issue #2014): pick gateway → screen → machine. The
- * scheme/host/port/path come from the catalog — the user never types a URL.
+ * scheme/host/port/path come from the per-tenant gateway registry — the user
+ * never types a URL.
  * ADVANCED mode: the original manual scheme/host/port/path form, for a gateway
- * or screen not in the catalog. Same POST contract either way.
+ * or screen not in the registry. Same POST contract either way.
  */
 export function ConnectDisplayModal({
   nodes,
@@ -103,10 +98,46 @@ export function ConnectDisplayModal({
   );
   const [label, setLabel] = useState("");
 
+  // Phase 2: fetched gateway registry.
+  const [gateways, setGateways] = useState<CatalogGateway[]>([]);
+  const [gatewaysLoading, setGatewaysLoading] = useState(true);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/command-center/gateways`, { cache: "no-store" });
+        if (!res.ok) return;
+        const json = (await res.json()) as { gateways: Array<{ hostname: string; online: boolean }> };
+        setGateways(
+          json.gateways.map((g) => {
+            const { host, port } = parseHostname(g.hostname);
+            return {
+              id: g.hostname,
+              name: `Ignition @ ${host}`,
+              scheme: "http",
+              host,
+              port,
+              online: g.online,
+              screens: DEFAULT_SCREENS,
+            };
+          }),
+        );
+      } finally {
+        setGatewaysLoading(false);
+      }
+    })();
+  }, []);
+
   // Simple mode — gateway + screen selection.
-  const [gatewayId, setGatewayId] = useState(GATEWAY_CATALOG[0]?.id ?? "");
+  const [gatewayId, setGatewayId] = useState("");
   const [screenIdx, setScreenIdx] = useState(0);
-  const gateway = useMemo(() => GATEWAY_CATALOG.find((g) => g.id === gatewayId), [gatewayId]);
+  // Keep gateway selection in sync with fetched list: default to first gateway on load.
+  useEffect(() => {
+    if (gateways.length > 0 && gatewayId === "") {
+      setGatewayId(gateways[0].id);
+    }
+  }, [gateways, gatewayId]);
+  const gateway = useMemo(() => gateways.find((g) => g.id === gatewayId), [gateways, gatewayId]);
   const screen = gateway?.screens[screenIdx];
 
   // Advanced mode — manual URL pieces.
@@ -207,39 +238,62 @@ export function ConnectDisplayModal({
                   {/* 1 — Gateway */}
                   <label className="block">
                     <span className="mb-1 block text-xs font-medium text-slate-600">1. Gateway</span>
-                    <div className="relative">
-                      <Server className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                      <select
-                        value={gatewayId}
-                        onChange={(e) => { setGatewayId(e.target.value); setScreenIdx(0); }}
-                        className="w-full rounded-md border py-1.5 pl-7 pr-2 text-sm"
-                        style={{ borderColor: "var(--border, #e2e8f0)" }}
-                      >
-                        {GATEWAY_CATALOG.map((g) => (
-                          <option key={g.id} value={g.id}>{g.name}</option>
-                        ))}
-                      </select>
-                    </div>
+                    {gatewaysLoading ? (
+                      <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-xs text-slate-400" style={{ borderColor: "var(--border, #e2e8f0)" }}>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Loading connected gateways…
+                      </div>
+                    ) : gateways.length === 0 ? (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        No Ignition gateway connected yet. Activate MIRA Connect from the Ignition gateway to pair it, or use Advanced mode below.
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <Server className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                        <select
+                          value={gatewayId}
+                          onChange={(e) => { setGatewayId(e.target.value); setScreenIdx(0); }}
+                          className="w-full rounded-md border py-1.5 pl-7 pr-2 text-sm"
+                          style={{ borderColor: "var(--border, #e2e8f0)" }}
+                        >
+                          {gateways.map((g) => (
+                            <option key={g.id} value={g.id}>
+                              {g.name} {g.online ? "● online" : "○ offline"}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    {/* Online/offline badge for selected gateway */}
+                    {gateway && (
+                      <span className={`mt-1 flex items-center gap-1 text-[11px] ${gateway.online ? "text-green-600" : "text-amber-600"}`}>
+                        {gateway.online
+                          ? <><Wifi className="h-3 w-3" /> Gateway reachable</>
+                          : <><WifiOff className="h-3 w-3" /> Gateway unreachable — screen may not load</>}
+                      </span>
+                    )}
                   </label>
 
-                  {/* 2 — Screen */}
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-medium text-slate-600">2. Live screen</span>
-                    <select
-                      value={screenIdx}
-                      onChange={(e) => setScreenIdx(Number(e.target.value))}
-                      className="w-full rounded-md border px-2 py-1.5 text-sm"
-                      style={{ borderColor: "var(--border, #e2e8f0)" }}
-                    >
-                      {(gateway?.screens ?? []).map((s, i) => (
-                        <option key={s.path} value={i}>{s.name} — {s.kind}</option>
-                      ))}
-                    </select>
-                  </label>
+                  {/* 2 — Screen (only shown when a gateway is selected) */}
+                  {gateway && (
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-medium text-slate-600">2. Live screen</span>
+                      <select
+                        value={screenIdx}
+                        onChange={(e) => setScreenIdx(Number(e.target.value))}
+                        className="w-full rounded-md border px-2 py-1.5 text-sm"
+                        style={{ borderColor: "var(--border, #e2e8f0)" }}
+                      >
+                        {gateway.screens.map((s, i) => (
+                          <option key={s.path} value={i}>{s.name} — {s.kind}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
 
                   {/* 3 — Machine */}
                   <label className="block">
-                    <span className="mb-1 block text-xs font-medium text-slate-600">3. Machine</span>
+                    <span className="mb-1 block text-xs font-medium text-slate-600">{gateway ? "3." : "2."} Machine</span>
                     <select
                       value={unsPath}
                       onChange={(e) => setUnsPath(e.target.value)}

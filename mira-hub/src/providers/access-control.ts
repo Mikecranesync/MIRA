@@ -95,6 +95,19 @@ export const NAV_ITEMS: ReadonlyArray<{
   { key: "assets",        label: "Assets",        icon: "Wrench",        href: "/assets",        roles: [...ALL_ROLES], group: "secondary" },
   { key: "workorders",    label: "CMMS",          icon: "ClipboardList", href: "/workorders",    roles: [...ALL_ROLES], group: "secondary" },
   { key: "scan",          label: "Scan",          icon: "Cpu",           href: "/scan",          roles: [...ALL_ROLES], group: "secondary" },
+  // PLC program import — upload an offline L5X / tag-CSV export → parser report +
+  // proposed UNS paths → reviewable tag_mapping/kg_entity proposals (read-only, no PLC writes).
+  // Dev/internal tool — hidden from end users.
+  { key: "plc-import",    label: "PLC Import",    icon: "Upload",        href: "/plc-import",    roles: [...ADMIN_ROLES], group: "secondary", capability: "dev_tools.access" },
+  // HubV3 contextualization workspace — import equipment sources / offline bundles,
+  // review extracted signals + proposed UNS paths, promote to the KG (staged proposed).
+  // Dev/internal tool — hidden from end users.
+  { key: "ctx",           label: "Contextualization", icon: "Layers",    href: "/contextualization", roles: [...ADMIN_ROLES], group: "secondary", capability: "dev_tools.access" },
+  // HubV3 contextualization Review Queue — approve imported (offline/Telegram)
+  // context batches; approval publishes proposed → verified. Distinct from the
+  // internal staff "Review queue" (admin-review) above.
+  // Dev/internal tool — hidden from end users.
+  { key: "ctx-review",    label: "Import Review", icon: "Network",       href: "/contextualization/review", roles: [...ADMIN_ROLES], group: "secondary", capability: "dev_tools.access" },
   // Customer-facing workspace admin. Visible to every authenticated tenant user
   // (workspace caps); the page itself shows only what each capability allows.
   { key: "settings",      label: "Settings",      icon: "Settings",      href: "/settings",      roles: [...ALL_ROLES], group: "secondary" },

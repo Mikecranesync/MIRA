@@ -132,6 +132,36 @@ export default function ProposalsPage() {
     }
   }
 
+  async function decideSuggestion(suggestionId: string, decision: "verify" | "reject") {
+    setDeciding((s) => ({ ...s, [suggestionId]: decision }));
+    const previous = suggestions;
+    if (statusFilter === "proposed") {
+      setSuggestions((cur) => cur.filter((x) => x.id !== suggestionId));
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/suggestions/${suggestionId}/decide/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ decision }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      setToast(decision === "verify" ? "Suggestion accepted" : "Suggestion rejected");
+    } catch (e) {
+      setSuggestions(previous);
+      setToast(`Decide failed: ${(e as Error).message}`);
+    } finally {
+      setDeciding((s) => {
+        const next = { ...s };
+        delete next[suggestionId];
+        return next;
+      });
+      setTimeout(() => setToast(null), 4000);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -278,7 +308,14 @@ export default function ProposalsPage() {
               onDecide={decide}
             />
           )}
-          {suggestions.length > 0 && <SuggestionSection suggestions={suggestions} />}
+          {suggestions.length > 0 && (
+            <SuggestionSection
+              suggestions={suggestions}
+              canDecide={statusFilter === "proposed"}
+              deciding={deciding}
+              onDecide={decideSuggestion}
+            />
+          )}
           {(hasMore || suggestionsHasMore) && (
             <div className="flex justify-center pt-2">
               <button
@@ -476,11 +513,20 @@ function groupByRiskLevel(proposals: Proposal[]): {
   };
 }
 
-// Non-edge ai_suggestions render read-only here — the precomputed title/body
-// carry the human-readable content (mig 027). Approve/reject lands once the
-// proposal-transition helper (#1662) ships; until then the technician reviews
-// these in context. See #1663.
-function SuggestionSection({ suggestions }: { suggestions: Suggestion[] }) {
+// Non-edge ai_suggestions (mig 027). Approve/reject goes through the ADR-0017
+// transition helper via POST /api/suggestions/[id]/decide — accepting a
+// kg_entity creates a verified kg_entities row (served by i3X).
+function SuggestionSection({
+  suggestions,
+  canDecide,
+  deciding,
+  onDecide,
+}: {
+  suggestions: Suggestion[];
+  canDecide: boolean;
+  deciding: Record<string, "verify" | "reject" | undefined>;
+  onDecide: (id: string, decision: "verify" | "reject") => void;
+}) {
   return (
     <section data-testid="suggestions-section">
       <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -488,18 +534,35 @@ function SuggestionSection({ suggestions }: { suggestions: Suggestion[] }) {
       </h2>
       <p className="mb-3 text-xs text-slate-400">
         Entity, tag, component, UNS, and namespace proposals from ingestion and photo
-        scans. Approve/reject is coming with the transition helper (#1662).
+        scans. Accepting an entity promotes it into the verified knowledge graph.
       </p>
       <div className="space-y-2">
         {suggestions.map((s) => (
-          <SuggestionCard key={s.id} suggestion={s} />
+          <SuggestionCard
+            key={s.id}
+            suggestion={s}
+            canDecide={canDecide}
+            decidingState={deciding[s.id]}
+            onDecide={onDecide}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
+function SuggestionCard({
+  suggestion,
+  canDecide,
+  decidingState,
+  onDecide,
+}: {
+  suggestion: Suggestion;
+  canDecide: boolean;
+  decidingState: "verify" | "reject" | undefined;
+  onDecide: (id: string, decision: "verify" | "reject") => void;
+}) {
+  const busy = decidingState !== undefined;
   const confidencePct = Math.round(suggestion.confidence * 100);
   const accent =
     suggestion.riskLevel === "safety_critical"
@@ -549,6 +612,38 @@ function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
         <time className="ml-2" dateTime={suggestion.createdAt}>
           {new Date(suggestion.createdAt).toLocaleDateString()}
         </time>
+        {canDecide && (
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onDecide(suggestion.id, "reject")}
+              className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              data-testid="suggestion-reject"
+            >
+              {decidingState === "reject" ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <X className="h-3 w-3" />
+              )}
+              Reject
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onDecide(suggestion.id, "verify")}
+              className="inline-flex items-center gap-1 rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              data-testid="suggestion-verify"
+            >
+              {decidingState === "verify" ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Check className="h-3 w-3" />
+              )}
+              Accept
+            </button>
+          </div>
+        )}
       </footer>
     </article>
   );

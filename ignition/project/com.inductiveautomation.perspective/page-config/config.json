@@ -20,14 +20,6 @@
       }
     },
     {
-      "id": "page-speed-control",
-      "url": "/speed",
-      "primaryView": {
-        "viewPath": "SpeedControl",
-        "params": {}
-      }
-    },
-    {
       "id": "page-fault-log",
       "url": "/faults",
       "primaryView": {
@@ -67,6 +59,16 @@
       "primaryView": {
         "viewPath": "Mira/ConnectSetup",
         "params": {}
+      }
+    },
+    {
+      "id": "page-trends",
+      "url": "/trends",
+      "primaryView": {
+        "viewPath": "Trends/TrendPanel",
+        "params": {
+          "assetId": "conveyor_demo"
+        }
       }
     }
   ],

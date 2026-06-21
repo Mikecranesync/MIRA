@@ -52,7 +52,6 @@ beforeAll(async () => {
   // Patch the module-level pool the lib uses. The library imports `pool`
   // from "@/lib/db"; in tests we monkey-patch that module's export.
   const dbModule = await import("@/lib/db");
-  // @ts-expect-error — test-only override
   dbModule.default = testPool;
 });
 

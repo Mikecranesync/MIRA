@@ -124,7 +124,7 @@ The product wedge depends on this being a **boring** install for the customer's 
 ### 4.2 Tag access
 
 - **Allowlist-first.** `approved_tags.json` lives in the Ignition project. A tag NOT in this file is invisible to MIRA — the WebDev tag-browse endpoint filters to the allowlist; gateway-script subscriptions only subscribe to allowlisted paths.
-- **Read-only by default.** No WebDev or gateway-script path in MIRA's bundle calls `system.tag.writeBlocking`. (Distinct from `plc/live_monitor.py` which writes — that script ships in the *bench-development* tree, never in the customer module — see §11.)
+- **Read-only by default.** No WebDev or gateway-script path in MIRA's bundle calls `system.tag.writeBlocking`. (Distinct from `plc/live_monitor.py` which writes — that script ships in the *bench-development* tree, never in the customer module — see §11.) **Enforced** by `tests/regime7_ignition/test_no_customer_write_paths.py` (CI fails if a shipped Perspective view re-introduces `system.tag.write*`). The `SpeedControl` control view and the `FaultLog` clear-faults write were removed from the bundle on 2026-06-17 (v3.26.1) — VFD control is bench-only.
 - **Writes require explicit two-step approval.** Even in a future "operator-assisted" mode: (1) tag added to a `writable_tags.json` by an Ignition admin (out-of-band) AND (2) cloud-side per-prompt approval bypass token. MVP ships with this feature **disabled** and the code path absent.
 - **Per-tag observability.** Every read goes into `audit_log` with `{tag_path, asset_id, requester (chat/tag-stream), timestamp}`. The admin Perspective page shows a live tail.
 

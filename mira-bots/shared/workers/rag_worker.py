@@ -21,6 +21,7 @@ from ..agentic_retrieval import (
 from ..guardrails import rewrite_question, vendor_name_from_text, vendor_support_url
 from ..inference.router import InferenceRouter
 from ..langfuse_setup import trace_rag_query
+from ..uns_resolver import canonical_vendor
 
 # CRA-11 / Unit 2 — citation infrastructure.
 #
@@ -56,6 +57,35 @@ def format_source_label(chunk: dict | None) -> str:
     if head:
         return head
     return section
+
+
+def chunk_matches_vendor(chunk_manufacturer: str | None, query_vendor: str | None) -> bool:
+    """Should a retrieved chunk survive the cross-vendor filter?
+
+    Keep a chunk when ANY of:
+      * it has no manufacturer tag (generic content — fault tables, app notes), OR
+      * its manufacturer canonicalizes to the SAME OEM as the query vendor
+        (alias-aware: an ``Allen-Bradley`` chunk matches a ``Rockwell Automation``
+        query — both are Rockwell — which a raw substring compare gets WRONG and
+        silently drops 315 correct PowerFlex chunks; this is the bug this fixes), OR
+      * the raw lowercased substring still matches (preserves the prior behavior
+        exactly — this clause is purely additive, so we never drop a chunk the old
+        filter kept; we only RESCUE same-vendor-different-brand chunks).
+
+    Only chunks whose manufacturer is a *recognized, different* vendor are
+    dropped. Mirrors ``citation_compliance``'s canonicalization so the retrieval
+    filter and the citation gate agree on "same vendor".
+    """
+    if not chunk_manufacturer:
+        return True
+    if not query_vendor:
+        return True
+    qv = query_vendor.lower()
+    mfr = chunk_manufacturer.lower()
+    if qv in mfr:  # old substring behavior — preserved
+        return True
+    cq, cm = canonical_vendor(query_vendor), canonical_vendor(chunk_manufacturer)
+    return cq is not None and cq == cm
 
 
 # Max tokens to allocate for conversation history in the prompt.
@@ -595,12 +625,10 @@ class RAGWorker:
                     "manufacturer"
                 )
                 if query_vendor:
-                    qv_lower = query_vendor.lower()
                     filtered_chunks = [
                         c
                         for c in neon_chunks
-                        if not c.get("manufacturer")
-                        or qv_lower in (c.get("manufacturer") or "").lower()
+                        if chunk_matches_vendor(c.get("manufacturer"), query_vendor)
                     ]
                     if filtered_chunks:
                         dropped = len(neon_chunks) - len(filtered_chunks)
