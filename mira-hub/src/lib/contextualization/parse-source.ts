@@ -145,10 +145,12 @@ function ingestError(status: number, body: unknown): string {
 /**
  * Forward an uploaded PLC export to mira-ingest `/ingest/plc-parse` and return the
  * report, or a legible error. No DB access — the caller writes ctx_* under tenant
- * context. `include_i3x=false`: we derive `i3x_element_id` from the report's UNS
- * path, so the heavier i3X payload isn't needed.
+ * context. The `File` is appended straight to the multipart body (matching
+ * lib/plc-import.ts), so it streams without an extra in-memory copy.
+ * `include_i3x=false`: we derive `i3x_element_id` from the report's UNS path, so
+ * the heavier i3X payload isn't needed.
  */
-export async function parsePlcViaIngest(fileName: string, bytes: Uint8Array): Promise<ParseOutcome> {
+export async function parsePlcViaIngest(file: File): Promise<ParseOutcome> {
   let base: string;
   try {
     base = ingestBase();
@@ -157,8 +159,8 @@ export async function parsePlcViaIngest(fileName: string, bytes: Uint8Array): Pr
   }
 
   const out = new FormData();
-  out.append("file", new Blob([bytes]), fileName);
-  out.append("filename", fileName);
+  out.append("file", file, file.name);
+  out.append("filename", file.name);
   out.append("include_i3x", "false");
 
   let res: Response;

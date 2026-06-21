@@ -196,7 +196,7 @@ export async function POST(
 
   // 2) Parse via mira-ingest (HTTP, no DB held open), then 3) write the result.
   // EVERY parse failure flips the source to 'error' so it never sticks at 'pending'.
-  const parsed = await parsePlcViaIngest(fileName, bytes);
+  const parsed = await parsePlcViaIngest(file);
 
   let finalStatus = "done";
   let extractionsCreated = 0;

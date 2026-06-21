@@ -103,7 +103,10 @@ services:
     mem_limit: 512m
     memswap_limit: 512m
     build:
-      context: ./mira-ingest
+      # Repo-root context (matches mira-pipeline below + docker-compose.saas.yml)
+      # so the Dockerfile can COPY the stdlib-only mira-plc-parser/ package in.
+      context: ..
+      dockerfile: mira-core/mira-ingest/Dockerfile
     container_name: mira-ingest
     environment:
       - MIRA_DB_PATH=/app/mira.db
