@@ -95,6 +95,9 @@ export const NAV_ITEMS: ReadonlyArray<{
   { key: "assets",        label: "Assets",        icon: "Wrench",        href: "/assets",        roles: [...ALL_ROLES], group: "secondary" },
   { key: "workorders",    label: "CMMS",          icon: "ClipboardList", href: "/workorders",    roles: [...ALL_ROLES], group: "secondary" },
   { key: "scan",          label: "Scan",          icon: "Cpu",           href: "/scan",          roles: [...ALL_ROLES], group: "secondary" },
+  // PLC program import — upload an offline L5X / tag-CSV export → parser report +
+  // proposed UNS paths → reviewable tag_mapping/kg_entity proposals (read-only, no PLC writes).
+  { key: "plc-import",    label: "PLC Import",    icon: "Upload",        href: "/plc-import",    roles: [...ADMIN_ROLES], group: "secondary" },
   // HubV3 contextualization workspace — import equipment sources / offline bundles,
   // review extracted signals + proposed UNS paths, promote to the KG (staged proposed).
   { key: "ctx",           label: "Contextualization", icon: "Layers",    href: "/contextualization", roles: [...ADMIN_ROLES], group: "secondary" },

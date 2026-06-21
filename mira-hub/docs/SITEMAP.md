@@ -10,10 +10,10 @@
 
 | Surface | Count |
 |---|---|
-| Pages | **61** (8 dynamic) |
+| Pages | **62** (8 dynamic) |
 | API routes | **145** (43 dynamic) |
 
-## Pages (61)
+## Pages (62)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -54,6 +54,7 @@
 | `/parts` | static | `(hub)/parts/page.tsx` |
 | `/parts/[id]` | dynamic | `(hub)/parts/[id]/page.tsx` |
 | `/pending-approval` | static | `(hub)/pending-approval/page.tsx` |
+| `/plc-import` | static | `(hub)/plc-import/page.tsx` |
 | `/proposals` | static | `(hub)/proposals/page.tsx` |
 | `/quickstart` | static | `quickstart/page.tsx` |
 | `/reports` | static | `(hub)/reports/page.tsx` |
