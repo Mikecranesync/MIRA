@@ -20,6 +20,7 @@
 import { randomUUID } from "crypto";
 import { withTenantContext } from "@/lib/tenant-context";
 import { createUpload, updateUploadStatus } from "@/lib/uploads";
+import { proposeDocumentEdgesForNode } from "@/lib/node-document-proposals";
 import { extractText, getDocumentProxy } from "unpdf";
 
 const CHUNK_CHARS = 1000;
@@ -341,6 +342,13 @@ export async function ingestPdfToNode(opts: {
       buffer,
     });
     await updateUploadStatus(upload.id, tenantId, "parsed", null, { kbChunkCount: chunkCount });
+
+    // Fire-and-forget: propose a grounded HAS_DOCUMENT edge node→manual on the
+    // graph (Phase 2 of the KG navigator). Decoupled + never-throws, exactly like
+    // the embed pass above — a proposal failure must NOT flip the upload to failed
+    // or surface to the caller. Promotion to a verified edge is a human action.
+    void proposeDocumentEdgesForNode({ tenantId, uploadId: upload.id, nodeId, unsPath, filename, chunkCount });
+
     return { uploadId: upload.id, chunkCount };
   } catch (err) {
     await updateUploadStatus(upload.id, tenantId, "failed", (err as Error).message);
