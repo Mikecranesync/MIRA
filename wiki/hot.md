@@ -1,3 +1,27 @@
+# Hot Cache — 2026-06-21 — CLOUD (routine: promo-director refresh)
+
+## Routine — 2026-06-21 (promo-director competitor cache refresh + stop-gate fix)
+
+**PR #2163** open on branch `chore/promo-director-refresh-2026-06-21`. Contains:
+
+1. **`chore(promo-director): COMPETITOR_ANALYSIS.md refresh 2026-06-21`** (commit `788b0f7`)
+   - 7 new findings since last refresh (2026-05-03):
+   - **MaintainX**: $3.6B Autodesk acquisition (May 28, 2026) — largest strategic signal. MIRA's "specialist vs acquiree" contrast is now the headline competitive angle.
+   - **UpKeep**: Nova AI 3-5X speed bump + residential pivot (June 5, 2026). Losing industrial focus.
+   - **Siemens**: Intelligence Center X (June 1, Realize LIVE) — "85% resolution time reduction" claim + "hybrid workforce" anti-pattern.
+   - **Notion**: 3.5 Developer Platform (May 13) — "agent-host" framing, 1M agents.
+   - Cross-vendor patterns: added "SaaS-as-agent-host" winning hook row.
+
+2. **`fix(stop-gate): skip ruff on deleted files to avoid E902`** (commit `7cdcdf7`)
+   - `tools/hooks/stop-gate.sh` called `ruff check` on deleted `.py` files in the merge-base diff → E902. Fixed with existence filter.
+
+3. **`fix(stop-gate): bump VERSION 3.35.0 → 3.35.1`** (commit `9bd46db`)
+   - Patch bump required because stop-gate.sh is a non-doc code file.
+
+**CI at session end:** Staging gate PASSED (15/15, mean 4.93). Version Bump Check running (3.35.1 > 3.35.0 will pass). E2E smoke: pre-existing prod health failure unrelated to this PR.
+
+---
+
 # Hot Cache — 2026-06-12 — PLC laptop
 
 ## Session — 2026-06-13 (Trends V2 layer-1 CORRECTED — built on the REAL Prog_init)
