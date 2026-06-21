@@ -28,6 +28,13 @@ COPY mira-core/mira-ingest/db/ db/
 # the 503 it served while unwired.
 COPY mira-plc-parser/mira_plc_parser/ ./mira_plc_parser/
 
+# The CSV tag-export parser (mira_plc_parser/parsers/csv_tags.py) reuses the pure,
+# self-contained tag_csv.py from the Ignition tree by path. That tree is NOT in this
+# image (we COPY only the package), so bundle the one file and point the parser at it
+# via MIRA_TAG_CSV_PATH — otherwise CSV uploads 500 with FileNotFoundError.
+COPY ignition/webdev/FactoryLM/api/diagnose/tag_csv.py ./vendor/tag_csv.py
+ENV MIRA_TAG_CSV_PATH=/app/vendor/tag_csv.py
+
 RUN addgroup --system --gid 1001 mira && \
     adduser --system --uid 1001 --ingroup mira mira
 
