@@ -171,6 +171,31 @@ Stardust Racers tree, `/proposals` → the 3 pending edges, `/assets/` for the s
 
 ---
 
+## 5. Provision QA standing access to the Stardust tenant (chosen path)
+
+Decision (2026-06-21): give a **dedicated existing member of tenant `e88bd0e8`** a
+password so the headless QA agent can use the password login. We reuse
+`rico@factorylm.com` (already a `technician` member of that tenant — an apt secret-shopper
+persona) rather than seeding synthetic users (which would land in the wrong tenant) or
+sharing Mike's admin account.
+
+**Operator (Mike) runs — prod write, your authorized action; agents must not run it:**
+```bash
+# staging first if you want a dry run on stg-shape data, then prod:
+QA_PASSWORD='<pick-a-strong-password>' \
+doppler run --project factorylm --config prd -- \
+  bun run mira-hub/scripts/set-qa-member-password.ts
+# defaults: QA_EMAIL=rico@factorylm.com  QA_TENANT_ID=e88bd0e8-8a84-4e30-9803-c0dc6efb07fe
+```
+The script (`mira-hub/scripts/set-qa-member-password.ts`) **only sets a password on a member
+that already exists in that tenant** — it never creates an account or changes membership, and
+refuses if the email isn't found in the tenant. Then share `rico@factorylm.com` + the password
+with the QA agent out-of-band. The agent logs in via **"Sign in with password"** and lands in
+the Stardust tenant.
+
+**Revoke when done:** `UPDATE hub_users SET password_hash = NULL WHERE email='rico@factorylm.com'
+AND tenant_id='e88bd0e8-8a84-4e30-9803-c0dc6efb07fe';` (sends the account back to SSO-only).
+
 ## Cross-references
 - `tools/seeds/epic-universe-stardust-racers.sql` — Stardust UNS seed (source of truth)
 - `tools/seeds/run_demo_seed.py` — seed runner (`--tenant epic-universe`)
