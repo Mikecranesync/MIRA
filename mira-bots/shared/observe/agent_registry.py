@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -68,6 +69,17 @@ _WRITE_VERBS = (
 DEFAULT_AGENT_ID = "maintenance_troubleshooter"
 
 _MANIFEST_DIR = Path(__file__).resolve().parent / "agent_manifests"
+
+
+@lru_cache(maxsize=256)
+def _signal_re(signal: str) -> "re.Pattern[str]":
+    """Compile a route signal to a word-boundary-anchored regex (cached)."""
+    return re.compile(r"\b" + re.escape(signal) + r"\b")
+
+
+def _signal_matches(signal: str, question_lower: str) -> bool:
+    """True if ``signal`` appears in the question on word boundaries."""
+    return bool(_signal_re(signal).search(question_lower))
 
 
 def is_write_tool(tool: str) -> bool:
@@ -193,9 +205,11 @@ def route_agent(
     best_len = 0
     for manifest in registry.values():
         for signal in manifest.route_signals:
-            if signal == "default":
+            if signal == "default" or not signal:
                 continue
-            if signal and signal in q and len(signal) > best_len:
+            # Word-boundary match so "rated" doesn't fire on "operated" and
+            # "prior" doesn't fire on "priority". Labels only — never the reply.
+            if _signal_matches(signal, q) and len(signal) > best_len:
                 best = manifest
                 best_len = len(signal)
     if best is not None:

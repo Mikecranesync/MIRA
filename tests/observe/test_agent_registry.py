@@ -115,6 +115,15 @@ def test_routing_handles_empty_question():
     assert m is not None  # falls back to default, never crashes
 
 
+def test_routing_uses_word_boundaries_not_substrings():
+    # "rated" must not fire inside "operated"; "prior" not inside "priority".
+    m = route_agent("why is the motor operated at this priority level?")
+    assert m is not None
+    assert m.id != "manual_qa"  # would mis-route on bare substring match
+    # but a real boundary hit still routes
+    assert route_agent("what is the rated torque?").id == "manual_qa"
+
+
 # --- output-contract check (observational) ---------------------------------
 
 
