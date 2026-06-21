@@ -34,7 +34,8 @@ export type Capability =
   | "audit_log.read"
   | "review_queue.read"
   | "review_queue.decide"
-  | "platform.users.read";
+  | "platform.users.read"
+  | "dev_tools.access";
 
 // Available to every authenticated tenant user for their own tenant.
 const WORKSPACE_CAPS: Capability[] = [
