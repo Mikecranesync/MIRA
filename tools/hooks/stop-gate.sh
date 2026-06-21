@@ -46,9 +46,13 @@ FAILS=()
 # files are passed explicitly (Jython under ignition/webdev/ would otherwise
 # be linted as if it were CPython and fail with F821 on system.*/java.io.*).
 if [ -n "$CHANGED_PY" ] && command -v ruff >/dev/null 2>&1; then
-  # shellcheck disable=SC2086
-  if ! ruff check --force-exclude $CHANGED_PY --quiet >/tmp/mira-stop-ruff.log 2>&1; then
-    FAILS+=("ruff failed (cat /tmp/mira-stop-ruff.log)")
+  # Filter to files that exist — deleted files in the diff range cause E902.
+  EXISTING_PY=$(echo "$CHANGED_PY" | while IFS= read -r f; do [ -f "$ROOT/$f" ] && echo "$f"; done || true)
+  if [ -n "$EXISTING_PY" ]; then
+    # shellcheck disable=SC2086
+    if ! ruff check --force-exclude $EXISTING_PY --quiet >/tmp/mira-stop-ruff.log 2>&1; then
+      FAILS+=("ruff failed (cat /tmp/mira-stop-ruff.log)")
+    fi
   fi
 fi
 
