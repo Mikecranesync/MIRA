@@ -21,7 +21,7 @@ three separate datasets in play:
 | # | Tenant | Tenant id | What's in it | Seeded by |
 |---|---|---|---|---|
 | 1 | **Synthetic Test Plant — Lake Wales FL** | `00000000-…-000000000099` | 4 personas (carlos/dana/plantmgr/cfo); equipment VFD-07 (AB PowerFlex 755, fault F005), CONV-03 (Dorner 2100), Goulds 3196 pump | `mira-hub/scripts/seed-synthetic-users.ts` |
-| 2 | **Epic Universe / Celestial Park (Stardust Racers)** | the **UUID you pass at seed time** (`--tenant-id <UUID>`) — NOT a fixed id | `enterprise.celestial_park.stardust_racers` UNS tree: Launch 1, Launch 2, Station Load, Station Unload + 3 pending relationship proposals | `tools/seeds/run_demo_seed.py --tenant epic-universe --tenant-id <UUID>` (file: `tools/seeds/epic-universe-stardust-racers.sql`) |
+| 2 | **Epic Universe / Celestial Park (Stardust Racers)** | **`e88bd0e8-8a84-4e30-9803-c0dc6efb07fe`** (= Mike's own primary tenant, confirmed on prod) | `enterprise.celestial_park.stardust_racers` UNS tree: Launch 1, Launch 2, Station Load, Station Unload + 3 pending relationship proposals | `tools/seeds/run_demo_seed.py --tenant epic-universe --tenant-id <UUID>` (file: `tools/seeds/epic-universe-stardust-racers.sql`) |
 | 3 | **"Playwright · admin"** (the live browser session on CHARLIE) | (live) | AutomationDirect **GS1-45P0** asset; **WO-2FDA708E** "QA Secret Shopper CMMS Asset" — Packaging Line 2 pump bearing noise + conveyor stops | ad-hoc QA seeding |
 
 **Verified 2026-06-21 from the live app (read-only):** the persisted CHARLIE Playwright
@@ -52,44 +52,40 @@ Login path: `/login` → **"Sign in with password"** (NextAuth `credentials` pro
 differentiated in the seeder. If you need true Technician-vs-Manager RBAC testing, that's a
 gap to raise, not something the current seed gives you.
 
-**⚠️ Do these creds exist on PROD? UNVERIFIED — and it's a decision for Mike, not an
-autonomous action.**
+**✅ CONFIRMED on PROD (2026-06-21, read-only via `db-inspect.yml` target=prod):**
+the synthetic personas **do NOT exist on production** — `hub_users LIKE '%@synthetic.test'`
+returns **0 rows**, and tenant `…099` returns **0 rows**. The seeder was only ever run
+local/staging (its header says *"Never use in production"*). ⇒ **`carlos@synthetic.test /
+SynthTest2026!` will not log in on `app.factorylm.com`.** (The login *mechanism* works — the
+password path validates against the real backend; there's just no such account.)
 
-- The seeder writes to **whatever `NEON_DATABASE_URL` points at** (local / staging / prod).
-  Its own header says *"Never use in production"* and the password is *"intentionally weak,
-  synthetic-only."*
-- An out-of-band NextAuth credential probe against prod was **correctly blocked** by the
-  safety classifier as unauthorized production login. Logging out the shared CHARLIE browser
-  to test interactively is unsafe (shared Playwright profile — see
-  `[[project_concurrent_writers]]`). So whether `carlos@synthetic.test` authenticates on
-  prod today is **not confirmed**.
+**The decisive twist — Stardust Racers lives in MIKE'S OWN tenant, not a demo/synthetic
+tenant.** The `enterprise.celestial_park` subtree is owned by tenant
+`e88bd0e8-8a84-4e30-9803-c0dc6efb07fe`, whose 9 users include `harperhousebuyers@gmail.com`
+(Mike, owner) and `mike@cranesync.com` (Mike, owner). Of those 9, **only `mike@cranesync.com`
+has a password set** (`has_password=t`); the other 8 (incl. Mike's Google account and
+`alex@/deb@/elena@/holt@/linda@/marcus@/rico@factorylm.com`) are **Google-SSO only**.
 
-**Mike picks one** (none is pre-authorized for an agent to do alone):
-1. **Authorize a one-off login test** — agent runs the read-only NextAuth probe (or a
-   single browser login in an isolated profile) and reports yes/no. Lowest blast radius.
-2. **Seed synthetic users into prod** — `NEON_DATABASE_URL=<prd> bun run
-   mira-hub/scripts/seed-synthetic-users.ts`. Plants a known-weak password on the live app;
-   only acceptable if these accounts are explicitly disposable. Idempotent (deterministic
-   UUIDs + ON CONFLICT).
-3. **Create a real disposable test account** via the live signup flow (UUID tenant, real
-   password) — cleanest for prod; gives you a genuine "stranger" tenant for the beta-gate
-   path.
+⇒ **Seeding synthetic users into prod is the WRONG move for a Stardust test** — `carlos`
+would land in the (currently nonexistent) Lake Wales tenant `…099`, which has **no Stardust
+data**. He'd authenticate and see an empty plant. To *see Stardust* you need an account that
+belongs to tenant `e88bd0e8`.
 
-**Meanwhile:** the existing **"Playwright · admin"** prod session already gives working,
-read-only access to a real tenant's UNS/asset/WO surfaces — use it for secret-shopper
-*exploration* now; you don't need the synthetic creds to start looking.
+**Recommended paths to give a QA agent access to Stardust (Mike's call):**
+1. **Tonight, fastest:** Mike (logged in as himself) screenshots the `/namespace/` Stardust
+   tree + `/assets/` + `/proposals` and hands them over. *Note: the photo-gathering checklist
+   in §3 is already built from the seed + confirmed prod data — you don't actually need
+   screenshots to get it.*
+2. **Standing access, clean:** Mike sets a password on (or invites) a **dedicated test member
+   of tenant `e88bd0e8`** — e.g. enable a password for the existing `rico@factorylm.com`
+   (technician) member, or invite a fresh QA member. Gives a real, non-admin login that sees
+   Stardust without sharing Mike's own admin account.
+3. **Avoid:** seeding `seed-synthetic-users.ts` against prod — pollutes prod with a weak
+   password AND lands in the wrong (Stardust-less) tenant. Doubly wrong here.
 
-**Read-only way to settle §1+§2 with evidence** (sanctioned; no prod write): extend
-`.github/workflows/db-inspect.yml` (target `prod`) — or have Mike run via Doppler —
-with:
-```sql
-SELECT u.email, t.id AS tenant_id, t.name
-  FROM hub_users u JOIN hub_tenants t ON t.id = u.tenant_id
- WHERE u.email LIKE '%@synthetic.test';
-SELECT tenant_id, uns_path FROM kg_entities WHERE uns_path <@ 'enterprise.celestial_park';
-```
-A "0 rows" only means "missing" once you've confirmed the query hit **prod** (per
-`.claude/rules/debugging-conventions.md` — unverified target ⇒ inconclusive).
+This was settled read-only via the **`Secret-shopper testing prerequisites probe`** step
+added to `.github/workflows/db-inspect.yml` (sanctioned prod read; no write). Re-run:
+`gh workflow run db-inspect.yml --ref <branch> -f target=prod`.
 
 ---
 
