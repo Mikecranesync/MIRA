@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.14.1 — 2026-06-20
+- fix(hub): "New Project" on the Contextualization page no longer lands on a broken **"invalid id"** screen. `POST /api/contextualization` returns `{ project: { id } }`, but the create handler read `data.id` (undefined) → routed to `/contextualization/undefined` → the extractions API rejected it. Now reads `data.project.id` with a guard. Pre-existing bug, exposed once the page got a sidebar link in v2.14.0.
+
 ## v2.14.0 — 2026-06-20
 - feat(hub): "Import bundle" control on the Contextualization Projects page — file-picker + page drag-drop that POSTs an offline Factory Context Bundle (`.zip`) to the existing `POST /api/contextualization/import` (multipart) and routes into the new project's signal review. Also adds the missing **"Contextualization"** sidebar nav item (`/contextualization`, ADMIN_ROLES) — previously the page had no nav link at all; the only entry was "Import Review" → the Review Queue. The bundle path creates a project (not a review-queue batch) and parses inline (no host-local worker dependency). Corrected the Review Queue empty-state copy, which falsely promised bundle import there → now points to the Projects page (the queue holds Telegram/contract imports). No backend change; `/import` + `parseBundle` proven against a real 102-signal bundle. See `docs/runbooks/hubv3-e2e-proof-2026-06-20.md`.
 

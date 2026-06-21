@@ -86,10 +86,15 @@ export default function ContextualizationPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      // POST returns { project: { id, ... } } — read the nested id, not data.id
+      // (the old data.id was undefined → routed to /contextualization/undefined →
+      // the extractions API rejected it with "invalid id").
+      const newId = data.project?.id;
+      if (!newId) throw new Error("Create returned no project id");
       setShowModal(false);
       setNewName("");
       setNewDesc("");
-      router.push(`/contextualization/${data.id}`);
+      router.push(`/contextualization/${newId}`);
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : "Failed to create project");
     } finally {
