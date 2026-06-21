@@ -141,7 +141,9 @@ product is **read-only analysis of exported programs** — safer and easier to s
 2. **Eval dataset (done):** synthetic L5X / CSV / ST / PLCopen fixtures + golden `report@1` snapshots.
 3. **IR hardening (done):** `report@1` shape pinned by golden tests; camelCase tokenizer fix.
 4. **PLCopen XML + Structured Text (done):** ST is the reasoning bridge; PLCopen reuses the ST lift.
-5. **Analysis depth (next):** timers→fault chains, permissives/interlocks, sequence/state extraction.
+5. **Analysis depth (done):** permissives/interlocks (safety interlocks → REVIEW), timer→fault chains
+   (the watchdog pattern), and sequence/state extraction (CASE / step-counter logic). All deterministic,
+   confidence-graded, surfaced in `report@1` (`permissives` / `timer_chains` / `sequences`).
 6. **Siemens** via TIA Portal Openness XML exports (not closed project files) — recognized, parser pending.
 7. **PDF / screenshot** fallback (OCR, low confidence) — last.
 

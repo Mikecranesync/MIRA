@@ -36,11 +36,14 @@
     "controllers": 1,
     "fault_candidates": 4,
     "outputs": 3,
+    "permissives": 1,
     "programs": 1,
     "review_required": 1,
     "routines": 2,
     "rungs": 3,
+    "sequences": 0,
     "tags": 11,
+    "timer_chains": 0,
     "vfd_signal_candidates": 3
   },
   "detection": {
@@ -117,6 +120,20 @@
       "name": "Run_Timer"
     }
   ],
+  "permissives": [
+    {
+      "confidence": "review",
+      "detail": "requires: Start_PB, Stop_PB, EStop_OK, Auto_Mode, Conv_Fault | safety interlock (REVIEW): EStop_OK | mode: Auto_Mode",
+      "evidence": [
+        "MainProgram/MainRoutine/Rung[0]"
+      ],
+      "interlocks": [
+        "EStop_OK"
+      ],
+      "kind": "permissive",
+      "name": "Motor_Run"
+    }
+  ],
   "review_required": [
     {
       "confidence": "review",
@@ -159,6 +176,7 @@
     }
   ],
   "schema": "mira-plc-parser/report@1",
+  "sequences": [],
   "tag_dictionary": [
     {
       "address": "",
@@ -323,6 +341,7 @@
       "used_in": []
     }
   ],
+  "timer_chains": [],
   "vendor": "Rockwell Automation",
   "vfd_signal_candidates": [
     {

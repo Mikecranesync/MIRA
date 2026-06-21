@@ -109,6 +109,25 @@ def render_markdown(result: ParseResult) -> str:
         for f in r.vfd_signal_candidates[:40]:
             lines.append("- **%s** — %s" % (f.name, f.detail))
 
+    if r.permissives:
+        lines.append("")
+        lines.append("## Permissives & interlocks")
+        for f in r.permissives[:40]:
+            lines.append("- **%s** (%s) — %s" % (f.name, f.confidence, f.detail))
+
+    if r.timer_chains:
+        lines.append("")
+        lines.append("## Timer → fault chains")
+        for f in r.timer_chains[:40]:
+            where = ", ".join(f.evidence[:4])
+            lines.append("- **%s** (%s) — %s [%s]" % (f.name, f.confidence, f.detail, where))
+
+    if r.sequences:
+        lines.append("")
+        lines.append("## Sequence / state logic")
+        for f in r.sequences[:40]:
+            lines.append("- **%s** (%s) — %s" % (f.name, f.confidence, f.detail))
+
     if r.routine_summaries:
         lines.append("")
         lines.append("## Routines")
@@ -119,9 +138,17 @@ def render_markdown(result: ParseResult) -> str:
 
 
 def _finding(f) -> dict:
-    """One analyze.Finding -> a plain JSON-safe dict (confidence is already a .value string)."""
-    return {"kind": f.kind, "name": f.name, "detail": f.detail,
-            "confidence": f.confidence, "evidence": list(f.evidence)}
+    """One analyze.Finding -> a plain JSON-safe dict (confidence is already a .value string).
+
+    The Phase-5 fields (interlocks, transitions) are only emitted when set, so existing finding
+    kinds keep their original shape in the report@1 contract."""
+    d = {"kind": f.kind, "name": f.name, "detail": f.detail,
+         "confidence": f.confidence, "evidence": list(f.evidence)}
+    if getattr(f, "interlocks", None):
+        d["interlocks"] = list(f.interlocks)
+    if getattr(f, "transitions", 0):
+        d["transitions"] = f.transitions
+    return d
 
 
 def render_json(result: ParseResult) -> dict:
@@ -148,6 +175,9 @@ def render_json(result: ParseResult) -> dict:
         "fault_candidates": [_finding(f) for f in r.fault_candidates],
         "asset_candidates": [_finding(f) for f in r.asset_candidates],
         "vfd_signal_candidates": [_finding(f) for f in r.vfd_signal_candidates],
+        "permissives": [_finding(f) for f in r.permissives],
+        "timer_chains": [_finding(f) for f in r.timer_chains],
+        "sequences": [_finding(f) for f in r.sequences],
         "routine_summaries": r.routine_summaries,
         "tag_dictionary": r.tag_dictionary,
         "warnings": list(r.warnings),

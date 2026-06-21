@@ -45,6 +45,15 @@ _SAFETY_PAT = _kw(["e[_ -]?stop", "emergency", "guard", "safety", "lightcurtain"
 _ASSET_PAT = _kw(["motor", "conv", "conveyor", "pump", "valve", "solenoid", "vfd", "drive", "fan",
                   "heater", "horn", "light", "lamp", "cylinder", "gate", "damper", "mixer", "agitator"])
 _INPUT_PAT = _kw(["pb", "push", "switch", "sensor", "prox", "photoeye", "limit", "input"])
+# sequence/state-machine variable names (a step counter / state register driving CASE-style logic).
+_STEP_PAT = _kw(["step", "state", "seq", "sequence", "phase", "stage", "sfc"])
+
+# data types that denote a timer (the timer tag is what an OUTPUT timer instruction drives).
+_TIMER_TYPES = {"TIMER", "FBD_TIMER", "TON", "TOF", "TP", "RTO"}
+# integer-ish data types a sequence/state register uses (BOOL excluded -- a 2-state flag isn't a sequencer).
+_NUMERIC_TYPES = {"SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT",
+                  "BYTE", "WORD", "DWORD", "LWORD"}
+_INT_LITERAL = re.compile(r":?=\s*(-?\d+)")
 
 # VFD signal-role hints (mirrors the gateway suggest_for_role vocabulary so the parser and the
 # VFD-Analyzer wizard agree on what a "frequency"/"current"/... tag looks like).
@@ -68,6 +77,8 @@ class Finding:
     detail: str = ""
     confidence: str = Confidence.HIGH.value
     evidence: list[str] = field(default_factory=list)   # IR locators backing the finding
+    interlocks: list[str] = field(default_factory=list)  # safety conditions in a permissive chain (REVIEW)
+    transitions: int = 0                                 # step-transition count for a sequence finding
 
 
 @dataclass
@@ -81,6 +92,9 @@ class AnalysisReport:
     fault_candidates: list[Finding] = field(default_factory=list)
     asset_candidates: list[Finding] = field(default_factory=list)
     vfd_signal_candidates: list[Finding] = field(default_factory=list)
+    permissives: list[Finding] = field(default_factory=list)
+    timer_chains: list[Finding] = field(default_factory=list)
+    sequences: list[Finding] = field(default_factory=list)
     review_required: list[Finding] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
@@ -101,6 +115,9 @@ def analyze(proj: PLCProject) -> AnalysisReport:
     rep.fault_candidates = _fault_candidates(proj)
     rep.asset_candidates = _asset_candidates(proj)
     rep.vfd_signal_candidates = _vfd_signal_candidates(proj)
+    rep.permissives = _permissives(proj)
+    rep.timer_chains = _timer_fault_chains(proj)
+    rep.sequences = _sequences(proj)
     rep.review_required = _review_required(proj)
 
     rep.counts = {
@@ -113,6 +130,9 @@ def analyze(proj: PLCProject) -> AnalysisReport:
         "fault_candidates": len(rep.fault_candidates),
         "asset_candidates": len(rep.asset_candidates),
         "vfd_signal_candidates": len(rep.vfd_signal_candidates),
+        "permissives": len(rep.permissives),
+        "timer_chains": len(rep.timer_chains),
+        "sequences": len(rep.sequences),
         "review_required": len(rep.review_required),
     }
     return rep
@@ -276,6 +296,182 @@ def _vfd_signal_candidates(proj: PLCProject) -> list[Finding]:
                     evidence=[t.provenance.locator] if t.provenance else [],
                 ))
                 break
+    return out
+
+
+# ---- analysis depth (Phase 5): permissives, timer->fault chains, sequences ----
+
+def _base(ref: str) -> str:
+    """The root tag of a dotted/array/bit reference (Run_Timer.DN -> Run_Timer)."""
+    return ref.split(".")[0].split("[")[0]
+
+
+def _tag_index(proj: PLCProject) -> dict[str, Tag]:
+    return {t.name: t for t in proj.all_tags()}
+
+
+def _permissives(proj: PLCProject) -> list[Finding]:
+    """For each equipment output, the conditions that must be satisfied to energize it.
+
+    A permissive is an enabling condition; a *safety* permissive (e-stop / guard / interlock) is an
+    interlock and forces the whole finding to REVIEW -- a human must verify a safety chain before any
+    downstream advice trusts it. Pure fault latches / timers / counters are NOT equipment outputs and
+    are excluded (they have their own fault / timer-chain views).
+    """
+    tags = _tag_index(proj)
+
+    def is_equipment_output(name: str) -> bool:
+        t = tags.get(_base(name))
+        roles = t.roles if t else []
+        if "output" not in roles:
+            return False
+        return not ({"fault", "timer", "counter"} & set(roles))
+
+    order: list[str] = []
+    conds: dict[str, list[str]] = {}
+    locs: dict[str, list[str]] = {}
+    for prog, routine, rung in proj.all_rungs():
+        loc = "%s/%s/Rung[%d]" % (prog, routine, rung.number)
+        out_bases = {_base(o) for o in rung.outputs}
+        conditions = [r for r in rung.refs if _base(r) not in out_bases]
+        for out in rung.outputs:
+            if not is_equipment_output(out):
+                continue
+            if out not in conds:
+                conds[out] = []
+                locs[out] = []
+                order.append(out)
+            locs[out].append(loc)
+            for c in conditions:
+                if c not in conds[out]:
+                    conds[out].append(c)
+
+    out: list[Finding] = []
+    for name in order:
+        cs = conds[name]
+        if not cs:
+            continue
+        interlocks = [c for c in cs if _SAFETY_PAT.search(c)]
+        modes = [c for c in cs if _MODE_PAT.search(c) and c not in interlocks]
+        detail = "requires: " + ", ".join(cs)
+        if interlocks:
+            detail += " | safety interlock (REVIEW): " + ", ".join(interlocks)
+        if modes:
+            detail += " | mode: " + ", ".join(modes)
+        out.append(Finding(
+            kind="permissive", name=name, detail=detail,
+            confidence=Confidence.REVIEW.value if interlocks else Confidence.MEDIUM.value,
+            evidence=locs[name], interlocks=interlocks,
+        ))
+    return out
+
+
+def _timer_fault_chains(proj: PLCProject) -> list[Finding]:
+    """Timers whose elapsed (done) bit gates a downstream output -- the watchdog/debounce pattern.
+
+    The classic case is a comm-loss or jam watchdog: a timer runs while a condition holds, and when it
+    times out its DN bit latches a fault (the real GS10 5 s vfd_err_timer -> comm fault). We surface
+    the timer, the rung that *sets it up*, and the rung(s) where its bit *triggers* something, calling
+    out fault targets explicitly. A timer that is only accumulated (its bit gates nothing) is not a
+    chain and is skipped.
+    """
+    tags = _tag_index(proj)
+    timer_names = {
+        t.name for t in proj.all_tags()
+        if t.data_type.upper() in _TIMER_TYPES or "timer" in t.roles
+    }
+    if not timer_names:
+        return []
+
+    out: list[Finding] = []
+    for timer in sorted(timer_names):
+        setup_locs: list[str] = []
+        trigger_locs: list[str] = []
+        driven: list[str] = []
+        for prog, routine, rung in proj.all_rungs():
+            loc = "%s/%s/Rung[%d]" % (prog, routine, rung.number)
+            out_bases = {_base(o) for o in rung.outputs}
+            ref_bases = {_base(r) for r in rung.refs}
+            if timer in out_bases:
+                setup_locs.append(loc)
+            elif timer in ref_bases:
+                targets = [o for o in rung.outputs if _base(o) != timer]
+                if targets:
+                    trigger_locs.append(loc)
+                    for o in targets:
+                        if o not in driven:
+                            driven.append(o)
+        if not trigger_locs:
+            continue
+        parts = []
+        has_fault = has_safety = False
+        for o in driven:
+            roles = tags[_base(o)].roles if _base(o) in tags else []
+            if "fault" in roles:
+                has_fault = True
+                parts.append("%s (fault)" % o)
+            elif "safety" in roles:
+                has_safety = True
+                parts.append("%s (safety)" % o)
+            else:
+                parts.append(o)
+        detail = "timer elapsed -> energizes " + ", ".join(parts)
+        out.append(Finding(
+            kind="timer_chain", name=timer, detail=detail,
+            confidence=Confidence.REVIEW.value if has_safety else Confidence.MEDIUM.value,
+            evidence=setup_locs + trigger_locs,
+        ))
+        _ = has_fault  # fault targets are annotated inline in `detail`
+    return out
+
+
+def _sequences(proj: PLCProject) -> list[Finding]:
+    """Step/state variables and the transitions that drive them (CASE / step-counter logic).
+
+    A sequencer is a numeric state register (Step / State / Phase) that the logic writes step values
+    into. We detect the variable, count its transitions (assignment rungs), pull the step values, and
+    raise confidence to HIGH when an explicit `CASE <var> OF` is present in the source.
+    """
+    case_text = " ".join(
+        r.st_text for _p, r in proj.all_routines() if r.st_text
+    )
+
+    # var name -> (assignment locators, step values)
+    assigns: dict[str, list[str]] = {}
+    values: dict[str, list[int]] = {}
+    for prog, routine, rung in proj.all_rungs():
+        loc = "%s/%s/Rung[%d]" % (prog, routine, rung.number)
+        for o in rung.outputs:
+            base = _base(o)
+            if not _STEP_PAT.search(base):
+                continue
+            assigns.setdefault(base, []).append(loc)
+            for m in _INT_LITERAL.finditer(rung.text or ""):
+                v = int(m.group(1))
+                values.setdefault(base, [])
+                if v not in values[base]:
+                    values[base].append(v)
+
+    tags = _tag_index(proj)
+    out: list[Finding] = []
+    for name in sorted(assigns):
+        t = tags.get(name)
+        numeric = bool(t and t.data_type.upper() in _NUMERIC_TYPES)
+        # require either a numeric declaration or an actual numeric step value written -- a name match
+        # alone (e.g. a BOOL "Seq_Enable") is not a sequencer.
+        if not numeric and not values.get(name):
+            continue
+        has_case = bool(re.search(r"\bCASE\s+%s\b" % re.escape(name), case_text, re.IGNORECASE))
+        vals = sorted(values.get(name, []))
+        detail = "state variable with %d transition(s)" % len(assigns[name])
+        if vals:
+            detail += "; step values: " + ", ".join(str(v) for v in vals)
+        detail += "; explicit CASE block" if has_case else "; inferred from assignments"
+        out.append(Finding(
+            kind="sequence", name=name, detail=detail,
+            confidence=Confidence.HIGH.value if has_case else Confidence.MEDIUM.value,
+            evidence=assigns[name], transitions=len(assigns[name]),
+        ))
     return out
 
 

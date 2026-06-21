@@ -29,11 +29,14 @@
     "controllers": 1,
     "fault_candidates": 2,
     "outputs": 0,
+    "permissives": 0,
     "programs": 0,
     "review_required": 1,
     "routines": 0,
     "rungs": 0,
+    "sequences": 0,
     "tags": 7,
+    "timer_chains": 0,
     "vfd_signal_candidates": 5
   },
   "detection": {
@@ -64,6 +67,7 @@
   ],
   "handled": true,
   "output_dependencies": [],
+  "permissives": [],
   "review_required": [
     {
       "confidence": "review",
@@ -77,6 +81,7 @@
   ],
   "routine_summaries": [],
   "schema": "mira-plc-parser/report@1",
+  "sequences": [],
   "tag_dictionary": [
     {
       "address": "000002",
@@ -161,6 +166,7 @@
       "used_in": []
     }
   ],
+  "timer_chains": [],
   "vendor": "Kepware / PTC",
   "vfd_signal_candidates": [
     {

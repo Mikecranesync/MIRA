@@ -36,11 +36,14 @@
     "controllers": 1,
     "fault_candidates": 4,
     "outputs": 2,
+    "permissives": 1,
     "programs": 1,
     "review_required": 1,
     "routines": 1,
     "rungs": 2,
+    "sequences": 0,
     "tags": 10,
+    "timer_chains": 0,
     "vfd_signal_candidates": 4
   },
   "detection": {
@@ -108,6 +111,20 @@
       "name": "MotorRun"
     }
   ],
+  "permissives": [
+    {
+      "confidence": "review",
+      "detail": "requires: StartPB, EStopOK, AutoMode, ConvFault | safety interlock (REVIEW): EStopOK | mode: AutoMode",
+      "evidence": [
+        "ConveyorControl/ConveyorControl/Rung[0]"
+      ],
+      "interlocks": [
+        "EStopOK"
+      ],
+      "kind": "permissive",
+      "name": "MotorRun"
+    }
+  ],
   "review_required": [
     {
       "confidence": "review",
@@ -135,6 +152,7 @@
     }
   ],
   "schema": "mira-plc-parser/report@1",
+  "sequences": [],
   "tag_dictionary": [
     {
       "address": "",
@@ -280,6 +298,7 @@
       "used_in": []
     }
   ],
+  "timer_chains": [],
   "vendor": "OpenPLC",
   "vfd_signal_candidates": [
     {
