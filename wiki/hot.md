@@ -1,3 +1,12 @@
+# Hot Cache — 2026-06-21 — HubV3/i3x
+
+**Migration head: 056** (contextualization + intake). Three Round 13 fix branches open:
+- `fix/ctx-zipbomb-cap` — A13-1 zip-bomb decompression guard (unzip.ts + import/route.ts 413 pre-check)
+- `fix/publish-gate-integration-test` — B12-1 batch-review route integration test
+- `fix/ctx-signals-verified-only` — C12-1 ctx_enrichment verified-only (ENGINE CHANGE, needs staging gate)
+
+---
+
 # Hot Cache — 2026-06-12 — PLC laptop
 
 ## Session — 2026-06-13 (Trends V2 layer-1 CORRECTED — built on the REAL Prog_init)

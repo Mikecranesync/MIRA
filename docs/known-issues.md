@@ -70,3 +70,19 @@ Updated: 2026-06-21
 - **mira-sidecar (ChromaDB RAG backend)** — Removed from `docker-compose.saas.yml` 2026-05-20 per ADR-0014. Replaced by mira-pipeline + Open WebUI native KB. OEM chunks no longer block sunset.
 - **mira-web → mira-pipeline cutover** — Done. `mira-web/src/lib/mira-chat.ts` now calls mira-pipeline `:9099/v1/chat/completions` (ADR-0008).
 - **No CD pipeline** — Resolved. `deploy-vps.yml` gates on `smoke-test.yml` success and deploys to VPS automatically on push to `main`. Manual fallback: `gh workflow run deploy-vps.yml -f services=<svc>`.
+
+## HubV3 Contextualization + i3x API (2026-06-21)
+
+Migrations 054–056 added the contextualization surface: `054_contextualization_sources_and_tags.sql`, `055_contextualization.sql`, `056_contextualization_intake.sql`. **Migration head: 056.**
+
+**Contextualization routes** (all `sessionOr401`-gated):
+- `POST /api/contextualization/import` — multipart `.zip` Factory Context Bundle → `importFromBundle` → `readZipEntries`
+- `GET/POST /api/contextualization/[id]/sources` — single-source upload (caps at `MAX_UPLOAD_BYTES`/413)
+- `POST /api/contextualization/batches/[batchId]/review` — ADR-0017 publish gate: `proposed` → `verified` kg_entities + ai_suggestions lockstep
+
+**i3x Bearer API:** `GET /api/i3x/[...path]` — read-only external API (Bearer-gated, exposes only `approval_state='verified'` kg_entities).
+
+**Open findings from Round 13 orchestrator audit:**
+- **A13-1** (YELLOW) — zip-bomb / OOM: `importFromBundle` inflates zip entries with no `maxOutputLength` cap and no `file.size` pre-check. Fix in `fix/ctx-zipbomb-cap`: decompression caps in `mira-hub/src/lib/contextualization/unzip.ts` + 413 size pre-check in `import/route.ts`.
+- **B12-1** (YELLOW) — no route-level test for the ADR-0017 publish gate (decision logic unit-tested; route wiring — tenant SQL, insert/update/skip, `applyHubProposalTransition` lockstep — unexercised). Integration test in `fix/publish-gate-integration-test`.
+- **C12-1** (YELLOW, LATENT) — `ctx_enrichment.fetch_ctx_approved_signals` queries `approval_state IN ('proposed','verified')` but renders rows under `"--- APPROVED PLC SIGNALS ---"` with no per-row state shown. Inert in prod (`MIRA_CTX_SIGNALS_ENABLED` default `"0"`). Fix in `fix/ctx-signals-verified-only` (engine change, needs staging gate before merge).
