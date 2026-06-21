@@ -235,10 +235,10 @@ export default function ContextualizationPage() {
                 </div>
                 <div className="flex items-center gap-4 text-xs text-gray-500 shrink-0 mt-0.5">
                   <span>
-                    <span className="text-gray-300 font-medium">{p.sourceCount}</span> file{p.sourceCount !== 1 ? "s" : ""}
+                    <span className="text-gray-300 font-medium">{p.sourceCount}</span> source{p.sourceCount !== 1 ? "s" : ""}
                   </span>
                   <span>
-                    <span className="text-gray-300 font-medium">{p.extractionCount}</span> tags
+                    <span className="text-gray-300 font-medium">{p.extractionCount}</span> signal{p.extractionCount !== 1 ? "s" : ""}
                   </span>
                   <span>
                     <span className="text-green-400 font-medium">{p.acceptedCount}</span> accepted
