@@ -10,11 +10,21 @@ if str(PKG_ROOT) not in sys.path:
     sys.path.insert(0, str(PKG_ROOT))
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
+REPO_ROOT = PKG_ROOT.parent
 
 
 @pytest.fixture(scope="session")
 def fixtures():
     return FIXTURES
+
+
+@pytest.fixture(scope="session")
+def real_ccw_st():
+    """The real 557-line Micro820 CCW export -- held-out generalization input (skips if absent)."""
+    p = REPO_ROOT / "plc" / "Micro820_v4.1.9_Program.st"
+    if not p.exists():
+        pytest.skip("real CCW export plc/Micro820_v4.1.9_Program.st not present")
+    return p.read_text(encoding="utf-8", errors="replace")
 
 
 @pytest.fixture(scope="session")

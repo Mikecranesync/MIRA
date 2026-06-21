@@ -89,6 +89,23 @@ def test_pure_fault_latch_is_not_listed_as_a_permissive(conveyor_l5x):
     assert "Run_Timer" not in names
 
 
+def test_permissive_precision_on_real_program(real_ccw_st):
+    # GENERALIZATION: on the real 557-line CCW program, every ST `LHS :=` becomes a driven "output",
+    # so the permissive list must be filtered down to REAL equipment outputs -- not the ~65 internal
+    # flags/status mirrors/telemetry/counters the program also assigns.
+    r = A.analyze(structured_text.parse(real_ccw_st, "Micro820_v4.1.9_Program.st"))
+    names = {f.name for f in r.permissives}
+    # a maintenance tech wants a short, trustworthy list -- not 40+ internal variables
+    assert len(names) <= 15, "permissive list is noisy: %d entries" % len(names)
+    # the genuine drive/IO outputs are kept
+    assert any(n.startswith("_IO_EM_DO_") for n in names), names
+    assert "vfd_cmd_word" in names, names
+    # internal scaffolding / status mirrors / telemetry are excluded
+    for noise in ("button_rising", "prev_button", "sensor_1_active", "vfd_frequency",
+                  "conveyor_running", "uptime_seconds", "cycle_count", "read_local_cfg"):
+        assert noise not in names, "internal signal leaked into permissives: %s" % noise
+
+
 # ---------------- timer -> fault chains ----------------
 
 def test_timer_fault_chain_detected():

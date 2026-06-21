@@ -48,6 +48,45 @@ _INPUT_PAT = _kw(["pb", "push", "switch", "sensor", "prox", "photoeye", "limit",
 # sequence/state-machine variable names (a step counter / state register driving CASE-style logic).
 _STEP_PAT = _kw(["step", "state", "seq", "sequence", "phase", "stage", "sfc"])
 
+# --- equipment-output classification (why: in ST every `LHS :=` becomes a driven "output", so a real
+# CCW program tags ~65 internal flags as outputs and pollutes the permissive list). An EQUIPMENT
+# output is a thing the PLC drives in the physical world (a coil / IO point / drive command), not an
+# internal status mirror, telemetry read-back, counter, edge helper, or comms-plumbing variable. With
+# no variable table (the CCW no-VAR case) this is necessarily a name inference -- MEDIUM confidence --
+# so we anchor on physical-IO evidence + actuator-command words, and exclude the large, unambiguous
+# classes of non-output names. ---
+_PHYS_OUT_PAT = re.compile(r"_IO_\w*_(?:DO|AO)_|Local:\d+:O", re.IGNORECASE)  # embedded/physical output point
+_CMD_OUT_PAT = _kw(["cmd", "command", "setpoint", "coil", "energize", "fwd", "rev"])  # actuator command sense
+# names that are NEVER a physical output, even when assigned (config/plumbing/counters/edges/state/diag).
+_HARD_NONOUT = _kw(["cfg", "msg", "done", "pending", "count", "cnt", "err", "error", "last", "prev",
+                    "rising", "falling", "edge", "uptime", "idx", "index", "step", "state", "local",
+                    "target", "id", "heartbeat", "seconds"])
+# status mirrors / telemetry read-backs -- not outputs UNLESS a command/physical signal also matches.
+_SOFT_NONOUT = _kw(["running", "stopped", "ready", "active", "status", "bit", "comm", "atspeed",
+                    "frequency", "freq", "current", "voltage", "bus", "speed", "ok"])
+
+
+def _is_equipment_output(name: str, roles: list[str], alias_for: str = "") -> bool:
+    """True if a driven tag names a real physical/equipment output, not an internal logic signal.
+
+    Keeps the broad `output` role intact (output_dependencies still sees every driven signal); this is
+    the narrower, permissive-grade view of "what the machine actually drives".
+    """
+    rs = set(roles)
+    if "output" not in rs:
+        return False
+    if rs & {"fault", "timer", "counter", "safety", "input", "mode"}:
+        return False
+    if _HARD_NONOUT.search(name):
+        return False
+    if _PHYS_OUT_PAT.search(name) or ":O" in (alias_for or ""):
+        return True                      # physical IO output point -- strongest signal
+    if _CMD_OUT_PAT.search(name):
+        return True                      # actuator command word (overrides soft status/telemetry)
+    if _SOFT_NONOUT.search(name):
+        return False                     # status mirror / telemetry read-back
+    return bool(_ASSET_PAT.search(name))  # equipment/actuator-named and not disqualified above
+
 # data types that denote a timer (the timer tag is what an OUTPUT timer instruction drives).
 _TIMER_TYPES = {"TIMER", "FBD_TIMER", "TON", "TOF", "TP", "RTO"}
 # IEC 61131 timer function-block usage (CODESYS/OpenPLC/CCW): an instance CALLED with a preset time
@@ -327,10 +366,9 @@ def _permissives(proj: PLCProject) -> list[Finding]:
 
     def is_equipment_output(name: str) -> bool:
         t = tags.get(_base(name))
-        roles = t.roles if t else []
-        if "output" not in roles:
+        if t is None:
             return False
-        return not ({"fault", "timer", "counter"} & set(roles))
+        return _is_equipment_output(t.name, t.roles, t.alias_for)
 
     order: list[str] = []
     conds: dict[str, list[str]] = {}

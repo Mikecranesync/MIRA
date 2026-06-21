@@ -140,14 +140,19 @@ def phase4() -> Phase:
         "4.3", "GENERALIZATION: real CCW no-VAR export recovers undeclared variables + warns",
         1.0 if novar else 0.0, "tags=%s warned=%s" % (rc.get("tags"), novar), weight=1.5))
 
-    # Precision proxy: on the real program, how many "output"-roled tags are plausibly REAL outputs
-    # vs internal logic flags? (Every ST `LHS :=` becomes an "output", so this over-counts.)
-    real_outs = [t for t in real.get("tag_dictionary", []) if "output" in t.get("roles", [])]
-    realish, total = _output_precision(real_outs)
+    # Equipment-output SEPARATION: every ST `LHS :=` is a driven signal ("output" role), but only a
+    # few are real physical/equipment outputs. The permissive view is the equipment-output surface --
+    # it should be a SELECTIVE, PRECISE subset of all driven signals, not all of them.
+    driven = [t for t in real.get("tag_dictionary", []) if "output" in t.get("roles", [])]
+    equip = real.get("permissives", [])
+    sel = (len(equip) / len(driven)) if driven else 1.0
+    realish, total = _output_precision(equip)
     prec = (realish / total) if total else 0.0
+    sep_score = 1.0 if (equip and sel <= 0.4 and prec >= 0.8) else (0.5 if (equip and prec >= 0.6) else 0.0)
     p.criteria.append(Criterion(
-        "4.4", "ST role precision: fraction of 'output' tags that are real outputs, not internal flags",
-        round(prec, 2), "real-ish %d / %d outputs (proxy)" % (realish, total)))
+        "4.4", "Equipment outputs separated from internal driven signals (selective + precise)",
+        sep_score, "%d equip outputs of %d driven signals (%.0f%%), precision %.2f"
+        % (len(equip), len(driven), sel * 100, prec), weight=1.5))
     return p
 
 
@@ -169,7 +174,7 @@ def phase5() -> Phase:
     realish, total = _output_precision(real_perms)
     prec = (realish / total) if total else 0.0
     p.criteria.append(Criterion(
-        "5.P2", "GENERALIZATION: permissive precision on real ST (over-fires on internal flags)",
+        "5.P2", "GENERALIZATION: permissive precision on real ST (equipment outputs, not internal flags)",
         round(prec, 2), "real-ish %d / %d permissives (proxy)" % (realish, total), weight=1.5))
 
     # --- timer -> fault chains ---

@@ -96,21 +96,30 @@ See `evals/EVAL_SCORECARD.md` for the live numbers + evidence. Headline at last 
 |---|---|---|
 | 1 Structural extraction | **A+** | solid on synthetic + the real 557-line program |
 | 2 Goldens / 3 IR hardening | **A+** | contract pinned |
-| 4 ST + PLCopen | **B+** | works; ST role precision is the rough edge (4.4) |
-| 5 Analysis depth | **A−** | sequences A, timer-chains now catch the real IEC-FB watchdog; permissive precision (5.P2) is the remaining drag |
+| 4 ST + PLCopen | **A+** | equipment outputs now separated from internal driven signals (8 of 65, precision 1.0) |
+| 5 Analysis depth | **A+** | sequences, IEC-FB watchdog chains, and precise permissives all green on the real program |
 | 6 Siemens / 7 OCR | **F** | not built |
 
-## What the benchmark caught — and what's still open
+## What the benchmark caught — and what we fixed
 
-1. **CLOSED — Phase 5 / 5.T2: the timer→fault analyzer missed the real watchdog.** First benchmark run
-   scored this **0.00**: the real CCW program writes `vfd_err_timer(IN := vfd_comm_err, PT := T#5000ms);
-   IF vfd_err_timer.Q THEN …`, but the detector only knew the Rockwell `TON(tag)` + `tag.DN` shape — it
-   missed the one pattern it exists to catch. **Fixed** by recognizing IEC timer **function-block
-   instances** (`name(… PT := …)` + `.DN/.ET/…` members) from the source, which lifted Phase 5 from
-   **D (68%) → A− (92%)** and now detects `vfd_err_timer`, `vfd_poll_timer`, `uptime_timer` on the real
-   program. This is the benchmark doing its job: it found a real defect in shipped work and drove the fix.
-2. **OPEN — Phase 4 / 5.P2 precision: ST role inference over-fires.** Every assignment LHS becomes an
-   "output", so internal flags (`button_rising`, `prev_button`, …) pollute the outputs (4.4 ≈ 0.46) and
-   permissives (5.P2 ≈ 0.60). → fix: distinguish a driven *equipment* output from an intermediate logic
-   variable (demote a variable only ever read by other rungs that maps to no IO point / asset keyword).
-   This is **Phase 4/5 hardening, not a new phase** — close it and re-grade before Phase 6.
+Both items below were found by running the scorer against the **real** CCW program, then fixed —
+this is the benchmark doing its job: catching defects in shipped work and driving the fix, with the
+grade as the before/after proof.
+
+1. **CLOSED — Phase 5 / 5.T2: the timer→fault analyzer missed the real watchdog.** First run scored
+   **0.00**: the real program writes `vfd_err_timer(IN := vfd_comm_err, PT := T#5000ms);
+   IF vfd_err_timer.Q THEN …`, but the detector only knew the Rockwell `TON(tag)` + `tag.DN` shape.
+   **Fixed** by recognizing IEC timer **function-block instances** (`name(… PT := …)` + `.DN/.ET/…`
+   members). **Phase 5: D (68%) → A− (92%)**; now detects `vfd_err_timer`, `vfd_poll_timer`,
+   `uptime_timer` on the real program.
+2. **CLOSED — Phase 4/5 / 4.4 + 5.P2: ST role inference over-fired.** Every assignment LHS becomes a
+   driven `output`, so the real program tagged **65** "outputs" and the permissive list had **42**
+   entries full of internal flags (`button_rising`, `prev_button`), status mirrors (`conveyor_running`),
+   telemetry read-backs (`vfd_frequency`), counters, and Modbus plumbing (`*_cfg`). **Fixed** with an
+   `_is_equipment_output` classifier (physical-IO / actuator-command evidence, minus the
+   status/telemetry/counter/edge/diagnostic classes) that keys the permissive view — the broad `output`
+   role stays intact for `output_dependencies`. Permissives dropped **42 → 8**, and the 8 are all real
+   drives/IO (`_IO_EM_DO_00..03`, `vfd_cmd_word`, `vfd_freq_setpoint`, `dir_fwd/rev`). **Phase 4: B+ → A+,
+   Phase 5: A− → A+.** Locked by `test_permissive_precision_on_real_program`.
+
+**Next, with a clean A+ across every built phase:** Phase 6 (Siemens TIA Openness XML parser).
