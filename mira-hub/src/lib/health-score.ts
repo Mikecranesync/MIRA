@@ -76,7 +76,7 @@ const LEVEL_NAMES: Record<ReadinessLevel, string> = {
 
 const NEXT_STEP: Record<ReadinessLevel, string> = {
   0: "Run the onboarding wizard to declare your first site.",
-  1: "Add a production line with at least one asset.",
+  1: "Add at least one asset to a production line.",
   2: "Attach component templates so MIRA can map fault codes.",
   3: "Upload a manual or PLC tag list to ground the components.",
   4: "Confirm proposals as they arrive — turn LLM guesses into verified edges.",

@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import signal
@@ -131,29 +132,46 @@ ERROR_LOG_EVERY = 30      # after the first, log a one-line error every Nth fail
 
 
 SCHEMA_DDL = """
+-- live_signal_cache: matches mira-hub migration 020 shape (PRIMARY KEY is
+-- (tenant_id, plc_tag)). If mig 020 has already run, CREATE TABLE IF NOT EXISTS
+-- no-ops safely. The old shape (topic TEXT PRIMARY KEY) collided: a migrated NeonDB
+-- silently skipped DDL then failed on INSERT with mismatched column names.
 CREATE TABLE IF NOT EXISTS live_signal_cache (
-    topic       TEXT PRIMARY KEY,
-    plc_tag     TEXT NOT NULL,
-    equipment_id TEXT NOT NULL,
-    name        TEXT NOT NULL,
-    value       DOUBLE PRECISION NOT NULL,
-    quality     TEXT NOT NULL DEFAULT 'Good',
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    tenant_id          UUID        NOT NULL,
+    plc_tag            TEXT        NOT NULL,
+    component_id       UUID,
+    last_value_text    TEXT,
+    last_value_numeric DOUBLE PRECISION,
+    last_value_bool    BOOLEAN,
+    last_seen_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_changed_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    prev_value_numeric DOUBLE PRECISION,
+    prev_value_bool    BOOLEAN,
+    simulated          BOOLEAN     NOT NULL DEFAULT true,
+    source             TEXT        NOT NULL DEFAULT 'demo_plc_poller',
+    properties         JSONB       NOT NULL DEFAULT '{}',
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (tenant_id, plc_tag)
 );
 
+-- live_signal_events: matches mira-hub migration 019 shape. Poller-specific
+-- fields (event_type, prev_value) are stored in properties JSONB.
 CREATE TABLE IF NOT EXISTS live_signal_events (
-    id          BIGSERIAL PRIMARY KEY,
-    topic       TEXT NOT NULL,
-    plc_tag     TEXT NOT NULL,
-    equipment_id TEXT NOT NULL,
-    event_type  TEXT NOT NULL,
-    prev_value  DOUBLE PRECISION,
-    new_value   DOUBLE PRECISION NOT NULL,
-    occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id     UUID        NOT NULL,
+    component_id  UUID,
+    plc_tag       TEXT,
+    value_numeric DOUBLE PRECISION,
+    value_bool    BOOLEAN,
+    simulated     BOOLEAN     NOT NULL DEFAULT true,
+    source        TEXT        NOT NULL DEFAULT 'demo_plc_poller',
+    properties    JSONB       NOT NULL DEFAULT '{}',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS live_signal_events_topic_time
-    ON live_signal_events (topic, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS live_signal_events_tenant_tag
+    ON live_signal_events (tenant_id, plc_tag, created_at DESC);
 """
 
 
@@ -432,48 +450,58 @@ class DemoPLCPoller:
                     cur.execute(SCHEMA_DDL)
                     self._db_schema_ready = True
 
-                # Upsert cache rows
+                # Upsert cache rows — migration-020 shape: PK=(tenant_id, plc_tag)
+                _coil_names = {p.name for p in ADDRESS_MAP if p.kind == COIL}
                 cur.executemany(
                     """
                     INSERT INTO live_signal_cache
-                        (topic, plc_tag, equipment_id, name, value, quality, updated_at)
+                        (tenant_id, plc_tag,
+                         last_value_numeric, last_value_bool,
+                         last_seen_at, source, simulated)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (topic) DO UPDATE SET
-                        value = EXCLUDED.value,
-                        quality = EXCLUDED.quality,
-                        updated_at = EXCLUDED.updated_at
+                    ON CONFLICT (tenant_id, plc_tag) DO UPDATE SET
+                        last_value_numeric = EXCLUDED.last_value_numeric,
+                        last_value_bool    = EXCLUDED.last_value_bool,
+                        last_seen_at       = EXCLUDED.last_seen_at,
+                        updated_at         = now()
                     """,
                     [
                         (
-                            p.uns_topic,
+                            self.tenant_id,
                             p.plc_tag,
-                            EQUIPMENT_ID,
-                            p.name,
-                            snapshot.values[p.name],
-                            "Good",
+                            None if p.kind == COIL else float(snapshot.values[p.name]),
+                            bool(snapshot.values[p.name]) if p.kind == COIL else None,
                             snapshot.timestamp,
+                            AGENT_ID,
+                            False,  # real PLC data
                         )
                         for p in ADDRESS_MAP
                     ],
                 )
 
                 if events:
+                    # migration-019 shape: poller-specific fields in properties JSONB
                     cur.executemany(
                         """
                         INSERT INTO live_signal_events
-                            (topic, plc_tag, equipment_id, event_type,
-                             prev_value, new_value, occurred_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            (tenant_id, plc_tag,
+                             value_numeric, value_bool, source, simulated, properties)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
                         """,
                         [
                             (
-                                e["topic"],
+                                self.tenant_id,
                                 e["plc_tag"],
-                                e["equipment_id"],
-                                e["event_type"],
-                                e["prev_value"],
-                                e["new_value"],
-                                e["occurred_at"],
+                                None if e["plc_tag"] in _coil_names else float(e["new_value"]),
+                                bool(e["new_value"]) if e["plc_tag"] in _coil_names else None,
+                                AGENT_ID,
+                                False,
+                                json.dumps({
+                                    "event_type": e["event_type"],
+                                    "prev_value": e.get("prev_value"),
+                                    "topic": e.get("topic"),
+                                    "equipment_id": e.get("equipment_id"),
+                                }),
                             )
                             for e in events
                         ],
