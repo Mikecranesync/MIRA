@@ -1,7 +1,7 @@
 {
   "basePath": "/hub",
   "counts": {
-    "pages": 61,
+    "pages": 62,
     "apiRoutes": 145
   },
   "pages": [
@@ -42,6 +42,7 @@
     "/parts",
     "/parts/[id]",
     "/pending-approval",
+    "/plc-import",
     "/proposals",
     "/quickstart",
     "/reports",
