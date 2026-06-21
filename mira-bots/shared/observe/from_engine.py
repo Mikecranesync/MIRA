@@ -111,6 +111,9 @@ def build_answer_trace(
     tags = _tag_names(tag_evidence)
     citations = extract_citations(reply)
 
+    # Route to a preformatted agent template (label only — never changes the reply).
+    manifest = _route_agent_safe(question, ctx)
+
     trace = AnswerTrace(
         trace_id=uuid.uuid4().hex,
         question=question or "",
@@ -122,6 +125,10 @@ def build_answer_trace(
         tags_used=tags,
         documents_retrieved=documents,
         retrieval_source="engine" if documents else None,
+        agent_id=manifest.id if manifest else None,
+        agent_version=manifest.version if manifest else None,
+        agent_risk_level=manifest.risk_level if manifest else None,
+        agent_allowed_tools=list(manifest.allowed_tools) if manifest else [],
         model_used=model_used,
         answer=reply or "",
         citations=citations,
@@ -178,10 +185,44 @@ def build_answer_trace(
                 s.duration_is_total = True
                 break
 
+    # Checks (governance/incident + agent contract) run only when checks are
+    # enabled — i.e. a registry is supplied (the engine path supplies one only
+    # under MIRA_TRACE_CHECKS=1). Without it, agent routing still LABELS the trace
+    # (agent_id/version above) but no warnings are emitted — Phase-1 behavior.
     if registry is not None:
         _apply_checks(trace, registry)
+        if manifest is not None:
+            _apply_agent_contract(trace, manifest)
 
     return trace
+
+
+def _apply_agent_contract(trace: AnswerTrace, manifest: Any) -> None:
+    """Run the agent output-contract check and fold its warnings into the trace.
+
+    Appends directly (not via ``add_warning``) so a contract finding never mutates
+    the core governance step's status — these are a separate, observational pillar.
+    Never raises (the caller is fail-open regardless).
+    """
+    try:
+        from shared.observe.agent_checks import run_agent_contract
+        from shared.observe.checks import dedupe
+
+        trace.warnings.extend(run_agent_contract(trace, manifest))
+        trace.warnings = dedupe(trace.warnings)
+    except Exception as exc:  # noqa: BLE001 — observational, never touch reply
+        logger.debug("agent contract check skipped: %s", exc)
+
+
+def _route_agent_safe(question: Optional[str], ctx: dict) -> Optional[Any]:
+    """Route to a preformatted agent, fail-open to None on any registry error."""
+    try:
+        from shared.observe.agent_registry import route_agent
+
+        return route_agent(question, ctx)
+    except Exception as exc:  # noqa: BLE001 — labelling must never break a trace
+        logger.debug("agent routing skipped: %s", exc)
+        return None
 
 
 def _step_by_name(trace: AnswerTrace, name: str) -> Optional[Step]:

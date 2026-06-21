@@ -180,6 +180,14 @@ class AnswerTrace:
     retrieval_source: Optional[str] = None  # bm25+pgvector | mock | none
     prompt_version: Optional[str] = None
 
+    # Preformatted agent template (Cognite-style workbench): which agent contract
+    # handled this answer. Labels only — these never change the reply. Populated by
+    # ``route_agent`` at trace-build time; absent (None/[]) on un-routed traces.
+    agent_id: Optional[str] = None
+    agent_version: Optional[str] = None
+    agent_risk_level: Optional[str] = None
+    agent_allowed_tools: list[str] = field(default_factory=list)
+
     # Pillar 2 — observability: what the model produced
     model_used: Optional[str] = None
     answer: Optional[str] = None

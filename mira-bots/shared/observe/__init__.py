@@ -10,6 +10,17 @@ Nothing here imports ``simlab``. Nothing here writes to a PLC. Everything is
 observational and fail-open by contract.
 """
 
+from shared.observe.agent_checks import run_agent_contract  # noqa: F401
+from shared.observe.agent_registry import (  # noqa: F401
+    DEFAULT_AGENT_ID,
+    AgentManifest,
+    AgentManifestError,
+    all_manifests,
+    get_manifest,
+    is_write_tool,
+    load_registry,
+    route_agent,
+)
 from shared.observe.approval_registry import ApprovalRegistry, DocumentApproval  # noqa: F401
 from shared.observe.checks import dedupe, run_governance, run_incidents  # noqa: F401
 from shared.observe.trace import (  # noqa: F401
@@ -55,4 +66,13 @@ __all__ = [
     "run_governance",
     "run_incidents",
     "dedupe",
+    "AgentManifest",
+    "AgentManifestError",
+    "load_registry",
+    "all_manifests",
+    "get_manifest",
+    "route_agent",
+    "is_write_tool",
+    "run_agent_contract",
+    "DEFAULT_AGENT_ID",
 ]
