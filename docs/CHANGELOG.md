@@ -3,6 +3,10 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.35.1 (2026-06-21) — fix(stop-gate): skip ruff on deleted files to avoid E902
+- `tools/hooks/stop-gate.sh` — the stop-gate called `ruff check` on the full `git diff MERGE_BASE...HEAD` Python file list, which includes files deleted in prior commits on the branch. `ruff` exits non-zero with E902 (`FileNotFoundError`) on any path that no longer exists, blocking the gate even when no linting issues are present. Added an existence filter (`[ -f "$ROOT/$f" ]`) so only currently-present `.py` files are passed to ruff. Deleted files in the diff range are silently skipped. Verified: stop-gate now approves after `fix(contextualization)` commit that removed `ctx_parse_worker.py` and `test_ctx_parse_worker.py`.
+- Companion to `chore(promo-director): COMPETITOR_ANALYSIS.md refresh 2026-06-21` — both land in the same PR (#2163).
+
 ### v3.34.0 (2026-06-21) — feat(hub): PLC Import wizard (Phase 8 upload UI)
 - Adds the Hub upload surface for the offline **PLC Parser → tag-import** chain (Northstar plan §Phase 8 exit). New page `/plc-import` (`mira-hub/src/app/(hub)/plc-import/page.tsx`): upload a Rockwell **.L5X** / vendor tag **.CSV** export → preview the read-only parser report (controller, vendor, counts, per-tag proposed ISA-95 UNS paths with high/medium/low confidence, and a safety **review** banner) → "Create N proposals" writes `tag_mapping`/`kg_entity` rows to the `/knowledge/suggestions` review queue (`commit=true`). Optional enterprise/site/area/line UNS-prefix inputs (the export only knows the lower levels). Nothing auto-verified; nothing written to a PLC.
 - **`mira-hub/src/lib/plc-import-view.ts`** (new) — pure, deterministic view-model mapping the `POST /api/connectors/plc/import` response (`report@1` + `uns_candidates`) into render states: `parsed` / `export_needed` (closed-project export guidance, 422) / `unsupported` (413/503/error). Keeps the page thin + unit-testable. Tests: `plc-import-view.test.ts` 9/9.
