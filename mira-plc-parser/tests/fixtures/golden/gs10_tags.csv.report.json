@@ -1,0 +1,219 @@
+{
+  "asset_candidates": [
+    {
+      "confidence": "medium",
+      "detail": "candidate asset (keyword: conveyor)",
+      "evidence": [
+        "Conveyor_Run"
+      ],
+      "kind": "asset",
+      "name": "Conveyor"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate asset (keyword: vfd)",
+      "evidence": [
+        "VFD_Frequency",
+        "VFD_Current",
+        "VFD_DCBus",
+        "VFD_FaultCode",
+        "VFD_CommOK"
+      ],
+      "kind": "asset",
+      "name": "VFD"
+    }
+  ],
+  "controller": "gs10_tags",
+  "counts": {
+    "asset_candidates": 2,
+    "controllers": 1,
+    "fault_candidates": 2,
+    "outputs": 0,
+    "permissives": 0,
+    "programs": 0,
+    "review_required": 1,
+    "routines": 0,
+    "rungs": 0,
+    "sequences": 0,
+    "tags": 7,
+    "timer_chains": 0,
+    "vfd_signal_candidates": 5
+  },
+  "detection": {
+    "confidence": "high",
+    "fmt": "csv_tags",
+    "needs_export": "",
+    "reason": "delimited rows, no XML root"
+  },
+  "fault_candidates": [
+    {
+      "confidence": "medium",
+      "detail": "Active fault code",
+      "evidence": [
+        "csv:kepware"
+      ],
+      "kind": "fault",
+      "name": "VFD_FaultCode"
+    },
+    {
+      "confidence": "review",
+      "detail": "Emergency stop healthy",
+      "evidence": [
+        "csv:kepware"
+      ],
+      "kind": "fault",
+      "name": "EStop_OK"
+    }
+  ],
+  "handled": true,
+  "output_dependencies": [],
+  "permissives": [],
+  "review_required": [
+    {
+      "confidence": "review",
+      "detail": "Emergency stop healthy",
+      "evidence": [
+        "csv:kepware"
+      ],
+      "kind": "safety",
+      "name": "EStop_OK"
+    }
+  ],
+  "routine_summaries": [],
+  "schema": "mira-plc-parser/report@1",
+  "sequences": [],
+  "tag_dictionary": [
+    {
+      "address": "000002",
+      "confidence": "high",
+      "data_type": "Boolean",
+      "description": "Conveyor run command",
+      "name": "Conveyor_Run",
+      "roles": [],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "000003",
+      "confidence": "high",
+      "data_type": "Boolean",
+      "description": "Emergency stop healthy",
+      "name": "EStop_OK",
+      "roles": [
+        "fault",
+        "safety"
+      ],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "000001",
+      "confidence": "high",
+      "data_type": "Boolean",
+      "description": "Drive comms healthy",
+      "name": "VFD_CommOK",
+      "roles": [],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "40003",
+      "confidence": "high",
+      "data_type": "Float",
+      "description": "Drive output current Amps",
+      "name": "VFD_Current",
+      "roles": [],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "40005",
+      "confidence": "high",
+      "data_type": "Float",
+      "description": "DC bus voltage",
+      "name": "VFD_DCBus",
+      "roles": [],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "40007",
+      "confidence": "high",
+      "data_type": "Word",
+      "description": "Active fault code",
+      "name": "VFD_FaultCode",
+      "roles": [
+        "fault"
+      ],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "40001",
+      "confidence": "high",
+      "data_type": "Float",
+      "description": "Drive output frequency Hz",
+      "name": "VFD_Frequency",
+      "roles": [],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    }
+  ],
+  "timer_chains": [],
+  "vendor": "Kepware / PTC",
+  "vfd_signal_candidates": [
+    {
+      "confidence": "medium",
+      "detail": "candidate role: frequency",
+      "evidence": [
+        "csv:kepware"
+      ],
+      "kind": "vfd_signal",
+      "name": "VFD_Frequency"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate role: current_a",
+      "evidence": [
+        "csv:kepware"
+      ],
+      "kind": "vfd_signal",
+      "name": "VFD_Current"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate role: dc_bus_v",
+      "evidence": [
+        "csv:kepware"
+      ],
+      "kind": "vfd_signal",
+      "name": "VFD_DCBus"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate role: fault_code",
+      "evidence": [
+        "csv:kepware"
+      ],
+      "kind": "vfd_signal",
+      "name": "VFD_FaultCode"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate role: comm_ok",
+      "evidence": [
+        "csv:kepware"
+      ],
+      "kind": "vfd_signal",
+      "name": "VFD_CommOK"
+    }
+  ],
+  "warnings": []
+}

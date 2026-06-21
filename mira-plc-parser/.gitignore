@@ -1,0 +1,16 @@
+# Standalone-exe build artifacts — built on demand, never committed (see PACKAGING.md).
+# Only the spec (mira-plc-parser.spec) and PACKAGING.md are tracked; the per-platform
+# binary and PyInstaller's working dir are not.
+/build/
+/dist/
+
+# CLI report outputs written during local runs / tests (<stem>.report.md/.json, <stem>.i3x.json).
+*.report.md
+*.report.json
+*.i3x.json
+# ...EXCEPT the golden snapshots, which are the committed report@1 / i3x@1 contracts (not run output).
+!tests/fixtures/golden/*.report.json
+!tests/fixtures/golden/*.i3x.json
+
+# real vendor exports for local generalization validation (license-restricted -- never commit)
+evals/real_samples/

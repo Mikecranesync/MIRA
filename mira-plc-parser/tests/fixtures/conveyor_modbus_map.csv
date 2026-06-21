@@ -1,0 +1,7 @@
+Variable,Data Type,Mapping Address,Mapping Type,Read Only
+start_pb,Bool,000012,Coil,TRUE
+e_stop_ok,Bool,000006,Coil,TRUE
+motor_run,Bool,000001,Coil,FALSE
+vfd_frequency,Word,400107,Holding Register,TRUE
+vfd_comm_err,Bool,000004,Coil,TRUE
+fault_alarm,Bool,000026,Coil,TRUE

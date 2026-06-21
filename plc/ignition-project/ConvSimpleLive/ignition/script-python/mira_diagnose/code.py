@@ -23,6 +23,8 @@
 
 import mira_diagnose_core as _core
 import mira_tag_map as _map
+import mira_asset_config as _cfg     # auto-map: per-asset tag->role config (Slice 1)
+import mira_signal_roles as _roles   # auto-map: canonical role catalog (valid/required keys)
 
 DEFAULT_FOLDERS = [
     "[default]MIRA_IOCheck/VFD",
@@ -30,6 +32,13 @@ DEFAULT_FOLDERS = [
     "[default]MIRA_IOCheck/Outputs",
     "[default]Conveyor",
 ]
+
+# Auto-map: a per-asset config String tag holds the tag->role map as JSON. When an `asset` is
+# supplied AND a valid config exists, the panel reads the MAPPED tag paths (the config IS the read
+# allowlist) instead of the hardcoded DEFAULT_FOLDERS x LEAF_MAP. Absent/invalid -> legacy fallback,
+# so the live ConvSimpleLive panel (which passes no asset) is byte-behaviour-identical.
+# Ref: docs/specs/vfd-analyzer-auto-map-spec.md.
+CONFIG_TAG = "[default]MIRA/Config/%s/map"
 
 # ISA-101: strong color reserved for the abnormal state.
 _SEV_COLOR = {
@@ -110,6 +119,57 @@ def _read_snap(folders):
     return _map.build_snap(pairs), good, len(paths)
 
 
+def _read_config(asset):
+    """Read + validate the per-asset config String tag. Returns a validated config dict, or None
+    to fall back to the legacy folders path (absent / empty / bad-quality / invalid JSON)."""
+    if not asset:
+        return None
+    path = CONFIG_TAG % asset
+    try:
+        qv = system.tag.readBlocking([path])[0]
+        if not qv.quality.isGood():
+            return None
+        raw = qv.value
+    except Exception as e:
+        _logger().warn("config read failed for %s: %s" % (asset, str(e)))
+        return None
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        return _cfg.load_config(raw, valid_keys=_roles.valid_keys())
+    except Exception as e:
+        _logger().warn("config invalid for %s (%s) -- using legacy map" % (asset, str(e)))
+        return None
+
+
+def _read_snap_config(config):
+    """Read ONLY the mapped tag paths (the config IS the read allowlist). Read-only.
+    Returns (snap, good_count, candidate_count)."""
+    paths, plan = _cfg.read_plan(config)
+    good = 0
+    values = []
+    try:
+        qvs = system.tag.readBlocking(paths)
+    except Exception as e:
+        _logger().warn("config readBlocking failed: %s" % str(e))
+        qvs = []
+    for i in range(len(qvs)):
+        qv = qvs[i]
+        ok = False
+        try:
+            ok = qv.quality.isGood()
+        except Exception:
+            ok = False
+        if ok:
+            good += 1
+            values.append(qv.value)
+        else:
+            values.append(None)         # bad quality -> passthrough None (mirrors legacy drop)
+    while len(values) < len(plan):
+        values.append(None)
+    return _cfg.build_snap_from_plan(plan, values), good, len(paths)
+
+
 def _running(snap):
     f = snap.get(_core.T_FREQ)
     if isinstance(f, (int, float)) and f > 0.1:
@@ -122,8 +182,12 @@ def _ask_text(d):
             "how do I clear it?") % (d["title"], d["rule_id"], d["message"])
 
 
-def _compute(folders):
-    snap, good, n = _read_snap(folders)
+def _compute(folders, asset=None):
+    config = _read_config(asset)
+    if config is not None:
+        snap, good, n = _read_snap_config(config)
+    else:
+        snap, good, n = _read_snap(folders)
     offline = good == 0 and n > 0
     derived = {
         "max_stale_s": 9999.0 if offline else 0.0,
@@ -163,7 +227,7 @@ def _compute(folders):
     else:
         state = {"state": "STOPPED", "color": "#30363d", "sub": "Belt stopped -- no active faults."}
 
-    payload = {"asset": "conveyor", "state": state, "cards": cards,
+    payload = {"asset": asset or "conveyor", "state": state, "cards": cards,
                "count": len(cards), "good": good, "candidates": n}
 
     # --- transition-only logging (debug a run from the gateway log) ---
@@ -186,32 +250,34 @@ def _compute(folders):
     return payload
 
 
-def _payload(folders):
-    key = ",".join(folders)
+def _payload(folders, asset=None):
+    key = (asset or "") + "|" + ",".join(folders)
     now = _now_ms()
     ent = _cache.get(key)
     if ent is not None and ent[0] > now:
         return ent[1]
-    p = _compute(folders)
+    p = _compute(folders, asset)
     _cache[key] = (now + _TTL_MS, p)
     return p
 
 
-# ---- runScript entry points (bound from MaintenancePanel) ----
-def header_text(folders=None):
-    return _payload(_split_folders(folders))["state"]["state"]
+# ---- runScript entry points (bound from MaintenancePanel / TagMapper) ----
+# `asset` is optional + last so existing live bindings (folders only) are unchanged -> legacy path.
+# Pass an asset to read its per-asset config map instead of the hardcoded folders.
+def header_text(folders=None, asset=None):
+    return _payload(_split_folders(folders), asset)["state"]["state"]
 
 
-def header_color(folders=None):
-    return _payload(_split_folders(folders))["state"]["color"]
+def header_color(folders=None, asset=None):
+    return _payload(_split_folders(folders), asset)["state"]["color"]
 
 
-def header_sub(folders=None):
-    return _payload(_split_folders(folders))["state"]["sub"]
+def header_sub(folders=None, asset=None):
+    return _payload(_split_folders(folders), asset)["state"]["sub"]
 
 
-def count_text(folders=None):
-    n = _payload(_split_folders(folders))["count"]
+def count_text(folders=None, asset=None):
+    n = _payload(_split_folders(folders), asset)["count"]
     if n == 0:
         return "No active anomalies"
     if n == 1:
@@ -219,9 +285,9 @@ def count_text(folders=None):
     return "%d active anomalies" % n
 
 
-def cards_json(folders=None):
+def cards_json(folders=None, asset=None):
     """Raw card array (kept for the WebDev endpoint / future per-card UI)."""
-    return _payload(_split_folders(folders))["cards"]
+    return _payload(_split_folders(folders), asset)["cards"]
 
 
 # Severity text marker (ASCII; markdown can't color, the word + marker carry it).
@@ -229,10 +295,10 @@ _SEV_MARK = {"CRITICAL": "!! CRITICAL", "HIGH": "! HIGH", "MEDIUM": "WARNING",
              "LOW": "LOW", "INFO": "INFO"}
 
 
-def feed_markdown(folders=None):
+def feed_markdown(folders=None, asset=None):
     """The anomaly feed as markdown -- bound to a ia.display.markdown via runScript (the proven
     runScript->prop path that the header uses). Reliable; no Flex-Repeater param plumbing."""
-    cards = _payload(_split_folders(folders))["cards"]
+    cards = _payload(_split_folders(folders), asset)["cards"]
     if not cards:
         return "### All clear\n\nNo active anomalies. All monitored signals nominal."
     parts = []
@@ -244,9 +310,9 @@ def feed_markdown(folders=None):
     return "\n\n---\n\n".join(parts)
 
 
-def top_ask_text(folders=None):
+def top_ask_text(folders=None, asset=None):
     """Seed for the sidebar 'Ask MIRA' button -- the worst active fault, or a healthy-check prompt."""
-    cards = _payload(_split_folders(folders))["cards"]
+    cards = _payload(_split_folders(folders), asset)["cards"]
     if cards:
         return cards[0]["askText"]
     return "The garage conveyor looks healthy right now. What routine checks should I run on the GS10 drive?"

@@ -1,0 +1,23 @@
+[project]
+name = "mira-plc-parser"
+version = "0.1.0"
+description = "Read-only, vendor-agnostic PLC program-export analysis (parse -> MIRA PLC IR -> maintenance intelligence)."
+requires-python = ">=3.12"
+dependencies = []   # Phase 1 is stdlib-only (xml.etree, re); LLM explanation is a later layer
+
+[project.scripts]
+mira-plc-parser = "mira_plc_parser.cli:main"
+# The offline PLC Asset Compiler is the `compile` subcommand of this same CLI; this alias exposes
+# it under the product name. `plc-asset-compiler compile <folder> --out <dir>`.
+plc-asset-compiler = "mira_plc_parser.cli:main"
+
+[project.optional-dependencies]
+test = ["pytest"]
+packaging = ["pyinstaller"]   # only needed to build the standalone Windows .exe (see PACKAGING.md)
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["mira_plc_parser*"]

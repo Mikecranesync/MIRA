@@ -1,0 +1,376 @@
+{
+  "asset_candidates": [
+    {
+      "confidence": "medium",
+      "detail": "candidate asset (keyword: conv)",
+      "evidence": [
+        "Conv_Fault"
+      ],
+      "kind": "asset",
+      "name": "Conv"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate asset (keyword: motor)",
+      "evidence": [
+        "Motor_Run"
+      ],
+      "kind": "asset",
+      "name": "Motor"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate asset (keyword: vfd)",
+      "evidence": [
+        "VFD_Frequency",
+        "VFD_Current",
+        "VFD_FaultCode"
+      ],
+      "kind": "asset",
+      "name": "VFD"
+    }
+  ],
+  "controller": "ConveyorCell",
+  "counts": {
+    "asset_candidates": 3,
+    "controllers": 1,
+    "fault_candidates": 4,
+    "outputs": 3,
+    "permissives": 1,
+    "programs": 1,
+    "review_required": 1,
+    "routines": 2,
+    "rungs": 3,
+    "sequences": 0,
+    "tags": 11,
+    "timer_chains": 0,
+    "vfd_signal_candidates": 3
+  },
+  "detection": {
+    "confidence": "high",
+    "fmt": "rockwell_l5x",
+    "needs_export": "",
+    "reason": "found <RSLogix5000Content> root"
+  },
+  "fault_candidates": [
+    {
+      "confidence": "review",
+      "detail": "Emergency stop healthy (safety circuit)",
+      "evidence": [
+        "Tag[@Name='EStop_OK']"
+      ],
+      "kind": "fault",
+      "name": "EStop_OK"
+    },
+    {
+      "confidence": "medium",
+      "detail": "Jam detection photo-eye",
+      "evidence": [
+        "Tag[@Name='Photoeye_1']"
+      ],
+      "kind": "fault",
+      "name": "Photoeye_1"
+    },
+    {
+      "confidence": "medium",
+      "detail": "Conveyor fault latch",
+      "evidence": [
+        "Tag[@Name='Conv_Fault']"
+      ],
+      "kind": "fault",
+      "name": "Conv_Fault"
+    },
+    {
+      "confidence": "medium",
+      "detail": "Active drive fault code",
+      "evidence": [
+        "Tag[@Name='VFD_FaultCode']"
+      ],
+      "kind": "fault",
+      "name": "VFD_FaultCode"
+    }
+  ],
+  "handled": true,
+  "output_dependencies": [
+    {
+      "confidence": "high",
+      "detail": "true when: Motor_Run, Photoeye_1",
+      "evidence": [
+        "MainProgram/MainRoutine/Rung[2]"
+      ],
+      "kind": "output",
+      "name": "Conv_Fault"
+    },
+    {
+      "confidence": "high",
+      "detail": "true when: Start_PB, Stop_PB, EStop_OK, Auto_Mode, Conv_Fault",
+      "evidence": [
+        "MainProgram/MainRoutine/Rung[0]"
+      ],
+      "kind": "output",
+      "name": "Motor_Run"
+    },
+    {
+      "confidence": "high",
+      "detail": "true when: Motor_Run",
+      "evidence": [
+        "MainProgram/MainRoutine/Rung[1]"
+      ],
+      "kind": "output",
+      "name": "Run_Timer"
+    }
+  ],
+  "permissives": [
+    {
+      "confidence": "review",
+      "detail": "requires: Start_PB, Stop_PB, EStop_OK, Auto_Mode, Conv_Fault | safety interlock (REVIEW): EStop_OK | mode: Auto_Mode",
+      "evidence": [
+        "MainProgram/MainRoutine/Rung[0]"
+      ],
+      "interlocks": [
+        "EStop_OK"
+      ],
+      "kind": "permissive",
+      "name": "Motor_Run"
+    }
+  ],
+  "review_required": [
+    {
+      "confidence": "review",
+      "detail": "Emergency stop healthy (safety circuit)",
+      "evidence": [
+        "Tag[@Name='EStop_OK']"
+      ],
+      "kind": "safety",
+      "name": "EStop_OK"
+    }
+  ],
+  "routine_summaries": [
+    {
+      "comment_digest": [
+        "Run the conveyor motor in auto when started, no e-stop, no fault",
+        "Accumulate conveyor run time",
+        "Photo-eye blocked while running latches a jam fault"
+      ],
+      "confidence": "high",
+      "outputs_controlled": [
+        "Conv_Fault",
+        "Motor_Run",
+        "Run_Timer"
+      ],
+      "program": "MainProgram",
+      "purpose_hint": "fault / alarm handling",
+      "routine": "MainRoutine",
+      "rungs": 3,
+      "type": "RLL"
+    },
+    {
+      "comment_digest": [],
+      "confidence": "high",
+      "outputs_controlled": [],
+      "program": "MainProgram",
+      "purpose_hint": "",
+      "routine": "FaultRoutine",
+      "rungs": 0,
+      "type": "ST"
+    }
+  ],
+  "schema": "mira-plc-parser/report@1",
+  "sequences": [],
+  "tag_dictionary": [
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "BOOL",
+      "description": "Conveyor VFD run command",
+      "name": "Motor_Run",
+      "roles": [
+        "output"
+      ],
+      "scope": "controller",
+      "used_count": 3,
+      "used_in": [
+        "MainProgram/MainRoutine/Rung[0]",
+        "MainProgram/MainRoutine/Rung[1]",
+        "MainProgram/MainRoutine/Rung[2]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "BOOL",
+      "description": "Conveyor fault latch",
+      "name": "Conv_Fault",
+      "roles": [
+        "output",
+        "fault"
+      ],
+      "scope": "controller",
+      "used_count": 2,
+      "used_in": [
+        "MainProgram/MainRoutine/Rung[0]",
+        "MainProgram/MainRoutine/Rung[2]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "BOOL",
+      "description": "Line in automatic mode",
+      "name": "Auto_Mode",
+      "roles": [
+        "mode"
+      ],
+      "scope": "controller",
+      "used_count": 1,
+      "used_in": [
+        "MainProgram/MainRoutine/Rung[0]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "BOOL",
+      "description": "Emergency stop healthy (safety circuit)",
+      "name": "EStop_OK",
+      "roles": [
+        "fault",
+        "safety"
+      ],
+      "scope": "controller",
+      "used_count": 1,
+      "used_in": [
+        "MainProgram/MainRoutine/Rung[0]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "BOOL",
+      "description": "Jam detection photo-eye",
+      "name": "Photoeye_1",
+      "roles": [
+        "fault",
+        "input"
+      ],
+      "scope": "controller",
+      "used_count": 1,
+      "used_in": [
+        "MainProgram/MainRoutine/Rung[2]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "TIMER",
+      "description": "Conveyor run-time accumulator",
+      "name": "Run_Timer",
+      "roles": [
+        "output",
+        "timer"
+      ],
+      "scope": "controller",
+      "used_count": 1,
+      "used_in": [
+        "MainProgram/MainRoutine/Rung[1]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "BOOL",
+      "description": "Operator start pushbutton",
+      "name": "Start_PB",
+      "roles": [
+        "input"
+      ],
+      "scope": "controller",
+      "used_count": 1,
+      "used_in": [
+        "MainProgram/MainRoutine/Rung[0]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "BOOL",
+      "description": "Operator stop pushbutton",
+      "name": "Stop_PB",
+      "roles": [
+        "input"
+      ],
+      "scope": "controller",
+      "used_count": 1,
+      "used_in": [
+        "MainProgram/MainRoutine/Rung[0]"
+      ]
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "REAL",
+      "description": "Drive output current Amps",
+      "name": "VFD_Current",
+      "roles": [],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "DINT",
+      "description": "Active drive fault code",
+      "name": "VFD_FaultCode",
+      "roles": [
+        "fault"
+      ],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    },
+    {
+      "address": "",
+      "confidence": "high",
+      "data_type": "REAL",
+      "description": "Drive output frequency Hz",
+      "name": "VFD_Frequency",
+      "roles": [],
+      "scope": "controller",
+      "used_count": 0,
+      "used_in": []
+    }
+  ],
+  "timer_chains": [],
+  "vendor": "Rockwell Automation",
+  "vfd_signal_candidates": [
+    {
+      "confidence": "medium",
+      "detail": "candidate role: frequency",
+      "evidence": [
+        "Tag[@Name='VFD_Frequency']"
+      ],
+      "kind": "vfd_signal",
+      "name": "VFD_Frequency"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate role: current_a",
+      "evidence": [
+        "Tag[@Name='VFD_Current']"
+      ],
+      "kind": "vfd_signal",
+      "name": "VFD_Current"
+    },
+    {
+      "confidence": "medium",
+      "detail": "candidate role: fault_code",
+      "evidence": [
+        "Tag[@Name='VFD_FaultCode']"
+      ],
+      "kind": "vfd_signal",
+      "name": "VFD_FaultCode"
+    }
+  ],
+  "warnings": []
+}
