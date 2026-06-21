@@ -1,7 +1,8 @@
 {
   "_comment": "Governance source of truth for the conveyor demo (pillar 5). Human-approved. Read-only. fault_code_table.md is intentionally STALE (updated_at > embeddings_refreshed_at) to demonstrate the stale-document / embeddings-not-refreshed incident.",
   "approved_assets": [
-    "enterprise.plant1.packaging.line2.conv_belt_01"
+    "enterprise.plant1.packaging.line2.conv_belt_01",
+    "enterprise.garage.line1.conveyor1"
   ],
   "documents": {
     "troubleshooting.md": {
