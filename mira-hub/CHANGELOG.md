@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.17.0 — 2026-06-21
+- feat(hub): KG navigator Phase 2 — parsed node-attached doc auto-proposes a grounded `HAS_DOCUMENT` edge node→manual (evidence = the doc's own chunks, `evidence_type='document_page'`). New `src/lib/node-document-proposals.ts`; fired fire-and-forget from `node-knowledge-ingest.ts` (decoupled, never-throws, `NODE_DOC_PROPOSALS=0` kill switch). Never auto-verified (ADR-0017). Real-DB run caught + fixed an `ON CONFLICT` drift (kg_entities unique key is `(tenant_id, entity_type, name)`). 4 vitest units; no migration.
+
 ## v2.16.0 — 2026-06-20
 - feat(hub): KG navigator Phase 1 — graph↔namespace cross-link UX on `/knowledge/map`. Node detail panel gains a "📁 Add documents" deep-link to the namespace (`/namespace?node=<kg_entities.id>`); edge click now opens a panel for *verified* edges (type/source→target/confidence/`evidence_summary`), not just proposed ones. `/api/kg/graph` plumbs `entity_id`→`GraphNode.entityId` + `evidence_summary`→`GraphLink.evidenceSummary` (additive, no migration; cols from mig 001/029). Proposed-edge confirm/reject unchanged (never auto-verify). e2e `tests/e2e/kg-navigator-phase1.spec.ts` + screenshots.
 
