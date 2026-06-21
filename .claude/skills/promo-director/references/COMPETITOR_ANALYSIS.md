@@ -1,8 +1,33 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-06-21
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-06-21
+
+*Cutoff: 2026-05-03 → 2026-06-21. 7 meaningful deltas found across CMMS, automation/SCADA, and B2B SaaS.*
+
+### Most actionable pattern for MIRA playbook
+
+MaintainX's $3.6B Autodesk acquisition (May 28) is the biggest competitive landscape shift since the cache was seeded. Post-acquisition, MaintainX becomes one feature inside Autodesk Operations Solutions (alongside Tandem digital twin, Flexsim, Fusion Operations). That opens white space: MIRA can now position as the *independent, focused* maintenance intelligence layer — versus one buried checkbox inside a $14B design-tool suite that bought its way into ops. Countertag: "not bundled, not generic — purpose-built for maintenance teams."
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — Autodesk acquisition announced May 28, 2026 at $3.6B all-cash (Autodesk's largest ever); Bloomberg CEO video: https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video — CEO Anagnost "design → make → operate" lifecycle framing; folded into new "Autodesk Operations Solutions" unit alongside Tandem digital twin. MaintainX ARR $135M+, 50%+ YoY growth at time of deal.
+- **MaintainX** — May 2026 product update: AI Procedure Recommendations (attaches right procedure when work order is created), Sub Work Orders, scalable Automations. Source: https://www.getmaintainx.com/blog/whats-new-at-maintainx-may-2026
+- **UpKeep** — June 5, 2026: launched AI-native maintenance coordination platform targeting *residential property management* (Las Vegas market first), not industrial. Handles intake, dispatch, vendor matching, and follow-through. Represents a vertical pivot away from MIRA's ICP. Nova AI: 3-5X speed improvement, mobile access. Source: https://www.webdisclosure.com/press-release/upkeep-launches-ai-native-maintenance-coordination-platform-to-modernize-residential-property-management-8a5XzlA7xKR [no dedicated video confirmed]
+
+**Automation / SCADA**
+- **Siemens** — Intelligence Center X launched June 1, 2026 at Realize LIVE Americas (Detroit): https://news.siemens.com/en-us/siemens-intelligence-center-x/ — industrial AI orchestration for "hybrid workforce where people and AI agents work together with shared context, workflows and lifecycle intelligence." Combines Mendix low-code + Graph Studio + AI Studio (Rapidminer). Customer proof: Vivix Vidros Planos (flat glass) — 85% reduction in production issue resolution time, 6,000 hours manual work recaptured in one year. No standalone YouTube video confirmed; announced at conference.
+
+**B2B SaaS (pattern transfer)**
+- **Notion** — 3.5: Developer Platform (May 13, 2026): https://www.youtube.com/watch?v=ey8W3DGFCTU — "Make with Notion: Developer Platform" keynote; shifts from agent-as-feature (3.0) to agent-host framing. Workers (hosted code runtime), CLI, External Agent API; Claude, Codex, Decagon work out-of-box. 1 million Custom Agents created. New hook: "where agents live and work alongside your team" — meaningful upgrade from 3.0's "You assign. Agents do." [transcript not verified from YouTube]
+- **Cursor** — Composer 2.5 (May 18, 2026): https://cursor.com/changelog/composer-2-5 — proprietary model post-trained from Moonshot Kimi K2.5; 79.8% SWE-Bench Multilingual, competes with Claude Opus 4.7/GPT-5.5 at ~1/10 cost ($0.50/$2.50 per M tokens). SpaceX has option to acquire Cursor at $60B; training larger model with xAI on Colossus 2. No standalone promo video — changelog-native release. [background signal: cost-compression tailwind for AI tooling]
+- **Anthropic** — Claude Fable 5 launched June 9, 2026; confidential IPO filing at $965B valuation ($47B ARR run rate). Source: https://www.anthropic.com/news/claude-fable-5-mythos-5 — first Mythos-class model publicly available; temporarily suspended within 72 hours by US government export directive. No standalone promo video; IPO context relevant for enterprise credibility signal in B2B SaaS positioning.
 
 ---
 
@@ -55,7 +80,15 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - UpKeep Studio: build custom apps with AI, no code; Nova Model Switcher: speed vs depth tradeoff
 - No dedicated YouTube video confirmed
 
-**Pattern note:** UpKeep shifted from feature-demo VO to autonomous-agent narrative between 2024 and Sep 2025. The "acts on it" vs "analyzes" dichotomy is a direct steal target for MIRA.
+**AI-native residential coordination platform (Jun 5, 2026)**
+- Source: https://www.webdisclosure.com/press-release/upkeep-launches-ai-native-maintenance-coordination-platform-to-modernize-residential-property-management-8a5XzlA7xKR
+- New vertical: residential property management, launched in Las Vegas market
+- Covers intake, dispatch, vendor matching, follow-through — full coordination layer
+- Nova AI: 3-5X speed improvement, mobile field access, conversational cycle counts
+- No dedicated launch video confirmed
+- **Style drift note:** UpKeep is expanding into residential — adjacent to, but distinct from, industrial maintenance. May indicate the industrial ICP isn't scaling as fast as residential. MIRA's ICP (plant maintenance technicians) is unaffected.
+
+**Pattern note:** UpKeep shifted from feature-demo VO to autonomous-agent narrative (Sep 2025 Nova) and is now expanding verticals (residential, Jun 2026). The "acts on it" vs "analyzes" dichotomy is still the primary steal target for MIRA.
 
 ---
 
@@ -86,7 +119,21 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Digitize Fast with MaintainX and AI": https://www.youtube.com/watch?v=X8cY-d-_KZM
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
-**Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+**May 2026 product update (final independent release)**
+- Source: https://www.getmaintainx.com/blog/whats-new-at-maintainx-may-2026
+- AI Procedure Recommendations: attaches the right procedure at work order creation — AI-driven, no manual search
+- Sub Work Orders: complex multi-technician job management
+- Scalable Automations
+
+**Autodesk acquisition (May 28, 2026) — category exit**
+- Price: $3.6B all-cash (Autodesk's largest acquisition in company history)
+- Folded into "Autodesk Operations Solutions" alongside Tandem (digital twin), Flexsim (simulation), Fusion Operations
+- Autodesk CEO Bloomberg interview: https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video
+- CEO framing: "design → make → operate" continuous lifecycle data flow; MaintainX as the "operate" leg
+- MaintainX ARR: $135M+ at 50%+ YoY growth
+- **Competitive note:** Post-acquisition, MaintainX is no longer a standalone CMMS vendor — it is one module inside a design/engineering platform. Procurement shifts from maintenance teams to Autodesk enterprise relationships. MIRA's counterplay: independent + purpose-built vs. bundled + generic.
+
+**Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner. **Status as of May 28, 2026: being acquired by Autodesk.**
 
 ---
 
@@ -209,7 +256,16 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 
 ### Siemens
 
-See Senseye section above. No standalone Siemens industrial video found distinct from the Senseye/Maintenance Copilot material.
+See Senseye section above for Maintenance Copilot (predictive maintenance).
+
+**Intelligence Center X (June 1, 2026 — Realize LIVE Americas, Detroit)**
+- Announcement: https://news.siemens.com/en-us/siemens-intelligence-center-x/
+- Coverage: https://www.engineering.com/siemens-unveils-intelligence-center-x-at-realize-live-2026/
+- Product: industrial AI orchestration software — "hybrid workforce where people and AI agents work together with shared context, workflows and lifecycle intelligence"
+- Stack: Mendix low-code + Graph Studio + AI Studio (Rapidminer); governed single foundation for AI apps + agents
+- Proof number: Vivix Vidros Planos (Brazil flat glass) — 85% reduction in production issue resolution time, 6,000 hours manual work recaptured in one year
+- No standalone YouTube launch video confirmed; announced at Realize LIVE conference
+- **Competitive note:** Siemens is claiming the "hybrid workforce" and "AI orchestration" frame for industrial. The 85% resolution-time reduction is a strong proof template — MIRA should develop its own comparable benchmark before this claim locks the frame.
 
 ---
 
@@ -304,6 +360,15 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 30+ product releases in recent months per search results
 - No standalone promo video; analyst/conference appearances as primary video channel
 
+**Claude Fable 5 + IPO filing (Jun 9, 2026)**
+- Announcement: https://www.anthropic.com/news/claude-fable-5-mythos-5
+- First Mythos-class model publicly available; state-of-the-art across coding, vision, scientific research
+- Revenue run rate: $47B (up from $10B 2025); valuation $965B (topped OpenAI at $852B)
+- Confidential IPO filing submitted; launch expected as soon as 2026
+- Temporarily suspended within 72 hours due to US government export directive
+- No standalone promo video; IPO credibility arc is the B2B positioning story
+- **Note for MIRA:** Anthropic IPO signals institutional credibility of the AI infrastructure layer. For MIRA's enterprise positioning, "built on Claude" carries brand weight if ever reintroduced — but per CLAUDE.md §Hard Constraints, Anthropic is not a provider (removed PR #610). Do not reintroduce.
+
 ---
 
 ### Cursor
@@ -316,6 +381,17 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 30+ integrations (Mar 2026): Atlassian, Datadog, GitLab, Linear, PagerDuty
 - ARR: $1B (late 2025) → $2B (Q1 2026, doubled again)
 - No standalone promo video found; growth is organic/word-of-mouth, changelog-driven
+
+**Composer 2.5 (May 18, 2026)**
+- Changelog: https://cursor.com/changelog/composer-2-5
+- Post-trained proprietary model on Moonshot Kimi K2.5; 79.8% SWE-Bench Multilingual, 63.2% CursorBench v3.1
+- Competes with Claude Opus 4.7 / GPT-5.5 at ~1/10 cost ($0.50/$2.50 per M tokens vs Anthropic pricing)
+- No standalone launch video; changelog + press coverage as release vehicle
+
+**Strategic moves (May–Jun 2026)**
+- SpaceX has reported option to acquire Cursor at $60B valuation
+- Training larger model from scratch with xAI on Colossus 2 (1M H100-equivalents, 10x more compute)
+- **Signal for MIRA:** cost-compression curve for LLM inference is accelerating; AI-native products can drop price floors faster than expected. Not a video finding, but a background tailwind to account for in pricing/positioning.
 
 ---
 
@@ -339,6 +415,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Music: likely ambient [not verified]
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
+
+**Notion 3.5: Developer Platform (May 13, 2026)**
+- URL: https://www.youtube.com/watch?v=ey8W3DGFCTU (third-party coverage; official keynote at makewithnotion.com)
+- Release notes: https://www.notion.com/releases/2026-05-13
+- Shift: 3.0 (Sep 2025) was agent-as-feature; 3.5 is agent-as-infrastructure
+- Three components: Workers (hosted runtime — Notion runs your code), CLI, External Agent API
+- Out-of-box partners: Claude, Codex, Decagon
+- Proof: 1 million Custom Agents created since 3.0 launch
+- New hook: "where agents live and work alongside your team" — workspace as host for external agents, not just internal ones [transcript not verified]
+- **Pattern note:** SaaS-as-agent-host frame is new; first vendor to position the workspace as infrastructure for external AI agents, not just a feature consumer. If MIRA positions as "the agent that lives inside your maintenance workflow," this is the playbook precedent.
 
 ---
 
@@ -382,19 +468,22 @@ No video content surfaced for 2025–2026.
 | Question hook: "What if [existing workflow] with [new capability]?" | UpKeep: "What if you could control all of your maintenance data using just your voice?" | "What if your tech already knew the fault before they reached the machine?" |
 | "Doesn't just X — it Y" (passive→active dichotomy) | UpKeep: "doesn't just analyze…it acts on it" | "doesn't just surface the fault code — it tells you exactly what to do next" |
 | "You assign. It does." compression | Notion: "You assign the tasks. Your Agents do the work." | "You take the call. MIRA has the answer." |
-| ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
+| ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines; Siemens: Vivix Vidros Planos 85% resolution time reduction, 6,000 hrs recaptured | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| SaaS-as-agent-host | Notion 3.5: workspace as infrastructure for external AI agents | "MIRA lives inside Slack — not another app your team has to open" |
 
 ### Anti-patterns (avoid)
 
 - Corporate narration over stock footage of factories with no specific claim → forgettable (common among mid-market CMMS vendors)
 - Feature list VO without a single proof number → no hook, no memory
 - "AI-powered" as the lead without explaining what the AI specifically does → now invisible signal (every competitor uses it)
+- "Hybrid workforce" or "AI orchestration" without a specific task or outcome → Siemens is already saturating this frame; avoid at the brand level
 
 ### Vendor style drift (notable shifts)
 
-- **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova); now expanding into residential property management (Jun 2026). Industrial CMMS may not be its primary growth vector.
+- **MaintainX**: added OEM manual KB framing (Feb 2025) → acquired by Autodesk for $3.6B (May 2026). No longer an independent CMMS — now one module inside Autodesk's design/make/operate suite. **Biggest competitive landscape shift in the cache.**
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Siemens**: launched Intelligence Center X (Jun 2026) — "hybrid workforce" AI orchestration frame, competing for the enterprise industrial AI platform position. Rapid proof-number deployment (85% resolution time reduction) signals enterprise sales motion accelerating.
