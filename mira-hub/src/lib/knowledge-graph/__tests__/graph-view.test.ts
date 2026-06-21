@@ -68,4 +68,36 @@ describe("buildGraphPayload", () => {
     const p = buildGraphPayload(entities, rels);
     expect(p.links[0]).toMatchObject({ proposalId: "p1", reasoning: "Model GS10 matches" });
   });
+
+  test("plumbs entity_id onto the node payload when present", () => {
+    const p = buildGraphPayload(
+      [{ id: "a", entity_type: "equipment", name: "VFD-07", uns_path: null, entity_id: "EQ-VFD-07" }],
+      [],
+    );
+    expect(p.nodes[0]).toMatchObject({ id: "a", entityId: "EQ-VFD-07" });
+  });
+
+  test("omits entityId when the row has none", () => {
+    const p = buildGraphPayload(
+      [{ id: "a", entity_type: "equipment", name: "VFD-07", uns_path: null }],
+      [],
+    );
+    expect(p.nodes[0]).not.toHaveProperty("entityId");
+  });
+
+  test("carries evidence_summary onto a verified edge", () => {
+    const rels: RelRow[] = [
+      { source_id: "a", target_id: "b", relationship_type: "HAS_DOCUMENT", confidence: 1, approval_state: "verified", evidence_summary: "Manual page 4 lists this part" },
+    ];
+    const p = buildGraphPayload(entities, rels);
+    expect(p.links[0]).toMatchObject({ state: "verified", evidenceSummary: "Manual page 4 lists this part" });
+  });
+
+  test("omits evidenceSummary when absent", () => {
+    const rels: RelRow[] = [
+      { source_id: "a", target_id: "b", relationship_type: "has_manual", confidence: 1, approval_state: "verified" },
+    ];
+    const p = buildGraphPayload(entities, rels);
+    expect(p.links[0]).not.toHaveProperty("evidenceSummary");
+  });
 });

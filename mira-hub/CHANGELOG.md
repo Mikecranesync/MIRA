@@ -2,6 +2,9 @@
 
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
+## v2.16.0 — 2026-06-20
+- feat(hub): KG navigator Phase 1 — graph↔namespace cross-link UX on `/knowledge/map`. Node detail panel gains a "📁 Add documents" deep-link to the namespace (`/namespace?node=<kg_entities.id>`); edge click now opens a panel for *verified* edges (type/source→target/confidence/`evidence_summary`), not just proposed ones. `/api/kg/graph` plumbs `entity_id`→`GraphNode.entityId` + `evidence_summary`→`GraphLink.evidenceSummary` (additive, no migration; cols from mig 001/029). Proposed-edge confirm/reject unchanged (never auto-verify). e2e `tests/e2e/kg-navigator-phase1.spec.ts` + screenshots.
+
 ## v2.15.0 — 2026-06-20
 - feat(hub): import-bundle **target picker** — the "Import bundle" button now opens a modal with an "Import into" dropdown (existing project or **New project**) before choosing the `.zip`. Importing into an existing project adds the bundle's signals to it instead of always creating a new project, so re-imports don't pile up duplicates. Backend: `POST /api/contextualization/import` (multipart) accepts an optional `project_id` form field — validated UUID, tenant-scoped lookup, 404 if not found; absent → new project (unchanged). Page drag-drop still imports to a new project (quick path).
 
