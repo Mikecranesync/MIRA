@@ -240,6 +240,10 @@ wiki/orchestrator/STATE.md
 # bit-stable baseline yet (engine has residual nondeterminism — see HANDOFF).
 tests/eval/fixtures/llm_replay/*.json
 
+# MIRA local AnswerTrace output (observability layer, MIRA_LOCAL_TRACE=1)
+.mira-traces/
+.mira-phase1-traces/
+
 # --- accumulated session artifacts (added 2026-06-16 working-tree untangle) ---
 # Offline eval run logs (regenerated every run by tests/eval/; ~40+ accreted).
 tests/eval/runs/
