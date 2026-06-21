@@ -109,6 +109,29 @@ def test_timer_without_downstream_use_is_not_a_chain(conveyor_l5x):
     assert all(c.name != "Run_Timer" for c in r.timer_chains)
 
 
+# the IEC-61131 function-block timer shape (CODESYS/OpenPLC/CCW), NOT Rockwell TON(tag)+tag.DN.
+# No VAR block -- mirrors the real CCW Micro820 export, where the timer instance is never declared in
+# the .st (its type lives in CCW's separate Controller-Variables CSV), so data-type detection can't
+# see it. The chain has to be read from the FB-call + `.Q` done-bit reference in the source.
+IEC_WATCHDOG_ST = """
+PROGRAM DriveComms
+vfd_err_timer(IN := vfd_comm_err, PT := T#5000ms);
+IF vfd_err_timer.Q THEN
+    vfd_fault := TRUE;
+END_IF;
+END_PROGRAM
+"""
+
+
+def test_iec_function_block_timer_watchdog_detected():
+    # GENERALIZATION: the real CCW watchdog uses an IEC TON FB instance + .Q done bit, not TON()/.DN.
+    r = A.analyze(structured_text.parse(IEC_WATCHDOG_ST, "drive.st"))
+    chain = next((c for c in r.timer_chains if c.name == "vfd_err_timer"), None)
+    assert chain is not None, "IEC FB watchdog (vfd_err_timer.Q -> fault) must be detected"
+    assert "vfd_fault" in chain.detail
+    assert "fault" in chain.detail.lower()
+
+
 # ---------------- sequence / state extraction ----------------
 
 def test_sequence_state_variable_detected():

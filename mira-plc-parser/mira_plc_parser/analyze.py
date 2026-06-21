@@ -50,6 +50,11 @@ _STEP_PAT = _kw(["step", "state", "seq", "sequence", "phase", "stage", "sfc"])
 
 # data types that denote a timer (the timer tag is what an OUTPUT timer instruction drives).
 _TIMER_TYPES = {"TIMER", "FBD_TIMER", "TON", "TOF", "TP", "RTO"}
+# IEC 61131 timer function-block usage (CODESYS/OpenPLC/CCW): an instance CALLED with a preset time
+# `name(IN := ..., PT := T#5s)` and read via a timer done/elapsed member `name.Q` / `name.ET`.
+# This is how real CCW exports write a watchdog -- there is no TIMER-typed tag and no TON(tag)/.DN.
+_FB_TIMER_CALL = re.compile(r"\b([A-Za-z_]\w*)\s*\([^)]*\bPT\s*:=", re.IGNORECASE)
+_TIMER_MEMBER = re.compile(r"\b([A-Za-z_]\w*)\.(?:DN|ET|TT|ACC|PRE)\b", re.IGNORECASE)
 # integer-ish data types a sequence/state register uses (BOOL excluded -- a 2-state flag isn't a sequencer).
 _NUMERIC_TYPES = {"SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT",
                   "BYTE", "WORD", "DWORD", "LWORD"}
@@ -380,6 +385,12 @@ def _timer_fault_chains(proj: PLCProject) -> list[Finding]:
         t.name for t in proj.all_tags()
         if t.data_type.upper() in _TIMER_TYPES or "timer" in t.roles
     }
+    # also pick up IEC timer function-block instances read from the source (the real CCW shape):
+    # `name(... PT := T#5s)` and `name.DN/.ET/...` -- neither carries a TIMER-typed tag.
+    blob = " ".join([r.st_text for _p, r in proj.all_routines() if r.st_text]
+                    + [rg.text for _p, _r, rg in proj.all_rungs() if rg.text])
+    timer_names |= {m.group(1) for m in _FB_TIMER_CALL.finditer(blob)}
+    timer_names |= {m.group(1) for m in _TIMER_MEMBER.finditer(blob)}
     if not timer_names:
         return []
 
