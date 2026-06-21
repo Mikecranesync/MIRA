@@ -20,7 +20,7 @@ _SIGNAL_LIMIT = int(os.getenv("MIRA_CTX_SIGNALS_LIMIT", "20"))
 def fetch_ctx_approved_signals(tenant_id: str, ltree_prefix: str) -> list[dict]:
     """Return approved kg_entity signals whose uns_path is a descendant of ltree_prefix.
 
-    Queries entity_type='signal', approval_state IN ('proposed','verified').
+    Queries entity_type='signal', approval_state = 'verified' (deployed answers cite verified only — train-before-deploy).
     ltree_prefix is a dot-notation path (e.g. 'enterprise.site1.area1').
 
     Returns a list of dicts with keys: name, uns_path, roles, confidence.
@@ -42,7 +42,7 @@ def fetch_ctx_approved_signals(tenant_id: str, ltree_prefix: str) -> list[dict]:
                       FROM kg_entities
                      WHERE tenant_id = %s::uuid
                        AND entity_type = 'signal'
-                       AND approval_state IN ('proposed', 'verified')
+                       AND approval_state = 'verified'
                        AND uns_path <@ %s::ltree
                      ORDER BY uns_path
                      LIMIT %s
