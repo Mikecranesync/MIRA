@@ -86,6 +86,28 @@ Commit after each phase (durable). Record gate evidence in this file's "Progress
   (vector+BM25+fault/product) path — several queries returned 0 BM25 hits (lexical mismatch =
   the deferred page-picking work, not a load failure). Coverage: GS10 already had some chapter
   chunks; **Micro820 was sparse** → real value.
-  - Micro820 docling staging load: IN PROGRESS (~80 min — 683 pages).
-- **Phase 4 — prod promotion:** pending Micro820 staging validation + explicit OK.
-- **Phase 5 — generalize/docs:** pending.
+  - Micro820 docling staging load: DONE — 683pp → 772 tables→Markdown → 1288 chunks → gate
+    dropped 200 noise (191 dot-leaders, 9 repeated-char) → **1088 clean chunks** (was 4 in corpus).
+- **Phase 3 VERDICT — STOP (do not promote full-PDF to prod).** Decisive test
+  (`vector_battery_scoped.py`): even scoped to the queried vendor, the docling full-manual chunks
+  surface in only **1 of 8** natural troubleshooting queries ("Micro820 high speed counter",
+  sim 0.84). For the other 7, existing corpus content out-ranks them. Loading full manuals does
+  NOT lift retrieval — the bottleneck is **page-picking / chunk-ranking** (the deferred work), and
+  the corpus already covers GS10/Micro820 for most queries. This is exactly the gate the plan named:
+  "if extraction-alone doesn't lift retrieval, STOP." The 1145 staging chunks were **deleted**
+  (kept staging prod-shaped for evals). **Nothing loaded to prod.**
+  - Secondary finding (note, don't fix here): raw vector retrieval does NOT discriminate vendor
+    without the product-extraction stage ("GS10 overcurrent" → V1000/ACH580; "Micro820 Modbus" →
+    SINAMICS) — the secret-shopper P0 lineage / deferred page-picking work.
+- **Phase 4 — prod promotion:** NOT DONE — gate failed; recommend don't-promote. Human checkpoint.
+- **Phase 5 — generalize/docs:** the docling ingester + quality gate + test batteries are built and
+  committed; they're ready to re-run for prod IF/WHEN the page-picking/product-stage retrieval work
+  lands. Until then, full-PDF bulk loading adds corpus bulk without retrieval lift. Runbook section B
+  stays "staging-tested-not-prod-ready" (now with the docling result, not just pdfplumber).
+
+## Outcome
+Loading is solved and proven clean (docling). **The lever for answer quality is retrieval
+(page-picking + product stage), not more loaded content** — full GS10/Micro820 manuals are already
+covered for most natural queries, and the gap-fill curated chunks (loaded to prod 2026-06-21) handle
+the specific holes. Reusable infra delivered: `--use-docling` ingester, quality gate, and BM25 /
+vector / scoped-vector / coverage test tools.
