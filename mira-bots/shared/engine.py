@@ -751,7 +751,7 @@ class Supervisor:
         self.nemotron = NemotronClient()
 
         # Inference router — enabled when INFERENCE_BACKEND=cloud and at least one of
-        # GROQ_API_KEY / CEREBRAS_API_KEY / TOGETHER_API_KEY is set.
+        # GROQ_API_KEY / CEREBRAS_API_KEY / TOGETHERAI_API_KEY is set.
         self.router = InferenceRouter()
 
         # Initialize workers

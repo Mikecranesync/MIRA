@@ -162,7 +162,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **NeonDB SSL from Windows** — `channel_binding` fails. Use macOS hosts instead.
 - **Intent classifier** — defaults to `industrial` for unrecognized queries (biased toward helping); short greetings route to `greeting` only when <20 chars AND contain a greeting word. Fixed 2026-04-15 in #280. Still: test with realistic phrasing before assuming a bounce is a bug.
 - **Competing Telegram pollers** — Only one process per bot token. Check CHARLIE for stale pollers.
-- **Together AI is the third provider** — replaced Gemini (403-blocked in Doppler). Key-gated via `TOGETHER_API_KEY`; if all cloud providers fail, the cascade falls through to Open WebUI/Ollama.
+- **Together AI is the third provider** — replaced Gemini (403-blocked in Doppler). Key-gated via `TOGETHERAI_API_KEY`; if all cloud providers fail, the cascade falls through to Open WebUI/Ollama.
 
 ---
 

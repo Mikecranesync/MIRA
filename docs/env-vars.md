@@ -13,9 +13,9 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `GROQ_VISION_MODEL`  | mira-bots, mira-pipeline — default: meta-llama/llama-4-scout-17b-16e-instruct |
 | `CEREBRAS_API_KEY`   | mira-bots, mira-pipeline (Cerebras — second in cascade) |
 | `CEREBRAS_MODEL`     | mira-bots, mira-pipeline — default: llama3.1-8b |
-| `TOGETHER_API_KEY`     | mira-bots, mira-pipeline (Together AI — third in cascade; OpenAI-compatible) |
-| `TOGETHER_MODEL`       | mira-bots, mira-pipeline — default: meta-llama/Llama-3.3-70B-Instruct-Turbo-Free |
-| `TOGETHER_VISION_MODEL`| mira-bots, mira-pipeline — default: unset (image requests stay on Groq) |
+| `TOGETHERAI_API_KEY`     | mira-bots, mira-pipeline (Together AI — third in cascade; OpenAI-compatible) |
+| `TOGETHERAI_MODEL`       | mira-bots, mira-pipeline — default: meta-llama/Llama-3.3-70B-Instruct-Turbo |
+| `TOGETHERAI_VISION_MODEL`| mira-bots, mira-pipeline — default: unset (image requests stay on Groq) |
 | ~~`ANTHROPIC_API_KEY`~~ | **REMOVED PR #610** — Anthropic dependency ripped out 2026-04-25; runtime silently ignores this key if set |
 | ~~`CLAUDE_MODEL`~~      | **REMOVED PR #610** — see above |
 | `OPENWEBUI_API_KEY`  | mira-bots, mira-ingest, mira-pipeline |

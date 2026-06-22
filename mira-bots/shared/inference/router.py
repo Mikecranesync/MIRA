@@ -8,7 +8,7 @@ timeout, service error), the next provider is attempted. The caller
 providers failed" and falls through to the local Open WebUI/Ollama path.
 
 Provider enablement is key-based: if GROQ_API_KEY is set, Groq is in the
-cascade. Same for CEREBRAS_API_KEY and TOGETHER_API_KEY. Order is fixed.
+cascade. Same for CEREBRAS_API_KEY and TOGETHERAI_API_KEY. Order is fixed.
 
 INFERENCE_BACKEND controls the master switch:
   "cloud" → run the cascade (default when any cloud key is set)
@@ -167,19 +167,22 @@ def _build_providers() -> list[_Provider]:
             )
         )
 
-    together_key = os.getenv("TOGETHER_API_KEY", "")
+    together_key = os.getenv("TOGETHERAI_API_KEY", "")
     if together_key:
         providers.append(
             _Provider(
                 name="together",
                 api_url="https://api.together.xyz/v1/chat/completions",
                 api_key=together_key,
-                model=os.getenv("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"),
+                model=os.getenv("TOGETHERAI_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
                 timeout=30.0,
-                # No default vision model: the Together free tier has no stable
-                # vision endpoint, so image requests stay on Groq's vision model.
-                # Set TOGETHER_VISION_MODEL to add a vision fallback.
-                vision_model=os.getenv("TOGETHER_VISION_MODEL", ""),
+                # No default vision model: Together's serverless catalog has no
+                # stable text+vision model on this account, so image requests stay
+                # on Groq's vision model. Set TOGETHERAI_VISION_MODEL to add one.
+                # (Default text model is serverless pay-per-token, covered by the
+                # account's free credits; the -Turbo-Free variant is not serverless
+                # on this account.)
+                vision_model=os.getenv("TOGETHERAI_VISION_MODEL", ""),
             )
         )
 

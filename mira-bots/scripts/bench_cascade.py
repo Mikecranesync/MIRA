@@ -18,7 +18,7 @@ Usage:
 Env (cloud providers — same names as router.py):
     GROQ_API_KEY, GROQ_MODEL
     CEREBRAS_API_KEY, CEREBRAS_MODEL
-    TOGETHER_API_KEY, TOGETHER_MODEL
+    TOGETHERAI_API_KEY, TOGETHERAI_MODEL
 
 Env (local Bravo Ollama — only needed for candidate model comparison):
     BRAVO_OLLAMA_URL    e.g. http://bravo:11434/v1
@@ -84,12 +84,12 @@ def build_endpoints(skip_local: bool) -> list[Endpoint]:
             model=os.getenv("CEREBRAS_MODEL", "llama3.1-8b"),
             api_key=os.getenv("CEREBRAS_API_KEY", ""),
         ))
-    if os.getenv("TOGETHER_API_KEY"):
+    if os.getenv("TOGETHERAI_API_KEY"):
         eps.append(Endpoint(
             name="together",
             url="https://api.together.xyz/v1/chat/completions",
-            model=os.getenv("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"),
-            api_key=os.getenv("TOGETHER_API_KEY", ""),
+            model=os.getenv("TOGETHERAI_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
+            api_key=os.getenv("TOGETHERAI_API_KEY", ""),
         ))
 
     if not skip_local:
