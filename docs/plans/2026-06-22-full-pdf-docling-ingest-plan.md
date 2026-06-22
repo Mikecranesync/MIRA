@@ -72,4 +72,20 @@ exact block schema (`{text, page_num, section}`) the chunker + ingester already 
 Commit after each phase (durable). Record gate evidence in this file's "Progress" section.
 
 ## Progress
-- _Phase 0: in progress_
+- **Phase 0 — docling feasibility: PASS.** docling 2.69.1 + torch 2.8.0 installed on Charlie;
+  runs on Metal (`mps`). GS10 (16pp) extracted in ~100s, 18 tables rendered as Markdown, models
+  cached after first call.
+- **Phase 1 — docling + quality gate: DONE** (commit 78f23d38). `--use-docling` + noise filter
+  (low-alnum / repeated-char / low-word-density). GS10: 60 chunks → gate dropped 3 → 57.
+- **Phase 2 — quality: PASS.** docling content is clean readable prose with real parameter/Modbus
+  data (`P09.00 … Modbus Address Hex=0900`); no `�`/`CCChhh`. Minor table-cell duplication only.
+  ≫ pdfplumber.
+- **Phase 3 — staging retrieval: GS10 PASS (partial gate).** 57 docling GS10 chunks loaded to
+  staging; surfaced in BM25 top-3 for a natural query; curated chunks unaffected (no regression).
+  Caveat: the `retrieval_battery.py` test is BM25-only and understates the prod hybrid
+  (vector+BM25+fault/product) path — several queries returned 0 BM25 hits (lexical mismatch =
+  the deferred page-picking work, not a load failure). Coverage: GS10 already had some chapter
+  chunks; **Micro820 was sparse** → real value.
+  - Micro820 docling staging load: IN PROGRESS (~80 min — 683 pages).
+- **Phase 4 — prod promotion:** pending Micro820 staging validation + explicit OK.
+- **Phase 5 — generalize/docs:** pending.
