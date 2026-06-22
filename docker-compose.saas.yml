@@ -638,6 +638,11 @@ services:
       # fall through to the SPA and 405 on POST. Direct backend access bypasses
       # nginx. (Re-applies fix dc10a10f, regressed by 08db78e0.)
       - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-http://cmms-backend:8080}
+      # Browser-reachable Atlas URL handed to the client for "Open Atlas" + the
+      # CMMS quick links. HUB_CMMS_API_URL above is the internal docker hostname
+      # (server-side only); the browser must use this public host or the links
+      # crash (#2197).
+      - CMMS_PUBLIC_URL=${CMMS_PUBLIC_URL:-https://cmms.factorylm.com}
       - ATLAS_API_USER=${ATLAS_API_USER:-}
       - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
       # /hub/admin/review reads filesystem assets relative to this root.
