@@ -552,6 +552,11 @@ services:
         # Public URL because hubDataProvider runs in the browser; nginx on
         # app.factorylm.com proxies /v1/ → mira-pipeline:9099.
         NEXT_PUBLIC_PIPELINE_API_URL: ${NEXT_PUBLIC_PIPELINE_API_URL:-https://app.factorylm.com}
+        # Deploy identity (#2226) — surfaced on /api/version + /api/health so QA
+        # can confirm which code is live. deploy-vps.yml exports these before build.
+        MIRA_GIT_SHA: ${MIRA_GIT_SHA:-unknown}
+        MIRA_APP_VERSION: ${MIRA_APP_VERSION:-unknown}
+        MIRA_BUILD_TIME: ${MIRA_BUILD_TIME:-unknown}
     container_name: mira-hub
     ports:
       - "127.0.0.1:3101:3000"

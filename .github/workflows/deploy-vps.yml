@@ -225,6 +225,14 @@ jobs:
             docker rm -f "${svc}" 2>/dev/null || true
           done
 
+          # Deploy identity (#2226) — bake the SHA/version/time into the hub image
+          # so /api/version + /api/health report which code is live. Exported here
+          # so docker-compose build.args pick them up; default "unknown" otherwise.
+          export MIRA_GIT_SHA="${GITHUB_SHA:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
+          export MIRA_APP_VERSION="$(cat VERSION 2>/dev/null | tr -d '[:space:]' || echo unknown)"
+          export MIRA_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "Deploy identity: sha=${MIRA_GIT_SHA} version=${MIRA_APP_VERSION} built=${MIRA_BUILD_TIME}"
+
           echo "=== Rebuild containers ==="
           DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml build $TARGETS
           doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml up -d --no-deps --force-recreate $TARGETS
