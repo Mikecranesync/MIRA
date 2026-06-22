@@ -213,9 +213,7 @@ def _inject_reference_block(messages: list[dict], ref_block: str) -> None:
         elif isinstance(content, list):
             # Multipart (photo): merge into the existing text part so the
             # image + single-text shape vision providers expect is preserved.
-            text_parts = [
-                p for p in content if isinstance(p, dict) and p.get("type") == "text"
-            ]
+            text_parts = [p for p in content if isinstance(p, dict) and p.get("type") == "text"]
             if text_parts:
                 text_parts[-1]["text"] = f"{ref_block}\n\n{text_parts[-1]['text']}"
             else:
