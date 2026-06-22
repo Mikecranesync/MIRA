@@ -285,7 +285,8 @@ jobs:
             tests/simlab/test_grader_gate.py \
             tests/simlab/test_evaluation.py \
             tests/simlab/test_parser_simlab_arc.py \
-            tests/simlab/test_cross_surface_conformance.py -v
+            tests/simlab/test_cross_surface_conformance.py \
+            tests/beta/test_simlab_beta_gate.py -v
 
   license-check:
     name: License Check
