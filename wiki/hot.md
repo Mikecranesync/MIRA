@@ -1,17 +1,25 @@
 # Hot Cache — 2026-06-22 — ProveIt buildout (Cappy Hour import + sim-live)
 
 Branch `feat/cappy-hour-import-engine` off main. Goal: contextualize the real ProveIt factory +
-make the sim live. **5 commits, 202 tests green** (no infra needed; licensed corpus NEVER committed).
+make the sim live. **7 commits, 214 tests green** (no infra needed; licensed corpus NEVER committed).
 - `36adfd84` **Cappy Hour import engine** — `mira-plc-parser/parsers/ignition_json.py` + additive IR
   `NamespaceNode` → real `Enterprise B/tags.json` becomes 1 ent·1 site·4 areas·15 lines·**43 assets**·
   **4,090 signals** (4,154 nodes); i3x-export = 4,154 instances, single root, 0 dangling.
 - `b67d3445` **MqttPublisher hardened** (3 bugs: frozen ts, get_event_loop(), GC'd task).
 - `cfe42179` **SimEngine live feed** — `advance()` streams a snapshot; opt-in `SIMLAB_MQTT_HOST`.
 - `cb97ae2e` **Pilot DB → 6,023 citable chunks** (`tools/proveit/pilot_db_chunks.py`, offline).
+- `5e075b89` **batch inserter honors per-row `is_private`** — proveit corpus lands `is_private=true`
+  (item 2's code precondition; OEM callers unchanged).
+- `afa36872` **manual→chunks + end-to-end dry-run CLI** — `manual_chunks.py` (section chunks + lazy
+  Docling PDF hook + Vessel-spec **Asset ID→UNS** roster) + `cli.py report`. Real dry-run: **6,198
+  `knowledge_entries` rows** ready (3,000/6,000 WOs grounded to vat paths; 175 manual chunks), all
+  `is_private`, unembedded, no DB writes.
 - `0763992a` resume/handoff: `docs/RESUME_2026-06-22_proveit-buildout.md`.
-**Remaining = infra-gated** (Hub kg_entities ingestion + migrations, embed+insert into
-knowledge_entries, Mosquitto/Flexware broker stand-up, proveit tenant, real manual PDF) — handed off
-in the resume doc. PR needs `--admin` (phantom Hub E2E check). `python -m simlab` already serves live.
+**Agent-side Phase 2 DONE. Remaining = pure infra** (provision `proveit` tenant + Hub migrations &
+ingestion endpoint, embed+insert the 6,198 rows, Mosquitto/Flexware broker stand-up; real PDF
+optional — code path exists) — handed off in the resume doc. Dry-run:
+`python tools/proveit/cli.py report "../proveit-factory/uns-docs/Enterprise B" --out /tmp/proveit`.
+PR needs `--admin` (phantom Hub E2E check). `python -m simlab` already serves live.
 
 ---
 

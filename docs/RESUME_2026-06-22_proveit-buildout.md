@@ -16,8 +16,12 @@ Mike's infra.
 | `b67d3445` | **MqttPublisher hardening** (3 bugs: frozen/mistyped ts, deprecated `get_event_loop()`, GC'd fire-and-forget task) | 4 regression tests via fake aiomqtt; simlab suite green. |
 | `cfe42179` | **Live-feed wiring** — `SimEngine.advance()` streams a snapshot to attached publishers; `build_app` opt-in via `SIMLAB_MQTT_HOST` | 5 new tests; full simlab suite **68 passed, 3 skipped**; ruff clean. Additive — no publisher attached = byte-for-byte prior behavior. |
 | `cb97ae2e` | **Phase 2 offline grounding** — Pilot DB → citable chunks (`tools/proveit/pilot_db_chunks.py`) | real export: 22 items · 33k lots · 6k WOs · 15 states → **6,023 citable chunks** (joined Item→Lot→WO→Asset + state glossary), all `is_private=true`, embed/insert deferred. 6 tests; ruff clean. |
+| `5e075b89` | **Batch inserter honors per-row `is_private`/`verified`** (`mira-core/mira-ingest/db/neon.py`) | the inserter hardcoded `false,false`; now bound per-row, default `False` (every OEM caller unchanged), so the proveit per-tenant corpus lands `is_private=true`. **This is item 2's code precondition — DONE.** 2 mock-SQL tests; ruff clean. |
+| `afa36872` | **Manual→chunks transform + end-to-end dry-run CLI** (`tools/proveit/manual_chunks.py`, `cli.py`) | `chunk_markdown` (section-aware; lazy Docling hook for a real vendor PDF) + `parse_asset_uns_table` (Vessel-spec **Asset ID → UNS Path** → asset roster, bridges WO grounding). `python tools/proveit/cli.py report <CORPUS>` runs all 3 transforms end-to-end, **no DB writes**, writes a dry-run report. 10 tests on synthetic fixtures. |
 
-**Consolidated regression: 202 passing** (128 parser + 68 simlab + 6 proveit; +3 skips), no regressions.
+**Real-corpus dry-run (output not committed):** 1 ent · 1 site · 4 areas · 15 lines · 43 assets · 4090 signals; **6,198 `knowledge_entries` rows** (6,000 WOs, **3,000/6,000 grounded to a vat UNS path** via the 18-asset roster; 22 items; 1 state glossary; 175 manual chunks from 3 real Enterprise B specs) — all `is_private=true`, all unembedded.
+
+**Consolidated regression: 214 passing** (128 parser + 68 simlab + 16 proveit + 2 new ingest batch tests; +3 skips), no regressions.
 
 ### What "done" means here
 - **Contextualize:** `python -m mira_plc_parser analyze "<…>/Enterprise B/tags.json"` and
@@ -40,15 +44,14 @@ cross environment / dependency / schema boundaries (`.claude/rules/session-disci
    `proveit` tenant (UUID `tenants` row) + DB migrations dev→staging→prod via `apply-migrations.yml`
    (`mira-hub-migrations.md` — TEXT-vs-UUID `tenant_id` discipline). **Gate:** `/namespace` renders
    the Cappy Hour tree; a human bulk-approves an asset subtree.
-2. **Phase 2 — grounding** (cite the factory's own data): the **offline transform is DONE**
-   (`cb97ae2e`, `tools/proveit/pilot_db_chunks.py` → 6,023 citable chunks). **Remaining (infra):**
-   embed each chunk (nomic-embed) + `insert_knowledge_entries_batch` into `knowledge_entries`
-   (the **only** citable path — GUI/OW KB is non-citable; `knowledge-entries-tenant-scoping.md`), and
-   a local **manual PDF → knowledge_entries** path. The batch inserter currently hardcodes
-   `is_private=false` — it must honor the rows' `is_private=true` for this per-tenant corpus.
-   **Needs:** NeonDB + embedder (infra), the `proveit` tenant, and a **real beverage-bottling manual
-   PDF** (none in the corpus). To resolve WO `assetid`→UNS, pass the import engine's asset roster as
-   `asset_uns_by_id`.
+2. **Phase 2 — grounding** (cite the factory's own data): the **offline transforms are DONE** —
+   Pilot DB (`cb97ae2e`) **and** the manual/spec path + asset-roster bridge + end-to-end dry-run CLI
+   (`afa36872`), and the batch inserter now honors `is_private=true` (`5e075b89`). The dry-run shows
+   **6,198 rows** ready (incl. 3,000 WOs grounded to real vat paths). **Remaining is pure infra:**
+   embed each row (nomic-embed) + `insert_knowledge_entries_batch` into `knowledge_entries` (the
+   **only** citable path — GUI/OW KB is non-citable; `knowledge-entries-tenant-scoping.md`). The
+   inserter already honors the rows' `is_private=true`; the rows already carry deterministic
+   content-hash ids (re-run de-dups). **Needs:** NeonDB + embedder (infra) + the `proveit` tenant.
 3. **Phase 3 — live broker stand-up**: run **1 Mosquitto** (or the MIT Flexware EMQX sim) and point
    `SIMLAB_MQTT_HOST` at it; for the *foreign* feed, add a read-only subscriber (`mira-relay/
    mqtt_ingest/`) + topic→UNS normalizer + `live_signal_cache` landing. **Wiring is done on our side
@@ -58,14 +61,24 @@ cross environment / dependency / schema boundaries (`.claude/rules/session-disci
    SimLab self-scoring dashboard; full 20-min rehearsal arc. Depend on 1b/2/3.
 
 ## Exact next steps
-- **No-infra:** the next self-contained brick is the **local manual PDF → chunks** transform
-  (Docling chunk, no embed) mirroring `pilot_db_chunks` — then a `proveit` CLI that runs both
-  transforms + the import engine end-to-end and writes a dry-run report.
+- **No-infra bricks are DONE** (`5e075b89` + `afa36872`): the manual→chunks transform, the asset-roster
+  bridge, the `is_private` inserter fix, and the end-to-end dry-run CLI all shipped + tested. The
+  agent-side half of Phase 2 is complete — what's left is genuinely infra (below).
+- **Run the dry-run to see exactly what would be ingested:**
+  `python tools/proveit/cli.py report "../proveit-factory/uns-docs/Enterprise B" --tenant proveit --out /tmp/proveit`
+  (writes `proveit-dry-run.{json,md}`; reads the licensed corpus locally, writes nothing back).
 - **Open a PR** for this branch: `gh pr create` then `gh pr merge <n> --squash --admin` (phantom
   `Hub E2E` check blocks non-admin merges — `project_branch_protection_phantom_check`).
-- **From Mike:** provision the `proveit` tenant; stand up staging Mosquitto/Flexware; supply a real
-  Cappy Hour / Krones-style manual PDF; decide ProveIt 2027 sponsorship (Bronze ~$7.5k → official
-  spec ~mid-Oct 2026).
+- **From Mike (the only remaining gates):**
+  1. Provision the `proveit` tenant (UUID `tenants` row) + run the Hub migrations dev→staging→prod
+     (item 1 — Hub bulk ingestion endpoint/UI still to author once the tenant exists).
+  2. With NeonDB + the nomic embedder reachable: embed the 6,198 dry-run rows and
+     `insert_knowledge_entries_batch` them (the inserter now honors `is_private=true`; rows de-dup by id).
+  3. Stand up staging Mosquitto/Flexware and point `SIMLAB_MQTT_HOST` at it (wiring done, `cfe42179`).
+  4. *(Optional)* drop a real Cappy Hour / Krones-style manual **PDF** in the corpus — the code path
+     exists (`manual_chunks.chunk_pdf`, lazy Docling); 3 real Enterprise B markdown specs already chunk
+     (175 chunks), so the manual-citation path is provable today without it.
+  5. Decide ProveIt 2027 sponsorship (Bronze ~$7.5k → official spec ~mid-Oct 2026).
 
 ## Guardrails honored
 Read-only OT throughout; licensed corpus never committed; UNS paths via `uns.slug`; additive IR (no
