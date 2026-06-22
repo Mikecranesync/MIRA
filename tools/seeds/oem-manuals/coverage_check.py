@@ -6,6 +6,7 @@
 Helps decide whether a full-PDF load adds coverage or duplicates an existing
 chapter-by-chapter ingest.
 """
+
 from __future__ import annotations
 
 import os
@@ -20,7 +21,8 @@ TID = "78917b56-f85f-43bb-9a08-1bb98a6cd6c3"
 def main() -> int:
     patt = f"%{sys.argv[1] if len(sys.argv) > 1 else 'GS10'}%"
     eng = create_engine(
-        os.environ["NEON_DATABASE_URL"], poolclass=NullPool,
+        os.environ["NEON_DATABASE_URL"],
+        poolclass=NullPool,
         connect_args={"sslmode": "require"},
     )
     with eng.connect() as c:

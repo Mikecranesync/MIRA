@@ -7,6 +7,7 @@ Prints the top BM25 hits (system-tenant shared corpus) for the query, and an
 optional count of chunks whose model_number matches a substring. Avoids inline
 SQL-quote mangling that breaks heredocs over SSH.
 """
+
 from __future__ import annotations
 
 import os
@@ -22,7 +23,8 @@ def main() -> int:
     query = sys.argv[1] if len(sys.argv) > 1 else "GS10 fault"
     model = sys.argv[2] if len(sys.argv) > 2 else None
     eng = create_engine(
-        os.environ["NEON_DATABASE_URL"], poolclass=NullPool,
+        os.environ["NEON_DATABASE_URL"],
+        poolclass=NullPool,
         connect_args={"sslmode": "require"},
     )
     with eng.connect() as c:

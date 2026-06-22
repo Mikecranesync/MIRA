@@ -16,6 +16,7 @@ from the dev box's Doppler over SSH stdin (doppler isn't on Charlie's PATH):
 
 Staging first, verify with verify_seed.py-style retrieval, then prod (explicit OK).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -159,10 +160,16 @@ def main() -> int:
     ap.add_argument("--source-url", default="", help="optional canonical URL for citation")
     ap.add_argument("--tenant-id", default=os.environ.get("MIRA_TENANT_ID", DEFAULT_TENANT))
     ap.add_argument("--ollama-url", default=os.environ.get("OLLAMA_URL", DEFAULT_OLLAMA))
-    ap.add_argument("--use-docling", action="store_true",
-                    help="use docling layout-aware extraction (preferred); falls back to pdfplumber")
-    ap.add_argument("--no-quality-gate", action="store_true",
-                    help="disable the extraction-noise filter (debug only)")
+    ap.add_argument(
+        "--use-docling",
+        action="store_true",
+        help="use docling layout-aware extraction (preferred); falls back to pdfplumber",
+    )
+    ap.add_argument(
+        "--no-quality-gate",
+        action="store_true",
+        help="disable the extraction-noise filter (debug only)",
+    )
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 

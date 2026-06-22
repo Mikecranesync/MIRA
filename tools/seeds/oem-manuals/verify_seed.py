@@ -7,6 +7,7 @@ Checks:
   1. The 8 seed chunk_keys exist for the system tenant, is_private=false, embedding present.
   2. A BM25-style full-text query returns at least one seeded chunk (retrieval proof).
 """
+
 from __future__ import annotations
 
 import os

@@ -8,6 +8,7 @@ shared corpus, and show whether FULL-MANUAL (.pdf) chunks surface.
 
     NEON_DATABASE_URL=... python3 vector_battery.py [--ollama-url http://127.0.0.1:11434]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,7 +45,8 @@ def main() -> int:
     ap.add_argument("--ollama-url", default=os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434"))
     args = ap.parse_args()
     eng = create_engine(
-        os.environ["NEON_DATABASE_URL"], poolclass=NullPool,
+        os.environ["NEON_DATABASE_URL"],
+        poolclass=NullPool,
         connect_args={"sslmode": "require"},
     )
     full = 0

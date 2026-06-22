@@ -10,6 +10,7 @@ their source_file so you can see whether FULL-MANUAL chunks (source_file ends
 Gate for Phase 3: full-manual chunks should appear for queries the curated set
 doesn't cover, AND the curated chunks must still rank for their own queries.
 """
+
 from __future__ import annotations
 
 import os
@@ -33,7 +34,8 @@ QUERIES = [
 
 def main() -> int:
     eng = create_engine(
-        os.environ["NEON_DATABASE_URL"], poolclass=NullPool,
+        os.environ["NEON_DATABASE_URL"],
+        poolclass=NullPool,
         connect_args={"sslmode": "require"},
     )
     full_hits = 0
