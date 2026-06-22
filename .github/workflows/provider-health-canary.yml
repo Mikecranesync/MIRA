@@ -86,9 +86,16 @@ jobs:
           exit "$code"
 
       - name: Page on degraded coverage
-        # Only a real provider death (exit 1) opens an incident. exit 2 (probe
-        # could not run) left the run red above but is infra, not a death.
-        if: ${{ always() && steps.probe.outputs.exit_code == '1' }}
+        # Only a real provider death opens an incident. Two guards:
+        #   exit_code == '1'      -> the probe found >=1 provider DOWN
+        #   summary != ''         -> the probe ACTUALLY RAN (it writes summary to
+        #                            GITHUB_OUTPUT only after probing). If Doppler
+        #                            auth / import / infra fails, the probe never
+        #                            runs, the wrapper still exits 1, but summary
+        #                            is empty -> do NOT page (run stays red =
+        #                            honest, but no false "DEGRADED:" incident).
+        # exit 2 (no providers configured) also leaves summary empty -> no page.
+        if: ${{ always() && steps.probe.outputs.exit_code == '1' && steps.probe.outputs.summary != '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
