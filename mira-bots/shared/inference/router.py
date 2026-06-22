@@ -368,6 +368,15 @@ class InferenceRouter:
                     self._track_provider_call(provider.name)
                     self._record_session_model(session_id, usage.get("model"))
                     return content, usage
+                # Empty/None content (e.g. a reasoning model that spent its whole
+                # token budget on reasoning) is NOT an exception, so the cascade
+                # would otherwise fall through to the next provider silently. Log
+                # it so a degrading provider is visible — see the provider-health
+                # canary (docs/runbooks/provider-health-canary.md).
+                logger.warning(
+                    "EMPTY_RESPONSE provider=%s — empty content, trying next provider",
+                    provider.name,
+                )
                 last_error = usage
             except _ProviderSkip:
                 continue
