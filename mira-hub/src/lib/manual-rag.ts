@@ -124,6 +124,56 @@ export function extractFaultCodes(query: string): string[] {
   return out;
 }
 
+// #2178 — model-number detector. Extracts the drive/controller model the user is
+// asking about so retrieval can scope to THAT model's manuals, not every chunk
+// from the same vendor (a "PowerFlex 753 F005" question was citing PowerFlex 525
+// pages because the vendor-wide pass surfaced the nearest sibling). Mirrors the
+// families in mira-bots/shared/neon_recall._PRODUCT_NAME_RE. The captured token is
+// the discriminating substring (the number for PowerFlex/PF/Micro/ACS, the full
+// alphanumeric for GS/x1000) so `model_number ILIKE '%<token>%'` matches whether
+// the column stores "753" or "PowerFlex 753". Returns null when no model is named
+// — in which case retrieval behaves exactly as before (vendor/tenant scope only).
+const MODEL_PATTERNS: RegExp[] = [
+  /\bpowerflex\s*(\d{2,4}[a-z]?)\b/i, // PowerFlex 753 → 753
+  /\bpf\s*(\d{2,4}[a-z]?)\b/i, //         PF525 → 525
+  /\bmicro\s*(8\d{2})\b/i, //             Micro820 → 820
+  /\bacs\s*(\d{3,4})\b/i, //              ACS355 → 355
+  /\b(gs\d{1,2}[a-z]?)\b/i, //            GS10 → GS10
+  /\b([auvj]1000)\b/i, //                 A1000/V1000/U1000/J1000
+];
+
+/**
+ * Extract the model the query is about, as a token to match against
+ * `knowledge_entries.model_number`. Exported for unit testing. Null ⇒ no model
+ * named ⇒ retrieval falls through to vendor/tenant scope unchanged.
+ */
+export function extractModelNumber(query: string): string | null {
+  for (const re of MODEL_PATTERNS) {
+    const m = query.match(re);
+    if (m) return (m[1] ?? m[0]).replace(/\s+/g, "").toUpperCase();
+  }
+  return null;
+}
+
+// #2178 — ordered retrieval scopes, most-specific first. When a model is named we
+// try {model (+vendor)} FIRST so citations match the asked model; if that model
+// isn't in the corpus the pass returns nothing and we degrade to vendor-only then
+// tenant-wide — so model scoping never causes a refusal that vendor scope wouldn't
+// (the "model not ingested" case is closed by auto-ingest, not here). For a
+// model-free query this collapses to exactly the prior vendor→tenant behavior.
+function scopeCascade(
+  mfr: string | null,
+  model: string | null,
+  allowTenantFallback: boolean,
+): Array<{ mfr: string | null; model: string | null }> {
+  const scopes: Array<{ mfr: string | null; model: string | null }> = [];
+  if (model) scopes.push({ mfr, model }); // model (+ vendor if known) — most specific
+  if (mfr) scopes.push({ mfr, model: null }); // vendor only
+  if (allowTenantFallback || (!mfr && !model)) scopes.push({ mfr: null, model: null }); // tenant-wide
+  if (scopes.length === 0) scopes.push({ mfr: null, model: null }); // never empty
+  return scopes;
+}
+
 function dedupeChunks(chunks: ManualChunk[]): ManualChunk[] {
   const seen = new Set<string>();
   const out: ManualChunk[] = [];
@@ -161,28 +211,29 @@ export async function retrieveManualChunks(
   const topK = opts.topK ?? 6;
   const mfr = (opts.manufacturer ?? "").trim();
   const allowTenantFallback = opts.allowTenantFallback ?? true;
+  const model = extractModelNumber(q); // #2178 — null for most queries
 
-  // Main pass (manufacturer-scoped first, optional tenant-only fallback).
-  let main: ManualChunk[];
-  if (mfr) {
-    const scoped = await runBm25Query(client, tenantId, q, topK, mfr);
-    main = scoped.length > 0 || !allowTenantFallback
-      ? scoped
-      : await runBm25Query(client, tenantId, q, topK, null);
-  } else {
-    main = await runBm25Query(client, tenantId, q, topK, null);
-  }
+  // Walk the scopes most-specific-first, stopping at the first non-empty result.
+  // For a model-free query this is identical to the old vendor→tenant behavior.
+  const scopes = scopeCascade(mfr || null, model, allowTenantFallback);
+  const firstNonEmpty = async (text: string): Promise<ManualChunk[]> => {
+    for (const s of scopes) {
+      const hits = await runBm25Query(client, tenantId, text, topK, s.mfr, s.model);
+      if (hits.length > 0) return hits;
+    }
+    return [];
+  };
+
+  const main = await firstNonEmpty(q);
 
   const codes = extractFaultCodes(q);
   if (codes.length === 0) return main;
 
-  // Code pass: query on the code(s) alone (the terse form that reliably
-  // surfaces the documenting chunk), manufacturer-scoped first then fallback.
-  const codeQuery = codes.join(" ");
-  let codeHits = mfr ? await runBm25Query(client, tenantId, codeQuery, topK, mfr) : [];
-  if (codeHits.length === 0 && allowTenantFallback) {
-    codeHits = await runBm25Query(client, tenantId, codeQuery, topK, null);
-  }
+  // Code pass: query on the code(s) alone (the terse form that reliably surfaces
+  // the documenting chunk), down the SAME scope cascade — so a fault-code lookup
+  // for a named model stays scoped to that model's manual (#2178), not the
+  // vendor's nearest sibling.
+  const codeHits = await firstNonEmpty(codes.join(" "));
   if (codeHits.length === 0) return main;
 
   return dedupeChunks([...codeHits, ...main]).slice(0, topK);
@@ -208,12 +259,23 @@ async function runBm25Query(
   query: string,
   topK: number,
   manufacturer: string | null,
+  model: string | null = null,
 ): Promise<ManualChunk[]> {
   const params: unknown[] = [tenantId, boundBm25Query(query)];
   let mfrClause = "";
   if (manufacturer) {
     params.push(`%${manufacturer}%`);
     mfrClause = `AND manufacturer ILIKE $${params.length}`;
+  }
+  // #2178 — scope to the asked model. Word-boundary-safe via the exclusion
+  // pattern ("753" must not match "7530"), mirroring neon_recall._product_search.
+  let modelClause = "";
+  if (model) {
+    params.push(`%${model}%`);
+    const likeIdx = params.length;
+    params.push(`%${model}0%`);
+    const exclIdx = params.length;
+    modelClause = `AND model_number ILIKE $${likeIdx} AND model_number NOT ILIKE $${exclIdx}`;
   }
   params.push(topK);
   const limitParam = `$${params.length}`;
@@ -240,6 +302,7 @@ async function runBm25Query(
         FROM knowledge_entries
         WHERE (is_private = false OR tenant_id = $1)
           ${mfrClause}
+          ${modelClause}
           AND content_tsv @@ ${tsquery}
         ORDER BY rank DESC
         LIMIT ${limitParam}`,
