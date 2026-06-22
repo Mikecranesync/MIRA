@@ -72,10 +72,12 @@ prerequisite of every flashy agent demo is a mature context layer. **We are that
 The thesis is right. The execution is **behind it.** Stated honestly so the roadmap stays pointed:
 
 - **Zero paying customers.** The 90-day MVP's "3 paying logos" window has passed with none.
-- **The beta gate is RED.** "A stranger uploads their own manual → cited answer, no Mike fixing it"
-  does **not** work end-to-end: uploads land in the Open WebUI KB; chat reads `knowledge_entries`;
-  the fix (#1592 folder=brain) is still DRAFT.
-- **Never proven on foreign messy data.** Every demo runs on Mike's pre-seeded garage conveyor.
+- **The *narrow* beta gate is MET — the *ProveIt-grade* one is not.** "A stranger uploads a manual →
+  cited answer, no Mike fixing it" now works on staging (#1592/#1863/#1911/#2100, un-xfailed #2077,
+  CI-enforced `beta-gate.yml`). **But it's only proven on our staging tenant — never on a *foreign,
+  messy UNS* or a real stranger's plant,** and the per-answer score + decision trace aren't surfaced
+  in-product yet. The real bar is "works on a factory we didn't seed," and that's untested.
+- **Never proven on foreign messy data.** Every live demo still runs on Mike's pre-seeded garage conveyor.
 - **Trust is half-built:** citation grounding *logs* but does not *enforce*; a cross-tenant documents
   IDOR was live on `main`; a shipped Perspective view **violates the read-only anti-goal by writing to
   the VFD** — fence both, they directly undercut the trust pitch.

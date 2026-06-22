@@ -60,7 +60,7 @@ is the core prerequisite. The demo adds "on a foreign UNS, live." Owner: Mike. S
 
 | # | Prerequisite | Maps to | Status |
 |---|---|---|---|
-| 1 | **Upload→retrieval closed** — uploaded manual becomes citable | PR #1592 (folder=brain) | 🔴 DRAFT — *the gate* |
+| 1 | **Upload→retrieval closed** — uploaded manual becomes citable | #1592/#1863/#1911/#2100, un-xfailed #2077, `beta-gate.yml` | 🟢 MET on staging — extend to a *foreign* UNS/plant (→ #10) |
 | 2 | **Citation ENFORCED, not logged** — no ungrounded answer ships | `citation_compliance.py` | 🟡 logs, doesn't enforce |
 | 3 | **Tag auto-classification on UNSEEN tags** — generalizes past the bench | plc-parser/tagger (#2068, vfd auto-map) | 🟡 partial |
 | 4 | **Read-only connector to a FOREIGN UNS** (Sparkplug/MQTT + Ignition) | `mira-relay`, `mira-bridge` | 🟡 bench-proven, not generalized |

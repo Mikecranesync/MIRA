@@ -22,7 +22,7 @@ features that route around this gap — close the gap. See `NORTH_STAR.md` § "P
 
 ## What MIRA is
 
-**MIRA** (Maintenance Intelligence Resource Agent) is an industrial maintenance intelligence system. The product wedge is a **Slack-first maintenance copilot** that grounds every answer in the customer's real factory context.
+**MIRA** (Maintenance Intelligence Resource Agent) is the grounded diagnostic **agent** on top of **FactoryLM**, the maintenance-context layer. **Canonical wedge (`NORTH_STAR.md`, 2026-06-22): FactoryLM makes a factory's messy reality trustworthy enough for AI on top of *any* UNS; MIRA proves it by diagnosing with cited sources. Lead with the context platform, not the copilot.** Slack/Telegram/Ignition/QR/web are retained consumption surfaces — every adapter renders the *same approved-context answer*, grounded in the customer's real factory context.
 
 It is **not** a generic chatbot. It is **not** a SCADA or CMMS replacement. It is a focused, grounded troubleshooting and ingestion assistant for plant maintenance technicians.
 
@@ -38,7 +38,7 @@ It is **not** a generic chatbot. It is **not** a SCADA or CMMS replacement. It i
 | **Component templates + KG** | Memory — reusable asset/component knowledge | NeonDB `kg_entities` + `kg_relationships` (migrations 004/005) |
 | **Customer docs + work orders** | Evidence — what we cite | `mira-crawler/ingest/`, `mira-mcp/server.py` (CMMS tools), `mira-cmms/` (Atlas) |
 
-Future interfaces (Teams, Telegram, email) are valid, but **Slack is the first product wedge**. Telegram/email adapters at `mira-bots/{telegram,email}/` exist but follow Slack's contract, not the other way around.
+Slack is the first **front door** — *not* the wedge (the wedge is the context layer; `NORTH_STAR.md`). Telegram/email/Ignition/QR adapters at `mira-bots/` are **retained consumption surfaces**: each renders the same approved-context answer and follows the engine's contract, not the other way around.
 
 ## The non-negotiable UNS location-confirmation gate
 
