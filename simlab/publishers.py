@@ -119,11 +119,29 @@ def _mqtt_stamp(value: Any, ts_float: float) -> str:
     )
 
 
+def _reading_epoch(ts_iso: str) -> float:
+    """Convert a ``Reading.ts`` ISO-8601 stamp to epoch seconds for the MQTT envelope.
+
+    ``Reading.ts`` is an ISO-8601 string (``2025-01-01T00:00:05Z``), not a float — so the envelope's
+    numeric ``ts`` must be derived per reading. Best-effort: an unparseable stamp falls back to 0.0
+    rather than breaking the publish.
+    """
+    if not ts_iso:
+        return 0.0
+    try:
+        from datetime import datetime
+
+        return datetime.fromisoformat(ts_iso.replace("Z", "+00:00")).timestamp()
+    except (ValueError, TypeError):
+        return 0.0
+
+
 class MqttPublisher:
     """Async MQTT publisher (lazy-imports ``aiomqtt``).
 
-    Must be used inside an async context.  Publish is sync-compatible via
-    fire-and-forget queuing.
+    Sync-compatible: ``publish()`` may be called from plain sync code OR from inside a running event
+    loop. Inside a loop it fire-and-forgets a task whose reference is RETAINED (asyncio only keeps
+    weak references to tasks, so an unreferenced task can be garbage-collected before it runs).
 
     Parameters
     ----------
@@ -137,6 +155,7 @@ class MqttPublisher:
         self._host = host
         self._port = port
         self._client: Any = None  # aiomqtt.Client, lazily created
+        self._pending: set = set()  # strong refs to in-flight publish tasks (so they aren't GC'd)
 
     def _get_topic(self, reading: Reading) -> str:
         from simlab.uns import to_mqtt_topic
@@ -144,34 +163,43 @@ class MqttPublisher:
         return to_mqtt_topic(reading.uns_path)
 
     def publish(self, readings: list[Reading]) -> None:
-        """Synchronously queue publish (best-effort; ignores broker errors in tests)."""
+        """Publish a batch (best-effort; broker errors are logged, not raised).
+
+        Works both inside and outside a running event loop. ``asyncio.get_event_loop()`` is avoided —
+        it is deprecated in 3.12 and raises when there is no current loop.
+        """
         import asyncio
 
+        batch = list(readings)
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.create_task(self._async_publish(readings))
-            else:
-                loop.run_until_complete(self._async_publish(readings))
-        except Exception as exc:
-            logger.warning("MqttPublisher.publish failed: %s", exc)
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop is not None:
+            task = loop.create_task(self._async_publish(batch))
+            self._pending.add(task)
+            task.add_done_callback(self._pending.discard)
+        else:
+            try:
+                asyncio.run(self._async_publish(batch))
+            except Exception as exc:
+                logger.warning("MqttPublisher.publish failed: %s", exc)
 
     async def _async_publish(self, readings: list[Reading]) -> None:
         try:
-
             import aiomqtt  # lazy import — not required for core / tests
-
+        except ImportError as exc:
+            logger.warning("MqttPublisher: aiomqtt not installed: %s", exc)
+            return
+        try:
             async with aiomqtt.Client(self._host, self._port) as client:
                 for r in readings:
                     topic = self._get_topic(r)
-                    payload = _mqtt_stamp(r.value, float(BASE_EPOCH + 0))
+                    payload = _mqtt_stamp(r.value, _reading_epoch(r.ts))
                     await client.publish(topic, payload=payload, retain=True)
         except Exception as exc:
             logger.warning("MqttPublisher._async_publish error: %s", exc)
-
-
-# We need BASE_EPOCH here for timestamp
-from simlab.engine import BASE_EPOCH  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # RelayIngestPublisher (lazy httpx)
