@@ -111,4 +111,11 @@ repeatable tool. Gate passed — the mechanism is confirmed, not assumed.
   no-op). Unit gate: `tests/regime2_rag/test_equipment_rerank.py` 5/5 pass. Known limit:
   `_extract_product_names` regex doesn't recognize `V1000` → no-op for that query (documented
   acceptable degradation; extraction is a separate concern).
-- Phases 2–5: pending.
+- **Phase 2: DONE (PASS).** Re-ran `recall_probe.py` raw on staging with `MIRA_EQUIPMENT_RERANK=1`.
+  Vendor confusion eliminated for all 4 equipment-specific probes: "GS10 overcurrent" → all 5 hits
+  AutomationDirect GS10 (was Yaskawa V1000 #1); GS11/Micro820 Modbus → all GS11; RS-485 wiring → all
+  GS10 incl. the exact Micro820↔GS10 wiring chunk; Micro820 CCW → all Micro820 incl. the exact CCW
+  serial-config chunk. Q07 (generic "VFD-PLC safety", no equipment in query) correctly NOT forced to
+  a vendor — that's bucket B (Phase 5). Cosmetic `similarity` display still mixes scales (bucket C).
+  Charlie restored to committed `neon_recall.py` after the test (scp was test-only).
+- Phases 3–5: pending. Phase 3 = bench gate (run with flag on + harness rerank removed).
