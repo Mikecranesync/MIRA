@@ -39,6 +39,12 @@ jobs:
   probe:
     name: Probe LLM cascade providers
     runs-on: ubuntu-latest
+    # Inherit the staging-scoped DOPPLER_TOKEN so `doppler --config stg` can read
+    # the provider keys (the repo-level token can't read stg). Same mechanism as
+    # beta-gate.yml; staging has no required-reviewer protection, so the cron runs
+    # unattended. Provider keys are account-global, so stg validates the same
+    # Groq/Cerebras/Together accounts prod uses.
+    environment: staging
     timeout-minutes: 8
     permissions:
       contents: read
