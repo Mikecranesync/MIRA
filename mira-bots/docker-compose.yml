@@ -17,7 +17,7 @@ x-bot-common-env: &bot-common-env
   GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
   GROQ_VISION_MODEL: ${GROQ_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
   CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
-  CEREBRAS_MODEL: ${CEREBRAS_MODEL:-llama3.1-8b}
+  CEREBRAS_MODEL: ${CEREBRAS_MODEL:-gpt-oss-120b}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-4-6}
   TOGETHERAI_API_KEY: ${TOGETHERAI_API_KEY:-}
