@@ -3,6 +3,9 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.39.11 (2026-06-22) — fix(test): re-green pricing-CTA smoke after live copy change
+- The `factorylm.com/pricing` featured CTA copy changed to **"Book Assessment — $500 →"** (price added); `mira-hub/tests/e2e/signup-flow.spec.ts` still asserted `/book your assessment/i` → E2E-smoke red on every PR. **The money path is healthy** — verified live: CTA → `/buy` (HTTP 200), and the checkout session API 303-redirects to checkout.stripe.com. Loosened the assertion to price-agnostic `/book assessment/i` + fixed the stale test title/comment. No app/behavior change.
+
 ### v3.39.10 (2026-06-22) — fix(ci): Hub E2E required check no longer blocks docs/non-hub PRs
 - **Bug:** `hub-e2e.yml` (the required status check "Hub E2E (command-center + onboarding)") used an `on:`-level `paths-ignore` (`docs/**`, `wiki/**`, `**/*.md`, `.claude/**`). A required check suppressed by a path filter **never reports its context**, so any all-ignored PR (e.g. docs-only #2199) sat `Expected` → permanently `BLOCKED` and could only land via admin-merge.
 - **Fix:** removed the `on:`-level `paths-ignore`. The workflow now always runs on PRs to main and reports the required context; cost stays controlled **inside the job** by the existing `dorny/paths-filter` `changes` step + `if: steps.changes.outputs.hub == 'true'` gates, which short-circuit non-hub PRs to trivially-green in seconds (the workflow's own documented design). No change to what e2e actually runs on hub PRs.

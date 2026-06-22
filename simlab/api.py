@@ -18,15 +18,28 @@ logger = logging.getLogger("simlab.api")
 # Lazy FastAPI import — sim core loads bare without it.
 try:
     from fastapi import FastAPI, HTTPException
-    from fastapi.responses import PlainTextResponse
+    from fastapi.responses import HTMLResponse, PlainTextResponse
     _HAS_FASTAPI = True
 except ImportError:  # pragma: no cover
     _HAS_FASTAPI = False
     FastAPI = None  # type: ignore[assignment,misc]
     HTTPException = None  # type: ignore[assignment]
     PlainTextResponse = None  # type: ignore[assignment]
+    HTMLResponse = None  # type: ignore[assignment]
 
 _DOCS_ROOT = Path(__file__).parent / "docs"
+_DASHBOARD_HTML_PATH = Path(__file__).parent / "dashboard.html"
+
+
+def _dashboard_html() -> str:
+    """The self-scoring dashboard page (read from disk; small, cached per process)."""
+    global _DASHBOARD_HTML_CACHE
+    if _DASHBOARD_HTML_CACHE is None:
+        _DASHBOARD_HTML_CACHE = _DASHBOARD_HTML_PATH.read_text(encoding="utf-8")
+    return _DASHBOARD_HTML_CACHE
+
+
+_DASHBOARD_HTML_CACHE: Optional[str] = None
 
 
 def build_app(
@@ -304,6 +317,54 @@ def build_app(
 
         uns = _ap(asset_id)
         return {"asset_id": asset_id, "uns_path": uns, **approvals.gate(uns)}
+
+    # ------------------------------------------------------------------
+    # Evaluation scorecard + self-scoring dashboard (Phase P5)
+    #
+    # The dashboard is the ProveIt demo surface: it runs every scenario through
+    # the deterministic P1 evaluation service and renders the five graded
+    # dimensions live — "watch the platform score itself against known truth".
+    # The answerer is INJECTED (simlab/ stays LLM-free): `oracle` is the positive
+    # control (100%), `evidence_only` shows what evidence alone yields (it misses
+    # root-cause — that's MIRA's reasoning job). The real-Supervisor answerer is a
+    # staging concern, not wired into the package.
+    # ------------------------------------------------------------------
+    from simlab import evaluation
+
+    _ANSWERERS = {
+        "oracle": evaluation.ground_truth_answerer,
+        "evidence_only": evaluation.evidence_only_answerer,
+    }
+
+    def _resolve_answerer(name: str) -> Any:
+        fn = _ANSWERERS.get(name)
+        if fn is None:
+            raise HTTPException(
+                400, f"unknown answerer {name!r}; choose one of {sorted(_ANSWERERS)}"
+            )
+        return fn
+
+    @app.get("/simlab/eval/scorecard")
+    def eval_scorecard(answerer: str = "oracle") -> dict:
+        """Score every scenario via the P1 evaluation service (answerer: oracle|evidence_only)."""
+        scores = evaluation.run_all(_resolve_answerer(answerer))
+        out = evaluation.to_json(scores)
+        out["answerer"] = answerer
+        out["answerers"] = sorted(_ANSWERERS)
+        return out
+
+    @app.get("/simlab/eval/{scenario_id}")
+    def eval_scenario(scenario_id: str, answerer: str = "oracle") -> dict:
+        try:
+            scenario = get_scenario(scenario_id)
+        except KeyError:
+            raise HTTPException(404, f"scenario {scenario_id!r} not found")
+        score = evaluation.run_scenario(scenario, _resolve_answerer(answerer))
+        return evaluation.to_json([score])["scenarios"][0]
+
+    @app.get("/simlab/dashboard", response_class=HTMLResponse)
+    def dashboard() -> Any:
+        return HTMLResponse(_dashboard_html())
 
     return app
 
