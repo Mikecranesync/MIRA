@@ -278,10 +278,14 @@ jobs:
       - name: Install pytest + pyyaml
         run: pip install pytest pyyaml
 
+      # Deterministic, no-LLM SimLab oracle suite. Pure simlab/ + stdlib parser +
+      # offline beta + guarded conformance — all collect + pass under pytest+pyyaml
+      # alone. (test_runner_tenant.py is intentionally NOT here: it monkeypatches
+      # shared.engine.Supervisor, which imports httpx — it belongs in a full-deps
+      # job, not this minimal gate.)
       - name: Run SimLab grader gate
         run: |
           pytest tests/simlab/test_juice_bottling.py \
-            tests/simlab/test_runner_tenant.py \
             tests/simlab/test_grader_gate.py \
             tests/simlab/test_evaluation.py \
             tests/simlab/test_parser_simlab_arc.py \
