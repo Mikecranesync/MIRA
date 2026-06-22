@@ -118,4 +118,21 @@ repeatable tool. Gate passed — the mechanism is confirmed, not assumed.
   serial-config chunk. Q07 (generic "VFD-PLC safety", no equipment in query) correctly NOT forced to
   a vendor — that's bucket B (Phase 5). Cosmetic `similarity` display still mixes scales (bucket C).
   Charlie restored to committed `neon_recall.py` after the test (scp was test-only).
-- Phases 3–5: pending. Phase 3 = bench gate (run with flag on + harness rerank removed).
+- **Phase 3: DONE (PASS).** Retrieval gate via `phase3_retrieval_ab.py` on staging (heuristic
+  `score_retrieval`, no LLM keys). A/B over the 10 bench questions: BASELINE = current bench path
+  (flag off + harness `_equipment_sql_fetch` + harness `_rerank_for_equipment`); PROD = flag on, pure
+  production path (no harness crutches). Result:
+  - avg relevance **0.620 → 0.960 (+0.340)** — beats the ≥0.80 target
+  - avg coverage **0.750 → 1.000 (+0.250)**
+  - **0/10 per-question regressions** (Q01 0.2→1.0, Q04 0.2→1.0, Q07 0.0→0.8, Q10 0.2→1.0,
+    Q06 0.8→1.0; Q02/03/05/08 held 1.0; Q09 held 0.8). GATE: PASS.
+  Baseline 0.620 matches the published 0.62 (faithful reproduction). The integrated prod path beats
+  the harness-assisted path. NOTE: this is the **retrieval** gate; the full LLM answer-quality dims
+  (completeness/usefulness) need the full `mira_bench` with cascade keys — follow-up in Phase 4.
+  Charlie `neon_recall.py` restored after the test.
+- **Phase 4 (pending — needs explicit OK):** flip `MIRA_EQUIPMENT_RERANK` default-on after the full
+  staging gate; **remove the harness crutches** (`_equipment_sql_fetch` + `_rerank_for_equipment`)
+  from `tests/mira_bench.py` so the bench measures the real path (deferred to here so the default
+  bench doesn't regress while the flag is off); deploy the engine via the normal gate; verify a GS10
+  question cites GS10 on a live surface; version-bump; update `agentic-rag-upgrade-spec.md` §2.
+- **Phase 5 (pending):** bucket B (content-thin Q07/Q06) + self-eval honest-refusal (spec C3).
