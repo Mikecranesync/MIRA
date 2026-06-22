@@ -29,7 +29,7 @@ const HUB = (process.env.HUB_URL ?? "https://app.factorylm.com").replace(/\/$/, 
 // ---------------------------------------------------------------------------
 
 test.describe("factorylm.com/pricing — trial CTA", () => {
-  test("featured plan 'Book Your Assessment' is visible and links to /buy", async ({
+  test("featured plan 'Book Assessment' is visible and links to /buy", async ({
     page,
   }) => {
     const res = await page.goto(WEB + "/pricing", {
@@ -39,14 +39,14 @@ test.describe("factorylm.com/pricing — trial CTA", () => {
 
     // Production pricing uses .pricing-card.featured for the primary plan. Its
     // primary CTA is the assessment offer (data-cta="pricing-assessment") →
-    // "Book Your Assessment" → /buy. (The Stripe checkout path is exercised
+    // "Book Assessment" → /buy. (The Stripe checkout path is exercised
     // separately by the /api/checkout/session test below.)
     const featuredCard = page.locator(".pricing-card.featured");
     await expect(featuredCard).toBeVisible({ timeout: 10_000 });
 
     const cta = featuredCard.locator('[data-cta="pricing-assessment"]');
     await expect(cta).toBeVisible();
-    await expect(cta).toContainText(/book your assessment/i);
+    await expect(cta).toContainText(/book assessment/i);
 
     const href = await cta.getAttribute("href");
     expect(href).toMatch(/\/buy\b/);
