@@ -9,7 +9,7 @@ beautifulsoup4>=4.14.3
 lxml>=6.1.1
 
 # NeonDB
-sqlalchemy>=2.0.50
+sqlalchemy>=2.0.51
 psycopg2-binary>=2.9.12
 
 # Apify
