@@ -3,6 +3,7 @@
   "allen bradley": "Rockwell Automation",
   "alien-bradley": "Rockwell Automation",
   "alien bradley": "Rockwell Automation",
+  "rockwell": "Rockwell Automation",
   "cofemo": "Coffing",
   "cofing": "Coffing",
   "cottins": "Coffing",
@@ -10,5 +11,8 @@
   "deshaco": "Deshazo",
   "desha": "Deshazo",
   "deshao": "Deshazo",
-  "deshazzo": "Deshazo"
+  "deshazzo": "Deshazo",
+  "automationdirect": "AutomationDirect",
+  "automation direct": "AutomationDirect",
+  "automationdirect.com": "AutomationDirect"
 }
