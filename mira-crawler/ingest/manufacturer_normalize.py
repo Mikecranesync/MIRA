@@ -84,6 +84,8 @@ OCR_VARIANT_ALIASES: dict[str, str] = {
     "allen bradley": "Rockwell Automation",
     "alien-bradley": "Rockwell Automation",
     "alien bradley": "Rockwell Automation",
+    # Bare "Rockwell" in older manuals → full corporate parent name
+    "rockwell": "Rockwell Automation",
     # Coffing (hoists) — no resolver opinion; collapse to cleanest spelling
     "cofemo": "Coffing",
     "cofing": "Coffing",
@@ -95,6 +97,10 @@ OCR_VARIANT_ALIASES: dict[str, str] = {
     "desha": "Deshazo",
     "deshao": "Deshazo",
     "deshazzo": "Deshazo",
+    # AutomationDirect — casing/spacing variants
+    "automationdirect": "AutomationDirect",
+    "automation direct": "AutomationDirect",
+    "automationdirect.com": "AutomationDirect",
 }
 
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import pool from "@/lib/db";
+import { normalizeManufacturer } from "@/lib/manufacturerNormalize";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -52,12 +53,38 @@ export async function GET() {
     ]);
 
     type Mfr = { name: string; chunkCount: number; docCount: number; lastIndexed: unknown };
-    const manufacturers: Mfr[] = mfrRows.map((r: Record<string, unknown>) => ({
-      name: r.manufacturer as string,
-      chunkCount: Number(r.chunk_count),
-      docCount: Number(r.doc_count),
-      lastIndexed: r.last_indexed,
-    }));
+
+    // Apply alias normalization and re-aggregate SQL groups that map to the
+    // same canonical name (e.g. "Rockwell Automation" + "Rockwell" → one row).
+    // The SQL already applies INITCAP(LOWER(TRIM())) so each raw variant
+    // arrives title-cased; normalizeManufacturer handles the rest.
+    const canonicalMap = new Map<string, Mfr>();
+    for (const r of mfrRows) {
+      const rawName = r.manufacturer as string;
+      const name =
+        rawName === "Uncategorized"
+          ? "Uncategorized"
+          : normalizeManufacturer(rawName).canonical || rawName;
+      const existing = canonicalMap.get(name);
+      if (existing) {
+        existing.chunkCount += Number(r.chunk_count);
+        existing.docCount += Number(r.doc_count);
+        const ri = r.last_indexed as string | null;
+        if (ri && (!existing.lastIndexed || ri > (existing.lastIndexed as string))) {
+          existing.lastIndexed = ri;
+        }
+      } else {
+        canonicalMap.set(name, {
+          name,
+          chunkCount: Number(r.chunk_count),
+          docCount: Number(r.doc_count),
+          lastIndexed: r.last_indexed,
+        });
+      }
+    }
+    const manufacturers: Mfr[] = Array.from(canonicalMap.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
 
     const g = globalRows[0] ?? { total_chunks: 0, total_docs: 0, last_ingested: null };
 
