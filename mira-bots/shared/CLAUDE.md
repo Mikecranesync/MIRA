@@ -64,11 +64,11 @@ normalization before RAG retrieval.
 
 `InferenceRouter` — multi-provider LLM cascade with automatic failover.
 
-- Cascade order: Gemini → Groq → Cerebras → Claude → (caller falls back to Open WebUI)
-- Enabled when `INFERENCE_BACKEND=cloud` (or `claude` legacy alias) AND at least one provider API key is set
-- Provider enablement is key-based: `GEMINI_API_KEY`, `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `ANTHROPIC_API_KEY`
-- Gemini/Groq/Cerebras use OpenAI-compatible API; Claude uses Messages API
-- Gemini uses native vision (text + image in same model); Groq uses separate `GROQ_VISION_MODEL`
+- Cascade order: Groq → Cerebras → Together → (caller falls back to Open WebUI)
+- Enabled when `INFERENCE_BACKEND=cloud` AND at least one provider API key is set
+- Provider enablement is key-based: `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `TOGETHER_API_KEY` (Anthropic removed PR #610)
+- All three providers use the OpenAI-compatible chat-completions API
+- Groq uses a separate `GROQ_VISION_MODEL` for image requests; Together has no default vision model (set `TOGETHER_VISION_MODEL` to add one)
 - Image requests use provider's `vision_model` if set; providers without a vision model are skipped for images
 - `complete(messages, max_tokens, session_id)` — tries each provider, returns first success
 - `sanitize_context(messages)` — strips IPv4, MAC addresses, serial numbers before sending

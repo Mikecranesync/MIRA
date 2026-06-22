@@ -27,9 +27,9 @@ x-bot-common-env: &bot-common-env
   CEREBRAS_MODEL: ${CEREBRAS_MODEL:-llama3.1-8b}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-4-6}
-  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
-  GEMINI_VISION_MODEL: ${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+  TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
+  TOGETHER_MODEL: ${TOGETHER_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo-Free}
+  TOGETHER_VISION_MODEL: ${TOGETHER_VISION_MODEL:-}
   LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
   LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
   LANGFUSE_PUBLIC_API_KEY: ${LANGFUSE_PUBLIC_API_KEY:-}
@@ -162,8 +162,8 @@ services:
       - MIRA_TENANT_ID=${MIRA_TENANT_ID}
       - PIPELINE_BASE_URL=http://mira-pipeline-saas:9099
       - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY:-}
+      - TOGETHER_VISION_MODEL=${TOGETHER_VISION_MODEL:-}
       - MIRA_HUB_URL=${MIRA_HUB_URL:-http://mira-hub:3000}
       - INTERNAL_KG_API_KEY=${INTERNAL_KG_API_KEY:-}
     volumes:
@@ -243,9 +243,9 @@ services:
       - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=llama3.1-8b
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY:-}
+      - TOGETHER_MODEL=${TOGETHER_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo-Free}
+      - TOGETHER_VISION_MODEL=${TOGETHER_VISION_MODEL:-}
       - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
@@ -300,9 +300,9 @@ services:
       - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=llama3.1-8b
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY:-}
+      - TOGETHER_MODEL=${TOGETHER_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo-Free}
+      - TOGETHER_VISION_MODEL=${TOGETHER_VISION_MODEL:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
       - SESSION_RECORDING_PATH=/data/sessions
@@ -349,9 +349,9 @@ services:
       - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=llama3.1-8b
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY:-}
+      - TOGETHER_MODEL=${TOGETHER_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo-Free}
+      - TOGETHER_VISION_MODEL=${TOGETHER_VISION_MODEL:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
       - SESSION_RECORDING_PATH=/data/sessions
@@ -625,13 +625,13 @@ services:
       # Nango — credential vault for CMMS and platform integrations
       - NANGO_SERVER_URL=${NANGO_SERVER_URL:-http://nango-server:3003}
       - NANGO_SECRET_KEY=${NANGO_SECRET_KEY:-}
-      # LLM cascade for AI Reports (Groq → Cerebras → Gemini)
+      # LLM cascade for AI Reports (Groq → Cerebras → Together)
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=${CEREBRAS_MODEL:-llama3.1-8b}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY:-}
+      - TOGETHER_MODEL=${TOGETHER_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo-Free}
       # Atlas CMMS live stats — internal docker URL via shared cmms network.
       # Public cmms.factorylm.com nginx only proxies /auth/ + /api/ + /license/
       # to the Spring backend; /work-orders/*, /assets/*, /preventive-maintenances/*
