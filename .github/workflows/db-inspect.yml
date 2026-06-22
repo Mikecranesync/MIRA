@@ -258,3 +258,41 @@ jobs:
             (SELECT COUNT(*) FROM hub_tenants ht
                WHERE NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = ht.id)) AS orphan_hub_tenants;
           SQL
+
+      - name: Secret-shopper testing prerequisites probe
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # Read-only. Answers docs/runbooks/secret-shopper-testing-setup.md §1+§2:
+          #   (a) do the 4 synthetic personas exist in THIS env, and in which tenant?
+          #   (b) which tenant (if any) holds the Stardust Racers UNS subtree?
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === synthetic personas present? (carlos/dana/plantmgr/cfo) ===
+          SELECT u.email, u.status, u.role, t.id AS tenant_id, t.name AS tenant_name
+          FROM hub_users u
+          LEFT JOIN hub_tenants t ON t.id = u.tenant_id
+          WHERE u.email LIKE '%@synthetic.test'
+          ORDER BY u.email;
+
+          \echo
+          \echo === synthetic test plant tenant present? (...099) ===
+          SELECT id, name FROM hub_tenants
+          WHERE id = '00000000-0000-0000-0000-000000000099';
+
+          \echo
+          \echo === Stardust Racers UNS subtree — which tenant holds it? ===
+          SELECT tenant_id, entity_type, name, uns_path::text
+          FROM kg_entities
+          WHERE uns_path <@ 'enterprise.celestial_park'
+          ORDER BY uns_path;
+
+          \echo
+          \echo === who can log in to the Stardust tenant? (users of e88bd0e8) ===
+          \echo 'These are the accounts a secret shopper would use to SEE Stardust on prod.'
+          SELECT u.email, u.name, u.role, u.status,
+                 (u.password_hash IS NOT NULL) AS has_password
+          FROM hub_users u
+          WHERE u.tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'
+          ORDER BY u.email;
+          SQL
