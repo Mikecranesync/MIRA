@@ -695,9 +695,7 @@ def _rerank_for_equipment(rows: list[dict], query_text: str) -> list[dict]:
         ).lower()
         content_blob = str(ch.get("content") or "").lower()
         meta_pos = sum(1 for tok in tokens if tok in meta_blob)
-        content_pos = sum(
-            1 for tok in tokens if tok in content_blob and tok not in meta_blob
-        )
+        content_pos = sum(1 for tok in tokens if tok in content_blob and tok not in meta_blob)
         score = 5 * meta_pos + 1 * content_pos
         scored.append((-score, idx, ch))
     scored.sort(key=lambda t: (t[0], t[1]))

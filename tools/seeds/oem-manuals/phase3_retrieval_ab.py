@@ -32,6 +32,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.append(str(ROOT / "mira-bots"))
 sys.path.append(str(ROOT / "tests"))
 
+import shared.neon_recall as nr  # noqa: E402
 from mira_bench import (  # noqa: E402
     RETRIEVAL_LIMIT,
     RETRIEVAL_OVERFETCH,
@@ -40,7 +41,6 @@ from mira_bench import (  # noqa: E402
     _rerank_for_equipment,
 )
 from mira_bench_scorer import score_retrieval  # noqa: E402
-import shared.neon_recall as nr  # noqa: E402
 
 TID = os.getenv("MIRA_TENANT_ID", "78917b56-f85f-43bb-9a08-1bb98a6cd6c3")
 EMBED_MODEL = os.getenv("EMBED_TEXT_MODEL", "nomic-embed-text:latest")
