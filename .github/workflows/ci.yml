@@ -286,6 +286,7 @@ jobs:
             tests/simlab/test_evaluation.py \
             tests/simlab/test_parser_simlab_arc.py \
             tests/simlab/test_cross_surface_conformance.py \
+            tests/simlab/test_mutation.py \
             tests/beta/test_simlab_beta_gate.py -v
 
   license-check:
