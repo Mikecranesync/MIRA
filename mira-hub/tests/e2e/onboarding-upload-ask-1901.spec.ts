@@ -104,6 +104,12 @@ test.describe("Beta gate: fresh tenant upload → cited answer (#1901)", () => {
     await page.getByTestId("onboarding-next").click();
 
     // -----------------------------------------------------------------------
+    // 5b. Wizard — tag-import step (optional, #2074) → skip to review
+    // -----------------------------------------------------------------------
+    await expect(page.getByTestId("step-tag-import")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("tag-import-continue").click();
+
+    // -----------------------------------------------------------------------
     // 6. Wizard — review step → create namespace
     // -----------------------------------------------------------------------
     await expect(page.getByTestId("step-review")).toBeVisible({ timeout: 10_000 });

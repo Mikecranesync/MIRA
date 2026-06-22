@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 62,
-    "apiRoutes": 145
+    "apiRoutes": 146
   },
   "pages": [
     "/admin",
@@ -120,6 +120,7 @@
     "/api/components/[id]",
     "/api/connections",
     "/api/connections/[provider]",
+    "/api/connectors/ignition/import",
     "/api/connectors/plc/import",
     "/api/contextualization",
     "/api/contextualization/[id]/export",

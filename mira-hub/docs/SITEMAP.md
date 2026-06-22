@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **62** (8 dynamic) |
-| API routes | **145** (43 dynamic) |
+| API routes | **146** (43 dynamic) |
 
 ## Pages (62)
 
@@ -80,7 +80,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (145)
+## API routes (146)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -135,6 +135,7 @@
 | `/api/components/[id]` | dynamic | `api/components/[id]/route.ts` |
 | `/api/connections` | static | `api/connections/route.ts` |
 | `/api/connections/[provider]` | dynamic | `api/connections/[provider]/route.ts` |
+| `/api/connectors/ignition/import` | static | `api/connectors/ignition/import/route.ts` |
 | `/api/connectors/plc/import` | static | `api/connectors/plc/import/route.ts` |
 | `/api/contextualization` | static | `api/contextualization/route.ts` |
 | `/api/contextualization/[id]/export` | dynamic | `api/contextualization/[id]/export/route.ts` |
