@@ -283,7 +283,9 @@ jobs:
           pytest tests/simlab/test_juice_bottling.py \
             tests/simlab/test_runner_tenant.py \
             tests/simlab/test_grader_gate.py \
-            tests/simlab/test_evaluation.py -v
+            tests/simlab/test_evaluation.py \
+            tests/simlab/test_parser_simlab_arc.py \
+            tests/simlab/test_cross_surface_conformance.py -v
 
   license-check:
     name: License Check
