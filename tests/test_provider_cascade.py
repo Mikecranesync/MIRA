@@ -203,3 +203,95 @@ def test_system_prompt_cached():
     first = get_system_prompt()
     second = get_system_prompt()
     assert first == second
+
+
+# ── True-cascade on EMPTY content (reasoning-model degradation) ─────────────────
+# A provider can return HTTP 200 with empty/None content (e.g. Cerebras gpt-oss-120b
+# spending its whole token budget on reasoning). That is NOT an exception, so the
+# cascade must still fall through to the next provider — otherwise coverage silently
+# degrades to a blank reply. These lock that behavior in.
+
+
+@pytest.mark.asyncio
+async def test_empty_string_content_falls_through_to_next():
+    router = _make_router()
+    if len(router.providers) < 2:
+        pytest.skip("Need >=2 providers")
+    calls = []
+
+    async def mock_call(provider, *args, **kwargs):
+        calls.append(provider.name)
+        if len(calls) == 1:
+            return ("", {"provider": provider.name})  # empty 200 — must skip
+        return ("Real diagnostic answer", {"provider": provider.name})
+
+    router.enabled = True
+    with patch.object(router, "_call_openai_compat", side_effect=mock_call):
+        reply, meta = await router.complete([{"role": "user", "content": "GS20 OC"}])
+
+    assert len(calls) >= 2, "empty content must fall through to the next provider"
+    assert reply == "Real diagnostic answer"
+
+
+@pytest.mark.asyncio
+async def test_none_content_falls_through_to_next():
+    router = _make_router()
+    if len(router.providers) < 2:
+        pytest.skip("Need >=2 providers")
+    calls = []
+
+    async def mock_call(provider, *args, **kwargs):
+        calls.append(provider.name)
+        if len(calls) == 1:
+            return (None, {"provider": provider.name})  # null content — must skip
+        return ("Recovered answer", {"provider": provider.name})
+
+    router.enabled = True
+    with patch.object(router, "_call_openai_compat", side_effect=mock_call):
+        reply, meta = await router.complete([{"role": "user", "content": "GS20 OC"}])
+
+    assert len(calls) >= 2, "None content must fall through to the next provider"
+    assert reply == "Recovered answer"
+
+
+@pytest.mark.asyncio
+async def test_all_providers_empty_returns_empty_for_openwebui_fallthrough():
+    """All providers return empty 200s → complete() returns "" so the caller
+    (rag_worker._call_llm) falls through to Open WebUI — the ultimate failover."""
+    router = _make_router()
+    if not router.providers:
+        pytest.skip("No providers enabled")
+
+    async def all_empty(provider, *args, **kwargs):
+        return ("", {"provider": provider.name})
+
+    router.enabled = True
+    with patch.object(router, "_call_openai_compat", side_effect=all_empty):
+        reply, meta = await router.complete([{"role": "user", "content": "test"}])
+
+    assert reply == "", "all-empty must return '' so the caller falls to Open WebUI"
+
+
+@pytest.mark.asyncio
+async def test_skip_then_empty_then_success_cascades_all_three():
+    """Provider 1 raises _ProviderSkip (HTTP error), provider 2 returns empty,
+    provider 3 answers — exercises both failover paths in one cascade."""
+    router = _make_router()
+    if len(router.providers) < 3:
+        pytest.skip("Need 3 providers")
+    calls = []
+
+    async def mock_call(provider, *args, **kwargs):
+        calls.append(provider.name)
+        if len(calls) == 1:
+            raise _ProviderSkip(provider.name, "service")
+        if len(calls) == 2:
+            return ("", {"provider": provider.name})
+        return ("Third-tier answer", {"provider": provider.name})
+
+    router.enabled = True
+    with patch.object(router, "_call_openai_compat", side_effect=mock_call):
+        reply, meta = await router.complete([{"role": "user", "content": "test"}])
+
+    assert len(calls) == 3
+    assert reply == "Third-tier answer"
