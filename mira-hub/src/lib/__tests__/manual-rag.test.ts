@@ -6,6 +6,7 @@ import {
   buildGroundedContext,
   chunksToSources,
   extractFaultCodes,
+  extractModelNumber,
   isRefusalAnswer,
   retrieveManualChunks,
   retrieveNodeChunks,
@@ -113,6 +114,65 @@ describe("retrieveManualChunks", () => {
     await retrieveManualChunks(client, "tenant-1", "torque");
     expect(calls).toHaveLength(1);
     expect(calls[0].sql).not.toContain("manufacturer ILIKE");
+  });
+});
+
+describe("extractModelNumber (#2178)", () => {
+  it("extracts the model number from PowerFlex / PF / GS / x1000 / Micro / ACS queries", () => {
+    expect(extractModelNumber("Why is the PowerFlex 755 tripping F005?")).toBe("755");
+    expect(extractModelNumber("powerflex 525 fault F004")).toBe("525");
+    expect(extractModelNumber("PF753 won't reset")).toBe("753");
+    expect(extractModelNumber("GS10 drive overcurrent")).toBe("GS10");
+    expect(extractModelNumber("Yaskawa A1000 undervoltage")).toBe("A1000");
+    expect(extractModelNumber("Micro820 PLC fault")).toBe("820");
+    expect(extractModelNumber("ABB ACS355 ride-through")).toBe("355");
+  });
+
+  it("returns null when no model is named (so retrieval scope is unchanged)", () => {
+    expect(extractModelNumber("what is the torque spec")).toBeNull();
+    expect(extractModelNumber("torque spec PowerFlex")).toBeNull(); // family, no number
+    expect(extractModelNumber("the drive is faulting")).toBeNull();
+    expect(extractModelNumber("F004")).toBeNull(); // fault code, not a model
+  });
+});
+
+describe("retrieveManualChunks model scoping (#2178)", () => {
+  it("scopes to the asked model FIRST, with a word-boundary-safe exclusion", async () => {
+    const { client, calls } = makeClient([[row({ model_number: "PowerFlex 753" })]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "PowerFlex 753 fault meaning", {
+      manufacturer: "Rockwell",
+      topK: 6,
+    });
+    expect(out).toHaveLength(1);
+    expect(calls).toHaveLength(1); // model scope hit on the first pass
+    expect(calls[0].sql).toContain("model_number ILIKE");
+    expect(calls[0].sql).toContain("model_number NOT ILIKE");
+    // params: [tenant, query, %mfr%, %753%, %7530%, topK]
+    expect(calls[0].params).toContain("%753%");
+    expect(calls[0].params).toContain("%7530%");
+  });
+
+  it("falls back to vendor scope (no model clause) when the model has no chunks — never a refusal regression", async () => {
+    // model pass AND+OR empty, then vendor pass returns a sibling-model chunk.
+    const { client, calls } = makeClient([[], [], [row()]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "PowerFlex 755 fault F005", {
+      manufacturer: "Rockwell",
+    });
+    expect(out).toHaveLength(1); // still grounded (vendor fallback), not empty
+    expect(calls[0].sql).toContain("model_number ILIKE"); // tried model first
+    // a later pass dropped the model clause (vendor-only fallback)
+    expect(calls.some((c) => !c.sql.includes("model_number ILIKE"))).toBe(true);
+  });
+
+  it("leaves a model-free query's query path byte-identical (no model clause)", async () => {
+    const { client, calls } = makeClient([[row()]]);
+    await retrieveManualChunks(client, "tenant-1", "what is the torque", {
+      manufacturer: "Allen-Bradley",
+      topK: 4,
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].sql).not.toContain("model_number ILIKE");
+    expect(calls[0].params).toEqual(["tenant-1", "what is the torque", "%Allen-Bradley%", 4]);
   });
 });
 
