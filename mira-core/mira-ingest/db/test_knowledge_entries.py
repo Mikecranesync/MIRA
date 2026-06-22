@@ -206,6 +206,44 @@ def test_batch_insert_defaults_missing_optionals(engine_patch):
     assert params["data_type"] == "manual"
     assert params["isa95_path"] is None
     assert params["equipment_id"] is None
+    # Visibility defaults to the shared-corpus values when the keys are absent —
+    # every existing OEM-ingest caller is unchanged.
+    assert params["is_private"] is False
+    assert params["verified"] is False
+    # SQL binds the visibility params (no longer hardcoded `false, false`).
+    sql_text, _ = _sql_and_params(conn)
+    assert ":is_private" in sql_text
+    assert ":verified" in sql_text
+
+
+@patch.object(neon, "_engine")
+def test_batch_insert_honors_is_private_for_per_tenant_corpus(engine_patch):
+    # The proveit Pilot DB corpus is per-tenant evidence — it MUST land is_private=true so the
+    # hybrid read filter scopes it to its tenant (knowledge-entries-tenant-scoping.md, write law).
+    conn = _install_engine_mock(engine_patch)
+    count = neon.insert_knowledge_entries_batch(
+        [
+            {
+                "id": "proveit_x",
+                "tenant_id": "proveit",
+                "source_type": "proveit_pilot_db",
+                "manufacturer": None,
+                "model_number": None,
+                "content": "Work order WO-L01-0001 ...",
+                "embedding": "[0.1]",
+                "source_url": "pilot_db:workordermanagement",
+                "source_page": "WO-L01-0001",
+                "metadata": "{}",
+                "chunk_type": "work_order",
+                "data_type": "work_order",
+                "is_private": True,
+            }
+        ]
+    )
+    assert count == 1
+    _, params = _sql_and_params(conn)
+    assert params["is_private"] is True
+    assert params["verified"] is False   # not approved — work orders are evidence, not verified facts
 
 
 # ---------------------------------------------------------------------------
