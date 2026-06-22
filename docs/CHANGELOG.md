@@ -3,6 +3,10 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.39.10 (2026-06-22) — fix(ci): Hub E2E required check no longer blocks docs/non-hub PRs
+- **Bug:** `hub-e2e.yml` (the required status check "Hub E2E (command-center + onboarding)") used an `on:`-level `paths-ignore` (`docs/**`, `wiki/**`, `**/*.md`, `.claude/**`). A required check suppressed by a path filter **never reports its context**, so any all-ignored PR (e.g. docs-only #2199) sat `Expected` → permanently `BLOCKED` and could only land via admin-merge.
+- **Fix:** removed the `on:`-level `paths-ignore`. The workflow now always runs on PRs to main and reports the required context; cost stays controlled **inside the job** by the existing `dorny/paths-filter` `changes` step + `if: steps.changes.outputs.hub == 'true'` gates, which short-circuit non-hub PRs to trivially-green in seconds (the workflow's own documented design). No change to what e2e actually runs on hub PRs.
+
 ### v3.38.0 (2026-06-21) — feat(observe): observability + eval layer + preformatted agent registry
 - **Observability/eval core (phases 0–3):** every real MIRA answer can emit a local `AnswerTrace` JSONL (`MIRA_LOCAL_TRACE=1`) at the one production seam (`_schedule_decision_trace` → `build_answer_trace`), covering Telegram/Slack/pipeline/Ignition. Governance + incident checks run observationally under `MIRA_TRACE_CHECKS=1`. JSON-first, read-only, **off by default = zero prod behavior change**. SimLab eval-pack runner + CLI viewer.
 - **Preformatted industrial agent template registry (Cognite-style wedge):** `shared/observe/agent_registry.py` — `AgentManifest` + JSON loader + `route_agent`. An "agent" is a contract+label over the one engine (`Supervisor.process`), not a second execution path. **Read-only enforced at LOAD time** — a manifest allowing any write/control tool is rejected. 3 starter agents wired (maintenance_troubleshooter default, root_cause_analysis on causal Qs, manual_qa on doc lookup); `agent_id/version/risk/allowed_tools` land on every trace. Observational output-contract check.
