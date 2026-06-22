@@ -2,7 +2,7 @@
 
 **Version:** see `/VERSION` (authoritative overall counter; auto-tagged `vX.Y.Z` on merge — `docs/versioning.md`)
 **One-liner:** AI-powered industrial maintenance diagnostic platform
-**Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Gemini (cascade, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
+**Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Together (cascade, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
 **Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → Supervisor (shared/engine.py) → cascade providers
 
 ---
@@ -25,7 +25,7 @@
 ## Hard Constraints (PRD §4)
 
 1. **Licenses:** Apache 2.0 or MIT ONLY.
-2. **Cloud LLMs:** Groq + Cerebras + Gemini cascade (all free-tier, OpenAI-compat). NeonDB for persistence. Doppler-managed secrets. **No Anthropic** (removed PR #610 — never reintroduce).
+2. **Cloud LLMs:** Groq + Cerebras + Together cascade (all free-tier, OpenAI-compat). NeonDB for persistence. Doppler-managed secrets. **No Anthropic** (removed PR #610 — never reintroduce).
 3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the LLM call.
 4. **Secrets:** All via Doppler. Config is env-scoped: `factorylm/dev` (local), `factorylm/stg` (staging), `factorylm/prd` (production). Never commit `.env` to git. Never paste prod values into a dev shell — set them in `factorylm/dev`.
 5. **Containers:** One per service. `restart: unless-stopped` + healthcheck. Pinned image versions.
@@ -42,9 +42,9 @@
 | | DEV | STAGING | PROD |
 |---|---|---|---|
 | Where | CHARLIE local | CHARLIE + Neon staging branch | VPS (`165.245.138.91`) |
-| Compose | `docker-compose.yml` | `docker-compose.staging.yml` *(TODO)* | `docker-compose.saas.yml` |
+| Compose | `docker-compose.yml` | `docker-compose.staging.yml` (local-dev) + `docker-compose.staging-vps.yml` (VPS) | `docker-compose.saas.yml` |
 | Doppler | `factorylm/dev` | `factorylm/stg` | `factorylm/prd` |
-| Telegram | `@MiraDevBot` or none | `@MiraStagingBot` *(TODO)* | `@FactoryLM_Diagnose` |
+| Telegram | `@MiraDevBot` or none | `@Mira_stagong_bot` (token `TELEGRAM_BOT_TOKEN_STG`) | `@FactoryLM_Diagnose` |
 | Safe to break | YES | YES (gate before promotion) | **NEVER** |
 
 **Hard rules (do not bypass — `prod-guard.sh` enforces #1–#3):**
@@ -162,7 +162,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **NeonDB SSL from Windows** — `channel_binding` fails. Use macOS hosts instead.
 - **Intent classifier** — defaults to `industrial` for unrecognized queries (biased toward helping); short greetings route to `greeting` only when <20 chars AND contain a greeting word. Fixed 2026-04-15 in #280. Still: test with realistic phrasing before assuming a bounce is a bug.
 - **Competing Telegram pollers** — Only one process per bot token. Check CHARLIE for stale pollers.
-- **Gemini key blocked** — 403 in Doppler. Cascade falls through to next provider; if all fail, falls through to Open WebUI/Ollama.
+- **Together AI is the third provider** — replaced Gemini (403-blocked in Doppler). Key-gated via `TOGETHERAI_API_KEY`; if all cloud providers fail, the cascade falls through to Open WebUI/Ollama.
 
 ---
 

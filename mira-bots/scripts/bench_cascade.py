@@ -18,7 +18,7 @@ Usage:
 Env (cloud providers — same names as router.py):
     GROQ_API_KEY, GROQ_MODEL
     CEREBRAS_API_KEY, CEREBRAS_MODEL
-    GEMINI_API_KEY, GEMINI_MODEL
+    TOGETHERAI_API_KEY, TOGETHERAI_MODEL
 
 Env (local Bravo Ollama — only needed for candidate model comparison):
     BRAVO_OLLAMA_URL    e.g. http://bravo:11434/v1
@@ -81,15 +81,15 @@ def build_endpoints(skip_local: bool) -> list[Endpoint]:
         eps.append(Endpoint(
             name="cerebras",
             url="https://api.cerebras.ai/v1/chat/completions",
-            model=os.getenv("CEREBRAS_MODEL", "llama3.1-8b"),
+            model=os.getenv("CEREBRAS_MODEL", "gpt-oss-120b"),
             api_key=os.getenv("CEREBRAS_API_KEY", ""),
         ))
-    if os.getenv("GEMINI_API_KEY"):
+    if os.getenv("TOGETHERAI_API_KEY"):
         eps.append(Endpoint(
-            name="gemini",
-            url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-            model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
-            api_key=os.getenv("GEMINI_API_KEY", ""),
+            name="together",
+            url="https://api.together.xyz/v1/chat/completions",
+            model=os.getenv("TOGETHERAI_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
+            api_key=os.getenv("TOGETHERAI_API_KEY", ""),
         ))
 
     if not skip_local:

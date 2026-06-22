@@ -20,6 +20,12 @@ COPY mira-bots/prompts/ ./prompts/
 COPY mira-pipeline/*.py .
 COPY VERSION .
 
+# mira-connectors: connector framework + confirmation gate (Phase 2 tag-mapper).
+# Has no mandatory deps; [postgres] pulls SQLAlchemy which is already installed.
+# Build context is repo root so this path resolves correctly.
+COPY mira-connectors/ ./mira_connectors_pkg/
+RUN pip install --no-cache-dir ./mira_connectors_pkg[postgres]
+
 RUN addgroup --system --gid 1001 mira && \
     adduser --system --uid 1001 --ingroup mira mira
 

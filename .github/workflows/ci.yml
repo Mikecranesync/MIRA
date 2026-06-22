@@ -257,6 +257,43 @@ jobs:
       - name: Check module boundaries
         run: pytest tests/test_architecture.py -v
 
+  simlab-gate:
+    name: SimLab Grader Gate
+    runs-on: ubuntu-latest
+    # Phase P0 of the SimLab platform-oracle plan. The deterministic, no-LLM
+    # rubric grader is a merge gate: a diagnostic / UNS / citation regression on
+    # any of the six juice-bottling scenarios goes red here and blocks merge.
+    # PURE-OFFLINE — no Doppler, no DB, no broker, no LLM. Install ONLY
+    # pytest+pyyaml: chromadb shadows mira-bots/shared and breaks imports.
+    # Tests run from the repo ROOT (the simlab/ package resolves via cwd; the
+    # runner-tenant test reads shared.engine off the mira-bots path that
+    # tests/conftest.py inserts).
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install pytest + pyyaml
+        run: pip install pytest pyyaml
+
+      # Deterministic, no-LLM SimLab oracle suite. Pure simlab/ + stdlib parser +
+      # offline beta + guarded conformance — all collect + pass under pytest+pyyaml
+      # alone. (test_runner_tenant.py is intentionally NOT here: it monkeypatches
+      # shared.engine.Supervisor, which imports httpx — it belongs in a full-deps
+      # job, not this minimal gate.)
+      - name: Run SimLab grader gate
+        run: |
+          pytest tests/simlab/test_juice_bottling.py \
+            tests/simlab/test_grader_gate.py \
+            tests/simlab/test_evaluation.py \
+            tests/simlab/test_parser_simlab_arc.py \
+            tests/simlab/test_cross_surface_conformance.py \
+            tests/simlab/test_mutation.py \
+            tests/simlab/test_dashboard.py \
+            tests/beta/test_simlab_beta_gate.py -v
+
   license-check:
     name: License Check
     runs-on: ubuntu-latest

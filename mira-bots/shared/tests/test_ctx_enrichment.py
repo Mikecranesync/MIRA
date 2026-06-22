@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import sys
 from pathlib import Path
 
@@ -12,6 +13,24 @@ if str(_MIRA_BOTS) not in sys.path:
 
 
 from shared.ctx_enrichment import fetch_ctx_approved_signals
+
+
+class TestFetchCtxApprovedSignalsQuery:
+    """C12-1: verify the query uses verified-only, never proposed (train-before-deploy)."""
+
+    def test_query_uses_verified_only(self):
+        src = inspect.getsource(fetch_ctx_approved_signals)
+        assert "approval_state = 'verified'" in src, (
+            "fetch_ctx_approved_signals must filter approval_state = 'verified' only "
+            "(train-before-deploy: deployed answers cite verified signals only)"
+        )
+
+    def test_query_does_not_include_proposed(self):
+        src = inspect.getsource(fetch_ctx_approved_signals)
+        assert "'proposed'" not in src, (
+            "fetch_ctx_approved_signals must NOT include 'proposed' in the approval_state filter "
+            "(C12-1: proposed signals must not be presented as approved to the LLM)"
+        )
 
 
 class TestFetchCtxApprovedSignalsOffline:

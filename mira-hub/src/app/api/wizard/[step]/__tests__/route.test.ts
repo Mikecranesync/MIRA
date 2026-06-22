@@ -130,6 +130,37 @@ describe("POST /api/wizard/:step", () => {
     expect(sqls[5]).toMatch(/UPDATE wizard_progress[\s\S]+'completed'/);
   });
 
+  it("accepts tag-import payload with proposals_created", async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ current_step: "finish", status: "in_progress", step_payloads: { "tag-import": { proposals_created: 5 } } }],
+    });
+    (withTenantContext as ReturnType<typeof vi.fn>).mockImplementation(async (_t, fn) => fn({ query }));
+
+    const res = await POST(makeReq({ proposals_created: 5 }), paramsFor("tag-import"));
+    expect(res.status).toBe(200);
+    const body = await (res as NextResponse).json();
+    expect(body.ok).toBe(true);
+    expect(body.currentStep).toBe("finish");
+
+    const [sql, args] = query.mock.calls[0];
+    expect(sql).toMatch(/INSERT INTO wizard_progress/);
+    expect(args[1]).toBe("finish"); // nextStep("tag-import")
+    expect(args[2]).toBe("tag-import");
+    expect(JSON.parse(args[3])).toMatchObject({ proposals_created: 5 });
+  });
+
+  it("accepts tag-import with skipped:true", async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ current_step: "finish", status: "in_progress", step_payloads: { "tag-import": { skipped: true } } }],
+    });
+    (withTenantContext as ReturnType<typeof vi.fn>).mockImplementation(async (_t, fn) => fn({ query }));
+
+    const res = await POST(makeReq({ skipped: true }), paramsFor("tag-import"));
+    expect(res.status).toBe(200);
+    const body = await (res as NextResponse).json();
+    expect(body.ok).toBe(true);
+  });
+
   it("finish 400s when site or line payload is missing", async () => {
     const query = vi.fn().mockResolvedValueOnce({ rows: [{ step_payloads: { site: { name: "Only Site" } } }] });
     (withTenantContext as ReturnType<typeof vi.fn>).mockImplementation(async (_t, fn) => fn({ query }));

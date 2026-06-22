@@ -155,3 +155,37 @@ def test_no_tag_snapshot_means_no_tag_evidence(client):
     resp = _post(tc, {"query": "status?", "asset_id": "[default]Conv/State"})
     assert resp.status_code == 200
     assert engine.process.await_args.kwargs.get("tag_evidence") is None
+
+
+def test_tag_preamble_enriched_with_verified_entities(client, monkeypatch):
+    """Verified tag_entities metadata (units, data_type) appears in the prompt preamble.
+
+    _enrich_tag_snapshot_with_semantics is mocked so no live DB is required.
+    This verifies the handler wires enrichment before _format_tag_preamble, and
+    that _format_tag_preamble renders the merged fields.
+
+    Join-key contract (enforced by Phase 1's tag_classifier): source_address in
+    tag_entities must store the same path string that tag_snapshot uses as its key.
+    """
+    tc, engine = client
+
+    async def _mock_enrich(tag_snapshot, tenant_id):
+        return {
+            k: ({**v, "units": "A", "data_type": "REAL"} if isinstance(v, dict) else v)
+            for k, v in tag_snapshot.items()
+        }
+
+    monkeypatch.setattr(ignition_chat, "_enrich_tag_snapshot_with_semantics", _mock_enrich)
+
+    resp = _post(
+        tc,
+        {
+            "query": "is the motor overloaded?",
+            "asset_id": "[default]Conv/State",
+            "tag_snapshot": {"Motor_Current_A": {"value": 11.2, "quality": "good"}},
+        },
+    )
+    assert resp.status_code == 200
+    message = engine.process.await_args.kwargs.get("message", "")
+    assert "11.2 A" in message
+    assert "REAL" in message

@@ -2,7 +2,7 @@
 
 Tests the cloud cascade vision path against the 5 sample tag images. Requires
 INFERENCE_BACKEND=cloud and at least one of GROQ_API_KEY (vision capable) or
-GEMINI_API_KEY to be set.
+TOGETHERAI_API_KEY to be set.
 
 Run:
     INFERENCE_BACKEND=cloud GROQ_API_KEY=<key> pytest tests/test_inference_router.py -v -s
@@ -123,7 +123,7 @@ def router():
     if not r.enabled:
         pytest.skip(
             "InferenceRouter not enabled — set INFERENCE_BACKEND=cloud and one of "
-            "GROQ_API_KEY / CEREBRAS_API_KEY / GEMINI_API_KEY"
+            "GROQ_API_KEY / CEREBRAS_API_KEY / TOGETHERAI_API_KEY"
         )
     return r
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
 import { readZipEntries } from "@/lib/contextualization/unzip";
 import { parseBundle } from "@/lib/contextualization/bundle-import";
 import {
@@ -200,6 +201,9 @@ async function importFromBundle(tenantId: string, req: Request) {
   const file = form.get("file");
   if (!(file instanceof File) || file.size === 0) {
     return NextResponse.json({ error: "file field is required" }, { status: 400 });
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return NextResponse.json({ error: `Request Entity Too Large (max ${MAX_UPLOAD_MB} MB)` }, { status: 413 });
   }
 
   // Optional: import into an existing project instead of creating a new one

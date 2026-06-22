@@ -28,10 +28,11 @@ export const dynamic = "force-dynamic";
  * 'area', 'asset', tag-import.
  */
 
-interface CompanyPayload { name: string }
-interface SitePayload    { name: string; location?: string }
-interface LinePayload    { name: string; description?: string }
-type StepPayload = CompanyPayload | SitePayload | LinePayload | Record<string, unknown>;
+interface CompanyPayload   { name: string }
+interface SitePayload     { name: string; location?: string }
+interface LinePayload     { name: string; description?: string }
+interface TagImportPayload { proposals_created?: number; skipped?: boolean }
+type StepPayload = CompanyPayload | SitePayload | LinePayload | TagImportPayload | Record<string, unknown>;
 
 interface WizardRow {
   id: string;
@@ -42,7 +43,7 @@ interface WizardRow {
   completed_at: string | null;
 }
 
-const STEPS = ["company", "site", "line", "finish"] as const;
+const STEPS = ["company", "site", "line", "tag-import", "finish"] as const;
 type Step = typeof STEPS[number];
 
 function isStep(s: string): s is Step {
@@ -155,6 +156,11 @@ function validateStep(step: Step, body: Record<string, unknown>): Validated {
     if (name.length > 200) return { kind: "invalid", error: "line name too long" };
     const description = body.description ? String(body.description).trim().slice(0, 500) : undefined;
     return { kind: "valid", value: { name, description } };
+  }
+  if (step === "tag-import") {
+    const proposals_created = typeof body.proposals_created === "number" ? body.proposals_created : undefined;
+    const skipped = body.skipped === true;
+    return { kind: "valid", value: { proposals_created, skipped } };
   }
   return { kind: "invalid", error: "no validator for step" };
 }

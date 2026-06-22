@@ -24,12 +24,12 @@ x-bot-common-env: &bot-common-env
   GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
   GROQ_VISION_MODEL: ${GROQ_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
   CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
-  CEREBRAS_MODEL: ${CEREBRAS_MODEL:-llama3.1-8b}
+  CEREBRAS_MODEL: ${CEREBRAS_MODEL:-gpt-oss-120b}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-4-6}
-  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
-  GEMINI_VISION_MODEL: ${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+  TOGETHERAI_API_KEY: ${TOGETHERAI_API_KEY:-}
+  TOGETHERAI_MODEL: ${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+  TOGETHERAI_VISION_MODEL: ${TOGETHERAI_VISION_MODEL:-}
   LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
   LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
   LANGFUSE_PUBLIC_API_KEY: ${LANGFUSE_PUBLIC_API_KEY:-}
@@ -162,8 +162,8 @@ services:
       - MIRA_TENANT_ID=${MIRA_TENANT_ID}
       - PIPELINE_BASE_URL=http://mira-pipeline-saas:9099
       - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
+      - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - MIRA_HUB_URL=${MIRA_HUB_URL:-http://mira-hub:3000}
       - INTERNAL_KG_API_KEY=${INTERNAL_KG_API_KEY:-}
     volumes:
@@ -242,10 +242,10 @@ services:
       - GROQ_MODEL=llama-3.3-70b-versatile
       - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
-      - CEREBRAS_MODEL=llama3.1-8b
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - CEREBRAS_MODEL=gpt-oss-120b
+      - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
+      - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
@@ -299,10 +299,10 @@ services:
       - GROQ_MODEL=llama-3.3-70b-versatile
       - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
-      - CEREBRAS_MODEL=llama3.1-8b
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - CEREBRAS_MODEL=gpt-oss-120b
+      - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
+      - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
       - SESSION_RECORDING_PATH=/data/sessions
@@ -348,10 +348,10 @@ services:
       - GROQ_MODEL=llama-3.3-70b-versatile
       - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
-      - CEREBRAS_MODEL=llama3.1-8b
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - CEREBRAS_MODEL=gpt-oss-120b
+      - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
+      - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
       - SESSION_RECORDING_PATH=/data/sessions
@@ -625,19 +625,24 @@ services:
       # Nango — credential vault for CMMS and platform integrations
       - NANGO_SERVER_URL=${NANGO_SERVER_URL:-http://nango-server:3003}
       - NANGO_SECRET_KEY=${NANGO_SECRET_KEY:-}
-      # LLM cascade for AI Reports (Groq → Cerebras → Gemini)
+      # LLM cascade for AI Reports (Groq → Cerebras → Together)
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
-      - CEREBRAS_MODEL=${CEREBRAS_MODEL:-llama3.1-8b}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - CEREBRAS_MODEL=${CEREBRAS_MODEL:-gpt-oss-120b}
+      - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
+      - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
       # Atlas CMMS live stats — internal docker URL via shared cmms network.
       # Public cmms.factorylm.com nginx only proxies /auth/ + /api/ + /license/
       # to the Spring backend; /work-orders/*, /assets/*, /preventive-maintenances/*
       # fall through to the SPA and 405 on POST. Direct backend access bypasses
       # nginx. (Re-applies fix dc10a10f, regressed by 08db78e0.)
       - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-http://cmms-backend:8080}
+      # Browser-reachable Atlas URL handed to the client for "Open Atlas" + the
+      # CMMS quick links. HUB_CMMS_API_URL above is the internal docker hostname
+      # (server-side only); the browser must use this public host or the links
+      # crash (#2197).
+      - CMMS_PUBLIC_URL=${CMMS_PUBLIC_URL:-https://cmms.factorylm.com}
       - ATLAS_API_USER=${ATLAS_API_USER:-}
       - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
       # /hub/admin/review reads filesystem assets relative to this root.
