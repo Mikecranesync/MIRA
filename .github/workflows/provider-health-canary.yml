@@ -1,0 +1,128 @@
+name: provider-health canary
+
+# Catches a dead LLM cascade provider BEFORE it costs us coverage.
+#
+# Background: the cascade (Groq -> Cerebras -> Together) is resilient — if a
+# provider dies, the next answers. That resilience MASKS a dead provider:
+# Gemini's 403 and Cerebras's llama3.1-8b 404 both went unnoticed because Groq
+# kept answering. By the time anyone noticed, coverage had silently dropped to
+# one provider. This canary probes each provider INDEPENDENTLY and pages when
+# coverage degrades — not just on a full outage.
+#
+# The probe (tools/provider_health_check.py) imports the runtime router's
+# _build_providers(), so it always tests the exact url/model/key the cascade
+# uses — no duplicated defaults to drift (drift is what hid the Cerebras death).
+# It uses a generous max_tokens + one retry so a reasoning model (gpt-oss-120b)
+# returning empty content does NOT false-page.
+#
+# Keys come from Doppler (the shared DOPPLER_TOKEN, factorylm/stg — provider
+# keys are account-global, so stg validates the same Groq/Cerebras/Together
+# accounts prod uses). Exit codes:
+#   0 = all providers UP
+#   1 = >=1 provider DOWN (coverage degraded) -> opens/updates a provider-incident issue
+#   2 = probe could not run (no keys / import error) -> red, but does NOT page (infra, not a death)
+# Runbook: docs/runbooks/provider-health-canary.md
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"   # every 6h at :23 — catch a dead provider within ~6h, not a demo
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "mira-bots/shared/inference/router.py"
+      - "tools/provider_health_check.py"
+      - "docker-compose.saas.yml"
+      - ".github/workflows/provider-health-canary.yml"
+
+jobs:
+  probe:
+    name: Probe LLM cascade providers
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      issues: write          # open / comment the provider-incident issue on exit 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v4
+
+      - name: Install probe deps
+        run: pip install --quiet httpx pyyaml
+
+      - name: Probe providers
+        id: probe
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          DOPPLER_PROJECT: factorylm
+          DOPPLER_CONFIG: stg
+          INFERENCE_BACKEND: cloud
+          PYTHONPATH: mira-bots
+        run: |
+          set +e
+          doppler run -- python tools/provider_health_check.py
+          code=$?
+          set -e
+          # Single-line GITHUB_OUTPUT writes (no heredoc — avoids the delimiter
+          # collision class from #1637). The probe itself appended up_count /
+          # down_count / down_providers / summary before exiting.
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          # Keep run status honest: exit 1 (degraded) and exit 2 (probe error)
+          # both show red. The page step decides which one alerts a human.
+          exit "$code"
+
+      - name: Page on degraded coverage
+        # Only a real provider death (exit 1) opens an incident. exit 2 (probe
+        # could not run) left the run red above but is infra, not a death.
+        if: ${{ always() && steps.probe.outputs.exit_code == '1' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          down="${{ steps.probe.outputs.down_providers }}"
+          down_count="${{ steps.probe.outputs.down_count }}"
+          summary="${{ steps.probe.outputs.summary }}"
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ "${down_count:-1}" -ge 2 ]; then
+            sev="CRITICAL"
+          else
+            sev="DEGRADED"
+          fi
+          title="LLM provider coverage ${sev}: ${summary}"
+          # printf so each line has NO leading whitespace (4+ spaces => code block)
+          # and NO backticks (avoids bash command substitution in the body).
+          body=$(printf '%s\n' \
+            "The provider-health canary found one or more LLM cascade providers DOWN." \
+            "" \
+            "Status: ${summary}" \
+            "Down: ${down}" \
+            "" \
+            "The cascade may still be serving on the remaining provider(s), but coverage" \
+            "is reduced — one more failure moves us toward a full Open WebUI fallback." \
+            "" \
+            "Failing run (per-provider reasons in the log): ${run_url}" \
+            "" \
+            "Fix: a DOWN usually means a retired/renamed model or a revoked key." \
+            "Check the provider's model catalog and the key in Doppler factorylm/prd," \
+            "update the default in mira-bots/shared/inference/router.py + compose," \
+            "then redeploy. Runbook: docs/runbooks/provider-health-canary.md" \
+            "Health prior deaths: Gemini 403 (replaced by Together), Cerebras llama3.1-8b 404 (-> gpt-oss-120b).")
+          gh label create provider-incident --color B60205 \
+            --description "LLM cascade provider coverage incident (canary)" 2>/dev/null || true
+          # Dedup by a stable title marker so a multi-cycle outage updates ONE
+          # issue instead of opening a new one every 6h.
+          existing=$(gh issue list --state open --search 'in:title "LLM provider coverage"' \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+            echo "commented on existing incident #$existing"
+          else
+            gh issue create --title "$title" --body "$body" --label provider-incident
+          fi
