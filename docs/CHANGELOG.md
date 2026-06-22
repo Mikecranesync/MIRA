@@ -3,7 +3,7 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
-### v3.39.16 (2026-06-22) — test(eval): skip non-deterministic FSM check on vfd_danfoss_04 out-of-KB fixture
+### v3.39.17 (2026-06-22) — test(eval): skip non-deterministic FSM check on vfd_danfoss_04 out-of-KB fixture
 - **Problem:** `vfd_danfoss_04_vlt_fc360_edge` (user asks about a nonexistent VLT FC 360) is a stochastic out-of-KB edge case. The engine's `Q→DIAGNOSIS` gate transition is LLM-non-deterministic, so the terminal FSM state flips `Q1`/`Q2`/`DIAGNOSIS` run-to-run; the grader's `cp_reached_state` then fails whenever it lands at `Q1` — producing **11/11 spurious FSM-only failures** in the #1948 eval-flakiness triage even though keyword + citation checks pass.
 - **Fix:** added `skip_fsm_check: true` (the grader's purpose-built flag for exactly this class — `tests/eval/grader.py:110`), so the fixture validates honest out-of-KB behavior via `expected_keywords` + citation groundedness instead of FSM depth. Mirrors the existing `04_yaskawa_out_of_kb.yaml` precedent. Fixture-only; no engine/grader code change.
 - **Context:** follow-up **(c)** from the #1948 triage (PR #2222). Siblings: #2258 (eval-suite determinism via record/replay), #2257 (Nemotron-404 reranker outage). PR #2256.

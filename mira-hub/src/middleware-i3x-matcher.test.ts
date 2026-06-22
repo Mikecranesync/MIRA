@@ -15,6 +15,14 @@ describe("middleware matcher — i3X API bypasses Hub session auth", () => {
     expect(matcherRe.test("/api/i3x/v1/namespaces")).toBe(false);
   });
 
+  it("does NOT match /api/version (#2226 — public deploy-identity probe)", () => {
+    // /api/version exposes only the public commit SHA + version, like /api/health,
+    // so QA can confirm which code is live without a session. Must bypass the
+    // session middleware or it 401s (the bug this guards).
+    expect(matcherRe.test("/api/version")).toBe(false);
+    expect(matcherRe.test("/api/version/")).toBe(false);
+  });
+
   it("still protects other /api routes (no over-broad exclusion)", () => {
     expect(matcherRe.test("/api/work-orders")).toBe(true);
     expect(matcherRe.test("/api/cmms/assets")).toBe(true);
