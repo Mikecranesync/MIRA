@@ -126,6 +126,10 @@ test("onboarding walkthrough — full reel through Train & approve", async ({ pa
   await page.getByTestId("input-line-description").fill("Sorts product by height before packaging");
   await page.getByTestId("onboarding-next").click();
 
+  // 3b) Tag-import (optional, #2074) → skip to review
+  await expect(page.getByTestId("step-tag-import")).toBeVisible();
+  await page.getByTestId("tag-import-continue").click();
+
   // 4) Review
   await expect(page.getByTestId("step-review")).toBeVisible();
   await shot("04-review");
