@@ -70,10 +70,11 @@ def embed_one(client: httpx.Client, base_url: str, body: str) -> list[float]:
 
 
 def extract_blocks(pdf_path: Path) -> list[dict]:
+    """pdfplumber extraction (fallback). Noisy on table/TOC-heavy manuals."""
     blocks: list[dict] = []
     with pdfplumber.open(str(pdf_path)) as pdf:
         n = min(len(pdf.pages), MAX_PAGES)
-        log.info("extracting %d pages from %s", n, pdf_path.name)
+        log.info("extracting %d pages from %s (pdfplumber)", n, pdf_path.name)
         for i in range(n):
             try:
                 txt = pdf.pages[i].extract_text() or ""
@@ -85,6 +86,57 @@ def extract_blocks(pdf_path: Path) -> list[dict]:
                 blocks.append({"text": txt, "page_num": i + 1, "section": ""})
     log.info("  %d non-empty page-blocks", len(blocks))
     return blocks
+
+
+def extract_blocks_docling(pdf_path: Path) -> list[dict]:
+    """docling extraction (preferred): layout-aware, TableFormer→Markdown, OCR.
+
+    Reuses the sanctioned mira-core DoclingAdapter — same {text,page_num,section}
+    schema as the pdfplumber path.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "mira-core" / "scripts"))
+    from docling_adapter import DoclingAdapter  # noqa: E402
+
+    log.info("extracting %s (docling — first call lazy-loads ~1.2GB models)", pdf_path.name)
+    adapter = DoclingAdapter(max_pages=MAX_PAGES)
+    blocks = adapter.extract_from_pdf(pdf_path.read_bytes())
+    log.info("  %d docling blocks", len(blocks))
+    return blocks
+
+
+# Quality gate — drop extraction-noise chunks (applies to BOTH extractors)
+_TRIPLE_CHAR = re.compile(r"([A-Za-z])\1\1")
+
+
+def _is_noise(body: str) -> str | None:
+    """Return a reason string if the chunk is extraction noise, else None."""
+    if not body or len(body.strip()) < 80:
+        return "too_short"
+    total = len(body)
+    alnum = sum(c.isalnum() for c in body)
+    space = sum(c.isspace() for c in body)
+    if total and alnum / total < 0.55:
+        return "low_alnum_ratio"  # dot-leaders, � runs, box chars
+    # repeated-char OCR artifact (CCChhh…) — count triples
+    if len(_TRIPLE_CHAR.findall(body)) >= 5:
+        return "repeated_char_artifact"
+    words = [w for w in re.split(r"\s+", body) if len(w) >= 3 and any(ch.isalpha() for ch in w)]
+    if len(words) < 12:
+        return "low_word_density"
+    if space and (total - space) / max(space, 1) > 40:
+        return "almost_no_spaces"
+    return None
+
+
+def quality_gate(chunks: list[dict]) -> tuple[list[dict], dict]:
+    kept, dropped = [], {}
+    for ch in chunks:
+        reason = _is_noise(ch.get("text", ""))
+        if reason:
+            dropped[reason] = dropped.get(reason, 0) + 1
+        else:
+            kept.append(ch)
+    return kept, dropped
 
 
 def chunk_exists(eng, tenant_id: str, chunk_key: str) -> bool:
@@ -107,6 +159,10 @@ def main() -> int:
     ap.add_argument("--source-url", default="", help="optional canonical URL for citation")
     ap.add_argument("--tenant-id", default=os.environ.get("MIRA_TENANT_ID", DEFAULT_TENANT))
     ap.add_argument("--ollama-url", default=os.environ.get("OLLAMA_URL", DEFAULT_OLLAMA))
+    ap.add_argument("--use-docling", action="store_true",
+                    help="use docling layout-aware extraction (preferred); falls back to pdfplumber")
+    ap.add_argument("--no-quality-gate", action="store_true",
+                    help="disable the extraction-noise filter (debug only)")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -116,7 +172,14 @@ def main() -> int:
 
     stem = slug(pdf_path.stem)
     mdl = slug(args.model)
-    blocks = extract_blocks(pdf_path)
+    if args.use_docling:
+        try:
+            blocks = extract_blocks_docling(pdf_path)
+        except Exception as e:  # noqa: BLE001
+            log.error("docling extraction failed (%s) — falling back to pdfplumber", e)
+            blocks = extract_blocks(pdf_path)
+    else:
+        blocks = extract_blocks(pdf_path)
     chunks = chunk_blocks(
         blocks,
         source_url=args.source_url or pdf_path.name,
@@ -125,6 +188,9 @@ def main() -> int:
         equipment_id=args.model,
     )
     log.info("chunked → %d chunks  (mfr=%s model=%s)", len(chunks), args.manufacturer, args.model)
+    if not args.no_quality_gate:
+        chunks, dropped = quality_gate(chunks)
+        log.info("quality gate → %d kept, dropped %s", len(chunks), dropped or "none")
     if not chunks:
         log.error("no chunks produced — is this a scanned/image-only PDF? (needs OCR)")
         return 3
