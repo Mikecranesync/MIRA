@@ -162,7 +162,7 @@ def _build_providers() -> list[_Provider]:
                 name="cerebras",
                 api_url="https://api.cerebras.ai/v1/chat/completions",
                 api_key=cerebras_key,
-                model=os.getenv("CEREBRAS_MODEL", "llama3.1-8b"),
+                model=os.getenv("CEREBRAS_MODEL", "gpt-oss-120b"),
                 timeout=30.0,
             )
         )

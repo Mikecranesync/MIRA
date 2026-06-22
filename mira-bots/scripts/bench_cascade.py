@@ -81,7 +81,7 @@ def build_endpoints(skip_local: bool) -> list[Endpoint]:
         eps.append(Endpoint(
             name="cerebras",
             url="https://api.cerebras.ai/v1/chat/completions",
-            model=os.getenv("CEREBRAS_MODEL", "llama3.1-8b"),
+            model=os.getenv("CEREBRAS_MODEL", "gpt-oss-120b"),
             api_key=os.getenv("CEREBRAS_API_KEY", ""),
         ))
     if os.getenv("TOGETHERAI_API_KEY"):

@@ -12,7 +12,7 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `GROQ_MODEL`         | mira-bots, mira-pipeline — default: llama-3.3-70b-versatile |
 | `GROQ_VISION_MODEL`  | mira-bots, mira-pipeline — default: meta-llama/llama-4-scout-17b-16e-instruct |
 | `CEREBRAS_API_KEY`   | mira-bots, mira-pipeline (Cerebras — second in cascade) |
-| `CEREBRAS_MODEL`     | mira-bots, mira-pipeline — default: llama3.1-8b |
+| `CEREBRAS_MODEL`     | mira-bots, mira-pipeline — default: gpt-oss-120b |
 | `TOGETHERAI_API_KEY`     | mira-bots, mira-pipeline (Together AI — third in cascade; OpenAI-compatible) |
 | `TOGETHERAI_MODEL`       | mira-bots, mira-pipeline — default: meta-llama/Llama-3.3-70B-Instruct-Turbo |
 | `TOGETHERAI_VISION_MODEL`| mira-bots, mira-pipeline — default: unset (image requests stay on Groq) |
