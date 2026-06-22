@@ -9,22 +9,25 @@ name: Hub E2E Tests
 # and run the corresponding spec. Total wall-clock ~12-15 min vs ~25 min for three
 # independent builds.
 #
-# PATH FILTER: only runs when mira-hub code changes. Non-hub PRs (docs, wiki, .claude,
-# Python, other services) short-circuit to trivially-green, keeping this safe as a
-# required check candidate. Same pattern as the Hub Unit Tests job in ci.yml.
+# PATH FILTER (in-job, NOT on:-level): the workflow ALWAYS runs on PRs to main so
+# the required context always reports; the dorny/paths-filter `changes` step then
+# short-circuits non-hub PRs (docs, wiki, .claude, Python, other services) to
+# trivially-green in seconds. An on:-level paths-ignore would suppress the workflow
+# entirely on those PRs and block them forever — see the on: block below.
 #
 # DB: layout SSR may touch NeonDB (tenant/session queries). Uses the staging branch
 # via NEON_STG_DATABASE_URL. Route-level data is mocked in-spec so results are
 # deterministic regardless of DB seed state.
 
 on:
+  # NO on:-level path filter. This job is a REQUIRED status check, so it must
+  # REPORT on every PR to main — a workflow suppressed by `paths-ignore` never
+  # reports its required context and blocks the PR forever ("Expected", e.g. a
+  # docs-only PR). Cost is controlled INSIDE the job: the dorny/paths-filter
+  # `changes` step + the `if: steps.changes.outputs.hub == 'true'` gates
+  # short-circuit non-hub PRs to trivially-green in seconds. (See the job comment.)
   pull_request:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - 'wiki/**'
-      - '**/*.md'
-      - '.claude/**'
   workflow_dispatch: {}
 
 concurrency:
