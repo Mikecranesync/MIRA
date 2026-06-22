@@ -3,6 +3,11 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.39.13 (2026-06-22) — feat(retrieval): equipment-aware reranking in production (behind flag)
+- **Problem (verified on the prod path, not the harness):** `recall_knowledge` RRF is vendor-blind — "GS10 overcurrent" ranked a Yaskawa **V1000** chunk #1 over GS10. The equipment-scope rerank that fixes it lived **only** in `tests/mira_bench.py`, so every live surface (Telegram/Slack/pipeline/Hub) shipped vendor-confused retrieval.
+- **Fix:** ported an equipment rerank into `mira-bots/shared/neon_recall.py`, **behind `MIRA_EQUIPMENT_RERANK` (default OFF → zero prod impact until Phase 4)**. Overfetch → RRF → float chunks matching the query's extracted equipment → truncate. Positive-boost only (no harness `v1000/powerflex` denylist, so a real V1000/PowerFlex question still returns that vendor); no equipment in query ⇒ no-op.
+- **Evidence:** unit `tests/regime2_rag/test_equipment_rerank.py` 5/5; raw prod path on staging — vendor confusion eliminated; retrieval A/B (`tools/seeds/oem-manuals/phase3_retrieval_ab.py`) avg relevance **0.62 → 0.96**, coverage 0.75 → 1.00, **0/10 regressions**. Plan: `docs/plans/2026-06-22-retrieval-page-picking-equipment-rerank.md`. PR #2237. (Flag flip + LLM-dim bench + deploy = Phase 4.)
+
 ### v3.39.11 (2026-06-22) — fix(test): re-green pricing-CTA smoke after live copy change
 - The `factorylm.com/pricing` featured CTA copy changed to **"Book Assessment — $500 →"** (price added); `mira-hub/tests/e2e/signup-flow.spec.ts` still asserted `/book your assessment/i` → E2E-smoke red on every PR. **The money path is healthy** — verified live: CTA → `/buy` (HTTP 200), and the checkout session API 303-redirects to checkout.stripe.com. Loosened the assertion to price-agnostic `/book assessment/i` + fixed the stale test title/comment. No app/behavior change.
 
