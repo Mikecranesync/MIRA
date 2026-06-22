@@ -355,6 +355,7 @@ export default function NamespacePage() {
           // early click; Playwright's .click() auto-waits for "enabled", so the
           // first interaction always happens once the page is truly interactive.
           disabled={loading}
+          title={loading ? "Loading namespace…" : "Create a new folder"}
           onClick={() => setNewFolder({ parentId: selected?.id ?? null, value: "" })}
         />
         <ToolbarButton
@@ -362,6 +363,9 @@ export default function NamespacePage() {
           label="Upload"
           testId="toolbar-upload"
           disabled={!selected}
+          title={selected
+            ? `Upload files into "${selected.name}"`
+            : "Select a folder first, then upload files into it"}
           onClick={() => {
             if (!selected) return;
             fileInputRef.current?.click();
@@ -501,7 +505,7 @@ export default function NamespacePage() {
               {loading ? null : tree.length === 0 ? (
                 <EmptyState />
               ) : (
-                "Select a folder to view its contents"
+                "Select a folder to view its contents and upload files"
               )}
             </div>
           )}
@@ -1050,26 +1054,36 @@ function DetailsSection({ node }: { node: NamespaceNode }) {
 // ── Small components ──────────────────────────────────────────────────────────
 
 function ToolbarButton({
-  icon, label, onClick, disabled, testId,
+  icon, label, onClick, disabled, testId, title,
 }: {
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
   disabled?: boolean;
   testId?: string;
+  title?: string;
 }) {
-  return (
+  const button = (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
       data-testid={testId}
+      title={title}
+      aria-label={title ? `${label} — ${title}` : label}
       className="flex items-center gap-1 border border-gray-500 bg-[#d4d0c8] px-2 py-0.5 text-[12px] hover:bg-[#e8e8e8] disabled:cursor-not-allowed disabled:opacity-40 active:border-inset"
     >
       {icon}
       {label}
     </button>
   );
+  // A disabled <button> swallows pointer events in Chrome, so its own `title`
+  // tooltip never shows — leaving the user staring at a greyed button with no
+  // explanation (#2182). Wrap it in a span that carries the tooltip so the
+  // "why is this disabled / what to do next" hint is reachable on hover.
+  return disabled && title
+    ? <span title={title} className="inline-flex">{button}</span>
+    : button;
 }
 
 function CtxMenuItem({
