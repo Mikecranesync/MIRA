@@ -75,13 +75,28 @@ Same as steps 3–4 with `-c prd`. Idempotent (dedupes by `chunk_key`); additive
 
 ---
 
-## B. Full-PDF ingest (`ingest_manuals.py`) — the scale-up path (heavier)
+## B. Full-PDF ingest — STAGING-TESTED, NOT PROD-READY (do not load raw to prod)
 
-For complete OEM manuals (e.g. on-disk `gs10 drive.pdf`, `Micro820_user_manual.pdf`), use the
-docling/pdfplumber ingest pipeline, **not** `chunks.jsonl` (which is for small curated gaps).
+For complete OEM manuals (e.g. on-disk `gs10 drive.pdf`, `Micro820_user_manual.pdf`).
+`ingest_local_pdf.py` (this dir) extracts (pdfplumber) → chunks (mira-crawler chunker, ≤2000 tok)
+→ embeds → inserts shared corpus. It works mechanically, but **raw pdfplumber full-PDF output is
+not good enough for the shared prod corpus** — proven on staging 2026-06-21:
 
-- It pulls queued URLs from `manual_cache` / `manuals`, downloads, chunks (≤2000 tok), embeds,
-  inserts. Run it on Charlie (localhost Ollama), staging first.
+- **Extraction noise:** TOC dot-leaders extract as `� � �`; bold headers triple
+  (`CCChhhaaapppttteeerrr`). pdfplumber is the *fallback* extractor for a reason — the sanctioned
+  `mira-core/scripts/ingest_manuals.py` uses **docling primary** for layout-aware extraction.
+- **Retrievability:** the 22 GS10 full-manual chunks did NOT surface for the natural query
+  "GS10 overload fault trip parameter setting" — the curated chunk did. Raw full-PDF chunking is
+  entangled with the **deferred page-picking work** (the 3 big retrieval problems), so a quick load
+  adds noise without adding answers.
+
+The 22 GS10 + 105 Micro820 staging chunks loaded during this test were **deleted** from the staging
+shared corpus (they'd skew beta-gate / secret-shopper evals). **Nothing was loaded to prod.**
+
+**To do full-PDF properly (own effort, not a quick load):** use the docling pipeline
+(`ingest_manuals.py` / `docling_adapter.py`) for clean extraction, then validate retrieval on
+staging against real queries before any prod load — i.e. it rides on the deferred page-picking fix.
+
 - **Throttle.** The bulk Celery/Trigger.dev crawler twice took down the 8 GB VPS (PRs #1318/#1336);
   `scripts/ab_manual_hunter/` is the sanctioned capped replacement (≤3 PDFs/run). Don't resurrect
   the bulk crawler on the VPS.
