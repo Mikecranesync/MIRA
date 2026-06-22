@@ -103,4 +103,12 @@ repeatable tool. Gate passed — the mechanism is confirmed, not assumed.
 ## Progress
 - **Phase 0: DONE** — vendor-blind ranking reproduced on raw `recall_knowledge` (staging). Tools:
   `recall_probe.py`, `vector_battery_scoped.py`, `coverage_check.py`.
-- Phases 1–5: pending.
+- **Phase 1: DONE** — `_rerank_for_equipment` + `_equipment_tokens` + `_EQUIPMENT_ALIASES` added to
+  `neon_recall.py`; wired into `recall_knowledge` behind `MIRA_EQUIPMENT_RERANK` (default off) with
+  `EQUIPMENT_RERANK_OVERFETCH` (default 4): overfetch streams → RRF → equipment rerank → truncate to
+  `limit`. Positive-boost only (no harness `v1000/powerflex` denylist — a real PowerFlex/V1000
+  question still returns that vendor). Disabled ⇒ exact prior behavior (eff_limit==limit, slice
+  no-op). Unit gate: `tests/regime2_rag/test_equipment_rerank.py` 5/5 pass. Known limit:
+  `_extract_product_names` regex doesn't recognize `V1000` → no-op for that query (documented
+  acceptable degradation; extraction is a separate concern).
+- Phases 2–5: pending.

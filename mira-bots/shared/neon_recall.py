@@ -113,6 +113,32 @@ HYBRID_ENABLED = os.getenv("MIRA_RETRIEVAL_HYBRID_ENABLED", "true").lower() == "
 # agreements across streams still contribute.
 RRF_K = int(os.getenv("MIRA_RRF_K", "60"))
 
+# Equipment-aware reranking (page-picking fix, 2026-06-22). RRF is vendor-blind:
+# "GS10 overcurrent" can rank a Yaskawa V1000 chunk above the GS10 one because
+# both match the topic. When enabled, after RRF we overfetch candidates and float
+# chunks whose manufacturer/model matches the query's extracted equipment to the
+# top (positive boost only — no vendor denylist, so a real V1000 question still
+# returns V1000). No equipment in the query => no-op. Plan:
+# docs/plans/2026-06-22-retrieval-page-picking-equipment-rerank.md
+EQUIPMENT_RERANK_ENABLED = os.getenv("MIRA_EQUIPMENT_RERANK", "0") == "1"
+EQUIPMENT_RERANK_OVERFETCH = int(os.getenv("MIRA_EQUIPMENT_RERANK_OVERFETCH", "4"))
+
+# Alias map so query tokens match how chunks spell the equipment (GS10 / GS-10 /
+# GS 10; Micro820 / 2080-LC*). Extend as new families are served.
+_EQUIPMENT_ALIASES: dict[str, set[str]] = {
+    "gs11": {"gs11", "gs-11", "gs 11"},
+    "gs10": {"gs10", "gs-10", "gs 10"},
+    "gs20": {"gs20", "gs-20", "gs 20"},
+    "gs30": {"gs30", "gs-30", "gs 30"},
+    "micro820": {"micro820", "micro 820", "micro-820", "2080-lc20", "2080-lc30", "2080-lc"},
+    "micro850": {"micro850", "micro 850", "2080-lc50"},
+    "powerflex": {"powerflex", "power flex"},
+    "compactlogix": {"compactlogix", "compact logix"},
+    "controllogix": {"controllogix", "control logix"},
+    "v1000": {"v1000", "v-1000"},
+    "a1000": {"a1000", "a-1000"},
+}
+
 # Max distinct OR-terms in a BM25 tsquery. Direct-connection surfaces (the
 # Ignition /ask kiosk) prepend a ~440-token MACHINE_CONTEXT block to every
 # question, so an unbounded OR-fanout unions hundreds of GIN posting lists and
@@ -637,6 +663,47 @@ def _merge_results(
     return merged, path
 
 
+def _equipment_tokens(equipment_list: list[str]) -> set[str]:
+    """Map extracted equipment names to the substring set chunks may use."""
+    tokens: set[str] = set()
+    for tag in equipment_list:
+        key = tag.lower().strip()
+        tokens |= _EQUIPMENT_ALIASES.get(key, {key})
+    return tokens
+
+
+def _rerank_for_equipment(rows: list[dict], query_text: str) -> list[dict]:
+    """Float chunks matching the query's equipment to the top (stable).
+
+    Positive boost only: +5 per equipment token in manufacturer/model, +1 per
+    token in content-only. Non-matching chunks keep their RRF order below the
+    matches (tie-break by original index). No vendor denylist — a question about
+    a V1000 still returns V1000. No equipment extracted => unchanged order.
+
+    Ported to production from the bench harness (`tests/mira_bench.py
+    _rerank_for_equipment`), which was the ONLY place this ran — so live surfaces
+    shipped vendor-blind retrieval (e.g. "GS10 overcurrent" -> Yaskawa V1000 #1).
+    """
+    equipment = _extract_product_names(query_text)
+    if not equipment:
+        return rows
+    tokens = _equipment_tokens(equipment)
+    scored: list[tuple[int, int, dict]] = []
+    for idx, ch in enumerate(rows):
+        meta_blob = " ".join(
+            [str(ch.get("manufacturer") or ""), str(ch.get("model_number") or "")]
+        ).lower()
+        content_blob = str(ch.get("content") or "").lower()
+        meta_pos = sum(1 for tok in tokens if tok in meta_blob)
+        content_pos = sum(
+            1 for tok in tokens if tok in content_blob and tok not in meta_blob
+        )
+        score = 5 * meta_pos + 1 * content_pos
+        scored.append((-score, idx, ch))
+    scored.sort(key=lambda t: (t[0], t[1]))
+    return [t[2] for t in scored]
+
+
 def recall_knowledge(
     embedding: list[float] | None,
     tenant_id: str,
@@ -690,6 +757,15 @@ def recall_knowledge(
             pool_pre_ping=True,
         )
         with engine.connect() as conn:
+            # Overfetch candidates when equipment rerank is on, so a right-vendor
+            # chunk ranked just outside `limit` can be floated to the top before
+            # truncation. Disabled => eff_limit == limit (no behavior change).
+            eff_limit = (
+                limit * EQUIPMENT_RERANK_OVERFETCH
+                if (EQUIPMENT_RERANK_ENABLED and limit)
+                else limit
+            )
+
             # Stage 1: Dense vector search — searches tenant entries + shared OEM pool.
             # Skipped when the embedding sidecar was unreachable (has_embedding=False);
             # BM25 + structured-fault stages below carry the load in that case.
@@ -718,7 +794,7 @@ def recall_knowledge(
                             "emb": str(embedding),
                             "tid": tenant_id,
                             "shared_tid": SHARED_TENANT_ID,
-                            "lim": limit,
+                            "lim": eff_limit,
                         },
                     )
                     .mappings()
@@ -768,7 +844,7 @@ def recall_knowledge(
             product_results: list[dict] = []
             if product_names and has_embedding:
                 product_results = _product_search(
-                    conn, text, tenant_id, product_names, embedding, limit
+                    conn, text, tenant_id, product_names, embedding, eff_limit
                 )
 
             # Stage 4: BM25 keyword stream (Unit 6). Pulled alongside vector
@@ -777,7 +853,7 @@ def recall_knowledge(
             bm25_results: list[dict] = []
             if HYBRID_ENABLED:
                 bm25_results = _recall_bm25(
-                    conn, text, tenant_id, query_text, limit * 2 if limit else 6
+                    conn, text, tenant_id, query_text, eff_limit * 2 if eff_limit else 6
                 )
 
         # Merge via RRF; truncate to `limit` after fusion so cross-stream
@@ -787,8 +863,19 @@ def recall_knowledge(
             like_results,
             product_results,
             bm25_results=bm25_results,
-            limit=limit,
+            limit=eff_limit,
         )
+
+        # Equipment-aware rerank (vendor-blind RRF fix). Floats query-equipment
+        # chunks to the top of the overfetched pool, then truncate to `limit`.
+        # Disabled => no-op (eff_limit == limit, slice is a no-op).
+        if EQUIPMENT_RERANK_ENABLED and results:
+            reranked = _rerank_for_equipment(results, query_text)
+            if reranked is not results:  # equipment extracted from the query
+                results = reranked
+                retrieval_path = "eqrerank+" + retrieval_path
+        if limit:
+            results = results[:limit]
 
         # Structured fault codes go at the very top (highest confidence,
         # deterministic — bypass RRF).
