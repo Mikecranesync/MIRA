@@ -33,7 +33,7 @@ def _make_router() -> InferenceRouter:
         "INFERENCE_BACKEND": "cloud",
         "GROQ_API_KEY": "gk-test",
         "CEREBRAS_API_KEY": "cb-test",
-        "TOGETHER_API_KEY": "tog-test",
+        "TOGETHERAI_API_KEY": "tog-test",
     }):
         return InferenceRouter()
 

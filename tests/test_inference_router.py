@@ -33,7 +33,7 @@ class TestBuildProviders:
         env = {
             "GROQ_API_KEY": "gsk_test",
             "CEREBRAS_API_KEY": "csk_test",
-            "TOGETHER_API_KEY": "tog_test",
+            "TOGETHERAI_API_KEY": "tog_test",
         }
         with patch.dict(os.environ, env, clear=True):
             providers = _build_providers()
@@ -43,7 +43,7 @@ class TestBuildProviders:
     def test_cerebras_and_together_no_groq(self):
         env = {
             "CEREBRAS_API_KEY": "csk_test",
-            "TOGETHER_API_KEY": "tog_test",
+            "TOGETHERAI_API_KEY": "tog_test",
         }
         with patch.dict(os.environ, env, clear=True):
             providers = _build_providers()
