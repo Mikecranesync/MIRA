@@ -3,6 +3,10 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### v3.39.14 (2026-06-22) — docs+tools(kb): full-PDF docling ingest tooling + don't-promote findings
+- **Outcome:** bulk-loading full OEM manuals into the shared corpus is NOT the lever for answer quality (retrieval ranking is — #2237). `docling` extraction works (772 Micro820 tables → Markdown; quality gate drops `�`/`CCChhh` noise), but staging retrieval showed full-manual chunks don't surface better than the curated chunks already covering GS10/Micro820. Loaded chunks deleted from staging; **nothing to prod.**
+- **Delivered (docs + tools only, no engine/service code):** `ingest_local_pdf.py` (`--use-docling` + quality gate), `verify_seed.py` / `retrieval_check.py` / `coverage_check.py`, the shared-corpus load runbook (`docs/runbooks/load-oem-manuals-into-kb.md`), and the plan + verdict (`docs/plans/2026-06-22-full-pdf-docling-ingest-plan.md`). Ready to re-run if/when the page-picking work lands. PR #2238.
+
 ### v3.39.13 (2026-06-22) — feat(retrieval): equipment-aware reranking in production (behind flag)
 - **Problem (verified on the prod path, not the harness):** `recall_knowledge` RRF is vendor-blind — "GS10 overcurrent" ranked a Yaskawa **V1000** chunk #1 over GS10. The equipment-scope rerank that fixes it lived **only** in `tests/mira_bench.py`, so every live surface (Telegram/Slack/pipeline/Hub) shipped vendor-confused retrieval.
 - **Fix:** ported an equipment rerank into `mira-bots/shared/neon_recall.py`, **behind `MIRA_EQUIPMENT_RERANK` (default OFF → zero prod impact until Phase 4)**. Overfetch → RRF → float chunks matching the query's extracted equipment → truncate. Positive-boost only (no harness `v1000/powerflex` denylist, so a real V1000/PowerFlex question still returns that vendor); no equipment in query ⇒ no-op.
