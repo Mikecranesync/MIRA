@@ -1,3 +1,20 @@
+# Hot Cache — 2026-06-22 — ProveIt buildout (Cappy Hour import + sim-live)
+
+Branch `feat/cappy-hour-import-engine` off main. Goal: contextualize the real ProveIt factory +
+make the sim live. **5 commits, 202 tests green** (no infra needed; licensed corpus NEVER committed).
+- `36adfd84` **Cappy Hour import engine** — `mira-plc-parser/parsers/ignition_json.py` + additive IR
+  `NamespaceNode` → real `Enterprise B/tags.json` becomes 1 ent·1 site·4 areas·15 lines·**43 assets**·
+  **4,090 signals** (4,154 nodes); i3x-export = 4,154 instances, single root, 0 dangling.
+- `b67d3445` **MqttPublisher hardened** (3 bugs: frozen ts, get_event_loop(), GC'd task).
+- `cfe42179` **SimEngine live feed** — `advance()` streams a snapshot; opt-in `SIMLAB_MQTT_HOST`.
+- `cb97ae2e` **Pilot DB → 6,023 citable chunks** (`tools/proveit/pilot_db_chunks.py`, offline).
+- `0763992a` resume/handoff: `docs/RESUME_2026-06-22_proveit-buildout.md`.
+**Remaining = infra-gated** (Hub kg_entities ingestion + migrations, embed+insert into
+knowledge_entries, Mosquitto/Flexware broker stand-up, proveit tenant, real manual PDF) — handed off
+in the resume doc. PR needs `--admin` (phantom Hub E2E check). `python -m simlab` already serves live.
+
+---
+
 # Hot Cache — 2026-06-21 — HubV3/i3x
 
 **Migration head: 056** (contextualization + intake). Three Round 13 fix branches open:
