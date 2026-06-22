@@ -1,6 +1,6 @@
 """MIRA Inference Router — Multi-provider LLM cascade.
 
-Cascade order: Groq → Cerebras → Gemini → (caller falls back to Open WebUI).
+Cascade order: Groq → Cerebras → Together → (caller falls back to Open WebUI).
 
 Each provider is tried in sequence. On any failure (rate limit, billing,
 timeout, service error), the next provider is attempted. The caller
@@ -8,7 +8,7 @@ timeout, service error), the next provider is attempted. The caller
 providers failed" and falls through to the local Open WebUI/Ollama path.
 
 Provider enablement is key-based: if GROQ_API_KEY is set, Groq is in the
-cascade. Same for CEREBRAS_API_KEY and GEMINI_API_KEY. Order is fixed.
+cascade. Same for CEREBRAS_API_KEY and TOGETHER_API_KEY. Order is fixed.
 
 INFERENCE_BACKEND controls the master switch:
   "cloud" → run the cascade (default when any cloud key is set)
@@ -133,9 +133,10 @@ class _Provider:
 def _build_providers() -> list[_Provider]:
     """Build the ordered provider list from environment variables.
 
-    Cascade order: Groq → Cerebras → Gemini.
-    Groq leads because it's fastest and most reliable. Gemini moved to third
-    position after persistent 503s in prod (2026-04-21 latency audit).
+    Cascade order: Groq → Cerebras → Together.
+    Groq leads because it's fastest and most reliable. Together AI is the
+    third provider (replaced Gemini, which was 403-blocked in Doppler) via
+    its OpenAI-compatible serverless endpoint.
     """
     providers: list[_Provider] = []
 
@@ -166,17 +167,19 @@ def _build_providers() -> list[_Provider]:
             )
         )
 
-    gemini_key = os.getenv("GEMINI_API_KEY", "")
-    if gemini_key:
-        gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    together_key = os.getenv("TOGETHER_API_KEY", "")
+    if together_key:
         providers.append(
             _Provider(
-                name="gemini",
-                api_url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-                api_key=gemini_key,
-                model=gemini_model,
+                name="together",
+                api_url="https://api.together.xyz/v1/chat/completions",
+                api_key=together_key,
+                model=os.getenv("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"),
                 timeout=30.0,
-                vision_model=os.getenv("GEMINI_VISION_MODEL", gemini_model),
+                # No default vision model: the Together free tier has no stable
+                # vision endpoint, so image requests stay on Groq's vision model.
+                # Set TOGETHER_VISION_MODEL to add a vision fallback.
+                vision_model=os.getenv("TOGETHER_VISION_MODEL", ""),
             )
         )
 
@@ -187,7 +190,7 @@ class InferenceRouter:
     """Multi-provider LLM cascade with automatic failover.
 
     Enabled when INFERENCE_BACKEND is "cloud" and at least one provider API
-    key is set. Tries providers in order: Groq → Cerebras → Gemini. Returns
+    key is set. Tries providers in order: Groq → Cerebras → Together. Returns
     ("", {}) only when ALL providers fail — caller then falls through to
     Open WebUI.
     """
@@ -196,7 +199,7 @@ class InferenceRouter:
     _PROVIDER_HOURLY_LIMITS: dict[str, int] = {
         "groq": 1800,  # 30 RPM × 60 min
         "cerebras": 1800,
-        "gemini": 900,  # 15 RPM × 60 min
+        "together": 600,  # ~10 RPM × 60 min (free-tier guidance)
     }
 
     def __init__(self):
@@ -382,7 +385,7 @@ class InferenceRouter:
         session_id: str,
         has_image: bool,
     ) -> tuple[str, dict]:
-        """Call an OpenAI-compatible provider (Groq, Cerebras, Gemini)."""
+        """Call an OpenAI-compatible provider (Groq, Cerebras, Together)."""
         # Use vision model for image requests if available
         model = provider.vision_model if (has_image and provider.vision_model) else provider.model
         payload: dict = {
@@ -485,7 +488,7 @@ class InferenceRouter:
 
     @staticmethod
     def log_usage(usage: dict) -> None:
-        """Log token usage. All current providers (Groq/Cerebras/Gemini) are free-tier."""
+        """Log token usage. All current providers (Groq/Cerebras/Together) are free-tier."""
         inp = usage.get("input_tokens", 0)
         out = usage.get("output_tokens", 0)
         provider = usage.get("provider", "unknown")

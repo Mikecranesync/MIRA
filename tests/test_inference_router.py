@@ -33,22 +33,22 @@ class TestBuildProviders:
         env = {
             "GROQ_API_KEY": "gsk_test",
             "CEREBRAS_API_KEY": "csk_test",
-            "GEMINI_API_KEY": "gem_test",
+            "TOGETHER_API_KEY": "tog_test",
         }
         with patch.dict(os.environ, env, clear=True):
             providers = _build_providers()
         assert len(providers) == 3
-        assert [p.name for p in providers] == ["groq", "cerebras", "gemini"]
+        assert [p.name for p in providers] == ["groq", "cerebras", "together"]
 
-    def test_cerebras_and_gemini_no_groq(self):
+    def test_cerebras_and_together_no_groq(self):
         env = {
             "CEREBRAS_API_KEY": "csk_test",
-            "GEMINI_API_KEY": "gem_test",
+            "TOGETHER_API_KEY": "tog_test",
         }
         with patch.dict(os.environ, env, clear=True):
             providers = _build_providers()
         assert len(providers) == 2
-        assert [p.name for p in providers] == ["cerebras", "gemini"]
+        assert [p.name for p in providers] == ["cerebras", "together"]
 
     def test_anthropic_key_is_ignored(self):
         """ANTHROPIC_API_KEY must NOT add a Claude provider — Anthropic was removed."""

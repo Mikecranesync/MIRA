@@ -188,8 +188,8 @@ services:
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-staging}
       - PIPELINE_BASE_URL=http://stg-mira-pipeline:9099
       - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY:-}
+      - TOGETHER_VISION_MODEL=${TOGETHER_VISION_MODEL:-}
       - MIRA_HUB_URL=http://stg-mira-hub:3000
       - INTERNAL_KG_API_KEY=${INTERNAL_KG_API_KEY:-}
       - NEON_DATABASE_URL=${NEON_DATABASE_URL}
@@ -238,9 +238,9 @@ services:
       - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=llama3.1-8b
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY:-}
+      - TOGETHER_MODEL=${TOGETHER_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo-Free}
+      - TOGETHER_VISION_MODEL=${TOGETHER_VISION_MODEL:-}
       - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://stg-mira-mcp:8001
@@ -321,8 +321,8 @@ services:
       - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=${CEREBRAS_MODEL:-llama3.1-8b}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY:-}
+      - TOGETHER_MODEL=${TOGETHER_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo-Free}
       - HUB_CMMS_API_URL=http://stg-atlas-api:8080
       - ATLAS_API_USER=${ATLAS_API_USER:-}
       - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
@@ -410,9 +410,9 @@ services:
       - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=llama3.1-8b
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY:-}
+      - TOGETHER_MODEL=${TOGETHER_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo-Free}
+      - TOGETHER_VISION_MODEL=${TOGETHER_VISION_MODEL:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://stg-mira-mcp:8001
       - INGEST_SERVICE_URL=disabled://staging
