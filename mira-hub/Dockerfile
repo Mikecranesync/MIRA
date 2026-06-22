@@ -24,6 +24,17 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Deploy identity (#2226) — baked at build time, read at runtime by /api/version
+# and /api/health so a QA pass can confirm WHICH code is live. Default "unknown"
+# keeps a local build (no build-args) working; deploy-vps.yml passes the real
+# values via docker-compose build.args.
+ARG MIRA_GIT_SHA=unknown
+ARG MIRA_APP_VERSION=unknown
+ARG MIRA_BUILD_TIME=unknown
+ENV MIRA_GIT_SHA=$MIRA_GIT_SHA
+ENV MIRA_APP_VERSION=$MIRA_APP_VERSION
+ENV MIRA_BUILD_TIME=$MIRA_BUILD_TIME
+
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 

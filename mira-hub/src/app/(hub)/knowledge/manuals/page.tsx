@@ -352,12 +352,14 @@ export default function KnowledgePage() {
         const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         const msg =
           body.error === "unsupported_mime"
-            ? `Unsupported file type: ${(body.got as string | undefined) || file.type || "unknown"}`
+            ? `Can't upload "${file.name}" — ${(body.got as string | undefined) || file.type || "that file type"} isn't supported. Upload a PDF, JPEG, PNG, WebP, or HEIC (convert other formats to PDF first).`
             : body.error === "exceeds_size_limit"
-              ? `File too large (max ${MAX_UPLOAD_MB} MB): ${file.name}`
-              : typeof body.error === "string"
-                ? body.error
-                : `Upload failed (${res.status})`;
+              ? `"${file.name}" is too large (max ${MAX_UPLOAD_MB} MB). Split or compress it and try again.`
+              : body.error === "content_does_not_match_declared_mime"
+                ? `"${file.name}" looks corrupted or renamed — its contents don't match its extension. Re-export it as a real PDF and try again.`
+                : typeof body.error === "string"
+                  ? body.error
+                  : `Upload failed (${res.status})`;
         throw new Error(msg);
       }
       if (!firstId) {
