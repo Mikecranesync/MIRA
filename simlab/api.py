@@ -71,6 +71,18 @@ def build_app(
     if approvals is None:
         approvals = ApprovalStore()
 
+    # Live MQTT feed (opt-in): set SIMLAB_MQTT_HOST to stream every advance() to a broker, read-only.
+    # Unset -> no publisher attached -> the sim behaves exactly as before (pull-only /snapshot).
+    import os
+
+    mqtt_host = os.getenv("SIMLAB_MQTT_HOST", "").strip()
+    if mqtt_host:
+        from simlab.publishers import MqttPublisher
+
+        mqtt_port = int(os.getenv("SIMLAB_MQTT_PORT", "1883"))
+        engine.add_publisher(MqttPublisher(host=mqtt_host, port=mqtt_port))
+        logger.info("SimLab live MQTT feed enabled -> %s:%d", mqtt_host, mqtt_port)
+
     _line = engine._line  # noqa: SLF001
     _factory = build_factory()
 
