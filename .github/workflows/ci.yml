@@ -282,7 +282,8 @@ jobs:
         run: |
           pytest tests/simlab/test_juice_bottling.py \
             tests/simlab/test_runner_tenant.py \
-            tests/simlab/test_grader_gate.py -v
+            tests/simlab/test_grader_gate.py \
+            tests/simlab/test_evaluation.py -v
 
   license-check:
     name: License Check

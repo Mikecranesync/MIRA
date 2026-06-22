@@ -22,24 +22,16 @@ import pytest
 
 from simlab.diagnostic import assemble_evidence, grade
 from simlab.engine import SimEngine
+from simlab.evaluation import DEFAULT_MANIFEST_TICKS as _MANIFEST_TICK
 from simlab.lines.juice_bottling import build_line
 from simlab.scenarios import SCENARIOS, get_scenario
 
-# Per-scenario tick at which the fault is fully manifested. These mirror the
-# already-verified ticks in test_juice_bottling.py::test_juice_evidence (where
-# assemble_evidence is proven to surface every expected_evidence_tag) and were
-# re-confirmed locally: at each tick the primary asset shows >0 abnormal tags
-# AND a synthetic correct reply passes the rubric. Each is the END of the
-# fault_active phase for that scenario's timeline, so the fault is decisive
-# (well past onset ripple) and the alarms_at_tick thresholds have fired.
-_MANIFEST_TICK: dict[str, int] = {
-    "filler_underfill_low_bowl_pressure": 120,  # F-LOW-BOWL @75, F-UNDERFILL @110 both latched
-    "capper_torque_fault": 60,                  # CA-TORQUE @52 latched; torque floored at 5.5
-    "labeler_registration_drift": 60,           # L-REG-DRIFT @53 latched; reg error ~2.8mm
-    "casepacker_jam_upstream_block": 15,        # CP-JAM @10 latched; jam_detected True
-    "palletizer_unavailable_backup": 10,        # robot_ready False @5; casepacker backs up
-    "low_plant_air_multi_machine": 40,          # AS-LOW-PRESS @30; header at 55 psi
-}
+# Per-scenario tick at which the fault is fully manifested. These live in
+# simlab.evaluation.DEFAULT_MANIFEST_TICKS (imported above as the single source
+# of truth so the P0 gate and the P1 service never drift). At each tick the
+# primary asset shows >0 abnormal tags AND a synthetic correct reply passes the
+# rubric: each is the END of that scenario's fault_active phase (fault decisive,
+# alarms_at_tick thresholds fired).
 
 
 def _engine_at(scenario_id: str, ticks: int) -> SimEngine:
