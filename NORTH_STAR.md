@@ -22,6 +22,13 @@ already done: turning mess into trusted, asset-bound, AI-ready context.
 category we lose on distribution. "The layer that makes any maintenance AI trustworthy on *your*
 messy factory" is the empty chair. Infrastructure first, AI second — *never* lead with "AI CMMS."
 
+> **The adapters stay.** "Lead with context, not copilot" is about the *pitch*, not the plumbing.
+> Once context is trusted, MIRA the agent should reach techs wherever they already are — **Slack,
+> Telegram, the Ignition "Ask MIRA" panel, QR-scan, web.** Adapters are valued consumption/distribution
+> surfaces; the only rule is that **every adapter renders the same approved-context answer** (same
+> citations, same score, same read-only guarantee). Context is the product; the surfaces are how the
+> proof reaches people. Both are real.
+
 ---
 
 ## Why this wedge wins — the competitive map (validated 2026-06)
