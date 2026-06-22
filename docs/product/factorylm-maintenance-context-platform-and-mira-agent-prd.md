@@ -4,6 +4,8 @@
 **Author:** Northstar alignment pass over the MIRA monorepo
 **Companion docs:** `docs/THEORY_OF_OPERATIONS.md` (primary doctrine) · `docs/specs/maintenance-namespace-builder-spec.md` · `docs/specs/mira-component-intelligence-architecture.md` · `docs/specs/uns-kg-unification-spec.md` · `NORTH_STAR.md` · `STRATEGY.md` · `docs/plans/2026-05-15-maintenance-namespace-builder.md` · `docs/plans/2026-06-07-path-to-beta.md`
 
+> **Canonical short-form wedge: `NORTH_STAR.md` (2026-06-22).** This PRD is the long-form; they agree (FactoryLM context platform + MIRA agent). The competitive map (Fuuz / MaintainX / Cognite) + the **ProveIt! 2027 demo runbook** (`docs/plans/2026-06-22-proveit-2027-demo-runbook.md`) live in the North Star. Lead with context, not copilot; adapters (Slack/Telegram/Ignition/QR/web) are retained consumption surfaces.
+
 > **Naming law for this document (and the product):**
 > **FactoryLM is the platform.** It is the maintenance data, asset context, document, telemetry, CMMS, knowledge-graph, and workflow platform — the system that helps manufacturers collect, organize, map, approve, and maintain trusted industrial maintenance context.
 > **MIRA is the agent.** MIRA = *Maintenance Intelligence Resource Agent* — the chatbot/agent interface that uses FactoryLM's approved context to answer questions, explain machine state, guide troubleshooting, and help teams decide.
