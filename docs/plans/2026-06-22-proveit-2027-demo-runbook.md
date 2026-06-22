@@ -69,7 +69,7 @@ is the core prerequisite. The demo adds "on a foreign UNS, live." Owner: Mike. S
 | 7 | **Context package + maturity level, first-class + visible** | namespace builder (L0–L6) | 🟡 partial |
 | 8 | **Every adapter renders the same approved-context answer** | Slack/Telegram/Ignition/QR | 🟡 adapters exist; unify on approved context |
 | 9 | **Read-only violation FENCED** — remove write-to-VFD calls | Perspective view (anti-goal) | 🔴 violated — fix |
-| 10 | **Proven on ≥1 foreign plant/dataset before Feb** — the "stranger" test | design partner OR ProveIt shared spec | 🔴 never done |
+| 10 | **Proven on ≥1 foreign plant/dataset before Feb** — the "stranger" test | **acquired: the real ProveIt 2026 factory** (`../proveit-factory/`) — DMDuFresne Ent. B ~5,200-tag "Cappy Hour" beverage-bottling UNS + pilot work-orders; Flexware MIT live sim | 🟡 data in hand — run MIRA against it |
 | 11 | **Cross-tenant isolation proven** (no IDOR) | #1841 | 🟡 closing |
 | 12 | **Recorded fallback + SimLab safety net** | SimLab P0–P5 (done) + capture | 🟢 rig done; capture TODO |
 
@@ -90,10 +90,15 @@ and the ProveIt demo is real. Same finish line.
 
 ## Open decisions (Mike)
 - **Pricing** — pick one architecture before beta outreach (flagged in `NORTH_STAR.md`).
-- **Foreign-data source for item 10** — design partner plant vs. obtaining the ProveIt shared-factory
-  spec early (worth asking 4.0 Solutions for access ahead of the event).
+- **Foreign-data source — RESOLVED (2026-06-22):** the real ProveIt **2026** factory is acquired in
+  `../proveit-factory/` (verified ~5,200-tag "Cappy Hour" beverage-bottling Ignition tree = the SimLab
+  analog, + pilot work-orders/lots for grounding, + the MIT Flexware live sim). **Rehearse on this now.**
+  For the live 2027 factory: **sponsor ProveIt! (Bronze ~$7.5k)** -> spec ~16 wks out (mid-Oct 2026),
+  dry runs ~mid-Jan. Decision left to Mike: sponsor 2027 (yes/no) + when to also land a real design partner.
 - **Booth vs. main-stage slot** — confirm the format/length 4.0 Solutions offers for 2027 and tune the
   arc to the allotted time.
+- **Event calendar** — see `docs/product/2026-06-22-industry-events-radar.md` (ProveIt #1; free adds: IMC
+  award, ICC Discover Gallery, Automate Startup Challenge).
 
 ## Cross-references
 - `NORTH_STAR.md` — the wedge + competitive map this runbook executes.
