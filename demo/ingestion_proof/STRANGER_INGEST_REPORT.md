@@ -19,25 +19,35 @@ transforms. Reproduce: `python demo/ingestion_proof/run_ingest_proof.py`.
   relationship_proposals (8 HAS_COMPONENT + 4 UPSTREAM_OF + 24 HAS_SIGNAL).
 - **Integrity**: **0 auto-approved**. Every row is a *proposal* a human approves — no hallucinated facts.
 
-## The honest gap (signal SEMANTICS is domain-bounded)
+## The gap — now CLOSED (classifier upgrade)
 
-24 live signals were extracted. The **vendor-neutral MES fields generalized** (ProductionRun→`live_bool`,
-State→`live_state`, Counts→`live_counter`). But **13 industry-specific process tags** came back
-`unknown` → **needs_review**, not guessed:
+**First run:** 13 industry-specific process tags (`gpm`/`psi`/`mg/L`/`NTU`/`pH`…) came back `unknown` →
+needs_review. That was honest (flag, don't guess) but bounded.
 
-`FlowRate (gpm)`, `DischargePressure (psi)`, `MotorCurrent (A)`, `AirFlow (scfm)`, `DissolvedOxygen (mg/L)`,
-`Temperature (C)`, `pH`, `Turbidity (NTU)`, `RakeTorque`…
+**After the classifier upgrade, the same foreign export ingests with `0 unknowns`.** What changed:
 
-That is the **correct** behavior (flag, don't hallucinate), and it pinpoints the real work to onboard a
-**new vertical**: teach the archetype classifier the new domain's signal vocabulary (or route unknowns
-through the existing LLM-classify suggestion). The *structure* transfers for free; the *signal meaning*
-needs a small per-domain extension.
+- **Units ⇒ analog (any domain):** any engineering unit (not just the bottling set) now classifies a signal
+  as `live_analog` — `gpm`, `psi`, `mg/L`, `scfm`, `NTU`, `A`, … all generalize.
+- **Name fallback:** unitless measurements (`pH`, `ORP`, `Turbidity`, vibration) classify by name token.
+- **Two new archetypes — `live_fault` and `live_setpoint`:** fault/alarm/trip bits and SP/Cmd/target tags
+  are now distinguished from ordinary bools and PVs (huge for MIRA diagnosis + HMI value-vs-setpoint rows).
+- **Physical dimension inference:** every analog now carries a `dimension` (flow/pressure/temperature/
+  level/electrical/concentration/speed/torque/mass/vibration) — MIRA can reason about *what* a value is and
+  the HMI can auto-group/scale it. Water-plant result: `{flow:3, pressure:2, electrical:3, concentration:3,
+  level:2, temperature:2, volume:1, ratio:1}`.
+- **Equipment-type inference:** each asset gets a canonical `equipment_type` from its UDT/name
+  (`pump`, `blower`, `basin`, `clarifier`) — so MIRA pulls the right failure modes and the HMI picks the
+  right mimic, on equipment it has never seen.
+
+All taxonomy-safe: the bottling fixture is unchanged (Phase 0/1 gates green, 0 unknowns preserved), and the
+two new archetypes are wired through `uns_draft` (UNS categories `faults`/`setpoints`), the Hub PR-1
+data-type map, and the live-signal gate. Reproduce: `python factory_context/run_phase1.py` (PASS) +
+`python demo/ingestion_proof/run_ingest_proof.py` (0 unknowns).
 
 ## Verdict
 
-**Yes — the skeleton works on a stranger's factory with no tuning: it builds the UNS namespace, identifies
-assets, infers relationships, and lands everything in the Hub approval queue as human-reviewable proposals.**
-The bounded part is signal-role classification for an unfamiliar industry, where the system stays honest
-(needs_review) instead of guessing. Pair this with the beta gate (a stranger's *manual* → cited answer,
-CI-enforced) and both halves of "ingest a stranger's factory" are real: documents are proven end-to-end;
-the tag-export → structured-namespace path works on foreign data with a known, scoped extension point.
+**Yes — the system ingests a stranger's factory and structures it with no tuning:** it builds the UNS
+namespace, identifies and *types* the assets (pump/blower/clarifier…), classifies and *dimensions* every
+signal (incl. faults and setpoints), infers relationships, and lands everything in the Hub approval queue as
+human-reviewable proposals — `0 auto-approved`. Pair this with the beta gate (a stranger's *manual* → cited
+answer, CI-enforced) and both halves of "ingest a stranger's factory" are real and demonstrated.

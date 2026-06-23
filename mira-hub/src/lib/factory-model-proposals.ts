@@ -35,6 +35,8 @@ const ARCHETYPE_TO_DATA_TYPE: Record<string, string> = {
   live_counter: "DINT",
   live_state: "STRING",
   live_analog: "REAL",
+  live_fault: "BOOL",
+  live_setpoint: "REAL",
 };
 
 // `proposed_by` follows the mig-027 `import:<format>` convention.

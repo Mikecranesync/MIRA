@@ -31,7 +31,8 @@ EXPORT = HERE / "stranger_water_plant_export.json"
 
 # --- faithful ports of the committed Hub transforms (pure functions) ----------------------------
 BAND_TO_CONFIDENCE = {"high": 0.85, "medium": 0.6, "low": 0.35, "review": 0.3}
-ARCHETYPE_TO_DATA_TYPE = {"live_bool": "BOOL", "live_counter": "DINT", "live_state": "STRING", "live_analog": "REAL"}
+ARCHETYPE_TO_DATA_TYPE = {"live_bool": "BOOL", "live_counter": "DINT", "live_state": "STRING",
+                          "live_analog": "REAL", "live_fault": "BOOL", "live_setpoint": "REAL"}
 SPINE_REL_TO_CANONICAL = {"feeds": "UPSTREAM_OF", "contains": "HAS_COMPONENT"}
 
 
@@ -89,13 +90,18 @@ def main() -> int:
           f"line={c['line']} asset={c['asset']} cell(proposed)={c['cell']}")
     print("\n  UNS namespace (entities):")
     for n in model.entities():
-        print(f"    [{n.level:10}] {n.uns_path or '(no path)':60} {n.suggestion.confidence:<7} {n.suggestion.status}")
+        equip = f"  equip={n.equipment_type}" if n.equipment_type else ""
+        print(f"    [{n.level:10}] {n.uns_path or '(no path)':60} {n.suggestion.confidence:<7} {n.suggestion.status}{equip}")
 
     sigs = [n for n in model.signals() if n.uns_path]
     arche = {}
+    dims = {}
     for n in sigs:
         arche[n.archetype] = arche.get(n.archetype, 0) + 1
+        if n.dimension:
+            dims[n.dimension] = dims.get(n.dimension, 0) + 1
     print(f"\n  live signals: {len(sigs)}  by archetype: {arche}")
+    print(f"  inferred physical dimensions: {dims}")
     print("  sample signals:")
     for n in sigs[:8]:
         print(f"    {n.uns_path:70} {n.archetype:12} {n.suggestion.confidence}")

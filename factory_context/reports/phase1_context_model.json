@@ -33,7 +33,9 @@
       "archetype": "",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site",
@@ -57,7 +59,9 @@
       "archetype": "",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling",
@@ -81,7 +85,9 @@
       "archetype": "",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1",
@@ -105,7 +111,9 @@
       "archetype": "",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01",
@@ -129,7 +137,9 @@
       "archetype": "",
       "udt_type": "Models/Equipment/Process/Conveyor",
       "mes_path": "[MES]Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Conveyor01",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": "conveyor"
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.productionrun_running",
@@ -153,7 +163,9 @@
       "archetype": "live_bool",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.blocked_value_value",
@@ -177,7 +189,9 @@
       "archetype": "live_bool",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "",
@@ -201,7 +215,9 @@
       "archetype": "static_metadata",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.starved_value_value",
@@ -225,7 +241,9 @@
       "archetype": "live_bool",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.production.counts_outfeed_value_value",
@@ -249,7 +267,9 @@
       "archetype": "live_counter",
       "udt_type": "",
       "mes_path": "",
-      "unit": "Units"
+      "unit": "Units",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "",
@@ -273,7 +293,9 @@
       "archetype": "static_metadata",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.state_name",
@@ -297,7 +319,9 @@
       "archetype": "live_state",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.photoeye_blocked_value_value",
@@ -321,7 +345,9 @@
       "archetype": "live_bool",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.process.drive_motorcurrent",
@@ -345,7 +371,9 @@
       "archetype": "live_analog",
       "udt_type": "",
       "mes_path": "",
-      "unit": "mA"
+      "unit": "mA",
+      "dimension": "electrical",
+      "equipment_type": ""
     },
     {
       "uns_path": "",
@@ -369,7 +397,9 @@
       "archetype": "static_metadata",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01",
@@ -393,7 +423,9 @@
       "archetype": "",
       "udt_type": "Models/Equipment/Process/CapLoader",
       "mes_path": "[MES]Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/CapLoader01",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": "cap_loader"
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.productionrun_running",
@@ -417,7 +449,9 @@
       "archetype": "live_bool",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.blocked_value_value",
@@ -441,7 +475,9 @@
       "archetype": "live_bool",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "",
@@ -465,7 +501,9 @@
       "archetype": "static_metadata",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.starved_value_value",
@@ -489,7 +527,9 @@
       "archetype": "live_bool",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.production.counts_outfeed_value_value",
@@ -513,7 +553,9 @@
       "archetype": "live_counter",
       "udt_type": "",
       "mes_path": "",
-      "unit": "Units"
+      "unit": "Units",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "",
@@ -537,7 +579,9 @@
       "archetype": "static_metadata",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.state_name",
@@ -561,7 +605,9 @@
       "archetype": "live_state",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.state_duration_totalseconds_value",
@@ -585,7 +631,9 @@
       "archetype": "live_state",
       "udt_type": "",
       "mes_path": "",
-      "unit": "s"
+      "unit": "s",
+      "dimension": "time",
+      "equipment_type": ""
     },
     {
       "uns_path": "",
@@ -609,7 +657,9 @@
       "archetype": "static_metadata",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01",
@@ -633,7 +683,9 @@
       "archetype": "",
       "udt_type": "Models/Equipment/Process/Filler",
       "mes_path": "[MES]Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Filler01",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": "filler"
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.productionrun_running",
@@ -657,7 +709,9 @@
       "archetype": "live_bool",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.blocked_value_value",
@@ -681,7 +735,9 @@
       "archetype": "live_bool",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "",
@@ -705,7 +761,9 @@
       "archetype": "static_metadata",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.starved_value_value",
@@ -729,7 +787,9 @@
       "archetype": "live_bool",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.production.counts_outfeed_value_value",
@@ -753,7 +813,9 @@
       "archetype": "live_counter",
       "udt_type": "",
       "mes_path": "",
-      "unit": "Units"
+      "unit": "Units",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "",
@@ -777,7 +839,9 @@
       "archetype": "static_metadata",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "",
@@ -801,7 +865,9 @@
       "archetype": "static_metadata",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.production.counts_defect_value_value",
@@ -825,7 +891,9 @@
       "archetype": "live_counter",
       "udt_type": "",
       "mes_path": "",
-      "unit": "Units"
+      "unit": "Units",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.state_name",
@@ -849,7 +917,9 @@
       "archetype": "live_state",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.state_duration_totalseconds_value",
@@ -873,7 +943,9 @@
       "archetype": "live_state",
       "udt_type": "",
       "mes_path": "",
-      "unit": "s"
+      "unit": "s",
+      "dimension": "time",
+      "equipment_type": ""
     },
     {
       "uns_path": "",
@@ -897,7 +969,9 @@
       "archetype": "static_metadata",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.liquid_processing",
@@ -921,7 +995,9 @@
       "archetype": "",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1",
@@ -945,7 +1021,9 @@
       "archetype": "",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01",
@@ -969,7 +1047,9 @@
       "archetype": "",
       "udt_type": "Models/Equipment/Process/Tank",
       "mes_path": "[MES]Synthetic Beverage Co/Demo Site/Liquid Processing/TankFarm1/Tank01",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": "tank"
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.level_value_value",
@@ -993,7 +1073,9 @@
       "archetype": "live_analog",
       "udt_type": "",
       "mes_path": "",
-      "unit": "%"
+      "unit": "%",
+      "dimension": "ratio",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.flow_value_value",
@@ -1017,7 +1099,9 @@
       "archetype": "live_analog",
       "udt_type": "",
       "mes_path": "",
-      "unit": "L/min"
+      "unit": "L/min",
+      "dimension": "flow",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.temperature_value_value",
@@ -1041,7 +1125,9 @@
       "archetype": "live_analog",
       "udt_type": "",
       "mes_path": "",
-      "unit": "°C"
+      "unit": "°C",
+      "dimension": "temperature",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.pressure_value_value",
@@ -1065,7 +1151,9 @@
       "archetype": "live_analog",
       "udt_type": "",
       "mes_path": "",
-      "unit": "bar"
+      "unit": "bar",
+      "dimension": "pressure",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.density_value_value",
@@ -1089,7 +1177,9 @@
       "archetype": "live_analog",
       "udt_type": "",
       "mes_path": "",
-      "unit": "kg/L"
+      "unit": "kg/L",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.bottlingline1_cell",
@@ -1113,7 +1203,9 @@
       "archetype": "",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     },
     {
       "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tankfarm1_cell",
@@ -1137,7 +1229,9 @@
       "archetype": "",
       "udt_type": "",
       "mes_path": "",
-      "unit": ""
+      "unit": "",
+      "dimension": "",
+      "equipment_type": ""
     }
   ],
   "relationships": [

@@ -161,3 +161,50 @@ def test_determinism_report_and_claims_are_stable():
     c1 = iie.assess_claims(p1, r1)
     c2 = iie.assess_claims(p2, r2)
     assert json.dumps(c1, sort_keys=True) == json.dumps(c2, sort_keys=True)
+
+
+# ---- classifier power-ups: foreign units, fault/setpoint, dimension, equipment type ----
+def test_foreign_units_classify_as_analog():
+    # a stranger's process units (water plant) must classify, not fall to unknown
+    for name, unit in [("FlowRate", "gpm"), ("DischargePressure", "psi"),
+                       ("DissolvedOxygen", "mg/L"), ("MotorCurrent", "A"), ("Turbidity", "NTU")]:
+        assert iie.classify_signal(name, unit) == "live_analog", (name, unit)
+
+
+def test_unitless_measurement_name_classifies_as_analog():
+    assert iie.classify_signal("pH", "") == "live_analog"
+    assert iie.classify_signal("VibrationVelocity", "") == "live_analog"
+
+
+def test_fault_and_setpoint_archetypes():
+    assert iie.classify_signal("Motor.Fault", "") == "live_fault"
+    assert iie.classify_signal("HighLevel.Alarm", "") == "live_fault"
+    assert iie.classify_signal("PressureSP", "psi") == "live_setpoint"
+    assert iie.classify_signal("SpeedCmd", "rpm") == "live_setpoint"
+    assert iie.classify_signal("Flow_SP", "gpm") == "live_setpoint"
+    # interlock bools are NOT faults
+    assert iie.classify_signal("Blocked.Value.Value", "") == "live_bool"
+
+
+def test_existing_classifications_unchanged():
+    # the bottling taxonomy must be preserved
+    assert iie.classify_signal("ProductionRun.Running", "") == "live_bool"
+    assert iie.classify_signal("Counts.Outfeed.Value.Value", "Units") == "live_counter"
+    assert iie.classify_signal("State.Name", "") == "live_state"
+    assert iie.classify_signal("Level.Value.Value", "%") == "live_analog"
+    assert iie.classify_signal("Definition.TypeId", "") == "static_metadata"
+
+
+def test_dimension_inference():
+    assert iie.infer_dimension("FlowRate", "gpm") == "flow"
+    assert iie.infer_dimension("DischargePressure", "psi") == "pressure"
+    assert iie.infer_dimension("MotorCurrent", "A") == "electrical"
+    assert iie.infer_dimension("pH", "") == "concentration"
+    assert iie.infer_dimension("Mystery", "") == ""
+
+
+def test_equipment_type_inference():
+    assert iie.infer_equipment_type("InfluentPump01", "Models/Equipment/Process/Pump") == "pump"
+    assert iie.infer_equipment_type("Blower01", "") == "blower"
+    assert iie.infer_equipment_type("Conveyor01", "Models/Equipment/Process/Conveyor") == "conveyor"
+    assert iie.infer_equipment_type("WidgetX", "") == ""

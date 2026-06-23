@@ -17,6 +17,8 @@ signal archetype histogram:
   live_counter         4  ####
   live_state           5  #####
   live_analog          6  ######
+  live_fault           0  
+  live_setpoint        0  
   unknown              0  
 
 asset family verdict:

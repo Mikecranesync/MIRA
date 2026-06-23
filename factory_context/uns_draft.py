@@ -26,10 +26,12 @@ _CATEGORY = {
     "live_counter": "production",  # Counts.*
     "live_state": "status",      # State.*
     "live_analog": "process",    # level / flow / temp / pressure
+    "live_fault": "faults",      # Fault / Alarm / Trip bits
+    "live_setpoint": "setpoints",  # SP / Cmd / Target
     "unknown": "unclassified",
 }
 
-LIVE_ARCHETYPES = ("live_bool", "live_counter", "live_state", "live_analog")
+LIVE_ARCHETYPES = ("live_bool", "live_counter", "live_state", "live_analog", "live_fault", "live_setpoint")
 
 
 def entity_uns_path(path_segments: list[str]) -> str:

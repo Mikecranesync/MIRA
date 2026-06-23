@@ -48,6 +48,8 @@ ARCHETYPES = (
     "live_counter",
     "live_state",
     "live_analog",
+    "live_fault",
+    "live_setpoint",
     "unknown",
 )
 
@@ -108,6 +110,73 @@ _PROCESS_UNITS = {
 # of the process units plus the discrete-line analogs (%, s, m, mA).
 _ANALOG_UNITS = _PROCESS_UNITS | {"%", "s", "m", "ma"}
 
+# Units that are NOT analog even when present (counter/qualifier markers). Everything else with a
+# non-empty engineering unit is treated as a live_analog (units ⇒ analog — generalises to any domain).
+_NON_ANALOG_UNITS = {"units", ""}
+
+# Fault / alarm leaf tokens -> live_fault (a diagnosable abnormal-state bit, distinct from an
+# ordinary interlock bool). Order matters: checked before live_bool. NB Blocked/Starved stay bool.
+_FAULT_TOKENS = (
+    "fault", "alarm", "trip", "tripped", "faulted", "estop", "e_stop", "e-stop",
+    "fault_code", "faultcode", "alarmcode", "shutdown", "lockout",
+)
+
+# Setpoint / command leaf markers -> live_setpoint (a desired value, distinct from the measured PV).
+_SETPOINT_LEAVES = {"sp", "setpoint", "cmd", "command", "target", "ref", "reference", "demand"}
+_SETPOINT_SUFFIXES = ("_sp", "_setpoint", "_cmd", "_command", "_target", "_ref", "_sv")
+
+# Measurement name tokens -> live_analog even with no/unknown unit (e.g. pH, ORP, Turbidity). Lets a
+# stranger's unitless process tags classify instead of falling to unknown.
+_MEASUREMENT_TOKENS = (
+    "flow", "pressure", "level", "temp", "temperature", "current", "voltage", "volt", "amp",
+    "speed", "rpm", "torque", "vibration", "vibrat", "turbidity", "conductivity", "oxygen",
+    "ph", "orp", "density", "viscosity", "weight", "mass", "force", "position", "frequency",
+    "power", "humidity", "dewpoint", "concentration", "ppm", "salinity", "load", "thickness",
+)
+
+# unit (lowercased) -> physical dimension. Drives the additive `dimension` enrichment + family logic.
+_DIM_UNITS = {
+    "gpm": "flow", "lpm": "flow", "l/min": "flow", "m³/h": "flow", "m3/h": "flow", "cfm": "flow",
+    "scfm": "flow", "gph": "flow", "mgd": "flow", "l/s": "flow",
+    "psi": "pressure", "psig": "pressure", "bar": "pressure", "mbar": "pressure", "kpa": "pressure",
+    "mpa": "pressure", "pa": "pressure", "inh2o": "pressure", "inhg": "pressure", "atm": "pressure",
+    "c": "temperature", "°c": "temperature", "f": "temperature", "°f": "temperature", "k": "temperature",
+    "ft": "level", "m": "level", "in": "level", "cm": "level", "mm": "level",
+    "a": "electrical", "ma": "electrical", "v": "electrical", "mv": "electrical", "kv": "electrical",
+    "kw": "electrical", "w": "electrical", "hp": "electrical", "hz": "electrical", "kva": "electrical",
+    "var": "electrical", "kvar": "electrical",
+    "mg/l": "concentration", "ppm": "concentration", "ppb": "concentration", "ntu": "concentration",
+    "us/cm": "concentration", "µs/cm": "concentration", "ms/cm": "concentration",
+    "rpm": "speed", "m/s": "speed", "ft/min": "speed", "fpm": "speed",
+    "n·m": "torque", "nm": "torque", "in·lb": "torque", "ft·lb": "torque",
+    "kg": "mass", "lb": "mass", "g": "mass", "t": "mass",
+    "mm/s": "vibration", "in/s": "vibration",
+    "s": "time", "ms": "time", "h": "time", "min": "time",
+    "gal": "volume", "l": "volume", "m³": "volume", "bbl": "volume",
+    "%": "ratio",
+}
+# name token -> dimension, for unitless measurement signals.
+_DIM_NAMES = (
+    ("flow", "flow"), ("pressure", "pressure"), ("level", "level"), ("temp", "temperature"),
+    ("current", "electrical"), ("voltage", "electrical"), ("amp", "electrical"), ("power", "electrical"),
+    ("speed", "speed"), ("rpm", "speed"), ("torque", "torque"), ("vibrat", "vibration"),
+    ("turbidity", "concentration"), ("conductivity", "concentration"), ("oxygen", "concentration"),
+    ("ph", "concentration"), ("orp", "concentration"), ("ppm", "concentration"),
+    ("weight", "mass"), ("mass", "mass"), ("position", "level"), ("frequency", "electrical"),
+)
+
+# Equipment-type tokens (from UDT typeId or asset name) -> a canonical equipment archetype. Lets MIRA
+# pull the right failure modes and the HMI pick the right mimic. First match wins.
+_EQUIP_TOKENS = (
+    ("conveyor", "conveyor"), ("caploader", "cap_loader"), ("capper", "capper"), ("filler", "filler"),
+    ("labeler", "labeller"), ("labeller", "labeller"), ("palletiz", "palletizer"), ("packer", "case_packer"),
+    ("mixer", "mixer"), ("agitator", "agitator"), ("clarifier", "clarifier"), ("basin", "basin"),
+    ("blower", "blower"), ("compressor", "compressor"), ("fan", "fan"), ("pump", "pump"),
+    ("tank", "tank"), ("vat", "vat"), ("valve", "valve"), ("vfd", "vfd"), ("drive", "vfd"),
+    ("motor", "motor"), ("photoeye", "photoeye"), ("sensor", "sensor"), ("robot", "robot"),
+    ("heater", "heater"), ("chiller", "chiller"), ("screen", "screen"), ("plc", "plc"),
+)
+
 
 def _leaf(name: str) -> str:
     """Final dotted segment, lowercased."""
@@ -148,7 +217,20 @@ def classify_signal(name: str, unit: str) -> str:
     if leaf in _STATIC_LEAVES:
         return "static_metadata"
 
-    # 4. live_bool
+    # 4. live_fault -- explicit fault/alarm/trip token (a diagnosable abnormal state, before bool).
+    #    Interlock bools (Blocked/Starved) are NOT faults and are handled at step 6.
+    if any(tok in lname for tok in _FAULT_TOKENS):
+        return "live_fault"
+
+    # 5. live_setpoint -- a desired value / command (before analog so a "PressureSP psi" is a setpoint).
+    #    Match the underscore form (pressure_sp) on the lowercased leaf AND the camelCase convention
+    #    (PressureSP / SpeedCmd) on the RAW-case leaf — the uppercase suffix avoids "wasp"-style hits.
+    raw_leaf = (name or "").rsplit(".", 1)[-1].strip()
+    if (leaf in _SETPOINT_LEAVES or leaf.endswith(_SETPOINT_SUFFIXES) or "setpoint" in leaf
+            or raw_leaf.endswith(("SP", "CMD", "SV", "Setpoint", "SetPoint", "Cmd", "Ref"))):
+        return "live_setpoint"
+
+    # 6. live_bool
     if leaf == "running":
         return "live_bool"
     if lname.endswith(".value.value") or leaf == "value":
@@ -157,18 +239,46 @@ def classify_signal(name: str, unit: str) -> str:
         if parent.endswith("blocked") or parent.endswith("starved"):
             return "live_bool"
 
-    # 5. live_counter -- Counts.<x>.Value.Value, or any *.Value.Value carrying the "Units" unit.
+    # 7. live_counter -- Counts.<x>.Value.Value, or any *.Value.Value carrying the "Units" unit.
     if "counts." in lname and lname.endswith(".value.value"):
         return "live_counter"
     if u == "units" and (lname.endswith(".value.value") or leaf == "value"):
         return "live_counter"
 
-    # 6. live_analog -- any recognised engineering unit not already classified.
-    if u in _ANALOG_UNITS:
+    # 8. live_analog -- a recognised analog unit, OR ANY engineering unit at all (units ⇒ analog,
+    #    generalising to any domain), OR a measurement-like name token (unitless pH / ORP / etc.).
+    if u in _ANALOG_UNITS or (u and u not in _NON_ANALOG_UNITS):
+        return "live_analog"
+    if any(tok in leaf for tok in _MEASUREMENT_TOKENS):
         return "live_analog"
 
-    # 7. fallback
+    # 9. fallback
     return "unknown"
+
+
+def infer_dimension(name: str, unit: str) -> str:
+    """Best-effort physical dimension (flow/pressure/temperature/level/electrical/concentration/
+    speed/torque/mass/vibration/time/volume/ratio) from a signal's unit, else its name. '' if unknown.
+    Additive enrichment — lets MIRA reason about WHAT a value is and the HMI group/scale it."""
+    u = (unit or "").strip().lower()
+    if u in _DIM_UNITS:
+        return _DIM_UNITS[u]
+    leaf = _leaf(name or "")
+    for tok, dim in _DIM_NAMES:
+        if tok in leaf:
+            return dim
+    return ""
+
+
+def infer_equipment_type(name: str, udt_type: str = "") -> str:
+    """Canonical equipment archetype (pump/blower/conveyor/filler/capper/tank/clarifier/...) from the
+    UDT typeId or asset name. '' if unrecognised. Lets MIRA pull the right failure modes + the HMI pick
+    the right mimic."""
+    hay = ((udt_type or "") + " " + (name or "")).lower()
+    for tok, kind in _EQUIP_TOKENS:
+        if tok in hay:
+            return kind
+    return ""
 
 
 def load(path: str | Path) -> "ignition_json.PLCProject":  # type: ignore[name-defined]

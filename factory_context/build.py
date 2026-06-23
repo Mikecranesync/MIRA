@@ -42,6 +42,8 @@ _ROLE_DESC = {
     "live_counter": "a production count (e.g. Counts.Infeed/Outfeed/Defect)",
     "live_state": "a machine state / state duration (PackML-style)",
     "live_analog": "a continuous-process analog (level / flow / temperature / pressure)",
+    "live_fault": "a fault / alarm / trip bit (a diagnosable abnormal state)",
+    "live_setpoint": "a setpoint / command / target (a desired value, not the measured PV)",
     "unknown": "an UNCLASSIFIED signal (archetype could not be inferred)",
 }
 
@@ -89,6 +91,8 @@ def build_model(project, source: str) -> FactoryModel:
                 FactoryNode(
                     uns_path=uns, name=node.name, level=level, suggestion=sug,
                     udt_type=node.udt_type, mes_path=node.mes_path,
+                    equipment_type=(iie.infer_equipment_type(node.name, node.udt_type)
+                                    if level == "asset" else ""),
                 )
             )
 
@@ -149,7 +153,8 @@ def build_model(project, source: str) -> FactoryModel:
             )
             model.nodes.append(
                 FactoryNode(uns_path=uns or "", name=node.name, level="signal", suggestion=sug,
-                            archetype=arch, unit=node.unit)
+                            archetype=arch, unit=node.unit,
+                            dimension=iie.infer_dimension(node.name, node.unit))
             )
 
     # proposed cell layer -- NOT in evidence; one needs_review proposal per line

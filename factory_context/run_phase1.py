@@ -52,7 +52,8 @@ def success_condition(model) -> list[str]:
             fails.append("no %s entity in the model" % lvl)
     if c["cell"] < 1:
         fails.append("no proposed cell layer (should be a needs_review proposal)")
-    live = [n for n in model.signals() if n.archetype in ("live_bool", "live_counter", "live_state", "live_analog")]
+    live = [n for n in model.signals()
+            if n.archetype in ("live_bool", "live_counter", "live_state", "live_analog", "live_fault", "live_setpoint")]
     if not live:
         fails.append("no live signals mapped")
     if not any(n.uns_path for n in model.entities()):

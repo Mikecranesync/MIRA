@@ -58,6 +58,8 @@ class FactoryNode:
     udt_type: str = ""
     mes_path: str = ""
     unit: str = ""
+    dimension: str = ""        # signals only — physical dimension (flow/pressure/temperature/...)
+    equipment_type: str = ""   # assets only — canonical equipment archetype (pump/conveyor/...)
 
 
 @dataclass
