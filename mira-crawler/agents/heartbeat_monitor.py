@@ -115,7 +115,8 @@ CRITICAL_CONTAINERS = [
     "mira-bot-telegram",
     "mira-scan-backend",
     "cmms-backend",
-    "mira-docling-saas",
+    "mira-tika-saas",  # was mira-docling-saas — docling→tika migration (#1753, 2026-06-06);
+                       # the old service no longer exists in any compose, so the healer escalated forever.
     "mira-web",
     "mira-mcp-saas",
 ]
