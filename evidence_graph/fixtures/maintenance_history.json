@@ -1,0 +1,76 @@
+{
+  "_comment": "SYNTHETIC maintenance history (Evidence class 3). Fictional past faults + corrective actions, keyed by failure_mode id. The future bridge to CMMS integrations -- same shape, real data later. No licensed content.",
+  "photoeye_blocked": {
+    "occurrences": 3,
+    "avg_duration_min": 11,
+    "last_corrective_action": "Cleaned sensor lens",
+    "events": [
+      { "id": "H-017", "date": "2026-05-02", "duration_min": 9, "corrective_action": "Cleaned sensor lens" },
+      { "id": "H-031", "date": "2026-05-20", "duration_min": 14, "corrective_action": "Cleaned lens + realigned reflector" },
+      { "id": "H-044", "date": "2026-06-09", "duration_min": 10, "corrective_action": "Cleaned sensor lens" }
+    ]
+  },
+  "conveyor_jam": {
+    "occurrences": 2,
+    "avg_duration_min": 23,
+    "last_corrective_action": "Cleared jammed product, reset drive",
+    "events": [
+      { "id": "H-022", "date": "2026-05-08", "duration_min": 27, "corrective_action": "Cleared crushed bottle from belt" },
+      { "id": "H-039", "date": "2026-06-01", "duration_min": 19, "corrective_action": "Cleared jammed product, reset drive" }
+    ]
+  },
+  "vfd_not_enabled": {
+    "occurrences": 1,
+    "avg_duration_min": 6,
+    "last_corrective_action": "Cleared latched fault and re-enabled drive",
+    "events": [
+      { "id": "H-028", "date": "2026-05-16", "duration_min": 6, "corrective_action": "Cleared latched fault and re-enabled drive" }
+    ]
+  },
+  "motor_overload": {
+    "occurrences": 2,
+    "avg_duration_min": 41,
+    "last_corrective_action": "Replaced failing bearing",
+    "events": [
+      { "id": "H-012", "date": "2026-04-21", "duration_min": 55, "corrective_action": "Replaced motor" },
+      { "id": "H-035", "date": "2026-05-25", "duration_min": 27, "corrective_action": "Replaced failing bearing" }
+    ]
+  },
+  "sensor_drift": {
+    "occurrences": 4,
+    "avg_duration_min": 18,
+    "last_corrective_action": "Recalibrated sensor to reference",
+    "events": [
+      { "id": "H-009", "date": "2026-04-18", "duration_min": 20, "corrective_action": "Recalibrated sensor" },
+      { "id": "H-019", "date": "2026-05-04", "duration_min": 15, "corrective_action": "Cleaned and recalibrated" },
+      { "id": "H-033", "date": "2026-05-22", "duration_min": 17, "corrective_action": "Recalibrated sensor" },
+      { "id": "H-047", "date": "2026-06-12", "duration_min": 20, "corrective_action": "Recalibrated sensor to reference" }
+    ]
+  },
+  "low_air_pressure": {
+    "occurrences": 1,
+    "avg_duration_min": 33,
+    "last_corrective_action": "Repaired air leak at header",
+    "events": [
+      { "id": "H-026", "date": "2026-05-13", "duration_min": 33, "corrective_action": "Repaired air leak at header" }
+    ]
+  },
+  "failed_interlock": {
+    "occurrences": 2,
+    "avg_duration_min": 14,
+    "last_corrective_action": "Replaced guard interlock switch",
+    "events": [
+      { "id": "H-015", "date": "2026-04-29", "duration_min": 12, "corrective_action": "Reseated guard, confirmed switch" },
+      { "id": "H-041", "date": "2026-06-03", "duration_min": 16, "corrective_action": "Replaced guard interlock switch" }
+    ]
+  },
+  "comm_loss": {
+    "occurrences": 2,
+    "avg_duration_min": 9,
+    "last_corrective_action": "Replaced failed switch port patch cable",
+    "events": [
+      { "id": "H-020", "date": "2026-05-05", "duration_min": 7, "corrective_action": "Reseated network cable" },
+      { "id": "H-038", "date": "2026-05-30", "duration_min": 11, "corrective_action": "Replaced failed switch port patch cable" }
+    ]
+  }
+}

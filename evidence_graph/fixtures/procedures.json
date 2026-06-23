@@ -1,0 +1,77 @@
+{
+  "_comment": "SYNTHETIC reference procedures (Evidence class 3). Fictional step-by-step procedures, keyed by procedure id; failure modes reference them by id. No licensed content.",
+  "clean_photoeye": {
+    "title": "Clean & verify a photoeye sensor",
+    "steps": [
+      "Lock out / tag out the conveyor drive.",
+      "Wipe the photoeye lens and the reflector with a lint-free cloth.",
+      "Clear the sensing path and confirm the indicator LED toggles.",
+      "Verify alignment to the reflector and the sensing distance.",
+      "Restore power and confirm the Blocked state clears."
+    ]
+  },
+  "clear_conveyor_jam": {
+    "title": "Clear a conveyor mechanical jam",
+    "steps": [
+      "Lock out / tag out the conveyor drive.",
+      "Locate and remove the jammed product or foreign object.",
+      "Inspect for a seized roller or failed bearing (rotate by hand).",
+      "Clear the drive overcurrent fault and restore power.",
+      "Confirm smooth running and that counts resume."
+    ]
+  },
+  "reenable_vfd": {
+    "title": "Re-enable a disabled VFD",
+    "steps": [
+      "Confirm the run permissive chain (e-stop, guards, upstream ready).",
+      "Verify the drive Enable input is energized.",
+      "Clear any latched drive fault.",
+      "Issue run and confirm the motor turns."
+    ]
+  },
+  "clear_motor_overload": {
+    "title": "Investigate a motor overload trip",
+    "steps": [
+      "Read the overload/drive trip code and last current peak.",
+      "Lock out and rotate the shaft by hand to feel for binding.",
+      "Confirm the load is free before resetting the overload.",
+      "Reset and monitor current on restart."
+    ]
+  },
+  "recalibrate_sensor": {
+    "title": "Recalibrate a process sensor",
+    "steps": [
+      "Compare the live value to an independent reference.",
+      "Inspect the sensor for coating, scaling, or a loose fitting.",
+      "Recalibrate per the SOP.",
+      "Re-verify against the reference and log the calibration."
+    ]
+  },
+  "restore_plant_air": {
+    "title": "Restore plant air pressure",
+    "steps": [
+      "Read the header pressure against the spec.",
+      "Check the compressor run state and dryer fault.",
+      "Walk the line for an audible leak or stuck actuator.",
+      "Repair the leak / restore the compressor and confirm pressure."
+    ]
+  },
+  "restore_interlock": {
+    "title": "Restore a safety interlock",
+    "steps": [
+      "Identify which guard/interlock reads open.",
+      "Confirm the guard is closed and the switch actuates.",
+      "Inspect the switch and wiring per the safety procedure.",
+      "Reset and confirm the machine is permitted to start."
+    ]
+  },
+  "restore_comms": {
+    "title": "Restore device communications",
+    "steps": [
+      "Confirm link/activity LEDs and ping the device.",
+      "Check for a duplicate address or failed switch port.",
+      "Verify the driver/connection status in the gateway.",
+      "Confirm tags refresh and the machine resumes."
+    ]
+  }
+}

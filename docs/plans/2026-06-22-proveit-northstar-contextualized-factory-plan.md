@@ -168,11 +168,33 @@ it never invents a factory. **No value-simulator runtime, no MQTT/broker/PLC/pro
 - **Note:** a *value* synthesizer (counters climbing, analog drift over time) is **deferred** — it is
   only needed once we drive live values (Phase 4). Phase 2 needs only the symptom→cause mapping.
 
-### Phase 3 — Maintenance relationships + evidence grounding  `[SC 5,6,7]`
-**Goal:** make every hidden cause **explainable and citable**.
-- **Tasks / subagents:** `[builder-A]` link hidden cause ↔ asset ↔ tags ↔ **manual citation / wiring reference / known failure mode** (reuse the proveit grounding transforms: `tools/proveit/manual_chunks.py`, asset-roster bridge; rows land `is_private=true` in `knowledge_entries`). `[builder-B]` a deterministic "evidence packet" assembler: given a fault, return {asset, hierarchy, tags, state transitions, citations, failure modes, recommended actions}. `[verifier]` citation-coverage test (every catalogued cause has ≥1 citable source + a recommended action).
-- **Deliverables:** maintenance-relationship map, evidence-packet assembler, citation fixtures (synthetic), tests.
-- **Acceptance:** for each hidden cause, the evidence packet is complete (all 8 fields) and every claim cites a source id; no uncited claims.
+### Phase 3 — Evidence grounding & explainability ("How do you know?")  `[SC 5,6,7]`  ✅ DONE
+**Goal:** auditable reasoning — every Ask-MIRA answer exposes its **evidence chain** (supporting AND
+contradicting), with citations. Built as a clean **`evidence_graph/`** package on Phases 0–2. Strictly
+brain-side: **no MQTT/Sparkplug/OPC-UA/Modbus/Ignition/broker/live pipeline/PLC sim.**
+- **Deliverables:** `evidence_graph/{models,citations,failure_library,history,procedures,builder,explainer,reports,run_phase3}.py`
+  + `fixtures/{maintenance_history,procedures}.json` + `tests/` + `reports/phase3_explanation_report.{md,json}`;
+  `make explainability-phase3`.
+  - **`models.py`** — the evidence graph (Cause→Asset→Signal→UNS→Manual→Procedure→Historical Event→
+    Failure Mode→Technician Action). **No anonymous facts:** every node carries source + evidence_ref +
+    confidence + approval status; `violations()` enforces it.
+  - **`explainer.explain_cause()`** — reads receipts from the graph: ranked hypotheses, each with
+    supporting evidence (tag/asset/manual/history) **and contradicting evidence**, citations, recommended
+    checks + procedures. Contradicting evidence **lowers confidence**.
+  - **`citations.py`** — typed evidence (`[Tag]/[Asset]/[Manual]/[Procedure]/[History]/[Fixture]`).
+  - **`failure_library.py`** — known-failure-mode library (Phase 2 catalog + contradicting roles +
+    procedures + history key). **`history.py`** — synthetic maintenance history (the CMMS bridge).
+- **Flagship answer (receipts):** photoeye-blocked on the conveyor → *"why is this line blocked?"* →
+  **Photoeye blocked (High)** + Tag (PhotoeyeBlocked=TRUE, counts dropped to 0/min, State=Down) + Asset
+  (hosts photoeye; feeds CapLoader01) + Manual (O&M p.42, p.11) + History (3×, last: cleaned lens) +
+  checks + procedure. Contradiction demo: counts still rising → confidence **High→Medium** + *Evidence
+  AGAINST*.
+- **Acceptance (one command, nonzero on failure):** `python evidence_graph/run_phase3.py` (or
+  `make explainability-phase3`) → Phase 2 (→1→0) → build graph → flagship + contradiction explanations →
+  write report → **15 tests** → fail on unsupported claims / missing citations / non-determinism /
+  evidence-graph violations. Phase 0 (18)+1 (15)+2 (9)+3 (15) green; ruff clean. No licensed evidence.
+- **Discovery Recorder:** session-004 (failed hypotheses H1–H5: score-isn't-trust, contradicting-evidence,
+  graph-is-the-source, no-anonymous-facts, history-now).
 
 ### Phase 4 — Live MQTT feed (Mosquitto) + fault injection  `[SC 9 live]`
 **Goal:** the synthesizer streams live over a real broker; faults inject live.

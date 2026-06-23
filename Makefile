@@ -1,4 +1,4 @@
-.PHONY: demo-preflight observe observe-down observe-logs discovery-phase0 context-phase1 causality-phase2
+.PHONY: demo-preflight observe observe-down observe-logs discovery-phase0 context-phase1 causality-phase2 explainability-phase3
 
 discovery-phase0:  ## Run the Phase 0 discovery gate (interrogate synthetic fixture -> report -> pytest)
 	python discovery_corpus/run_phase0.py
@@ -8,6 +8,9 @@ context-phase1:  ## Run the Phase 1 contextualizer gate (Phase 0 -> FactoryModel
 
 causality-phase2:  ## Run the Phase 2 causality gate (Phase 1 -> failure modes -> Ask-MIRA explanation -> pytest)
 	python causality/run_phase2.py
+
+explainability-phase3:  ## Run the Phase 3 explainability gate (Phase 2 -> evidence graph -> auditable answer -> pytest)
+	python evidence_graph/run_phase3.py
 
 demo-preflight:
 	doppler run --project factorylm --config prd -- bash scripts/demo-preflight.sh

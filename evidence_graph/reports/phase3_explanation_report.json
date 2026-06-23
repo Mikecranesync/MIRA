@@ -1,0 +1,360 @@
+{
+  "symptom": "line_blocked",
+  "line_uns": "synthetic_beverage_co.demo_site.bottling.bottlingline1",
+  "headline": "Line is line blocked. Most likely cause: Photoeye blocked / fouled on Conveyor01 — high confidence (ranked hypothesis).",
+  "hypotheses": [
+    {
+      "rank": 1,
+      "mode_id": "photoeye_blocked",
+      "title": "Photoeye blocked / fouled",
+      "asset_uns": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01",
+      "asset_name": "Conveyor01",
+      "component_type": "photoeye",
+      "confidence": "high",
+      "score": 4,
+      "contradicted": false,
+      "causal_chain": [
+        "Photoeye is blocked or fouled (sees a permanent target)",
+        "Conveyor logic believes product is present and stops feeding",
+        "Product backs up / accumulation fills upstream",
+        "Machine asserts Blocked state",
+        "Outfeed counts flatline; OEE availability drops"
+      ],
+      "tag_evidence": [
+        {
+          "type": "Tag",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.production.counts_outfeed_value_value",
+          "statement": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.production.counts_outfeed_value_value = rate dropped to 0/min",
+          "source": "phase1_context_model"
+        },
+        {
+          "type": "Tag",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.blocked_value_value",
+          "statement": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.blocked_value_value = TRUE",
+          "source": "phase1_context_model"
+        },
+        {
+          "type": "Tag",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.photoeye_blocked_value_value",
+          "statement": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.photoeye_blocked_value_value = TRUE",
+          "source": "phase1_context_model"
+        },
+        {
+          "type": "Tag",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.state_name",
+          "statement": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.state_name = Down / Fault",
+          "source": "phase1_context_model"
+        }
+      ],
+      "asset_evidence": [
+        {
+          "type": "Asset",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01",
+          "statement": "Conveyor01 hosts the photoeye (inferred component)",
+          "source": "phase1_context_model"
+        },
+        {
+          "type": "Asset",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01->synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01",
+          "statement": "Conveyor01 feeds CapLoader01",
+          "source": "phase1_context_model"
+        }
+      ],
+      "manual_evidence": [
+        {
+          "type": "Manual",
+          "ref": "Conveyor O&M Manual (synthetic) p.42",
+          "statement": "Conveyor O&M Manual (synthetic), p.42 — 7.3 Photoeye Sensors",
+          "source": "maintenance_knowledge"
+        },
+        {
+          "type": "Manual",
+          "ref": "Sensor Maintenance Guide (synthetic) p.11",
+          "statement": "Sensor Maintenance Guide (synthetic), p.11 — Cleaning diffuse-reflective sensors",
+          "source": "maintenance_knowledge"
+        }
+      ],
+      "historical_evidence": {
+        "type": "History",
+        "ref": "photoeye_blocked",
+        "statement": "Similar fault occurred 3 time(s); avg 11 min; last action: Cleaned sensor lens",
+        "source": "maintenance_history"
+      },
+      "contradicting_evidence": [],
+      "recommended_checks": [
+        "Visually inspect the photoeye lens for product debris, condensation, or label adhesive.",
+        "Clear the target and confirm the sensor output toggles (LED off).",
+        "Verify alignment to the reflector / confirm sensing distance.",
+        "Check the photoeye wiring/connector for damage."
+      ],
+      "procedures": [
+        {
+          "id": "clean_photoeye",
+          "title": "Clean & verify a photoeye sensor",
+          "steps": [
+            "Lock out / tag out the conveyor drive.",
+            "Wipe the photoeye lens and the reflector with a lint-free cloth.",
+            "Clear the sensing path and confirm the indicator LED toggles.",
+            "Verify alignment to the reflector and the sensing distance.",
+            "Restore power and confirm the Blocked state clears."
+          ]
+        }
+      ],
+      "history_summary": {
+        "occurrences": 3,
+        "avg_duration_min": 11,
+        "last_corrective_action": "Cleaned sensor lens"
+      }
+    },
+    {
+      "rank": 2,
+      "mode_id": "conveyor_jam",
+      "title": "Conveyor mechanical jam",
+      "asset_uns": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01",
+      "asset_name": "Conveyor01",
+      "component_type": "conveyor_motor",
+      "confidence": "medium",
+      "score": 3,
+      "contradicted": false,
+      "causal_chain": [
+        "Mechanical jam on the conveyor",
+        "Drive sees rising load / overcurrent and faults or stalls",
+        "Product backs up upstream",
+        "Machine asserts Blocked state",
+        "Outfeed counts flatline; OEE availability drops"
+      ],
+      "tag_evidence": [
+        {
+          "type": "Tag",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.production.counts_outfeed_value_value",
+          "statement": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.production.counts_outfeed_value_value = rate dropped to 0/min",
+          "source": "phase1_context_model"
+        },
+        {
+          "type": "Tag",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.blocked_value_value",
+          "statement": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.blocked_value_value = TRUE",
+          "source": "phase1_context_model"
+        },
+        {
+          "type": "Tag",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.state_name",
+          "statement": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.state_name = Down / Fault",
+          "source": "phase1_context_model"
+        }
+      ],
+      "asset_evidence": [
+        {
+          "type": "Asset",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01",
+          "statement": "Conveyor01 hosts the conveyor_motor (inferred component)",
+          "source": "phase1_context_model"
+        },
+        {
+          "type": "Asset",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01->synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01",
+          "statement": "Conveyor01 feeds CapLoader01",
+          "source": "phase1_context_model"
+        }
+      ],
+      "manual_evidence": [
+        {
+          "type": "Manual",
+          "ref": "Conveyor O&M Manual (synthetic) p.58",
+          "statement": "Conveyor O&M Manual (synthetic), p.58 — 9.1 Mechanical Jams",
+          "source": "maintenance_knowledge"
+        }
+      ],
+      "historical_evidence": {
+        "type": "History",
+        "ref": "conveyor_jam",
+        "statement": "Similar fault occurred 2 time(s); avg 23 min; last action: Cleared jammed product, reset drive",
+        "source": "maintenance_history"
+      },
+      "contradicting_evidence": [],
+      "recommended_checks": [
+        "Lock out the drive, then inspect the belt/chain path for a jammed product or foreign object.",
+        "Check for a seized roller or failed bearing (spin by hand under LOTO).",
+        "Inspect the drive for an overcurrent fault code before resetting."
+      ],
+      "procedures": [
+        {
+          "id": "clear_conveyor_jam",
+          "title": "Clear a conveyor mechanical jam",
+          "steps": [
+            "Lock out / tag out the conveyor drive.",
+            "Locate and remove the jammed product or foreign object.",
+            "Inspect for a seized roller or failed bearing (rotate by hand).",
+            "Clear the drive overcurrent fault and restore power.",
+            "Confirm smooth running and that counts resume."
+          ]
+        }
+      ],
+      "history_summary": {
+        "occurrences": 2,
+        "avg_duration_min": 23,
+        "last_corrective_action": "Cleared jammed product, reset drive"
+      }
+    },
+    {
+      "rank": 3,
+      "mode_id": "motor_overload",
+      "title": "Motor overload / thermal trip",
+      "asset_uns": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01",
+      "asset_name": "Conveyor01",
+      "component_type": "motor",
+      "confidence": "medium",
+      "score": 2,
+      "contradicted": false,
+      "causal_chain": [
+        "Motor draws excessive current (binding load / failing bearing)",
+        "Overload relay / drive trips on thermal or overcurrent",
+        "Motor stops; machine halts",
+        "Machine asserts Blocked/Fault state",
+        "Counts flatline; OEE availability drops"
+      ],
+      "tag_evidence": [
+        {
+          "type": "Tag",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.blocked_value_value",
+          "statement": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.blocked_value_value = TRUE",
+          "source": "phase1_context_model"
+        },
+        {
+          "type": "Tag",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.state_name",
+          "statement": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.state_name = Down / Fault",
+          "source": "phase1_context_model"
+        }
+      ],
+      "asset_evidence": [
+        {
+          "type": "Asset",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01",
+          "statement": "Conveyor01 hosts the motor (inferred component)",
+          "source": "phase1_context_model"
+        },
+        {
+          "type": "Asset",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01->synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01",
+          "statement": "Conveyor01 feeds CapLoader01",
+          "source": "phase1_context_model"
+        }
+      ],
+      "manual_evidence": [
+        {
+          "type": "Manual",
+          "ref": "Motor & Drive Handbook (synthetic) p.23",
+          "statement": "Motor & Drive Handbook (synthetic), p.23 — Thermal Overload",
+          "source": "maintenance_knowledge"
+        }
+      ],
+      "historical_evidence": {
+        "type": "History",
+        "ref": "motor_overload",
+        "statement": "Similar fault occurred 2 time(s); avg 41 min; last action: Replaced failing bearing",
+        "source": "maintenance_history"
+      },
+      "contradicting_evidence": [],
+      "recommended_checks": [
+        "Read the overload relay / drive trip code and the last current peak.",
+        "Under LOTO, rotate the shaft by hand to feel for binding or bearing roughness.",
+        "Verify the load is free (no jam) before resetting the overload."
+      ],
+      "procedures": [
+        {
+          "id": "clear_motor_overload",
+          "title": "Investigate a motor overload trip",
+          "steps": [
+            "Read the overload/drive trip code and last current peak.",
+            "Lock out and rotate the shaft by hand to feel for binding.",
+            "Confirm the load is free before resetting the overload.",
+            "Reset and monitor current on restart."
+          ]
+        }
+      ],
+      "history_summary": {
+        "occurrences": 2,
+        "avg_duration_min": 41,
+        "last_corrective_action": "Replaced failing bearing"
+      }
+    },
+    {
+      "rank": 4,
+      "mode_id": "low_air_pressure",
+      "title": "Low plant air pressure",
+      "asset_uns": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01",
+      "asset_name": "Conveyor01",
+      "component_type": "air_supply",
+      "confidence": "low",
+      "score": 1,
+      "contradicted": false,
+      "causal_chain": [
+        "Plant air header pressure drops (compressor / dryer / leak)",
+        "Pneumatic actuators move sluggishly or stall across machines",
+        "Multiple machines degrade together",
+        "Stations assert Blocked/Starved",
+        "Counts fall across the line; OEE drops"
+      ],
+      "tag_evidence": [
+        {
+          "type": "Tag",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.blocked_value_value",
+          "statement": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.blocked_value_value = TRUE",
+          "source": "phase1_context_model"
+        }
+      ],
+      "asset_evidence": [
+        {
+          "type": "Asset",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01",
+          "statement": "Conveyor01 hosts the air_supply (inferred component)",
+          "source": "phase1_context_model"
+        },
+        {
+          "type": "Asset",
+          "ref": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01->synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01",
+          "statement": "Conveyor01 feeds CapLoader01",
+          "source": "phase1_context_model"
+        }
+      ],
+      "manual_evidence": [
+        {
+          "type": "Manual",
+          "ref": "Plant Air System Manual (synthetic) p.15",
+          "statement": "Plant Air System Manual (synthetic), p.15 — Header Pressure",
+          "source": "maintenance_knowledge"
+        }
+      ],
+      "historical_evidence": {
+        "type": "History",
+        "ref": "low_air_pressure",
+        "statement": "Similar fault occurred 1 time(s); avg 33 min; last action: Repaired air leak at header",
+        "source": "maintenance_history"
+      },
+      "contradicting_evidence": [],
+      "recommended_checks": [
+        "Read the air header pressure gauge against the spec (e.g. 85-100 psi).",
+        "Check the compressor run state and the dryer fault status.",
+        "Walk the line for an audible leak or a stuck/dumping actuator."
+      ],
+      "procedures": [
+        {
+          "id": "restore_plant_air",
+          "title": "Restore plant air pressure",
+          "steps": [
+            "Read the header pressure against the spec.",
+            "Check the compressor run state and dryer fault.",
+            "Walk the line for an audible leak or stuck actuator.",
+            "Repair the leak / restore the compressor and confirm pressure."
+          ]
+        }
+      ],
+      "history_summary": {
+        "occurrences": 1,
+        "avg_duration_min": 33,
+        "last_corrective_action": "Repaired air leak at header"
+      }
+    }
+  ]
+}
