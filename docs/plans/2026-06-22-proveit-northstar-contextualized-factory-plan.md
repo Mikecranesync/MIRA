@@ -136,12 +136,37 @@ store.
 - **Note:** the `topics.py` UNS↔MQTT map moves to Phase 4 (it is a live-feed concern, not a
   contextualization one).
 
-### Phase 2 — Deterministic synthesizer + hidden-cause layer  `[SC 9 + maintenance layer]`
-**Goal:** generate realistic, replayable factory behavior where **every surface event has a hidden
-component cause**.
-- **Tasks / subagents:** `[builder-A]` `simlab/factory/synth.py` — per-archetype generators (counters climb at line rate; OEE rollups; bool run/blocked/starved with interlock propagation; analog ripple+drift with correlation for tanks/vats); deterministic `(seed,line,signal_idx,tick)`. `[builder-B]` `simlab/factory/faults.py` — **hidden-cause catalog** (failed_sensor, jammed_conveyor, vfd_fault, motor_overload, air_pressure_fault, comms_failure, interlock_failure), each mapping a hidden cause → the surface symptoms it produces (e.g. `jammed_conveyor` → downstream `Blocked=true`, upstream `Starved=true`, outfeed counter flatlines, downtime event, alarm) + a labeled ground-truth record. `[verifier]` determinism + cause→symptom fidelity tests.
-- **Deliverables:** `synth.py`, `faults.py`, fault catalog doc, tests (byte-identical replay; each hidden cause yields its documented symptom set).
-- **Acceptance:** `--ticks N --seed S` replays byte-identically twice; arming each hidden cause produces exactly its catalogued symptoms; ground truth recorded for scoring.
+### Phase 2 — Deterministic maintenance-causality engine  `[SC 5,6,7 + the product]`  ✅ DONE
+**Re-scoped (Mike, 2026-06-22): simulate CAUSES, not machines.** The product is MIRA's *explanation*,
+not the simulation. The simulator is just a machine that creates realistic symptoms; the maintenance
+layer is the actual product. Built as a clean **`causality/`** package on top of the Phase 1 model —
+it never invents a factory. **No value-simulator runtime, no MQTT/broker/PLC/protocol.**
+- **Deliverables:** `causality/{failure_modes,components,knowledge,explain,answer,run_phase2}.py` +
+  `fixtures/maintenance_knowledge.json` + `tests/` + generated `reports/phase2_explanation_*.md`;
+  `make causality-phase2`.
+  - **`failure_modes.py`** — the 8 hidden causes (photoeye blocked, conveyor jam, VFD not enabled,
+    motor overload, sensor drift, low air, failed interlock, comm loss); each = a **causal chain**
+    (cause → effects → observable MES symptom) + symptom(s) + supporting-tag roles.
+  - **`components.py`** — inferred component sublayer (photoeye/vfd/motor/sensor/…) under the Phase 1
+    assets via **generic binding** by asset class; components are `needs_review` suggestions with
+    evidence (not asserted — they aren't in the export).
+  - **`explain.py`** — `inject` (forward: create symptoms, ground truth) + `explain` (reverse: **ranked
+    likely causes**, each with chain + supporting tags + manual citations + technician checks) +
+    `score` (top cause == injected). Output is **ranked hypotheses**, never "the cause".
+  - **`fixtures/maintenance_knowledge.json`** — synthetic, citable manual pages + checks per mode.
+- **Flagship (the magic):** inject photoeye-blocked on the conveyor → *"why is this line blocked?"* →
+  MIRA's top cause = **photoeye on Conveyor01 (high)** + chain + tags + manuals + checks; #2 conveyor
+  jam. Breadth: sensor drift on a tank → quality reject → top cause = sensor drift (proves generic
+  binding).
+- **Acceptance (one command, nonzero on failure):** `python causality/run_phase2.py` (or
+  `make causality-phase2`) → runs Phase 1 → builds the causality model → runs both scenarios (top
+  cause must match injected) → writes the Ask-MIRA answer → runs **9 tests** → enforces 0
+  facts-without-evidence. Phase 0 (18) + Phase 1 (15) + Phase 2 (9) green; ruff clean. No licensed
+  evidence committed.
+- **Discovery Recorder:** session-003 (failed hypotheses H1–H5: simulator-not-product, signature-tag
+  discrimination, ranked-not-asserted, components-inferred-not-fact, generic-binding-needed).
+- **Note:** a *value* synthesizer (counters climbing, analog drift over time) is **deferred** — it is
+  only needed once we drive live values (Phase 4). Phase 2 needs only the symptom→cause mapping.
 
 ### Phase 3 — Maintenance relationships + evidence grounding  `[SC 5,6,7]`
 **Goal:** make every hidden cause **explainable and citable**.

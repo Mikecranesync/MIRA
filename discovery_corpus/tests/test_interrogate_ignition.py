@@ -50,7 +50,7 @@ def test_report_counts_are_consistent():
     assert c["site"] == 1
     assert c["area"] == 2        # Bottling + Liquid Processing
     assert c["line"] == 2        # BottlingLine1 + TankFarm1
-    assert c["asset"] == 3       # CapLoader01 + Filler01 (BottlingLine1) + Tank01 (TankFarm1)
+    assert c["asset"] == 4       # Conveyor01 + CapLoader01 + Filler01 (BottlingLine1) + Tank01 (TankFarm1)
     assert c["signal"] > 0
 
 

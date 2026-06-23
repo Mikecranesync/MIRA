@@ -6,12 +6,13 @@
       "site": 1,
       "area": 2,
       "line": 2,
-      "asset": 3,
-      "signal": 25
+      "asset": 4,
+      "signal": 35
     },
     "hierarchy": {
       "Bottling": {
         "BottlingLine1": [
+          "Conveyor01",
           "CapLoader01",
           "Filler01"
         ]
@@ -23,15 +24,16 @@
       }
     },
     "archetypes": {
-      "static_metadata": 7,
-      "live_bool": 6,
-      "live_counter": 3,
-      "live_state": 4,
-      "live_analog": 5,
+      "static_metadata": 10,
+      "live_bool": 10,
+      "live_counter": 4,
+      "live_state": 5,
+      "live_analog": 6,
       "unknown": 0
     },
-    "signals_with_units": 10,
+    "signals_with_units": 12,
     "asset_family": {
+      "Conveyor01": "discrete_mes",
       "CapLoader01": "discrete_mes",
       "Filler01": "discrete_mes",
       "Tank01": "continuous_process"
@@ -43,9 +45,9 @@
       "statement": "This data is MES/OEE-shaped, not PLC-control-shaped",
       "verdict": true,
       "evidence": {
-        "namespace_nodes": 34,
+        "namespace_nodes": 45,
         "has_control_logic": false,
-        "assets_with_mes_markers": 3,
+        "assets_with_mes_markers": 4,
         "has_production_run": true,
         "all_signal_data_types_empty": true
       }
@@ -55,8 +57,8 @@
       "statement": "This contains production counts and state fields",
       "verdict": true,
       "evidence": {
-        "live_counter_signals": 3,
-        "live_state_signals": 4,
+        "live_counter_signals": 4,
+        "live_state_signals": 5,
         "has_counts_names": true,
         "has_state_names": true
       }
@@ -70,7 +72,7 @@
         "site": 1,
         "area": 2,
         "line": 2,
-        "asset": 3
+        "asset": 4
       }
     },
     {

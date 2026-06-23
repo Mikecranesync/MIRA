@@ -1,0 +1,152 @@
+{
+  "symptom": "line_blocked",
+  "line_uns": "synthetic_beverage_co.demo_site.bottling.bottlingline1",
+  "headline": "Line is line blocked. Most likely cause: Photoeye blocked / fouled on Conveyor01 (high confidence, ranked hypothesis).",
+  "ranked_causes": [
+    {
+      "rank": 1,
+      "failure_mode_id": "photoeye_blocked",
+      "title": "Photoeye blocked / fouled",
+      "component_type": "photoeye",
+      "asset_uns": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01",
+      "asset_name": "Conveyor01",
+      "confidence": "high",
+      "score": 4,
+      "causal_chain": [
+        "Photoeye is blocked or fouled (sees a permanent target)",
+        "Conveyor logic believes product is present and stops feeding",
+        "Product backs up / accumulation fills upstream",
+        "Machine asserts Blocked state",
+        "Outfeed counts flatline; OEE availability drops"
+      ],
+      "supporting_tags": [
+        "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.production.counts_outfeed_value_value",
+        "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.blocked_value_value",
+        "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.photoeye_blocked_value_value",
+        "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.state_name"
+      ],
+      "manual_citations": [
+        {
+          "doc": "Conveyor O&M Manual (synthetic)",
+          "page": 42,
+          "section": "7.3 Photoeye Sensors",
+          "snippet": "A fouled or misaligned photoeye latches a permanent 'product present' signal, halting the feed logic."
+        },
+        {
+          "doc": "Sensor Maintenance Guide (synthetic)",
+          "page": 11,
+          "section": "Cleaning diffuse-reflective sensors",
+          "snippet": "Wipe the lens; verify the indicator LED toggles when the target clears."
+        }
+      ],
+      "technician_checks": [
+        "Visually inspect the photoeye lens for product debris, condensation, or label adhesive.",
+        "Clear the target and confirm the sensor output toggles (LED off).",
+        "Verify alignment to the reflector / confirm sensing distance.",
+        "Check the photoeye wiring/connector for damage."
+      ]
+    },
+    {
+      "rank": 2,
+      "failure_mode_id": "conveyor_jam",
+      "title": "Conveyor mechanical jam",
+      "component_type": "conveyor_motor",
+      "asset_uns": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01",
+      "asset_name": "Conveyor01",
+      "confidence": "medium",
+      "score": 3,
+      "causal_chain": [
+        "Mechanical jam on the conveyor",
+        "Drive sees rising load / overcurrent and faults or stalls",
+        "Product backs up upstream",
+        "Machine asserts Blocked state",
+        "Outfeed counts flatline; OEE availability drops"
+      ],
+      "supporting_tags": [
+        "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.production.counts_outfeed_value_value",
+        "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.blocked_value_value",
+        "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.state_name"
+      ],
+      "manual_citations": [
+        {
+          "doc": "Conveyor O&M Manual (synthetic)",
+          "page": 58,
+          "section": "9.1 Mechanical Jams",
+          "snippet": "Rising drive current with no outfeed indicates a mechanical jam; clear before resetting the drive."
+        }
+      ],
+      "technician_checks": [
+        "Lock out the drive, then inspect the belt/chain path for a jammed product or foreign object.",
+        "Check for a seized roller or failed bearing (spin by hand under LOTO).",
+        "Inspect the drive for an overcurrent fault code before resetting."
+      ]
+    },
+    {
+      "rank": 3,
+      "failure_mode_id": "motor_overload",
+      "title": "Motor overload / thermal trip",
+      "component_type": "motor",
+      "asset_uns": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01",
+      "asset_name": "Conveyor01",
+      "confidence": "medium",
+      "score": 2,
+      "causal_chain": [
+        "Motor draws excessive current (binding load / failing bearing)",
+        "Overload relay / drive trips on thermal or overcurrent",
+        "Motor stops; machine halts",
+        "Machine asserts Blocked/Fault state",
+        "Counts flatline; OEE availability drops"
+      ],
+      "supporting_tags": [
+        "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.blocked_value_value",
+        "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.state_name"
+      ],
+      "manual_citations": [
+        {
+          "doc": "Motor & Drive Handbook (synthetic)",
+          "page": 23,
+          "section": "Thermal Overload",
+          "snippet": "Repeated overcurrent trips indicate a binding load or a degrading motor/bearing."
+        }
+      ],
+      "technician_checks": [
+        "Read the overload relay / drive trip code and the last current peak.",
+        "Under LOTO, rotate the shaft by hand to feel for binding or bearing roughness.",
+        "Verify the load is free (no jam) before resetting the overload."
+      ]
+    },
+    {
+      "rank": 4,
+      "failure_mode_id": "low_air_pressure",
+      "title": "Low plant air pressure",
+      "component_type": "air_supply",
+      "asset_uns": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01",
+      "asset_name": "Conveyor01",
+      "confidence": "low",
+      "score": 1,
+      "causal_chain": [
+        "Plant air header pressure drops (compressor / dryer / leak)",
+        "Pneumatic actuators move sluggishly or stall across machines",
+        "Multiple machines degrade together",
+        "Stations assert Blocked/Starved",
+        "Counts fall across the line; OEE drops"
+      ],
+      "supporting_tags": [
+        "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.blocked_value_value"
+      ],
+      "manual_citations": [
+        {
+          "doc": "Plant Air System Manual (synthetic)",
+          "page": 15,
+          "section": "Header Pressure",
+          "snippet": "Header pressure below spec causes sluggish actuators plant-wide; check compressor, dryer, and leaks."
+        }
+      ],
+      "technician_checks": [
+        "Read the air header pressure gauge against the spec (e.g. 85-100 psi).",
+        "Check the compressor run state and the dryer fault status.",
+        "Walk the line for an audible leak or a stuck/dumping actuator."
+      ]
+    }
+  ]
+}

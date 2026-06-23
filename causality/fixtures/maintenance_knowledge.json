@@ -1,0 +1,85 @@
+{
+  "_comment": "SYNTHETIC maintenance knowledge for the causality engine. Fictional manual pages + technician checks, keyed by failure_mode id. Committed test data (Evidence class 3) -- no licensed or real-vendor content. These are the citable 'manual pages' MIRA references in an explanation.",
+  "photoeye_blocked": {
+    "manual_refs": [
+      { "doc": "Conveyor O&M Manual (synthetic)", "page": 42, "section": "7.3 Photoeye Sensors", "snippet": "A fouled or misaligned photoeye latches a permanent 'product present' signal, halting the feed logic." },
+      { "doc": "Sensor Maintenance Guide (synthetic)", "page": 11, "section": "Cleaning diffuse-reflective sensors", "snippet": "Wipe the lens; verify the indicator LED toggles when the target clears." }
+    ],
+    "checks": [
+      "Visually inspect the photoeye lens for product debris, condensation, or label adhesive.",
+      "Clear the target and confirm the sensor output toggles (LED off).",
+      "Verify alignment to the reflector / confirm sensing distance.",
+      "Check the photoeye wiring/connector for damage."
+    ]
+  },
+  "conveyor_jam": {
+    "manual_refs": [
+      { "doc": "Conveyor O&M Manual (synthetic)", "page": 58, "section": "9.1 Mechanical Jams", "snippet": "Rising drive current with no outfeed indicates a mechanical jam; clear before resetting the drive." }
+    ],
+    "checks": [
+      "Lock out the drive, then inspect the belt/chain path for a jammed product or foreign object.",
+      "Check for a seized roller or failed bearing (spin by hand under LOTO).",
+      "Inspect the drive for an overcurrent fault code before resetting."
+    ]
+  },
+  "vfd_not_enabled": {
+    "manual_refs": [
+      { "doc": "VFD Quick Start (synthetic)", "page": 7, "section": "Run Permissives", "snippet": "The drive will not start until the enable input and run permissive are both true and no fault is latched." }
+    ],
+    "checks": [
+      "Confirm the drive Enable input is energized.",
+      "Verify no latched drive fault (clear/reset if present and safe).",
+      "Check the run permissive chain (e-stop, guards, upstream ready)."
+    ]
+  },
+  "motor_overload": {
+    "manual_refs": [
+      { "doc": "Motor & Drive Handbook (synthetic)", "page": 23, "section": "Thermal Overload", "snippet": "Repeated overcurrent trips indicate a binding load or a degrading motor/bearing." }
+    ],
+    "checks": [
+      "Read the overload relay / drive trip code and the last current peak.",
+      "Under LOTO, rotate the shaft by hand to feel for binding or bearing roughness.",
+      "Verify the load is free (no jam) before resetting the overload."
+    ]
+  },
+  "sensor_drift": {
+    "manual_refs": [
+      { "doc": "Instrument Calibration SOP (synthetic)", "page": 4, "section": "Drift & Recalibration", "snippet": "Compare the live process value to a reference; recalibrate if drift exceeds the tolerance band." }
+    ],
+    "checks": [
+      "Compare the sensor reading to an independent reference/handheld.",
+      "Inspect the sensor for coating, scaling, or a loose fitting.",
+      "Recalibrate per the SOP and re-verify against the reference."
+    ]
+  },
+  "low_air_pressure": {
+    "manual_refs": [
+      { "doc": "Plant Air System Manual (synthetic)", "page": 15, "section": "Header Pressure", "snippet": "Header pressure below spec causes sluggish actuators plant-wide; check compressor, dryer, and leaks." }
+    ],
+    "checks": [
+      "Read the air header pressure gauge against the spec (e.g. 85-100 psi).",
+      "Check the compressor run state and the dryer fault status.",
+      "Walk the line for an audible leak or a stuck/dumping actuator."
+    ]
+  },
+  "failed_interlock": {
+    "manual_refs": [
+      { "doc": "Machine Safety Manual (synthetic)", "page": 31, "section": "Guard Interlocks", "snippet": "An open or faulted interlock inhibits start and holds the machine in a safe state." }
+    ],
+    "checks": [
+      "Identify which guard/interlock reads open on the safety status.",
+      "Confirm the guard is physically closed and the switch actuates.",
+      "Inspect the interlock switch and wiring for damage (follow safety procedure)."
+    ]
+  },
+  "comm_loss": {
+    "manual_refs": [
+      { "doc": "Network Troubleshooting Guide (synthetic)", "page": 9, "section": "Stale Tags", "snippet": "Lost device comms presents as stale tags and a held machine state; check link, address, and switch." }
+    ],
+    "checks": [
+      "Confirm the device link/activity LEDs and ping/whois the device.",
+      "Check for a duplicate address or a failed switch port.",
+      "Verify the driver/connection status in the gateway."
+    ]
+  }
+}

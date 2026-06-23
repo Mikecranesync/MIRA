@@ -16,6 +16,24 @@
               "tagType": "Folder",
               "tags": [
                 {
+                  "name": "Conveyor01",
+                  "typeId": "Models/Equipment/Process/Conveyor",
+                  "tagType": "UdtInstance",
+                  "parameters": {
+                    "MesTagPath": { "dataType": "String", "value": "[MES]Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Conveyor01" }
+                  },
+                  "tags": [
+                    { "name": "ProductionRun", "tagType": "UdtInstance", "tags": [ { "name": "Running", "tagType": "AtomicTag" } ] },
+                    { "name": "Blocked", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "AtomicTag" }, { "name": "String", "tagType": "AtomicTag" } ] } ] },
+                    { "name": "Starved", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "AtomicTag" } ] } ] },
+                    { "name": "Counts", "tagType": "UdtInstance", "tags": [ { "name": "Outfeed", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "AtomicTag", "engUnit": "Units" }, { "name": "NumberFormat", "tagType": "AtomicTag" } ] } ] } ] },
+                    { "name": "State", "tagType": "UdtInstance", "tags": [ { "name": "Name", "tagType": "AtomicTag" } ] },
+                    { "name": "Photoeye", "tagType": "UdtInstance", "tags": [ { "name": "Blocked", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "AtomicTag" } ] } ] } ] },
+                    { "name": "Drive", "tagType": "UdtInstance", "tags": [ { "name": "MotorCurrent", "tagType": "AtomicTag", "engUnit": "mA" } ] },
+                    { "name": "Definition", "tagType": "UdtInstance", "tags": [ { "name": "TypeId", "tagType": "AtomicTag" } ] }
+                  ]
+                },
+                {
                   "name": "CapLoader01",
                   "typeId": "Models/Equipment/Process/CapLoader",
                   "tagType": "UdtInstance",
