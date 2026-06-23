@@ -73,3 +73,18 @@ Sparkplug, OPC-UA, Modbus, dashboards, real-factory pilot. Smallest first PR ful
 
 None — exploration/design only. No code, no migrations, no package changes, no licensed data. Phase 0–4
 gates (76 tests) untouched. Deliverable = the 8 reports + this session.
+
+## 9. Verification pass (direct repo reads, not just agent claims)
+
+Spot-checked the load-bearing first-PR + MIRA-seam references against the actual repo — all **verified
+exact**: `plc-proposals.ts:66/135`, the `ai_suggestions` INSERT shape (`plc-proposals.ts:151-157`,
+status hardcoded `'pending'` → the new writer needs a per-row status to emit `needs_review`),
+`suggestion-accept.ts:57/111/155/186/188`, `027_ai_suggestions.sql:87` (5-value CHECK, no `needs_review`),
+the "P5 migrates the offline client" comment (`contextualization/import/route.ts:27`), `engine.py:1062/
+1093/1292` + `decision_trace.py:112`, and **no** existing factory-model writer / **no** `explanation`
+column today. **One correction made:** the version-bump guidance. `mira-hub/AGENTS.md` requires bumping
+**both** `/VERSION` and `mira-hub/package.json` for a schema-migration PR; the prior memory
+`feedback_mira_hub_pkg_version_frozen_lockfile` ("never bump package.json") is **stale** — `mira-hub/
+bun.lock` (lockfileVersion 1) carries the workspace root with `name` only and **no `version`**, so a
+version-only bump is lockfile-safe. Captured in `reports/phase5_repo_exploration/verification.md`;
+`phase5_recommended_first_pr.md` corrected (3 spots). A8 (version-bump assumption) → **FAILED/corrected**.
