@@ -82,12 +82,31 @@ its i3x/JSON export).
 
 Each phase: **Goal → Tasks (subagents) → Deliverables → Acceptance → Success-criteria (SC#)**.
 
-### Phase 0 — Discovery corpus + Cappy interrogation  `[SC 1,2]`  ✅ seeded this session
-**Goal:** stand up the mandatory Discovery Recorder and the first reusable interrogation.
-- **Tasks / subagents:** `[builder]` scaffold `/discovery_corpus/{sessions,playbooks,scripts,tests,fixtures}`; author `interrogate_ignition_export.py` (deterministic: classify data layer + hierarchy + signal archetypes) + test on the mini fixture; record session-001 (the topology study).
-- **Deliverables:** `discovery_corpus/` tree; `scripts/interrogate_ignition_export.py`; `tests/test_interrogate_ignition.py`; `sessions/2026-06-22-session-001-cappy-interrogation.md`; `playbooks/interrogating-ignition-mes-exports.md`.
-- **Acceptance:** `pytest discovery_corpus/tests/` green; the script prints `1 site · 4 areas · 15 lines · 43 assets · N signals` + an archetype histogram on the real corpus (mini fixture in CI).
-- **Verified findings (the discovery output that feeds every later phase):** data layer = **Sepasoft MES-OEE UDT**; 4090 nodes ≈ a few hundred live values + static metadata; two families — **discrete-MES** (Filler/Packaging/Palletizing) and **continuous-process** (Tanks/Vats). Archetypes: `static_metadata · live_bool · live_counter · live_state · live_analog`.
+### Phase 0 — Discovery corpus + Cappy interrogation  `[SC 1,2]`  ✅ DONE (executable, not just docs)
+**Goal:** stand up the mandatory Discovery Recorder as **executable, repeatable** infrastructure —
+every useful discovery becomes deterministic code, a fixture, a test, a reproducible claim, and a
+recorded session (with failed hypotheses).
+- **Deliverables:** `/discovery_corpus/{sessions,playbooks,scripts,tests,fixtures,reports}` +
+  `EVIDENCE_TYPES.md` (5 evidence classes) + `run_phase0.py` (one-command gate) + `make discovery-phase0`.
+  - `scripts/interrogate_ignition_export.py` — deterministic interrogator: topology, area→line→asset
+    hierarchy, signal-archetype histogram, discrete-vs-continuous family, **`assess_claims()` → 5
+    reproducible claim verdicts (C1–C5)**.
+  - `fixtures/synthetic_factory_export.json` — synthetic stand-in mirroring the real MES-UDT shape
+    (fictional names/values); exercises every archetype + both families.
+  - `tests/test_interrogate_ignition.py` — **18 pytest** re-deriving the taxonomy + the 5 claims +
+    determinism. `reports/phase0_synthetic.{md,json}` — generated report.
+  - `playbooks/`: `classifying-an-unknown-dataset-layer.md` (general) +
+    `interrogating-ignition-mes-exports.md` (worked example).
+  - `sessions/2026-06-22-session-001-…md` — full record incl. **failed hypotheses** H1–H5.
+- **Reproducible claims (each backed by an executable check + test):** C1 MES/OEE-shaped not
+  PLC-control · C2 has production counts + state · C3 implies asset/line/cell hierarchy · C4 no
+  ladder/ST/control logic · C5 usable as upstream evidence for hidden maintenance causes.
+- **Acceptance (one command, exits nonzero on failure):** `python discovery_corpus/run_phase0.py`
+  (or `make discovery-phase0`) → interrogate synthetic fixture → write report → run pytest → all 5
+  claims PASS + 18 tests green + 0 parser warnings. **No licensed evidence committed.**
+- **Verified findings (feed every later phase):** layer = **Sepasoft MES-OEE UDT**; 4090 nodes ≈ a
+  few hundred live values + static metadata; families **discrete-MES** / **continuous-process**;
+  archetypes `static_metadata · live_bool · live_counter · live_state · live_analog`.
 
 ### Phase 1 — Evidence → context reconstruction  `[SC 2,3,4,5]`
 **Goal:** turn the discovery output into a queryable **context model**: asset graph, UNS mappings,

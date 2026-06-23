@@ -1,0 +1,157 @@
+{
+  "_comment": "SYNTHETIC stand-in for an Ignition/Sepasoft MES-OEE tag export. It mirrors the STRUCTURAL SHAPE of the licensed Cappy evidence (UdtInstance equipment assets, nested UDT signal groups, ProductionRun/Blocked/Starved/Counts/State MES fields, a continuous-process tank) WITHOUT any licensed names or values. Fictional company/site/line/asset names. AtomicTags omit dataType to match the observed real export (data_type empty on every signal). Committed; safe; the default target of the interrogator and tests.",
+  "name": "Synthetic Beverage Co",
+  "tagType": "Folder",
+  "tags": [
+    {
+      "name": "Demo Site",
+      "tagType": "Folder",
+      "tags": [
+        {
+          "name": "Bottling",
+          "tagType": "Folder",
+          "tags": [
+            {
+              "name": "BottlingLine1",
+              "tagType": "Folder",
+              "tags": [
+                {
+                  "name": "Filler01",
+                  "typeId": "Models/Equipment/Process/Filler",
+                  "tagType": "UdtInstance",
+                  "parameters": {
+                    "MesTagPath": { "dataType": "String", "value": "[MES]Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Filler01" }
+                  },
+                  "tags": [
+                    {
+                      "name": "ProductionRun",
+                      "tagType": "UdtInstance",
+                      "tags": [
+                        { "name": "Running", "tagType": "AtomicTag" }
+                      ]
+                    },
+                    {
+                      "name": "Blocked",
+                      "tagType": "UdtInstance",
+                      "tags": [
+                        {
+                          "name": "Value",
+                          "tagType": "UdtInstance",
+                          "tags": [
+                            { "name": "Value", "tagType": "AtomicTag" },
+                            { "name": "String", "tagType": "AtomicTag" }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "name": "Starved",
+                      "tagType": "UdtInstance",
+                      "tags": [
+                        {
+                          "name": "Value",
+                          "tagType": "UdtInstance",
+                          "tags": [
+                            { "name": "Value", "tagType": "AtomicTag" }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "name": "Counts",
+                      "tagType": "UdtInstance",
+                      "tags": [
+                        {
+                          "name": "Outfeed",
+                          "tagType": "UdtInstance",
+                          "tags": [
+                            {
+                              "name": "Value",
+                              "tagType": "UdtInstance",
+                              "tags": [
+                                { "name": "Value", "tagType": "AtomicTag", "engUnit": "Units" },
+                                { "name": "NumberFormat", "tagType": "AtomicTag" },
+                                { "name": "UnitsOfMeasure", "tagType": "AtomicTag" }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "name": "Defect",
+                          "tagType": "UdtInstance",
+                          "tags": [
+                            {
+                              "name": "Value",
+                              "tagType": "UdtInstance",
+                              "tags": [
+                                { "name": "Value", "tagType": "AtomicTag", "engUnit": "Units" }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "name": "State",
+                      "tagType": "UdtInstance",
+                      "tags": [
+                        { "name": "Name", "tagType": "AtomicTag" },
+                        {
+                          "name": "Duration",
+                          "tagType": "UdtInstance",
+                          "tags": [
+                            {
+                              "name": "TotalSeconds",
+                              "tagType": "UdtInstance",
+                              "tags": [
+                                { "name": "Value", "tagType": "AtomicTag", "engUnit": "s" }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "name": "Definition",
+                      "tagType": "UdtInstance",
+                      "tags": [
+                        { "name": "TypeId", "tagType": "AtomicTag" }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Liquid Processing",
+          "tagType": "Folder",
+          "tags": [
+            {
+              "name": "TankFarm1",
+              "tagType": "Folder",
+              "tags": [
+                {
+                  "name": "Tank01",
+                  "typeId": "Models/Equipment/Process/Tank",
+                  "tagType": "UdtInstance",
+                  "parameters": {
+                    "MesTagPath": { "dataType": "String", "value": "[MES]Synthetic Beverage Co/Demo Site/Liquid Processing/TankFarm1/Tank01" }
+                  },
+                  "tags": [
+                    { "name": "Level", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "AtomicTag", "engUnit": "%" } ] } ] },
+                    { "name": "Flow", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "AtomicTag", "engUnit": "L/min" } ] } ] },
+                    { "name": "Temperature", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "AtomicTag", "engUnit": "°C" } ] } ] },
+                    { "name": "Pressure", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "AtomicTag", "engUnit": "bar" } ] } ] },
+                    { "name": "Density", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "AtomicTag", "engUnit": "kg/L" } ] } ] }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

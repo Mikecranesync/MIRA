@@ -6,52 +6,73 @@
 > `/discovery_corpus/`. (Discovery Recorder is MANDATORY.)"*
 > — `docs/plans/2026-06-22-proveit-northstar-contextualized-factory-plan.md`
 
-This directory is the **Discovery Recorder**: a permanent, append-only library of how we
-interrogate real industrial data. It exists so that we never re-derive the same structural finding
-twice, and so that every "we figured out what this export *is*" moment turns into deterministic,
-testable code instead of a one-off chat.
+This directory is the **Discovery Recorder**: a permanent, append-only library of how we interrogate
+real industrial data. It exists so that we never re-derive the same structural finding twice, and so
+that every "we figured out what this export *is*" moment becomes deterministic, testable code — not a
+one-off chat.
 
-## The discipline: interrogate by code first, LLM second
+## The North Star loop
 
-When a new industrial dataset arrives (an Ignition tag export, a PLC program, a CMMS dump), the
-order of operations is:
+```
+Claude discovers once  →  deterministic Python  →  synthetic fixture  →  test + report
+        →  future datasets interrogated by code first, AI second
+```
 
-1. **Deterministic code first.** Parse it, count it, classify it, map its hierarchy — with a
-   read-only, stdlib-only script that produces the same answer every run. This is what makes the
-   data *legible* and *trustworthy* before any model is asked a question about it.
-2. **LLM second.** Only once the structure is established by code does an LLM reason over it. The
-   model never gets to *guess* the topology; code already established it.
-
-A real Sepasoft/Ignition MES-OEE export is the canonical example: 4090 "nodes" look like 4090 live
-tags, but a deterministic pass shows they are a UDT *metadata model* — a single Filler's ~74 nodes
-are ~8 live values wrapped in static metadata. The LLM would hallucinate "4090 sensors"; the code
-says "~8 live values per asset, the rest is scaffolding."
+A new dataset is **parsed, counted, classified, and claim-checked by code** before any model reasons
+over it. The model never gets to *guess* the topology or the layer; code already established it and a
+test re-proves it.
 
 ## Layout
 
 | Path | Purpose |
 |---|---|
-| `sessions/` | One Markdown record per investigation (9-field template). The *recorded* part of the recorder. |
-| `playbooks/` | Reusable methodology distilled from sessions — how to interrogate a *class* of export. |
+| `EVIDENCE_TYPES.md` | The five evidence classes + what may/never be committed. Read this first. |
+| `sessions/` | One Markdown record per investigation — **including failed hypotheses**. The *recorded* part of the recorder. |
+| `playbooks/` | Reusable methodology — how to interrogate a *class* of dataset (general + Ignition-MES). |
 | `scripts/` | The deterministic interrogators. Read-only, stdlib-only (+ the in-repo `mira_plc_parser`). |
-| `tests/` | Pytest for every script, run against the committed **synthetic** mini fixture only. |
-| `fixtures/` | Pointer to the committed synthetic mini fixture. **The licensed corpus is never copied here.** |
+| `tests/` | Pytest that re-derives every claim against the committed **synthetic** fixture only. |
+| `fixtures/` | The committed **synthetic** stand-ins. The licensed corpus is **never** copied here. |
+| `reports/` | Generated reports from running the interrogator on the synthetic fixture. |
+| `run_phase0.py` | The one-command verification gate (interrogate → report → pytest → exit code). |
+
+## One-command verification
+
+```bash
+python discovery_corpus/run_phase0.py     # from the worktree root (cross-platform)
+make discovery-phase0                       # convenience wrapper (same thing)
+```
+
+This runs the deterministic interrogation against the synthetic fixture, writes/updates
+`reports/phase0_synthetic.{md,json}`, runs the Phase 0 pytest suite, and **exits nonzero** on any
+failing claim, failing test, or parser warning.
+
+## What "a discovery" must produce (the core rule)
+
+> **Every useful discovery must become deterministic code, a fixture, a test, and a recorded session.**
+
+A finding that only lives in prose is not done. It lands as a function in `scripts/`, a synthetic
+fixture in `fixtures/`, a claim verdict re-proved in `tests/`, and a `sessions/` record (with the
+hypotheses you *rejected*, not just the conclusion).
 
 ## Hard rules (inherited from the northstar plan)
 
-- **Read-only, deterministic, no network.** Every script in `scripts/` runs the same offline.
-- **The licensed Cappy Hour corpus is NEVER committed.** All code and tests run on the synthetic
-  mini fixture at `mira-plc-parser/tests/fixtures/ignition_cappy_hour_mini.json`. Session records may
-  capture the real corpus's *structure and counts* as notes — never raw tag values.
-- **Every discovery becomes reusable code.** A finding that only lives in a chat or a doc is not
-  done; it lands as a function in `scripts/` with a test.
+- **Read-only, deterministic, no network.** Every script runs the same offline, every run.
+- **The licensed Cappy Hour corpus is NEVER committed.** All committed code/tests/report run on
+  `fixtures/synthetic_factory_export.json`. Sessions capture the real corpus's *structure/counts* as
+  notes — never raw tag values. See `EVIDENCE_TYPES.md`.
+- **Claims are reproducible.** Important conclusions ("MES not PLC", "no ladder logic", "counts/state
+  present") are computed by `assess_claims()` and re-proved by tests — not asserted in prose.
 
-## Current contents
+## Current contents (Phase 0)
 
-- `scripts/interrogate_ignition_export.py` — deterministic Ignition/Sepasoft MES-export
-  interrogator: topology counts, area→line→asset hierarchy, signal-archetype histogram, per-asset
-  discrete-MES vs continuous-process family verdict.
-- `tests/test_interrogate_ignition.py` — pytest for the interrogator on the mini fixture.
-- `playbooks/interrogating-ignition-mes-exports.md` — the reusable methodology.
-- `sessions/2026-06-22-session-001-cappy-interrogation.md` — the first recorded session (the Cappy
-  Hour topology study).
+- `scripts/interrogate_ignition_export.py` — deterministic interrogator: topology counts,
+  area→line→asset hierarchy, signal-archetype histogram, discrete-MES vs continuous-process family
+  verdict, and **five reproducible claim verdicts (C1–C5)**.
+- `tests/test_interrogate_ignition.py` — 18 pytest, green, on the synthetic fixture.
+- `fixtures/synthetic_factory_export.json` — the committed synthetic Ignition/Sepasoft export.
+- `reports/phase0_synthetic.md` / `.json` — the generated Phase 0 report.
+- `playbooks/classifying-an-unknown-dataset-layer.md` (general) +
+  `playbooks/interrogating-ignition-mes-exports.md` (worked example).
+- `sessions/2026-06-22-session-001-cappy-interrogation.md` — the first recorded session, with failed
+  hypotheses.
+- `run_phase0.py` — the one-command gate.

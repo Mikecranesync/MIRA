@@ -30,9 +30,11 @@ if str(_PARSER_DIR) not in sys.path:
 
 from mira_plc_parser.parsers import ignition_json  # noqa: E402  (path-dependent import)
 
-# Default target: the committed SYNTHETIC mini fixture. The licensed Cappy Hour corpus is never
-# committed and is not the default -- pass its path explicitly on a machine that has it.
-DEFAULT_FIXTURE = _PARSER_DIR / "tests" / "fixtures" / "ignition_cappy_hour_mini.json"
+# Default target: the committed SYNTHETIC factory fixture (discovery_corpus/fixtures/). It mirrors the
+# STRUCTURAL SHAPE of the licensed Cappy evidence without any licensed names/values. The licensed
+# Cappy Hour corpus is never committed and is never the default -- pass its path explicitly on a
+# machine that has it.
+DEFAULT_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "synthetic_factory_export.json"
 
 # ---- archetype taxonomy ------------------------------------------------------------------------
 # Each signal leaf (a dotted name from the asset, e.g. "Counts.Outfeed.Value.Value") plus its
@@ -238,6 +240,100 @@ def interrogate(project) -> dict:
     }
 
 
+def assess_claims(project, report: dict) -> list[dict]:
+    """Turn the structural interrogation into a list of REPRODUCIBLE claim verdicts.
+
+    Each claim is a falsifiable statement about the dataset, a boolean ``verdict`` computed from the
+    parsed IR (never from prose), and the ``evidence`` that produced it. This is what makes Phase 0
+    "interrogate by code first": every important conclusion is backed by an executable check that a
+    test re-runs against the synthetic fixture.
+    """
+    ns = project.namespace
+    sigs = [n for n in ns if n.level == "signal"]
+    assets = [n for n in ns if n.level == "asset"]
+    arch = report["archetypes"]
+    counts = report["counts"]
+    names = [(n.name or "").lower() for n in sigs]
+
+    # --- evidence primitives (all derived from the IR) ---
+    controllers = list(getattr(project, "controllers", []) or [])
+    routines = list(project.all_routines()) if hasattr(project, "all_routines") else []
+    has_control_logic = bool(controllers) or bool(routines)
+    all_dtype_empty = bool(sigs) and all(not (getattr(n, "data_type", "") or "").strip() for n in sigs)
+    mes_marker_assets = [
+        a for a in assets
+        if (getattr(a, "mes_path", "") or "").strip()
+        or "models/equipment" in (getattr(a, "udt_type", "") or "").lower()
+    ]
+    has_counts = arch.get("live_counter", 0) > 0 or any("counts." in n for n in names)
+    has_state = arch.get("live_state", 0) > 0 or any(n.startswith("state.") for n in names)
+    has_blocked = any("blocked" in n for n in names)
+    has_starved = any("starved" in n for n in names)
+    has_production_run = any(n.startswith("productionrun.") for n in names)
+    has_hierarchy = counts["asset"] > 0 and counts["line"] > 0 and counts["area"] > 0
+
+    def claim(cid, statement, verdict, evidence):
+        return {"id": cid, "statement": statement, "verdict": bool(verdict), "evidence": evidence}
+
+    return [
+        claim(
+            "C1", "This data is MES/OEE-shaped, not PLC-control-shaped",
+            (len(ns) > 0) and (not has_control_logic) and bool(mes_marker_assets)
+            and (has_counts or has_state or has_production_run),
+            {
+                "namespace_nodes": len(ns),
+                "has_control_logic": has_control_logic,
+                "assets_with_mes_markers": len(mes_marker_assets),
+                "has_production_run": has_production_run,
+                "all_signal_data_types_empty": all_dtype_empty,
+            },
+        ),
+        claim(
+            "C2", "This contains production counts and state fields",
+            has_counts and has_state,
+            {
+                "live_counter_signals": arch.get("live_counter", 0),
+                "live_state_signals": arch.get("live_state", 0),
+                "has_counts_names": any("counts." in n for n in names),
+                "has_state_names": any(n.startswith("state.") for n in names),
+            },
+        ),
+        claim(
+            "C3", "This implies an asset/line/cell hierarchy",
+            has_hierarchy,
+            {k: counts[k] for k in ("enterprise", "site", "area", "line", "asset")},
+        ),
+        claim(
+            "C4", "This does NOT contain ladder/ST/control logic",
+            not has_control_logic,
+            {"controllers": len(controllers), "routines": len(routines)},
+        ),
+        claim(
+            "C5", "This can be used as upstream evidence to infer hidden maintenance/component causes",
+            (has_blocked or has_starved) and (has_counts or has_state),
+            {
+                "exposes_blocked": has_blocked,
+                "exposes_starved": has_starved,
+                "exposes_counts": has_counts,
+                "exposes_state": has_state,
+                "note": "blocked/starved/counts/state are the SYMPTOM layer onto which hidden causes "
+                        "(failed sensor, jammed conveyor, VFD fault, motor overload, air, comms, "
+                        "interlock) are inferred in Phase 2/3.",
+            },
+        ),
+    ]
+
+
+def _format_claims(claims: list[dict]) -> str:
+    lines = ["reproducible claims (each backed by an executable check):"]
+    for c in claims:
+        mark = "PASS" if c["verdict"] else "FAIL"
+        lines.append("  [%s] %s: %s" % (mark, c["id"], c["statement"]))
+        ev = ", ".join("%s=%s" % (k, v) for k, v in c["evidence"].items() if k != "note")
+        lines.append("        evidence: %s" % ev)
+    return "\n".join(lines)
+
+
 def _format_report(report: dict, source: str) -> str:
     c = report["counts"]
     lines = []
@@ -271,6 +367,11 @@ def _format_report(report: dict, source: str) -> str:
     return "\n".join(lines)
 
 
+def render(report: dict, claims: list[dict], source: str) -> str:
+    """Full human-readable report = topology/hierarchy/archetypes + the reproducible claim verdicts."""
+    return _format_report(report, source) + "\n\n" + _format_claims(claims)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="Deterministically interrogate an Ignition tag export (read-only)."
@@ -279,23 +380,25 @@ def main(argv: list[str] | None = None) -> int:
         "path",
         nargs="?",
         default=str(DEFAULT_FIXTURE),
-        help="Path to an Ignition tag-export JSON (default: the committed synthetic mini fixture).",
+        help="Path to an Ignition tag-export JSON (default: the committed synthetic factory fixture).",
     )
-    ap.add_argument("--json", action="store_true", help="Emit the report as machine-readable JSON.")
+    ap.add_argument("--json", action="store_true", help="Emit the report + claims as machine-readable JSON.")
     args = ap.parse_args(argv)
 
     project = load(args.path)
     report = interrogate(project)
+    claims = assess_claims(project, report)
 
     if args.json:
-        print(json.dumps(report, indent=2, ensure_ascii=False))
+        print(json.dumps({"report": report, "claims": claims}, indent=2, ensure_ascii=False))
     else:
-        print(_format_report(report, args.path))
+        print(render(report, claims, args.path))
         if project.warnings:
             print("\nparser warnings:")
             for w in project.warnings:
                 print("  - %s" % w)
-    return 0
+    # nonzero exit if any claim fails -- makes the CLI itself a gate.
+    return 0 if all(c["verdict"] for c in claims) else 1
 
 
 if __name__ == "__main__":

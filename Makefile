@@ -1,4 +1,7 @@
-.PHONY: demo-preflight observe observe-down observe-logs
+.PHONY: demo-preflight observe observe-down observe-logs discovery-phase0
+
+discovery-phase0:  ## Run the Phase 0 discovery gate (interrogate synthetic fixture -> report -> pytest)
+	python discovery_corpus/run_phase0.py
 
 demo-preflight:
 	doppler run --project factorylm --config prd -- bash scripts/demo-preflight.sh

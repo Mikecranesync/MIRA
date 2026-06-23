@@ -1,0 +1,96 @@
+{
+  "source": "discovery_corpus/fixtures/synthetic_factory_export.json",
+  "report": {
+    "counts": {
+      "enterprise": 1,
+      "site": 1,
+      "area": 2,
+      "line": 2,
+      "asset": 2,
+      "signal": 16
+    },
+    "hierarchy": {
+      "Bottling": {
+        "BottlingLine1": [
+          "Filler01"
+        ]
+      },
+      "Liquid Processing": {
+        "TankFarm1": [
+          "Tank01"
+        ]
+      }
+    },
+    "archetypes": {
+      "static_metadata": 4,
+      "live_bool": 3,
+      "live_counter": 2,
+      "live_state": 2,
+      "live_analog": 5,
+      "unknown": 0
+    },
+    "signals_with_units": 8,
+    "asset_family": {
+      "Filler01": "discrete_mes",
+      "Tank01": "continuous_process"
+    }
+  },
+  "claims": [
+    {
+      "id": "C1",
+      "statement": "This data is MES/OEE-shaped, not PLC-control-shaped",
+      "verdict": true,
+      "evidence": {
+        "namespace_nodes": 24,
+        "has_control_logic": false,
+        "assets_with_mes_markers": 2,
+        "has_production_run": true,
+        "all_signal_data_types_empty": true
+      }
+    },
+    {
+      "id": "C2",
+      "statement": "This contains production counts and state fields",
+      "verdict": true,
+      "evidence": {
+        "live_counter_signals": 2,
+        "live_state_signals": 2,
+        "has_counts_names": true,
+        "has_state_names": true
+      }
+    },
+    {
+      "id": "C3",
+      "statement": "This implies an asset/line/cell hierarchy",
+      "verdict": true,
+      "evidence": {
+        "enterprise": 1,
+        "site": 1,
+        "area": 2,
+        "line": 2,
+        "asset": 2
+      }
+    },
+    {
+      "id": "C4",
+      "statement": "This does NOT contain ladder/ST/control logic",
+      "verdict": true,
+      "evidence": {
+        "controllers": 0,
+        "routines": 0
+      }
+    },
+    {
+      "id": "C5",
+      "statement": "This can be used as upstream evidence to infer hidden maintenance/component causes",
+      "verdict": true,
+      "evidence": {
+        "exposes_blocked": true,
+        "exposes_starved": true,
+        "exposes_counts": true,
+        "exposes_state": true,
+        "note": "blocked/starved/counts/state are the SYMPTOM layer onto which hidden causes (failed sensor, jammed conveyor, VFD fault, motor overload, air, comms, interlock) are inferred in Phase 2/3."
+      }
+    }
+  ]
+}
