@@ -184,6 +184,10 @@ brain-side: **no MQTT/Sparkplug/OPC-UA/Modbus/Ignition/broker/live pipeline/PLC 
   - **`citations.py`** — typed evidence (`[Tag]/[Asset]/[Manual]/[Procedure]/[History]/[Fixture]`).
   - **`failure_library.py`** — known-failure-mode library (Phase 2 catalog + contradicting roles +
     procedures + history key). **`history.py`** — synthetic maintenance history (the CMMS bridge).
+  - **`answer_card.py`** (trust checkpoint before Phase 4) — the plain-language Ask-MIRA **answer card**:
+    9 fields (most likely cause · confidence · why · evidence for · evidence against · manuals/procedures ·
+    similar history · technician checks · **what needs human review**), friendly tag names, readable with
+    no one explaining it. Emitted as `reports/phase3_answer_card.md`; the gate enforces all 9 sections.
 - **Flagship answer (receipts):** photoeye-blocked on the conveyor → *"why is this line blocked?"* →
   **Photoeye blocked (High)** + Tag (PhotoeyeBlocked=TRUE, counts dropped to 0/min, State=Down) + Asset
   (hosts photoeye; feeds CapLoader01) + Manual (O&M p.42, p.11) + History (3×, last: cleaned lens) +

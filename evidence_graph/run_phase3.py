@@ -32,6 +32,7 @@ for _p in (str(_HERE), str(_CAUS), str(_FC), str(_PH0), str(_PARSER)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+import answer_card as card  # noqa: E402
 import build as fc_build  # noqa: E402  (factory_context.build)
 import builder as gb  # noqa: E402  (evidence_graph.builder)
 import components as comp_mod  # noqa: E402
@@ -105,6 +106,14 @@ def main() -> int:
     (reports_dir / "phase3_explanation_report.json").write_text(
         json.dumps(exp.to_dict(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(md)
+
+    # answer card — the plain-language trust checkpoint before Phase 4
+    card_md = card.render_card(exp, graph)
+    (reports_dir / "phase3_answer_card.md").write_text(card_md + "\n", encoding="utf-8")
+    print("\n" + card_md)
+    missing = [s for s in card.REQUIRED_SECTIONS if s not in card_md]
+    if missing:
+        failures.append("answer card missing sections: %s" % missing)
 
     if not ex.score(exp, obs):
         failures.append("flagship: top cause is not photoeye_blocked on the conveyor")

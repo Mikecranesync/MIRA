@@ -144,7 +144,10 @@ def explain_cause(graph, symptom: str, line_uns: str, observation: Observation, 
         contra = [e.dst for e in graph.out_edges(c.id, E.CONTRADICTED_BY)]
         ms = sorted({s for s in support if s in abn})
         mc = sorted({s for s in contra if s in healthy})
-        cands.append((len(ms) - 2 * len(mc), ms, mc, c))
+        # Contradiction lowers the score (penalty 1), but must not bury a cause whose unique signature
+        # tag is still active beneath a weaker-evidence cause: a 1-point penalty + the confidence
+        # tiebreak keeps the signature cause on top while dropping its band (High -> Medium).
+        cands.append((len(ms) - len(mc), ms, mc, c))
 
     cands.sort(key=lambda x: (-x[0], -_CR.get(x[3].confidence, 0), x[3].id))
     ranked = [x for x in cands if len(x[1]) >= 1] or cands
