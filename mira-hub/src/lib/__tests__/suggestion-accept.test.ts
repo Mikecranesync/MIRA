@@ -200,4 +200,21 @@ describe("decideSuggestion", () => {
     expect(res).toEqual({ kind: "wrong_state", status: "accepted" });
     expect(transitionMock).not.toHaveBeenCalled();
   });
+
+  it("verify of a needs_review kg_entity is decidable (PR-2) and creates the entity", async () => {
+    suggestionRow = kgEntitySuggestion({ status: "needs_review" });
+    const res = await decideSuggestion(TENANT, "u1", ID, "verify", "resolved by reviewer");
+    expect(res).toEqual({ kind: "ok", decision: "verify", status: "accepted", entityId: "kg-1" });
+    expect(transitionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ trigger: "accept", aiSuggestionId: ID }),
+    );
+  });
+
+  it("reject of a needs_review tag_mapping is decidable and creates no entity", async () => {
+    suggestionRow = tagMappingSuggestion({}, { status: "needs_review" });
+    const res = await decideSuggestion(TENANT, "u1", ID, "reject", "not a real signal");
+    expect(res).toMatchObject({ kind: "ok", decision: "reject", status: "rejected", entityId: null });
+    expect(queryMock.mock.calls.some(([sql]) => /INSERT INTO tag_entities/.test(sql))).toBe(false);
+  });
 });

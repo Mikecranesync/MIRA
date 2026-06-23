@@ -170,7 +170,13 @@ export async function decideSuggestion(
     const rows = sel.rows as SuggestionRow[];
     if (rows.length === 0) return { kind: "not_found" as const };
     const s = rows[0];
-    if (s.status !== "pending") return { kind: "wrong_state" as const, status: s.status };
+    // Decidable from an OPEN state: `pending` or `needs_review` (PR-2 — uncertain mappings the
+    // FactoryModel writer flagged for review are now resolvable through the same path). Terminal
+    // states (accepted/rejected/deferred/superseded) stay wrong_state. The ADR-0017 transition helper
+    // below SETs the target status regardless of from-state, so no further change is needed there.
+    if (s.status !== "pending" && s.status !== "needs_review") {
+      return { kind: "wrong_state" as const, status: s.status };
+    }
 
     // ADR-0017: status transitions go through the helper, never a raw UPDATE.
     await applyHubProposalTransition(c, {
