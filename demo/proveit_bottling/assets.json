@@ -1,0 +1,86 @@
+{
+  "_comment": "ProveIt bottling factory asset registry. Simulated plant assets + the REAL Conv_Simple garage conveyor embedded as a supervised live cell under packaging. mqtt_topic = uns.replace('.', '/') + '/events'. Simulated assets are labeled SIMULATED (no real model); the Conv_Simple cell + children carry their real identities (GS10, Micro820) or UNKNOWN_MODEL (photoeye, motor) and reference demo/evidence/ — no duplication.",
+  "demo": "proveit_bottling",
+  "uns_root": "enterprise.proveit.bottling.plant1",
+  "areas": ["liquid_processing", "filling", "packaging"],
+  "assets": [
+    { "key": "tank01", "name": "Storage Tank 01", "area": "liquid_processing", "kind": "tank",
+      "uns": "enterprise.proveit.bottling.plant1.liquid_processing.tank01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/liquid_processing/tank01/events",
+      "layer": "simulated", "model": "SIMULATED", "model_known": false,
+      "mode": "simulated", "requires_supervision": false, "runs_24_7": true, "evidence_refs": [] },
+
+    { "key": "mixer01", "name": "Mixer 01", "area": "liquid_processing", "kind": "mixer",
+      "uns": "enterprise.proveit.bottling.plant1.liquid_processing.mixer01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/liquid_processing/mixer01/events",
+      "layer": "simulated", "model": "SIMULATED", "model_known": false,
+      "mode": "simulated", "requires_supervision": false, "runs_24_7": true, "evidence_refs": [] },
+
+    { "key": "filler01", "name": "Filler 01", "area": "filling", "kind": "filler",
+      "uns": "enterprise.proveit.bottling.plant1.filling.filler01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/filling/filler01/events",
+      "layer": "simulated", "model": "SIMULATED", "model_known": false,
+      "mode": "simulated", "requires_supervision": false, "runs_24_7": true, "evidence_refs": [] },
+
+    { "key": "capper01", "name": "Capper 01", "area": "filling", "kind": "capper",
+      "uns": "enterprise.proveit.bottling.plant1.filling.capper01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/filling/capper01/events",
+      "layer": "simulated", "model": "SIMULATED", "model_known": false,
+      "mode": "simulated", "requires_supervision": false, "runs_24_7": true, "evidence_refs": [] },
+
+    { "key": "labeler01", "name": "Labeler 01", "area": "packaging", "kind": "labeler",
+      "uns": "enterprise.proveit.bottling.plant1.packaging.labeler01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/labeler01/events",
+      "layer": "simulated", "model": "SIMULATED", "model_known": false,
+      "mode": "simulated", "requires_supervision": false, "runs_24_7": true, "evidence_refs": [] },
+
+    { "key": "casepacker01", "name": "Case Packer 01", "area": "packaging", "kind": "case_packer",
+      "uns": "enterprise.proveit.bottling.plant1.packaging.casepacker01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/casepacker01/events",
+      "layer": "simulated", "model": "SIMULATED", "model_known": false,
+      "mode": "simulated", "requires_supervision": false, "runs_24_7": true, "evidence_refs": [] },
+
+    { "key": "conv_simple", "name": "Conv_Simple cell (live bench)", "area": "packaging", "kind": "cell",
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple",
+      "native_uns": "enterprise.proveit.bench.conv_simple",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/events",
+      "layer": "live", "model": "CONV_SIMPLE_BENCH", "model_known": true,
+      "mode": "live_supervised_bench", "requires_supervision": true, "runs_24_7": false,
+      "evidence_refs": ["gs10_integration_guide", "modbus_io_map", "anomaly_rules"] },
+
+    { "key": "conv_simple.conveyor", "name": "Conv_Simple conveyor", "area": "packaging", "kind": "conveyor",
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.conveyor",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/conveyor/events",
+      "layer": "live", "model": "Conv_Simple (Factory I/O + bench)", "model_known": false,
+      "mode": "live_supervised_bench", "requires_supervision": true, "runs_24_7": false,
+      "evidence_refs": ["conveyor_factoryio", "anomaly_rules"] },
+
+    { "key": "conv_simple.gs10_vfd", "name": "GS10 VFD", "area": "packaging", "kind": "vfd",
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.gs10_vfd",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/gs10_vfd/events",
+      "layer": "live", "model": "AutomationDirect DURApulse GS10", "model_known": true,
+      "mode": "live_supervised_bench", "requires_supervision": true, "runs_24_7": false,
+      "evidence_refs": ["gs10_user_manual", "gs10_fault_codes"] },
+
+    { "key": "conv_simple.micro820_plc", "name": "Micro820 PLC", "area": "packaging", "kind": "plc",
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.micro820_plc",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/micro820_plc/events",
+      "layer": "live", "model": "Allen-Bradley Micro820 2080-LC20-20QBB", "model_known": true,
+      "mode": "live_supervised_bench", "requires_supervision": true, "runs_24_7": false,
+      "evidence_refs": ["micro820_user_manual"] },
+
+    { "key": "conv_simple.photoeye_pe101", "name": "Photoeye PE-101", "area": "packaging", "kind": "photoeye",
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.photoeye_pe101",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/photoeye_pe101/events",
+      "layer": "live", "model": "UNKNOWN_MODEL", "model_known": false,
+      "mode": "live_supervised_bench", "requires_supervision": true, "runs_24_7": false,
+      "evidence_refs": ["photoeye_notes"] },
+
+    { "key": "conv_simple.conveyor_motor", "name": "Conveyor motor", "area": "packaging", "kind": "motor",
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.conveyor_motor",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/conveyor_motor/events",
+      "layer": "live", "model": "UNKNOWN_MODEL", "model_known": false,
+      "mode": "live_supervised_bench", "requires_supervision": true, "runs_24_7": false,
+      "evidence_refs": ["motor_notes"] }
+  ]
+}

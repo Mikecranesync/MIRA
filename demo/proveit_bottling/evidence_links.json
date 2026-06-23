@@ -1,0 +1,21 @@
+{
+  "_comment": "Links the ProveIt bottling demo to the EXISTING Conv_Simple evidence — references only, no duplication. The real manuals/manifest/answer-card/MQTT-report live under demo/evidence/ and demo/reports/. Simulated assets have no OEM manual (they are simulated, not real equipment) — that is stated honestly, never fabricated.",
+  "demo": "proveit_bottling",
+  "conv_simple_evidence": {
+    "evidence_folder": "demo/evidence/",
+    "manifest": "demo/evidence/evidence_manifest.json",
+    "answer_card_md": "demo/reports/answer_card.md",
+    "answer_card_json": "demo/reports/answer_card.json",
+    "mqtt_report": "demo/reports/mqtt_report.md"
+  },
+  "asset_evidence": {
+    "conv_simple": ["gs10_integration_guide", "modbus_io_map", "anomaly_rules"],
+    "conv_simple.conveyor": ["conveyor_factoryio", "anomaly_rules"],
+    "conv_simple.gs10_vfd": ["gs10_user_manual", "gs10_fault_codes"],
+    "conv_simple.micro820_plc": ["micro820_user_manual"],
+    "conv_simple.photoeye_pe101": ["photoeye_notes"],
+    "conv_simple.conveyor_motor": ["motor_notes"]
+  },
+  "simulated_assets_note": "Simulated bottling assets (tank01, mixer01, filler01, capper01, labeler01, casepacker01) have NO OEM manual on file — they are deterministic simulations, not real equipment. Their scenario cards say so plainly; no manufacturer or part number is invented.",
+  "resolves_evidence_ids_from": "demo/evidence/evidence_manifest.json"
+}

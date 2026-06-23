@@ -1,0 +1,472 @@
+{
+  "factorylm_bundle_version": "1.0",
+  "demo": "proveit_bottling",
+  "uns_root": "enterprise.proveit.bottling.plant1",
+  "areas": [
+    "liquid_processing",
+    "filling",
+    "packaging"
+  ],
+  "asset_count": 12,
+  "scenario_count": 4,
+  "assets": [
+    {
+      "key": "tank01",
+      "name": "Storage Tank 01",
+      "area": "liquid_processing",
+      "kind": "tank",
+      "uns": "enterprise.proveit.bottling.plant1.liquid_processing.tank01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/liquid_processing/tank01/events",
+      "layer": "simulated",
+      "model": "SIMULATED",
+      "model_known": false,
+      "mode": "simulated",
+      "requires_supervision": false,
+      "runs_24_7": true,
+      "evidence_refs": []
+    },
+    {
+      "key": "mixer01",
+      "name": "Mixer 01",
+      "area": "liquid_processing",
+      "kind": "mixer",
+      "uns": "enterprise.proveit.bottling.plant1.liquid_processing.mixer01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/liquid_processing/mixer01/events",
+      "layer": "simulated",
+      "model": "SIMULATED",
+      "model_known": false,
+      "mode": "simulated",
+      "requires_supervision": false,
+      "runs_24_7": true,
+      "evidence_refs": []
+    },
+    {
+      "key": "filler01",
+      "name": "Filler 01",
+      "area": "filling",
+      "kind": "filler",
+      "uns": "enterprise.proveit.bottling.plant1.filling.filler01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/filling/filler01/events",
+      "layer": "simulated",
+      "model": "SIMULATED",
+      "model_known": false,
+      "mode": "simulated",
+      "requires_supervision": false,
+      "runs_24_7": true,
+      "evidence_refs": []
+    },
+    {
+      "key": "capper01",
+      "name": "Capper 01",
+      "area": "filling",
+      "kind": "capper",
+      "uns": "enterprise.proveit.bottling.plant1.filling.capper01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/filling/capper01/events",
+      "layer": "simulated",
+      "model": "SIMULATED",
+      "model_known": false,
+      "mode": "simulated",
+      "requires_supervision": false,
+      "runs_24_7": true,
+      "evidence_refs": []
+    },
+    {
+      "key": "labeler01",
+      "name": "Labeler 01",
+      "area": "packaging",
+      "kind": "labeler",
+      "uns": "enterprise.proveit.bottling.plant1.packaging.labeler01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/labeler01/events",
+      "layer": "simulated",
+      "model": "SIMULATED",
+      "model_known": false,
+      "mode": "simulated",
+      "requires_supervision": false,
+      "runs_24_7": true,
+      "evidence_refs": []
+    },
+    {
+      "key": "casepacker01",
+      "name": "Case Packer 01",
+      "area": "packaging",
+      "kind": "case_packer",
+      "uns": "enterprise.proveit.bottling.plant1.packaging.casepacker01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/casepacker01/events",
+      "layer": "simulated",
+      "model": "SIMULATED",
+      "model_known": false,
+      "mode": "simulated",
+      "requires_supervision": false,
+      "runs_24_7": true,
+      "evidence_refs": []
+    },
+    {
+      "key": "conv_simple",
+      "name": "Conv_Simple cell (live bench)",
+      "area": "packaging",
+      "kind": "cell",
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple",
+      "native_uns": "enterprise.proveit.bench.conv_simple",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/events",
+      "layer": "live",
+      "model": "CONV_SIMPLE_BENCH",
+      "model_known": true,
+      "mode": "live_supervised_bench",
+      "requires_supervision": true,
+      "runs_24_7": false,
+      "evidence_refs": [
+        "gs10_integration_guide",
+        "modbus_io_map",
+        "anomaly_rules"
+      ]
+    },
+    {
+      "key": "conv_simple.conveyor",
+      "name": "Conv_Simple conveyor",
+      "area": "packaging",
+      "kind": "conveyor",
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.conveyor",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/conveyor/events",
+      "layer": "live",
+      "model": "Conv_Simple (Factory I/O + bench)",
+      "model_known": false,
+      "mode": "live_supervised_bench",
+      "requires_supervision": true,
+      "runs_24_7": false,
+      "evidence_refs": [
+        "conveyor_factoryio",
+        "anomaly_rules"
+      ]
+    },
+    {
+      "key": "conv_simple.gs10_vfd",
+      "name": "GS10 VFD",
+      "area": "packaging",
+      "kind": "vfd",
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.gs10_vfd",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/gs10_vfd/events",
+      "layer": "live",
+      "model": "AutomationDirect DURApulse GS10",
+      "model_known": true,
+      "mode": "live_supervised_bench",
+      "requires_supervision": true,
+      "runs_24_7": false,
+      "evidence_refs": [
+        "gs10_user_manual",
+        "gs10_fault_codes"
+      ]
+    },
+    {
+      "key": "conv_simple.micro820_plc",
+      "name": "Micro820 PLC",
+      "area": "packaging",
+      "kind": "plc",
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.micro820_plc",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/micro820_plc/events",
+      "layer": "live",
+      "model": "Allen-Bradley Micro820 2080-LC20-20QBB",
+      "model_known": true,
+      "mode": "live_supervised_bench",
+      "requires_supervision": true,
+      "runs_24_7": false,
+      "evidence_refs": [
+        "micro820_user_manual"
+      ]
+    },
+    {
+      "key": "conv_simple.photoeye_pe101",
+      "name": "Photoeye PE-101",
+      "area": "packaging",
+      "kind": "photoeye",
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.photoeye_pe101",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/photoeye_pe101/events",
+      "layer": "live",
+      "model": "UNKNOWN_MODEL",
+      "model_known": false,
+      "mode": "live_supervised_bench",
+      "requires_supervision": true,
+      "runs_24_7": false,
+      "evidence_refs": [
+        "photoeye_notes"
+      ]
+    },
+    {
+      "key": "conv_simple.conveyor_motor",
+      "name": "Conveyor motor",
+      "area": "packaging",
+      "kind": "motor",
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.conveyor_motor",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/conveyor_motor/events",
+      "layer": "live",
+      "model": "UNKNOWN_MODEL",
+      "model_known": false,
+      "mode": "live_supervised_bench",
+      "requires_supervision": true,
+      "runs_24_7": false,
+      "evidence_refs": [
+        "motor_notes"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "filler_jam",
+      "kind": "simulated",
+      "asset_uns": "enterprise.proveit.bottling.plant1.filling.filler01",
+      "symptom": "filler_stopped",
+      "question": "Why did the filler stop and bottles back up?",
+      "receipts": [],
+      "review_notes": "Simulated. Demonstrates a discrete-MES jam (no real equipment)."
+    },
+    {
+      "id": "capper_fault",
+      "kind": "simulated",
+      "asset_uns": "enterprise.proveit.bottling.plant1.filling.capper01",
+      "symptom": "quality_reject",
+      "question": "Why are capped bottles being rejected?",
+      "receipts": [],
+      "review_notes": "Simulated. Demonstrates a quality (torque) fault."
+    },
+    {
+      "id": "pe101_blocked",
+      "kind": "live_supervised",
+      "asset_uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.photoeye_pe101",
+      "symptom": "conveyor_stopped",
+      "question": "Why did the conveyor stop?",
+      "receipts": [
+        {
+          "id": "photoeye_notes",
+          "title": "Photoeye PE-101 notes (UNKNOWN_MODEL)",
+          "source": "demo/evidence/photoeye/notes.md"
+        },
+        {
+          "id": "gs10_user_manual",
+          "title": "DURApulse GS10 User Manual (GS10M)",
+          "source": "https://cdn.automationdirect.com/static/manuals/gs10m/gs10m.pdf"
+        },
+        {
+          "id": "gs10_fault_codes",
+          "title": "GS10 Manual Ch.06 — Fault & Warning Codes",
+          "source": "https://cdn.automationdirect.com/static/manuals/gs10m/ch06.pdf"
+        },
+        {
+          "id": "anomaly_rules",
+          "title": "Conv_Simple anomaly rules (A12 photo-eye jam)",
+          "source": "plc/conv_simple_anomaly/"
+        },
+        {
+          "id": "gs10_integration_guide",
+          "title": "GS10 + Micro820 Integration Guide (wiring + comm + tag map)",
+          "source": "plc/GS10_Integration_Guide.md"
+        },
+        {
+          "id": "modbus_io_map",
+          "title": "Modbus server / register map (MbSrvConf_ConvSimple_v1.9.xml — the deployed map; v2.1 reuses it)",
+          "source": "plc/MbSrvConf_ConvSimple_v1.9.xml"
+        },
+        {
+          "id": "micro820_user_manual",
+          "title": "Micro820 Programmable Controllers User Manual (2080-UM005)",
+          "source": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/2080-um005_-en-e.pdf"
+        },
+        {
+          "id": "conveyor_factoryio",
+          "title": "Factory I/O documentation",
+          "source": "https://docs.factoryio.com/"
+        }
+      ],
+      "review_notes": "LIVE supervised bench (Conv_Simple). Reuses the real demo/conv_simple_demo.py answer card — real GS10/Micro820 manuals + the PE-101 procedure."
+    },
+    {
+      "id": "gs10_fault",
+      "kind": "live_supervised",
+      "asset_uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.gs10_vfd",
+      "symptom": "conveyor_stopped",
+      "question": "Why did the conveyor stop with a drive fault?",
+      "receipts": [
+        {
+          "id": "gs10_user_manual",
+          "title": "DURApulse GS10 User Manual (GS10M)",
+          "source": "https://cdn.automationdirect.com/static/manuals/gs10m/gs10m.pdf"
+        },
+        {
+          "id": "gs10_fault_codes",
+          "title": "GS10 Manual Ch.06 — Fault & Warning Codes",
+          "source": "https://cdn.automationdirect.com/static/manuals/gs10m/ch06.pdf"
+        },
+        {
+          "id": "micro820_user_manual",
+          "title": "Micro820 Programmable Controllers User Manual (2080-UM005)",
+          "source": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/2080-um005_-en-e.pdf"
+        },
+        {
+          "id": "gs10_integration_guide",
+          "title": "GS10 + Micro820 Integration Guide (wiring + comm + tag map)",
+          "source": "plc/GS10_Integration_Guide.md"
+        }
+      ],
+      "review_notes": "LIVE supervised bench. GS10 reports a fault code — this IS a drive fault (contrast with pe101_blocked, where the GS10 was healthy)."
+    }
+  ],
+  "evidence_links": {
+    "demo": "proveit_bottling",
+    "conv_simple_evidence": {
+      "evidence_folder": "demo/evidence/",
+      "manifest": "demo/evidence/evidence_manifest.json",
+      "answer_card_md": "demo/reports/answer_card.md",
+      "answer_card_json": "demo/reports/answer_card.json",
+      "mqtt_report": "demo/reports/mqtt_report.md"
+    },
+    "asset_evidence": {
+      "conv_simple": [
+        "gs10_integration_guide",
+        "modbus_io_map",
+        "anomaly_rules"
+      ],
+      "conv_simple.conveyor": [
+        "conveyor_factoryio",
+        "anomaly_rules"
+      ],
+      "conv_simple.gs10_vfd": [
+        "gs10_user_manual",
+        "gs10_fault_codes"
+      ],
+      "conv_simple.micro820_plc": [
+        "micro820_user_manual"
+      ],
+      "conv_simple.photoeye_pe101": [
+        "photoeye_notes"
+      ],
+      "conv_simple.conveyor_motor": [
+        "motor_notes"
+      ]
+    },
+    "simulated_assets_note": "Simulated bottling assets (tank01, mixer01, filler01, capper01, labeler01, casepacker01) have NO OEM manual on file — they are deterministic simulations, not real equipment. Their scenario cards say so plainly; no manufacturer or part number is invented.",
+    "resolves_evidence_ids_from": "demo/evidence/evidence_manifest.json"
+  },
+  "uns_map": {
+    "tank01": {
+      "uns": "enterprise.proveit.bottling.plant1.liquid_processing.tank01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/liquid_processing/tank01/events"
+    },
+    "mixer01": {
+      "uns": "enterprise.proveit.bottling.plant1.liquid_processing.mixer01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/liquid_processing/mixer01/events"
+    },
+    "filler01": {
+      "uns": "enterprise.proveit.bottling.plant1.filling.filler01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/filling/filler01/events"
+    },
+    "capper01": {
+      "uns": "enterprise.proveit.bottling.plant1.filling.capper01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/filling/capper01/events"
+    },
+    "labeler01": {
+      "uns": "enterprise.proveit.bottling.plant1.packaging.labeler01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/labeler01/events"
+    },
+    "casepacker01": {
+      "uns": "enterprise.proveit.bottling.plant1.packaging.casepacker01",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/casepacker01/events"
+    },
+    "conv_simple": {
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/events"
+    },
+    "conv_simple.conveyor": {
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.conveyor",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/conveyor/events"
+    },
+    "conv_simple.gs10_vfd": {
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.gs10_vfd",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/gs10_vfd/events"
+    },
+    "conv_simple.micro820_plc": {
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.micro820_plc",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/micro820_plc/events"
+    },
+    "conv_simple.photoeye_pe101": {
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.photoeye_pe101",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/photoeye_pe101/events"
+    },
+    "conv_simple.conveyor_motor": {
+      "uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.conveyor_motor",
+      "mqtt_topic": "enterprise/proveit/bottling/plant1/packaging/conv_simple/conveyor_motor/events"
+    }
+  },
+  "supervision": {
+    "tank01": {
+      "mode": "simulated",
+      "requires_supervision": false,
+      "runs_24_7": true,
+      "layer": "simulated"
+    },
+    "mixer01": {
+      "mode": "simulated",
+      "requires_supervision": false,
+      "runs_24_7": true,
+      "layer": "simulated"
+    },
+    "filler01": {
+      "mode": "simulated",
+      "requires_supervision": false,
+      "runs_24_7": true,
+      "layer": "simulated"
+    },
+    "capper01": {
+      "mode": "simulated",
+      "requires_supervision": false,
+      "runs_24_7": true,
+      "layer": "simulated"
+    },
+    "labeler01": {
+      "mode": "simulated",
+      "requires_supervision": false,
+      "runs_24_7": true,
+      "layer": "simulated"
+    },
+    "casepacker01": {
+      "mode": "simulated",
+      "requires_supervision": false,
+      "runs_24_7": true,
+      "layer": "simulated"
+    },
+    "conv_simple": {
+      "mode": "live_supervised_bench",
+      "requires_supervision": true,
+      "runs_24_7": false,
+      "layer": "live"
+    },
+    "conv_simple.conveyor": {
+      "mode": "live_supervised_bench",
+      "requires_supervision": true,
+      "runs_24_7": false,
+      "layer": "live"
+    },
+    "conv_simple.gs10_vfd": {
+      "mode": "live_supervised_bench",
+      "requires_supervision": true,
+      "runs_24_7": false,
+      "layer": "live"
+    },
+    "conv_simple.micro820_plc": {
+      "mode": "live_supervised_bench",
+      "requires_supervision": true,
+      "runs_24_7": false,
+      "layer": "live"
+    },
+    "conv_simple.photoeye_pe101": {
+      "mode": "live_supervised_bench",
+      "requires_supervision": true,
+      "runs_24_7": false,
+      "layer": "live"
+    },
+    "conv_simple.conveyor_motor": {
+      "mode": "live_supervised_bench",
+      "requires_supervision": true,
+      "runs_24_7": false,
+      "layer": "live"
+    }
+  },
+  "notes": "Hub-importable bundle. Hub optional locally — this file IS the import payload. Conv_Simple is a live_supervised_bench cell (requires_supervision=true, runs_24_7=false)."
+}

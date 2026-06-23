@@ -1,0 +1,94 @@
+{
+  "_comment": "ProveIt bottling fault scenarios. Simulated scenarios carry their own deterministic answer-card content (honest: simulated asset, no OEM manual). Live Conv_Simple scenarios reuse the REAL card from demo/conv_simple_demo.py (use_conv_simple_card) or a GS10-fault builder that cites the real GS10 evidence. evidence_refs are ids in demo/evidence/evidence_manifest.json.",
+  "demo": "proveit_bottling",
+  "scenarios": [
+    {
+      "id": "filler_jam",
+      "kind": "simulated",
+      "asset_key": "filler01",
+      "asset_uns": "enterprise.proveit.bottling.plant1.filling.filler01",
+      "symptom": "filler_stopped",
+      "question": "Why did the filler stop and bottles back up?",
+      "tags": {
+        "abnormal": { "jam_detected": "TRUE", "bottles_per_minute": "0", "infeed_accumulation": "100% (full)" },
+        "healthy": { "tank_level_percent": "62% (supply OK)", "filler_bowl_pressure": "14 PSI (nominal)" }
+      },
+      "evidence_refs": [],
+      "card": {
+        "most_likely_cause": "A bottle jam at the filler infeed — not a supply or pressure problem.",
+        "confidence": "High",
+        "why": [
+          "Jam-detected is TRUE at the filler",
+          "Bottles-per-minute dropped to 0 and infeed accumulation is full",
+          "Tank level and bowl pressure are nominal — supply is fine"
+        ],
+        "evidence_for": ["jam_detected = TRUE", "bottles_per_minute = 0", "infeed_accumulation = 100%"],
+        "evidence_against": ["tank_level_percent = 62% (not starved)", "filler_bowl_pressure = 14 PSI (no underfill cause)"],
+        "technician_checks": [
+          "Clear the jammed bottle(s) at the filler infeed star/guide.",
+          "Confirm the jam sensor clears after the jam is removed.",
+          "Verify infeed conveyor/timing screw is feeding single-file."
+        ],
+        "human_review": ["Confirm on the line.", "filler01 is a SIMULATED asset — no OEM manual on file (deterministic scenario)."]
+      },
+      "review_notes": "Simulated. Demonstrates a discrete-MES jam (no real equipment)."
+    },
+    {
+      "id": "capper_fault",
+      "kind": "simulated",
+      "asset_key": "capper01",
+      "asset_uns": "enterprise.proveit.bottling.plant1.filling.capper01",
+      "symptom": "quality_reject",
+      "question": "Why are capped bottles being rejected?",
+      "tags": {
+        "abnormal": { "cap_torque_inlb": "9 in-lb (below 12 target)", "reject_count": "rising", "cap_torque_variance": "high" },
+        "healthy": { "cap_chute_level": "OK", "capper_running": "TRUE" }
+      },
+      "evidence_refs": [],
+      "card": {
+        "most_likely_cause": "Cap application torque is below target (worn clutch / pads) — a quality fault, not a feed fault.",
+        "confidence": "Medium",
+        "why": [
+          "Cap torque is 9 in-lb vs a 12 in-lb target, with high variance",
+          "Reject count is rising",
+          "Cap chute level is OK and the capper is running — caps are available"
+        ],
+        "evidence_for": ["cap_torque_inlb = 9 (below target)", "reject_count rising", "cap_torque_variance high"],
+        "evidence_against": ["cap_chute_level OK (not starved of caps)", "capper_running = TRUE (not a stop)"],
+        "technician_checks": [
+          "Check the capping head clutch / friction pads for wear.",
+          "Re-verify the torque setpoint and re-run a torque audit.",
+          "Inspect caps for the correct size/lot."
+        ],
+        "human_review": ["Confirm with a torque tester.", "capper01 is a SIMULATED asset — no OEM manual on file (deterministic scenario)."]
+      },
+      "review_notes": "Simulated. Demonstrates a quality (torque) fault."
+    },
+    {
+      "id": "pe101_blocked",
+      "kind": "live_supervised",
+      "asset_key": "conv_simple.photoeye_pe101",
+      "asset_uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.photoeye_pe101",
+      "symptom": "conveyor_stopped",
+      "question": "Why did the conveyor stop?",
+      "evidence_refs": ["photoeye_notes", "gs10_user_manual", "gs10_fault_codes", "anomaly_rules", "gs10_integration_guide", "modbus_io_map", "micro820_user_manual", "conveyor_factoryio"],
+      "use_conv_simple_card": true,
+      "review_notes": "LIVE supervised bench (Conv_Simple). Reuses the real demo/conv_simple_demo.py answer card — real GS10/Micro820 manuals + the PE-101 procedure."
+    },
+    {
+      "id": "gs10_fault",
+      "kind": "live_supervised",
+      "asset_key": "conv_simple.gs10_vfd",
+      "asset_uns": "enterprise.proveit.bottling.plant1.packaging.conv_simple.gs10_vfd",
+      "symptom": "conveyor_stopped",
+      "question": "Why did the conveyor stop with a drive fault?",
+      "evidence_refs": ["gs10_user_manual", "gs10_fault_codes", "micro820_user_manual", "gs10_integration_guide"],
+      "card_builder": "gs10_fault",
+      "tags": {
+        "abnormal": { "vfd_fault_code": "E07 (overcurrent)", "conv_run": "FALSE (stopped)", "vfd_motor_rpm": "0" },
+        "healthy": { "di05_photoeye": "CLEAR (beam not blocked)" }
+      },
+      "review_notes": "LIVE supervised bench. GS10 reports a fault code — this IS a drive fault (contrast with pe101_blocked, where the GS10 was healthy)."
+    }
+  ]
+}
