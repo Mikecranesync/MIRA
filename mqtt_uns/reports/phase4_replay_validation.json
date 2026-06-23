@@ -1,0 +1,16 @@
+{
+  "scenarios": 35,
+  "repeats": 12,
+  "total_replays": 420,
+  "mqtt_match": 420,
+  "mqtt_match_pct": 100.0,
+  "determinism": 420,
+  "determinism_pct": 100.0,
+  "citation_complete": 420,
+  "citation_complete_pct": 100.0,
+  "cause_correct": 156,
+  "cause_accuracy_pct": 37.14,
+  "transport_failures": 0,
+  "answer_card_mismatches": 0,
+  "mismatch_examples": []
+}

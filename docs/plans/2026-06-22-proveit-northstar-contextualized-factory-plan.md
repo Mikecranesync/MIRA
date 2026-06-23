@@ -200,12 +200,34 @@ brain-side: **no MQTT/Sparkplug/OPC-UA/Modbus/Ignition/broker/live pipeline/PLC 
 - **Discovery Recorder:** session-004 (failed hypotheses H1–H5: score-isn't-trust, contradicting-evidence,
   graph-is-the-source, no-anonymous-facts, history-now).
 
-### Phase 4 — Live MQTT feed (Mosquitto) + fault injection  `[SC 9 live]`
-**Goal:** the synthesizer streams live over a real broker; faults inject live.
-- **Tasks / subagents:** `[builder-A]` `simlab/factory/simplc.py` — per-line runtime: async wall-clock loop → synth → publish via hardened `MqttPublisher`; retained statics/run-state, non-retained telemetry; subscribes `…/<line>/cmd/fault` to arm/clear hidden causes. `[builder-B]` `docker-compose.simfactory.yml` (local/dev only) with one pinned `eclipse-mosquitto`; run-book to launch 1 line (Phase 4) and fan out to all 15 (Phase 4b). `[verifier]` fake-MQTT offline test (the existing `MqttPublisher` regression pattern) + a live smoke (broker up → values land → inject fault → symptom within N ticks).
-- **Deliverables:** `simplc.py`, `docker-compose.simfactory.yml`, mosquitto config, runbook, offline + smoke tests.
-- **Acceptance:** `python -m simlab.factory.simplc --line FillingLine01 --broker localhost:1883` streams live; a subscriber sees correct UNS topics; injected `jammed_conveyor`/underfill produces the symptom + ground truth; offline test deterministic; ruff clean.
-- **Slice order:** Phase-1 first slice = **one Filling Line** (CapLoader+Washer+Filler); then fan out to all **15 lines** (one sim-PLC process per `line` node) in 4b.
+### Phase 4 — MQTT nervous system (transport preserves explainability)  `[SC 9/10 transport]`  ✅ DONE
+**Re-scoped (Mike, 2026-06-23): the narrowest possible nervous-system path — MQTT is ONLY transport.**
+Prove a deterministic event can travel through MQTT on a UNS topic and produce the **identical**
+evidence-backed answer card. Built as `mqtt_uns/` on Phases 0–3; the brain is unchanged. **No Ignition/
+OpenPLC/Modbus/OPC-UA/Sparkplug/PLC sim/historian/CMMS/dashboard/web UI/broker clustering.**
+- **Transport decision:** an **in-process broker** (`broker.InMemoryBroker`) with real MQTT `+`/`#`
+  topic semantics — deterministic, offline-testable; the same `Transport` seam accepts a real
+  paho/aiomqtt client later with zero brain changes. (No external Mosquitto required for the gate.)
+- **Deliverables:** `mqtt_uns/{schemas,broker,topics,publisher,subscriber,event_bridge,mqtt_reports,replay,run_phase4}.py`
+  + `tests/` + `reports/{phase4_mqtt_report,phase4_replay_validation}.{md,json}`; `make mqtt-phase4`.
+  - **`schemas.MaintenanceEvent`** — deterministic JSON carrying only the *observation* (type + UNS +
+    abnormal/healthy signals); the subscriber re-runs the SAME `explain_cause` (the wire never carries
+    the answer).
+  - **`event_bridge`** — `event_from_scenario` (Phase 2→wire) / `observation_from_event` (wire→Phase 3) /
+    `explain_event` (→ answer card). The only module that touches the brain.
+- **Flow:** Phase 2 event → publish (UNS topic `…/conveyor01/events`) → subscribe → bridge →
+  Phase 3 `explain_cause` → answer card == the offline + committed Phase 3 card, byte-for-byte.
+- **Replay validation:** `phase4_replay_validation.{md,json}` — **420 replays** across fault types/assets/
+  contradiction cases: **answer-card consistency 100%, determinism 100%, citation completeness 100%**,
+  0 transport failures, 0 mismatches. Cause accuracy (37%) is **measured, not gated** (engine
+  discriminability on the sparse fixture; both paths agree, so the card still survives transport).
+- **Acceptance (one command, nonzero on failure):** `python mqtt_uns/run_phase4.py` (or `make mqtt-phase4`)
+  → Phase 3 (→2→1→0) → round-trip flagship + contradiction → replay → message determinism → **13 tests**.
+  Fails on transport failures / answer-card mismatches / unsupported claims / missing citations /
+  non-determinism / evidence-graph violations. Phase 0 (18)+1 (15)+2 (9)+3 (21)+4 (13) = **76 tests**
+  green; ruff clean; no licensed evidence.
+- **Discovery Recorder:** session-005 (failed hypotheses H1–H4: in-process-broker-suffices, wire-carries-
+  observation-not-answer, contradiction-must-keep-support, cause-accuracy-is-not-a-transport-metric).
 
 ### Phase 5 — Ask MIRA grounded answer + Ignition Perspective  `[PRIMARY GOAL; SC 6,7,8,10]`
 **Goal:** *"Why is this line blocked?"* answered live, grounded, inside Ignition.

@@ -1,0 +1,9 @@
+{
+  "event_type": "photoeye_blocked",
+  "asset_uns": "synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01",
+  "topic": "synthetic_beverage_co/demo_site/bottling/bottlingline1/conveyor01/events",
+  "published_payload": "{\"abnormal_signals\": [\"synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.production.counts_outfeed_value_value\", \"synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.blocked_value_value\", \"synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.photoeye_blocked_value_value\", \"synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.state_name\"], \"asset_uns\": \"synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01\", \"conflicting\": false, \"event_type\": \"photoeye_blocked\", \"healthy_signals\": [], \"line_uns\": \"synthetic_beverage_co.demo_site.bottling.bottlingline1\", \"schema_version\": \"1\", \"symptom\": \"line_blocked\"}",
+  "received_payload": "{\"abnormal_signals\": [\"synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.production.counts_outfeed_value_value\", \"synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.blocked_value_value\", \"synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.photoeye_blocked_value_value\", \"synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01.status.state_name\"], \"asset_uns\": \"synthetic_beverage_co.demo_site.bottling.bottlingline1.conveyor01\", \"conflicting\": false, \"event_type\": \"photoeye_blocked\", \"healthy_signals\": [], \"line_uns\": \"synthetic_beverage_co.demo_site.bottling.bottlingline1\", \"schema_version\": \"1\", \"symptom\": \"line_blocked\"}",
+  "payload_identical": true,
+  "answer_card_matches_offline": true
+}

@@ -12,6 +12,9 @@ causality-phase2:  ## Run the Phase 2 causality gate (Phase 1 -> failure modes -
 explainability-phase3:  ## Run the Phase 3 explainability gate (Phase 2 -> evidence graph -> auditable answer -> pytest)
 	python evidence_graph/run_phase3.py
 
+mqtt-phase4:  ## Run the Phase 4 MQTT gate (Phase 3 -> publish -> subscribe -> identical answer card -> replay -> pytest)
+	python mqtt_uns/run_phase4.py
+
 demo-preflight:
 	doppler run --project factorylm --config prd -- bash scripts/demo-preflight.sh
 
