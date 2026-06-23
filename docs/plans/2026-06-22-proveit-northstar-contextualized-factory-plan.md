@@ -108,12 +108,33 @@ recorded session (with failed hypotheses).
   few hundred live values + static metadata; families **discrete-MES** / **continuous-process**;
   archetypes `static_metadata · live_bool · live_counter · live_state · live_analog`.
 
-### Phase 1 — Evidence → context reconstruction  `[SC 2,3,4,5]`
-**Goal:** turn the discovery output into a queryable **context model**: asset graph, UNS mappings,
-MES/OEE entity model, signal→archetype map.
-- **Tasks / subagents:** `[builder-A]` `simlab/factory/import_model.py` — load the parser i3x/JSON export → `FactoryModel(area→line→asset→signal)` with archetype + unit on each signal; `[builder-B]` `simlab/factory/context.py` — MES/OEE entity model (ProductionRun, Counts, State, OEE rollups) + asset-relationship edges (line-contains-asset, upstream→downstream conveyance for blocked/starved propagation); `[verifier]` review + tests.
-- **Deliverables:** `import_model.py`, `context.py`, `topics.py` (UNS↔MQTT topic map: `FactoryLM/CappyHour/Site1/<Area>/<Line>/<Asset>/<Signal>`), tests on the mini fixture.
-- **Acceptance:** model reconstructs 4 areas/15 lines/43 assets from the export with 0 dangling parents; every signal carries an archetype; upstream/downstream edges exist for each line. Deterministic.
+### Phase 1 — Evidence → contextual model → UNS draft → approval-ready suggestions  `[SC 2,3,4,5]`  ✅ DONE
+**Higher goal (proven this phase):** `evidence export → contextual factory model → UNS draft →
+approval-ready suggestions`. Built as a clean **`factory_context/`** package (synthesizer-free; the
+simulator stays out of Phase 1). The model is **evidence- and approval-centric**, not a bare asset/tag
+store.
+- **Deliverables:** `factory_context/{model,build,uns_draft,report,run_phase1}.py` + `tests/` +
+  generated `reports/phase1_context_model.{md,json}` + `reports/uns_draft.json`; `make context-phase1`.
+  - **`model.py`** — every entity/signal/relationship is a `Suggestion` preserving **source evidence,
+    confidence (high/medium/low/review), why it exists, the human approval needed, and status
+    (suggested/approved/rejected/needs_review)**. `evidence_violations()` enforces *no fact without
+    evidence*.
+  - **`build.py`** — confidence policy: structural entities + `contains` = HIGH/suggested; inferred
+    signal role = MEDIUM/suggested; **inferred `feeds` (upstream→downstream) + the cell layer =
+    LOW/needs_review** (export order ≠ physical flow; no cell in evidence). Reuses Phase 0's
+    `classify_signal` + the parser's `slug`/`Provenance`.
+  - **`uns_draft.py`** — slugged UNS paths for enterprise→asset + categorized live signals
+    (`live_bool`→`status`, `live_counter`→`production`, `live_state`→`status`, `live_analog`→`process`).
+- **Honesty guarantee:** the machine **never auto-approves** (status is suggested/needs_review only);
+  uncertain mappings are flagged, not asserted. Enforced by tests + the gate.
+- **Acceptance (one command, nonzero on failure):** `python factory_context/run_phase1.py` (or
+  `make context-phase1`) → runs Phase 0 → builds the model → writes the UNS draft + report → runs
+  **15 Phase 1 tests** → enforces 0 facts-without-evidence + the success condition. Phase 0 (18) +
+  Phase 1 (15) green; ruff clean. **No licensed evidence committed.**
+- **Discovery Recorder:** session-002 (with failed hypotheses H1–H5) + the fixture extension
+  (`CapLoader01` upstream of `Filler01`).
+- **Note:** the `topics.py` UNS↔MQTT map moves to Phase 4 (it is a live-feed concern, not a
+  contextualization one).
 
 ### Phase 2 — Deterministic synthesizer + hidden-cause layer  `[SC 9 + maintenance layer]`
 **Goal:** generate realistic, replayable factory behavior where **every surface event has a hidden

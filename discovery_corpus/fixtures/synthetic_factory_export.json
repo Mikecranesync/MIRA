@@ -16,6 +16,22 @@
               "tagType": "Folder",
               "tags": [
                 {
+                  "name": "CapLoader01",
+                  "typeId": "Models/Equipment/Process/CapLoader",
+                  "tagType": "UdtInstance",
+                  "parameters": {
+                    "MesTagPath": { "dataType": "String", "value": "[MES]Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/CapLoader01" }
+                  },
+                  "tags": [
+                    { "name": "ProductionRun", "tagType": "UdtInstance", "tags": [ { "name": "Running", "tagType": "AtomicTag" } ] },
+                    { "name": "Blocked", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "AtomicTag" }, { "name": "String", "tagType": "AtomicTag" } ] } ] },
+                    { "name": "Starved", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "AtomicTag" } ] } ] },
+                    { "name": "Counts", "tagType": "UdtInstance", "tags": [ { "name": "Outfeed", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "AtomicTag", "engUnit": "Units" }, { "name": "NumberFormat", "tagType": "AtomicTag" } ] } ] } ] },
+                    { "name": "State", "tagType": "UdtInstance", "tags": [ { "name": "Name", "tagType": "AtomicTag" }, { "name": "Duration", "tagType": "UdtInstance", "tags": [ { "name": "TotalSeconds", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "AtomicTag", "engUnit": "s" } ] } ] } ] },
+                    { "name": "Definition", "tagType": "UdtInstance", "tags": [ { "name": "TypeId", "tagType": "AtomicTag" } ] }
+                  ]
+                },
+                {
                   "name": "Filler01",
                   "typeId": "Models/Equipment/Process/Filler",
                   "tagType": "UdtInstance",

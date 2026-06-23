@@ -1,0 +1,275 @@
+{
+  "source": "discovery_corpus/fixtures/synthetic_factory_export.json",
+  "entities": [
+    {
+      "level": "enterprise",
+      "uns_path": "synthetic_beverage_co",
+      "name": "Synthetic Beverage Co",
+      "confidence": "high",
+      "status": "suggested"
+    },
+    {
+      "level": "site",
+      "uns_path": "synthetic_beverage_co.demo_site",
+      "name": "Demo Site",
+      "confidence": "high",
+      "status": "suggested"
+    },
+    {
+      "level": "area",
+      "uns_path": "synthetic_beverage_co.demo_site.bottling",
+      "name": "Bottling",
+      "confidence": "high",
+      "status": "suggested"
+    },
+    {
+      "level": "line",
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1",
+      "name": "BottlingLine1",
+      "confidence": "high",
+      "status": "suggested"
+    },
+    {
+      "level": "asset",
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01",
+      "name": "CapLoader01",
+      "confidence": "high",
+      "status": "suggested"
+    },
+    {
+      "level": "asset",
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01",
+      "name": "Filler01",
+      "confidence": "high",
+      "status": "suggested"
+    },
+    {
+      "level": "area",
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing",
+      "name": "Liquid Processing",
+      "confidence": "high",
+      "status": "suggested"
+    },
+    {
+      "level": "line",
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1",
+      "name": "TankFarm1",
+      "confidence": "high",
+      "status": "suggested"
+    },
+    {
+      "level": "asset",
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01",
+      "name": "Tank01",
+      "confidence": "high",
+      "status": "suggested"
+    },
+    {
+      "level": "cell",
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.bottlingline1_cell",
+      "name": "BottlingLine1 cell",
+      "confidence": "low",
+      "status": "needs_review"
+    },
+    {
+      "level": "cell",
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tankfarm1_cell",
+      "name": "TankFarm1 cell",
+      "confidence": "low",
+      "status": "needs_review"
+    }
+  ],
+  "signals": [
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.productionrun_running",
+      "name": "ProductionRun.Running",
+      "archetype": "live_bool",
+      "confidence": "medium",
+      "status": "suggested"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.blocked_value_value",
+      "name": "Blocked.Value.Value",
+      "archetype": "live_bool",
+      "confidence": "medium",
+      "status": "suggested"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.starved_value_value",
+      "name": "Starved.Value.Value",
+      "archetype": "live_bool",
+      "confidence": "medium",
+      "status": "suggested"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.production.counts_outfeed_value_value",
+      "name": "Counts.Outfeed.Value.Value",
+      "archetype": "live_counter",
+      "confidence": "medium",
+      "status": "suggested"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.state_name",
+      "name": "State.Name",
+      "archetype": "live_state",
+      "confidence": "medium",
+      "status": "suggested"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.state_duration_totalseconds_value",
+      "name": "State.Duration.TotalSeconds.Value",
+      "archetype": "live_state",
+      "confidence": "medium",
+      "status": "suggested"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.productionrun_running",
+      "name": "ProductionRun.Running",
+      "archetype": "live_bool",
+      "confidence": "medium",
+      "status": "suggested"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.blocked_value_value",
+      "name": "Blocked.Value.Value",
+      "archetype": "live_bool",
+      "confidence": "medium",
+      "status": "suggested"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.starved_value_value",
+      "name": "Starved.Value.Value",
+      "archetype": "live_bool",
+      "confidence": "medium",
+      "status": "suggested"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.production.counts_outfeed_value_value",
+      "name": "Counts.Outfeed.Value.Value",
+      "archetype": "live_counter",
+      "confidence": "medium",
+      "status": "suggested"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.production.counts_defect_value_value",
+      "name": "Counts.Defect.Value.Value",
+      "archetype": "live_counter",
+      "confidence": "medium",
+      "status": "suggested"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.state_name",
+      "name": "State.Name",
+      "archetype": "live_state",
+      "confidence": "medium",
+      "status": "suggested"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.state_duration_totalseconds_value",
+      "name": "State.Duration.TotalSeconds.Value",
+      "archetype": "live_state",
+      "confidence": "medium",
+      "status": "suggested"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.level_value_value",
+      "name": "Level.Value.Value",
+      "archetype": "live_analog",
+      "confidence": "medium",
+      "status": "suggested"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.flow_value_value",
+      "name": "Flow.Value.Value",
+      "archetype": "live_analog",
+      "confidence": "medium",
+      "status": "suggested"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.temperature_value_value",
+      "name": "Temperature.Value.Value",
+      "archetype": "live_analog",
+      "confidence": "medium",
+      "status": "suggested"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.pressure_value_value",
+      "name": "Pressure.Value.Value",
+      "archetype": "live_analog",
+      "confidence": "medium",
+      "status": "suggested"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.density_value_value",
+      "name": "Density.Value.Value",
+      "archetype": "live_analog",
+      "confidence": "medium",
+      "status": "suggested"
+    }
+  ],
+  "relationships": [
+    {
+      "type": "contains",
+      "source": "synthetic_beverage_co",
+      "target": "synthetic_beverage_co.demo_site",
+      "confidence": "high",
+      "status": "suggested"
+    },
+    {
+      "type": "contains",
+      "source": "synthetic_beverage_co.demo_site",
+      "target": "synthetic_beverage_co.demo_site.bottling",
+      "confidence": "high",
+      "status": "suggested"
+    },
+    {
+      "type": "contains",
+      "source": "synthetic_beverage_co.demo_site.bottling",
+      "target": "synthetic_beverage_co.demo_site.bottling.bottlingline1",
+      "confidence": "high",
+      "status": "suggested"
+    },
+    {
+      "type": "contains",
+      "source": "synthetic_beverage_co.demo_site.bottling.bottlingline1",
+      "target": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01",
+      "confidence": "high",
+      "status": "suggested"
+    },
+    {
+      "type": "contains",
+      "source": "synthetic_beverage_co.demo_site.bottling.bottlingline1",
+      "target": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01",
+      "confidence": "high",
+      "status": "suggested"
+    },
+    {
+      "type": "contains",
+      "source": "synthetic_beverage_co.demo_site",
+      "target": "synthetic_beverage_co.demo_site.liquid_processing",
+      "confidence": "high",
+      "status": "suggested"
+    },
+    {
+      "type": "contains",
+      "source": "synthetic_beverage_co.demo_site.liquid_processing",
+      "target": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1",
+      "confidence": "high",
+      "status": "suggested"
+    },
+    {
+      "type": "contains",
+      "source": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1",
+      "target": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01",
+      "confidence": "high",
+      "status": "suggested"
+    },
+    {
+      "type": "feeds",
+      "source": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01",
+      "target": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01",
+      "confidence": "low",
+      "status": "needs_review"
+    }
+  ]
+}

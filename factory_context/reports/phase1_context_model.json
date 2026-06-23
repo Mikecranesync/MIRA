@@ -1,0 +1,1061 @@
+{
+  "source": "discovery_corpus/fixtures/synthetic_factory_export.json",
+  "counts": {
+    "enterprise": 1,
+    "site": 1,
+    "area": 2,
+    "line": 2,
+    "cell": 2,
+    "asset": 3,
+    "signal": 25,
+    "relationships": 9
+  },
+  "nodes": [
+    {
+      "uns_path": "synthetic_beverage_co",
+      "name": "Synthetic Beverage Co",
+      "level": "enterprise",
+      "suggestion": {
+        "kind": "entity",
+        "statement": "Enterprise 'Synthetic Beverage Co' is structurally present in the export.",
+        "confidence": "high",
+        "approval_needed": "Confirm this enterprise and its placement in the namespace.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co",
+            "detail": "Ignition Folder node (enterprise container)"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site",
+      "name": "Demo Site",
+      "level": "site",
+      "suggestion": {
+        "kind": "entity",
+        "statement": "Site 'Demo Site' is structurally present in the export.",
+        "confidence": "high",
+        "approval_needed": "Confirm this site and its placement in the namespace.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site",
+            "detail": "Ignition Folder node (site container)"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling",
+      "name": "Bottling",
+      "level": "area",
+      "suggestion": {
+        "kind": "entity",
+        "statement": "Area 'Bottling' is structurally present in the export.",
+        "confidence": "high",
+        "approval_needed": "Confirm this area and its placement in the namespace.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling",
+            "detail": "Ignition Folder node (area container)"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1",
+      "name": "BottlingLine1",
+      "level": "line",
+      "suggestion": {
+        "kind": "entity",
+        "statement": "Line 'BottlingLine1' is structurally present in the export.",
+        "confidence": "high",
+        "approval_needed": "Confirm this line and its placement in the namespace.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1",
+            "detail": "Ignition Folder node (line container)"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01",
+      "name": "CapLoader01",
+      "level": "asset",
+      "suggestion": {
+        "kind": "entity",
+        "statement": "Asset 'CapLoader01' is structurally present in the export.",
+        "confidence": "high",
+        "approval_needed": "Confirm this asset and its placement in the namespace.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/CapLoader01",
+            "detail": "UdtInstance equipment boundary; typeId='Models/Equipment/Process/CapLoader', MesTagPath='[MES]Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/CapLoader01'"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "",
+      "udt_type": "Models/Equipment/Process/CapLoader",
+      "mes_path": "[MES]Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/CapLoader01",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.productionrun_running",
+      "name": "ProductionRun.Running",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'ProductionRun.Running' inferred as live_bool (a boolean run/interlock state (e.g. Running / Blocked / Starved)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a boolean run/interlock state (e.g. Running / Blocked / Starved) and accept its UNS mapping synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.productionrun_running.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/CapLoader01/ProductionRun.Running",
+            "detail": "AtomicTag 'ProductionRun.Running' unit=''"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_bool",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.blocked_value_value",
+      "name": "Blocked.Value.Value",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Blocked.Value.Value' inferred as live_bool (a boolean run/interlock state (e.g. Running / Blocked / Starved)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a boolean run/interlock state (e.g. Running / Blocked / Starved) and accept its UNS mapping synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.blocked_value_value.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/CapLoader01/Blocked.Value.Value",
+            "detail": "AtomicTag 'Blocked.Value.Value' unit=''"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_bool",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "",
+      "name": "Blocked.Value.String",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Blocked.Value.String' is static UDT metadata (not a live signal).",
+        "confidence": "high",
+        "approval_needed": "None (informational) -- excluded from the live signal set.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/CapLoader01/Blocked.Value.String",
+            "detail": "AtomicTag metadata leaf"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "static_metadata",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.starved_value_value",
+      "name": "Starved.Value.Value",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Starved.Value.Value' inferred as live_bool (a boolean run/interlock state (e.g. Running / Blocked / Starved)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a boolean run/interlock state (e.g. Running / Blocked / Starved) and accept its UNS mapping synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.starved_value_value.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/CapLoader01/Starved.Value.Value",
+            "detail": "AtomicTag 'Starved.Value.Value' unit=''"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_bool",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.production.counts_outfeed_value_value",
+      "name": "Counts.Outfeed.Value.Value",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Counts.Outfeed.Value.Value' inferred as live_counter (a production count (e.g. Counts.Infeed/Outfeed/Defect)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a production count (e.g. Counts.Infeed/Outfeed/Defect) and accept its UNS mapping synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.production.counts_outfeed_value_value.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/CapLoader01/Counts.Outfeed.Value.Value",
+            "detail": "AtomicTag 'Counts.Outfeed.Value.Value' unit='Units'"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_counter",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": "Units"
+    },
+    {
+      "uns_path": "",
+      "name": "Counts.Outfeed.Value.NumberFormat",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Counts.Outfeed.Value.NumberFormat' is static UDT metadata (not a live signal).",
+        "confidence": "high",
+        "approval_needed": "None (informational) -- excluded from the live signal set.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/CapLoader01/Counts.Outfeed.Value.NumberFormat",
+            "detail": "AtomicTag metadata leaf"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "static_metadata",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.state_name",
+      "name": "State.Name",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'State.Name' inferred as live_state (a machine state / state duration (PackML-style)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a machine state / state duration (PackML-style) and accept its UNS mapping synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.state_name.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/CapLoader01/State.Name",
+            "detail": "AtomicTag 'State.Name' unit=''"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_state",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.state_duration_totalseconds_value",
+      "name": "State.Duration.TotalSeconds.Value",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'State.Duration.TotalSeconds.Value' inferred as live_state (a machine state / state duration (PackML-style)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a machine state / state duration (PackML-style) and accept its UNS mapping synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01.status.state_duration_totalseconds_value.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/CapLoader01/State.Duration.TotalSeconds.Value",
+            "detail": "AtomicTag 'State.Duration.TotalSeconds.Value' unit='s'"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_state",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": "s"
+    },
+    {
+      "uns_path": "",
+      "name": "Definition.TypeId",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Definition.TypeId' is static UDT metadata (not a live signal).",
+        "confidence": "high",
+        "approval_needed": "None (informational) -- excluded from the live signal set.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/CapLoader01/Definition.TypeId",
+            "detail": "AtomicTag metadata leaf"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "static_metadata",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01",
+      "name": "Filler01",
+      "level": "asset",
+      "suggestion": {
+        "kind": "entity",
+        "statement": "Asset 'Filler01' is structurally present in the export.",
+        "confidence": "high",
+        "approval_needed": "Confirm this asset and its placement in the namespace.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Filler01",
+            "detail": "UdtInstance equipment boundary; typeId='Models/Equipment/Process/Filler', MesTagPath='[MES]Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Filler01'"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "",
+      "udt_type": "Models/Equipment/Process/Filler",
+      "mes_path": "[MES]Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Filler01",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.productionrun_running",
+      "name": "ProductionRun.Running",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'ProductionRun.Running' inferred as live_bool (a boolean run/interlock state (e.g. Running / Blocked / Starved)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a boolean run/interlock state (e.g. Running / Blocked / Starved) and accept its UNS mapping synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.productionrun_running.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Filler01/ProductionRun.Running",
+            "detail": "AtomicTag 'ProductionRun.Running' unit=''"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_bool",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.blocked_value_value",
+      "name": "Blocked.Value.Value",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Blocked.Value.Value' inferred as live_bool (a boolean run/interlock state (e.g. Running / Blocked / Starved)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a boolean run/interlock state (e.g. Running / Blocked / Starved) and accept its UNS mapping synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.blocked_value_value.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Filler01/Blocked.Value.Value",
+            "detail": "AtomicTag 'Blocked.Value.Value' unit=''"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_bool",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "",
+      "name": "Blocked.Value.String",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Blocked.Value.String' is static UDT metadata (not a live signal).",
+        "confidence": "high",
+        "approval_needed": "None (informational) -- excluded from the live signal set.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Filler01/Blocked.Value.String",
+            "detail": "AtomicTag metadata leaf"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "static_metadata",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.starved_value_value",
+      "name": "Starved.Value.Value",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Starved.Value.Value' inferred as live_bool (a boolean run/interlock state (e.g. Running / Blocked / Starved)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a boolean run/interlock state (e.g. Running / Blocked / Starved) and accept its UNS mapping synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.starved_value_value.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Filler01/Starved.Value.Value",
+            "detail": "AtomicTag 'Starved.Value.Value' unit=''"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_bool",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.production.counts_outfeed_value_value",
+      "name": "Counts.Outfeed.Value.Value",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Counts.Outfeed.Value.Value' inferred as live_counter (a production count (e.g. Counts.Infeed/Outfeed/Defect)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a production count (e.g. Counts.Infeed/Outfeed/Defect) and accept its UNS mapping synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.production.counts_outfeed_value_value.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Filler01/Counts.Outfeed.Value.Value",
+            "detail": "AtomicTag 'Counts.Outfeed.Value.Value' unit='Units'"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_counter",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": "Units"
+    },
+    {
+      "uns_path": "",
+      "name": "Counts.Outfeed.Value.NumberFormat",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Counts.Outfeed.Value.NumberFormat' is static UDT metadata (not a live signal).",
+        "confidence": "high",
+        "approval_needed": "None (informational) -- excluded from the live signal set.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Filler01/Counts.Outfeed.Value.NumberFormat",
+            "detail": "AtomicTag metadata leaf"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "static_metadata",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "",
+      "name": "Counts.Outfeed.Value.UnitsOfMeasure",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Counts.Outfeed.Value.UnitsOfMeasure' is static UDT metadata (not a live signal).",
+        "confidence": "high",
+        "approval_needed": "None (informational) -- excluded from the live signal set.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Filler01/Counts.Outfeed.Value.UnitsOfMeasure",
+            "detail": "AtomicTag metadata leaf"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "static_metadata",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.production.counts_defect_value_value",
+      "name": "Counts.Defect.Value.Value",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Counts.Defect.Value.Value' inferred as live_counter (a production count (e.g. Counts.Infeed/Outfeed/Defect)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a production count (e.g. Counts.Infeed/Outfeed/Defect) and accept its UNS mapping synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.production.counts_defect_value_value.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Filler01/Counts.Defect.Value.Value",
+            "detail": "AtomicTag 'Counts.Defect.Value.Value' unit='Units'"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_counter",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": "Units"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.state_name",
+      "name": "State.Name",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'State.Name' inferred as live_state (a machine state / state duration (PackML-style)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a machine state / state duration (PackML-style) and accept its UNS mapping synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.state_name.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Filler01/State.Name",
+            "detail": "AtomicTag 'State.Name' unit=''"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_state",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.state_duration_totalseconds_value",
+      "name": "State.Duration.TotalSeconds.Value",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'State.Duration.TotalSeconds.Value' inferred as live_state (a machine state / state duration (PackML-style)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a machine state / state duration (PackML-style) and accept its UNS mapping synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01.status.state_duration_totalseconds_value.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Filler01/State.Duration.TotalSeconds.Value",
+            "detail": "AtomicTag 'State.Duration.TotalSeconds.Value' unit='s'"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_state",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": "s"
+    },
+    {
+      "uns_path": "",
+      "name": "Definition.TypeId",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Definition.TypeId' is static UDT metadata (not a live signal).",
+        "confidence": "high",
+        "approval_needed": "None (informational) -- excluded from the live signal set.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Filler01/Definition.TypeId",
+            "detail": "AtomicTag metadata leaf"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "static_metadata",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing",
+      "name": "Liquid Processing",
+      "level": "area",
+      "suggestion": {
+        "kind": "entity",
+        "statement": "Area 'Liquid Processing' is structurally present in the export.",
+        "confidence": "high",
+        "approval_needed": "Confirm this area and its placement in the namespace.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Liquid Processing",
+            "detail": "Ignition Folder node (area container)"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1",
+      "name": "TankFarm1",
+      "level": "line",
+      "suggestion": {
+        "kind": "entity",
+        "statement": "Line 'TankFarm1' is structurally present in the export.",
+        "confidence": "high",
+        "approval_needed": "Confirm this line and its placement in the namespace.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Liquid Processing/TankFarm1",
+            "detail": "Ignition Folder node (line container)"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01",
+      "name": "Tank01",
+      "level": "asset",
+      "suggestion": {
+        "kind": "entity",
+        "statement": "Asset 'Tank01' is structurally present in the export.",
+        "confidence": "high",
+        "approval_needed": "Confirm this asset and its placement in the namespace.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Liquid Processing/TankFarm1/Tank01",
+            "detail": "UdtInstance equipment boundary; typeId='Models/Equipment/Process/Tank', MesTagPath='[MES]Synthetic Beverage Co/Demo Site/Liquid Processing/TankFarm1/Tank01'"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "",
+      "udt_type": "Models/Equipment/Process/Tank",
+      "mes_path": "[MES]Synthetic Beverage Co/Demo Site/Liquid Processing/TankFarm1/Tank01",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.level_value_value",
+      "name": "Level.Value.Value",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Level.Value.Value' inferred as live_analog (a continuous-process analog (level / flow / temperature / pressure)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a continuous-process analog (level / flow / temperature / pressure) and accept its UNS mapping synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.level_value_value.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Liquid Processing/TankFarm1/Tank01/Level.Value.Value",
+            "detail": "AtomicTag 'Level.Value.Value' unit='%'"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_analog",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": "%"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.flow_value_value",
+      "name": "Flow.Value.Value",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Flow.Value.Value' inferred as live_analog (a continuous-process analog (level / flow / temperature / pressure)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a continuous-process analog (level / flow / temperature / pressure) and accept its UNS mapping synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.flow_value_value.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Liquid Processing/TankFarm1/Tank01/Flow.Value.Value",
+            "detail": "AtomicTag 'Flow.Value.Value' unit='L/min'"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_analog",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": "L/min"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.temperature_value_value",
+      "name": "Temperature.Value.Value",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Temperature.Value.Value' inferred as live_analog (a continuous-process analog (level / flow / temperature / pressure)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a continuous-process analog (level / flow / temperature / pressure) and accept its UNS mapping synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.temperature_value_value.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Liquid Processing/TankFarm1/Tank01/Temperature.Value.Value",
+            "detail": "AtomicTag 'Temperature.Value.Value' unit='°C'"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_analog",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": "°C"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.pressure_value_value",
+      "name": "Pressure.Value.Value",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Pressure.Value.Value' inferred as live_analog (a continuous-process analog (level / flow / temperature / pressure)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a continuous-process analog (level / flow / temperature / pressure) and accept its UNS mapping synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.pressure_value_value.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Liquid Processing/TankFarm1/Tank01/Pressure.Value.Value",
+            "detail": "AtomicTag 'Pressure.Value.Value' unit='bar'"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_analog",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": "bar"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.density_value_value",
+      "name": "Density.Value.Value",
+      "level": "signal",
+      "suggestion": {
+        "kind": "signal",
+        "statement": "Signal 'Density.Value.Value' inferred as live_analog (a continuous-process analog (level / flow / temperature / pressure)) from its name/unit.",
+        "confidence": "medium",
+        "approval_needed": "Confirm this is a continuous-process analog (level / flow / temperature / pressure) and accept its UNS mapping synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01.process.density_value_value.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Liquid Processing/TankFarm1/Tank01/Density.Value.Value",
+            "detail": "AtomicTag 'Density.Value.Value' unit='kg/L'"
+          }
+        ],
+        "status": "suggested"
+      },
+      "archetype": "live_analog",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": "kg/L"
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.bottlingline1_cell",
+      "name": "BottlingLine1 cell",
+      "level": "cell",
+      "suggestion": {
+        "kind": "entity",
+        "statement": "No cell layer is present in the evidence; assets attach directly to line 'BottlingLine1'. A cell grouping is OPTIONALLY proposed for review -- not asserted.",
+        "confidence": "low",
+        "approval_needed": "Decide whether line 'BottlingLine1' needs a cell layer; reject if assets map directly to the line.",
+        "evidence": [
+          {
+            "source_file": "discovery_corpus/fixtures/synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1",
+            "detail": "line node with no intermediate cell container"
+          }
+        ],
+        "status": "needs_review"
+      },
+      "archetype": "",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    },
+    {
+      "uns_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tankfarm1_cell",
+      "name": "TankFarm1 cell",
+      "level": "cell",
+      "suggestion": {
+        "kind": "entity",
+        "statement": "No cell layer is present in the evidence; assets attach directly to line 'TankFarm1'. A cell grouping is OPTIONALLY proposed for review -- not asserted.",
+        "confidence": "low",
+        "approval_needed": "Decide whether line 'TankFarm1' needs a cell layer; reject if assets map directly to the line.",
+        "evidence": [
+          {
+            "source_file": "discovery_corpus/fixtures/synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Liquid Processing/TankFarm1",
+            "detail": "line node with no intermediate cell container"
+          }
+        ],
+        "status": "needs_review"
+      },
+      "archetype": "",
+      "udt_type": "",
+      "mes_path": "",
+      "unit": ""
+    }
+  ],
+  "relationships": [
+    {
+      "rel_type": "contains",
+      "source_path": "synthetic_beverage_co",
+      "target_path": "synthetic_beverage_co.demo_site",
+      "suggestion": {
+        "kind": "relationship",
+        "statement": "'synthetic_beverage_co' contains 'synthetic_beverage_co.demo_site' (structural containment).",
+        "confidence": "high",
+        "approval_needed": "Confirm the containment.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site",
+            "detail": "parent->child folder/UDT nesting"
+          }
+        ],
+        "status": "suggested"
+      }
+    },
+    {
+      "rel_type": "contains",
+      "source_path": "synthetic_beverage_co.demo_site",
+      "target_path": "synthetic_beverage_co.demo_site.bottling",
+      "suggestion": {
+        "kind": "relationship",
+        "statement": "'synthetic_beverage_co.demo_site' contains 'synthetic_beverage_co.demo_site.bottling' (structural containment).",
+        "confidence": "high",
+        "approval_needed": "Confirm the containment.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling",
+            "detail": "parent->child folder/UDT nesting"
+          }
+        ],
+        "status": "suggested"
+      }
+    },
+    {
+      "rel_type": "contains",
+      "source_path": "synthetic_beverage_co.demo_site.bottling",
+      "target_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1",
+      "suggestion": {
+        "kind": "relationship",
+        "statement": "'synthetic_beverage_co.demo_site.bottling' contains 'synthetic_beverage_co.demo_site.bottling.bottlingline1' (structural containment).",
+        "confidence": "high",
+        "approval_needed": "Confirm the containment.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1",
+            "detail": "parent->child folder/UDT nesting"
+          }
+        ],
+        "status": "suggested"
+      }
+    },
+    {
+      "rel_type": "contains",
+      "source_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1",
+      "target_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01",
+      "suggestion": {
+        "kind": "relationship",
+        "statement": "'synthetic_beverage_co.demo_site.bottling.bottlingline1' contains 'synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01' (structural containment).",
+        "confidence": "high",
+        "approval_needed": "Confirm the containment.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/CapLoader01",
+            "detail": "parent->child folder/UDT nesting"
+          }
+        ],
+        "status": "suggested"
+      }
+    },
+    {
+      "rel_type": "contains",
+      "source_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1",
+      "target_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01",
+      "suggestion": {
+        "kind": "relationship",
+        "statement": "'synthetic_beverage_co.demo_site.bottling.bottlingline1' contains 'synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01' (structural containment).",
+        "confidence": "high",
+        "approval_needed": "Confirm the containment.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Bottling/BottlingLine1/Filler01",
+            "detail": "parent->child folder/UDT nesting"
+          }
+        ],
+        "status": "suggested"
+      }
+    },
+    {
+      "rel_type": "contains",
+      "source_path": "synthetic_beverage_co.demo_site",
+      "target_path": "synthetic_beverage_co.demo_site.liquid_processing",
+      "suggestion": {
+        "kind": "relationship",
+        "statement": "'synthetic_beverage_co.demo_site' contains 'synthetic_beverage_co.demo_site.liquid_processing' (structural containment).",
+        "confidence": "high",
+        "approval_needed": "Confirm the containment.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Liquid Processing",
+            "detail": "parent->child folder/UDT nesting"
+          }
+        ],
+        "status": "suggested"
+      }
+    },
+    {
+      "rel_type": "contains",
+      "source_path": "synthetic_beverage_co.demo_site.liquid_processing",
+      "target_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1",
+      "suggestion": {
+        "kind": "relationship",
+        "statement": "'synthetic_beverage_co.demo_site.liquid_processing' contains 'synthetic_beverage_co.demo_site.liquid_processing.tankfarm1' (structural containment).",
+        "confidence": "high",
+        "approval_needed": "Confirm the containment.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Liquid Processing/TankFarm1",
+            "detail": "parent->child folder/UDT nesting"
+          }
+        ],
+        "status": "suggested"
+      }
+    },
+    {
+      "rel_type": "contains",
+      "source_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1",
+      "target_path": "synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01",
+      "suggestion": {
+        "kind": "relationship",
+        "statement": "'synthetic_beverage_co.demo_site.liquid_processing.tankfarm1' contains 'synthetic_beverage_co.demo_site.liquid_processing.tankfarm1.tank01' (structural containment).",
+        "confidence": "high",
+        "approval_needed": "Confirm the containment.",
+        "evidence": [
+          {
+            "source_file": "C:\\Users\\hharp\\Documents\\GitHub\\mira-cappy-factory\\discovery_corpus\\fixtures\\synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "Synthetic Beverage Co/Demo Site/Liquid Processing/TankFarm1/Tank01",
+            "detail": "parent->child folder/UDT nesting"
+          }
+        ],
+        "status": "suggested"
+      }
+    },
+    {
+      "rel_type": "feeds",
+      "source_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01",
+      "target_path": "synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01",
+      "suggestion": {
+        "kind": "relationship",
+        "statement": "Inferred material flow 'synthetic_beverage_co.demo_site.bottling.bottlingline1.caploader01' -> 'synthetic_beverage_co.demo_site.bottling.bottlingline1.filler01' from asset order within the line (export order; physical flow NOT confirmed by evidence).",
+        "confidence": "low",
+        "approval_needed": "Confirm or correct the material-flow direction; export order is not authoritative.",
+        "evidence": [
+          {
+            "source_file": "discovery_corpus/fixtures/synthetic_factory_export.json",
+            "source_format": "ignition_json",
+            "locator": "synthetic_beverage_co.demo_site.bottling.bottlingline1",
+            "detail": "adjacency of two assets within line synthetic_beverage_co.demo_site.bottling.bottlingline1"
+          }
+        ],
+        "status": "needs_review"
+      }
+    }
+  ]
+}
