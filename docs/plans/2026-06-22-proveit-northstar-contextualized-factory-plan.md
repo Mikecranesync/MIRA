@@ -1,0 +1,160 @@
+# ProveIt 2027 — Contextualized Factory Implementation Plan (Northstar-aligned)
+
+> Source of truth for this plan: `northstar_prompt.txt` (2026-06-22). This plan turns that
+> brief into a token-efficient, subagent-driven, phased build. Companion docs:
+> `docs/plans/2026-06-22-simlab-industrial-flight-simulator-assessment.md` (architecture verdict),
+> `docs/plans/2026-06-22-proveit-factory-import-implementation-plan.md` (import engine),
+> the SimLab platform-oracle PRD, and the mandatory `/discovery_corpus/` (Discovery Recorder).
+
+## Mission (verbatim intent)
+
+A factory should not need months of engineering to become AI-ready. **FactoryLM reconstructs
+industrial context directly from evidence already in the plant** (PLC exports, schematics, manuals,
+nameplate/cabinet photos, tag DBs, alarm lists, OEE/MES exports, CMMS, procedures, maintenance
+history). **MIRA uses that context to answer, diagnose, and assist — grounded in evidence, not
+generic LLM reasoning.**
+
+**Primary demo goal:** an Ignition Perspective HMI **"Ask MIRA"** button. User asks *"Why is this
+line blocked?"* MIRA answers from contextualized evidence: asset, equipment hierarchy, relevant
+tags, state transitions, manual citations, wiring references, known failure modes, recommended
+technician actions.
+
+## Operating principles (non-negotiable, from the brief)
+
+1. **Code-first interrogation.** Every dataset is interrogated by **deterministic code first, LLM
+   second.** Every investigation is recorded; every discovery becomes reusable code in
+   `/discovery_corpus/`. (Discovery Recorder is MANDATORY.)
+2. **Cappy is evidence, not the factory.** We discover its layer (MES/OEE/Production/State), its
+   asset-hierarchy clues, and its hidden maintenance implications with automatic, deterministic
+   workflows.
+3. **Synthesizer-first.** Build a **deterministic Python factory synthesizer**, NOT 15 soft PLCs.
+   Soft-PLC (OpenPLC/Modbus/OPC-UA) is a later **realism-only** track (Phase 6), not core.
+4. **Hidden-cause maintenance layer.** Every synthesized event (blocked/starved/downtime/alarm)
+   sits on a **hidden component cause** (failed sensor, jammed conveyor, VFD fault, motor overload,
+   air-pressure fault, comms failure, interlock failure). That hidden layer is what MIRA diagnoses.
+5. **Deterministic + replayable** everywhere (seeded; wall-clock only paces *when* ticks fire).
+6. **Read-only OT.** No real PLC writes ever; the only "write" is a fault command into the *sim*.
+   Licensed Cappy corpus is **never committed** — code + tests run on the synthetic mini fixture
+   (`mira-plc-parser/tests/fixtures/ignition_cappy_hour_mini.json`).
+
+## Subagent execution model (how this plan stays token-efficient)
+
+The main loop holds only the plan + integration state; **file-heavy work is delegated**.
+
+- **Per phase:** one or more **builder** subagents author code/tests; one **verifier** subagent
+  adversarially reviews + runs the suite. Findings (counts, file lists, test lines) come back as
+  short structured results — never file dumps.
+- **Fan-out:** independent tasks within a phase run as a `parallel`/`pipeline` of subagents.
+  Hand each subagent the *verified findings it needs* so it never re-derives (as Phase 0 did).
+- **Integration:** the main loop wires module boundaries, commits, and runs the gate.
+- **Verification gate** between phases: tests green + ruff clean + a verifier sign-off before the
+  next phase starts. Evidence beats assertion.
+
+## Architecture (target)
+
+```
+ EVIDENCE (Cappy export, manuals, specs, CMMS)
+   │  Phase 0–1: deterministic interrogation + context reconstruction
+   ▼
+ CONTEXT MODEL  ── asset graph · UNS mappings · MES/OEE entities · signal archetypes
+   │  Phase 2: synthesizer drives the model
+   ▼
+ SYNTHESIZER (deterministic)  ── production runs · counts · OEE · blocked/starved · downtime · alarms · states
+   │        each surface event ⇒ HIDDEN component cause (Phase 2/3 maintenance layer)
+   ▼
+ LIVE FEED  ── per-line publishers → Mosquitto (MQTT) ; fault injection in (Phase 4)
+   │
+   ▼
+ MIRA  ── reads live state + maintenance graph + cited evidence → grounded answer (Phase 5)
+   │
+   ▼
+ IGNITION PERSPECTIVE "Ask MIRA"  ── "Why is this line blocked?"  (PRIMARY DEMO GOAL)
+```
+
+Code home: extend **`simlab/`** with a new decoupled `simlab/factory/` subpackage (per the
+flight-sim assessment verdict — extend SimLab, add ONE Mosquitto, adopt no heavy platform). The
+deterministic juice-bottling core and the parser stay untouched (parser is consumed read-only via
+its i3x/JSON export).
+
+---
+
+## Phases
+
+Each phase: **Goal → Tasks (subagents) → Deliverables → Acceptance → Success-criteria (SC#)**.
+
+### Phase 0 — Discovery corpus + Cappy interrogation  `[SC 1,2]`  ✅ seeded this session
+**Goal:** stand up the mandatory Discovery Recorder and the first reusable interrogation.
+- **Tasks / subagents:** `[builder]` scaffold `/discovery_corpus/{sessions,playbooks,scripts,tests,fixtures}`; author `interrogate_ignition_export.py` (deterministic: classify data layer + hierarchy + signal archetypes) + test on the mini fixture; record session-001 (the topology study).
+- **Deliverables:** `discovery_corpus/` tree; `scripts/interrogate_ignition_export.py`; `tests/test_interrogate_ignition.py`; `sessions/2026-06-22-session-001-cappy-interrogation.md`; `playbooks/interrogating-ignition-mes-exports.md`.
+- **Acceptance:** `pytest discovery_corpus/tests/` green; the script prints `1 site · 4 areas · 15 lines · 43 assets · N signals` + an archetype histogram on the real corpus (mini fixture in CI).
+- **Verified findings (the discovery output that feeds every later phase):** data layer = **Sepasoft MES-OEE UDT**; 4090 nodes ≈ a few hundred live values + static metadata; two families — **discrete-MES** (Filler/Packaging/Palletizing) and **continuous-process** (Tanks/Vats). Archetypes: `static_metadata · live_bool · live_counter · live_state · live_analog`.
+
+### Phase 1 — Evidence → context reconstruction  `[SC 2,3,4,5]`
+**Goal:** turn the discovery output into a queryable **context model**: asset graph, UNS mappings,
+MES/OEE entity model, signal→archetype map.
+- **Tasks / subagents:** `[builder-A]` `simlab/factory/import_model.py` — load the parser i3x/JSON export → `FactoryModel(area→line→asset→signal)` with archetype + unit on each signal; `[builder-B]` `simlab/factory/context.py` — MES/OEE entity model (ProductionRun, Counts, State, OEE rollups) + asset-relationship edges (line-contains-asset, upstream→downstream conveyance for blocked/starved propagation); `[verifier]` review + tests.
+- **Deliverables:** `import_model.py`, `context.py`, `topics.py` (UNS↔MQTT topic map: `FactoryLM/CappyHour/Site1/<Area>/<Line>/<Asset>/<Signal>`), tests on the mini fixture.
+- **Acceptance:** model reconstructs 4 areas/15 lines/43 assets from the export with 0 dangling parents; every signal carries an archetype; upstream/downstream edges exist for each line. Deterministic.
+
+### Phase 2 — Deterministic synthesizer + hidden-cause layer  `[SC 9 + maintenance layer]`
+**Goal:** generate realistic, replayable factory behavior where **every surface event has a hidden
+component cause**.
+- **Tasks / subagents:** `[builder-A]` `simlab/factory/synth.py` — per-archetype generators (counters climb at line rate; OEE rollups; bool run/blocked/starved with interlock propagation; analog ripple+drift with correlation for tanks/vats); deterministic `(seed,line,signal_idx,tick)`. `[builder-B]` `simlab/factory/faults.py` — **hidden-cause catalog** (failed_sensor, jammed_conveyor, vfd_fault, motor_overload, air_pressure_fault, comms_failure, interlock_failure), each mapping a hidden cause → the surface symptoms it produces (e.g. `jammed_conveyor` → downstream `Blocked=true`, upstream `Starved=true`, outfeed counter flatlines, downtime event, alarm) + a labeled ground-truth record. `[verifier]` determinism + cause→symptom fidelity tests.
+- **Deliverables:** `synth.py`, `faults.py`, fault catalog doc, tests (byte-identical replay; each hidden cause yields its documented symptom set).
+- **Acceptance:** `--ticks N --seed S` replays byte-identically twice; arming each hidden cause produces exactly its catalogued symptoms; ground truth recorded for scoring.
+
+### Phase 3 — Maintenance relationships + evidence grounding  `[SC 5,6,7]`
+**Goal:** make every hidden cause **explainable and citable**.
+- **Tasks / subagents:** `[builder-A]` link hidden cause ↔ asset ↔ tags ↔ **manual citation / wiring reference / known failure mode** (reuse the proveit grounding transforms: `tools/proveit/manual_chunks.py`, asset-roster bridge; rows land `is_private=true` in `knowledge_entries`). `[builder-B]` a deterministic "evidence packet" assembler: given a fault, return {asset, hierarchy, tags, state transitions, citations, failure modes, recommended actions}. `[verifier]` citation-coverage test (every catalogued cause has ≥1 citable source + a recommended action).
+- **Deliverables:** maintenance-relationship map, evidence-packet assembler, citation fixtures (synthetic), tests.
+- **Acceptance:** for each hidden cause, the evidence packet is complete (all 8 fields) and every claim cites a source id; no uncited claims.
+
+### Phase 4 — Live MQTT feed (Mosquitto) + fault injection  `[SC 9 live]`
+**Goal:** the synthesizer streams live over a real broker; faults inject live.
+- **Tasks / subagents:** `[builder-A]` `simlab/factory/simplc.py` — per-line runtime: async wall-clock loop → synth → publish via hardened `MqttPublisher`; retained statics/run-state, non-retained telemetry; subscribes `…/<line>/cmd/fault` to arm/clear hidden causes. `[builder-B]` `docker-compose.simfactory.yml` (local/dev only) with one pinned `eclipse-mosquitto`; run-book to launch 1 line (Phase 4) and fan out to all 15 (Phase 4b). `[verifier]` fake-MQTT offline test (the existing `MqttPublisher` regression pattern) + a live smoke (broker up → values land → inject fault → symptom within N ticks).
+- **Deliverables:** `simplc.py`, `docker-compose.simfactory.yml`, mosquitto config, runbook, offline + smoke tests.
+- **Acceptance:** `python -m simlab.factory.simplc --line FillingLine01 --broker localhost:1883` streams live; a subscriber sees correct UNS topics; injected `jammed_conveyor`/underfill produces the symptom + ground truth; offline test deterministic; ruff clean.
+- **Slice order:** Phase-1 first slice = **one Filling Line** (CapLoader+Washer+Filler); then fan out to all **15 lines** (one sim-PLC process per `line` node) in 4b.
+
+### Phase 5 — Ask MIRA grounded answer + Ignition Perspective  `[PRIMARY GOAL; SC 6,7,8,10]`
+**Goal:** *"Why is this line blocked?"* answered live, grounded, inside Ignition.
+- **Tasks / subagents:** `[builder-A]` ingest path: read-only MQTT subscriber → topic→UNS normalize → `live_signal_cache` (the `source=direct_connection` certified surface). `[builder-B]` wire MIRA: live state + maintenance graph + evidence packet → grounded answer (the 8 fields); score against Phase-2 ground truth via the SimLab evaluation service. `[builder-C]` Ignition Perspective "Ask MIRA" panel calling `mira-pipeline /api/v1/ignition/chat` with the asset-bound UNS context (per `direct-connection-uns-certified.md`). `[verifier]` end-to-end: inject hidden cause → ask "why blocked?" → answer names the right asset + cause + cites evidence + ≥4/5 grounded.
+- **Deliverables:** subscriber + normalizer, MIRA wiring, Perspective panel, e2e scored test, demo runbook (the 20-min arc).
+- **Acceptance:** the demo question returns a grounded, cited answer identifying the hidden root cause and recommended action; scored pass via the eval service; screenshots saved to `docs/promo-screenshots/`.
+
+### Phase 6 — (future) Soft-PLC showcase line  `[realism only — NOT core]`
+**Goal:** one line on **OpenPLC + Modbus + OPC-UA** as a realism demonstration. Deferred until the
+synthesizer demo passes. Explicitly out of the critical path per the brief.
+
+---
+
+## Success-criteria traceability (brief §SUCCESS CRITERIA 1–10 → phase)
+
+| # | Criterion | Phase |
+|---|---|---|
+| 1 | Ingest industrial evidence | 0, 3 |
+| 2 | Reconstruct factory context | 0, 1 |
+| 3 | Build an asset graph | 1 |
+| 4 | Build UNS mappings | 1 |
+| 5 | Build maintenance relationships | 1, 3 |
+| 6 | Explain failures | 3, 5 |
+| 7 | Cite evidence | 3, 5 |
+| 8 | Drive Ask MIRA responses | 5 |
+| 9 | Deterministic replayable simulations | 2, 4 |
+| 10 | Live contextual intelligence in Ignition | 5 |
+
+## Guardrails
+
+- `simlab/` core + `mira-plc-parser` untouched (new `simlab/factory/` subpackage; parser consumed
+  read-only via its export). Additive — no churn to the simlab/parser test baselines.
+- Deterministic + LLM-free synthesizer; licensed corpus never committed; tests on the mini fixture.
+- Read-only OT; MQTT publish-out + sim-only fault commands; no real PLC writes.
+- Every discovery → reusable code + a recorded `/discovery_corpus/` session (mandatory, ongoing).
+- Doppler for any secrets; local-only `docker-compose.simfactory.yml` (never the prod VPS).
+
+## Status
+
+- **Phase 0:** seeded this session (worktree `feat/cappy-northstar-factory`).
+- **Phases 1–5:** specified above; execute phase-by-phase with the builder+verifier subagent model
+  and a green-gate between phases.
+- **Phase 6:** deferred (realism track).
