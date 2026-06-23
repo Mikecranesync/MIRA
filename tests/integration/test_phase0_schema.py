@@ -219,6 +219,47 @@ def test_ai_suggestions_roundtrip(conn):
                                 (str(sid),))
 
 
+def test_ai_suggestions_needs_review_status(conn):
+    """Migration 057: `needs_review` is an accepted ai_suggestions.status value.
+
+    Proves the Phase 5 PR-1 CHECK swap — the FactoryModel writer emits uncertain
+    mappings as `needs_review`. Inserted as factorylm_app under the staging tenant.
+    """
+    sid = uuid.uuid4()
+    inserted = False
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                _with_tenant(cur, STAGING_TENANT)
+                cur.execute(
+                    """INSERT INTO ai_suggestions
+                          (id, tenant_id, suggestion_type, extracted_data,
+                           confidence, status, risk_level, proposed_by, title, body)
+                       VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s)""",
+                    (
+                        str(sid), STAGING_TENANT, "tag_mapping",
+                        '{"tag": "Weird.Tag", "uns_path": "enterprise.test.p5.x.weird"}',
+                        0.3, "needs_review", "medium", "import:factory_model",
+                        "phase5 pr-1 needs_review row",
+                        "uncertain signal mapping — needs human review",
+                    ),
+                )
+                inserted = True
+                cur.execute(
+                    "SELECT status FROM ai_suggestions WHERE id = %s", (str(sid),)
+                )
+                row = cur.fetchone()
+                assert row is not None, "needs_review row not visible after INSERT"
+                assert row[0] == "needs_review", \
+                    f"expected status=needs_review, got {row[0]}"
+    finally:
+        if inserted:
+            with conn:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM ai_suggestions WHERE id = %s",
+                                (str(sid),))
+
+
 # ---------------------------------------------------------------------------
 # RLS — tenant isolation
 # ---------------------------------------------------------------------------
