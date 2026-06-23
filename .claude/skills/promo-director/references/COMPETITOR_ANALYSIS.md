@@ -1,8 +1,31 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-06-23
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-06-23
+
+*5 new signals across 5 vendors. 1 pre-cutoff miss added (Cursor). 1 market event with no standalone YouTube video (MaintainX/Autodesk).*
+
+### Most actionable change for MIRA playbook
+
+MaintainX's $3.6B acquisition by Autodesk (May 28) shifts its threat category: it's no longer an independent CMMS but the "operational layer" inside Autodesk's design → make → operate stack. MIRA's counterplay must sharpen on OT-specific grounding (UNS, OEM fault libraries, PLC tags) vs. a construction-heritage platform. Their framing: design files → operations. MIRA's: real factory context → cited diagnostic → approved answer.
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — Autodesk acquisition $3.6B (May 28, 2026): https://adsknews.autodesk.com/en/news/autodesk-to-acquire-maintainx-advancing-unified-platform-in-operations/ — Bloomberg CEO interview same day: https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video. No standalone YouTube promo video. MaintainX folds into Autodesk Operations Solutions (AOS). ARR >$135M, >50% YoY. Hook in press: "design → make → operate flywheel."
+
+**Automation / SCADA**
+- **Rockwell Automation** — ROKStudios Interpack season (June 4, 2026): https://www.prnewswire.com/news-releases/rockwell-automation-launches-new-season-of-rokstudios-video-series-highlighting-oem-leaders-on-machine-lifecycle-innovation-302788178.html — distinct from April 1 "automation to autonomy" season in prior cache; recorded at Interpack 2026 Düsseldorf; theme = "OEM machine lifecycle from design through long-term operation"; exec interviews with packaging ecosystem leaders. 150+ total ROKStudios episodes.
+
+**B2B SaaS / dev-tools**
+- **Figma** — "Figma Agents: First Look | Your new AI best friend" (May 21, 2026): https://www.youtube.com/watch?v=EGyO27Jamu0 — AI Agent launched May 20 in beta; agent stays inside design-system guardrails as the differentiating constraint (parallels MIRA's grounded-troubleshooting angle). Powers by OpenAI + Anthropic integrations. Config 2026 keynote (June 24, SF) will post same-day; watch https://www.youtube.com/@figma for Config 2026 keynote video.
+- **Cursor** — "Cursor now shows you demos, not diffs" (Feb 24, 2026 — missed in prior refresh): https://www.youtube.com/watch?v=XbZvC4KTH68 — agents generate video demos of their own work, not diffs. New content-format pattern: proof-of-work via video output. Hook: agents built it, agents show it. Style: screencast of live agent run.
+- **Anthropic** — "Introducing Claude Fable 5" (June 9, 2026): https://www.youtube.com/watch?v=Y9Wz2PV404E — "most powerful public model." Hook: "The AI once considered too dangerous." Pulled June 23 per U.S. government export directive. Pattern worth tracking: regulatory drama deployed as credibility signal in the launch video itself.
 
 ---
 
@@ -87,6 +110,14 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+
+**Autodesk acquisition (May 28, 2026)**
+- Announcement: https://adsknews.autodesk.com/en/news/autodesk-to-acquire-maintainx-advancing-unified-platform-in-operations/
+- Bloomberg CEO interview: https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video — Autodesk CEO Andrew Anagnost on-camera; hook: "exciting opportunity to connect design and operations data"
+- Deal: $3.575B all-cash; MaintainX ARR >$135M at >50% YoY growth
+- MaintainX folds into newly created Autodesk Operations Solutions (AOS) division alongside Tandem, Flexsim, Fusion Operations, Factory Design Utilities
+- Framing: "design → make → operate" lifecycle convergence; Autodesk's largest acquisition to date
+- Pattern note: MaintainX's OEM-manual-ingestion approach (already adjacent to MIRA's KB) now carries Autodesk's design-file lineage. Competitive threat upgrades from "CMMS with AI" to "Autodesk extends into your plant floor." MIRA's counter: OT-native (UNS, PLC, Modbus) vs. IT/design-heritage.
 
 ---
 
@@ -205,6 +236,15 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - NVIDIA NeMoTron partnership: edge-based generative AI for industrial intelligence
 - No standalone launch video URL confirmed
 
+**ROKStudios Interpack season (June 4, 2026)**
+- Announcement: https://www.prnewswire.com/news-releases/rockwell-automation-launches-new-season-of-rokstudios-video-series-highlighting-oem-leaders-on-machine-lifecycle-innovation-302788178.html
+- Distinct from the April 1 "automation to autonomy" EMEA season; this was recorded at Interpack 2026 in Düsseldorf
+- Theme: OEM machine lifecycle — "from initial design through commissioning and long-term operation"
+- Format: exec interviews with global packaging/manufacturing ecosystem leaders; 150+ total ROKStudios episodes now
+- VO register: corporate executive; soft brand CTA
+- Example: Olaf Clemens (CEO, SN Maschinenbau) on cybersecurity + secure data integration in connected machinery
+- Pattern note: Rockwell is running two parallel series — AI/autonomy thought-leadership (April) and lifecycle/OEM operations (June). Trade show as content-capture vehicle (Interpack = 2,800 exhibitors).
+
 ---
 
 ### Siemens
@@ -301,21 +341,34 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
-- 30+ product releases in recent months per search results
-- No standalone promo video; analyst/conference appearances as primary video channel
+
+**"Introducing Claude Fable 5" (June 9, 2026)**
+- URL: https://www.youtube.com/watch?v=Y9Wz2PV404E
+- Anthropic's first fully standalone YouTube launch video for a model release
+- Hook: "The AI once considered too dangerous" [search-derived — title of related coverage; transcript not verified]
+- Key detail: Fable 5 was included free on Pro/Max/Team/Enterprise plans June 9–22, then pulled June 23 per U.S. government export directive
+- Pattern note: regulatory drama as credibility signal — "we were told not to release it" is a new launch-hook archetype. Safety constraints framed as proof of capability ceiling. Contrast this with MIRA's approach: grounded constraints (cite or don't answer) as a trust signal, not capability theater.
+- Also: Claude Opus 4.8 (May 28, 2026), "Code w/ Claude" events London (May 20–21) + Tokyo (June 5–6).
 
 ---
 
 ### Cursor
 
-**Product trajectory (all video-light)**
+**Product trajectory**
 - Channel: https://www.youtube.com/@cursor_ai
 - Cursor 2.0 (Oct 29, 2025): Composer → proprietary coding model
 - Cursor 3.0 (Apr 2, 2026): Agents Window
 - Cursor 3.1 (Apr 13, 2026): Tiled Layout
 - 30+ integrations (Mar 2026): Atlassian, Datadog, GitLab, Linear, PagerDuty
 - ARR: $1B (late 2025) → $2B (Q1 2026, doubled again)
-- No standalone promo video found; growth is organic/word-of-mouth, changelog-driven
+
+**"Cursor now shows you demos, not diffs" (Feb 24, 2026)**
+- URL: https://www.youtube.com/watch?v=XbZvC4KTH68
+- Note: predates May 2026 refresh cutoff but was missed from prior cache
+- Core concept: agents inside Cursor generate video demos of what they built; you see the product run, not just code changes
+- Footage style: screencast of live agent execution + demo video output [not verified transcript]
+- Hook: proof-of-work shifts from code (diffs) to working software (demos)
+- Pattern note: new content-format signal — if an AI product's agent can show its own work as a video, the agent becomes its own promo engine. Transfer to MIRA: a diagnostic run that emits a "here's what I found and why" replay could serve as both evidence for the technician and promotional demo footage.
 
 ---
 
@@ -355,6 +408,20 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
 
+**Figma AI Agent launch (May 20–21, 2026)**
+- Launch video: https://www.youtube.com/watch?v=EGyO27Jamu0 — "Figma Agents: First Look | Your new AI best friend" (May 21, 2026)
+- Release Notes May 2026 video: https://www.youtube.com/watch?v=11mdb7lLclM — demos agents + design-system-to-code workflows
+- Agent launched in beta May 20; available on Professional, Organisation, Enterprise plans; powered by OpenAI + Anthropic integrations
+- Footage style: UI screen capture + tutorial [transcript not verified]
+- VO register: product/tutorial
+- Key hook: agent "stays inside the guardrails of your design system" — constrainted-by-design as the feature, not an apology
+- Pattern note: "guardrails of your design system" maps directly to MIRA's grounded-troubleshooting constraint. Figma's constraint = brand/component rules; MIRA's = OEM manuals + PLC tags + cited sources.
+
+**Config 2026 (June 23–25, 2026, Moscone Center SF)**
+- In-person sold out; virtual free: https://config.figma.com/san-francisco/virtual/
+- Dylan Field keynote June 24, 9 AM PDT (~80 min); expected formal launch of Figma AI Agent, Figma Buzz major update, Figma Make design-to-code
+- Video posts same day to https://www.youtube.com/@figma — capture in next refresh
+
 ---
 
 ### Replit
@@ -385,6 +452,9 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| "Guardrails as the feature" — constraint = trust | Figma: "stays inside the guardrails of your design system" | "MIRA only answers from your factory's own docs — no guessing" |
+| Agent generates its own proof-of-work demo | Cursor: "shows you demos, not diffs" | MIRA diagnostic run emits a citation trail that IS the promotional artifact |
+| Regulatory constraint as capability signal | Anthropic: "The AI once considered too dangerous" | (anti-pattern for MIRA — our constraint is epistemic, not bureaucratic) |
 
 ### Anti-patterns (avoid)
 
@@ -395,6 +465,9 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach. **2026 update**: acquired by Autodesk for $3.6B (May 28, 2026) — threat category upgrades from "CMMS with AI" to "Autodesk's operations layer."
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Figma**: shifted from annual-conference-as-launch-vehicle (Config 2025) to continuous AI Agent rollout with standalone YouTube launch videos (May 2026). Conference still anchors the narrative; agent video ships the same week as the feature.
+- **Cursor**: shifted proof-of-work format from diffs (code changes) to demos (working software videos). Agent generates its own promotional evidence.
+- **Anthropic**: shifted from analyst/conference appearances to standalone YouTube launch videos (Fable 5, June 2026). Safety constraint ("too dangerous") deployed as capability signal — new launch-hook archetype.
