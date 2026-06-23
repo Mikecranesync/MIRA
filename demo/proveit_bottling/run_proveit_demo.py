@@ -28,8 +28,19 @@ for _p in (str(HERE), str(DEMO), str(ROOT / "mqtt_uns")):
 import bottling_demo as bd  # noqa: E402
 import broker as bk  # noqa: E402  (mqtt_uns.broker)
 import hub_bundle as hb  # noqa: E402
+import ignition_export as ig  # noqa: E402
+import telemetry as tel  # noqa: E402
 
 REPORTS = HERE / "reports"
+
+
+def _arg_value(argv: list, flag: str, default: str) -> str:
+    """Parse `--flag value` from argv (returns default if absent)."""
+    if flag in argv:
+        i = argv.index(flag)
+        if i + 1 < len(argv):
+            return argv[i + 1]
+    return default
 
 
 def _utf8():
@@ -76,7 +87,9 @@ def write_reports(ctx: dict) -> None:
              f"- scenarios run: **{len(scenarios_run)}**  (skipped: {len(ctx['scenarios_skipped'])})",
              f"- live cell: **{ctx['live_status']}**",
              f"- MQTT round trip: **{ctx['mqtt_status']}**",
-             f"- Hub export: **{ctx['hub_status']}**", "",
+             f"- Hub export: **{ctx['hub_status']}**",
+             f"- telemetry: **{ctx.get('tele_status', 'off')}**",
+             f"- ignition export: **{ctx.get('ig_status', 'off')}**", "",
              "The plant is simulated; the Conv_Simple packaging cell is a REAL supervised bench "
              "(requires_supervision=true, runs_24_7=false). MIRA explains each fault with evidence-backed cards."]
     (REPORTS / "demo_overview.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -123,6 +136,13 @@ def main(argv: list | None = None) -> int:
     live = "--live-cell" in argv
     do_hub = "--hub-export" in argv
     do_mqtt = "--no-mqtt" not in argv
+    do_telemetry = "--telemetry" in argv
+    do_ignition = "--ignition-export" in argv
+    scenario_id = _arg_value(argv, "--scenario", "normal")
+    try:
+        ticks = int(_arg_value(argv, "--ticks", "60"))
+    except ValueError:
+        ticks = 60
     mode = "live-cell" if live else "sim-only"
 
     print(f"== ProveIt Bottling demo ({mode}) ==")
@@ -192,16 +212,42 @@ def main(argv: list | None = None) -> int:
         hub_detail = hb.export_for_hub()
         hub_status = f"written {hub_detail['written']}"
 
+    # live telemetry (bounded ticks) — JSONL always; MQTT publish when enabled
+    tele_detail = None
+    tele_status = "off"
+    if do_telemetry:
+        if scenario_id not in tel.sp.SCENARIOS:
+            failures.append(f"unknown --scenario '{scenario_id}'")
+        else:
+            tele_detail = tel.run_telemetry(scenario_id, ticks, mqtt=do_mqtt, live_cell=live)
+            tele_status = (f"{tele_detail['events']} events, {tele_detail['scenario']} x{tele_detail['ticks']} "
+                           f"-> {tele_detail['jsonl']} ({tele_detail['mqtt']})")
+
+    # Ignition tag map + HMI plan
+    ig_detail = None
+    ig_status = "off"
+    if do_ignition:
+        ig_detail = ig.export_all()
+        ig_status = f"{ig_detail['tag_map']['tags']} tags -> {ig_detail['tag_map']['json']} + HMI plan"
+        if "conv_simple" not in ig_detail["assets_covered"]:
+            failures.append("ignition export missing the conv_simple cell")
+
     ctx = {
         "mode": mode, "assets": assets, "scenarios_run": scenarios_run, "scenarios_skipped": skipped,
         "scenario_rows": scenario_rows, "live_status": live_status, "live_cards": live_cards,
         "mqtt_status": ("on" if do_mqtt else "off (--no-mqtt)"),
         "hub_status": hub_status, "hub_detail": hub_detail,
+        "tele_status": tele_status, "tele_detail": tele_detail,
+        "ig_status": ig_status, "ig_detail": ig_detail,
     }
     write_reports(ctx)
 
     print(f"  assets: {len(assets)} | scenarios run: {len(scenarios_run)} | live: {live_status} | "
           f"mqtt: {ctx['mqtt_status']} | hub: {hub_status}")
+    if do_telemetry:
+        print(f"  telemetry: {tele_status}")
+    if do_ignition:
+        print(f"  ignition: {ig_status}")
     print(f"  reports -> {REPORTS.relative_to(ROOT)}/")
 
     if failures:

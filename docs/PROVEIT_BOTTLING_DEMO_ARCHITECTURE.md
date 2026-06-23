@@ -78,3 +78,51 @@ and has *no OEM manual on file* — no invented manufacturers or part numbers.
 A user runs `python demo/proveit_bottling/run_proveit_demo.py --live-cell --hub-export` and sees: a
 simulated bottling plant, a real supervised Conv_Simple cell, one UNS/MQTT namespace, a FactoryLM Hub
 bundle, and MIRA explaining each fault with evidence-backed answer cards.
+
+## Live telemetry layer (simulated PLCs → tags)
+
+The simulated assets behave like simple PLCs (`sim_plc.py`): each has its own tag set, a cyclic state
+update, a running/offline/fault status, counters/process values, and fault bits. `telemetry.py` runs them
+for a bounded number of ticks on a **deterministic virtual clock** (`BASE_EPOCH + tick`) and emits
+**on-change** tag events:
+
+- **JSONL is always written** (`reports/telemetry_events.jsonl`) — the deterministic local record / fallback.
+- **When MQTT is enabled**, each event is also published to its asset's UNS topic via the existing
+  in-memory `mqtt_uns.broker` (no external broker, no cloud).
+
+Each event carries: `timestamp`, `ts_epoch`, `tick`, `asset_id`, `uns_path`, `tag_name`, `value`,
+`quality`, `source` (`sim_plc` | `live_supervised_cell`), and `scenario_id` when applicable. Scenarios:
+`normal`, `filler_jam`, `capper_fault`, `downstream_blocked`, `recovery`.
+
+## How this reaches Ignition (the HMI truth)
+
+- **Ignition does NOT visualize PLCs; it visualizes _tags_.** Whatever produces the tags — a real PLC, a
+  simulated PLC, MQTT, OPC-UA, or Modbus — Ignition just binds screens to tag paths.
+- **Python simulated PLCs are the first milestone.** They emit the tag stream now, with zero hardware.
+- **OpenPLC can be added later** for more controls realism (real ladder/ST execution) — optional, not
+  required for this milestone.
+- **Ignition consumes tags** from MQTT Engine / OPC / Modbus and renders the visual HMI. `ignition_export.py`
+  generates the **tag contract** an Ignition project binds to (`ignition_tag_map.json` / `.csv`: asset,
+  UNS path, suggested Ignition tag path, MQTT topic, tag name, data type, normal/fault meaning) plus a
+  plain-English **HMI screen plan** (`ignition_hmi_plan.md`). No Ignition API is required to run the demo.
+
+## CLI
+
+```
+python demo/proveit_bottling/run_proveit_demo.py \
+    [--sim-only | --live-cell] [--hub-export] [--no-mqtt] \
+    [--telemetry] [--ticks N] [--scenario normal|filler_jam|capper_fault|downstream_blocked|recovery] \
+    [--ignition-export]
+```
+
+`--sim-only` stays the default and stays offline-deterministic. `--telemetry` runs the simulated live
+telemetry for `--ticks N` (default 60); `--ignition-export` writes the tag map + HMI plan.
+
+Generated artifacts (`reports/`): `demo_overview.md`, `asset_map.md`, `scenario_map.md`,
+`hub_export_report.md`, `live_cell_report.md`, `telemetry_events.jsonl`, `ignition_tag_map.json` + `.csv`,
+`ignition_hmi_plan.md`.
+
+## The ProveIt story
+
+A simulated bottling plant + a real supervised conveyor cell + one unified UNS + evidence-backed MIRA
+answers — visualized in Ignition by binding to tags, not by talking to PLCs.
