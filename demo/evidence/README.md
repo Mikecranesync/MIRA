@@ -16,7 +16,7 @@ the physical/Factory-I/O conveyor cell driven by a GS10 VFD and a Micro820 PLC.
 | `photoeye/` | Photoelectric sensor | **PE-101 on `DI_05`** (`di05_photoeye`) — exact model **not recorded** | ⚠ representative link + honest note |
 | `motor/` | Conveyor motor | 3-phase induction gearmotor (4-pole, GS10-driven) — exact model **not recorded** | ⚠ honest note |
 | `conveyor/` | Conveyor | Conv_Simple (Factory I/O visual layer + bench) | Factory I/O docs link |
-| `wiring-or-io-map/` | Wiring / IO map | The bench's own Modbus-RTU map + GS10↔Micro820 comm map | repo files (authoritative) |
+| `wiring-io/` | Wiring / IO map | The bench's own Modbus-RTU map + GS10↔Micro820 comm map | repo files (authoritative) |
 
 ## What's in each folder
 

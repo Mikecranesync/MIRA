@@ -10,8 +10,9 @@ This is the one "asset" whose best document is the bench's own files, not a vend
 - **`plc/GS10_Integration_Guide.md`** — the complete wiring + comm map: RS-485 wiring, GS10 P09.xx comm
   params, the monitored/written register list (`vfd_freq_cmd`, `vfd_torque`, `vfd_motor_rpm`,
   `vfd_power`, DC-bus, fault/warn words), and the Micro820 serial config.
-- **`plc/MbSrvConf_ConvSimple_v2.1.xml`** — the Modbus server config / register map deployed on the PLC
-  (coils + holding registers, e.g. `DI_05` photoeye at coil 000023).
+- **`plc/MbSrvConf_ConvSimple_v1.9.xml`** — the Modbus server config / register map deployed on the PLC
+  (coils + holding registers, e.g. `DI_05` photoeye at coil 000023; the v1.9 map is the deployed superset
+  that the v2.1 program reuses).
 - **`plc/CCW_VARIABLES_ConvSimple_v2.1_DELTA.md`** — the CCW variable ↔ register mapping (the "address +1"
   off-by-one bench convention is documented here).
 - **`plc/conv_simple_anomaly/`** — the slave map (`di05_photoeye` → DI_05, HR offsets) the anomaly engine reads.

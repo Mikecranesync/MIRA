@@ -1,0 +1,81 @@
+{
+  "_comment": "ProveIt Conv_Simple demo — maps each evidence document to the asset it supports, what kind of document it is, where it lives (local repo path or official URL), the fault scenario it supports, and why MIRA should use it. Real assets only; UNKNOWN_MODEL is honest, never a fabricated part number.",
+  "demo": "conv_simple_bench",
+  "uns_root": "enterprise.proveit.bench.conv_simple",
+  "assets": [
+    { "key": "conveyor",        "name": "Conv_Simple conveyor", "uns": "enterprise.proveit.bench.conv_simple.conveyor",        "kind": "conveyor", "model_known": false, "identity": "Conv_Simple (Factory I/O + bench)" },
+    { "key": "gs10_vfd",        "name": "GS10 VFD",             "uns": "enterprise.proveit.bench.conv_simple.gs10_vfd",        "kind": "vfd",      "model_known": true,  "identity": "AutomationDirect DURApulse GS10" },
+    { "key": "micro820_plc",    "name": "Micro820 PLC",         "uns": "enterprise.proveit.bench.conv_simple.micro820_plc",    "kind": "plc",      "model_known": true,  "identity": "Allen-Bradley Micro820 2080-LC20-20QBB" },
+    { "key": "photoeye_pe101",  "name": "Photoeye PE-101",      "uns": "enterprise.proveit.bench.conv_simple.photoeye_pe101",  "kind": "photoeye", "model_known": false, "identity": "PE-101 on DI_05 (UNKNOWN_MODEL)" },
+    { "key": "conveyor_motor",  "name": "Conveyor motor",       "uns": "enterprise.proveit.bench.conv_simple.conveyor_motor",  "kind": "motor",    "model_known": false, "identity": "3-phase 4-pole gearmotor (UNKNOWN_MODEL)" }
+  ],
+  "evidence": [
+    {
+      "id": "gs10_user_manual", "asset": "gs10_vfd", "document_type": "user_manual",
+      "title": "DURApulse GS10 User Manual (GS10M)",
+      "source": "https://cdn.automationdirect.com/static/manuals/gs10m/gs10m.pdf", "source_kind": "external_url",
+      "local_ref": "demo/evidence/vfd/gs10-user-manual.url",
+      "scenario_supported": ["photoeye_blocked"],
+      "why_mira_uses_it": "Confirm the GS10 is healthy (no drive fault, V/Hz, comm) so a stopped conveyor is NOT a VFD fault — points the diagnosis at the photoeye."
+    },
+    {
+      "id": "gs10_fault_codes", "asset": "gs10_vfd", "document_type": "fault_code_reference",
+      "title": "GS10 Manual Ch.06 — Fault & Warning Codes",
+      "source": "https://cdn.automationdirect.com/static/manuals/gs10m/ch06.pdf", "source_kind": "external_url",
+      "local_ref": "demo/evidence/vfd/gs10-fault-codes-ch06.url",
+      "scenario_supported": ["photoeye_blocked"],
+      "why_mira_uses_it": "Decode/rule out GS10 fault codes (E07, CE/CF comm). Absence of a fault code is the evidence-against a VFD cause."
+    },
+    {
+      "id": "micro820_user_manual", "asset": "micro820_plc", "document_type": "user_manual",
+      "title": "Micro820 Programmable Controllers User Manual (2080-UM005)",
+      "source": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/2080-um005_-en-e.pdf", "source_kind": "external_url",
+      "local_ref": "demo/evidence/plc/micro820-user-manual.url",
+      "scenario_supported": ["photoeye_blocked"],
+      "why_mira_uses_it": "Confirms DI_05 wiring + serial (8N2/9600) so the photoeye input (di05_photoeye) is read correctly."
+    },
+    {
+      "id": "photoeye_notes", "asset": "photoeye_pe101", "document_type": "local_note",
+      "title": "Photoeye PE-101 notes (UNKNOWN_MODEL)",
+      "source": "demo/evidence/photoeye/notes.md", "source_kind": "local_note",
+      "scenario_supported": ["photoeye_blocked"],
+      "why_mira_uses_it": "The cleaning/check procedure for the photoeye on DI_05 — the recommended technician actions for a blocked beam. Exact model unknown (honest)."
+    },
+    {
+      "id": "motor_notes", "asset": "conveyor_motor", "document_type": "local_note",
+      "title": "Conveyor motor notes (UNKNOWN_MODEL)",
+      "source": "demo/evidence/motor/notes.md", "source_kind": "local_note",
+      "scenario_supported": [],
+      "why_mira_uses_it": "Motor electrical character (3-phase, 4-pole, GS10-driven). Not the photoeye cause; kept for completeness. Exact model unknown (honest)."
+    },
+    {
+      "id": "conveyor_factoryio", "asset": "conveyor", "document_type": "reference",
+      "title": "Factory I/O documentation",
+      "source": "https://docs.factoryio.com/", "source_kind": "external_url",
+      "local_ref": "demo/evidence/conveyor/factory-io-docs.url",
+      "scenario_supported": ["photoeye_blocked"],
+      "why_mira_uses_it": "The conveyor + diffuse/retro-reflective sensor behaviour in the visual layer."
+    },
+    {
+      "id": "gs10_integration_guide", "asset": "conveyor", "document_type": "repo_io_map",
+      "title": "GS10 + Micro820 Integration Guide (wiring + comm + tag map)",
+      "source": "plc/GS10_Integration_Guide.md", "source_kind": "local_repo",
+      "scenario_supported": ["photoeye_blocked"],
+      "why_mira_uses_it": "The authoritative wiring + register map: DI_05 photoeye, GS10 HRs, comm params. The IO map the diagnosis grounds tags against."
+    },
+    {
+      "id": "modbus_io_map", "asset": "conveyor", "document_type": "repo_io_map",
+      "title": "Modbus server / register map (MbSrvConf_ConvSimple_v1.9.xml — the deployed map; v2.1 reuses it)",
+      "source": "plc/MbSrvConf_ConvSimple_v1.9.xml", "source_kind": "local_repo",
+      "scenario_supported": ["photoeye_blocked"],
+      "why_mira_uses_it": "Coils + holding registers actually deployed (di05_photoeye at coil 000023) — proves the photoeye tag is real and addressed."
+    },
+    {
+      "id": "anomaly_rules", "asset": "conveyor", "document_type": "repo_rules",
+      "title": "Conv_Simple anomaly rules (A12 photo-eye jam)",
+      "source": "plc/conv_simple_anomaly/", "source_kind": "local_repo",
+      "scenario_supported": ["photoeye_blocked"],
+      "why_mira_uses_it": "Defines A12 'Photo-eye jam' (di05_photoeye blocked >= X s) — the deterministic rule that fires the scenario."
+    }
+  ]
+}

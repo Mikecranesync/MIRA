@@ -5,6 +5,8 @@
 **`DI_05`** (coil 000023 in the slave map). It drives anomaly **A12 — "Photo-eye jam (continuous
 block)"** in `plc/conv_simple_anomaly/`.
 
+**MODEL: `UNKNOWN_MODEL`** — exact manufacturer/catalog number not recorded in the bench files.
+
 ## Honest status — exact model not recorded
 
 The bench files name the **tag, role, and wiring point** (`PE-101` / `DI_05` / `di05_photoeye`) but

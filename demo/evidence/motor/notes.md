@@ -5,6 +5,8 @@
 sync** (`RPM_PER_HZ = 30.0` in `plc/conv_simple_anomaly/` — "4-pole 60 Hz motor: 1800 rpm sync / 60 Hz").
 Monitored via the GS10's `vfd_motor_rpm` / `vfd_torque` / `vfd_power` registers.
 
+**MODEL: `UNKNOWN_MODEL`** — exact manufacturer/catalog number not recorded in the bench files.
+
 ## Honest status — exact model not recorded
 
 The bench files record the motor's **electrical character** (3-phase, 4-pole, ~1800 rpm sync, small
