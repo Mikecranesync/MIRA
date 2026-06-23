@@ -1,0 +1,89 @@
+{
+  "_comment": "STRANGER FACTORY — a fictional water-treatment plant, deliberately NOT bottling and NOT Conv_Simple. Structurally a real Ignition/Sepasoft MES tag export (Folder hierarchy -> UdtInstance equipment -> nested UdtInstance/AtomicTag signal groups, engUnit on process tags). Different industry, different equipment types, different process signals (gpm/psi/mg-L/scfm). The point: run the REAL factory_context code on data it has never seen and was not tuned for.",
+  "name": "Riverside Water Authority",
+  "tagType": "Folder",
+  "tags": [
+    {
+      "name": "North Plant",
+      "tagType": "Folder",
+      "tags": [
+        {
+          "name": "Treatment",
+          "tagType": "Folder",
+          "tags": [
+            {
+              "name": "Train A",
+              "tagType": "Folder",
+              "tags": [
+                {
+                  "name": "InfluentPump01",
+                  "typeId": "Models/Equipment/Process/Pump",
+                  "tagType": "UdtInstance",
+                  "parameters": { "MesTagPath": { "dataType": "String", "value": "[MES]Riverside Water Authority/North Plant/Treatment/Train A/InfluentPump01" } },
+                  "tags": [
+                    { "name": "ProductionRun", "tagType": "UdtInstance", "tags": [ { "name": "Running", "tagType": "AtomicTag" } ] },
+                    { "name": "State", "tagType": "UdtInstance", "tags": [ { "name": "Name", "tagType": "AtomicTag" } ] },
+                    { "name": "FlowRate", "tagType": "AtomicTag", "engUnit": "gpm" },
+                    { "name": "DischargePressure", "tagType": "AtomicTag", "engUnit": "psi" },
+                    { "name": "MotorCurrent", "tagType": "AtomicTag", "engUnit": "A" },
+                    { "name": "Counts", "tagType": "UdtInstance", "tags": [ { "name": "Outfeed", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "UdtInstance", "tags": [ { "name": "Value", "tagType": "AtomicTag", "engUnit": "gal" } ] } ] } ] }
+                  ]
+                },
+                {
+                  "name": "Blower01",
+                  "typeId": "Models/Equipment/Process/Blower",
+                  "tagType": "UdtInstance",
+                  "parameters": { "MesTagPath": { "dataType": "String", "value": "[MES]Riverside Water Authority/North Plant/Treatment/Train A/Blower01" } },
+                  "tags": [
+                    { "name": "ProductionRun", "tagType": "UdtInstance", "tags": [ { "name": "Running", "tagType": "AtomicTag" } ] },
+                    { "name": "State", "tagType": "UdtInstance", "tags": [ { "name": "Name", "tagType": "AtomicTag" } ] },
+                    { "name": "AirFlow", "tagType": "AtomicTag", "engUnit": "scfm" },
+                    { "name": "MotorCurrent", "tagType": "AtomicTag", "engUnit": "A" },
+                    { "name": "DischargeTemp", "tagType": "AtomicTag", "engUnit": "C" }
+                  ]
+                },
+                {
+                  "name": "AerationBasin01",
+                  "typeId": "Models/Equipment/Process/Basin",
+                  "tagType": "UdtInstance",
+                  "parameters": { "MesTagPath": { "dataType": "String", "value": "[MES]Riverside Water Authority/North Plant/Treatment/Train A/AerationBasin01" } },
+                  "tags": [
+                    { "name": "DissolvedOxygen", "tagType": "AtomicTag", "engUnit": "mg/L" },
+                    { "name": "Level", "tagType": "AtomicTag", "engUnit": "ft" },
+                    { "name": "Temperature", "tagType": "AtomicTag", "engUnit": "C" },
+                    { "name": "pH", "tagType": "AtomicTag" }
+                  ]
+                },
+                {
+                  "name": "Clarifier01",
+                  "typeId": "Models/Equipment/Process/Clarifier",
+                  "tagType": "UdtInstance",
+                  "parameters": { "MesTagPath": { "dataType": "String", "value": "[MES]Riverside Water Authority/North Plant/Treatment/Train A/Clarifier01" } },
+                  "tags": [
+                    { "name": "ProductionRun", "tagType": "UdtInstance", "tags": [ { "name": "Running", "tagType": "AtomicTag" } ] },
+                    { "name": "RakeTorque", "tagType": "AtomicTag", "engUnit": "%" },
+                    { "name": "BlanketLevel", "tagType": "AtomicTag", "engUnit": "ft" },
+                    { "name": "Turbidity", "tagType": "AtomicTag", "engUnit": "NTU" }
+                  ]
+                },
+                {
+                  "name": "EffluentPump01",
+                  "typeId": "Models/Equipment/Process/Pump",
+                  "tagType": "UdtInstance",
+                  "parameters": { "MesTagPath": { "dataType": "String", "value": "[MES]Riverside Water Authority/North Plant/Treatment/Train A/EffluentPump01" } },
+                  "tags": [
+                    { "name": "ProductionRun", "tagType": "UdtInstance", "tags": [ { "name": "Running", "tagType": "AtomicTag" } ] },
+                    { "name": "State", "tagType": "UdtInstance", "tags": [ { "name": "Name", "tagType": "AtomicTag" } ] },
+                    { "name": "FlowRate", "tagType": "AtomicTag", "engUnit": "gpm" },
+                    { "name": "DischargePressure", "tagType": "AtomicTag", "engUnit": "psi" },
+                    { "name": "MotorCurrent", "tagType": "AtomicTag", "engUnit": "A" }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
