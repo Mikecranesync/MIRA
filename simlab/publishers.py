@@ -209,29 +209,95 @@ class MqttPublisher:
 class RelayIngestPublisher:
     """POST reading batches to mira-relay ``/api/v1/tags/ingest``.
 
-    Lazy-imports ``httpx``.  Not used in tests (no NeonDB / relay in CI).
-    Sets ``source_system="simulator"`` on every tag entry.
+    Lazy-imports ``httpx``. Not used in tests against a real relay (no NeonDB /
+    relay in CI) — the unit tests inject a fake ``httpx``. Sets
+    ``source_system="simulator"`` on every tag entry.
+
+    Auth (matches ``mira-relay/auth.py`` + ``relay_server._authenticate_http``):
+
+    * **HMAC mode (durable, production-shaped)** — pass ``hmac_key``. Every
+      request is signed with the four ``X-MIRA-*`` headers over the exact body
+      bytes, and the relay treats the ``X-MIRA-Tenant`` header as authoritative
+      (a caller-supplied body ``tenant_id`` can never override it). This is the
+      shape a real Ignition/Sparkplug feed uses.
+    * **Bearer mode (bench fallback)** — pass ``api_key`` and no ``hmac_key``.
+      The relay accepts this only under ``RELAY_LEGACY_BEARER=1``; the tenant is
+      carried in the request body (``relay_server`` falls back to
+      ``payload["tenant_id"]`` when no HMAC header is present).
+
+    ``tenant_id`` is required in both modes — the relay rejects a batch with no
+    resolvable tenant (``tenant_required``).
     """
 
-    def __init__(self, relay_url: str, api_key: str = "") -> None:
+    def __init__(
+        self,
+        relay_url: str,
+        tenant_id: str,
+        *,
+        api_key: str = "",
+        hmac_key: str = "",
+    ) -> None:
+        if not tenant_id:
+            raise ValueError("RelayIngestPublisher requires a tenant_id")
         self._relay_url = relay_url.rstrip("/")
+        self._tenant_id = tenant_id
         self._api_key = api_key
+        self._hmac_key = hmac_key
+
+    def _hmac_headers(self, body_bytes: bytes) -> dict[str, str]:
+        """Build the four ``X-MIRA-*`` HMAC headers for ``body_bytes``.
+
+        Mirrors the signed-string contract in ``mira-relay/auth.py``:
+        ``f"{tenant}\\n{nonce}\\n{timestamp}\\n{sha256_hex(body_bytes)}"``.
+        """
+        import hashlib
+        import hmac as _hmac
+        import time
+        import uuid
+
+        nonce = uuid.uuid4().hex
+        timestamp = str(int(time.time()))
+        body_hash = hashlib.sha256(body_bytes).hexdigest()
+        signed = f"{self._tenant_id}\n{nonce}\n{timestamp}\n{body_hash}"
+        signature = _hmac.new(
+            self._hmac_key.encode(), signed.encode(), hashlib.sha256
+        ).hexdigest()
+        return {
+            "X-MIRA-Tenant": self._tenant_id,
+            "X-MIRA-Nonce": nonce,
+            "X-MIRA-Timestamp": timestamp,
+            "X-MIRA-Signature": signature,
+        }
 
     def publish(self, readings: list[Reading]) -> None:  # noqa: D102
         try:
             import httpx  # lazy
 
             tags = [r.to_ingest_tag() for r in readings]
-            payload = {
+            payload: dict[str, Any] = {
                 "source_system": "simulator",
                 "tags": tags,
             }
-            headers: dict[str, str] = {}
-            if self._api_key:
+            # Bench/legacy bearer path carries the tenant in the body (the relay
+            # falls back to payload["tenant_id"] when no HMAC header is sent).
+            # In HMAC mode the X-MIRA-Tenant header is authoritative, so the body
+            # tenant is redundant — omit it to avoid implying it is trusted.
+            if not self._hmac_key:
+                payload["tenant_id"] = self._tenant_id
+
+            # Sign/hash the EXACT bytes we send: serialize once and post via
+            # ``content=`` so httpx does not re-encode the body (which would
+            # break the HMAC body-hash).
+            body_bytes = json.dumps(payload, separators=(",", ":")).encode()
+            headers = {"Content-Type": "application/json"}
+            if self._hmac_key:
+                headers.update(self._hmac_headers(body_bytes))
+            elif self._api_key:
                 headers["Authorization"] = f"Bearer {self._api_key}"
+
             resp = httpx.post(
                 f"{self._relay_url}/api/v1/tags/ingest",
-                json=payload,
+                content=body_bytes,
                 headers=headers,
                 timeout=10,
             )

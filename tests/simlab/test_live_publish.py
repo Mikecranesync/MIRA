@@ -66,6 +66,40 @@ def test_build_app_attaches_nothing_when_env_unset(monkeypatch):
     import simlab.api as api
 
     monkeypatch.delenv("SIMLAB_MQTT_HOST", raising=False)
+    monkeypatch.delenv("SIMLAB_RELAY_URL", raising=False)
     eng = _engine()
     api.build_app(engine=eng)
     assert eng._publishers == []
+
+
+def test_build_app_attaches_relay_publisher_when_url_set(monkeypatch):
+    import simlab.api as api
+    from simlab import SIMLAB_TENANT_ID
+    from simlab.publishers import RelayIngestPublisher
+
+    monkeypatch.delenv("SIMLAB_MQTT_HOST", raising=False)
+    monkeypatch.setenv("SIMLAB_RELAY_URL", "http://relay.example")
+    monkeypatch.setenv("SIMLAB_RELAY_HMAC_KEY", "k")
+    monkeypatch.delenv("SIMLAB_RELAY_TENANT_ID", raising=False)
+    eng = _engine()
+    api.build_app(engine=eng)
+
+    attached = [p for p in eng._publishers if isinstance(p, RelayIngestPublisher)]
+    assert len(attached) == 1
+    # Defaults to the reserved SimLab tenant.
+    assert attached[0]._tenant_id == SIMLAB_TENANT_ID
+    assert attached[0]._hmac_key == "k"
+
+
+def test_build_app_relay_tenant_override(monkeypatch):
+    import simlab.api as api
+    from simlab.publishers import RelayIngestPublisher
+
+    monkeypatch.delenv("SIMLAB_MQTT_HOST", raising=False)
+    monkeypatch.setenv("SIMLAB_RELAY_URL", "http://relay.example")
+    monkeypatch.setenv("SIMLAB_RELAY_TENANT_ID", "11111111-1111-1111-1111-111111111111")
+    eng = _engine()
+    api.build_app(engine=eng)
+
+    attached = [p for p in eng._publishers if isinstance(p, RelayIngestPublisher)]
+    assert attached[0]._tenant_id == "11111111-1111-1111-1111-111111111111"
