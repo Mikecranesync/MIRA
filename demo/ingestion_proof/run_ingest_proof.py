@@ -25,6 +25,7 @@ for _p in (str(ROOT / "factory_context"), str(ROOT / "discovery_corpus" / "scrip
         sys.path.insert(0, _p)
 
 import build as build_mod  # noqa: E402  (factory_context/build.py — REAL)
+import equipment_profiles as ep  # noqa: E402  (REAL equipment-class intelligence)
 import interrogate_ignition_export as iie  # noqa: E402  (REAL loader/classifier)
 
 EXPORT = HERE / "stranger_water_plant_export.json"
@@ -102,6 +103,20 @@ def main() -> int:
             dims[n.dimension] = dims.get(n.dimension, 0) + 1
     print(f"\n  live signals: {len(sigs)}  by archetype: {arche}")
     print(f"  inferred physical dimensions: {dims}")
+
+    # equipment-class intelligence: per typed asset, expected vs present vs MISSING + failure candidates
+    print("\n  EQUIPMENT INTELLIGENCE (from equipment_type + signal dimensions):")
+    for a in [n for n in model.entities() if n.level == "asset" and n.equipment_type]:
+        present = [s.dimension for s in sigs if s.uns_path.startswith(a.uns_path + ".")]
+        intel = ep.assess_asset(a.equipment_type, present)
+        if not intel:
+            continue
+        gap = ("complete" if intel["instrumentation_complete"]
+               else "MISSING " + ", ".join(intel["missing_dimensions"]))
+        print(f"    {a.name:16} [{a.equipment_type:10}] instrumentation: {gap}  | "
+              f"{len(intel['failure_mode_candidates'])} failure-mode candidates")
+        for fm in intel["failure_mode_candidates"][:2]:
+            print(f"        - {fm['name']}: {fm['evidence_signature']}")
     print("  sample signals:")
     for n in sigs[:8]:
         print(f"    {n.uns_path:70} {n.archetype:12} {n.suggestion.confidence}")
