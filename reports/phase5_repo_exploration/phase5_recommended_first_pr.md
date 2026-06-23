@@ -19,7 +19,7 @@
 | `mira-hub/src/app/api/connectors/simlab/import/__tests__/route.test.ts` | **NEW** — route unit (201/400/401, tenant scope) | `api/suggestions/[id]/decide/__tests__/route.test.ts` |
 | `mira-hub/src/.../factory-model-import.integration.test.ts` | **NEW** — real-PG round-trip (named `*.integration.test.ts` so CI skips it; runs locally) | `api/contextualization/import/import.integration.test.ts` |
 | `tests/integration/test_phase0_schema.py` | **EXTEND** — assert `needs_review` accepted under RLS as `factorylm_app` with a **UUID** tenant | existing file |
-| `/VERSION` **and** `mira-hub/package.json` | **bump BOTH** — root `/VERSION` (required, `docs/versioning.md`) **and** the hub minor (`mira-hub/AGENTS.md` — "schema migration bumps the minor"). **Verified lockfile-safe:** `mira-hub/bun.lock` workspace root has `name` only, no `version` field, so a version-only bump does not break `--frozen-lockfile`. | `mira-hub/AGENTS.md` |
+| `/VERSION` (always); `mira-hub/package.json` only with a `bun.lock` regen | **Always bump root `/VERSION`** (required Version Gate, `docs/versioning.md`). The hub minor (`mira-hub/AGENTS.md` — "schema migration bumps the minor") may be bumped **only together with `bun install` to regenerate+commit `bun.lock`** — empirically (memory PR #2145) a `package.json` bump WITHOUT a lockfile regen fails Hub Unit Tests' `--frozen-lockfile` (19s). **Safest for PR-1: `/VERSION` only**, defer the hub minor to a separate `chore(hub): release` PR. | `docs/versioning.md`, `mira-hub/AGENTS.md`, memory `feedback_mira_hub_pkg_version_frozen_lockfile` |
 
 **Do NOT touch:** `suggestion-accept.ts` (accept path already handles `kg_entity`/`tag_mapping`), the `/knowledge/suggestions` UI, any engine file, any new table.
 
@@ -48,7 +48,7 @@ Version Gate (bump `/VERSION`) · CI Migration Order · Lint/ruff/pyright · Hub
 ## Risks
 
 1. **Phantom `Hub E2E` required check** → merge needs `gh pr merge --admin` (known branch-protection misalignment, `project_branch_protection_phantom_check`). A stuck `Hub E2E "Expected"` is **not your bug** — but the *executed* command-center spec is real signal here.
-2. **Version bumps (corrected from a stale memory):** `mira-hub/AGENTS.md` requires bumping **both** root `/VERSION` and `mira-hub/package.json` (hub minor) for a schema-migration PR. A prior memory (`feedback_mira_hub_pkg_version_frozen_lockfile`) warned "never bump `package.json` — breaks `--frozen-lockfile`"; **that is not true for the current lockfile** — `mira-hub/bun.lock` (lockfileVersion 1) records the workspace root with `name` only and **no `version`**, so a version-only bump leaves `bun.lock` unchanged and `bun install --frozen-lockfile` stays green (runs in Hub Unit Tests / Hub E2E / Smoke). After bumping, run `bun install` and confirm `bun.lock` is unchanged before pushing. (Only a bump that *also* changes dependencies would touch the lockfile — this PR adds none.)
+2. **Version-bump / frozen-lockfile (two real sources, reconciled):** `mira-hub/AGENTS.md` says a schema-migration hub PR bumps `mira-hub/package.json` (minor) *and* `/VERSION`. But the memory `feedback_mira_hub_pkg_version_frozen_lockfile` records an **empirical** CI failure (PR #2145, 2026-06-20): bumping `package.json` **without** regenerating `bun.lock` failed Hub Unit Tests' `bun install --frozen-lockfile` (19s) — reverting fixed it (34s). A static read of the current `bun.lock` (no root `version` field) *hints* it may now be neutral, but that does **not** override the observed failure. **Rule:** always bump `/VERSION`; bump `package.json` **only with `bun install` to regenerate+commit `bun.lock`**; **safest for PR-1 is `/VERSION` only** (defer the hub minor to a `chore(hub): release` PR). Verify locally with `bun install --frozen-lockfile` before push. (Full reasoning: `verification.md`.)
 3. **CHECK-constraint migration** is the real risk surface (not the writer) — make it idempotent (`DROP CONSTRAINT IF EXISTS`); Migration Verify applies it to staging and catches a malformed constraint.
 4. **tenant_id UUID trap** — use a UUID tenant in fixtures (slug `'mike'` 401s and tests an unreachable path). `mira-hub-migrations.md §1,§6`.
 5. **ADR-0017** — the writer only *inserts* rows; any *status transition* must go through `applyHubProposalTransition` (raw `UPDATE … SET status` is a flagged bug + can drift the Proposal State Canary).
@@ -66,7 +66,7 @@ Version Gate (bump `/VERSION`) · CI Migration Order · Lint/ruff/pyright · Hub
 2. The rows appear in **`/knowledge/suggestions`** with confidence + Verify/Reject.
 3. Verifying a `kg_entity` row creates a `kg_entities` (`approval_state='verified'`) row; verifying a `tag_mapping` creates a `tag_entities` row — **via the unchanged `decideSuggestion` path**.
 4. `needs_review` is an accepted `ai_suggestions.status` value (Migration Verify green).
-5. All gates green (merge `--admin` per the phantom check); **both** `/VERSION` and `mira-hub/package.json` bumped; `bun.lock` unchanged.
+5. All gates green (merge `--admin` per the phantom check); `/VERSION` bumped (and `mira-hub/package.json` **only** if `bun.lock` was regenerated in the same PR, else deferred to a release PR); `bun install --frozen-lockfile` verified locally.
 6. **No new table, no new page, no engine change, no licensed data.**
 
 ## Why this PR, not another

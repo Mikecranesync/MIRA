@@ -22,16 +22,21 @@
 | MIRA seam: `build_trace_row` (pure) | `mira-bots/shared/decision_trace.py:112` | ✅ exact |
 | `decision_traces` has **no `explanation` column** today | `mira-hub/db/migrations/032_decision_traces.sql` grep `explanation` → 0 | ✅ confirmed — the JSONB column is genuinely new |
 
-## Correction surfaced by verification — the version-bump rule
+## The version-bump rule — three sources, reconciled honestly
 
-The auto-loaded `mira-hub/AGENTS.md` and the actual lockfile **contradict a prior memory** that the first-PR report had carried:
+This is the one place the inputs disagree. **I initially over-corrected; here is the evidence-respecting answer.**
 
-- **`mira-hub/AGENTS.md`:** a hub PR bumps **both** `/VERSION` (overall, required) **and** `mira-hub/package.json` (hub minor) — "Every meaningful change (feature, **schema migration**, …) bumps the minor."
-- **The memory `feedback_mira_hub_pkg_version_frozen_lockfile`** said: *never* bump `mira-hub/package.json` (it breaks `bun install --frozen-lockfile`).
-- **Direct check of `mira-hub/bun.lock`** (lockfileVersion 1): the workspace root entry is `{"name": "mira-hub", "dependencies": {…}}` — **no `version` field**, and the string `2.17.2` does not appear anywhere in the lockfile. Therefore a **version-only** `package.json` bump leaves `bun.lock` byte-identical and `--frozen-lockfile` passes.
+- **`mira-hub/AGENTS.md`:** a hub PR bumps **both** `/VERSION` (overall, required) **and** `mira-hub/package.json` (hub minor) — "Every meaningful change (feature, **schema migration**, …) bumps the minor" — but its ship sequence pairs that bump with a lockfile regen.
+- **Memory `feedback_mira_hub_pkg_version_frozen_lockfile` — EMPIRICAL, do NOT dismiss:** on **PR #2145 (2026-06-20)**, bumping `package.json` made the **Hub Unit Tests** `bun install --frozen-lockfile` step fail fast (**19s FAILURE**); reverting the bump turned it green (**34s PASS**). Observed CI behavior, not a guess.
+- **My static check of `mira-hub/bun.lock`** (lockfileVersion 1): workspace root = `{"name":"mira-hub","dependencies":{…}}`, **no `version` field**; `2.17.2` absent. This *suggests* a version-only bump may now be lockfile-neutral — but it **does not override** the PR-#2145 failure, and a static read cannot prove `--frozen-lockfile`'s dynamic check.
 
-**Reconciliation (now reflected in `phase5_recommended_first_pr.md`):** bump **both** `/VERSION` and `mira-hub/package.json` (minor) per AGENTS.md; it is lockfile-safe for a dependency-free change; run `bun install` and confirm `bun.lock` is unchanged before push. The memory's blanket "never bump" is stale for the current lockfile (the historical break was likely a coincident dependency change or an older lockfile format).
+**Correct, conservative guidance (now in `phase5_recommended_first_pr.md`):**
+1. **Always** bump root `/VERSION` (the required Version Gate).
+2. Bump `mira-hub/package.json` (hub minor, per AGENTS.md) **only together with `bun install` to regenerate + commit `bun.lock`** — a package.json bump WITHOUT a lockfile regen is empirically known to fail (PR #2145).
+3. **Safest for PR-1:** bump `/VERSION` only and do the hub-release minor as a separate `chore(hub): release` PR. Do not assert "lockfile-safe" without re-running `bun install --frozen-lockfile` locally.
+
+**I withdraw the earlier "version-only bump is lockfile-safe, AGENTS.md wins" claim — it ignored the empirical PR-#2145 evidence. The memory is NOT stale.** A static lockfile read is not a substitute for the observed CI result — a verify-before-asserting lesson on myself.
 
 ## Net
 
-All Phase 5 report file:line for the first-PR and MIRA seams are **verified accurate**. One substantive correction (version bumps) applied. The five-term verdict taxonomy (existing / partial / missing / duplication-risk / recommended-seam) is used throughout `spine_to_platform_mapping.md`. No other discrepancies found in the spot-check.
+All Phase 5 report file:line for the first-PR and MIRA seams are **verified accurate**. The version-bump guidance was corrected *twice* — overturned, then restored to respect the empirical CI evidence (final: `/VERSION` always; `package.json` only with a lockfile regen, or defer to a release PR). The five-term verdict taxonomy (existing / partial / missing / duplication-risk / recommended-seam) is used throughout `spine_to_platform_mapping.md`. No other discrepancies found in the spot-check.
