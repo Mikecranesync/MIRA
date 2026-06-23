@@ -14,6 +14,14 @@ and the **infra/ops** steps to stand it up.
 > (Lane 3). To land SimLab data now: apply `tools/seeds/approved_tags_simulator.sql` (staging), run
 > `mira-relay`, then `SIMLAB_RELAY_URL=$RELAY SIMLAB_RELAY_HMAC_KEY=… python -m simlab` + advance.
 
+> **Update 2026-06-23 — Lane 3 §7 pre-work DONE (consolidation before any MQTT code).** The canonical
+> ingest contract is now single-sourced in **`mira-relay/ingest_contract.py`** (`normalize_tag_path` +
+> `build_tag_entry` + `build_ingest_batch`): the relay re-exports the normalizer, the seed generator and
+> SimLab's publisher route through it, and a future-MQTT-shape fixture proves a decoded message maps to
+> the same canonical batch — with **no subscriber, no broker, no Sparkplug code**. Lane 3 subscriber
+> phases (3a plain-JSON, 3b Sparkplug) remain **unstarted**. See the Lane 3 design review §7 for the
+> extracted API and the migration rationale.
+
 **Companions:** `docs/plans/2026-06-22-proveit-factory-import-implementation-plan.md` (the Phase 0–6
 spine this maps to), `docs/plans/2026-06-22-proveit-2027-demo-runbook.md`, `docs/RESUME_2026-06-22_proveit-buildout.md`,
 `docs/simlab/README.md`. This doc is **documentation only** — the gaps it names are other agents' bricks.
@@ -185,7 +193,7 @@ other's tree (per `.claude/rules/session-discipline.md` §3 — scoped commits).
 |---|---|---|---|---|
 | **L1 — SimLab emit** | `simlab/` | ✅ **DONE (`fc5790f7`)** — `RelayIngestPublisher` env-gated into `build_app` (`SIMLAB_RELAY_URL`) + HMAC/bearer + carries tenant; 16 tests incl. real `auth.py` round-trip. Closed Gap A/B. | No | 3 |
 | **L2 — seed + schema** | `tools/seeds/`, `mira-hub/db/` | ✅ **DONE (`03971bbc`)** — `gen_approved_tags_simulator.py` → 89-row `approved_tags_simulator.sql`, tenant `SIMLAB_TENANT_ID`; normalizer pinned to the relay's, drift-guarded. Still infra: confirm migs `020/033/035/036` applied + apply the seed (§6). Closed Gap C. | Reserved tenant — no provisioning | 0/3 |
-| **L3 — MQTT subscriber** | `mira-relay/mqtt_ingest/` (new) | Read-only aiomqtt subscriber + topic→UNS normalizer (reuse `from_mqtt_topic` semantics) + reuse `NeonTagStore.persist_batch`. The **foreign-feed / Sparkplug** path. **No publish** (`.claude/rules/fieldbus-readonly.md`). | Broker | 3 |
+| **L3 — MQTT subscriber** | `mira-relay/mqtt_ingest/` (new) | §7 pre-work ✅ (`ingest_contract.py` — canonical normalizer + batch builder, consolidated 2026-06-23). Subscriber phases **unstarted**: read-only aiomqtt subscriber + topic→UNS normalizer (reuse `from_mqtt_topic`) + `build_tag_entry`/`build_ingest_batch` → `ingest_batch`/`NeonTagStore.persist_batch`. The **foreign-feed / Sparkplug** path. **No publish** (`.claude/rules/fieldbus-readonly.md`). | Broker | 3 |
 | **L4 — Command Center viz** | `mira-hub/src/app/(hub)/command-center/`, `src/lib/i3x/` | Numeric value panel + sparkline from `live_signal_cache` (reuse `i3x/value.ts`); ISA-101 muted-normal / color-for-abnormal. | Reads landed data | 4 |
 | **L5 — engine bridge** | `mira-bots/shared/`, `mira-pipeline/` | Bridge `live_signal_cache` → Supervisor `live_tags` (direct-connection UNS, read-only). Note `/api/mira/ask` already does a Hub-side version — port the contract. | Reads landed data | 3-4 |
 | **L6 — infra** | (ops, not code) | Provision tenant; migrations; broker. See §6. | — | 0/3 |

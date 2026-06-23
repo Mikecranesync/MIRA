@@ -35,7 +35,7 @@ generator after the line changes is the supported way to keep it in sync.
 
 from __future__ import annotations
 
-import re
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -45,22 +45,25 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+
+def _load_canonical_normalizer():
+    """Load THE canonical normalize_tag_path from mira-relay/ingest_contract.py
+    by file path (no sys.path pollution). The seed's normalized_tag_path MUST be
+    byte-identical to what the relay computes for live traffic, or every tag is
+    rejected fail-closed — so the seed and the relay call the SAME function."""
+    path = _REPO_ROOT / "mira-relay" / "ingest_contract.py"
+    spec = importlib.util.spec_from_file_location("mira_relay_ingest_contract", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod.normalize_tag_path
+
+
+normalize_tag_path = _load_canonical_normalizer()
+
 # Reserved SimLab tenant (UUID) — simlab/__init__.py SIMLAB_TENANT_ID.
 from simlab import SIMLAB_TENANT_ID  # noqa: E402
 from simlab.engine import SimEngine  # noqa: E402
 from simlab.lines.juice_bottling import build_line  # noqa: E402
-
-# Mirror of mira-relay/tag_ingest.normalize_tag_path (uns.slug-style). Kept local
-# so the generator has no relay/DB import; tests assert it equals the real one.
-_NON_ALNUM = re.compile(r"[^a-z0-9]+")
-
-
-def normalize_tag_path(raw: str) -> str:
-    """Lowercase; runs of non-alphanumerics -> '_'; trim leading/trailing '_'."""
-    if not raw:
-        return ""
-    return _NON_ALNUM.sub("_", raw.strip().lower()).strip("_")
-
 
 _OUT = Path(__file__).parent / "approved_tags_simulator.sql"
 
