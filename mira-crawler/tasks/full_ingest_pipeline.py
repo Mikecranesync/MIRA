@@ -543,7 +543,7 @@ def step_quality_gate(baseline_path: str | None, report: PipelineReport) -> None
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         lines = (result.stdout + result.stderr).strip().splitlines()
-        summary = next((l for l in lines if "GATE" in l and ("PASS" in l or "FAIL" in l)), "")
+        summary = next((line for line in lines if "GATE" in line and ("PASS" in line or "FAIL" in line)), "")
         report.quality_gate = summary or ("PASS" if result.returncode == 0 else "FAIL")
         if result.returncode != 0:
             report.errors.append(f"Quality gate failed: {summary}")
