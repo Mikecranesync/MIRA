@@ -366,7 +366,8 @@ def _log_triple(cur, subject: str, predicate: str, obj: str) -> bool:
 
 def _write_kg_edge(cur, source_id: str, target_id: str, relation_type: str,
                    report: PipelineReport, confidence: float = 1.0,
-                   source_chunk_id: str | None = None) -> None:
+                   source_chunk_id: str | None = None,
+                   source_description: str | None = None) -> None:
     """Create a KG edge from ingest. Default (#1662 / ADR-0017): PROPOSE it
     (relationship_proposals + ai_suggestions(kg_edge)) for human review —
     ingest never silently verifies. The legacy direct `kg_relationships`
@@ -407,6 +408,7 @@ def _write_kg_edge(cur, source_id: str, target_id: str, relation_type: str,
             confidence=confidence,
             proposed_by="import:full_ingest",
             source_chunk_id=source_chunk_id,
+            source_description=source_description,
         )
         if pid:
             report.kg_proposals += 1
@@ -471,7 +473,8 @@ def step_kg(text: str, manufacturer: str, model: str,
         )
         if equip_id and manual_eid:
             try:
-                _write_kg_edge(cur, equip_id, manual_eid, "documented_in", report)
+                _write_kg_edge(cur, equip_id, manual_eid, "documented_in", report,
+                               source_description=source_url)
                 _log_triple(cur, f"{eff_mfr} {eff_model}", "documented_in",
                             f"{eff_mfr} {eff_model} — {manual_type}")
                 report.kg_triples += 1
@@ -495,7 +498,8 @@ def step_kg(text: str, manufacturer: str, model: str,
                 report.kg_fault_code_entities += 1
                 if equip_id:
                     try:
-                        _write_kg_edge(cur, equip_id, fc_id, "has_fault_code", report)
+                        _write_kg_edge(cur, equip_id, fc_id, "has_fault_code", report,
+                                       source_description=source_url)
                     except Exception as exc:
                         logger.warning("KG edge (has_fault_code) failed: %s", exc)
                 _log_triple(cur, fc.code, "documented_in", f"{eff_mfr} {eff_model}")
