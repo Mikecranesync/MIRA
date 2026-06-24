@@ -190,6 +190,7 @@ export async function POST(req: Request) {
         title: [c.manufacturer, c.modelNumber].filter(Boolean).join(" ") || c.title,
         url: c.sourceUrl || null,
         page: c.sourcePage,
+        verified: c.verified === true,
       }));
 
   return NextResponse.json({

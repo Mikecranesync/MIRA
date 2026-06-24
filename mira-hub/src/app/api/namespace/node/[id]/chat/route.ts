@@ -283,6 +283,7 @@ export async function POST(
   });
   const systemPrompt = appendManualContext(baseSystemPrompt, nodeChunks);
   const nodeSources: ManualSource[] = chunksToSources(nodeChunks);
+  const approvedSourceCount = nodeSources.filter((s) => s.verified).length;
   const safetyLabel = nodeRow.name || id;
 
   const fullMessages: ChatMessage[] = [
@@ -300,7 +301,12 @@ export async function POST(
       // alongside the streaming answer.
       if (nodeSources.length > 0) {
         controller.enqueue(
-          enc.encode(`data: ${JSON.stringify({ sources: nodeSources })}\n\n`),
+          enc.encode(
+            `data: ${JSON.stringify({
+              sources: nodeSources,
+              approved_source_count: approvedSourceCount,
+            })}\n\n`,
+          ),
         );
       }
 

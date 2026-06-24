@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.41.0 (2026-06-24) - feat(retrieval): approval-gated garage conveyor retrieval
+- Adds `MIRA_ENFORCE_APPROVED_RETRIEVAL` for approved-only KB retrieval, keeps it default-off, and includes the trusted-corpus backfill SQL required before enabling the gate. Hub `HAS_DOCUMENT` approval now marks the approved upload's chunks `verified=true`, source payloads expose `verified` plus `approved_source_count`, and the garage conveyor golden path proves unreviewed context is hidden until approved.
+
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 

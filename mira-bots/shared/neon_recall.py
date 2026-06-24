@@ -108,6 +108,30 @@ SHARED_TENANT_ID = os.getenv("MIRA_SHARED_TENANT_ID", "78917b56-f85f-43bb-9a08-1
 # degrades gracefully to positional priority when BM25 is empty.
 HYBRID_ENABLED = os.getenv("MIRA_RETRIEVAL_HYBRID_ENABLED", "true").lower() == "true"
 
+
+# Approval-gated retrieval (2026-06-24). When ON, restrict knowledge_entries
+# retrieval to human-APPROVED chunks (verified=true) — the column added in
+# docs/migrations/001_knowledge_entries.sql that retrieval historically never
+# queried (Architecture Unification Assessment, PR #2287). This is what makes the
+# Hub approval workflow AUTHORITATIVE rather than cosmetic: a chunk a human has not
+# approved is not citable when the gate is on.
+#   DEFAULT OFF → byte-identical to prior behavior (zero regression).
+#   Before turning ON, backfill the shared OEM/seeded corpus to verified=true
+#   (tools/seeds/backfill_verified_corpus.sql) — otherwise retrieval returns ~0 rows.
+# Only the four knowledge_entries streams (vector/BM25/ILIKE/product) are gated; the
+# structured fault_codes table has no verified column (a separate governance question).
+def approval_gate_enabled() -> bool:
+    """Read the gate flag live (not frozen at import) so it can toggle without a
+    process restart and tests can exercise both modes."""
+    return os.getenv("MIRA_ENFORCE_APPROVED_RETRIEVAL", "false").lower() == "true"
+
+
+def _approval_filter_sql() -> str:
+    """SQL fragment appended to each knowledge_entries WHERE when the approval gate
+    is enabled. Empty string when off → the query is byte-identical to prior behavior."""
+    return " AND verified = true" if approval_gate_enabled() else ""
+
+
 # Reciprocal Rank Fusion constant (Cormack et al. 2009). 60 is the canonical
 # default — small enough that top ranks dominate, large enough that mid-rank
 # agreements across streams still contribute.
@@ -382,10 +406,11 @@ def _like_search(conn, text_fn, tenant_id: str, codes: list[str], limit: int) ->
             source_url,
             source_page,
             metadata,
+            verified,
             0.5 AS similarity
         FROM knowledge_entries
         WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
-          AND ({where_clause})
+          AND ({where_clause}){_approval_filter_sql()}
         LIMIT :lim
     """)
     rows = conn.execute(sql, params).mappings().fetchall()
@@ -427,15 +452,15 @@ def _product_search(
                 text_fn(
                     "WITH product_chunks AS ("
                     "  SELECT content, manufacturer, model_number, equipment_type, "
-                    "  source_type, source_url, source_page, metadata, embedding "
+                    "  source_type, source_url, source_page, metadata, verified, embedding "
                     "  FROM knowledge_entries "
                     "  WHERE (tenant_id = :tid OR tenant_id = :shared_tid) "
                     "  AND model_number ILIKE :pat "
                     "  AND model_number NOT ILIKE :exclude "
-                    "  AND embedding IS NOT NULL"
+                    f"  AND embedding IS NOT NULL{_approval_filter_sql()}"
                     ") "
                     "SELECT content, manufacturer, model_number, equipment_type, "
-                    "source_type, source_url, source_page, metadata, "
+                    "source_type, source_url, source_page, metadata, verified, "
                     "1 - (embedding <=> cast(:emb AS vector)) AS similarity "
                     "FROM product_chunks "
                     "ORDER BY embedding <=> cast(:emb AS vector) "
@@ -528,11 +553,11 @@ def _recall_bm25(
             conn.execute(
                 text_fn(
                     "SELECT content, manufacturer, model_number, equipment_type, "
-                    "source_type, source_url, source_page, metadata, "
+                    "source_type, source_url, source_page, metadata, verified, "
                     "ts_rank_cd(content_tsv, to_tsquery('english', :tsq)) AS similarity "
                     "FROM knowledge_entries "
                     "WHERE (tenant_id = :tid OR tenant_id = :shared_tid) "
-                    "  AND content_tsv @@ to_tsquery('english', :tsq) "
+                    f"  AND content_tsv @@ to_tsquery('english', :tsq){_approval_filter_sql()} "
                     "ORDER BY similarity DESC "
                     "LIMIT :lim"
                 ),
@@ -771,7 +796,7 @@ def recall_knowledge(
             if has_embedding:
                 vector_rows = (
                     conn.execute(
-                        text("""
+                        text(f"""
                         SELECT
                             content,
                             manufacturer,
@@ -781,10 +806,11 @@ def recall_knowledge(
                             source_url,
                             source_page,
                             metadata,
+                            verified,
                             1 - (embedding <=> cast(:emb AS vector)) AS similarity
                         FROM knowledge_entries
                         WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
-                          AND embedding IS NOT NULL
+                          AND embedding IS NOT NULL{_approval_filter_sql()}
                         ORDER BY embedding <=> cast(:emb AS vector)
                         LIMIT :lim
                     """),

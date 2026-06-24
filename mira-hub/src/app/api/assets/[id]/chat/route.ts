@@ -305,6 +305,7 @@ export async function POST(
 
   const systemPrompt = appendManualContext(withGraph, manualChunks);
   const manualSources: ManualSource[] = chunksToSources(manualChunks);
+  const approvedSourceCount = manualSources.filter((s) => s.verified).length;
 
   const fullMessages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
@@ -330,7 +331,12 @@ export async function POST(
       // alongside the streaming answer.
       if (manualSources.length > 0) {
         controller.enqueue(
-          enc.encode(`data: ${JSON.stringify({ sources: manualSources })}\n\n`),
+          enc.encode(
+            `data: ${JSON.stringify({
+              sources: manualSources,
+              approved_source_count: approvedSourceCount,
+            })}\n\n`,
+          ),
         );
       }
 
@@ -375,6 +381,7 @@ export async function POST(
           page: mc.sourcePage,
           url: mc.sourceUrl || null,
           rank: mc.rank,
+          verified: mc.verified === true,
         }));
         const grounded = manualSources.length > 0;
         await withTenantContext(ctx.tenantId, (c) =>
