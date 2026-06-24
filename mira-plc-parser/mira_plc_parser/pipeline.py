@@ -11,7 +11,7 @@ from . import analyze as _analyze
 from . import uns as _uns
 from .detect import Detection, detect
 from .ir import PLCProject
-from .parsers import csv_tags, plcopen_xml, rockwell_l5x, structured_text
+from .parsers import csv_tags, ignition_json, plcopen_xml, rockwell_l5x, structured_text
 
 # format key -> parser module (each exposes parse(text, source_file) -> PLCProject)
 _PARSERS = {
@@ -19,6 +19,7 @@ _PARSERS = {
     "csv_tags": csv_tags,
     "structured_text": structured_text,
     "plcopen_xml": plcopen_xml,
+    "ignition_json": ignition_json,
 }
 # recognized-but-not-yet-built parsers (routing is ready; extraction is a later phase)
 _PLANNED = {"siemens_tia_xml"}
@@ -69,6 +70,12 @@ def render_markdown(result: ParseResult) -> str:
         else:
             lines.append("> Not parsed: " + "; ".join(result.project.warnings))
         return "\n".join(lines)
+
+    # Hierarchical source (Ignition tag tree etc.): explain the factory STRUCTURE, not ladder logic.
+    if r.namespace:
+        lines.extend(_render_namespace_md(r))
+        return "\n".join(lines)
+
     lines.append("**Controller:** %s  ·  **Vendor:** %s" % (r.controller or "(unnamed)", r.vendor or "?"))
     lines.append("")
     c = r.counts
@@ -119,6 +126,49 @@ def render_markdown(result: ParseResult) -> str:
     return "\n".join(lines)
 
 
+def _render_namespace_md(r) -> list[str]:
+    """Explain an imported ISA-95 namespace (Ignition tag tree) in human-readable form -- the
+    'MIRA can explain the factory structure' surface. Lists per-level counts, the asset roster with
+    UDT type + MES binding, and a depth-capped containment tree."""
+    c = r.counts
+    lines: list[str] = []
+    enterprises = [n for n in r.namespace if n["level"] == "enterprise"]
+    ent = enterprises[0]["name"] if enterprises else "(unnamed enterprise)"
+    lines.append("")
+    lines.append("## Factory namespace — %s" % ent)
+    lines.append("")
+    lines.append("**ISA-95 hierarchy:** %d sites · %d areas · %d lines · %d assets · %d signals "
+                 "(%d nodes)"
+                 % (c.get("sites", 0), c.get("areas", 0), c.get("lines", 0), c.get("assets", 0),
+                    c.get("signals", 0), c.get("namespace_nodes", 0)))
+
+    assets = [n for n in r.namespace if n["level"] == "asset"]
+    if assets:
+        lines.append("")
+        lines.append("### Equipment assets")
+        for a in assets[:60]:
+            where = " / ".join(a["path"][:-1])
+            udt = (a["udt_type"].rsplit("/", 1)[-1]) if a["udt_type"] else "?"
+            nameplate = ""
+            if a.get("manufacturer") or a.get("model"):
+                nameplate = " — nameplate: %s %s" % (a.get("manufacturer", ""), a.get("model", ""))
+            mes = "  ·  MES: yes" if a.get("mes_path") else ""
+            lines.append("- **%s** (%s) under %s%s%s" % (a["name"], udt, where, mes, nameplate))
+
+    # depth-capped containment tree (enterprise -> site -> area -> line -> asset)
+    containers = [n for n in r.namespace if n["level"] != "signal"]
+    if containers:
+        lines.append("")
+        lines.append("### Containment tree")
+        lines.append("```")
+        for n in containers[:120]:
+            indent = "  " * (len(n["path"]) - 1)
+            tag = "" if n["level"] in ("enterprise",) else " [%s]" % n["level"]
+            lines.append("%s%s%s" % (indent, n["name"], tag))
+        lines.append("```")
+    return lines
+
+
 def _finding(f) -> dict:
     """One analyze.Finding -> a plain JSON-safe dict (confidence is already a .value string)."""
     return {"kind": f.kind, "name": f.name, "detail": f.detail,
@@ -153,6 +203,10 @@ def render_json(result: ParseResult) -> dict:
         "tag_dictionary": r.tag_dictionary,
         "warnings": list(r.warnings),
     }
+    # Additive: only hierarchical sources (Ignition tag tree) carry an ISA-95 namespace. Logic
+    # parsers (L5X/CSV/ST) omit the key entirely, so their report shape is unchanged.
+    if r.namespace:
+        report["namespace"] = list(r.namespace)
     # UNS / ISA-95 proposal layer: one candidate path per tag (deterministic, offline). The upper
     # levels come from `uns_prefix` (seeded from the controller name; user-overridable downstream).
     report["uns_prefix"] = _uns.default_prefix(report)

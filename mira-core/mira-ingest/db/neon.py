@@ -418,6 +418,11 @@ def insert_knowledge_entries_batch(entries: list[dict]) -> int:
     Optional per-entry keys (vision doc Problem 1): isa95_path, equipment_id,
     data_type (defaults to 'manual'). data_type is validated per entry.
 
+    Optional visibility keys: is_private, verified (both default False). A
+    per-tenant corpus (e.g. the proveit Pilot DB) sets is_private=True so it
+    stays scoped to its tenant; the shared OEM corpus omits both and keeps the
+    False default. See .claude/rules/knowledge-entries-tenant-scoping.md.
+
     Returns count of rows inserted.
     """
     if not entries:
@@ -433,6 +438,12 @@ def insert_knowledge_entries_batch(entries: list[dict]) -> int:
                 "isa95_path": e.get("isa95_path"),
                 "equipment_id": e.get("equipment_id"),
                 "data_type": dt,
+                # Per-row visibility: per-tenant uploads (the proveit Pilot DB corpus) set
+                # is_private=True; the shared OEM corpus omits it and keeps the False default,
+                # so every existing caller is byte-for-byte unchanged. See
+                # .claude/rules/knowledge-entries-tenant-scoping.md (write law).
+                "is_private": bool(e.get("is_private", False)),
+                "verified": bool(e.get("verified", False)),
             }
         )
     with _engine().connect() as conn:
@@ -447,7 +458,7 @@ def insert_knowledge_entries_batch(entries: list[dict]) -> int:
                 VALUES
                     (:id, :tenant_id, :source_type, :manufacturer, :model_number,
                      :content, cast(:embedding AS vector), :source_url, :source_page,
-                     cast(:metadata AS jsonb), false, false, :chunk_type,
+                     cast(:metadata AS jsonb), :is_private, :verified, :chunk_type,
                      :isa95_path, :equipment_id, :data_type)
             """),
                 entry,

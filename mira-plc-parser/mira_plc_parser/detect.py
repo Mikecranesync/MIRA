@@ -27,6 +27,7 @@ KNOWN_FORMATS = (
     "plcopen_xml",
     "siemens_tia_xml",
     "structured_text",
+    "ignition_json",         # Ignition tag-export JSON (UNS tag tree) -- ProveIt import engine
     "rockwell_acd",          # closed binary project -> export L5X
     "siemens_tia_project",   # closed project -> Openness XML export
     "step7_project",         # closed project -> XML/SCL export
@@ -67,6 +68,10 @@ _PLCOPEN_RE = re.compile(r"<project\b[^>]*xmlns[^>]*plcopen", re.IGNORECASE)
 _PLCOPEN_RE2 = re.compile(r"http://www\.plcopen\.org/xml", re.IGNORECASE)
 _SIEMENS_RE = re.compile(r"<SW\.(Blocks|Types|Tags)\.|<Document\b.*Siemens|TIAPortal", re.IGNORECASE)
 _XML_RE = re.compile(r"^\s*<\?xml", re.IGNORECASE)
+# Ignition tag-export JSON: a JSON object whose tree uses Ignition's tagType vocabulary. We require
+# a Folder/UdtInstance/AtomicTag marker so a generic JSON config doesn't match.
+_JSON_OBJ_RE = re.compile(r"^\s*\{")
+_IGNITION_RE = re.compile(r'"tagType"\s*:\s*"(Folder|UdtInstance|AtomicTag|UdtType)"')
 # ST: IEC 61131-3 structured-text keywords commonly opening a program/function block
 _ST_RE = re.compile(
     r"\b(PROGRAM|FUNCTION_BLOCK|FUNCTION|VAR(_INPUT|_OUTPUT|_GLOBAL)?)\b.*\b(END_(PROGRAM|FUNCTION_BLOCK|FUNCTION|VAR))\b",
@@ -104,6 +109,10 @@ def detect(filename: str, text: str) -> Detection:
         return Detection("plcopen_xml", "high", "found PLCopen XML namespace")
     if _SIEMENS_RE.search(head):
         return Detection("siemens_tia_xml", "high", "found Siemens TIA/Openness XML markers")
+
+    # --- Ignition tag-export JSON (the UNS tag tree) ---
+    if _JSON_OBJ_RE.search(head) and _IGNITION_RE.search(head):
+        return Detection("ignition_json", "high", "JSON object with Ignition tagType markers")
 
     # --- structured text (high if keyword-bracketed, else medium by extension) ---
     if _ST_RE.search(head):

@@ -60,7 +60,13 @@ def to_i3x(report: dict, prefix: dict | None = None) -> dict:
 
     Containers (enterprise..asset) are emitted once each, de-duplicated by their UNS path; leaf tags
     become instances parented to their asset (or line if no asset matched). `elementId` is the UNS path.
+
+    When the report carries an EXPLICIT ISA-95 namespace (an Ignition tag tree imported by
+    `parsers/ignition_json`), that real hierarchy is honored verbatim. Otherwise the upper levels are
+    INFERRED from `uns.propose_uns` (the L5X/CSV path, where the export carries no plant context).
     """
+    if report.get("namespace"):
+        return _from_explicit_namespace(report["namespace"])
     candidates = _uns.propose_uns(report, prefix)
     instances: list[dict] = []
     seen: set[str] = set()
@@ -110,6 +116,57 @@ def to_i3x(report: dict, prefix: dict | None = None) -> dict:
             },
         })
 
+    return {
+        "namespace": {"uri": NAMESPACE_URI, "displayName": "MIRA PLC Parser UNS"},
+        "objectTypes": _object_types(),
+        "objectInstances": instances,
+    }
+
+
+def _from_explicit_namespace(nodes: list[dict]) -> dict:
+    """Build the i3X payload directly from an explicit ISA-95 namespace (Ignition tag tree).
+
+    Each NamespaceNode (serialized to a dict by analyze) becomes one ObjectInstance. `elementId` is
+    the slugged UNS path; `parentId` is the slugged parent path; containers (enterprise..asset) are
+    compositions, signal leaves are not. The tree is already de-duplicated by the parser, so no
+    re-derivation is needed -- the real hierarchy is preserved verbatim.
+    """
+    def _eid(path: list[str]) -> str:
+        return "/".join(_uns.slug(p) for p in path)
+
+    instances: list[dict] = []
+    for n in nodes:
+        path = n.get("path") or [n.get("name", "")]
+        level = n.get("level", "signal")
+        is_container = level != "signal"
+        parent = path[:-1]
+        metadata = {"level": level, "unsPath": _eid(path)}
+        if is_container:
+            if n.get("udt_type"):
+                metadata["udtType"] = n["udt_type"]
+            if n.get("mes_path"):
+                metadata["mesPath"] = n["mes_path"]
+            if n.get("tag_path"):
+                metadata["tagPath"] = n["tag_path"]
+            if n.get("manufacturer"):
+                metadata["manufacturer"] = n["manufacturer"]
+            if n.get("model"):
+                metadata["model"] = n["model"]
+        else:
+            metadata.update({
+                "plcTag": n.get("name", ""),
+                "dataType": n.get("data_type", ""),
+                "unit": n.get("unit", ""),
+                "confidence": n.get("confidence", "high"),
+            })
+        instances.append({
+            "elementId": _eid(path),
+            "displayName": n.get("name", ""),
+            "typeElementId": _type_for_level(level if is_container else "signal"),
+            "parentId": _eid(parent) if parent else None,
+            "isComposition": is_container,
+            "metadata": metadata,
+        })
     return {
         "namespace": {"uri": NAMESPACE_URI, "displayName": "MIRA PLC Parser UNS"},
         "objectTypes": _object_types(),
