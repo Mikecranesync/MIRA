@@ -245,6 +245,49 @@ describe("POST /api/proposals/[id]/decide", () => {
     expect(updateKgSql).toContain("relationship_proposal_id = COALESCE");
   });
 
+  it("verify HAS_DOCUMENT marks the approved uploaded document chunks verified", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    const uploadId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    const proposal = {
+      ...baseProposal,
+      relationship_type: "HAS_DOCUMENT",
+      target_entity_id: uploadId,
+      target_entity_type: "manual",
+    };
+    let verifiedUpdateSql = "";
+    let verifiedUpdateArgs: unknown[] = [];
+
+    vi.mocked(withTenantContext).mockImplementation(async (_tid, fn) => {
+      const client = {
+        query: vi.fn(async (sql: string, args: unknown[] = []) => {
+          if (sql.includes("FROM relationship_proposals")) {
+            return { rows: [proposal] };
+          }
+          if (sql.includes("UPDATE relationship_proposals")) return { rows: [] };
+          if (sql.includes("FROM kg_entities")) {
+            return { rows: [{ entity_id: uploadId }] };
+          }
+          if (sql.includes("UPDATE knowledge_entries")) {
+            verifiedUpdateSql = sql;
+            verifiedUpdateArgs = args;
+            return { rows: [] };
+          }
+          if (sql.includes("FROM kg_relationships")) return { rows: [] };
+          if (sql.includes("INSERT INTO kg_relationships")) return { rows: [] };
+          return { rows: [] };
+        }),
+      };
+      return await fn(client as never);
+    });
+
+    const res = await POST(makeReq({ decision: "verify" }), makeParams(VALID_UUID));
+    expect(res.status).toBe(200);
+    expect(verifiedUpdateSql).toContain("UPDATE knowledge_entries");
+    expect(verifiedUpdateSql).toContain("verified = true");
+    expect(verifiedUpdateSql).toContain("doc_id = $2::uuid");
+    expect(verifiedUpdateArgs).toEqual([TENANT_ID, uploadId]);
+  });
+
   it("reject → flips status to 'rejected' with no kg_relationships write", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
     let updateProposalArgs: unknown[] = [];
