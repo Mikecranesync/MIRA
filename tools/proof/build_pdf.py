@@ -50,7 +50,8 @@ def _tbl(rows, widths, header=True):
     return t
 
 
-def build(r: dict):
+def build(r: dict, meta: dict | None = None):
+    meta = meta or {}
     sid = r["scenario_id"]
     pdf = OUT / f"proof_{sid}.pdf"
     verdict = r["verdict"]
@@ -143,16 +144,42 @@ def build(r: dict):
                        "$LANGFUSE_HOST) emits the 'supervisor.process' trace per turn. Grounding here is instead proven independently by "
                        "sections 3-6 (the DB-backed retrieved chunks vs. the answer's citations) — which does not require trusting a trace.", SMALL))
 
-    # 8. Verdict
-    E.append(Paragraph("8. Pass / Fail Verdict", H2))
-    chk = r["checks"]
-    vrows = [["Check", "Result"]]
-    for k, v in chk.items():
-        vrows.append([_san(k), "PASS" if v else "FAIL"])
-    E.append(_tbl(vrows, [3.0 * inch, 1.5 * inch]))
-    E.append(Paragraph(f"<b>Overall: <font color='{vcolor.hexval()}'>{verdict}</font></b> — "
-                       f"a technician-style question received a grounded answer that connects live factory data to the asset, "
-                       f"explains the likely cause, and cites evidence." + (" (Substitute fault — see note at top.)" if r.get("substitute_note") else ""), BODY))
+    # 8. Verdict — using the repo's deterministic rubric grader
+    E.append(Paragraph("8. Pass / Review Verdict (graded by simlab.diagnostic.grade)", H2))
+    rb = r.get("rubric")
+    if rb:
+        E.append(_tbl([
+            ["Rubric dimension", "Result"],
+            ["root_cause_hit (expected phrase matched)", "PASS" if rb["root_cause_hit"] else "FAIL"],
+            ["asset_hit (expected asset named)", "PASS" if rb["asset_hit"] else "FAIL"],
+            ["evidence_recall (>=0.5 to pass)", str(rb["evidence_recall"])],
+            ["citations_hit (by filename)", _san(", ".join(rb["citations_hit"]) or "(none — answer cites doc SECTIONS, not filenames)")],
+            ["actions_hit", _san(", ".join(rb["actions_hit"]) or "(none matched the rubric keywords)")],
+            ["rubric_passed", "PASS" if rb["rubric_passed"] else "REVIEW"],
+        ], [3.6 * inch, 3.1 * inch]))
+        E.append(Paragraph("Verdict rule: <font face='Courier'>rubric_passed AND ingest==200 AND no_trailing_question</font>. "
+                           "<b>REVIEW</b> is reported honestly, not hidden — a partial match (e.g. the answer is reasonable but does "
+                           "not contain the exact ground-truth root-cause phrase, or cites a doc SECTION rather than its filename) "
+                           "shows here as a failed dimension.", SMALL))
+    else:
+        chk = r["checks"]
+        E.append(_tbl([["Check", "Result"]] + [[_san(k), "PASS" if v else "FAIL"] for k, v in chk.items()], [3.0 * inch, 1.5 * inch]))
+        E.append(Paragraph(_san(r.get("rubric_note", "")), SMALL))
+    E.append(Paragraph(f"<b>Overall: <font color='{vcolor.hexval()}'>{verdict}</font></b>"
+                       + (" (Substitute fault — see note at top.)" if r.get("substitute_note") else ""), BODY))
+
+    # 9. Provenance & reproducibility
+    E.append(Paragraph("9. Provenance &amp; Reproducibility", H2))
+    h = meta.get("health", {})
+    E.append(_tbl([
+        ["Field", "Value"],
+        ["git SHA / branch", _san(f"{(meta.get('git_sha') or '?')[:12]} ({meta.get('git_branch')})" + (" [DIRTY working tree]" if meta.get('git_dirty') else ""))],
+        ["Config (env)", Paragraph(_san(json.dumps(meta.get("config", {}))), SMALL)],
+        ["Corpus", _san(f"{meta.get('corpus', {}).get('knowledge_entries_chunks')} chunks, doc-set md5 {(meta.get('corpus', {}).get('corpus_doc_set_md5') or '')[:12]}")],
+        ["Retrieval mode (actual)", _san(r.get("retrieval_mode", "?"))],
+        ["Embedder / reranker / langfuse", _san(f"ollama_reachable={h.get('embedder_ollama_reachable')}, nvidia_configured={h.get('reranker_nvidia_configured')}, langfuse={h.get('langfuse_enabled')} (py {h.get('python')})")],
+        ["Reproduce", Paragraph("<font face='Courier'>doppler run --project factorylm --config stg -- python tools/proof/run_proof.py --clean</font> (seeds: tools/seeds/seed-simlab-docs.py)", SMALL)],
+    ], [1.7 * inch, 5.0 * inch]))
 
     doc.build(E)
     return pdf
@@ -160,7 +187,9 @@ def build(r: dict):
 
 def main():
     data = json.loads((_REPO / "tools" / "proof" / "results.json").read_text(encoding="utf-8"))
-    made = [build(r) for r in data]
+    meta = data.get("metadata", {}) if isinstance(data, dict) else {}
+    results = data["results"] if isinstance(data, dict) else data
+    made = [build(r, meta) for r in results]
     print("built", len(made), "PDF proof packets:")
     for p in made:
         print("  ", p.relative_to(_REPO))
