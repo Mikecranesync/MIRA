@@ -9,6 +9,7 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 - Recorded the staging ingest-schema reconciliation and added a read-only drift probe plus migration immutability doctrine.
 
 ### Added
+- **ProveIt proof packets**: auditable contextualized-diagnosis proof harness, self-verifying PDF packets, integrity tests, and an honest blind-spots report.
 - **VFD Analyzer setup wizard** (Ignition `testing` sandbox): Connect → Verify → Map → Save tag-mapping flow with first-timer role education; Jython 2.7 unicode save bug fixed (config validator) — verified live end-to-end.
 - **MIRA PLC Parser** (`mira-plc-parser/`): read-only, offline, vendor-agnostic export → IR pipeline (Rockwell L5X + tag CSV), closed-project detection with export instructions, offline CLI, PyInstaller packaging foundation.
 
