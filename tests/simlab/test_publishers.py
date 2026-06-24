@@ -116,3 +116,124 @@ def test_topic_is_projected_from_uns_path(fake_aiomqtt):
     topic, _payload, retain = _all_messages(fake_aiomqtt)[0]
     assert topic.endswith("process/fill_level_oz")
     assert "/" in topic and "." not in topic.split("/")[-1]
+
+
+# ---------------------------------------------------------------------------
+# RelayIngestPublisher — HTTP relay path (Gap A/B). Fake httpx; no relay/DB.
+# ---------------------------------------------------------------------------
+
+import os  # noqa: E402
+
+from simlab.publishers import RelayIngestPublisher  # noqa: E402
+
+_TENANT = "00000000-0000-0000-0000-000000515ab1"
+
+
+class _FakeResponse:
+    def __init__(self, status_code: int = 200) -> None:
+        self.status_code = status_code
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+
+class _FakeHttpx:
+    """Captures the single POST a publish() makes."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+        self.status_code = 200
+
+    def post(self, url, *, content=None, headers=None, timeout=None, **kwargs):
+        self.calls.append(
+            {"url": url, "content": content, "headers": dict(headers or {}), "timeout": timeout}
+        )
+        return _FakeResponse(self.status_code)
+
+
+@pytest.fixture
+def fake_httpx(monkeypatch):
+    fake = _FakeHttpx()
+    mod = types.ModuleType("httpx")
+    mod.post = fake.post
+    monkeypatch.setitem(sys.modules, "httpx", mod)
+    return fake
+
+
+def test_relay_requires_tenant():
+    with pytest.raises(ValueError):
+        RelayIngestPublisher("http://relay.example", tenant_id="")
+
+
+def test_relay_bearer_mode_carries_tenant_in_body(fake_httpx):
+    pub = RelayIngestPublisher("http://relay.example/", tenant_id=_TENANT, api_key="benchkey")
+    pub.publish([_reading("fill_level_oz", 11.5, tick=2)])
+
+    assert len(fake_httpx.calls) == 1
+    call = fake_httpx.calls[0]
+    assert call["url"] == "http://relay.example/api/v1/tags/ingest"
+    assert call["headers"]["Authorization"] == "Bearer benchkey"
+    # No HMAC headers in bearer mode.
+    assert "X-MIRA-Signature" not in call["headers"]
+    body = json.loads(call["content"])
+    assert body["source_system"] == "simulator"
+    assert body["tenant_id"] == _TENANT  # relay falls back to body tenant in legacy path
+    assert body["tags"][0]["tag_path"].endswith("fill_level_oz")
+
+
+def test_relay_hmac_mode_round_trips_against_the_real_verifier(fake_httpx):
+    # Import the authoritative verifier so the test proves the WIRE contract,
+    # not just a mirror of our own signing code.
+    relay_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "mira-relay"
+    )
+    sys.path.insert(0, relay_dir)
+    try:
+        import auth  # mira-relay/auth.py
+    finally:
+        sys.path.remove(relay_dir)
+
+    key = "test-hmac-key"
+    pub = RelayIngestPublisher("http://relay.example", tenant_id=_TENANT, hmac_key=key)
+    pub.publish([_reading("fill_level_oz", 11.5, tick=2)])
+
+    call = fake_httpx.calls[0]
+    headers = call["headers"]
+    body_bytes = call["content"]
+    assert isinstance(body_bytes, (bytes, bytearray))
+    # The verifier returns the tenant on success and raises on any mismatch.
+    tenant = auth.verify_hmac(headers, body_bytes, key)
+    assert tenant == _TENANT
+    # HMAC mode does NOT put the tenant in the body (header is authoritative).
+    assert "tenant_id" not in json.loads(body_bytes)
+
+
+def test_relay_hmac_signature_is_over_the_exact_bytes_sent(fake_httpx):
+    # Tampering with the posted body must break verification — proves we signed
+    # the bytes we actually send (the content= path), not a re-encoded copy.
+    relay_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "mira-relay"
+    )
+    sys.path.insert(0, relay_dir)
+    try:
+        import auth
+    finally:
+        sys.path.remove(relay_dir)
+
+    key = "test-hmac-key"
+    RelayIngestPublisher("http://relay.example", tenant_id=_TENANT, hmac_key=key).publish(
+        [_reading("speed_rpm", 240, tick=1)]
+    )
+    call = fake_httpx.calls[0]
+    tampered = call["content"] + b" "
+    with pytest.raises(ValueError):
+        auth.verify_hmac(call["headers"], tampered, key)
+
+
+def test_relay_publish_is_best_effort_on_error(fake_httpx):
+    fake_httpx.status_code = 500  # raise_for_status() will raise
+    pub = RelayIngestPublisher("http://relay.example", tenant_id=_TENANT, hmac_key="k")
+    # Must not propagate — a down relay can never stall the sim.
+    pub.publish([_reading("fill_level_oz", 11.5, tick=1)])
+    assert len(fake_httpx.calls) == 1
