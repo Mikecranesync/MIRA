@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 62,
-    "apiRoutes": 146
+    "apiRoutes": 147
   },
   "pages": [
     "/admin",
@@ -210,6 +210,7 @@
     "/api/uploads/local",
     "/api/usage",
     "/api/user/preferences",
+    "/api/version",
     "/api/wizard/[step]",
     "/api/work-orders",
     "/api/work-orders/[id]",

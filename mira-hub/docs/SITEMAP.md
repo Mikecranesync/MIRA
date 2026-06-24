@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **62** (8 dynamic) |
-| API routes | **146** (43 dynamic) |
+| API routes | **147** (43 dynamic) |
 
 ## Pages (62)
 
@@ -80,7 +80,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (146)
+## API routes (147)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -225,6 +225,7 @@
 | `/api/uploads/local` | static | `api/uploads/local/route.ts` |
 | `/api/usage` | static | `api/usage/route.ts` |
 | `/api/user/preferences` | static | `api/user/preferences/route.ts` |
+| `/api/version` | static | `api/version/route.ts` |
 | `/api/wizard/[step]` | dynamic | `api/wizard/[step]/route.ts` |
 | `/api/work-orders` | static | `api/work-orders/route.ts` |
 | `/api/work-orders/[id]` | dynamic | `api/work-orders/[id]/route.ts` |
