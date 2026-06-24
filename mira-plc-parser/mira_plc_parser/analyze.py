@@ -77,6 +77,7 @@ class AnalysisReport:
     asset_candidates: list[Finding] = field(default_factory=list)
     vfd_signal_candidates: list[Finding] = field(default_factory=list)
     review_required: list[Finding] = field(default_factory=list)
+    namespace: list[dict] = field(default_factory=list)   # ISA-95 hierarchy (Ignition tag tree etc.)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -121,7 +122,39 @@ def analyze(proj: PLCProject) -> AnalysisReport:
         "vfd_signal_candidates": len(rep.vfd_signal_candidates),
         "review_required": len(rep.review_required),
     }
+
+    # ISA-95 namespace layer (additive): present only for hierarchical sources (Ignition tag tree).
+    # Logic parsers (L5X/CSV/ST) leave proj.namespace empty, so this block is a no-op for them.
+    if proj.namespace:
+        rep.namespace = [_namespace_node_dict(n) for n in proj.namespace]
+        rep.counts.update(_namespace_counts(proj.namespace))
     return rep
+
+
+def _namespace_node_dict(n) -> dict:
+    return {
+        "name": n.name, "level": n.level, "path": list(n.path),
+        "udt_type": n.udt_type, "data_type": n.data_type, "unit": n.unit,
+        "mes_path": n.mes_path, "tag_path": n.tag_path,
+        "manufacturer": n.manufacturer, "model": n.model, "serial": n.serial,
+        "confidence": (n.provenance.confidence.value if n.provenance else Confidence.HIGH.value),
+    }
+
+
+def _namespace_counts(nodes) -> dict:
+    """Per-ISA-95-level counts so the report can state 'N sites, N lines, N assets, N signals'."""
+    by: dict[str, int] = {}
+    for n in nodes:
+        by[n.level] = by.get(n.level, 0) + 1
+    return {
+        "namespace_nodes": len(nodes),
+        "enterprises": by.get("enterprise", 0),
+        "sites": by.get("site", 0),
+        "areas": by.get("area", 0),
+        "lines": by.get("line", 0),
+        "assets": by.get("asset", 0),
+        "signals": by.get("signal", 0),
+    }
 
 
 # ---- cross-reference + role inference ----

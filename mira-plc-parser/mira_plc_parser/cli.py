@@ -32,7 +32,13 @@ def _read_text(path: Path) -> str:
 def _summary(result, written: list[Path]) -> str:
     det = result.detection
     lines = ["Format: %s (%s) — %s" % (det.fmt, det.confidence, det.reason)]
-    if result.handled:
+    if result.handled and result.report.namespace:
+        c = result.report.counts
+        lines.append("Factory namespace (ISA-95): %d sites · %d areas · %d lines · %d assets · "
+                     "%d signals (%d nodes)"
+                     % (c.get("sites", 0), c.get("areas", 0), c.get("lines", 0), c.get("assets", 0),
+                        c.get("signals", 0), c.get("namespace_nodes", 0)))
+    elif result.handled:
         c = result.report.counts
         lines.append("Controller: %s · Vendor: %s" % (result.report.controller or "(unnamed)",
                                                        result.report.vendor or "?"))

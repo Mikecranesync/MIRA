@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { API_BASE } from "@/lib/config";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -59,10 +59,15 @@ export default function ReportsPage() {
     return <LabsStub feature="Reports" />;
   }
   const t = useTranslations("reports");
+  const [mounted, setMounted] = useState(false);
   const [narrative, setNarrative] = useState<string | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
+
+  // Guard: recharts ResponsiveContainer uses ResizeObserver/getBoundingClientRect
+  // which don't exist on the server. Only render charts after client mount.
+  useEffect(() => setMounted(true), []);
 
   async function generateReport() {
     setLoading(true);
@@ -149,87 +154,91 @@ export default function ReportsPage() {
         </div>
 
         {/* Charts row 1: Downtime + WO Completion */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <ChartCard title={t("charts.downtimeTrend")} subtitle={t("charts.downtimeSubtitle")}>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={DOWNTIME_DATA} barSize={8}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="day" tick={{ fontSize: 10, fill: "var(--foreground-subtle)" }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: "var(--foreground-subtle)" }} tickLine={false} axisLine={false} />
-                <Tooltip
-                  contentStyle={{ background: "var(--surface-0)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
-                  cursor={{ fill: "var(--surface-1)" }}
-                />
-                <Bar dataKey="hours" name={t("charts.seriesDowntime")} fill="#DC2626" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          <ChartCard title={t("charts.woCompletion")} subtitle={t("charts.woSubtitle")}>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={WO_COMPLETION_DATA}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="week" tick={{ fontSize: 10, fill: "var(--foreground-subtle)" }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: "var(--foreground-subtle)" }} tickLine={false} axisLine={false} />
-                <Tooltip
-                  contentStyle={{ background: "var(--surface-0)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
-                />
-                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                <Line type="monotone" dataKey="created"   name={t("charts.seriesCreated")}   stroke="#2563EB" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="completed" name={t("charts.seriesCompleted")} stroke="#16A34A" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        </div>
-
-        {/* Charts row 2: Top Problem Assets + PM Compliance */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <ChartCard title={t("charts.topAssets")} subtitle={t("charts.topAssetsSubtitle")}>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={TOP_PROBLEM_ASSETS} layout="vertical" barSize={10} margin={{ left: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 10, fill: "var(--foreground-subtle)" }} tickLine={false} axisLine={false} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: "var(--foreground-subtle)" }} width={110} tickLine={false} axisLine={false} />
-                <Tooltip
-                  contentStyle={{ background: "var(--surface-0)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
-                  cursor={{ fill: "var(--surface-1)" }}
-                />
-                <Bar dataKey="wos" name={t("charts.seriesWorkOrders")} fill="#2563EB" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          <ChartCard title={t("charts.pmCompliance")} subtitle={t("charts.pmComplianceSubtitle")}>
-            <div className="flex items-center justify-center">
+        {mounted && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <ChartCard title={t("charts.downtimeTrend")} subtitle={t("charts.downtimeSubtitle")}>
               <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={PM_COMPLIANCE_DATA}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={80}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {PM_COMPLIANCE_DATA.map((entry, index) => (
-                      <Cell key={entry.name} fill={PM_COLORS[index]} />
-                    ))}
-                  </Pie>
+                <BarChart data={DOWNTIME_DATA} barSize={8}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="day" tick={{ fontSize: 10, fill: "var(--foreground-subtle)" }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: "var(--foreground-subtle)" }} tickLine={false} axisLine={false} />
                   <Tooltip
                     contentStyle={{ background: "var(--surface-0)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
-                    formatter={(v) => `${v}%`}
+                    cursor={{ fill: "var(--surface-1)" }}
+                  />
+                  <Bar dataKey="hours" name={t("charts.seriesDowntime")} fill="#DC2626" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard title={t("charts.woCompletion")} subtitle={t("charts.woSubtitle")}>
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={WO_COMPLETION_DATA}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="week" tick={{ fontSize: 10, fill: "var(--foreground-subtle)" }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: "var(--foreground-subtle)" }} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={{ background: "var(--surface-0)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
                   />
                   <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
+                  <Line type="monotone" dataKey="created"   name={t("charts.seriesCreated")}   stroke="#2563EB" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="completed" name={t("charts.seriesCompleted")} stroke="#16A34A" strokeWidth={2} dot={false} />
+                </LineChart>
               </ResponsiveContainer>
-            </div>
-            <div className="text-center -mt-4">
-              <p className="kpi-value" style={{ color: "var(--status-green)" }}>87%</p>
-              <p className="kpi-label mt-0.5">{t("overallCompliance")}</p>
-            </div>
-          </ChartCard>
-        </div>
+            </ChartCard>
+          </div>
+        )}
+
+        {/* Charts row 2: Top Problem Assets + PM Compliance */}
+        {mounted && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <ChartCard title={t("charts.topAssets")} subtitle={t("charts.topAssetsSubtitle")}>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={TOP_PROBLEM_ASSETS} layout="vertical" barSize={10} margin={{ left: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 10, fill: "var(--foreground-subtle)" }} tickLine={false} axisLine={false} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: "var(--foreground-subtle)" }} width={110} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={{ background: "var(--surface-0)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
+                    cursor={{ fill: "var(--surface-1)" }}
+                  />
+                  <Bar dataKey="wos" name={t("charts.seriesWorkOrders")} fill="#2563EB" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            <ChartCard title={t("charts.pmCompliance")} subtitle={t("charts.pmComplianceSubtitle")}>
+              <div className="flex items-center justify-center">
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={PM_COMPLIANCE_DATA}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={80}
+                      paddingAngle={3}
+                      dataKey="value"
+                    >
+                      {PM_COMPLIANCE_DATA.map((entry, index) => (
+                        <Cell key={entry.name} fill={PM_COLORS[index]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{ background: "var(--surface-0)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
+                      formatter={(v) => `${v}%`}
+                    />
+                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="text-center -mt-4">
+                <p className="kpi-value" style={{ color: "var(--status-green)" }}>87%</p>
+                <p className="kpi-label mt-0.5">{t("overallCompliance")}</p>
+              </div>
+            </ChartCard>
+          </div>
+        )}
       </div>
     </div>
   );

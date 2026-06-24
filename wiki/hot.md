@@ -1,3 +1,57 @@
+# Hot Cache — 2026-06-23 — SimLab→UNS ingest: HTTP relay path turnkey (L1+L2)
+
+Branch `feat/simlab-relay-ingest-emit` off `fix/heartbeat-docling-to-tika` (carries the proveit/cappy
+commits). Built the two **no-infra** bricks the ingest roadmap named — **Gaps A/B/C now CLOSED**, the
+HTTP relay path (SimLab → `live_signal_cache`, UNS-mapped) is turnkey.
+- `fc5790f7` **L1 — emit wiring.** `RelayIngestPublisher` now carries a required `tenant_id` + two auth
+  modes matching `mira-relay/auth.py`: **HMAC** (signs the four `X-MIRA-*` headers over the exact body
+  bytes via httpx `content=`; relay treats `X-MIRA-Tenant` as authoritative) and **bench bearer**
+  (tenant in body, needs `RELAY_LEGACY_BEARER=1`). `build_app` attaches it env-gated on
+  `SIMLAB_RELAY_URL` (defaults tenant to reserved `SIMLAB_TENANT_ID`; `SIMLAB_RELAY_{HMAC_KEY,API_KEY,
+  TENANT_ID}`). Additive; best-effort. 16 tests incl. a **real round-trip against `auth.py:verify_hmac`**
+  + tamper-detection.
+- `03971bbc` **L2 — `simulator` allowlist seed.** `tools/seeds/gen_approved_tags_simulator.py` →
+  89-row `approved_tags_simulator.sql` (reserved `SIMLAB_TENANT_ID`, idempotent). Test pins the
+  generator's normalizer to the authoritative `mira-relay/tag_ingest.normalize_tag_path` (fail-closed
+  match can't drift) + a stale-seed guard.
+- Full simlab suite **78 passed, 3 skipped**; ruff clean. No infra touched.
+- **To land data now (Mike/infra):** apply `tools/seeds/approved_tags_simulator.sql` (staging first) →
+  run `mira-relay` → `SIMLAB_RELAY_URL=$RELAY SIMLAB_RELAY_HMAC_KEY=… python -m simlab` + advance →
+  rows appear in `tag_events` + `live_signal_cache`. **Remaining roadmap work:** Lane 3 (MQTT
+  subscriber / foreign feed), Lanes 4–5 (Command Center value panel + prod engine bridge).
+- Roadmap matrix updated: `docs/plans/2026-06-22-simlab-uns-ingest-roadmap.md`.
+
+---
+
+# Hot Cache — 2026-06-22 — ProveIt buildout (Cappy Hour import + sim-live)
+
+Branch `feat/cappy-hour-import-engine` off main. Goal: contextualize the real ProveIt factory +
+make the sim live. **7 commits, 214 tests green** (no infra needed; licensed corpus NEVER committed).
+- `36adfd84` **Cappy Hour import engine** — `mira-plc-parser/parsers/ignition_json.py` + additive IR
+  `NamespaceNode` → real `Enterprise B/tags.json` becomes 1 ent·1 site·4 areas·15 lines·**43 assets**·
+  **4,090 signals** (4,154 nodes); i3x-export = 4,154 instances, single root, 0 dangling.
+- `b67d3445` **MqttPublisher hardened** (3 bugs: frozen ts, get_event_loop(), GC'd task).
+- `cfe42179` **SimEngine live feed** — `advance()` streams a snapshot; opt-in `SIMLAB_MQTT_HOST`.
+- `cb97ae2e` **Pilot DB → 6,023 citable chunks** (`tools/proveit/pilot_db_chunks.py`, offline).
+- `5e075b89` **batch inserter honors per-row `is_private`** — proveit corpus lands `is_private=true`
+  (item 2's code precondition; OEM callers unchanged).
+- `afa36872` **manual→chunks + end-to-end dry-run CLI** — `manual_chunks.py` (section chunks + lazy
+  Docling PDF hook + Vessel-spec **Asset ID→UNS** roster) + `cli.py report`. Real dry-run: **6,198
+  `knowledge_entries` rows** ready (3,000/6,000 WOs grounded to vat paths; 175 manual chunks), all
+  `is_private`, unembedded, no DB writes.
+- `0763992a` resume/handoff: `docs/RESUME_2026-06-22_proveit-buildout.md`.
+**Agent-side Phase 2 DONE. Remaining = pure infra** (provision `proveit` tenant + Hub migrations &
+ingestion endpoint, embed+insert the 6,198 rows, Mosquitto/Flexware broker stand-up; real PDF
+optional — code path exists) — handed off in the resume doc. Dry-run:
+`python tools/proveit/cli.py report "../proveit-factory/uns-docs/Enterprise B" --out /tmp/proveit`.
+PR needs `--admin` (phantom Hub E2E check). `python -m simlab` already serves live.
+**SimLab→UNS ingest roadmap:** `docs/plans/2026-06-22-simlab-uns-ingest-roadmap.md` — full emit→land→UNS→consume
+pipeline (done-vs-needed matrix + 6 parallel-agent work-tree lanes + infra/ops checklist). Thesis: HTTP relay
+path is ~90% built (one wire: `RelayIngestPublisher` not attached in `build_app` + no `simulator` allowlist seed);
+MQTT path is emit-only (no subscriber = foreign-feed gap). Live values already cited via Hub `/api/mira/ask`.
+
+---
+
 # Hot Cache — 2026-06-21 — HubV3/i3x
 
 **Migration head: 056** (contextualization + intake). Three Round 13 fix branches open:

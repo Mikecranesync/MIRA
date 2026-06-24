@@ -43,10 +43,15 @@ produced by the same normalization at seed time.
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional, Protocol
+
+# normalize_tag_path is the fail-closed allowlist match key — it MUST be the same
+# function every tag source and seed generator uses. It lives in the canonical,
+# dependency-free ingest_contract module (same container) and is re-exported here
+# so existing `from tag_ingest import normalize_tag_path` callers are unchanged.
+from ingest_contract import normalize_tag_path  # noqa: F401
 
 logger = logging.getLogger("mira-relay.tag_ingest")
 
@@ -54,24 +59,8 @@ VALID_SOURCE_SYSTEMS = {"ignition", "plc_bridge", "relay", "simulator"}
 VALID_VALUE_TYPES = {"bool", "int", "float", "string", "enum"}
 VALID_QUALITY = {"good", "bad", "stale", "uncertain"}
 
-_NON_ALNUM = re.compile(r"[^a-z0-9]+")
-
-
 class IngestError(ValueError):
     """Raised for batch-level validation failures (bad source_system, etc.)."""
-
-
-def normalize_tag_path(raw: str) -> str:
-    """uns.slug-style normalization: lowercase, runs of non-alphanumerics → '_'.
-
-    Path separators ('/', '.', ':') collapse to '_', so
-    'Mira_Monitored/Conveyor/Motor_Current' → 'mira_monitored_conveyor_motor_current'.
-    Mirrors mira-crawler/ingest/uns.slug() — kept local to avoid importing the
-    heavy ingest package into the relay container.
-    """
-    if not raw:
-        return ""
-    return _NON_ALNUM.sub("_", raw.strip().lower()).strip("_")
 
 
 def _canonical_value(value: Any) -> Optional[str]:
