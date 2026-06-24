@@ -243,7 +243,9 @@ def test_batch_insert_honors_is_private_for_per_tenant_corpus(engine_patch):
     assert count == 1
     _, params = _sql_and_params(conn)
     assert params["is_private"] is True
-    assert params["verified"] is False   # not approved — work orders are evidence, not verified facts
+    assert (
+        params["verified"] is False
+    )  # not approved — work orders are evidence, not verified facts
 
 
 # ---------------------------------------------------------------------------
