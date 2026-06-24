@@ -1,7 +1,21 @@
 # Ingest schema reconciliation plan — `tag_events` & `approved_tags`
 
-**Status:** investigation + written plan (2026-06-24). **NOTHING APPLIED.** Non-additive
-changes require a separate approval. Prod is **not** touched (it is already correct).
+**Status:** ✅ **EXECUTED — staging-only R1 applied 2026-06-24 with approval; ingest validation 8/8 GREEN.**
+Prod **not** touched (already canonical). See "RESULT" below.
+
+> ## RESULT — R1 executed (2026-06-24)
+> - **Snapshot** of the draft staging schema captured first (both tables 0 rows, owner `neondb_owner`,
+>   no inbound FKs / dependent views).
+> - **R1 applied to staging only** (one atomic txn): `DROP` the two empty orphaned tables → re-ran
+>   canonical `033`+`035` verbatim. Post-check: `tag_events` and `approved_tags` now **==canonical**
+>   (exact column sets; `approved_tags` PK = `(tenant_id, source_system, source_tag_path)`).
+> - **Second full 8-step validation → 8/8 GREEN** against reconciled staging, using the **real repo
+>   seed** + real HMAC + real relay app + real `ingest_batch` → real staging Neon:
+>   seed=89 · accept 200/89/0 · 1 tenant · 0 normalize mismatches · tag_events(89,89,sim,89) ·
+>   cache(89,89,sim) · outage tick=5 · tamper→401. Validation rows cleaned up.
+> - **PR #2283 (migration 057) closed** (moot — prod canonical, staging reconciled).
+> - **Process-fix issue #2284 filed** (prevent draft-migration staging poisoning).
+> - Original investigation + plan retained below for the record.
 
 **TL;DR:** The canonical migrations (`033_tag_events.sql`, `035_approved_tags.sql`) are
 **correct**. **Prod runs the canonical shapes. Dev has the tables absent. Only *staging* is
