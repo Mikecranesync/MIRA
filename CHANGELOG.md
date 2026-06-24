@@ -5,6 +5,9 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 
 ## [Unreleased]
 
+### Changed
+- Recorded the staging ingest-schema reconciliation and added a read-only drift probe plus migration immutability doctrine.
+
 ### Added
 - **VFD Analyzer setup wizard** (Ignition `testing` sandbox): Connect → Verify → Map → Save tag-mapping flow with first-timer role education; Jython 2.7 unicode save bug fixed (config validator) — verified live end-to-end.
 - **MIRA PLC Parser** (`mira-plc-parser/`): read-only, offline, vendor-agnostic export → IR pipeline (Rockwell L5X + tag CSV), closed-project detection with export instructions, offline CLI, PyInstaller packaging foundation.

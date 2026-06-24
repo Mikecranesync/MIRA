@@ -296,3 +296,38 @@ jobs:
           WHERE u.tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'
           ORDER BY u.email;
           SQL
+
+      - name: Inspect ingest schema (tag_events + approved_tags) — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # READ-ONLY drift check: compares deployed tag_events / approved_tags
+          # against canonical 033_tag_events.sql / 035_approved_tags.sql.
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === tag_events columns (canonical 033 = value/value_type/quality/source_system/...) ===
+          SELECT column_name, is_nullable, column_default
+          FROM information_schema.columns
+          WHERE table_name='tag_events' ORDER BY ordinal_position;
+          \echo === tag_events PK/unique ===
+          SELECT tc.constraint_type, kcu.column_name
+          FROM information_schema.table_constraints tc
+          JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name
+          WHERE tc.table_name='tag_events' AND tc.constraint_type IN ('PRIMARY KEY','UNIQUE')
+          ORDER BY tc.constraint_type, kcu.ordinal_position;
+          \echo
+          \echo === approved_tags columns (canonical 035 = source_tag_path/normalized_tag_path/notes/...) ===
+          SELECT column_name, is_nullable, column_default
+          FROM information_schema.columns
+          WHERE table_name='approved_tags' ORDER BY ordinal_position;
+          \echo === approved_tags PK/unique (canonical = (tenant_id, source_system, source_tag_path)) ===
+          SELECT tc.constraint_type, kcu.column_name
+          FROM information_schema.table_constraints tc
+          JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name
+          WHERE tc.table_name='approved_tags' AND tc.constraint_type IN ('PRIMARY KEY','UNIQUE')
+          ORDER BY tc.constraint_type, kcu.ordinal_position;
+          \echo
+          \echo === row counts (drift repair is data-safe if 0) ===
+          SELECT 'tag_events' AS t, count(*) FROM tag_events
+          UNION ALL SELECT 'approved_tags', count(*) FROM approved_tags;
+          SQL
