@@ -206,6 +206,33 @@ class MqttPublisher:
 # ---------------------------------------------------------------------------
 
 
+_BUILD_INGEST_BATCH: Any = None
+
+
+def _build_ingest_batch(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """Lazily load + cache the canonical ``build_ingest_batch`` from
+    ``mira-relay/ingest_contract.py`` (loaded by file path — SimLab is a
+    repo-root bench tool, so the relay's contract file is on disk at runtime;
+    loading by path avoids polluting ``sys.path``).
+
+    This is what makes the SimLab relay publisher build the SAME batch shape as
+    the future MQTT/Sparkplug subscribers and the engine bridge — one contract,
+    every transport. See ``mira-relay/ingest_contract.py`` and the Lane 3 design
+    review (``docs/design/2026-06-23-lane3-mqtt-subscriber-design.md`` §7).
+    """
+    global _BUILD_INGEST_BATCH
+    if _BUILD_INGEST_BATCH is None:
+        import importlib.util
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parents[1] / "mira-relay" / "ingest_contract.py"
+        spec = importlib.util.spec_from_file_location("mira_relay_ingest_contract", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        _BUILD_INGEST_BATCH = mod.build_ingest_batch
+    return _BUILD_INGEST_BATCH(*args, **kwargs)
+
+
 class RelayIngestPublisher:
     """POST reading batches to mira-relay ``/api/v1/tags/ingest``.
 
@@ -274,16 +301,16 @@ class RelayIngestPublisher:
             import httpx  # lazy
 
             tags = [r.to_ingest_tag() for r in readings]
-            payload: dict[str, Any] = {
-                "source_system": "simulator",
-                "tags": tags,
-            }
-            # Bench/legacy bearer path carries the tenant in the body (the relay
-            # falls back to payload["tenant_id"] when no HMAC header is sent).
-            # In HMAC mode the X-MIRA-Tenant header is authoritative, so the body
-            # tenant is redundant — omit it to avoid implying it is trusted.
-            if not self._hmac_key:
-                payload["tenant_id"] = self._tenant_id
+            # Build the batch via the canonical contract so SimLab and the future
+            # MQTT/Sparkplug subscribers emit the identical shape. Bench/legacy
+            # bearer carries the tenant in the body (the relay falls back to
+            # payload["tenant_id"] when no HMAC header is sent); in HMAC mode the
+            # X-MIRA-Tenant header is authoritative, so tenant_id is omitted.
+            payload = _build_ingest_batch(
+                "simulator",
+                tags,
+                tenant_id=None if self._hmac_key else self._tenant_id,
+            )
 
             # Sign/hash the EXACT bytes we send: serialize once and post via
             # ``content=`` so httpx does not re-encode the body (which would

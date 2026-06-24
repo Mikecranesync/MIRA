@@ -191,23 +191,56 @@ existing `ignition` (no schema change, matches "this is the Ignition UNS arrivin
 
 ## 7. Shared components to EXTRACT before implementation (the pre-work)
 
+> **STATUS 2026-06-23 — items 1 & 2 DONE (PR: Lane 3 §7 pre-work).** Items 3 & 4 are
+> subscriber-phase work and remain **unstarted** (no MQTT/broker/Sparkplug code exists yet).
+
+**Migration note — why consolidate BEFORE writing the subscriber.** The fail-closed allowlist
+makes normalization a silent contract: a 4th caller (the MQTT codec) that normalizes even slightly
+differently would get *every* metric rejected with **zero errors** (empty `live_signal_cache`, no
+log). Extracting the one normalizer + one batch shape first means the subscriber is written against
+a contract that already has exactly one implementation and a regression net — there is no window in
+which a second inlet can fork the core. Doing it after would mean retro-fitting a divergence that is
+invisible until it drops data on the floor. This PR adds **no** transport code; it only converges
+existing callers onto a single contract.
+
 Ordered; each is small and is the price of "one pipeline, many sources":
 
-1. **Canonical normalizer — single source of truth.** Make `normalize_tag_path` importable by every
-   caller (relay route, MQTT codec, seed generators) instead of three mirrored copies. Either
-   promote `tag_ingest.normalize_tag_path` to a tiny shared module both `mira-relay` and the seed
-   tooling import, or keep `tag_ingest` as the authority and have the generators import it. Pin with
-   the existing test shape. **This is the highest-leverage pre-work** (closes §5 at the root).
-2. **Canonical "tag entry" + batch builder.** A single helper/`@dataclass` that assembles the
-   `{source_system, tags:[...]}` dict, so the HTTP publisher (`Reading.to_ingest_tag`) and the MQTT
-   codec produce *byte-identical* shapes. Today the shape is defined twice (SimLab side + relay
-   validation). One builder removes the §3 value_type/quality mismatch as a class of bug.
-3. **A `value_type`/quality recovery rule** for sources whose payload omits them (plain-JSON MQTT),
+1. ✅ **Canonical normalizer — single source of truth.** **Done:** `normalize_tag_path` now lives in
+   **`mira-relay/ingest_contract.py`** (dependency-free, in the relay container — the relay Dockerfile
+   gains a `COPY ingest_contract.py`). `mira-relay/tag_ingest.py` **re-exports** it (so
+   `from tag_ingest import normalize_tag_path` is unchanged, identity-tested). The seed generator
+   (`tools/seeds/gen_approved_tags_simulator.py`) loads it **by file path** (no `sys.path` pollution)
+   instead of its old mirror. The two mirrored copies are gone; the slug *path-builder*
+   `simlab.uns.slug` is a different role (per-label, not full-path matching) and is intentionally left
+   in place. Pinned by `tests/simlab/test_ingest_contract.py` (relay re-export identity + no surviving
+   local copies + seed-uses-canonical for all 89 tags) and the existing
+   `tests/simlab/test_approved_tags_seed.py`. Closes §5 at the root.
+2. ✅ **Canonical tag-entry + batch builder.** **Done:** `build_tag_entry(...)` + `build_ingest_batch(...)`
+   in `mira-relay/ingest_contract.py`. SimLab's `RelayIngestPublisher` now assembles its payload via
+   `build_ingest_batch` (byte-identical output → HMAC body + bearer-tenant behavior unchanged); the
+   future MQTT/Sparkplug codecs and the engine bridge call `build_tag_entry` per decoded message.
+   Pinned by `test_ingest_contract.py` (builder output accepted by `ingest_batch`; a future-MQTT-shape
+   fixture maps a decoded message to the same canonical batch — **no subscriber**).
+3. ⏳ **A `value_type`/quality recovery rule** for sources whose payload omits them (plain-JSON MQTT),
    resolved from `tag_entities.data_type` (mig 025) — extract a small resolver the codec calls.
-4. **Topic→tag_path resolver interface** with the two codec impls behind it, both terminating in the
+   **(Subscriber-phase — unstarted.)**
+4. ⏳ **Topic→tag_path resolver interface** with the two codec impls behind it, both terminating in the
    shared normalizer. Keeps Sparkplug's complexity quarantined in one file without a parallel pipeline.
+   **(Subscriber-phase — unstarted.)**
 
 None of these require touching `ingest_batch`'s logic — they converge *more* code onto it.
+
+### Extracted API (the contract the subscriber will be written against)
+
+```python
+# mira-relay/ingest_contract.py  — dependency-free; THE single ingest contract
+normalize_tag_path(raw: str) -> str
+build_tag_entry(tag_path, value, *, value_type="string", quality="good",
+                ts=None, equipment_entity_id=None, metadata=None) -> dict
+build_ingest_batch(source_system, tags, *, tenant_id=None,
+                   source_connection_id=None) -> dict
+VALID_VALUE_TYPES, VALID_QUALITY            # the vocabularies ingest_batch enforces
+```
 
 ---
 
