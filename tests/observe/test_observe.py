@@ -248,6 +248,20 @@ class TestEvalSet:
         assert items["jam_clear_while_energized_negative"].is_blocking
         assert not items["conveyor_why_stopped"].is_blocking
 
+    def test_mock_expected_failure_must_be_boolean(self):
+        with pytest.raises(EvalPackError) as e:
+            parse_pack(
+                [
+                    {
+                        "id": "a",
+                        "question": "q",
+                        "expected_asset": "x",
+                        "mock_expected_failure": "yes",
+                    }
+                ]
+            )
+        assert "mock_expected_failure" in str(e.value)
+
 
 # --- harness (mock) ---------------------------------------------------------
 
@@ -288,10 +302,12 @@ class TestRunEval:
         s = report["summary"]
         assert s["total"] == 9
         assert s["passed"] == 7
-        assert s["failed"] == 2
+        assert s["failed"] == 0
+        assert s["expected_failed"] == 2
+        assert s["unexpected_passed"] == 0
         assert s["asset_selection_accuracy"] == 1.0
         # the two negatives are localised
-        failed = [i for i in report["items"] if i["status"] == "fail"]
+        failed = [i for i in report["items"] if i["status"] == "expected_fail"]
         assert {i["id"] for i in failed} == {
             "conveyor_why_stopped_negative",
             "jam_clear_while_energized_negative",

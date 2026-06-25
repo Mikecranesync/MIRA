@@ -9,9 +9,10 @@
  *   2. Hub server running at HUB_URL (default: http://localhost:3100)
  *
  * Usage:
- *   HUB_URL=http://localhost:3100 npx playwright test tests/e2e/synthetic-day.spec.ts
+ *   HUB_URL=http://localhost:3100 SYNTHETIC_USERS_ENABLED=1 npx playwright test tests/e2e/synthetic-day.spec.ts
+ *   HUB_URL=https://app.factorylm.com SYNTHETIC_USERS_ENABLED=1 SYNTHETIC_CARLOS_EMAIL=... SYNTHETIC_CARLOS_PASSWORD=... npx playwright test tests/e2e/synthetic-day.spec.ts
  *
- * Persona credentials (set by seeder):
+ * Local persona defaults (set by the local-only seeder):
  *   carlos@synthetic.test    — Technician (2AM)
  *   dana@synthetic.test      — Maintenance Manager
  *   plantmgr@synthetic.test  — Plant Manager
@@ -23,27 +24,81 @@ import { test, expect, type Page } from "@playwright/test";
 
 const HUB = (process.env.HUB_URL ?? "http://localhost:3100").replace(/\/$/, "");
 
-const TEST_PASSWORD = "SynthTest2026!";
+const LOCAL_TEST_PASSWORD = "SynthTest2026!";
+const RUN_PERSONA_TESTS = process.env.SYNTHETIC_USERS_ENABLED === "1";
+const PERSONA_SKIP_REASON =
+  "Set SYNTHETIC_USERS_ENABLED=1 after seeding synthetic users in the target environment.";
+const IS_LOCAL_HUB = /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?$/i.test(HUB);
 
 const PERSONAS = {
-  carlos: { email: "carlos@synthetic.test", name: "Carlos Mendez", role: "Technician" },
-  dana: { email: "dana@synthetic.test", name: "Dana Reyes", role: "Manager" },
-  plantmgr: { email: "plantmgr@synthetic.test", name: "Jordan Taylor", role: "Plant Manager" },
-  cfo: { email: "cfo@synthetic.test", name: "Pat Hoffman", role: "CFO" },
+  carlos: {
+    email: process.env.SYNTHETIC_CARLOS_EMAIL ?? "carlos@synthetic.test",
+    password: process.env.SYNTHETIC_CARLOS_PASSWORD ?? LOCAL_TEST_PASSWORD,
+    name: "Carlos Mendez",
+    role: "Technician",
+  },
+  dana: {
+    email: process.env.SYNTHETIC_DANA_EMAIL ?? "dana@synthetic.test",
+    password: process.env.SYNTHETIC_DANA_PASSWORD ?? LOCAL_TEST_PASSWORD,
+    name: "Dana Reyes",
+    role: "Manager",
+  },
+  plantmgr: {
+    email: process.env.SYNTHETIC_PLANTMGR_EMAIL ?? "plantmgr@synthetic.test",
+    password: process.env.SYNTHETIC_PLANTMGR_PASSWORD ?? LOCAL_TEST_PASSWORD,
+    name: "Jordan Taylor",
+    role: "Plant Manager",
+  },
+  cfo: {
+    email: process.env.SYNTHETIC_CFO_EMAIL ?? "cfo@synthetic.test",
+    password: process.env.SYNTHETIC_CFO_PASSWORD ?? LOCAL_TEST_PASSWORD,
+    name: "Pat Hoffman",
+    role: "CFO",
+  },
 } as const;
+
+const PROD_PERSONA_ENV = [
+  "SYNTHETIC_CARLOS_EMAIL",
+  "SYNTHETIC_CARLOS_PASSWORD",
+  "SYNTHETIC_DANA_EMAIL",
+  "SYNTHETIC_DANA_PASSWORD",
+  "SYNTHETIC_PLANTMGR_EMAIL",
+  "SYNTHETIC_PLANTMGR_PASSWORD",
+  "SYNTHETIC_CFO_EMAIL",
+  "SYNTHETIC_CFO_PASSWORD",
+] as const;
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
 
-async function loginAs(page: Page, email: string): Promise<void> {
+async function loginAs(page: Page, persona: { email: string; password: string }): Promise<void> {
   await page.goto(`${HUB}/login`, { waitUntil: "domcontentloaded" });
 
   // Fill credentials — hub uses NextAuth credentials provider
-  await page.locator('input[name="email"], input[type="email"]').fill(email);
-  await page.locator('input[name="password"], input[type="password"]').fill(TEST_PASSWORD);
-  await page.locator('button[type="submit"]').click();
+  await page.getByRole("button", { name: /sign in with password/i }).click();
+  await expect(page.locator('input[type="password"]')).toBeVisible({ timeout: 10_000 });
+  await page.locator('input[type="email"]').last().fill(persona.email);
+  await page.locator('input[name="password"], input[type="password"]').fill(persona.password);
+  await page.getByRole("button", { name: /^sign in$/i }).click();
 
-  // Wait for redirect away from login
-  await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 15_000 });
+  const authError = page.getByText(/email or password is incorrect|invalid|incorrect/i).first();
+  await Promise.race([
+    page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 30_000 }),
+    authError.waitFor({ state: "visible", timeout: 30_000 }).then(async () => {
+      const message = (await authError.textContent())?.trim() || "login failed";
+      throw new Error(`Synthetic persona login failed for ${persona.email}: ${message}`);
+    }),
+  ]);
+}
+
+function skipUnlessSyntheticUsersEnabled(): void {
+  test.skip(!RUN_PERSONA_TESTS, PERSONA_SKIP_REASON);
+  if (!IS_LOCAL_HUB) {
+    const missing = PROD_PERSONA_ENV.filter((key) => !process.env[key]);
+    expect(
+      missing,
+      `Non-local synthetic persona runs require explicit credentials. Missing: ${missing.join(", ")}`,
+    ).toEqual([]);
+  }
 }
 
 // ── Shared assertions ─────────────────────────────────────────────────────────
@@ -72,8 +127,8 @@ async function assertPmSchedulesLoad(page: Page): Promise<void> {
 
 test.describe("Carlos (Technician) — 2AM shift workflow", () => {
   test("login succeeds and reaches dashboard", async ({ page }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
-    await loginAs(page, PERSONAS.carlos.email);
+    skipUnlessSyntheticUsersEnabled();
+    await loginAs(page, PERSONAS.carlos);
     // Hub redirects to /dashboard or /workorders or /assets after login
     const url = page.url();
     expect(url).toContain(HUB);
@@ -81,20 +136,20 @@ test.describe("Carlos (Technician) — 2AM shift workflow", () => {
   });
 
   test("assets page lists seeded equipment", async ({ page }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
-    await loginAs(page, PERSONAS.carlos.email);
+    skipUnlessSyntheticUsersEnabled();
+    await loginAs(page, PERSONAS.carlos);
     await assertAssetsLoad(page);
   });
 
   test("work orders page loads without error", async ({ page }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
-    await loginAs(page, PERSONAS.carlos.email);
+    skipUnlessSyntheticUsersEnabled();
+    await loginAs(page, PERSONAS.carlos);
     await assertWorkOrdersLoad(page);
   });
 
   test("asset detail page has Ask MIRA tab", async ({ page }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
-    await loginAs(page, PERSONAS.carlos.email);
+    skipUnlessSyntheticUsersEnabled();
+    await loginAs(page, PERSONAS.carlos);
     await page.goto(`${HUB}/assets`, { waitUntil: "domcontentloaded" });
     const firstAsset = page.locator("a[href*='/assets/']").first();
     await firstAsset.click();
@@ -105,7 +160,7 @@ test.describe("Carlos (Technician) — 2AM shift workflow", () => {
   });
 
   test("chat API returns SSE stream for VFD fault question", async ({ request }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
+    skipUnlessSyntheticUsersEnabled();
 
     // Verify the chat endpoint is reachable (unauthenticated probe)
     const chatRes = await request.post(
@@ -128,25 +183,25 @@ test.describe("Carlos (Technician) — 2AM shift workflow", () => {
 
 test.describe("Dana (Manager) — morning review workflow", () => {
   test("login succeeds", async ({ page }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
-    await loginAs(page, PERSONAS.dana.email);
+    skipUnlessSyntheticUsersEnabled();
+    await loginAs(page, PERSONAS.dana);
     expect(page.url()).not.toContain("/login");
   });
 
   test("PM schedule page loads with seeded schedules", async ({ page }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
-    await loginAs(page, PERSONAS.dana.email);
+    skipUnlessSyntheticUsersEnabled();
+    await loginAs(page, PERSONAS.dana);
     await assertPmSchedulesLoad(page);
   });
 
   test("work orders page shows open + in-progress WOs", async ({ page }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
-    await loginAs(page, PERSONAS.dana.email);
+    skipUnlessSyntheticUsersEnabled();
+    await loginAs(page, PERSONAS.dana);
     await assertWorkOrdersLoad(page);
   });
 
   test("API: GET /api/work-orders returns seeded work orders", async ({ request }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
+    skipUnlessSyntheticUsersEnabled();
 
     // Unauthenticated — expect 401 (proves endpoint exists)
     const res = await request.get(`${HUB}/api/work-orders`);
@@ -154,14 +209,14 @@ test.describe("Dana (Manager) — morning review workflow", () => {
   });
 
   test("API: GET /api/pm-schedules returns seeded PM schedules", async ({ request }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
+    skipUnlessSyntheticUsersEnabled();
 
     const res = await request.get(`${HUB}/api/pm-schedules`);
     expect([200, 401]).toContain(res.status());
   });
 
   test("API: GET /api/cmms/stats returns counts", async ({ request }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
+    skipUnlessSyntheticUsersEnabled();
 
     const res = await request.get(`${HUB}/api/cmms/stats`);
     expect([200, 401, 503]).toContain(res.status());
@@ -172,26 +227,26 @@ test.describe("Dana (Manager) — morning review workflow", () => {
 
 test.describe("Jordan (Plant Manager) — KPI overview", () => {
   test("login succeeds", async ({ page }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
-    await loginAs(page, PERSONAS.plantmgr.email);
+    skipUnlessSyntheticUsersEnabled();
+    await loginAs(page, PERSONAS.plantmgr);
     expect(page.url()).not.toContain("/login");
   });
 
   test("assets page shows full equipment list", async ({ page }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
-    await loginAs(page, PERSONAS.plantmgr.email);
+    skipUnlessSyntheticUsersEnabled();
+    await loginAs(page, PERSONAS.plantmgr);
     await assertAssetsLoad(page);
   });
 
   test("reports page is reachable", async ({ page }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
-    await loginAs(page, PERSONAS.plantmgr.email);
+    skipUnlessSyntheticUsersEnabled();
+    await loginAs(page, PERSONAS.plantmgr);
     const res = await page.goto(`${HUB}/reports`, { waitUntil: "domcontentloaded" });
     expect(res?.status()).toBeLessThan(500);
   });
 
   test("API: POST /api/kg/sync triggers KG sync without crash", async ({ request }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
+    skipUnlessSyntheticUsersEnabled();
 
     const res = await request.post(`${HUB}/api/kg/sync`);
     // 401 = endpoint exists and is auth-guarded (expected without session)
@@ -203,20 +258,20 @@ test.describe("Jordan (Plant Manager) — KPI overview", () => {
 
 test.describe("Pat (CFO) — usage and billing", () => {
   test("login succeeds", async ({ page }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
-    await loginAs(page, PERSONAS.cfo.email);
+    skipUnlessSyntheticUsersEnabled();
+    await loginAs(page, PERSONAS.cfo);
     expect(page.url()).not.toContain("/login");
   });
 
   test("usage page is reachable", async ({ page }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
-    await loginAs(page, PERSONAS.cfo.email);
+    skipUnlessSyntheticUsersEnabled();
+    await loginAs(page, PERSONAS.cfo);
     const res = await page.goto(`${HUB}/usage`, { waitUntil: "domcontentloaded" });
     expect(res?.status()).toBeLessThan(500);
   });
 
   test("API: GET /api/me returns tenant info", async ({ request }) => {
-    test.skip(!process.env.NEON_DATABASE_URL, "Skipped: NEON_DATABASE_URL not set");
+    skipUnlessSyntheticUsersEnabled();
 
     const res = await request.get(`${HUB}/api/me`);
     expect([200, 401]).toContain(res.status());
@@ -227,7 +282,7 @@ test.describe("Pat (CFO) — usage and billing", () => {
 
 test.describe("API health — no auth", () => {
   test("hub root returns 200 or 301", async ({ request }) => {
-    const res = await request.get(`${HUB}/`, { maxRedirects: 1 });
+    const res = await request.get(`${HUB}/`, { maxRedirects: 0 });
     expect(res.status()).toBeLessThan(500);
   });
 

@@ -11,6 +11,7 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 
 ### Added
 - Hub team settings now support self-serve tenant-scoped magic-link invites for admins and owners.
+- Production-safe synthetic conveyor QA provisioning and persona-run guardrails for Hub pre-human-test checks.
 
 ### Changed
 - Recorded the staging ingest-schema reconciliation and added a read-only drift probe plus migration immutability doctrine.

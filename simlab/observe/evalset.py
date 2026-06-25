@@ -62,6 +62,7 @@ class EvalItem:
     # harness-only
     simlab_scenario_id: Optional[str] = None
     mock_answer: Optional[str] = None
+    mock_expected_failure: bool = False
 
     @property
     def is_blocking(self) -> bool:
@@ -96,6 +97,14 @@ def _coerce_item(raw: dict[str, Any], index: int) -> tuple[Optional[EvalItem], l
         errors.append(f"{where}: 'active' must be a boolean, got {type(active).__name__}")
         active = bool(active)
 
+    mock_expected_failure = raw.get("mock_expected_failure", False)
+    if not isinstance(mock_expected_failure, bool):
+        errors.append(
+            f"{where}: 'mock_expected_failure' must be a boolean, "
+            f"got {type(mock_expected_failure).__name__}"
+        )
+        mock_expected_failure = bool(mock_expected_failure)
+
     if errors:
         return None, errors
 
@@ -113,6 +122,7 @@ def _coerce_item(raw: dict[str, Any], index: int) -> tuple[Optional[EvalItem], l
             active=active,
             simlab_scenario_id=raw.get("simlab_scenario_id"),
             mock_answer=raw.get("mock_answer"),
+            mock_expected_failure=mock_expected_failure,
         ),
         [],
     )
