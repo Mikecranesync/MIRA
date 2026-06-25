@@ -1,5 +1,10 @@
 # MIRA Release Notes
 
+### v3.42.0 (2026-06-25) - feat(qa): synthetic dogfood agent loop
+- Adds a Celery-backed synthetic dogfood loop for the Hub production QA tenant. The worker runs the existing persona Playwright suite, writes raw/summarized artifacts, redacts evidence, classifies findings, and dry-run/files deduplicated GitHub issues for P0-P2 problems while leaving P3 noise in reports.
+- Adds a dedicated Playwright worker image plus SaaS `mira-redis`, `mira-synthetic-dogfood-worker`, and `mira-synthetic-dogfood-beat` services. The loop is default-off (`SYNTHETIC_DOGFOOD_ENABLED=0`) and issue writes require `DOGFOOD_ISSUE_MODE=write`.
+- Dry-run proof against `https://app.factorylm.com`: Playwright exit code 0, 0 findings, 0 GitHub writes. Runbook: `docs/runbooks/synthetic-dogfood-agents.md`.
+
 ### v3.41.0 (2026-06-24) - feat(retrieval): approval-gated garage conveyor retrieval
 - Adds `MIRA_ENFORCE_APPROVED_RETRIEVAL` for approved-only KB retrieval, keeps it default-off, and includes the trusted-corpus backfill SQL required before enabling the gate. Hub `HAS_DOCUMENT` approval now marks the approved upload's chunks `verified=true`, source payloads expose `verified` plus `approved_source_count`, and the garage conveyor golden path proves unreviewed context is hidden until approved.
 
