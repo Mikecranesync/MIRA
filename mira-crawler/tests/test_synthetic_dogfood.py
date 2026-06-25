@@ -14,7 +14,12 @@ from agents.synthetic_dogfood import (
     parse_playwright_json,
     redact_secrets,
 )
-from tasks.synthetic_dogfood import CommandResult, DogfoodTaskConfig, run_synthetic_dogfood_once
+from tasks.synthetic_dogfood import (
+    CommandResult,
+    DogfoodTaskConfig,
+    _resolve_command,
+    run_synthetic_dogfood_once,
+)
 
 
 class FakeGitHubClient:
@@ -294,6 +299,12 @@ def test_task_runner_writes_report_and_reports_actionable_findings(tmp_path):
     assert reporter.reported[0][0].severity == "P1"
     assert (tmp_path / "reports").exists()
     assert result["raw_report_path"].endswith(".json")
+
+
+def test_resolve_command_uses_path_executable(monkeypatch):
+    monkeypatch.setattr("tasks.synthetic_dogfood.shutil.which", lambda name: "C:/node/npx.cmd")
+
+    assert _resolve_command(["npx", "playwright"]) == ["C:/node/npx.cmd", "playwright"]
 
 
 def json_dump(payload):

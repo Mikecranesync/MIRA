@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import shlex
 import subprocess
 import uuid
@@ -181,6 +182,7 @@ def _build_env(config: DogfoodTaskConfig) -> dict[str, str]:
 
 
 def _run_command(command: list[str], cwd: str, env: dict[str, str], timeout: int) -> CommandResult:
+    command = _resolve_command(command)
     completed = subprocess.run(
         command,
         cwd=cwd,
@@ -195,6 +197,15 @@ def _run_command(command: list[str], cwd: str, env: dict[str, str], timeout: int
         stdout=completed.stdout,
         stderr=completed.stderr,
     )
+
+
+def _resolve_command(command: list[str]) -> list[str]:
+    if not command:
+        return command
+    executable = shutil.which(command[0])
+    if not executable:
+        return command
+    return [executable, *command[1:]]
 
 
 def _write_raw_report(report_dir: Path, run_id: str, result: CommandResult) -> Path:
