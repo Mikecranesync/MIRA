@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.42.1 (2026-06-25) - security(rag): tenant isolation and prompt-boundary hardening
+- Keeps `/api/knowledge/search` pinned to shared OEM rows only (`is_private = false`) and adds a behavioral regression test proving private tenant snippets are not serialized while shared snippets still return.
+- Moves retrieved RAG reference blocks out of system-role authority for Hub asset/node chat and bot RAG prompts. Retrieved docs are now framed as untrusted reference data in the final user turn, with forged source headers neutralized and citation labels sanitized.
+
 ### v3.42.0 (2026-06-25) - feat(qa): synthetic dogfood agent loop
 - Adds a Celery-backed synthetic dogfood loop for the Hub production QA tenant. The worker runs the existing persona Playwright suite, writes raw/summarized artifacts, redacts evidence, classifies findings, and dry-run/files deduplicated GitHub issues for P0-P2 problems while leaving P3 noise in reports.
 - Adds a dedicated Playwright worker image plus SaaS `mira-redis`, `mira-synthetic-dogfood-worker`, and `mira-synthetic-dogfood-beat` services. The loop is default-off (`SYNTHETIC_DOGFOOD_ENABLED=0`) and issue writes require `DOGFOOD_ISSUE_MODE=write`.
