@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.42.2 (2026-06-25) - fix(hub): React hook lint cleanup
+- Cleans the reported Hub React hook lint violations in admin users, alerts, and asset detail documents by preserving hook order and moving initial data fetch state updates out of effect-body function calls.
+
 ### v3.42.1 (2026-06-25) - security(rag): tenant isolation and prompt-boundary hardening
 - Keeps `/api/knowledge/search` pinned to shared OEM rows only (`is_private = false`) and adds a behavioral regression test proving private tenant snippets are not serialized while shared snippets still return.
 - Moves retrieved RAG reference blocks out of system-role authority for Hub asset/node chat and bot RAG prompts. Retrieved docs are now framed as untrusted reference data in the final user turn, with forged source headers neutralized and citation labels sanitized.
