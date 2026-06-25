@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.42.3 (2026-06-25) - feat(hub): tenant-scoped Hub status API
+- Adds `/api/hub/status` for tenant-scoped one-board Hub status cards, backed by `live_signal_cache` and a deterministic Stardust/conveyor signal summarizer with regression tests for tenant query scoping and demo-session fallback.
+
 ### v3.42.2 (2026-06-25) - fix(hub): React hook lint cleanup
 - Cleans the reported Hub React hook lint violations in admin users, alerts, and asset detail documents by preserving hook order and moving initial data fetch state updates out of effect-body function calls.
 
