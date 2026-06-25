@@ -1023,3 +1023,20 @@ Mitsubishi Electric: 16 chunks (NULL model)
 - Scorecard: 35/57 passing (61%) — runs/2026-06-03T0109-offline-text.md
 - Action: issue-filed (#1678)
 - 22 patchable failures but BOTH hard-stops tripped (>15 failures AND 3 file clusters: engine.py, guardrails.py, active.yaml). Broad FSM-routing regression — fixtures stuck in AWAITING_UNS_CONFIRMATION/Q1/IDLE or over-advancing to ASSET_IDENTIFIED. Needs human bisect of recent engine.py state-machine edits.
+# Hot Cache - 2026-06-25 - Synthetic dogfood Celery loop PR #2293
+
+Branch `codex/synthetic-dogfood-agents` / PR #2293 adds the autonomous beta-polish loop Mike asked for:
+seeded Hub personas run via Celery + Playwright, raw artifacts land under `/opt/mira/data/synthetic-dogfood`,
+and P0/P1/P2 failures become redacted, fingerprint-deduped GitHub issues. P3 noise stays in reports.
+- Core code: `mira-crawler/agents/synthetic_dogfood.py`, `agents/github_issue_reporter.py`,
+  `tasks/synthetic_dogfood.py`.
+- SaaS wiring: `mira-crawler/Dockerfile.synthetic-dogfood` plus `docker-compose.saas.yml` services
+  `mira-redis`, `mira-synthetic-dogfood-worker`, and `mira-synthetic-dogfood-beat`.
+- Safety switches: default off (`SYNTHETIC_DOGFOOD_ENABLED=0`) and dry-run issues
+  (`DOGFOOD_ISSUE_MODE=dry_run`). Flip Doppler `factorylm/prd` only after the first artifact looks sane.
+- Runbook: `docs/runbooks/synthetic-dogfood-agents.md`.
+- Verified locally: `python -m pytest tests/test_synthetic_dogfood.py -q` = 11 passed; `py_compile` green;
+  Python YAML parse confirmed compose services/volume. Not run: `docker compose config` because Docker is
+  not installed in this Windows remote session.
+
+---
