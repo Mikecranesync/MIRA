@@ -105,9 +105,8 @@ function skipUnlessSyntheticUsersEnabled(): void {
 
 async function assertAssetsLoad(page: Page): Promise<void> {
   await page.goto(`${HUB}/assets`, { waitUntil: "domcontentloaded" });
-  // At least 5 equipment rows from seed
-  await expect(page.locator("[data-testid='asset-row'], tr, .asset-card").first())
-    .toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: /^assets$/i })).toBeVisible({ timeout: 15_000 });
+  await expect(firstSeededAssetLink(page)).toBeVisible({ timeout: 15_000 });
 }
 
 async function assertWorkOrdersLoad(page: Page): Promise<void> {
@@ -121,6 +120,12 @@ async function assertPmSchedulesLoad(page: Page): Promise<void> {
   await page.goto(`${HUB}/schedule`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("main, [role='main']")).toBeVisible({ timeout: 10_000 });
   await expect(page.locator("text=/server error|500|uncaught/i")).toHaveCount(0);
+}
+
+function firstSeededAssetLink(page: Page) {
+  return page.getByRole("link", {
+    name: /QA Conveyor|CONV-QA-01|VFD-QA-01|Allen-Bradley PowerFlex 755|Dorner 2100|VFD-07|CONV-03/i,
+  }).first();
 }
 
 // ── Carlos — Technician 2AM workflow ─────────────────────────────────────────
@@ -151,10 +156,10 @@ test.describe("Carlos (Technician) — 2AM shift workflow", () => {
     skipUnlessSyntheticUsersEnabled();
     await loginAs(page, PERSONAS.carlos);
     await page.goto(`${HUB}/assets`, { waitUntil: "domcontentloaded" });
-    const firstAsset = page.locator("a[href*='/assets/']").first();
+    const firstAsset = firstSeededAssetLink(page);
+    await expect(firstAsset).toBeVisible({ timeout: 15_000 });
     await firstAsset.click();
-    await page.waitForURL(/\/assets\//, { timeout: 10_000 });
-    // Check for "Ask MIRA" or chat tab
+    await page.waitForURL(/\/assets\/[0-9a-f-]+\/?$/i, { timeout: 10_000 });
     const askTab = page.locator("text=/ask mira|chat|bot/i").first();
     await expect(askTab).toBeVisible({ timeout: 10_000 });
   });
