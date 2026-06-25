@@ -22,6 +22,27 @@ describe("trailingSlashRedirectTarget", () => {
     );
   });
 
+  it("does not trust hostile x-forwarded-host", () => {
+    const headers = new Headers({
+      "x-forwarded-host": "evil.example",
+      "x-forwarded-proto": "https",
+      host: "mira-web:3000",
+    });
+    expect(trailingSlashRedirectTarget("http://10.10.10.10:3000/pricing/", headers)).toBe(
+      "https://factorylm.com/pricing",
+    );
+  });
+
+  it("ignores invalid x-forwarded-proto", () => {
+    const headers = new Headers({
+      "x-forwarded-host": "factorylm.com",
+      "x-forwarded-proto": "ftp",
+    });
+    expect(trailingSlashRedirectTarget("http://127.0.0.1:3000/pricing/", headers)).toBe(
+      "http://factorylm.com/pricing",
+    );
+  });
+
   it("does not redirect the root path", () => {
     const headers = new Headers({ host: "factorylm.com", "x-forwarded-proto": "https" });
     expect(trailingSlashRedirectTarget("http://127.0.0.1/", headers)).toBeNull();
