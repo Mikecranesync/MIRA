@@ -2,7 +2,7 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { ensureUserAndTenant, findUserByEmail, validateMagicToken } from "@/lib/users";
+import { ensureInvitedUser, ensureUserAndTenant, findUserByEmail, validateMagicToken } from "@/lib/users";
 
 declare module "next-auth" {
   interface Session {
@@ -70,7 +70,13 @@ const providers: NextAuthOptions["providers"] = [
       if (!credentials?.token) return null;
       const result = await validateMagicToken(credentials.token);
       if (!result) return null;
-      const account = await ensureUserAndTenant({ email: result.email });
+      const account = result.tenantId
+        ? await ensureInvitedUser({
+            email: result.email,
+            tenantId: result.tenantId,
+            role: result.role ?? "technician",
+          })
+        : await ensureUserAndTenant({ email: result.email });
       const user = await findUserByEmail(result.email);
       return {
         id: account.id,
