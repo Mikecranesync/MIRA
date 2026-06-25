@@ -5,6 +5,9 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 
 ## [Unreleased]
 
+### Fixed
+- Hub mobile logout access: authenticated users can now sign out from the mobile More drawer, and the desktop sidebar sign-out control is wired to NextAuth.
+
 ### Changed
 - Recorded the staging ingest-schema reconciliation and added a read-only drift probe plus migration immutability doctrine.
 

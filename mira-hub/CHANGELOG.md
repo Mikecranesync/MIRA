@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.18.1 - 2026-06-24
+- fix(hub): mobile More drawer now includes account context plus a working Sign out button, and desktop sidebar logout controls call the shared NextAuth sign-out action.
+
 ## v2.18.0 - 2026-06-24
 - feat(hub): approval-gated retrieval surfaces. Node/manual retrieval honors `MIRA_ENFORCE_APPROVED_RETRIEVAL`, `HAS_DOCUMENT` approval marks the approved document chunks `verified=true`, and answer source payloads expose `verified` plus `approved_source_count` for human-test visibility.
 
