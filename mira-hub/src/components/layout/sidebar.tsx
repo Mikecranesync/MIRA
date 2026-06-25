@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { NAV_ITEMS, labsEnabled } from "@/providers/access-control";
 import { useTheme } from "@/providers/theme-provider";
 import { LanguageSelector } from "@/components/ui/language-selector";
+import { signOutToLogin } from "./sign-out-action";
 
 const ICON_MAP: Record<string, React.ElementType> = {
   Activity, MessageSquare, AlertTriangle, BookOpen,
@@ -261,11 +262,22 @@ export function Sidebar() {
         </button>
 
         {collapsed ? (
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-2">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
               style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)", color: "white" }}>
               {me?.initials ?? "?"}
             </div>
+            <button
+              onClick={signOutToLogin}
+              className="w-8 h-8 rounded-md flex items-center justify-center transition-colors"
+              style={{ color: "#64748B" }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = "var(--sidebar-hover)")}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
+              title={t("signOut")}
+              aria-label={t("signOut")}
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         ) : (
           <div className="flex items-center gap-3">
@@ -278,9 +290,11 @@ export function Sidebar() {
               <p className="text-[11px] capitalize" style={{ color: "#64748B" }}>{me?.role ?? ""}</p>
             </div>
             <button
+              onClick={signOutToLogin}
               className="w-7 h-7 rounded-md flex items-center justify-center transition-colors"
               style={{ color: "#64748B" }}
               title={t("signOut")}
+              aria-label={t("signOut")}
             >
               <LogOut className="w-4 h-4" />
             </button>
