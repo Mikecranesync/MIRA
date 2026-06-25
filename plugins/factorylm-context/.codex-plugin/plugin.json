@@ -1,0 +1,24 @@
+{
+  "name": "factorylm-context",
+  "version": "0.1.0",
+  "description": "Read-only FactoryLM context workflows for external AI development.",
+  "author": {
+    "name": "FactoryLM"
+  },
+  "homepage": "https://factorylm.com",
+  "keywords": ["factorylm", "mira", "context", "mcp", "codex"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "FactoryLM Context",
+    "shortDescription": "Query approved FactoryLM factory context safely.",
+    "longDescription": "Private/internal Codex plugin package for the FactoryLM context bridge. Bundles the coding-agent skill for read-only asset, UNS, evidence, tag, live-value, and SimLab context access. MCP server configuration will be added after the local MCP wrapper is implemented.",
+    "developerName": "FactoryLM",
+    "category": "Productivity",
+    "capabilities": ["Context", "Read-only"],
+    "defaultPrompt": [
+      "Use FactoryLM context before answering.",
+      "Find approved evidence for this asset.",
+      "Inspect FactoryLM tag context safely."
+    ]
+  }
+}
