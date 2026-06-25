@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.42.4 (2026-06-25) - feat(hub): one-board command center status view
+- Adds a Command Center one-board status panel backed by `/api/hub/status`, showing conveyor cell and Stardust block-zone running, blocked, faulted, and stale states in a compact responsive grid.
+
 ### v3.42.3 (2026-06-25) - feat(hub): tenant-scoped Hub status API
 - Adds `/api/hub/status` for tenant-scoped one-board Hub status cards, backed by `live_signal_cache` and a deterministic Stardust/conveyor signal summarizer with regression tests for tenant query scoping and demo-session fallback.
 

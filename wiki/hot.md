@@ -1,3 +1,16 @@
+# Hot Cache — 2026-06-25 — Hub one-board Command Center status view
+
+Branch `feat/hub-one-board-task3` off `origin/main` @ `fbca9071`. Task 3 wires the one-board Hub UI on
+`/command-center`: `HubStatusBoard` polls `/api/hub/status` every 2s and renders conveyor cell plus
+Stardust block-zone running/blocked/faulted/stale states in a compact responsive grid. Mounted below
+the connected-gateways bar so it avoids PR #2274's live-view button hunk. Tests: affected Hub status
+slice 8/8 green, full Hub vitest 883/883 green, targeted lint green, default `npm run build` green.
+Full repo-wide Hub lint still fails on unrelated existing lint debt. Browser proof used local
+production `next start` with the existing Command Center auth-cookie pattern plus mocked status/tree
+routes; desktop/mobile screenshots in ignored `mira-hub/test-results/hub-one-board-task3/`.
+
+---
+
 # Hot Cache — 2026-06-23 — SimLab→UNS ingest: HTTP relay path turnkey (L1+L2)
 
 Branch `feat/simlab-relay-ingest-emit` off `fix/heartbeat-docling-to-tika` (carries the proveit/cappy
