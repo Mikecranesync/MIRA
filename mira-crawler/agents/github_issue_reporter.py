@@ -16,7 +16,7 @@ from agents.synthetic_dogfood import (
 )
 
 
-@dataclass(slots=True)
+@dataclass
 class IssueAction:
     action: str
     issue_number: int | None = None

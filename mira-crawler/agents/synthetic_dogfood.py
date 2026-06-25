@@ -28,7 +28,7 @@ _SECRET_PATTERNS = [
 ]
 
 
-@dataclass(slots=True)
+@dataclass
 class DogfoodFinding:
     persona: str
     surface: str
@@ -49,7 +49,7 @@ class DogfoodFinding:
         return self.fingerprint
 
 
-@dataclass(slots=True)
+@dataclass
 class DogfoodRunSummary:
     run_id: str
     target_url: str

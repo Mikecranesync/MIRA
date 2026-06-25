@@ -53,14 +53,14 @@ DEFAULT_PLAYWRIGHT_COMMAND = [
 ]
 
 
-@dataclass(slots=True)
+@dataclass
 class CommandResult:
     exit_code: int
     stdout: str
     stderr: str
 
 
-@dataclass(slots=True)
+@dataclass
 class DogfoodTaskConfig:
     enabled: bool
     dry_run: bool
