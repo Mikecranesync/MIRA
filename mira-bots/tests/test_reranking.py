@@ -103,7 +103,7 @@ class TestBuildPromptWithChunks:
         assert "OC1 FAULT" in text_block["text"]
         assert "GS10 VFD" in text_block["text"]
 
-    def test_chunks_injected_in_system_prompt(self):
+    def test_chunks_injected_in_user_reference_block(self):
         worker = _make_rag_worker()
         state = _base_state()
         chunks = ["PowerFlex manual section 5.2", "VFD troubleshooting table"]
@@ -111,9 +111,11 @@ class TestBuildPromptWithChunks:
         messages = worker._build_prompt_with_chunks(state, "test", chunks)
 
         system_msg = messages[0]["content"]
-        assert "RETRIEVED REFERENCE DOCUMENTS" in system_msg
-        assert "PowerFlex manual section 5.2" in system_msg
-        assert "VFD troubleshooting table" in system_msg
+        user_msg = messages[-1]["content"]
+        assert "PowerFlex manual section 5.2" not in system_msg
+        assert "RETRIEVED REFERENCE DOCUMENTS" in user_msg
+        assert "PowerFlex manual section 5.2" in user_msg
+        assert "VFD troubleshooting table" in user_msg
 
 
 # -- kg_context isolation (#1846 cross-tenant race) ---------------------------
