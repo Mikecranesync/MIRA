@@ -6,6 +6,7 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 ## [Unreleased]
 
 ### Fixed
+- Hub synthetic-day QA now targets the current live asset-card links instead of stale table/card selectors.
 - Hub mobile logout access: authenticated users can now sign out from the mobile More drawer, and the desktop sidebar sign-out control is wired to NextAuth.
 - Hub namespace empty state now offers direct first-folder creation and an upload path for new maintenance managers.
 
