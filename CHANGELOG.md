@@ -7,6 +7,10 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 
 ### Fixed
 - Hub mobile logout access: authenticated users can now sign out from the mobile More drawer, and the desktop sidebar sign-out control is wired to NextAuth.
+- Hub namespace empty state now offers direct first-folder creation and an upload path for new maintenance managers.
+
+### Added
+- Hub team settings now support self-serve tenant-scoped magic-link invites for admins and owners.
 
 ### Changed
 - Recorded the staging ingest-schema reconciliation and added a read-only drift probe plus migration immutability doctrine.

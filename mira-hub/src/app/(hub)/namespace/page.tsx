@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown, ChevronRight,
@@ -45,12 +46,12 @@ type UploadState = { nodeId: string; state: "uploading" | "done" | "error"; mess
 
 const EQUIPMENT_KINDS = new Set(["asset", "equipment", "component"]);
 
-const KIND_ICON = (kind: string, open = false): React.ElementType => {
-  if (kind === "site" || kind === "plant") return Factory;
-  if (kind === "asset" || kind === "equipment" || kind === "component") return Cog;
-  if (kind === "document") return FileText;
-  return open ? FolderOpen : Folder;
-};
+function KindIcon({ kind, open, className }: { kind: string; open: boolean; className?: string }) {
+  if (kind === "site" || kind === "plant") return <Factory className={className} />;
+  if (kind === "asset" || kind === "equipment" || kind === "component") return <Cog className={className} />;
+  if (kind === "document") return <FileText className={className} />;
+  return open ? <FolderOpen className={className} /> : <Folder className={className} />;
+}
 
 function statusColor(status: string | null): string {
   if (!status) return "";
@@ -133,6 +134,7 @@ export default function NamespacePage() {
         ids.add(root.id);
         for (const child of root.children) ids.add(child.id);
       }
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setExpandedIds(ids);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -159,6 +161,7 @@ export default function NamespacePage() {
   // Ask MIRA panel. Read once, after the tree has loaded so the target exists.
   useEffect(() => {
     if (deepLinkApplied || loading || tree.length === 0) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDeepLinkApplied(true);
     const params = new URLSearchParams(window.location.search);
     const nodeParam = params.get("node");
@@ -503,7 +506,7 @@ export default function NamespacePage() {
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-gray-400">
               {loading ? null : tree.length === 0 ? (
-                <EmptyState />
+                <EmptyState onNewFolder={() => setNewFolder({ parentId: null, value: "" })} />
               ) : (
                 "Select a folder to view its contents and upload files"
               )}
@@ -612,7 +615,6 @@ function TreeNode({
   const isEditing = editing?.nodeId === node.id;
   const isUploading = uploadState?.nodeId === node.id && uploadState.state === "uploading";
 
-  const Icon = KIND_ICON(node.kind, open);
   const indent = depth * 14 + 6;
   const dotColor = statusColor(node.status);
 
@@ -681,7 +683,11 @@ function TreeNode({
             : null}
         </button>
 
-        <Icon className={`h-3.5 w-3.5 shrink-0 ${isSelected ? "text-white" : "text-gray-600"}`} />
+        <KindIcon
+          kind={node.kind}
+          open={open}
+          className={`h-3.5 w-3.5 shrink-0 ${isSelected ? "text-white" : "text-gray-600"}`}
+        />
 
         {isEditing ? (
           <input
@@ -799,6 +805,7 @@ function ContentPanel({
   // signal so the user can still close it; the parent resets `openChat` immediately.
   useEffect(() => {
     if (openChat) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowChat(true);
       onChatOpened();
     }
@@ -910,21 +917,18 @@ function ChildrenSection({ node, onSelect }: {
     <div className="mb-4">
       <div className="mb-2 text-[11px] uppercase tracking-wide text-gray-400">Folders</div>
       <div className="flex flex-wrap gap-3">
-        {node.children.map((child) => {
-          const Icon = KIND_ICON(child.kind, false);
-          return (
-            <button
-              key={child.id}
-              type="button"
-              onDoubleClick={() => onSelect(child)}
-              onClick={() => onSelect(child)}
-              className="flex w-24 flex-col items-center gap-1 rounded p-2 text-center hover:bg-[#e8e8f8] active:bg-[#c0c0ff]"
-            >
-              <Icon className="h-8 w-8 text-[#0000c0]" />
-              <span className="text-[11px] leading-tight text-gray-800 break-words w-full">{child.name}</span>
-            </button>
-          );
-        })}
+        {node.children.map((child) => (
+          <button
+            key={child.id}
+            type="button"
+            onDoubleClick={() => onSelect(child)}
+            onClick={() => onSelect(child)}
+            className="flex w-24 flex-col items-center gap-1 rounded p-2 text-center hover:bg-[#e8e8f8] active:bg-[#c0c0ff]"
+          >
+            <KindIcon kind={child.kind} open={false} className="h-8 w-8 text-[#0000c0]" />
+            <span className="text-[11px] leading-tight text-gray-800 break-words w-full">{child.name}</span>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -1180,12 +1184,31 @@ function NewFolderRow({
   );
 }
 
-function EmptyState() {
+function EmptyState({ onNewFolder }: { onNewFolder: () => void }) {
   return (
     <div className="text-center" data-testid="namespace-empty">
       <Layers className="mx-auto h-10 w-10 text-gray-200" />
       <p className="mt-3 text-sm text-gray-500">Your namespace is empty.</p>
-      <p className="mt-1 text-xs text-gray-400">Use &ldquo;New Folder&rdquo; in the toolbar to create your first node.</p>
+      <p className="mt-1 text-xs text-gray-400">Create a first folder, then select it to upload manuals and files.</p>
+      <div className="mt-4 flex items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={onNewFolder}
+          className="inline-flex items-center gap-1 rounded border border-gray-500 bg-[#d4d0c8] px-3 py-1 text-[12px] text-gray-900 hover:bg-[#e8e8e8] active:border-inset"
+          data-testid="namespace-empty-new-folder"
+        >
+          <FolderPlus className="h-3.5 w-3.5" />
+          New Folder
+        </button>
+        <Link
+          href="/documents"
+          className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-3 py-1 text-[12px] text-gray-700 hover:bg-gray-50"
+          data-testid="namespace-empty-upload-documents"
+        >
+          <Upload className="h-3.5 w-3.5" />
+          Upload manual
+        </Link>
+      </div>
     </div>
   );
 }
