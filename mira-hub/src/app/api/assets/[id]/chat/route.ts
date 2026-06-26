@@ -287,6 +287,9 @@ export async function POST(
         manufacturer: mfr,
         allowTenantFallback: false,
       });
+      if (approvedAskEnforcementEnabled()) {
+        manualChunks = manualChunks.filter((chunk) => chunk.verified === true);
+      }
     } finally {
       c.release();
     }
@@ -313,7 +316,7 @@ export async function POST(
   const approvedSourceCount = manualSources.filter((s) => s.verified).length;
   const approvedSummary = {
     approvedSourceCount,
-    verifiedRelationshipCount: graphContext ? 1 : 0,
+    verifiedRelationshipCount: 0,
     approvedLiveSignalCount: 0,
   };
 

@@ -250,7 +250,7 @@ export async function POST(req: Request) {
               OR at.source_tag_path = cache.plc_tag
             )
           WHERE cache.tenant_id = $1
-            AND (i.asset_id = $2 OR cache.component_id IS NULL)
+            AND i.asset_id = $2
           ORDER BY cache.last_changed_at DESC`,
         [ctx.tenantId, asset],
       )
@@ -271,17 +271,29 @@ export async function POST(req: Request) {
           (cmp) => cmp.id === component,
         ) ?? (components as Array<Record<string, unknown>>)[0];
       const focusTag = (focus?.plc_tag as string | null) ?? null;
-      const focusId = (focus?.id as string | null) ?? null;
-      if (focusTag || focusId) {
+      let approvedFocusTag = false;
+      if (focusTag) {
+        const approvedTagRes = await c.query(
+          `SELECT 1
+             FROM approved_tags
+            WHERE tenant_id = $1
+              AND enabled = true
+              AND (normalized_tag_path = $2 OR source_tag_path = $2)
+            LIMIT 1`,
+          [ctx.tenantId, focusTag],
+        );
+        approvedFocusTag = approvedTagRes.rows.length > 0;
+      }
+      if (focusTag && approvedFocusTag) {
         try {
           const tc = await countTransitions(c, {
             tenantId: ctx.tenantId,
             plcTag: focusTag,
-            componentId: focusTag ? null : focusId,
+            componentId: null,
             windowSeconds: transitionWindowSec,
           });
           transitionFact = {
-            topic: focusTag ?? focusId ?? "",
+            topic: focusTag,
             component_name: (focus?.component_name as string | null) ?? null,
             count: tc.transitions,
             window_seconds: tc.windowSeconds,

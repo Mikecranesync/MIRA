@@ -12,6 +12,7 @@ vi.mock("@/lib/signal-recorder", () => ({ countTransitions: vi.fn() }));
 import { cascadeComplete } from "@/lib/llm/cascade";
 import { sessionOrDemo } from "@/lib/demo-auth";
 import { withTenantContext } from "@/lib/tenant-context";
+import { countTransitions } from "@/lib/signal-recorder";
 import { POST } from "../route";
 
 const tenantId = "tenant-1";
@@ -114,6 +115,45 @@ describe("POST /api/mira/ask approved-context gate", () => {
     expect(recentSql).toMatch(/approved_tags[\s\S]+enabled\s*=\s*true/i);
     expect(currentSql).toMatch(/JOIN approved_tags/i);
     expect(currentSql).toMatch(/approved_tags[\s\S]+enabled\s*=\s*true/i);
+    expect(currentSql).not.toMatch(/component_id\s+IS\s+NULL/i);
+  });
+
+  it("does not add transition grounding unless the focus PLC tag is approved", async () => {
+    const calls: string[] = [];
+    const client = mockClient(
+      [
+        {
+          match: "FROM troubleshooting_sessions",
+          rows: [{
+            id: sessionId,
+            status: "confirmed",
+            asset_id: assetId,
+            component_id: null,
+            transcript: [],
+            asset_name: "Conveyor",
+            asset_tag: "Plant.Line.Conveyor",
+          }],
+        },
+        {
+          match: "FROM installed_component_instances i",
+          rows: [{ id: "cmp-1", component_name: "Photoeye", plc_tag: "PE001" }],
+        },
+        { match: "FROM kg_relationships r", rows: [{ relationship_type: "feeds", confidence: 1, s_type: "asset", s_name: "A", t_type: "asset", t_name: "B" }] },
+        { match: "FROM live_signal_events e", rows: [] },
+        { match: "FROM live_signal_cache cache", rows: [] },
+        { match: "FROM approved_tags", rows: [] },
+      ],
+      calls,
+    );
+    vi.mocked(withTenantContext).mockImplementation(async (_tenant, fn) => fn(client));
+
+    const res = await POST(req("How many times did PE001 change in the last 30 seconds?"));
+
+    expect(res.status).toBe(200);
+    expect(countTransitions).not.toHaveBeenCalled();
+    const cascadeMessages = vi.mocked(cascadeComplete).mock.calls[0]?.[0] ?? [];
+    const systemPrompt = cascadeMessages[0]?.content ?? "";
+    expect(systemPrompt).not.toContain("## Transition count");
   });
 
   it("returns approved_context without calling cascade when no approved context exists", async () => {

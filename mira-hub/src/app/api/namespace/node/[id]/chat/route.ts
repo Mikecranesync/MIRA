@@ -259,6 +259,7 @@ export async function POST(
         `SELECT name, uns_path::text AS uns_path
            FROM kg_entities
           WHERE id = $1 AND tenant_id = $2
+            AND approval_state = 'verified'
           LIMIT 1`,
         [id, ctx.tenantId],
       );
@@ -268,7 +269,10 @@ export async function POST(
         nodeId: id,
         unsPath: row.uns_path,
       });
-      return { row, chunks };
+      const approvedChunks = approvedAskEnforcementEnabled()
+        ? chunks.filter((chunk) => chunk.verified === true)
+        : chunks;
+      return { row, chunks: approvedChunks };
     });
     nodeRow = fetched.row;
     nodeChunks = fetched.chunks;
