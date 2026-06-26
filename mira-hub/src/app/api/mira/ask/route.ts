@@ -216,6 +216,13 @@ export async function POST(req: Request) {
                 e.simulated, i.component_name, i.plc_tag
            FROM live_signal_events e
            JOIN installed_component_instances i ON i.id = e.component_id
+           JOIN approved_tags at
+             ON at.tenant_id = e.tenant_id
+            AND at.enabled = true
+            AND (
+              at.normalized_tag_path = e.plc_tag
+              OR at.source_tag_path = e.plc_tag
+            )
           WHERE e.tenant_id = $1 AND i.asset_id = $2
           ORDER BY e.created_at DESC
           LIMIT 10`,
@@ -234,6 +241,14 @@ export async function POST(req: Request) {
                 i.component_name
            FROM live_signal_cache cache
            LEFT JOIN installed_component_instances i ON i.id = cache.component_id
+           JOIN approved_tags at
+             ON at.tenant_id = cache.tenant_id
+            AND at.enabled = true
+            AND (
+              at.uns_path = cache.uns_path
+              OR at.normalized_tag_path = cache.plc_tag
+              OR at.source_tag_path = cache.plc_tag
+            )
           WHERE cache.tenant_id = $1
             AND (i.asset_id = $2 OR cache.component_id IS NULL)
           ORDER BY cache.last_changed_at DESC`,

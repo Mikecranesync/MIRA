@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/demo-auth", () => ({ sessionOrDemo: vi.fn() }));
@@ -81,6 +80,40 @@ describe("POST /api/mira/ask approved-context gate", () => {
     expect(relationshipSql).toMatch(/r\.approval_state\s*=\s*'verified'/i);
     expect(relationshipSql).toMatch(/src\.approval_state\s*=\s*'verified'/i);
     expect(relationshipSql).toMatch(/tgt\.approval_state\s*=\s*'verified'/i);
+  });
+
+  it("requires approved_tags for recent and current live grounding", async () => {
+    const calls: string[] = [];
+    const client = mockClient(
+      [
+        {
+          match: "FROM troubleshooting_sessions",
+          rows: [{
+            id: sessionId,
+            status: "confirmed",
+            asset_id: assetId,
+            component_id: null,
+            transcript: [],
+            asset_name: "Conveyor",
+            asset_tag: "Plant.Line.Conveyor",
+          }],
+        },
+        { match: "FROM kg_relationships r", rows: [{ relationship_type: "feeds", confidence: 1, s_type: "asset", s_name: "A", t_type: "asset", t_name: "B" }] },
+        { match: "FROM live_signal_events e", rows: [] },
+        { match: "FROM live_signal_cache cache", rows: [] },
+      ],
+      calls,
+    );
+    vi.mocked(withTenantContext).mockImplementation(async (_tenant, fn) => fn(client));
+
+    await POST(req());
+
+    const recentSql = calls.find((sql) => sql.includes("FROM live_signal_events e")) ?? "";
+    const currentSql = calls.find((sql) => sql.includes("FROM live_signal_cache cache")) ?? "";
+    expect(recentSql).toMatch(/JOIN approved_tags/i);
+    expect(recentSql).toMatch(/approved_tags[\s\S]+enabled\s*=\s*true/i);
+    expect(currentSql).toMatch(/JOIN approved_tags/i);
+    expect(currentSql).toMatch(/approved_tags[\s\S]+enabled\s*=\s*true/i);
   });
 
   it("returns approved_context without calling cascade when no approved context exists", async () => {
