@@ -6,6 +6,7 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 ## [Unreleased]
 
 ### Fixed
+- Hub lint debt is cleared across app pages, shared components, and e2e probes so `mira-hub` ESLint runs with zero errors and zero warnings.
 - Hub CMMS quick links and Atlas record deep links now target the FactoryLM Works app routes (`/app/work-orders`, `/app/assets`, `/app/preventive-maintenance`, and `/app/reports`) instead of public marketing paths that render provider 404 pages.
 - FactoryLM trailing-slash redirects now preserve the canonical HTTPS public host and reject hostile forwarded hosts, loopback forwarded hosts, and attacker-supplied public-host ports.
 - Hub CMMS health coverage now guards against browser-facing links exposing the internal Docker hostname `cmms-backend`.
