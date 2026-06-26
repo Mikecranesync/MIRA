@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.42.5 (2026-06-25) - fix(web): canonical trailing-slash redirects
+- Fixes FactoryLM trailing-slash redirects so HTTPS proxy requests like `/pricing/` trim to the canonical no-slash HTTPS public URL. Redirect authority is allowlisted and normalized so hostile `X-Forwarded-Host` values, loopback hosts, and attacker-supplied public-host ports cannot steer `Location` headers.
+- Adds a CMMS health regression proving the Hub browser-facing CMMS URL remains `https://cmms.factorylm.com` and never exposes the internal Docker hostname `cmms-backend`.
+
 ### v3.42.4 (2026-06-25) - feat(hub): one-board command center status view
 - Adds a Command Center one-board status panel backed by `/api/hub/status`, showing conveyor cell and Stardust block-zone running, blocked, faulted, and stale states in a compact responsive grid.
 
