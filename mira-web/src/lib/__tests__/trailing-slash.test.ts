@@ -22,6 +22,20 @@ describe("trailingSlashRedirectTarget", () => {
     );
   });
 
+  it("strips attacker-supplied port from trusted public x-forwarded-host", () => {
+    const headers = new Headers({ "x-forwarded-host": "factorylm.com:8443", "x-forwarded-proto": "https" });
+    expect(trailingSlashRedirectTarget("http://10.10.10.10:3000/pricing/", headers)).toBe(
+      "https://factorylm.com/pricing",
+    );
+  });
+
+  it("strips attacker-supplied port from trusted www public x-forwarded-host", () => {
+    const headers = new Headers({ "x-forwarded-host": "www.factorylm.com:444", "x-forwarded-proto": "https" });
+    expect(trailingSlashRedirectTarget("http://10.10.10.10:3000/pricing/", headers)).toBe(
+      "https://www.factorylm.com/pricing",
+    );
+  });
+
   it("does not trust hostile x-forwarded-host", () => {
     const headers = new Headers({
       "x-forwarded-host": "evil.example",

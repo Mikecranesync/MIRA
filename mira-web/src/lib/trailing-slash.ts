@@ -24,7 +24,7 @@ function firstTrustedHost(value: string | null, opts: { allowLocal: boolean }): 
     const host = hostUrl.host.toLowerCase();
     const hostname = hostUrl.hostname.toLowerCase();
     if (PUBLIC_REDIRECT_HOSTS.has(host) || PUBLIC_REDIRECT_HOSTS.has(hostname)) {
-      return host;
+      return hostname;
     }
     if (opts.allowLocal && (LOCAL_REDIRECT_HOSTS.has(host) || LOCAL_REDIRECT_HOSTS.has(hostname))) {
       return host;
