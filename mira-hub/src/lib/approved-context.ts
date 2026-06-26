@@ -15,8 +15,10 @@ export interface ApprovedContextRefusal {
   missingContext: MissingContextItem[];
 }
 
+type ApprovedAskEnv = Record<string, string | undefined>;
+
 export function approvedAskEnforcementEnabled(
-  env: Pick<NodeJS.ProcessEnv, "MIRA_ENFORCE_APPROVED_ASK" | "MIRA_ENFORCE_APPROVED_RETRIEVAL"> = process.env,
+  env: ApprovedAskEnv = process.env,
 ): boolean {
   return env.MIRA_ENFORCE_APPROVED_ASK === "true" || env.MIRA_ENFORCE_APPROVED_RETRIEVAL === "true";
 }
