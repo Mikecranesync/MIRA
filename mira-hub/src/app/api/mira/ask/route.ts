@@ -282,14 +282,35 @@ export async function POST(req: Request) {
       if (focusTag) {
         const approvedTagRes = await c.query(
           `SELECT source_system
-             FROM approved_tags
-            WHERE tenant_id = $1
-              AND enabled = true
-              AND (normalized_tag_path = $2 OR source_tag_path = $2)
-            LIMIT 1`,
-          [ctx.tenantId, focusTag],
+             FROM (
+               SELECT DISTINCT at.source_system,
+                      MAX(cache.last_seen_at) AS last_seen_at
+                 FROM live_signal_cache cache
+                 JOIN installed_component_instances i ON i.id = cache.component_id
+                 JOIN approved_tags at
+                   ON at.tenant_id = cache.tenant_id
+                  AND at.enabled = true
+                  AND at.source_system = COALESCE(
+                    NULLIF(cache.source_system, ''),
+                    CASE WHEN cache.source IN ('demo_simulator', 'simulator') THEN 'simulator' ELSE cache.source END
+                  )
+                  AND (
+                    at.uns_path = cache.uns_path
+                    OR at.normalized_tag_path = cache.plc_tag
+                    OR at.source_tag_path = cache.plc_tag
+                  )
+                WHERE cache.tenant_id = $1
+                  AND i.asset_id = $2
+                  AND cache.plc_tag = $3
+                GROUP BY at.source_system
+             ) approved_live_sources
+            ORDER BY last_seen_at DESC
+            LIMIT 2`,
+          [ctx.tenantId, asset, focusTag],
         );
-        approvedFocusSourceSystem = (approvedTagRes.rows[0]?.source_system as string | null) ?? null;
+        approvedFocusSourceSystem = approvedTagRes.rows.length === 1
+          ? ((approvedTagRes.rows[0]?.source_system as string | null) ?? null)
+          : null;
       }
       if (focusTag && approvedFocusSourceSystem) {
         try {

@@ -187,8 +187,8 @@ describe("POST /api/mira/ask approved-context gate", () => {
         },
         { match: "FROM kg_relationships r", rows: [{ relationship_type: "feeds", confidence: 1, s_type: "asset", s_name: "A", t_type: "asset", t_name: "B" }] },
         { match: "FROM live_signal_events e", rows: [] },
+        { match: "approved_live_sources", rows: [{ source_system: "ignition" }] },
         { match: "FROM live_signal_cache cache", rows: [] },
-        { match: "FROM approved_tags", rows: [{ source_system: "ignition" }] },
       ],
       calls,
     );
@@ -204,6 +204,44 @@ describe("POST /api/mira/ask approved-context gate", () => {
     const cascadeMessages = vi.mocked(cascadeComplete).mock.calls[0]?.[0] ?? [];
     const systemPrompt = cascadeMessages[0]?.content ?? "";
     expect(systemPrompt).toContain("## Transition count");
+  });
+
+  it("omits transition grounding when a focus tag has multiple approved live sources", async () => {
+    const calls: string[] = [];
+    const client = mockClient(
+      [
+        {
+          match: "FROM troubleshooting_sessions",
+          rows: [{
+            id: sessionId,
+            status: "confirmed",
+            asset_id: assetId,
+            component_id: null,
+            transcript: [],
+            asset_name: "Conveyor",
+            asset_tag: "Plant.Line.Conveyor",
+          }],
+        },
+        {
+          match: "FROM installed_component_instances i",
+          rows: [{ id: "cmp-1", component_name: "Photoeye", plc_tag: "PE001" }],
+        },
+        { match: "FROM kg_relationships r", rows: [{ relationship_type: "feeds", confidence: 1, s_type: "asset", s_name: "A", t_type: "asset", t_name: "B" }] },
+        { match: "FROM live_signal_events e", rows: [] },
+        { match: "FROM live_signal_cache cache", rows: [] },
+        { match: "approved_live_sources", rows: [{ source_system: "ignition" }, { source_system: "simulator" }] },
+      ],
+      calls,
+    );
+    vi.mocked(withTenantContext).mockImplementation(async (_tenant, fn) => fn(client));
+
+    const res = await POST(req("How many times did PE001 change in the last 30 seconds?"));
+
+    expect(res.status).toBe(200);
+    expect(countTransitions).not.toHaveBeenCalled();
+    const cascadeMessages = vi.mocked(cascadeComplete).mock.calls[0]?.[0] ?? [];
+    const systemPrompt = cascadeMessages[0]?.content ?? "";
+    expect(systemPrompt).not.toContain("## Transition count");
   });
 
   it("returns approved_context without calling cascade when no approved context exists", async () => {
