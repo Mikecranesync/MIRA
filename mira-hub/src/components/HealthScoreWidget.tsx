@@ -13,17 +13,27 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Loader2, Sparkles } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronRight, Loader2, Sparkles } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 
 interface ReadinessResponse {
   level: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   levelName: string;
   nextStep: string;
+  missingContext: Array<{
+    key: string;
+    label: string;
+    status: "missing" | "needs_review" | "ready";
+    count: number;
+    required: number;
+    pending?: number;
+    action: string;
+  }>;
   counts: {
     assets: number;
     components: number;
     docs: number;
+    docsPending: number;
     proposalsPending: number;
     proposalsVerified: number;
     unsPaths: number;
@@ -141,9 +151,32 @@ export default function HealthScoreWidget() {
 
       <dl className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-500">
         <Stat label="Assets" value={data.counts.assets} />
-        <Stat label="Components" value={data.counts.components} />
+        <Stat label="Docs" value={data.counts.docs} />
         <Stat label="Verified edges" value={data.counts.proposalsVerified} />
       </dl>
+
+      <div className="mt-3 border-t border-slate-100 pt-3">
+        <div className="space-y-2">
+          {data.missingContext
+            .filter((item) => item.status !== "ready")
+            .slice(0, 3)
+            .map((item) => (
+              <ChecklistItem key={item.key} item={item} />
+            ))}
+          {data.missingContext.every((item) => item.status === "ready") ? (
+            <ChecklistItem
+              item={{
+                key: "ready",
+                label: "Core context ready",
+                status: "ready",
+                count: 1,
+                required: 1,
+                action: "Keep verifying new proposals as fresh evidence arrives.",
+              }}
+            />
+          ) : null}
+        </div>
+      </div>
     </Link>
   );
 }
@@ -153,6 +186,32 @@ function Stat({ label, value }: { label: string; value: number }) {
     <div>
       <dt className="text-[0.7rem] uppercase tracking-wide text-slate-400">{label}</dt>
       <dd className="text-sm font-semibold text-slate-900">{value}</dd>
+    </div>
+  );
+}
+
+function ChecklistItem({
+  item,
+}: {
+  item: ReadinessResponse["missingContext"][number];
+}) {
+  const ready = item.status === "ready";
+  return (
+    <div className="flex items-start gap-2 text-xs">
+      {ready ? (
+        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+      ) : (
+        <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+      )}
+      <div className="min-w-0">
+        <div className="font-medium text-slate-700">
+          {item.label}
+          {item.pending ? (
+            <span className="ml-1 text-slate-400">({item.pending} awaiting review)</span>
+          ) : null}
+        </div>
+        <div className="text-slate-500">{item.action}</div>
+      </div>
     </div>
   );
 }
