@@ -204,4 +204,3 @@ python C:\Users\hharp\.codex\worktrees\a113\MIRA\tests\simlab\runner.py --dry-ru
 cd C:\Users\hharp\Desktop\factorylm-monorepo
 pytest services/plc-modbus
 ```
-

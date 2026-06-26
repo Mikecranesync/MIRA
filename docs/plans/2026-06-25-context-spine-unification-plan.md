@@ -206,4 +206,3 @@ PR 4: SimLab proof loop.
 
 - Add one no-write proof runner for SimLab -> relay -> live cache -> approved-context MIRA answer with citations.
 - Keep physical garage conveyor proof behind explicit operator/runbook steps.
-
