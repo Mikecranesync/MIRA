@@ -1,5 +1,23 @@
-import { describe, test, expect } from "vitest";
-import { formatEntityContext } from "../context-builder";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { buildGraphContext, formatEntityContext } from "../context-builder";
+
+const { connectMock, queryMock } = vi.hoisted(() => {
+  const queryMock = vi.fn();
+  const client = {
+    query: queryMock,
+    release: vi.fn(),
+  };
+  return {
+    connectMock: vi.fn(async () => client),
+    queryMock,
+  };
+});
+
+vi.mock("@/lib/db", () => ({
+  default: {
+    connect: connectMock,
+  },
+}));
 
 // formatEntityContext is pure — no DB required.
 
@@ -23,6 +41,51 @@ const BASE_FULL = {
   incoming: [],
   triples: [],
 };
+
+const sqlCalls = () =>
+  queryMock.mock.calls
+    .map(([sql]) => (typeof sql === "string" ? sql : ""))
+    .filter(Boolean);
+
+describe("buildGraphContext answer-facing SQL filters", () => {
+  beforeEach(() => {
+    process.env.NEON_DATABASE_URL = "postgres://unit-test";
+    connectMock.mockClear();
+    queryMock.mockReset();
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("FROM kg_entities") && sql.includes("entity_id = ANY")) {
+        return {
+          rows: [
+            {
+              id: "uuid-fault-1",
+              entity_type: "fault_code",
+              entity_id: "F004",
+              name: "F004",
+              properties: {},
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+  });
+
+  test("entity and relationship lookups only expose verified KG context", async () => {
+    await buildGraphContext("tenant-1", "Explain F004");
+
+    const entitySql = sqlCalls().find(
+      (sql) => sql.includes("FROM kg_entities") && sql.includes("entity_id = ANY"),
+    );
+    expect(entitySql).toMatch(/approval_state\s*=\s*'verified'/i);
+
+    const relationshipSql = sqlCalls()
+      .filter((sql) => sql.includes("FROM kg_relationships r"))
+      .join("\n");
+    expect(relationshipSql).toMatch(/r\.approval_state\s*=\s*'verified'/i);
+    expect(relationshipSql).toMatch(/src\.approval_state\s*=\s*'verified'/i);
+    expect(relationshipSql).toMatch(/tgt\.approval_state\s*=\s*'verified'/i);
+  });
+});
 
 describe("formatEntityContext — header", () => {
   test("includes entity_id in header", () => {

@@ -92,6 +92,7 @@ async function fetchEntitiesByIds(
             COALESCE(properties, '{}')::jsonb AS properties
      FROM kg_entities
      WHERE tenant_id = $1
+       AND approval_state = 'verified'
        AND entity_id = ANY($2)
        AND entity_type = ANY($3)
      LIMIT 20`,
@@ -113,9 +114,16 @@ async function fetchEntityFull(
               src.entity_id AS source_entity_id, tgt.entity_id AS target_entity_id,
               tgt.name AS target_name, src.name AS source_name
        FROM kg_relationships r
-       LEFT JOIN kg_entities src ON src.id = r.source_id
-       LEFT JOIN kg_entities tgt ON tgt.id = r.target_id
+       JOIN kg_entities src
+         ON src.id = r.source_id
+        AND src.tenant_id = r.tenant_id
+        AND src.approval_state = 'verified'
+       JOIN kg_entities tgt
+         ON tgt.id = r.target_id
+        AND tgt.tenant_id = r.tenant_id
+        AND tgt.approval_state = 'verified'
        WHERE r.tenant_id = $1 AND r.source_id = $2
+         AND r.approval_state = 'verified'
        ORDER BY r.created_at DESC
        LIMIT 30`,
       [tenantId, entityUuid],
@@ -126,9 +134,16 @@ async function fetchEntityFull(
               src.entity_id AS source_entity_id, tgt.entity_id AS target_entity_id,
               tgt.name AS target_name, src.name AS source_name
        FROM kg_relationships r
-       LEFT JOIN kg_entities src ON src.id = r.source_id
-       LEFT JOIN kg_entities tgt ON tgt.id = r.target_id
+       JOIN kg_entities src
+         ON src.id = r.source_id
+        AND src.tenant_id = r.tenant_id
+        AND src.approval_state = 'verified'
+       JOIN kg_entities tgt
+         ON tgt.id = r.target_id
+        AND tgt.tenant_id = r.tenant_id
+        AND tgt.approval_state = 'verified'
        WHERE r.tenant_id = $1 AND r.target_id = $2
+         AND r.approval_state = 'verified'
        ORDER BY r.created_at DESC
        LIMIT 30`,
       [tenantId, entityUuid],
