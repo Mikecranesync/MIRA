@@ -3,7 +3,7 @@
  * Runs against live factorylm.com + app.factorylm.com
  */
 
-import { test, expect, Page, Browser } from "@playwright/test";
+import { test, expect, Page } from "@playwright/test";
 import * as path from "path";
 
 const MARKETING = "https://factorylm.com";

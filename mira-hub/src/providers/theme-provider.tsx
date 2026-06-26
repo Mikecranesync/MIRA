@@ -15,8 +15,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const stored = localStorage.getItem("hub_theme") as Theme | null;
     const initial: Theme = stored
       ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    setTheme(initial);
     document.documentElement.classList.toggle("dark", initial === "dark");
+    const timeout = window.setTimeout(() => setTheme(initial), 0);
+    return () => window.clearTimeout(timeout);
   }, []);
 
   function toggleTheme() {

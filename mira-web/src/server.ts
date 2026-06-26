@@ -32,7 +32,6 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { cors } from "hono/cors";
-import { trimTrailingSlash } from "hono/trailing-slash";
 import { renderHome } from "./views/home.js";
 import { renderCmms, renderSamplePlaceholder } from "./views/cmms.js";
 import { renderLimitations } from "./views/limitations.js";
@@ -132,6 +131,7 @@ import { qrTest } from "./routes/qr-test.js";
 import { inbox } from "./routes/inbox.js";
 import { mfa } from "./routes/mfa.js";
 import { probeStateRoute } from "./routes/probe-state.js";
+import { trailingSlashRedirectTarget } from "./lib/trailing-slash.js";
 
 // Merged content: static seed + NeonDB live drafts
 let allFaultCodes = [...FAULT_CODES];
@@ -172,7 +172,11 @@ export const app = new Hono();
 
 // Middleware
 // Trim trailing slashes — /pricing/ → /pricing (simplifies routing, fixes #2179)
-app.use(trimTrailingSlash());
+app.use("*", async (c, next) => {
+  const target = trailingSlashRedirectTarget(c.req.url, c.req.raw.headers);
+  if (target) return c.redirect(target, 301);
+  await next();
+});
 app.use("*", cors());
 
 // Ensure Content-Length is set on all non-streaming text responses.

@@ -1,3 +1,16 @@
+# Hot Cache — 2026-06-25 — Hub one-board Command Center status view
+
+Branch `feat/hub-one-board-task3` off `origin/main` @ `fbca9071`. Task 3 wires the one-board Hub UI on
+`/command-center`: `HubStatusBoard` polls `/api/hub/status` every 2s and renders conveyor cell plus
+Stardust block-zone running/blocked/faulted/stale states in a compact responsive grid. Mounted below
+the connected-gateways bar so it avoids PR #2274's live-view button hunk. Tests: affected Hub status
+slice 8/8 green, full Hub vitest 883/883 green, targeted lint green, default `npm run build` green.
+Full repo-wide Hub lint still fails on unrelated existing lint debt. Browser proof used local
+production `next start` with the existing Command Center auth-cookie pattern plus mocked status/tree
+routes; desktop/mobile screenshots in ignored `mira-hub/test-results/hub-one-board-task3/`.
+
+---
+
 # Hot Cache — 2026-06-23 — SimLab→UNS ingest: HTTP relay path turnkey (L1+L2)
 
 Branch `feat/simlab-relay-ingest-emit` off `fix/heartbeat-docling-to-tika` (carries the proveit/cappy
@@ -1065,5 +1078,23 @@ Continuation result:
 - Fixes made during proof: integration fixture handles missing app tenant settings with `NULLIF(..., '')::uuid`; RLS missing-context test now drops to `factorylm_app`; setup grants `factorylm_app` the KG table permissions needed by contextualization approval publishing.
 - Verification after the pass: ESLint on touched DB scripts/tests passed, `package.json` parses, `git diff --check` passed with only normal CRLF warnings.
 - Note: Node `pg` emits the current sslmode warning for Neon `ssl=require`; this is a dependency warning, not a test failure.
+
+---
+
+# Hot Cache - 2026-06-25 - Synthetic dogfood Celery loop PR #2293
+
+Branch `codex/synthetic-dogfood-agents` / PR #2293 adds the autonomous beta-polish loop Mike asked for:
+seeded Hub personas run via Celery + Playwright, raw artifacts land under `/opt/mira/data/synthetic-dogfood`,
+and P0/P1/P2 failures become redacted, fingerprint-deduped GitHub issues. P3 noise stays in reports.
+- Core code: `mira-crawler/agents/synthetic_dogfood.py`, `agents/github_issue_reporter.py`,
+  `tasks/synthetic_dogfood.py`.
+- SaaS wiring: `mira-crawler/Dockerfile.synthetic-dogfood` plus `docker-compose.saas.yml` services
+  `mira-redis`, `mira-synthetic-dogfood-worker`, and `mira-synthetic-dogfood-beat`.
+- Safety switches: default off (`SYNTHETIC_DOGFOOD_ENABLED=0`) and dry-run issues
+  (`DOGFOOD_ISSUE_MODE=dry_run`). Flip Doppler `factorylm/prd` only after the first artifact looks sane.
+- Runbook: `docs/runbooks/synthetic-dogfood-agents.md`.
+- Verified locally: `python -m pytest tests/test_synthetic_dogfood.py -q` = 11 passed; `py_compile` green;
+  Python YAML parse confirmed compose services/volume. Not run: `docker compose config` because Docker is
+  not installed in this Windows remote session.
 
 ---

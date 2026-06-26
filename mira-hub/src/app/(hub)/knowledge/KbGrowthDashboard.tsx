@@ -83,7 +83,8 @@ export function KbGrowthDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setMounted(true);
+    const timeout = window.setTimeout(() => setMounted(true), 0);
+    return () => window.clearTimeout(timeout);
   }, []);
 
   useEffect(() => {

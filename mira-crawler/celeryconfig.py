@@ -5,6 +5,8 @@ All settings overridable via environment variables where noted.
 
 from __future__ import annotations
 
+import os
+
 from celery.schedules import crontab
 
 # ---------------------------------------------------------------------------
@@ -59,6 +61,8 @@ task_routes = {
     "mira_crawler.tasks.gdrive.*": {"queue": "ingest"},
     "mira_crawler.tasks.freshness.*": {"queue": "freshness"},
     "mira_crawler.tasks.component_template.*": {"queue": "ingest"},
+    "mira_crawler.tasks.synthetic_dogfood.*": {"queue": "synthetic"},
+    "tasks.synthetic_dogfood.*": {"queue": "synthetic"},
     # --- LinkedIn draft generation ---
     "linkedin.*": {"queue": "celery"},
 }
@@ -94,6 +98,7 @@ task_annotations = {
     "mira_crawler.tasks.component_template.extract_component_template": {
         "rate_limit": "10/m",
     },
+    "tasks.synthetic_dogfood.run_synthetic_dogfood_cycle": {"rate_limit": "1/h"},
 }
 
 # ---------------------------------------------------------------------------
@@ -107,20 +112,31 @@ task_annotations = {
 # Hours are UTC. 06:00 ET ≈ 10:00 UTC (EDT) / 11:00 UTC (EST). Single cron entry
 # at 10:00 UTC accepts ±1h DST drift, per spec.
 
-beat_schedule = {
-    "reddit-intent-scan": {
-        "task": "tasks.reddit_intent.scan_reddit_intent",
+_SYNTHETIC_DOGFOOD_SCHEDULE = {
+    "synthetic-dogfood-cycle": {
+        "task": "tasks.synthetic_dogfood.run_synthetic_dogfood_cycle",
         "schedule": crontab(minute=0, hour="*/6"),
     },
-    "youtube-intent-scan": {
-        "task": "tasks.youtube_intent.scan_youtube_intent",
-        "schedule": crontab(minute=0, hour=4),  # 00:00 ET (EDT)
-    },
-    "intent-daily-digest": {
-        "task": "tasks.intent_digest.send_daily_digest",
-        "schedule": crontab(minute=0, hour=10),  # 06:00 ET (EDT)
-    },
 }
+
+if os.getenv("CELERY_BEAT_PROFILE") == "synthetic-dogfood":
+    beat_schedule = _SYNTHETIC_DOGFOOD_SCHEDULE
+else:
+    beat_schedule = {
+        "reddit-intent-scan": {
+            "task": "tasks.reddit_intent.scan_reddit_intent",
+            "schedule": crontab(minute=0, hour="*/6"),
+        },
+        "youtube-intent-scan": {
+            "task": "tasks.youtube_intent.scan_youtube_intent",
+            "schedule": crontab(minute=0, hour=4),  # 00:00 ET (EDT)
+        },
+        "intent-daily-digest": {
+            "task": "tasks.intent_digest.send_daily_digest",
+            "schedule": crontab(minute=0, hour=10),  # 06:00 ET (EDT)
+        },
+        **_SYNTHETIC_DOGFOOD_SCHEDULE,
+    }
 
 # LinkedIn draft (linkedin.draft_post) still scheduled via Trigger.dev: Mon/Wed/Fri 12:00 UTC
 

@@ -53,7 +53,10 @@ export default function ReviewQueuePage() {
   }, []);
 
   useEffect(() => {
-    fetchBatches();
+    const timeout = window.setTimeout(() => {
+      void fetchBatches();
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [fetchBatches]);
 
   const pending = batches.filter((b) => b.reviewStatus === "proposed" || b.reviewStatus === "needs_review").length;

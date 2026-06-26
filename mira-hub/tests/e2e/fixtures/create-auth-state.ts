@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Interactive helper that opens a real Chromium window, lets you log in
  * to app.factorylm.com, then saves cookies + localStorage to a JSON file

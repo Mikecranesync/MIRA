@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.18.2 - 2026-06-25
+- security(hub): retrieved manual context for asset/node Ask MIRA is now injected as untrusted user-role reference data instead of system-role instructions, and `/api/knowledge/search` has a private-snippet regression test.
+
 ## v2.18.1 - 2026-06-24
 - fix(hub): mobile More drawer now includes account context plus a working Sign out button, and desktop sidebar logout controls call the shared NextAuth sign-out action.
 
