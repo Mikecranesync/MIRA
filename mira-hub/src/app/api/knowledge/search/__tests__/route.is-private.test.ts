@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NextResponse } from "next/server";
 
 /**
  * #2044 / A10 regression — /api/knowledge/search MUST NOT return private

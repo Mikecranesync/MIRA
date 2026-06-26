@@ -40,7 +40,7 @@ export function canAccess(role: Role, resource: string, action: string): boolean
 }
 
 export const accessControlProvider: AccessControlProvider = {
-  can: async ({ resource, action, params: _params }) => {
+  can: async ({ resource, action }) => {
     if (!resource) return { can: false };
 
     const session = await getSession();

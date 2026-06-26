@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test } from "@playwright/test";
 
 const HUB = process.env.HUB_URL ?? "https://app.factorylm.com/hub";
 const CREDS = { email: "playwright@factorylm.com", password: "TestPass123" };

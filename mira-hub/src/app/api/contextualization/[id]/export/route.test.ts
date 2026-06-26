@@ -31,7 +31,6 @@ function buildI3xExport(rows: Array<{ tag_name: string; uns_path_proposed: strin
     if (!path) continue;
     const parts = path.split("/").filter(Boolean);
     const containerParts = parts.slice(0, -1);
-    const signalPart = parts[parts.length - 1];
     const chain: string[] = [];
     for (let i = 0; i < containerParts.length; i++) {
       const seg = containerParts[i];
