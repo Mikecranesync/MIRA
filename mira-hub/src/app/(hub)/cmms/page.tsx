@@ -11,8 +11,9 @@ import { useTranslations } from "next-intl";
 
 const DEFAULT_CMMS_URL = "https://cmms.factorylm.com";
 
-function buildCmmsAppUrl(baseUrl: string, appPath: string) {
-  return `${baseUrl.replace(/\/+$/, "")}${appPath.startsWith("/") ? appPath : `/${appPath}`}`;
+function buildCmmsSsoUrl(appPath: string) {
+  const redirect = appPath.startsWith("/app/") ? appPath : "/app/work-orders";
+  return `${API_BASE}/api/cmms/sso?redirect=${encodeURIComponent(redirect)}`;
 }
 
 const STATIC_SUMMARY = {
@@ -122,7 +123,7 @@ export default function CMMSPage() {
               </p>
             </div>
             {configured === true && (
-              <a href={config.url} target="_blank" rel="noopener noreferrer">
+              <a href={buildCmmsSsoUrl("/app/work-orders")} target="_blank" rel="noopener noreferrer">
                 <Button size="sm" className="h-8 gap-1.5 text-xs">
                   <ExternalLink className="w-3.5 h-3.5" />{t("openAtlas")}
                 </Button>
@@ -171,7 +172,7 @@ export default function CMMSPage() {
             </div>
 
             {/* Open CMMS CTA */}
-            <a href={config.url} target="_blank" rel="noopener noreferrer" className="block">
+            <a href={buildCmmsSsoUrl("/app/work-orders")} target="_blank" rel="noopener noreferrer" className="block">
               <Button className="w-full h-11 gap-2 text-sm font-semibold"
                 style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)" }}>
                 <ExternalLink className="w-4 h-4" />{t("openAtlasFull")}
@@ -256,7 +257,7 @@ export default function CMMSPage() {
                   { label: "PM Schedule",  path: "/app/preventive-maintenance" },
                   { label: "Reports",      path: "/app/reports" },
                 ].map(({ label, path }) => (
-                  <a key={path} href={buildCmmsAppUrl(config.url, path)} target="_blank" rel="noopener noreferrer"
+                  <a key={path} href={buildCmmsSsoUrl(path)} target="_blank" rel="noopener noreferrer"
                     className="flex items-center justify-between p-2.5 rounded-lg transition-colors hover:bg-[var(--surface-1)]">
                     <span className="text-sm" style={{ color: "var(--foreground)" }}>{label}</span>
                     <ExternalLink className="w-3.5 h-3.5" style={{ color: "var(--foreground-subtle)" }} />
