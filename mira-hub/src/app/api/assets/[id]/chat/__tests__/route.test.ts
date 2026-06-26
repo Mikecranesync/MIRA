@@ -9,6 +9,7 @@ vi.mock("@/lib/knowledge-graph/context-builder", () => ({ buildGraphContext: vi.
 vi.mock("@/lib/manual-rag", () => ({
   retrieveManualChunks: vi.fn(),
   appendManualContext: vi.fn((prompt: string) => prompt),
+  buildManualUserContent: vi.fn((content: string) => content),
   chunksToSources: vi.fn((chunks: Array<{ title?: string; sourceUrl?: string; sourcePage?: number | null; verified?: boolean }>) =>
     chunks.map((chunk, index) => ({
       index: index + 1,

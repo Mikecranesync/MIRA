@@ -19,6 +19,7 @@ vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
 vi.mock("@/lib/manual-rag", () => ({
   retrieveNodeChunks: vi.fn(),
   appendManualContext: vi.fn((prompt: string) => prompt),
+  buildManualUserContent: vi.fn((content: string) => content),
   chunksToSources: vi.fn((chunks: Array<{ title?: string; sourceUrl?: string; sourcePage?: number | null; verified?: boolean }>) =>
     chunks.map((chunk, index) => ({
       index: index + 1,
