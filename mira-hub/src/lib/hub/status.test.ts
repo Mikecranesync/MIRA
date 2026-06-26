@@ -54,6 +54,29 @@ describe("summarizeHubSignals", () => {
     );
   });
 
+  it("marks Stardust launch faulted from the canonical fault_latched tag", () => {
+    const rows: SignalRow[] = [
+      {
+        plc_tag: "stardust.launch_2.fault_latched",
+        value: true,
+        last_changed_at: "2026-06-25T11:59:55.000Z",
+      },
+      {
+        plc_tag: "stardust.launch_2.brake_ready",
+        value: false,
+        last_changed_at: "2026-06-25T11:59:55.000Z",
+      },
+    ];
+
+    expect(summarizeHubSignals(rows, now)).toContainEqual(
+      expect.objectContaining({
+        id: "stardust.launch_2",
+        state: "faulted",
+        metrics: expect.objectContaining({ fault_latched: true, brake_ready: false }),
+      }),
+    );
+  });
+
   it("marks stale rows unknown when older than 60 seconds", () => {
     const rows: SignalRow[] = [
       {

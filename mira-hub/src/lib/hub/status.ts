@@ -78,8 +78,14 @@ function conveyorState(rows: SignalRow[], stale: boolean): HubZoneState {
 
 function stardustState(zoneId: string, rows: SignalRow[], stale: boolean): HubZoneState {
   if (stale) return "unknown";
-  if (truthy(rowValue(rows, `${zoneId}.faulted`))) return "faulted";
-  if (truthy(rowValue(rows, `${zoneId}.brake_fault`))) return "faulted";
+  if (
+    truthy(rowValue(rows, `${zoneId}.fault_latched`)) ||
+    truthy(rowValue(rows, `${zoneId}.faulted`))
+  ) return "faulted";
+  if (
+    truthy(rowValue(rows, `${zoneId}.brake_fault`)) ||
+    rowValue(rows, `${zoneId}.brake_ready`) === false
+  ) return "faulted";
   if (truthy(rowValue(rows, `${zoneId}.block_occupied`))) return "blocked";
   if (truthy(rowValue(rows, `${zoneId}.lsm_ready`))) return "idle";
   return "unknown";
