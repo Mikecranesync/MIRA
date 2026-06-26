@@ -64,7 +64,11 @@ jobs:
       - name: Install Playwright Chromium
         if: steps.changes.outputs.hub == 'true'
         working-directory: mira-hub
-        run: npx playwright install chromium --with-deps
+        run: |
+          # GitHub's hosted Ubuntu image can carry a stale azure-cli apt source.
+          # When it returns 403, Playwright's dependency install fails before tests run.
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/azure-cli.sources
+          npx playwright install chromium --with-deps
 
       # Build once — all three configs reuse this artifact via reuseExistingServer.
       # The fixed AUTH_SECRET matches what each playwright config passes to next start,

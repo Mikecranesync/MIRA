@@ -1,20 +1,11 @@
-// Integration test: the contextualization import endpoint accepts the shared
-// HubV3 Intake Contract (PRD §2) and dedups sources by sha256 (PRD §6 test 1 + 3).
+// Requires a disposable Postgres/Neon test DB.
 //
-// Requires a Postgres test DB with migrations 055 + 056 applied and a
-// `factorylm_app` role present. Provide via env:
-//   TEST_DATABASE_URL=postgres://postgres:test@localhost:5440/postgres
+//   $env:TEST_DATABASE_URL="postgres://..."
+//   $env:MIRA_TEST_DB_CONFIRM="DISPOSABLE"
+//   npm run test:integration:db
 //
-// Local setup (see also docs/adr/0023-...):
-//   docker run --rm -d -p 5440:5432 -e POSTGRES_PASSWORD=test --name mira-ctx-test postgres:16
-//   psql ... -c "CREATE ROLE factorylm_app NOLOGIN; GRANT USAGE ON SCHEMA public TO factorylm_app;"
-//   psql ... -f mira-hub/db/migrations/055_contextualization.sql
-//   psql ... -f mira-hub/db/migrations/056_contextualization_intake.sql
-//   TEST_DATABASE_URL=... bunx vitest run --config vitest.config.ts \
-//     src/app/api/contextualization/import/import.integration.test.ts
-//
-// This file is *.integration.test.ts → excluded from the default `vitest run`
-// (vitest.config.ts), run via the integration lane.
+// The setup command creates the factorylm_app role, applies integration-only
+// fixtures, applies Hub migrations, and runs smoke checks before Vitest.
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import type { Pool } from "pg";

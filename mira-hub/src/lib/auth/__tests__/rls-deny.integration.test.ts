@@ -1,32 +1,24 @@
-// mira-hub/src/lib/auth/__tests__/rls-deny.integration.test.ts
+// Requires a disposable Postgres/Neon test DB.
 //
-// Integration test that proves Row-Level Security actually denies cross-tenant
-// reads. This is THE test that should have shipped with #578. Without it,
-// nothing else in the auth stack is trustworthy.
+//   $env:TEST_DATABASE_URL="postgres://..."
+//   $env:MIRA_TEST_DB_CONFIRM="DISPOSABLE"
+//   npm run test:integration:db
 //
-// Requires: a Postgres test database with the migrations through #578 applied.
-// Provide via env:   TEST_DATABASE_URL=postgres://...
-// Locally, you can spin one up via docker-compose:
-//
-//   docker run --rm -d -p 5433:5432 -e POSTGRES_PASSWORD=test \
-//     --name mira-rls-test postgres:16
-//   psql postgres://postgres:test@localhost:5433/postgres \
-//     -f mira-hub/db/migrations/2026-04-24-003-asset-hierarchy.sql \
-//     -f mira-hub/db/migrations/2026-04-24-008-tenants-rls.sql
-//   TEST_DATABASE_URL=postgres://postgres:test@localhost:5433/postgres \
-//     npx vitest run src/lib/auth/__tests__/rls-deny.integration.test.ts
-//
-// CI: spin a fresh ephemeral container per run.
+// The setup command creates the factorylm_app role, applies integration-only
+// fixtures, applies Hub migrations, and runs smoke checks before Vitest.
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { Pool } from "pg";
-import { withTenant, withServiceRole } from "../session";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
+import type { Pool } from "pg";
 import type { Session } from "../session";
 
-// We override the default pool by reassigning the import target. In the
-// real app, src/lib/db.ts exports a singleton pool sourced from
-// NEON_DATABASE_URL; here we point at TEST_DATABASE_URL.
-let testPool: Pool;
+const { testPool } = vi.hoisted(() => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Pool: PgPool } = require("pg");
+  return { testPool: new PgPool({ connectionString: process.env.TEST_DATABASE_URL }) as Pool };
+});
+vi.mock("@/lib/db", () => ({ default: testPool }));
+
+import { withTenant, withServiceRole } from "../session";
 
 function makeSession(tenantId: string, userId = "u_test"): Session {
   return {
@@ -47,12 +39,6 @@ beforeAll(async () => {
         "See test header for setup instructions.",
     );
   }
-  testPool = new Pool({ connectionString: process.env.TEST_DATABASE_URL });
-
-  // Patch the module-level pool the lib uses. The library imports `pool`
-  // from "@/lib/db"; in tests we monkey-patch that module's export.
-  const dbModule = await import("@/lib/db");
-  dbModule.default = testPool;
 });
 
 afterAll(async () => {
@@ -157,15 +143,19 @@ describe("RLS — tenant isolation", () => {
     expect(rows[0].manufacturer).toBe("Acme Corp");
   });
 
-  it("missing mira.tenant_id (no withTenant wrapper) → no rows visible", async () => {
+  it("missing app.tenant_id (no withTenant wrapper) → no rows visible", async () => {
     // Connect outside withTenant() to simulate a route that forgot to wrap.
-    // Setting nothing means current_setting('mira.tenant_id', true) returns NULL,
-    // and `NULL = uuid` is NULL, treated as false → all rows hidden.
+    // Drop to the limited app role but set no tenant context. That means
+    // current_setting('app.tenant_id', true) returns NULL, and `NULL = uuid`
+    // is NULL, treated as false → all rows hidden.
     const client = await testPool.connect();
     try {
+      await client.query("BEGIN");
+      await client.query("SET LOCAL ROLE factorylm_app");
       const { rows } = await client.query("SELECT * FROM cmms_equipment");
       expect(rows).toHaveLength(0);
     } finally {
+      await client.query("ROLLBACK").catch(() => undefined);
       client.release();
     }
   });
