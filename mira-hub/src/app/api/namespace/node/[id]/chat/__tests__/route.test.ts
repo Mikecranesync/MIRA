@@ -16,10 +16,24 @@ import { NextResponse } from "next/server";
 
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
 vi.mock("@/lib/tenant-context", () => ({ withTenantContext: vi.fn() }));
+vi.mock("@/lib/manual-rag", () => ({
+  retrieveNodeChunks: vi.fn(),
+  appendManualContext: vi.fn((prompt: string) => prompt),
+  chunksToSources: vi.fn((chunks: Array<{ title?: string; sourceUrl?: string; sourcePage?: number | null; verified?: boolean }>) =>
+    chunks.map((chunk, index) => ({
+      index: index + 1,
+      title: chunk.title ?? "manual",
+      url: chunk.sourceUrl ?? null,
+      page: chunk.sourcePage ?? null,
+      verified: chunk.verified === true,
+    })),
+  ),
+}));
 
 import { POST } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+import { appendManualContext, retrieveNodeChunks } from "@/lib/manual-rag";
 
 const VALID_UUID = "11111111-2222-3333-4444-555555555555";
 const TENANT_ID = "tenant-aaaa-bbbb";
@@ -49,12 +63,14 @@ beforeEach(() => {
   vi.resetAllMocks();
   process.env.NEON_DATABASE_URL = "postgres://test-only-not-used";
   process.env.GROQ_API_KEY = "test-key"; // so a non-safety path WOULD try to fetch
+  vi.mocked(retrieveNodeChunks).mockResolvedValue([]);
   fetchSpy = vi.fn();
   vi.stubGlobal("fetch", fetchSpy);
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  delete process.env.MIRA_ENFORCE_APPROVED_ASK;
 });
 
 // Drain an SSE ReadableStream Response, returning both the raw text and the
@@ -145,5 +161,89 @@ describe("POST /api/namespace/node/[id]/chat", () => {
     expect(res.status).toBe(404);
     // No provider should be hit when there's no node context.
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns approved_context without calling providers when enforced and no verified node docs exist", async () => {
+    process.env.NEON_DATABASE_URL = "postgres://test";
+    process.env.MIRA_ENFORCE_APPROVED_ASK = "true";
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext).mockImplementation(async (_tenantId, fn) =>
+      fn({
+        query: vi.fn(async (sql: string) => {
+          if (sql.includes("FROM kg_entities")) return { rows: [{ name: "Motor", uns_path: "Plant.Line.Motor" }] };
+          return { rows: [] };
+        }),
+      }),
+    );
+
+    const res = await POST(makeReq(userMsg("what does this fault mean?")), makeParams(VALID_UUID));
+    const body = await res.json();
+
+    expect(res.status).toBe(412);
+    expect(body.gate).toBe("approved_context");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("requires the selected KG node itself to be verified", async () => {
+    process.env.NEON_DATABASE_URL = "postgres://test";
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    const calls: string[] = [];
+    vi.mocked(withTenantContext).mockImplementation(async (_tenantId, fn) =>
+      fn({
+        query: vi.fn(async (sql: string) => {
+          calls.push(sql);
+          return { rows: [] };
+        }),
+      }),
+    );
+
+    const res = await POST(makeReq(userMsg("what does this fault mean?")), makeParams(VALID_UUID));
+
+    expect(res.status).toBe(404);
+    const nodeSql = calls.find((sql) => sql.includes("FROM kg_entities")) ?? "";
+    expect(nodeSql).toMatch(/approval_state\s*=\s*'verified'/i);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("filters unverified node chunks before building the provider prompt", async () => {
+    process.env.NEON_DATABASE_URL = "postgres://test";
+    process.env.MIRA_ENFORCE_APPROVED_ASK = "true";
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(retrieveNodeChunks).mockResolvedValue([
+      {
+        content: "Approved node context",
+        manufacturer: "FactoryLM",
+        modelNumber: "N100",
+        sourceUrl: "https://docs.test/approved-node",
+        sourcePage: 4,
+        title: "Approved Node Manual",
+        rank: 0.9,
+        verified: true,
+      },
+      {
+        content: "Draft node context",
+        manufacturer: "FactoryLM",
+        modelNumber: "N100",
+        sourceUrl: "https://docs.test/draft-node",
+        sourcePage: 5,
+        title: "Draft Node Manual",
+        rank: 0.8,
+        verified: false,
+      },
+    ]);
+    vi.mocked(withTenantContext).mockImplementation(async (_tenantId, fn) =>
+      fn({
+        query: vi.fn(async (sql: string) => {
+          if (sql.includes("FROM kg_entities")) return { rows: [{ name: "Motor", uns_path: "Plant.Line.Motor" }] };
+          return { rows: [] };
+        }),
+      }),
+    );
+
+    await POST(makeReq(userMsg("what does this fault mean?")), makeParams(VALID_UUID));
+
+    expect(appendManualContext).toHaveBeenCalled();
+    const chunks = vi.mocked(appendManualContext).mock.calls[0]?.[1] ?? [];
+    expect(chunks.map((chunk) => chunk.content)).toEqual(["Approved node context"]);
   });
 });
