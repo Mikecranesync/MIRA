@@ -8,6 +8,7 @@ import { scanBoth, handleSafetyAlert, safetyAlertSseChunk } from "@/lib/agents/s
 import {
   retrieveManualChunks,
   appendManualContext,
+  buildManualUserContent,
   chunksToSources,
   type ManualChunk,
   type ManualSource,
@@ -307,9 +308,22 @@ export async function POST(
   const manualSources: ManualSource[] = chunksToSources(manualChunks);
   const approvedSourceCount = manualSources.filter((s) => s.verified).length;
 
+  const nonSystemMessages = messages.filter((m) => m.role !== "system");
+  const lastUserIndex = (() => {
+    for (let i = nonSystemMessages.length - 1; i >= 0; i--) {
+      if (nonSystemMessages[i].role === "user") return i;
+    }
+    return -1;
+  })();
+  const contextualMessages = nonSystemMessages.map((m, i) =>
+    i === lastUserIndex
+      ? { ...m, content: buildManualUserContent(m.content, manualChunks) }
+      : m,
+  );
+
   const fullMessages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
-    ...messages.filter((m) => m.role !== "system"),
+    ...contextualMessages,
   ];
 
   const enc = new TextEncoder();

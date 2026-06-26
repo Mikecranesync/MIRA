@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NextResponse } from "next/server";
 
 /**
  * #2044 / A10 regression — /api/knowledge/search MUST NOT return private
@@ -15,11 +14,13 @@ import { NextResponse } from "next/server";
  */
 
 const capturedQueries: string[] = [];
+let queryImpl: ((sql: string) => Promise<{ rows: unknown[] }>) | null = null;
 
 vi.mock("@/lib/db", () => ({
   default: {
     query: vi.fn(async (sql: string) => {
       capturedQueries.push(sql);
+      if (queryImpl) return queryImpl(sql);
       return { rows: [] };
     }),
   },
@@ -41,6 +42,7 @@ function makeRequest(q: string): Request {
 describe("#2044 /api/knowledge/search — is_private = false gate", () => {
   beforeEach(() => {
     capturedQueries.length = 0;
+    queryImpl = null;
     process.env.NEON_DATABASE_URL = "postgres://test";
   });
 
@@ -61,5 +63,44 @@ describe("#2044 /api/knowledge/search — is_private = false gate", () => {
     const ilike = capturedQueries.find((q) => q.includes("ILIKE"));
     expect(ilike, "no ILIKE query issued").toBeTruthy();
     expect(ilike).toMatch(/is_private\s*=\s*false/);
+  });
+
+  it("returns shared OEM snippets and withholds private snippets at the DB boundary", async () => {
+    queryImpl = async (sql: string) => {
+      if (!/is_private\s*=\s*false/.test(sql)) {
+        return {
+          rows: [{
+            source_url: "private://tenant-a/manual.pdf",
+            title: "Tenant A Secret Manual",
+            manufacturer: "tenant-a",
+            model_number: "SECRET",
+            source_type: "upload",
+            snippet: "PRIVATE_SNIPPET_DO_NOT_LEAK",
+            rank: 9,
+          }],
+        };
+      }
+      if (sql.includes("plainto_tsquery")) {
+        return {
+          rows: [{
+            source_url: "oem://shared/gs10.pdf",
+            title: "Shared GS10 Manual",
+            manufacturer: "automationdirect",
+            model_number: "GS10",
+            source_type: "oem_manual",
+            snippet: "Shared OEM overcurrent guidance",
+            rank: 1,
+          }],
+        };
+      }
+      return { rows: [] };
+    };
+
+    const { GET } = await import("../route");
+    const res = await GET(makeRequest("overcurrent"));
+    const body = await res.json();
+
+    expect(JSON.stringify(body)).toContain("Shared OEM overcurrent guidance");
+    expect(JSON.stringify(body)).not.toContain("PRIVATE_SNIPPET_DO_NOT_LEAK");
   });
 });

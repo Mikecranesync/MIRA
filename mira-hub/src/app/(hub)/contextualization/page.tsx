@@ -74,7 +74,12 @@ export default function ContextualizationPage() {
     }
   }, []);
 
-  useEffect(() => { fetchProjects(); }, [fetchProjects]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void fetchProjects();
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [fetchProjects]);
 
   async function createProject() {
     if (!newName.trim()) return;

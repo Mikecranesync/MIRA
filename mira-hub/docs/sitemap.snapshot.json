@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 62,
-    "apiRoutes": 147
+    "apiRoutes": 148
   },
   "pages": [
     "/admin",
@@ -146,6 +146,7 @@
     "/api/events/[id]",
     "/api/export",
     "/api/health",
+    "/api/hub/status",
     "/api/i3x/v1/info",
     "/api/i3x/v1/namespaces",
     "/api/i3x/v1/objects",

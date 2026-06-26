@@ -40,6 +40,22 @@ x-bot-common-env: &bot-common-env
   ASK_API_KEY: ${ASK_API_KEY:-}
 
 services:
+  mira-redis:
+    image: redis:7.4.2-alpine
+    container_name: mira-redis-saas
+    networks:
+      - mira-net
+    volumes:
+      - mira-redis-data:/data
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   mira-core:
     image: ghcr.io/open-webui/open-webui:v0.8.10
     container_name: mira-core-saas
@@ -679,6 +695,62 @@ services:
       retries: 3
       start_period: 20s
 
+  mira-synthetic-dogfood-worker:
+    build:
+      context: .
+      dockerfile: mira-crawler/Dockerfile.synthetic-dogfood
+    container_name: mira-synthetic-dogfood-worker
+    command: celery -A mira_crawler.celery_app worker --concurrency=1 -Q synthetic --loglevel=info
+    depends_on:
+      mira-redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - SYNTHETIC_DOGFOOD_ENABLED=${SYNTHETIC_DOGFOOD_ENABLED:-0}
+      - DOGFOOD_ISSUE_MODE=${DOGFOOD_ISSUE_MODE:-dry_run}
+      - DOGFOOD_TARGET_URL=${DOGFOOD_TARGET_URL:-https://app.factorylm.com}
+      - DOGFOOD_REPORT_DIR=/mira-db/synthetic-dogfood
+      - DOGFOOD_TIMEOUT_SECONDS=${DOGFOOD_TIMEOUT_SECONDS:-600}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY:-Mikecranesync/MIRA}
+      - GITHUB_ISSUE_TOKEN=${GITHUB_ISSUE_TOKEN:-}
+      - SYNTHETIC_CARLOS_EMAIL=${SYNTHETIC_CARLOS_EMAIL:-}
+      - SYNTHETIC_CARLOS_PASSWORD=${SYNTHETIC_CARLOS_PASSWORD:-}
+      - SYNTHETIC_DANA_EMAIL=${SYNTHETIC_DANA_EMAIL:-}
+      - SYNTHETIC_DANA_PASSWORD=${SYNTHETIC_DANA_PASSWORD:-}
+      - SYNTHETIC_PLANTMGR_EMAIL=${SYNTHETIC_PLANTMGR_EMAIL:-}
+      - SYNTHETIC_PLANTMGR_PASSWORD=${SYNTHETIC_PLANTMGR_PASSWORD:-}
+      - SYNTHETIC_CFO_EMAIL=${SYNTHETIC_CFO_EMAIL:-}
+      - SYNTHETIC_CFO_PASSWORD=${SYNTHETIC_CFO_PASSWORD:-}
+    networks:
+      - mira-net
+    volumes:
+      - /opt/mira/data:/mira-db
+    restart: unless-stopped
+    mem_limit: 1.5g
+    memswap_limit: 1.5g
+
+  mira-synthetic-dogfood-beat:
+    build:
+      context: .
+      dockerfile: mira-crawler/Dockerfile.synthetic-dogfood
+    container_name: mira-synthetic-dogfood-beat
+    command: celery -A mira_crawler.celery_app beat --loglevel=info
+    depends_on:
+      mira-redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - CELERY_BEAT_PROFILE=synthetic-dogfood
+    networks:
+      - mira-net
+    volumes:
+      - /opt/mira/data:/mira-db
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+
   # ─── mira-cmms-sync — NeonDB ↔ Atlas sync worker (P1) ───────────────────────
   # Long-running loop that pushes NeonDB changes to Atlas every 60s and pulls
   # Atlas-side edits back into NeonDB. Off by default via CMMS_SYNC_ENABLED so
@@ -717,6 +789,7 @@ networks:
 
 volumes:
   mira-webui-data:
+  mira-redis-data:
   mira-chroma:
   mira-docs:
   nango-db-data:

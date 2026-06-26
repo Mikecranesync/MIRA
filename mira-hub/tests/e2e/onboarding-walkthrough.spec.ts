@@ -56,7 +56,7 @@ const QA = [
   },
 ];
 
-let WIZARD_STEP = "company";
+const WIZARD_STEP = "company";
 const WIZARD_PAYLOADS: Record<string, unknown> = {};
 
 test.beforeAll(() => fs.mkdirSync(OUT, { recursive: true }));

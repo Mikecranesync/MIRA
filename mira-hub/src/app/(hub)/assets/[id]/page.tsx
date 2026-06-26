@@ -412,7 +412,25 @@ function DocumentsTab({ assetId, assetTag }: { assetId: string; assetTag: string
     }
   }, [assetId]);
 
-  useEffect(() => { void fetchDocs(); }, [fetchDocs]);
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch(`${API_BASE}/api/assets/${assetId}/documents/`, { cache: "no-store" })
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.ok && !res.url.includes("/login")) {
+          const data = (await res.json()) as AssetDoc[];
+          if (!cancelled && Array.isArray(data)) setRealDocs(data);
+        }
+      })
+      .catch(() => {
+        /* silent — falls back to mock list */
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [assetId]);
 
   async function handleLocalFiles(files: File[], tag: string | null) {
     for (const file of files) {

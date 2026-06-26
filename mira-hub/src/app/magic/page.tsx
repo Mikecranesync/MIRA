@@ -14,8 +14,8 @@ function MagicVerify() {
 
   useEffect(() => {
     if (!token) {
-      setStatus("error");
-      return;
+      const timeout = window.setTimeout(() => setStatus("error"), 0);
+      return () => window.clearTimeout(timeout);
     }
     signIn("magic-token", { token, redirect: false })
       .then(result => {
@@ -26,6 +26,7 @@ function MagicVerify() {
         }
       })
       .catch(() => setStatus("error"));
+    return undefined;
   }, [token, router]);
 
   return (
