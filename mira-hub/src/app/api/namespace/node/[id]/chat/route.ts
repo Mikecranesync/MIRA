@@ -26,6 +26,11 @@ import {
   type ManualChunk,
   type ManualSource,
 } from "@/lib/manual-rag";
+import {
+  approvedAskEnforcementEnabled,
+  approvedContextReady,
+  buildApprovedContextRefusal,
+} from "@/lib/approved-context";
 
 export const dynamic = "force-dynamic";
 
@@ -255,6 +260,7 @@ export async function POST(
         `SELECT name, uns_path::text AS uns_path
            FROM kg_entities
           WHERE id = $1 AND tenant_id = $2
+            AND approval_state = 'verified'
           LIMIT 1`,
         [id, ctx.tenantId],
       );
@@ -264,7 +270,10 @@ export async function POST(
         nodeId: id,
         unsPath: row.uns_path,
       });
-      return { row, chunks };
+      const approvedChunks = approvedAskEnforcementEnabled()
+        ? chunks.filter((chunk) => chunk.verified === true)
+        : chunks;
+      return { row, chunks: approvedChunks };
     });
     nodeRow = fetched.row;
     nodeChunks = fetched.chunks;
@@ -286,6 +295,15 @@ export async function POST(
   const nodeSources: ManualSource[] = chunksToSources(nodeChunks);
   const approvedSourceCount = nodeSources.filter((s) => s.verified).length;
   const safetyLabel = nodeRow.name || id;
+  const approvedSummary = {
+    approvedSourceCount,
+    verifiedRelationshipCount: 0,
+    approvedLiveSignalCount: 0,
+  };
+
+  if (approvedAskEnforcementEnabled() && !approvedContextReady(approvedSummary)) {
+    return NextResponse.json(buildApprovedContextRefusal(approvedSummary), { status: 412 });
+  }
 
   const nonSystemMessages = messages.filter((m) => m.role !== "system");
   const lastUserIndex = (() => {

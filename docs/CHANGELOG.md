@@ -1,9 +1,17 @@
 # MIRA Release Notes
 
-### v3.44.0 (2026-06-26) - feat(hub): seed live Stardust and conveyor UNS signals
+### v3.45.0 (2026-06-26) - feat(hub): seed live Stardust and conveyor UNS signals
 - Seeds the synthetic Hub tenant with canonical conveyor and Stardust block-zone tags in `approved_tags` and `live_signal_cache`, giving the one-board status view concrete demo telemetry without requiring production secrets.
 - Expands the Stardust Racers seed from the sump panel to the four ride block zones and updates Hub status summarization for canonical `fault_latched` and `brake_ready` tag names.
 - Adds the next-slice implementation plan for streaming `plc-modbus` canonical tags into the existing `mira-relay` `/api/v1/tags/ingest` boundary.
+
+### v3.44.1 (2026-06-26) - fix(hub): wire Atlas SSO deploy secrets
+- Passes the shared Hub-to-Atlas SSO signing configuration into the production `mira-hub` container so the merged `/api/cmms/sso` route can sign live Atlas handoff assertions.
+- Makes synthetic Hub user seeding consume Doppler/env-backed per-persona passwords for live proof runs without logging credential values.
+
+### v3.43.1 (2026-06-26) - fix(hub): add Atlas CMMS SSO handoff
+- Adds a signed Hub-to-Atlas SSO bridge so authenticated Hub users open FactoryLM Works routes through `/api/cmms/sso` without typing separate Atlas credentials.
+- Routes the Hub CMMS setup page CTA and quick links through the SSO handoff, with regression coverage for token exchange, safe redirect fallback, and missing-secret handling.
 
 ### v3.42.6 (2026-06-26) - fix(hub): route CMMS links into FactoryLM Works app
 - Fixes the Hub CMMS setup quick links and Atlas record-level deep links to use the live FactoryLM Works app route family (`/app/work-orders`, `/app/assets`, `/app/preventive-maintenance`, `/app/reports`) instead of marketing paths that return the provider's 404 content.

@@ -666,6 +666,9 @@ services:
       - CMMS_PUBLIC_URL=${CMMS_PUBLIC_URL:-https://cmms.factorylm.com}
       - ATLAS_API_USER=${ATLAS_API_USER:-}
       - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
+      - HUB_SSO_SECRET=${HUB_SSO_SECRET:-}
+      - HUB_SSO_ISSUER=${HUB_SSO_ISSUER:-factorylm-hub}
+      - HUB_SSO_AUDIENCE=${HUB_SSO_AUDIENCE:-atlas-cmms}
       # /hub/admin/review reads filesystem assets relative to this root.
       # Must point at a directory that contains marketing/cartoons + docs/promo-screenshots
       # + tools/web-review-runs (see the volume mounts below).

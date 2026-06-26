@@ -1,9 +1,81 @@
-import { describe, test, expect } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { classifyKgIntent, formatMaintenanceContext } from "../context-builder";
-import type { MaintenanceContext } from "../traversal";
+import {
+  impactAnalysis,
+  maintenanceContext,
+  rootCauseChain,
+  traverseChain,
+  type MaintenanceContext,
+} from "../traversal";
 
-// Pure functions only — no DB. Integration tests for the SQL traversals
-// run separately against a Neon dev branch.
+const { connectMock, queryMock } = vi.hoisted(() => {
+  const queryMock = vi.fn();
+  const client = {
+    query: queryMock,
+    release: vi.fn(),
+  };
+  return {
+    connectMock: vi.fn(async () => client),
+    queryMock,
+  };
+});
+
+vi.mock("@/lib/db", () => ({
+  default: {
+    connect: connectMock,
+  },
+}));
+
+vi.mock("../plan-vs-actual", () => ({
+  flagPmMismatches: vi.fn(async () => []),
+}));
+
+// SQL-shape tests use a mocked DB client. Live traversal behavior still runs
+// separately against a Neon dev branch.
+
+const EQUIPMENT_ROW = {
+  id: "uuid-eq-1",
+  tenant_id: "tenant-1",
+  entity_type: "equipment",
+  entity_id: "VFD-07",
+  name: "PowerFlex 525",
+  properties: {},
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+};
+
+const sqlBlob = () =>
+  queryMock.mock.calls
+    .map(([sql]) => (typeof sql === "string" ? sql : ""))
+    .join("\n\n");
+
+describe("answer-facing traversal SQL filters", () => {
+  beforeEach(() => {
+    process.env.NEON_DATABASE_URL = "postgres://unit-test";
+    connectMock.mockClear();
+    queryMock.mockReset();
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("FROM kg_entities") && sql.includes("entity_type = 'equipment'")) {
+        return { rows: [EQUIPMENT_ROW] };
+      }
+      return { rows: [] };
+    });
+  });
+
+  test.each([
+    ["traverseChain", () => traverseChain("tenant-1", "uuid-eq-1", ["parent_of"])],
+    ["impactAnalysis", () => impactAnalysis("tenant-1", "uuid-eq-1")],
+    ["rootCauseChain", () => rootCauseChain("tenant-1", "uuid-fault-1")],
+    ["maintenanceContext", () => maintenanceContext("tenant-1", "VFD-07", { includeSimilar: true })],
+  ])("%s queries only verified relationships and entities", async (_name, runTraversal) => {
+    await runTraversal();
+
+    const sql = sqlBlob();
+    expect(sql).toMatch(/kg_relationships[\s\S]+approval_state\s*=\s*'verified'/i);
+    expect(sql).toMatch(/JOIN\s+kg_entities\s+e[\s\S]+e\.approval_state\s*=\s*'verified'/i);
+    expect(sql).not.toMatch(/approval_state\s+IS\s+NULL/i);
+  });
+});
 
 describe("classifyKgIntent", () => {
   test("flags causal phrasing", () => {

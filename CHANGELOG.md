@@ -6,6 +6,8 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 ## [Unreleased]
 
 ### Fixed
+- Hub production deploy wiring now passes the shared Hub-to-Atlas SSO signing configuration into `mira-hub`, and synthetic QA seeding can consume Doppler-backed per-persona credentials without logging password values.
+- Hub CMMS links now go through a signed Hub-to-Atlas SSO handoff so authenticated Hub users land in FactoryLM Works without re-entering credentials.
 - Hub lint debt is cleared across app pages, shared components, and e2e probes so `mira-hub` ESLint runs with zero errors and zero warnings.
 - Hub CMMS quick links and Atlas record deep links now target the FactoryLM Works app routes (`/app/work-orders`, `/app/assets`, `/app/preventive-maintenance`, and `/app/reports`) instead of public marketing paths that render provider 404 pages.
 - FactoryLM trailing-slash redirects now preserve the canonical HTTPS public host and reject hostile forwarded hosts, loopback forwarded hosts, and attacker-supplied public-host ports.
@@ -16,6 +18,7 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 - Hub namespace empty state now offers direct first-folder creation and an upload path for new maintenance managers.
 
 ### Added
+- Hub readiness and Ask MIRA now gate answers on approved asset context, surface missing-context checklists, and filter unverified KG/live context from cited responses.
 - Hub contextualization import now has a DB-backed integration harness, guarded Neon/Doppler runners, and disposable integration fixtures for proving the context-spine intake/review flow.
 - Hub team settings now support self-serve tenant-scoped magic-link invites for admins and owners.
 - Production-safe synthetic conveyor QA provisioning and persona-run guardrails for Hub pre-human-test checks.
