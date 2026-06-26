@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import { sessionOr401 } from "@/lib/session";
@@ -215,8 +216,10 @@ async function importFromBundle(tenantId: string, req: Request) {
   }
 
   let parsed;
+  let bundleSha256 = "";
   try {
     const buf = Buffer.from(await file.arrayBuffer());
+    bundleSha256 = createHash("sha256").update(buf).digest("hex");
     const entries = readZipEntries(buf);
     const files: Record<string, string> = {};
     for (const [name, data] of Object.entries(entries)) {
@@ -246,25 +249,32 @@ async function importFromBundle(tenantId: string, req: Request) {
         }
         projectId = existing.id;
       } else {
-        const proj = await c
-          .query<{ id: string }>(
-            `INSERT INTO contextualization_projects (tenant_id, name, description)
-               VALUES ($1::uuid, $2, $3) RETURNING id`,
-            [tenantId, `${parsed.projectName} (imported)`, parsed.description],
-          )
-          .then((r) => r.rows[0]);
-        projectId = proj.id;
+        projectId = await upsertBundleProject(c, tenantId, parsed.projectName, parsed.description, bundleSha256);
       }
 
       // sources → id map
+      const { batchId, isNew } = await upsertBundleBatch(c, tenantId, projectId, bundleSha256);
+
+      // Re-importing the same legacy bundle should stay idempotent, matching
+      // the JSON intake path. Existing staged rows remain in human review.
+      if (!isNew) {
+        return {
+          projectId,
+          importBatchId: batchId,
+          sources: parsed.sources.length,
+          extractions: parsed.extractions.length,
+          deduped: true,
+        };
+      }
+
       const fileToSource = new Map<string, string>();
       for (const s of parsed.sources) {
         const status = SRC_STATUS.has(s.status) ? s.status : "done";
         const row = await c
           .query<{ id: string }>(
-            `INSERT INTO ctx_sources (tenant_id, project_id, source_type, file_name, status)
-               VALUES ($1::uuid, $2, $3, $4, $5) RETURNING id`,
-            [tenantId, projectId, s.sourceType, s.fileName, status],
+            `INSERT INTO ctx_sources (tenant_id, project_id, import_batch_id, source_type, file_name, status)
+               VALUES ($1::uuid, $2, $3, $4, $5, $6) RETURNING id`,
+            [tenantId, projectId, batchId, s.sourceType, s.fileName, status],
           )
           .then((r) => r.rows[0]);
         fileToSource.set(s.fileName, row.id);
@@ -274,9 +284,9 @@ async function importFromBundle(tenantId: string, req: Request) {
       if (!defaultSource) {
         defaultSource = await c
           .query<{ id: string }>(
-            `INSERT INTO ctx_sources (tenant_id, project_id, source_type, file_name, status)
-               VALUES ($1::uuid, $2, 'other', 'imported', 'done') RETURNING id`,
-            [tenantId, projectId],
+            `INSERT INTO ctx_sources (tenant_id, project_id, import_batch_id, source_type, file_name, status)
+               VALUES ($1::uuid, $2, $3, 'other', 'imported', 'done') RETURNING id`,
+            [tenantId, projectId, batchId],
           )
           .then((r) => r.rows[0].id);
       }
@@ -297,7 +307,18 @@ async function importFromBundle(tenantId: string, req: Request) {
         inserted++;
       }
 
-      return { projectId, sources: parsed.sources.length, extractions: inserted };
+      await c.query(
+        `UPDATE ctx_import_batches SET source_count = $2, extraction_count = $3 WHERE id = $1`,
+        [batchId, parsed.sources.length, inserted],
+      );
+
+      return {
+        projectId,
+        importBatchId: batchId,
+        sources: parsed.sources.length,
+        extractions: inserted,
+        deduped: false,
+      };
     });
 
     return NextResponse.json({ ok: true, ...result }, { status: 201 });
@@ -309,4 +330,47 @@ async function importFromBundle(tenantId: string, req: Request) {
     console.error("[api/contextualization/import POST]", err);
     return NextResponse.json({ error: "Import failed" }, { status: 500 });
   }
+}
+
+async function upsertBundleProject(
+  c: PoolClient,
+  tenantId: string,
+  projectName: string,
+  description: string | null,
+  bundleSha256: string,
+): Promise<string> {
+  const ins = await c.query<{ id: string }>(
+    `INSERT INTO contextualization_projects (tenant_id, name, description, bundle_sha256)
+       VALUES ($1::uuid, $2, $3, $4)
+       ON CONFLICT (tenant_id, bundle_sha256) WHERE bundle_sha256 IS NOT NULL DO NOTHING
+       RETURNING id`,
+    [tenantId, `${projectName} (imported)`, description, bundleSha256],
+  );
+  if (ins.rows[0]) return ins.rows[0].id;
+  const sel = await c.query<{ id: string }>(
+    `SELECT id FROM contextualization_projects WHERE tenant_id = $1::uuid AND bundle_sha256 = $2`,
+    [tenantId, bundleSha256],
+  );
+  return sel.rows[0].id;
+}
+
+async function upsertBundleBatch(
+  c: PoolClient,
+  tenantId: string,
+  projectId: string,
+  bundleSha256: string,
+): Promise<{ batchId: string; isNew: boolean }> {
+  const ins = await c.query<{ id: string }>(
+    `INSERT INTO ctx_import_batches (tenant_id, project_id, ingest_route, bundle_sha256)
+       VALUES ($1::uuid, $2, 'offline', $3)
+       ON CONFLICT (tenant_id, bundle_sha256) WHERE bundle_sha256 IS NOT NULL DO NOTHING
+       RETURNING id`,
+    [tenantId, projectId, bundleSha256],
+  );
+  if (ins.rows[0]) return { batchId: ins.rows[0].id, isNew: true };
+  const sel = await c.query<{ id: string }>(
+    `SELECT id FROM ctx_import_batches WHERE tenant_id = $1::uuid AND bundle_sha256 = $2`,
+    [tenantId, bundleSha256],
+  );
+  return { batchId: sel.rows[0].id, isNew: false };
 }
