@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.43.1 (2026-06-26) - fix(hub): add Atlas CMMS SSO handoff
+- Adds a signed Hub-to-Atlas SSO bridge so authenticated Hub users open FactoryLM Works routes through `/api/cmms/sso` without typing separate Atlas credentials.
+- Routes the Hub CMMS setup page CTA and quick links through the SSO handoff, with regression coverage for token exchange, safe redirect fallback, and missing-secret handling.
+
 ### v3.42.6 (2026-06-26) - fix(hub): route CMMS links into FactoryLM Works app
 - Fixes the Hub CMMS setup quick links and Atlas record-level deep links to use the live FactoryLM Works app route family (`/app/work-orders`, `/app/assets`, `/app/preventive-maintenance`, `/app/reports`) instead of marketing paths that return the provider's 404 content.
 - Adds focused regression coverage for the setup-page quick links and Atlas provider deep-link templates.
