@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.42.6 (2026-06-26) - fix(hub): route CMMS links into FactoryLM Works app
+- Fixes the Hub CMMS setup quick links and Atlas record-level deep links to use the live FactoryLM Works app route family (`/app/work-orders`, `/app/assets`, `/app/preventive-maintenance`, `/app/reports`) instead of marketing paths that return the provider's 404 content.
+- Adds focused regression coverage for the setup-page quick links and Atlas provider deep-link templates.
+
 ### v3.42.5 (2026-06-25) - fix(web): canonical trailing-slash redirects
 - Fixes FactoryLM trailing-slash redirects so HTTPS proxy requests like `/pricing/` trim to the canonical no-slash HTTPS public URL. Redirect authority is allowlisted and normalized so hostile `X-Forwarded-Host` values, loopback hosts, and attacker-supplied public-host ports cannot steer `Location` headers.
 - Adds a CMMS health regression proving the Hub browser-facing CMMS URL remains `https://cmms.factorylm.com` and never exposes the internal Docker hostname `cmms-backend`.
