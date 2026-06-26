@@ -50,6 +50,15 @@ const userMsg = (content: string) => ({ messages: [{ role: "user", content }] })
 
 let fetchSpy: ReturnType<typeof vi.fn>;
 
+async function drain(res: Response): Promise<void> {
+  const reader = res.body?.getReader();
+  if (!reader) return;
+  for (;;) {
+    const { done } = await reader.read();
+    if (done) return;
+  }
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
   process.env.NEON_DATABASE_URL = "postgres://test-only-not-used";
@@ -161,6 +170,50 @@ describe("POST /api/assets/[id]/chat", () => {
     expect(appendManualContext).toHaveBeenCalled();
     const chunks = vi.mocked(appendManualContext).mock.calls[0]?.[1] ?? [];
     expect(chunks.map((chunk) => chunk.content)).toEqual(["Approved bearing reset steps"]);
+  });
+
+  it("allows verified KG relationship context without requiring manual chunks", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(buildGraphContext).mockResolvedValue("[KG] verified relationship context");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+    fetchSpy.mockResolvedValue(
+      new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
+        status: 200,
+      }),
+    );
+
+    const release = vi.fn();
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("FROM cmms_equipment")) {
+        return {
+          rows: [
+            {
+              equipment_number: "MTR-101",
+              manufacturer: "FactoryLM",
+              model_number: "M100",
+              serial_number: "S100",
+              equipment_type: "Motor",
+              location: "Plant.Line",
+              criticality: "high",
+              description: "Line Motor",
+              installation_date: null,
+              last_maintenance_date: null,
+              last_reported_fault: null,
+              work_order_count: 0,
+            },
+          ],
+        };
+      }
+      if (sql.includes("FROM kg_relationships r")) return { rows: [{ count: 1 }] };
+      return { rows: [] };
+    });
+    vi.mocked(pool.connect).mockResolvedValue({ query, release } as never);
+
+    const res = await POST(makeReq(userMsg("what does this fault mean?")), makeParams(VALID_UUID));
+
+    expect(res.status).toBe(200);
+    await drain(res);
+    expect(fetchSpy).toHaveBeenCalled();
   });
 
   it("propagates a 401 from the session helper", async () => {

@@ -219,6 +219,9 @@ export async function POST(req: Request) {
            JOIN approved_tags at
              ON at.tenant_id = e.tenant_id
             AND at.enabled = true
+            AND at.source_system = (
+              CASE WHEN e.source IN ('demo_simulator', 'simulator') THEN 'simulator' ELSE e.source END
+            )
             AND (
               at.normalized_tag_path = e.plc_tag
               OR at.source_tag_path = e.plc_tag
@@ -244,6 +247,10 @@ export async function POST(req: Request) {
            JOIN approved_tags at
              ON at.tenant_id = cache.tenant_id
             AND at.enabled = true
+            AND at.source_system = COALESCE(
+              NULLIF(cache.source_system, ''),
+              CASE WHEN cache.source IN ('demo_simulator', 'simulator') THEN 'simulator' ELSE cache.source END
+            )
             AND (
               at.uns_path = cache.uns_path
               OR at.normalized_tag_path = cache.plc_tag
@@ -271,10 +278,10 @@ export async function POST(req: Request) {
           (cmp) => cmp.id === component,
         ) ?? (components as Array<Record<string, unknown>>)[0];
       const focusTag = (focus?.plc_tag as string | null) ?? null;
-      let approvedFocusTag = false;
+      let approvedFocusSourceSystem: string | null = null;
       if (focusTag) {
         const approvedTagRes = await c.query(
-          `SELECT 1
+          `SELECT source_system
              FROM approved_tags
             WHERE tenant_id = $1
               AND enabled = true
@@ -282,14 +289,15 @@ export async function POST(req: Request) {
             LIMIT 1`,
           [ctx.tenantId, focusTag],
         );
-        approvedFocusTag = approvedTagRes.rows.length > 0;
+        approvedFocusSourceSystem = (approvedTagRes.rows[0]?.source_system as string | null) ?? null;
       }
-      if (focusTag && approvedFocusTag) {
+      if (focusTag && approvedFocusSourceSystem) {
         try {
           const tc = await countTransitions(c, {
             tenantId: ctx.tenantId,
             plcTag: focusTag,
             componentId: null,
+            sourceSystem: approvedFocusSourceSystem,
             windowSeconds: transitionWindowSec,
           });
           transitionFact = {
