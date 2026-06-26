@@ -1,5 +1,10 @@
 # MIRA Release Notes
 
+### v3.43.0 (2026-06-26) - feat(hub): seed live Stardust and conveyor UNS signals
+- Seeds the synthetic Hub tenant with canonical conveyor and Stardust block-zone tags in `approved_tags` and `live_signal_cache`, giving the one-board status view concrete demo telemetry without requiring production secrets.
+- Expands the Stardust Racers seed from the sump panel to the four ride block zones and updates Hub status summarization for canonical `fault_latched` and `brake_ready` tag names.
+- Adds the next-slice implementation plan for streaming `plc-modbus` canonical tags into the existing `mira-relay` `/api/v1/tags/ingest` boundary.
+
 ### v3.42.6 (2026-06-26) - fix(hub): route CMMS links into FactoryLM Works app
 - Fixes the Hub CMMS setup quick links and Atlas record-level deep links to use the live FactoryLM Works app route family (`/app/work-orders`, `/app/assets`, `/app/preventive-maintenance`, `/app/reports`) instead of marketing paths that return the provider's 404 content.
 - Adds focused regression coverage for the setup-page quick links and Atlas provider deep-link templates.
