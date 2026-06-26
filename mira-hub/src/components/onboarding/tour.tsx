@@ -64,8 +64,9 @@ export function OnboardingTour() {
   // help button. Previously the tour overlaid every (hub)/* route because the mount
   // sits in the shared layout and the dismissal didn't gate on pathname.
   useEffect(() => {
-    if (pathname !== "/feed") return;
-    if (!localStorage.getItem(TOUR_KEY)) show(0);
+    if (pathname !== "/feed" || localStorage.getItem(TOUR_KEY)) return undefined;
+    const timeout = window.setTimeout(() => show(0), 0);
+    return () => window.clearTimeout(timeout);
   }, [show, pathname]);
 
   // Re-trigger from sidebar "?" button

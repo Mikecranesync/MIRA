@@ -25,7 +25,12 @@ export function AssetIntelligencePanel({ assetId }: Props) {
     }
   }, [assetId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [load]);
 
   const runEnrichment = async () => {
     setRunning(true);

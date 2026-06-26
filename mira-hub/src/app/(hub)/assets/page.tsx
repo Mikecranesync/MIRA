@@ -414,7 +414,9 @@ function AssetsPageInner() {
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
-    if (searchParams.get("create") === "1") setShowCreate(true);
+    if (searchParams.get("create") !== "1") return undefined;
+    const timeout = window.setTimeout(() => setShowCreate(true), 0);
+    return () => window.clearTimeout(timeout);
   }, [searchParams]);
 
   const [loadError, setLoadError] = useState<string | null>(null);

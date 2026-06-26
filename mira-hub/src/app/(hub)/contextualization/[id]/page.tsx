@@ -118,7 +118,10 @@ export default function ContextualizationProjectPage() {
   }, [projectId]);
 
   useEffect(() => {
-    fetchExtractions();
+    const timeout = window.setTimeout(() => {
+      void fetchExtractions();
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [fetchExtractions]);
 
   const decide = useCallback(
