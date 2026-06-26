@@ -33,6 +33,28 @@ describe("trailingSlashRedirectTarget", () => {
     );
   });
 
+  it("does not trust loopback x-forwarded-host values", () => {
+    const headers = new Headers({
+      "x-forwarded-host": "localhost:3000",
+      "x-forwarded-proto": "https",
+      host: "factorylm.com",
+    });
+    expect(trailingSlashRedirectTarget("http://10.10.10.10:3000/pricing/", headers)).toBe(
+      "https://factorylm.com/pricing",
+    );
+  });
+
+  it("falls back to the public host when x-forwarded-host and host are untrusted", () => {
+    const headers = new Headers({
+      "x-forwarded-host": "127.0.0.1:3200",
+      "x-forwarded-proto": "https",
+      host: "mira-web:3000",
+    });
+    expect(trailingSlashRedirectTarget("http://10.10.10.10:3000/pricing/", headers)).toBe(
+      "https://factorylm.com/pricing",
+    );
+  });
+
   it("ignores invalid x-forwarded-proto", () => {
     const headers = new Headers({
       "x-forwarded-host": "factorylm.com",
