@@ -85,6 +85,43 @@ describe("buildGraphContext answer-facing SQL filters", () => {
     expect(relationshipSql).toMatch(/src\.approval_state\s*=\s*'verified'/i);
     expect(relationshipSql).toMatch(/tgt\.approval_state\s*=\s*'verified'/i);
   });
+
+  test("does not read kg_triples_log or expose triple-log-only facts in answer context", async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("FROM kg_entities") && sql.includes("entity_id = ANY")) {
+        return {
+          rows: [
+            {
+              id: "uuid-fault-1",
+              entity_type: "fault_code",
+              entity_id: "F004",
+              name: "F004",
+              properties: {},
+            },
+          ],
+        };
+      }
+      if (sql.includes("FROM kg_triples_log")) {
+        return {
+          rows: [
+            {
+              subject: "F004",
+              predicate: "exhibited_fault",
+              object: "UNAPPROVED_TRIPLE_LOG_ONLY_FAULT",
+              extracted_at: "2026-06-25T12:00:00Z",
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const ctx = await buildGraphContext("tenant-1", "Explain F004");
+
+    expect(sqlCalls().join("\n")).not.toMatch(/kg_triples_log/i);
+    expect(ctx).not.toContain("UNAPPROVED_TRIPLE_LOG_ONLY_FAULT");
+    expect(ctx).not.toContain("Recent faults:");
+  });
 });
 
 describe("formatEntityContext — header", () => {

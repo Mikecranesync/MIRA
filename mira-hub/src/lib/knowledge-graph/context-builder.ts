@@ -7,7 +7,7 @@
  * Pipeline:
  *   1. Extract entity mentions from question (equipment tags, fault codes, parts)
  *   2. Batch-lookup those entity_ids in kg_entities (single transaction)
- *   3. Fetch relationships + recent triples for each found entity
+ *   3. Fetch approved relationships for each found entity
  *   4. Format into human-readable context blocks
  *   5. Return "" if nothing found (graceful fallback to vector-only)
  */
@@ -105,9 +105,8 @@ async function fetchEntityFull(
   client: PoolClient,
   tenantId: string,
   entityUuid: string,
-  entityName: string,
 ): Promise<{ outgoing: RelRow[]; incoming: RelRow[]; triples: TripleRow[] }> {
-  const [outRes, inRes, triRes] = await Promise.all([
+  const [outRes, inRes] = await Promise.all([
     // Outgoing: join target entity for its name and entity_id
     client.query<RelRow>(
       `SELECT r.id, r.source_id, r.target_id, r.relationship_type,
@@ -148,19 +147,9 @@ async function fetchEntityFull(
        LIMIT 30`,
       [tenantId, entityUuid],
     ),
-    // Recent triples mentioning this entity by name
-    client.query<TripleRow>(
-      `SELECT subject, predicate, object, extracted_at::text
-       FROM kg_triples_log
-       WHERE tenant_id = $1
-         AND (subject = $2 OR object = $2)
-       ORDER BY extracted_at DESC
-       LIMIT 40`,
-      [tenantId, entityName],
-    ),
   ]);
 
-  return { outgoing: outRes.rows, incoming: inRes.rows, triples: triRes.rows };
+  return { outgoing: outRes.rows, incoming: inRes.rows, triples: [] };
 }
 
 // ── Formatting ─────────────────────────────────────────────────────────────
@@ -493,9 +482,7 @@ export async function buildGraphContext(
       ]);
       const out: string[] = [];
       for (const entity of [...faultRows, ...partRows].slice(0, 4)) {
-        const { outgoing, incoming, triples } = await fetchEntityFull(
-          client, tenantId, entity.id, entity.name,
-        );
+        const { outgoing, incoming, triples } = await fetchEntityFull(client, tenantId, entity.id);
         out.push(formatEntityContext({ entity, outgoing, incoming, triples }));
       }
       return out;
