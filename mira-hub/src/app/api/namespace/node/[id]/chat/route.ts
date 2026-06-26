@@ -25,6 +25,11 @@ import {
   type ManualChunk,
   type ManualSource,
 } from "@/lib/manual-rag";
+import {
+  approvedAskEnforcementEnabled,
+  approvedContextReady,
+  buildApprovedContextRefusal,
+} from "@/lib/approved-context";
 
 export const dynamic = "force-dynamic";
 
@@ -285,6 +290,15 @@ export async function POST(
   const nodeSources: ManualSource[] = chunksToSources(nodeChunks);
   const approvedSourceCount = nodeSources.filter((s) => s.verified).length;
   const safetyLabel = nodeRow.name || id;
+  const approvedSummary = {
+    approvedSourceCount,
+    verifiedRelationshipCount: 0,
+    approvedLiveSignalCount: 0,
+  };
+
+  if (approvedAskEnforcementEnabled() && !approvedContextReady(approvedSummary)) {
+    return NextResponse.json(buildApprovedContextRefusal(approvedSummary), { status: 412 });
+  }
 
   const fullMessages: ChatMessage[] = [
     { role: "system", content: systemPrompt },

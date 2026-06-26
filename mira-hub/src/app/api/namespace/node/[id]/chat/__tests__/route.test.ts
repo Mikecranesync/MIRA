@@ -146,4 +146,25 @@ describe("POST /api/namespace/node/[id]/chat", () => {
     // No provider should be hit when there's no node context.
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it("returns approved_context without calling providers when enforced and no verified node docs exist", async () => {
+    process.env.NEON_DATABASE_URL = "postgres://test";
+    process.env.MIRA_ENFORCE_APPROVED_ASK = "true";
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext).mockImplementation(async (_tenantId, fn) =>
+      fn({
+        query: vi.fn(async (sql: string) => {
+          if (sql.includes("FROM kg_entities")) return { rows: [{ name: "Motor", uns_path: "Plant.Line.Motor" }] };
+          return { rows: [] };
+        }),
+      }),
+    );
+
+    const res = await POST(makeReq(userMsg("what does this fault mean?")), makeParams(VALID_UUID));
+    const body = await res.json();
+
+    expect(res.status).toBe(412);
+    expect(body.gate).toBe("approved_context");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 });
