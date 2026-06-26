@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.44.1 (2026-06-26) - fix(hub): wire Atlas SSO deploy secrets
+- Passes the shared Hub-to-Atlas SSO signing configuration into the production `mira-hub` container so the merged `/api/cmms/sso` route can sign live Atlas handoff assertions.
+- Makes synthetic Hub user seeding consume Doppler/env-backed per-persona passwords for live proof runs without logging credential values.
+
 ### v3.43.1 (2026-06-26) - fix(hub): add Atlas CMMS SSO handoff
 - Adds a signed Hub-to-Atlas SSO bridge so authenticated Hub users open FactoryLM Works routes through `/api/cmms/sso` without typing separate Atlas credentials.
 - Routes the Hub CMMS setup page CTA and quick links through the SSO handoff, with regression coverage for token exchange, safe redirect fallback, and missing-secret handling.
