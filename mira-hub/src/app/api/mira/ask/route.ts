@@ -5,6 +5,11 @@ import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 import { countTransitions } from "@/lib/signal-recorder";
 import { extractTrace, recordQueryTrace, type TraceGroundingLike } from "@/lib/knowledge-graph/trace";
 import { clientIpHash, rateLimited } from "@/lib/ip-rate-limit";
+import {
+  approvedAskEnforcementEnabled,
+  approvedContextReady,
+  buildApprovedContextRefusal,
+} from "@/lib/approved-context";
 
 export const dynamic = "force-dynamic";
 
@@ -192,9 +197,12 @@ export async function POST(req: Request) {
                 src.entity_type AS s_type, src.name AS s_name,
                 tgt.entity_type AS t_type, tgt.name AS t_name
            FROM kg_relationships r
-           JOIN kg_entities src ON src.id = r.source_id
-           JOIN kg_entities tgt ON tgt.id = r.target_id
+          JOIN kg_entities src ON src.id = r.source_id
+          JOIN kg_entities tgt ON tgt.id = r.target_id
           WHERE r.tenant_id = $1
+            AND r.approval_state = 'verified'
+            AND src.approval_state = 'verified'
+            AND tgt.approval_state = 'verified'
             AND (r.source_id = $2 OR r.target_id = $2 OR r.source_id = ANY($3::uuid[]))
           ORDER BY r.confidence DESC
           LIMIT 30`,
@@ -280,6 +288,18 @@ export async function POST(req: Request) {
   });
 
   // ── 3. Compose system prompt with citations available to model ────────
+  const approvedSummary = {
+    approvedSourceCount: 0,
+    verifiedRelationshipCount: grounding.edges.length,
+    approvedLiveSignalCount:
+      ((grounding.currentSignals as Array<Record<string, unknown>> | undefined)?.length ?? 0) +
+      (grounding.recentSignals.length ?? 0),
+  };
+
+  if (approvedAskEnforcementEnabled() && !approvedContextReady(approvedSummary)) {
+    return NextResponse.json(buildApprovedContextRefusal(approvedSummary), { status: 412 });
+  }
+
   const focusCmp = (grounding.components as Array<Record<string, unknown>>).find(
     (cmp) => cmp.id === grounding.focusComponentId,
   );
