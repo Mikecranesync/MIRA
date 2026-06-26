@@ -24,7 +24,10 @@ import { test, expect, type Page } from "@playwright/test";
 
 const HUB = (process.env.HUB_URL ?? "http://localhost:3100").replace(/\/$/, "");
 
-const LOCAL_TEST_PASSWORD = "SynthTest2026!";
+const LOCAL_TEST_PASSWORD =
+  process.env.HUB_SYNTHETIC_PASSWORD ??
+  process.env.SYNTHETIC_USER_PASSWORD ??
+  "SynthTest2026!";
 const RUN_PERSONA_TESTS = process.env.SYNTHETIC_USERS_ENABLED === "1";
 const PERSONA_SKIP_REASON =
   "Set SYNTHETIC_USERS_ENABLED=1 after seeding synthetic users in the target environment.";
@@ -59,12 +62,15 @@ const PERSONAS = {
 
 const PROD_PERSONA_ENV = [
   "SYNTHETIC_CARLOS_EMAIL",
-  "SYNTHETIC_CARLOS_PASSWORD",
   "SYNTHETIC_DANA_EMAIL",
-  "SYNTHETIC_DANA_PASSWORD",
   "SYNTHETIC_PLANTMGR_EMAIL",
-  "SYNTHETIC_PLANTMGR_PASSWORD",
   "SYNTHETIC_CFO_EMAIL",
+] as const;
+
+const PROD_PERSONA_PASSWORD_ENV = [
+  "SYNTHETIC_CARLOS_PASSWORD",
+  "SYNTHETIC_DANA_PASSWORD",
+  "SYNTHETIC_PLANTMGR_PASSWORD",
   "SYNTHETIC_CFO_PASSWORD",
 ] as const;
 
@@ -94,9 +100,16 @@ function skipUnlessSyntheticUsersEnabled(): void {
   test.skip(!RUN_PERSONA_TESTS, PERSONA_SKIP_REASON);
   if (!IS_LOCAL_HUB) {
     const missing = PROD_PERSONA_ENV.filter((key) => !process.env[key]);
+    const hasSharedPassword = Boolean(process.env.HUB_SYNTHETIC_PASSWORD || process.env.SYNTHETIC_USER_PASSWORD);
+    const missingPasswords = hasSharedPassword
+      ? []
+      : PROD_PERSONA_PASSWORD_ENV.filter((key) => !process.env[key]);
     expect(
-      missing,
-      `Non-local synthetic persona runs require explicit credentials. Missing: ${missing.join(", ")}`,
+      [...missing, ...missingPasswords],
+      `Non-local synthetic persona runs require explicit credentials. Missing: ${[
+        ...missing,
+        ...missingPasswords,
+      ].join(", ")}`,
     ).toEqual([]);
   }
 }

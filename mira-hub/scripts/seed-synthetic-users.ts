@@ -11,7 +11,8 @@
  * Required env:
  *   NEON_DATABASE_URL — NeonDB connection string
  *
- * ⚠️  Test credentials are intentionally hardcoded. Never use in production.
+ * Synthetic credentials default locally, but can be supplied by Doppler/env
+ * for live proof runs. Never use these personas for real customer access.
  */
 
 import { Pool } from "pg";
@@ -25,6 +26,7 @@ const PERSONAS = [
   {
     id: "00000000-0000-0000-0000-000000000091",
     email: "carlos@synthetic.test",
+    passwordEnv: "SYNTHETIC_CARLOS_PASSWORD",
     name: "Carlos Mendez",
     role: "owner",
     status: "approved",
@@ -33,6 +35,7 @@ const PERSONAS = [
   {
     id: "00000000-0000-0000-0000-000000000092",
     email: "dana@synthetic.test",
+    passwordEnv: "SYNTHETIC_DANA_PASSWORD",
     name: "Dana Reyes",
     role: "owner",
     status: "approved",
@@ -41,6 +44,7 @@ const PERSONAS = [
   {
     id: "00000000-0000-0000-0000-000000000093",
     email: "plantmgr@synthetic.test",
+    passwordEnv: "SYNTHETIC_PLANTMGR_PASSWORD",
     name: "Jordan Taylor",
     role: "owner",
     status: "approved",
@@ -49,6 +53,7 @@ const PERSONAS = [
   {
     id: "00000000-0000-0000-0000-000000000094",
     email: "cfo@synthetic.test",
+    passwordEnv: "SYNTHETIC_CFO_PASSWORD",
     name: "Pat Hoffman",
     role: "owner",
     status: "approved",
@@ -56,8 +61,27 @@ const PERSONAS = [
   },
 ] as const;
 
-// Shared test password — intentionally weak, synthetic-only
-const TEST_PASSWORD = "SynthTest2026!";
+// Shared fallback password — intentionally weak, synthetic-only
+const SHARED_TEST_PASSWORD =
+  process.env.HUB_SYNTHETIC_PASSWORD ??
+  process.env.SYNTHETIC_USER_PASSWORD ??
+  process.env.SYNTHETIC_CARLOS_PASSWORD ??
+  "SynthTest2026!";
+const SHARED_TEST_PASSWORD_SOURCE = process.env.HUB_SYNTHETIC_PASSWORD
+  ? "HUB_SYNTHETIC_PASSWORD"
+  : process.env.SYNTHETIC_USER_PASSWORD
+    ? "SYNTHETIC_USER_PASSWORD"
+    : process.env.SYNTHETIC_CARLOS_PASSWORD
+      ? "SYNTHETIC_CARLOS_PASSWORD"
+      : "local fallback";
+
+function passwordForPersona(persona: (typeof PERSONAS)[number]) {
+  return process.env[persona.passwordEnv] ?? SHARED_TEST_PASSWORD;
+}
+
+function passwordSourceForPersona(persona: (typeof PERSONAS)[number]) {
+  return process.env[persona.passwordEnv] ? persona.passwordEnv : SHARED_TEST_PASSWORD_SOURCE;
+}
 
 const EQUIPMENT = [
   {
@@ -398,8 +422,7 @@ async function main() {
   const client = await pool.connect();
 
   try {
-    console.log("[seed] Hashing password...");
-    const passwordHash = await bcrypt.hash(TEST_PASSWORD, 12);
+    console.log("[seed] Hashing persona passwords...");
 
     await client.query("BEGIN");
 
@@ -413,6 +436,7 @@ async function main() {
 
     // ── Users ────────────────────────────────────────────────────────────────
     for (const p of PERSONAS) {
+      const passwordHash = await bcrypt.hash(passwordForPersona(p), 12);
       await client.query(
         `INSERT INTO hub_users (id, email, password_hash, tenant_id, name, role, status)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -546,7 +570,9 @@ async function main() {
     await client.query("COMMIT");
 
     console.log("\n[seed] ✓ Done. Synthetic tenant: " + SYNTH_TENANT_ID);
-    console.log("[seed] Test credentials: password = " + TEST_PASSWORD);
+    console.log("[seed] Test credentials: password sources = " + [
+      ...new Set(PERSONAS.map((persona) => passwordSourceForPersona(persona))),
+    ].join(", "));
     console.log("[seed] Personas:");
     for (const p of PERSONAS) {
       console.log(`  ${p.name.padEnd(16)} <${p.email}>`);
