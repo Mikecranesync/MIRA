@@ -86,7 +86,11 @@ export default function CMMSPage() {
   }, []);
 
   useEffect(() => {
-    if (configured) fetchStats();
+    if (!configured) return undefined;
+    const timeout = window.setTimeout(() => {
+      void fetchStats();
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [configured]);
 
   function connect() {

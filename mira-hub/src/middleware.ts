@@ -153,6 +153,7 @@ function b64Nonce(raw: string): string {
 }
 
 export default async function middleware(req: NextRequest, _ev: NextFetchEvent) {
+  void _ev;
   const pathname = req.nextUrl.pathname;
 
   // Per-request nonce for script-src CSP — removes unsafe-inline/unsafe-eval.

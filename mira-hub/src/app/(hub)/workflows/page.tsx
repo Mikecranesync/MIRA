@@ -110,8 +110,11 @@ export default function WorkflowsPage() {
   }, [nameFilter, statusFilter]);
 
   useEffect(() => {
-    setLoading(true);
-    load();
+    const timeout = window.setTimeout(() => {
+      setLoading(true);
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [load]);
 
   // Auto-refresh every 30s.

@@ -123,11 +123,14 @@ export default function KnowledgePage() {
   // only in the manufacturer list view (not drilled in) and only with a query.
   useEffect(() => {
     if (selectedMfr || !search.trim()) {
-      setContentResults([]);
-      return;
+      const timeout = window.setTimeout(() => {
+        setContentResults([]);
+        setContentSearching(false);
+      }, 0);
+      return () => window.clearTimeout(timeout);
     }
-    setContentSearching(true);
-    const timer = setTimeout(() => {
+    const loadingTimer = window.setTimeout(() => setContentSearching(true), 0);
+    const timer = window.setTimeout(() => {
       fetch(`${API_BASE}/api/knowledge/search?q=${encodeURIComponent(search.trim())}`, {
         cache: "no-store",
       })
@@ -137,8 +140,8 @@ export default function KnowledgePage() {
         .finally(() => setContentSearching(false));
     }, 350);
     return () => {
-      clearTimeout(timer);
-      setContentSearching(false);
+      window.clearTimeout(loadingTimer);
+      window.clearTimeout(timer);
     };
   }, [search, selectedMfr]);
 
@@ -189,7 +192,10 @@ export default function KnowledgePage() {
 
   // Initial load.
   useEffect(() => {
-    void fetchManufacturers().finally(() => setLoading(false));
+    const timeout = window.setTimeout(() => {
+      void fetchManufacturers().finally(() => setLoading(false));
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [fetchManufacturers]);
 
   // Live polling: refresh on focus + tab-visibility, plus a 30s heartbeat.
@@ -328,7 +334,10 @@ export default function KnowledgePage() {
   }, []);
 
   useEffect(() => {
-    void fetchUploads();
+    const timeout = window.setTimeout(() => {
+      void fetchUploads();
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [fetchUploads]);
 
   useEffect(() => {

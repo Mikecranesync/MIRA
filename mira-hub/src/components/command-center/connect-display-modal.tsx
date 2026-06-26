@@ -133,9 +133,9 @@ export function ConnectDisplayModal({
   const [screenIdx, setScreenIdx] = useState(0);
   // Keep gateway selection in sync with fetched list: default to first gateway on load.
   useEffect(() => {
-    if (gateways.length > 0 && gatewayId === "") {
-      setGatewayId(gateways[0].id);
-    }
+    if (gateways.length === 0 || gatewayId !== "") return undefined;
+    const timeout = window.setTimeout(() => setGatewayId(gateways[0].id), 0);
+    return () => window.clearTimeout(timeout);
   }, [gateways, gatewayId]);
   const gateway = useMemo(() => gateways.find((g) => g.id === gatewayId), [gateways, gatewayId]);
   const screen = gateway?.screens[screenIdx];
