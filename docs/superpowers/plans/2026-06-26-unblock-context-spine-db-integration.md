@@ -127,13 +127,7 @@ Also preserve the #2307 context-spine entries:
 # Hot Cache - 2026-06-25 - Hub DB integration harness proven on disposable Neon
 ```
 
-Remove all conflict markers:
-
-```text
-<<<<<<<
-=======
->>>>>>>
-```
+Remove all conflict markers. Search for the literal marker prefixes `<<<<<<<`, `=======`, and `>>>>>>>`; none should remain in `wiki/hot.md`.
 
 - [ ] **Step 6: Validate merge resolution**
 
@@ -354,4 +348,3 @@ Run the readiness checklist test commands from its PR body/plan, then mark ready
 - Spec coverage: this plan unblocks #2307, proves the DB/import harness, and preserves the current stacked PR order.
 - Placeholder scan: no `TBD`, `TODO`, or unspecified test commands remain.
 - Type consistency: commands and file paths match the current #2307 diff and current conflict surface.
-
