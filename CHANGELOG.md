@@ -6,6 +6,7 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 ## [Unreleased]
 
 ### Fixed
+- Hub CMMS quick links and Atlas record deep links now target the FactoryLM Works app routes (`/app/work-orders`, `/app/assets`, `/app/preventive-maintenance`, and `/app/reports`) instead of public marketing paths that render provider 404 pages.
 - FactoryLM trailing-slash redirects now preserve the canonical HTTPS public host and reject hostile forwarded hosts, loopback forwarded hosts, and attacker-supplied public-host ports.
 - Hub CMMS health coverage now guards against browser-facing links exposing the internal Docker hostname `cmms-backend`.
 - RAG tenant isolation and prompt-boundary hardening: aggregate knowledge search stays shared-only, and retrieved docs are treated as untrusted reference data instead of system-role instructions.
