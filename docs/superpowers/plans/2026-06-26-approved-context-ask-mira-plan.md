@@ -504,8 +504,8 @@ Use `uns_path` when present, with normalized tag path fallback for existing rows
              ON at.tenant_id = e.tenant_id
             AND at.enabled = true
             AND (
-              at.uns_path = e.uns_path
-              OR at.normalized_tag_path = e.plc_tag
+              at.normalized_tag_path = e.plc_tag
+              OR at.source_tag_path = e.plc_tag
             )
 ```
 
@@ -518,10 +518,11 @@ and:
             AND (
               at.uns_path = cache.uns_path
               OR at.normalized_tag_path = cache.plc_tag
+              OR at.source_tag_path = cache.plc_tag
             )
 ```
 
-If the concrete columns in `live_signal_events` differ, verify them from the migrations or `mira-hub/src/lib/signal-recorder.ts:179` through `mira-hub/src/lib/signal-recorder.ts:210` before editing. UNKNOWN: this plan has not re-read the live signal table migration in this turn.
+Schema evidence: `live_signal_events` has `component_id` and `plc_tag`, but no `uns_path`, in `mira-hub/db/migrations/019_sessions_and_signals.sql:79` through `mira-hub/db/migrations/019_sessions_and_signals.sql:112`. `live_signal_cache` has `plc_tag` in `mira-hub/db/migrations/020_signal_cache_and_trends.sql:44` through `mira-hub/db/migrations/020_signal_cache_and_trends.sql:80`, and migration 036 adds `uns_path` at `mira-hub/db/migrations/036_current_tag_state_freshness.sql:45`. Do not reference `e.uns_path` in the event query.
 
 - [ ] **Step 4: Run the route test**
 
