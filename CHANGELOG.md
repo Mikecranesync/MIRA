@@ -6,6 +6,7 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 ## [Unreleased]
 
 ### Fixed
+- Hub QA credentials now seed real RBAC personas for every tenant role plus a second-tenant isolation user, and the saved-session helper fails unless a NextAuth session cookie exists.
 - Hub secret-shopper QA password helper now accepts Hermes env vars, requires explicit prod confirmation, rejects weak passwords, and verifies the exact tenant member update.
 - Hub CMMS quick links and Atlas record deep links now use the canonical Atlas app routes for preventive maintenance and work-order reporting.
 - Hub production deploy wiring now passes the shared Hub-to-Atlas SSO signing configuration into `mira-hub`, and synthetic QA seeding can consume Doppler-backed per-persona credentials without logging password values.

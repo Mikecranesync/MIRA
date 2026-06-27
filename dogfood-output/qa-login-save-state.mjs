@@ -19,6 +19,9 @@ const ctx = await browser.newContext();
 const page = await ctx.newPage();
 const consoleMsgs = [];
 page.on('console', m => consoleMsgs.push({ type: m.type(), text: m.text() }));
+function isLoginUrl(url) {
+  return new URL(url).pathname.replace(/\/+$/, '') === '/login';
+}
 try {
   await page.goto('https://app.factorylm.com/login/', { waitUntil: 'domcontentloaded', timeout: 45000 });
   // Let the login form hydrate before interacting; clicking the toggle too early
@@ -39,8 +42,21 @@ try {
     await page.waitForTimeout(5000);
   });
   await page.screenshot({ path: join(REPO_ROOT, 'dogfood-output', 'auth-state-screenshot.png'), fullPage: true });
-  await ctx.storageState({ path: AUTH_STATE });
-  console.log(JSON.stringify({ ok: true, url: page.url(), authState: AUTH_STATE, consoleMsgs }, null, 2));
+  const state = await ctx.storageState({ path: AUTH_STATE });
+  const hasSessionToken = state.cookies.some(c => c.name.includes('session-token'));
+  const landedUrl = page.url();
+  if (!hasSessionToken || isLoginUrl(landedUrl)) {
+    console.log(JSON.stringify({
+      ok: false,
+      error: 'login did not produce a NextAuth session-token cookie or remained on /login',
+      url: landedUrl,
+      authState: AUTH_STATE,
+      hasSessionToken,
+      consoleMsgs,
+    }, null, 2));
+    process.exit(1);
+  }
+  console.log(JSON.stringify({ ok: true, landed: landedUrl, authState: AUTH_STATE, hasSessionToken, consoleMsgs }, null, 2));
 } catch (e) {
   await page.screenshot({ path: join(REPO_ROOT, 'dogfood-output', 'auth-state-error.png'), fullPage: true }).catch(() => {});
   console.log(JSON.stringify({ ok: false, error: String(e?.message || e), url: page.url(), consoleMsgs }, null, 2));
