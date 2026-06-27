@@ -260,12 +260,18 @@ pytest tests/simlab/test_juice_rubric.py -v
 The Phase 1 flight recorder is a deterministic, local contract for replay and
 debugging. `SimEngine.add_flight_recorder(...)` attaches a recorder at the engine
 level, so `advance(60)` emits 60 individual `tick` events rather than one
-publisher batch. `load_scenario()` emits a `scenario_loaded` event at tick 0.
+publisher batch. `load_scenario()` emits a `scenario_loaded` event at tick 0, and
+`/simlab/evidence/{scenario_id}` emits an `evidence_requested` event at the
+current tick after assembling the diagnostic evidence packet.
 
 Each event includes only deterministic data: event type, run id, engine seed,
 line id, simulation tick, `Reading.ts`, scenario id, reading count, active
-alarms, and changed UNS paths. The default run id is `simlab-local-run`; tests
-or callers may inject an `InMemoryFlightRecorder(run_id="...")` to label a
+alarms, and changed UNS paths. Evidence-request events also include a compact
+`details` block with `abnormal_tag_count`, sorted `abnormal_paths`,
+`active_alarm_count`, `candidate_docs`, and `uns_subtree`. They intentionally do
+not record expected root cause, expected answer text, or rubric truth; the
+snapshot is diagnostic context only. The default run id is `simlab-local-run`;
+tests or callers may inject an `InMemoryFlightRecorder(run_id="...")` to label a
 deterministic replay without UUIDs or wall-clock time.
 
 The default API app attaches an `InMemoryFlightRecorder` and exposes:

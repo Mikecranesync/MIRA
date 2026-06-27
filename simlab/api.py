@@ -331,6 +331,24 @@ def build_app(
         except KeyError:
             raise HTTPException(404, f"Scenario {scenario_id!r} not found")
         ev = assemble_evidence(engine, s)
+        abnormal_paths = sorted(tag["uns_path"] for tag in ev.abnormal_tags)
+        flight_recorder.record(
+            event_type="evidence_requested",
+            seed=engine._seed,  # noqa: SLF001
+            line_id=_line.line_id,
+            tick=engine.tick,
+            readings=engine.snapshot(),
+            scenario_id=scenario_id,
+            active_alarms=ev.active_alarms,
+            changed_paths=abnormal_paths,
+            details={
+                "abnormal_tag_count": len(abnormal_paths),
+                "abnormal_paths": abnormal_paths,
+                "active_alarm_count": len(ev.active_alarms),
+                "candidate_docs": list(ev.candidate_docs),
+                "uns_subtree": ev.uns_subtree,
+            },
+        )
         return {
             "asset_id": ev.asset_id,
             "abnormal_tags": ev.abnormal_tags,

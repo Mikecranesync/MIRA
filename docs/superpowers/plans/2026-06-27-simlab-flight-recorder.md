@@ -138,16 +138,52 @@ git commit -m "feat(simlab): export flight recorder events"
 - Modify: `simlab/flight_recorder.py`
 - Test: `tests/simlab/test_flight_recorder.py`
 - Test: `tests/simlab/test_juice_bottling.py`
+- Modify: `docs/simlab/README.md`
 
 **Interfaces:**
 - Consumes: `assemble_evidence(engine, scenario)`.
 - Produces: `evidence_requested` recorder events when `/simlab/evidence/{scenario_id}` is called.
+- Produces: evidence event payload fields `abnormal_tag_count`, `abnormal_paths`, `active_alarm_count`, `candidate_docs`, and `uns_subtree`.
 
-- [ ] **Step 1: Write failing test for evidence-request recording**
-- [ ] **Step 2: Verify red**
-- [ ] **Step 3: Record compact evidence event with abnormal tag count and paths**
-- [ ] **Step 4: Verify green and regression**
-- [ ] **Step 5: Commit with `feat(simlab): record evidence snapshots`**
+- [x] **Step 1: Write failing evidence-request tests**
+
+Extend `tests/simlab/test_flight_recorder.py` with tests asserting:
+- after starting and advancing `filler_underfill_low_bowl_pressure`, calling `/simlab/evidence/filler_underfill_low_bowl_pressure` appends exactly one `evidence_requested` event after the prior scenario/tick events;
+- the event includes the same deterministic `run_id`, `seed`, `line_id`, tick, timestamp, and scenario id as other events;
+- the event includes compact evidence fields: abnormal tag count, sorted abnormal paths, active alarm count, candidate docs, and UNS subtree;
+- evidence export NDJSON includes the evidence event in order;
+- repeated evidence calls append repeated evidence-request events instead of mutating prior events.
+
+- [x] **Step 2: Run red tests**
+
+Run: `python -m pytest tests/simlab/test_flight_recorder.py -q`
+
+Expected: FAIL because evidence events are not recorded yet.
+
+- [x] **Step 3: Extend recorder event payloads**
+
+Add an optional `details` or explicit evidence field block to `FlightEvent` without breaking existing event fields. Keep field ordering deterministic and JSON-serializable.
+
+- [x] **Step 4: Record evidence events in API route**
+
+In `/simlab/evidence/{scenario_id}`, after `assemble_evidence(engine, s)`, record a compact `evidence_requested` event. Do not include root cause or expected answer data; evidence remains diagnostic context only.
+
+- [x] **Step 5: Run focused and regression tests**
+
+Run:
+```bash
+python -m pytest tests/simlab/test_flight_recorder.py -q
+python -m pytest tests/simlab/test_juice_bottling.py tests/simlab/test_dashboard.py tests/simlab/test_publishers.py -q
+```
+
+Expected: PASS.
+
+- [x] **Step 6: Commit**
+
+```bash
+git add simlab/flight_recorder.py simlab/api.py tests/simlab/test_flight_recorder.py tests/simlab/test_juice_bottling.py docs/simlab/README.md docs/superpowers/plans/2026-06-27-simlab-flight-recorder.md
+git commit -m "feat(simlab): record evidence snapshots"
+```
 
 ### Task 4: Hub/Relay Reuse Boundary
 

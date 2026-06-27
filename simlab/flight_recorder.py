@@ -30,9 +30,10 @@ class FlightEvent:
     reading_count: int
     active_alarms: list[dict[str, Any]] = field(default_factory=list)
     changed_paths: list[str] = field(default_factory=list)
+    details: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        event = {
             "event_type": self.event_type,
             "run_id": self.run_id,
             "seed": self.seed,
@@ -44,6 +45,9 @@ class FlightEvent:
             "active_alarms": self.active_alarms,
             "changed_paths": self.changed_paths,
         }
+        if self.details:
+            event["details"] = self.details
+        return event
 
 
 class InMemoryFlightRecorder:
@@ -64,6 +68,7 @@ class InMemoryFlightRecorder:
         scenario_id: str | None,
         active_alarms: list[dict[str, Any]],
         changed_paths: list[str],
+        details: dict[str, Any] | None = None,
     ) -> None:
         ts = readings[0].ts if readings else ""
         self._events.append(
@@ -78,6 +83,7 @@ class InMemoryFlightRecorder:
                 reading_count=len(readings),
                 active_alarms=[dict(alarm) for alarm in active_alarms],
                 changed_paths=list(changed_paths),
+                details=dict(details or {}),
             )
         )
 

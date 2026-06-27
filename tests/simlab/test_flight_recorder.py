@@ -180,6 +180,66 @@ def test_api_exports_events_as_ordered_ndjson(client: Any) -> None:
     assert client.get("/simlab/flight-recorder/events").json()["events"] == events
 
 
+def test_api_records_evidence_requested_events_in_order(client: Any) -> None:
+    sid = "filler_underfill_low_bowl_pressure"
+    events_before = _start_underfill_and_tick(client, ticks=120)
+
+    response = client.get(f"/simlab/evidence/{sid}")
+
+    assert response.status_code == 200
+    evidence = response.json()
+    events_after = client.get("/simlab/flight-recorder/events").json()["events"]
+    assert events_after[:-1] == events_before
+    assert [event["event_type"] for event in events_after] == [
+        "scenario_loaded",
+        *["tick"] * 120,
+        "evidence_requested",
+    ]
+
+    evidence_event = events_after[-1]
+    expected_abnormal_paths = sorted(
+        tag["uns_path"] for tag in evidence["abnormal_tags"]
+    )
+    assert evidence_event == {
+        "event_type": "evidence_requested",
+        "run_id": "simlab-local-run",
+        "seed": 42,
+        "line_id": "line01",
+        "tick": 120,
+        "ts": _epoch_to_iso(BASE_EPOCH + 120),
+        "scenario_id": sid,
+        "reading_count": events_before[-1]["reading_count"],
+        "active_alarms": evidence["active_alarms"],
+        "changed_paths": expected_abnormal_paths,
+        "details": {
+            "abnormal_tag_count": len(expected_abnormal_paths),
+            "abnormal_paths": expected_abnormal_paths,
+            "active_alarm_count": len(evidence["active_alarms"]),
+            "candidate_docs": evidence["candidate_docs"],
+            "uns_subtree": evidence["uns_subtree"],
+        },
+    }
+    assert "expected_root_cause" not in json.dumps(evidence_event)
+    assert "expected_answer" not in json.dumps(evidence_event)
+    assert "rubric" not in json.dumps(evidence_event)
+
+    ndjson_events = [
+        json.loads(line)
+        for line in client.get("/simlab/flight-recorder/export.ndjson").text.splitlines()
+    ]
+    assert ndjson_events == events_after
+
+    second_response = client.get(f"/simlab/evidence/{sid}")
+    assert second_response.status_code == 200
+    repeated_events = client.get("/simlab/flight-recorder/events").json()["events"]
+    assert repeated_events[:-1] == events_after
+    assert repeated_events[-1] == evidence_event
+    assert [event["event_type"] for event in repeated_events[-2:]] == [
+        "evidence_requested",
+        "evidence_requested",
+    ]
+
+
 def test_api_ndjson_export_is_byte_identical_for_fresh_same_seed_runs(tmp_path: Path) -> None:
     first_client = _build_client(tmp_path / "first")
     second_client = _build_client(tmp_path / "second")
