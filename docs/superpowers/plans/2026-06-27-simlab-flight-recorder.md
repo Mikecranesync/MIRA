@@ -4,7 +4,7 @@
 
 **Goal:** Build a deterministic SimLab flight recorder that captures scenario/tick evidence first, then expands toward replay/export and Hub/live-signal integration.
 
-**Architecture:** Phase 1 is local and headless: `SimEngine` emits compact recorder events to an injected recorder, and the FastAPI app exposes events for tests and demos. Later phases reuse the Hub `live_signal_events`/`live_signal_cache` recorder and relay ingest path instead of inventing a second production event store.
+**Architecture:** Phase 1 is local and headless: `SimEngine` emits compact recorder events to an injected recorder, and the FastAPI app exposes events for tests and demos. Later phases reuse the relay ingest path and Hub `tag_events`/`live_signal_cache` production telemetry store instead of inventing a second production event store or building on demo-only `live_signal_events`.
 
 **Tech Stack:** Python 3.12, dataclasses, FastAPI TestClient, pytest, existing SimLab engine/publisher/evidence APIs, later TypeScript/Postgres Hub recorder reuse.
 
@@ -190,17 +190,43 @@ git commit -m "feat(simlab): record evidence snapshots"
 **Files:**
 - Modify: `docs/simlab/README.md`
 - Create: `docs/simlab/flight-recorder-hub-integration.md`
-- Test or modify only if an existing Hub integration test can be reused without database secrets.
+- No production code changes unless a docs link target is broken.
 
 **Interfaces:**
-- Consumes: `mira-hub/src/lib/signal-recorder.ts`.
-- Consumes: `mira-relay/ingest_contract.py` and `RelayIngestPublisher`.
-- Produces: documented mapping from SimLab flight events to Hub immutable event history.
+- Consumes: local SimLab recorder endpoints: `/simlab/flight-recorder/events` and `/simlab/flight-recorder/export.ndjson`.
+- Consumes: production telemetry path `mira-relay/tag_ingest.py` and `mira-hub` `tag_events`.
+- Produces: documented boundary that the durable production flight-recorder store should be `tag_events`, not demo-only `live_signal_events`.
 
-- [ ] **Step 1: Write/read-only docs tests if an existing docs lint exists**
-- [ ] **Step 2: Document why Hub signal recorder is the durable event store**
-- [ ] **Step 3: Document the env-gated path from SimLab events to relay/Hub**
-- [ ] **Step 4: Commit with `docs(simlab): map flight recorder to hub events`**
+- [x] **Step 1: Write the integration note**
+
+Create `docs/simlab/flight-recorder-hub-integration.md` with:
+- Phase 1 status: local deterministic SimLab recorder only;
+- current local event schema and endpoint examples;
+- durable history recommendation: use relay ingest into Hub `tag_events`;
+- explicit warning not to build new production storage on demo-only `live_signal_events`;
+- mapping table from local recorder fields to eventual relay/tag-event metadata;
+- safety statement: read-only/headless by default, no PLC writes, no live hardware path.
+
+- [x] **Step 2: Link from README**
+
+Update `docs/simlab/README.md` to link the new integration note from the flight-recorder section.
+
+- [x] **Step 3: Verify docs references**
+
+Run:
+```bash
+python -m pytest tests/simlab/test_flight_recorder.py -q
+python -m pytest tests/simlab/test_juice_bottling.py tests/simlab/test_dashboard.py tests/simlab/test_publishers.py -q
+```
+
+Expected: PASS. These are unchanged code tests proving docs-only work did not disturb the recorder.
+
+- [x] **Step 4: Commit**
+
+```bash
+git add docs/simlab/README.md docs/simlab/flight-recorder-hub-integration.md docs/superpowers/plans/2026-06-27-simlab-flight-recorder.md
+git commit -m "docs(simlab): map flight recorder to hub events"
+```
 
 ### Task 5: Final Review and Branch Finish
 

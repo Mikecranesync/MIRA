@@ -287,6 +287,11 @@ The NDJSON export is read-only. It returns one JSON object per recorded event in
 the same order as `/events`, with no wrapper object, so two fresh same-seed runs
 produce byte-identical replay metadata.
 
+For the later Hub/relay path, see
+`docs/simlab/flight-recorder-hub-integration.md`. The durable production history
+target is relay ingest into Hub `tag_events`, not demo-only
+`live_signal_events`.
+
 There is no Hub database, MQTT, relay, wall-clock timestamp, UUID, or live
 hardware dependency in this local phase.
 
