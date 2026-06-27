@@ -1,3 +1,18 @@
+# Hot Cache — 2026-06-27 — HubV3 HITL sign-off shipped to main
+
+PR #2336 merged (`b468badb`) — 3 HubV3 HITL runbooks now on `main`:
+- `docs/runbooks/hubv3-human-in-the-loop-testing.md` — 11-step witness procedure
+- `docs/runbooks/hubv3-hitl-agent-preflight-report.md` — automated pre-flight (Steps 1–5)
+- `docs/runbooks/hubv3-hitl-sign-off.md` — sign-off: all 12 MUST boxes pass
+
+CI: all 3 checks green (Hub E2E + Version Bump + staging-gate). Sitemap-drift test still passes (docs-only, no Hub routes changed). No deploy needed.
+
+Tracking: #2324 (HITL tracker) commented with evidence — left open for human UI steps (Step 5 Telegram, Step 11 grounded answer). #2337 filed for `approved_by` column (Phase 5 deferred).
+
+**Next:** no pending HITL work. Open: A13-1 (zip-bomb cap), B12-1 (publish-gate integration test), C12-1 (ctx-signals verified-only) — all tracked in `docs/known-issues.md`.
+
+---
+
 # Hot Cache — 2026-06-25 — Hub one-board Command Center status view
 
 Branch `feat/hub-one-board-task3` off `origin/main` @ `fbca9071`. Task 3 wires the one-board Hub UI on
