@@ -2,7 +2,7 @@
 /**
  * Synthetic user seeder (#761–#765).
  *
- * Creates 4 test personas + realistic plant data in NeonDB. Fully idempotent —
+ * Creates RBAC test personas + realistic plant data in NeonDB. Fully idempotent —
  * re-running produces the same state via deterministic UUIDs and ON CONFLICT.
  *
  * Usage:
@@ -21,6 +21,7 @@ import bcrypt from "bcryptjs";
 // ── Deterministic UUIDs (re-seeding is idempotent) ──────────────────────────
 
 const SYNTH_TENANT_ID = "00000000-0000-0000-0000-000000000099";
+const SYNTH_ISOLATION_TENANT_ID = "00000000-0000-0000-0000-000000000199";
 
 const PERSONAS = [
   {
@@ -28,7 +29,7 @@ const PERSONAS = [
     email: "carlos@synthetic.test",
     passwordEnv: "SYNTHETIC_CARLOS_PASSWORD",
     name: "Carlos Mendez",
-    role: "owner",
+    role: "technician",
     status: "approved",
     bio: "Maintenance Technician, 2AM shift, Line 1-3",
   },
@@ -37,7 +38,7 @@ const PERSONAS = [
     email: "dana@synthetic.test",
     passwordEnv: "SYNTHETIC_DANA_PASSWORD",
     name: "Dana Reyes",
-    role: "owner",
+    role: "manager",
     status: "approved",
     bio: "Maintenance Manager, owns PM schedule + WO approvals",
   },
@@ -46,9 +47,9 @@ const PERSONAS = [
     email: "plantmgr@synthetic.test",
     passwordEnv: "SYNTHETIC_PLANTMGR_PASSWORD",
     name: "Jordan Taylor",
-    role: "owner",
+    role: "admin",
     status: "approved",
-    bio: "Plant Manager, reviews OEE + KPIs",
+    bio: "Tenant Admin, manages team access + workspace settings",
   },
   {
     id: "00000000-0000-0000-0000-000000000094",
@@ -59,7 +60,39 @@ const PERSONAS = [
     status: "approved",
     bio: "CFO, tracks maintenance cost and downtime ROI",
   },
+  {
+    id: "00000000-0000-0000-0000-000000000095",
+    email: "scheduler@synthetic.test",
+    passwordEnv: "SYNTHETIC_SCHEDULER_PASSWORD",
+    name: "Sam Patel",
+    role: "scheduler",
+    status: "approved",
+    bio: "Maintenance Scheduler, owns PM calendar + reports",
+  },
+  {
+    id: "00000000-0000-0000-0000-000000000096",
+    email: "operator@synthetic.test",
+    passwordEnv: "SYNTHETIC_OPERATOR_PASSWORD",
+    name: "Olivia Grant",
+    role: "operator",
+    status: "approved",
+    bio: "Line Operator, reports issues and requests maintenance help",
+  },
 ] as const;
+
+const ISOLATION_PERSONAS = [
+  {
+    id: "00000000-0000-0000-0000-000000000197",
+    email: "isolation@synthetic.test",
+    passwordEnv: "SYNTHETIC_ISOLATION_PASSWORD",
+    name: "Ivy Tenant",
+    role: "technician",
+    status: "approved",
+    bio: "Second-tenant technician for cross-tenant isolation probes",
+  },
+] as const;
+
+type Persona = (typeof PERSONAS)[number] | (typeof ISOLATION_PERSONAS)[number];
 
 // Shared fallback password — intentionally weak, synthetic-only
 const SHARED_TEST_PASSWORD =
@@ -75,11 +108,11 @@ const SHARED_TEST_PASSWORD_SOURCE = process.env.HUB_SYNTHETIC_PASSWORD
       ? "SYNTHETIC_CARLOS_PASSWORD"
       : "local fallback";
 
-function passwordForPersona(persona: (typeof PERSONAS)[number]) {
+function passwordForPersona(persona: Persona) {
   return process.env[persona.passwordEnv] ?? SHARED_TEST_PASSWORD;
 }
 
-function passwordSourceForPersona(persona: (typeof PERSONAS)[number]) {
+function passwordSourceForPersona(persona: Persona) {
   return process.env[persona.passwordEnv] ? persona.passwordEnv : SHARED_TEST_PASSWORD_SOURCE;
 }
 
@@ -432,6 +465,11 @@ async function main() {
        ON CONFLICT (id) DO NOTHING`,
       [SYNTH_TENANT_ID, "Synthetic Test Plant — Lake Wales FL"],
     );
+    await client.query(
+      `INSERT INTO hub_tenants (id, name) VALUES ($1, $2)
+       ON CONFLICT (id) DO NOTHING`,
+      [SYNTH_ISOLATION_TENANT_ID, "Synthetic Isolation Plant — Lakeland FL"],
+    );
     console.log("[seed] Tenant upserted");
 
     // ── Users ────────────────────────────────────────────────────────────────
@@ -441,11 +479,27 @@ async function main() {
         `INSERT INTO hub_users (id, email, password_hash, tenant_id, name, role, status)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (id) DO UPDATE SET
+           password_hash = EXCLUDED.password_hash,
            name   = EXCLUDED.name,
+           role   = EXCLUDED.role,
            status = EXCLUDED.status`,
         [p.id, p.email, passwordHash, SYNTH_TENANT_ID, p.name, p.role, p.status],
       );
-      console.log(`[seed] User: ${p.name} <${p.email}>`);
+      console.log(`[seed] User: ${p.name} <${p.email}> role=${p.role}`);
+    }
+    for (const p of ISOLATION_PERSONAS) {
+      const passwordHash = await bcrypt.hash(passwordForPersona(p), 12);
+      await client.query(
+        `INSERT INTO hub_users (id, email, password_hash, tenant_id, name, role, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (id) DO UPDATE SET
+           password_hash = EXCLUDED.password_hash,
+           name   = EXCLUDED.name,
+           role   = EXCLUDED.role,
+           status = EXCLUDED.status`,
+        [p.id, p.email, passwordHash, SYNTH_ISOLATION_TENANT_ID, p.name, p.role, p.status],
+      );
+      console.log(`[seed] Isolation user: ${p.name} <${p.email}> role=${p.role}`);
     }
 
     // ── cmms_equipment ───────────────────────────────────────────────────────
@@ -571,11 +625,15 @@ async function main() {
 
     console.log("\n[seed] ✓ Done. Synthetic tenant: " + SYNTH_TENANT_ID);
     console.log("[seed] Test credentials: password sources = " + [
-      ...new Set(PERSONAS.map((persona) => passwordSourceForPersona(persona))),
+      ...new Set([...PERSONAS, ...ISOLATION_PERSONAS].map((persona) => passwordSourceForPersona(persona))),
     ].join(", "));
     console.log("[seed] Personas:");
     for (const p of PERSONAS) {
-      console.log(`  ${p.name.padEnd(16)} <${p.email}>`);
+      console.log(`  ${p.name.padEnd(16)} <${p.email}> role=${p.role}`);
+    }
+    console.log("[seed] Isolation personas:");
+    for (const p of ISOLATION_PERSONAS) {
+      console.log(`  ${p.name.padEnd(16)} <${p.email}> role=${p.role} tenant=${SYNTH_ISOLATION_TENANT_ID}`);
     }
   } catch (err) {
     await client.query("ROLLBACK");

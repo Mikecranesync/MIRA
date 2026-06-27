@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.20.3 - 2026-06-27
+- fix(hub): synthetic QA seeding now creates real RBAC personas for all tenant roles plus a second-tenant isolation account, and the Hermes login helper fails loudly without a NextAuth session cookie.
+
 ## v2.20.2 - 2026-06-27
 - fix(hub): secret-shopper QA password helper now accepts Hermes env vars, requires explicit prod confirmation, rejects weak passwords, and verifies the exact tenant member update.
 
