@@ -21,6 +21,7 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 - Hub namespace empty state now offers direct first-folder creation and an upload path for new maintenance managers.
 
 ### Added
+- SimLab now has a deterministic local flight recorder for scenario, tick, and evidence-request events, with read/clear/NDJSON API endpoints and a documented relay-to-`tag_events` production boundary.
 - Hub readiness and Ask MIRA now gate answers on approved asset context, surface missing-context checklists, and filter unverified KG/live context from cited responses.
 - Hub contextualization import now has a DB-backed integration harness, guarded Neon/Doppler runners, and disposable integration fixtures for proving the context-spine intake/review flow.
 - Hub team settings now support self-serve tenant-scoped magic-link invites for admins and owners.

@@ -87,6 +87,9 @@ class SimEngine:
         # Optional live publishers (MQTT / relay): when present, advance() pushes a snapshot after
         # each advance call so the sim factory streams live. Empty by default -> zero behavior change.
         self._publishers: list = []
+        # Optional local deterministic flight recorders. Empty by default so the
+        # engine stays headless and side-effect free unless a caller attaches one.
+        self._flight_recorders: list[Any] = []
         self.reset()
 
     # ------------------------------------------------------------------
@@ -112,6 +115,7 @@ class SimEngine:
 
     def load_scenario(self, scenario: "Scenario") -> None:
         """Load a scenario.  Applies normal_state overrides; does not advance time."""
+        before = self.snapshot_dict()
         self._scenario = scenario
         # Apply normal_state overrides to primary asset
         asset = self._line.asset(scenario.asset_id)
@@ -135,6 +139,10 @@ class SimEngine:
                     self._state[(other_asset.asset_id, tag_name)] = value
                     self._drift_value[(other_asset.asset_id, tag_name)] = value
         logger.info("Loaded scenario %r on asset %s", scenario.id, scenario.asset_id)
+        self._record_flight_event(
+            "scenario_loaded",
+            changed_paths=self._changed_paths(before),
+        )
 
     def advance(self, ticks: int = 1) -> None:
         """Advance simulation by ``ticks`` seconds.
@@ -146,12 +154,17 @@ class SimEngine:
         4. Records history.
         """
         for _ in range(ticks):
+            before = self.snapshot_dict()
             self._tick += 1
             self._apply_drift()
             self._apply_ripple()
             self._update_run_states()
             self._evaluate_alarms()
             self._record_tick(self._tick)
+            self._record_flight_event(
+                "tick",
+                changed_paths=self._changed_paths(before),
+            )
         if self._publishers:
             self.publish_snapshot()
 
@@ -159,6 +172,10 @@ class SimEngine:
         """Attach a live publisher (e.g. MqttPublisher). After each advance() the engine pushes a
         snapshot to every attached publisher, turning the deterministic sim into a live feed."""
         self._publishers.append(publisher)
+
+    def add_flight_recorder(self, recorder: Any) -> None:
+        """Attach a local deterministic flight recorder."""
+        self._flight_recorders.append(recorder)
 
     def publish_snapshot(self) -> None:
         """Push the current snapshot to every attached publisher (best-effort; one bad publisher
@@ -350,3 +367,27 @@ class SimEngine:
         """Append current values to per-tag history."""
         for pair in self._tag_index:
             self._history[pair].append((tick, self._state[pair]))
+
+    def _changed_paths(self, before: dict[str, Any]) -> list[str]:
+        """Return canonical paths whose current values differ from ``before``."""
+        after = self.snapshot_dict()
+        return sorted(path for path, value in after.items() if before.get(path) != value)
+
+    def _record_flight_event(self, event_type: str, *, changed_paths: list[str]) -> None:
+        """Send one compact deterministic event to each attached flight recorder."""
+        if not self._flight_recorders:
+            return
+        readings = self.snapshot()
+        scenario_id = self._scenario.id if self._scenario is not None else None
+        alarms = self.active_alarms()
+        for recorder in self._flight_recorders:
+            recorder.record(
+                event_type=event_type,
+                seed=self._seed,
+                line_id=self._line.line_id,
+                tick=self._tick,
+                readings=readings,
+                scenario_id=scenario_id,
+                active_alarms=alarms,
+                changed_paths=changed_paths,
+            )
