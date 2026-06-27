@@ -340,7 +340,7 @@ def build_app(
             readings=engine.snapshot(),
             scenario_id=scenario_id,
             active_alarms=ev.active_alarms,
-            changed_paths=abnormal_paths,
+            changed_paths=[],
             details={
                 "abnormal_tag_count": len(abnormal_paths),
                 "abnormal_paths": abnormal_paths,

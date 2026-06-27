@@ -266,7 +266,8 @@ current tick after assembling the diagnostic evidence packet.
 
 Each event includes only deterministic data: event type, run id, engine seed,
 line id, simulation tick, `Reading.ts`, scenario id, reading count, active
-alarms, and changed UNS paths. Evidence-request events also include a compact
+alarms, and changed UNS paths. Observation-only evidence requests leave
+`changed_paths` empty and carry abnormal evidence paths only in the compact
 `details` block with `abnormal_tag_count`, sorted `abnormal_paths`,
 `active_alarm_count`, `candidate_docs`, and `uns_subtree`. They intentionally do
 not record expected root cause, expected answer text, or rubric truth; the

@@ -46,3 +46,43 @@ Implemented `evidence_requested` flight-recorder events for `/simlab/evidence/{s
 - `docs/simlab/README.md`
 - `docs/superpowers/plans/2026-06-27-simlab-flight-recorder.md`
 - `.superpowers/sdd/task-3-report.md`
+
+---
+
+## Task 3 Review Fix - changed_paths Contract
+
+Finding fixed: `evidence_requested` events no longer repurpose `changed_paths`
+for abnormal evidence paths. Evidence requests are observation-only and do not
+advance or mutate sim state, so `changed_paths` remains empty. Abnormal evidence
+paths remain in `details.abnormal_paths`.
+
+Files changed:
+
+- `simlab/api.py`
+- `tests/simlab/test_flight_recorder.py`
+- `docs/simlab/README.md`
+
+TDD red check:
+
+```text
+python -m pytest tests/simlab/test_flight_recorder.py -q
+.........F..                                                             [100%]
+FAILED tests/simlab/test_flight_recorder.py::test_api_records_evidence_requested_events_in_order
+1 failed, 11 passed in 2.74s
+```
+
+Focused verification:
+
+```text
+python -m pytest tests/simlab/test_flight_recorder.py -q
+............                                                             [100%]
+12 passed in 2.04s
+```
+
+Regression verification:
+
+```text
+python -m pytest tests/simlab/test_juice_bottling.py tests/simlab/test_dashboard.py tests/simlab/test_publishers.py -q
+...........................                                              [100%]
+27 passed in 12.51s
+```

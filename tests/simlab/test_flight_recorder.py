@@ -210,7 +210,7 @@ def test_api_records_evidence_requested_events_in_order(client: Any) -> None:
         "scenario_id": sid,
         "reading_count": events_before[-1]["reading_count"],
         "active_alarms": evidence["active_alarms"],
-        "changed_paths": expected_abnormal_paths,
+        "changed_paths": [],
         "details": {
             "abnormal_tag_count": len(expected_abnormal_paths),
             "abnormal_paths": expected_abnormal_paths,
