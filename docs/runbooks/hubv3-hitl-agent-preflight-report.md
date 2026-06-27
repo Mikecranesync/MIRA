@@ -4,6 +4,10 @@
 **Tester:** Hermes Agent (automated pre-flight)
 **Branch:** `feat/plc-mapper-gui` @ `e2fa5ed7` (descendant of `4eaa2dec` — merge of #2134)
 **Runbook:** `docs/runbooks/hubv3-human-in-the-loop-testing.pdf`
+**PRD:** `docs/plans/2026-06-20-hubv3-contextualization-intake-prd.md` (§6 Test Matrix, §7 Demo Acceptance)
+**Related PRs:** #2134 (HubV3 P0–P6 merge), #2135 (demo tests), #2141 (P0–P8 clean merge), #2142 (testing guide), #2200 (HITL runbook PR — open)
+**Issues filed:** #2320 (vitest vs bun test), #2321 (DB setup docs), #2322 (sitemap drift — fixed)
+**Round 13 open findings:** A13-1 (zip-bomb cap), B12-1 (publish-gate integration test), C12-1 (ctx-signals verified-only) — see `docs/known-issues.md` HubV3 section on `origin/main`
 
 ---
 
@@ -14,6 +18,12 @@ end-to-end Garage Conveyor demo. This report documents the automated pre-flight:
 everything an agent *can* test without a browser or the full MIRA stack has been
 tested. The remaining steps (Hub UI, Telegram, MIRA grounded answer) are flagged
 for the human tester.
+
+**Where this fits:** Items 1–11 of the §6 test matrix are automated-greeen (174
+tests across four lanes — see §2). Item 12 — the cross-stack Garage Conveyor
+demo — is the one that requires human witness. This pre-flight proves the
+automated half of item 12; the human tester completes the UI + MIRA grounded
+answer half.
 
 ---
 
@@ -148,26 +158,29 @@ GSDEngine). Flagged for human tester.
 
 ## 6. Issues Found
 
-### Issue A: Sitemap snapshot drift (FIXED in this commit)
+### Issue A: Sitemap snapshot drift (FIXED — issue #2322)
 
 `docs/sitemap.snapshot.json` was out of date — contextualization routes were not
 committed. The sitemap drift test (`src/lib/sitemap-drift.test.ts`) failed.
-Fixed by running `bun run sitemap`. The snapshot diff is included in this commit.
+Fixed by running `bun run sitemap`. The snapshot diff is included in commit
+`6677b2fd`. Tracked as issue [#2322](https://github.com/Mikecranesync/MIRA/issues/2322).
 
-### Issue B: Runbook should specify `vitest` not `bun test`
+### Issue B: Runbook should specify `vitest` not `bun test` (issue #2320)
 
 The Hub test lanes must be run with `npx vitest run`, not `bun test`. Running
 `bun test` produces ~124 false failures because vitest APIs (`vi.hoisted`,
 `vi.mock`, etc.) are not available in the bun test runner. The runbook and
-package.json `scripts.test` correctly use `vitest run`, but a tester who
+`package.json scripts.test` correctly use `vitest run`, but a tester who
 reaches for `bun test` first will see false reds.
+Tracked as issue [#2320](https://github.com/Mikecranesync/MIRA/issues/2320).
 
-### Issue C: Integration test DB setup not documented in runbook
+### Issue C: Integration test DB setup not documented in runbook (issue #2321)
 
 The 4 import integration tests (Lane 3) require a local Postgres with
 migrations 055+056 applied and a `factorylm_app` role. This setup is documented
 in the test file header but not in the HITL runbook. A tester following the
 runbook alone would skip this lane or fail to set it up.
+Tracked as issue [#2321](https://github.com/Mikecranesync/MIRA/issues/2321).
 
 ---
 
