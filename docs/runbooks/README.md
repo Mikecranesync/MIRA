@@ -21,4 +21,13 @@ Step-by-step procedures. Each has **Prerequisites · Steps (exact commands) · E
 ## Other existing runbooks
 `atlas-wo-outbox.md`, `cmms-onboarding.md`, `edge-deploy.md`, `factorylm-vps.md`, `plc-integration-test.md`, `sidecar-oem-migration.md`, `staging-environment.md`, `staging-vps.md`, `vps-hang-recovery.md`, `hud-demo-setup.md`, plus dated event runbooks (florida-expo, etc.).
 
+## HubV3 contextualization testing
+
+| Runbook | When to use |
+|---|---|
+| [hubv3-human-in-the-loop-testing.md](hubv3-human-in-the-loop-testing.md) | Human witness procedure for PRD §6 test 12 (cross-stack Garage Conveyor demo) |
+| [hubv3-hitl-agent-preflight-report.md](hubv3-hitl-agent-preflight-report.md) | Automated pre-flight evidence — run before the HITL procedure to confirm the test floor is green and the offline bundle is well-formed |
+| [garage-conveyor-demo.md](garage-conveyor-demo.md) | Operator script for the Garage Conveyor demo (§7) — the flow the HITL runbook exercises |
+| [hubv3-rollback.md](hubv3-rollback.md) | Rollback runbook if HubV3 contextualization needs to be reverted (DB + git + deploy layers) |
+
 **See also:** [../architecture/environment-quick-ref.md](../architecture/environment-quick-ref.md) and [../environments.md](../environments.md) (authoritative env doctrine).

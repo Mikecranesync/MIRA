@@ -1,4 +1,21 @@
-# Hot Cache — 2026-06-12 — PLC laptop
+# Hot Cache — 2026-06-26 — HubV3 HITL pre-flight complete
+
+## Session — 2026-06-26 (HubV3 HITL agent pre-flight — automated half GREEN)
+
+**Agent pre-flight of PRD §6 test 12 complete.** All automated lanes green:
+85 contextualizer + 784 Hub vitest + 12 Telegram + 4 import integration = 0 failures.
+Offline bundle (Steps 1–4) well-formed: 70 UNS signals, 78 i3X instances, scorecard 74/Diagnosable,
+all proposals `accepted` (no `verified`). Hub import/match/approve/no-overwrite logic proven
+by integration tests (Steps 6–10). Sitemap drift fixed (`bun run sitemap`).
+
+**Remaining for human tester:** Hub UI flow (Steps 6–10 in browser), Telegram leg (Step 5,
+optional), MIRA grounded answer (Step 11). Report: `docs/runbooks/hubv3-hitl-agent-preflight-report.md`.
+Issues filed: #2320 (vitest docs), #2321 (DB setup docs), #2322 (sitemap drift — fixed).
+
+**Round 13 open findings still tracked on `origin/main` known-issues:** A13-1 (zip-bomb cap),
+B12-1 (publish-gate integration test), C12-1 (ctx-signals verified-only).
+
+---
 
 ## Session — 2026-06-13 (Trends V2 layer-1 CORRECTED — built on the REAL Prog_init)
 
