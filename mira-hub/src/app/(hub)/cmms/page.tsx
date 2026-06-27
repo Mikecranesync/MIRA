@@ -254,8 +254,8 @@ export default function CMMSPage() {
                 {[
                   { label: "Work Orders",  path: "/app/work-orders" },
                   { label: "Assets",       path: "/app/assets" },
-                  { label: "PM Schedule",  path: "/app/preventive-maintenance" },
-                  { label: "Reports",      path: "/app/reports" },
+                  { label: "PM Schedule",  path: "/app/preventive-maintenances" },
+                  { label: "Reports",      path: "/app/analytics/work-orders/status" },
                 ].map(({ label, path }) => (
                   <a key={path} href={buildCmmsSsoUrl(path)} target="_blank" rel="noopener noreferrer"
                     className="flex items-center justify-between p-2.5 rounded-lg transition-colors hover:bg-[var(--surface-1)]">

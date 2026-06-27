@@ -19,7 +19,7 @@ export class AtlasProvider implements CMMSProvider {
   readonly defaultLinkTemplates: Required<Record<DeepLinkKind, string>> = {
     work_order: "/app/work-orders/{external_id}",
     asset:      "/app/assets/{external_id}",
-    pm:         "/app/preventive-maintenance/{external_id}",
+    pm:         "/app/preventive-maintenances/{external_id}",
   };
 
   buildDeepLink(args: BuildDeepLinkArgs): string {
