@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.20.2 - 2026-06-27
+- fix(hub): secret-shopper QA password helper now accepts Hermes env vars, requires explicit prod confirmation, rejects weak passwords, and verifies the exact tenant member update.
+
 ## v2.20.1 - 2026-06-26
 - fix(hub): CMMS quick links and Atlas record deep links now use the canonical Atlas app routes for preventive maintenance and work-order reporting.
 
