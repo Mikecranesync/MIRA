@@ -238,11 +238,17 @@ git commit -m "docs(simlab): map flight recorder to hub events"
 - Consumes: all task commits.
 - Produces: clean branch ready for PR.
 
-- [ ] **Step 1: Run full relevant test suite**
-- [ ] **Step 2: Run final code review**
-- [ ] **Step 3: Fix findings**
-- [ ] **Step 4: Push branch**
-- [ ] **Step 5: Open draft PR**
+- [x] **Step 1: Run full relevant test suite**
+- [x] **Step 2: Run final code review**
+- [x] **Step 3: Fix findings**
+- [x] **Step 4: Push branch**
+- [x] **Step 5: Open draft PR**
+
+Final status: branch `codex/flight-recorder-phased` was pushed and draft PR
+[#2335](https://github.com/Mikecranesync/MIRA/pull/2335) was opened. Local
+verification covered `tests/simlab/test_flight_recorder.py`, the broader
+`tests/simlab` suite, and `git diff --check`. GitHub checks were green on the
+current PR head after the `/VERSION` bump.
 
 ## Self-Review
 
