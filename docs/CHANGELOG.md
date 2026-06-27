@@ -3,6 +3,12 @@
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 
+### HubV3 HITL pre-flight + sitemap fix (2026-06-26) — docs(hubv3)
+- **Agent pre-flight of PRD §6 test 12 complete.** All automated lanes green (85 contextualizer + 784 Hub vitest + 12 Telegram + 4 import integration = 0 failures). Offline bundle (Steps 1–4) well-formed: 70 UNS signals, 78 i3X instances, scorecard 74/Diagnosable. Hub import/match/approve/no-overwrite logic proven by integration tests (Steps 6–10). Report: `docs/runbooks/hubv3-hitl-agent-preflight-report.md`.
+- **Fix(hub): sitemap snapshot drift (#2322).** Regenerated `mira-hub/docs/SITEMAP.md` + `docs/sitemap.snapshot.json` — contextualization routes (4 pages + 10 API routes) were missing from the committed snapshot, causing `sitemap-drift.test.ts` to fail. Same class of bug as #2047; the sitemap gate caught it as designed.
+- **Issues closed:** #2110 (P0 intake contract — completed by #2134/#2141), #2111 (P1 migration 056 — completed by #2134/#2141), #2322 (sitemap drift — fixed).
+- **Issues opened:** #2320 (runbook should specify vitest not bun test), #2321 (runbook missing local Postgres setup for Lane 3), #2324 (HITL readiness tracker).
+
 ### v3.29.0 (2026-06-20) — feat(hubv3): Hub-centered contextualization intake (P0–P8)
 - **Hub = system of record for contextualization.** Offline Contextualizer + Telegram are now ingest clients submitting one shared **Contextualization Intake Contract** (`contracts/contextualization/intake_contract.py` + `mira-hub/src/lib/contextualization/intake-contract.ts` + JSON Schema; ADR-0023). All ingest enters as `proposed`/pending; Hub does final merge, approval, and publish to the project model / UNS / i3X / MIRA KB.
 - **Migration `056`** — staging schema: `ctx_import_batches` (review_status proposed→approved|rejected|needs_review, ingest_route), `ctx_extraction_asset_matches` (match_strength strong|probable|none, candidate_asset_id), source/bundle `sha256` dedup keys, RLS + grants. Reversible (rollback block in-file).

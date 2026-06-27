@@ -28,6 +28,33 @@ capture the named evidence. A single unchecked **MUST** box = FAIL.
 These passed on the branch under test. They are the *foundation*; this runbook
 exercises only what they cannot.
 
+> **⚠ Use `vitest`, not `bun test`.** The Hub TS lanes rely on vitest APIs
+> (`vi.hoisted`, `vi.mock`, etc.) that are unavailable in the bun test runner.
+> Running `bun test` will produce ~124 false failures. Always use
+> `npx vitest run` (or `npm test`) for Hub tests.
+
+### How to run the automated floor
+
+```bash
+# Lane 1: Telegram intake (Python)
+cd mira-bots && python3 -m pytest tests/test_telegram_hub_intake.py tests/test_telegram_photo_hub_wiring.py -v
+
+# Lane 2: Hub TS unit (vitest — NOT bun test)
+cd mira-hub && npx vitest run
+
+# Lane 3: Hub TS import integration (needs local Postgres — see setup below)
+#   One-time DB setup:
+#     brew services start postgresql@16
+#     createdb mira_hub_test
+#     psql -d mira_hub_test -c "CREATE ROLE factorylm_app;"
+#     psql -d mira_hub_test -f mira-hub/db/migrations/055_contextualization.sql
+#     psql -d mira_hub_test -f mira-hub/db/migrations/056_contextualization_intake.sql
+cd mira-hub && TEST_DATABASE_URL="postgresql://bravonode@localhost:5432/mira_hub_test" npx vitest run --config vitest.integration.config.ts
+
+# Lane 4: Contextualizer bundle/export (Python)
+cd mira-contextualizer && python3 -m pytest tests/ -v
+```
+
 | Lane | Suite | Result |
 |---|---|---|
 | Python | Telegram intake (`test_telegram_hub_intake`, `test_telegram_photo_hub_wiring`, adapter, image) | ✅ 29 |
