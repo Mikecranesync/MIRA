@@ -228,6 +228,13 @@ def build_app(
     def get_flight_recorder_events() -> dict:
         return {"events": flight_recorder.events()}
 
+    @app.get("/simlab/flight-recorder/export.ndjson")
+    def export_flight_recorder_events() -> PlainTextResponse:
+        return PlainTextResponse(
+            flight_recorder.export_ndjson(),
+            media_type="application/x-ndjson",
+        )
+
     @app.post("/simlab/flight-recorder/clear")
     def clear_flight_recorder() -> dict:
         flight_recorder.clear()

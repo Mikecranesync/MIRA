@@ -7,10 +7,13 @@ and do not introduce any external transport or wall-clock source.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
 from simlab.models import Reading
+
+DEFAULT_RUN_ID = "simlab-local-run"
 
 
 @dataclass(frozen=True)
@@ -18,6 +21,9 @@ class FlightEvent:
     """One deterministic recorder event emitted by the SimLab engine."""
 
     event_type: str
+    run_id: str
+    seed: int
+    line_id: str
     tick: int
     ts: str
     scenario_id: str | None
@@ -28,6 +34,9 @@ class FlightEvent:
     def to_dict(self) -> dict[str, Any]:
         return {
             "event_type": self.event_type,
+            "run_id": self.run_id,
+            "seed": self.seed,
+            "line_id": self.line_id,
             "tick": self.tick,
             "ts": self.ts,
             "scenario_id": self.scenario_id,
@@ -40,13 +49,16 @@ class FlightEvent:
 class InMemoryFlightRecorder:
     """Process-local recorder storage for deterministic tests and demos."""
 
-    def __init__(self) -> None:
+    def __init__(self, run_id: str = DEFAULT_RUN_ID) -> None:
+        self.run_id = run_id
         self._events: list[FlightEvent] = []
 
     def record(
         self,
         *,
         event_type: str,
+        seed: int,
+        line_id: str,
         tick: int,
         readings: list[Reading],
         scenario_id: str | None,
@@ -57,6 +69,9 @@ class InMemoryFlightRecorder:
         self._events.append(
             FlightEvent(
                 event_type=event_type,
+                run_id=self.run_id,
+                seed=seed,
+                line_id=line_id,
                 tick=tick,
                 ts=ts,
                 scenario_id=scenario_id,
@@ -68,6 +83,11 @@ class InMemoryFlightRecorder:
 
     def events(self) -> list[dict[str, Any]]:
         return [event.to_dict() for event in self._events]
+
+    def export_ndjson(self) -> str:
+        return "\n".join(
+            json.dumps(event, separators=(",", ":")) for event in self.events()
+        )
 
     def clear(self) -> None:
         self._events.clear()
@@ -81,6 +101,9 @@ class NoopFlightRecorder:
 
     def events(self) -> list[dict[str, Any]]:
         return []
+
+    def export_ndjson(self) -> str:
+        return ""
 
     def clear(self) -> None:
         return None

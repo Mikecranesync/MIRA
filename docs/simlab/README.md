@@ -197,6 +197,9 @@ curl http://localhost:8099/simlab/snapshot
 # Inspect deterministic local flight-recorder events
 curl http://localhost:8099/simlab/flight-recorder/events
 
+# Export deterministic flight-recorder events as NDJSON
+curl http://localhost:8099/simlab/flight-recorder/export.ndjson
+
 # Clear process-local recorder events
 curl -X POST http://localhost:8099/simlab/flight-recorder/clear
 
@@ -259,14 +262,23 @@ debugging. `SimEngine.add_flight_recorder(...)` attaches a recorder at the engin
 level, so `advance(60)` emits 60 individual `tick` events rather than one
 publisher batch. `load_scenario()` emits a `scenario_loaded` event at tick 0.
 
-Each event includes only deterministic data: event type, simulation tick,
-`Reading.ts`, scenario id, reading count, active alarms, and changed UNS paths.
+Each event includes only deterministic data: event type, run id, engine seed,
+line id, simulation tick, `Reading.ts`, scenario id, reading count, active
+alarms, and changed UNS paths. The default run id is `simlab-local-run`; tests
+or callers may inject an `InMemoryFlightRecorder(run_id="...")` to label a
+deterministic replay without UUIDs or wall-clock time.
+
 The default API app attaches an `InMemoryFlightRecorder` and exposes:
 
 ```bash
 curl http://localhost:8099/simlab/flight-recorder/events
+curl http://localhost:8099/simlab/flight-recorder/export.ndjson
 curl -X POST http://localhost:8099/simlab/flight-recorder/clear
 ```
+
+The NDJSON export is read-only. It returns one JSON object per recorded event in
+the same order as `/events`, with no wrapper object, so two fresh same-seed runs
+produce byte-identical replay metadata.
 
 There is no Hub database, MQTT, relay, wall-clock timestamp, UUID, or live
 hardware dependency in this local phase.

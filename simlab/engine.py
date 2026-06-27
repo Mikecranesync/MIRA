@@ -383,6 +383,8 @@ class SimEngine:
         for recorder in self._flight_recorders:
             recorder.record(
                 event_type=event_type,
+                seed=self._seed,
+                line_id=self._line.line_id,
                 tick=self._tick,
                 readings=readings,
                 scenario_id=scenario_id,

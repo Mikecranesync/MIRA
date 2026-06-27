@@ -80,6 +80,7 @@ git commit -m "feat(simlab): add deterministic flight recorder"
 
 **Files:**
 - Modify: `simlab/flight_recorder.py`
+- Modify: `simlab/engine.py`
 - Modify: `simlab/api.py`
 - Test: `tests/simlab/test_flight_recorder.py`
 - Modify: `docs/simlab/README.md`
@@ -87,13 +88,48 @@ git commit -m "feat(simlab): add deterministic flight recorder"
 **Interfaces:**
 - Consumes: `InMemoryFlightRecorder.events()`.
 - Produces: `GET /simlab/flight-recorder/export.ndjson`.
-- Produces: `run_id`, `seed`, `line_id`, and `scenario_id` metadata in event payloads.
+- Produces: `run_id`, `seed`, `line_id`, and `scenario_id` metadata in every event payload.
+- Produces: deterministic default run IDs. Do not use UUIDs or wall-clock time; default to a stable caller-provided value or `"simlab-local-run"`.
 
-- [ ] **Step 1: Write failing export tests**
-- [ ] **Step 2: Verify red**
-- [ ] **Step 3: Add NDJSON export without changing event schema**
-- [ ] **Step 4: Verify green**
-- [ ] **Step 5: Commit with `feat(simlab): export flight recorder events`**
+- [x] **Step 1: Write failing metadata and export tests**
+
+Extend `tests/simlab/test_flight_recorder.py` with tests asserting:
+- `InMemoryFlightRecorder(run_id="demo-run-01")` causes every event dict to include `"run_id": "demo-run-01"`;
+- direct engine events include `"seed": 42` and `"line_id": "line01"`;
+- API events include default `"run_id": "simlab-local-run"` unless a recorder was injected with a different run id;
+- `GET /simlab/flight-recorder/export.ndjson` returns one JSON object per event, separated by newlines, in the same order as `/events`;
+- exported lines parse with `json.loads`, contain no wrapper object, and are byte-identical across two fresh same-seed runs.
+
+- [x] **Step 2: Run red tests**
+
+Run: `python -m pytest tests/simlab/test_flight_recorder.py -q`
+
+Expected: FAIL because metadata fields and the export endpoint are missing.
+
+- [x] **Step 3: Add event metadata**
+
+Update the recorder/engine contract so `recorder.record(...)` receives and serializes `run_id`, `seed`, and `line_id` without changing the deterministic tick timestamp behavior.
+
+- [x] **Step 4: Add NDJSON export**
+
+Add an `export_ndjson()` method or equivalent on `InMemoryFlightRecorder` and expose `GET /simlab/flight-recorder/export.ndjson` as a read-only API route. The route must not clear events.
+
+- [x] **Step 5: Run focused and regression tests**
+
+Run:
+```bash
+python -m pytest tests/simlab/test_flight_recorder.py -q
+python -m pytest tests/simlab/test_juice_bottling.py tests/simlab/test_dashboard.py tests/simlab/test_publishers.py -q
+```
+
+Expected: PASS.
+
+- [x] **Step 6: Commit**
+
+```bash
+git add simlab/flight_recorder.py simlab/engine.py simlab/api.py tests/simlab/test_flight_recorder.py docs/simlab/README.md docs/superpowers/plans/2026-06-27-simlab-flight-recorder.md
+git commit -m "feat(simlab): export flight recorder events"
+```
 
 ### Task 3: Evidence Snapshots at Diagnosis Boundaries
 
