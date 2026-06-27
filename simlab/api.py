@@ -45,6 +45,7 @@ _DASHBOARD_HTML_CACHE: Optional[str] = None
 def build_app(
     engine: Optional[Any] = None,
     approvals: Optional[Any] = None,
+    flight_recorder: Optional[Any] = None,
 ) -> Any:
     """Build and return a FastAPI app.
 
@@ -54,6 +55,9 @@ def build_app(
         A ``SimEngine`` instance.  If None, builds one from the juice bottling line.
     approvals:
         An ``ApprovalStore`` instance.  If None, creates one at the default path.
+    flight_recorder:
+        A recorder with ``record/events/clear`` methods. If None, creates a
+        process-local ``InMemoryFlightRecorder``.
     """
     if not _HAS_FASTAPI:
         raise RuntimeError("fastapi is not installed — cannot build SimLab API app.")
@@ -61,6 +65,7 @@ def build_app(
     from simlab.approval import ApprovalStore
     from simlab.diagnostic import assemble_evidence
     from simlab.engine import SimEngine
+    from simlab.flight_recorder import InMemoryFlightRecorder
     from simlab.lines.juice_bottling import build_factory, build_line
     from simlab.scenarios import get_scenario
     from simlab.uns import asset_path, line_path
@@ -70,6 +75,9 @@ def build_app(
         engine = SimEngine(line)
     if approvals is None:
         approvals = ApprovalStore()
+    if flight_recorder is None:
+        flight_recorder = InMemoryFlightRecorder()
+    engine.add_flight_recorder(flight_recorder)
 
     # Live MQTT feed (opt-in): set SIMLAB_MQTT_HOST to stream every advance() to a broker, read-only.
     # Unset -> no publisher attached -> the sim behaves exactly as before (pull-only /snapshot).
@@ -215,6 +223,15 @@ def build_app(
     @app.get("/simlab/alarms")
     def get_alarms() -> list[dict]:
         return engine.active_alarms()
+
+    @app.get("/simlab/flight-recorder/events")
+    def get_flight_recorder_events() -> dict:
+        return {"events": flight_recorder.events()}
+
+    @app.post("/simlab/flight-recorder/clear")
+    def clear_flight_recorder() -> dict:
+        flight_recorder.clear()
+        return {"status": "ok", "cleared": True}
 
     # ------------------------------------------------------------------
     # Scenario control

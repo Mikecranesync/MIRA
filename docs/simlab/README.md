@@ -146,6 +146,7 @@ enterprise
 | Deterministic tick engine | `simlab.engine` | Seeded, replay-identical state machine; 1 tick = 1 second sim time |
 | Fault scenarios | `simlab.scenarios` | Six replayable scenarios A–F with ground-truth rubrics |
 | Publisher abstraction | `simlab.publishers` | InMemory / MQTT / RelayIngest / Fake; test default = InMemory |
+| Local flight recorder | `simlab.flight_recorder` | Process-local deterministic scenario/tick event capture; no broker, DB, or wall-clock |
 | Evidence assembler | `simlab.diagnostic` | Surfaces what is abnormal; does NOT generate the diagnosis |
 | Approval store | `simlab.approval` | train-before-deploy lifecycle (draft→training→validating→approved) |
 | FastAPI surface | `simlab.api` | REST API for Hub / MIRA consumption |
@@ -193,6 +194,12 @@ curl -X POST "http://localhost:8099/simlab/scenario/tick?n=30"
 # Inspect current snapshot (all tags)
 curl http://localhost:8099/simlab/snapshot
 
+# Inspect deterministic local flight-recorder events
+curl http://localhost:8099/simlab/flight-recorder/events
+
+# Clear process-local recorder events
+curl -X POST http://localhost:8099/simlab/flight-recorder/clear
+
 # Inspect evidence packet (abnormal tags + candidate docs)
 curl http://localhost:8099/simlab/evidence/filler_underfill_low_bowl_pressure
 
@@ -233,12 +240,36 @@ curl http://localhost:8099/simlab/healthz
 # All SimLab tests (no LLM, no broker required — fully offline)
 pytest tests/simlab/ -v
 
+# Flight recorder contract
+python -m pytest tests/simlab/test_flight_recorder.py -q
+
 # Determinism check only
 pytest tests/simlab/test_juice_determinism.py -v
 
 # Rubric grader test
 pytest tests/simlab/test_juice_rubric.py -v
 ```
+
+---
+
+## Local Flight Recorder
+
+The Phase 1 flight recorder is a deterministic, local contract for replay and
+debugging. `SimEngine.add_flight_recorder(...)` attaches a recorder at the engine
+level, so `advance(60)` emits 60 individual `tick` events rather than one
+publisher batch. `load_scenario()` emits a `scenario_loaded` event at tick 0.
+
+Each event includes only deterministic data: event type, simulation tick,
+`Reading.ts`, scenario id, reading count, active alarms, and changed UNS paths.
+The default API app attaches an `InMemoryFlightRecorder` and exposes:
+
+```bash
+curl http://localhost:8099/simlab/flight-recorder/events
+curl -X POST http://localhost:8099/simlab/flight-recorder/clear
+```
+
+There is no Hub database, MQTT, relay, wall-clock timestamp, UUID, or live
+hardware dependency in this local phase.
 
 ---
 
