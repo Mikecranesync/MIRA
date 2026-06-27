@@ -181,17 +181,31 @@ sharing Mike's admin account.
 
 **Operator (Mike) runs — prod write, your authorized action; agents must not run it:**
 ```bash
+# Generate a strong password locally. Do not commit or paste the password into git.
+export HERMES_HUB_EMAIL='rico@factorylm.com'
+export HERMES_HUB_PASSWORD="$(openssl rand -base64 36)"
+
+# Optional: put the same credentials where Hermes/scheduled runs can read them.
+doppler secrets set --project factorylm --config prd \
+  HERMES_HUB_EMAIL="$HERMES_HUB_EMAIL" \
+  HERMES_HUB_PASSWORD="$HERMES_HUB_PASSWORD"
+
 # staging first if you want a dry run on stg-shape data, then prod:
-QA_PASSWORD='<pick-a-strong-password>' \
+QA_CONFIRM=SET_QA_MEMBER_PASSWORD_PROD \
 doppler run --project factorylm --config prd -- \
   bun run mira-hub/scripts/set-qa-member-password.ts
 # defaults: QA_EMAIL=rico@factorylm.com  QA_TENANT_ID=e88bd0e8-8a84-4e30-9803-c0dc6efb07fe
 ```
 The script (`mira-hub/scripts/set-qa-member-password.ts`) **only sets a password on a member
 that already exists in that tenant** — it never creates an account or changes membership, and
-refuses if the email isn't found in the tenant. Then share `rico@factorylm.com` + the password
-with the QA agent out-of-band. The agent logs in via **"Sign in with password"** and lands in
-the Stardust tenant.
+refuses if the email isn't found in the tenant. It also requires
+`QA_CONFIRM=SET_QA_MEMBER_PASSWORD_PROD`, rejects weak passwords, refuses unapproved members,
+and verifies exactly one target row received a password hash.
+
+Hermes should receive `HERMES_HUB_EMAIL` + `HERMES_HUB_PASSWORD` through Doppler or another
+operator-approved secret path. Do not commit or paste the password into issues, PRs, docs, or
+agent prompts. The agent logs in via **"Sign in with password"** and lands in the Stardust
+tenant.
 
 **Revoke when done:** `UPDATE hub_users SET password_hash = NULL WHERE email='rico@factorylm.com'
 AND tenant_id='e88bd0e8-8a84-4e30-9803-c0dc6efb07fe';` (sends the account back to SSO-only).
