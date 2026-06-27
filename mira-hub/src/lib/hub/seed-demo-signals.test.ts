@@ -3,6 +3,8 @@ import {
   DEMO_SIGNAL_ROWS,
   REQUIRED_DEMO_TAGS,
   normalizeSourceTagPath,
+  validateDemoSignalRow,
+  validateSyntheticTenantId,
 } from "../../../scripts/seed-demo-signals";
 
 describe("seed-demo-signals contract", () => {
@@ -28,5 +30,37 @@ describe("seed-demo-signals contract", () => {
     expect(normalizeSourceTagPath("conv_simple.vfd_current_amps")).toBe(
       "conv_simple_vfd_current_amps",
     );
+    expect(() => normalizeSourceTagPath("")).toThrow("sourceTagPath must be a non-empty string");
+  });
+
+  it("validates seeded rows before touching the database", () => {
+    expect(validateDemoSignalRow(DEMO_SIGNAL_ROWS[0])).toEqual(DEMO_SIGNAL_ROWS[0]);
+    expect(() => validateDemoSignalRow(null)).toThrow("demo signal row must be an object");
+    expect(() =>
+      validateDemoSignalRow({
+        plcTag: "",
+        value: true,
+        unsPath: "enterprise.demo.conveyor.motor_run",
+      }),
+    ).toThrow("plcTag must be a non-empty string");
+    expect(() =>
+      validateDemoSignalRow({
+        plcTag: "conv_simple.motor_run",
+        value: Number.NaN,
+        unsPath: "enterprise.demo.conveyor.motor_run",
+      }),
+    ).toThrow("numeric value must be finite");
+    expect(() =>
+      validateDemoSignalRow({
+        plcTag: "conv_simple.motor_run",
+        value: true,
+        unsPath: "enterprise.demo.conveyor.motor-run",
+      }),
+    ).toThrow("unsPath must be ltree-safe");
+  });
+
+  it("validates the synthetic tenant id override as a UUID", () => {
+    expect(() => validateSyntheticTenantId("00000000-0000-0000-0000-000000000099")).not.toThrow();
+    expect(() => validateSyntheticTenantId("demo")).toThrow("SYNTH_TENANT_ID must be a UUID");
   });
 });
