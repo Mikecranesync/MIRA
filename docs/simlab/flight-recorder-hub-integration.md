@@ -24,7 +24,7 @@ The JSON event contract is intentionally compact:
   "seed": 42,
   "line_id": "line01",
   "tick": 30,
-  "ts": "2026-01-01T00:00:30Z",
+  "ts": "2025-01-01T00:00:30Z",
   "scenario_id": "filler_underfill_low_bowl_pressure",
   "reading_count": 58,
   "active_alarms": [],
@@ -57,7 +57,7 @@ SimLab or live source
 ```
 
 `tag_events` is the production append-only raw stream. It carries source system,
-source connection, simulated flag, event timestamp, ingest timestamp, UNS path,
+source connection, simulated flag, event timestamp, `ingested_at`, UNS path,
 quality, typed value, and metadata. Future production flight-recorder work should
 project local recorder semantics into this relay/tag-event shape instead of
 creating a second store or extending the demo-only event table.
