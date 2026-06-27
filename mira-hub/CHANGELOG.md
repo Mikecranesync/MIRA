@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.20.1 - 2026-06-26
+- fix(hub): CMMS quick links and Atlas record deep links now use the canonical Atlas app routes for preventive maintenance and work-order reporting.
+
 ## v2.18.2 - 2026-06-25
 - security(hub): retrieved manual context for asset/node Ask MIRA is now injected as untrusted user-role reference data instead of system-role instructions, and `/api/knowledge/search` has a private-snippet regression test.
 
