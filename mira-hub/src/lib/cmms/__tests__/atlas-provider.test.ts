@@ -12,6 +12,6 @@ describe("AtlasProvider", () => {
     expect(provider.buildDeepLink({ kind: "asset", externalId: "Pump #4", baseUrl }))
       .toBe("https://cmms.factorylm.com/app/assets/Pump%20%234");
     expect(provider.buildDeepLink({ kind: "pm", externalId: "PM-7", baseUrl }))
-      .toBe("https://cmms.factorylm.com/app/preventive-maintenance/PM-7");
+      .toBe("https://cmms.factorylm.com/app/preventive-maintenances/PM-7");
   });
 });

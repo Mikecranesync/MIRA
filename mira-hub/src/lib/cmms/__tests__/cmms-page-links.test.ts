@@ -17,12 +17,14 @@ describe("CMMS setup page quick links", () => {
   it("uses FactoryLM Works app routes instead of public marketing/404 routes", () => {
     expect(cmmsPage).toContain('path: "/app/work-orders"');
     expect(cmmsPage).toContain('path: "/app/assets"');
-    expect(cmmsPage).toContain('path: "/app/preventive-maintenance"');
-    expect(cmmsPage).toContain('path: "/app/reports"');
+    expect(cmmsPage).toContain('path: "/app/preventive-maintenances"');
+    expect(cmmsPage).toContain('path: "/app/analytics/work-orders/status"');
 
     expect(cmmsPage).not.toContain('path: "/workorders"');
     expect(cmmsPage).not.toContain('path: "/assets"');
     expect(cmmsPage).not.toContain('path: "/schedule"');
     expect(cmmsPage).not.toContain('path: "/reports"');
+    expect(cmmsPage).not.toContain('path: "/app/preventive-maintenance"');
+    expect(cmmsPage).not.toContain('path: "/app/reports"');
   });
 });
