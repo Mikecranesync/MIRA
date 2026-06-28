@@ -30,6 +30,22 @@
       "action": "review_queue.read", "method": "GET", "path": "/api/admin/review/queue",
       "note": "Tenant 'admin' role is NOT platform-review-admin — must 403. Enforced today (status/email gate, not tenant role)."
     },
+    {
+      "id": "operator-deny-proposal-decide",
+      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
+      "action": "proposals.decide", "method": "POST",
+      "path": "/api/proposals/00000000-0000-0000-0000-0000000000aa/decide",
+      "body": { "decision": "verify" },
+      "note": "#2360 ENFORCED (was a P0 escalation in the #578 sweep): promoting a KG proposal proposed→verified is an admin/owner action (CLAUDE.md, ADR-0017). A non-admin tenant role (operator) must 403 at the capability gate, before the id is resolved. Verified live 2026-06-28 vs staging Neon: operator/technician/scheduler→403, admin/owner→pass-gate."
+    },
+    {
+      "id": "operator-deny-agent-status-transition",
+      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
+      "action": "asset_agent.transition", "method": "POST",
+      "path": "/api/assets/00000000-0000-0000-0000-0000000000aa/agent-status/transition",
+      "body": { "to": "training" },
+      "note": "#2360 ENFORCED (was a P0 escalation in the #578 sweep): driving the asset-agent approval/deploy lifecycle is an admin/owner action (train-before-deploy spec). operator must 403 at the capability gate."
+    },
 
     {
       "id": "carlos-deny-asset-create",
