@@ -1,0 +1,22 @@
+{
+  "_source": "Mirrors mira-hub/scripts/seed-synthetic-users.ts. A vitest (qa-rbac-personas.test.ts) asserts the roles here match the seeder so they never drift.",
+  "tenants": {
+    "primary": "00000000-0000-0000-0000-000000000099",
+    "isolation": "00000000-0000-0000-0000-000000000199"
+  },
+  "knownIds": {
+    "equipment_vfd07": "00000000-0000-0000-0000-000000001001",
+    "equipment_conv03": "00000000-0000-0000-0000-000000001002",
+    "work_order_001": "00000000-0000-0000-0000-000000002001",
+    "pm_schedule_001": "00000000-0000-0000-0000-000000003001"
+  },
+  "personas": [
+    { "key": "carlos",    "email": "carlos@synthetic.test",    "role": "technician", "tenant": "primary",   "passwordEnv": "SYNTHETIC_CARLOS_PASSWORD",    "piece": "Work Orders" },
+    { "key": "dana",      "email": "dana@synthetic.test",      "role": "manager",    "tenant": "primary",   "passwordEnv": "SYNTHETIC_DANA_PASSWORD",      "piece": "Asset + WO + PM approval + reports" },
+    { "key": "scheduler", "email": "scheduler@synthetic.test", "role": "scheduler",  "tenant": "primary",   "passwordEnv": "SYNTHETIC_SCHEDULER_PASSWORD", "piece": "PM calendar + reports" },
+    { "key": "operator",  "email": "operator@synthetic.test",  "role": "operator",   "tenant": "primary",   "passwordEnv": "SYNTHETIC_OPERATOR_PASSWORD",  "piece": "Request / report path" },
+    { "key": "plantmgr",  "email": "plantmgr@synthetic.test",  "role": "admin",      "tenant": "primary",   "passwordEnv": "SYNTHETIC_PLANTMGR_PASSWORD",  "piece": "Team + workspace settings" },
+    { "key": "cfo",       "email": "cfo@synthetic.test",       "role": "owner",      "tenant": "primary",   "passwordEnv": "SYNTHETIC_CFO_PASSWORD",       "piece": "Owner-bypass baseline + usage/billing" },
+    { "key": "isolation", "email": "isolation@synthetic.test", "role": "technician", "tenant": "isolation", "passwordEnv": "SYNTHETIC_ISOLATION_PASSWORD", "piece": "Cross-tenant isolation / RLS" }
+  ]
+}
