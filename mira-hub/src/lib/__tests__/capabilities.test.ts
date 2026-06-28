@@ -13,6 +13,7 @@ function ctx(over: Partial<SessionContext>): SessionContext {
     email: "owner@example.com",
     status: "trial",
     trialExpiresAt: null,
+    role: "owner",
     ...over,
   };
 }
@@ -49,5 +50,31 @@ describe("getCapabilities", () => {
     const plain = ctx({ email: "owner@example.com", status: "trial" });
     expect(hasCapability(plain, "workspace.read")).toBe(true);
     expect(hasCapability(plain, "review_queue.read")).toBe(false);
+  });
+
+  // #2360: intra-tenant admin governance caps gated on hub_users.role.
+  it("owner and admin roles get the governance caps", () => {
+    for (const role of ["owner", "admin"]) {
+      const caps = getCapabilities(ctx({ role }));
+      expect(caps).toContain("proposals.decide");
+      expect(caps).toContain("asset_agent.transition");
+    }
+  });
+
+  it("non-admin tenant roles do NOT get governance caps", () => {
+    for (const role of ["manager", "scheduler", "technician", "operator", "viewer"]) {
+      const caps = getCapabilities(ctx({ role }));
+      expect(caps).not.toContain("proposals.decide");
+      expect(caps).not.toContain("asset_agent.transition");
+      // still a normal tenant user
+      expect(caps).toContain("workspace.read");
+    }
+  });
+
+  it("unknown/empty role string never satisfies a governance gate (least-privilege)", () => {
+    for (const role of ["", "superadmin", "ADMIN ", "root"]) {
+      expect(hasCapability(ctx({ role }), "proposals.decide")).toBe(false);
+      expect(hasCapability(ctx({ role }), "asset_agent.transition")).toBe(false);
+    }
   });
 });
