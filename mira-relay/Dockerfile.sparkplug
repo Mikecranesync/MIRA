@@ -1,0 +1,24 @@
+# Sparkplug B MQTT consumer (Lane 3, Phase 3b) — a SECOND ingest transport.
+# Shares the relay's ingest library (ingest_contract + tag_ingest + NeonTagStore)
+# but runs as its own process: subscribe Mosquitto → decode Sparkplug B →
+# ingest_batch. READ-ONLY (subscribe only; never publishes CMD/NCMD/DCMD).
+FROM python:3.12.13-slim
+
+WORKDIR /app
+COPY pyproject.toml .
+# aiomqtt is the repo-standard async MQTT client (mira-fault-detective, live-plc-bridge).
+RUN pip install --no-cache-dir aiomqtt sqlalchemy psycopg2-binary
+
+# COPY *.py brings ingest_contract.py + tag_ingest.py (imported as top-level
+# modules by mqtt_ingest), mirroring the relay image. Enumerating individual
+# files is the trap that crash-looped the relay — copy them all.
+COPY *.py ./
+COPY mqtt_ingest/ ./mqtt_ingest/
+
+RUN addgroup --system --gid 1001 mira && \
+    adduser --system --uid 1001 --ingroup mira mira
+
+USER mira
+
+# python -m mqtt_ingest reads MQTT_INGEST_* + NEON_DATABASE_URL (see config.py).
+CMD ["python", "-m", "mqtt_ingest"]

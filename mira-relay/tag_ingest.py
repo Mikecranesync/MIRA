@@ -304,6 +304,79 @@ class NeonTagStore:
             ).mappings().all()
         return {r["normalized_tag_path"]: r["uns_path"] for r in rows}
 
+    def mark_tags_stale(self, tenant_id: str, tag_paths: list[str]) -> int:
+        """Mark live_signal_cache rows stale (Sparkplug N/DDEATH → device offline).
+
+        A lifecycle update, NOT a value ingest — it never touches tag_events and
+        never invents a value; it only flips freshness so the Command Center shows
+        the device as offline. Matches on raw tag_path (== live_signal_cache.plc_tag,
+        the path the entry was ingested under). Returns rows updated."""
+        if not tag_paths:
+            return 0
+        from sqlalchemy import text
+
+        engine = self._engine()
+        with engine.begin() as conn:
+            conn.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id})
+            res = conn.execute(
+                text(
+                    """
+                    UPDATE live_signal_cache
+                       SET freshness_status = 'stale',
+                           latest_quality = 'stale',
+                           updated_at = NOW()
+                     WHERE tenant_id = :tid AND plc_tag = ANY(:tags)
+                    """
+                ),
+                {"tid": tenant_id, "tags": tag_paths},
+            )
+        return res.rowcount or 0
+
+    def record_seen_tags(
+        self, tenant_id: str, source_system: str, tag_paths: list[str]
+    ) -> int:
+        """Record discovered-but-not-allowlisted tags as *seen* — an
+        ``approved_tags`` row with ``enabled = false``. Seen tags are visible for
+        a human to promote (flip ``enabled = true``) but, being disabled, stay
+        fail-closed-rejected: they never reach tag_events / the historian. Uses
+        ON CONFLICT DO NOTHING so an already-approved (enabled=true) tag is NEVER
+        flipped back to disabled. Returns rows inserted."""
+        if not tag_paths:
+            return 0
+        from sqlalchemy import text
+
+        params = [
+            {
+                "tid": tenant_id,
+                "ss": source_system,
+                "raw": tp,
+                "norm": normalize_tag_path(tp),
+            }
+            for tp in dict.fromkeys(tag_paths)  # de-dup, preserve order
+        ]
+        engine = self._engine()
+        inserted = 0
+        with engine.begin() as conn:
+            conn.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id})
+            for p in params:
+                res = conn.execute(
+                    text(
+                        """
+                        INSERT INTO approved_tags
+                            (tenant_id, source_system, source_tag_path,
+                             normalized_tag_path, enabled, notes)
+                        VALUES
+                            (:tid, :ss, :raw, :norm, false,
+                             'auto-discovered (sparkplug): seen/proposed — promote to enable')
+                        ON CONFLICT (tenant_id, source_system, source_tag_path)
+                        DO NOTHING
+                        """
+                    ),
+                    p,
+                )
+                inserted += res.rowcount or 0
+        return inserted
+
     def current_state_simulated(self, tenant_id: str, tag_paths: list[str]) -> dict[str, bool]:
         if not tag_paths:
             return {}
