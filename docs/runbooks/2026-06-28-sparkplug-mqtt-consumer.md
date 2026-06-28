@@ -165,14 +165,24 @@ The consumer is gated behind the **`sparkplug` compose profile** and is **not** 
 `deploy-vps.yml` TARGETS, so it never auto-starts:
 
 ```bash
-# On the host, after setting MQTT_INGEST_* (esp. TENANT_ID + BROKER_HOST) in Doppler:
+# On the host, after setting MQTT_INGEST_* (esp. TENANT_ID) in Doppler.
+# The broker (mira-mosquitto) must already be running.
 docker compose -f docker-compose.saas.yml --profile sparkplug up -d --build mira-sparkplug-consumer
 docker logs -f mira-sparkplug-consumer
 ```
 
-Broker reachability: `mira-mosquitto` is on the fault-detective `core-net` today.
-Either join that network or point `MQTT_INGEST_BROKER_HOST` at a broker reachable
-from `mira-net` before enabling.
+**Broker reachability (wired).** `mira-mosquitto` runs in the `mira-plc-dash`
+stack on the `mira-plc-dash_default` network. The consumer joins that network via
+the `mosquitto-ext` external network declared in `docker-compose.saas.yml`, so
+`MQTT_INGEST_BROKER_HOST=mira-mosquitto` resolves by name (it stays on `mira-net`
+too, for NeonDB). Requirements: the broker is up first; if it ever moves to a
+different compose project, update `networks.mosquitto-ext.name`. Verify the bridge:
+```bash
+docker exec mira-sparkplug-consumer python -c \
+  "import socket; print(socket.gethostbyname('mira-mosquitto'))"
+```
+Alternative (full isolation): run a dedicated `mira-mosquitto-saas` broker on
+`mira-net` and point Ignition + the consumer at it instead.
 
 ## Security / read-only guarantees
 

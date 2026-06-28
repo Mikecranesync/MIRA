@@ -501,9 +501,9 @@ services:
   #   absent from deploy-vps.yml TARGETS). Enable with:
   #     docker compose -f docker-compose.saas.yml --profile sparkplug up -d mira-sparkplug-consumer
   #
-  # BROKER REACHABILITY: mira-mosquitto currently lives in the fault-detective
-  #   stack on `core-net`. Point MQTT_INGEST_BROKER_HOST at the reachable broker
-  #   (and join that network) before enabling. Runbook:
+  # BROKER REACHABILITY: this service joins `mosquitto-ext` (the broker's network,
+  #   mira-plc-dash_default) so MQTT_INGEST_BROKER_HOST=mira-mosquitto resolves.
+  #   The broker must be running first. Runbook:
   #   docs/runbooks/2026-06-28-sparkplug-mqtt-consumer.md.
   mira-sparkplug-consumer:
     profiles: ["sparkplug"]
@@ -527,7 +527,8 @@ services:
       - MQTT_INGEST_DRY_RUN=${MQTT_INGEST_DRY_RUN:-0}
       - MQTT_INGEST_DEBUG=${MQTT_INGEST_DEBUG:-0}
     networks:
-      - mira-net
+      - mira-net         # NeonDB egress + other saas services
+      - mosquitto-ext    # the MQTT broker's network (resolve mira-mosquitto by name)
     restart: unless-stopped
     mem_limit: 256m
     memswap_limit: 256m
@@ -887,6 +888,12 @@ networks:
   cmms-ext:
     external: true
     name: factorylm-cmms_default
+  # The MQTT broker (mira-mosquitto) runs in the mira-plc-dash stack on its own
+  # network. The opt-in mira-sparkplug-consumer joins this to reach the broker by
+  # name. External: the broker must be up first. If the broker moves, update name.
+  mosquitto-ext:
+    external: true
+    name: mira-plc-dash_default
 
 volumes:
   mira-webui-data:
