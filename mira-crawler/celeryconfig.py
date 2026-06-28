@@ -59,6 +59,8 @@ task_routes = {
     "mira_crawler.tasks.gdrive.*": {"queue": "ingest"},
     "mira_crawler.tasks.freshness.*": {"queue": "freshness"},
     "mira_crawler.tasks.component_template.*": {"queue": "ingest"},
+    # --- Tag-diff historizer (issue #2343) ---
+    "mira_crawler.tasks.tag_diff_historizer.*": {"queue": "default"},
     # --- LinkedIn draft generation ---
     "linkedin.*": {"queue": "celery"},
 }
@@ -94,6 +96,9 @@ task_annotations = {
     "mira_crawler.tasks.component_template.extract_component_template": {
         "rate_limit": "10/m",
     },
+    # Tag-diff historizer (issue #2343) — beat owns the 5-min cadence; the
+    # rate limit is a defensive cap so a manual burst can't stampede.
+    "tasks.tag_diff_historizer.historize_tag_diffs": {"rate_limit": "1/m"},
 }
 
 # ---------------------------------------------------------------------------
@@ -119,6 +124,12 @@ beat_schedule = {
     "intent-daily-digest": {
         "task": "tasks.intent_digest.send_daily_digest",
         "schedule": crontab(minute=0, hour=10),  # 06:00 ET (EDT)
+    },
+    # Tag-diff historizer (issue #2343) — turn the raw tag_events stream into
+    # the meaningful-change tag_event_diffs stream every 5 minutes.
+    "tag-diff-historizer": {
+        "task": "tasks.tag_diff_historizer.historize_tag_diffs",
+        "schedule": crontab(minute="*/5"),
     },
 }
 
