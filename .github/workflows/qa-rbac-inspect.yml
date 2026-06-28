@@ -159,23 +159,23 @@ jobs:
           GRID_OUT="$(cat /tmp/deny-grid.md 2>/dev/null || echo '(no output)')"
           BODY="## RBAC deny-grid run — $(date -u +%Y-%m-%dT%H:%MZ)
 
-**Base URL:** \`${{ steps.check.outputs.hub_url }}\`
-**Isolation exit:** \`${{ steps.isolation.outputs.exit }}\`  **Deny-grid exit:** \`${{ steps.deny_grid.outputs.exit }}\`
+          **Base URL:** \`${{ steps.check.outputs.hub_url }}\`
+          **Isolation exit:** \`${{ steps.isolation.outputs.exit }}\`  **Deny-grid exit:** \`${{ steps.deny_grid.outputs.exit }}\`
 
-<details><summary>Layer A — Tenant isolation probe</summary>
+          <details><summary>Layer A — Tenant isolation probe</summary>
 
-\`\`\`
-${ISOLATION_OUT}
-\`\`\`
-</details>
+          \`\`\`
+          ${ISOLATION_OUT}
+          \`\`\`
+          </details>
 
-<details><summary>Layer C — Per-role deny-grid</summary>
+          <details><summary>Layer C — Per-role deny-grid</summary>
 
-\`\`\`
-${GRID_OUT}
-\`\`\`
-</details>
+          \`\`\`
+          ${GRID_OUT}
+          \`\`\`
+          </details>
 
-_Filed by \`qa-rbac-inspect.yml\`. Forward-looking fail-opens (\`currentlyEnforced: false\`) are expected until per-role wiring lands here._"
+          _Filed by \`qa-rbac-inspect.yml\`. Forward-looking fail-opens (\`currentlyEnforced: false\`) are expected until per-role wiring lands here._"
 
           gh issue comment 578 --body "$BODY" --repo Mikecranesync/MIRA
