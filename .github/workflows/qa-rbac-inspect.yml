@@ -8,22 +8,33 @@ name: RBAC Deny-Grid Inspect
 # When findings emerge, posts a summary comment on #578 so the "expected fail-open"
 # count is automatically tracked there as role wiring lands.
 #
-# Setup (once staging is cloud-reachable via stg.factorylm.com):
+# ⚠️  REACHABILITY (2026-06-28): this GH workflow is NOT the live weekly venue.
+# The staging Hub is a Tailscale IP on the PROD host (100.68.120.99:4101).
+# GitHub-hosted runners are not on the tailnet, so they cannot reach it; and a
+# self-hosted runner is unsafe here because this repo is PUBLIC (a fork PR could
+# RCE onto a tailnet node). Putting the prod-shared TS_AUTH_KEY in CI was rejected
+# for the same reason. So setting STAGING_HUB_URL would flip this from harmless
+# skip-clean to FAILING every Monday — do NOT add it until a public
+# `stg.factorylm.com` exists.
+#
+# THE LIVE WEEKLY RUN IS ON BRAVO: `tools/qa/rbac/weekly_inspect.sh` via the
+# launchd agent `com.factorylm.rbac-weekly-inspect` (Bravo is already on the
+# tailnet with Doppler stg + Playwright). It runs the identical routine and posts
+# to #578. See `tools/qa/rbac/README.md`. This workflow stays as the GH-side
+# placeholder + manual `workflow_dispatch` for if/when staging is exposed publicly.
+#
+# Setup (only once staging is cloud-reachable via stg.factorylm.com):
 #   1. Add STAGING_HUB_URL to the GitHub 'staging' environment secrets.
 #   2. Add SYNTHETIC_*_PASSWORD (7 secrets) matching Doppler factorylm/stg
 #      SYNTHETIC_CARLOS_PASSWORD … SYNTHETIC_ISOLATION_PASSWORD.
 #   3. Install Playwright browsers in the staging environment's runner image
 #      (handled by the "Install Playwright browsers" step below).
 #
-# Until STAGING_HUB_URL is set, the workflow exits clean with a skip notice —
-# same skip-clean pattern as qa-regression.yml. GH Actions runners cannot
-# reach http://localhost:4101 (SSH tunnel on Bravo); wait for stg.factorylm.com.
-#
-# Local (Bravo) usage today:
-#   QA_BASE_URL=http://localhost:4101 \
+# Local (Bravo) usage today (what the launchd runner does):
+#   QA_BASE_URL=http://100.68.120.99:4101 \
 #     node dogfood-output/qa-login-save-state.mjs <email> <password>
-#   QA_BASE_URL=http://localhost:4101 node tools/qa/rbac/isolation_probe.mjs
-#   QA_BASE_URL=http://localhost:4101 node tools/qa/rbac/run_deny_grid.mjs
+#   QA_BASE_URL=http://100.68.120.99:4101 node tools/qa/rbac/isolation_probe.mjs
+#   QA_BASE_URL=http://100.68.120.99:4101 node tools/qa/rbac/run_deny_grid.mjs
 
 on:
   schedule:
