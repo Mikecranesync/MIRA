@@ -42,6 +42,7 @@ class RunStore(Protocol):
         stopped_at: Optional[float],
         duration_seconds: Optional[float],
         status: str,
+        tenant_id: str,
     ) -> None:
         """Narrow update: set stopped_at/duration_seconds/status (open->closed)."""
         ...
@@ -70,7 +71,9 @@ class RunStore(Protocol):
         """Current baseline for the equipment, keyed by (tag, phase)."""
         ...
 
-    def insert_diffs(self, diffs: list[RunAnomalyDiff], *, run_id: str) -> int:
+    def insert_diffs(
+        self, diffs: list[RunAnomalyDiff], *, run_id: str, tenant_id: str
+    ) -> int:
         """Append run_diff rows for a run. Returns rows written."""
         ...
 
@@ -114,8 +117,12 @@ class InMemoryRunStore:
         stopped_at: Optional[float],
         duration_seconds: Optional[float],
         status: str,
+        tenant_id: str,
     ) -> None:
         run = self.runs[run_id]
+        # tenant_id is accepted to match NeonRunStore's RLS-scoped signature; the
+        # in-memory store is single-tenant per test, so we only sanity-check it.
+        assert run.tenant_id == tenant_id
         run.stopped_at = stopped_at
         run.duration_seconds = duration_seconds
         run.status = status
@@ -157,7 +164,10 @@ class InMemoryRunStore:
             if t == tenant_id and u == uns_path
         }
 
-    def insert_diffs(self, diffs: list[RunAnomalyDiff], *, run_id: str) -> int:
+    def insert_diffs(
+        self, diffs: list[RunAnomalyDiff], *, run_id: str, tenant_id: str
+    ) -> int:
+        # tenant_id mirrors NeonRunStore's RLS-scoped signature; ignored here.
         for d in diffs:
             self.diffs.append((run_id, d))
         return len(diffs)
@@ -298,12 +308,14 @@ class NeonRunStore:
         stopped_at: Optional[float],
         duration_seconds: Optional[float],
         status: str,
+        tenant_id: str,
     ) -> None:
         from sqlalchemy import text
 
         with self._engine().begin() as conn:
-            # No tenant param available here directly; the RLS policy still
-            # scopes to the session tenant. Callers run within one tenant.
+            conn.execute(
+                text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id}
+            )
             conn.execute(
                 text(
                     """
@@ -518,7 +530,9 @@ class NeonRunStore:
             for r in rows
         }
 
-    def insert_diffs(self, diffs: list[RunAnomalyDiff], *, run_id: str) -> int:
+    def insert_diffs(
+        self, diffs: list[RunAnomalyDiff], *, run_id: str, tenant_id: str
+    ) -> int:
         if not diffs:
             return 0
         import json
@@ -528,6 +542,7 @@ class NeonRunStore:
         params = [
             {
                 "run_id": run_id,
+                "tid": tenant_id,
                 "tag_path": d.tag_path,
                 "phase_name": d.phase_name,
                 "uns_path": d.uns_path,
@@ -542,8 +557,9 @@ class NeonRunStore:
             for d in diffs
         ]
         with self._engine().begin() as conn:
-            # tenant_id is resolved from the parent run via subquery so we don't
-            # need to thread it through the diff DTO.
+            conn.execute(
+                text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id}
+            )
             conn.execute(
                 text(
                     """
@@ -551,14 +567,12 @@ class NeonRunStore:
                         (run_id, tenant_id, tag_path, phase_name, uns_path,
                          observed, baseline, delta, delta_percent, severity,
                          event_timestamp, metadata)
-                    SELECT CAST(:run_id AS UUID), mr.tenant_id, :tag_path,
-                           :phase_name, CAST(:uns_path AS LTREE),
-                           :observed, :baseline, :delta, :delta_percent,
-                           :severity,
-                           to_timestamp(:event_timestamp),
-                           CAST(:metadata AS JSONB)
-                      FROM machine_run mr
-                     WHERE mr.run_id = CAST(:run_id AS UUID)
+                    VALUES
+                        (CAST(:run_id AS UUID), CAST(:tid AS UUID), :tag_path,
+                         :phase_name, CAST(:uns_path AS LTREE),
+                         :observed, :baseline, :delta, :delta_percent,
+                         :severity, to_timestamp(:event_timestamp),
+                         CAST(:metadata AS JSONB))
                     """
                 ),
                 params,
