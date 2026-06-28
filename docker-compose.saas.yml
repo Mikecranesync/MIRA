@@ -754,6 +754,62 @@ services:
     mem_limit: 256m
     memswap_limit: 256m
 
+  # ─── Historian recording (#2338 epic) ───────────────────────────────────────
+  # Turns the ingested tag_events stream into the tag_event_diffs analysis
+  # stream (#2343) and — when MIRA_RUN_DIFF_ENABLED=1 — records machine runs +
+  # baselines + run-diffs (#2341). Dedicated worker/beat (mirrors the synthetic-
+  # dogfood pattern) on the isolated "historian" queue so it can't disturb other
+  # queues. Needs NEON_DATABASE_URL (same DB the relay ingests into) + migrations
+  # 037 + 057 (and 038 once run-diff is enabled). Run-diff ships OFF; enable only
+  # after the live-Postgres integration test passes on staging.
+  mira-historian-worker:
+    build:
+      context: .
+      dockerfile: mira-crawler/Dockerfile.celery
+    container_name: mira-historian-worker
+    command: celery -A mira_crawler.celery_app worker --concurrency=1 -Q historian --loglevel=info
+    depends_on:
+      mira-redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+      - TAG_DIFF_BATCH_SIZE=${TAG_DIFF_BATCH_SIZE:-1000}
+      - TAG_DIFF_CONFIG_JSON=${TAG_DIFF_CONFIG_JSON:-}
+      # Run-diff (#2341) — OFF until validated on staging (see epic #2338).
+      - MIRA_RUN_DIFF_ENABLED=${MIRA_RUN_DIFF_ENABLED:-0}
+      - MIRA_RUN_TRIGGERS=${MIRA_RUN_TRIGGERS:-}
+      - MIRA_BASELINE_NORMAL_RUN_COUNT=${MIRA_BASELINE_NORMAL_RUN_COUNT:-5}
+      - MIRA_BASELINE_MIN_RUNS=${MIRA_BASELINE_MIN_RUNS:-2}
+      - MIRA_SNAPSHOT_PRE_SECONDS=${MIRA_SNAPSHOT_PRE_SECONDS:-300}
+      - MIRA_SNAPSHOT_POST_SECONDS=${MIRA_SNAPSHOT_POST_SECONDS:-300}
+    networks:
+      - mira-net
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 512m
+
+  mira-historian-beat:
+    build:
+      context: .
+      dockerfile: mira-crawler/Dockerfile.celery
+    container_name: mira-historian-beat
+    command: celery -A mira_crawler.celery_app beat --loglevel=info
+    depends_on:
+      mira-redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - CELERY_BEAT_PROFILE=historian
+    networks:
+      - mira-net
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+
   # ─── mira-cmms-sync — NeonDB ↔ Atlas sync worker (P1) ───────────────────────
   # Long-running loop that pushes NeonDB changes to Atlas every 60s and pulls
   # Atlas-side edits back into NeonDB. Off by default via CMMS_SYNC_ENABLED so
