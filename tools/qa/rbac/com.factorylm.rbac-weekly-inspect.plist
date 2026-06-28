@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Weekly RBAC inspect on Bravo. Install:
+    cp tools/qa/rbac/com.factorylm.rbac-weekly-inspect.plist ~/Library/LaunchAgents/
+    launchctl unload ~/Library/LaunchAgents/com.factorylm.rbac-weekly-inspect.plist 2>/dev/null
+    launchctl load   ~/Library/LaunchAgents/com.factorylm.rbac-weekly-inspect.plist
+  Run now (test):  launchctl start com.factorylm.rbac-weekly-inspect
+  See tools/qa/rbac/weekly_inspect.sh for why this runs on Bravo, not GH Actions.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.factorylm.rbac-weekly-inspect</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/bravonode/Mira/tools/qa/rbac/weekly_inspect.sh</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key><integer>1</integer>
+    <key>Hour</key><integer>6</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/Users/bravonode/Mira/dogfood-output/qa-runs/rbac-weekly.launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/bravonode/Mira/dogfood-output/qa-runs/rbac-weekly.launchd.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/bravonode/.local/bin:/Users/bravonode/.bun/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+</dict>
+</plist>
