@@ -62,10 +62,13 @@ task_routes = {
     "mira_crawler.tasks.gdrive.*": {"queue": "ingest"},
     "mira_crawler.tasks.freshness.*": {"queue": "freshness"},
     "mira_crawler.tasks.component_template.*": {"queue": "ingest"},
-    # --- Run-centric fault detection (#2341) ---
-    "mira_crawler.tasks.historize_runs.*": {"queue": "default"},
-    # --- Tag-diff historizer (issue #2343) ---
-    "mira_crawler.tasks.tag_diff_historizer.*": {"queue": "default"},
+    # --- Historian recording: tag-diff historizer (#2343) + run-diff (#2341) ---
+    # Isolated on the dedicated "historian" queue so the single-purpose
+    # mira-historian-worker drains them without picking up other default work.
+    "mira_crawler.tasks.historize_runs.*": {"queue": "historian"},
+    "tasks.historize_runs.*": {"queue": "historian"},
+    "mira_crawler.tasks.tag_diff_historizer.*": {"queue": "historian"},
+    "tasks.tag_diff_historizer.*": {"queue": "historian"},
     "mira_crawler.tasks.synthetic_dogfood.*": {"queue": "synthetic"},
     "tasks.synthetic_dogfood.*": {"queue": "synthetic"},
     # --- LinkedIn draft generation ---
@@ -130,8 +133,25 @@ _SYNTHETIC_DOGFOOD_SCHEDULE = {
     },
 }
 
+# Historian recording profile (prod mira-historian-beat). Schedules ONLY the
+# tag-diff historizer (#2343) + run-diff (#2341, self-gated by MIRA_RUN_DIFF_ENABLED)
+# — deliberately excludes the intent monitors so enabling history recording in
+# prod does not also start unrelated discovery jobs.
+_HISTORIAN_SCHEDULE = {
+    "tag-diff-historizer": {
+        "task": "tasks.tag_diff_historizer.historize_tag_diffs",
+        "schedule": crontab(minute="*/5"),
+    },
+    "historize-runs": {
+        "task": "tasks.historize_runs.historize_runs",
+        "schedule": timedelta(seconds=30),
+    },
+}
+
 if os.getenv("CELERY_BEAT_PROFILE") == "synthetic-dogfood":
     beat_schedule = _SYNTHETIC_DOGFOOD_SCHEDULE
+elif os.getenv("CELERY_BEAT_PROFILE") == "historian":
+    beat_schedule = _HISTORIAN_SCHEDULE
 else:
     beat_schedule = {
         "reddit-intent-scan": {

@@ -6,6 +6,7 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 ## [Unreleased]
 
 ### Added
+- Historian recording enablement (#2338): prod `mira-historian-worker` + `mira-historian-beat` services (isolated `historian` Celery queue + `historian` beat profile) so the tag-diff historizer (#2343) actually runs in prod, turning ingested `tag_events` into `tag_event_diffs`. Run-diff (#2341) ships gated OFF (`MIRA_RUN_DIFF_ENABLED`) until validated on staging. Requires migrations 037 + 057 applied and `NEON_DATABASE_URL` set.
 - Run-centric fault detection (#2341): `machine_run`/`run_step`/`run_baseline`/`run_diff` schema (migration 038) plus a pure `run_engine` (segmentation → baseline → run-diff) driven by a gated Celery beat task (`MIRA_RUN_DIFF_ENABLED`). Records a run, learns a normal baseline, and diffs anomalous runs into evidence.
 - Tag-diff historizer is now scheduled: a Celery beat task (every 5 min) drives the existing `tag_diff_logger` over the `tag_events` stream into `tag_event_diffs`, so the meaningful-change stream is actually produced (#2343).
 - Historian Query API in `mira-relay`: swappable `HistorianAdapter` + Postgres impl, read endpoints (`/api/tags/live`, `/api/tags/{id}/history`, `POST /api/trends`, `/api/evidence/{id}`), and a tenant-scoped `/ws/tags` subscription socket; runs endpoint stubbed 501 pending the run schema (#2339).
