@@ -5,6 +5,8 @@ All settings overridable via environment variables where noted.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from celery.schedules import crontab
 
 # ---------------------------------------------------------------------------
@@ -59,6 +61,8 @@ task_routes = {
     "mira_crawler.tasks.gdrive.*": {"queue": "ingest"},
     "mira_crawler.tasks.freshness.*": {"queue": "freshness"},
     "mira_crawler.tasks.component_template.*": {"queue": "ingest"},
+    # --- Run-centric fault detection (#2341) ---
+    "mira_crawler.tasks.historize_runs.*": {"queue": "default"},
     # --- LinkedIn draft generation ---
     "linkedin.*": {"queue": "celery"},
 }
@@ -94,6 +98,9 @@ task_annotations = {
     "mira_crawler.tasks.component_template.extract_component_template": {
         "rate_limit": "10/m",
     },
+    # Run-diff historizer — beat owns cadence (30s); cap defensively. The task
+    # is a fast no-op unless MIRA_RUN_DIFF_ENABLED=1.
+    "tasks.historize_runs.historize_runs": {"rate_limit": "4/m"},
 }
 
 # ---------------------------------------------------------------------------
@@ -119,6 +126,12 @@ beat_schedule = {
     "intent-daily-digest": {
         "task": "tasks.intent_digest.send_daily_digest",
         "schedule": crontab(minute=0, hour=10),  # 06:00 ET (EDT)
+    },
+    # Run-centric fault detection (#2341). Polls every 30s; the task itself is a
+    # no-op unless MIRA_RUN_DIFF_ENABLED=1, so the cadence is cheap by default.
+    "historize-runs": {
+        "task": "tasks.historize_runs.historize_runs",
+        "schedule": timedelta(seconds=30),
     },
 }
 
