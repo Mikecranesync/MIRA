@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 import pytest
 
 sys.path.insert(0, "mira-bots")
-sys.path.insert(0, "mira-bots/email")
+sys.path.insert(0, "mira-bots/email_adapter")
 sys.modules.pop("chat_adapter", None)  # isolate from other bot adapters
 
 # ---------------------------------------------------------------------------

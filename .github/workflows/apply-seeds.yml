@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       seeds:
-        description: 'Seeds to apply (comma-separated basenames without .sql, or "all"). Choices: gs10-vfd-knowledge, gs11-field-guide-knowledge, demo-conveyor-001, all.'
+        description: 'Seeds to apply (comma-separated basenames without .sql, or "all"). Choices: gs10-vfd-knowledge, gs11-field-guide-knowledge, demo-conveyor-001, simlab-docs, all. NOTE: simlab-docs is a Python seed (tools/seeds/seed-simlab-docs.py) with its own fixed SimLab tenant — it ignores the tenant_id input and only runs once PR #1816 (simlab/docs/) is on the checked-out ref.'
         required: true
         default: 'all'
         type: string
@@ -139,6 +139,9 @@ jobs:
           fi
           REQUESTED="${{ inputs.seeds }}"
           FILES=()
+          # simlab-docs is a Python seed, not a .sql file — it's resolved into
+          # its own apply step, never the psql plan. Track it separately.
+          RUN_SIMLAB=false
           if [ "$REQUESTED" = "all" ]; then
             for f in "$SEED_DIR/gs10-vfd-knowledge.sql" \
                      "$SEED_DIR/gs11-field-guide-knowledge.sql" \
@@ -149,10 +152,15 @@ jobs:
                 echo "::warning::expected seed missing: $f"
               fi
             done
+            RUN_SIMLAB=true
           else
             IFS=',' read -ra NAMES <<< "$REQUESTED"
             for n in "${NAMES[@]}"; do
               n_trimmed="$(echo "$n" | xargs)"
+              if [ "$n_trimmed" = "simlab-docs" ]; then
+                RUN_SIMLAB=true
+                continue
+              fi
               candidate="$SEED_DIR/${n_trimmed}.sql"
               if [ ! -f "$candidate" ]; then
                 echo "::error::No seed file matched: $candidate"
@@ -161,13 +169,21 @@ jobs:
               FILES+=("$candidate")
             done
           fi
-          if [ "${#FILES[@]}" -eq 0 ]; then
-            echo "::error::Resolved zero seed files."
+          echo "run_simlab=$RUN_SIMLAB" >> "$GITHUB_OUTPUT"
+          if [ "${#FILES[@]}" -eq 0 ] && [ "$RUN_SIMLAB" != "true" ]; then
+            echo "::error::Resolved zero seeds (no .sql files and no simlab-docs)."
             exit 1
           fi
-          printf '%s\n' "${FILES[@]}" > .seed_plan
-          echo "Plan:"
+          # .seed_plan may be empty when only simlab-docs was requested — the
+          # psql steps below loop over zero files, which is a safe no-op. Write a
+          # truly-empty file (no blank line) so `while read` reads nothing.
+          : > .seed_plan
+          if [ "${#FILES[@]}" -gt 0 ]; then
+            printf '%s\n' "${FILES[@]}" > .seed_plan
+          fi
+          echo "Plan (.sql):"
           cat .seed_plan
+          echo "Run SimLab Python seed: $RUN_SIMLAB"
 
       - name: Summarise plan
         run: |
@@ -286,4 +302,108 @@ jobs:
           if [ "$PSQL_EXIT" -ne 0 ]; then
             echo "::error::psql post-check failed with exit $PSQL_EXIT"
             exit "$PSQL_EXIT"
+          fi
+
+      # ── Embedding-coverage gate (seed-path guarantee, #2094) ────────────────
+      # SQL seeds insert text-only rows → `embedding = NULL` → those chunks are
+      # INVISIBLE to the vector + product-name retrieval streams
+      # (mira-bots/shared/neon_recall.py `_product_search` filters
+      # `embedding IS NOT NULL`). They can only ever surface via BM25/ILIKE, where
+      # the fully-embedded OEM manuals out-rank them — so the engine refuses
+      # answers it should ground (the 2026-06-17 Q01/Q10 regression).
+      #
+      # CI runners (ubuntu-latest) CANNOT reach Ollama (nomic-embed-text lives on a
+      # Tailnet node — see seed-oem-manuals.yml), so the embedding BACKFILL runs
+      # OFF-CI. This step is the fail-loud VERIFY half of seed → backfill → verify:
+      # a read-only NULL-count (no Ollama needed) that goes RED while any curated
+      # chunk is still dark — converting "silently dark" into "loudly blocked" with
+      # the exact remediation command.
+      #
+      # CORPUS-WIDE, not tenant-scoped — it mirrors the canary's single definition
+      # of "dark" (`knowledge_entries.tenant_id` is UUID and the curated corpus is
+      # owned by a system tenant, so a tenant-slug filter both fails to interpolate
+      # and misses the rows). Consequence: this gate stays RED against prod until
+      # the prod backfill (#2093) runs — that is correct; it surfaces the open debt.
+      #
+      # Spec:   docs/superpowers/specs/2026-06-17-retrieval-null-embedding-coverage-gap.md
+      # Canary: tests/test_embedding_coverage_canary.py (corpus-wide backstop)
+      # Discipline + off-CI backfill command: tools/seeds/README.md
+      - name: Embedding-coverage gate — a seed is not live until embedded (#2094)
+        if: inputs.mode == 'apply'
+        run: |
+          set -euo pipefail
+          # Curated, retrieval-bearing source types authored via SQL seeds — must
+          # mirror CURATED_RETRIEVAL_TYPES in the canary. No `:` psql variables here,
+          # so a plain `-c` is safe (tenant-slug interpolation is deliberately absent).
+          GATE_TYPES="'field-guide','integration_guide','component_template'"
+
+          # Human-readable breakdown for the step log + summary (never fatal).
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 \
+               -c "SELECT source_type, count(*) AS dark_rows FROM knowledge_entries WHERE embedding IS NULL AND source_type IN (${GATE_TYPES}) GROUP BY source_type ORDER BY dark_rows DESC;" \
+               2>&1 | tee /tmp/embed_gate.out || true
+
+          # Single scalar the gate decision keys on. ON_ERROR_STOP + set -e mean a
+          # DB error fails the step (never a silent empty → treated as 0).
+          DARK=$(psql "$DATABASE_URL" --no-psqlrc -tA -v ON_ERROR_STOP=1 \
+               -c "SELECT count(*) FROM knowledge_entries WHERE embedding IS NULL AND source_type IN (${GATE_TYPES});")
+          DARK="${DARK:-0}"
+          {
+            echo ""
+            echo "### Embedding-coverage gate (#2094)"
+            echo ""
+            echo "Curated NULL-embedding rows (corpus-wide): **${DARK}**"
+            echo ""
+            echo '```'
+            cat /tmp/embed_gate.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${DARK}" -gt 0 ]; then
+            echo "::error::${DARK} curated chunk(s) have NULL embeddings — the seed is APPLIED but NOT LIVE (invisible to vector + product-name retrieval). CI can't embed (no Ollama reach); run the backfill from a Tailnet node, then re-dispatch this workflow: doppler run -p factorylm -c prd -- python tools/backfill_knowledge_embeddings.py"
+            exit 1
+          fi
+          echo "Embedding-coverage gate PASSED — all curated chunks are embedded."
+
+      # ── SimLab doc seed (Python) ───────────────────────────────────────────
+      # Separate from the psql plan: reads the 77 markdown fixtures under
+      # simlab/docs/, chunks them, and inserts under its OWN fixed SimLab tenant
+      # (ignores inputs.tenant_id). Guarded — no-ops with a warning until PR
+      # #1816 (simlab/docs/) is on the checked-out ref.
+      - name: Apply SimLab doc seed (Python)
+        if: steps.resolve.outputs.run_simlab == 'true'
+        run: |
+          set -euo pipefail
+          SEED_PY="tools/seeds/seed-simlab-docs.py"
+          if [ ! -f "$SEED_PY" ] || [ ! -d "simlab/docs" ]; then
+            echo "::warning::SimLab seed skipped — $SEED_PY or simlab/docs/ not on this ref (merge PR #1816 first)."
+            echo "### SimLab doc seed: SKIPPED (simlab/docs not present on ref)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          python3 -m pip install --quiet 'psycopg[binary]==3.*'
+          export NEON_DATABASE_URL="$DATABASE_URL"
+          if [ "${{ inputs.mode }}" = "apply" ]; then
+            echo "::group::SimLab seed --commit"
+            python3 "$SEED_PY" --commit
+            echo "::endgroup::"
+            echo "::group::SimLab seed --verify (BM25 retrievability proof)"
+            python3 "$SEED_PY" --verify | tee /tmp/simlab_verify.out
+            echo "::endgroup::"
+            {
+              echo ""
+              echo "### SimLab doc seed (Python) — applied + verified"
+              echo '```'
+              cat /tmp/simlab_verify.out
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::group::SimLab seed --dry-run"
+            python3 "$SEED_PY" --dry-run | tee /tmp/simlab_dry.out
+            echo "::endgroup::"
+            {
+              echo ""
+              echo "### SimLab doc seed (Python) — dry-run (rolled back)"
+              echo '```'
+              cat /tmp/simlab_dry.out
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
           fi

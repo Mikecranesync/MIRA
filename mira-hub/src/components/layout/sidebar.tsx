@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { API_BASE } from "@/lib/config";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -9,19 +10,20 @@ import {
   Wrench, Radio, Plug, BarChart2, Users, Settings,
   ClipboardList, CalendarDays, Inbox, Package, FileText, TrendingUp,
   Factory, ChevronLeft, ChevronRight, LogOut, Sun, Moon, HelpCircle, Cpu,
-  Layers, Sparkles, Gauge, Network,
+  Layers, Sparkles, Gauge, Network, Upload,
 } from "lucide-react";
 import { restartTour } from "@/components/onboarding/tour";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS, labsEnabled } from "@/providers/access-control";
 import { useTheme } from "@/providers/theme-provider";
 import { LanguageSelector } from "@/components/ui/language-selector";
+import { signOutToLogin } from "./sign-out-action";
 
 const ICON_MAP: Record<string, React.ElementType> = {
   Activity, MessageSquare, AlertTriangle, BookOpen,
   Wrench, Radio, Plug, BarChart2, Users, Settings,
   ClipboardList, CalendarDays, Inbox, Package, FileText, TrendingUp,
-  Cpu, Layers, Sparkles, Gauge, Network,
+  Cpu, Layers, Sparkles, Gauge, Network, Upload,
 };
 
 type NavItemProps = {
@@ -65,9 +67,9 @@ function NavItem({ item, collapsed, active, label }: NavItemProps) {
   );
 }
 
-type MeData = { name: string; initials: string; role: string };
+type MeData = { name: string; initials: string; role: string; capabilities?: string[] };
 
-export function Sidebar({ role = "admin" }: { role?: string }) {
+export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const { theme, toggleTheme } = useTheme();
@@ -76,19 +78,22 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
   const [me, setMe] = useState<MeData | null>(null);
 
   useEffect(() => {
-    fetch("/api/me")
+    fetch(`${API_BASE}/api/me/`)
       .then(r => r.ok ? r.json() : null)
       .then((d: MeData | null) => d && setMe(d))
       .catch(() => {});
   }, []);
 
-  // Labs items only render when NEXT_PUBLIC_LABS_ENABLED=true. They are
-  // mock-data surfaces (Conversations, Alerts, Requests, Parts, Reports,
-  // Team, Documents) — kept in code, hidden from prod IA per ADR-0014.
+  // Nav visibility is capability-gated (#1932). Capabilities come from /api/me —
+  // the SAME source the API route guards use, so the link a user sees and the
+  // API that link calls always agree. Items with no `capability` are visible to
+  // every authenticated user; capability-gated items are hidden until /api/me
+  // confirms the capability (fail-closed — never flash a gated link).
+  const caps = me?.capabilities ?? [];
   const labsOn = labsEnabled();
   const visible = NAV_ITEMS.filter((item) => {
-    if (!(item.roles as readonly string[]).includes(role)) return false;
     if (item.group === "labs" && !labsOn) return false;
+    if (item.capability && !caps.includes(item.capability)) return false;
     return true;
   });
   const primary   = visible.filter((item) => item.group === "primary");
@@ -99,7 +104,7 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
     // Map sidebar keys to translated / display strings. Reordered IA per
     // ADR-0014 — see NAV_ITEMS in providers/access-control.ts.
     const map: Record<string, string> = {
-      "feed":          "Feed",
+      "feed":          "Command Board",
       "namespace":     "Namespace",
       "command-center": "Command Center",
       "channels":      t("channels"),
@@ -109,8 +114,7 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       "assets":        t("assets"),
       "workorders":    "CMMS",
       "scan":          "Scan",
-      "integrations":  "Settings",
-      "admin":         "Admin",
+      "settings":      "Settings",
       "conversations": t("conversations"),
       "alerts":        t("alerts"),
       "requests":      t("requests"),
@@ -119,6 +123,9 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
       "reports":       t("reports"),
       "team":          t("team"),
       "admin-review":  "Review queue",
+      "ctx":           "Contextualization",
+      "ctx-review":    "Import Review",
+      "platform-users": "Platform accounts",
       // Legacy routes (still reachable, not in sidebar):
       "event-log":     t("eventLog"),
       "usage":         t("usage"),
@@ -255,11 +262,22 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
         </button>
 
         {collapsed ? (
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-2">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
               style={{ background: "linear-gradient(135deg, #2563EB, #0891B2)", color: "white" }}>
               {me?.initials ?? "?"}
             </div>
+            <button
+              onClick={signOutToLogin}
+              className="w-8 h-8 rounded-md flex items-center justify-center transition-colors"
+              style={{ color: "#64748B" }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = "var(--sidebar-hover)")}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
+              title={t("signOut")}
+              aria-label={t("signOut")}
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         ) : (
           <div className="flex items-center gap-3">
@@ -269,12 +287,14 @@ export function Sidebar({ role = "admin" }: { role?: string }) {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-medium truncate" style={{ color: "var(--sidebar-fg)" }}>{me?.name ?? "—"}</p>
-              <p className="text-[11px] capitalize" style={{ color: "#64748B" }}>{me?.role ?? role}</p>
+              <p className="text-[11px] capitalize" style={{ color: "#64748B" }}>{me?.role ?? ""}</p>
             </div>
             <button
+              onClick={signOutToLogin}
               className="w-7 h-7 rounded-md flex items-center justify-center transition-colors"
               style={{ color: "#64748B" }}
               title={t("signOut")}
+              aria-label={t("signOut")}
             >
               <LogOut className="w-4 h-4" />
             </button>

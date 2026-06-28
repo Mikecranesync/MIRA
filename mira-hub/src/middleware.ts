@@ -93,14 +93,23 @@ function gateRedirect(req: NextRequest, status: string, trialExpiresAt: unknown)
   return null;
 }
 
-function buildCsp(nonce: string): string {
+function buildCsp(nonce: string, pathname: string): string {
+  // `/scan` is the monday.com marketplace iframe — it must be framable by
+  // monday's marketplace shell. Every other path stays self-only.
+  const frameAncestors = pathname.startsWith("/scan")
+    ? `frame-ancestors 'self' https://*.monday.com`
+    : `frame-ancestors 'self'`;
   return [
     `default-src 'self'`,
-    `script-src 'self' 'nonce-${nonce}' https://accounts.google.com https://apis.google.com https://js.stripe.com`,
+    // www.dropbox.com is required for the Dropbox Chooser: `dropins.js` loads from
+    // there (script-src), the Chooser makes XHRs back to it (connect-src), and the
+    // modern Chooser renders its UI in a www.dropbox.com iframe (frame-src, below).
+    // Without these the script is CSP-blocked and `window.Dropbox` is never defined (#1902).
+    `script-src 'self' 'nonce-${nonce}' https://accounts.google.com https://apis.google.com https://js.stripe.com https://www.dropbox.com`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.stripe.com`,
     `font-src 'self' https://fonts.gstatic.com`,
     `img-src 'self' data: https:`,
-    `connect-src 'self' https://accounts.google.com https://api.hubapi.com https://api.stripe.com https://js.stripe.com`,
+    `connect-src 'self' https://accounts.google.com https://api.hubapi.com https://api.stripe.com https://js.stripe.com https://www.dropbox.com`,
     // Command Center display hosts (DISPLAY_FRAME_SRC) are appended so the framed
     // HMI loads. CSP checks the post-redirect URL, so even though the iframe src is
     // the same-origin /api/command-center/display/[id] route, the display host it
@@ -111,10 +120,31 @@ function buildCsp(nonce: string): string {
     // The display host(s) cover the URL that route 302-redirects to (CSP
     // re-checks frame-src against the post-redirect URL).
     [
-      `frame-src 'self' https://accounts.google.com https://js.stripe.com https://hooks.stripe.com https://mikecranesync.github.io`,
+      `frame-src 'self' https://accounts.google.com https://js.stripe.com https://hooks.stripe.com https://mikecranesync.github.io https://www.dropbox.com`,
       ...DISPLAY_FRAME_SRC,
     ].join(" "),
+    frameAncestors,
   ].join("; ");
+}
+
+// Apply HSTS + XFO + CSP to every response in one place. `/scan` is the
+// monday.com marketplace iframe — it must NOT have X-Frame-Options: DENY
+// (which would block ALL framing); the CSP `frame-ancestors` directive
+// (set by buildCsp) is the modern equivalent and already allows monday.
+function applySecurityHeaders(
+  resp: NextResponse,
+  pathname: string,
+  csp: string,
+): NextResponse {
+  resp.headers.set("Content-Security-Policy", csp);
+  resp.headers.set(
+    "Strict-Transport-Security",
+    "max-age=63072000; includeSubDomains; preload",
+  );
+  if (!pathname.startsWith("/scan")) {
+    resp.headers.set("X-Frame-Options", "DENY");
+  }
+  return resp;
 }
 
 // btoa is a global in the edge runtime; use it instead of Buffer for nonce encoding.
@@ -123,47 +153,64 @@ function b64Nonce(raw: string): string {
 }
 
 export default async function middleware(req: NextRequest, _ev: NextFetchEvent) {
+  void _ev;
   const pathname = req.nextUrl.pathname;
-
-  // Basepath root → /feed. `redirect()` from a Server Component is silently
-  // swallowed in Next.js 16.2.4 standalone + basePath (response comes back
-  // chunked, 0 bytes, no Location header), so the redirect has to live here.
-  if (pathname === "/") {
-    const url = req.nextUrl.clone();
-    url.pathname = "/feed";
-    url.search = "";
-    return NextResponse.redirect(url);
-  }
 
   // Per-request nonce for script-src CSP — removes unsafe-inline/unsafe-eval.
   // Forwarded as x-nonce request header so RootLayout can attach it to <Script>.
   const nonce = b64Nonce(crypto.randomUUID());
-  const csp = buildCsp(nonce);
+  const csp = buildCsp(nonce, pathname);
 
   const cookieValue =
     req.cookies.get(SECURE_NAME)?.value ?? req.cookies.get(REGULAR_NAME)?.value;
   const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET ?? "";
 
   // No cookie or no secret configured → bounce to /login with callback.
+  // EXCEPT for /api/* which must return 401 JSON (matches sessionOr401() in
+  // lib/session.ts) so non-browser consumers (curl, SDK, canary) don't get
+  // an HTML redirect they can't interpret. See #1764.
   if (!cookieValue || !secret) {
+    if (pathname.startsWith("/api/")) {
+      return applySecurityHeaders(
+        NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+        pathname,
+        csp,
+      );
+    }
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
     url.searchParams.set("callbackUrl", pathname);
-    const resp = NextResponse.redirect(url);
-    resp.headers.set("Content-Security-Policy", csp);
-    return resp;
+    return applySecurityHeaders(NextResponse.redirect(url), pathname, csp);
   }
 
   const token = await decodeSessionJwt(cookieValue, secret);
   if (!token) {
+    if (pathname.startsWith("/api/")) {
+      return applySecurityHeaders(
+        NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+        pathname,
+        csp,
+      );
+    }
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
     url.searchParams.set("callbackUrl", pathname);
-    const resp = NextResponse.redirect(url);
-    resp.headers.set("Content-Security-Policy", csp);
-    return resp;
+    return applySecurityHeaders(NextResponse.redirect(url), pathname, csp);
+  }
+
+  // Authenticated. Basepath root → /feed (the default landing surface).
+  // Placed AFTER the auth gate, not before it: an UNAUTHENTICATED root request
+  // must preserve "/" as its login callback, not be pre-redirected to /feed and
+  // come back with callbackUrl=/feed, losing the destination (#1952). `redirect()`
+  // from a Server Component is silently swallowed in Next.js 16.2.4 standalone +
+  // basePath (chunked 0-byte response, no Location header), so it lives here.
+  if (pathname === "/") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/feed";
+    url.search = "";
+    return applySecurityHeaders(NextResponse.redirect(url), pathname, csp);
   }
 
   // Already on a gate page — let it render so the user can act.
@@ -171,9 +218,11 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
     const status = String(token.status ?? "trial");
     const redirectUrl = gateRedirect(req, status, token.trialExpiresAt);
     if (redirectUrl) {
-      const resp = NextResponse.redirect(redirectUrl);
-      resp.headers.set("Content-Security-Policy", csp);
-      return resp;
+      return applySecurityHeaders(
+        NextResponse.redirect(redirectUrl),
+        pathname,
+        csp,
+      );
     }
   }
 
@@ -181,8 +230,7 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-nonce", nonce);
   const response = NextResponse.next({ request: { headers: requestHeaders } });
-  response.headers.set("Content-Security-Policy", csp);
-  return response;
+  return applySecurityHeaders(response, pathname, csp);
 }
 
 export const config = {
@@ -194,6 +242,9 @@ export const config = {
     // service-token ingest + status routes used by tools/mira-drop-watcher —
     // they do their own bearer-token check, so the cookie-based middleware
     // must not intercept them.
-    "/((?!login|signup|magic|m/|quickstart|api/auth|api/public|api/quickstart|api/health|api/scanbe/healthz|api/uploads/folder|api/uploads/[a-f0-9]|_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt).*)",
+    // api/i3x/* is the read-only i3X (CESMII) API — it has its OWN bearer-key
+    // auth (resolveI3xTenant) and GET /info MUST be public, so the session
+    // middleware must not intercept it.
+    "/((?!login|signup|magic|m/|quickstart|api/auth|api/public|api/quickstart|api/health|api/version|api/i3x/|api/scanbe/healthz|api/uploads/folder|api/uploads/[a-f0-9]|_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt).*)",
   ],
 };

@@ -1,7 +1,7 @@
 """PM Schedule Extractor — NORTH STAR FLYWHEEL CORE.
 
 Takes parsed manual chunks from knowledge_entries and extracts structured
-preventive maintenance schedules using the Groq→Cerebras→Gemini cascade.
+preventive maintenance schedules using the Groq→Cerebras→Together cascade.
 
 This is step 4 in the Auto-PM Pipeline:
   Photo → identify equipment → download manual → parse → [EXTRACT PMs] → calendar → share

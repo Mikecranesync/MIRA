@@ -41,6 +41,23 @@ repos:
     hooks:
       - id: gitleaks
 
+  # Local: actionlint — GitHub Actions workflow lint. Catches the duplicate-key /
+  # schema / expression errors GitHub rejects at parse time (e.g. the duplicate
+  # `concurrency:` key that broke compose-mem-lint.yml — #1725 — failing in 0s
+  # with no logs). `-shellcheck=` disables embedded shellcheck so pre-existing
+  # run-block style nits don't block edits (.sh is shellchecked separately).
+  # Runs only when a .github/workflows/*.yml file is staged. Requires actionlint
+  # (brew install actionlint).
+  - repo: local
+    hooks:
+      - id: actionlint
+        name: actionlint (GitHub Actions workflow lint)
+        entry: actionlint -shellcheck=
+        language: system
+        files: ^\.github/workflows/.*\.ya?ml$
+        pass_filenames: true
+        stages: [pre-commit]
+
   # Local: FSM smoke — fast unit-test suite that catches the regression class
   # PR #411 fixed (Q-trap default mismatch) before push. No LLM calls, no API keys.
   # Runs only when *.py files are staged. Target: <30s wall.

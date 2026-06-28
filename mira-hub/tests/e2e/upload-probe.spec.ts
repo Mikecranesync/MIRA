@@ -15,7 +15,7 @@
  *
  * Output is a single structured console report you can paste back.
  */
-import { test, expect, request as playwrightRequest } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -62,10 +62,6 @@ test("upload flow — full probe", async ({ browser }) => {
   } catch (e) {
     push("1. login", false, { url: page.url(), error: String(e) });
   }
-
-  // Capture cookies for the API-context probe
-  const cookies = await ctx.cookies();
-  const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
 
   // ── 2. /hub/api/connections ──────────────────────────────────────────────
   {
@@ -296,7 +292,6 @@ test("upload flow — full probe", async ({ browser }) => {
   }
 
   // ── Final report ─────────────────────────────────────────────────────────
-  /* eslint-disable no-console */
   console.log("\n╔══════════════════════════════════════════════════════════════╗");
   console.log("║  UPLOAD FLOW PROBE REPORT                                    ║");
   console.log("╚══════════════════════════════════════════════════════════════╝\n");
@@ -319,7 +314,6 @@ test("upload flow — full probe", async ({ browser }) => {
       .map((c) => c.name)
       .join(", ")})`,
   );
-  /* eslint-enable no-console */
 
   // Soft-assert: login + API probes should all succeed even if pickers are
   // mis-configured — we want the report, not a red test.

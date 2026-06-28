@@ -16,8 +16,13 @@ from admin_commands import (
 )
 from chat_adapter import TelegramChatAdapter
 from PIL import Image
-from shared import tts
+from shared import chat_tenant, tts
 from shared.chat.dispatcher import ChatDispatcher
+from shared.contextualization_intake import (
+    INGEST_ROUTE_TELEGRAM,
+    build_intake_envelope,
+    submit_intake_to_hub,
+)
 from shared.conversation_logger import log_turn, measure_ms
 from shared.engine import Supervisor
 from shared.identity.service import get_identity_service
@@ -66,7 +71,11 @@ MCP_REST_API_KEY = os.environ.get("MCP_REST_API_KEY", "")
 KNOWLEDGE_COLLECTION_ID = os.environ.get(
     "KNOWLEDGE_COLLECTION_ID", "dd9004b9-3af2-4751-9993-3307e478e9a3"
 )
-INGEST_SERVICE_URL = os.environ.get("INGEST_SERVICE_URL", "")
+# HubV3: Telegram is a thin evidence-capture client. Photos/docs are submitted as
+# the §2 contextualization intake contract to the Hub import endpoint (the Hub is
+# the system of record). Replaces the legacy mira-ingest {asset_tag, image} path.
+HUB_IMPORT_URL = os.environ.get("HUB_IMPORT_URL", "")
+HUB_IMPORT_TOKEN = os.environ.get("HUB_IMPORT_TOKEN", "")
 
 engine = Supervisor(
     db_path=os.environ.get("MIRA_DB_PATH", "/data/mira.db"),
@@ -181,54 +190,96 @@ def _resize_for_vision(image_bytes: bytes) -> bytes:
     return buf.getvalue()
 
 
-def _equipment_type_from_doc(filename: str, caption: str) -> str:
-    """Derive equipment type slug from filename, with caption override.
+def _intake_meta(update: Update) -> tuple[str, str, str]:
+    """(uploader_id, captured_at_iso, tenant_id) from a Telegram update.
 
-    Caption first word wins: sending 'VFD' as caption → 'vfd'.
-    Fallback: strip doc-type suffixes from filename stem.
+    Uploader is the numeric Telegram id (pseudonymous) — never a name — to keep
+    PII out of provenance. Tenant is resolved by the **uploader's user id**, the
+    same key the chat adapter uses (``chat_adapter.py`` → ``chat_tenant.resolve``)
+    and that onboarding maps; ``effective_chat.id`` is the (negative) group id in
+    group chats and would miss the mapping.
     """
-    if caption and caption.strip():
-        return caption.strip().split()[0].lower()[:40]
-    stem = os.path.splitext(filename)[0].lower()
-    for suffix in (
-        "-manual",
-        "-guide",
-        "-spec",
-        "-datasheet",
-        "-data-sheet",
-        "_manual",
-        "_guide",
-        "_spec",
-        "_datasheet",
-        "_data_sheet",
-    ):
-        if stem.endswith(suffix):
-            stem = stem[: -len(suffix)]
-            break
-    return stem[:40] or "general"
+    uploader = str(update.effective_user.id) if update.effective_user else ""
+    msg_date = getattr(update.message, "date", None)
+    captured_at = msg_date.isoformat() if msg_date else ""
+    tenant_id = chat_tenant.resolve(uploader)
+    return uploader, captured_at, tenant_id
 
 
-async def _ingest_photo_background(photo_bytes: bytes, asset_tag: str) -> None:
-    """POST photo to mira-ingest. Runs in background — never raises."""
-    if not INGEST_SERVICE_URL:
+def _asset_hints_from_caption(caption: str) -> dict:
+    """Minimal asset-identity hint from a caption (first token = asset name).
+
+    Preserves today's ``asset_tag`` behaviour. Richer hints (mfr/model/serial/
+    IP/UNS) are the Hub's job to derive from evidence — the client owns no truth.
+    """
+    tokens = caption.split() if caption else []
+    return {"name": tokens[0]} if tokens else {}
+
+
+async def _submit_photo_to_hub(raw_bytes: bytes, caption: str, update: Update) -> None:
+    """Build the §2 intake envelope for a photo and POST it to the Hub.
+
+    Runs in background — ``submit_intake_to_hub`` never raises, so a failed Hub
+    POST cannot break the chat reply. Replaces the legacy mira-ingest path.
+    """
+    if not HUB_IMPORT_URL:
         return
-    try:
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(
-                f"{INGEST_SERVICE_URL}/ingest/photo",
-                data={"asset_tag": asset_tag},
-                files={"image": ("photo.jpg", photo_bytes, "image/jpeg")},
-            )
-            if resp.status_code == 200:
-                logger.info("Ingest OK for %s: id=%s", asset_tag, resp.json().get("id"))
-            else:
-                logger.warning("Ingest failed %s: %s", resp.status_code, resp.text[:200])
-    except Exception as e:
-        logger.error("Ingest background error: %s", e)
+    uploader, captured_at, tenant_id = _intake_meta(update)
+    envelope = build_intake_envelope(
+        raw_bytes=raw_bytes,
+        filename="photo.jpg",
+        mime="image/jpeg",
+        uploader=uploader,
+        captured_at=captured_at,
+        caption=caption,
+        asset_hints=_asset_hints_from_caption(caption),
+        ingest_route=INGEST_ROUTE_TELEGRAM,
+    )
+    await submit_intake_to_hub(
+        envelope,
+        raw_bytes=raw_bytes,
+        filename="photo.jpg",
+        mime="image/jpeg",
+        tenant_id=tenant_id,
+        token=HUB_IMPORT_TOKEN or None,
+    )
+
+
+async def _submit_doc_to_hub(pdf_bytes: bytes, filename: str, caption: str, update: Update) -> bool:
+    """Build the §2 intake envelope for a PDF and POST it to the Hub.
+
+    Returns True on a 2xx Hub response. Never raises.
+    """
+    if not HUB_IMPORT_URL:
+        return False
+    uploader, captured_at, tenant_id = _intake_meta(update)
+    envelope = build_intake_envelope(
+        raw_bytes=pdf_bytes,
+        filename=filename,
+        mime="application/pdf",
+        uploader=uploader,
+        captured_at=captured_at,
+        caption=caption,
+        asset_hints=_asset_hints_from_caption(caption),
+        ingest_route=INGEST_ROUTE_TELEGRAM,
+    )
+    return await submit_intake_to_hub(
+        envelope,
+        raw_bytes=pdf_bytes,
+        filename=filename,
+        mime="application/pdf",
+        tenant_id=tenant_id,
+        token=HUB_IMPORT_TOKEN or None,
+    )
 
 
 async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Receive PDF documents, index into Open WebUI KB via mira-ingest."""
+    """Receive PDF documents and submit them to the Hub as intake evidence.
+
+    HubV3: a PDF is a contextualization source. The bot builds the §2 intake
+    contract and POSTs it (+ raw bytes) to the Hub import endpoint, where it
+    lands as a ``proposed`` source for review. The bot owns no truth.
+    """
     doc = update.message.document
     filename = doc.file_name or "upload.pdf"
     caption = update.message.caption or ""
@@ -242,55 +293,31 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"{filename} is {doc.file_size // MB}MB — limit is 20MB.")
         return
 
-    if not INGEST_SERVICE_URL:
-        await update.message.reply_text("Ingest service not configured.")
+    if not HUB_IMPORT_URL:
+        await update.message.reply_text("Hub intake is not configured.")
         return
 
-    equipment_type = _equipment_type_from_doc(filename, caption)
-    await update.message.reply_text(f"Indexing {filename}...")
-    logger.info(
-        "PDF from %s: %s (type=%s)", update.effective_user.first_name, filename, equipment_type
-    )
+    await update.message.reply_text(f"Submitting {filename} to the Hub...")
+    logger.info("PDF from telegram_id=%s: %s", update.effective_user.id, filename)
 
-    async def _do_ingest_doc():
+    async def _do_submit_doc():
         try:
             tg_file = await context.bot.get_file(doc.file_id)
             pdf_bytes = bytes(await tg_file.download_as_bytearray())
-            async with httpx.AsyncClient(timeout=360) as client:
-                resp = await client.post(
-                    f"{INGEST_SERVICE_URL}/ingest/document-kb",
-                    data={"filename": filename, "equipment_type": equipment_type or ""},
-                    files={"file": (filename, pdf_bytes, "application/pdf")},
-                )
-                resp.raise_for_status()
-                data = resp.json()
-            col = data.get("collection_name", "Knowledge Base")
-            proc = data.get("processing_status", "completed")
-            if proc == "completed":
-                reply = f"Indexed *{filename}* into *{col}* collection.\nAsk me anything about it."
-            else:
+            ok = await _submit_doc_to_hub(pdf_bytes, filename, caption, update)
+            if ok:
                 reply = (
-                    f"*{filename}* uploaded to *{col}*.\n"
-                    "Extraction is still processing — RAG will be available shortly."
+                    f"Submitted *{filename}* to the Hub for review.\n"
+                    "It will appear as a proposed source once contextualized."
                 )
-            await update.message.reply_text(reply, parse_mode="Markdown")
-        except httpx.HTTPStatusError as e:
-            code = e.response.status_code
-            if code == 429:
-                msg = "Daily ingest limit reached. Try again tomorrow."
-            elif code == 413:
-                msg = f"{filename} is too large (limit 20MB)."
-            elif code == 422:
-                msg = f"Could not process {filename}: {e.response.text[:120]}"
             else:
-                msg = f"Indexing failed ({code}). Try again later."
-            logger.error("doc ingest HTTP %s: %s", code, e.response.text[:200])
-            await update.message.reply_text(msg)
+                reply = f"Couldn't submit {filename} to the Hub. Please try again later."
+            await update.message.reply_text(reply, parse_mode="Markdown")
         except Exception as exc:
-            logger.error("doc ingest error: %s", exc)
-            await update.message.reply_text(f"Indexing {filename} failed. Please try again.")
+            logger.error("doc submit error: %s", exc)
+            await update.message.reply_text(f"Submitting {filename} failed. Please try again.")
 
-    asyncio.create_task(_do_ingest_doc())
+    asyncio.create_task(_do_submit_doc())
 
 
 def _get_voice_enabled(chat_id: str) -> bool:
@@ -495,10 +522,9 @@ async def _dispatch_single_photo(
             logger.error("Photo processing error: %s", e)
             final_reply = f"MIRA error: {e}"
 
-    if INGEST_SERVICE_URL:
-        asset_tag = caption.split()[0] if caption else "UNKNOWN"
-        asyncio.create_task(_ingest_photo_background(raw_bytes, asset_tag))
-        final_reply += "\n\nPhoto queued for knowledge base."
+    if HUB_IMPORT_URL:
+        asyncio.create_task(_submit_photo_to_hub(raw_bytes, caption, update))
+        final_reply += "\n\nPhoto submitted to the Hub for review."
 
     await update.message.reply_text(final_reply)
     await _maybe_send_voice(update, context, chat_id, final_reply)
@@ -561,10 +587,9 @@ async def _enqueue_multi_photo_burst(
         await photo_queue.mark_failed(batch_id, "queue full at close_burst")
         return
 
-    if INGEST_SERVICE_URL:
-        asset_tag = caption.split()[0] if caption else "UNKNOWN"
+    if HUB_IMPORT_URL:
         for raw_bytes, _ in batches:
-            asyncio.create_task(_ingest_photo_background(raw_bytes, asset_tag))
+            asyncio.create_task(_submit_photo_to_hub(raw_bytes, caption, update))
 
 
 async def _flush_collector(

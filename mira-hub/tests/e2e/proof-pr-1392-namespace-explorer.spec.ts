@@ -152,8 +152,6 @@ test("5. PUT /api/namespace/node/:id — rename parent", async ({ page }) => {
 
 test("6. POST /api/namespace/node/:id/files — upload PDF", async ({ page }) => {
   await loginPage(page);
-  const cookies = await page.context().cookies();
-  const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
 
   const samplePath = path.resolve(__dirname, "fixtures/sample.pdf");
   const fileBytes = fs.readFileSync(samplePath);
@@ -166,11 +164,9 @@ test("6. POST /api/namespace/node/:id/files — upload PDF", async ({ page }) =>
   const fetchRes = await page.evaluate(
     async ({
       url,
-      cookieHeader: _cookieHeader,
       bytes,
     }: {
       url: string;
-      cookieHeader: string;
       bytes: number[];
     }) => {
       const fd = new FormData();
@@ -182,7 +178,6 @@ test("6. POST /api/namespace/node/:id/files — upload PDF", async ({ page }) =>
     },
     {
       url: `${HUB}/api/namespace/node/${childNodeId}/files`,
-      cookieHeader,
       bytes: Array.from(fileBytes),
     }
   );

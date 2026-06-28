@@ -1,13 +1,16 @@
 # MIRA — Build State
 
-**Version:** v3.4.0 | **Updated:** 2026-05-07
-**One-liner:** AI-powered industrial maintenance diagnostic platform
-**Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Gemini (cascade, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
+**Version:** see `/VERSION` (authoritative overall counter; auto-tagged `vX.Y.Z` on merge — `docs/versioning.md`)
+**One-liner:** FactoryLM = the maintenance-context layer that makes messy factory data trustworthy for AI (on any UNS); MIRA = the grounded agent that proves it by diagnosing with citations. **Canonical wedge → `NORTH_STAR.md`** (lead with context, not copilot; adapters retained).
+**Inference:** `INFERENCE_BACKEND=cloud` → Groq → Cerebras → Together (cascade, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
 **Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → Supervisor (shared/engine.py) → cascade providers
 
 ---
 
 ## North Star
+- **🧭 CANONICAL WEDGE — `NORTH_STAR.md` (2026-06-22).** FactoryLM = the maintenance-context layer (makes messy data trustworthy for AI on *any* UNS); MIRA = the grounded agent that proves it by diagnosing with citations. **Lead with the context platform, never the copilot.** Adapters (Slack/Telegram/Ignition/QR/web) are retained consumption surfaces — each renders the *same approved-context answer*. The competitive map + the **ProveIt! 2027 demo runbook** (`docs/plans/2026-06-22-proveit-2027-demo-runbook.md`) live there. Supersedes the older "Slack-first copilot" / "digital-transformation-firm" framings.
+- **🚦 BETA GATE — A stranger can upload their own equipment manual and get a cited answer without Mike manually fixing anything.** The release gate for the "Path to Beta Testers" phase. **Status (2026-06-17): MET / PASSING on deploy truth** — the upload→retrieval gap is **closed** (#1592 folder=brain + #1863 blind-upload Inbox node + #1911 `is_private=true` + #2100 embed-on-write; un-xfailed in #2077). `tests/beta/beta_ready_upload_retrieval_citation.py` is now a **real assertion**, CI-enforced by `.github/workflows/beta-gate.yml` against a stranger provisioned on staging Neon. Don't reintroduce the gap: per-tenant uploads land in `knowledge_entries` (`is_private=true`) and are citable on the Hub NodeChat path — `/api/uploads/folder` (Open WebUI KB only) is **not** a citable door. Keep it green; see `docs/plans/2026-06-07-path-to-beta.md` and `.claude/rules/knowledge-entries-tenant-scoping.md`.
+- **🧭 PRODUCT DIRECTION — Train before deploy.** The Command Center (`mira-hub`) builds the namespace and **validates** MIRA. Ignition/HMI **consumes approved intelligence** — it is a deployment surface, not the onboarding system. Doctrine: `.claude/rules/train-before-deploy.md`; lifecycle spec: `docs/specs/asset-agent-validation-spec.md`.
 - **PRIMARY FOCUS — Master implementation plan:** `docs/plans/2026-06-01-mira-master-architecture-plan.md` — 14-phase build plan governing all current development. Every session must align to this plan. No unrelated dev projects until all phases are complete.
 - **PRIMARY:** `docs/THEORY_OF_OPERATIONS.md` — what MIRA is, how it works, why. Read first before any feature work.
 - **Contract:** `docs/specs/maintenance-namespace-builder-spec.md` — the namespace-builder product surface (UNS gate, AI proposals, readiness levels).
@@ -23,7 +26,7 @@
 ## Hard Constraints (PRD §4)
 
 1. **Licenses:** Apache 2.0 or MIT ONLY.
-2. **Cloud LLMs:** Groq + Cerebras + Gemini cascade (all free-tier, OpenAI-compat). NeonDB for persistence. Doppler-managed secrets. **No Anthropic** (removed PR #610 — never reintroduce).
+2. **Cloud LLMs:** Groq + Cerebras + Together cascade (all free-tier, OpenAI-compat). NeonDB for persistence. Doppler-managed secrets. **No Anthropic** (removed PR #610 — never reintroduce).
 3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the LLM call.
 4. **Secrets:** All via Doppler. Config is env-scoped: `factorylm/dev` (local), `factorylm/stg` (staging), `factorylm/prd` (production). Never commit `.env` to git. Never paste prod values into a dev shell — set them in `factorylm/dev`.
 5. **Containers:** One per service. `restart: unless-stopped` + healthcheck. Pinned image versions.
@@ -40,9 +43,9 @@
 | | DEV | STAGING | PROD |
 |---|---|---|---|
 | Where | CHARLIE local | CHARLIE + Neon staging branch | VPS (`165.245.138.91`) |
-| Compose | `docker-compose.yml` | `docker-compose.staging.yml` *(TODO)* | `docker-compose.saas.yml` |
+| Compose | `docker-compose.yml` | `docker-compose.staging.yml` (local-dev) + `docker-compose.staging-vps.yml` (VPS) | `docker-compose.saas.yml` |
 | Doppler | `factorylm/dev` | `factorylm/stg` | `factorylm/prd` |
-| Telegram | `@MiraDevBot` or none | `@MiraStagingBot` *(TODO)* | `@FactoryLM_Diagnose` |
+| Telegram | `@MiraDevBot` or none | `@Mira_stagong_bot` (token `TELEGRAM_BOT_TOKEN_STG`) | `@FactoryLM_Diagnose` |
 | Safe to break | YES | YES (gate before promotion) | **NEVER** |
 
 **Hard rules (do not bypass — `prod-guard.sh` enforces #1–#3):**
@@ -133,6 +136,12 @@ bash install/smoke_test.sh
 
 ## Where to Resume → `wiki/hot.md`
 ## Offline Testing → `tests/eval/README.md`
+## SimLab (ProveIt-style simulated factory benchmark) → `docs/simlab/README.md`
+The flagship is a deterministic, headless **juice bottling line** (`simlab/` package): 8 machines
++ utilities, PackML states, PLC-style tags, UNS, 6 replayable fault scenarios, simulated docs,
+MIRA diagnostic (evidence + rubric), train-before-deploy approval. `python -m simlab` runs it
+locally. NOT a toy conveyor — the headless simulator is the source of truth; Factory I/O is an
+optional visual layer only. Eval scenarios run against the real Supervisor via `tests/simlab/runner.py`.
 
 ---
 
@@ -154,7 +163,7 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **NeonDB SSL from Windows** — `channel_binding` fails. Use macOS hosts instead.
 - **Intent classifier** — defaults to `industrial` for unrecognized queries (biased toward helping); short greetings route to `greeting` only when <20 chars AND contain a greeting word. Fixed 2026-04-15 in #280. Still: test with realistic phrasing before assuming a bounce is a bug.
 - **Competing Telegram pollers** — Only one process per bot token. Check CHARLIE for stale pollers.
-- **Gemini key blocked** — 403 in Doppler. Cascade falls through to next provider; if all fail, falls through to Open WebUI/Ollama.
+- **Together AI is the third provider** — replaced Gemini (403-blocked in Doppler). Key-gated via `TOGETHERAI_API_KEY`; if all cloud providers fail, the cascade falls through to Open WebUI/Ollama.
 
 ---
 
@@ -162,8 +171,11 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 
 - **Architecture (layer map + dependency rules):** `docs/ARCHITECTURE.md`
 - **Quality score (domain grades):** `docs/QUALITY_SCORE.md`
+- **Agent eval / tracing / observability audit + decision:** `docs/observability/mira-agent-eval-audit.md` — KEEP RAGAS/DeepEval/5-regime evals; EXTEND with `mira-bots/shared/agent_trace.py` (cloud-free per-turn trace + JSONL + optional OTel/Phoenix via `MIRA_OTEL_ENDPOINT`, off by default). Phoenix optional; no LangGraph (ADR-0011).
 - **Harness plan (security/measurement/arch phases):** `docs/superpowers/plans/2026-04-17-harness-engineering-industrial-grade.md`
 - **Release notes:** `docs/CHANGELOG.md`
+- **Versioning & rollback (every merge bumps `/VERSION`, auto-tags `vX.Y.Z` + a rollback checkpoint):** `docs/versioning.md` — enforced by `version-gate.yml` (required) + `version-tag.yml`
+- **Kiosk / AskMira deploy + prod verify runbook:** `docs/runbooks/kiosk-askmira-deploy-and-verify.md` — read BEFORE shipping any `mira-bots/ask_api/`, kiosk-scoped engine fast-path, or AskMira `view.json` change. Documents the **`services=mira-ask`** dispatch + 9/10 Mode A hard-pass + Mode B browser verify.
 - **All env vars:** `docs/env-vars.md`
 - **Known issues / deferred / abandoned:** `docs/known-issues.md`
 - **ADRs:** `docs/adr/`
@@ -175,13 +187,15 @@ Every Playwright proof-of-work screenshot must ALSO be saved to `docs/promo-scre
 - **Sprint state:** `.planning/STATE.md`
 - **Active 90-day MVP plan:** `docs/plans/2026-04-19-mira-90-day-mvp.md` — locked 2026-04-19 → 2026-07-19; **read its "Currently in-flight" section + run the 3-command coordination check before claiming any work**
 - **Active namespace-builder plan:** `docs/plans/2026-05-15-maintenance-namespace-builder.md` — integrates with the 90-day plan (Units 2/4/9a fold in as Phase 1/2/4 components); has its own "Currently in-flight" section — check both.
+- **Maintenance Intelligence Module (self-onboarding Ignition module — "detect AND explain"):** resume `docs/RESUME_2026-06-14_maintenance-intelligence-module.md`; plan `~/.claude/plans/yes-map-the-path-warm-wadler.md`; proving plan `docs/plans/2026-06-14-proving-test-case-plan.md`. **Phase 1 DONE** (`83ea8e81`): the A0–A12 anomaly rules run **in-gateway** on a live Ignition tag snapshot (`ignition/webdev/FactoryLM/api/diagnose/`; rules in `plc/conv_simple_anomaly/rules_core.py`, dual Py2.7/3.12, drift-guarded by `tests/regime7_ignition/test_diagnose_parity.py`). NOTE: the Ignition **WebDev module is not installed** on the bench gateway (the HTTP endpoint 404s) — Phase 2 panel uses a Perspective project script, no WebDev needed.
 - **Dev loop (pre-commit + watcher):** `wiki/references/dev-loop.md`
 - **Karpathy principles (behavior rules):** `.claude/rules/karpathy-principles.md`
+- **Debugging & verification conventions:** `.claude/rules/debugging-conventions.md` — multi-cause perf debugging; verify schema/API paths before guessing
 - **Environments doctrine (dev / staging / prod):** `docs/environments.md`
 - **Enforcement layer:** `docs/specs/enforcement-layer-spec.md` — Playwright audit, write-path round-trip, enum drift, spec staleness, PR template, NeonDB canary
 - **Claude Code v2.1+ defaults (Opus 4.7, xhigh, /effort, /autofix-pr, Routines):** `wiki/references/claude-code-v2.1.md`
 - **MIRA Routines (cloud-side scheduled work):** `wiki/references/routines.md`
-- **CodeGraph (semantic code index + MCP):** `wiki/references/codegraph.md` — usage rules in `.claude/rules/codegraph-usage.md`
+- **CodeGraph (semantic code index + MCP):** `wiki/references/codegraph.md` — usage rules in `.claude/rules/codegraph-usage.md`. Run `tools/codegraph-preflight.sh` before non-doc code work; trust the call-graph only after freshness passes. **Graphify is excluded from code navigation** (`.claude/rules/graphify-excluded.md`).
 
 ---
 
@@ -217,12 +231,12 @@ Installed 2026-04-20. Triggers on every PR to `main`/`develop`/`dev`.
 | ast-grep rules | `.ast-grep-rules/` | Hardcoded IPs, secrets, missing socket error handling, raw FastAPI body |
 | ast-grep config | `sgconfig.yml` | Rule discovery (replaces diffray — diffray v0.5.4 requires OpenAI) |
 | Self-fix script | `scripts/pr_self_fix.sh` | Reads 🔴 IMPORTANT review comments, asks the LLM cascade for patches, applies + pushes (up to 3 loops) |
-| Pre-commit hook | `.githooks/pre-commit` | shellcheck + rg credential scan + debug artifact scan on staged files |
+| Pre-commit hook | `.githooks/pre-commit` | shellcheck + rg credential scan + debug artifact scan + actionlint (workflows) on staged files |
 
 **To trigger manually:** `gh workflow run code-review.yml`
 **To run self-fix:** `bash scripts/pr_self_fix.sh <PR_NUMBER>`
 **Hook active:** `git config core.hooksPath .githooks` (already set in this repo)
-**Tools required locally:** `shellcheck`, `rg`, `sg` (ast-grep), `scc`, `difft`
+**Tools required locally:** `shellcheck`, `rg`, `sg` (ast-grep), `scc`, `difft`, `actionlint`
 
 ---
 

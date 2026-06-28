@@ -67,7 +67,7 @@ const CONVERSATIONS: Conversation[] = [
     ],
   },
   {
-    id: "c005", tech: "Mike Harper", techInitials: "MH",
+    id: "c005", tech: "Alex Rivera", techInitials: "AR",
     channel: "Open WebUI", channelEmoji: "🖥️",
     lastMessage: "Show me the weekly wrench time breakdown by tech",
     ts: "Yesterday", asset: null, unread: 0,
@@ -83,6 +83,10 @@ export default function ConversationsPage() {
   if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
     return <LabsStub feature="Conversations" />;
   }
+  return <ConversationsLabsPage />;
+}
+
+function ConversationsLabsPage() {
   const t = useTranslations("conversations");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Conversation | null>(null);

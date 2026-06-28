@@ -25,6 +25,10 @@ export default function PartsPage() {
   if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
     return <LabsStub feature="Parts" />;
   }
+  return <PartsLabsPage />;
+}
+
+function PartsLabsPage() {
   const t = useTranslations("parts");
   const tCommon = useTranslations("common");
   const [query, setQuery]         = useState("");

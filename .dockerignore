@@ -1,0 +1,47 @@
+# Repo-root build context exclusions.
+#
+# Several services build with the repo root as their Docker context
+# (mira-ingest, mira-pipeline, mira-bots/telegram — all use explicit COPY
+# allow-lists). Without this file the whole monorepo (node_modules, .git, .next,
+# build artifacts, screenshots) is sent to the Docker daemon as the context —
+# gigabytes, and slow on the VPS. Everything below is excluded from EVERY
+# root-context build; none of those builds COPY any of these paths.
+#
+# NOTE: this does NOT affect the mira-hub image (its build context is ./mira-hub,
+# governed by mira-hub/.dockerignore, if any).
+
+# Version control + CI
+.git
+.github
+.gitignore
+
+# Node / Next.js (no Python service copies these)
+**/node_modules
+**/.next
+**/dist
+**/build
+
+# Python caches / virtualenvs
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.venv
+**/venv
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+
+# Local env + secrets (secrets come from Doppler at runtime, never the image)
+**/.env
+**/.env.*
+
+# Editor / OS noise
+.DS_Store
+**/.DS_Store
+**/*.log
+
+# Promotional / proof screenshots + PDFs at the repo root (not copied by any build)
+*.png
+*.jpg
+*.jpeg
+*.pdf

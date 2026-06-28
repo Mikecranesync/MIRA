@@ -106,6 +106,28 @@ describe("POST /api/proposals/[id]/decide", () => {
     expect(res.status).toBe(404);
   });
 
+  it("security: NULL-tenant proposal is not decidable by an authenticated tenant (#1894)", async () => {
+    // A proposal with tenant_id IS NULL must NOT be reachable by any tenant.
+    // The query now uses `tenant_id = $2::uuid` (no IS NULL escape hatch).
+    // Simulate DB returning 0 rows — as it will for NULL-tenant rows once the fix is live.
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    let querySql = "";
+    vi.mocked(withTenantContext).mockImplementation(async (_tid, fn) => {
+      const client = {
+        query: vi.fn(async (sql: string) => {
+          querySql = sql;
+          return { rows: [] }; // no rows returned = NULL-tenant proposal correctly excluded
+        }),
+      };
+      return await fn(client as never);
+    });
+    const res = await POST(makeReq({ decision: "verify" }), makeParams(VALID_UUID));
+    expect(res.status).toBe(404);
+    // Confirm the query does NOT contain the IS NULL escape hatch.
+    expect(querySql).not.toContain("IS NULL");
+    expect(querySql).toContain("tenant_id =");
+  });
+
   it("returns 409 when proposal is already in a terminal state", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
     vi.mocked(withTenantContext).mockImplementation(async (_tid, fn) => {
@@ -124,6 +146,7 @@ describe("POST /api/proposals/[id]/decide", () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
     let updateProposalArgs: unknown[] = [];
     let insertSql = "";
+    let insertArgs: unknown[] = [];
     let insertCalls = 0;
     let updateKgCalls = 0;
 
@@ -142,6 +165,7 @@ describe("POST /api/proposals/[id]/decide", () => {
           }
           if (sql.includes("INSERT INTO kg_relationships")) {
             insertSql = sql;
+            insertArgs = args;
             insertCalls++;
             return { rows: [] };
           }
@@ -171,6 +195,9 @@ describe("POST /api/proposals/[id]/decide", () => {
     expect(updateKgCalls).toBe(0);
     expect(insertSql).toContain("INSERT INTO kg_relationships");
     expect(insertSql).toContain("'verified'");
+    // Provenance: the verified edge records which proposal verified it (#1723).
+    expect(insertSql).toContain("relationship_proposal_id");
+    expect(insertArgs).toContain(VALID_UUID);
   });
 
   it("verify when kg_relationships row already exists → UPDATE not INSERT, confidence GREATEST", async () => {
@@ -214,6 +241,51 @@ describe("POST /api/proposals/[id]/decide", () => {
     expect(updateKgConfidence).toBe(baseProposal.confidence);
     expect(updateKgSql).toContain("approval_state = 'verified'");
     expect(updateKgSql).toContain("GREATEST(confidence");
+    // Provenance: link the existing edge to the verifying proposal, keep first (#1723).
+    expect(updateKgSql).toContain("relationship_proposal_id = COALESCE");
+  });
+
+  it("verify HAS_DOCUMENT marks the approved uploaded document chunks verified", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    const uploadId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    const proposal = {
+      ...baseProposal,
+      relationship_type: "HAS_DOCUMENT",
+      target_entity_id: uploadId,
+      target_entity_type: "manual",
+    };
+    let verifiedUpdateSql = "";
+    let verifiedUpdateArgs: unknown[] = [];
+
+    vi.mocked(withTenantContext).mockImplementation(async (_tid, fn) => {
+      const client = {
+        query: vi.fn(async (sql: string, args: unknown[] = []) => {
+          if (sql.includes("FROM relationship_proposals")) {
+            return { rows: [proposal] };
+          }
+          if (sql.includes("UPDATE relationship_proposals")) return { rows: [] };
+          if (sql.includes("FROM kg_entities")) {
+            return { rows: [{ entity_id: uploadId }] };
+          }
+          if (sql.includes("UPDATE knowledge_entries")) {
+            verifiedUpdateSql = sql;
+            verifiedUpdateArgs = args;
+            return { rows: [] };
+          }
+          if (sql.includes("FROM kg_relationships")) return { rows: [] };
+          if (sql.includes("INSERT INTO kg_relationships")) return { rows: [] };
+          return { rows: [] };
+        }),
+      };
+      return await fn(client as never);
+    });
+
+    const res = await POST(makeReq({ decision: "verify" }), makeParams(VALID_UUID));
+    expect(res.status).toBe(200);
+    expect(verifiedUpdateSql).toContain("UPDATE knowledge_entries");
+    expect(verifiedUpdateSql).toContain("verified = true");
+    expect(verifiedUpdateSql).toContain("doc_id = $2::uuid");
+    expect(verifiedUpdateArgs).toEqual([TENANT_ID, uploadId]);
   });
 
   it("reject → flips status to 'rejected' with no kg_relationships write", async () => {

@@ -20,7 +20,7 @@ export default function HubLayout({ children }: { children: React.ReactNode }) {
       <MobileTopBar />
 
       <div className="flex flex-1 min-h-0">
-        <Sidebar role="admin" />
+        <Sidebar />
 
         {/* Main content — offset by sidebar width on desktop */}
         <main

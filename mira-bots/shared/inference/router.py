@@ -1,6 +1,6 @@
 """MIRA Inference Router — Multi-provider LLM cascade.
 
-Cascade order: Groq → Cerebras → Gemini → (caller falls back to Open WebUI).
+Cascade order: Groq → Cerebras → Together → (caller falls back to Open WebUI).
 
 Each provider is tried in sequence. On any failure (rate limit, billing,
 timeout, service error), the next provider is attempted. The caller
@@ -8,7 +8,7 @@ timeout, service error), the next provider is attempted. The caller
 providers failed" and falls through to the local Open WebUI/Ollama path.
 
 Provider enablement is key-based: if GROQ_API_KEY is set, Groq is in the
-cascade. Same for CEREBRAS_API_KEY and GEMINI_API_KEY. Order is fixed.
+cascade. Same for CEREBRAS_API_KEY and TOGETHERAI_API_KEY. Order is fixed.
 
 INFERENCE_BACKEND controls the master switch:
   "cloud" → run the cascade (default when any cloud key is set)
@@ -133,9 +133,10 @@ class _Provider:
 def _build_providers() -> list[_Provider]:
     """Build the ordered provider list from environment variables.
 
-    Cascade order: Groq → Cerebras → Gemini.
-    Groq leads because it's fastest and most reliable. Gemini moved to third
-    position after persistent 503s in prod (2026-04-21 latency audit).
+    Cascade order: Groq → Cerebras → Together.
+    Groq leads because it's fastest and most reliable. Together AI is the
+    third provider (replaced Gemini, which was 403-blocked in Doppler) via
+    its OpenAI-compatible serverless endpoint.
     """
     providers: list[_Provider] = []
 
@@ -161,22 +162,27 @@ def _build_providers() -> list[_Provider]:
                 name="cerebras",
                 api_url="https://api.cerebras.ai/v1/chat/completions",
                 api_key=cerebras_key,
-                model=os.getenv("CEREBRAS_MODEL", "llama3.1-8b"),
+                model=os.getenv("CEREBRAS_MODEL", "gpt-oss-120b"),
                 timeout=30.0,
             )
         )
 
-    gemini_key = os.getenv("GEMINI_API_KEY", "")
-    if gemini_key:
-        gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    together_key = os.getenv("TOGETHERAI_API_KEY", "")
+    if together_key:
         providers.append(
             _Provider(
-                name="gemini",
-                api_url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-                api_key=gemini_key,
-                model=gemini_model,
+                name="together",
+                api_url="https://api.together.xyz/v1/chat/completions",
+                api_key=together_key,
+                model=os.getenv("TOGETHERAI_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
                 timeout=30.0,
-                vision_model=os.getenv("GEMINI_VISION_MODEL", gemini_model),
+                # No default vision model: Together's serverless catalog has no
+                # stable text+vision model on this account, so image requests stay
+                # on Groq's vision model. Set TOGETHERAI_VISION_MODEL to add one.
+                # (Default text model is serverless pay-per-token, covered by the
+                # account's free credits; the -Turbo-Free variant is not serverless
+                # on this account.)
+                vision_model=os.getenv("TOGETHERAI_VISION_MODEL", ""),
             )
         )
 
@@ -187,7 +193,7 @@ class InferenceRouter:
     """Multi-provider LLM cascade with automatic failover.
 
     Enabled when INFERENCE_BACKEND is "cloud" and at least one provider API
-    key is set. Tries providers in order: Groq → Cerebras → Gemini. Returns
+    key is set. Tries providers in order: Groq → Cerebras → Together. Returns
     ("", {}) only when ALL providers fail — caller then falls through to
     Open WebUI.
     """
@@ -196,7 +202,7 @@ class InferenceRouter:
     _PROVIDER_HOURLY_LIMITS: dict[str, int] = {
         "groq": 1800,  # 30 RPM × 60 min
         "cerebras": 1800,
-        "gemini": 900,  # 15 RPM × 60 min
+        "together": 600,  # ~10 RPM × 60 min (free-tier guidance)
     }
 
     def __init__(self):
@@ -205,6 +211,11 @@ class InferenceRouter:
         self.enabled = self.backend == "cloud" and len(self.providers) > 0
         # {provider_name: [monotonic_timestamps_of_calls]}
         self._provider_call_windows: dict[str, list[float]] = {}
+        # {session_id: "provider/model"} — last model that answered each session.
+        # Keyed by session_id (NOT a shared scalar) so concurrent tenants don't
+        # clobber each other's attribution (#1704). Bounded to the most recent
+        # sessions. Read by the engine's trace site via last_model_for().
+        self._last_model_by_session: dict[str, str] = {}
 
         if self.enabled:
             names = [p.name for p in self.providers]
@@ -237,6 +248,33 @@ class InferenceRouter:
                 hourly_limit,
                 100 * len(window) / hourly_limit,
             )
+
+    _MODEL_CACHE_MAX = 512
+
+    def _record_session_model(self, session_id: str | None, model: str | None) -> None:
+        """Cache the model that answered ``session_id`` (bounded, last-writer-wins).
+
+        Keyed by session so the engine can attribute a turn's model #1704-safely.
+        No-op when session_id or model is missing. Evicts oldest when over cap.
+        """
+        if not session_id or not model:
+            return
+        cache = self._last_model_by_session
+        cache[session_id] = model
+        if len(cache) > self._MODEL_CACHE_MAX:
+            # Drop the oldest insertion (dicts preserve insertion order).
+            for old in list(cache.keys())[: len(cache) - self._MODEL_CACHE_MAX]:
+                cache.pop(old, None)
+
+    def last_model_for(self, session_id: str | None) -> str | None:
+        """Return the last model ("provider/model") that answered ``session_id``.
+
+        ``None`` when unknown (e.g. the answering call passed no session_id, or
+        the turn fell back to Open WebUI). Used by the engine's trace site.
+        """
+        if not session_id:
+            return None
+        return self._last_model_by_session.get(session_id)
 
     @staticmethod
     def sanitize_text(text: str) -> str:
@@ -328,7 +366,17 @@ class InferenceRouter:
                         last_error = usage
                         continue
                     self._track_provider_call(provider.name)
+                    self._record_session_model(session_id, usage.get("model"))
                     return content, usage
+                # Empty/None content (e.g. a reasoning model that spent its whole
+                # token budget on reasoning) is NOT an exception, so the cascade
+                # would otherwise fall through to the next provider silently. Log
+                # it so a degrading provider is visible — see the provider-health
+                # canary (docs/runbooks/provider-health-canary.md).
+                logger.warning(
+                    "EMPTY_RESPONSE provider=%s — empty content, trying next provider",
+                    provider.name,
+                )
                 last_error = usage
             except _ProviderSkip:
                 continue
@@ -349,7 +397,7 @@ class InferenceRouter:
         session_id: str,
         has_image: bool,
     ) -> tuple[str, dict]:
-        """Call an OpenAI-compatible provider (Groq, Cerebras, Gemini)."""
+        """Call an OpenAI-compatible provider (Groq, Cerebras, Together)."""
         # Use vision model for image requests if available
         model = provider.vision_model if (has_image and provider.vision_model) else provider.model
         payload: dict = {
@@ -380,6 +428,7 @@ class InferenceRouter:
                 "input_tokens": usage.get("prompt_tokens", 0),
                 "output_tokens": usage.get("completion_tokens", 0),
                 "provider": provider.name,
+                "model": f"{provider.name}/{model}",
             }
 
             logger.info(
@@ -451,7 +500,7 @@ class InferenceRouter:
 
     @staticmethod
     def log_usage(usage: dict) -> None:
-        """Log token usage. All current providers (Groq/Cerebras/Gemini) are free-tier."""
+        """Log token usage. All current providers (Groq/Cerebras/Together) are free-tier."""
         inp = usage.get("input_tokens", 0)
         out = usage.get("output_tokens", 0)
         provider = usage.get("provider", "unknown")

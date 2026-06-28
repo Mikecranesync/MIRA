@@ -15,6 +15,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
 
 from . import data_types as _data_types
+from .manufacturer_normalize import normalize_manufacturer
 
 
 def _engine():
@@ -361,6 +362,9 @@ def insert_knowledge_entry(
 ) -> str:
     """Insert one chunk into knowledge_entries. Returns the new row id."""
     _data_types.validate(data_type)
+    # Collapse OCR/extraction manufacturer variants to the catalog canonical
+    # (#1596). Column is nullable — preserve None for an empty canonical.
+    manufacturer = normalize_manufacturer(manufacturer).canonical or None
     entry_id = str(uuid.uuid4())
     meta = {
         "source_url": source_url,
@@ -414,6 +418,11 @@ def insert_knowledge_entries_batch(entries: list[dict]) -> int:
     Optional per-entry keys (vision doc Problem 1): isa95_path, equipment_id,
     data_type (defaults to 'manual'). data_type is validated per entry.
 
+    Optional visibility keys: is_private, verified (both default False). A
+    per-tenant corpus (e.g. the proveit Pilot DB) sets is_private=True so it
+    stays scoped to its tenant; the shared OEM corpus omits both and keeps the
+    False default. See .claude/rules/knowledge-entries-tenant-scoping.md.
+
     Returns count of rows inserted.
     """
     if not entries:
@@ -425,9 +434,16 @@ def insert_knowledge_entries_batch(entries: list[dict]) -> int:
         prepared.append(
             {
                 **e,
+                "manufacturer": normalize_manufacturer(e.get("manufacturer")).canonical or None,
                 "isa95_path": e.get("isa95_path"),
                 "equipment_id": e.get("equipment_id"),
                 "data_type": dt,
+                # Per-row visibility: per-tenant uploads (the proveit Pilot DB corpus) set
+                # is_private=True; the shared OEM corpus omits it and keeps the False default,
+                # so every existing caller is byte-for-byte unchanged. See
+                # .claude/rules/knowledge-entries-tenant-scoping.md (write law).
+                "is_private": bool(e.get("is_private", False)),
+                "verified": bool(e.get("verified", False)),
             }
         )
     with _engine().connect() as conn:
@@ -442,7 +458,7 @@ def insert_knowledge_entries_batch(entries: list[dict]) -> int:
                 VALUES
                     (:id, :tenant_id, :source_type, :manufacturer, :model_number,
                      :content, cast(:embedding AS vector), :source_url, :source_page,
-                     cast(:metadata AS jsonb), false, false, :chunk_type,
+                     cast(:metadata AS jsonb), :is_private, :verified, :chunk_type,
                      :isa95_path, :equipment_id, :data_type)
             """),
                 entry,

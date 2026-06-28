@@ -78,6 +78,13 @@ def insert_chunk(
     """Insert a single chunk into knowledge_entries. Returns entry ID or empty string."""
     from sqlalchemy import text
 
+    from .manufacturer_normalize import normalize_manufacturer
+
+    # Collapse OCR/extraction manufacturer variants at the write boundary so
+    # the knowledge_entries.manufacturer column (which the Hub KB catalog
+    # GROUPs BY) stays canonical regardless of which caller wrote it (#1596).
+    manufacturer = normalize_manufacturer(manufacturer).canonical
+
     entry_id = str(uuid.uuid4())
     metadata = {
         "chunk_index": chunk_index,
@@ -146,6 +153,11 @@ def store_chunks(
     the equipment via `equipment_entity_id`, and runs the fault-code
     extractor over chunk text to densify the KG. All entity writes are
     idempotent (UNIQUE on tenant_id+entity_type+name).
+
+    Manufacturer normalization (#1596) happens at the write boundaries —
+    `insert_chunk` for the chunk row and `kg_writer.register_*` for the KG
+    entities — so direct callers of those (e.g. tasks/ingest.py) are covered
+    too, not just this orchestrator.
     """
     # Lazy-import KG modules so a misconfigured KG layer cannot break
     # the chunk-insert hot path. Failures degrade to "we still wrote

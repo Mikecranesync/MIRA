@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { randomUUID } from "node:crypto";
-import { createUpload, updateUploadStatus } from "@/lib/uploads";
+import {
+  createUpload,
+  updateUploadStatus,
+  type Upload,
+  type UploadKind,
+} from "@/lib/uploads";
 import {
   forwardToIngest,
   forwardToPhotoIngest,
@@ -10,13 +15,19 @@ import {
 import { makeUploadLogger } from "@/lib/upload-log";
 import { validateAssetTag } from "@/lib/asset-tag";
 import { sniffMime, isMimeCompatible } from "@/lib/sniff-mime";
+import {
+  saveUploadBuffer,
+  readUploadBuffer,
+  deleteUploadBuffer,
+} from "@/lib/upload-buffer";
+import { resolveOrCreateInboxNode } from "@/lib/inbox-node";
+import { writePdfChunksForNode } from "@/lib/node-knowledge-ingest";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
 
 export interface UploadAuthContext {
   tenantId: string;
   userId?: string;
 }
-
-const MAX = 20 * 1024 * 1024;
 
 function extGuess(nameLower: string): string {
   if (nameLower.endsWith(".pdf")) return "application/pdf";
@@ -32,15 +43,32 @@ export async function handleLocalUpload(
   req: NextRequest,
   ctx: UploadAuthContext,
 ): Promise<NextResponse> {
-  const form = await req.formData().catch(() => null);
-  if (!form) return NextResponse.json({ error: "invalid_multipart" }, { status: 400 });
+  // Do NOT swallow the parse error. formData() throws `Failed to parse body as
+  // FormData` when the multipart body is truncated or malformed (e.g. an aborted
+  // or proxy-timed-out large upload) — which previously surfaced as a bare
+  // `invalid_multipart` with no clue why. Log the real reason + content-length so
+  // the next occurrence is diagnosable instead of guessed at.
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch (err) {
+    console.error("[local-upload] formData parse failed", {
+      contentLength: req.headers.get("content-length"),
+      maxUploadMb: MAX_UPLOAD_MB,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return NextResponse.json({ error: "invalid_multipart" }, { status: 400 });
+  }
 
   const file = form.get("file");
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "file_field_required" }, { status: 400 });
   }
-  if (file.size > MAX) {
-    return NextResponse.json({ error: "exceeds_20mb_limit", got: file.size }, { status: 400 });
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return NextResponse.json(
+      { error: "exceeds_size_limit", got: file.size, limitBytes: MAX_UPLOAD_BYTES },
+      { status: 400 },
+    );
   }
 
   const nameLower = file.name.toLowerCase();
@@ -91,50 +119,147 @@ export async function handleLocalUpload(
   });
 
   const requestId = req.headers.get("x-request-id") ?? randomUUID();
-  const log = makeUploadLogger({ requestId, uploadId: upload.id, tenantId: ctx.tenantId });
-  log.log("parsing", {
-    provider: "local",
-    kind,
-    filename: file.name,
-    mimeType: mime,
-    sizeBytes: file.size,
-  });
+
+  // Persist the bytes BEFORE the ingest attempt so a FAILED upload can be
+  // retried without the user re-picking the file. Best-effort; deleted on
+  // success by runLocalIngest, kept on failure for /api/uploads/:id/retry.
+  await saveUploadBuffer(upload.id, buffer);
 
   // Background ingest. Next.js 16 standalone breaks `after()` with
   // ENVIRONMENT_FALLBACK, so we use a plain fire-and-forget Promise.
-  void (async () => {
-    try {
-      const stream = () =>
-        new ReadableStream<Uint8Array>({
-          start(controller) {
-            controller.enqueue(buffer);
-            controller.close();
-          },
-        });
-      if (kind === "photo") {
-        const result = await forwardToPhotoIngest(stream(), file.name, mime, {
-          assetTag,
-          requestId,
-        });
-        await updateUploadStatus(upload.id, ctx.tenantId, "parsed", result.description ?? null, {
-          kbFileId: result.photoId != null ? String(result.photoId) : undefined,
-        });
-        log.log("parsed", { photoId: result.photoId, kind });
-      } else {
-        const result = await forwardToIngest(stream(), file.name, mime, { requestId });
-        await updateUploadStatus(upload.id, ctx.tenantId, "parsed", null, {
-          kbFileId: result.fileId ?? undefined,
-          kbChunkCount: result.chunkCount ?? undefined,
-        });
-        log.log("parsed", { kind, kbFileId: result.fileId, kbChunkCount: result.chunkCount });
-      }
-    } catch (err) {
-      log.error("failed", err);
-      await updateUploadStatus(upload.id, ctx.tenantId, "failed", (err as Error).message).catch(
-        (statusErr: unknown) => log.error("status_update_failed", statusErr),
-      );
-    }
-  })();
+  void runLocalIngest({
+    uploadId: upload.id,
+    tenantId: ctx.tenantId,
+    buffer,
+    filename: file.name,
+    mime,
+    kind,
+    assetTag,
+    requestId,
+  });
 
   return NextResponse.json(upload, { status: 201, headers: { "X-Request-Id": requestId } });
+}
+
+interface LocalIngestParams {
+  uploadId: string;
+  tenantId: string;
+  buffer: Uint8Array;
+  filename: string;
+  mime: string;
+  kind: UploadKind;
+  assetTag: string | null;
+  requestId: string;
+}
+
+/**
+ * Forward a local upload's bytes to mira-ingest and record the result. Shared
+ * by the initial upload and the retry path. On success the persisted buffer is
+ * deleted; on failure it is KEPT so the upload can be retried.
+ */
+async function runLocalIngest(p: LocalIngestParams): Promise<void> {
+  const log = makeUploadLogger({
+    requestId: p.requestId,
+    uploadId: p.uploadId,
+    tenantId: p.tenantId,
+  });
+  log.log("parsing", {
+    provider: "local",
+    kind: p.kind,
+    filename: p.filename,
+    mimeType: p.mime,
+    sizeBytes: p.buffer.byteLength,
+  });
+
+  // #1806: a blind-door PDF (browser /local + MiraDrop /folder) becomes CITABLE.
+  // Route the buffer through the SAME v2 writer the node-attach door uses
+  // (writePdfChunksForNode), landing in the per-tenant Inbox node, so the chunks
+  // reach knowledge_entries (ingest_route='v2', metadata.node_id) and NodeChat can
+  // cite them — instead of landing Open-WebUI-KB-only. Single-writer; no second
+  // chunker. On ANY failure, fall through to the legacy OW path below so the door
+  // keeps working. Non-PDF + photo + remote-fetch (cloud) doors keep the OW path.
+  if (p.kind === "document" && p.mime === "application/pdf") {
+    try {
+      const inbox = await resolveOrCreateInboxNode(p.tenantId);
+      const chunkCount = await writePdfChunksForNode({
+        tenantId: p.tenantId,
+        uploadId: p.uploadId,
+        nodeId: inbox.nodeId,
+        unsPath: inbox.unsPath,
+        filename: p.filename,
+        buffer: p.buffer,
+      });
+      await updateUploadStatus(p.uploadId, p.tenantId, "parsed", null, {
+        kbChunkCount: chunkCount,
+        kgEntityId: inbox.nodeId,
+        ingestRoute: "v2",
+      });
+      log.log("parsed", { kind: p.kind, route: "v2", nodeId: inbox.nodeId, kbChunkCount: chunkCount });
+      await deleteUploadBuffer(p.uploadId);
+      return;
+    } catch (err) {
+      // v2 inbox ingest failed — fall back to the legacy OW-KB path below so the
+      // door still works (the v2 core is the same proven node-attach path).
+      log.error("v2_inbox_fallback", err);
+    }
+  }
+
+  const stream = () =>
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(p.buffer);
+        controller.close();
+      },
+    });
+  try {
+    if (p.kind === "photo") {
+      const result = await forwardToPhotoIngest(stream(), p.filename, p.mime, {
+        assetTag: p.assetTag,
+        requestId: p.requestId,
+      });
+      await updateUploadStatus(p.uploadId, p.tenantId, "parsed", result.description ?? null, {
+        kbFileId: result.photoId != null ? String(result.photoId) : undefined,
+      });
+      log.log("parsed", { photoId: result.photoId, kind: p.kind });
+    } else {
+      const result = await forwardToIngest(stream(), p.filename, p.mime, {
+        requestId: p.requestId,
+      });
+      await updateUploadStatus(p.uploadId, p.tenantId, "parsed", null, {
+        kbFileId: result.fileId ?? undefined,
+        kbChunkCount: result.chunkCount ?? undefined,
+      });
+      log.log("parsed", { kind: p.kind, kbFileId: result.fileId, kbChunkCount: result.chunkCount });
+    }
+    // Success — reclaim the persisted buffer.
+    await deleteUploadBuffer(p.uploadId);
+  } catch (err) {
+    log.error("failed", err);
+    await updateUploadStatus(p.uploadId, p.tenantId, "failed", (err as Error).message).catch(
+      (statusErr: unknown) => log.error("status_update_failed", statusErr),
+    );
+    // Keep the buffer so the upload can be retried from /api/uploads/:id/retry.
+  }
+}
+
+/**
+ * Retry a FAILED local upload from its persisted buffer (#704 follow-up,
+ * 2026-06-06). Returns true if the buffer was found and the ingest was
+ * re-triggered, false if the buffer is gone (caller must prompt re-upload).
+ */
+export async function retryLocalUpload(row: Upload, requestId: string): Promise<boolean> {
+  const buffer = await readUploadBuffer(row.id);
+  if (!buffer) return false;
+  await updateUploadStatus(row.id, row.tenantId, "parsing", "retry");
+  void runLocalIngest({
+    uploadId: row.id,
+    tenantId: row.tenantId,
+    buffer,
+    filename: row.filename,
+    mime: row.mimeType ?? "application/pdf",
+    kind: row.kind,
+    assetTag: row.assetTag,
+    requestId,
+  });
+  return true;
 }

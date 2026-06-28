@@ -183,28 +183,31 @@ function ChannelsInner() {
   }, []);
 
   useEffect(() => {
-    const provider = searchParams.get("provider") as Provider | null;
-    const status = searchParams.get("status");
-    const meta = searchParams.get("meta");
-    const reason = searchParams.get("reason");
+    const timeout = window.setTimeout(() => {
+      const provider = searchParams.get("provider") as Provider | null;
+      const status = searchParams.get("status");
+      const meta = searchParams.get("meta");
+      const reason = searchParams.get("reason");
 
-    if (provider && status === "connected" && meta) {
-      try {
-        const parsed = JSON.parse(decodeURIComponent(meta));
-        setConnection(provider, { connected: true, ...parsed });
-      } catch { /* malformed meta */ }
-      window.history.replaceState({}, "", window.location.pathname);
-    } else if (provider && status === "error") {
-      setConnection(provider, { connected: false, error: reason ?? "unknown" });
-      window.history.replaceState({}, "", window.location.pathname);
-    }
+      if (provider && status === "connected" && meta) {
+        try {
+          const parsed = JSON.parse(decodeURIComponent(meta));
+          setConnection(provider, { connected: true, ...parsed });
+        } catch { /* malformed meta */ }
+        window.history.replaceState({}, "", window.location.pathname);
+      } else if (provider && status === "error") {
+        setConnection(provider, { connected: false, error: reason ?? "unknown" });
+        window.history.replaceState({}, "", window.location.pathname);
+      }
 
-    refresh();
+      refresh();
 
-    fetch(`${API_BASE}/api/auth/status`)
-      .then(r => r.json())
-      .then((d: AuthStatus) => setAuthStatus(d))
-      .catch(() => {});
+      fetch(`${API_BASE}/api/auth/status/`)
+        .then(r => r.json())
+        .then((d: AuthStatus) => setAuthStatus(d))
+        .catch(() => {});
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [searchParams, refresh]);
 
   function conn(p: Provider): ConnectionMeta {
@@ -220,7 +223,7 @@ function ChannelsInner() {
     setTelegramLoading(true);
     setTelegramError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/auth/telegram`, {
+      const res = await fetch(`${API_BASE}/api/auth/telegram/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: telegramToken.trim() }),
@@ -259,7 +262,7 @@ function ChannelsInner() {
     setMaintainxLoading(true);
     setMaintainxError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/integrations/nango/connect`, {
+      const res = await fetch(`${API_BASE}/api/integrations/nango/connect/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider: "maintainx", apiKey: maintainxKey.trim() }),
@@ -410,7 +413,7 @@ function ChannelsInner() {
                 setModal("maintainx");
               }}
               onDisconnect={async () => {
-                await fetch(`${API_BASE}/api/integrations/nango/connect?provider=maintainx`, {
+                await fetch(`${API_BASE}/api/integrations/nango/connect/?provider=maintainx`, {
                   method: "DELETE",
                 });
                 disconnect("maintainx");

@@ -1,14 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown, ChevronRight,
   Folder, FolderOpen,
   Cog, Factory, FileText, Layers,
   RefreshCw, FolderPlus, Upload, ChevronsDownUp, ChevronsUpDown,
-  Trash2, Pencil,
+  Trash2, Pencil, Bot,
 } from "lucide-react";
 import { API_BASE } from "@/lib/config";
+import { NodeChat } from "@/components/namespace/NodeChat";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -38,18 +40,18 @@ interface FileRecord {
 
 type EditingState = { nodeId: string; value: string } | null;
 type NewFolderState = { parentId: string | null; value: string } | null;
-type UploadState = { nodeId: string; state: "uploading" | "done" | "error" } | null;
+type UploadState = { nodeId: string; state: "uploading" | "done" | "error"; message?: string } | null;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const EQUIPMENT_KINDS = new Set(["asset", "equipment", "component"]);
 
-const KIND_ICON = (kind: string, open = false): React.ElementType => {
-  if (kind === "site" || kind === "plant") return Factory;
-  if (kind === "asset" || kind === "equipment" || kind === "component") return Cog;
-  if (kind === "document") return FileText;
-  return open ? FolderOpen : Folder;
-};
+function KindIcon({ kind, open, className }: { kind: string; open: boolean; className?: string }) {
+  if (kind === "site" || kind === "plant") return <Factory className={className} />;
+  if (kind === "asset" || kind === "equipment" || kind === "component") return <Cog className={className} />;
+  if (kind === "document") return <FileText className={className} />;
+  return open ? <FolderOpen className={className} /> : <Folder className={className} />;
+}
 
 function statusColor(status: string | null): string {
   if (!status) return "";
@@ -88,6 +90,8 @@ export default function NamespacePage() {
   const [uploadState, setUploadState] = useState<UploadState>(null);
   const [nodeFiles, setNodeFiles] = useState<Record<string, FileRecord[]>>({});
   const [ctxMenu, setCtxMenu] = useState<{ node: NamespaceNode; x: number; y: number } | null>(null);
+  const [pendingChat, setPendingChat] = useState(false);
+  const [deepLinkApplied, setDeepLinkApplied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showToast = useCallback((msg: string) => {
@@ -97,7 +101,7 @@ export default function NamespacePage() {
 
   const refreshTree = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/namespace/tree`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/namespace/tree/`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json() as { nodes: NamespaceNode[]; total: number };
       setTree(data.nodes);
@@ -130,6 +134,7 @@ export default function NamespacePage() {
         ids.add(root.id);
         for (const child of root.children) ids.add(child.id);
       }
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setExpandedIds(ids);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -138,7 +143,7 @@ export default function NamespacePage() {
   const loadFiles = useCallback(async (nodeId: string) => {
     if (nodeFiles[nodeId]) return;
     try {
-      const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}/files`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}/files/`, { cache: "no-store" });
       if (!res.ok) return;
       const data = await res.json() as { files: FileRecord[] };
       setNodeFiles((prev) => ({ ...prev, [nodeId]: data.files }));
@@ -150,13 +155,36 @@ export default function NamespacePage() {
     void loadFiles(node.id);
   }, [loadFiles]);
 
+  // #1900 deep-link: `/namespace?node=<id|inbox>&chat=1` selects a node (used by
+  // the post-upload "Ask MIRA about this manual" CTA — lands the user straight on
+  // the Inbox node that holds their just-uploaded manual) and optionally opens its
+  // Ask MIRA panel. Read once, after the tree has loaded so the target exists.
+  useEffect(() => {
+    if (deepLinkApplied || loading || tree.length === 0) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDeepLinkApplied(true);
+    const params = new URLSearchParams(window.location.search);
+    const nodeParam = params.get("node");
+    if (!nodeParam) return;
+    const chain =
+      nodeParam === "inbox"
+        ? findChain(tree, (n) => n.unsPath === "inbox")
+        : findChain(tree, (n) => n.id === nodeParam);
+    if (!chain || chain.length === 0) return;
+    const target = chain[chain.length - 1];
+    setExpandedIds((prev) => new Set([...prev, ...chain.map((n) => n.id)]));
+    setSelected(target);
+    void loadFiles(target.id);
+    if (params.get("chat") === "1") setPendingChat(true);
+  }, [deepLinkApplied, loading, tree, loadFiles]);
+
   // ── Node drag-and-drop (reparent) ──────────────────────────────────────────
 
   async function handleNodeDrop(sourceId: string, targetId: string) {
     if (sourceId === targetId) return;
     showToast("Moving…");
     try {
-      const res = await fetch(`${API_BASE}/api/namespace/node/${sourceId}`, {
+      const res = await fetch(`${API_BASE}/api/namespace/node/${sourceId}/`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ newParentId: targetId, reason: "drag-and-drop" }),
@@ -182,7 +210,7 @@ export default function NamespacePage() {
     const trimmed = newName.trim();
     if (!trimmed) return;
     try {
-      const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}`, {
+      const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}/`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ newName: trimmed }),
@@ -204,7 +232,7 @@ export default function NamespacePage() {
     const trimmed = name.trim();
     if (!trimmed) return;
     try {
-      const res = await fetch(`${API_BASE}/api/namespace/node`, {
+      const res = await fetch(`${API_BASE}/api/namespace/node/`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ parentId: parentId ?? undefined, name: trimmed, kind: "area" }),
@@ -226,7 +254,7 @@ export default function NamespacePage() {
 
   async function handleDeleteNode(nodeId: string) {
     try {
-      const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}`, { method: "DELETE" });
+      const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}/`, { method: "DELETE" });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };
         throw new Error(body.error ?? `HTTP ${res.status}`);
@@ -247,7 +275,7 @@ export default function NamespacePage() {
       for (const file of Array.from(files)) {
         const fd = new FormData();
         fd.append("file", file);
-        const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}/files`, {
+        const res = await fetch(`${API_BASE}/api/namespace/node/${nodeId}/files/`, {
           method: "POST",
           body: fd,
         });
@@ -262,11 +290,14 @@ export default function NamespacePage() {
       if (selected?.id === nodeId) void loadFiles(nodeId);
       await refreshTree();
       showToast(`${files.length} file${files.length === 1 ? "" : "s"} uploaded`);
-    } catch (e) {
-      setUploadState({ nodeId, state: "error" });
-      showToast(`Upload failed: ${(e as Error).message}`);
-    } finally {
       setTimeout(() => setUploadState(null), 2000);
+    } catch (e) {
+      // #1899: keep the failure VISIBLE — a durable error row in the Files
+      // panel (below), not just a 2s toast that the user can miss while the
+      // panel still reads "No files attached" (i.e. "nothing happened").
+      const message = (e as Error).message;
+      setUploadState({ nodeId, state: "error", message });
+      showToast(`Upload failed: ${message}`);
     }
   }
 
@@ -274,7 +305,7 @@ export default function NamespacePage() {
 
   async function handleDeleteFile(fileId: string, nodeId: string) {
     try {
-      const res = await fetch(`${API_BASE}/api/namespace/files/${fileId}`, { method: "DELETE" });
+      const res = await fetch(`${API_BASE}/api/namespace/files/${fileId}/`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setNodeFiles((prev) => ({
         ...prev,
@@ -318,12 +349,26 @@ export default function NamespacePage() {
         <ToolbarButton
           icon={<FolderPlus className="h-3.5 w-3.5" />}
           label="New Folder"
+          testId="toolbar-new-folder"
+          // #1917: keep New Folder disabled until the initial tree load resolves.
+          // `loading` starts true (so the SSR HTML renders the button disabled)
+          // and only flips false inside a post-hydration effect — so a click on a
+          // fresh empty namespace can't land before React wires up onClick and get
+          // silently dropped (the input never appeared). Native disabled blocks the
+          // early click; Playwright's .click() auto-waits for "enabled", so the
+          // first interaction always happens once the page is truly interactive.
+          disabled={loading}
+          title={loading ? "Loading namespace…" : "Create a new folder"}
           onClick={() => setNewFolder({ parentId: selected?.id ?? null, value: "" })}
         />
         <ToolbarButton
           icon={<Upload className="h-3.5 w-3.5" />}
           label="Upload"
+          testId="toolbar-upload"
           disabled={!selected}
+          title={selected
+            ? `Upload files into "${selected.name}"`
+            : "Select a folder first, then upload files into it"}
           onClick={() => {
             if (!selected) return;
             fileInputRef.current?.click();
@@ -355,6 +400,7 @@ export default function NamespacePage() {
         type="file"
         multiple
         className="hidden"
+        data-testid="namespace-file-input"
         onChange={(e) => {
           if (selected) void uploadFiles(selected.id, e.target.files);
           e.target.value = "";
@@ -451,6 +497,8 @@ export default function NamespacePage() {
               node={selected}
               files={nodeFiles[selected.id]}
               uploadState={uploadState}
+              openChat={pendingChat}
+              onChatOpened={() => setPendingChat(false)}
               onSelect={handleSelect}
               onDeleteFile={(fileId) => handleDeleteFile(fileId, selected.id)}
               onUpload={() => fileInputRef.current?.click()}
@@ -458,9 +506,9 @@ export default function NamespacePage() {
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-gray-400">
               {loading ? null : tree.length === 0 ? (
-                <EmptyState />
+                <EmptyState onNewFolder={() => setNewFolder({ parentId: null, value: "" })} />
               ) : (
-                "Select a folder to view its contents"
+                "Select a folder to view its contents and upload files"
               )}
             </div>
           )}
@@ -567,7 +615,6 @@ function TreeNode({
   const isEditing = editing?.nodeId === node.id;
   const isUploading = uploadState?.nodeId === node.id && uploadState.state === "uploading";
 
-  const Icon = KIND_ICON(node.kind, open);
   const indent = depth * 14 + 6;
   const dotColor = statusColor(node.status);
 
@@ -636,7 +683,11 @@ function TreeNode({
             : null}
         </button>
 
-        <Icon className={`h-3.5 w-3.5 shrink-0 ${isSelected ? "text-white" : "text-gray-600"}`} />
+        <KindIcon
+          kind={node.kind}
+          open={open}
+          className={`h-3.5 w-3.5 shrink-0 ${isSelected ? "text-white" : "text-gray-600"}`}
+        />
 
         {isEditing ? (
           <input
@@ -724,12 +775,14 @@ function TreeNode({
 // ── ContentPanel ──────────────────────────────────────────────────────────────
 
 function ContentPanel({
-  node, files, uploadState,
+  node, files, uploadState, openChat, onChatOpened,
   onSelect, onDeleteFile, onUpload,
 }: {
   node: NamespaceNode;
   files: FileRecord[] | undefined;
   uploadState: UploadState;
+  openChat: boolean;
+  onChatOpened: () => void;
   onSelect: (n: NamespaceNode) => void;
   onDeleteFile: (fileId: string) => void;
   onUpload: () => void;
@@ -744,23 +797,52 @@ function ContentPanel({
 
   const isEquipment = EQUIPMENT_KINDS.has(node.kind);
   const [activeTab, setActiveTab] = useState<"children" | "files" | "proposals" | "details" | "workorders">("children");
+  // folder=brain: "Ask MIRA" is available at every node — the answer is grounded in
+  // the docs attached to this node and everything beneath it (subtree retrieval).
+  const [showChat, setShowChat] = useState(false);
+
+  // #1900: a deep-link (`?chat=1`) auto-opens Ask MIRA after upload. Fire once per
+  // signal so the user can still close it; the parent resets `openChat` immediately.
+  useEffect(() => {
+    if (openChat) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setShowChat(true);
+      onChatOpened();
+    }
+  }, [openChat, onChatOpened]);
 
   return (
     <div className="flex flex-col h-full">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-1 border-b border-gray-200 px-3 py-1.5 text-[12px] text-gray-600">
-        {breadcrumbs.map((crumb, i) => (
-          <span key={crumb.path ?? crumb.label} className="flex items-center gap-1">
-            {i > 0 && <ChevronRight className="h-3 w-3 text-gray-400" />}
-            <span className={i === breadcrumbs.length - 1 ? "font-semibold text-gray-900" : "cursor-default"}>
-              {crumb.label}
+      <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-1.5 text-[12px] text-gray-600">
+        <div className="flex min-w-0 items-center gap-1 overflow-hidden">
+          {breadcrumbs.map((crumb, i) => (
+            <span key={crumb.path ?? crumb.label} className="flex items-center gap-1">
+              {i > 0 && <ChevronRight className="h-3 w-3 text-gray-400" />}
+              <span className={i === breadcrumbs.length - 1 ? "font-semibold text-gray-900" : "cursor-default"}>
+                {crumb.label}
+              </span>
             </span>
-          </span>
-        ))}
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowChat((v) => !v)}
+          data-testid="namespace-ask-mira"
+          className={[
+            "flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors",
+            showChat
+              ? "bg-[#0000c0] text-white"
+              : "border border-[#0000c0] text-[#0000c0] hover:bg-[#e8e8f8]",
+          ].join(" ")}
+        >
+          <Bot className="h-3 w-3" />
+          {showChat ? "Close MIRA" : "Ask MIRA"}
+        </button>
       </div>
 
       {/* Tabs for equipment nodes */}
-      {isEquipment && (
+      {isEquipment && !showChat && (
         <div className="flex gap-0 border-b border-gray-200 bg-[#f8f8f8] px-2 pt-1">
           {(["children", "files", "proposals", "details", "workorders"] as const).map((tab) => (
             <button
@@ -780,6 +862,11 @@ function ContentPanel({
         </div>
       )}
 
+      {showChat ? (
+        <div className="min-h-0 flex-1">
+          <NodeChat key={node.id} nodeId={node.id} nodeName={node.name} unsPath={node.unsPath} />
+        </div>
+      ) : (
       <div className="flex-1 overflow-auto p-3">
         {/* Children section (always shown for non-equipment, or when on children tab) */}
         {(!isEquipment || activeTab === "children") && (
@@ -816,6 +903,7 @@ function ContentPanel({
           <div className="text-sm text-gray-500 pt-4">Work order view coming soon.</div>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -829,21 +917,18 @@ function ChildrenSection({ node, onSelect }: {
     <div className="mb-4">
       <div className="mb-2 text-[11px] uppercase tracking-wide text-gray-400">Folders</div>
       <div className="flex flex-wrap gap-3">
-        {node.children.map((child) => {
-          const Icon = KIND_ICON(child.kind, false);
-          return (
-            <button
-              key={child.id}
-              type="button"
-              onDoubleClick={() => onSelect(child)}
-              onClick={() => onSelect(child)}
-              className="flex w-24 flex-col items-center gap-1 rounded p-2 text-center hover:bg-[#e8e8f8] active:bg-[#c0c0ff]"
-            >
-              <Icon className="h-8 w-8 text-[#0000c0]" />
-              <span className="text-[11px] leading-tight text-gray-800 break-words w-full">{child.name}</span>
-            </button>
-          );
-        })}
+        {node.children.map((child) => (
+          <button
+            key={child.id}
+            type="button"
+            onDoubleClick={() => onSelect(child)}
+            onClick={() => onSelect(child)}
+            className="flex w-24 flex-col items-center gap-1 rounded p-2 text-center hover:bg-[#e8e8f8] active:bg-[#c0c0ff]"
+          >
+            <KindIcon kind={child.kind} open={false} className="h-8 w-8 text-[#0000c0]" />
+            <span className="text-[11px] leading-tight text-gray-800 break-words w-full">{child.name}</span>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -857,14 +942,25 @@ function FilesSection({ nodeId, files, uploadState, onDeleteFile, onUpload }: {
   onUpload: () => void;
 }) {
   const isUploading = uploadState?.nodeId === nodeId && uploadState.state === "uploading";
+  const isError = uploadState?.nodeId === nodeId && uploadState.state === "error";
 
-  if (files === undefined && !isUploading) return null;
+  if (files === undefined && !isUploading && !isError) return null;
 
   return (
     <div>
       <div className="mb-2 text-[11px] uppercase tracking-wide text-gray-400">Files</div>
       {isUploading && (
         <div className="mb-2 text-xs text-blue-500 animate-pulse">Uploading…</div>
+      )}
+      {isError && (
+        // #1899: durable failure row so a 500 never looks like "nothing happened".
+        <div className="mb-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-700">
+          <span className="font-medium">Upload failed.</span>{" "}
+          {uploadState?.message ?? "Please try again."}{" "}
+          <button type="button" onClick={onUpload} className="underline hover:opacity-80">
+            Retry
+          </button>
+        </div>
       )}
       {files === undefined || files.length === 0 ? (
         <div className="text-xs text-gray-400">
@@ -888,14 +984,27 @@ function FilesSection({ nodeId, files, uploadState, onDeleteFile, onUpload }: {
             {files.map((f) => (
               <tr key={f.id} className="group hover:bg-[#e8e8f8]">
                 <td className="py-0.5 pr-4">
-                  <a
-                    href={`${API_BASE}/api/namespace/files/${f.id}`}
-                    className="flex items-center gap-1.5 text-blue-700 hover:underline"
-                    download={f.filename}
-                  >
-                    <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                    {f.filename}
-                  </a>
+                  {f.source === "upload" ? (
+                    // #1900: an indexed PDF (chunked into knowledge_entries, citable
+                    // by Ask MIRA) — no raw bytes are parked here to download, so show
+                    // it as a read-only "indexed" entry rather than a broken link.
+                    <span className="flex items-center gap-1.5 text-gray-800">
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                      {f.filename}
+                      <span className="ml-1 rounded bg-green-100 px-1 text-[10px] text-green-700">
+                        indexed
+                      </span>
+                    </span>
+                  ) : (
+                    <a
+                      href={`${API_BASE}/api/namespace/files/${f.id}`}
+                      className="flex items-center gap-1.5 text-blue-700 hover:underline"
+                      download={f.filename}
+                    >
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                      {f.filename}
+                    </a>
+                  )}
                 </td>
                 <td className="py-0.5 pr-4 text-gray-500">{formatBytes(f.size_bytes)}</td>
                 <td className="py-0.5 pr-4 text-gray-400">{formatDate(f.created_at)}</td>
@@ -949,24 +1058,36 @@ function DetailsSection({ node }: { node: NamespaceNode }) {
 // ── Small components ──────────────────────────────────────────────────────────
 
 function ToolbarButton({
-  icon, label, onClick, disabled,
+  icon, label, onClick, disabled, testId, title,
 }: {
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  testId?: string;
+  title?: string;
 }) {
-  return (
+  const button = (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
+      data-testid={testId}
+      title={title}
+      aria-label={title ? `${label} — ${title}` : label}
       className="flex items-center gap-1 border border-gray-500 bg-[#d4d0c8] px-2 py-0.5 text-[12px] hover:bg-[#e8e8e8] disabled:cursor-not-allowed disabled:opacity-40 active:border-inset"
     >
       {icon}
       {label}
     </button>
   );
+  // A disabled <button> swallows pointer events in Chrome, so its own `title`
+  // tooltip never shows — leaving the user staring at a greyed button with no
+  // explanation (#2182). Wrap it in a span that carries the tooltip so the
+  // "why is this disabled / what to do next" hint is reachable on hover.
+  return disabled && title
+    ? <span title={title} className="inline-flex">{button}</span>
+    : button;
 }
 
 function CtxMenuItem({
@@ -1048,6 +1169,7 @@ function NewFolderRow({
       <Folder className="h-3.5 w-3.5 text-gray-400" />
       <input
         autoFocus
+        data-testid="new-folder-input"
         className="h-5 flex-1 rounded border border-blue-400 bg-white px-1 text-[12px] text-black"
         placeholder="Folder name…"
         value={value}
@@ -1062,12 +1184,31 @@ function NewFolderRow({
   );
 }
 
-function EmptyState() {
+function EmptyState({ onNewFolder }: { onNewFolder: () => void }) {
   return (
-    <div className="text-center">
+    <div className="text-center" data-testid="namespace-empty">
       <Layers className="mx-auto h-10 w-10 text-gray-200" />
       <p className="mt-3 text-sm text-gray-500">Your namespace is empty.</p>
-      <p className="mt-1 text-xs text-gray-400">Use &ldquo;New Folder&rdquo; in the toolbar to create your first node.</p>
+      <p className="mt-1 text-xs text-gray-400">Create a first folder, then select it to upload manuals and files.</p>
+      <div className="mt-4 flex items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={onNewFolder}
+          className="inline-flex items-center gap-1 rounded border border-gray-500 bg-[#d4d0c8] px-3 py-1 text-[12px] text-gray-900 hover:bg-[#e8e8e8] active:border-inset"
+          data-testid="namespace-empty-new-folder"
+        >
+          <FolderPlus className="h-3.5 w-3.5" />
+          New Folder
+        </button>
+        <Link
+          href="/documents"
+          className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-3 py-1 text-[12px] text-gray-700 hover:bg-gray-50"
+          data-testid="namespace-empty-upload-documents"
+        >
+          <Upload className="h-3.5 w-3.5" />
+          Upload manual
+        </Link>
+      </div>
     </div>
   );
 }
@@ -1079,6 +1220,23 @@ function findNode(nodes: NamespaceNode[], id: string): NamespaceNode | null {
     if (n.id === id) return n;
     const found = findNode(n.children, id);
     if (found) return found;
+  }
+  return null;
+}
+
+/** Return the root→match chain (inclusive) for the first node matching `pred`, so
+ *  the caller can expand every ancestor and select the target. Used by the #1900
+ *  deep-link. */
+function findChain(
+  nodes: NamespaceNode[],
+  pred: (n: NamespaceNode) => boolean,
+  trail: NamespaceNode[] = [],
+): NamespaceNode[] | null {
+  for (const n of nodes) {
+    const next = [...trail, n];
+    if (pred(n)) return next;
+    const deeper = findChain(n.children, pred, next);
+    if (deeper) return deeper;
   }
   return null;
 }

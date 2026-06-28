@@ -108,8 +108,7 @@ export default function ConveyorDemoPage({
   useEffect(() => {
     if (!isAuthed) return;
     let cancelled = false;
-    setLoading(true);
-    fetch(`${API_BASE}/api/demo/customer`)
+    fetch(`${API_BASE}/api/demo/customer/`)
       .then(async (res) => {
         if (!res.ok) {
           if (!cancelled) setErrorStatus(res.status);
@@ -138,7 +137,7 @@ export default function ConveyorDemoPage({
   useEffect(() => {
     if (!equipment) return;
     let cancelled = false;
-    fetch(`${API_BASE}/api/sessions/confirm`, {
+    fetch(`${API_BASE}/api/sessions/confirm/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ asset_id: equipment.id, channel: "tablet" }),
@@ -159,7 +158,7 @@ export default function ConveyorDemoPage({
     let cancelled = false;
     const poll = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/demo/signals/summary`);
+        const res = await fetch(`${API_BASE}/api/demo/signals/summary/`);
         if (!res.ok) return;
         const data = (await res.json()) as { signals: SignalRow[] };
         if (cancelled) return;
@@ -196,7 +195,7 @@ export default function ConveyorDemoPage({
     setQuestion("");
     setAsking(true);
     try {
-      const res = await fetch(`${API_BASE}/api/mira/ask`, {
+      const res = await fetch(`${API_BASE}/api/mira/ask/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId, question: q }),
@@ -373,7 +372,7 @@ export default function ConveyorDemoPage({
             >
               {chatHistory.length === 0 ? (
                 <p className="opacity-60">
-                  Try: <em>"Is the photo eye seeing the box?"</em>
+                  Try: <em>&quot;Is the photo eye seeing the box?&quot;</em>
                 </p>
               ) : (
                 <ul className="flex flex-col gap-3">

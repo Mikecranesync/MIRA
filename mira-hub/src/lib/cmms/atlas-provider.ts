@@ -17,9 +17,9 @@ export class AtlasProvider implements CMMSProvider {
   readonly name = "Atlas";
   readonly slug = "atlas" as const;
   readonly defaultLinkTemplates: Required<Record<DeepLinkKind, string>> = {
-    work_order: "/workorders/{external_id}",
-    asset:      "/assets/{external_id}",
-    pm:         "/pm/{external_id}",
+    work_order: "/app/work-orders/{external_id}",
+    asset:      "/app/assets/{external_id}",
+    pm:         "/app/preventive-maintenances/{external_id}",
   };
 
   buildDeepLink(args: BuildDeepLinkArgs): string {

@@ -80,16 +80,17 @@ const TYPE_CFG: Record<AlertType, { Icon: React.ElementType; label: string }> = 
 };
 
 export default function AlertsPage() {
-  // Gated behind Labs flag (ADR-0014). Mock-data UI hidden on prod builds.
-  if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
-    return <LabsStub feature="Alerts" />;
-  }
   const t = useTranslations("alerts");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [acknowledged, setAcknowledged] = useState<Set<string>>(
     new Set(ALERTS.filter(a => a.acknowledged).map(a => a.id))
   );
   const [filter, setFilter] = useState<Severity | "all">("all");
+
+  // Gated behind Labs flag (ADR-0014). Mock-data UI hidden on prod builds.
+  if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
+    return <LabsStub feature="Alerts" />;
+  }
 
   const filtered = ALERTS.filter(a => filter === "all" || a.severity === filter);
   const activeCount = ALERTS.filter(a => !acknowledged.has(a.id)).length;

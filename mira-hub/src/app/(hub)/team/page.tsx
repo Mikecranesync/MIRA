@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Users, CheckCircle2, Clock, XCircle, Phone, Wrench, ClipboardList } from "lucide-react";
+import { CheckCircle2, Clock, XCircle, Phone, Wrench, ClipboardList } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useTranslations } from "next-intl";
 import { API_BASE } from "@/lib/config";
@@ -38,7 +38,7 @@ type TeamMember = {
 
 const TEAM: TeamMember[] = [
   {
-    id: "T-001", name: "Mike Harper", initials: "MH", role: "Maintenance Lead", dept: "Maintenance",
+    id: "T-001", name: "Alex Rivera", initials: "AR", role: "Maintenance Lead", dept: "Maintenance",
     shift: "Day (6AM–2PM)", shiftStatus: "on-shift", phone: "(863) 555-0101",
     currentAssignment: "WO-2026-009 — Air Compressor PM",
     todayActivity: ["Completed PM-008 (Oil Change)", "Reviewed 2 maintenance requests", "Ordered parts PO-2026-044"],
@@ -106,6 +106,10 @@ export default function TeamPage() {
   if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
     return <LabsStub feature="Team" />;
   }
+  return <TeamLabsPage />;
+}
+
+function TeamLabsPage() {
   const t = useTranslations("team");
   const tStatus = useTranslations("status");
 
@@ -127,7 +131,7 @@ export default function TeamPage() {
   const [hubUsers, setHubUsers] = useState<HubTeamMember[]>([]);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/team`)
+    fetch(`${API_BASE}/api/team/`)
       .then(r => r.ok ? r.json() : [])
       .then(setHubUsers)
       .catch(() => {});

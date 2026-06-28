@@ -55,6 +55,17 @@ class TestExpandAbbreviations:
         result = expand_abbreviations("VFD")
         assert "variable frequency drive" in result
 
+    def test_model_alias_pf525_expands_to_powerflex_525(self):
+        # Retrieval-grounding fix: techs type "PF525", the corpus says
+        # "PowerFlex 525". Without expansion, BM25 never matches the manual
+        # (audit 2026-06-16: "PF525 showing F004" -> KB-gap, no citation).
+        result = expand_abbreviations("PF525 showing a fault")
+        assert "powerflex 525" in result.lower()
+
+    def test_model_alias_lowercase_and_uppercase(self):
+        assert "powerflex 525" in expand_abbreviations("pf525").lower()
+        assert "powerflex 755" in expand_abbreviations("PF755").lower()
+
 
 # ---------------------------------------------------------------------------
 # rewrite_question
@@ -147,6 +158,24 @@ class TestClassifyIntent:
         assert classify_intent("What does F-201 mean") == "industrial"
         assert classify_intent("the manual reset switch is stuck") == "industrial"
         assert classify_intent("pulled the plug, fault still showing") == "industrial"
+
+    def test_parameter_lookup_lookup_phrase_returns_instructional(self):
+        # vfd_mitsu_03_a700_parameter regression — turn 2 "just looking up the default
+        # value and range for deceleration time, no fault" was hitting INTENT_KEYWORDS
+        # ("decel") and returning "industrial". "looking up the default" phrase intercepts it.
+        assert (
+            classify_intent("just looking up the default value and range for deceleration time, no fault")
+            == "instructional"
+        )
+        assert classify_intent("looking up the default setting for this parameter") == "instructional"
+
+    def test_parameter_lookup_does_not_overmatch(self):
+        # Bare "what is parameter X?" stays industrial — could be fault-context query.
+        # See bot_regression.py::powerflex_parameter_q.
+        assert classify_intent("what is parameter P044 on PowerFlex 525?") == "industrial"
+        assert classify_intent("what's parameter Pr.7 on a Mitsubishi A700?") == "industrial"
+        assert classify_intent("parameter Pr.7 shows fault on screen") == "industrial"
+        assert classify_intent("checked parameters, OL fault still active") == "industrial"
 
     def test_depth_request_detector(self):
         from shared.guardrails import detect_depth_request

@@ -1,0 +1,33 @@
+{
+  "id": "maintenance_troubleshooter",
+  "name": "Maintenance Troubleshooter",
+  "version": "0.1.0",
+  "scope": "Explain likely equipment state for a stopped or faulted asset and suggest read-only checks. Never claims a final root cause; never recommends a write or reset.",
+  "risk_level": "medium",
+  "allowed_tools": [
+    "context_graph.query",
+    "documents.search",
+    "tags.read_current",
+    "events.search",
+    "traces.create"
+  ],
+  "blocked_tools": [
+    "plc.write",
+    "tag.write",
+    "machine.reset",
+    "work_order.submit_without_review"
+  ],
+  "required_context": [
+    "approved_asset",
+    "approved_signals",
+    "approved_documents"
+  ],
+  "required_outputs": [
+    "answer",
+    "citations",
+    "confidence",
+    "human_review_notice"
+  ],
+  "eval_pack": "conveyor_demo",
+  "route_signals": ["default"]
+}

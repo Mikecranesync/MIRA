@@ -44,6 +44,7 @@ export class HttpAuthError extends Error {
  * but is not used — next-auth reads cookies from next/headers globally.
  */
 export async function requireSession(_req?: Request): Promise<Session> {
+  void _req;
   try {
     const ctx = await cookieSession();
     return {
@@ -59,6 +60,7 @@ export async function requireSession(_req?: Request): Promise<Session> {
 
 /** Return session or null — never throws. For optional-auth routes. */
 export async function getSession(_req?: Request): Promise<Session | null> {
+  void _req;
   try {
     return await requireSession();
   } catch {

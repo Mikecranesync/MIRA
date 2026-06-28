@@ -4,8 +4,20 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { cascadeComplete, type CascadeMessage } from "@/lib/llm/cascade";
 import { countTransitions } from "@/lib/signal-recorder";
 import { extractTrace, recordQueryTrace, type TraceGroundingLike } from "@/lib/knowledge-graph/trace";
+import { clientIpHash, rateLimited } from "@/lib/ip-rate-limit";
+import {
+  approvedAskEnforcementEnabled,
+  approvedContextReady,
+  buildApprovedContextRefusal,
+} from "@/lib/approved-context";
 
 export const dynamic = "force-dynamic";
+
+// Authenticated, but reachable via the shared public demo bearer token (the
+// expo-booth iPad), and it fires the shared free-tier cascade. Per-IP rate
+// limit so a leaked/shared token can't drain the cohort's quota. Higher cap
+// than the fully-public quickstart door. See @/lib/ip-rate-limit.
+const MIRA_ASK_MAX_PER_MIN = 40;
 
 interface AskPayload {
   session_id: string;
@@ -94,6 +106,15 @@ export async function POST(req: Request) {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
   }
+
+  // Rate limit before any work — we never store raw IPs.
+  if (rateLimited("mira-ask", await clientIpHash(), MIRA_ASK_MAX_PER_MIN, 60_000)) {
+    return NextResponse.json(
+      { error: "Too many requests — slow down and try again in a minute." },
+      { status: 429 },
+    );
+  }
+
   const ctx = await sessionOrDemo(req);
   if (ctx instanceof NextResponse) return ctx;
 
@@ -176,9 +197,12 @@ export async function POST(req: Request) {
                 src.entity_type AS s_type, src.name AS s_name,
                 tgt.entity_type AS t_type, tgt.name AS t_name
            FROM kg_relationships r
-           JOIN kg_entities src ON src.id = r.source_id
-           JOIN kg_entities tgt ON tgt.id = r.target_id
+          JOIN kg_entities src ON src.id = r.source_id
+          JOIN kg_entities tgt ON tgt.id = r.target_id
           WHERE r.tenant_id = $1
+            AND r.approval_state = 'verified'
+            AND src.approval_state = 'verified'
+            AND tgt.approval_state = 'verified'
             AND (r.source_id = $2 OR r.target_id = $2 OR r.source_id = ANY($3::uuid[]))
           ORDER BY r.confidence DESC
           LIMIT 30`,
@@ -192,6 +216,16 @@ export async function POST(req: Request) {
                 e.simulated, i.component_name, i.plc_tag
            FROM live_signal_events e
            JOIN installed_component_instances i ON i.id = e.component_id
+           JOIN approved_tags at
+             ON at.tenant_id = e.tenant_id
+            AND at.enabled = true
+            AND at.source_system = (
+              CASE WHEN e.source IN ('demo_simulator', 'simulator') THEN 'simulator' ELSE e.source END
+            )
+            AND (
+              at.normalized_tag_path = e.plc_tag
+              OR at.source_tag_path = e.plc_tag
+            )
           WHERE e.tenant_id = $1 AND i.asset_id = $2
           ORDER BY e.created_at DESC
           LIMIT 10`,
@@ -210,8 +244,20 @@ export async function POST(req: Request) {
                 i.component_name
            FROM live_signal_cache cache
            LEFT JOIN installed_component_instances i ON i.id = cache.component_id
+           JOIN approved_tags at
+             ON at.tenant_id = cache.tenant_id
+            AND at.enabled = true
+            AND at.source_system = COALESCE(
+              NULLIF(cache.source_system, ''),
+              CASE WHEN cache.source IN ('demo_simulator', 'simulator') THEN 'simulator' ELSE cache.source END
+            )
+            AND (
+              at.uns_path = cache.uns_path
+              OR at.normalized_tag_path = cache.plc_tag
+              OR at.source_tag_path = cache.plc_tag
+            )
           WHERE cache.tenant_id = $1
-            AND (i.asset_id = $2 OR cache.component_id IS NULL)
+            AND i.asset_id = $2
           ORDER BY cache.last_changed_at DESC`,
         [ctx.tenantId, asset],
       )
@@ -232,17 +278,51 @@ export async function POST(req: Request) {
           (cmp) => cmp.id === component,
         ) ?? (components as Array<Record<string, unknown>>)[0];
       const focusTag = (focus?.plc_tag as string | null) ?? null;
-      const focusId = (focus?.id as string | null) ?? null;
-      if (focusTag || focusId) {
+      let approvedFocusSourceSystem: string | null = null;
+      if (focusTag) {
+        const approvedTagRes = await c.query(
+          `SELECT source_system
+             FROM (
+               SELECT DISTINCT at.source_system,
+                      MAX(cache.last_seen_at) AS last_seen_at
+                 FROM live_signal_cache cache
+                 JOIN installed_component_instances i ON i.id = cache.component_id
+                 JOIN approved_tags at
+                   ON at.tenant_id = cache.tenant_id
+                  AND at.enabled = true
+                  AND at.source_system = COALESCE(
+                    NULLIF(cache.source_system, ''),
+                    CASE WHEN cache.source IN ('demo_simulator', 'simulator') THEN 'simulator' ELSE cache.source END
+                  )
+                  AND (
+                    at.uns_path = cache.uns_path
+                    OR at.normalized_tag_path = cache.plc_tag
+                    OR at.source_tag_path = cache.plc_tag
+                  )
+                WHERE cache.tenant_id = $1
+                  AND i.asset_id = $2
+                  AND cache.plc_tag = $3
+                GROUP BY at.source_system
+             ) approved_live_sources
+            ORDER BY last_seen_at DESC
+            LIMIT 2`,
+          [ctx.tenantId, asset, focusTag],
+        );
+        approvedFocusSourceSystem = approvedTagRes.rows.length === 1
+          ? ((approvedTagRes.rows[0]?.source_system as string | null) ?? null)
+          : null;
+      }
+      if (focusTag && approvedFocusSourceSystem) {
         try {
           const tc = await countTransitions(c, {
             tenantId: ctx.tenantId,
             plcTag: focusTag,
-            componentId: focusTag ? null : focusId,
+            componentId: null,
+            sourceSystem: approvedFocusSourceSystem,
             windowSeconds: transitionWindowSec,
           });
           transitionFact = {
-            topic: focusTag ?? focusId ?? "",
+            topic: focusTag,
             component_name: (focus?.component_name as string | null) ?? null,
             count: tc.transitions,
             window_seconds: tc.windowSeconds,
@@ -264,6 +344,18 @@ export async function POST(req: Request) {
   });
 
   // ── 3. Compose system prompt with citations available to model ────────
+  const approvedSummary = {
+    approvedSourceCount: 0,
+    verifiedRelationshipCount: grounding.edges.length,
+    approvedLiveSignalCount:
+      ((grounding.currentSignals as Array<Record<string, unknown>> | undefined)?.length ?? 0) +
+      (grounding.recentSignals.length ?? 0),
+  };
+
+  if (approvedAskEnforcementEnabled() && !approvedContextReady(approvedSummary)) {
+    return NextResponse.json(buildApprovedContextRefusal(approvedSummary), { status: 412 });
+  }
+
   const focusCmp = (grounding.components as Array<Record<string, unknown>>).find(
     (cmp) => cmp.id === grounding.focusComponentId,
   );

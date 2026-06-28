@@ -48,9 +48,10 @@ jobs:
         env:
           SERVICES: ${{ github.event.inputs.services }}
           RESET_VOLUMES: ${{ github.event.inputs.reset_volumes }}
+          DEPLOY_REF: ${{ github.ref_name }}
         run: |
           ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=no \
-            root@165.245.138.91 "SERVICES='$SERVICES' RESET_VOLUMES='$RESET_VOLUMES' bash -s" << 'ENDSSH'
+            root@165.245.138.91 "SERVICES='$SERVICES' RESET_VOLUMES='$RESET_VOLUMES' DEPLOY_REF='$DEPLOY_REF' bash -s" << 'ENDSSH'
 
           set -euo pipefail
 
@@ -68,8 +69,11 @@ jobs:
           echo "=== Pull latest code ==="
           git fetch origin
           # Default to the same ref that triggered this workflow. workflow_dispatch
-          # also lands here — use the branch the user dispatched from.
-          REF="${GITHUB_REF_NAME:-staging}"
+          # also lands here — use the branch the user dispatched from. NOTE:
+          # GITHUB_REF_NAME does NOT survive the ssh heredoc to the VPS, so the
+          # runner passes it explicitly as DEPLOY_REF (env above). Without this,
+          # every dispatch silently deployed `staging` regardless of --ref.
+          REF="${DEPLOY_REF:-${GITHUB_REF_NAME:-staging}}"
           if git show-ref --verify --quiet "refs/remotes/origin/$REF"; then
             git reset --hard "origin/$REF"
           else

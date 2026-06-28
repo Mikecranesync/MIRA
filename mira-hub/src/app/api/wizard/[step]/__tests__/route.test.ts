@@ -116,9 +116,49 @@ describe("POST /api/wizard/:step", () => {
     expect(sqls[0]).toMatch(/FROM wizard_progress[\s\S]+FOR UPDATE/);
     expect(sqls[1]).toMatch(/INSERT INTO kg_entities/);
     expect(sqls[2]).toMatch(/INSERT INTO kg_entities/);
+    // Regression guard: the kg_entities upsert MUST target the live unique index
+    // kg_entities_tenant_type_name_key (tenant_id, entity_type, name) created by
+    // migrations 025/026. The original (…, entity_id) target was orphaned when
+    // those migrations dropped that constraint, making every finish 500 with
+    // "no unique or exclusion constraint matching the ON CONFLICT specification".
+    for (const sql of [sqls[1], sqls[2]]) {
+      expect(sql).toMatch(/ON CONFLICT \(tenant_id, entity_type, name\)/);
+      expect(sql).not.toMatch(/ON CONFLICT \(tenant_id, entity_type, entity_id\)/);
+    }
     expect(sqls[3]).toMatch(/INSERT INTO namespace_versions/);
     expect(sqls[4]).toMatch(/INSERT INTO namespace_versions/);
     expect(sqls[5]).toMatch(/UPDATE wizard_progress[\s\S]+'completed'/);
+  });
+
+  it("accepts tag-import payload with proposals_created", async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ current_step: "finish", status: "in_progress", step_payloads: { "tag-import": { proposals_created: 5 } } }],
+    });
+    (withTenantContext as ReturnType<typeof vi.fn>).mockImplementation(async (_t, fn) => fn({ query }));
+
+    const res = await POST(makeReq({ proposals_created: 5 }), paramsFor("tag-import"));
+    expect(res.status).toBe(200);
+    const body = await (res as NextResponse).json();
+    expect(body.ok).toBe(true);
+    expect(body.currentStep).toBe("finish");
+
+    const [sql, args] = query.mock.calls[0];
+    expect(sql).toMatch(/INSERT INTO wizard_progress/);
+    expect(args[1]).toBe("finish"); // nextStep("tag-import")
+    expect(args[2]).toBe("tag-import");
+    expect(JSON.parse(args[3])).toMatchObject({ proposals_created: 5 });
+  });
+
+  it("accepts tag-import with skipped:true", async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ current_step: "finish", status: "in_progress", step_payloads: { "tag-import": { skipped: true } } }],
+    });
+    (withTenantContext as ReturnType<typeof vi.fn>).mockImplementation(async (_t, fn) => fn({ query }));
+
+    const res = await POST(makeReq({ skipped: true }), paramsFor("tag-import"));
+    expect(res.status).toBe(200);
+    const body = await (res as NextResponse).json();
+    expect(body.ok).toBe(true);
   });
 
   it("finish 400s when site or line payload is missing", async () => {

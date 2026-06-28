@@ -5,6 +5,35 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 
 ## [Unreleased]
 
+### Fixed
+- Hub QA credentials now seed real RBAC personas for every tenant role plus a second-tenant isolation user, and the saved-session helper fails unless a NextAuth session cookie exists.
+- Hub secret-shopper QA password helper now accepts Hermes env vars, requires explicit prod confirmation, rejects weak passwords, and verifies the exact tenant member update.
+- Hub CMMS quick links and Atlas record deep links now use the canonical Atlas app routes for preventive maintenance and work-order reporting.
+- Hub production deploy wiring now passes the shared Hub-to-Atlas SSO signing configuration into `mira-hub`, and synthetic QA seeding can consume Doppler-backed per-persona credentials without logging password values.
+- Hub CMMS links now go through a signed Hub-to-Atlas SSO handoff so authenticated Hub users land in FactoryLM Works without re-entering credentials.
+- Hub lint debt is cleared across app pages, shared components, and e2e probes so `mira-hub` ESLint runs with zero errors and zero warnings.
+- Hub CMMS quick links and Atlas record deep links now target the FactoryLM Works app routes (`/app/work-orders`, `/app/assets`, `/app/preventive-maintenance`, and `/app/reports`) instead of public marketing paths that render provider 404 pages.
+- FactoryLM trailing-slash redirects now preserve the canonical HTTPS public host and reject hostile forwarded hosts, loopback forwarded hosts, and attacker-supplied public-host ports.
+- Hub CMMS health coverage now guards against browser-facing links exposing the internal Docker hostname `cmms-backend`.
+- RAG tenant isolation and prompt-boundary hardening: aggregate knowledge search stays shared-only, and retrieved docs are treated as untrusted reference data instead of system-role instructions.
+- Hub synthetic-day QA now targets the current live asset-card links instead of stale table/card selectors.
+- Hub mobile logout access: authenticated users can now sign out from the mobile More drawer, and the desktop sidebar sign-out control is wired to NextAuth.
+- Hub namespace empty state now offers direct first-folder creation and an upload path for new maintenance managers.
+
+### Added
+- Hub readiness and Ask MIRA now gate answers on approved asset context, surface missing-context checklists, and filter unverified KG/live context from cited responses.
+- Hub contextualization import now has a DB-backed integration harness, guarded Neon/Doppler runners, and disposable integration fixtures for proving the context-spine intake/review flow.
+- Hub team settings now support self-serve tenant-scoped magic-link invites for admins and owners.
+- Production-safe synthetic conveyor QA provisioning and persona-run guardrails for Hub pre-human-test checks.
+
+### Changed
+- Recorded the staging ingest-schema reconciliation and added a read-only drift probe plus migration immutability doctrine.
+
+### Added
+- **ProveIt proof packets**: auditable contextualized-diagnosis proof harness, self-verifying PDF packets, integrity tests, and an honest blind-spots report.
+- **VFD Analyzer setup wizard** (Ignition `testing` sandbox): Connect → Verify → Map → Save tag-mapping flow with first-timer role education; Jython 2.7 unicode save bug fixed (config validator) — verified live end-to-end.
+- **MIRA PLC Parser** (`mira-plc-parser/`): read-only, offline, vendor-agnostic export → IR pipeline (Rockwell L5X + tag CSV), closed-project detection with export instructions, offline CLI, PyInstaller packaging foundation.
+
 ## [0.5.2] — 2026-03-21
 
 ### Fixed

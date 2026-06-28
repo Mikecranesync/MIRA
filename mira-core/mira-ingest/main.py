@@ -397,6 +397,76 @@ async def _poll_file_status(file_id: str, timeout_s: int = 300) -> str:
     return "timeout"
 
 
+# Transient transport signals worth retrying. A deterministic 4xx (bad/oversized/
+# rejected file) is NOT here — retrying it just burns a starved box (see
+# docs/known-issues/2026-06-06-hub-upload-failures-docling-oom.md).
+_TRANSIENT_HTTPX = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.ReadTimeout,
+    httpx.ReadError,
+    httpx.WriteError,
+    httpx.PoolTimeout,
+    httpx.RemoteProtocolError,
+)
+
+
+async def _ow_upload_file(
+    raw: bytes,
+    fname: str,
+    headers: dict,
+    *,
+    max_attempts: int = 3,
+) -> str:
+    """POST the PDF to Open WebUI ``/api/v1/files/`` and return its file_id.
+
+    Retries only TRANSIENT failures (connection errors, 5xx) with exponential
+    backoff (2s, 4s). A 4xx is deterministic — surfaced immediately as a 422,
+    never retried. Raises HTTPException on terminal failure.
+    """
+    last_err = "unknown"
+    for attempt in range(1, max_attempts + 1):
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(
+                    f"{OPENWEBUI_URL}/api/v1/files/",
+                    headers=headers,
+                    files={"file": (fname, raw, "application/pdf")},
+                )
+            if resp.status_code >= 500:
+                last_err = f"OW {resp.status_code}: {resp.text[:160]}"
+                raise httpx.HTTPStatusError(last_err, request=resp.request, response=resp)
+            if resp.status_code >= 400:
+                # Deterministic client error — do not retry.
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Open WebUI rejected the file ({resp.status_code}): {resp.text[:160]}",
+                )
+            file_id = resp.json().get("id")
+            if not file_id:
+                raise HTTPException(status_code=502, detail="Open WebUI did not return a file_id")
+            return file_id
+        except httpx.HTTPStatusError as e:  # 5xx only (4xx raised HTTPException above)
+            last_err = str(e)
+        except _TRANSIENT_HTTPX as e:
+            last_err = f"{type(e).__name__}: {e}"
+        if attempt < max_attempts:
+            backoff = 2**attempt
+            logger.warning(
+                "OW upload transient failure for %s (attempt %d/%d): %s — retrying in %ds",
+                fname,
+                attempt,
+                max_attempts,
+                last_err,
+                backoff,
+            )
+            await asyncio.sleep(backoff)
+    raise HTTPException(
+        status_code=503,
+        detail=f"Open WebUI upload failed after {max_attempts} attempts (transient): {last_err}",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------------
@@ -855,12 +925,20 @@ async def ingest_document_kb(
             detail=f"Only PDF files are supported (got mime={mime or 'unknown'}, ext={ext or 'none'})",
         )
 
-    # Validate size (20MB Telegram limit, enforced universally)
+    # Validate size. The old 20 MB cap was a Telegram-era artifact; real OEM
+    # manuals (31.5 MB GS10, 33 MB Rockwell ref) exceed it. This is the LEGACY
+    # OW->docling fallback path (the primary PDF path is now in-Hub ingest-v2 via
+    # unpdf, which never reaches here); it buffers the whole file
+    # (`await file.read()` above) before docling, so the bound matters —
+    # docling's 8 GB-VPS OOM history (ADR-0019) is contained by its container
+    # mem_limit. MUST match the Hub's NEXT_PUBLIC_MAX_UPLOAD_MB to avoid the Hub
+    # accepting a file that ingest then rejects.
     MB = 1024 * 1024
-    if len(raw) > 20 * MB:
+    max_upload_mb = int(os.getenv("MIRA_MAX_UPLOAD_MB", "50"))
+    if len(raw) > max_upload_mb * MB:
         raise HTTPException(
             status_code=413,
-            detail=f"File exceeds 20MB limit ({len(raw) // MB}MB)",
+            detail=f"File exceeds {max_upload_mb}MB limit ({len(raw) // MB}MB)",
         )
 
     form_tenant = (tenant_id or "").strip()
@@ -957,21 +1035,9 @@ async def ingest_document_kb(
     if OPENWEBUI_API_KEY:
         headers["Authorization"] = f"Bearer {OPENWEBUI_API_KEY}"
 
-    try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                f"{OPENWEBUI_URL}/api/v1/files/",
-                headers=headers,
-                files={"file": (fname, raw, "application/pdf")},
-            )
-            resp.raise_for_status()
-            file_id = resp.json().get("id")
-    except Exception as e:
-        logger.error("Open WebUI file upload failed: %s", e)
-        raise HTTPException(status_code=422, detail=f"File upload failed: {e}")
-
-    if not file_id:
-        raise HTTPException(status_code=422, detail="Open WebUI did not return a file_id")
+    # Upload with transient-failure retry (connection errors / 5xx). A 4xx or a
+    # missing file_id is terminal — _ow_upload_file raises HTTPException itself.
+    file_id = await _ow_upload_file(raw, fname, headers)
 
     logger.info("File uploaded to Open WebUI: file_id=%s, polling for extraction...", file_id)
 
@@ -979,9 +1045,29 @@ async def ingest_document_kb(
     processing_status = await _poll_file_status(file_id, timeout_s=300)
 
     if processing_status == "failed":
+        # OW accepted the file but its extractor returned failed/error. This is
+        # deterministic for a given file (corrupt / password-protected / no
+        # extractable content), so we do NOT auto-retry the extraction here —
+        # retrying a doc that reliably fails just loads a memory-starved box.
+        # The Hub-level retry affordance lets a human/worker retry later (e.g.
+        # after an extractor blip clears). Reason is explicit, not "try again".
         raise HTTPException(
             status_code=422,
-            detail=f"Open WebUI extraction failed for {fname}. Try re-uploading.",
+            detail=(
+                f"Open WebUI could not extract '{fname}'. The PDF may be corrupt, "
+                f"password-protected, or have no extractable text/images. If the "
+                f"file is valid, retry from the uploads list — the extractor may "
+                f"have hit a transient error."
+            ),
+        )
+    if processing_status == "timeout":
+        # Extraction still running past the poll window — proceed best-effort
+        # (the file is uploaded; chunks/embeddings may lag) but make it visible.
+        logger.warning(
+            "Extraction still processing past poll window for %s (file_id=%s) — "
+            "attaching best-effort; retrieval may lag until OW finishes",
+            fname,
+            file_id,
         )
 
     # Attach to knowledge collection (extraction complete or timed-out best-effort)
@@ -1057,6 +1143,96 @@ def _extract_first_pages_text(raw: bytes, n: int = 2) -> str:
 # ---------------------------------------------------------------------------
 # Reactive KB scrape trigger — fired by RAGWorker when knowledge gap detected
 # ---------------------------------------------------------------------------
+
+
+@app.post("/ingest/plc-parse")
+async def ingest_plc_parse(
+    file: UploadFile = File(...),
+    filename: str = Form(default=None),
+    enterprise: str = Form(default=""),
+    site: str = Form(default=""),
+    area: str = Form(default=""),
+    line: str = Form(default=""),
+    include_i3x: str = Form(default="true"),
+):
+    """Parse an offline PLC program export (Rockwell L5X or vendor tag CSV) into a
+    maintenance-intelligence report + a proposed UNS namespace, and (optionally) a CESMII
+    i3X-shaped payload.
+
+    Read-only, offline, deterministic: it runs the stdlib-only `mira_plc_parser` over the
+    uploaded text. No LLM, no network, no PLC writes (honors `.claude/rules/fieldbus-readonly.md`).
+    The parser is imported lazily so the rest of the service is unaffected if it isn't installed.
+
+    Returns JSON: {report, i3x?}. The report carries `uns_candidates` (one proposed ISA-95 path
+    per tag, `source: "proposed"`). HTTP mirrors the CLI exit codes:
+      200  parsed (a real export)
+      422  closed/binary vendor PROJECT file -> `detail` is the export guidance
+      422  unrecognized/unsupported format
+      503  parser dependency unavailable in this deployment
+    """
+    try:
+        from mira_plc_parser import i3x as _i3x
+        from mira_plc_parser import uns as _uns
+        from mira_plc_parser.pipeline import render_json, run
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"PLC parser unavailable in this deployment: {exc}",
+        ) from exc
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=422, detail="Empty file upload")
+
+    MB = 1024 * 1024
+    max_upload_mb = int(os.getenv("MIRA_MAX_UPLOAD_MB", "50"))
+    if len(raw) > max_upload_mb * MB:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds {max_upload_mb}MB limit ({len(raw) // MB}MB)",
+        )
+
+    fname = filename or file.filename or "program"
+    # Decode tolerantly: the parser's detect() handles binary project files via its own heuristic
+    # and returns an actionable "export it to L5X/PLCopen XML" message rather than a crash.
+    text = raw.decode("utf-8", errors="replace")
+    result = run(fname, text)
+
+    # closed/binary vendor PROJECT file -> actionable export guidance (CLI exit 3).
+    needs_export = getattr(result.detection, "needs_export", None)
+    if needs_export:
+        raise HTTPException(status_code=422, detail=needs_export)
+    # recognized-but-unsupported / unknown format (CLI exit 1).
+    if not result.handled:
+        warnings = "; ".join(result.project.warnings) or "unrecognized or unsupported format"
+        raise HTTPException(status_code=422, detail=f"Not a parseable export: {warnings}")
+
+    report = render_json(result)
+
+    # Apply any caller-supplied UNS prefix overrides to BOTH the embedded uns_candidates and the
+    # i3X payload, so the returned report and namespace are consistent. With no overrides this
+    # reproduces render_json's default (line seeded from the controller name).
+    prefix = {
+        k: v
+        for k, v in (
+            ("enterprise", enterprise),
+            ("site", site),
+            ("area", area),
+            ("line", line),
+        )
+        if v.strip()
+    }
+    effective_prefix = _uns.default_prefix(report)
+    effective_prefix.update(prefix)
+    report["uns_prefix"] = effective_prefix
+    report["uns_candidates"] = _uns.propose_uns(report, prefix or None)
+    report["counts"]["uns_candidates"] = len(report["uns_candidates"])
+
+    body = {"report": report}
+    if (include_i3x or "").strip().lower() in ("1", "true", "yes", "on"):
+        body["i3x"] = _i3x.to_i3x(report, prefix or None)
+
+    return body
 
 
 class ScrapeTriggerRequest(BaseModel):

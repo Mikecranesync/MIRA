@@ -1,6 +1,321 @@
+# Hot Cache — 2026-06-25 — Hub one-board Command Center status view
+
+Branch `feat/hub-one-board-task3` off `origin/main` @ `fbca9071`. Task 3 wires the one-board Hub UI on
+`/command-center`: `HubStatusBoard` polls `/api/hub/status` every 2s and renders conveyor cell plus
+Stardust block-zone running/blocked/faulted/stale states in a compact responsive grid. Mounted below
+the connected-gateways bar so it avoids PR #2274's live-view button hunk. Tests: affected Hub status
+slice 8/8 green, full Hub vitest 883/883 green, targeted lint green, default `npm run build` green.
+Full repo-wide Hub lint still fails on unrelated existing lint debt. Browser proof used local
+production `next start` with the existing Command Center auth-cookie pattern plus mocked status/tree
+routes; desktop/mobile screenshots in ignored `mira-hub/test-results/hub-one-board-task3/`.
+
+---
+
+# Hot Cache — 2026-06-23 — SimLab→UNS ingest: HTTP relay path turnkey (L1+L2)
+
+Branch `feat/simlab-relay-ingest-emit` off `fix/heartbeat-docling-to-tika` (carries the proveit/cappy
+commits). Built the two **no-infra** bricks the ingest roadmap named — **Gaps A/B/C now CLOSED**, the
+HTTP relay path (SimLab → `live_signal_cache`, UNS-mapped) is turnkey.
+- `fc5790f7` **L1 — emit wiring.** `RelayIngestPublisher` now carries a required `tenant_id` + two auth
+  modes matching `mira-relay/auth.py`: **HMAC** (signs the four `X-MIRA-*` headers over the exact body
+  bytes via httpx `content=`; relay treats `X-MIRA-Tenant` as authoritative) and **bench bearer**
+  (tenant in body, needs `RELAY_LEGACY_BEARER=1`). `build_app` attaches it env-gated on
+  `SIMLAB_RELAY_URL` (defaults tenant to reserved `SIMLAB_TENANT_ID`; `SIMLAB_RELAY_{HMAC_KEY,API_KEY,
+  TENANT_ID}`). Additive; best-effort. 16 tests incl. a **real round-trip against `auth.py:verify_hmac`**
+  + tamper-detection.
+- `03971bbc` **L2 — `simulator` allowlist seed.** `tools/seeds/gen_approved_tags_simulator.py` →
+  89-row `approved_tags_simulator.sql` (reserved `SIMLAB_TENANT_ID`, idempotent). Test pins the
+  generator's normalizer to the authoritative `mira-relay/tag_ingest.normalize_tag_path` (fail-closed
+  match can't drift) + a stale-seed guard.
+- Full simlab suite **78 passed, 3 skipped**; ruff clean. No infra touched.
+- **To land data now (Mike/infra):** apply `tools/seeds/approved_tags_simulator.sql` (staging first) →
+  run `mira-relay` → `SIMLAB_RELAY_URL=$RELAY SIMLAB_RELAY_HMAC_KEY=… python -m simlab` + advance →
+  rows appear in `tag_events` + `live_signal_cache`. **Remaining roadmap work:** Lane 3 (MQTT
+  subscriber / foreign feed), Lanes 4–5 (Command Center value panel + prod engine bridge).
+- Roadmap matrix updated: `docs/plans/2026-06-22-simlab-uns-ingest-roadmap.md`.
+
+---
+
+# Hot Cache — 2026-06-22 — ProveIt buildout (Cappy Hour import + sim-live)
+
+Branch `feat/cappy-hour-import-engine` off main. Goal: contextualize the real ProveIt factory +
+make the sim live. **7 commits, 214 tests green** (no infra needed; licensed corpus NEVER committed).
+- `36adfd84` **Cappy Hour import engine** — `mira-plc-parser/parsers/ignition_json.py` + additive IR
+  `NamespaceNode` → real `Enterprise B/tags.json` becomes 1 ent·1 site·4 areas·15 lines·**43 assets**·
+  **4,090 signals** (4,154 nodes); i3x-export = 4,154 instances, single root, 0 dangling.
+- `b67d3445` **MqttPublisher hardened** (3 bugs: frozen ts, get_event_loop(), GC'd task).
+- `cfe42179` **SimEngine live feed** — `advance()` streams a snapshot; opt-in `SIMLAB_MQTT_HOST`.
+- `cb97ae2e` **Pilot DB → 6,023 citable chunks** (`tools/proveit/pilot_db_chunks.py`, offline).
+- `5e075b89` **batch inserter honors per-row `is_private`** — proveit corpus lands `is_private=true`
+  (item 2's code precondition; OEM callers unchanged).
+- `afa36872` **manual→chunks + end-to-end dry-run CLI** — `manual_chunks.py` (section chunks + lazy
+  Docling PDF hook + Vessel-spec **Asset ID→UNS** roster) + `cli.py report`. Real dry-run: **6,198
+  `knowledge_entries` rows** ready (3,000/6,000 WOs grounded to vat paths; 175 manual chunks), all
+  `is_private`, unembedded, no DB writes.
+- `0763992a` resume/handoff: `docs/RESUME_2026-06-22_proveit-buildout.md`.
+**Agent-side Phase 2 DONE. Remaining = pure infra** (provision `proveit` tenant + Hub migrations &
+ingestion endpoint, embed+insert the 6,198 rows, Mosquitto/Flexware broker stand-up; real PDF
+optional — code path exists) — handed off in the resume doc. Dry-run:
+`python tools/proveit/cli.py report "../proveit-factory/uns-docs/Enterprise B" --out /tmp/proveit`.
+PR needs `--admin` (phantom Hub E2E check). `python -m simlab` already serves live.
+**SimLab→UNS ingest roadmap:** `docs/plans/2026-06-22-simlab-uns-ingest-roadmap.md` — full emit→land→UNS→consume
+pipeline (done-vs-needed matrix + 6 parallel-agent work-tree lanes + infra/ops checklist). Thesis: HTTP relay
+path is ~90% built (one wire: `RelayIngestPublisher` not attached in `build_app` + no `simulator` allowlist seed);
+MQTT path is emit-only (no subscriber = foreign-feed gap). Live values already cited via Hub `/api/mira/ask`.
+
+---
+
+# Hot Cache — 2026-06-21 — HubV3/i3x
+
+**Migration head: 056** (contextualization + intake). Three Round 13 fix branches open:
+- `fix/ctx-zipbomb-cap` — A13-1 zip-bomb decompression guard (unzip.ts + import/route.ts 413 pre-check)
+- `fix/publish-gate-integration-test` — B12-1 batch-review route integration test
+- `fix/ctx-signals-verified-only` — C12-1 ctx_enrichment verified-only (ENGINE CHANGE, needs staging gate)
+
+---
+
+# Hot Cache — 2026-06-12 — PLC laptop
+
+## Session — 2026-06-13 (Trends V2 layer-1 CORRECTED — built on the REAL Prog_init)
+
+**Mike caught a version mismatch mid-walkthrough; verified against the live CCW project.**
+The deployed **Conv_Simple_1.8** runs **Prog1 (ladder I/O) + Prog_init (ST comms, V1.8) on
+Channel 2** — NOT a monolithic "Prog2" ST on Channel 0. The repo `plc/Prog2.stf` /
+`Micro820_v4.1.9_Program.st` are a dead pre-1.8 lineage. My 2026-06-12b "deployed = v5.0.0
+Channel 0" claim was **backwards**; live is Channel 2 (serial_sniff 2026-05-26). Fixed the
+`feedback_micro820_channel0` memory (was asserting Channel 0).
+
+**Rebuilt layer 1 (commit after `35c0549b`):**
+- `plc/Prog_init_ConvSimple_v1.9.st` — extends the REAL V1.8 POU. **Option C** tiered polling
+  (researched industry standard — flowfuse/dpstele): one MSG per 500ms tick on shared Ch2, so
+  monitor block keeps 2 of 3 read-ticks (~1.5s; faults+freq/current/DC-bus), torque/rpm + power
+  interleaved (~6s); **writes unchanged ~1Hz**. Keeps bench-proven **Addr = wire+1** off-by-one.
+  Splits 0x2100 → fault(low)/warn(high), captures 0x2102 freq-cmd echo, latches vfd_last_fault
+  (operator clear coil 24).
+- `plc/MbSrvConf_ConvSimple_v1.9.xml` — surgical superset of the LIVE map (Version 2.0, 13 coils
+  + 5 HRs) + 8 new HRs (offsets 117-124 = HR_SPECS) + clear coil. Drops v4-lineage vars that may
+  not exist in 1.8. Dry-run verified vs the live project.
+- `plc/CCW_VARIABLES_ConvSimple_v1.9_DELTA.md` — real CCW types + the deploy sequence.
+- Removed the wrong `Micro820_v5.1.0_Program.st` / `MbSrvConf_v5.1.xml` / v5.1.0 delta.
+- Layers 2+3 unchanged (48 pytest / 41 node green; offsets line up). Historian left RUNNING.
+- **Next:** Mike runs the delta-doc deploy sequence on Conv_Simple_1.8 (declare 17 vars → paste
+  Prog_init V1.9 → build/download/Run), then live acceptance (freq-scale check).
+
+## Session — 2026-06-12b (Trends V2 — SUPERSEDED by the 2026-06-13 correction above)
+
+**Shipped (commits `215f0f2a` + `9cda0169`, branch `docs/plc-1668-feed-resume`):**
+- **Layer 2 (historian):** `live_logger.py` HR_SPECS 117–124 (`vfd_status_word`/`error_code`/
+  `warn_code`/`freq_cmd`÷100/`torque_pct`÷10/`motor_rpm`/`power_kw`÷1000/`last_fault`);
+  `trend_accumulator.py` units + `torque_hi_pct` 150% threshold + rpm-lags-cmd slip note.
+  48/48 pytest. Tags silently absent until reflash. ⚠ plan said power ÷100 — manual says
+  X.XXX kW (÷1000); manual won.
+- **Layer 3 (viewer):** `mira-trend-viewer/js/adapters/gs10.js` — REAL GS10 tables transcribed
+  from `conveyor-evidence/manuals/GS10_UM.pdf` (faults p5-4, warning IDs ch6 — warn ids ≠ fault
+  ids! CE10 warn=5 fault=58; SM2 bits p4-196). New WORD `fields` decode for the 2-bit packed
+  enums (op_status, direction) → ENUM child lanes; single-bit decode would lie. 41/41 node tests.
+- **Layer 1 PREP (flash-ready, Mike's CCW step remains):** `plc/Micro820_v5.1.0_Program.st` —
+  based on DEPLOYED v5.0.0 `Prog2.stf` (Channel 0!), NOT the stale v4.1.9 .st (Channel 2 +
+  bogus SM2 bit-13-fault comment). Step-1 read widened to 0x2100×7; SM1 byte-split feeds
+  vfd_fault_code (red light finally live) + vfd_warn_code; last-fault latch w/ operator clear
+  coil C24; steps 5/6 read torque/rpm (0x210B×2) + power (0x210F×1). `plc/MbSrvConf_v5.1.xml`
+  24 coils + 25 HRs (vfd_* = Word per deployed CCW truth); `deploy_modbus_map.py` dry-run
+  verified vs `CCW/MIRA_PLC/Conv_Simple_1.8`. Sequence: `plc/CCW_VARIABLES_v5.1.0_DELTA.md`.
+- **Next:** Mike runs the delta-doc deploy sequence (stop historian → deploy map → declare vars
+  → paste v5.1.0 → flash). Then live acceptance per the plan doc (freq-cmd-vs-actual scale
+  check step 6!) + screenshots. Same flash wakes dormant A2/A12.
+
+## Session — 2026-06-12 (trend-viewer v2 — last-fault + status-bit decode + Perspective embed)
+
+**Shipped (commit `a55bf2f3`, branch `docs/plc-1668-feed-resume`, 33/33 node tests):**
+- `mira-trend-viewer/` v2: per-VFD `last_fault` ENUM register (persists trip cause after
+  `fault_code` resets — the intermittent-trip workhorse); status-word **bit decode** — a WORD
+  tag declaring `bits:{0:"Running",5:"Faulted",…}` expands ONCE in the store (like scaling)
+  into named boolean child tags, each an indented checkbox row + digital step lane, parent
+  updates fan out with honest null/quality.
+- **Perspective wiring:** `trend_historian.py` now mounts the viewer at `/viewer` (same origin
+  as `/trends/summary` → no CORS, no extra server); `app.js` auto-targets the serving origin;
+  `Trends/TrendPanel` embeds `/viewer/index.html?source=historian` alongside Ask MIRA (route
+  `/trends` + NavBar TRENDS unchanged). Deploy to gateway: `ignition\deploy_ignition.ps1`.
+- Verified: live browser check (Fault Code "No fault" + Last Fault "ocA"; 0x0007 →
+  Running/At Speed/Ready ON) + smoke of `/viewer` mount on scratch port 8799; promo screenshots
+  in `docs/promo-screenshots/2026-06-12_trend-viewer-v2-*`.
+- **LIVE DEPLOY (same day, tagged `trends-v1` / MIRA_PLC `trends-hmi-v1`):** the real gateway
+  project is **ConvSimpleLive** (NOT monorepo `ignition/project/` ConveyorMIRA — never loads on
+  8.3.4; `ia.display.webBrowser` isn't a Perspective component, `ia.display.iframe` is).
+  Shipped + browser-verified: `/trends` page + **≋ TRENDS toggle buttons** (Ask-MIRA popup
+  pattern) on Conveyor + home; DC bus 321.6 V GOOD drawing live in the popup. Source:
+  `CCW/MIRA_PLC/ignition/ConvSimpleLive` @ `a3f79b0`; deploy = `gsudo APPLY_TRENDS.cmd`.
+- **Next: Trends V2 — full GS10 monitoring.** Plan: `docs/plans/2026-06-12-trends-v2-full-vfd-monitoring.md`;
+  resume prompt: `plc/RESUME_TRENDS_V2.md`. Blocked on the slave-map reflash for layer 1;
+  layers 2–3 (historian HR_SPECS/UNITS + viewer GS10 bits/fault tables) buildable now.
+
+## ⭐ MASTER GTM CHECKLIST — `docs/gtm/go-to-market-hardening-checklist.md`
+
+**The single doc the whole operation runs against** (created 2026-06-11, audited vs `origin/main`
+@`7d3483cf`). Tracks every surface (website, quickstart, Hub, Slack, Telegram, engine, SimLab,
+infra, revenue) with Status/Owner/Priority/Evidence. **3 P0 blockers to first dollar — all HUMAN:**
+(1) Stripe in TEST mode (#1831 — flip Doppler `STRIPE_SECRET_KEY`→`sk_live_`); (2) DigitalOcean
+billing; (3) NeonDB billing. Once those clear, a stranger can buy + get a grounded answer. P1 tail:
+Gemini key 403 (#1830, tail-only), Google SSO redirect (#1756), bot liveness probes. Pairs with
+`wiki/orchestrator/BETA_READINESS.md` (A–F lens scorecard).
+
+## Session — 2026-06-08 (Path-to-Beta: upload→retrieval gate — #1592 reality check)
+
+**Drift corrected:** PR #1592 (`feat(hub): folder = brain`) is **MERGED** to main
+(`6758e7e6`, Slices 1–4 + e2e proof) — earlier hot.md/path-to-beta notes calling it
+"DRAFT" are stale. It wired the upload→retrieval **write + plumbing** **on the Hub NodeChat
+surface** (but the retrieval *query semantics* had a bug — found + fixed this session, below):
+
+- `/api/namespace/node/[id]/files` POST → `ingestPdfToNode` (`mira-hub/src/lib/node-knowledge-ingest.ts`)
+  chunks an attached PDF into `knowledge_entries` (`ingest_route='v2'`, generated `content_tsv`
+  = BM25-citable immediately, page anchors, `metadata.node_id`). Pure in-Hub (unpdf + Neon) —
+  does NOT depend on mira-ingest, so the "staging ingest disabled" constraint doesn't apply here.
+- `retrieveNodeChunks` (`mira-hub/src/lib/manual-rag.ts`) reads exactly those rows, subtree-scoped
+  via `uns_path <@ ltree`, keyed on `metadata->>'node_id'` (RLS-safe; `hub_uploads` has no RLS).
+- `/api/namespace/node/[id]/chat` wires retrieve → `appendManualContext` → Groq→Cerebras→Gemini
+  cascade, streaming SSE with `[n]` citations + `sources` chips. Write↔read↔chat↔UI all aligned.
+- Full stranger flow EXISTS in UI: empty tenant → `EmptyState` "New Folder" → attach manual
+  (`/namespace` page.tsx:251) → ask via `NodeChat`.
+
+**🔴 Retrieval-semantics bug — found via execution proof, FIXED this session.** Inspection said
+write↔read aligned; running the literal INSERT+SELECT against the real schema (ephemeral pg,
+migrations 001/003/006/045 + kg_entities) showed the gate's OWN question returns **0 rows**:
+`retrieveNodeChunks` used `plainto_tsquery`, which **AND-combines every term**, so a natural
+question ("what does oC **mean**?") injects an off-vocabulary word no manual chunk contains →
+empty retrieval → no citation. Proven: `plainto`(AND)=false, `websearch`=false (also ANDs),
+OR-joined `to_tsquery`=true. **Fix:** `manual-rag.ts::retrieveNodeChunks` now runs the precise AND
+query first, then falls back to an OR query (`' & '→' | '` rewrite of the sanitized plainto output)
+only when AND returns nothing — precision kept, recall restored. Proven at SQL level + 4 vitest
+tests (`mira-hub/src/lib/__tests__/manual-rag.test.ts`). **Sibling sweep (reuse-before-build):**
+the **bot/engine path was already fixed** — `neon_recall.py::_recall_bm25` is OR-fanout
+(`to_tsquery('t1 | t2 | …')`, bounded; PR #1382) and `rag_worker.py` just calls `recall_knowledge`,
+so Telegram/scan/pipeline have **no** plainto AND bug (eval regime NOT needed). **`retrieveManualChunks`**
+(Hub asset-chat + quickstart-ask, natural questions) DID have it → **fixed this PR** (same AND→OR
+fallback). 15/15 vitest now. Out of scope, noted on #1808: `asset-intelligence.ts` (enrichment
+*fallback*, keyword query — AND defensible) + `mira-scan-monday/vendor_rag.py` (legacy, not in compose).
+
+**Gate still RED (do not declare beta-ready):** the gate is "an *unseen* manual on a *self-served*
+node, zero Mike seeding" — a pre-seeded pass doesn't count. Remaining blockers to a green run:
+1. **Harness contract (FIXED):** `tests/beta/_gate.py::_ask` posted JSON `{question}` but NodeChat
+   needs a `messages` array + returns **SSE**. Added messages-body + SSE accumulation (back-compat
+   with JSON surfaces) + `tests/beta/test_gate_harness.py` (7 unit tests, no env). Did NOT remove
+   the `xfail(strict)` marker (gate not yet proven met end-to-end).
+2. **Provisioning:** needs a dev/staging run with a real tenant + node. Hub auth is a **next-auth
+   session cookie**, not the `BETA_GATE_API_KEY` bearer — provisioner must supply working auth.
+
+**Still open (#1806, NOT a beta blocker):** the blind production upload doors
+(`/api/uploads`, `folder`, `local`) still write OW-KB-only — only the deliberate node-attach door
+reaches v2 `knowledge_entries`. Wire-or-deprecate is a separate change (research doc's
+"two divergent ingest writers" warning). Branch `lane/upload-retrieval-gate`.
+
+Refs: `docs/research/2026-06-07-upload-retrieval-gap-and-beta-path.md`, `tests/beta/README.md`.
+
+---
+
 # Hot Cache — 2026-06-04 — CLOUD
 
+## Session — 2026-06-07 (Train-before-deploy audit — 7 lanes)
+
+Verified whether MIRA supports **train before deploy** (Command Center builds+validates the
+namespace; Ignition/HMI deploys *approved* asset agents). Branch `feat/train-before-deploy`
+(worktree `/tmp/mira-tbd`, off `origin/feat/path-to-beta` so doctrine edits stack on that PR).
+
+**Verdict: PARTIALLY ALIGNED.** The build half exists; the validate→approve→deploy half does not.
+
+- ✅ **Command Center training surfaces all exist**: self-serve tenant create (`/api/auth/register`
+  → `ensureUserAndTenant`), wizard (`/api/wizard/[step]` company/site/line), `/namespace`,
+  `/assets/[id]` with `AssetChat.tsx` ("Ask MIRA" on an asset), `/proposals` (`ai_suggestions`),
+  citation rendering, `/command-center` tree+display.
+- ✅ **Retrieval is tenant-scoped** — `neon_recall.recall_knowledge` filters
+  `WHERE tenant_id = :tid OR tenant_id = :shared_tid` (the shared OEM pool is the intentional
+  Knowledge Cooperative; customer manuals do NOT leak cross-tenant). De-risks design-partner beta.
+- ❌ **Gap 1 — upload→retrieval** (THE blocker, PR #1592 DRAFT): uploaded manuals not citable.
+- ❌ **Gap 2 — no validation/approval loop, no per-asset agent lifecycle, no HMI deploy gate.**
+  `ignition_chat.py` answers any asset-bound HMAC turn regardless of readiness. No "mark good/bad"
+  in the Hub. No `asset_agent_status`.
+
+**Shipped this session — CODE (read-path spine, commit `607a3cd6`):**
+- `mira-hub/db/migrations/046_asset_agent_status.sql` — `asset_agent_status` + `asset_validation_qa`,
+  RLS mirroring mig 027. NOT applied to any DB yet.
+- `mira-bots/shared/asset_agent_transition.py` — pure state machine + `gate_decision()` (27 tests ✅).
+- `mira-pipeline/ignition_chat.py` — HMI gate behind `ENFORCE_ASSET_AGENT_GATE` (default OFF; non-ready
+  → clean refusal, audited, no engine call; DB error fails OPEN). 10 tests ✅; direct-connection 16/16 ✅.
+- ⚠️ `_lookup_agent_state` resolver join (asset_id→kg_entities) is plausible but UNTESTED vs real schema
+  (gate default-off; tests monkeypatch the lookup). Verify before enabling.
+- Next PR: Validate UI (`/assets/[id]`) + approve endpoint + TS twin (write-path, where the helper gets a caller).
+
+**Shipped this session — docs/doctrine:**
+- `docs/specs/asset-agent-validation-spec.md` (LANE 4) — per-`kg_entity` lifecycle
+  `draft→training→validating→approved→deployed`, two new tables (`asset_agent_status`,
+  `asset_validation_qa`), composes `kg_entities.approval_state` + `ai_suggestions` + engine 1–5
+  groundedness + `evidence_utilization`; HMI deploy gate `ignition_chat.py` consults behind
+  `ENFORCE_ASSET_AGENT_GATE`. **Distinct from** namespace-level L0–L6 `health-score.ts`.
+- `.claude/rules/train-before-deploy.md` (LANE 6) — the doctrine + the one new HMI-readiness rule
+  (beta-gate + read-only already exist → cross-referenced, not restated).
+- Root `CLAUDE.md` North Star + `.claude/CLAUDE.md` "What MIRA is" + rule/cross-ref lists.
+
+**Already done by the path-to-beta session (verified, NOT rebuilt):** beta gate test
+`tests/beta/beta_ready_upload_retrieval_citation.py`, Ignition runbook
+`docs/runbooks/activate-ignition-ask-mira.md`, beta-gate doctrine in CLAUDE.md/NORTH_STAR.
+
+**LANE 7 naming:** clean — no "generic chatbot/ChatGPT" copy in `mira-hub`/`mira-web` UI (only
+test + blog files matched). `.claude/CLAUDE.md` already states "not a generic chatbot."
+
+**Next 3 PRs:** (1) land #1592 (close upload→retrieval); (2) implement asset-agent-validation
+spec (migrations + transition helpers + `/assets/[id]` Validate tab); (3) wire `ignition_chat.py`
+deploy gate behind `ENFORCE_ASSET_AGENT_GATE` + hallucination-audit check.
+
+---
+
+## Session — 2026-06-07 (Path to Beta Testers — phase opened, 6 lanes)
+
+New official phase: **Path to Beta Testers** (`docs/plans/2026-06-07-path-to-beta.md`).
+Branch `feat/path-to-beta` (worktree `.claude/worktrees/path-to-beta`, off origin/main `4b9778c8`).
+
+**🚦 BETA GATE:** stranger uploads their own manual → asks → gets a cited answer, with **no
+manual fix**. Enforced by `tests/beta/beta_ready_upload_retrieval_citation.py` (xfail until met).
+
+**Blockers (what stands between us and beta):**
+1. **Upload→retrieval gap (THE blocker).** Hub/web uploads write the Open WebUI KB; chat
+   retrieval (`neon_recall.recall_knowledge`) reads only `knowledge_entries`. Uploaded manuals
+   are not citable. Fix = **PR #1592 `feat/hub-folder-brain` — still DRAFT** (18 files, +2037).
+   Trace + minimal-close path: `docs/research/2026-06-07-upload-retrieval-gap-and-beta-path.md`.
+2. **Graph stability — RESOLVED.** #1742 (`63c9b8e1`) merged to main (NaN-coord guard on
+   GraphCanvas painters). Regression test added this session (`mira-hub/src/components/kg/__tests__/GraphCanvas.test.ts`, 4/4 pass). **Open: confirm it's deployed to prod.**
+3. **Ignition Ask MIRA** — see Lane 5 status in HANDOFF; runbook at
+   `docs/runbooks/activate-ignition-ask-mira.md`. (HMAC key presence + WebDev deploy = ops.)
+
+**Reuse-before-build finds:** demo seeds already exist (`tools/seeds/` — `factorylm-garage-conveyor.sql`,
+`gs10-vfd-knowledge.sql`, `demo-conveyor-001.sql`, `run_demo_seed.py`, commit `68574f1d`). Lane 3
+extends, does not rebuild.
+
+**Readiness:** internal demo ✅ (pre-seeded tenant) · design partner ❌ (gap #1) · public beta ❌ (gate red).
+
+---
+
+## Session — 2026-06-06 (AskMira / kiosk fix cycle + runbook)
+
+PR #1620 closed (wrong stack). MIRA_PLC#25 merged (`f67adb43`) — AskMira view textarea race + per-click `session_id` ms suffix. PR #1754 merged (`e5dabe7f`) — engine Q1/Q2/Q5/Q7 + H4 enforcer + `tests/test_askmira_regression.py` (9 tests). PR #1755 merged — H4 stock admission uses scorer-recognized phrase + `--- Sources ---` block normalizer (+2 tests = 11). Two `deploy-vps.yml -f services=mira-ask` dispatches; auto-deploy default `TARGETS` did NOT include `mira-ask` — surfaced + closed in this session.
+
+**Prod after 3rd bake:** 9/10 hard pass. Remaining RED is Q1 length (165w > 145 cap) — content correct, verbosity only. Recommended next: prompt-engineering pass or kiosk-scoped post-process trim. Separate focused PR.
+
+**New runbook:** `docs/runbooks/kiosk-askmira-deploy-and-verify.md`. CLAUDE.md Pointers updated. CHANGELOG entry `ops/kiosk-runbook (2026-06-06)`. `.github/workflows/deploy-vps.yml` line 199 — added `mira-ask` to default TARGETS so future Smoke Test → auto-deploy includes the kiosk path.
+
+**Tester skill** (user-scope) `~/.claude/skills/askmira-tester/` — Mode A direct `/ask` bake + Mode B Playwright MCP view drive + scorer + PDF builder. Triggers on "test AskMira", "rerun the 10 questions", "regression check the conveyor chat".
+
 ## Session — 2026-06-04 run 4 (autonomous gap-closure routine — epic #1666)
+
+> **Parallel stream (DT-2026 gate-monitor, 2026-06-04 ~19:35Z):** all 7 gates green
+> (#1676/#1657/#1674 merged, migs 032–037 on main, #1677 decisions explicit, head=037).
+> Phase 1 resumed → **PR #1710** opened: migrations **038** (relationship_type CHECK +4
+> asset-graph edges) + **039** (`kg_entities.source_object_id` FK-by-convention + partial idx).
+> Preserved migration 032's 3 inferred types (live=31, +4 new = 35 — doc §5's 28-value list was
+> pre-032). No prod touched; CI/`apply-migrations.yml --dry-run` must verify on staging.
+> **Next:** migrations **040–042** source-preservation layer (incl. `source_object_versions`
+> per Mike's #1677 override). **Follow-up:** MaintainX "store raw → map → remap, zero re-fetch"
+> proof. Gate-monitor routine **disabled**. Durable record: comments on #1666 + #1677.
+
+## Session — 2026-06-02→04 (promo-director: HMI walkthrough videos, private YouTube)
 
 **Status: Merge conflict resolved + CI green. PR #1657 now clean and ready for human review.**
 
@@ -711,3 +1026,75 @@ Mitsubishi Electric: 16 chunks (NULL model)
 - Scorecard: 30/57 passing (53%) — new low in the FSM/UNS-gate band
 - Action: issue-filed (commented on tracker #1583, not a duplicate)
 - 27 patchable failures but both autopatch hard-stops tripped (>15 failures; 3 file clusters). Same clusters A–E as #1583. `last_response_snippet` still empty for all — transcript capture remains the #1 blocker.
+
+## eval-fixer run — 2026-06-02
+- Scorecard: 35/57 passing (61%)
+- Action: issue-filed (#1640)
+- 22 failures, all autopatch-blocked (>15 patchable AND 3 file clusters). Systemic FSM/UNS-gate regression — 21/22 point at engine.py. Clusters: gate stuck in AWAITING_UNS_CONFIRMATION, docs-requests landing in ASSET_IDENTIFIED instead of IDLE, over-qualifying (stuck Q1/Q2 vs DIAGNOSIS), CMMS WO not created, PowerFlex leaking on GS20. Needs human bisect.
+
+## eval-fixer run — 2026-06-03
+- Scorecard: 35/57 passing (61%) — runs/2026-06-03T0109-offline-text.md
+- Action: issue-filed (#1678)
+- 22 patchable failures but BOTH hard-stops tripped (>15 failures AND 3 file clusters: engine.py, guardrails.py, active.yaml). Broad FSM-routing regression — fixtures stuck in AWAITING_UNS_CONFIRMATION/Q1/IDLE or over-advancing to ASSET_IDENTIFIED. Needs human bisect of recent engine.py state-machine edits.
+# Hot Cache - 2026-06-25 - Context spine unification audit
+
+Read-only FactoryLM/MIRA context spine investigation completed in `C:\Users\hharp\.codex\worktrees\a113\MIRA`.
+- Deliverables:
+  - `docs/investigations/2026-06-25-context-spine-subagent-audit.md`
+  - `docs/plans/2026-06-25-context-spine-unification-plan.md`
+- Verdict: MIRA Hub is the canonical self-serve spine; FactoryLM should feed it as a read-only edge/demo/proof source, not become a parallel KG/approval/readiness product.
+- Existing spine: Offline Contextualizer / PLC parser -> Hub contextualization staging -> human approve/reject -> UNS/KG + `knowledge_entries` -> readiness -> approved-context MIRA answers -> optional relay-approved telemetry -> SimLab proof.
+- Main glue gaps: legacy bundle import vs JSON intake semantics, document chunks not consistently counted in readiness/approval, approved-only retrieval is flag-gated and not visibly enforced everywhere, `/api/mira/ask` relationship filtering needs verified-only proof, and SimLab/live proof is not yet one command.
+- Smallest PR plan from the audit was docs/contract alignment first, then import review unification, approved-context readiness/answer gates, and SimLab proof runner.
+- Follow-up implementation slice: legacy bundle import now computes a bundle SHA, upserts/returns `ctx_import_batches`, attaches `ctx_sources.import_batch_id`, updates batch counts, and treats same-bundle re-import as idempotent. Added `mira-hub/src/app/api/contextualization/import/__tests__/route.bundle.test.ts`; verified with focused Vitest + ESLint.
+
+---
+# Hot Cache - 2026-06-25 - Hub DB integration harness planned and partially implemented
+
+Context spine work is in progress on the local worktree. Investigation and plan docs are present:
+`docs/investigations/2026-06-25-context-spine-subagent-audit.md`,
+`docs/plans/2026-06-25-context-spine-unification-plan.md`, and
+`docs/superpowers/plans/2026-06-25-hub-db-integration-test-database.md`.
+
+Sub-agent-driven DB harness status:
+- Complete/reviewed: integration-only CMMS/RLS fixture at `mira-hub/db/integration-fixtures/000_base_cmms_rls.sql`.
+- Complete/reviewed: disposable setup script at `mira-hub/scripts/setup-integration-db.mjs`.
+- Complete/reviewed: `mira-hub` npm scripts `db:integration:setup` and `test:integration:db`, plus integration test headers.
+- Added guarded Doppler-dev runner: `mira-hub/scripts/run-dev-integration-tests.mjs` and `npm run test:integration:dev`.
+- Applied contextualization migrations 055/056 to Doppler `factorylm/dev` (guarded to `ep-lingering-salad`); before tables were missing, after `contextualization_projects` and `ctx_import_batches` exist.
+- Green against real dev Neon: `doppler run --project factorylm --config dev -- npm run test:integration:dev -- src/app/api/contextualization/import/import.integration.test.ts "src/app/api/contextualization/batches/[batchId]/review/review.integration.test.ts"` -> 2 files, 9 tests passed, cleanup ran.
+- Full dev integration still fails only on `src/lib/auth/__tests__/rls-deny.integration.test.ts`: shared dev lacks `cmms_areas`/`cmms_sites`, and the integration CMMS fixture assumes UUID `tenants.id` while dev's existing tenant schema is not compatible. Keep this suite on the disposable-branch path.
+- Verified: package JSON parses; ESLint passes for touched scripts/tests; setup script refuses missing/unguarded DB env.
+
+---
+
+# Hot Cache - 2026-06-25 - Hub DB integration harness proven on disposable Neon
+
+Continuation result:
+- Created disposable Neon branch `br-super-cake-ahzi2o9f` from dev branch `br-fancy-firefly-aha05dz2`; branch was created with an 8-hour expiry.
+- Created clean test database `hub_integration_test4` on that branch.
+- `npm run test:integration:db` is green from empty schema: setup applied integration fixture plus allowlisted migrations `001`, `010`, `026`, `027`, `029`, `055`, `056`; smoke check passed; Vitest passed 3 files / 17 tests.
+- The setup harness intentionally does not replay every Hub migration; earlier full replay failed on unrelated legacy dependencies (`knowledge_entries`, then `work_orders`). The allowlist is the current DB contract for the integration slice under test.
+- Fixes made during proof: integration fixture handles missing app tenant settings with `NULLIF(..., '')::uuid`; RLS missing-context test now drops to `factorylm_app`; setup grants `factorylm_app` the KG table permissions needed by contextualization approval publishing.
+- Verification after the pass: ESLint on touched DB scripts/tests passed, `package.json` parses, `git diff --check` passed with only normal CRLF warnings.
+- Note: Node `pg` emits the current sslmode warning for Neon `ssl=require`; this is a dependency warning, not a test failure.
+
+---
+
+# Hot Cache - 2026-06-25 - Synthetic dogfood Celery loop PR #2293
+
+Branch `codex/synthetic-dogfood-agents` / PR #2293 adds the autonomous beta-polish loop Mike asked for:
+seeded Hub personas run via Celery + Playwright, raw artifacts land under `/opt/mira/data/synthetic-dogfood`,
+and P0/P1/P2 failures become redacted, fingerprint-deduped GitHub issues. P3 noise stays in reports.
+- Core code: `mira-crawler/agents/synthetic_dogfood.py`, `agents/github_issue_reporter.py`,
+  `tasks/synthetic_dogfood.py`.
+- SaaS wiring: `mira-crawler/Dockerfile.synthetic-dogfood` plus `docker-compose.saas.yml` services
+  `mira-redis`, `mira-synthetic-dogfood-worker`, and `mira-synthetic-dogfood-beat`.
+- Safety switches: default off (`SYNTHETIC_DOGFOOD_ENABLED=0`) and dry-run issues
+  (`DOGFOOD_ISSUE_MODE=dry_run`). Flip Doppler `factorylm/prd` only after the first artifact looks sane.
+- Runbook: `docs/runbooks/synthetic-dogfood-agents.md`.
+- Verified locally: `python -m pytest tests/test_synthetic_dogfood.py -q` = 11 passed; `py_compile` green;
+  Python YAML parse confirmed compose services/volume. Not run: `docker compose config` because Docker is
+  not installed in this Windows remote session.
+
+---

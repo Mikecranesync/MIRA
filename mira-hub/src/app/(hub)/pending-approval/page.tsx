@@ -12,7 +12,7 @@ export default function PendingApprovalPage() {
   async function checkStatus() {
     setChecking(true);
     try {
-      const res = await fetch(`${API_BASE}/api/auth/check-approval`);
+      const res = await fetch(`${API_BASE}/api/auth/check-approval/`);
       if (!res.ok) return;
       const { status } = await res.json() as { status: string };
       if (status === "approved" || status === "admin" || status === "trial") {

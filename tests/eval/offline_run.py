@@ -58,6 +58,7 @@ sys.path.insert(0, str(_REPO_ROOT))
 
 import yaml  # noqa: E402
 
+from tests.eval import llm_replay  # noqa: E402
 from tests.eval.grader import ScenarioGrade, grade_scenario  # noqa: E402
 from tests.eval.judge import DIMENSIONS, Judge, JudgeResult  # noqa: E402
 from tests.eval.local_pipeline import LocalPipeline, image_to_b64  # noqa: E402
@@ -256,6 +257,8 @@ async def run_suite(
     for idx, fixture in enumerate(fixtures, 1):
         scenario_id = fixture["id"]
         is_photo = fixture.get("_is_photo", False)
+        # Per-scenario record/replay keying (no-op in live mode).
+        llm_replay.begin_scenario(scenario_id)
         _print_progress(idx, total, scenario_id, is_photo)
 
         if use_synthetic_user and not is_photo:
@@ -412,6 +415,13 @@ def write_offline_scorecard(
                     lines.append(f"- **{cp.name}** FAILED: {cp.reason}")
             if g.error:
                 lines.append(f"- Photo extraction: {g.error}")
+            # Record what MIRA actually said so the eval watchdog's
+            # last_response_snippet (parsed from this line) is populated —
+            # otherwise failures are diagnosed blind (#1583). Mirrors
+            # run_eval.py's scorecard writer.
+            if g.last_response:
+                preview = g.last_response[:200].replace("\n", " ")
+                lines.append(f"- Last response: `{preview}...`")
             lines.append("")
 
     # Judge summary
@@ -628,6 +638,16 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enable engine INFO logging",
     )
+    p.add_argument(
+        "--replay",
+        choices=["live", "record", "replay"],
+        default=None,
+        help=(
+            "Deterministic LLM seam (P2-1). 'record' captures live cascade "
+            "responses to a fixture store; 'replay' serves them with no keys; "
+            "'live' (default) hits real providers. Env: MIRA_EVAL_REPLAY."
+        ),
+    )
     return p
 
 
@@ -648,6 +668,14 @@ async def _async_main(args: argparse.Namespace) -> int:
     if os.getenv("GEMINI_API_KEY") and not os.getenv("EVAL_KEEP_GEMINI"):
         logger.warning("Disabling Gemini for eval run (set EVAL_KEEP_GEMINI=1 to override)")
         os.environ.pop("GEMINI_API_KEY", None)
+
+    # Deterministic LLM seam (P2-1): record/replay the cascade so the suite's
+    # pass count stops swinging run-to-run. No-op (live) unless selected.
+    replay_mode = llm_replay.resolve_mode(args.replay)
+    replay_strict = os.getenv("MIRA_EVAL_REPLAY_LOOSE") != "1"
+    replay_installed = llm_replay.install(replay_mode, strict=replay_strict)
+    if replay_installed:
+        _print_info(f"LLM replay seam: mode={replay_mode} strict={replay_strict}")
 
     pipeline = LocalPipeline(db_path=args.db, verbose=args.verbose)
 
@@ -706,6 +734,20 @@ async def _async_main(args: argparse.Namespace) -> int:
     scorecard_path = write_offline_scorecard(grades, judge_results, total_seconds, suite, prev_path)
 
     _print_final_summary(grades, judge_results, total_seconds, scorecard_path)
+
+    if replay_installed:
+        s = llm_replay.stats
+        r = llm_replay.retr_stats
+        _print_info(
+            f"LLM replay ({replay_mode}): hits={s['hits']} drift={s['drift']} "
+            f"misses={s['misses']} recorded={s['recorded']} | "
+            f"retrieval: hits={r['hits']} misses={r['misses']} recorded={r['recorded']}"
+        )
+        if replay_mode == "replay" and s["misses"]:
+            _print_error(
+                f"{s['misses']} replay misses (ran past recorded sequence) — "
+                f"conversation branched; re-record (MIRA_EVAL_REPLAY=record)"
+            )
 
     failures = sum(1 for g in grades if not g.passed)
 

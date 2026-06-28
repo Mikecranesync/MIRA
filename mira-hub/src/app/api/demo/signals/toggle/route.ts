@@ -74,7 +74,7 @@ export async function POST(req: Request) {
       }
 
       let valueText: string | null = body.value_text ?? null;
-      let valueNumeric: number | null = body.value_numeric ?? null;
+      const valueNumeric: number | null = body.value_numeric ?? null;
       let valueBool: boolean | null = body.value_bool ?? null;
 
       if (body.state) {

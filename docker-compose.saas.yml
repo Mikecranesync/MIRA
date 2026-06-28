@@ -24,12 +24,12 @@ x-bot-common-env: &bot-common-env
   GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
   GROQ_VISION_MODEL: ${GROQ_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
   CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
-  CEREBRAS_MODEL: ${CEREBRAS_MODEL:-llama3.1-8b}
+  CEREBRAS_MODEL: ${CEREBRAS_MODEL:-gpt-oss-120b}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-4-6}
-  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
-  GEMINI_VISION_MODEL: ${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+  TOGETHERAI_API_KEY: ${TOGETHERAI_API_KEY:-}
+  TOGETHERAI_MODEL: ${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+  TOGETHERAI_VISION_MODEL: ${TOGETHERAI_VISION_MODEL:-}
   LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
   LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
   LANGFUSE_PUBLIC_API_KEY: ${LANGFUSE_PUBLIC_API_KEY:-}
@@ -40,6 +40,22 @@ x-bot-common-env: &bot-common-env
   ASK_API_KEY: ${ASK_API_KEY:-}
 
 services:
+  mira-redis:
+    image: redis:7.4.2-alpine
+    container_name: mira-redis-saas
+    networks:
+      - mira-net
+    volumes:
+      - mira-redis-data:/data
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   mira-core:
     image: ghcr.io/open-webui/open-webui:v0.8.10
     container_name: mira-core-saas
@@ -63,9 +79,21 @@ services:
       - OPENAI_API_BASE_URLS=http://mira-pipeline-saas:9099/v1
       - OPENAI_API_KEYS=${PIPELINE_API_KEY:-}
       - DEFAULT_MODELS=mira-diagnostic
-      # Docling for industrial-grade PDF extraction
-      - DOCLING_SERVER_URL=http://mira-docling-saas:5001
-      - PDF_EXTRACT_IMAGES=true
+      # Content extraction: Apache Tika (OW-endorsed for production). Replaced
+      # Docling 2026-06-06 — Docling pinned at 95%+ of its 3 GB cap on this
+      # 8 GB box and chronically 504-timed-out on /v1/convert/file, failing
+      # every PDF extraction (see docs/known-issues/2026-06-06-hub-upload-
+      # failures-docling-oom.md). Tika is ~0.6-1 GB (JVM + Tesseract OCR),
+      # Apache 2.0, and handles scanned PDFs. NOTE: CONTENT_EXTRACTION_ENGINE
+      # is a PersistentConfig var — on an EXISTING OW DB the persisted value
+      # (docling) wins over this env. Run scripts/set-ow-extraction-engine.sh
+      # once after deploy to flip the DB value. Fresh DBs seed from env.
+      - CONTENT_EXTRACTION_ENGINE=tika
+      - TIKA_SERVER_URL=http://mira-tika-saas:9998
+      # Admin key — used by entrypoint-mira.sh to self-heal the persisted
+      # extraction engine to tika on boot (PersistentConfig DB value otherwise
+      # wins over the env above). Same key mira-ingest uses.
+      - OPENWEBUI_API_KEY=${OPENWEBUI_API_KEY:-}
       # STT — Groq Whisper free tier (voice-to-text)
       - AUDIO_STT_ENGINE=openai
       - AUDIO_STT_OPENAI_API_BASE_URL=https://api.groq.com/openai/v1
@@ -98,7 +126,11 @@ services:
   # are referenced only by the legacy directory and migration scripts.
 
   mira-ingest:
-    build: ./mira-core/mira-ingest
+    # Repo-root context so the Dockerfile can COPY mira-plc-parser/ in (powers
+    # /ingest/plc-parse). A repo-root .dockerignore keeps the context small.
+    build:
+      context: .
+      dockerfile: mira-core/mira-ingest/Dockerfile
     container_name: mira-ingest-saas
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -146,8 +178,8 @@ services:
       - MIRA_TENANT_ID=${MIRA_TENANT_ID}
       - PIPELINE_BASE_URL=http://mira-pipeline-saas:9099
       - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
+      - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - MIRA_HUB_URL=${MIRA_HUB_URL:-http://mira-hub:3000}
       - INTERNAL_KG_API_KEY=${INTERNAL_KG_API_KEY:-}
     volumes:
@@ -226,10 +258,10 @@ services:
       - GROQ_MODEL=llama-3.3-70b-versatile
       - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
-      - CEREBRAS_MODEL=llama3.1-8b
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - CEREBRAS_MODEL=gpt-oss-120b
+      - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
+      - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - PIPELINE_API_KEY=${PIPELINE_API_KEY:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
@@ -283,10 +315,10 @@ services:
       - GROQ_MODEL=llama-3.3-70b-versatile
       - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
-      - CEREBRAS_MODEL=llama3.1-8b
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - CEREBRAS_MODEL=gpt-oss-120b
+      - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
+      - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
       - SESSION_RECORDING_PATH=/data/sessions
@@ -332,10 +364,10 @@ services:
       - GROQ_MODEL=llama-3.3-70b-versatile
       - GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
-      - CEREBRAS_MODEL=llama3.1-8b
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - GEMINI_VISION_MODEL=${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+      - CEREBRAS_MODEL=gpt-oss-120b
+      - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
+      - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      - TOGETHERAI_VISION_MODEL=${TOGETHERAI_VISION_MODEL:-}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - MCP_BASE_URL=http://mira-mcp-saas:8001
       - SESSION_RECORDING_PATH=/data/sessions
@@ -402,20 +434,24 @@ services:
       retries: 3
       start_period: 15s
 
-  mira-docling:
-    image: quay.io/docling-project/docling-serve:v1.16.1
-    container_name: mira-docling-saas
-    mem_limit: 3g
-    memswap_limit: 3g
+  # Apache Tika — content-extraction engine for Open WebUI (replaced Docling
+  # 2026-06-06; see mira-core env above + docs/known-issues/2026-06-06-hub-
+  # upload-failures-docling-oom.md). The `-full` image bundles Tesseract OCR
+  # for scanned PDFs. ~0.6-1 GB resident vs Docling's 3 GB. Apache 2.0.
+  # Pinned to the same version already used by the local stack (mira-core/
+  # docker-compose.yml).
+  mira-tika:
+    image: apache/tika:3.1.0.0-full
+    container_name: mira-tika-saas
+    mem_limit: 1g
+    memswap_limit: 1g
     ports:
-      - "127.0.0.1:5001:5001"
-    environment:
-      - DOCLING_SERVE_PORT=5001
+      - "127.0.0.1:9998:9998"
     networks:
       - mira-net
-    restart: on-failure:5
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:9998/tika"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -532,11 +568,20 @@ services:
         # Public URL because hubDataProvider runs in the browser; nginx on
         # app.factorylm.com proxies /v1/ → mira-pipeline:9099.
         NEXT_PUBLIC_PIPELINE_API_URL: ${NEXT_PUBLIC_PIPELINE_API_URL:-https://app.factorylm.com}
+        # Deploy identity (#2226) — surfaced on /api/version + /api/health so QA
+        # can confirm which code is live. deploy-vps.yml exports these before build.
+        MIRA_GIT_SHA: ${MIRA_GIT_SHA:-unknown}
+        MIRA_APP_VERSION: ${MIRA_APP_VERSION:-unknown}
+        MIRA_BUILD_TIME: ${MIRA_BUILD_TIME:-unknown}
     container_name: mira-hub
     ports:
       - "127.0.0.1:3101:3000"
     environment:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      # Command Center display registration SSRF lockdown (PR #1960): comma-separated
+      # exact hosts allowed as live-display probe targets. Empty = link-local/metadata
+      # block only (pure code). Set in Doppler factorylm/prd to bound the surface.
+      - COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST=${COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST:-}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://app.factorylm.com}
       # AES-256-GCM key for at-rest encryption of OAuth tokens in hub_channel_bindings
       - OAUTH_TOKEN_ENC_KEY=${OAUTH_TOKEN_ENC_KEY:-}
@@ -587,6 +632,11 @@ services:
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}
       # mira-ingest target for Knowledge upload pipeline
       - INGEST_URL=${INGEST_URL:-http://mira-ingest-saas:8001}
+      # Where local-upload bytes are persisted so a FAILED local upload can be
+      # retried without the user re-picking the file from disk (2026-06-06).
+      # Buffers are deleted on success; a sweep prunes stragglers. Volume-backed
+      # so the failed->retry window survives a container restart.
+      - UPLOAD_BUFFER_DIR=/app/.upload-buffers
       # Google Picker API key (distinct from OAuth client secret) + project number
       - GOOGLE_PICKER_API_KEY=${GOOGLE_PICKER_API_KEY:-}
       - GOOGLE_CLOUD_PROJECT_NUMBER=${GOOGLE_CLOUD_PROJECT_NUMBER:-}
@@ -596,21 +646,29 @@ services:
       # Nango — credential vault for CMMS and platform integrations
       - NANGO_SERVER_URL=${NANGO_SERVER_URL:-http://nango-server:3003}
       - NANGO_SECRET_KEY=${NANGO_SECRET_KEY:-}
-      # LLM cascade for AI Reports (Groq → Cerebras → Gemini)
+      # LLM cascade for AI Reports (Groq → Cerebras → Together)
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
-      - CEREBRAS_MODEL=${CEREBRAS_MODEL:-llama3.1-8b}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - CEREBRAS_MODEL=${CEREBRAS_MODEL:-gpt-oss-120b}
+      - TOGETHERAI_API_KEY=${TOGETHERAI_API_KEY:-}
+      - TOGETHERAI_MODEL=${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
       # Atlas CMMS live stats — internal docker URL via shared cmms network.
       # Public cmms.factorylm.com nginx only proxies /auth/ + /api/ + /license/
       # to the Spring backend; /work-orders/*, /assets/*, /preventive-maintenances/*
       # fall through to the SPA and 405 on POST. Direct backend access bypasses
       # nginx. (Re-applies fix dc10a10f, regressed by 08db78e0.)
       - HUB_CMMS_API_URL=${HUB_CMMS_API_URL:-http://cmms-backend:8080}
+      # Browser-reachable Atlas URL handed to the client for "Open Atlas" + the
+      # CMMS quick links. HUB_CMMS_API_URL above is the internal docker hostname
+      # (server-side only); the browser must use this public host or the links
+      # crash (#2197).
+      - CMMS_PUBLIC_URL=${CMMS_PUBLIC_URL:-https://cmms.factorylm.com}
       - ATLAS_API_USER=${ATLAS_API_USER:-}
       - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
+      - HUB_SSO_SECRET=${HUB_SSO_SECRET:-}
+      - HUB_SSO_ISSUER=${HUB_SSO_ISSUER:-factorylm-hub}
+      - HUB_SSO_AUDIENCE=${HUB_SSO_AUDIENCE:-atlas-cmms}
       # /hub/admin/review reads filesystem assets relative to this root.
       # Must point at a directory that contains marketing/cartoons + docs/promo-screenshots
       # + tools/web-review-runs (see the volume mounts below).
@@ -628,6 +686,8 @@ services:
       - ./docs/promo-screenshots:/app/docs/promo-screenshots:rw
       # Web-review findings — read-only, the cron only deletes its own files.
       - ./tools/web-review-runs:/app/tools/web-review-runs:ro
+      # Persisted local-upload buffers for failed-upload retry (see UPLOAD_BUFFER_DIR).
+      - /opt/mira/data/upload-buffers:/app/.upload-buffers:rw
     restart: unless-stopped
     mem_limit: 1g
     memswap_limit: 1g
@@ -637,6 +697,62 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  mira-synthetic-dogfood-worker:
+    build:
+      context: .
+      dockerfile: mira-crawler/Dockerfile.synthetic-dogfood
+    container_name: mira-synthetic-dogfood-worker
+    command: celery -A mira_crawler.celery_app worker --concurrency=1 -Q synthetic --loglevel=info
+    depends_on:
+      mira-redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - SYNTHETIC_DOGFOOD_ENABLED=${SYNTHETIC_DOGFOOD_ENABLED:-0}
+      - DOGFOOD_ISSUE_MODE=${DOGFOOD_ISSUE_MODE:-dry_run}
+      - DOGFOOD_TARGET_URL=${DOGFOOD_TARGET_URL:-https://app.factorylm.com}
+      - DOGFOOD_REPORT_DIR=/mira-db/synthetic-dogfood
+      - DOGFOOD_TIMEOUT_SECONDS=${DOGFOOD_TIMEOUT_SECONDS:-600}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY:-Mikecranesync/MIRA}
+      - GITHUB_ISSUE_TOKEN=${GITHUB_ISSUE_TOKEN:-}
+      - SYNTHETIC_CARLOS_EMAIL=${SYNTHETIC_CARLOS_EMAIL:-}
+      - SYNTHETIC_CARLOS_PASSWORD=${SYNTHETIC_CARLOS_PASSWORD:-}
+      - SYNTHETIC_DANA_EMAIL=${SYNTHETIC_DANA_EMAIL:-}
+      - SYNTHETIC_DANA_PASSWORD=${SYNTHETIC_DANA_PASSWORD:-}
+      - SYNTHETIC_PLANTMGR_EMAIL=${SYNTHETIC_PLANTMGR_EMAIL:-}
+      - SYNTHETIC_PLANTMGR_PASSWORD=${SYNTHETIC_PLANTMGR_PASSWORD:-}
+      - SYNTHETIC_CFO_EMAIL=${SYNTHETIC_CFO_EMAIL:-}
+      - SYNTHETIC_CFO_PASSWORD=${SYNTHETIC_CFO_PASSWORD:-}
+    networks:
+      - mira-net
+    volumes:
+      - /opt/mira/data:/mira-db
+    restart: unless-stopped
+    mem_limit: 1.5g
+    memswap_limit: 1.5g
+
+  mira-synthetic-dogfood-beat:
+    build:
+      context: .
+      dockerfile: mira-crawler/Dockerfile.synthetic-dogfood
+    container_name: mira-synthetic-dogfood-beat
+    command: celery -A mira_crawler.celery_app beat --loglevel=info
+    depends_on:
+      mira-redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - CELERY_BEAT_PROFILE=synthetic-dogfood
+    networks:
+      - mira-net
+    volumes:
+      - /opt/mira/data:/mira-db
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
 
   # ─── mira-cmms-sync — NeonDB ↔ Atlas sync worker (P1) ───────────────────────
   # Long-running loop that pushes NeonDB changes to Atlas every 60s and pulls
@@ -676,6 +792,7 @@ networks:
 
 volumes:
   mira-webui-data:
+  mira-redis-data:
   mira-chroma:
   mira-docs:
   nango-db-data:

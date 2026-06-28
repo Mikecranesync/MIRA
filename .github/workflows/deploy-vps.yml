@@ -185,9 +185,19 @@ jobs:
           set -euo pipefail
           cd /opt/mira
 
-          echo "=== Pull latest code ==="
-          git fetch origin main
-          git reset --hard origin/main
+          echo "=== Pull latest code (pin to release tag, not main HEAD) ==="
+          # Rollback target is only real if prod references a tag, not a moving main HEAD
+          # (docs/versioning.md). version-tag.yml lays vX.Y.Z on every merge commit, so we
+          # deploy that tag — prod's `git describe` then shows a clean release ref.
+          git fetch origin main --tags --force
+          RELEASE_TAG="$(git tag --points-at origin/main --list 'v[0-9]*' | sort -V | tail -1)"
+          if [ -n "$RELEASE_TAG" ]; then
+            echo "Deploying release tag $RELEASE_TAG (= origin/main HEAD)"
+            git -c advice.detachedHead=false checkout --force "$RELEASE_TAG"
+          else
+            echo "::warning::No vX.Y.Z tag at origin/main HEAD (version-tag.yml may be lagging) — falling back to origin/main"
+            git reset --hard origin/main
+          fi
 
           echo "=== Host permission setup (chown saas data dirs to UID 1001) ==="
           # PR #1219 dropped root in mira-pipeline/mira-mcp/mira-ingest Dockerfiles.
@@ -196,7 +206,11 @@ jobs:
           bash scripts/host_perm_setup.sh
 
           # Resolve the rebuild list once so cleanup + build + up all agree.
-          TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub mira-cmms-sync mira-bot-telegram mira-bot-slack}"
+          # mira-ask added 2026-06-06 (closes ops gap surfaced by AskMira P0 fix
+          # cycle — engine changes shipped to telegram/slack but mira-ask-saas
+          # stayed on the old image because it was missing from this default
+          # list). See docs/runbooks/kiosk-askmira-deploy-and-verify.md.
+          TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub mira-cmms-sync mira-bot-telegram mira-bot-slack mira-ask}"
           echo "Rebuild targets: $TARGETS"
 
           echo "=== Pre-deploy cleanup: remove any stale containers blocking recreate ==="
@@ -210,6 +224,14 @@ jobs:
             docker rm -f "${svc}-saas" 2>/dev/null || true
             docker rm -f "${svc}" 2>/dev/null || true
           done
+
+          # Deploy identity (#2226) — bake the SHA/version/time into the hub image
+          # so /api/version + /api/health report which code is live. Exported here
+          # so docker-compose build.args pick them up; default "unknown" otherwise.
+          export MIRA_GIT_SHA="${GITHUB_SHA:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
+          export MIRA_APP_VERSION="$(cat VERSION 2>/dev/null | tr -d '[:space:]' || echo unknown)"
+          export MIRA_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "Deploy identity: sha=${MIRA_GIT_SHA} version=${MIRA_APP_VERSION} built=${MIRA_BUILD_TIME}"
 
           echo "=== Rebuild containers ==="
           DOCKER_BUILDKIT=1 doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml build $TARGETS
