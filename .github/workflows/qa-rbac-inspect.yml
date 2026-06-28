@@ -1,0 +1,181 @@
+name: RBAC Deny-Grid Inspect
+
+# Drives the 7 synthetic RBAC personas (seeded by fix/qa-rbac-personas, PR #2332)
+# at the staging Hub API on a weekly cadence. Documents:
+#   • Layer A — tenant isolation / RLS (currently enforced)
+#   • Layer C — per-role privilege deny-grid (fail-open today; tracked under #578)
+#
+# When findings emerge, posts a summary comment on #578 so the "expected fail-open"
+# count is automatically tracked there as role wiring lands.
+#
+# Setup (once staging is cloud-reachable via stg.factorylm.com):
+#   1. Add STAGING_HUB_URL to the GitHub 'staging' environment secrets.
+#   2. Add SYNTHETIC_*_PASSWORD (7 secrets) matching Doppler factorylm/stg
+#      SYNTHETIC_CARLOS_PASSWORD … SYNTHETIC_ISOLATION_PASSWORD.
+#   3. Install Playwright browsers in the staging environment's runner image
+#      (handled by the "Install Playwright browsers" step below).
+#
+# Until STAGING_HUB_URL is set, the workflow exits clean with a skip notice —
+# same skip-clean pattern as qa-regression.yml. GH Actions runners cannot
+# reach http://localhost:4101 (SSH tunnel on Bravo); wait for stg.factorylm.com.
+#
+# Local (Bravo) usage today:
+#   QA_BASE_URL=http://localhost:4101 \
+#     node dogfood-output/qa-login-save-state.mjs <email> <password>
+#   QA_BASE_URL=http://localhost:4101 node tools/qa/rbac/isolation_probe.mjs
+#   QA_BASE_URL=http://localhost:4101 node tools/qa/rbac/run_deny_grid.mjs
+
+on:
+  schedule:
+    # 06:00 UTC every Monday — weekly snapshot of the role-enforcement frontier.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      strict:
+        description: "Exit non-zero if any deny probe is unenforced (gate mode)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: qa-rbac-inspect
+  cancel-in-progress: false
+
+jobs:
+  rbac-inspect:
+    name: rbac deny-grid + isolation (staging)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check staging reachability
+        id: check
+        env:
+          STAGING_HUB_URL: ${{ secrets.STAGING_HUB_URL }}
+        run: |
+          if [ -z "$STAGING_HUB_URL" ]; then
+            echo "::warning::STAGING_HUB_URL not set in the 'staging' environment."
+            echo "::warning::The staging Hub is not yet cloud-reachable from GH Actions runners."
+            echo "::warning::Wire stg.factorylm.com and add STAGING_HUB_URL to enable this workflow."
+            echo "reachable=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "reachable=1" >> "$GITHUB_OUTPUT"
+            echo "hub_url=$STAGING_HUB_URL" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip notice
+        if: steps.check.outputs.reachable == '0'
+        run: |
+          echo "Staging Hub not yet cloud-reachable — exiting clean."
+          echo "Run probes locally on Bravo via the SSH tunnel (see workflow header)."
+
+      # ── The steps below only run when staging is reachable ─────────────────
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.reachable == '1'
+        with:
+          node-version: "20"
+
+      - name: Install mira-hub deps (includes Playwright)
+        if: steps.check.outputs.reachable == '1'
+        run: npm ci --prefix mira-hub
+
+      - name: Install Playwright browsers
+        if: steps.check.outputs.reachable == '1'
+        run: npx --prefix mira-hub playwright install chromium --with-deps
+
+      - name: Mint persona sessions
+        if: steps.check.outputs.reachable == '1'
+        env:
+          QA_BASE_URL: ${{ steps.check.outputs.hub_url }}
+          SYNTHETIC_CARLOS_PASSWORD:    ${{ secrets.SYNTHETIC_CARLOS_PASSWORD }}
+          SYNTHETIC_DANA_PASSWORD:      ${{ secrets.SYNTHETIC_DANA_PASSWORD }}
+          SYNTHETIC_SCHEDULER_PASSWORD: ${{ secrets.SYNTHETIC_SCHEDULER_PASSWORD }}
+          SYNTHETIC_OPERATOR_PASSWORD:  ${{ secrets.SYNTHETIC_OPERATOR_PASSWORD }}
+          SYNTHETIC_PLANTMGR_PASSWORD:  ${{ secrets.SYNTHETIC_PLANTMGR_PASSWORD }}
+          SYNTHETIC_CFO_PASSWORD:       ${{ secrets.SYNTHETIC_CFO_PASSWORD }}
+          SYNTHETIC_ISOLATION_PASSWORD: ${{ secrets.SYNTHETIC_ISOLATION_PASSWORD }}
+        run: |
+          set -e
+          for pair in \
+            "carlos@synthetic.test:SYNTHETIC_CARLOS_PASSWORD" \
+            "dana@synthetic.test:SYNTHETIC_DANA_PASSWORD" \
+            "scheduler@synthetic.test:SYNTHETIC_SCHEDULER_PASSWORD" \
+            "operator@synthetic.test:SYNTHETIC_OPERATOR_PASSWORD" \
+            "plantmgr@synthetic.test:SYNTHETIC_PLANTMGR_PASSWORD" \
+            "cfo@synthetic.test:SYNTHETIC_CFO_PASSWORD" \
+            "isolation@synthetic.test:SYNTHETIC_ISOLATION_PASSWORD"
+          do
+            email="${pair%%:*}"
+            envvar="${pair##*:}"
+            password="${!envvar}"
+            if [ -z "$password" ]; then
+              echo "::warning::$envvar not set — skipping session mint for $email"
+              continue
+            fi
+            echo "Minting session for $email …"
+            node dogfood-output/qa-login-save-state.mjs "$email" "$password"
+          done
+
+      - name: Run tenant-isolation probe (Layer A)
+        if: steps.check.outputs.reachable == '1'
+        id: isolation
+        env:
+          QA_BASE_URL: ${{ steps.check.outputs.hub_url }}
+        run: |
+          node tools/qa/rbac/isolation_probe.mjs 2>&1 | tee /tmp/isolation.md
+          echo "exit=$?" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: Run deny-grid (Layer C)
+        if: steps.check.outputs.reachable == '1'
+        id: deny_grid
+        env:
+          QA_BASE_URL: ${{ steps.check.outputs.hub_url }}
+        run: |
+          STRICT_FLAG=""
+          [ "${{ inputs.strict }}" = "true" ] && STRICT_FLAG="--strict"
+          node tools/qa/rbac/run_deny_grid.mjs $STRICT_FLAG 2>&1 | tee /tmp/deny-grid.md
+          echo "exit=$?" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: Comment on #578 with findings
+        if: steps.check.outputs.reachable == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISOLATION_OUT="$(cat /tmp/isolation.md 2>/dev/null || echo '(no output)')"
+          GRID_OUT="$(cat /tmp/deny-grid.md 2>/dev/null || echo '(no output)')"
+          BODY="## RBAC deny-grid run — $(date -u +%Y-%m-%dT%H:%MZ)
+
+          **Base URL:** \`${{ steps.check.outputs.hub_url }}\`
+          **Isolation exit:** \`${{ steps.isolation.outputs.exit }}\`  **Deny-grid exit:** \`${{ steps.deny_grid.outputs.exit }}\`
+
+          <details><summary>Layer A — Tenant isolation probe</summary>
+
+          \`\`\`
+          ${ISOLATION_OUT}
+          \`\`\`
+          </details>
+
+          <details><summary>Layer C — Per-role deny-grid</summary>
+
+          \`\`\`
+          ${GRID_OUT}
+          \`\`\`
+          </details>
+
+          _Filed by \`qa-rbac-inspect.yml\`. Forward-looking fail-opens (\`currentlyEnforced: false\`) are expected until per-role wiring lands here._"
+
+          gh issue comment 578 --body "$BODY" --repo Mikecranesync/MIRA

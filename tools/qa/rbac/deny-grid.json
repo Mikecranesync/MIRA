@@ -1,0 +1,89 @@
+{
+  "_doc": "RBAC deny-grid. Each probe drives a persona's saved session at a real Hub API route and asserts an authorization outcome. Paths use {knownId} placeholders from personas.json. Bodies are intentionally empty: a fail-open is proven by the request passing the AUTHZ gate (2xx OR 400/422 validation) — we never need to actually create junk rows. See README.md.",
+  "_legend": {
+    "intent.deny": "persona SHOULD be denied (expect HTTP 403). 2xx/400/422 = AUTH_NOT_ENFORCED finding; 404/405 = DENIED_BY_ABSENCE.",
+    "intent.allow": "persona SHOULD be allowed (expect 2xx, or 400/422 = passed-authz). 403 = OVER_BLOCKED finding.",
+    "currentlyEnforced": "true = enforced TODAY (a real 403/200 gate — used to self-validate the runner). false = forward-looking #578 (expected fail-open until role wiring lands)."
+  },
+  "probes": [
+    {
+      "id": "ctrl-allow-usage",
+      "persona": "cfo", "intent": "allow", "currentlyEnforced": true,
+      "action": "usage.read", "method": "GET", "path": "/api/usage",
+      "note": "Control: any authenticated tenant user can read their own usage. Proves the saved session works (a 401 here = setup error, not a finding)."
+    },
+    {
+      "id": "ctrl-allow-assets-read",
+      "persona": "carlos", "intent": "allow", "currentlyEnforced": true,
+      "action": "assets.read", "method": "GET", "path": "/api/assets",
+      "note": "Control: tenant user reads their own asset list."
+    },
+    {
+      "id": "ctrl-deny-review-queue",
+      "persona": "carlos", "intent": "deny", "currentlyEnforced": true,
+      "action": "review_queue.read", "method": "GET", "path": "/api/admin/review/queue",
+      "note": "Control: platform review queue is gated by isReviewAdmin(email) — a synthetic persona is NOT on the allowlist, so this is a REAL 403 today. Proves the runner can detect an enforced deny (if this reports fail-open, the runner/session is broken, not the app)."
+    },
+    {
+      "id": "plantmgr-deny-review-queue",
+      "persona": "plantmgr", "intent": "deny", "currentlyEnforced": true,
+      "action": "review_queue.read", "method": "GET", "path": "/api/admin/review/queue",
+      "note": "Tenant 'admin' role is NOT platform-review-admin — must 403. Enforced today (status/email gate, not tenant role)."
+    },
+
+    {
+      "id": "carlos-deny-asset-create",
+      "persona": "carlos", "intent": "deny", "currentlyEnforced": false,
+      "action": "assets.create", "method": "POST", "path": "/api/assets", "body": {},
+      "note": "#578: technician must not create assets. Fail-open today (role:'member' hardcoded)."
+    },
+    {
+      "id": "carlos-deny-wo-delete",
+      "persona": "carlos", "intent": "deny", "currentlyEnforced": false,
+      "action": "work_orders.delete", "method": "DELETE", "path": "/api/work-orders/{work_order_001}",
+      "note": "WO delete: /api/work-orders/[id] has GET+PATCH only — expect 405 DENIED_BY_ABSENCE (deny by missing handler, not RBAC). Recorded so a future DELETE handler can't silently ship un-gated."
+    },
+    {
+      "id": "carlos-deny-team-create",
+      "persona": "carlos", "intent": "deny", "currentlyEnforced": false,
+      "action": "team.create", "method": "POST", "path": "/api/team", "body": {},
+      "note": "#578: technician must not invite/manage team members."
+    },
+    {
+      "id": "dana-deny-team-create",
+      "persona": "dana", "intent": "deny", "currentlyEnforced": false,
+      "action": "team.create", "method": "POST", "path": "/api/team", "body": {},
+      "note": "#578: manager role is asset/WO/report — team CRUD is admin/owner."
+    },
+    {
+      "id": "scheduler-deny-asset-create",
+      "persona": "scheduler", "intent": "deny", "currentlyEnforced": false,
+      "action": "assets.create", "method": "POST", "path": "/api/assets", "body": {},
+      "note": "#578: scheduler owns PM calendar + reports — denied asset mutation."
+    },
+    {
+      "id": "scheduler-deny-wo-create",
+      "persona": "scheduler", "intent": "deny", "currentlyEnforced": false,
+      "action": "work_orders.create", "method": "POST", "path": "/api/work-orders", "body": {},
+      "note": "#578: scheduler denied WO mutation."
+    },
+    {
+      "id": "operator-deny-asset-create",
+      "persona": "operator", "intent": "deny", "currentlyEnforced": false,
+      "action": "assets.create", "method": "POST", "path": "/api/assets", "body": {},
+      "note": "#578: operator is most-restricted (list/show/request) — denied any create."
+    },
+    {
+      "id": "operator-deny-wo-create",
+      "persona": "operator", "intent": "deny", "currentlyEnforced": false,
+      "action": "work_orders.create", "method": "POST", "path": "/api/work-orders", "body": {},
+      "note": "#578: operator denied WO create (may file a request, not a WO)."
+    },
+    {
+      "id": "operator-deny-pm-mutate",
+      "persona": "operator", "intent": "deny", "currentlyEnforced": false,
+      "action": "pm_schedules.mutate", "method": "PATCH", "path": "/api/pm-schedules/{pm_schedule_001}", "body": {},
+      "note": "#578: operator denied PM schedule mutation."
+    }
+  ]
+}
