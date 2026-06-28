@@ -24,25 +24,12 @@ from typing import Any, Optional
 from ingest_contract import build_tag_entry
 
 from .codecs import sparkplug_b as spb
+from .codecs.sparkplug_b import metric_to_tag_path  # re-export: THE single path-builder
 
 logger = logging.getLogger("mira-relay.mqtt_ingest.decode")
 
 # (group_id, edge_node_id, device_id|None) — one Sparkplug session.
 NodeKey = tuple[str, str, Optional[str]]
-
-
-def metric_to_tag_path(topic: spb.SparkplugTopic, metric_name: str) -> str:
-    """Build the raw tag path for a metric: ``group/edge[/device]/metric``.
-
-    This raw path is what ``normalize_tag_path`` (in ingest_batch) collapses to
-    the ``approved_tags`` match key — so the Sparkplug allowlist seed MUST be
-    generated from the SAME construction (the §5 fail-closed contract). Kept
-    deterministic + importable so a seed generator can reuse it verbatim."""
-    parts = [topic.group_id, topic.edge_node_id]
-    if topic.device_id:
-        parts.append(topic.device_id)
-    parts.append(metric_name)
-    return "/".join(p for p in parts if p)
 
 
 def _ms_to_iso(ms: Optional[int]) -> Optional[str]:

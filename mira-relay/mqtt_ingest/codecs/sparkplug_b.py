@@ -164,6 +164,22 @@ def parse_topic(topic: str) -> Optional[SparkplugTopic]:
     return SparkplugTopic(namespace, group_id, message_type, edge_node_id, device_id)
 
 
+def metric_to_tag_path(topic: "SparkplugTopic", metric_name: str) -> str:
+    """Build the raw tag path for a metric: ``group/edge[/device]/metric``.
+
+    THE single path-builder. This raw path is what ``normalize_tag_path`` (in
+    ingest_batch) collapses to the ``approved_tags`` match key — so the Sparkplug
+    allowlist seed generator MUST call THIS function too, or live traffic and the
+    seed normalize differently and every metric is silently rejected (the §5
+    fail-closed contract). Lives here (dependency-free, loadable standalone) so
+    both the decoder and the seed generator share one implementation."""
+    parts = [topic.group_id, topic.edge_node_id]
+    if topic.device_id:
+        parts.append(topic.device_id)
+    parts.append(metric_name)
+    return "/".join(p for p in parts if p)
+
+
 # ── protobuf wire-format primitives ──────────────────────────────────────────
 class DecodeError(ValueError):
     """Raised on a truncated/corrupt protobuf buffer."""

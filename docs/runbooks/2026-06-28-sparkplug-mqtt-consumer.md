@@ -113,10 +113,18 @@ Sparkplug-sourced tag shows up there with no extra wiring.
 Ingest is **fail-closed**: a tag whose normalized path isn't in `approved_tags`
 is rejected, never stored. Two ways a tag becomes trusted:
 
-- **Seed it** (the deliberate path): add it to `approved_tags` with `enabled=true`
-  via the seed pattern (`tools/seeds/gen_approved_tags_simulator.py` is the model;
-  a Sparkplug-aware generator emits the allowlist from the BIRTH metric set so the
-  normalized keys match exactly — the §5 fail-closed contract).
+- **Seed it** (the deliberate path): generate the allowlist from the node's BIRTH
+  metric set with **`tools/seeds/gen_approved_tags_sparkplug.py`** — it builds each
+  row with the *same* `metric_to_tag_path` + `normalize_tag_path` the live
+  subscriber uses, so the normalized keys match exactly (the §5 fail-closed
+  contract; pinned by `tests/test_sparkplug_seed.py`). The Conv_Simple discharge
+  demo node is built in; run it, then apply staging-first then prod:
+  ```bash
+  python tools/seeds/gen_approved_tags_sparkplug.py --tenant <tenant-uuid>
+  # → tools/seeds/approved_tags_sparkplug_conveyoredge.sql  (11 rows, enabled=true)
+  psql "$STAGING_URL" -f tools/seeds/approved_tags_sparkplug_conveyoredge.sql
+  ```
+  Copy the `CONVEYOR_NODE` manifest in the generator for another edge node.
 - **Auto-discover** (set `MQTT_INGEST_AUTO_DISCOVER=1`): an unknown tag is recorded
   as **seen/proposed** — an `approved_tags` row with `enabled=false`. It is
   visible for a human to review but, being disabled, stays rejected and is **never
