@@ -35,7 +35,19 @@ export type Capability =
   | "review_queue.read"
   | "review_queue.decide"
   | "platform.users.read"
-  | "dev_tools.access";
+  | "dev_tools.access"
+  // Tenant-admin governance caps (issue #2360). These are intra-tenant admin
+  // actions, gated on the caller's hub_users.role — NOT the platform email
+  // allowlist above. Promotion proposed→verified is an admin action
+  // (CLAUDE.md / ADR-0017); driving the asset-agent approval/deploy gate is an
+  // admin action (train-before-deploy spec).
+  | "proposals.decide"
+  | "asset_agent.transition";
+
+// Tenant roles (hub_users.role) that hold intra-tenant admin authority. Any
+// other / unrecognized role string falls through to least-privilege — an
+// unknown role can never satisfy a gate.
+const ADMIN_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
 
 // Available to every authenticated tenant user for their own tenant.
 const WORKSPACE_CAPS: Capability[] = [
@@ -55,6 +67,12 @@ export function getCapabilities(ctx: SessionContext): Capability[] {
   // Platform-wide (cross-tenant) user admin — same status gate it already used.
   if (ctx.status === "admin") {
     caps.push("platform.users.read");
+  }
+  // Intra-tenant admin governance (issue #2360) — gated on hub_users.role,
+  // derived fresh per request in lib/session.ts. owner/admin only; an
+  // absent/unknown role falls through to least-privilege.
+  if (ADMIN_ROLES.has(ctx.role ?? "")) {
+    caps.push("proposals.decide", "asset_agent.transition");
   }
   return caps;
 }
