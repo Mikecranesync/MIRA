@@ -8,3 +8,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 # Repo root (for mira_crawler.* package imports used by Celery tasks)
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# mira-relay/ (for tag_diff_logger import used by the tag-diff historizer task)
+sys.path.insert(0, str(Path(__file__).parent.parent / "mira-relay"))
