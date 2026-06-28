@@ -479,6 +479,33 @@ def _match_all_vendors(
     return results
 
 
+def canonical_vendor(name: str | None) -> str | None:
+    """Canonical manufacturer for a vendor / alias / brand-label string.
+
+    Maps every label that names the *same* OEM to one canonical display name,
+    so brand variants compare equal: ``"Allen-Bradley"`` / ``"Rockwell"`` /
+    ``"PowerFlex"`` → ``"Rockwell Automation"``; ``"Automation Direct"`` /
+    ``"AutomationDirect"`` → ``"AutomationDirect"``; ``"Yaskawa Electric
+    Corporation"`` → ``"Yaskawa"``. Returns ``None`` when no known vendor is
+    named (fail-open: callers must not treat ``None`` as a mismatch).
+
+    Single source of truth for "are these two manufacturer strings the same
+    vendor?" — shared by the citation-relevance gate
+    (``citation_compliance``) and the retrieval cross-vendor filter
+    (``rag_worker``) so they never disagree. Substring match, longest alias
+    first, so ``"rockwell automation"`` wins over ``"rockwell"``.
+    """
+    if not name:
+        return None
+    low = name.strip().lower()
+    if low in VENDOR_ALIASES:
+        return VENDOR_ALIASES[low]
+    for alias in sorted(VENDOR_ALIASES, key=len, reverse=True):
+        if alias in low:
+            return VENDOR_ALIASES[alias]
+    return None
+
+
 def _is_model_candidate(token: str, fault_raw_tokens: frozenset[str]) -> bool:
     """A token is a model candidate iff:
     - Not a fault code we already captured

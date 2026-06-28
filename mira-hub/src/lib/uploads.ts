@@ -31,6 +31,10 @@ export interface Upload {
   kbChunkCount: number | null;
   assetTag: string | null;
   unsPath: string | null;
+  /** Confirmed kg_entities node this drop is attached to (Inbox node for blind PDFs, #1806). */
+  kgEntityId: string | null;
+  /** 'v2' = chunks written to knowledge_entries (citable); null/'ow' = legacy OW-only. */
+  ingestRoute: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -72,9 +76,28 @@ export function ensureUploadsSchema(): Promise<void> {
       ALTER TABLE hub_uploads
         ADD COLUMN IF NOT EXISTS uns_path TEXT
     `);
+    // mira-ingest-v2 (ADR-0019) / Hub folder=brain: a drop attached to a namespace node
+    // records the confirmed kg_entities node id, so retrieval resolves the chunk → node
+    // address (knowledge_entries.doc_id → hub_uploads.kg_entity_id → kg_entities.uns_path).
+    await pool.query(`
+      ALTER TABLE hub_uploads
+        ADD COLUMN IF NOT EXISTS kg_entity_id UUID
+    `);
+    // 'v2' = mira-ingest-v2 / Hub-node attachment (chunks land in knowledge_entries);
+    // NULL / 'ow' = legacy Open-WebUI-only path. Discriminator for cutover.
+    await pool.query(`
+      ALTER TABLE hub_uploads
+        ADD COLUMN IF NOT EXISTS ingest_route TEXT
+    `);
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_hub_uploads_tenant_status
         ON hub_uploads (tenant_id, status, created_at DESC)
+    `);
+    // Fetch all v2 drops bound to a node (node Documents panel + subtree retrieval join).
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_hub_uploads_kg_entity
+        ON hub_uploads (tenant_id, kg_entity_id)
+        WHERE kg_entity_id IS NOT NULL
     `);
     // Idempotency for cloud-source uploads (#700) — re-picking the same
     // Drive/Dropbox file should return the existing row, not duplicate
@@ -101,6 +124,10 @@ export interface CreateUploadInput {
   initialStatus?: UploadStatus;
   assetTag?: string | null;
   unsPath?: string | null;
+  /** mira-ingest-v2 / Hub folder=brain: the confirmed kg_entities node this drop is attached to. */
+  kgEntityId?: string | null;
+  /** 'v2' = chunks written to knowledge_entries; null/'ow' = legacy Open-WebUI-only path. */
+  ingestRoute?: string | null;
 }
 
 function rowToUpload(r: Record<string, unknown>): Upload {
@@ -121,6 +148,8 @@ function rowToUpload(r: Record<string, unknown>): Upload {
     kbChunkCount: r.kb_chunk_count != null ? Number(r.kb_chunk_count) : null,
     assetTag: (r.asset_tag as string | null) ?? null,
     unsPath: (r.uns_path as string | null) ?? null,
+    kgEntityId: (r.kg_entity_id as string | null) ?? null,
+    ingestRoute: (r.ingest_route as string | null) ?? null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   };
@@ -140,8 +169,9 @@ export async function createUpload(input: CreateUploadInput): Promise<Upload> {
     `
     INSERT INTO hub_uploads
       (tenant_id, provider, kind, external_file_id, external_download_url,
-       filename, mime_type, size_bytes, external_created_at, status, asset_tag, uns_path)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       filename, mime_type, size_bytes, external_created_at, status, asset_tag, uns_path,
+       kg_entity_id, ingest_route)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     RETURNING *
   `,
     [
@@ -157,6 +187,8 @@ export async function createUpload(input: CreateUploadInput): Promise<Upload> {
       status,
       input.assetTag ?? null,
       input.unsPath ?? null,
+      input.kgEntityId ?? null,
+      input.ingestRoute ?? null,
     ],
   );
   return rowToUpload(rows[0]);
@@ -218,8 +250,12 @@ export async function updateUploadStatus(
   tenantId: string,
   status: UploadStatus,
   detail?: string | null,
-  extras?: { kbFileId?: string; kbChunkCount?: number },
+  extras?: { kbFileId?: string; kbChunkCount?: number; kgEntityId?: string; ingestRoute?: string },
 ): Promise<void> {
+  // kgEntityId + ingestRoute let a blind-door upload (#1806) be re-stamped to the
+  // Inbox node + 'v2' once its PDF is chunked into knowledge_entries, so the node
+  // Documents panel + provenance match the citable chunks. COALESCE — only set
+  // when provided, never clobber an existing value with NULL.
   await pool.query(
     `
     UPDATE hub_uploads
@@ -227,11 +263,22 @@ export async function updateUploadStatus(
            status_detail = COALESCE($4, status_detail),
            kb_file_id = COALESCE($5, kb_file_id),
            kb_chunk_count = COALESCE($6, kb_chunk_count),
+           kg_entity_id = COALESCE($7::uuid, kg_entity_id),
+           ingest_route = COALESCE($8, ingest_route),
            updated_at = NOW()
      WHERE id = $1
        AND tenant_id = $2
   `,
-    [id, tenantId, status, detail ?? null, extras?.kbFileId ?? null, extras?.kbChunkCount ?? null],
+    [
+      id,
+      tenantId,
+      status,
+      detail ?? null,
+      extras?.kbFileId ?? null,
+      extras?.kbChunkCount ?? null,
+      extras?.kgEntityId ?? null,
+      extras?.ingestRoute ?? null,
+    ],
   );
 }
 

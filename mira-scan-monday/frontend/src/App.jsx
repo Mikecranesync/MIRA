@@ -8,6 +8,7 @@ import { kbLookup } from "./lib/api.js";
 
 export default function App() {
   const [mondayCtx, setMondayCtx] = useState(null);
+  const [ctxReady, setCtxReady] = useState(false);
   const [sessionToken, setSessionToken] = useState(null);
   const [plate, setPlate] = useState(null);
   const [kb, setKb] = useState(null);
@@ -18,6 +19,7 @@ export default function App() {
       const ctx = await getMondayContext();
       setMondayCtx(ctx?.data || ctx || {});
       setSessionToken(ctx?.sessionToken || null);
+      setCtxReady(true);
     })();
   }, []);
 
@@ -36,15 +38,23 @@ export default function App() {
       .finally(() => setLookupBusy(false));
   }, [plate, sessionToken]);
 
+  if (!ctxReady) {
+    return (
+      <div className="app-shell">
+        <p className="muted" style={{ padding: "24px 0", textAlign: "center" }}>
+          Connecting…
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="row" style={{ justifyContent: "space-between" }}>
         <h1 style={{ margin: 0, fontSize: 20 }}>MIRA Scan</h1>
-        <span className="muted">
-          {mondayCtx?.itemId
-            ? `Item ${mondayCtx.itemId}`
-            : "monday context loading…"}
-        </span>
+        {mondayCtx?.itemId && (
+          <span className="muted">Item {mondayCtx.itemId}</span>
+        )}
       </header>
 
       <ScanPanel sessionToken={sessionToken} onResult={setPlate} />

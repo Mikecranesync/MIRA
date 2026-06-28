@@ -64,7 +64,7 @@ GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
 
 CEREBRAS_API_URL = "https://api.cerebras.ai/v1/chat/completions"
-DEFAULT_CEREBRAS_MODEL = "llama3.1-8b"
+DEFAULT_CEREBRAS_MODEL = "gpt-oss-120b"
 
 RAG_CONTEXT_HEADER = "\n\n--- REFERENCE DOCUMENTS ---\n"
 RAG_CONTEXT_FOOTER = "--- END REFERENCES ---\n"

@@ -9,10 +9,14 @@ import sys
 
 sys.path.insert(0, "mira-bots")
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from shared.engine import _FAULT_INFO_RE, _STATE_ALIASES, Supervisor
+from shared.dialogue_tracker import (
+    DISPATCH_ASK_GENERAL,
+    DISPATCH_ASK_PROCEDURAL,
+)
 
 # ---------------------------------------------------------------------------
 # Fixture: minimal Supervisor with mocked workers
@@ -112,6 +116,7 @@ class TestMakeResult:
             "trace_id": "trace-123",
             "next_state": "Q1",
             "dispatch_kind": "",
+            "_citation_evidence": None,
         }
 
     def test_defaults(self):
@@ -477,10 +482,10 @@ class TestSessionPivotRouting:
             result = asyncio.run(supervisor.process_full(chat_id, "do they have a website"))
 
         assert followup.await_count == 0
-        assert result["next_state"] == "ASSET_IDENTIFIED"
+        assert result["next_state"] == "IDLE"
 
         loaded = supervisor._load_state(chat_id)
-        assert loaded["state"] == "ASSET_IDENTIFIED"
+        assert loaded["state"] == "IDLE"
         assert loaded["fault_category"] is None
         assert loaded["final_state"] is None
         assert loaded["context"]["session_context"]["last_question"] is None
@@ -502,7 +507,10 @@ class TestSessionPivotRouting:
                     }
                 ),
             ),
-            patch("shared.engine.classify_intent", return_value="industrial"),
+            # "where did you get that information" is a meta/source question, not
+            # an industrial fault query. "industrial" + Q2 activates
+            # _router_industrial_override, bypassing _handle_session_followup.
+            patch("shared.engine.classify_intent", return_value="off_topic"),
             patch.object(
                 supervisor,
                 "_handle_session_followup",
@@ -865,3 +873,343 @@ class TestResetWipesAllChatKeys:
         supervisor.reset("legacy_chat_id")
         reloaded = supervisor._load_state("legacy_chat_id")
         assert reloaded.get("asset_identified") in (None, "")
+
+
+# ---------------------------------------------------------------------------
+# DST guard — active-session ASK_PROCEDURAL/GENERAL must not reset FSM
+# ---------------------------------------------------------------------------
+
+
+class TestDSTActiveSessionGuard:
+    """Regression guard for the DST-bypass bug (MIRA_USE_DST=1).
+
+    When DISPATCH_ASK_PROCEDURAL or DISPATCH_ASK_GENERAL fires while the
+    FSM is in {Q2, Q3, DIAGNOSIS, FIX_STEP}, _maybe_dispatch_via_dst must
+    return None so the legacy RAG path continues the in-progress session.
+    Calling _handle_instructional_question/_handle_general_question from
+    those states resets the FSM to IDLE (via _clear_diagnostic_carryover),
+    which caused gs3_ground_fault_14 and self_critique_low_instruction_35
+    to land in IDLE instead of DIAGNOSIS in the eval.
+    """
+
+    def _state(self, fsm_state: str) -> dict:
+        return {
+            "state": fsm_state,
+            "exchange_count": 1,
+            "final_state": None,
+            "fault_category": None,
+            "asset_identified": "AutomationDirect GS3",
+            "context": {"session_context": {"last_question": "Check the insulation?"}},
+        }
+
+    def _mock_plan(self, kind: str):
+        plan = MagicMock()
+        plan.kind = kind
+        return plan
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("fsm_state", ["Q1", "Q2", "Q3", "DIAGNOSIS", "FIX_STEP"])
+    @pytest.mark.parametrize("dispatch_kind", [DISPATCH_ASK_PROCEDURAL, DISPATCH_ASK_GENERAL])
+    async def test_active_session_returns_none(self, supervisor, fsm_state, dispatch_kind):
+        """All active diagnostic states (Q1+) must return None, not call an IDLE-resetting handler."""
+        from shared.dialogue_state import DialogueState
+        from unittest.mock import MagicMock
+
+        state = self._state(fsm_state)
+        ds = MagicMock(spec=DialogueState)
+        new_ds = MagicMock(spec=DialogueState)
+        new_ds.write_to_engine_state = MagicMock()
+        plan = self._mock_plan(dispatch_kind)
+
+        with (
+            patch("shared.engine.DialogueState") as mock_ds_cls,
+            patch("shared.engine.track_turn", new=AsyncMock(return_value=(new_ds, plan))),
+        ):
+            mock_ds_cls.from_engine_state.return_value = ds
+            result = await supervisor._maybe_dispatch_via_dst(
+                "chat1", "what should I check?", state, "trace1", {}, None
+            )
+
+        assert result is None, (
+            f"DST returned a non-None result for {dispatch_kind} in {fsm_state} — "
+            "this would reset FSM to IDLE via _handle_instructional_question"
+        )
+
+
+# ---------------------------------------------------------------------------
+# kb_status isolation (#1704 cross-tenant citation race)
+# ---------------------------------------------------------------------------
+
+
+class TestKbStatusIsolation:
+    """The citation footer + relevance-strip must read THIS turn's kb_status
+    snapshot (threaded on ``parsed``), never the shared ``self.rag.kb_status``
+    attribute a concurrent tenant can overwrite mid-await (#1704).
+    """
+
+    _X = {
+        "status": "covered",
+        "citations": [
+            {
+                "manufacturer": "Rockwell",
+                "model_number": "PowerFlex 525",
+                "source_url": "",
+                "section": "Fault Codes",
+                "page_num": None,
+            }
+        ],
+    }
+    _Y = {
+        "status": "covered",
+        "citations": [
+            {
+                "manufacturer": "Danfoss",
+                "model_number": "FC 202",
+                "source_url": "",
+                "section": "Wiring",
+                "page_num": None,
+            }
+        ],
+    }
+
+    def test_format_reply_uses_parsed_snapshot_not_self(self, supervisor):
+        # Poison the shared attribute with tenant Y; this turn's parsed carries X.
+        supervisor.rag.kb_status = self._Y
+        parsed = {"reply": "Check the drive.", "_kb_status": self._X}
+        out = supervisor._format_reply(parsed, user_message="why is it faulted?")
+        assert "Rockwell" in out  # this turn's citation rendered
+        assert "Danfoss" not in out  # concurrent tenant's poison NOT leaked
+
+    def test_format_reply_no_snapshot_means_no_footer(self, supervisor):
+        # A non-RAG reply carries no _kb_status → no footer, even if the shared
+        # attribute holds a stale (possibly other-tenant) value.
+        supervisor.rag.kb_status = self._Y
+        parsed = {"reply": "Hi there, how can I help?"}
+        out = supervisor._format_reply(parsed, user_message="hi")
+        assert "--- Sources ---" not in out
+        assert "Danfoss" not in out
+
+    @pytest.mark.asyncio
+    async def test_call_with_correction_promotes_state_snapshot(self, supervisor):
+        # rag.process() stashes the pre-await snapshot on the call's state dict;
+        # _call_with_correction must promote it onto parsed so it survives later
+        # state mutation and reaches _format_reply / the relevance strip.
+        async def fake_process(query, state, **kw):
+            state["_rag_kb_status"] = self._X  # mimic process() pre-await stash
+            return '{"reply": "ok", "next_state": "Q1"}'
+
+        supervisor.rag.process = AsyncMock(side_effect=fake_process)
+        supervisor.rag._last_sources = []
+        supervisor.nemotron.enabled = False
+        supervisor._build_kg_context = AsyncMock(return_value="")
+        supervisor._build_live_data_context = AsyncMock(return_value="")
+
+        _raw, parsed = await supervisor._call_with_correction(
+            "why faulted?", {"state": "Q1", "asset_identified": ""}
+        )
+        assert parsed["_kb_status"] == self._X
+
+
+# ---------------------------------------------------------------------------
+# Remaining #1704 read-back races: citation rewrite, grounding, decision-trace
+# ---------------------------------------------------------------------------
+
+
+class TestCitationRewriteIsolation:
+    """_enforce_citation_rewrite must use THIS turn's evidence (chunks+kb_status
+    threaded via the result dict), never the shared self.rag.last_chunks /
+    kb_status a concurrent tenant overwrites (#1704)."""
+
+    @pytest.mark.asyncio
+    async def test_rewrite_uses_evidence_not_shared_rag(self, supervisor):
+        supervisor.rag.last_chunks = [{"manufacturer": "Danfoss"}]  # poison
+        supervisor.rag.kb_status = {"citations": [{"manufacturer": "Danfoss"}]}  # poison
+        ev_chunks = [{"manufacturer": "Rockwell", "content": "F004"}]
+        ev_kb = {"citations": [{"manufacturer": "Rockwell"}]}
+        captured = {}
+
+        async def fake_helper(reply, chunks, kb_status, **kw):
+            captured["chunks"] = chunks
+            captured["kb_status"] = kb_status
+            return reply
+
+        with patch("shared.engine._enforce_citation_via_rewrite", side_effect=fake_helper):
+            with patch.dict("os.environ", {"MIRA_CITATION_REWRITE": "1"}):
+                await supervisor._enforce_citation_rewrite(
+                    "the drive faulted",
+                    chat_id="c",
+                    fsm_state="DIAGNOSIS",
+                    evidence={"chunks": ev_chunks, "kb_status": ev_kb},
+                )
+        assert captured["chunks"] == ev_chunks  # this turn's chunks
+        assert captured["kb_status"] == ev_kb
+        assert "Danfoss" not in str(captured)  # concurrent tenant's poison unused
+
+    @pytest.mark.asyncio
+    async def test_rewrite_no_evidence_returns_unchanged_no_rag_read(self, supervisor):
+        # No per-turn snapshot → no rewrite, and the shared helper (which would
+        # read rag state) is never invoked. Requirement #5: no stale fallback.
+        supervisor.rag.last_chunks = [{"manufacturer": "Danfoss"}]  # would-be poison
+        called = False
+
+        async def fake_helper(*a, **k):
+            nonlocal called
+            called = True
+            return "REWRITTEN"
+
+        with patch("shared.engine._enforce_citation_via_rewrite", side_effect=fake_helper):
+            with patch.dict("os.environ", {"MIRA_CITATION_REWRITE": "1"}):
+                out = await supervisor._enforce_citation_rewrite(
+                    "original reply", chat_id="c", fsm_state="DIAGNOSIS", evidence=None
+                )
+        assert out == "original reply"
+        assert called is False
+
+
+class TestGroundingIsolation:
+    """_call_with_correction must check grounding against THIS turn's sources
+    snapshot (popped off state), never the shared self.rag._last_sources (#1704)."""
+
+    @pytest.mark.asyncio
+    async def test_grounding_keys_off_snapshot_not_shared(self, supervisor):
+        supervisor.rag._last_sources = ["tenant Y overcurrent fault drive motor cable"]  # poison
+
+        async def fake_process(query, state, **kw):
+            state["_rag_sources"] = ["tenant X alpha bravo charlie delta echo"]
+            return '{"reply": "alpha bravo charlie delta echo", "next_state": "DIAGNOSIS"}'
+
+        supervisor.rag.process = AsyncMock(side_effect=fake_process)
+        supervisor.nemotron.enabled = False
+        supervisor._build_kg_context = AsyncMock(return_value="")
+        supervisor._build_live_data_context = AsyncMock(return_value="")
+
+        captured = {}
+        original = supervisor._is_grounded
+
+        def spy(parsed, sources):
+            captured["sources"] = sources
+            return original(parsed, sources)
+
+        supervisor._is_grounded = spy
+        await supervisor._call_with_correction("q", {"state": "DIAGNOSIS", "asset_identified": ""})
+        assert captured["sources"] == ["tenant X alpha bravo charlie delta echo"]
+        assert "tenant Y" not in " ".join(captured["sources"])
+
+
+class TestDecisionTraceIsolation:
+    """_schedule_decision_trace must derive manual_sources from the per-turn
+    snapshot on the result dict, never the shared self.rag._last_sources (#1704)."""
+
+    @pytest.mark.asyncio
+    async def test_manual_sources_from_snapshot_not_shared(self, supervisor):
+        supervisor.rag._last_sources = ["POISON tenant Y source"]  # shared — must be ignored
+        supervisor.rag._last_no_kb = False
+        result = {
+            "reply": "r",
+            "next_state": "DIAGNOSIS",
+            "_citation_evidence": {
+                "sources": ["tenant X manual section 5"],
+                "no_kb": False,
+                "kb_status": {},
+                "chunks": [],
+            },
+        }
+        captured = {}
+
+        # write_trace is async → patch() makes it an AsyncMock; the side_effect
+        # fires only when the fire-and-forget task is awaited, so drain the
+        # scheduled task before asserting.
+        def fake_write_trace(**kw):
+            captured.update(kw)
+
+        with patch("shared.decision_trace.write_trace", side_effect=fake_write_trace):
+            supervisor._schedule_decision_trace(
+                chat_id="c",
+                message="why faulted?",
+                reply="r",
+                result=result,
+                platform="test",
+                latency_ms=1,
+                tag_evidence=None,
+            )
+            for t in list(supervisor._decision_trace_tasks):
+                await t
+        assert captured.get("manual_sources") == ["tenant X manual section 5"]
+        assert "POISON" not in str(captured.get("manual_sources"))
+
+    @pytest.mark.asyncio
+    async def test_no_evidence_means_no_manual_sources(self, supervisor):
+        supervisor.rag._last_sources = ["POISON would-be stale source"]
+        supervisor.rag._last_no_kb = False
+        result = {"reply": "hi", "next_state": "IDLE"}  # non-RAG turn, no evidence
+        captured = {}
+
+        def fake_write_trace(**kw):
+            captured.update(kw)
+
+        with patch("shared.decision_trace.write_trace", side_effect=fake_write_trace):
+            supervisor._schedule_decision_trace(
+                chat_id="c",
+                message="hi",
+                reply="hi",
+                result=result,
+                platform="test",
+                latency_ms=1,
+                tag_evidence=None,
+            )
+            for t in list(supervisor._decision_trace_tasks):
+                await t
+        assert captured.get("manual_sources") is None
+
+    @pytest.mark.asyncio
+    async def test_trace_attributed_to_passed_tenant_not_instance(self, supervisor):
+        # The decision trace must record THIS turn's tenant (passed by the
+        # caller), never a shared instance attr a concurrent tenant overwrites.
+        supervisor.tenant_id = "TENANT-Y-FALLBACK"  # would-be cross-tenant bleed
+        captured = {}
+
+        def fake_write_trace(**kw):
+            captured.update(kw)
+
+        with patch("shared.decision_trace.write_trace", side_effect=fake_write_trace):
+            supervisor._schedule_decision_trace(
+                chat_id="c",
+                message="why faulted?",
+                reply="r",
+                result={"reply": "r", "next_state": "DIAGNOSIS"},
+                platform="test",
+                latency_ms=1,
+                tag_evidence=None,
+                tenant_id="tenant-X",
+            )
+            for t in list(supervisor._decision_trace_tasks):
+                await t
+        assert captured.get("tenant_id") == "tenant-X"
+
+    @pytest.mark.asyncio
+    async def test_trace_tenant_falls_back_to_self_when_unset(self, supervisor):
+        supervisor.tenant_id = "ctor-tenant"
+        captured = {}
+
+        def fake_write_trace(**kw):
+            captured.update(kw)
+
+        with patch("shared.decision_trace.write_trace", side_effect=fake_write_trace):
+            supervisor._schedule_decision_trace(
+                chat_id="c",
+                message="m",
+                reply="r",
+                result={"reply": "r", "next_state": "IDLE"},
+                platform="test",
+                latency_ms=1,
+                tag_evidence=None,
+                tenant_id=None,
+            )
+            for t in list(supervisor._decision_trace_tasks):
+                await t
+        assert captured.get("tenant_id") == "ctor-tenant"
+
+    def test_supervisor_has_no_per_turn_tenant_attribute(self, supervisor):
+        # The shared per-turn tenant footgun is gone — nothing to race on.
+        assert not hasattr(supervisor, "_current_tenant_id")
+        assert not hasattr(supervisor, "_current_mira_user_id")

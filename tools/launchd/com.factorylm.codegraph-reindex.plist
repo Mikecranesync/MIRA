@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.factorylm.codegraph-reindex</string>
+
+  <!-- Daily full reindex repairs the call-edge corruption the incremental
+       watcher introduces. Ref: docs/tech-debt/2026-06-09-codegraph-evaluation.md
+       NOTE: paths below are CHARLIE-absolute. Adjust REPO_ROOT on other nodes. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/charlienode/MIRA/tools/codegraph-force-reindex.sh</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <!-- 04:17 daily — off-peak, avoids round-number contention with other jobs. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>4</integer>
+    <key>Minute</key>
+    <integer>17</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/charlienode/MIRA</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/charlienode/Library/Logs/codegraph-reindex.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/charlienode/Library/Logs/codegraph-reindex.log</string>
+</dict>
+</plist>

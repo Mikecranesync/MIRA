@@ -1,3 +1,8 @@
+# ROLE: LOCAL-DEV staging (CHARLIE). NOT the deployed VPS stack.
+# The always-on staging stack on the VPS is docker-compose.staging-vps.yml
+# (project `mira-staging`, /opt/mira-staging/). Use THIS file only for a local
+# bot-path staging boot on CHARLIE. See docs/environments.md.
+#
 # MIRA staging — bot path only, runs on CHARLIE against NeonDB staging branch.
 #
 # Spec:    docs/specs/staging-environment-spec.md
@@ -25,10 +30,10 @@ x-staging-env: &staging-env
   GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
   GROQ_VISION_MODEL: ${GROQ_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
   CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
-  CEREBRAS_MODEL: ${CEREBRAS_MODEL:-llama3.1-8b}
-  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
-  GEMINI_VISION_MODEL: ${GEMINI_VISION_MODEL:-gemini-2.5-flash}
+  CEREBRAS_MODEL: ${CEREBRAS_MODEL:-gpt-oss-120b}
+  TOGETHERAI_API_KEY: ${TOGETHERAI_API_KEY:-}
+  TOGETHERAI_MODEL: ${TOGETHERAI_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+  TOGETHERAI_VISION_MODEL: ${TOGETHERAI_VISION_MODEL:-}
   # Open WebUI is not deployed in staging; this dummy is referenced but not hit
   # for text-only flows because RAGWorker retrieves via neon_recall.
   OPENWEBUI_BASE_URL: http://localhost:11434

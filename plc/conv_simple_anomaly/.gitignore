@@ -1,0 +1,4 @@
+# Local trend historian SQLite ring buffer — bench runtime artifact, never commit.
+trend_data.db
+trend_data.db-wal
+trend_data.db-shm

@@ -23,6 +23,14 @@ interface KgEntityRow {
   uns_path: string | null;
 }
 
+/** Compute the ltree uns_path for a new node.
+ *  Root nodes (no parent) are anchored under 'enterprise' per UNS spec.
+ *  Fixes the regression introduced by #1983: the tree filter excludes any path
+ *  not rooted at 'enterprise', so un-rooted root nodes were invisible after create. */
+export function buildNodeUnsPath(parentPath: string | null, slug: string): string {
+  return parentPath ? `${parentPath}.${slug}` : `enterprise.${slug}`;
+}
+
 export async function POST(req: Request) {
   if (!process.env.NEON_DATABASE_URL) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
@@ -86,7 +94,7 @@ export async function POST(req: Request) {
         parentPath = parentRes.rows[0].uns_path;
       }
 
-      const unsPath = parentPath ? `${parentPath}.${slug}` : slug;
+      const unsPath = buildNodeUnsPath(parentPath, slug);
 
       const insertRes = await c.query<{ id: string }>(
         `INSERT INTO kg_entities (entity_type, name, uns_path, tenant_id)

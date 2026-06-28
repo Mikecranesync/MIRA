@@ -19,6 +19,7 @@ interface RawCountsRow {
   assets: string;
   components: string;
   docs: string;
+  docs_pending: string;
   proposals_pending: string;
   proposals_verified: string;
   uns_paths: string;
@@ -44,15 +45,20 @@ export async function POST() {
               WHERE tenant_id = $1 AND entity_type IN ('component','component_template')
             )::text AS components,
             (
-              SELECT COUNT(DISTINCT source) FROM kg_triples_log WHERE tenant_id = $1
+              SELECT COUNT(*) FROM knowledge_entries
+              WHERE tenant_id = $1::uuid AND verified = true
             )::text AS docs,
             (
+              SELECT COUNT(*) FROM knowledge_entries
+              WHERE tenant_id = $1::uuid AND COALESCE(verified, false) = false
+            )::text AS docs_pending,
+            (
               SELECT COUNT(*) FROM relationship_proposals
-              WHERE (tenant_id = $1 OR tenant_id IS NULL) AND status = 'proposed'
+              WHERE tenant_id = $1 AND status = 'proposed'
             )::text AS proposals_pending,
             (
               SELECT COUNT(*) FROM relationship_proposals
-              WHERE (tenant_id = $1 OR tenant_id IS NULL) AND status = 'verified'
+              WHERE tenant_id = $1 AND status = 'verified'
             )::text AS proposals_verified,
             (
               SELECT COUNT(DISTINCT uns_path) FROM kg_entities WHERE tenant_id = $1 AND uns_path IS NOT NULL
@@ -70,6 +76,7 @@ export async function POST() {
         assets: Number(res.rows[0].assets) || 0,
         components: Number(res.rows[0].components) || 0,
         docs: Number(res.rows[0].docs) || 0,
+        docsPending: Number(res.rows[0].docs_pending) || 0,
         proposalsPending: Number(res.rows[0].proposals_pending) || 0,
         proposalsVerified: Number(res.rows[0].proposals_verified) || 0,
         unsPaths: Number(res.rows[0].uns_paths) || 0,

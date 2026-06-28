@@ -12,10 +12,10 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `GROQ_MODEL`         | mira-bots, mira-pipeline — default: llama-3.3-70b-versatile |
 | `GROQ_VISION_MODEL`  | mira-bots, mira-pipeline — default: meta-llama/llama-4-scout-17b-16e-instruct |
 | `CEREBRAS_API_KEY`   | mira-bots, mira-pipeline (Cerebras — second in cascade) |
-| `CEREBRAS_MODEL`     | mira-bots, mira-pipeline — default: llama3.1-8b |
-| `GEMINI_API_KEY`     | mira-bots, mira-pipeline (Gemini — third in cascade, vision-capable) |
-| `GEMINI_MODEL`       | mira-bots, mira-pipeline — default: gemini-2.5-flash |
-| `GEMINI_VISION_MODEL`| mira-bots, mira-pipeline — default: gemini-2.5-flash |
+| `CEREBRAS_MODEL`     | mira-bots, mira-pipeline — default: gpt-oss-120b |
+| `TOGETHERAI_API_KEY`     | mira-bots, mira-pipeline (Together AI — third in cascade; OpenAI-compatible) |
+| `TOGETHERAI_MODEL`       | mira-bots, mira-pipeline — default: meta-llama/Llama-3.3-70B-Instruct-Turbo |
+| `TOGETHERAI_VISION_MODEL`| mira-bots, mira-pipeline — default: unset (image requests stay on Groq) |
 | ~~`ANTHROPIC_API_KEY`~~ | **REMOVED PR #610** — Anthropic dependency ripped out 2026-04-25; runtime silently ignores this key if set |
 | ~~`CLAUDE_MODEL`~~      | **REMOVED PR #610** — see above |
 | `OPENWEBUI_API_KEY`  | mira-bots, mira-ingest, mira-pipeline |
@@ -33,6 +33,9 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `ATLAS_PUBLIC_API_URL` | mira-cmms atlas-api + atlas-frontend — public URL for Atlas CMMS API (e.g. `http://bravo:8088`) |
 | `ATLAS_PUBLIC_FRONT_URL` | mira-cmms atlas-api — public URL for Atlas CMMS frontend |
 | `ATLAS_PUBLIC_MINIO_URL` | mira-cmms atlas-api + atlas-frontend — public URL for MinIO |
+| `HUB_SSO_SECRET`    | mira-hub + Atlas CMMS API — shared HS256 secret for Hub-to-Atlas SSO assertions. Must match on both services. |
+| `HUB_SSO_ISSUER`    | mira-hub + Atlas CMMS API — optional SSO issuer override. Default `factorylm-hub`. |
+| `HUB_SSO_AUDIENCE`  | mira-hub + Atlas CMMS API — optional SSO audience override. Default `atlas-cmms`. |
 | `BRAVO_HOST`         | mira-core/docker-compose.oracle.yml — Tailscale IP or hostname of Bravo compute node (e.g. `100.86.236.11`). Required when running Oracle Cloud overrides. |
 | `MIRA_MCPO_VERSION`  | mira-core/docker-compose.yml — image tag for locally-built mira-mcpo container. Default: `3.4`. Bump when Dockerfile.mcpo changes. |
 | `MIRA_PLC_ENABLED`   | mira-bots/shared/engine.py — set `1`/`true`/`yes` to instantiate PLCWorker (Config 4 / deferred PLC integration). Default: disabled. |
@@ -56,3 +59,5 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `HARDENING_LOCK_DIR` | tools/lead-hunter — directory for singleton lock file; default `/tmp` |
 | `HARDENING_ALERT_LOG` | tools/lead-hunter — JSONL alert log path; default `marketing/prospects/hardening-alerts.jsonl` |
 | `DISCORD_ALERT_WEBHOOK` | tools/lead-hunter — optional Discord webhook URL for degraded/failed runs |
+| `COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST` | mira-hub — comma-separated exact hosts allowed as Command Center display targets (e.g. `127.0.0.1,192.168.1.20,100.72.2.99`). The tree route server-side-probes each registered display host; **set this in prod** to bound the SSRF surface of `POST /api/command-center/display` to known proxy/HMI origins. Unset = no restriction beyond the validator's link-local/metadata block (dev/bench). Interim control until #578 enables a true admin-role gate. |
+| `CSP_FRAME_SRC_DISPLAY_HOSTS` | mira-hub `src/middleware.ts` — comma-separated hosts added to the site-wide CSP `frame-src` allowlist (for any framed display surface). Distinct from the allowlist above: this governs what the browser may frame, not what may be registered. |

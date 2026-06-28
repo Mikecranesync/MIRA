@@ -14,7 +14,7 @@ import {
 import { useTranslations } from "next-intl";
 import { UploadPicker } from "@/components/UploadPicker";
 import { UploadBlock, type UploadBlockData } from "@/components/UploadBlock";
-import { API_BASE } from "@/lib/config";
+import { API_BASE, MAX_UPLOAD_MB } from "@/lib/config";
 import { KbGrowthDashboard } from "../KbGrowthDashboard";
 import { UploadSummaryCard } from "@/components/UploadSummaryCard";
 
@@ -108,6 +108,43 @@ export default function KnowledgePage() {
   const [docsLoading, setDocsLoading] = useState(false);
   const [openTypes, setOpenTypes] = useState<Set<string>>(new Set());
 
+  type ContentResult = {
+    sourceUrl: string;
+    title: string;
+    manufacturer: string;
+    modelNumber: string | null;
+    sourceType: string | null;
+    snippet: string;
+  };
+  const [contentResults, setContentResults] = useState<ContentResult[]>([]);
+  const [contentSearching, setContentSearching] = useState(false);
+
+  // Debounced full-text search: fires 350 ms after the user stops typing,
+  // only in the manufacturer list view (not drilled in) and only with a query.
+  useEffect(() => {
+    if (selectedMfr || !search.trim()) {
+      const timeout = window.setTimeout(() => {
+        setContentResults([]);
+        setContentSearching(false);
+      }, 0);
+      return () => window.clearTimeout(timeout);
+    }
+    const loadingTimer = window.setTimeout(() => setContentSearching(true), 0);
+    const timer = window.setTimeout(() => {
+      fetch(`${API_BASE}/api/knowledge/search?q=${encodeURIComponent(search.trim())}`, {
+        cache: "no-store",
+      })
+        .then((r) => (r.ok ? r.json() : { results: [] }))
+        .then((data) => setContentResults(data.results ?? []))
+        .catch(() => setContentResults([]))
+        .finally(() => setContentSearching(false));
+    }, 350);
+    return () => {
+      window.clearTimeout(loadingTimer);
+      window.clearTimeout(timer);
+    };
+  }, [search, selectedMfr]);
+
   type LinkedAsset = {
     id: string;
     tag: string;
@@ -138,7 +175,7 @@ export default function KnowledgePage() {
 
   const fetchManufacturers = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/knowledge`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/knowledge/`, { cache: "no-store" });
       if (!res.ok) return;
       const data = await res.json();
       // API now returns A-Z; sort defensively in case any caller mutates.
@@ -155,7 +192,10 @@ export default function KnowledgePage() {
 
   // Initial load.
   useEffect(() => {
-    void fetchManufacturers().finally(() => setLoading(false));
+    const timeout = window.setTimeout(() => {
+      void fetchManufacturers().finally(() => setLoading(false));
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [fetchManufacturers]);
 
   // Live polling: refresh on focus + tab-visibility, plus a 30s heartbeat.
@@ -188,7 +228,7 @@ export default function KnowledgePage() {
     setExpandedAsset(null);
     setAssetChildren({});
     setAssetDocs({});
-    fetch(`${API_BASE}/api/knowledge/manufacturer?name=${encodeURIComponent(name)}`, {
+    fetch(`${API_BASE}/api/knowledge/manufacturer/?name=${encodeURIComponent(name)}`, {
       cache: "no-store",
     })
       .then((r) => r.json())
@@ -221,7 +261,7 @@ export default function KnowledgePage() {
       setExpandedAsset(id);
       if (!assetChildren[id]) {
         try {
-          const r = await fetch(`${API_BASE}/api/assets/${id}/children`, {
+          const r = await fetch(`${API_BASE}/api/assets/${id}/children/`, {
             cache: "no-store",
           });
           if (r.ok) {
@@ -234,7 +274,7 @@ export default function KnowledgePage() {
       }
       if (!assetDocs[id]) {
         try {
-          const r = await fetch(`${API_BASE}/api/assets/${id}/documents`, {
+          const r = await fetch(`${API_BASE}/api/assets/${id}/documents/`, {
             cache: "no-store",
           });
           if (r.ok) {
@@ -260,7 +300,7 @@ export default function KnowledgePage() {
 
   const fetchUploads = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/uploads`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/uploads/`, { cache: "no-store" });
       if (!res.ok) return;
       const rows = (await res.json()) as Array<{
         id: string;
@@ -294,7 +334,10 @@ export default function KnowledgePage() {
   }, []);
 
   useEffect(() => {
-    void fetchUploads();
+    const timeout = window.setTimeout(() => {
+      void fetchUploads();
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [fetchUploads]);
 
   useEffect(() => {
@@ -310,7 +353,7 @@ export default function KnowledgePage() {
       const form = new FormData();
       form.append("file", file);
       if (assetTag) form.append("assetTag", assetTag);
-      const res = await fetch(`${API_BASE}/api/uploads/local`, {
+      const res = await fetch(`${API_BASE}/api/uploads/local/`, {
         method: "POST",
         body: form,
       });
@@ -318,12 +361,14 @@ export default function KnowledgePage() {
         const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         const msg =
           body.error === "unsupported_mime"
-            ? `Unsupported file type: ${(body.got as string | undefined) || file.type || "unknown"}`
-            : body.error === "exceeds_20mb_limit"
-              ? `File too large (max 20 MB): ${file.name}`
-              : typeof body.error === "string"
-                ? body.error
-                : `Upload failed (${res.status})`;
+            ? `Can't upload "${file.name}" — ${(body.got as string | undefined) || file.type || "that file type"} isn't supported. Upload a PDF, JPEG, PNG, WebP, or HEIC (convert other formats to PDF first).`
+            : body.error === "exceeds_size_limit"
+              ? `"${file.name}" is too large (max ${MAX_UPLOAD_MB} MB). Split or compress it and try again.`
+              : body.error === "content_does_not_match_declared_mime"
+                ? `"${file.name}" looks corrupted or renamed — its contents don't match its extension. Re-export it as a real PDF and try again.`
+                : typeof body.error === "string"
+                  ? body.error
+                  : `Upload failed (${res.status})`;
         throw new Error(msg);
       }
       if (!firstId) {
@@ -349,7 +394,7 @@ export default function KnowledgePage() {
   ) {
     let firstId: string | null = null;
     for (const result of results) {
-      const res = await fetch(`${API_BASE}/api/uploads`, {
+      const res = await fetch(`${API_BASE}/api/uploads/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...result, assetTag: assetTag ?? undefined }),
@@ -364,7 +409,19 @@ export default function KnowledgePage() {
   }
 
   async function handleDeleteUpload(id: string) {
-    await fetch(`/hub/api/uploads/${id}`, { method: "DELETE" });
+    await fetch(`/hub/api/uploads/${id}/`, { method: "DELETE" });
+    await fetchUploads();
+  }
+
+  async function handleRetryUpload(id: string) {
+    const res = await fetch(`${API_BASE}/api/uploads/${id}/retry/`, { method: "POST" });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      // Local buffer expired/lost — the only case where retry can't proceed.
+      if (body.error === "local_retry_requires_re_upload") {
+        alert("This file's saved copy has expired — please upload it again from disk.");
+      }
+    }
     await fetchUploads();
   }
 
@@ -479,7 +536,7 @@ export default function KnowledgePage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={selectedMfr ? `Search ${selectedMfr} documents…` : t("search")}
+              placeholder={selectedMfr ? `Search ${selectedMfr} documents…` : "Search manufacturers or content…"}
               className="w-full h-9 pl-9 pr-3 rounded-lg border text-sm"
               style={{
                 backgroundColor: "var(--surface-1)",
@@ -508,7 +565,12 @@ export default function KnowledgePage() {
         {!selectedMfr && (
           <div className="space-y-2 mb-4">
             {uploads.map((u) => (
-              <UploadBlock key={u.id} upload={u} onDelete={handleDeleteUpload} />
+              <UploadBlock
+                key={u.id}
+                upload={u}
+                onDelete={handleDeleteUpload}
+                onRetry={handleRetryUpload}
+              />
             ))}
           </div>
         )}
@@ -855,33 +917,123 @@ export default function KnowledgePage() {
         )}
 
         {!loading && !selectedMfr && filteredMfrs.length === 0 && uploads.length === 0 && (
-          <button
-            onClick={() => setPickerOpen(true)}
-            className="w-full flex flex-col items-center justify-center text-center py-10 px-6 rounded-xl border-2 border-dashed transition-colors hover:bg-[var(--surface-1)]"
-            style={{ borderColor: "var(--border)" }}
-          >
-            <div
-              className="w-12 h-12 rounded-full flex items-center justify-center mb-3"
-              style={{ backgroundColor: "var(--surface-1)" }}
-            >
-              <Upload
-                className="w-6 h-6"
-                style={{ color: "var(--brand-blue)" }}
-              />
+          search.trim() ? (
+            // Full-text content search results — shown when no manufacturer name matches.
+            <div>
+              {contentSearching && (
+                <div className="text-center py-8">
+                  <Clock
+                    className="w-6 h-6 mx-auto mb-2 animate-spin"
+                    style={{ color: "var(--foreground-subtle)" }}
+                  />
+                  <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
+                    Searching document content…
+                  </p>
+                </div>
+              )}
+              {!contentSearching && contentResults.length > 0 && (
+                <div className="space-y-2">
+                  <p
+                    className="text-[11px] uppercase tracking-wider font-semibold mb-2"
+                    style={{ color: "var(--foreground-subtle)" }}
+                  >
+                    Document content results ({contentResults.length})
+                  </p>
+                  {contentResults.map((r) => (
+                    <button
+                      key={r.sourceUrl}
+                      onClick={() => openManufacturer(r.manufacturer)}
+                      className="w-full text-left p-3 rounded-lg border transition-colors hover:opacity-80"
+                      style={{
+                        backgroundColor: "var(--surface-1)",
+                        borderColor: "var(--border)",
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p
+                            className="text-sm font-medium truncate"
+                            style={{ color: "var(--foreground)" }}
+                          >
+                            {r.title}
+                          </p>
+                          <p
+                            className="text-[11px] mt-0.5"
+                            style={{ color: "var(--foreground-subtle)" }}
+                          >
+                            {r.manufacturer}
+                            {r.modelNumber ? ` · ${r.modelNumber}` : ""}
+                            {r.sourceType ? ` · ${r.sourceType}` : ""}
+                          </p>
+                          {r.snippet && (
+                            <p
+                              className="text-[11px] mt-1.5 line-clamp-2"
+                              style={{ color: "var(--foreground-muted)" }}
+                            >
+                              {r.snippet}
+                            </p>
+                          )}
+                        </div>
+                        <ChevronRight
+                          className="w-4 h-4 flex-shrink-0 mt-0.5"
+                          style={{ color: "var(--foreground-subtle)" }}
+                        />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!contentSearching && contentResults.length === 0 && (
+                <div className="text-center py-10">
+                  <FileText
+                    className="w-8 h-8 mx-auto mb-3"
+                    style={{ color: "var(--foreground-subtle)" }}
+                  />
+                  <p className="text-sm font-semibold mb-1" style={{ color: "var(--foreground)" }}>
+                    No matching documents
+                  </p>
+                  <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
+                    No manufacturers or document content matched &quot;{search}&quot;.
+                  </p>
+                  <button
+                    onClick={() => setPickerOpen(true)}
+                    className="mt-4 text-xs font-medium underline underline-offset-2"
+                    style={{ color: "var(--brand-blue)" }}
+                  >
+                    Upload a manual
+                  </button>
+                </div>
+              )}
             </div>
-            <p
-              className="text-sm font-semibold mb-1"
-              style={{ color: "var(--foreground)" }}
+          ) : (
+            <button
+              onClick={() => setPickerOpen(true)}
+              className="w-full flex flex-col items-center justify-center text-center py-10 px-6 rounded-xl border-2 border-dashed transition-colors hover:bg-[var(--surface-1)]"
+              style={{ borderColor: "var(--border)" }}
             >
-              {t("noDocuments")}
-            </p>
-            <p
-              className="text-xs"
-              style={{ color: "var(--foreground-muted)" }}
-            >
-              Tap to upload a PDF manual or photo — PDF, JPEG, PNG up to 20 MB.
-            </p>
-          </button>
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center mb-3"
+                style={{ backgroundColor: "var(--surface-1)" }}
+              >
+                <Upload
+                  className="w-6 h-6"
+                  style={{ color: "var(--brand-blue)" }}
+                />
+              </div>
+              <p
+                className="text-sm font-semibold mb-1"
+                style={{ color: "var(--foreground)" }}
+              >
+                {t("noDocuments")}
+              </p>
+              <p
+                className="text-xs"
+                style={{ color: "var(--foreground-muted)" }}
+              >
+                Tap to upload a PDF manual or photo — PDF, JPEG, PNG up to {MAX_UPLOAD_MB} MB.
+              </p>
+            </button>
+          )
         )}
 
         {selectedMfr && !docsLoading && filteredGroups.length === 0 && (

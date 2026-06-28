@@ -1,0 +1,135 @@
+name: Beta Gate (upload → retrieval → citation)
+
+# Proves the ONE beta-readiness gate end-to-end over HTTP:
+#   "A stranger uploads their own equipment manual, asks a real troubleshooting
+#    question, and MIRA returns a grounded answer with citations from that
+#    uploaded manual — without Mike manually fixing anything."
+#
+# It builds a Hub on the runner against the STAGING Neon branch (NEVER prod;
+# staging is "safe to break" and has the factorylm_app INSERT grant from mig
+# 049), provisions a real *stranger* run
+# (register → tenant FK → next-auth cookie → namespace node), uploads the
+# fixture manual through the REAL `/files/` door, and runs
+# tests/beta/beta_ready_upload_retrieval_citation.py against it.
+#
+# This is the DURABLE surface that justifies removing the gate's old xfail: the
+# gate now skips when BETA_GATE_* is unset (plain local pytest) and asserts for
+# real here, where CI provisions it. Staging rows are cleaned up afterwards.
+#
+# Secret: DOPPLER_TOKEN (the same one db-inspect.yml uses) — it can read the
+# `factorylm/stg` config. The job inherits it via `environment: staging`
+# (matching db-inspect's working pattern). It only ever resolves the *stg*
+# config — never prod.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * 1" # Mondays 07:00 UTC — weekly beta-readiness re-proof
+  pull_request:
+    paths:
+      - "tests/beta/**"
+      - "mira-hub/src/lib/node-knowledge-ingest.ts"
+      - "mira-hub/src/lib/manual-rag.ts"
+      - "mira-hub/src/app/api/namespace/node/**"
+      - "mira-hub/scripts/provision-beta-gate.ts"
+      - ".github/workflows/beta-gate.yml"
+
+concurrency:
+  group: beta-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  beta-gate:
+    name: Stranger upload → cited answer (staging Neon)
+    runs-on: ubuntu-latest
+    environment: staging # only to inherit DOPPLER_TOKEN; resolves the stg config
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - uses: dopplerhq/cli-action@v4
+
+      - name: Install mira-hub deps
+        working-directory: mira-hub
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Install gate python deps
+        run: pip install --quiet httpx pytest pyyaml
+
+      - name: Build · provision · run gate · cleanup
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          DOPPLER_PROJECT: factorylm
+          # staging, not dev: the shared DOPPLER_TOKEN (same one db-inspect.yml uses)
+          # can read stg+prd but NOT dev. The gate contract allows dev OR staging
+          # (never prod); staging Neon has the factorylm_app INSERT grant (mig 049),
+          # the OEM corpus, and is "safe to break". Verified green locally on stg.
+          DOPPLER_CONFIG: stg
+        run: |
+          set -euo pipefail
+          [ -n "${DOPPLER_TOKEN:-}" ] || { echo "::error::DOPPLER_TOKEN not set"; exit 1; }
+
+          # 1. Build the Hub at basePath='' (routes at root) against staging.
+          echo "::group::next build (staging)"
+          ( cd mira-hub && NEXT_PUBLIC_BASE_PATH='' NEXT_PUBLIC_API_BASE='' NODE_ENV=production \
+              doppler run -- ./node_modules/.bin/next build )
+          echo "::endgroup::"
+
+          # 2. Start the Hub (background) on :3100.
+          ( cd mira-hub && NEXT_PUBLIC_BASE_PATH='' NODE_ENV=production \
+              doppler run -- env NEXTAUTH_URL=http://localhost:3100 AUTH_TRUST_HOST=true \
+              ./node_modules/.bin/next start -p 3100 > /tmp/hub.log 2>&1 & )
+
+          # 3. Wait for readiness (csrf 200 through the trailing-slash door).
+          ready=
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3100/api/auth/csrf/ || true)
+            if [ "$code" = "200" ]; then ready=1; echo "Hub ready after ~$((i*3))s"; break; fi
+            sleep 3
+          done
+          if [ -z "$ready" ]; then echo "::error::Hub never became ready"; cat /tmp/hub.log; exit 1; fi
+
+          # 4. Provision a real stranger run → BETA_GATE_* env lines.
+          ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts ) > /tmp/gate-env.out
+          set -a
+          # shellcheck disable=SC1090
+          . <(grep '^ENV:' /tmp/gate-env.out | sed 's/^ENV://')
+          set +a
+          echo "::notice::provisioned tenant=$BETA_GATE_TENANT node=$BETA_GATE_NODE"
+
+          # 5. Run the gate (pure HTTP — no doppler needed). --confcutdir keeps
+          #    pytest from ascending into tests/conftest.py (which imports the
+          #    full test harness); the beta gate is self-contained (_gate = httpx).
+          set +e
+          python -m pytest tests/beta/beta_ready_upload_retrieval_citation.py \
+            --confcutdir=tests/beta -v -rs
+          GATE_RC=$?
+          set -e
+
+          # 6. Clean up the staging rows we created (best-effort, never fail the job).
+          ( cd mira-hub && doppler run -- bun run scripts/provision-beta-gate.ts --cleanup "$BETA_GATE_TENANT" ) || true
+
+          # 7. Tear down the server.
+          pkill -f "next start -p 3100" || true
+
+          exit $GATE_RC
+
+      - name: Upload server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: beta-gate-hub-log-${{ github.run_id }}
+          path: /tmp/hub.log
+          retention-days: 7
+          if-no-files-found: ignore

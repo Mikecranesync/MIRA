@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test } from "@playwright/test";
 
 test("debug: what URL does /hub/assets page fetch?", async ({ page }) => {
   const fetchedUrls: string[] = [];

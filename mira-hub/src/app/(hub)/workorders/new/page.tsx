@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { API_BASE } from "@/lib/config";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Search, QrCode, Camera, CheckCircle2, Loader2, X, ImagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -73,7 +74,7 @@ export default function NewWorkOrderPage() {
     const fd = new FormData();
     fd.append("file", p.file);
     if (assetTag) fd.append("assetTag", assetTag);
-    fetch("/api/uploads/local", { method: "POST", body: fd })
+    fetch(`${API_BASE}/api/uploads/local/`, { method: "POST", body: fd })
       .then(async (res) => {
         if (!res.ok) {
           const err = (await res.json().catch(() => ({}))) as { error?: string };
@@ -127,7 +128,7 @@ export default function NewWorkOrderPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/assets");
+        const res = await fetch(`${API_BASE}/api/assets/`);
         if (!res.ok) {
           if (!cancelled) setAssetsError("Could not load assets");
           return;
@@ -156,7 +157,7 @@ export default function NewWorkOrderPage() {
     setSubmitError(null);
     setSubmitting(true);
     try {
-      const res = await fetch("/api/work-orders", {
+      const res = await fetch(`${API_BASE}/api/work-orders/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

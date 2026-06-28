@@ -90,16 +90,16 @@ const ORG_AND_SITE_LD = {
 function hero(): string {
   return `<section class="fl-hero" aria-labelledby="fl-hero-h1">
   <div class="fl-hero-inner">
-    <p class="fl-hero-eyebrow">Maintenance Digital Transformation</p>
+    <p class="fl-hero-eyebrow">The Maintenance Knowledge Layer</p>
     <h1 id="fl-hero-h1" class="fl-hero-h1">FactoryLM</h1>
-    <h2 class="fl-hero-h2">Turn your maintenance reality into AI-ready infrastructure.</h2>
-    <h3 class="fl-hero-h3">Then <strong>MIRA</strong> makes it actionable.</h3>
-    <p class="fl-hero-sub">Your manuals are in filing cabinets. Your fault history is in someone's head. Your PLC tags don't match your asset names. AI can't help until that's structured. We do the structuring — then MIRA runs on top.</p>
+    <h2 class="fl-hero-h2">Cited troubleshooting answers from your manuals, assets, and fault history.</h2>
+    <h3 class="fl-hero-h3">Without rebuilding your CMMS.</h3>
+    <p class="fl-hero-sub">Your manuals are in filing cabinets. Your fault history is in someone's head. Your PLC tags don't match your asset names — so generic AI guesses. We structure all of it into a Maintenance Intelligence Namespace — the AI-ready infrastructure <strong>MIRA</strong> runs on — then MIRA answers technicians with citations.</p>
     <div class="fl-hero-cta">
-      ${btnPrimary("Try MIRA Free →", { href: "/signup", cta: "hero-signup" })}
-      ${btnGhost("Book a demo", { href: "/buy", cta: "hero-buy-secondary" })}
+      ${btnPrimary("Book $500 Assessment", { href: "/buy", cta: "hero-assessment" })}
+      ${btnGhost("Try a sample MIRA answer", { href: "https://app.factorylm.com/quickstart", cta: "hero-demo" })}
     </div>
-    <p class="fl-hero-cta-foot">7-day free trial, no credit card. Or book a $500 in-person assessment and skip the trial.</p>
+    <p class="fl-hero-cta-foot">Most plants start with the $500 on-site assessment — you leave with a written gap report and a namespace blueprint. Already a customer? <a href="/cmms" data-cta="hero-signin">Sign in</a>.</p>
     <div class="fl-hero-screenshot" aria-hidden="true">
       <img
         src="/images/hero-fault-lookup-cartoon.jpg"
@@ -234,6 +234,66 @@ function featureStrip(): string {
     </div>
     <div class="fl-feature-stop">
       ${stopHtml}
+    </div>
+  </div>
+</section>`;
+}
+
+function howItWorks(): string {
+  const steps = [
+    { n: "1", h: "Scan assets &amp; nameplates", b: "Every machine, sub-component, and motor — captured with its nameplate, in person or from a photo." },
+    { n: "2", h: "Bind manuals to assets", b: "OEM manuals, wiring diagrams, and datasheets indexed and attached to the asset they serve." },
+    { n: "3", h: "Map fault history, CMMS &amp; PLC tags", b: "Work-order history and PLC tag names reconciled to the right asset — the IT/OT gap, closed." },
+    { n: "4", h: "Ask MIRA", b: "A technician asks a fault-code or troubleshooting question in Slack, Telegram, or the web." },
+    { n: "5", h: "MIRA cites the source", b: "Every answer points to the manual section, fault-history entry, or PLC tag that grounds it." },
+    { n: "6", h: "Draft PMs &amp; work orders", b: "Validated answers become PM suggestions and work-order drafts — synced to your CMMS." },
+  ];
+  const cards = steps
+    .map(
+      (s) => `<article class="fl-project-card" aria-label="Step ${s.n}">
+    <div class="fl-project-card-glyph" aria-hidden="true">${s.n}</div>
+    <h3 class="fl-project-card-h">${s.h}</h3>
+    <p class="fl-project-card-body">${s.b}</p>
+  </article>`
+    )
+    .join("\n  ");
+  return `<section class="fl-section" aria-labelledby="fl-how-h">
+  <h2 id="fl-how-h" class="fl-section-h">How it works.</h2>
+  <p class="fl-section-sub">Structure first, answers second. The namespace is what makes the AI trustworthy.</p>
+  <div class="fl-project-row">
+  ${cards}
+  </div>
+</section>`;
+}
+
+function buyerFit(): string {
+  const forList = [
+    "Maintenance managers",
+    "Plant managers",
+    "Reliability engineers",
+    "Controls engineers &amp; integrators",
+  ];
+  const notList = [
+    "Teams with no manual or document access to structure",
+    "Buyers looking for a standalone CMMS replacement",
+    "Anyone expecting autonomous safety decisions — MIRA escalates, it doesn't act",
+  ];
+  const li = (items: string[]) => items.map((i) => `<li>${i}</li>`).join("\n      ");
+  return `<section class="fl-section" aria-labelledby="fl-fit-h">
+  <h2 id="fl-fit-h" class="fl-section-h">Who it's for.</h2>
+  <p class="fl-section-sub">We'd rather tell you up front. See the full list on <a href="/limitations" data-cta="fit-limitations">Limitations</a>.</p>
+  <div class="fl-fit-grid">
+    <div class="fl-fit-col fl-fit-for">
+      <h3 class="fl-fit-h3">Built for</h3>
+      <ul class="fl-fit-list">
+      ${li(forList)}
+      </ul>
+    </div>
+    <div class="fl-fit-col fl-fit-not">
+      <h3 class="fl-fit-h3">Not the right fit (yet)</h3>
+      <ul class="fl-fit-list">
+      ${li(notList)}
+      </ul>
     </div>
   </div>
 </section>`;
@@ -444,6 +504,29 @@ const PAGE_STYLES = `
 
 .fl-pricing-teaser { text-align: center; }
 
+.fl-fit-grid {
+  display: grid; gap: var(--fl-sp-5);
+  grid-template-columns: 1fr;
+}
+@media (min-width: 720px) {
+  .fl-fit-grid { grid-template-columns: 1fr 1fr; }
+}
+.fl-fit-col {
+  background: var(--fl-card-0);
+  border: 1px solid var(--fl-rule-200);
+  border-radius: var(--fl-radius-lg);
+  padding: var(--fl-sp-6);
+  box-shadow: var(--fl-shadow-sm);
+}
+.fl-fit-h3 {
+  font-size: var(--fl-type-lg); color: var(--fl-navy-900);
+  margin-bottom: var(--fl-sp-4);
+}
+.fl-fit-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--fl-sp-3); }
+.fl-fit-list li { color: var(--fl-muted-600); line-height: 1.5; padding-left: var(--fl-sp-5); position: relative; }
+.fl-fit-for .fl-fit-list li::before { content: "✓"; position: absolute; left: 0; color: var(--fl-good, var(--fl-navy-900)); font-weight: 700; }
+.fl-fit-not .fl-fit-list li::before { content: "—"; position: absolute; left: 0; color: var(--fl-muted-600); font-weight: 700; }
+
 .fl-footer {
   border-top: 1px solid var(--fl-rule-200);
   background: var(--fl-card-0);
@@ -499,12 +582,14 @@ export function renderHome(reqUrl?: string): string {
     ${trustBand("68,000+ chunks of OEM documentation indexed", OEMS)}
     ${projectCardRow()}
     ${compareSection()}
+    ${howItWorks()}
     ${cartoonRow()}
     ${featureStrip()}
+    ${buyerFit()}
     ${pricingTeaser()}
   </main>
   ${footer()}
-  <a href="/signup" class="fl-mobile-cta" data-cta="mobile-sticky-signup">Try MIRA Free →</a>
+  <a href="/buy" class="fl-mobile-cta" data-cta="mobile-sticky-assessment">Book $500 Assessment</a>
   <script src="/sun-toggle.js"></script>
   <script src="/feature-cartoons.js" defer></script>
 </body>

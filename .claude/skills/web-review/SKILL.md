@@ -174,6 +174,25 @@ If the user passes a sitemap or asks to "audit the whole site":
 
 If the user asks for any of these, surface the limitation honestly and offer the v1 fast-core sweep as a starting point.
 
+## Self-healing browser harness (last-step healing)
+
+Browser-driven work used to break on the **last step** even after the fix was
+known — a recreated tab orphaning the page handle, a permission/`alert` dialog
+with nothing to accept it, or a shared profile locked by a concurrent session
+(#1822). `tools/browser_harness.py` (`SelfHealingBrowser`) removes those:
+
+- **isolated profile per task** (unique temp `user_data_dir`, removed on close) —
+  concurrent sessions never contend for one lock;
+- **permissions pre-granted + every dialog auto-accepted** on every page,
+  including pages created later by `window.open` / tab recreation;
+- **`browser.page` always returns a live page** — re-attaches to the newest
+  surviving page if the active one closes (read it each time; don't cache);
+- **timestamped screenshots** into `docs/promo-screenshots/` (Screenshot Rule).
+
+Use it for any Playwright capture/verification that must finish end-to-end with
+no manual handoff. Hermetic self-test: `uv run tools/browser_harness.py
+--selftest` (first run needs `uv run playwright install chromium`).
+
 ## Why this design
 
 - **Most-obvious-first** is a sort, not a different check — same DOM-eval scan covers high and low severity; the rubric just orders them. This means one pass produces a complete picture; we never miss a P0 because we ran out of time.

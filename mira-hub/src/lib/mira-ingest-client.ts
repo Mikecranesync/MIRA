@@ -1,6 +1,7 @@
 // mira-hub/src/lib/mira-ingest-client.ts
 import { sniffMime, isMimeCompatible } from "./sniff-mime";
 import { composeTimeout, isAbortError } from "./abort-helpers";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "./config";
 
 const INGEST_TIMEOUT_MS = 120_000; // mira-ingest can poll OpenWebUI for ~40s+ on large PDFs
 
@@ -30,7 +31,28 @@ export interface PhotoIngestResult {
   photoPath: string | null;
 }
 
-const MAX_BYTES = 20 * 1024 * 1024;
+const MAX_BYTES = MAX_UPLOAD_BYTES;
+
+/**
+ * Resolve the mira-ingest base URL, or throw a clear, user-facing error.
+ *
+ * Staging deliberately omits mira-ingest + Open WebUI and wires
+ * INGEST_URL=disabled://staging (docker-compose.staging-vps.yml). Without this
+ * guard, the server-side fetch to "disabled://…" throws a bare
+ * `TypeError: fetch failed` that surfaced to users as an inscrutable
+ * "Failed: fetch failed" (reported 2026-06-06). Make the cause legible.
+ */
+function ingestBase(): string {
+  const base = process.env.INGEST_URL;
+  if (!base) throw new Error("INGEST_URL not set");
+  if (base.startsWith("disabled://")) {
+    throw new Error(
+      "Knowledge ingestion is disabled in this environment (staging has no " +
+        "ingest service). Upload on production instead.",
+    );
+  }
+  return base;
+}
 
 async function streamToBlob(
   stream: ReadableStream<Uint8Array>,
@@ -44,7 +66,9 @@ async function streamToBlob(
     if (done) break;
     total += value.byteLength;
     if (total > MAX_BYTES) {
-      throw new Error(`file exceeds 20 MB limit (${(total / 1024 / 1024).toFixed(1)} MB)`);
+      throw new Error(
+        `file exceeds ${MAX_UPLOAD_MB} MB limit (${(total / 1024 / 1024).toFixed(1)} MB)`,
+      );
     }
     chunks.push(value);
   }
@@ -76,8 +100,7 @@ export async function forwardToIngest(
   mimeType: string,
   opts: { requestId?: string; signal?: AbortSignal } = {},
 ): Promise<IngestResult> {
-  const base = process.env.INGEST_URL;
-  if (!base) throw new Error("INGEST_URL not set");
+  const base = ingestBase();
 
   const blob = await streamToBlob(stream, mimeType);
   await assertMimeMatchesBlob(blob, mimeType);
@@ -131,8 +154,7 @@ export async function forwardToPhotoIngest(
     signal?: AbortSignal;
   } = {},
 ): Promise<PhotoIngestResult> {
-  const base = process.env.INGEST_URL;
-  if (!base) throw new Error("INGEST_URL not set");
+  const base = ingestBase();
 
   const blob = await streamToBlob(stream, mimeType);
   await assertMimeMatchesBlob(blob, mimeType);

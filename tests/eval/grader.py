@@ -373,6 +373,40 @@ def cp_citation_groundedness(
     )
 
 
+def cp_citation_vendor_relevance(fixture: dict, last_response: str) -> CheckpointResult:
+    """A cited ``[Source: ...]`` must not name a DIFFERENT manufacturer than the
+    fixture's ``expected_vendor`` (beta-readiness P0-3 — "stop the lie").
+
+    Presence-only citation checks read a Siemens breaker cited on a Danfoss VLT
+    question as green. This catches that. Alias-aware (Allen-Bradley / PowerFlex
+    → Rockwell) and fail-open: passes when there is no ``expected_vendor``, no
+    recognized vendor cited, or a correct citation is present alongside.
+    """
+    expected = (fixture.get("expected_vendor") or "").strip()
+    if not expected:
+        return CheckpointResult(
+            "cp_citation_vendor_relevance", True, "No expected_vendor in fixture"
+        )
+    try:
+        from shared.citation_compliance import evaluate_citation_relevance  # noqa: PLC0415
+    except Exception:
+        return CheckpointResult(
+            "cp_citation_vendor_relevance", True, "relevance helper unavailable — skipped"
+        )
+    rel = evaluate_citation_relevance(last_response, expected)
+    if rel["relevant"]:
+        return CheckpointResult(
+            "cp_citation_vendor_relevance",
+            True,
+            f"Citations consistent with {expected}",
+        )
+    return CheckpointResult(
+        "cp_citation_vendor_relevance",
+        False,
+        f"Cited {rel['cited_vendors']} but asset is {rel['expected_vendor']} — wrong-vendor citation",
+    )
+
+
 # ── Grade a completed scenario run ───────────────────────────────────────────
 
 
@@ -385,7 +419,7 @@ def grade_scenario(
     user_turn_count: int,
     retrieved_chunks: list[str] | None = None,
 ) -> ScenarioGrade:
-    """Run all 6 binary checkpoints and return a ScenarioGrade.
+    """Run all 7 binary checkpoints and return a ScenarioGrade.
 
     ``retrieved_chunks`` is optional for backward compatibility with run_eval
     configurations that don't capture retrieval context. When None, the
@@ -419,6 +453,7 @@ def grade_scenario(
         cp_no_5xx(http_statuses),
         cp_turn_budget(fixture, user_turn_count),
         cp_citation_groundedness(fixture, last_response, retrieved_chunks),
+        cp_citation_vendor_relevance(fixture, last_response),
     ]
 
     return grade

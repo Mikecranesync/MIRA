@@ -1,0 +1,21 @@
+{
+  "name": "stripe-connect-sample",
+  "version": "1.0.0",
+  "description": "Self-contained sample app demonstrating the full Stripe Connect flow (V2 accounts, onboarding, products, direct charges, subscriptions) on Hono + Node/Bun.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run --watch server.ts",
+    "start": "bun run server.ts",
+    "start:node": "node --experimental-strip-types --env-file=.env server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.0.4",
+    "hono": "^4.12.23",
+    "stripe": "^22.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}

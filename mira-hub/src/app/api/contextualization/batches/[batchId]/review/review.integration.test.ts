@@ -1,0 +1,141 @@
+// Requires a disposable Postgres/Neon test DB.
+//
+//   $env:TEST_DATABASE_URL="postgres://..."
+//   $env:MIRA_TEST_DB_CONFIRM="DISPOSABLE"
+//   npm run test:integration:db
+//
+// The setup command creates the factorylm_app role, applies integration-only
+// fixtures, applies Hub migrations, and runs smoke checks before Vitest.
+
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
+import type { Pool } from "pg";
+
+const { testPool } = vi.hoisted(() => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Pool: PgPool } = require("pg");
+  return { testPool: new PgPool({ connectionString: process.env.TEST_DATABASE_URL }) as Pool };
+});
+vi.mock("@/lib/db", () => ({ default: testPool }));
+vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
+
+import { POST } from "./route";
+import { sessionOr401 } from "@/lib/session";
+
+const TENANT_A = "000000a1-0000-0000-0000-0000000000a1";
+const TENANT_B = "000000b2-0000-0000-0000-0000000000b2";
+const sessionMock = vi.mocked(sessionOr401);
+
+function asSession(tenantId: string) {
+  // Shape mirrors what sessionOr401 returns (ctx.tenantId + ctx.userId).
+  sessionMock.mockResolvedValue({ tenantId, userId: "u-test" } as never);
+}
+
+function reviewReq(decision: string): Request {
+  return new Request("http://test/review", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ decision }),
+  });
+}
+
+// Seed one batch with one accepted, UNS-pathed extraction. Returns the batchId.
+async function seedBatch(tenantId: string, tagName: string): Promise<string> {
+  const project = await testPool.query(
+    `INSERT INTO contextualization_projects (tenant_id, name, status)
+     VALUES ($1::uuid, $2, 'active') RETURNING id`,
+    [tenantId, `Review fixture ${tagName}`],
+  );
+  const projectId = project.rows[0].id as string;
+  const batch = await testPool.query(
+    `INSERT INTO ctx_import_batches (tenant_id, project_id, ingest_route, review_status)
+     VALUES ($1::uuid, $2, 'offline', 'proposed') RETURNING id`,
+    [tenantId, projectId],
+  );
+  const batchId = batch.rows[0].id as string;
+  const src = await testPool.query(
+    `INSERT INTO ctx_sources
+       (tenant_id, project_id, import_batch_id, source_sha256, source_type, file_name, status)
+     VALUES ($1::uuid, $2, $3, $4, 'st', $5, 'done') RETURNING id`,
+    [tenantId, projectId, batchId, tagName + "-sha".padEnd(64, "0"), `${tagName}.st`],
+  );
+  await testPool.query(
+    `INSERT INTO ctx_extractions
+       (tenant_id, project_id, source_id, tag_name, roles, uns_path_proposed, confidence, status)
+     VALUES ($1::uuid, $2, $3, $4, ARRAY['output'], $5, 0.9, 'accepted')`,
+    [tenantId, projectId, src.rows[0].id, tagName, `enterprise.garage.demo.${tagName.toLowerCase()}`],
+  );
+  return batchId;
+}
+
+beforeAll(() => {
+  if (!process.env.TEST_DATABASE_URL) {
+    throw new Error("TEST_DATABASE_URL is required. See import.integration.test.ts header.");
+  }
+  process.env.NEON_DATABASE_URL = process.env.TEST_DATABASE_URL; // satisfy the 503 guard
+});
+afterAll(async () => { await testPool.end(); });
+beforeEach(async () => {
+  vi.clearAllMocks();
+  await testPool.query("DELETE FROM ai_suggestions WHERE tenant_id = ANY($1::uuid[])", [[TENANT_A, TENANT_B]]);
+  await testPool.query("DELETE FROM kg_entities WHERE tenant_id = ANY($1::uuid[])", [[TENANT_A, TENANT_B]]);
+  await testPool.query("DELETE FROM ctx_extractions WHERE tenant_id = ANY($1::uuid[])", [[TENANT_A, TENANT_B]]);
+  await testPool.query("DELETE FROM ctx_sources WHERE tenant_id = ANY($1::uuid[])", [[TENANT_A, TENANT_B]]);
+  await testPool.query("DELETE FROM ctx_import_batches WHERE tenant_id = ANY($1::uuid[])", [[TENANT_A, TENANT_B]]);
+  await testPool.query("DELETE FROM contextualization_projects WHERE tenant_id = ANY($1::uuid[])", [[TENANT_A, TENANT_B]]);
+});
+
+describe("contextualization batch-review publish gate (ADR-0017)", () => {
+  it("approve publishes accepted extractions as VERIFIED kg_entities", async () => {
+    asSession(TENANT_A);
+    const batchId = await seedBatch(TENANT_A, "Conv_Run");
+    const res = await POST(reviewReq("approve"), { params: Promise.resolve({ batchId }) });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ ok: true, reviewStatus: "approved", published: 1 });
+    const ent = await testPool.query(
+      `SELECT approval_state FROM kg_entities WHERE tenant_id=$1::uuid AND name='Conv_Run' AND entity_type='signal'`,
+      [TENANT_A],
+    );
+    expect(ent.rows[0].approval_state).toBe("verified");
+  });
+
+  it("approve does NOT overwrite an already-verified row (no-overwrite guard)", async () => {
+    asSession(TENANT_A);
+    const batchId = await seedBatch(TENANT_A, "Conv_Run");
+    await testPool.query(
+      `INSERT INTO kg_entities (tenant_id, entity_type, name, approval_state, properties)
+       VALUES ($1::uuid, 'signal', 'Conv_Run', 'verified', '{"sentinel":true}'::jsonb)`,
+      [TENANT_A],
+    );
+    const res = await POST(reviewReq("approve"), { params: Promise.resolve({ batchId }) });
+    const body = await res.json();
+    expect(body.skipped).toBeGreaterThanOrEqual(1);
+    const ent = await testPool.query(
+      `SELECT properties FROM kg_entities WHERE tenant_id=$1::uuid AND name='Conv_Run'`, [TENANT_A]);
+    expect(ent.rows[0].properties.sentinel).toBe(true); // untouched
+  });
+
+  it("reject transitions review_status and publishes nothing", async () => {
+    asSession(TENANT_A);
+    const batchId = await seedBatch(TENANT_A, "Conv_Run");
+    const res = await POST(reviewReq("reject"), { params: Promise.resolve({ batchId }) });
+    const body = await res.json();
+    expect(body).toMatchObject({ reviewStatus: "rejected", published: 0 });
+    const ent = await testPool.query(`SELECT 1 FROM kg_entities WHERE tenant_id=$1::uuid AND name='Conv_Run'`, [TENANT_A]);
+    expect(ent.rowCount).toBe(0);
+  });
+
+  it("a batch owned by another tenant is invisible (404)", async () => {
+    asSession(TENANT_A);
+    const foreign = await seedBatch(TENANT_B, "Conv_Run");
+    const res = await POST(reviewReq("approve"), { params: Promise.resolve({ batchId: foreign }) });
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects an invalid decision (400) and a malformed id (400)", async () => {
+    asSession(TENANT_A);
+    const batchId = await seedBatch(TENANT_A, "Conv_Run");
+    expect((await POST(reviewReq("yolo"), { params: Promise.resolve({ batchId }) })).status).toBe(400);
+    expect((await POST(reviewReq("approve"), { params: Promise.resolve({ batchId: "not-a-uuid" }) })).status).toBe(400);
+  });
+});

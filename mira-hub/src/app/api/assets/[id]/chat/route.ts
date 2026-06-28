@@ -1,16 +1,23 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
+import pool from "@/lib/db";
 import { extractAndStore } from "@/lib/knowledge-graph/extractor";
 import { buildGraphContext } from "@/lib/knowledge-graph/context-builder";
 import { scanBoth, handleSafetyAlert, safetyAlertSseChunk } from "@/lib/agents/safety-alert";
 import {
   retrieveManualChunks,
   appendManualContext,
+  buildManualUserContent,
   chunksToSources,
   type ManualChunk,
   type ManualSource,
 } from "@/lib/manual-rag";
+import {
+  approvedAskEnforcementEnabled,
+  approvedContextReady,
+  buildApprovedContextRefusal,
+} from "@/lib/approved-context";
 
 export const dynamic = "force-dynamic";
 
@@ -181,6 +188,15 @@ function buildSystemPrompt(asset: Record<string, unknown>): string {
 - If the question involves lockout/tagout, arc flash, confined space, or electrical safety, stop and instruct the tech to follow site safety procedures before proceeding.`;
 }
 
+// Light PII scrub for the persisted question (mirrors the engine's intent —
+// IP/MAC out of stored troubleshooting context). The question already went to
+// the LLM providers; this only governs what we write to our own trace store.
+function sanitizePII(text: string): string {
+  return text
+    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g, "[IP]")
+    .replace(/\b(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}\b/g, "[MAC]");
+}
+
 // ── Route handler ──────────────────────────────────────────────────────────
 export async function POST(
   req: Request,
@@ -194,6 +210,7 @@ export async function POST(
   if (ctx instanceof NextResponse) return ctx;
 
   const { id } = await params;
+  const startedAt = Date.now();
 
   let body: { messages?: ChatMessage[] };
   try {
@@ -236,12 +253,25 @@ export async function POST(
     });
   }
 
-  // Fetch asset context + manual chunks in a single tenant-scoped transaction
-  // so RLS applies uniformly. Both are non-fatal: chat still works without them.
+  // Fetch asset context + manual chunks. Both are non-fatal: chat still works
+  // without them.
+  //
+  // #2178 — these run on the RAW owner pool (BYPASSRLS), NOT withTenantContext.
+  // `knowledge_entries` is a hybrid corpus: the shared OEM library lives under
+  // the system tenant (`is_private = false`), and retrieveManualChunks filters
+  // `(is_private = false OR tenant_id = $caller)`. Under withTenantContext the
+  // RLS policy (`tenant_id = app.tenant_id`) hides every is_private=false OEM
+  // row, so a customer's asset chat saw ZERO manuals for every manufacturer and
+  // refused ("I don't have specific information…"). The cmms_equipment lookup
+  // is pure-tenant data, so it keeps an explicit `AND tenant_id = $2` (the IDOR
+  // guard) — exactly the split /api/documents uses. See
+  // `.claude/rules/knowledge-entries-tenant-scoping.md`.
   let assetRow: Record<string, unknown> | null = null;
   let manualChunks: ManualChunk[] = [];
+  let verifiedRelationshipCount = 0;
   try {
-    const fetched = await withTenantContext(ctx.tenantId, async (c) => {
+    const c = await pool.connect();
+    try {
       const assetRes = await c.query(
         `SELECT
           equipment_number, manufacturer, model_number, serial_number,
@@ -253,19 +283,48 @@ export async function POST(
         LIMIT 1`,
         [id, ctx.tenantId],
       );
-      const row = (assetRes.rows[0] ?? null) as Record<string, unknown> | null;
-      const mfr = row?.manufacturer ? String(row.manufacturer) : null;
-      const chunks = await retrieveManualChunks(c, ctx.tenantId, lastUser.content, {
+      assetRow = (assetRes.rows[0] ?? null) as Record<string, unknown> | null;
+      const mfr = assetRow?.manufacturer ? String(assetRow.manufacturer) : null;
+      manualChunks = await retrieveManualChunks(c, ctx.tenantId, lastUser.content, {
         manufacturer: mfr,
+        allowTenantFallback: false,
       });
-      return { row, chunks };
-    });
-    assetRow = fetched.row;
-    manualChunks = fetched.chunks;
+      if (approvedAskEnforcementEnabled()) {
+        manualChunks = manualChunks.filter((chunk) => chunk.verified === true);
+      }
+      const relRes = await c.query(
+        `WITH anchor AS (
+           SELECT id
+             FROM kg_entities
+            WHERE tenant_id = $1
+              AND approval_state = 'verified'
+              AND (id::text = $2 OR entity_id = $2)
+            LIMIT 1
+         )
+         SELECT COUNT(*)::int AS count
+           FROM kg_relationships r
+           JOIN anchor a ON (r.source_id = a.id OR r.target_id = a.id)
+           JOIN kg_entities src
+             ON src.id = r.source_id
+            AND src.tenant_id = r.tenant_id
+            AND src.approval_state = 'verified'
+           JOIN kg_entities tgt
+             ON tgt.id = r.target_id
+            AND tgt.tenant_id = r.tenant_id
+            AND tgt.approval_state = 'verified'
+          WHERE r.tenant_id = $1
+            AND r.approval_state = 'verified'`,
+        [ctx.tenantId, id],
+      );
+      verifiedRelationshipCount = Number(relRes.rows[0]?.count ?? 0);
+    } finally {
+      c.release();
+    }
   } catch {
     // Non-fatal: continue without DB context (graceful degradation)
     assetRow = null;
     manualChunks = [];
+    verifiedRelationshipCount = 0;
   }
 
   // KG graph context — fetch in parallel with (already completed) asset DB fetch
@@ -282,33 +341,72 @@ export async function POST(
 
   const systemPrompt = appendManualContext(withGraph, manualChunks);
   const manualSources: ManualSource[] = chunksToSources(manualChunks);
+  const approvedSourceCount = manualSources.filter((s) => s.verified).length;
+  const approvedSummary = {
+    approvedSourceCount,
+    verifiedRelationshipCount,
+    approvedLiveSignalCount: 0,
+  };
+
+  if (approvedAskEnforcementEnabled() && !approvedContextReady(approvedSummary)) {
+    return NextResponse.json(buildApprovedContextRefusal(approvedSummary), { status: 412 });
+  }
+
+  const nonSystemMessages = messages.filter((m) => m.role !== "system");
+  const lastUserIndex = (() => {
+    for (let i = nonSystemMessages.length - 1; i >= 0; i--) {
+      if (nonSystemMessages[i].role === "user") return i;
+    }
+    return -1;
+  })();
+  const contextualMessages = nonSystemMessages.map((m, i) =>
+    i === lastUserIndex
+      ? { ...m, content: buildManualUserContent(m.content, manualChunks) }
+      : m,
+  );
 
   const fullMessages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
-    ...messages.filter((m) => m.role !== "system"),
+    ...contextualMessages,
   ];
 
   const enc = new TextEncoder();
   const providers = getProviders();
 
   const conversationId = crypto.randomUUID();
+  // Stable id for this answer's decision trace; emitted to the client up-front
+  // (before any [DONE]) and used as the PK of the row written at stream end.
+  const traceId = crypto.randomUUID();
   const responseBuffer: string[] = [];
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      // Emit the trace id up-front (before any [DONE]) so the client can later
+      // open "Why MIRA Thinks This". The row itself is written at stream end.
+      controller.enqueue(enc.encode(`data: ${JSON.stringify({ traceId })}\n\n`));
+
       // Emit retrieved sources up front so the UI can render citation chips
       // alongside the streaming answer.
       if (manualSources.length > 0) {
         controller.enqueue(
-          enc.encode(`data: ${JSON.stringify({ sources: manualSources })}\n\n`),
+          enc.encode(
+            `data: ${JSON.stringify({
+              sources: manualSources,
+              approved_source_count: approvedSourceCount,
+            })}\n\n`,
+          ),
         );
       }
 
       let served = false;
+      let servedBy: string | null = null;
       for (const provider of providers) {
         try {
           served = await streamFromProvider(provider, fullMessages, controller, enc, responseBuffer);
-          if (served) break;
+          if (served) {
+            servedBy = provider.name;
+            break;
+          }
         } catch {
           // cascade
         }
@@ -327,6 +425,46 @@ export async function POST(
       if (safetyAlert) {
         controller.enqueue(enc.encode(safetyAlertSseChunk(safetyAlert)));
         handleSafetyAlert(safetyAlert, ctx.tenantId).catch(() => {});
+      }
+
+      // Persist a decision trace so this answer can be explained via the
+      // "Why MIRA Thinks This" panel. Best-effort: never block/break the stream.
+      try {
+        const manualEvidence = manualChunks.map((mc) => ({
+          doc:
+            [mc.manufacturer, mc.modelNumber].filter(Boolean).join(" ") ||
+            mc.title ||
+            mc.sourceUrl ||
+            "OEM document",
+          page: mc.sourcePage,
+          url: mc.sourceUrl || null,
+          rank: mc.rank,
+          verified: mc.verified === true,
+        }));
+        const grounded = manualSources.length > 0;
+        await withTenantContext(ctx.tenantId, (c) =>
+          c.query(
+            `INSERT INTO decision_traces
+               (trace_id, tenant_id, platform, user_question, manual_evidence,
+                recommendation, citations_present, confidence, outcome,
+                model_used, latency_ms)
+             VALUES ($1, $2, 'hub', $3, $4::jsonb, $5, $6, $7, $8, $9, $10)`,
+            [
+              traceId,
+              ctx.tenantId,
+              sanitizePII(lastUser.content),
+              JSON.stringify(manualEvidence),
+              fullResponse,
+              grounded,
+              grounded ? "medium" : "low",
+              grounded ? "resolved" : "kb_gap",
+              servedBy,
+              Date.now() - startedAt,
+            ],
+          ),
+        );
+      } catch {
+        // non-fatal: the panel simply won't be available for this answer
       }
 
       controller.close();

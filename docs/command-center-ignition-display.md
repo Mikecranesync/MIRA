@@ -158,3 +158,71 @@ Transient gateway state, not a wiring issue — it was active and rendering live
 > session); gateway is Ignition Standard *trial* (periodic 503 restarts);
 > commit early + pin your branch (`git branch -f`) — shared checkout, concurrent
 > writers can move HEAD ([[project_concurrent_writers]]).
+
+---
+
+## Onboarding a display from the UI (no more psql-only) — 2026-06-14
+
+Before, a `display_endpoints` row could only be created by running the
+`command_center_conveyor.sql` seed. The secret-shopper QA hit the consequence: a
+fresh tenant has **0 displays** and the Command Center dumped 117 audit/test
+namespace nodes with "No live display configured" — it read as a debug browser.
+
+There is now a **registration API + onboarding flow** (reuses the same
+`display_endpoints` model — no parallel table):
+
+- `GET  /api/command-center/display` — list the tenant's enabled displays.
+- `POST /api/command-center/display` — register/lock a display on a UNS node.
+  Validates the payload (`src/lib/display-registration.ts`), confirms the
+  `unsPath` exists in `kg_entities` for the tenant, then upserts by
+  `(tenant_id, uns_path)` (re-onboarding updates in place — never dupes/deletes).
+
+### Click-path: connect `conv_simple` from the UI
+
+1. Open **Command Center**. With no displays it shows the onboarding empty state
+   ("No live displays connected yet"); click **Connect live view** (also a header
+   button in every state).
+2. In the modal, click **Use Conv Simple preset** — it selects the `conv_simple`
+   node and fills `displayType=web_iframe`, `path=/data/perspective/client/ConvSimpleLive`,
+   `label="Conv Simple — Live"`.
+3. Set **host** + **port** to your origin-root XFO-stripping proxy (NOT the raw
+   gateway — see "Why you can't just point an iframe at it" above):
+   - dev: `127.0.0.1` : `8890` (the local nginx origin-root proxy → `100.72.2.99:8088`).
+   - The raw gateway `100.72.2.99:8088` (Tailscale) / `192.168.1.20:8088` (LAN) is
+     XFO-blocked for framing but is fine as the reachability target for the
+     "display up/down" dot.
+4. **Connect & lock**. The tree refreshes and `conv_simple` appears under
+   **Live Views** with its freshness + reachability. Reload / Refresh keep it
+   (it's a row in `display_endpoints`). If the proxy/gateway is down it stays
+   listed and shows **display down** — configured, not missing.
+
+No secrets are entered or stored — only a watch URL (read-only doctrine,
+`.claude/rules/fieldbus-readonly.md`). Registering a watch URL does **not**
+authorize an asset agent to answer on the HMI; that remains gated by
+train-before-deploy / `asset_agent_status='approved'`.
+
+### "Stays locked" — persistence
+
+A registered display persists across reload, refresh, polling, seed refresh (the
+seed upserts, never deletes), and namespace rebuilds (those rebuild `kg_entities`,
+not `display_endpoints`). Nothing in the codebase disables or deletes a display
+row. Proven non-circularly by **`mira-hub/scripts/verify-display-register-roundtrip.sh`**
+(ephemeral Postgres 16 + the real migration 030 + the route's exact upsert under
+`SET ROLE factorylm_app`): the row round-trips through the tree read, a
+re-register keeps a single row, it survives 50-audit-node churn, and RLS isolates
+it to its tenant.
+
+**Caveat (the one real disappearance vector):** the tree↔display join is by
+`uns_path`. If a namespace rebuild reparents the conveyor to a *new* `uns_path`,
+the display (keyed on the old path) would need re-pointing. The future-proof lever
+is a fallback join on `display_endpoints.equipment_id` (column already exists);
+out of scope here.
+
+### No external URL available?
+
+If you don't have the gateway/proxy reachable, the onboarding flow + UI states are
+verifiable with mocked data — `mira-hub/tests/e2e/command-center.spec.ts` covers
+displays-first, the onboarding empty state, refresh-persists, and down-not-missing.
+The DB persistence is the clean-room script above. No env var holds the display
+URL — it's the `display_endpoints` row's `scheme/host/port/path`
+(`CSP_FRAME_SRC_DISPLAY_HOSTS` only governs the site-wide CSP frame-src allowlist).

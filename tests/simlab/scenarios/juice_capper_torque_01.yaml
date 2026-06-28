@@ -1,0 +1,73 @@
+id: juice_capper_torque_01
+name: "Capper 01 — Under-Torque Cap Application"
+tier: 1
+machine_type: capper
+source: hand_crafted
+tags: [torque, capper, chuck_wear, cap_quality, juice_bottling]
+description: >
+  Capper 01 is applying caps with insufficient torque. cap_torque_inlb is
+  5.5 in-lb vs 8.5 in-lb target. reject_count is rising. Root cause is
+  chuck wear causing torque-clutch slippage. MIRA must identify the chuck
+  wear pattern from the torque variance signal.
+
+simlab_scenario_id: capper_torque_fault
+simlab_asset_id: capper01
+
+machine_context:
+  site: "enterprise.florida_natural_demo.plant1.juice_bottling"
+  uns_path: "enterprise.florida_natural_demo.plant1.juice_bottling.line01"
+  components:
+    - id: capper01
+      type: capper
+      description: "Inline rotary capper, Line 01 Station 5"
+      manufacturer: ""
+      model: ""
+      uns_path: "enterprise.florida_natural_demo.plant1.juice_bottling.line01.capper01"
+  tag_state:
+    "capper01.cap_torque_inlb": 5.5
+    "capper01.cap_torque_target": 8.5
+    "capper01.cap_torque_variance": 2.5
+    "capper01.reject_count": 6
+    "capper01.fault_code": "CA001"
+    "capper01.run_state": "Running"
+
+fault:
+  root_cause: capper_chuck_wear
+  root_cause_component: capper01
+  red_herrings:
+    - cap_chute_level
+    - motor_current_amps
+  correct_isolation_steps:
+    - "cap_torque_inlb = 5.5 in-lb vs target 8.5 — 35% below setpoint"
+    - "cap_torque_variance = 2.5 in-lb — erratic application confirms mechanical issue"
+    - "Root cause: chuck wear causing clutch slippage"
+    - "Inspect capping chuck faces for wear"
+    - "Check and adjust clutch torque setting"
+  precursors:
+    - "Gradual torque decay over prior production runs"
+
+behavior_checkpoints:
+  cp_torque_cited:
+    params:
+      required_tags: ["cap_torque", "torque"]
+    reason: "Must reference torque as the abnormal parameter"
+  cp_chuck_identified:
+    params:
+      expected_component: ["chuck", "clutch", "wear"]
+    reason: "Root cause is chuck wear"
+
+expected_final_state: DIAGNOSIS
+max_turns: 6
+expected_keywords: [torque, chuck, wear, clutch, cap]
+forbidden_keywords: []
+
+turns:
+  - role: user
+    content: >
+      Capper is producing loose caps — what is wrong?
+  - role: user
+    content: >
+      The torque is reading 5.5 in-lb but the target is 8.5. Variance is high too.
+  - role: user
+    content: >
+      How do I fix this? Is it the chuck?

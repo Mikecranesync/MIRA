@@ -48,5 +48,85 @@
     "name": "vfd_comm_ok",
     "tagType": "AtomicTag",
     "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]vfd_status_word",
+    "readOnly": true,
+    "dataType": "Int4",
+    "documentation": "GS10 Status Monitor (0x2101) raw word. Decode: op_status=bits1-0 (0=Stopped,1=Decel,2=Standby,3=Operating), direction=bits4-3 (0=FWD,3=REV), bit8=FreqFromComms, bit10=RunFromComms. Global vfd_status_word.",
+    "name": "vfd_status_word",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]vfd_fault_code",
+    "readOnly": true,
+    "dataType": "Int4",
+    "documentation": "GS10 active fault code (0x2100 low byte; 0=no fault, 14=LvS, 21=oL, 58=CE10 comm timeout). GS10 fault table != GS1. Global vfd_fault_code.",
+    "name": "vfd_fault_code",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]vfd_warn_code",
+    "readOnly": true,
+    "dataType": "Int4",
+    "documentation": "GS10 active warning code (0x2100 high byte; warn IDs != fault IDs, e.g. CE10 warn=5 / fault=58). Global vfd_warn_code (V1.9).",
+    "name": "vfd_warn_code",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]vfd_freq_cmd",
+    "readOnly": true,
+    "dataType": "Int4",
+    "documentation": "GS10 commanded frequency, raw Hz x100 (divide by 100). Sourced from vfd_freq_sp = the value the PLC writes to drive 0x2001 (NOT the 0x2102 keypad echo). Global vfd_freq_cmd (V1.9).",
+    "name": "vfd_freq_cmd",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]vfd_torque",
+    "readOnly": true,
+    "dataType": "Int4",
+    "documentation": "GS10 output torque, raw % x10 (divide by 10). Needs GS10 motor nameplate params set or reads 0. Global vfd_torque (V1.9).",
+    "name": "vfd_torque",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]vfd_motor_rpm",
+    "readOnly": true,
+    "dataType": "Int4",
+    "documentation": "GS10 motor speed, raw rpm. Needs GS10 motor rated-rpm/poles set or reads 0. Global vfd_motor_rpm (V1.9).",
+    "name": "vfd_motor_rpm",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]vfd_power",
+    "readOnly": true,
+    "dataType": "Int4",
+    "documentation": "GS10 output power, raw kW x1000 (divide by 1000). Needs GS10 motor nameplate params set or reads 0. Global vfd_power (V1.9).",
+    "name": "vfd_power",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
+  },
+  {
+    "valueSource": "opc",
+    "opcItemPath": "[MIRA_PLC]vfd_last_fault",
+    "readOnly": true,
+    "dataType": "Int4",
+    "documentation": "PLC-latched last nonzero fault code (survives a drive fault reset; cleared only by coil last_fault_clear). GS10 fault table. Global vfd_last_fault (V1.9).",
+    "name": "vfd_last_fault",
+    "tagType": "AtomicTag",
+    "opcServer": "Ignition OPC UA Server"
   }
 ]

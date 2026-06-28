@@ -32,6 +32,12 @@ SAFETY_KEYWORDS = [
     "fall hazard",
     "chemical spill",
     "gas leak",
+    # Hot work — welding / cutting / grinding ignition sources (OSHA 1910.252).
+    # Closes the one named regulatory category in the mira-industrial-safety skill
+    # (§2) that had zero keyword coverage. Tier 2 (educational carve-out applies:
+    # "what is a hot work permit" → RAG; "doing hot work near the tank" → STOP).
+    # Zero false-positive risk: phrase absent from golden CSVs + eval fixtures + corpora.
+    "hot work",
     # Electrical isolation / live-work phrases (added v2.4.1)
     "isolate the power",
     "isolating power",
@@ -360,6 +366,20 @@ MAINTENANCE_ABBREVIATIONS = {
     "dmp": "damper",
     "exh": "exhaust",
     "intlk": "interlock",
+    # Equipment model shorthand → canonical model name. Techs type "PF525";
+    # the OEM corpus says "PowerFlex 525", so BM25/vector never matched without
+    # this expansion (audit 2026-06-16: "PF525 showing F004" → KB-gap, no
+    # citation, despite the manual being in the corpus). Only unambiguous,
+    # high-frequency drive shorthands — keep this list curated, not exhaustive.
+    "pf523": "powerflex 523",
+    "pf525": "powerflex 525",
+    "pf527": "powerflex 527",
+    "pf753": "powerflex 753",
+    "pf755": "powerflex 755",
+    "pf40": "powerflex 40",
+    "pf70": "powerflex 70",
+    "pf700": "powerflex 700",
+    "pf753t": "powerflex 753",
 }
 
 _MENTION_RE = re.compile(r"<@[A-Z0-9]+>\s*")
@@ -587,6 +607,11 @@ _INSTRUCTIONAL_PHRASES = (
     "give me the steps",
     "walk me through",
     "what are the steps",
+    # Informational lookup phrasing — "looking up the default value/range" is clearly
+    # not fault diagnosis. Checked before INTENT_KEYWORDS so "decel" doesn't route to industrial.
+    # "what is/what's parameter X?" is intentionally NOT here — bare parameter questions
+    # can be fault-context queries (see bot_regression.py::powerflex_parameter_q).
+    "looking up the default",
 )
 
 # Signals that the technician is under time or job pressure.

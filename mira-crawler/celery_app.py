@@ -61,6 +61,8 @@ try:
     import mira_crawler.tasks.rss  # noqa: F401
     import mira_crawler.tasks.sitemaps  # noqa: F401
     import mira_crawler.tasks.social  # noqa: F401
+    import mira_crawler.tasks.tag_diff_historizer  # noqa: F401
+    import mira_crawler.tasks.synthetic_dogfood  # noqa: F401
     import mira_crawler.tasks.youtube  # noqa: F401
     import mira_crawler.tasks.youtube_intent  # noqa: F401
 except ImportError:
@@ -83,6 +85,8 @@ except ImportError:
     import tasks.rss  # noqa: F401
     import tasks.sitemaps  # noqa: F401
     import tasks.social  # noqa: F401
+    import tasks.tag_diff_historizer  # noqa: F401
+    import tasks.synthetic_dogfood  # noqa: F401
     import tasks.youtube  # noqa: F401
     import tasks.youtube_intent  # noqa: F401
 
