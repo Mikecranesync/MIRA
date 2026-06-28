@@ -5,6 +5,9 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/)
 
 ## [Unreleased]
 
+### Added
+- Historian Query API in `mira-relay`: swappable `HistorianAdapter` + Postgres impl, read endpoints (`/api/tags/live`, `/api/tags/{id}/history`, `POST /api/trends`, `/api/evidence/{id}`), and a tenant-scoped `/ws/tags` subscription socket; runs endpoint stubbed 501 pending the run schema (#2339).
+
 ### Fixed
 - Hub QA credentials now seed real RBAC personas for every tenant role plus a second-tenant isolation user, and the saved-session helper fails unless a NextAuth session cookie exists.
 - Hub secret-shopper QA password helper now accepts Hermes env vars, requires explicit prod confirmation, rejects weak passwords, and verifies the exact tenant member update.
