@@ -49,6 +49,7 @@ try:
     import mira_crawler.tasks.foundational  # noqa: F401
     import mira_crawler.tasks.freshness  # noqa: F401
     import mira_crawler.tasks.gdrive  # noqa: F401
+    import mira_crawler.tasks.historize_runs  # noqa: F401
     import mira_crawler.tasks.ingest  # noqa: F401
     import mira_crawler.tasks.intent_digest  # noqa: F401
     import mira_crawler.tasks.linkedin  # noqa: F401
@@ -72,6 +73,7 @@ except ImportError:
     import tasks.foundational  # noqa: F401
     import tasks.freshness  # noqa: F401
     import tasks.gdrive  # noqa: F401
+    import tasks.historize_runs  # noqa: F401
     import tasks.ingest  # noqa: F401
     import tasks.intent_digest  # noqa: F401
     import tasks.linkedin  # noqa: F401

@@ -6,6 +6,7 @@ All settings overridable via environment variables where noted.
 from __future__ import annotations
 
 import os
+from datetime import timedelta
 
 from celery.schedules import crontab
 
@@ -61,6 +62,8 @@ task_routes = {
     "mira_crawler.tasks.gdrive.*": {"queue": "ingest"},
     "mira_crawler.tasks.freshness.*": {"queue": "freshness"},
     "mira_crawler.tasks.component_template.*": {"queue": "ingest"},
+    # --- Run-centric fault detection (#2341) ---
+    "mira_crawler.tasks.historize_runs.*": {"queue": "default"},
     # --- Tag-diff historizer (issue #2343) ---
     "mira_crawler.tasks.tag_diff_historizer.*": {"queue": "default"},
     "mira_crawler.tasks.synthetic_dogfood.*": {"queue": "synthetic"},
@@ -100,6 +103,9 @@ task_annotations = {
     "mira_crawler.tasks.component_template.extract_component_template": {
         "rate_limit": "10/m",
     },
+    # Run-diff historizer — beat owns cadence (30s); cap defensively. The task
+    # is a fast no-op unless MIRA_RUN_DIFF_ENABLED=1.
+    "tasks.historize_runs.historize_runs": {"rate_limit": "4/m"},
     # Tag-diff historizer (issue #2343) — beat owns the 5-min cadence; the
     # rate limit is a defensive cap so a manual burst can't stampede.
     "tasks.tag_diff_historizer.historize_tag_diffs": {"rate_limit": "1/m"},
@@ -145,6 +151,12 @@ else:
         "tag-diff-historizer": {
             "task": "tasks.tag_diff_historizer.historize_tag_diffs",
             "schedule": crontab(minute="*/5"),
+        },
+        # Run-centric fault detection (#2341). Polls every 30s; the task itself
+        # is a no-op unless MIRA_RUN_DIFF_ENABLED=1, so the cadence is cheap.
+        "historize-runs": {
+            "task": "tasks.historize_runs.historize_runs",
+            "schedule": timedelta(seconds=30),
         },
         **_SYNTHETIC_DOGFOOD_SCHEDULE,
     }
