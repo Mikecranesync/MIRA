@@ -46,6 +46,22 @@ function hexToRgba(hex: string, a: number): string {
 function nodeRadius(deg: number): number {
   return 2 + Math.min(deg, 8) * 0.45; // graph units, bounded (no giant bubbles)
 }
+// Centrality (0..1 PageRank) → bounded radius, same scale ceiling as degree.
+function centralityRadius(c: number): number {
+  return 2 + Math.min(Math.max(c, 0), 1) * 5.6;
+}
+
+// Categorical palette for Louvain communities (only used in colorBy="community").
+// Tableau-ish, muted to match the canvas; fault-red is intentionally absent here
+// because community mode is an explicit analysis view, not the fault-coded default.
+const COMMUNITY_PALETTE = [
+  "#5e9bd1", "#6fb39a", "#9b8cc6", "#c7a35a", "#8aa0b3",
+  "#6c8ebf", "#79a86b", "#b07aa1", "#5fb0b7", "#c98f6b",
+];
+function communityColor(community: number | undefined): string {
+  if (community === undefined) return DEFAULT_NODE;
+  return COMMUNITY_PALETTE[community % COMMUNITY_PALETTE.length];
+}
 
 export function GraphCanvas({
   data,
@@ -53,6 +69,8 @@ export function GraphCanvas({
   onLinkClick,
   highlightNodeIds,
   intensity = 0,
+  sizeBy = "degree",
+  colorBy = "type",
 }: {
   data: GraphCanvasData;
   onNodeClick?: (node: GraphNode) => void;
@@ -60,7 +78,19 @@ export function GraphCanvas({
   highlightNodeIds?: Set<string>;
   /** 0..1 knowledge density → subtly brightens the verified lattice. */
   intensity?: number;
+  /** "centrality" sizes nodes by PageRank influence (needs ?analysis=true data). */
+  sizeBy?: "degree" | "centrality";
+  /** "community" colors nodes by Louvain cluster instead of entity type. */
+  colorBy?: "type" | "community";
 }) {
+  // Radius source: centrality when requested AND present, else degree.
+  const radiusOf = (n: GraphNode): number =>
+    sizeBy === "centrality" && typeof n.centrality === "number"
+      ? centralityRadius(n.centrality)
+      : nodeRadius(n.degree ?? 0);
+  // Base color source: community when requested, else entity type (fault-red).
+  const baseColorOf = (n: GraphNode): string =>
+    colorBy === "community" ? communityColor(n.community) : nodeColor(n.type);
   const hasHighlight = !!highlightNodeIds && highlightNodeIds.size > 0;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const endId = (v: any): string => (typeof v === "string" ? v : v?.id);
@@ -83,10 +113,14 @@ export function GraphCanvas({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, scale: number) => {
         const n = node as GraphNode & { x: number; y: number };
-        const r = nodeRadius(n.degree ?? 0);
+        // d3-force can emit a non-finite x/y on the first tick before positions
+        // settle; createRadialGradient throws on NaN/Infinity and crashes the
+        // whole page (React error boundary). Skip painting until coords are real.
+        if (!Number.isFinite(n.x) || !Number.isFinite(n.y)) return;
+        const r = radiusOf(n);
         const isHi = hasHighlight && highlightNodeIds!.has(n.id);
         const dim = hasHighlight && !isHi;
-        const base = nodeColor(n.type);
+        const base = baseColorOf(n);
         const alpha = dim ? 0.35 : 1;
         // soft glow (depth cue)
         if (!heavy) {
@@ -126,9 +160,10 @@ export function GraphCanvas({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
         const n = node as GraphNode & { x: number; y: number };
+        if (!Number.isFinite(n.x) || !Number.isFinite(n.y)) return;
         ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(n.x, n.y, nodeRadius(n.degree ?? 0) + 2, 0, 2 * Math.PI);
+        ctx.arc(n.x, n.y, radiusOf(n) + 2, 0, 2 * Math.PI);
         ctx.fill();
       }}
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -1,0 +1,70 @@
+name: Version Tag
+
+# On every merge to main, advance the repo-wide overall version counter:
+#   - read /VERSION (the source of truth, gated to bump on every code PR)
+#   - if v<VERSION> doesn't exist yet, create it (annotated) at the merge commit
+#   - also drop a rollback/<date>-v<VERSION> checkpoint tag at the same commit
+#   - publish a GitHub Release for v<VERSION>
+#
+# This gives every merge a unique, trackable version tag and a paired rollback
+# point. No-ops when the tag already exists (e.g. a docs-only merge that didn't
+# bump VERSION, or a re-run), so it is safe to run on every push to main.
+#
+# Note: the existing release.yml triggers on `mira-*-v*` tags (component
+# releases) — a different pattern — so the v<VERSION> tags created here do not
+# double-fire it.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: version-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag overall version + rollback checkpoint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Tag v<VERSION> if new
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VER="$(tr -d '[:space:]' < VERSION)"
+          if [ -z "$VER" ]; then
+            echo "::warning::/VERSION is empty — skipping tag."
+            exit 0
+          fi
+          TAG="v$VER"
+
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "$TAG already exists — no-op."
+            exit 0
+          fi
+
+          SHORT="$(git rev-parse --short HEAD)"
+          DATE="$(date -u +%Y-%m-%d)"
+          ROLLBACK="rollback/$DATE-$TAG"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "$TAG"      -m "$TAG — auto-tagged on merge $SHORT"
+          git tag -a "$ROLLBACK" -m "Rollback checkpoint at $TAG (merge $SHORT)"
+          git push origin "$TAG" "$ROLLBACK"
+          echo "Tagged $TAG + $ROLLBACK at $SHORT"
+
+          # Best-effort GitHub Release; never fail the job on release hiccups.
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "Auto-release for \`$TAG\` (merge \`$SHORT\`). Changes: see \`docs/CHANGELOG.md\` and \`mira-hub/CHANGELOG.md\`. Roll back with \`git checkout $ROLLBACK\`." \
+            || echo "::warning::Release creation skipped/failed for $TAG (tag still pushed)."

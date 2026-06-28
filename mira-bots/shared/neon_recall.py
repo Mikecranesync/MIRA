@@ -108,10 +108,68 @@ SHARED_TENANT_ID = os.getenv("MIRA_SHARED_TENANT_ID", "78917b56-f85f-43bb-9a08-1
 # degrades gracefully to positional priority when BM25 is empty.
 HYBRID_ENABLED = os.getenv("MIRA_RETRIEVAL_HYBRID_ENABLED", "true").lower() == "true"
 
+
+# Approval-gated retrieval (2026-06-24). When ON, restrict knowledge_entries
+# retrieval to human-APPROVED chunks (verified=true) — the column added in
+# docs/migrations/001_knowledge_entries.sql that retrieval historically never
+# queried (Architecture Unification Assessment, PR #2287). This is what makes the
+# Hub approval workflow AUTHORITATIVE rather than cosmetic: a chunk a human has not
+# approved is not citable when the gate is on.
+#   DEFAULT OFF → byte-identical to prior behavior (zero regression).
+#   Before turning ON, backfill the shared OEM/seeded corpus to verified=true
+#   (tools/seeds/backfill_verified_corpus.sql) — otherwise retrieval returns ~0 rows.
+# Only the four knowledge_entries streams (vector/BM25/ILIKE/product) are gated; the
+# structured fault_codes table has no verified column (a separate governance question).
+def approval_gate_enabled() -> bool:
+    """Read the gate flag live (not frozen at import) so it can toggle without a
+    process restart and tests can exercise both modes."""
+    return os.getenv("MIRA_ENFORCE_APPROVED_RETRIEVAL", "false").lower() == "true"
+
+
+def _approval_filter_sql() -> str:
+    """SQL fragment appended to each knowledge_entries WHERE when the approval gate
+    is enabled. Empty string when off → the query is byte-identical to prior behavior."""
+    return " AND verified = true" if approval_gate_enabled() else ""
+
+
 # Reciprocal Rank Fusion constant (Cormack et al. 2009). 60 is the canonical
 # default — small enough that top ranks dominate, large enough that mid-rank
 # agreements across streams still contribute.
 RRF_K = int(os.getenv("MIRA_RRF_K", "60"))
+
+# Equipment-aware reranking (page-picking fix, 2026-06-22). RRF is vendor-blind:
+# "GS10 overcurrent" can rank a Yaskawa V1000 chunk above the GS10 one because
+# both match the topic. When enabled, after RRF we overfetch candidates and float
+# chunks whose manufacturer/model matches the query's extracted equipment to the
+# top (positive boost only — no vendor denylist, so a real V1000 question still
+# returns V1000). No equipment in the query => no-op. Plan:
+# docs/plans/2026-06-22-retrieval-page-picking-equipment-rerank.md
+EQUIPMENT_RERANK_ENABLED = os.getenv("MIRA_EQUIPMENT_RERANK", "0") == "1"
+EQUIPMENT_RERANK_OVERFETCH = int(os.getenv("MIRA_EQUIPMENT_RERANK_OVERFETCH", "4"))
+
+# Alias map so query tokens match how chunks spell the equipment (GS10 / GS-10 /
+# GS 10; Micro820 / 2080-LC*). Extend as new families are served.
+_EQUIPMENT_ALIASES: dict[str, set[str]] = {
+    "gs11": {"gs11", "gs-11", "gs 11"},
+    "gs10": {"gs10", "gs-10", "gs 10"},
+    "gs20": {"gs20", "gs-20", "gs 20"},
+    "gs30": {"gs30", "gs-30", "gs 30"},
+    "micro820": {"micro820", "micro 820", "micro-820", "2080-lc20", "2080-lc30", "2080-lc"},
+    "micro850": {"micro850", "micro 850", "2080-lc50"},
+    "powerflex": {"powerflex", "power flex"},
+    "compactlogix": {"compactlogix", "compact logix"},
+    "controllogix": {"controllogix", "control logix"},
+    "v1000": {"v1000", "v-1000"},
+    "a1000": {"a1000", "a-1000"},
+}
+
+# Max distinct OR-terms in a BM25 tsquery. Direct-connection surfaces (the
+# Ignition /ask kiosk) prepend a ~440-token MACHINE_CONTEXT block to every
+# question, so an unbounded OR-fanout unions hundreds of GIN posting lists and
+# ts_rank_cd scores most of the 83K-row table (31-45s observed, #1766). Capping
+# the term count keeps the lexical safety net while collapsing latency. 32 is
+# wide enough that an ordinary maintenance question loses nothing.
+BM25_MAX_TERMS = int(os.getenv("MIRA_BM25_MAX_TERMS", "32"))
 
 
 _COMMON_WORDS = frozenset(
@@ -348,10 +406,11 @@ def _like_search(conn, text_fn, tenant_id: str, codes: list[str], limit: int) ->
             source_url,
             source_page,
             metadata,
+            verified,
             0.5 AS similarity
         FROM knowledge_entries
         WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
-          AND ({where_clause})
+          AND ({where_clause}){_approval_filter_sql()}
         LIMIT :lim
     """)
     rows = conn.execute(sql, params).mappings().fetchall()
@@ -393,15 +452,15 @@ def _product_search(
                 text_fn(
                     "WITH product_chunks AS ("
                     "  SELECT content, manufacturer, model_number, equipment_type, "
-                    "  source_type, source_url, source_page, metadata, embedding "
+                    "  source_type, source_url, source_page, metadata, verified, embedding "
                     "  FROM knowledge_entries "
                     "  WHERE (tenant_id = :tid OR tenant_id = :shared_tid) "
                     "  AND model_number ILIKE :pat "
                     "  AND model_number NOT ILIKE :exclude "
-                    "  AND embedding IS NOT NULL"
+                    f"  AND embedding IS NOT NULL{_approval_filter_sql()}"
                     ") "
                     "SELECT content, manufacturer, model_number, equipment_type, "
-                    "source_type, source_url, source_page, metadata, "
+                    "source_type, source_url, source_page, metadata, verified, "
                     "1 - (embedding <=> cast(:emb AS vector)) AS similarity "
                     "FROM product_chunks "
                     "ORDER BY embedding <=> cast(:emb AS vector) "
@@ -452,6 +511,16 @@ def _recall_bm25(
     higher than single-term ones. Tokens are stripped to `\\w+` to keep the
     tsquery parser-safe (no need to escape `&|!():*`).
 
+    Term bounding (#1766): the query is built from at most BM25_MAX_TERMS
+    distinct tokens, dropping pure-digit and ≤2-char tokens (IP/port/register
+    fragments like "192", "502", "1" have huge GIN posting lists that match
+    most of the table) and the local stopword list. Postgres' 'english' config
+    already strips English stopwords inside to_tsquery, so dedupe + drop-noise
+    + cap are the levers that matter. Without this, the /ask kiosk's ~440-token
+    MACHINE_CONTEXT prefix produced a ~438-term OR-fanout → 31-45s. Selective
+    technical terms (gs10, ce10, modbus, undervoltage) survive, so the lexical
+    safety net — and embed-down grounding — is preserved.
+
     Returns [] if query_text is blank, has no usable tokens, or the query
     fails — never raises. The tsquery `@@` predicate is a hard gate, so
     MIN_SIMILARITY filtering is not applied here. Searches both the caller's
@@ -459,20 +528,36 @@ def _recall_bm25(
     """
     if not query_text or not query_text.strip():
         return []
-    tokens = re.findall(r"\w+", query_text)
-    if not tokens:
+    raw_tokens = re.findall(r"\w+", query_text.lower())
+    if not raw_tokens:
         return []
+    seen_tok: set[str] = set()
+    tokens: list[str] = []
+    for tok in raw_tokens:
+        if tok in seen_tok:
+            continue
+        seen_tok.add(tok)
+        if len(tok) <= 2 or tok.isdigit() or tok in _COMMON_WORDS:
+            continue
+        tokens.append(tok)
+        if len(tokens) >= BM25_MAX_TERMS:
+            break
+    # Never-empty fallback: a terse query ("OC", "F4", "oC1") can have every
+    # token filtered out. Fall back to the deduped raw tokens (capped) so the
+    # lexical stream still runs rather than silently returning [].
+    if not tokens:
+        tokens = list(dict.fromkeys(raw_tokens))[:BM25_MAX_TERMS]
     ts_query = " | ".join(tokens)
     try:
         rows = (
             conn.execute(
                 text_fn(
                     "SELECT content, manufacturer, model_number, equipment_type, "
-                    "source_type, source_url, source_page, metadata, "
+                    "source_type, source_url, source_page, metadata, verified, "
                     "ts_rank_cd(content_tsv, to_tsquery('english', :tsq)) AS similarity "
                     "FROM knowledge_entries "
                     "WHERE (tenant_id = :tid OR tenant_id = :shared_tid) "
-                    "  AND content_tsv @@ to_tsquery('english', :tsq) "
+                    f"  AND content_tsv @@ to_tsquery('english', :tsq){_approval_filter_sql()} "
                     "ORDER BY similarity DESC "
                     "LIMIT :lim"
                 ),
@@ -603,6 +688,45 @@ def _merge_results(
     return merged, path
 
 
+def _equipment_tokens(equipment_list: list[str]) -> set[str]:
+    """Map extracted equipment names to the substring set chunks may use."""
+    tokens: set[str] = set()
+    for tag in equipment_list:
+        key = tag.lower().strip()
+        tokens |= _EQUIPMENT_ALIASES.get(key, {key})
+    return tokens
+
+
+def _rerank_for_equipment(rows: list[dict], query_text: str) -> list[dict]:
+    """Float chunks matching the query's equipment to the top (stable).
+
+    Positive boost only: +5 per equipment token in manufacturer/model, +1 per
+    token in content-only. Non-matching chunks keep their RRF order below the
+    matches (tie-break by original index). No vendor denylist — a question about
+    a V1000 still returns V1000. No equipment extracted => unchanged order.
+
+    Ported to production from the bench harness (`tests/mira_bench.py
+    _rerank_for_equipment`), which was the ONLY place this ran — so live surfaces
+    shipped vendor-blind retrieval (e.g. "GS10 overcurrent" -> Yaskawa V1000 #1).
+    """
+    equipment = _extract_product_names(query_text)
+    if not equipment:
+        return rows
+    tokens = _equipment_tokens(equipment)
+    scored: list[tuple[int, int, dict]] = []
+    for idx, ch in enumerate(rows):
+        meta_blob = " ".join(
+            [str(ch.get("manufacturer") or ""), str(ch.get("model_number") or "")]
+        ).lower()
+        content_blob = str(ch.get("content") or "").lower()
+        meta_pos = sum(1 for tok in tokens if tok in meta_blob)
+        content_pos = sum(1 for tok in tokens if tok in content_blob and tok not in meta_blob)
+        score = 5 * meta_pos + 1 * content_pos
+        scored.append((-score, idx, ch))
+    scored.sort(key=lambda t: (t[0], t[1]))
+    return [t[2] for t in scored]
+
+
 def recall_knowledge(
     embedding: list[float] | None,
     tenant_id: str,
@@ -656,6 +780,15 @@ def recall_knowledge(
             pool_pre_ping=True,
         )
         with engine.connect() as conn:
+            # Overfetch candidates when equipment rerank is on, so a right-vendor
+            # chunk ranked just outside `limit` can be floated to the top before
+            # truncation. Disabled => eff_limit == limit (no behavior change).
+            eff_limit = (
+                limit * EQUIPMENT_RERANK_OVERFETCH
+                if (EQUIPMENT_RERANK_ENABLED and limit)
+                else limit
+            )
+
             # Stage 1: Dense vector search — searches tenant entries + shared OEM pool.
             # Skipped when the embedding sidecar was unreachable (has_embedding=False);
             # BM25 + structured-fault stages below carry the load in that case.
@@ -663,7 +796,7 @@ def recall_knowledge(
             if has_embedding:
                 vector_rows = (
                     conn.execute(
-                        text("""
+                        text(f"""
                         SELECT
                             content,
                             manufacturer,
@@ -673,10 +806,11 @@ def recall_knowledge(
                             source_url,
                             source_page,
                             metadata,
+                            verified,
                             1 - (embedding <=> cast(:emb AS vector)) AS similarity
                         FROM knowledge_entries
                         WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
-                          AND embedding IS NOT NULL
+                          AND embedding IS NOT NULL{_approval_filter_sql()}
                         ORDER BY embedding <=> cast(:emb AS vector)
                         LIMIT :lim
                     """),
@@ -684,7 +818,7 @@ def recall_knowledge(
                             "emb": str(embedding),
                             "tid": tenant_id,
                             "shared_tid": SHARED_TENANT_ID,
-                            "lim": limit,
+                            "lim": eff_limit,
                         },
                     )
                     .mappings()
@@ -734,7 +868,7 @@ def recall_knowledge(
             product_results: list[dict] = []
             if product_names and has_embedding:
                 product_results = _product_search(
-                    conn, text, tenant_id, product_names, embedding, limit
+                    conn, text, tenant_id, product_names, embedding, eff_limit
                 )
 
             # Stage 4: BM25 keyword stream (Unit 6). Pulled alongside vector
@@ -743,7 +877,7 @@ def recall_knowledge(
             bm25_results: list[dict] = []
             if HYBRID_ENABLED:
                 bm25_results = _recall_bm25(
-                    conn, text, tenant_id, query_text, limit * 2 if limit else 6
+                    conn, text, tenant_id, query_text, eff_limit * 2 if eff_limit else 6
                 )
 
         # Merge via RRF; truncate to `limit` after fusion so cross-stream
@@ -753,8 +887,19 @@ def recall_knowledge(
             like_results,
             product_results,
             bm25_results=bm25_results,
-            limit=limit,
+            limit=eff_limit,
         )
+
+        # Equipment-aware rerank (vendor-blind RRF fix). Floats query-equipment
+        # chunks to the top of the overfetched pool, then truncate to `limit`.
+        # Disabled => no-op (eff_limit == limit, slice is a no-op).
+        if EQUIPMENT_RERANK_ENABLED and results:
+            reranked = _rerank_for_equipment(results, query_text)
+            if reranked is not results:  # equipment extracted from the query
+                results = reranked
+                retrieval_path = "eqrerank+" + retrieval_path
+        if limit:
+            results = results[:limit]
 
         # Structured fault codes go at the very top (highest confidence,
         # deterministic — bypass RRF).

@@ -1,0 +1,5 @@
+# Trend historian (Track A — bench bootstrap) deps. Python 3.12 / uv.
+# pymodbus already required by live_logger.py; pinned-compatible here.
+fastapi>=0.111
+uvicorn[standard]>=0.29
+pymodbus>=3.6

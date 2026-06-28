@@ -2,7 +2,7 @@
  * Pure-logic tests for Command Center tag freshness. Framework-free — runs with
  * `bun test src/lib/command-center-freshness.test.ts` without `bun install`.
  */
-import { expect, test, describe } from "bun:test";
+import { expect, test, describe } from "vitest";
 import {
   DEFAULT_FRESHNESS_WINDOW_S,
   type FreshnessTagRow,

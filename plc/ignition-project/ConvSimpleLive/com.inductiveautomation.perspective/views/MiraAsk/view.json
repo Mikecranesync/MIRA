@@ -1,0 +1,111 @@
+{
+  "custom": { "answer": "Ask me about the garage conveyor…", "busy": false },
+  "params": { "seedQuestion": "" },
+  "props": {
+    "defaultSize": { "width": 520, "height": 600 }
+  },
+  "root": {
+    "type": "ia.container.flex",
+    "meta": { "name": "root" },
+    "props": {
+      "direction": "column",
+      "style": {
+        "backgroundColor": "#161b22",
+        "border": "2px solid #30363d",
+        "borderRadius": "14px",
+        "padding": "16px",
+        "gap": "12px",
+        "height": "100%"
+      }
+    },
+    "children": [
+      {
+        "type": "ia.display.label",
+        "meta": { "name": "title" },
+        "position": { "basis": "30px", "shrink": 0 },
+        "props": {
+          "text": "ASK MIRA",
+          "style": { "color": "#e6edf3", "fontSize": "20px", "fontWeight": 700, "letterSpacing": "0.06em", "textAlign": "center" }
+        }
+      },
+      {
+        "type": "ia.input.text-area",
+        "meta": { "name": "question_input" },
+        "position": { "basis": "120px", "shrink": 0 },
+        "props": {
+          "text": "",
+          "placeholder": "What's going on with the conveyor?",
+          "style": {
+            "backgroundColor": "#0d1117",
+            "color": "#e6edf3",
+            "border": "1px solid #30363d",
+            "borderRadius": "8px",
+            "fontSize": "14px",
+            "padding": "8px"
+          }
+        },
+        "propConfig": {
+          "props.text": {
+            "binding": { "type": "property", "config": { "path": "view.params.seedQuestion" } }
+          }
+        }
+      },
+      {
+        "type": "ia.input.button",
+        "meta": { "name": "ask_btn" },
+        "position": { "basis": "40px", "shrink": 0 },
+        "props": {
+          "text": "Ask MIRA",
+          "style": { "backgroundColor": "#1f6feb", "color": "#ffffff", "fontSize": "15px", "fontWeight": 700, "borderRadius": "8px", "border": "none" }
+        },
+        "events": {
+          "component": {
+            "onActionPerformed": {
+              "type": "script",
+              "scope": "G",
+              "config": {
+                "script": "\t# Gateway-scope: read live PLC tags, POST to the MIRA /ask service over Tailscale.\n\t# Same contract as the ConvSimpleLive AskMira view; seeded by the panel fault question.\n\t# Logs the request + response (incl. citations) to FactoryLM.Mira.Ask for run debugging.\n\tlog = system.util.getLogger(\"FactoryLM.Mira.Ask\")\n\tself.view.custom.busy = True\n\tpaths = [\"[default]MIRA_IOCheck/VFD/vfd_frequency\",\"[default]MIRA_IOCheck/VFD/vfd_freq_sp\",\"[default]MIRA_IOCheck/VFD/vfd_current\",\"[default]MIRA_IOCheck/VFD/vfd_dc_bus\",\"[default]MIRA_IOCheck/VFD/vfd_cmd_word\",\"[default]MIRA_IOCheck/VFD/vfd_status_word\",\"[default]MIRA_IOCheck/VFD/vfd_fault_code\",\"[default]MIRA_IOCheck/VFD/vfd_comm_ok\",\"[default]MIRA_IOCheck/VFD/pe_latched\",\"[default]MIRA_IOCheck/Inputs/DI_02\",\"[default]MIRA_IOCheck/Inputs/DI_05\",\"[default]MIRA_IOCheck/Outputs/DO_02\"]\n\tkeys = [\"vfd_frequency\",\"vfd_freq_sp\",\"vfd_current\",\"vfd_dc_bus\",\"vfd_cmd_word\",\"vfd_status_word\",\"vfd_fault_code\",\"vfd_comm_ok\",\"pe_latched\",\"e_stop\",\"pe_beam\",\"mlc\"]\n\tqvs = system.tag.readBlocking(paths)\n\ttags = {}\n\tfor i in range(len(keys)):\n\t\ttry:\n\t\t\ttags[keys[i]] = qvs[i].value\n\t\texcept:\n\t\t\tpass\n\tquestion_text = self.getSibling('question_input').props.text or \"\"\n\ttry:\n\t\tsid_base = self.session.props.id\n\texcept:\n\t\tsid_base = \"\"\n\tsid = sid_base + \"-\" + str(int(system.date.now().getTime()))\n\tbody = system.util.jsonEncode({\"question\": question_text, \"tags\": tags, \"session_id\": sid})\n\tlog.info(\"ASK send q=%r tags=%d sid=%s\" % (question_text[:140], len(tags), sid))\n\ttry:\n\t\tclient = system.net.httpClient(timeout=95000)\n\t\tresp = client.post(\"http://100.68.120.99:8011/ask\", data=body, headers={\"Content-Type\":\"application/json\",\"X-Mira-Key\":\"\"})\n\t\tdata = system.util.jsonDecode(resp.text)\n\t\tans = data.get(\"answer\",\"(no answer field)\")\n\t\tself.view.custom.answer = ans\n\t\tsrcs = data.get(\"sources\", data.get(\"citations\", None))\n\t\tnsrc = len(srcs) if srcs else 0\n\t\tlog.info(\"ASK ok status=%s answer_len=%d sources=%d keys=%s\" % (str(resp.statusCode), len(str(ans)), nsrc, str(list(data.keys()))))\n\t\tif nsrc == 0:\n\t\t\tlog.warn(\"ASK ungrounded: no sources/citations in response (asset docs not retrieved). raw_keys=%s\" % str(list(data.keys())))\n\texcept Exception as e:\n\t\tself.view.custom.answer = \"Error contacting MIRA: \" + str(e)\n\t\tlog.warn(\"ASK error: \" + str(e))\n\tfinally:\n\t\tself.view.custom.busy = False\n"
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "ia.display.label",
+        "meta": { "name": "busy_lbl" },
+        "position": { "basis": "20px", "shrink": 0 },
+        "props": {
+          "text": "MIRA is thinking…",
+          "style": { "color": "#f0a90e", "fontSize": "13px", "fontStyle": "italic", "textAlign": "center" }
+        },
+        "propConfig": {
+          "meta.visible": {
+            "binding": { "type": "property", "config": { "path": "view.custom.busy" } }
+          }
+        }
+      },
+      {
+        "type": "ia.display.markdown",
+        "meta": { "name": "answer_md" },
+        "position": { "basis": "0px", "grow": 1, "shrink": 1 },
+        "props": {
+          "source": "",
+          "style": {
+            "backgroundColor": "#0d1117",
+            "color": "#e6edf3",
+            "border": "1px solid #30363d",
+            "borderRadius": "8px",
+            "padding": "12px",
+            "fontSize": "14px",
+            "overflow": "auto"
+          }
+        },
+        "propConfig": {
+          "props.source": {
+            "binding": { "type": "property", "config": { "path": "view.custom.answer" } }
+          }
+        }
+      }
+    ]
+  }
+}

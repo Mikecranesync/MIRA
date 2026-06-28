@@ -1,0 +1,8 @@
+--- CE10 answer ---
+The fault code CE10 on the AutomationDirect GS10 variable frequency drive indicates a Modbus timeout, which means the host controller (in this case, the Allen-Bradley Micro820 PLC) is not continuously transmitting data to the GS10 during Modbus communication [Source: AutomationDirect — Fault Code Table]. To resolve this issue, the following steps can be taken: 
+1. Verify the host controller is transmitting data continuously to the GS10.
+2. Check the Modbus communication connection and cable integrity.
+3. Review the P09.03 setting for transmission timeout detection time.
+4. Send a Reset command to clear the error code by writing 2 to register 0x2002 [Source: AutomationDirect — Fault Code Table].
+--- status answer ---
+The current status of the conveyor is stopped due to a photo-eye jam latch, which is a soft-stop condition [Source: User Manual MultiControl EN]. The variable frequency drive (VFD) is in a stopped state, with a status word of 0, indicating it is not running [Source: GS10 documentation]. The main line contactor is closed and energized, but the VFD output frequency is 0.0 Hz, and the command is set to STOP [Source: GS10 documentation]. To resume operation, the operator must press the Start button (DI_04) with the photo-eye beam clear to clear the latch and restart the conveyor [Source: GS10 documentation]. The steps to resolve this are: 1. Ensure the photo-eye beam is clear. 2. Press the Start button (DI_04) to clear the photo-eye jam latch and resume the drive.

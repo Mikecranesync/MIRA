@@ -6,11 +6,27 @@
 > **Product-surface contract:** `docs/specs/maintenance-namespace-builder-spec.md` — the UNS gate, AI proposals, readiness levels.
 > **Phased execution:** `docs/plans/2026-05-15-maintenance-namespace-builder.md`.
 
+## 🚦 Primary product focus: Beta readiness
+
+The current execution phase is **Path to Beta Testers** (`docs/plans/2026-06-07-path-to-beta.md`).
+Until the beta gate is met, every product change is judged against one question:
+
+> **Does this get us closer to: a stranger uploads their own equipment manual, asks a real
+> troubleshooting question, and gets a grounded answer with citations from that manual —
+> without Mike manually fixing anything?**
+
+The gate is enforced by `tests/beta/beta_ready_upload_retrieval_citation.py` (xfail until it's
+met). The known blocker is the **upload→retrieval gap**: uploads land in the Open WebUI KB but
+chat retrieval reads only `knowledge_entries` (PR #1592 closes it). Don't build beta-adjacent
+features that route around this gap — close the gap. See `NORTH_STAR.md` § "Path to Beta Testers".
+
 ## What MIRA is
 
-**MIRA** (Maintenance Intelligence Resource Agent) is an industrial maintenance intelligence system. The product wedge is a **Slack-first maintenance copilot** that grounds every answer in the customer's real factory context.
+**MIRA** (Maintenance Intelligence Resource Agent) is the grounded diagnostic **agent** on top of **FactoryLM**, the maintenance-context layer. **Canonical wedge (`NORTH_STAR.md`, 2026-06-22): FactoryLM makes a factory's messy reality trustworthy enough for AI on top of *any* UNS; MIRA proves it by diagnosing with cited sources. Lead with the context platform, not the copilot.** Slack/Telegram/Ignition/QR/web are retained consumption surfaces — every adapter renders the *same approved-context answer*, grounded in the customer's real factory context.
 
 It is **not** a generic chatbot. It is **not** a SCADA or CMMS replacement. It is a focused, grounded troubleshooting and ingestion assistant for plant maintenance technicians.
+
+**Train before deploy (product direction).** FactoryLM Command Center (`mira-hub`, `app.factorylm.com`) is where customers build the namespace, upload documentation, train/validate asset-specific MIRA agents, and approve them. Ignition/HMI "Ask MIRA" is a **deployment surface for approved agents**, not the primary onboarding system. No HMI deployment until the asset agent has grounded docs, validation questions, and approved cited answers. MIRA is **read-only troubleshooting intelligence first — no control writes in beta.** Full rule: `.claude/rules/train-before-deploy.md`; per-asset lifecycle + deployment gate: `docs/specs/asset-agent-validation-spec.md`.
 
 ## North Star architecture
 
@@ -22,7 +38,7 @@ It is **not** a generic chatbot. It is **not** a SCADA or CMMS replacement. It i
 | **Component templates + KG** | Memory — reusable asset/component knowledge | NeonDB `kg_entities` + `kg_relationships` (migrations 004/005) |
 | **Customer docs + work orders** | Evidence — what we cite | `mira-crawler/ingest/`, `mira-mcp/server.py` (CMMS tools), `mira-cmms/` (Atlas) |
 
-Future interfaces (Teams, Telegram, email) are valid, but **Slack is the first product wedge**. Telegram/email adapters at `mira-bots/{telegram,email}/` exist but follow Slack's contract, not the other way around.
+Slack is the first **front door** — *not* the wedge (the wedge is the context layer; `NORTH_STAR.md`). Telegram/email/Ignition/QR adapters at `mira-bots/` are **retained consumption surfaces**: each renders the same approved-context answer and follows the engine's contract, not the other way around.
 
 ## The non-negotiable UNS location-confirmation gate
 
@@ -40,6 +56,8 @@ Required flow (enforced in `mira-bots/shared/engine.py`):
 8. Only then enter troubleshooting / live-assist mode.
 
 A code path that begins troubleshooting before step 7 is a **bug**. The `mira-run-hallucination-audit` command exists to find such paths.
+
+**Carve-out — direct machine connections are UNS-certified by construction.** The flow above (and the chat-gate in `.claude/rules/uns-confirmation-gate.md`) applies to chat surfaces (Slack/Telegram/email/generic web). When a turn arrives over a surface that already knows which machine the technician is on — Ignition cloud-chat (`mira-pipeline /api/v1/ignition/chat`), a Perspective "Ask MIRA" panel, an MQTT/Sparkplug B turn from `mira-bridge`/`mira-relay`, a PLC bridge tag-snapshot, a Hub Command Center display, a QR-scan deep-link — the connection itself certifies the UNS path. The engine MUST skip steps 6–7 and treat `state["uns_context"]["source"]=="direct_connection"` as already confirmed. A direct-connection surface that lacks a UNS identifier on its payload must **reject** the turn (`{"error":"uns_required"}`), NOT downgrade to a chat-gate. Full rule + surface list + rejection contract: `.claude/rules/direct-connection-uns-certified.md`.
 
 ## Grounded troubleshooting
 
@@ -127,15 +145,17 @@ See `.claude/skills/slack-technician-ux-writer/SKILL.md` for sample message temp
 
 ## Code exploration: CodeGraph first
 
-CodeGraph is the SQLite semantic index of every symbol, edge, file, and call path in the workspace. It is wired into every Claude Code session via the `codegraph` MCP server in `.mcp.json`. Use it BEFORE grep / Read for any symbol-shaped question.
+CodeGraph is the SQLite semantic index of every symbol, edge, file, and call path in the workspace. It is wired into every Claude Code session via the `codegraph` MCP server in `.mcp.json`. Use it BEFORE grep / Read for any symbol-shaped question. **It is the only code-navigation graph for this repo — Graphify is excluded from code navigation (`.claude/rules/graphify-excluded.md`).**
 
+- **Preflight BEFORE any non-doc coding task:** `tools/codegraph-preflight.sh ["task"]` — verifies install / MCP / index presence / freshness / canary and prints a markdown report for the PR (verdict **READY / STALE / BROKEN**). **If STALE or BROKEN, `sync` / `index --force` and re-run before trusting call edges.** Trust is earned, not assumed: the call-graph (`callers`/`callees`/`trace`/`impact`) is only reliable after freshness + health pass — symbol *lookup* is reliable on any non-broken index. Periodic fail-loud check: `tools/codegraph-benchmark.sh`.
+- **Known blind spots (verify with grep):** class instantiation `ClassName()` isn't a caller edge; `impact <Class>` returns containment not dependents; import-alias calls and same-name symbols don't resolve. Full list: `.claude/rules/codegraph-usage.md`.
 - **First call for any task in indexed code:** `codegraph_context "<task>"` — composes search + node + callers + callees in one call. Cheapest possible orientation.
 - **Before editing `engine.py` or any shared module:** `codegraph_impact <symbol>` to see the blast radius. Modules in scope: `mira-bots/shared/engine.py`, `mira-bots/shared/inference/router.py`, `mira-bots/shared/uns_resolver.py`, `mira-bots/shared/citation_compliance.py`, `mira-bots/shared/guardrails.py`, `mira-crawler/ingest/uns.py`, `mira-mcp/server.py`, plus anything imported by >5 files. **Never ignore an unexpected symbol in the blast-radius output** — narrow the change first.
 - **"How does X reach Y" / call-path questions:** `codegraph_trace` — handles dynamic-dispatch hops (callbacks, async workers, FSM transitions) that grep can't follow.
 - **Multi-symbol surveys:** `codegraph_explore` — one capped call for several related symbols. Don't loop `codegraph_node` or `Read`.
 - **Do NOT re-read files CodeGraph already returned source for.** `codegraph_node` / `codegraph_explore` include the symbol body.
 - **Only fall back to `Grep` / `Read`** for plain-text matches (prompt strings, log lines, comments), file-level inspection of files CodeGraph didn't index, or details the CodeGraph response didn't cover.
-- **Index freshness:** `.githooks/post-merge` and `.githooks/post-checkout` run `codegraph sync` automatically (incremental, <1 s, no-op when codegraph isn't installed). After cherry-picks or hand-edits, run `npx -y @colbymchenry/codegraph sync` manually.
+- **Index freshness:** `.githooks/post-merge` and `.githooks/post-checkout` run `codegraph sync` → corruption canary → write a `.codegraph/.last-sync` marker (sync alone can't repair dropped call edges; the canary `index --force`s if they collapsed). A daily `index --force` launchd job (`tools/codegraph-force-reindex.sh`) bounds drift. After cherry-picks or hand-edits, run `npx -y @colbymchenry/codegraph sync` (or the preflight) manually.
 
 Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/codegraph.md`.
 
@@ -147,8 +167,16 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - **Python: ruff + httpx + `Optional[X]` (3.12 target)** — see `.claude/rules/python-standards.md`.
 - **Security boundaries** — see `.claude/rules/security-boundaries.md` (PII sanitization, safety keywords, Doppler).
 - **UNS compliance** — see `.claude/rules/uns-compliance.md` (every asset row has `uns_path` or `equipment_entity_id` FK).
-- **CodeGraph-first exploration** — see `.claude/rules/codegraph-usage.md` (use `codegraph_context` / `codegraph_impact` before grep + Read for any symbol-shaped question).
+- **mira-hub migrations** — see `.claude/rules/mira-hub-migrations.md` (tenancy is mid-migration to UUID-only — `session.ts` 401s non-UUID tenants; `cmms_equipment.tenant_id` is `TEXT`, kg/Hub is `UUID`; match the column you join to, RLS compares in-type, `GRANT … TO factorylm_app`, drop policy+GiST index before `ALTER COLUMN TYPE`; **read the real error and reproduce with a tenant that can actually authenticate (UUID), not a slug**).
+- **Direct-connection UNS certification** — see `.claude/rules/direct-connection-uns-certified.md` (Ignition/MQTT/PLC/Hub/QR surfaces carry a UNS identifier on every turn or are rejected; engine skips the chat-gate on `source="direct_connection"`).
+- **One-pipeline ingest law** — see `.claude/rules/one-pipeline-ingest.md` (every source enters via `mira-relay/ingest_contract.py` → `ingest_batch`; no transport forks its own normalizer/allowlist/persistence/batch-shape/enforcement; enforced by `tests/test_architecture.py` Contract 5).
+- **CodeGraph-first exploration** — see `.claude/rules/codegraph-usage.md` (run `tools/codegraph-preflight.sh` before non-doc code work; `codegraph_context` / `codegraph_impact` before grep + Read; trust the call-graph only after freshness passes).
+- **Graphify excluded from code navigation** — see `.claude/rules/graphify-excluded.md` (CodeGraph is the single code-nav graph; the orchestrator-pulse product KG is a separate, allowed artifact).
+- **Train before deploy** — see `.claude/rules/train-before-deploy.md` (Command Center builds+validates; Ignition/HMI deploys approved asset agents only; no HMI deployment without grounded docs + validation questions + approved cited answers; read-only in beta).
 - **Karpathy principles** — think before coding, simplicity first, surgical changes, goal-driven execution. See `.claude/rules/karpathy-principles.md`.
+- **FactoryLM UI style** — every front end (mira-contextualizer, mira-plc-parser `gui/`, mira-hub, mira-web, Ignition Perspective) uses the shared design tokens (`docs/design/factorylm-tokens.css`): flat/modern, muted-normal + color-for-state, never hardcode a hex. See `.claude/rules/ui-style.md` + skill `factorylm-ui-style` + runbook `docs/design/factorylm-style.md`.
+- **Debugging & verification** — perf problems are multi-cause (re-measure after each fix); verify exact table/column names + API auth paths from the codebase before guessing. See `.claude/rules/debugging-conventions.md`.
+- **Session discipline** — verify stated premises against the codebase + `git log` before building; re-run the full suite before reporting eval gains; stage only files your change touched (never `git add -A` over foreign WIP); validate migration/seed prerequisites + schema constraints; checkpoint long tasks to `.planning/STATE.md` early. See `.claude/rules/session-discipline.md`.
 - **Don't break the UNS confirmation gate.** Run `mira-run-hallucination-audit` after engine/bot edits.
 
 ## Testing expectations
@@ -162,12 +190,14 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 ## Do not do
 
 - ❌ **Build a generic chatbot.** MIRA answers grounded maintenance questions, nothing else.
-- ❌ **Begin troubleshooting before the UNS gate confirms.**
+- ❌ **Begin troubleshooting before the UNS gate confirms.** (Chat surfaces only — direct connections are certified by construction; see `.claude/rules/direct-connection-uns-certified.md`.)
+- ❌ **Ask a direct-connection turn "are you sure you're looking at X?"** If the connection didn't carry a UNS identifier, REJECT it — don't downgrade to a chat-gate.
+- ❌ **Add a new direct-connection surface (Ignition, MQTT, PLC, Hub display, QR) without declaring its UNS-identity source.** Every direct surface must populate `state["uns_context"]["source"]="direct_connection"` and supply a resolvable identifier on every turn.
 - ❌ **Invent plant data, PLC tag meaning, work-order history, fault codes, or manual references.** Always cite.
 - ❌ **Auto-promote `proposed` → `verified`** in the knowledge graph.
 - ❌ **Replace SCADA, replace CMMS, or expose arbitrary PLC writes.** That's out of scope. See `.claude/skills/mira-saas-scope-guard/SKILL.md`.
 - ❌ **Add a LangChain/n8n abstraction over the LLM call** (PRD §4).
-- ❌ **Reintroduce Anthropic as a provider** — removed PR #610, never reintroduce. Cascade is Groq → Cerebras → Gemini.
+- ❌ **Reintroduce Anthropic as a provider** — removed PR #610, never reintroduce. Cascade is Groq → Cerebras → Together.
 - ❌ **Skip the screenshot rule** for visible mira-web UI changes.
 - ❌ **Cross environment boundaries** — no prod `psql`, no direct VPS `docker compose`, no feature-branch traffic to `@FactoryLM_Diagnose`, no hand-edited prod schema. See `docs/environments.md`.
 
@@ -178,11 +208,20 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - `docs/THEORY_OF_OPERATIONS.md` — primary product doctrine
 - `docs/specs/maintenance-namespace-builder-spec.md` — UNS gate, AI proposals, readiness levels (subsumes the older `uns-message-resolver-spec.md` reference)
 - `docs/plans/2026-05-15-maintenance-namespace-builder.md` — phased execution
+- `docs/RESUME_2026-06-14_maintenance-intelligence-module.md` — the self-onboarding Ignition module ("detect AND explain": in-gateway A0–A12 anomaly detection + grounded Ask MIRA + auto-classify install). Phase 1 done (`83ea8e81`); rules in `plc/conv_simple_anomaly/rules_core.py` (dual Py2.7/3.12) + `ignition/webdev/FactoryLM/api/diagnose/`. The HMI deployment surface, productized.
 - `.claude/rules/uns-compliance.md` — UNS data-shape enforcement
+- `.claude/rules/uns-confirmation-gate.md` — chat-surface UNS gate (Slack/Telegram/email/web)
+- `.claude/rules/direct-connection-uns-certified.md` — direct-connection UNS certification (Ignition/MQTT/PLC/Hub/QR)
+- `.claude/rules/train-before-deploy.md` — Command Center trains/validates; Ignition/HMI deploys approved asset agents only
+- `docs/specs/asset-agent-validation-spec.md` — per-asset agent lifecycle (draft→…→approved→deployed) + HMI deployment gate
 - `.claude/rules/security-boundaries.md` — secrets, PII, safety keywords
 - `.claude/rules/python-standards.md` — ruff, httpx, NeonDB, async
+- `.claude/rules/mira-hub-migrations.md` — migration tenant_id typing (TEXT vs UUID family), RLS, grants, ALTER ordering, real-tenant verification
 - `.claude/rules/karpathy-principles.md` — coding behavior
-- `.claude/rules/codegraph-usage.md` — when to use CodeGraph vs grep/Read (CodeGraph-first for symbol-shaped questions)
+- `.claude/rules/debugging-conventions.md` — multi-cause perf debugging + verify schema/API paths before guessing
+- `.claude/rules/session-discipline.md` — premise-verify, regression-recheck, scoped-commits, migration-safety, long-task checkpointing
+- `.claude/rules/codegraph-usage.md` — when to use CodeGraph vs grep/Read + trust model + preflight + blind spots
+- `.claude/rules/graphify-excluded.md` — Graphify excluded from code navigation (CodeGraph is the single code-nav graph)
 - `docs/specs/uns-kg-unification-spec.md` — UNS authority (data architecture)
 - `docs/specs/mira-component-intelligence-architecture.md` — implementation-level architecture (component templates, KG mechanics)
 - `docs/specs/dialogue-state-tracker-spec.md` — FSM the UNS gate plugs into

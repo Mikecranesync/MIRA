@@ -82,8 +82,12 @@ export default function MobileAssetPage({
 
   useEffect(() => {
     if (typeof window !== "undefined") {
+      const timeout = window.setTimeout(() => {
       setShareUrl(`${window.location.origin}/m/${assetTag}`);
+      }, 0);
+      return () => window.clearTimeout(timeout);
     }
+    return undefined;
   }, [assetTag]);
 
   // No redirect for unauthenticated visitors — they see a guest landing
@@ -92,9 +96,7 @@ export default function MobileAssetPage({
   useEffect(() => {
     if (sessionStatus !== "authenticated") return;
     let cancelled = false;
-    setLoading(true);
-    setErrorStatus(null);
-    fetch(`${API_BASE}/api/assets/by-tag/${encodeURIComponent(assetTag)}`)
+    fetch(`${API_BASE}/api/assets/by-tag/${encodeURIComponent(assetTag)}/`)
       .then(async (res) => {
         if (!res.ok) {
           if (!cancelled) setErrorStatus(res.status);
@@ -120,7 +122,7 @@ export default function MobileAssetPage({
   useEffect(() => {
     if (!isAuthed || !asset?.id) return;
     let cancelled = false;
-    fetch(`${API_BASE}/api/workorders?assetId=${encodeURIComponent(asset.id)}&limit=5`)
+    fetch(`${API_BASE}/api/workorders/?assetId=${encodeURIComponent(asset.id)}&limit=5`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data: RecentWorkOrder[]) => {
         if (!cancelled && Array.isArray(data)) setRecentWos(data);
@@ -170,7 +172,7 @@ export default function MobileAssetPage({
             <p className="text-sm text-amber-800 mt-1">
               {isAccessIssue ? (
                 <>
-                  Tag <code className="font-mono">{assetTag}</code> isn't part of your
+                  Tag <code className="font-mono">{assetTag}</code> isn&apos;t part of your
                   workspace. Ask your admin to add you to the right tenant or to
                   share the asset.
                 </>
@@ -403,7 +405,7 @@ function GuestLanding({ assetTag, apiBase }: { assetTag: string; apiBase: string
     setSubmitting(true);
     setError(null);
     try {
-      const res = await fetch(`${apiBase}/api/public/report`, {
+      const res = await fetch(`${apiBase}/api/public/report/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ equipmentNumber: assetTag, description, contactInfo: contactInfo || undefined }),
@@ -557,4 +559,3 @@ function Row({
     </div>
   );
 }
-

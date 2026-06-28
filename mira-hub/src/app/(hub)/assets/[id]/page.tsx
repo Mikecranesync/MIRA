@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { AssetChat } from "@/components/AssetChat";
 import { AssetIntelligencePanel } from "@/components/AssetIntelligencePanel";
+import { AssetValidateTab } from "@/components/AssetValidateTab";
 import { QrCodeModal } from "@/components/qr-code-modal";
 import { UploadPicker, type PickResult } from "@/components/UploadPicker";
 import { Badge } from "@/components/ui/badge";
@@ -54,13 +55,6 @@ const WO_LIST = [
   { id: "WO-2026-001", title: "PM — Air Compressor #1",   status: "open",       priority: "High",   date: "2026-04-25", tech: "Mike H." },
   { id: "WO-2026-003", title: "Lubrication check",        status: "open",       priority: "High",   date: "2026-04-24", tech: "Unassigned" },
   { id: "WO-2025-089", title: "Inlet filter replacement", status: "completed",  priority: "Low",    date: "2026-02-20", tech: "Mike H." },
-];
-
-const DOCS_LIST = [
-  { id: "d1", name: "Ingersoll Rand R55n — OEM Service Manual",   category: "Manuals",    state: "indexed",    date: "2026-01-10", pages: 248 },
-  { id: "d2", name: "Air Compressor Wiring Diagram — Rev B",      category: "Schematics", state: "indexed",    date: "2025-11-20", pages: 12 },
-  { id: "d3", name: "Spare Parts List — R55n Series",             category: "Parts",      state: "partial",    date: "2025-08-05", pages: 64 },
-  { id: "d4", name: "R55n Service Manual — Rev A (Superseded)",   category: "Manuals",    state: "superseded", date: "2023-03-01", pages: 210 },
 ];
 
 const PARTS_LIST = [
@@ -207,7 +201,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
 
           {/* Tabs */}
           <div className="flex gap-0 overflow-x-auto scrollbar-none -mb-px">
-            {["overview", "ask", "activity", "workorders", "documents", "parts", "intelligence"].map((tab) => (
+            {["overview", "ask", "activity", "workorders", "documents", "parts", "intelligence", "validate"].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -230,6 +224,10 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
                    <span className="flex items-center gap-1">
                      <Brain className="w-3 h-3" /> Intel
                    </span>
+                 ) : tab === "validate" ? (
+                   <span className="flex items-center gap-1">
+                     <CheckCircle2 className="w-3 h-3" /> Validate
+                   </span>
                  ) : tab}
               </button>
             ))}
@@ -250,6 +248,7 @@ export default function AssetDetailPage({ params }: { params: Promise<{ id: stri
           {activeTab === "documents"     && <DocumentsTab assetId={id} assetTag={asset.tag} />}
           {activeTab === "parts"         && <PartsTab />}
           {activeTab === "intelligence"  && <AssetIntelligencePanel assetId={id} />}
+          {activeTab === "validate"      && <AssetValidateTab assetId={id} />}
         </div>
       )}
 
@@ -397,10 +396,6 @@ type AssetDoc = {
 };
 
 function DocumentsTab({ assetId, assetTag }: { assetId: string; assetTag: string }) {
-  const DOC_STATE_VARIANT: Record<string, "indexed" | "partial" | "superseded"> = {
-    indexed: "indexed", partial: "partial", superseded: "superseded",
-  };
-  const docIdMap: Record<string, string> = { d1: "d01", d2: "d02", d3: "d03", d4: "d09" };
   const { toast } = useToast();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [realDocs, setRealDocs] = useState<AssetDoc[] | null>(null);
@@ -417,14 +412,32 @@ function DocumentsTab({ assetId, assetTag }: { assetId: string; assetTag: string
     }
   }, [assetId]);
 
-  useEffect(() => { void fetchDocs(); }, [fetchDocs]);
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch(`${API_BASE}/api/assets/${assetId}/documents/`, { cache: "no-store" })
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.ok && !res.url.includes("/login")) {
+          const data = (await res.json()) as AssetDoc[];
+          if (!cancelled && Array.isArray(data)) setRealDocs(data);
+        }
+      })
+      .catch(() => {
+        /* silent — falls back to mock list */
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [assetId]);
 
   async function handleLocalFiles(files: File[], tag: string | null) {
     for (const file of files) {
       const form = new FormData();
       form.append("file", file);
       if (tag) form.append("assetTag", tag);
-      const res = await fetch(`${API_BASE}/api/uploads/local`, { method: "POST", body: form });
+      const res = await fetch(`${API_BASE}/api/uploads/local/`, { method: "POST", body: form });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         throw new Error(typeof body.error === "string" ? body.error : `Upload failed (${res.status})`);
@@ -437,7 +450,7 @@ function DocumentsTab({ assetId, assetTag }: { assetId: string; assetTag: string
 
   async function handleCloudPicks(results: PickResult[], tag: string | null) {
     for (const r of results) {
-      await fetch(`${API_BASE}/api/uploads`, {
+      await fetch(`${API_BASE}/api/uploads/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...r, assetTag: tag ?? undefined }),
@@ -447,8 +460,10 @@ function DocumentsTab({ assetId, assetTag }: { assetId: string; assetTag: string
     setTimeout(() => { void fetchDocs(); }, 1500);
   }
 
-  // Prefer real docs when present; fall back to mock so demo data renders for assets
-  // that don't yet have knowledge_entries.
+  // Show only documents actually matched to this asset's manufacturer/model.
+  // When there are none, render an empty state — never unrelated demo docs.
+  // (#2031: an AutomationDirect GS1-45P0 asset must not display Ingersoll Rand
+  // compressor manuals; mismatched docs destroy trust faster than no docs.)
   const useReal = realDocs !== null && realDocs.length > 0;
 
   return (
@@ -457,7 +472,7 @@ function DocumentsTab({ assetId, assetTag }: { assetId: string; assetTag: string
         <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
           {useReal
             ? `${realDocs!.length} document${realDocs!.length === 1 ? "" : "s"} linked to this asset`
-            : `${DOCS_LIST.length} documents (demo)`}
+            : "No documents linked to this asset yet"}
         </p>
         <Button
           size="sm"
@@ -490,23 +505,22 @@ function DocumentsTab({ assetId, assetTag }: { assetId: string; assetTag: string
               </div>
             </div>
           ))
-        : DOCS_LIST.map((doc) => (
-            <Link key={doc.id} href={`/documents/${docIdMap[doc.id] ?? "d01"}`}>
-              <div className="card p-4 flex items-center gap-3 hover:shadow-md transition-shadow cursor-pointer">
-                <FileText className="w-8 h-8 flex-shrink-0 p-1.5 rounded-lg"
-                  style={{ backgroundColor: "var(--surface-1)", color: "var(--foreground-muted)" }} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>{doc.name}</p>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <Badge variant="outline" className="text-[10px]">{doc.category}</Badge>
-                    <Badge variant={DOC_STATE_VARIANT[doc.state]} className="capitalize text-[10px]">{doc.state}</Badge>
-                    <span className="text-[11px]" style={{ color: "var(--foreground-subtle)" }}>{doc.pages}p · {doc.date}</span>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "var(--foreground-subtle)" }} />
-              </div>
-            </Link>
-          ))}
+        : (
+            <div
+              className="card p-6 flex flex-col items-center text-center gap-2"
+              data-testid="asset-documents-empty"
+            >
+              <FileText className="w-8 h-8 p-1.5 rounded-lg"
+                style={{ backgroundColor: "var(--surface-1)", color: "var(--foreground-muted)" }} />
+              <p className="text-sm font-medium" style={{ color: "var(--foreground)" }}>
+                No documents linked to this asset yet
+              </p>
+              <p className="text-xs max-w-sm" style={{ color: "var(--foreground-muted)" }}>
+                Upload a manual, wiring diagram, or parts list so MIRA can ground its
+                answers for {assetTag} in this asset&rsquo;s own documentation.
+              </p>
+            </div>
+          )}
 
       <UploadPicker
         open={pickerOpen}

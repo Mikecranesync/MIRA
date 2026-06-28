@@ -1,0 +1,147 @@
+name: Hub E2E Tests
+
+# Self-contained render proof for the three mira-hub Playwright configs that
+# were previously unwired (command-center, onboarding-validate, onboarding-walkthrough).
+# These boot a local production Next.js server with a minted JWE session cookie
+# (fixed throwaway AUTH_SECRET) and mocked API routes — no real login, no prod traffic.
+#
+# Strategy: build Next.js ONCE (5-8 min), then start each server on its own port
+# and run the corresponding spec. Total wall-clock ~12-15 min vs ~25 min for three
+# independent builds.
+#
+# PATH FILTER (in-job, NOT on:-level): the workflow ALWAYS runs on PRs to main so
+# the required context always reports; the dorny/paths-filter `changes` step then
+# short-circuits non-hub PRs (docs, wiki, .claude, Python, other services) to
+# trivially-green in seconds. An on:-level paths-ignore would suppress the workflow
+# entirely on those PRs and block them forever — see the on: block below.
+#
+# DB: layout SSR may touch NeonDB (tenant/session queries). Uses the staging branch
+# via NEON_STG_DATABASE_URL. Route-level data is mocked in-spec so results are
+# deterministic regardless of DB seed state.
+
+on:
+  # NO on:-level path filter. This job is a REQUIRED status check, so it must
+  # REPORT on every PR to main — a workflow suppressed by `paths-ignore` never
+  # reports its required context and blocks the PR forever ("Expected", e.g. a
+  # docs-only PR). Cost is controlled INSIDE the job: the dorny/paths-filter
+  # `changes` step + the `if: steps.changes.outputs.hub == 'true'` gates
+  # short-circuit non-hub PRs to trivially-green in seconds. (See the job comment.)
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: hub-e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  hub-e2e:
+    name: Hub E2E (command-center + onboarding)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            hub:
+              - 'mira-hub/**'
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.changes.outputs.hub == 'true'
+        with:
+          bun-version: latest
+
+      - name: Install mira-hub deps
+        if: steps.changes.outputs.hub == 'true'
+        working-directory: mira-hub
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Install Playwright Chromium
+        if: steps.changes.outputs.hub == 'true'
+        working-directory: mira-hub
+        run: |
+          # GitHub's hosted Ubuntu image can carry a stale azure-cli apt source.
+          # When it returns 403, Playwright's dependency install fails before tests run.
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/azure-cli.sources
+          npx playwright install chromium --with-deps
+
+      # Build once — all three configs reuse this artifact via reuseExistingServer.
+      # The fixed AUTH_SECRET matches what each playwright config passes to next start,
+      # so the minted JWE cookies the specs produce decrypt correctly.
+      - name: Build Next.js (shared for all three configs)
+        if: steps.changes.outputs.hub == 'true'
+        working-directory: mira-hub
+        env:
+          NEXT_PUBLIC_BASE_PATH: ''
+          NEXT_PUBLIC_API_BASE: ''
+          AUTH_SECRET: 'cc-e2e-fixed-secret-do-not-use-in-prod'
+          NODE_ENV: production
+          NEON_DATABASE_URL: ${{ secrets.NEON_STG_DATABASE_URL }}
+        run: ./node_modules/.bin/next build
+
+      # --- command-center (port 3940) ---
+      - name: E2E — command-center
+        if: steps.changes.outputs.hub == 'true'
+        working-directory: mira-hub
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_STG_DATABASE_URL }}
+        run: |
+          env NEXT_PUBLIC_BASE_PATH='' NEXT_PUBLIC_API_BASE='' \
+              AUTH_SECRET='cc-e2e-fixed-secret-do-not-use-in-prod' \
+              NODE_ENV=production NEON_DATABASE_URL="$NEON_DATABASE_URL" \
+            ./node_modules/.bin/next start -p 3940 &
+          SERVER_PID=$!
+          npx --yes wait-on --timeout 30000 http://127.0.0.1:3940/login
+          npx playwright test --config playwright.command-center.config.ts
+          STATUS=$?
+          kill "$SERVER_PID" 2>/dev/null || true
+          exit $STATUS
+
+      # --- onboarding-validate (port 3941) ---
+      - name: E2E — onboarding-validate
+        if: steps.changes.outputs.hub == 'true'
+        working-directory: mira-hub
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_STG_DATABASE_URL }}
+        run: |
+          env NEXT_PUBLIC_BASE_PATH='' NEXT_PUBLIC_API_BASE='' \
+              AUTH_SECRET='cc-e2e-fixed-secret-do-not-use-in-prod' \
+              NODE_ENV=production NEON_DATABASE_URL="$NEON_DATABASE_URL" \
+            ./node_modules/.bin/next start -p 3941 &
+          SERVER_PID=$!
+          npx --yes wait-on --timeout 30000 http://127.0.0.1:3941/login
+          npx playwright test --config playwright.onboarding-validate.config.ts
+          STATUS=$?
+          kill "$SERVER_PID" 2>/dev/null || true
+          exit $STATUS
+
+      # --- onboarding-walkthrough (port 3942) ---
+      - name: E2E — onboarding-walkthrough
+        if: steps.changes.outputs.hub == 'true'
+        working-directory: mira-hub
+        env:
+          NEON_DATABASE_URL: ${{ secrets.NEON_STG_DATABASE_URL }}
+        run: |
+          env NEXT_PUBLIC_BASE_PATH='' NEXT_PUBLIC_API_BASE='' \
+              AUTH_SECRET='cc-e2e-fixed-secret-do-not-use-in-prod' \
+              NODE_ENV=production NEON_DATABASE_URL="$NEON_DATABASE_URL" \
+            ./node_modules/.bin/next start -p 3942 &
+          SERVER_PID=$!
+          npx --yes wait-on --timeout 30000 http://127.0.0.1:3942/login
+          npx playwright test --config playwright.onboarding-walkthrough.config.ts
+          STATUS=$?
+          kill "$SERVER_PID" 2>/dev/null || true
+          exit $STATUS
+
+      - name: Upload failure screenshots
+        if: failure() && steps.changes.outputs.hub == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: hub-e2e-failures-${{ github.run_id }}
+          path: mira-hub/test-results/
+          retention-days: 3

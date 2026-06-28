@@ -96,6 +96,7 @@ class PipelineReport:
     kg_equipment_entities: int = 0
     kg_fault_code_entities: int = 0
     kg_relationships: int = 0
+    kg_proposals: int = 0
     kg_triples: int = 0
     quality_gate: str = "skipped"
     errors: list[str] = field(default_factory=list)
@@ -110,7 +111,8 @@ class PipelineReport:
         print(f"KB Chunks:    {self.kb_chunks} chunks created (2000 char, 200 overlap)")
         print(f"KG Entities:  {self.kg_equipment_entities} equipment, "
               f"{self.kg_fault_code_entities} fault codes")
-        print(f"KG Relations: {self.kg_relationships} relationships created")
+        print(f"KG Relations: {self.kg_relationships} verified, "
+              f"{self.kg_proposals} proposed (pending human review)")
         print(f"KG Triples:   {self.kg_triples} logged (source: manual_ingest)")
         print(f"Quality Gate: {self.quality_gate}")
         if self.errors:
@@ -362,6 +364,56 @@ def _log_triple(cur, subject: str, predicate: str, obj: str) -> bool:
         return False
 
 
+def _write_kg_edge(cur, source_id: str, target_id: str, relation_type: str,
+                   report: PipelineReport, confidence: float = 1.0,
+                   source_chunk_id: str | None = None,
+                   source_description: str | None = None) -> None:
+    """Create a KG edge from ingest. Default (#1662 / ADR-0017): PROPOSE it
+    (relationship_proposals + ai_suggestions(kg_edge)) for human review —
+    ingest never silently verifies. The legacy direct `kg_relationships`
+    insert at confidence 1.0 runs ONLY when MIRA_KG_INGEST_AUTOVERIFY is
+    deliberately set (one-time bulk migration / debug). Uses the caller's
+    psycopg2 cursor so it sees the entities created earlier in the same
+    transaction."""
+    try:
+        from ingest.proposal_writer import (
+            autoverify_enabled,
+            propose_relationship_cursor,
+        )
+    except ImportError:
+        from mira_crawler.ingest.proposal_writer import (
+            autoverify_enabled,
+            propose_relationship_cursor,
+        )
+
+    if autoverify_enabled():
+        cur.execute(
+            """
+            INSERT INTO kg_relationships
+                (id, tenant_id, source_id, target_id, relationship_type, confidence)
+            VALUES (%s, %s::uuid, %s::uuid, %s::uuid, %s, %s)
+            ON CONFLICT (tenant_id, source_id, target_id, relationship_type) DO NOTHING
+            """,
+            (str(uuid.uuid4()), TENANT_ID, source_id, target_id,
+             relation_type, confidence),
+        )
+        report.kg_relationships += 1
+    else:
+        pid = propose_relationship_cursor(
+            cur,
+            tenant_id=TENANT_ID,
+            source_entity=source_id,
+            target_entity=target_id,
+            relation_type=relation_type,
+            confidence=confidence,
+            proposed_by="import:full_ingest",
+            source_chunk_id=source_chunk_id,
+            source_description=source_description,
+        )
+        if pid:
+            report.kg_proposals += 1
+
+
 def step_kg(text: str, manufacturer: str, model: str,
             manual_type: str, source_url: str, report: PipelineReport) -> None:
     if not NEON_URL or not TENANT_ID:
@@ -421,21 +473,13 @@ def step_kg(text: str, manufacturer: str, model: str,
         )
         if equip_id and manual_eid:
             try:
-                cur.execute(
-                    """
-                    INSERT INTO kg_relationships
-                        (id, tenant_id, source_id, target_id, relationship_type, confidence)
-                    VALUES (%s, %s::uuid, %s::uuid, %s::uuid, 'documented_in', 1.0)
-                    ON CONFLICT (tenant_id, source_id, target_id, relationship_type) DO NOTHING
-                    """,
-                    (str(uuid.uuid4()), TENANT_ID, equip_id, manual_eid),
-                )
-                report.kg_relationships += 1
+                _write_kg_edge(cur, equip_id, manual_eid, "documented_in", report,
+                               source_description=source_url)
                 _log_triple(cur, f"{eff_mfr} {eff_model}", "documented_in",
                             f"{eff_mfr} {eff_model} — {manual_type}")
                 report.kg_triples += 1
             except Exception as exc:
-                logger.warning("KG relationship insert failed: %s", exc)
+                logger.warning("KG edge (documented_in) failed: %s", exc)
 
         # --- Fault code entities ---
         for fc in fault_codes[:20]:  # cap at 20 per document
@@ -454,19 +498,10 @@ def step_kg(text: str, manufacturer: str, model: str,
                 report.kg_fault_code_entities += 1
                 if equip_id:
                     try:
-                        cur.execute(
-                            """
-                            INSERT INTO kg_relationships
-                                (id, tenant_id, source_id, target_id,
-                                 relationship_type, confidence)
-                            VALUES (%s, %s::uuid, %s::uuid, %s::uuid, 'has_fault_code', 1.0)
-                            ON CONFLICT (tenant_id, source_id, target_id, relationship_type) DO NOTHING
-                            """,
-                            (str(uuid.uuid4()), TENANT_ID, equip_id, fc_id),
-                        )
-                        report.kg_relationships += 1
+                        _write_kg_edge(cur, equip_id, fc_id, "has_fault_code", report,
+                                       source_description=source_url)
                     except Exception as exc:
-                        logger.warning("Fault code relationship: %s", exc)
+                        logger.warning("KG edge (has_fault_code) failed: %s", exc)
                 _log_triple(cur, fc.code, "documented_in", f"{eff_mfr} {eff_model}")
                 report.kg_triples += 1
 
@@ -508,7 +543,7 @@ def step_quality_gate(baseline_path: str | None, report: PipelineReport) -> None
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         lines = (result.stdout + result.stderr).strip().splitlines()
-        summary = next((l for l in lines if "GATE" in l and ("PASS" in l or "FAIL" in l)), "")
+        summary = next((line for line in lines if "GATE" in line and ("PASS" in line or "FAIL" in line)), "")
         report.quality_gate = summary or ("PASS" if result.returncode == 0 else "FAIL")
         if result.returncode != 0:
             report.errors.append(f"Quality gate failed: {summary}")

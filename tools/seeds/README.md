@@ -7,6 +7,8 @@ tenant UUID so it can be applied to dev or prod without touching real customers.
 |---|---|---|---|
 | `demo-conveyor-001.sql` | `00000000-0000-0000-0000-0000000000d1` ("demo") | Conveyor 001 (`CV-001`) | 5 components (PE/MTR/VFD/PLC/PANEL), PE-001 full template, ISA-95 UNS paths, PLC tag bindings (4 entities), 12 verified relationship proposals + evidence, promoted into `kg_relationships` |
 | `run_demo_seed.py` | — | — | Python runner: `--dry-run` (rollback), `--commit`, `--verify` |
+| `beta-demo-tenant.md` | `…d1` ("demo") | Garage conveyor (CV-101) | **Manifest** — how to stand up the full beta demo tenant from the seeds above (apply order, known-good GS10 `oC` Q/A, first-run empty-state design). Start here for "Path to Beta". |
+| `seed-simlab-docs.py` | `00000000-0000-0000-0000-000000515ab1` ("SimLab") | Juice bottling line (11 assets) | Ingests the 77 synthetic maintenance markdown fixtures under `simlab/docs/<asset_id>/` (7 doc types × 11 assets) into `knowledge_entries`, chunked for BM25, UNS-tagged in `isa95_path` via `simlab.uns.asset_path`, `source_system="simulator"`/`simulated=true` in metadata. Closes #1835. Requires PR #1816's `simlab/docs/`. |
 
 ## Prerequisites
 
@@ -54,6 +56,52 @@ Expected on success:
 ✔ kg_relationships (demo tenant)                      12
 ```
 
+## Seed-path guarantee — a seed is not live until embedded
+
+**SQL can't compute an embedding.** Every `tools/seeds/*.sql` text seed inserts
+`knowledge_entries` rows with **no `embedding` column**, so they land with
+`embedding = NULL`. NULL-embedding rows are **invisible to the vector and
+product-name retrieval streams** (`mira-bots/shared/neon_recall.py` —
+`_product_search` filters `embedding IS NOT NULL`); they can only surface via
+BM25/ILIKE, where the fully-embedded OEM manuals out-rank them. The result: the
+engine refuses asset-specific answers it should have grounded (the 2026-06-17
+Q01/Q10 regression — spec
+`docs/superpowers/specs/2026-06-17-retrieval-null-embedding-coverage-gap.md`,
+issues #2085/#2093/#2094; same bug class as #1385).
+
+So **applying a text seed is two steps, not one** — seed → **backfill** → verify:
+
+```bash
+# 1. SEED — apply the SQL (CI dispatch apply-seeds.yml, or run_demo_seed.py above).
+
+# 2. BACKFILL — embed the dark rows. MUST run from a Tailnet node
+#    (Charlie / Alpha / Bravo) — these are the only hosts that reach the
+#    nomic-embed-text Ollama. GitHub-hosted CI runners CANNOT embed.
+doppler run -p factorylm -c <env> -- \
+  python tools/backfill_knowledge_embeddings.py --dry-run  # count first, write nothing
+doppler run -p factorylm -c <env> -- \
+  python tools/backfill_knowledge_embeddings.py            # idempotent; only NULLs
+
+# 3. VERIFY — 0 dark rows in the curated retrieval types.
+NEON_DATABASE_URL=<dev/stg url> pytest tests/test_embedding_coverage_canary.py -v
+```
+
+**Enforcement:** `apply-seeds.yml` (mode=apply) runs a read-only
+**embedding-coverage gate** after seeding — it goes **RED** if the rows it just
+seeded still have NULL embeddings, with the backfill command in the error. The
+gate can't embed (no Ollama on CI runners), so its job is to *block loudly*, not
+to fix; run the backfill off-CI and re-dispatch. The canary
+(`tests/test_embedding_coverage_canary.py`) is the corpus-wide backstop for the
+same bug class.
+
+> **SimLab docs are the exception** — `seed-simlab-docs.py` is BM25-only by design
+> (its `--verify` proves BM25 retrievability, not vector recall) and is *not* in
+> the curated types the gate/canary check, so it does not require the backfill.
+
+> *Long-term (deferred, not built here):* route seeds through the real ingest path
+> (`mira-core/mira-ingest`), which embeds on write — then "seed" and "embed" are a
+> single step. Tracked as Option B in #2094.
+
 ## Idempotency
 
 Every INSERT uses `ON CONFLICT DO NOTHING` keyed on a stable natural key
@@ -71,4 +119,47 @@ Query the demo subtree:
 SELECT entity_type, entity_id, name FROM kg_entities
 WHERE uns_path <@ 'enterprise.demo.site.lake_wales.area.assembly.line.line_a.equipment.cv_001'::ltree
 ORDER BY uns_path;
+```
+
+## SimLab doc seed (`seed-simlab-docs.py`)
+
+Ingests the SimLab juice-bottling maintenance docs so the engine can **cite**
+them during SimLab scenarios. Reads `simlab/docs/<asset_id>/*.md` (7 doc types ×
+11 assets = 77 files), chunks each on `##` sections (H1 title prepended for
+context; oversize sections soft-split at ~1800 chars), and inserts into
+`knowledge_entries` under the fixed SimLab tenant.
+
+```bash
+# Local — DEV ONLY (the docs are synthetic; never seed prod from a code shell)
+doppler run --project factorylm --config dev -- \
+  .venv/bin/python tools/seeds/seed-simlab-docs.py --dry-run   # validate, rollback
+doppler run --project factorylm --config dev -- \
+  .venv/bin/python tools/seeds/seed-simlab-docs.py --commit    # apply (242 chunks)
+doppler run --project factorylm --config dev -- \
+  .venv/bin/python tools/seeds/seed-simlab-docs.py --verify    # counts + BM25 proof
+```
+
+- **Schema facts:** `knowledge_entries.tenant_id` is **UUID** (FK → `tenants.id`;
+  the seed inserts an idempotent `tenants` row first). `source_system`/`simulated`
+  live in `metadata` JSONB (no dedicated columns). UNS path → `isa95_path`.
+- **Idempotency:** `ON CONFLICT` on the partial unique index `idx_ke_chunk_dedup`
+  `(tenant_id, source_url, (metadata->>'chunk_index')::int)`. Re-running inserts 0.
+  `DO NOTHING` → edits to a doc are **not** re-synced (clear the tenant to reload).
+- **`--verify` proves citability, not just row count:** it replays the engine's
+  OR-fanout BM25 query (`mira-bots/shared/neon_recall.py::_recall_bm25`) for canned
+  probes and asserts the expected asset is in the top-K candidate set. It does
+  **not** assert rank-#1: `_recall_bm25` is tenant-wide (no asset scoping), so
+  vocabulary-sharing siblings (filler/rinser both "nozzle/pressure") can outrank
+  the target on a generic query. At runtime the engine disambiguates via the
+  SimLab `direct_connection` `asset_id` + RRF fusion — wiring that asset scope
+  into `tests/simlab/runner.py` (which binds no tenant today) is the #1816
+  follow-up, **not** this ingestion PR.
+- **Via workflow:** `apply-seeds.yml` with `seeds=simlab-docs` (or `all`) runs this
+  as a dedicated Python step — `dry-run` rolls back, `apply` commits + verifies.
+  It ignores the `tenant_id` input (own fixed tenant) and no-ops until `simlab/`
+  is on the checked-out ref.
+
+UNS subtree (canonical lowercase ltree, built by `simlab.uns.asset_path`):
+```
+enterprise.florida_natural_demo.plant1.juice_bottling.line01.{depalletizer01|conveyorzone01|conveyorzone02|rinser01|filler01|capper01|labeler01|casepacker01|palletizer01|airsystem01|cipskid01}
 ```

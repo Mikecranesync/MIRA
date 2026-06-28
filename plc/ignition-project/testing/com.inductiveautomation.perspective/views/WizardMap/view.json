@@ -1,0 +1,271 @@
+{
+  "custom": {
+    "selRole": "vfd/vfd101/freq",
+    "selSearch": "",
+    "selTag": "",
+    "selDivisor": 100,
+    "showOptional": false,
+    "status": ""
+  },
+  "params": {
+    "assetId": "conveyor",
+    "folder": "[default]",
+    "pollMs": 2000
+  },
+  "props": { "defaultSize": { "width": 1360, "height": 980 } },
+  "root": {
+    "type": "ia.container.flex",
+    "meta": { "name": "root" },
+    "props": { "direction": "column", "style": { "backgroundColor": "#0d1117", "height": "100%" } },
+    "children": [
+      {
+        "type": "ia.container.flex", "meta": { "name": "header" }, "position": { "basis": "52px", "shrink": 0 },
+        "props": { "direction": "row", "alignItems": "center", "style": { "backgroundColor": "#161b22", "borderBottom": "1px solid #30363d", "padding": "0 18px", "gap": "14px" } },
+        "children": [
+          { "type": "ia.display.label", "meta": { "name": "brand" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "VFD ANALYZER — SETUP", "style": { "color": "#e6edf3", "fontSize": "16px", "fontWeight": 700, "letterSpacing": "0.08em" } } },
+          { "type": "ia.display.label", "meta": { "name": "assetLbl" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "asset", "style": { "color": "#8b949e", "fontSize": "13px" } }, "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "\"asset: \" + {session.custom.assetId} + \"     source: \" + runScript(\"mira_setup.get_setup_folder\", 0)" } } } } },
+          {
+            "type": "ia.display.label", "meta": { "name": "progress" }, "position": { "basis": "auto", "shrink": 0 },
+            "props": { "text": "…", "style": { "color": "#f0a90e", "fontSize": "14px", "fontWeight": 700, "borderRadius": "13px", "backgroundColor": "#21262d", "padding": "5px 14px" } },
+            "propConfig": {
+              "props.text": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.progress_text\", {session.custom.pollMs}, {session.custom.assetId})" } } },
+              "props.style.color": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.gate_color\", {session.custom.pollMs}, {session.custom.assetId})" } } }
+            }
+          }
+        ]
+      },
+      {
+        "type": "ia.container.flex", "meta": { "name": "steps" }, "position": { "basis": "42px", "shrink": 0 },
+        "props": { "direction": "row", "alignItems": "stretch", "style": { "backgroundColor": "#0d1117", "padding": "8px 14px", "gap": "8px" } },
+        "children": [
+          { "type": "ia.display.label", "meta": { "name": "sp1" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "1  Connect ✓", "style": { "color": "#7ee787", "backgroundColor": "#1a4d2e", "fontSize": "13px", "fontWeight": 600, "borderRadius": "8px", "textAlign": "center", "padding": "6px 0" } } },
+          { "type": "ia.display.label", "meta": { "name": "sp2" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "2  Verify ✓", "style": { "color": "#7ee787", "backgroundColor": "#1a4d2e", "fontSize": "13px", "fontWeight": 600, "borderRadius": "8px", "textAlign": "center", "padding": "6px 0" } } },
+          { "type": "ia.display.label", "meta": { "name": "sp3" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "3  MAP", "style": { "color": "#fff", "backgroundColor": "#1f6feb", "fontSize": "13px", "fontWeight": 700, "borderRadius": "8px", "textAlign": "center", "padding": "6px 0" } } },
+          { "type": "ia.display.label", "meta": { "name": "sp4" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "4  Save", "style": { "color": "#8b949e", "backgroundColor": "#21262d", "fontSize": "13px", "fontWeight": 600, "borderRadius": "8px", "textAlign": "center", "padding": "6px 0" } } }
+        ]
+      },
+      {
+        "type": "ia.container.flex", "meta": { "name": "titleRow" }, "position": { "basis": "auto", "shrink": 0 },
+        "props": { "direction": "row", "alignItems": "center", "style": { "padding": "12px 18px 4px", "gap": "12px" } },
+        "children": [
+          { "type": "ia.display.label", "meta": { "name": "title" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "Tap a slot, then pick its tag", "style": { "color": "#e6edf3", "fontSize": "20px", "fontWeight": 700 } } },
+          {
+            "type": "ia.input.button", "meta": { "name": "acceptAll" }, "position": { "basis": "230px", "shrink": 0 },
+            "props": { "text": "✦ Accept all suggestions", "style": { "backgroundColor": "#6e40c9", "color": "#fff", "fontSize": "13px", "fontWeight": 700, "borderRadius": "8px", "border": "none", "padding": "9px" } },
+            "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tasset = self.session.custom.assetId or \"conveyor\"\n\tfolder = mira_setup.get_setup_folder() or \"[default]\"\n\tself.view.custom.status = mira_setup.accept_all_suggestions(asset, folder)\n" } } } }
+          }
+        ]
+      },
+      {
+        "type": "ia.container.flex", "meta": { "name": "body" }, "position": { "grow": 1, "shrink": 1 },
+        "props": { "direction": "row", "style": { "gap": "12px", "padding": "4px 18px", "overflow": "hidden" } },
+        "children": [
+          {
+            "type": "ia.container.flex", "meta": { "name": "left" }, "position": { "basis": "440px", "shrink": 0 },
+            "props": { "direction": "column", "style": { "gap": "10px", "overflow": "auto" } },
+            "children": [
+              {
+                "type": "ia.container.flex", "meta": { "name": "slotFreq" }, "position": { "basis": "auto", "shrink": 0 },
+                "props": { "direction": "column", "style": { "backgroundColor": "#161b22", "border": "2px solid #f0a90e", "borderRadius": "10px", "padding": "12px", "gap": "5px", "cursor": "pointer" } },
+                "propConfig": { "props.style.border": { "binding": { "type": "expr", "config": { "expression": "\"2px solid \" + if({view.custom.selRole} = \"vfd/vfd101/freq\", \"#58a6ff\", runScript(\"mira_setup.slot_color\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/freq\"))" } } } },
+                "events": { "dom": { "onClick": [ { "type": "script", "scope": "G", "config": { "script": "\tself.view.custom.selRole = \"vfd/vfd101/freq\"\n\tself.view.custom.selSearch = \"\"\n\tself.view.custom.status = \"\"\n\tself.view.custom.selDivisor = mira_setup.slot_divisor(\"vfd/vfd101/freq\", self.session.custom.assetId)\n\tself.view.custom.selTag = mira_setup.suggest_for_role(mira_setup.get_setup_folder() or \"[default]\", \"vfd/vfd101/freq\")\n" } } ] } },
+                "children": [
+                  {
+                    "type": "ia.container.flex", "meta": { "name": "fq_top" }, "position": { "basis": "auto", "shrink": 0 },
+                    "props": { "direction": "row", "alignItems": "center", "style": { "gap": "10px" } },
+                    "children": [
+                      { "type": "ia.display.label", "meta": { "name": "fq_n" }, "position": { "basis": "30px", "shrink": 0 }, "props": { "text": "1", "style": { "color": "#0d1117", "backgroundColor": "#8b949e", "fontSize": "16px", "fontWeight": 800, "borderRadius": "7px", "textAlign": "center", "padding": "1px 0" } } },
+                      { "type": "ia.display.label", "meta": { "name": "fq_name" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "Output frequency", "style": { "color": "#e6edf3", "fontSize": "18px", "fontWeight": 700 } } },
+                      { "type": "ia.display.label", "meta": { "name": "fq_u" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "Hz", "style": { "color": "#c9d1d9", "backgroundColor": "#21262d", "fontSize": "12px", "fontWeight": 700, "borderRadius": "6px", "padding": "2px 9px" } } },
+                      { "type": "ia.display.label", "meta": { "name": "fq_req" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "REQUIRED", "style": { "color": "#f0a90e", "fontSize": "10px", "fontWeight": 700, "letterSpacing": "0.08em" } } }
+                    ]
+                  },
+                  {
+                    "type": "ia.display.label", "meta": { "name": "fq_status" }, "position": { "basis": "auto", "shrink": 0 },
+                    "props": { "text": "…", "style": { "color": "#f0a90e", "fontSize": "14px", "fontWeight": 600, "fontFamily": "inherit" } },
+                    "propConfig": {
+                      "props.text": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.slot_text\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/freq\")" } } },
+                      "props.style.color": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.slot_color\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/freq\")" } } }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "ia.container.flex", "meta": { "name": "slotCurrent" }, "position": { "basis": "auto", "shrink": 0 },
+                "props": { "direction": "column", "style": { "backgroundColor": "#161b22", "border": "2px solid #f0a90e", "borderRadius": "10px", "padding": "12px", "gap": "5px", "cursor": "pointer" } },
+                "propConfig": { "props.style.border": { "binding": { "type": "expr", "config": { "expression": "\"2px solid \" + if({view.custom.selRole} = \"vfd/vfd101/current_a\", \"#58a6ff\", runScript(\"mira_setup.slot_color\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/current_a\"))" } } } },
+                "events": { "dom": { "onClick": [ { "type": "script", "scope": "G", "config": { "script": "\tself.view.custom.selRole = \"vfd/vfd101/current_a\"\n\tself.view.custom.selSearch = \"\"\n\tself.view.custom.status = \"\"\n\tself.view.custom.selDivisor = mira_setup.slot_divisor(\"vfd/vfd101/current_a\", self.session.custom.assetId)\n\tself.view.custom.selTag = mira_setup.suggest_for_role(mira_setup.get_setup_folder() or \"[default]\", \"vfd/vfd101/current_a\")\n" } } ] } },
+                "children": [
+                  {
+                    "type": "ia.container.flex", "meta": { "name": "cu_top" }, "position": { "basis": "auto", "shrink": 0 },
+                    "props": { "direction": "row", "alignItems": "center", "style": { "gap": "10px" } },
+                    "children": [
+                      { "type": "ia.display.label", "meta": { "name": "cu_n" }, "position": { "basis": "30px", "shrink": 0 }, "props": { "text": "2", "style": { "color": "#0d1117", "backgroundColor": "#8b949e", "fontSize": "16px", "fontWeight": 800, "borderRadius": "7px", "textAlign": "center", "padding": "1px 0" } } },
+                      { "type": "ia.display.label", "meta": { "name": "cu_name" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "Output current", "style": { "color": "#e6edf3", "fontSize": "18px", "fontWeight": 700 } } },
+                      { "type": "ia.display.label", "meta": { "name": "cu_u" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "A", "style": { "color": "#c9d1d9", "backgroundColor": "#21262d", "fontSize": "12px", "fontWeight": 700, "borderRadius": "6px", "padding": "2px 9px" } } },
+                      { "type": "ia.display.label", "meta": { "name": "cu_req" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "REQUIRED", "style": { "color": "#f0a90e", "fontSize": "10px", "fontWeight": 700, "letterSpacing": "0.08em" } } }
+                    ]
+                  },
+                  {
+                    "type": "ia.display.label", "meta": { "name": "cu_status" }, "position": { "basis": "auto", "shrink": 0 },
+                    "props": { "text": "…", "style": { "color": "#f0a90e", "fontSize": "14px", "fontWeight": 600, "fontFamily": "inherit" } },
+                    "propConfig": {
+                      "props.text": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.slot_text\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/current_a\")" } } },
+                      "props.style.color": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.slot_color\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/current_a\")" } } }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "ia.container.flex", "meta": { "name": "slotFault" }, "position": { "basis": "auto", "shrink": 0 },
+                "props": { "direction": "column", "style": { "backgroundColor": "#161b22", "border": "2px solid #f0a90e", "borderRadius": "10px", "padding": "12px", "gap": "5px", "cursor": "pointer" } },
+                "propConfig": { "props.style.border": { "binding": { "type": "expr", "config": { "expression": "\"2px solid \" + if({view.custom.selRole} = \"vfd/vfd101/fault_code\", \"#58a6ff\", runScript(\"mira_setup.slot_color\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/fault_code\"))" } } } },
+                "events": { "dom": { "onClick": [ { "type": "script", "scope": "G", "config": { "script": "\tself.view.custom.selRole = \"vfd/vfd101/fault_code\"\n\tself.view.custom.selSearch = \"\"\n\tself.view.custom.status = \"\"\n\tself.view.custom.selDivisor = mira_setup.slot_divisor(\"vfd/vfd101/fault_code\", self.session.custom.assetId)\n\tself.view.custom.selTag = mira_setup.suggest_for_role(mira_setup.get_setup_folder() or \"[default]\", \"vfd/vfd101/fault_code\")\n" } } ] } },
+                "children": [
+                  {
+                    "type": "ia.container.flex", "meta": { "name": "ft_top" }, "position": { "basis": "auto", "shrink": 0 },
+                    "props": { "direction": "row", "alignItems": "center", "style": { "gap": "10px" } },
+                    "children": [
+                      { "type": "ia.display.label", "meta": { "name": "ft_n" }, "position": { "basis": "30px", "shrink": 0 }, "props": { "text": "3", "style": { "color": "#0d1117", "backgroundColor": "#8b949e", "fontSize": "16px", "fontWeight": 800, "borderRadius": "7px", "textAlign": "center", "padding": "1px 0" } } },
+                      { "type": "ia.display.label", "meta": { "name": "ft_name" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "Fault code", "style": { "color": "#e6edf3", "fontSize": "18px", "fontWeight": 700 } } },
+                      { "type": "ia.display.label", "meta": { "name": "ft_u" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "code", "style": { "color": "#c9d1d9", "backgroundColor": "#21262d", "fontSize": "12px", "fontWeight": 700, "borderRadius": "6px", "padding": "2px 9px" } } },
+                      { "type": "ia.display.label", "meta": { "name": "ft_req" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "REQUIRED", "style": { "color": "#f0a90e", "fontSize": "10px", "fontWeight": 700, "letterSpacing": "0.08em" } } }
+                    ]
+                  },
+                  {
+                    "type": "ia.display.label", "meta": { "name": "ft_status" }, "position": { "basis": "auto", "shrink": 0 },
+                    "props": { "text": "…", "style": { "color": "#f0a90e", "fontSize": "14px", "fontWeight": 600, "fontFamily": "inherit" } },
+                    "propConfig": {
+                      "props.text": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.slot_text\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/fault_code\")" } } },
+                      "props.style.color": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.slot_color\", {session.custom.pollMs}, {session.custom.assetId}, \"vfd/vfd101/fault_code\")" } } }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "ia.input.button", "meta": { "name": "optToggle" }, "position": { "basis": "auto", "shrink": 0 },
+                "props": { "text": "+ Add optional signals (15 more)", "style": { "backgroundColor": "#21262d", "color": "#c9d1d9", "fontSize": "13px", "fontWeight": 600, "borderRadius": "8px", "border": "1px solid #30363d", "padding": "8px" } },
+                "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "if({view.custom.showOptional}, \"− Hide optional signals\", \"+ Add optional signals (15 more)\")" } } } },
+                "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tself.view.custom.showOptional = not self.view.custom.showOptional\n" } } } }
+              },
+              {
+                "type": "ia.input.dropdown", "meta": { "name": "optDrop" }, "position": { "basis": "auto", "shrink": 0 },
+                "props": { "value": "", "visible": false, "placeholder": "Choose an optional signal to add…" },
+                "propConfig": {
+                  "props.visible": { "binding": { "type": "property", "config": { "path": "view.custom.showOptional" } } },
+                  "props.value": { "binding": { "type": "property", "config": { "path": "view.custom.selRole" }, "bidirectional": true } },
+                  "props.options": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.optional_role_options\", 0)" } } }
+                }
+              }
+            ]
+          },
+          {
+            "type": "ia.container.flex", "meta": { "name": "right" }, "position": { "grow": 1, "shrink": 1 },
+            "props": { "direction": "column", "style": { "gap": "8px", "overflow": "hidden" } },
+            "children": [
+              {
+                "type": "ia.display.label", "meta": { "name": "pickSub" }, "position": { "basis": "auto", "shrink": 0 },
+                "props": { "text": "…", "style": { "color": "#58a6ff", "fontSize": "14px", "fontWeight": 600 } },
+                "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "\"for:  \" + runScript(\"mira_setup.role_display\", 0, {view.custom.selRole}) + \"      (showing \" + runScript(\"mira_setup.role_typehint\", 0, {view.custom.selRole}) + \")\"" } } } }
+              },
+              {
+                "type": "ia.display.label", "meta": { "name": "pickAbout" }, "position": { "basis": "auto", "shrink": 0 },
+                "props": { "text": "", "style": { "color": "#8b949e", "fontSize": "13px", "fontStyle": "italic", "lineHeight": "1.35" } },
+                "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.role_about\", 0, {view.custom.selRole})" } } } }
+              },
+              {
+                "type": "ia.input.text-field", "meta": { "name": "search" }, "position": { "basis": "auto", "shrink": 0 },
+                "props": { "text": "", "placeholder": "search tag name…  (already filtered to fitting types)" },
+                "propConfig": { "props.text": { "binding": { "type": "property", "config": { "path": "view.custom.selSearch" }, "bidirectional": true } } }
+              },
+              {
+                "type": "ia.display.table", "meta": { "name": "candTable" }, "position": { "grow": 1, "shrink": 1 },
+                "props": {
+                  "data": [],
+                  "columns": [
+                    { "field": "tag", "header": { "title": "Tag  (tap a row to choose)" }, "align": "left" },
+                    { "field": "value", "header": { "title": "Live value" }, "align": "left" },
+                    { "field": "quality", "header": { "title": "Quality" }, "align": "left" },
+                    { "field": "path", "header": { "title": "Full path" }, "align": "left" }
+                  ],
+                  "rows": { "pageSize": 0 },
+                  "style": { "border": "1px solid #30363d", "borderRadius": "8px", "fontSize": "14px" }
+                },
+                "propConfig": { "props.data": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.scan_for_role\", {session.custom.pollMs}, runScript(\"mira_setup.get_setup_folder\", 0), {view.custom.selSearch}, {view.custom.selRole})" } } } },
+                "events": { "component": { "onRowClick": { "type": "script", "scope": "G", "config": { "script": "\ttry:\n\t\tself.view.custom.selTag = event.value['path']\n\t\tself.view.custom.status = \"\"\n\texcept Exception:\n\t\tpass\n" } } } }
+              },
+              {
+                "type": "ia.container.flex", "meta": { "name": "confirm" }, "position": { "basis": "auto", "shrink": 0 },
+                "props": { "direction": "column", "style": { "backgroundColor": "#161b22", "border": "1px solid #30363d", "borderRadius": "8px", "padding": "10px", "gap": "8px" } },
+                "children": [
+                  {
+                    "type": "ia.container.flex", "meta": { "name": "chosenRow" }, "position": { "basis": "auto", "shrink": 0 },
+                    "props": { "direction": "row", "alignItems": "center", "style": { "gap": "10px" } },
+                    "children": [
+                      { "type": "ia.display.label", "meta": { "name": "chosenLbl" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "Chosen:", "style": { "color": "#8b949e", "fontSize": "13px" } } },
+                      {
+                        "type": "ia.display.label", "meta": { "name": "chosenVal" }, "position": { "basis": "auto", "shrink": 0 },
+                        "props": { "text": "(tap a tag)", "style": { "color": "#e6edf3", "fontSize": "14px", "fontWeight": 700, "fontFamily": "inherit" } },
+                        "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "if(len({view.custom.selTag})>0, {view.custom.selTag}, \"(tap a tag — or a suggestion is pre-filled)\")" } } } }
+                      },
+                      {
+                        "type": "ia.display.label", "meta": { "name": "preview" }, "position": { "grow": 1, "shrink": 1 },
+                        "props": { "text": "", "style": { "color": "#58a6ff", "fontSize": "15px", "fontWeight": 700, "fontFamily": "inherit", "textAlign": "right" } },
+                        "propConfig": { "props.text": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.preview\", 1000, {view.custom.selTag}, {view.custom.selDivisor}, {view.custom.selRole})" } } } }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "ia.container.flex", "meta": { "name": "actionRow" }, "position": { "basis": "auto", "shrink": 0 },
+                    "props": { "direction": "row", "alignItems": "center", "style": { "gap": "10px" } },
+                    "children": [
+                      { "type": "ia.display.label", "meta": { "name": "scaleLbl" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "Scale ÷  (raw ÷ this = value at right)", "style": { "color": "#8b949e", "fontSize": "12px" } } },
+                      {
+                        "type": "ia.input.numeric-entry-field", "meta": { "name": "scale" }, "position": { "basis": "85px", "shrink": 0 },
+                        "props": { "value": 100 },
+                        "propConfig": { "props.value": { "binding": { "type": "property", "config": { "path": "view.custom.selDivisor" }, "bidirectional": true } } }
+                      },
+                      {
+                        "type": "ia.input.button", "meta": { "name": "useBtn" }, "position": { "grow": 1, "shrink": 1 },
+                        "props": { "text": "✓ Use this tag", "enabled": false, "style": { "backgroundColor": "#238636", "color": "#fff", "fontSize": "15px", "fontWeight": 700, "borderRadius": "8px", "border": "none", "padding": "9px" } },
+                        "propConfig": {
+                          "props.enabled": { "binding": { "type": "expr", "config": { "expression": "len({view.custom.selTag})>0" } } },
+                          "props.text": { "binding": { "type": "expr", "config": { "expression": "\"✓ Use this tag for  \" + runScript(\"mira_setup.role_display\", 0, {view.custom.selRole})" } } }
+                        },
+                        "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tasset = self.session.custom.assetId or \"conveyor\"\n\trole = self.view.custom.selRole\n\ttag = self.view.custom.selTag\n\tdiv = self.view.custom.selDivisor\n\tself.view.custom.status = mira_setup.set_role(asset, role, tag, div)\n\tself.view.custom.selTag = \"\"\n" } } } }
+                      },
+                      {
+                        "type": "ia.input.button", "meta": { "name": "clearBtn" }, "position": { "basis": "120px", "shrink": 0 },
+                        "props": { "text": "Clear role", "style": { "backgroundColor": "#30363d", "color": "#c9d1d9", "fontSize": "13px", "fontWeight": 600, "borderRadius": "8px", "border": "none", "padding": "9px" } },
+                        "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tself.view.custom.status = mira_setup.clear_role(self.session.custom.assetId or \"conveyor\", self.view.custom.selRole)\n" } } } }
+                      }
+                    ]
+                  },
+                  { "type": "ia.display.label", "meta": { "name": "status" }, "position": { "basis": "auto", "shrink": 0 }, "props": { "text": "", "style": { "color": "#8b949e", "fontSize": "13px" } }, "propConfig": { "props.text": { "binding": { "type": "property", "config": { "path": "view.custom.status" } } } } }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "ia.container.flex", "meta": { "name": "footer" }, "position": { "basis": "60px", "shrink": 0 },
+        "props": { "direction": "row", "alignItems": "center", "style": { "backgroundColor": "#161b22", "borderTop": "1px solid #30363d", "padding": "0 18px", "gap": "12px" } },
+        "children": [
+          {
+            "type": "ia.input.button", "meta": { "name": "back" }, "position": { "basis": "140px", "shrink": 0 },
+            "props": { "text": "◂ Back", "style": { "backgroundColor": "#30363d", "color": "#c9d1d9", "fontSize": "14px", "borderRadius": "8px", "border": "none", "padding": "11px" } },
+            "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tp = {\"assetId\": self.session.custom.assetId, \"folder\": mira_setup.get_setup_folder(), \"pollMs\": self.session.custom.pollMs}\n\tsystem.perspective.navigate(page=\"/verify\")\n" } } } }
+          },
+          { "type": "ia.display.label", "meta": { "name": "fspacer" }, "position": { "grow": 1, "shrink": 1 }, "props": { "text": "Step 3 of 4 — Map", "style": { "color": "#6e7d90", "fontSize": "13px", "textAlign": "center" } } },
+          {
+            "type": "ia.input.button", "meta": { "name": "next" }, "position": { "basis": "200px", "shrink": 0 },
+            "props": { "text": "Next: Save ▸", "enabled": false, "style": { "backgroundColor": "#238636", "color": "#fff", "fontSize": "15px", "fontWeight": 700, "borderRadius": "8px", "border": "none", "padding": "11px" } },
+            "propConfig": { "props.enabled": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_setup.is_ready\", {session.custom.pollMs}, {session.custom.assetId})" } } } },
+            "events": { "component": { "onActionPerformed": { "type": "script", "scope": "G", "config": { "script": "\tp = {\"assetId\": self.session.custom.assetId, \"folder\": mira_setup.get_setup_folder(), \"pollMs\": self.session.custom.pollMs}\n\tsystem.perspective.navigate(page=\"/save\")\n" } } } }
+          }
+        ]
+      }
+    ]
+  }
+}

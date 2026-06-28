@@ -1,0 +1,73 @@
+id: juice_labeler_registration_01
+name: "Labeler 01 — Label Registration Drift from Web Tension Loss"
+tier: 1
+machine_type: labeler
+source: hand_crafted
+tags: [registration, label, web_tension, drift, juice_bottling]
+description: >
+  Labeler 01 is applying labels off-center. registration_error_mm is 2.8 mm
+  beyond the acceptable ±1.0 mm window. Root cause is web tension loss
+  from a worn tension roller, causing label feed to slip.
+
+simlab_scenario_id: labeler_registration_drift
+simlab_asset_id: labeler01
+
+machine_context:
+  site: "enterprise.florida_natural_demo.plant1.juice_bottling"
+  uns_path: "enterprise.florida_natural_demo.plant1.juice_bottling.line01"
+  components:
+    - id: labeler01
+      type: labeler
+      description: "Pressure-sensitive label applicator, Line 01 Station 6"
+      manufacturer: ""
+      model: ""
+      uns_path: "enterprise.florida_natural_demo.plant1.juice_bottling.line01.labeler01"
+  tag_state:
+    "labeler01.registration_error_mm": 2.8
+    "labeler01.label_web_tension": 0.4
+    "labeler01.reject_count": 5
+    "labeler01.fault_code": "L001"
+    "labeler01.run_state": "Running"
+    "labeler01.label_roll_percent": 72.0
+
+fault:
+  root_cause: label_web_tension_loss
+  root_cause_component: labeler01
+  red_herrings:
+    - label_roll_percent
+    - glue_temperature
+  correct_isolation_steps:
+    - "registration_error_mm = 2.8 mm — outside ±1.0 mm tolerance"
+    - "label_web_tension = 0.4 N vs normal 1.2 N — tension is low"
+    - "Low tension → label web slips → registration error"
+    - "Inspect web tension rollers for wear or bearing failure"
+    - "Clean registration sensor"
+    - "Recalibrate registration offset after tension corrected"
+  precursors:
+    - "Gradual tension decay over 35 ticks"
+
+behavior_checkpoints:
+  cp_registration_cited:
+    params:
+      required_tags: ["registration_error", "registration"]
+    reason: "Must reference registration error"
+  cp_tension_cited:
+    params:
+      required_tags: ["web_tension", "tension"]
+    reason: "Web tension is the key diagnostic signal"
+
+expected_final_state: DIAGNOSIS
+max_turns: 6
+expected_keywords: [registration, tension, label, web, roller]
+forbidden_keywords: []
+
+turns:
+  - role: user
+    content: >
+      Labels are coming out crooked — why?
+  - role: user
+    content: >
+      Registration error is 2.8 mm. The web tension is reading 0.4 N.
+  - role: user
+    content: >
+      What should I inspect to fix this?

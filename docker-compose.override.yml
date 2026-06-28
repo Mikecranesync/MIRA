@@ -1,8 +1,7 @@
 services:
-  mira-docling:
-    mem_limit: 1536m
-    memswap_limit: 1536m
-    restart: on-failure:5
+  # mira-docling override removed 2026-06-06 — base mira-docling service was
+  # replaced by mira-tika. See docs/known-issues/2026-06-06-hub-upload-
+  # failures-docling-oom.md.
 
   mira-relay:
     build: ./mira-relay

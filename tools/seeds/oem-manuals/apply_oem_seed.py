@@ -106,7 +106,10 @@ def backfill_missing_embeddings(
         for r in rows:
             log.info(
                 "  [DRY] would embed id=%s mfr=%s model=%s preview=%r",
-                str(r[0])[:8], r[1], r[2], (r[3] or "")[:60],
+                str(r[0])[:8],
+                r[1],
+                r[2],
+                (r[3] or "")[:60],
             )
         return len(rows)
 
@@ -123,7 +126,9 @@ def backfill_missing_embeddings(
             continue
         with eng.connect() as c:
             c.execute(
-                text("UPDATE knowledge_entries SET embedding = cast(:emb AS vector) WHERE id = :id"),
+                text(
+                    "UPDATE knowledge_entries SET embedding = cast(:emb AS vector) WHERE id = :id"
+                ),
                 {"id": rid, "emb": str(vec)},
             )
             c.commit()
@@ -170,7 +175,10 @@ def insert_new_chunks(
         if dry_run:
             log.info(
                 "  [DRY] would insert chunk_key=%s mfr=%s model=%s len=%d",
-                key, ch.get("manufacturer"), ch.get("model_number"), len(body),
+                key,
+                ch.get("manufacturer"),
+                ch.get("model_number"),
+                len(body),
             )
             inserted += 1
             continue
@@ -237,14 +245,22 @@ def load_chunks(chunks_path: Path = DEFAULT_CHUNKS_PATH) -> list[dict]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="OEM-manual KB seed applier")
-    ap.add_argument("--dry-run", action="store_true", help="report actions without DB writes / embed calls")
+    ap.add_argument(
+        "--dry-run", action="store_true", help="report actions without DB writes / embed calls"
+    )
     ap.add_argument("--skip-backfill", action="store_true", help="skip Step 1 (embedding backfill)")
     ap.add_argument("--skip-new", action="store_true", help="skip Step 2 (new chunk insert)")
-    ap.add_argument("--ollama-url", default=os.environ.get("OLLAMA_URL", DEFAULT_OLLAMA),
-                    help="Ollama base URL (default: Bravo LAN)")
+    ap.add_argument(
+        "--ollama-url",
+        default=os.environ.get("OLLAMA_URL", DEFAULT_OLLAMA),
+        help="Ollama base URL (default: Bravo LAN)",
+    )
     ap.add_argument("--tenant-id", default=os.environ.get("MIRA_TENANT_ID", DEFAULT_TENANT))
-    ap.add_argument("--chunks", default=str(DEFAULT_CHUNKS_PATH),
-                    help="path to chunks.jsonl (default: this script's directory)")
+    ap.add_argument(
+        "--chunks",
+        default=str(DEFAULT_CHUNKS_PATH),
+        help="path to chunks.jsonl (default: this script's directory)",
+    )
     args = ap.parse_args()
 
     log.info("ollama: %s  tenant: %s  dry_run: %s", args.ollama_url, args.tenant_id, args.dry_run)
@@ -259,8 +275,10 @@ def main() -> int:
             ping.raise_for_status()
         except Exception as e:
             log.error("Ollama unreachable at %s: %s", args.ollama_url, e)
-            log.error("Run this script from a node that can reach Bravo "
-                      "(LAN 192.168.1.11) or set --ollama-url to a reachable Ollama.")
+            log.error(
+                "Run this script from a node that can reach Bravo "
+                "(LAN 192.168.1.11) or set --ollama-url to a reachable Ollama."
+            )
             return 2
 
     eng = neon_engine()

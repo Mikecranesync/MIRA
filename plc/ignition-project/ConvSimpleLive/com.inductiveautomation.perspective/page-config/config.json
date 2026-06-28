@@ -9,6 +9,11 @@
       "title": "Garage Conveyor",
       "viewPath": "Conveyor",
       "docks": {}
+    },
+    "/maintenance": {
+      "title": "Maintenance Intelligence",
+      "viewPath": "MaintenancePanel",
+      "docks": {}
     }
   }
 }

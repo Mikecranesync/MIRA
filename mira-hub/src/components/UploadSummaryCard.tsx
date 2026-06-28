@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Loader2, AlertCircle, CalendarDays, BookOpen, Wrench } from "lucide-react";
+import { CheckCircle2, Loader2, AlertCircle, CalendarDays, BookOpen, Wrench, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/config";
 
@@ -16,6 +16,11 @@ interface UploadSummaryData {
   pm_tasks_count: number;
   fault_codes_count: number;
   knowledge_chunks_count: number;
+  // #1900: where the chunks landed + whether they're citable. A 'v2' upload is
+  // attached to a kg_entities node (the per-tenant Inbox for blind PDFs) and is
+  // answerable by that node's Ask MIRA. kgEntityId is the deep-link target.
+  kgEntityId: string | null;
+  ingestRoute: string | null;
 }
 
 const POLLING_INTERVAL_MS = 3_000;
@@ -78,7 +83,7 @@ export function UploadSummaryCard({ uploadId }: { uploadId: string }) {
     async function poll() {
       if (!mountedRef.current) return;
       try {
-        const res = await fetch(`${API_BASE}/api/uploads/${uploadId}`, { cache: "no-store" });
+        const res = await fetch(`${API_BASE}/api/uploads/${uploadId}/`, { cache: "no-store" });
         if (!res.ok) {
           setFetchError(`Failed to load upload status (${res.status})`);
           return;
@@ -99,7 +104,6 @@ export function UploadSummaryCard({ uploadId }: { uploadId: string }) {
     }
 
     void poll();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uploadId]);
 
   if (fetchError) {
@@ -183,19 +187,37 @@ export function UploadSummaryCard({ uploadId }: { uploadId: string }) {
 
       {/* CTAs — only shown once processing is done */}
       {!processing && !failed && (
-        <div className="flex gap-2 pt-1">
-          <Button asChild size="sm" variant="outline" className="flex-1 text-xs gap-1.5">
-            <Link href="/schedule">
-              <CalendarDays className="w-3.5 h-3.5" />
-              View PM Schedule
-            </Link>
-          </Button>
-          <Button asChild size="sm" variant="outline" className="flex-1 text-xs gap-1.5">
-            <Link href="/knowledge/manuals">
-              <BookOpen className="w-3.5 h-3.5" />
-              View Knowledge Base
-            </Link>
-          </Button>
+        <div className="space-y-2 pt-1">
+          {/* #1900 keystone: a manual that "Parsed" is useless until the user can
+              ASK about it. When the upload is citable (v2, attached to a node),
+              lead with a deep-link straight into that node's Ask MIRA so the
+              obvious next action — ask a question — is one click, not a hunt
+              through Namespace → folder → Ask MIRA. */}
+          {data.ingestRoute === "v2" && data.knowledge_chunks_count > 0 && (
+            <Button asChild size="sm" className="w-full text-xs gap-1.5">
+              <Link
+                href={`/namespace?node=${data.kgEntityId ?? "inbox"}&chat=1`}
+                data-testid="upload-ask-mira-cta"
+              >
+                <Bot className="w-3.5 h-3.5" />
+                Ask MIRA about this manual
+              </Link>
+            </Button>
+          )}
+          <div className="flex gap-2">
+            <Button asChild size="sm" variant="outline" className="flex-1 text-xs gap-1.5">
+              <Link href="/schedule">
+                <CalendarDays className="w-3.5 h-3.5" />
+                View PM Schedule
+              </Link>
+            </Button>
+            <Button asChild size="sm" variant="outline" className="flex-1 text-xs gap-1.5">
+              <Link href="/knowledge/manuals">
+                <BookOpen className="w-3.5 h-3.5" />
+                View Knowledge Base
+              </Link>
+            </Button>
+          </div>
         </div>
       )}
     </div>

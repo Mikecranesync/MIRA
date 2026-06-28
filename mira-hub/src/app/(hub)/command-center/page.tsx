@@ -1,12 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown, ChevronRight,
   Folder, FolderOpen, Cog, Factory, FileText, Layers,
-  RefreshCw, MonitorPlay, MonitorOff, Radio,
+  RefreshCw, MonitorPlay, MonitorOff, Radio, ExternalLink, Plus,
+  Wifi, WifiOff,
 } from "lucide-react";
 import { API_BASE } from "@/lib/config";
+import {
+  collectConfiguredDisplays,
+  isCommandCenterEmpty,
+  type ConfiguredDisplay,
+} from "@/lib/command-center-view";
+import { ConnectDisplayModal } from "@/components/command-center/connect-display-modal";
+import { HubStatusBoard } from "@/components/hub/HubStatusBoard";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 // Mirrors CommandCenterNode in /api/command-center/tree/route.ts.
@@ -50,6 +58,64 @@ function KindIcon({ kind, open, className }: { kind: string; open: boolean; clas
   return <Layers className={className} />;
 }
 
+// ── Connected Gateways Bar (Phase 2, issue #2014) ────────────────────────────
+// Reads from GET /api/command-center/gateways which surfaces every Ignition
+// gateway that completed the MIRA Connect activation flow for this tenant.
+// Each gateway is probed for HTTP reachability on the server side; we just
+// render the result here.
+
+interface GatewayEntry {
+  hostname: string;
+  agentId: string | null;
+  activatedAt: string;
+  online: boolean;
+}
+
+function ConnectedGatewaysBar() {
+  const [gateways, setGateways] = useState<GatewayEntry[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    void fetch(`${API_BASE}/api/command-center/gateways`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j: { gateways: GatewayEntry[] }) => setGateways(j.gateways))
+      .catch(() => undefined)
+      .finally(() => setLoaded(true));
+  }, []);
+
+  // Don't show anything until loaded (avoids flicker on first paint).
+  if (!loaded) return null;
+  // No gateways yet — show a compact hint instead of an empty bar.
+  if (gateways.length === 0) return (
+    <div className="border-b px-5 py-1.5 text-[11px] text-slate-400"
+      style={{ borderColor: "var(--border, #e2e8f0)" }}>
+      No Ignition gateways connected. Activate MIRA Connect from your gateway to pair it.
+    </div>
+  );
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b px-5 py-1.5"
+      style={{ borderColor: "var(--border, #e2e8f0)" }}>
+      <span className="text-[11px] font-medium text-slate-500">Gateways:</span>
+      {gateways.map((g) => (
+        <span key={g.hostname}
+          className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium"
+          style={{
+            borderColor: g.online ? "#16a34a40" : "#cbd5e1",
+            backgroundColor: g.online ? "#f0fdf4" : "#f8fafc",
+            color: g.online ? "#15803d" : "#64748b",
+          }}
+          title={`${g.hostname}${g.agentId ? ` · agent ${g.agentId}` : ""}`}>
+          {g.online
+            ? <Wifi className="h-3 w-3" />
+            : <WifiOff className="h-3 w-3" />}
+          {g.hostname}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function CommandCenterPage() {
@@ -58,14 +124,32 @@ export default function CommandCenterPage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<CCNode | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [showConnect, setShowConnect] = useState(false);
+  // The full namespace tree (incl. audit/test nodes) is demoted behind this
+  // toggle so the default view leads with configured live views, not 117 nodes.
+  const [showAllNodes, setShowAllNodes] = useState(false);
+  // Auto-select the first configured display once, on first load.
+  const autoSelectedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/command-center/tree`, { cache: "no-store" });
+      const res = await fetch(`${API_BASE}/api/command-center/tree/`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as TreeResponse;
       setData(json);
       setError(null);
+      // Land on the first live view so "Open Live View" is immediately visible
+      // instead of a bare "Select a node". Once only — never overrides a user's
+      // later selection or re-fires on the 10s poll.
+      if (!autoSelectedRef.current) {
+        const first = collectConfiguredDisplays(json.nodes)[0];
+        const node = first ? findById(json.nodes, first.nodeId) : null;
+        if (node) {
+          setSelected(node);
+          autoSelectedRef.current = true;
+        }
+      }
       // Expand the path to every display so live equipment is visible on load.
       setExpanded((prev) => {
         if (prev.size > 0) return prev;
@@ -100,6 +184,29 @@ export default function CommandCenterPage() {
     return findById(data.nodes, selected.id) ?? selected;
   }, [data, selected]);
 
+  // Configured live views (the curated, displays-first list) + the honest
+  // empty-state decision. Audit/no-display nodes are excluded here and demoted
+  // to the collapsible "All namespace nodes" section below.
+  const displays = useMemo(() => (data ? collectConfiguredDisplays(data.nodes) : []), [data]);
+  const empty = data ? isCommandCenterEmpty(data) : false;
+
+  const selectByNodeId = useCallback(
+    (id: string) => {
+      if (!data) return;
+      const hit = findById(data.nodes, id);
+      if (hit) setSelected(hit);
+    },
+    [data],
+  );
+
+  // Manual refresh: show a spinner so the click reads as doing something. The
+  // background poll (POLL_MS) keeps re-fetching silently and must NOT flip this.
+  const manualRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try { await refresh(); } finally { setRefreshing(false); }
+  };
+
   const toggle = (id: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -119,34 +226,192 @@ export default function CommandCenterPage() {
           {data && <FreshnessSummary counts={data.freshnessCounts}
             displaysTotal={data.displaysTotal} reachable={data.liveCount} />}
         </div>
-        <button onClick={() => refresh()}
-          className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium hover:bg-black/5"
-          title="Refresh">
-          <RefreshCw className="h-3.5 w-3.5" /> Refresh
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowConnect(true)}
+            className="flex items-center gap-1.5 rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+            title="Connect a live view">
+            <Plus className="h-3.5 w-3.5" />
+            Connect live view
+          </button>
+          <button onClick={() => void manualRefresh()}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium hover:bg-black/5 disabled:opacity-50"
+            title="Refresh">
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
+      </div>
+
+      {/* Connected Gateways Bar — Phase 2, issue #2014. */}
+      <ConnectedGatewaysBar />
+
+      <HubStatusBoard />
+
+      {loading && <p className="px-5 py-4 text-sm text-slate-500">Loading namespace…</p>}
+      {error && <p className="px-5 py-4 text-sm text-red-600">Failed to load: {error}</p>}
+
+      {/* Empty / onboarding state — shown when nothing is connected and no
+          telemetry is arriving. We do NOT dump the 100+ audit/test nodes here;
+          the full tree is available behind "Browse all namespace nodes". */}
+      {!loading && !error && data && empty && (
+        <OnboardingEmpty
+          totalNodes={data.total}
+          showAllNodes={showAllNodes}
+          onToggleAllNodes={() => setShowAllNodes((v) => !v)}
+          onConnect={() => setShowConnect(true)}
+          tree={
+            <div className="overflow-y-auto py-2">
+              {data.nodes.map((n) => (
+                <TreeRow key={n.id} node={n} depth={0}
+                  expanded={expanded} toggle={toggle}
+                  selectedId={selectedLive?.id ?? null} onSelect={setSelected} />
+              ))}
+            </div>
+          }
+        />
+      )}
+
+      {/* Configured / populated state — displays first, full tree demoted. */}
+      {!loading && !error && data && !empty && (
+        <div className="flex flex-1 overflow-hidden">
+          <div className="w-[340px] flex-shrink-0 overflow-y-auto border-r py-2"
+            style={{ borderColor: "var(--border, #e2e8f0)" }}>
+            <LiveViewsSection
+              displays={displays}
+              selectedId={selectedLive?.id ?? null}
+              onSelect={selectByNodeId}
+              onConnect={() => setShowConnect(true)}
+            />
+
+            {/* Full namespace tree (incl. audit/test nodes) — demoted, collapsed
+                by default so it isn't the buyer-facing default experience. */}
+            <button
+              onClick={() => setShowAllNodes((v) => !v)}
+              className="mt-2 flex w-full items-center gap-1.5 border-t px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 hover:bg-black/5"
+              style={{ borderColor: "var(--border, #e2e8f0)" }}
+            >
+              {showAllNodes ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+              All namespace nodes ({data.total})
+            </button>
+            {showAllNodes && data.nodes.map((n) => (
+              <TreeRow key={n.id} node={n} depth={0}
+                expanded={expanded} toggle={toggle}
+                selectedId={selectedLive?.id ?? null} onSelect={setSelected} />
+            ))}
+          </div>
+
+          {/* Right: live viewer */}
+          <div className="flex flex-1 flex-col overflow-hidden bg-slate-50">
+            <Viewer node={selectedLive} />
+          </div>
+        </div>
+      )}
+
+      {showConnect && data && (
+        <ConnectDisplayModal
+          nodes={data.nodes}
+          onClose={() => setShowConnect(false)}
+          onRegistered={() => { void manualRefresh(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Live Views section (the curated, displays-first list) ─────────────────────
+
+function LiveViewsSection({
+  displays, selectedId, onSelect, onConnect,
+}: {
+  displays: ConfiguredDisplay[];
+  selectedId: string | null;
+  onSelect: (nodeId: string) => void;
+  onConnect: () => void;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between px-4 pb-1.5 pt-1">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          Live Views ({displays.length})
+        </span>
+      </div>
+      {displays.length === 0 ? (
+        <div className="px-4 py-3">
+          <p className="text-xs text-slate-500">No live screens connected yet.</p>
+          <button onClick={onConnect} className="mt-2 inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
+            style={{ borderColor: "var(--border, #e2e8f0)" }}>
+            <Plus className="h-3.5 w-3.5" /> Connect live screen
+          </button>
+        </div>
+      ) : (
+        displays.map((d) => {
+          const isSel = d.nodeId === selectedId;
+          return (
+            <button
+              key={d.displayId}
+              onClick={() => onSelect(d.nodeId)}
+              className="flex w-full items-start gap-2 px-4 py-2 text-left hover:bg-black/5"
+              style={{ backgroundColor: isSel ? "#2563EB14" : undefined }}
+            >
+              <MonitorPlay className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-500" />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5">
+                  <span className="truncate text-sm font-medium">{d.label}</span>
+                  <FreshnessDot freshness={d.tagFreshness} />
+                </span>
+                {d.unsPath && <span className="block truncate font-mono text-[10px] text-slate-400">{d.unsPath}</span>}
+                <span className="mt-0.5 inline-flex items-center gap-1 text-[10px]"
+                  style={{ color: d.live ? "#16a34a" : "#2563eb" }}>
+                  <DisplayDot live={d.live} />
+                  {d.live ? "display up" : "open to view ↗"}
+                </span>
+              </span>
+            </button>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+// ── Onboarding empty state ────────────────────────────────────────────────────
+
+function OnboardingEmpty({
+  totalNodes, showAllNodes, onToggleAllNodes, onConnect, tree,
+}: {
+  totalNodes: number;
+  showAllNodes: boolean;
+  onToggleAllNodes: () => void;
+  onConnect: () => void;
+  tree: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-1 flex-col overflow-y-auto">
+      <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+        <MonitorPlay className="mb-4 h-12 w-12 text-slate-300" />
+        <h2 className="text-base font-semibold text-slate-700">No live screens connected yet</h2>
+        <p className="mt-1 max-w-md text-sm text-slate-500">
+          Pick a gateway and a screen MIRA already knows about, choose the machine it shows, and
+          it&apos;ll appear here. The screen opens in its own tab and stays connected across
+          refreshes.
+        </p>
+        <button onClick={onConnect}
+          className="mt-5 inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
+          <Plus className="h-4 w-4" /> Connect live screen
         </button>
+        {totalNodes > 0 && (
+          <button onClick={onToggleAllNodes}
+            className="mt-3 text-xs font-medium text-slate-500 underline-offset-2 hover:underline">
+            {showAllNodes ? "Hide namespace nodes" : `Browse all namespace nodes (${totalNodes})`}
+          </button>
+        )}
       </div>
-
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left: UNS tree */}
-        <div className="w-[320px] flex-shrink-0 overflow-y-auto border-r py-2"
-          style={{ borderColor: "var(--border, #e2e8f0)" }}>
-          {loading && <p className="px-4 py-3 text-sm text-slate-500">Loading namespace…</p>}
-          {error && <p className="px-4 py-3 text-sm text-red-600">Failed to load: {error}</p>}
-          {!loading && !error && data && data.nodes.length === 0 && (
-            <p className="px-4 py-3 text-sm text-slate-500">No equipment in the namespace yet.</p>
-          )}
-          {data?.nodes.map((n) => (
-            <TreeRow key={n.id} node={n} depth={0}
-              expanded={expanded} toggle={toggle}
-              selectedId={selectedLive?.id ?? null} onSelect={setSelected} />
-          ))}
+      {showAllNodes && (
+        <div className="border-t" style={{ borderColor: "var(--border, #e2e8f0)" }}>
+          {tree}
         </div>
-
-        {/* Right: live viewer */}
-        <div className="flex flex-1 flex-col overflow-hidden bg-slate-50">
-          <Viewer node={selectedLive} />
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -176,7 +441,11 @@ function TreeRow({
           backgroundColor: isSelected ? "#2563EB14" : undefined,
         }}
         onClick={() => {
-          if (node.hasLiveDisplay) onSelect(node);
+          // Every node is selectable — the Viewer renders the right state per
+          // node (live display, "no display configured", or no-tags). Gating
+          // selection on hasLiveDisplay froze the detail panel on the one
+          // display node and swallowed every other click.
+          onSelect(node);
           if (hasChildren) toggle(node.id);
         }}
       >
@@ -201,14 +470,20 @@ function TreeRow({
   );
 }
 
-/** Green dot (open ring) = a registered HMI display URL reachable over HTTP.
- * SECONDARY status — reachability, NOT telemetry freshness. */
+/** Open ring = a registered HMI display. Green when the Hub server confirmed it
+ * reachable over HTTP; blue ("open to view") when it couldn't probe — which is
+ * the normal case for a Tailscale/LAN gateway viewed from the cloud Hub, since
+ * the VPS isn't on the tenant's tailnet and an HTTPS page can't probe an HTTP
+ * gateway (mixed content). Blue is NOT "down": the display opens in the user's
+ * browser, which CAN reach it. SECONDARY status — reachability, not telemetry. */
 function DisplayDot({ live }: { live: boolean }) {
   return (
     <span className="relative ml-1 flex h-2.5 w-2.5 flex-shrink-0"
-      title={live ? "Display URL reachable (HTTP) — click to watch" : "Display registered but unreachable"}>
+      title={live
+        ? "Display URL reachable (HTTP) — click to watch"
+        : "Registered — opens in your browser. The cloud Hub can't probe a Tailscale/LAN gateway, so reachability isn't confirmed server-side."}>
       <span className="relative inline-flex h-2.5 w-2.5 rounded-full border-2"
-        style={{ borderColor: live ? "#16a34a" : "#cbd5e1", backgroundColor: "transparent" }} />
+        style={{ borderColor: live ? "#16a34a" : "#2563eb", backgroundColor: "transparent" }} />
     </span>
   );
 }
@@ -272,7 +547,8 @@ function FreshnessSummary({
       <FreshnessDot freshness={headline} forceShow />
       {counts.live} live · {counts.stale} stale · {counts.simulated} sim
       <span className="text-slate-400">
-        · {reachable}/{displaysTotal} display{displaysTotal === 1 ? "" : "s"} up
+        · {displaysTotal} display{displaysTotal === 1 ? "" : "s"} connected
+        {reachable > 0 ? ` · ${reachable} cloud-reachable` : ""}
       </span>
     </span>
   );
@@ -284,8 +560,8 @@ function Viewer({ node }: { node: CCNode | null }) {
   if (!node) {
     return (
       <Empty icon={MonitorPlay}
-        title="Select an asset with a live display"
-        sub="Equipment with a green dot has a screen you can watch." />
+        title="Select a node to see its details"
+        sub="Equipment with a green dot has a live screen you can watch." />
     );
   }
   if (!node.hasLiveDisplay || !node.displayId) {
@@ -295,6 +571,15 @@ function Viewer({ node }: { node: CCNode | null }) {
         sub={node.unsPath ?? node.name} />
     );
   }
+
+  // Open-in-new-tab handoff. Iframing third-party HMIs (Ignition Perspective,
+  // Node-RED) is fragile: X-Frame-Options/CSP block the frame, the SPA loads
+  // assets at origin-root absolute paths that bypass per-id sub-path proxies,
+  // and the embedded panel still wants its own login. Top-level navigation
+  // ignores XFO and matches the direct-connection model in
+  // .claude/rules/direct-connection-uns-certified.md — the Hub hands off, the
+  // HMI runs in its own tab.
+  const displayHref = `${API_BASE}/api/command-center/display/${node.displayId}`;
 
   return (
     <>
@@ -318,15 +603,32 @@ function Viewer({ node }: { node: CCNode | null }) {
           </span>
         </div>
       </div>
-      <iframe
-        // Browser is redirected straight to the HMI (WebSockets intact). No
-        // allow-forms / allow-top-navigation: the embedded screen is watch-only.
-        key={node.displayId}
-        src={`${API_BASE}/api/command-center/display/${node.displayId}`}
-        title={node.displayLabel ?? node.name}
-        className="flex-1 border-0"
-        sandbox="allow-same-origin allow-scripts allow-popups"
-      />
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+        <MonitorPlay className="h-12 w-12 text-slate-300" />
+        <div>
+          <p className="text-base font-semibold text-slate-700">
+            {node.displayLabel ?? node.name}
+          </p>
+          <p className="mt-1 max-w-md text-xs text-slate-500">
+            Live HMIs open in a new tab so they keep their own session and
+            WebSocket connection. Click below to view the screen.
+          </p>
+        </div>
+        <a
+          href={displayHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+        >
+          <ExternalLink className="h-4 w-4" />
+          Open Live View
+        </a>
+        {!node.live && (
+          <p className="text-xs text-amber-600">
+            Display is currently unreachable over HTTP — the new tab may not load.
+          </p>
+        )}
+      </div>
     </>
   );
 }

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="OpenPLC" productName="OpenPLC Editor" productVersion="1.0"
+              creationDateTime="2026-06-17T08:00:00"/>
+  <contentHeader name="ConveyorCellPLCopen">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd><ld><scaling x="1" y="1"/></ld><sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="ConveyorControl" pouType="program">
+        <interface>
+          <localVars>
+            <variable name="StartPB"><type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">operator start pushbutton</xhtml></documentation>
+            </variable>
+            <variable name="EStopOK"><type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">emergency-stop circuit healthy</xhtml></documentation>
+            </variable>
+            <variable name="AutoMode"><type><BOOL/></type></variable>
+            <variable name="JamPhotoeye"><type><BOOL/></type></variable>
+            <variable name="MotorRun"><type><BOOL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">conveyor VFD run command</xhtml></documentation>
+            </variable>
+            <variable name="ConvFault"><type><BOOL/></type></variable>
+            <variable name="VFD_Frequency"><type><REAL/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">drive output frequency Hz</xhtml></documentation>
+            </variable>
+            <variable name="VFD_Current"><type><REAL/></type></variable>
+            <variable name="VFD_FaultCode"><type><DINT/></type>
+              <documentation><xhtml xmlns="http://www.w3.org/1999/xhtml">active drive fault code</xhtml></documentation>
+            </variable>
+          </localVars>
+          <globalVars>
+            <variable name="LineSpeedSetpoint"><type><REAL/></type>
+              <initialValue><simpleValue value="60.0"/></initialValue>
+            </variable>
+          </globalVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">IF StartPB AND EStopOK AND AutoMode AND NOT ConvFault THEN
+    MotorRun := TRUE;
+END_IF;
+IF VFD_FaultCode &gt; 0 OR (MotorRun AND JamPhotoeye) THEN
+    ConvFault := TRUE;
+END_IF;</xhtml>
+          </ST>
+        </body>
+      </pou>
+    </pous>
+  </types>
+  <instances><configurations/></instances>
+</project>

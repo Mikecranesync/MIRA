@@ -1,0 +1,113 @@
+{
+  "custom": {},
+  "params": {
+    "assetId": "conveyor",
+    "tagFolders": "[default]MIRA_IOCheck/VFD,[default]MIRA_IOCheck/Inputs,[default]MIRA_IOCheck/Outputs,[default]Conveyor",
+    "pollMs": 2000
+  },
+  "props": { "defaultSize": { "width": 1280, "height": 800 } },
+  "root": {
+    "type": "ia.container.flex",
+    "meta": { "name": "root" },
+    "props": { "direction": "column", "style": { "backgroundColor": "#0d1117", "height": "100%" } },
+    "children": [
+      {
+        "type": "ia.container.flex",
+        "meta": { "name": "header" },
+        "position": { "basis": "60px", "shrink": 0 },
+        "props": {
+          "direction": "row", "alignItems": "center",
+          "style": { "backgroundColor": "#161b22", "borderBottom": "1px solid #30363d", "padding": "0 16px", "gap": "14px" }
+        },
+        "children": [
+          {
+            "type": "ia.display.label",
+            "meta": { "name": "brand" },
+            "position": { "basis": "auto", "shrink": 0 },
+            "props": { "text": "MAINTENANCE INTELLIGENCE (config-driven)", "style": { "color": "#e6edf3", "fontSize": "16px", "fontWeight": 700, "letterSpacing": "0.08em" } }
+          },
+          {
+            "type": "ia.display.label",
+            "meta": { "name": "statePill" },
+            "position": { "basis": "auto", "shrink": 0 },
+            "props": { "text": "…", "style": { "color": "#ffffff", "backgroundColor": "#30363d", "fontSize": "13px", "fontWeight": 700, "letterSpacing": "0.06em", "borderRadius": "13px", "padding": "4px 14px" } },
+            "propConfig": {
+              "props.text": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_diagnose.header_text\", {view.params.pollMs}, {view.params.tagFolders}, {view.params.assetId})" } } },
+              "props.style.backgroundColor": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_diagnose.header_color\", {view.params.pollMs}, {view.params.tagFolders}, {view.params.assetId})" } } }
+            }
+          },
+          {
+            "type": "ia.display.label",
+            "meta": { "name": "stateSub" },
+            "position": { "grow": 1, "shrink": 1 },
+            "props": { "text": "", "style": { "color": "#8b949e", "fontSize": "13px" } },
+            "propConfig": {
+              "props.text": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_diagnose.header_sub\", {view.params.pollMs}, {view.params.tagFolders}, {view.params.assetId})" } } }
+            }
+          },
+          {
+            "type": "ia.display.label",
+            "meta": { "name": "countBadge" },
+            "position": { "basis": "auto", "shrink": 0 },
+            "props": { "text": "", "style": { "color": "#c9d1d9", "fontSize": "12px", "fontWeight": 600, "fontFamily": "Consolas, monospace" } },
+            "propConfig": {
+              "props.text": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_diagnose.count_text\", {view.params.pollMs}, {view.params.tagFolders}, {view.params.assetId})" } } }
+            }
+          }
+        ]
+      },
+      {
+        "type": "ia.container.flex",
+        "meta": { "name": "body" },
+        "position": { "grow": 1, "basis": "1" },
+        "props": { "direction": "column", "style": { "padding": "12px", "gap": "10px" } },
+        "children": [
+          {
+            "type": "ia.display.label",
+            "meta": { "name": "feedLabel" },
+            "position": { "basis": "20px", "shrink": 0 },
+            "props": { "text": "ANOMALY FEED (asset = {view.params.assetId}, reading its config map)", "style": { "color": "#8b949e", "fontSize": "11px", "fontWeight": 700, "letterSpacing": "0.08em" } },
+            "propConfig": {
+              "props.text": { "binding": { "type": "expr", "config": { "expression": "\"ANOMALY FEED  \\u00b7  asset = \" + {view.params.assetId} + \"  (config-driven)\"" } } }
+            }
+          },
+          {
+            "type": "ia.display.markdown",
+            "meta": { "name": "feedMarkdown" },
+            "position": { "grow": 1, "basis": "1", "shrink": 1 },
+            "props": {
+              "source": "Loading…",
+              "style": { "backgroundColor": "#0d1117", "color": "#e6edf3", "border": "1px solid #30363d", "borderRadius": "8px", "padding": "12px", "fontSize": "13px", "overflow": "auto" }
+            },
+            "propConfig": {
+              "props.source": { "binding": { "type": "expr", "config": { "expression": "runScript(\"mira_diagnose.feed_markdown\", {view.params.pollMs}, {view.params.tagFolders}, {view.params.assetId})" } } }
+            }
+          },
+          {
+            "type": "ia.input.button",
+            "meta": { "name": "askBtn" },
+            "position": { "basis": "42px", "shrink": 0 },
+            "props": { "text": "Ask MIRA about the active fault", "style": { "backgroundColor": "#1f6feb", "color": "#ffffff", "fontSize": "13px", "fontWeight": 700, "borderRadius": "8px", "border": "none" } },
+            "events": {
+              "component": {
+                "onActionPerformed": {
+                  "type": "script", "scope": "G",
+                  "config": { "script": "\tfolders = self.view.params.tagFolders\n\tasset = self.view.params.assetId\n\ttry:\n\t\tq = mira_diagnose.top_ask_text(folders, asset)\n\texcept Exception as e:\n\t\tq = \"What is going on with this drive?\"\n\t\tsystem.util.getLogger(\"FactoryLM.Mira.MaintConfig\").warn(\"top_ask_text failed: \" + str(e))\n\tsystem.perspective.openPopup(\"mira-ask\", \"MiraAsk\", params={\"seedQuestion\": q}, title=\"Ask MIRA\", showCloseIcon=True, draggable=True, resizable=True, modal=False)\n" }
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "type": "ia.display.label",
+        "meta": { "name": "footer" },
+        "position": { "basis": "28px", "shrink": 0 },
+        "props": {
+          "text": "Config-driven anomaly detection (reads [default]MIRA/Config/<asset>/map) · sandbox · FactoryLM",
+          "style": { "color": "#6b7480", "fontSize": "11px", "textAlign": "center", "borderTop": "1px solid #30363d", "padding": "5px" }
+        }
+      }
+    ]
+  }
+}

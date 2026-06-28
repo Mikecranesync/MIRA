@@ -43,9 +43,12 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install mira-hub npm deps
+      - uses: oven-sh/setup-bun@v2
+
+      # Install via bun (bun.lock) — npm ci hard-fails on package-lock drift.
+      - name: Install mira-hub deps
         working-directory: mira-hub
-        run: npm ci --ignore-scripts
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Install Playwright Chromium + OS deps
         working-directory: mira-hub
