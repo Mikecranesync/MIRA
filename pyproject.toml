@@ -15,6 +15,7 @@ exclude = [
     # ruff cannot model. Lint these in their own Jython environment, not here.
     "ignition/webdev",
     "ignition/gateway-scripts",
+    "plc/ignition-project",
 ]
 
 [tool.ruff.lint]
