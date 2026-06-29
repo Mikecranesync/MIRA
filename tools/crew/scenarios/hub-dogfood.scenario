@@ -16,7 +16,7 @@ SCN_LABELS="bug,hub,dogfood,needs-triage"
 SCN_SEVERITY="P2"
 SCN_FINDER="carlos"
 SCN_VERIFIER="dana"
-SCN_DEDUPE="work order resolution closed_at GET omits"
+SCN_DEDUPE="omits resolution closed_at"
 SCN_NOT_SHARED="the caller's own work order in their own tenant — no shared/public corpus involved"
 SCN_EVIDENCE="PATCH RETURNING includes resolution+closed_at; GET SELECT/rowToWO omit them (mira-hub/src/app/api/work-orders/[id]/route.ts)"
 SCN_NARRATIVE="Synthetic regression re-verification of #2375. PATCH a work order to completed with a resolution; the GET detail then returns resolution=null and closed_at=null even though PATCH persisted them."
@@ -27,7 +27,11 @@ SCN_REPRO_CMD='
 set -e
 : "${QA_BASE_URL:?set QA_BASE_URL to a running Hub (e.g. http://localhost:4199)}"
 TOK=$(python3 -c "import json;print([c[\"value\"] for c in json.load(open(\"dogfood-output/.auth/cfo-state.json\"))[\"cookies\"] if c[\"name\"]==\"next-auth.session-token\"][0])")
-B="$QA_BASE_URL/hub"
+# basePath autodetect: staging/prod serve the Hub API at root (NEXT_PUBLIC_BASE_PATH=""),
+# some dev builds serve it under /hub. Probe a known route and pick the prefix that answers.
+B="$QA_BASE_URL"
+probe=$(curl -sS -m 15 -o /dev/null -w "%{http_code}" "$B/api/assets/" -H "Cookie: next-auth.session-token=$TOK")
+[ "$probe" = "200" ] || B="$QA_BASE_URL/hub"
 WID=$(curl -sS -m 30 "$B/api/work-orders/" -H "Cookie: next-auth.session-token=$TOK" -H "Content-Type: application/json" \
   -d "{\"equipment_id\":\"00000000-0000-0000-0000-000000001001\",\"title\":\"SW-regress-2375\",\"priority\":\"medium\",\"description\":\"x\"}" \
   | python3 -c "import sys,json;w=json.load(sys.stdin);w=w.get(\"work_order\",w);print(w.get(\"id\",\"\"))")
