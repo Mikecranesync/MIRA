@@ -73,6 +73,19 @@
       "note": "RUNNER-HOST CAVEAT (#2021): kept currentlyEnforced:false so the weekly runner (stale staging 100.68.120.99:4101, pre-#2360) stays trustworthy \u2014 that host 404s this route, which the runner scores as a broken control. ENFORCEMENT IS REAL: #2360 gate is on main + live on prod (3.50.0), and #2360 verified it live vs staging Neon (2026-06-28: operator/technician/scheduler->403, admin/owner->pass). Flip back to true once the runner host runs >=3.50.0. #2360 ENFORCED (was a P0 escalation in the #578 sweep): driving the asset-agent approval/deploy lifecycle is an admin/owner action (train-before-deploy spec). operator must 403 at the capability gate."
     },
     {
+      "id": "operator-deny-suggestions-decide",
+      "persona": "operator",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "proposals.decide",
+      "method": "POST",
+      "path": "/api/suggestions/00000000-0000-0000-0000-0000000000aa/decide",
+      "body": {
+        "decision": "verify"
+      },
+      "note": "ENFORCED IN CODE (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); currentlyEnforced:false until the runner host runs >=3.50.0 (#2021). Deciding an ai_suggestions proposal (verify->creates a verified kg_entities row served by i3X) is the SAME admin governance action as /api/proposals/[id]/decide \u2014 gated on proposals.decide (CLAUDE.md/ADR-0017). The #578 sweep marked this route 404-inconclusive and missed it; now gated. operator/technician/scheduler/manager must 403; admin/owner pass."
+    },
+    {
       "id": "carlos-deny-asset-create",
       "persona": "carlos",
       "intent": "deny",

@@ -39,6 +39,7 @@ import { POST as kgSync } from "@/app/api/kg/sync/route";
 import { POST as readinessRecalc } from "@/app/api/readiness/recalculate/route";
 import { POST as ccDisplay } from "@/app/api/command-center/display/route";
 import { POST as wizardStep } from "@/app/api/wizard/[step]/route";
+import { POST as suggestionsDecide } from "@/app/api/suggestions/[id]/decide/route";
 
 const ID = "00000000-0000-0000-0000-0000000000aa";
 const idParams = { params: Promise.resolve({ id: ID }) };
@@ -76,6 +77,7 @@ const GATED: Array<[string, (...a: never[]) => Promise<Response>, () => Promise<
   ["POST /api/readiness/recalculate (namespace.admin)", readinessRecalc, () => readinessRecalc()],
   ["POST /api/command-center/display (namespace.admin)", ccDisplay, () => ccDisplay(req() as never)],
   ["POST /api/wizard/[step] (namespace.admin)", wizardStep, () => wizardStep(req() as never, stepParams as never)],
+  ["POST /api/suggestions/[id]/decide (proposals.decide)", suggestionsDecide, () => suggestionsDecide(req() as never, idParams as never)],
 ];
 
 describe("RBAC route gates — under-privileged role is denied before any DB work", () => {
