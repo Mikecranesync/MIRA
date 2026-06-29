@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **62** (8 dynamic) |
-| API routes | **149** (43 dynamic) |
+| API routes | **150** (43 dynamic) |
 
 ## Pages (62)
 
@@ -80,7 +80,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (149)
+## API routes (150)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -129,6 +129,7 @@
 | `/api/cmms/health` | static | `api/cmms/health/route.ts` |
 | `/api/cmms/sso` | static | `api/cmms/sso/route.ts` |
 | `/api/cmms/stats` | static | `api/cmms/stats/route.ts` |
+| `/api/command-center/commissioning` | static | `api/command-center/commissioning/route.ts` |
 | `/api/command-center/display` | static | `api/command-center/display/route.ts` |
 | `/api/command-center/display/[id]` | dynamic | `api/command-center/display/[id]/route.ts` |
 | `/api/command-center/gateways` | static | `api/command-center/gateways/route.ts` |
