@@ -1098,3 +1098,8 @@ and P0/P1/P2 failures become redacted, fingerprint-deduped GitHub issues. P3 noi
   not installed in this Windows remote session.
 
 ---
+
+## eval-fixer run — 2026-06-28
+- Scorecard: 47/57 passing (82%) — from 2026-06-27T2229 run
+- Action: issue-filed (commented on #1876)
+- Multi-file cluster hard stop: failures span engine.py (8 fixtures, FSM state mismatches) + guardrails.py/prompts (1 fixture, gs3_ground_fault keyword miss). Autopatch skipped; next steps in issue comment.
