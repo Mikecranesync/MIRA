@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
 import { slugify } from "@/lib/uns";
 
@@ -37,6 +38,8 @@ export async function POST(req: Request) {
   }
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  const denied = requireCapability(ctx, "namespace.admin");
+  if (denied) return denied;
 
   let body: { parentId?: string; name?: string; kind?: string };
   try {

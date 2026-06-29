@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
 import { computeHealthScore, type HealthScoreCounts } from "@/lib/health-score";
 
@@ -32,6 +33,8 @@ export async function POST() {
   }
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  const denied = requireCapability(ctx, "namespace.admin");
+  if (denied) return denied;
 
   try {
     const score = await withTenantContext(ctx.tenantId, async (c) => {
