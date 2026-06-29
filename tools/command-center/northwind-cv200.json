@@ -13,10 +13,10 @@
   ],
   "tenant_id": "00000000-0000-0000-0000-0000000000b1",
   "uns_path": "enterprise.riverside.area.packaging.line.line1.equipment.discharge_conveyor_cv200",
-  "perspective_view": "ConvSimpleLive",
+  "perspective_view": "NorthwindBottling",
   "display": {
     "display_type": "web_iframe",
-    "path": "/data/perspective/client/ConvSimpleLive",
+    "path": "/data/perspective/client/NorthwindBottling",
     "label": "Discharge Conveyor CV-200 (live)",
     "environments": {
       "dev": {
@@ -40,8 +40,8 @@
       }
     },
     "raw_gateway_reference_DO_NOT_FRAME": {
-      "tailscale": "http://100.72.2.99:8088/data/perspective/client/ConvSimpleLive",
-      "lan": "http://192.168.1.20:8088/data/perspective/client/ConvSimpleLive",
+      "tailscale": "http://100.72.2.99:8088/data/perspective/client/NorthwindBottling",
+      "lan": "http://192.168.1.20:8088/data/perspective/client/NorthwindBottling",
       "why": "Gateway sends X-Frame-Options: SAMEORIGIN gateway-wide; Perspective is an absolute-path SPA. Direct framing is blocked, and the raw gateway must never be a production display target (ADR-0024)."
     }
   },
@@ -50,6 +50,8 @@
     "service": "mira-relay",
     "source_system": "ignition",
     "source_connection_id": "northwind-cv200-gw",
+    "stream_tag_folder": "[default]MIRA_IOCheck",
+    "stream_tag_folder_note": "Set the gateway tag-stream timer's STREAM_TAG_FOLDER to this. The CV-200 live rig tags (VFD telemetry, DI/DO) live under [default]MIRA_IOCheck — the garage default ([default]Mira_Monitored) would stream the wrong folder. The fail-closed allowlist (allowlist_seed) still gates every tag, so a broader folder is safe but unnecessary.",
     "hmac_env": "MIRA_IGNITION_HMAC_KEY",
     "hmac_headers": ["X-MIRA-Tenant", "X-MIRA-Nonce", "X-MIRA-Timestamp", "X-MIRA-Signature"],
     "allowlist_seed": "tools/seeds/approved_tags_northwind_cv200.sql",
