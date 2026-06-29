@@ -1,0 +1,40 @@
+# hub-dogfood.scenario — REAL, bounded regression re-verification.
+#
+# Re-verifies the already-filed WO completion read-omission (#2375) against a
+# LIVE Hub. Chosen deliberately as a shipped example because it is SAFE: its
+# dedupe terms match #2375, so create_issue.sh will find the existing issue and
+# decline (comment instead) — this scenario can never create a duplicate. It
+# requires a running Hub (QA_BASE_URL) + a saved owner session; without them the
+# repro command fails and the runner REFUSES to file (Reproduces: no), which is
+# the correct, safe outcome.
+#
+# This file is SOURCED by run_synthetic_workers.sh — keep it plain var assignments.
+
+SCN_SUMMARY="re-verify #2375: GET /api/work-orders/[id] omits resolution+closed_at"
+SCN_TITLE="bug(hub): GET /api/work-orders/[id] omits resolution + closed_at (PATCH persists them)"
+SCN_LABELS="bug,hub,dogfood,needs-triage"
+SCN_SEVERITY="P2"
+SCN_FINDER="carlos"
+SCN_VERIFIER="dana"
+SCN_DEDUPE="work order resolution closed_at GET omits"
+SCN_NOT_SHARED="the caller's own work order in their own tenant — no shared/public corpus involved"
+SCN_EVIDENCE="PATCH RETURNING includes resolution+closed_at; GET SELECT/rowToWO omit them (mira-hub/src/app/api/work-orders/[id]/route.ts)"
+SCN_NARRATIVE="Synthetic regression re-verification of #2375. PATCH a work order to completed with a resolution; the GET detail then returns resolution=null and closed_at=null even though PATCH persisted them."
+
+# Deterministic-where-possible: needs a live Hub + saved owner session. If either
+# is missing the command exits non-zero / omits the signal, and the runner refuses.
+SCN_REPRO_CMD='
+set -e
+: "${QA_BASE_URL:?set QA_BASE_URL to a running Hub (e.g. http://localhost:4199)}"
+TOK=$(python3 -c "import json;print([c[\"value\"] for c in json.load(open(\"dogfood-output/.auth/cfo-state.json\"))[\"cookies\"] if c[\"name\"]==\"next-auth.session-token\"][0])")
+B="$QA_BASE_URL/hub"
+WID=$(curl -sS -m 30 "$B/api/work-orders/" -H "Cookie: next-auth.session-token=$TOK" -H "Content-Type: application/json" \
+  -d "{\"equipment_id\":\"00000000-0000-0000-0000-000000001001\",\"title\":\"SW-regress-2375\",\"priority\":\"medium\",\"description\":\"x\"}" \
+  | python3 -c "import sys,json;w=json.load(sys.stdin);w=w.get(\"work_order\",w);print(w.get(\"id\",\"\"))")
+[ -n "$WID" ] || { echo "NO_WID"; exit 1; }
+curl -sS -m 30 -X PATCH "$B/api/work-orders/$WID/" -H "Cookie: next-auth.session-token=$TOK" -H "Content-Type: application/json" \
+  -d "{\"status\":\"completed\",\"resolution\":\"SW-regress-resolution\"}" >/dev/null
+curl -sS -m 30 "$B/api/work-orders/$WID/" -H "Cookie: next-auth.session-token=$TOK" \
+  | python3 -c "import sys,json;w=json.load(sys.stdin);w=w.get(\"work_order\",w);print(\"RESOLUTION_DROPPED\" if (w.get(\"resolution\") is None and w.get(\"closed_at\") is None) else \"RESOLUTION_OK\")"
+'
+SCN_REPRO_EXPECT="RESOLUTION_DROPPED"
