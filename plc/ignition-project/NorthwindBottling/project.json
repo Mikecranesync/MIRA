@@ -1,0 +1,7 @@
+{
+  "title": "Northwind Bottling — Discharge Conveyor CV-200",
+  "description": "Northwind Beverage / Riverside Plant / Packaging / Line 1 — live Discharge Conveyor CV-200 HMI (Perspective). Cloned from ConvSimpleLive; bound to the real MIRA_IOCheck rig tags. Mirrors the Prove It 2026 Area pattern. Stacked on PR #2362.",
+  "enabled": true,
+  "inheritable": false,
+  "parent": ""
+}
