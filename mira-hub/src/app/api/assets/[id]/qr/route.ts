@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
 import { generateAssetTag } from "@/lib/asset-tag";
 
@@ -20,6 +21,8 @@ export async function POST(
   }
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  const denied = requireCapability(ctx, "assets.write");
+  if (denied) return denied;
 
   const { id } = await params;
 

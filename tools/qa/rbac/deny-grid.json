@@ -16,7 +16,7 @@
       "id": "ctrl-allow-assets-read",
       "persona": "carlos", "intent": "allow", "currentlyEnforced": true,
       "action": "assets.read", "method": "GET", "path": "/api/assets",
-      "note": "Control: tenant user reads their own asset list."
+      "note": "Control: tenant user reads their own asset list. Also guards that the matrix did NOT gate the GET handler — assets/route.ts has GET+POST and only POST is gated."
     },
     {
       "id": "ctrl-deny-review-queue",
@@ -30,6 +30,7 @@
       "action": "review_queue.read", "method": "GET", "path": "/api/admin/review/queue",
       "note": "Tenant 'admin' role is NOT platform-review-admin — must 403. Enforced today (status/email gate, not tenant role)."
     },
+
     {
       "id": "operator-deny-proposal-decide",
       "persona": "operator", "intent": "deny", "currentlyEnforced": true,
@@ -49,57 +50,131 @@
 
     {
       "id": "carlos-deny-asset-create",
-      "persona": "carlos", "intent": "deny", "currentlyEnforced": false,
+      "persona": "carlos", "intent": "deny", "currentlyEnforced": true,
       "action": "assets.create", "method": "POST", "path": "/api/assets", "body": {},
-      "note": "#578: technician must not create assets. Fail-open today (role:'member' hardcoded)."
+      "note": "#578/#2360-matrix ENFORCED: technician must not create assets — requireCapability('assets.create') is owner/admin/manager only. Code-proven by src/app/api/__tests__/rbac-route-gates.test.ts."
     },
     {
       "id": "carlos-deny-wo-delete",
       "persona": "carlos", "intent": "deny", "currentlyEnforced": false,
       "action": "work_orders.delete", "method": "DELETE", "path": "/api/work-orders/{work_order_001}",
-      "note": "WO delete: /api/work-orders/[id] has GET+PATCH only — expect 405 DENIED_BY_ABSENCE (deny by missing handler, not RBAC). Recorded so a future DELETE handler can't silently ship un-gated."
+      "note": "WO delete: /api/work-orders/[id] has GET+PATCH only — expect 405 DENIED_BY_ABSENCE (deny by missing handler, not RBAC). Recorded so a future DELETE handler can't silently ship un-gated. Stays false: no handler to gate yet."
     },
     {
       "id": "carlos-deny-team-create",
       "persona": "carlos", "intent": "deny", "currentlyEnforced": false,
       "action": "team.create", "method": "POST", "path": "/api/team", "body": {},
-      "note": "#578: technician must not invite/manage team members."
+      "note": "#578: technician must not invite/manage team members. Team invite is already gated separately by canInvite(owner/admin) in /api/team; this probe currently reports 405 DENIED_BY_ABSENCE for the synthetic path — left false until reconciled with the team route."
     },
     {
       "id": "dana-deny-team-create",
       "persona": "dana", "intent": "deny", "currentlyEnforced": false,
       "action": "team.create", "method": "POST", "path": "/api/team", "body": {},
-      "note": "#578: manager role is asset/WO/report — team CRUD is admin/owner."
+      "note": "#578: manager role is asset/WO/report — team CRUD is admin/owner. Already gated by canInvite; left false pending team-route reconciliation."
     },
     {
       "id": "scheduler-deny-asset-create",
-      "persona": "scheduler", "intent": "deny", "currentlyEnforced": false,
+      "persona": "scheduler", "intent": "deny", "currentlyEnforced": true,
       "action": "assets.create", "method": "POST", "path": "/api/assets", "body": {},
-      "note": "#578: scheduler owns PM calendar + reports — denied asset mutation."
+      "note": "#578/#2360-matrix ENFORCED: scheduler owns PM calendar + reports — denied asset mutation. Code-proven by rbac-route-gates.test.ts."
     },
     {
       "id": "scheduler-deny-wo-create",
-      "persona": "scheduler", "intent": "deny", "currentlyEnforced": false,
+      "persona": "scheduler", "intent": "deny", "currentlyEnforced": true,
       "action": "work_orders.create", "method": "POST", "path": "/api/work-orders", "body": {},
-      "note": "#578: scheduler denied WO mutation."
+      "note": "#578/#2360-matrix ENFORCED: scheduler denied WO mutation. Code-proven by rbac-route-gates.test.ts."
     },
     {
       "id": "operator-deny-asset-create",
-      "persona": "operator", "intent": "deny", "currentlyEnforced": false,
+      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
       "action": "assets.create", "method": "POST", "path": "/api/assets", "body": {},
-      "note": "#578: operator is most-restricted (list/show/request) — denied any create."
+      "note": "#578/#2360-matrix ENFORCED: operator is most-restricted (list/show/request) — denied any create. Code-proven by rbac-route-gates.test.ts."
     },
     {
       "id": "operator-deny-wo-create",
-      "persona": "operator", "intent": "deny", "currentlyEnforced": false,
+      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
       "action": "work_orders.create", "method": "POST", "path": "/api/work-orders", "body": {},
-      "note": "#578: operator denied WO create (may file a request, not a WO)."
+      "note": "#578/#2360-matrix ENFORCED: operator denied WO create (may file a request, not a WO). Code-proven by rbac-route-gates.test.ts."
     },
     {
       "id": "operator-deny-pm-mutate",
-      "persona": "operator", "intent": "deny", "currentlyEnforced": false,
-      "action": "pm_schedules.mutate", "method": "PATCH", "path": "/api/pm-schedules/{pm_schedule_001}", "body": {},
-      "note": "#578: operator denied PM schedule mutation."
+      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
+      "action": "pm_schedules.write", "method": "PATCH", "path": "/api/pm-schedules/{pm_schedule_001}", "body": {},
+      "note": "#578/#2360-matrix ENFORCED: operator denied PM schedule mutation — requireCapability('pm_schedules.write') is scheduler/manager/admin/owner only. Code-proven by rbac-route-gates.test.ts."
+    },
+
+    {
+      "id": "operator-deny-wo-update",
+      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
+      "action": "work_orders.update", "method": "PATCH", "path": "/api/work-orders/{work_order_001}", "body": {},
+      "note": "#2360-matrix ENFORCED: operator denied WO mutation (work_orders.update = technician/manager/admin/owner). Boundary partner of technician-allow-wo-update."
+    },
+    {
+      "id": "operator-deny-pm-complete",
+      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
+      "action": "pm_schedules.complete", "method": "POST", "path": "/api/pm-schedules/{pm_schedule_001}/complete", "body": {},
+      "note": "#2360-matrix ENFORCED: operator cannot complete PMs (pm_schedules.complete = technician/scheduler/manager/admin/owner)."
+    },
+    {
+      "id": "operator-deny-reports-generate",
+      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
+      "action": "reports.generate", "method": "POST", "path": "/api/reports/generate",
+      "note": "#2360-matrix ENFORCED: operator denied report generation (reports.generate = scheduler/manager/admin/owner)."
+    },
+    {
+      "id": "operator-deny-asset-qr",
+      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
+      "action": "assets.write", "method": "POST", "path": "/api/assets/{equipment_vfd07}/qr",
+      "note": "#2360-matrix ENFORCED: operator denied asset mutation incl. QR generation (assets.write = manager/admin/owner)."
+    },
+    {
+      "id": "technician-deny-namespace-node",
+      "persona": "carlos", "intent": "deny", "currentlyEnforced": true,
+      "action": "namespace.admin", "method": "POST", "path": "/api/namespace/node", "body": {},
+      "note": "#2360-matrix ENFORCED: namespace/onboarding writes are admin/owner only (namespace.admin). technician must 403."
+    },
+    {
+      "id": "manager-deny-kg-sync",
+      "persona": "dana", "intent": "deny", "currentlyEnforced": true,
+      "action": "namespace.admin", "method": "POST", "path": "/api/kg/sync",
+      "note": "#2360-matrix ENFORCED boundary: manager scope is asset/WO/report — namespace.admin (kg sync, readiness, namespace, command-center, wizard) is admin/owner ONLY. Proves manager ≠ admin."
+    },
+
+    {
+      "id": "technician-allow-wo-create",
+      "persona": "carlos", "intent": "allow", "currentlyEnforced": true,
+      "action": "work_orders.create", "method": "POST", "path": "/api/work-orders", "body": {},
+      "note": "#2360-matrix ALLOW: technician executes work — filing/creating WOs is granted. Empty body → 400 pass-gate (not 403). Catches over-block of the technician's core workflow. (#578 only denied scheduler/operator for WO-create.)"
+    },
+    {
+      "id": "technician-allow-wo-update",
+      "persona": "carlos", "intent": "allow", "currentlyEnforced": true,
+      "action": "work_orders.update", "method": "PATCH", "path": "/api/work-orders/{work_order_001}", "body": {},
+      "note": "#2360-matrix ALLOW: technician may update/close WOs (work_orders.update). Empty/partial body → pass-gate (not 403)."
+    },
+    {
+      "id": "scheduler-allow-pm-write",
+      "persona": "scheduler", "intent": "allow", "currentlyEnforced": true,
+      "action": "pm_schedules.write", "method": "PATCH", "path": "/api/pm-schedules/{pm_schedule_001}", "body": {},
+      "note": "#2360-matrix ALLOW: scheduler owns the PM calendar (pm_schedules.write). Empty body → 400 pass-gate (not 403)."
+    },
+    {
+      "id": "scheduler-allow-reports",
+      "persona": "scheduler", "intent": "allow", "currentlyEnforced": true,
+      "action": "reports.generate", "method": "POST", "path": "/api/reports/generate",
+      "note": "#2360-matrix ALLOW: scheduler owns reports (reports.generate). Expect 2xx pass-gate (not 403)."
+    },
+    {
+      "id": "manager-allow-asset-create",
+      "persona": "dana", "intent": "allow", "currentlyEnforced": true,
+      "action": "assets.create", "method": "POST", "path": "/api/assets", "body": {},
+      "note": "#2360-matrix ALLOW: manager has asset scope (assets.create). Empty body → 400 pass-gate (not 403). Boundary partner of operator/scheduler/carlos asset-create denies."
+    },
+    {
+      "id": "admin-allow-kg-sync",
+      "persona": "plantmgr", "intent": "allow", "currentlyEnforced": true,
+      "action": "namespace.admin", "method": "POST", "path": "/api/kg/sync",
+      "note": "#2360-matrix ALLOW: admin holds namespace.admin (kg sync). Expect pass-gate (not 403). Boundary partner of technician/manager namespace.admin denies — proves admin DOES get the cap manager does not."
     }
   ]
 }

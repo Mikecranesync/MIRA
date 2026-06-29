@@ -10,7 +10,10 @@ import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 
 const ID = "11111111-2222-3333-4444-555555555555";
-const session = { userId: "u_1", tenantId: "tenant-aaaa", email: "x@y" };
+// role:"owner" so the assets.write capability gate (#2360/#578) passes — these
+// tests cover validation-QA behavior, not RBAC (capability matrix is unit-tested
+// in src/lib/__tests__/capabilities.test.ts).
+const session = { userId: "u_1", tenantId: "tenant-aaaa", email: "x@y", role: "owner" };
 const params = Promise.resolve({ id: ID });
 
 function mockClient(handlers: Array<[RegExp, { rows: unknown[] }]>) {

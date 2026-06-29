@@ -77,4 +77,80 @@ describe("getCapabilities", () => {
       expect(hasCapability(ctx({ role }), "asset_agent.transition")).toBe(false);
     }
   });
+
+  // #2360 deferred slice / #578: the full role → write-capability matrix.
+  // Each role gets EXACTLY its documented write caps; everything else denied.
+  it("operator (most-restricted) gets NO write caps — read-only", () => {
+    const caps = getCapabilities(ctx({ role: "operator" }));
+    for (const cap of [
+      "assets.create", "assets.write", "work_orders.create", "work_orders.update",
+      "pm_schedules.write", "pm_schedules.complete", "reports.generate",
+      "namespace.admin", "proposals.decide", "asset_agent.transition",
+    ] as const) {
+      expect(caps).not.toContain(cap);
+    }
+    expect(caps).toContain("workspace.read"); // still an authed tenant user
+  });
+
+  it("technician executes work: WO create/update + PM complete only", () => {
+    const caps = getCapabilities(ctx({ role: "technician" }));
+    expect(caps).toContain("work_orders.create");
+    expect(caps).toContain("work_orders.update");
+    expect(caps).toContain("pm_schedules.complete");
+    for (const cap of [
+      "assets.create", "assets.write", "pm_schedules.write",
+      "reports.generate", "namespace.admin",
+    ] as const) {
+      expect(caps).not.toContain(cap);
+    }
+  });
+
+  it("scheduler owns the PM calendar + reports; no asset/WO mutation", () => {
+    const caps = getCapabilities(ctx({ role: "scheduler" }));
+    expect(caps).toContain("pm_schedules.write");
+    expect(caps).toContain("pm_schedules.complete");
+    expect(caps).toContain("reports.generate");
+    for (const cap of [
+      "assets.create", "assets.write", "work_orders.create",
+      "work_orders.update", "namespace.admin",
+    ] as const) {
+      expect(caps).not.toContain(cap);
+    }
+  });
+
+  it("manager has asset/WO/report scope; NOT namespace/governance", () => {
+    const caps = getCapabilities(ctx({ role: "manager" }));
+    for (const cap of [
+      "assets.create", "assets.write", "work_orders.create", "work_orders.update",
+      "pm_schedules.write", "pm_schedules.complete", "reports.generate",
+    ] as const) {
+      expect(caps).toContain(cap);
+    }
+    expect(caps).not.toContain("namespace.admin");
+    expect(caps).not.toContain("proposals.decide");
+    expect(caps).not.toContain("asset_agent.transition");
+  });
+
+  it("admin/owner hold full intra-tenant authority incl. namespace.admin", () => {
+    for (const role of ["admin", "owner"]) {
+      const caps = getCapabilities(ctx({ role }));
+      for (const cap of [
+        "assets.create", "assets.write", "work_orders.create", "work_orders.update",
+        "pm_schedules.write", "pm_schedules.complete", "reports.generate",
+        "namespace.admin", "proposals.decide", "asset_agent.transition",
+      ] as const) {
+        expect(caps).toContain(cap);
+      }
+    }
+  });
+
+  it("unknown role gets no write caps (least-privilege across the matrix)", () => {
+    const caps = getCapabilities(ctx({ role: "supervisor" }));
+    for (const cap of [
+      "assets.create", "work_orders.create", "pm_schedules.write",
+      "reports.generate", "namespace.admin",
+    ] as const) {
+      expect(caps).not.toContain(cap);
+    }
+  });
 });

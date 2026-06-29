@@ -36,18 +36,75 @@ export type Capability =
   | "review_queue.decide"
   | "platform.users.read"
   | "dev_tools.access"
-  // Tenant-admin governance caps (issue #2360). These are intra-tenant admin
-  // actions, gated on the caller's hub_users.role — NOT the platform email
-  // allowlist above. Promotion proposed→verified is an admin action
-  // (CLAUDE.md / ADR-0017); driving the asset-agent approval/deploy gate is an
-  // admin action (train-before-deploy spec).
+  // Tenant-role governance + write caps (issues #2360, #578). These are
+  // intra-tenant actions gated on the caller's hub_users.role — NOT the
+  // platform email allowlist above. Promotion proposed→verified is an admin
+  // action (CLAUDE.md / ADR-0017); driving the asset-agent approval/deploy gate
+  // is an admin action (train-before-deploy spec); the remaining write caps are
+  // the #578 fail-open inventory, mapped to roles per the documented intent.
   | "proposals.decide"
-  | "asset_agent.transition";
+  | "asset_agent.transition"
+  | "assets.create"
+  | "assets.write"
+  | "work_orders.create"
+  | "work_orders.update"
+  | "pm_schedules.write"
+  | "pm_schedules.complete"
+  | "reports.generate"
+  | "namespace.admin";
 
-// Tenant roles (hub_users.role) that hold intra-tenant admin authority. Any
-// other / unrecognized role string falls through to least-privilege — an
-// unknown role can never satisfy a gate.
-const ADMIN_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
+// ── The tenant role → capability matrix (issue #2360 deferred slice / #578) ───
+//
+// `hub_users.role` is derived fresh per request in lib/session.ts. The matrix
+// below is the SINGLE source of intra-tenant authorization. Intent comes from
+// the #578 fail-open inventory + the synthetic-worker deny-grid:
+//   • operator   — most-restricted: list / show / request only. No writes.
+//   • technician — executes work: create/update work orders, complete PMs.
+//                  NOT: create assets, edit PM schedules, reports, governance.
+//   • scheduler  — owns the PM calendar + reports. NOT asset/WO mutation.
+//   • manager    — asset / work-order / report scope. NOT namespace/kg/governance.
+//   • admin/owner — full intra-tenant authority (everything above + namespace
+//                  onboarding writes + the two #2360 governance caps).
+//
+// Real production roles are only owner (signup default) / technician / admin
+// (the two invite roles); manager/scheduler/operator are forward-looking (the
+// RBAC test personas + the access-control.ts type) and covered here too. Any
+// role string NOT in this map falls through to least-privilege — an unknown or
+// absent role can never satisfy a write/governance gate.
+const TECHNICIAN_CAPS: Capability[] = [
+  "work_orders.create",
+  "work_orders.update",
+  "pm_schedules.complete",
+];
+const SCHEDULER_CAPS: Capability[] = [
+  "pm_schedules.write",
+  "pm_schedules.complete",
+  "reports.generate",
+];
+const MANAGER_CAPS: Capability[] = [
+  "assets.create",
+  "assets.write",
+  "work_orders.create",
+  "work_orders.update",
+  "pm_schedules.write",
+  "pm_schedules.complete",
+  "reports.generate",
+];
+// admin/owner = manager scope + namespace onboarding writes + #2360 governance.
+const ADMIN_CAPS: Capability[] = [
+  ...MANAGER_CAPS,
+  "namespace.admin",
+  "proposals.decide",
+  "asset_agent.transition",
+];
+const ROLE_CAPS: Readonly<Record<string, Capability[]>> = {
+  operator: [],
+  technician: TECHNICIAN_CAPS,
+  scheduler: SCHEDULER_CAPS,
+  manager: MANAGER_CAPS,
+  admin: ADMIN_CAPS,
+  owner: ADMIN_CAPS,
+};
 
 // Available to every authenticated tenant user for their own tenant.
 const WORKSPACE_CAPS: Capability[] = [
@@ -68,12 +125,11 @@ export function getCapabilities(ctx: SessionContext): Capability[] {
   if (ctx.status === "admin") {
     caps.push("platform.users.read");
   }
-  // Intra-tenant admin governance (issue #2360) — gated on hub_users.role,
-  // derived fresh per request in lib/session.ts. owner/admin only; an
-  // absent/unknown role falls through to least-privilege.
-  if (ADMIN_ROLES.has(ctx.role ?? "")) {
-    caps.push("proposals.decide", "asset_agent.transition");
-  }
+  // Intra-tenant role caps (issues #2360, #578) — gated on hub_users.role,
+  // derived fresh per request in lib/session.ts. The matrix grants the exact
+  // write/governance caps each role holds; an absent/unknown role resolves to
+  // [] and falls through to least-privilege (read-only workspace caps only).
+  caps.push(...(ROLE_CAPS[ctx.role ?? ""] ?? []));
   return caps;
 }
 
