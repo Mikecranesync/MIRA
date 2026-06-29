@@ -14,6 +14,7 @@ import {
   type ConfiguredDisplay,
 } from "@/lib/command-center-view";
 import { ConnectDisplayModal } from "@/components/command-center/connect-display-modal";
+import { CommissioningPanel } from "@/components/command-center/commissioning-panel";
 import { HubStatusBoard } from "@/components/hub/HubStatusBoard";
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -245,6 +246,9 @@ export default function CommandCenterPage() {
 
       {/* Connected Gateways Bar — Phase 2, issue #2014. */}
       <ConnectedGatewaysBar />
+
+      {/* Remote Commissioning checklist — read-only; assembles existing signals. */}
+      <CommissioningPanel />
 
       <HubStatusBoard />
 

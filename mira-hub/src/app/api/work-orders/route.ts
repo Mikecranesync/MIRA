@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { sessionOr401 } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
@@ -141,6 +142,8 @@ export async function POST(req: NextRequest) {
 
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  const denied = requireCapability(ctx, "work_orders.create");
+  if (denied) return denied;
 
   let body: Record<string, unknown>;
   try {

@@ -32,7 +32,7 @@ const mockReq = (headers: Record<string, string> = {}): Request =>
 const goodSession = {
   userId: "u_1",
   tenantId: "t_1",
-  role: "member" as const,
+  role: "viewer" as const,
   exp: Date.now() / 1000 + 3600,
 };
 
@@ -130,7 +130,7 @@ describe("withSession", () => {
 
 describe("withSessionAndRole", () => {
   it("denies when role mismatches", async () => {
-    vi.mocked(requireSession).mockResolvedValue({ ...goodSession, role: "member" });
+    vi.mocked(requireSession).mockResolvedValue({ ...goodSession, role: "viewer" });
     vi.mocked(requireRole).mockImplementation((_session, ...allowed) => {
       if (!allowed.includes(_session.role)) throw new HttpAuthError(403, "forbidden");
     });

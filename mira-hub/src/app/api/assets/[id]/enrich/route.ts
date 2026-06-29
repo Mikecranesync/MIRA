@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 import { enrichAsset, getEnrichmentReport } from "@/lib/agents/asset-intelligence";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,8 @@ export async function POST(
   }
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  const denied = requireCapability(ctx, "assets.write");
+  if (denied) return denied;
 
   const { id } = await params;
   try {

@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 62,
-    "apiRoutes": 149
+    "apiRoutes": 150
   },
   "pages": [
     "/admin",
@@ -114,6 +114,7 @@
     "/api/cmms/health",
     "/api/cmms/sso",
     "/api/cmms/stats",
+    "/api/command-center/commissioning",
     "/api/command-center/display",
     "/api/command-center/display/[id]",
     "/api/command-center/gateways",

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { sessionOr401 } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 import { WORK_ORDERS } from "@/lib/workorders-data";
 
 export const dynamic = "force-dynamic";
@@ -96,6 +97,8 @@ function computeStats() {
 export async function POST() {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  const denied = requireCapability(ctx, "reports.generate");
+  if (denied) return denied;
 
   const stats = computeStats();
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
 import { CLOSING_STATUSES, validateWOCompletion } from "@/lib/wo-completion-validation";
 
@@ -125,6 +126,8 @@ export async function PATCH(
 
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  const denied = requireCapability(ctx, "work_orders.update");
+  if (denied) return denied;
 
   const { id } = await params;
 

@@ -16,11 +16,16 @@ Design (mirrors freshness.py + the relay's logic/store split):
     ``NeonDiffStore`` + a real cursor-based event reader and calls the core,
     retrying on failure.
 
-Cursor (Option A — implicit, no migration): each run reads
-``tag_events`` rows newer than ``MAX(event_timestamp)`` already present in
-``tag_event_diffs`` for the tenant. ``event_timestamp`` is TIMESTAMPTZ in both
-tables; the reader converts to epoch-seconds floats for ``TagReading`` and the
-default cursor is ``'epoch'``.
+Cursor (EXPLICIT — ``historian_cursor`` table, migration 057): each run reads
+``tag_events`` rows newer than the persisted ``last_event_ts`` for
+``(tenant_id, source='tag_diff')``, defaulting to ``'epoch'`` when no row
+exists. After the batch is processed the task UPSERTs the watermark to the
+batch's max ``event_timestamp`` — even when ZERO diffs were written. This
+matters because ``tag_diff_logger`` emits no diff for a tag's first
+observation, so a diffs-derived watermark (the old ``MAX(event_timestamp) FROM
+tag_event_diffs``) would never advance on a no-diff batch and the same slice
+would be re-read forever. ``event_timestamp`` is TIMESTAMPTZ; the reader and
+cursor helpers convert to/from epoch-seconds floats for ``TagReading``.
 
 Single-tenant: the task takes ``tenant_id`` (default ``MIRA_TENANT_ID``).
 Multi-tenant fan-out is a documented follow-up.
@@ -169,11 +174,80 @@ def _row_to_reading(row) -> TagReading:
     )
 
 
+def _cursor_engine(neon_url: str):
+    from sqlalchemy import NullPool, create_engine
+
+    return create_engine(
+        neon_url,
+        poolclass=NullPool,
+        connect_args={"sslmode": "require"},
+        pool_pre_ping=True,
+    )
+
+
+def _load_cursor(neon_url: str, tenant_id: str, source: str = "tag_diff"):
+    """Return the persisted watermark (epoch float) for (tenant, source), or None.
+
+    Reads ``historian_cursor`` (migration 057) under RLS. None means no cursor
+    row yet — the caller should default to the epoch.
+    """
+    from sqlalchemy import text
+
+    with _cursor_engine(neon_url).connect() as conn:
+        conn.execute(
+            text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id}
+        )
+        ts = conn.execute(
+            text(
+                """
+                SELECT EXTRACT(EPOCH FROM last_event_ts)
+                  FROM historian_cursor
+                 WHERE tenant_id = :tid AND source = :src
+                """
+            ),
+            {"tid": tenant_id, "src": source},
+        ).scalar()
+    return None if ts is None else float(ts)
+
+
+def _save_cursor(
+    neon_url: str,
+    tenant_id: str,
+    last_ts_epoch_float: float,
+    source: str = "tag_diff",
+) -> None:
+    """UPSERT the watermark for (tenant, source) to ``last_ts_epoch_float``.
+
+    Stored as a real ``timestamptz`` (``to_timestamp``). Called after every
+    processed batch — including no-diff batches — so the watermark always
+    advances past the events that were read.
+    """
+    from sqlalchemy import text
+
+    with _cursor_engine(neon_url).begin() as conn:
+        conn.execute(
+            text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id}
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO historian_cursor (tenant_id, source, last_event_ts)
+                VALUES (:tid, :src, to_timestamp(:ts))
+                ON CONFLICT (tenant_id, source)
+                DO UPDATE SET last_event_ts = EXCLUDED.last_event_ts,
+                              updated_at = now()
+                """
+            ),
+            {"tid": tenant_id, "src": source, "ts": float(last_ts_epoch_float)},
+        )
+
+
 def _make_event_reader(neon_url: str):
     """Return a reader that fetches the unprocessed tag_events slice for a tenant.
 
-    Cursor = MAX(event_timestamp) already in tag_event_diffs for the tenant
-    (default 'epoch'). RLS is set per the NeonDiffStore pattern.
+    Cursor = the explicit ``historian_cursor`` watermark (migration 057) for the
+    tenant (default 'epoch' when no row). RLS is set per the NeonDiffStore
+    pattern.
     """
 
     def read_events(tenant_id: str, since_ts, batch_size: int) -> list[TagReading]:
@@ -190,15 +264,10 @@ def _make_event_reader(neon_url: str):
                 text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id}
             )
             if since_ts is None:
+                cursor_epoch = _load_cursor(neon_url, tenant_id)
                 cursor = conn.execute(
-                    text(
-                        """
-                        SELECT COALESCE(MAX(event_timestamp), 'epoch'::timestamptz)
-                          FROM tag_event_diffs
-                         WHERE tenant_id = :tid
-                        """
-                    ),
-                    {"tid": tenant_id},
+                    text("SELECT to_timestamp(:s)"),
+                    {"s": float(cursor_epoch or 0.0)},
                 ).scalar()
             else:
                 cursor = conn.execute(
@@ -277,13 +346,19 @@ def historize_tag_diffs(self, tenant_id: str | None = None) -> dict:
     read_events = _make_event_reader(neon_url)
 
     try:
-        return run_historize_batch(
+        summary = run_historize_batch(
             store=store,
             read_events=read_events,
             config=config,
             tenant_id=tenant_id,
             batch_size=batch_size,
         )
+        # Advance the explicit watermark past every processed event — even when
+        # diffs_written == 0 — so a no-diff batch can't replay forever (#2343).
+        last_ts = summary.get("last_processed_ts")
+        if last_ts is not None:
+            _save_cursor(neon_url, tenant_id, last_ts)
+        return summary
     except Exception as exc:  # noqa: BLE001 - retry on any transient failure
         logger.exception("historize_tag_diffs failed: %s", exc)
         raise self.retry(exc=exc, countdown=30, max_retries=3)

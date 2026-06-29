@@ -33,6 +33,8 @@ const goodSession = {
   email: "x@y",
   status: "trial",
   trialExpiresAt: null,
+  // Deciding proposals is an admin action (#2360). Non-admin roles get 403.
+  role: "admin",
 };
 
 const baseProposal = {
@@ -76,6 +78,20 @@ describe("POST /api/proposals/[id]/decide", () => {
     );
     const res = await POST(makeReq({ decision: "verify" }), makeParams(VALID_UUID));
     expect(res.status).toBe(401);
+  });
+
+  it("403: a non-admin tenant role (operator) cannot decide a proposal (#2360)", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue({ ...goodSession, role: "operator" });
+    const res = await POST(makeReq({ decision: "verify" }), makeParams(VALID_UUID));
+    expect(res.status).toBe(403);
+    // Gate runs before any DB work — no tenant-context query was attempted.
+    expect(withTenantContext).not.toHaveBeenCalled();
+  });
+
+  it("403: an unrecognized/empty role cannot decide a proposal (least-privilege default)", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue({ ...goodSession, role: "" });
+    const res = await POST(makeReq({ decision: "verify" }), makeParams(VALID_UUID));
+    expect(res.status).toBe(403);
   });
 
   it("returns 400 on invalid UUID in the path", async () => {

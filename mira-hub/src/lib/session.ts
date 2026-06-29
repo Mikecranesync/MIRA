@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { decode } from "next-auth/jwt";
 import { cookies } from "next/headers";
+import { findUserById } from "@/lib/users";
 
 export interface SessionContext {
   userId: string;
@@ -8,6 +9,19 @@ export interface SessionContext {
   email: string;
   status: string;
   trialExpiresAt: string | null;
+  /**
+   * The caller's tenant role, derived fresh from `hub_users.role` on every
+   * request (issue #2360). Lowercased; "" when it can't be resolved (deleted
+   * user or a transient DB error) — authorization treats an unknown/absent
+   * role as least-privilege, so an unresolved role can never satisfy a role
+   * gate. NOT read from the JWT: a stale token must not keep a demoted user's
+   * old privilege, and saved sessions must reflect the current role immediately.
+   *
+   * Optional only so existing test mocks that build a bare SessionContext keep
+   * compiling — every production constructor (`requireSession`, `sessionOrDemo`)
+   * always sets it. An omitted role is treated identically to "" (least-priv).
+   */
+  role?: string;
 }
 
 export class UnauthorizedError extends Error {
@@ -63,12 +77,28 @@ export async function requireSession(): Promise<SessionContext> {
     throw new UnauthorizedError();
   }
 
+  // Derive the role fresh from hub_users.role (issue #2360). Deliberately a DB
+  // read, not a JWT claim: revocation must be instant and already-issued/saved
+  // sessions must reflect the live role. If the lookup fails (DB blip) or the
+  // row is gone, fall back to least-privilege ("") rather than failing the
+  // whole request — the token-based auth itself stays valid, so read routes
+  // keep working while every role gate denies. One indexed PK SELECT per
+  // authed request; hub_users is tiny.
+  let role = "";
+  try {
+    const user = await findUserById(token.uid as string);
+    role = (user?.role ?? "").toLowerCase().trim();
+  } catch {
+    role = "";
+  }
+
   return {
     userId: token.uid as string,
     tenantId: tid,
     email: (token.email as string) ?? "",
     status: (token.status as string) ?? "trial",
     trialExpiresAt: (token.trialExpiresAt as string) ?? null,
+    role,
   };
 }
 
