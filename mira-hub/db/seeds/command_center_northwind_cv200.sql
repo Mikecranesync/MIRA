@@ -1,7 +1,7 @@
 -- Command Center — Northwind / Discharge Conveyor CV-200 display seed.
 --
 -- Registers ONE display for the CV-200 UNS node: the LIVE IGNITION PERSPECTIVE
--- conveyor dashboard `ConvSimpleLive` running on the PLC-laptop Ignition gateway.
+-- conveyor dashboard `NorthwindBottling` running on the PLC-laptop Ignition gateway.
 -- After this + migration 030, the Northwind Command Center shows a green dot on
 -- the Discharge Conveyor and frames the live Perspective screen.
 --
@@ -30,8 +30,8 @@
 -- gateway. (Same constraint + proof as command_center_conveyor.sql.)
 --
 -- Reference (raw gateway, do NOT frame directly — XFO-blocked):
---   http://100.72.2.99:8088/data/perspective/client/ConvSimpleLive   (Tailscale)
---   http://192.168.1.20:8088/data/perspective/client/ConvSimpleLive  (LAN, when up)
+--   http://100.72.2.99:8088/data/perspective/client/NorthwindBottling   (Tailscale)
+--   http://192.168.1.20:8088/data/perspective/client/NorthwindBottling  (LAN, when up)
 --
 -- Usage (dev/staging) — :host/:port point at the origin-root gateway proxy (8890):
 --   psql "$NEON_DATABASE_URL_DEV" \
@@ -50,8 +50,8 @@ VALUES
      'http',
      :'host',
      :'port'::int,
-     '/data/perspective/client/ConvSimpleLive',
-     'Discharge Conveyor CV-200 — live Ignition Perspective (ConvSimpleLive)',
+     '/data/perspective/client/NorthwindBottling',
+     'Discharge Conveyor CV-200 — live Ignition Perspective (NorthwindBottling)',
      true)
 ON CONFLICT (tenant_id, uns_path) WHERE uns_path IS NOT NULL
 DO UPDATE SET

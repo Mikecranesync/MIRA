@@ -95,13 +95,53 @@ def test_northwind_allowlist_exists_and_has_rows():
     assert len(rows) >= 40, f"expected the full rig tag set, got {len(rows)} rows"
 
 
-def test_northwind_allowlist_row_count_matches_garage():
-    # same physical rig → same source tag set; only uns_path/notes differ.
+def test_northwind_allowlist_is_superset_of_garage_rig_tags():
+    # Same physical rig, but the staged NorthwindBottling Perspective project binds
+    # additional MIRA_IOCheck tags (DI_00/01/04, DO_00/01/03, vfd_freq_cmd/motor_rpm/
+    # power/torque/warn_code) that the garage seed predates. Constraint: the garage
+    # seed is NOT modified, so Northwind is a SUPERSET, not an exact mirror.
     nw = _allowlist_rows(_read(NW_ALLOWLIST))
     garage = _allowlist_rows(_read(GARAGE_ALLOWLIST))
-    assert len(nw) == len(garage), (
-        f"Northwind allowlist ({len(nw)}) should mirror the garage rig tag set ({len(garage)})"
+    assert len(nw) >= len(garage), (
+        f"Northwind allowlist ({len(nw)}) should cover at least the garage rig tag set ({len(garage)})"
     )
+
+
+# Views of the staged NorthwindBottling Perspective project (the live CV-200 surface).
+_NW_PROJECT_VIEWS = os.path.join(
+    _REPO_ROOT, "plc", "ignition-project", "NorthwindBottling",
+    "com.inductiveautomation.perspective", "views",
+)
+_TAGPATH_RE = re.compile(r"\[default\][A-Za-z0-9_]+(?:/[A-Za-z0-9_]+)+")
+
+
+def _staged_project_tag_paths():
+    paths = set()
+    for root, _dirs, files in os.walk(_NW_PROJECT_VIEWS):
+        for name in files:
+            if name != "view.json":
+                continue
+            paths.update(_TAGPATH_RE.findall(_read(os.path.join(root, name))))
+    return paths
+
+
+def test_northwind_allowlist_covers_every_staged_project_tag():
+    # The whole point of the cloud loop: every tag the live CV-200 view binds MUST be
+    # allowlisted, or the relay drops it fail-closed and the panel goes blank. This is
+    # the regression guard for the 11 MIRA_IOCheck tags added 2026-06-28.
+    real = _real_normalize()
+    allow = {norm for _src, norm, _uns in _allowlist_rows(_read(NW_ALLOWLIST))}
+    bound = _staged_project_tag_paths()
+    assert bound, "should have found [default] tag paths bound by the staged project views"
+
+    def covered(path):
+        n = real(path)
+        # a leaf tag is covered iff allowlisted exactly; a folder reference is covered
+        # iff the allowlist has at least one child leaf under it (normalized prefix).
+        return n in allow or any(a.startswith(n + "_") for a in allow)
+
+    missing = sorted(p for p in bound if not covered(p))
+    assert not missing, f"staged CV-200 view binds tags missing from the Northwind allowlist: {missing}"
 
 
 def test_northwind_normalized_path_matches_relay_normalizer():
@@ -166,7 +206,7 @@ def test_config_ingest_is_ignition_failclosed():
 def test_northwind_display_seed_is_dev_staging_only_and_references_prod_decision():
     sql = _read(NW_DISPLAY_SEED)
     assert CV200_UNS in sql
-    assert "/data/perspective/client/ConvSimpleLive" in sql
+    assert "/data/perspective/client/NorthwindBottling" in sql
     assert "DEV / STAGING ONLY" in sql
     assert "ADR-0024" in sql
     assert "8890" in sql
