@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.53.1 (2026-06-29) - chore(crew): verification-gated synthetic-worker runner
+- Bounds the synthetic dogfood crew so it can never autonomously file weak or self-verified findings: `tools/qa/create_issue.sh` now refuses any finding lacking an independent reproduction, a verifier distinct from the finder, `dogfood`/`crew` labels, or (for P0) an explicit `--allow-p0`, before any `gh issue create`.
+- Adds `tools/crew/run_synthetic_workers.sh` (a default-dry-run runner that routes real filing through the gated filer) plus one guarded scenario and hermetic tests (gate 7/7, runner 12/12, shellcheck clean). No app/runtime code touched.
+
 ### v3.44.1 (2026-06-26) - fix(hub): wire Atlas SSO deploy secrets
 - Passes the shared Hub-to-Atlas SSO signing configuration into the production `mira-hub` container so the merged `/api/cmms/sso` route can sign live Atlas handoff assertions.
 - Makes synthetic Hub user seeding consume Doppler/env-backed per-persona passwords for live proof runs without logging credential values.
