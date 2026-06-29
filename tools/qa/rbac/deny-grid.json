@@ -1,180 +1,302 @@
 {
-  "_doc": "RBAC deny-grid. Each probe drives a persona's saved session at a real Hub API route and asserts an authorization outcome. Paths use {knownId} placeholders from personas.json. Bodies are intentionally empty: a fail-open is proven by the request passing the AUTHZ gate (2xx OR 400/422 validation) — we never need to actually create junk rows. See README.md.",
+  "_doc": "RBAC deny-grid. Each probe drives a persona's saved session at a real Hub API route and asserts an authorization outcome. Paths use {knownId} placeholders from personas.json. Bodies are intentionally empty: a fail-open is proven by the request passing the AUTHZ gate (2xx OR 400/422 validation) \u2014 we never need to actually create junk rows. See README.md.",
   "_legend": {
     "intent.deny": "persona SHOULD be denied (expect HTTP 403). 2xx/400/422 = AUTH_NOT_ENFORCED finding; 404/405 = DENIED_BY_ABSENCE.",
     "intent.allow": "persona SHOULD be allowed (expect 2xx, or 400/422 = passed-authz). 403 = OVER_BLOCKED finding.",
-    "currentlyEnforced": "true = enforced TODAY (a real 403/200 gate — used to self-validate the runner). false = forward-looking #578 (expected fail-open until role wiring lands)."
+    "currentlyEnforced": "true = enforced TODAY (a real 403/200 gate \u2014 used to self-validate the runner). false = forward-looking #578 (expected fail-open until role wiring lands)."
   },
   "probes": [
     {
       "id": "ctrl-allow-usage",
-      "persona": "cfo", "intent": "allow", "currentlyEnforced": true,
-      "action": "usage.read", "method": "GET", "path": "/api/usage",
+      "persona": "cfo",
+      "intent": "allow",
+      "currentlyEnforced": true,
+      "action": "usage.read",
+      "method": "GET",
+      "path": "/api/usage",
       "note": "Control: any authenticated tenant user can read their own usage. Proves the saved session works (a 401 here = setup error, not a finding)."
     },
     {
       "id": "ctrl-allow-assets-read",
-      "persona": "carlos", "intent": "allow", "currentlyEnforced": true,
-      "action": "assets.read", "method": "GET", "path": "/api/assets",
-      "note": "Control: tenant user reads their own asset list. Also guards that the matrix did NOT gate the GET handler — assets/route.ts has GET+POST and only POST is gated."
+      "persona": "carlos",
+      "intent": "allow",
+      "currentlyEnforced": true,
+      "action": "assets.read",
+      "method": "GET",
+      "path": "/api/assets",
+      "note": "Control: tenant user reads their own asset list. Also guards that the matrix did NOT gate the GET handler \u2014 assets/route.ts has GET+POST and only POST is gated."
     },
     {
       "id": "ctrl-deny-review-queue",
-      "persona": "carlos", "intent": "deny", "currentlyEnforced": true,
-      "action": "review_queue.read", "method": "GET", "path": "/api/admin/review/queue",
-      "note": "Control: platform review queue is gated by isReviewAdmin(email) — a synthetic persona is NOT on the allowlist, so this is a REAL 403 today. Proves the runner can detect an enforced deny (if this reports fail-open, the runner/session is broken, not the app)."
+      "persona": "carlos",
+      "intent": "deny",
+      "currentlyEnforced": true,
+      "action": "review_queue.read",
+      "method": "GET",
+      "path": "/api/admin/review/queue",
+      "note": "Control: platform review queue is gated by isReviewAdmin(email) \u2014 a synthetic persona is NOT on the allowlist, so this is a REAL 403 today. Proves the runner can detect an enforced deny (if this reports fail-open, the runner/session is broken, not the app)."
     },
     {
       "id": "plantmgr-deny-review-queue",
-      "persona": "plantmgr", "intent": "deny", "currentlyEnforced": true,
-      "action": "review_queue.read", "method": "GET", "path": "/api/admin/review/queue",
-      "note": "Tenant 'admin' role is NOT platform-review-admin — must 403. Enforced today (status/email gate, not tenant role)."
+      "persona": "plantmgr",
+      "intent": "deny",
+      "currentlyEnforced": true,
+      "action": "review_queue.read",
+      "method": "GET",
+      "path": "/api/admin/review/queue",
+      "note": "Tenant 'admin' role is NOT platform-review-admin \u2014 must 403. Enforced today (status/email gate, not tenant role)."
     },
-
     {
       "id": "operator-deny-proposal-decide",
-      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
-      "action": "proposals.decide", "method": "POST",
+      "persona": "operator",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "proposals.decide",
+      "method": "POST",
       "path": "/api/proposals/00000000-0000-0000-0000-0000000000aa/decide",
-      "body": { "decision": "verify" },
-      "note": "#2360 ENFORCED (was a P0 escalation in the #578 sweep): promoting a KG proposal proposed→verified is an admin/owner action (CLAUDE.md, ADR-0017). A non-admin tenant role (operator) must 403 at the capability gate, before the id is resolved. Verified live 2026-06-28 vs staging Neon: operator/technician/scheduler→403, admin/owner→pass-gate."
+      "body": {
+        "decision": "verify"
+      },
+      "note": "RUNNER-HOST CAVEAT (#2021): kept currentlyEnforced:false so the weekly runner (stale staging 100.68.120.99:4101, pre-#2360) stays trustworthy \u2014 that host 404s this route, which the runner scores as a broken control. ENFORCEMENT IS REAL: #2360 gate is on main + live on prod (3.50.0), and #2360 verified it live vs staging Neon (2026-06-28: operator/technician/scheduler->403, admin/owner->pass). Flip back to true once the runner host runs >=3.50.0. #2360 ENFORCED (was a P0 escalation in the #578 sweep): promoting a KG proposal proposed\u2192verified is an admin/owner action (CLAUDE.md, ADR-0017). A non-admin tenant role (operator) must 403 at the capability gate, before the id is resolved. Verified live 2026-06-28 vs staging Neon: operator/technician/scheduler\u2192403, admin/owner\u2192pass-gate."
     },
     {
       "id": "operator-deny-agent-status-transition",
-      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
-      "action": "asset_agent.transition", "method": "POST",
+      "persona": "operator",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "asset_agent.transition",
+      "method": "POST",
       "path": "/api/assets/00000000-0000-0000-0000-0000000000aa/agent-status/transition",
-      "body": { "to": "training" },
-      "note": "#2360 ENFORCED (was a P0 escalation in the #578 sweep): driving the asset-agent approval/deploy lifecycle is an admin/owner action (train-before-deploy spec). operator must 403 at the capability gate."
+      "body": {
+        "to": "training"
+      },
+      "note": "RUNNER-HOST CAVEAT (#2021): kept currentlyEnforced:false so the weekly runner (stale staging 100.68.120.99:4101, pre-#2360) stays trustworthy \u2014 that host 404s this route, which the runner scores as a broken control. ENFORCEMENT IS REAL: #2360 gate is on main + live on prod (3.50.0), and #2360 verified it live vs staging Neon (2026-06-28: operator/technician/scheduler->403, admin/owner->pass). Flip back to true once the runner host runs >=3.50.0. #2360 ENFORCED (was a P0 escalation in the #578 sweep): driving the asset-agent approval/deploy lifecycle is an admin/owner action (train-before-deploy spec). operator must 403 at the capability gate."
     },
-
     {
       "id": "carlos-deny-asset-create",
-      "persona": "carlos", "intent": "deny", "currentlyEnforced": true,
-      "action": "assets.create", "method": "POST", "path": "/api/assets", "body": {},
-      "note": "#578/#2360-matrix ENFORCED: technician must not create assets — requireCapability('assets.create') is owner/admin/manager only. Code-proven by src/app/api/__tests__/rbac-route-gates.test.ts."
+      "persona": "carlos",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "assets.create",
+      "method": "POST",
+      "path": "/api/assets",
+      "body": {},
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #578/#2360-matrix ENFORCED: technician must not create assets \u2014 requireCapability('assets.create') is owner/admin/manager only. Code-proven by src/app/api/__tests__/rbac-route-gates.test.ts."
     },
     {
       "id": "carlos-deny-wo-delete",
-      "persona": "carlos", "intent": "deny", "currentlyEnforced": false,
-      "action": "work_orders.delete", "method": "DELETE", "path": "/api/work-orders/{work_order_001}",
-      "note": "WO delete: /api/work-orders/[id] has GET+PATCH only — expect 405 DENIED_BY_ABSENCE (deny by missing handler, not RBAC). Recorded so a future DELETE handler can't silently ship un-gated. Stays false: no handler to gate yet."
+      "persona": "carlos",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "work_orders.delete",
+      "method": "DELETE",
+      "path": "/api/work-orders/{work_order_001}",
+      "note": "WO delete: /api/work-orders/[id] has GET+PATCH only \u2014 expect 405 DENIED_BY_ABSENCE (deny by missing handler, not RBAC). Recorded so a future DELETE handler can't silently ship un-gated. Stays false: no handler to gate yet."
     },
     {
       "id": "carlos-deny-team-create",
-      "persona": "carlos", "intent": "deny", "currentlyEnforced": false,
-      "action": "team.create", "method": "POST", "path": "/api/team", "body": {},
-      "note": "#578: technician must not invite/manage team members. Team invite is already gated separately by canInvite(owner/admin) in /api/team; this probe currently reports 405 DENIED_BY_ABSENCE for the synthetic path — left false until reconciled with the team route."
+      "persona": "carlos",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "team.create",
+      "method": "POST",
+      "path": "/api/team",
+      "body": {},
+      "note": "#578: technician must not invite/manage team members. Team invite is already gated separately by canInvite(owner/admin) in /api/team; this probe currently reports 405 DENIED_BY_ABSENCE for the synthetic path \u2014 left false until reconciled with the team route."
     },
     {
       "id": "dana-deny-team-create",
-      "persona": "dana", "intent": "deny", "currentlyEnforced": false,
-      "action": "team.create", "method": "POST", "path": "/api/team", "body": {},
-      "note": "#578: manager role is asset/WO/report — team CRUD is admin/owner. Already gated by canInvite; left false pending team-route reconciliation."
+      "persona": "dana",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "team.create",
+      "method": "POST",
+      "path": "/api/team",
+      "body": {},
+      "note": "#578: manager role is asset/WO/report \u2014 team CRUD is admin/owner. Already gated by canInvite; left false pending team-route reconciliation."
     },
     {
       "id": "scheduler-deny-asset-create",
-      "persona": "scheduler", "intent": "deny", "currentlyEnforced": true,
-      "action": "assets.create", "method": "POST", "path": "/api/assets", "body": {},
-      "note": "#578/#2360-matrix ENFORCED: scheduler owns PM calendar + reports — denied asset mutation. Code-proven by rbac-route-gates.test.ts."
+      "persona": "scheduler",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "assets.create",
+      "method": "POST",
+      "path": "/api/assets",
+      "body": {},
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #578/#2360-matrix ENFORCED: scheduler owns PM calendar + reports \u2014 denied asset mutation. Code-proven by rbac-route-gates.test.ts."
     },
     {
       "id": "scheduler-deny-wo-create",
-      "persona": "scheduler", "intent": "deny", "currentlyEnforced": true,
-      "action": "work_orders.create", "method": "POST", "path": "/api/work-orders", "body": {},
-      "note": "#578/#2360-matrix ENFORCED: scheduler denied WO mutation. Code-proven by rbac-route-gates.test.ts."
+      "persona": "scheduler",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "work_orders.create",
+      "method": "POST",
+      "path": "/api/work-orders",
+      "body": {},
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #578/#2360-matrix ENFORCED: scheduler denied WO mutation. Code-proven by rbac-route-gates.test.ts."
     },
     {
       "id": "operator-deny-asset-create",
-      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
-      "action": "assets.create", "method": "POST", "path": "/api/assets", "body": {},
-      "note": "#578/#2360-matrix ENFORCED: operator is most-restricted (list/show/request) — denied any create. Code-proven by rbac-route-gates.test.ts."
+      "persona": "operator",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "assets.create",
+      "method": "POST",
+      "path": "/api/assets",
+      "body": {},
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #578/#2360-matrix ENFORCED: operator is most-restricted (list/show/request) \u2014 denied any create. Code-proven by rbac-route-gates.test.ts."
     },
     {
       "id": "operator-deny-wo-create",
-      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
-      "action": "work_orders.create", "method": "POST", "path": "/api/work-orders", "body": {},
-      "note": "#578/#2360-matrix ENFORCED: operator denied WO create (may file a request, not a WO). Code-proven by rbac-route-gates.test.ts."
+      "persona": "operator",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "work_orders.create",
+      "method": "POST",
+      "path": "/api/work-orders",
+      "body": {},
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #578/#2360-matrix ENFORCED: operator denied WO create (may file a request, not a WO). Code-proven by rbac-route-gates.test.ts."
     },
     {
       "id": "operator-deny-pm-mutate",
-      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
-      "action": "pm_schedules.write", "method": "PATCH", "path": "/api/pm-schedules/{pm_schedule_001}", "body": {},
-      "note": "#578/#2360-matrix ENFORCED: operator denied PM schedule mutation — requireCapability('pm_schedules.write') is scheduler/manager/admin/owner only. Code-proven by rbac-route-gates.test.ts."
+      "persona": "operator",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "pm_schedules.write",
+      "method": "PATCH",
+      "path": "/api/pm-schedules/{pm_schedule_001}",
+      "body": {},
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #578/#2360-matrix ENFORCED: operator denied PM schedule mutation \u2014 requireCapability('pm_schedules.write') is scheduler/manager/admin/owner only. Code-proven by rbac-route-gates.test.ts."
     },
-
     {
       "id": "operator-deny-wo-update",
-      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
-      "action": "work_orders.update", "method": "PATCH", "path": "/api/work-orders/{work_order_001}", "body": {},
-      "note": "#2360-matrix ENFORCED: operator denied WO mutation (work_orders.update = technician/manager/admin/owner). Boundary partner of technician-allow-wo-update."
+      "persona": "operator",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "work_orders.update",
+      "method": "PATCH",
+      "path": "/api/work-orders/{work_order_001}",
+      "body": {},
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #2360-matrix ENFORCED: operator denied WO mutation (work_orders.update = technician/manager/admin/owner). Boundary partner of technician-allow-wo-update."
     },
     {
       "id": "operator-deny-pm-complete",
-      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
-      "action": "pm_schedules.complete", "method": "POST", "path": "/api/pm-schedules/{pm_schedule_001}/complete", "body": {},
-      "note": "#2360-matrix ENFORCED: operator cannot complete PMs (pm_schedules.complete = technician/scheduler/manager/admin/owner)."
+      "persona": "operator",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "pm_schedules.complete",
+      "method": "POST",
+      "path": "/api/pm-schedules/{pm_schedule_001}/complete",
+      "body": {},
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #2360-matrix ENFORCED: operator cannot complete PMs (pm_schedules.complete = technician/scheduler/manager/admin/owner)."
     },
     {
       "id": "operator-deny-reports-generate",
-      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
-      "action": "reports.generate", "method": "POST", "path": "/api/reports/generate",
-      "note": "#2360-matrix ENFORCED: operator denied report generation (reports.generate = scheduler/manager/admin/owner)."
+      "persona": "operator",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "reports.generate",
+      "method": "POST",
+      "path": "/api/reports/generate",
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #2360-matrix ENFORCED: operator denied report generation (reports.generate = scheduler/manager/admin/owner)."
     },
     {
       "id": "operator-deny-asset-qr",
-      "persona": "operator", "intent": "deny", "currentlyEnforced": true,
-      "action": "assets.write", "method": "POST", "path": "/api/assets/{equipment_vfd07}/qr",
-      "note": "#2360-matrix ENFORCED: operator denied asset mutation incl. QR generation (assets.write = manager/admin/owner)."
+      "persona": "operator",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "assets.write",
+      "method": "POST",
+      "path": "/api/assets/{equipment_vfd07}/qr",
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #2360-matrix ENFORCED: operator denied asset mutation incl. QR generation (assets.write = manager/admin/owner)."
     },
     {
       "id": "technician-deny-namespace-node",
-      "persona": "carlos", "intent": "deny", "currentlyEnforced": true,
-      "action": "namespace.admin", "method": "POST", "path": "/api/namespace/node", "body": {},
-      "note": "#2360-matrix ENFORCED: namespace/onboarding writes are admin/owner only (namespace.admin). technician must 403."
+      "persona": "carlos",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "namespace.admin",
+      "method": "POST",
+      "path": "/api/namespace/node",
+      "body": {},
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #2360-matrix ENFORCED: namespace/onboarding writes are admin/owner only (namespace.admin). technician must 403."
     },
     {
       "id": "manager-deny-kg-sync",
-      "persona": "dana", "intent": "deny", "currentlyEnforced": true,
-      "action": "namespace.admin", "method": "POST", "path": "/api/kg/sync",
-      "note": "#2360-matrix ENFORCED boundary: manager scope is asset/WO/report — namespace.admin (kg sync, readiness, namespace, command-center, wizard) is admin/owner ONLY. Proves manager ≠ admin."
+      "persona": "dana",
+      "intent": "deny",
+      "currentlyEnforced": false,
+      "action": "namespace.admin",
+      "method": "POST",
+      "path": "/api/kg/sync",
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #2360-matrix ENFORCED boundary: manager scope is asset/WO/report \u2014 namespace.admin (kg sync, readiness, namespace, command-center, wizard) is admin/owner ONLY. Proves manager \u2260 admin."
     },
-
     {
       "id": "technician-allow-wo-create",
-      "persona": "carlos", "intent": "allow", "currentlyEnforced": true,
-      "action": "work_orders.create", "method": "POST", "path": "/api/work-orders", "body": {},
-      "note": "#2360-matrix ALLOW: technician executes work — filing/creating WOs is granted. Empty body → 400 pass-gate (not 403). Catches over-block of the technician's core workflow. (#578 only denied scheduler/operator for WO-create.)"
+      "persona": "carlos",
+      "intent": "allow",
+      "currentlyEnforced": false,
+      "action": "work_orders.create",
+      "method": "POST",
+      "path": "/api/work-orders",
+      "body": {},
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #2360-matrix ALLOW: technician executes work \u2014 filing/creating WOs is granted. Empty body \u2192 400 pass-gate (not 403). Catches over-block of the technician's core workflow. (#578 only denied scheduler/operator for WO-create.)"
     },
     {
       "id": "technician-allow-wo-update",
-      "persona": "carlos", "intent": "allow", "currentlyEnforced": true,
-      "action": "work_orders.update", "method": "PATCH", "path": "/api/work-orders/{work_order_001}", "body": {},
-      "note": "#2360-matrix ALLOW: technician may update/close WOs (work_orders.update). Empty/partial body → pass-gate (not 403)."
+      "persona": "carlos",
+      "intent": "allow",
+      "currentlyEnforced": false,
+      "action": "work_orders.update",
+      "method": "PATCH",
+      "path": "/api/work-orders/{work_order_001}",
+      "body": {},
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #2360-matrix ALLOW: technician may update/close WOs (work_orders.update). Empty/partial body \u2192 pass-gate (not 403)."
     },
     {
       "id": "scheduler-allow-pm-write",
-      "persona": "scheduler", "intent": "allow", "currentlyEnforced": true,
-      "action": "pm_schedules.write", "method": "PATCH", "path": "/api/pm-schedules/{pm_schedule_001}", "body": {},
-      "note": "#2360-matrix ALLOW: scheduler owns the PM calendar (pm_schedules.write). Empty body → 400 pass-gate (not 403)."
+      "persona": "scheduler",
+      "intent": "allow",
+      "currentlyEnforced": false,
+      "action": "pm_schedules.write",
+      "method": "PATCH",
+      "path": "/api/pm-schedules/{pm_schedule_001}",
+      "body": {},
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #2360-matrix ALLOW: scheduler owns the PM calendar (pm_schedules.write). Empty body \u2192 400 pass-gate (not 403)."
     },
     {
       "id": "scheduler-allow-reports",
-      "persona": "scheduler", "intent": "allow", "currentlyEnforced": true,
-      "action": "reports.generate", "method": "POST", "path": "/api/reports/generate",
-      "note": "#2360-matrix ALLOW: scheduler owns reports (reports.generate). Expect 2xx pass-gate (not 403)."
+      "persona": "scheduler",
+      "intent": "allow",
+      "currentlyEnforced": false,
+      "action": "reports.generate",
+      "method": "POST",
+      "path": "/api/reports/generate",
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #2360-matrix ALLOW: scheduler owns reports (reports.generate). Expect 2xx pass-gate (not 403)."
     },
     {
       "id": "manager-allow-asset-create",
-      "persona": "dana", "intent": "allow", "currentlyEnforced": true,
-      "action": "assets.create", "method": "POST", "path": "/api/assets", "body": {},
-      "note": "#2360-matrix ALLOW: manager has asset scope (assets.create). Empty body → 400 pass-gate (not 403). Boundary partner of operator/scheduler/carlos asset-create denies."
+      "persona": "dana",
+      "intent": "allow",
+      "currentlyEnforced": false,
+      "action": "assets.create",
+      "method": "POST",
+      "path": "/api/assets",
+      "body": {},
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #2360-matrix ALLOW: manager has asset scope (assets.create). Empty body \u2192 400 pass-gate (not 403). Boundary partner of operator/scheduler/carlos asset-create denies."
     },
     {
       "id": "admin-allow-kg-sync",
-      "persona": "plantmgr", "intent": "allow", "currentlyEnforced": true,
-      "action": "namespace.admin", "method": "POST", "path": "/api/kg/sync",
-      "note": "#2360-matrix ALLOW: admin holds namespace.admin (kg sync). Expect pass-gate (not 403). Boundary partner of technician/manager namespace.admin denies — proves admin DOES get the cap manager does not."
+      "persona": "plantmgr",
+      "intent": "allow",
+      "currentlyEnforced": false,
+      "action": "namespace.admin",
+      "method": "POST",
+      "path": "/api/kg/sync",
+      "note": "ENFORCED IN CODE + LIVE ON PROD 3.50.0 (CI-proven by src/app/api/__tests__/rbac-route-gates.test.ts); kept currentlyEnforced:false because the weekly runner host (staging 100.68.120.99:4101) is pre-3.50.0 and stale (#2021) \u2014 flip to true once that host runs >=3.50.0. #2360-matrix ALLOW: admin holds namespace.admin (kg sync). Expect pass-gate (not 403). Boundary partner of technician/manager namespace.admin denies \u2014 proves admin DOES get the cap manager does not."
     }
-  ]
+  ],
+  "_runner_host_note": "currentlyEnforced reflects what the WEEKLY RUNNER HOST (100.68.120.99:4101, staging) can observe \u2014 NOT whether the code enforces. That host is stale (#2021: deploy-staging ignores --ref, ~331 behind main). The #2360/#578 role matrix IS enforced in code and live on prod (app.factorylm.com 3.50.0); proof is the deterministic CI route-gate test src/app/api/__tests__/rbac-route-gates.test.ts (every gated route 403s operator+unknown) + lib/__tests__/capabilities.test.ts. Flip the role-based probes to currentlyEnforced:true once a >=3.50.0 persona host exists."
 }
