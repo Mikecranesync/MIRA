@@ -118,11 +118,16 @@ Northwind tenant. **Request body (camelCase):**
   (columns: `tenant_id, uns_path (ltree), equipment_id, display_type, scheme, host, port, path,
   label, enabled, …`; unique on `(tenant_id, uns_path)`; RLS tenant-scoped).
 
-> 🚧 **PROD framing is unsolved (gates prod, NOT your dev/staging build).** The per-id
-> `/cc-display/{id}` proxy can't host an absolute-path SPA. Prod needs a **dedicated-origin-per-gateway**
-> decision (a `cc-gw.*` subdomain / VPS nginx server block, XFO+CSP stripped, WS forwarded) — Mike's
-> pending call in `docs/command-center-ignition-display.md`. Build + verify on dev/staging against the
-> `8890` proxy; prod framing lands after that decision.
+> ✅ **PROD framing — DECIDED (ADR-0024, 2026-06-28).** Production uses a **dedicated
+> FactoryLM-controlled origin per gateway/customer** (e.g. `https://northwind-cv200.factorylm-gateways.com`)
+> — **never** the raw gateway, **never** the dev-only `8890` proxy, and **no shared wildcard origin**.
+> Enforced via the existing `COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST` env (`display/route.ts:92`): in
+> prod it holds the dedicated origins and excludes the raw gateway + `127.0.0.1`. Per-environment
+> targets are encoded in `tools/command-center/northwind-cv200.json` (dev/staging → `8890`;
+> production → the dedicated origin, `PENDING_INFRA` until provisioned). **You build + verify on
+> dev/staging against the `8890` proxy now** (apply `mira-hub/db/seeds/command_center_northwind_cv200.sql`);
+> prod registration via `POST /api/command-center/display` against the dedicated origin once infra
+> provisions it. Full rationale: `docs/adr/0024-dedicated-factorylm-origin-per-ignition-gateway.md`.
 
 ---
 
@@ -318,7 +323,10 @@ Your view can surface `current_fault`; MIRA grounds its answer on it + the live 
 6. **Ingest manuals** into Northwind `knowledge_entries` with `is_private=true` (Micro820 map + GS10),
    verify BM25 on staging — *cloud-side follow-up, not your build*
    (`.claude/rules/knowledge-entries-tenant-scoping.md`).
-7. **Prod framing** — blocked on Mike's dedicated-origin-per-gateway decision (§4).
+7. **Prod framing** — DECIDED: dedicated FactoryLM origin per gateway (ADR-0024, §4). Remaining work
+   is *infra provisioning* of `northwind-cv200.factorylm-gateways.com` (DNS + dedicated nginx server
+   block, XFO/CSP stripped, WS forwarded, TLS, reachable over Tailscale) + adding it to the prod
+   `COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST` — not a code change in this PR.
 
 **Gateway reachability:** PLC-laptop gateway is on Tailscale `100.72.2.99`; the prod proxy/relay must
 reach it (off-LAN smoke = GO/NO-GO).
