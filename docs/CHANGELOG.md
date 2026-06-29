@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.53.1 (2026-06-29) - chore(ruff): exclude plc/ignition-project from ruff
+- Adds `plc/ignition-project` to the ruff exclude list in `pyproject.toml`. Files under this path are Ignition Gateway Jython 2.7 scripts that use `system.*` globals and `java.*` imports which ruff cannot model — same class as the already-excluded `ignition/webdev` and `ignition/gateway-scripts` paths. Prevents false stop-gate lint failures when these files appear as working-tree changes.
+
 ### v3.44.1 (2026-06-26) - fix(hub): wire Atlas SSO deploy secrets
 - Passes the shared Hub-to-Atlas SSO signing configuration into the production `mira-hub` container so the merged `/api/cmms/sso` route can sign live Atlas handoff assertions.
 - Makes synthetic Hub user seeding consume Doppler/env-backed per-persona passwords for live proof runs without logging credential values.
