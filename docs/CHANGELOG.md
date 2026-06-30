@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.53.1 (2026-06-30) - fix(hub): GET /api/work-orders/[id] returns resolution + closed_at (#2375)
+- A completed work order read back with `resolution=null` and `closed_at=null` even though PATCH persisted them — the GET detail `SELECT` and `rowToWO` serializer omitted the closure columns, so the next technician saw a blank closure. The GET now selects and returns `resolution`, `fault_description`, and `closed_at`.
+- Found by the dogfood judge (`tools/crew/dogfood`) and reproduced field-by-field against staging (PATCH returns the values; GET dropped the keys entirely). Regression test `mira-hub/src/app/api/work-orders/[id]/route.test.ts`. Hub release `mira-hub/v2.24.1`.
+
 ### v3.44.1 (2026-06-26) - fix(hub): wire Atlas SSO deploy secrets
 - Passes the shared Hub-to-Atlas SSO signing configuration into the production `mira-hub` container so the merged `/api/cmms/sso` route can sign live Atlas handoff assertions.
 - Makes synthetic Hub user seeding consume Doppler/env-backed per-persona passwords for live proof runs without logging credential values.
