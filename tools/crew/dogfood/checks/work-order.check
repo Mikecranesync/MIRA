@@ -1,0 +1,57 @@
+# shellcheck shell=bash disable=SC2034  # sourced fragment; SCN_* are read by judge.sh
+# work-order.check — "does a closed work order keep its closure notes?"
+#
+# The CMMS loop a tech actually lives in: create a work order, complete it with a
+# resolution, then read it back. If the read-back silently drops the resolution
+# or closed_at, the maintenance HISTORY is lying — the next tech sees a blank
+# closure. This re-verifies the field-drop bug #2375 against the live Hub; each
+# persona creates its OWN work order, so "verified by a second persona" is a real
+# second session reproducing it, not a rubber stamp.
+#
+# Verdict on the LAST line: GREEN | RED:<reason> | INFRA:<reason>
+
+SCN_PATH="Work order"
+SCN_TITLE="bug(hub): GET /api/work-orders/[id] omits resolution + closed_at (PATCH persists them)"
+SCN_IMPACT="A completed work order reads back with no resolution and no close time — the maintenance history loses the very notes the next technician needs, so the CMMS record is untrustworthy."
+SCN_LABELS="bug,hub,dogfood,needs-triage"
+SCN_FINDER="carlos"
+SCN_VERIFIER="dana"
+SCN_DEDUPE="omits resolution closed_at"
+
+run_check() {
+  local eq wid patched got
+  # pick an asset to attach the WO to
+  eq=$(curl -sS -m 20 "$DF_BASE/api/assets/" -H "Cookie: next-auth.session-token=$DF_TOK" | python3 -c 'import sys,json,re
+try:
+ d=json.load(sys.stdin); d=d if isinstance(d,list) else d.get("assets",[])
+ if not d: print(""); raise SystemExit
+ pref=[a for a in d if re.search(r"allen|rockwell|powerflex",str(a.get("manufacturer",""))+str(a.get("model","")),re.I)]
+ print(sorted(pref or d, key=lambda a:str(a.get("id","")))[0]["id"])
+except Exception: print("")' 2>/dev/null)
+  if [ -z "$eq" ]; then echo "EVIDENCE: no asset to attach a work order to"; echo "INFRA: no asset available for the work-order path"; return; fi
+
+  wid=$(curl -sS -m 30 "$DF_BASE/api/work-orders/" -H "Cookie: next-auth.session-token=$DF_TOK" -H "Content-Type: application/json" \
+        -d "{\"equipment_id\":\"$eq\",\"title\":\"dogfood-wo-fielddrop\",\"priority\":\"medium\",\"description\":\"dogfood read-back check\"}" \
+        | python3 -c 'import sys,json
+try:
+ w=json.load(sys.stdin); w=w.get("work_order",w); print(w.get("id",""))
+except Exception: print("")' 2>/dev/null)
+  if [ -z "$wid" ]; then echo "EVIDENCE: work-order POST did not return an id"; echo "INFRA: could not create a work order (auth or API unreachable)"; return; fi
+  echo "EVIDENCE: created work order $wid"
+
+  curl -sS -m 30 -X PATCH "$DF_BASE/api/work-orders/$wid/" -H "Cookie: next-auth.session-token=$DF_TOK" -H "Content-Type: application/json" \
+       -d "{\"status\":\"completed\",\"resolution\":\"dogfood-resolution-text\"}" >/dev/null
+  echo "EVIDENCE: PATCHed it to completed with a resolution"
+
+  got=$(curl -sS -m 30 "$DF_BASE/api/work-orders/$wid/" -H "Cookie: next-auth.session-token=$DF_TOK")
+  if ! printf '%s' "$got" | grep -q '"id"'; then echo "EVIDENCE: read-back not JSON"; echo "INFRA: work-order read-back did not return JSON"; return; fi
+  local res closed
+  res=$(printf '%s' "$got" | python3 -c 'import sys,json;w=json.load(sys.stdin);w=w.get("work_order",w);print("null" if w.get("resolution") is None else "present")' 2>/dev/null)
+  closed=$(printf '%s' "$got" | python3 -c 'import sys,json;w=json.load(sys.stdin);w=w.get("work_order",w);print("null" if w.get("closed_at") is None else "present")' 2>/dev/null)
+  echo "EVIDENCE: read-back → resolution=$res, closed_at=$closed (we set a resolution; both should be present)"
+
+  if [ "$res" = "null" ] && [ "$closed" = "null" ]; then
+    echo "RED: a completed work order reads back with resolution=null and closed_at=null — the closure notes the next tech needs are gone"; return
+  fi
+  echo "GREEN: a completed work order keeps its resolution and close time on read-back"
+}

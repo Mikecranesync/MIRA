@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.53.2 (2026-06-29) - feat(crew): daily dogfood JUDGE (product-path verdicts for Mike)
+- Adds `tools/crew/dogfood/judge.sh` + four `.check` packs (maintenance-tech, contextualization, work-order, demo-readiness) that walk MIRA's core product paths against the live staging Hub as real QA personas and classify each GREEN/YELLOW/RED in **business language**, writing a two-minute founder report to `qa/dogfood/latest-report.md`.
+- Reuses the existing verification gate, `create_issue.sh` dedupe, and persona auth — no new framework. Filing is gated: every RED is cross-verified under a **second** persona session before it can be filed (finder≠verifier), deduped first, and refused on INFRA/ambiguous evidence. Deterministic, corpus-aware asset selection avoids flaky verdicts. Hermetic tests 10/10; dry-run by default.
+
 ### v3.53.1 (2026-06-29) - chore(crew): verification-gated synthetic-worker runner
 - Bounds the synthetic dogfood crew so it can never autonomously file weak or self-verified findings: `tools/qa/create_issue.sh` now refuses any finding lacking an independent reproduction, a verifier distinct from the finder, `dogfood`/`crew` labels, or (for P0) an explicit `--allow-p0`, before any `gh issue create`.
 - Adds `tools/crew/run_synthetic_workers.sh` (a default-dry-run runner that routes real filing through the gated filer) plus one guarded scenario and hermetic tests (gate 7/7, runner 12/12, shellcheck clean). No app/runtime code touched.
