@@ -1,12 +1,12 @@
 # MIRA Release Notes
 
-### v3.53.2 (2026-06-29) - feat(crew): daily dogfood JUDGE (product-path verdicts for Mike)
-- Adds `tools/crew/dogfood/judge.sh` + four `.check` packs (maintenance-tech, contextualization, work-order, demo-readiness) that walk MIRA's core product paths against the live staging Hub as real QA personas and classify each GREEN/YELLOW/RED in **business language**, writing a two-minute founder report to `qa/dogfood/latest-report.md`.
-- Reuses the existing verification gate, `create_issue.sh` dedupe, and persona auth — no new framework. Filing is gated: every RED is cross-verified under a **second** persona session before it can be filed (finder≠verifier), deduped first, and refused on INFRA/ambiguous evidence. Deterministic, corpus-aware asset selection avoids flaky verdicts. Hermetic tests 10/10; dry-run by default.
+### v3.53.3 (2026-06-30) - feat(crew): synthetic-worker runner + daily dogfood JUDGE
+- Adds `tools/crew/dogfood/judge.sh` + four `.check` packs (maintenance-tech, contextualization, work-order, demo-readiness) that walk MIRA's core product paths against the live staging Hub as real QA personas and classify each GREEN/YELLOW/RED in **business language**, writing a two-minute founder report to `qa/dogfood/latest-report.md`. Every RED is cross-verified under a **second** persona session before it can be filed (finder≠verifier), deduped first, refused on INFRA/ambiguous; deterministic corpus-aware asset selection avoids flaky verdicts.
+- Adds the gated filer `tools/qa/create_issue.sh` + `tools/crew/run_synthetic_workers.sh`: no finding is filed without an independent reproduction, a distinct verifier, `dogfood`/`crew` labels, and (for P0) `--allow-p0`. Hermetic tests — judge 10/10, runner 12/12, gate 7/7; shellcheck clean. Dry-run by default; no app/runtime code.
 
-### v3.53.1 (2026-06-29) - chore(crew): verification-gated synthetic-worker runner
-- Bounds the synthetic dogfood crew so it can never autonomously file weak or self-verified findings: `tools/qa/create_issue.sh` now refuses any finding lacking an independent reproduction, a verifier distinct from the finder, `dogfood`/`crew` labels, or (for P0) an explicit `--allow-p0`, before any `gh issue create`.
-- Adds `tools/crew/run_synthetic_workers.sh` (a default-dry-run runner that routes real filing through the gated filer) plus one guarded scenario and hermetic tests (gate 7/7, runner 12/12, shellcheck clean). No app/runtime code touched.
+### v3.53.2 (2026-06-30) - fix(hub): GET /api/work-orders/[id] returns resolution + closed_at (#2375)
+- A completed work order read back with `resolution=null` and `closed_at=null` even though PATCH persisted them — the GET detail `SELECT` and `rowToWO` serializer omitted the closure columns, so the next technician saw a blank closure. The GET now selects and returns `resolution`, `fault_description`, and `closed_at`.
+- Found by the dogfood judge (`tools/crew/dogfood`) and reproduced field-by-field against staging (PATCH returns the values; GET dropped the keys entirely). Regression test `mira-hub/src/app/api/work-orders/[id]/route.test.ts`. Hub release `mira-hub/v2.24.1`.
 
 ### v3.44.1 (2026-06-26) - fix(hub): wire Atlas SSO deploy secrets
 - Passes the shared Hub-to-Atlas SSO signing configuration into the production `mira-hub` container so the merged `/api/cmms/sso` route can sign live Atlas handoff assertions.

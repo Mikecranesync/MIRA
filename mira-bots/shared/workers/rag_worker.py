@@ -38,6 +38,53 @@ CITATION_TAG_RE = re.compile(r"\[Source:[^\]]+\]", re.IGNORECASE)
 _LABEL_STRIP_RE = re.compile(r"[\r\n\[\]]+")
 
 
+# ── Evidence-relevance gate (blocker #2384) ──────────────────────────────────
+# Retrieval success != evidence coverage. recall_knowledge fuses streams whose
+# `similarity` fields are NOT on a common scale: vector = cosine in [0,1]; BM25 =
+# raw ts_rank_cd (unbounded, "NOT comparable to cosine" per neon_recall.py:502);
+# ILIKE = hardcoded 0.5; fault-code = deterministic exact match (authoritative).
+# The merge tags each row with `retrieval_streams` precisely so the coverage gate
+# can apply the cosine floor ONLY to vector-originated chunks. A chunk can
+# establish coverage only when it is cosine-comparable AND clears the floor, or is
+# an authoritative fault-code hit; BM25/ILIKE-only and unknown-provenance chunks
+# fail closed; junk/non-authoritative sources never count.
+_KB_COVERAGE_COSINE_MIN = float(os.getenv("MIRA_KB_COVERAGE_COSINE_MIN", "0.65"))
+_JUNK_SOURCE_RE = re.compile(r"(?i)(youtube\.com|youtu\.be|watch\?v=)")
+
+
+def _is_junk_source(chunk: dict) -> bool:
+    """Non-authoritative sources (e.g. YouTube transcripts) must not back a cited
+    answer — checked against source_url / title / metadata.source_url."""
+    meta = chunk.get("metadata") or {}
+    blob = " ".join(
+        str(v or "") for v in (chunk.get("source_url"), chunk.get("title"), meta.get("source_url"))
+    )
+    return bool(_JUNK_SOURCE_RE.search(blob))
+
+
+def _chunk_supports_coverage(chunk: dict) -> bool:
+    """True only when the chunk is evidence that can actually support an answer:
+    a cosine-comparable vector chunk at/above the relevance floor, or an
+    authoritative deterministic fault-code hit. BM25/ILIKE-only chunks (non-cosine
+    scores) and unknown-provenance chunks fail closed; junk sources never qualify.
+    This is what stops a high BM25 ts_rank on an off-domain query from faking
+    coverage (#2384)."""
+    if _is_junk_source(chunk):
+        return False
+    meta = chunk.get("metadata") or {}
+    if meta.get("section") == "Fault Code Table":
+        # Deterministic exact fault-code match — authoritative, bypasses RRF.
+        return True
+    streams = chunk.get("retrieval_streams")
+    if streams is None:
+        # No provenance tag and not a fault hit -> score type unknown -> fail closed.
+        return False
+    if "vector" in streams:
+        return (chunk.get("similarity") or 0) >= _KB_COVERAGE_COSINE_MIN
+    # Known non-cosine streams only (bm25/like/product) -> not comparable -> fail closed.
+    return False
+
+
 def _sanitize_label_field(value: str) -> str:
     """Neutralize chunk metadata before embedding it in a source header."""
     if not value:
@@ -809,10 +856,16 @@ class RAGWorker:
             return raw
 
     def _compute_kb_status(self, neon_chunks: list[dict], has_chunks: bool) -> dict:
-        """Classify KB coverage and extract source citations for the citation gate."""
+        """Classify KB coverage and extract source citations for the citation gate.
+
+        Coverage is established only by chunks that ACTUALLY support the question —
+        cosine-comparable vector evidence above the relevance floor, or authoritative
+        fault-code hits. High BM25/ILIKE lexical scores alone, junk sources, and
+        unknown-provenance chunks do not count (see `_chunk_supports_coverage`, #2384).
+        """
         if not has_chunks:
             return {"status": "uncovered", "citations": []}
-        high_quality = [c for c in neon_chunks if c.get("similarity", 0) >= 0.65]
+        high_quality = [c for c in neon_chunks if _chunk_supports_coverage(c)]
         citations = []
         for c in high_quality[:3]:
             meta = c.get("metadata") or {}
