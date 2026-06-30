@@ -2,10 +2,11 @@
 # contextualization.check — "is this asset grounded in the customer's own reality?"
 #
 # FactoryLM's promise is trustworthy context: the asset must carry identity
-# (manufacturer/model/type), the customer's OWN evidence (documents), a UNS
-# mapping, AND a hard wall between APPROVED data (shown as trusted) and
-# UNAPPROVED proposals (must NOT appear as fact). This check inspects an asset
-# and reports whether that grounding exists and whether the approval wall holds.
+# (manufacturer/model/type), the customer's OWN evidence (documents), and a UNS
+# mapping — and unapproved proposals must NEVER surface as trusted fact. This
+# check inspects an asset for that grounding and EXERCISES the proposed→verified
+# approval wall when proposals exist; when there are none it reports the wall as
+# NOT EXERCISED rather than passing it vacuously.
 #
 # Verdict on the LAST line: GREEN | YELLOW:<reason> | RED:<reason> | INFRA:<reason>
 
@@ -48,20 +49,37 @@ try: print(json.load(sys.stdin).get("total",-1))
 except Exception: print(-1)' 2>/dev/null)
   echo "EVIDENCE: UNS entities under enterprise: $uns"
 
-  # The approval wall: unapproved proposals must be reported as proposals, never as trusted fact.
+  # The approval wall: unapproved proposals must surface AS proposals, never as
+  # trusted/verified fact. We can only EXERCISE this when proposals exist — be
+  # honest when there are none rather than passing the wall vacuously.
   local prop; prop=$(curl -sS -m 20 "$DF_BASE/api/proposals/" -H "Cookie: next-auth.session-token=$DF_TOK")
   local nprop; nprop=$(printf '%s' "$prop" | python3 -c 'import sys,json;d=json.load(sys.stdin);print((d.get("total",0) or 0)+(d.get("suggestionsTotal",0) or 0))' 2>/dev/null)
-  echo "EVIDENCE: unapproved proposals/suggestions pending: $nprop (these must render as 'proposed', not trusted)"
+  # leaked = proposals/suggestions whose status reads as approved/verified/trusted (a wall breach)
+  local leaked="n/a"
+  if [ "${nprop:-0}" -gt 0 ]; then
+    leaked=$(printf '%s' "$prop" | python3 -c 'import sys,json
+d=json.load(sys.stdin); items=(d.get("proposals") or [])+(d.get("suggestions") or [])
+bad=[i for i in items if str(i.get("status","")).lower() in ("verified","approved","trusted","accepted")]
+print(len(bad))' 2>/dev/null)
+    echo "EVIDENCE: approval-wall EXERCISED — $nprop pending item(s); $leaked surfaced as verified/trusted (expect 0)"
+  else
+    echo "EVIDENCE: approval-wall NOT EXERCISED — 0 proposals on this tenant, so the proposed≠trusted invariant is untested here (not proven)"
+  fi
 
   # context endpoint observation (non-fatal — surfaced for triage, not filed alone)
   local cc; cc=$(curl -sS -m 20 -o /dev/null -w "%{http_code}" "$DF_BASE/api/assets/$A/context/" -H "Cookie: next-auth.session-token=$DF_TOK")
   echo "EVIDENCE: GET /api/assets/[id]/context returned $cc (404 here despite the asset existing — worth a look)"
 
   # ---- verdict ----
+  # Hard breach first: an unapproved proposal shown as trusted is a real security bug.
+  if [ "$leaked" != "n/a" ] && [ "${leaked:-0}" -gt 0 ]; then
+    echo "RED: $leaked unapproved proposal(s) are surfaced as verified/trusted — the proposed→verified approval wall is broken"; return
+  fi
   if [ "$ident" != "yes" ]; then echo "RED: the asset has no trusted identity (manufacturer/model/type) — nothing to ground a diagnosis on"; return; fi
   if [ "${docs:-0}" -lt 1 ] && [ "${uns:-0}" -lt 1 ]; then
-    echo "YELLOW: $tag is named but has ZERO customer documents and an EMPTY UNS map — MIRA answers from generic OEM data, not this customer's reality"; return
+    echo "YELLOW: $tag is named but has ZERO customer documents and an EMPTY UNS map — MIRA answers from generic OEM data, not this customer's reality (approval wall untested — no proposals present)"; return
   fi
   if [ "${docs:-0}" -lt 1 ]; then echo "YELLOW: $tag is UNS-mapped but has no customer documents attached — no customer-specific evidence to cite"; return; fi
-  echo "GREEN: $tag carries identity, $docs customer document(s), a UNS mapping, and $nprop unapproved items correctly held as proposals"
+  local wall; [ "$leaked" = "n/a" ] && wall="approval wall untested (no proposals)" || wall="approval wall held ($nprop proposals, none shown as trusted)"
+  echo "GREEN: $tag carries identity, $docs customer document(s), and a UNS mapping; $wall"
 }

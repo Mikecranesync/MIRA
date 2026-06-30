@@ -27,7 +27,7 @@ Output: `qa/dogfood/latest-report.md` (the report) + raw transcripts under
 | Check | Question it answers |
 |---|---|
 | `maintenance-tech` | Can a tech log in, open their asset, see live status, and get a **cited** fault answer that doesn't invent data? |
-| `contextualization` | Is the asset grounded — identity, customer documents, UNS map — and is unapproved data kept as *proposed*, not trusted? |
+| `contextualization` | Is the asset grounded — identity, customer documents, UNS map? Exercises the proposed→trusted approval wall **when proposals exist** (reports NOT EXERCISED otherwise — never passes it vacuously). |
 | `work-order` | Does a completed work order keep its resolution + close time on read-back? (re-verifies #2375) |
 | `demo-readiness` | Can a prospect follow the ProveIt story end to end: asset → fault → live signal → cited evidence → recommended action? |
 
