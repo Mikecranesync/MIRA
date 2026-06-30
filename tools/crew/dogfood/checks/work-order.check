@@ -30,14 +30,27 @@ try:
 except Exception: print("")' 2>/dev/null)
   if [ -z "$eq" ]; then echo "EVIDENCE: no asset to attach a work order to"; echo "INFRA: no asset available for the work-order path"; return; fi
 
-  wid=$(curl -sS -m 30 "$DF_BASE/api/work-orders/" -H "Cookie: next-auth.session-token=$DF_TOK" -H "Content-Type: application/json" \
-        -d "{\"equipment_id\":\"$eq\",\"title\":\"dogfood-wo-fielddrop\",\"priority\":\"medium\",\"description\":\"dogfood read-back check\"}" \
-        | python3 -c 'import sys,json
+  # REUSE a single persistent test WO if one exists (work orders can't be deleted via
+  # the API — creating one per run would pollute the asset's history forever). The
+  # bug is GET-omits-fields, so re-PATCHing an existing WO proves it just as well.
+  local marker="dogfood-wo-fielddrop"
+  wid=$(curl -sS -m 30 "$DF_BASE/api/work-orders/" -H "Cookie: next-auth.session-token=$DF_TOK" | python3 -c "import sys,json
+try:
+ d=json.load(sys.stdin); wos=d.get('work_orders',d) if isinstance(d,dict) else d
+ print(next((w['id'] for w in wos if (w.get('title') or '')=='$marker'),''))
+except Exception: print('')" 2>/dev/null)
+  if [ -n "$wid" ]; then
+    echo "EVIDENCE: reusing existing test work order $wid (no new WO created)"
+  else
+    wid=$(curl -sS -m 30 "$DF_BASE/api/work-orders/" -H "Cookie: next-auth.session-token=$DF_TOK" -H "Content-Type: application/json" \
+          -d "{\"equipment_id\":\"$eq\",\"title\":\"$marker\",\"priority\":\"medium\",\"description\":\"dogfood read-back check (persistent; reused each run)\"}" \
+          | python3 -c 'import sys,json
 try:
  w=json.load(sys.stdin); w=w.get("work_order",w); print(w.get("id",""))
 except Exception: print("")' 2>/dev/null)
-  if [ -z "$wid" ]; then echo "EVIDENCE: work-order POST did not return an id"; echo "INFRA: could not create a work order (auth or API unreachable)"; return; fi
-  echo "EVIDENCE: created work order $wid"
+    if [ -z "$wid" ]; then echo "EVIDENCE: work-order POST did not return an id"; echo "INFRA: could not create a work order (auth or API unreachable)"; return; fi
+    echo "EVIDENCE: created persistent test work order $wid (first run only)"
+  fi
 
   curl -sS -m 30 -X PATCH "$DF_BASE/api/work-orders/$wid/" -H "Cookie: next-auth.session-token=$DF_TOK" -H "Content-Type: application/json" \
        -d "{\"status\":\"completed\",\"resolution\":\"dogfood-resolution-text\"}" >/dev/null
