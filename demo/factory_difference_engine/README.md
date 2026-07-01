@@ -76,3 +76,35 @@ no cloud. That gap is what this package fills; nothing else was built.
 - `docs/product/mira_difference_engine_offering.md` / `…_prd.md` — the product framing
 - `tests/simlab/test_difference_engine.py` — the difference-engine proof this composes
 - `.claude/rules/one-pipeline-ingest.md`, `.claude/rules/fieldbus-readonly.md` — the laws honored (read-only, one pipeline)
+
+## Fault Dictionary (Fault Intelligence — Phase 2 brick)
+
+**What it is:** a deterministic parser that turns the SimLab manual fault tables
+(`simlab/docs/<asset>/fault_code_table.md`) into a queryable dictionary — one record per
+fault code with its plain-English meaning, likely cause, first checks, the **tags it
+references** (pulled from the manual's backticks), the **cited source document**, and an
+honest **`missing_evidence`** list flagging VFD/electrical/condition diagnostics the sim lacks.
+
+**Why it matters (the wedge):** it is the first bridge from a cryptic code to *plain-English,
+evidence-backed troubleshooting* — `cryptic fault → meaning → referenced tags → cited source`.
+
+**How it feeds the Difference Bundle later:** the `referenced_tags` are the **join points**.
+A future phase will match a fault's referenced tags to the difference bundle's abnormal
+signals + baseline-vs-current, so a fault code is explained with live evidence. That join —
+and any fault-centered report or Hub integration — is **not built yet**; this is only the
+dictionary.
+
+**Generate / inspect it (offline, deterministic):**
+```bash
+# print the whole dictionary as JSON
+python -m demo.factory_difference_engine.fault_dictionary
+
+# also write local artifacts (JSON + CSV) under out/fault_dictionary/
+python -m demo.factory_difference_engine.fault_dictionary --write
+```
+```python
+from demo.factory_difference_engine.fault_dictionary import extract_fault_dictionary, lookup_fault
+recs = extract_fault_dictionary()               # 11 assets, ~53 fault codes
+f7 = lookup_fault("F007", asset="filler01")     # -> the "Low Bowl Pressure" record
+```
+Read-only, no DB/network/cloud/LLM. **Not** the fault-centered report or Hub integration — those are later phases.
