@@ -20,6 +20,9 @@ SH
 chmod +x "$TMP/bin/gh"
 export PATH="$TMP/bin:$PATH"
 export OUT_DIR="$TMP/out"
+# Keep the hermetic suite fast: no real sleeps between repro retries or rounds.
+export SW_RETRY_DELAY=0
+export SW_ROUND_DELAY=0
 
 # ── deterministic fake scenarios ─────────────────────────────────────────────
 SCN="$TMP/scenarios"; mkdir -p "$SCN"
@@ -92,6 +95,36 @@ assert "--list shows good summary" "good" "$l"
 fmode="$(bash "$RUNNER" --scenario good --scenario-dir "$SCN" --file-issues 2>&1)"
 assert "file-issues → FILED url" "[good] FILED" "$fmode"
 assert "file-issues → shimmed url" "issues/99999" "$fmode"
+
+# ── retries: a scenario that only reproduces on the 3rd attempt ──────────────
+# The repro cmd increments a counter file and emits the bug signal only once
+# count >= 3. With --retries 3 it must reproduce (WOULD-FILE); with --retries 1
+# it must refuse (no-repro). Proves retries catch an intermittent repro.
+CNT="$TMP/flaky.count"
+cat > "$SCN/flaky.scenario" <<S
+SCN_SUMMARY="flaky"; SCN_TITLE="P2(hub): intermittent finding"; SCN_LABELS="bug,dogfood"
+SCN_SEVERITY="P2"; SCN_FINDER="carlos"; SCN_VERIFIER="dana"; SCN_DEDUPE="x"
+SCN_NOT_SHARED="x"; SCN_EVIDENCE="x"
+SCN_REPRO_CMD='n=\$(( \$(cat "$CNT" 2>/dev/null || echo 0) + 1 )); echo \$n > "$CNT"; [ \$n -ge 3 ] && echo SIGNAL_OK || echo not-yet'
+SCN_REPRO_EXPECT="SIGNAL_OK"
+S
+: > "$CNT"
+fl3="$(bash "$RUNNER" --scenario flaky --scenario-dir "$SCN" --retries 3 --retry-delay 0 --dry-run 2>&1)"
+assert "flaky w/ retries=3 → WOULD-FILE" "[flaky] WOULD-FILE" "$fl3"
+: > "$CNT"
+fl1="$(bash "$RUNNER" --scenario flaky --scenario-dir "$SCN" --retries 1 --dry-run 2>&1)"
+assert "flaky w/ retries=1 → refused"    "[flaky] REFUSED — did not reproduce" "$fl1"
+
+# ── until-find: stops in round 1 when a real finding exists ──────────────────
+uf_hit="$(bash "$RUNNER" --scenario good --scenario-dir "$SCN" --until-find --max-rounds 3 --dry-run 2>&1)"
+assert "until-find hit → stops on found"  ">> FOUND" "$uf_hit"
+assert "until-find hit → round 1"         "FOUND 1 gate-passing finding(s) in round 1" "$uf_hit"
+
+# ── until-find: healthy system exhausts the budget with nothing to fix ───────
+uf_dry="$(bash "$RUNNER" --scenario norepro --scenario-dir "$SCN" --until-find --max-rounds 2 --retries 1 --dry-run 2>&1)"
+assert "until-find healthy → budget hit"   ">> BUDGET HIT (max-rounds=2)" "$uf_dry"
+assert "until-find healthy → ran 2 rounds"  "round 2/2" "$uf_dry"
+if printf '%s' "$uf_dry" | grep -q "FOUND"; then echo "FAIL: healthy until-find must NOT report FOUND"; FAIL=$((FAIL+1)); else echo "PASS: healthy until-find never reports FOUND"; PASS=$((PASS+1)); fi
 
 echo "──────────────"
 echo "RESULT: $PASS passed, $FAIL failed"

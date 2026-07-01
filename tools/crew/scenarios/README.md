@@ -26,3 +26,22 @@ and dedupes). Default is `--dry-run`. Nothing is filed without `--file-issues`.
 Keep scenarios deterministic where possible. Live-Hub scenarios must guard on
 `QA_BASE_URL` (+ a saved session) so they fail safe — refusing to file — when the Hub
 isn't up, rather than emitting a false negative.
+
+## Retries and `--until-find`
+
+The runner retries each scenario's repro up to `--retries N` times (default 3, delay
+`--retry-delay`). A scenario counts as reproduced if the bug signal appears on **any**
+attempt — this defeats transient blips and catches intermittent bugs. It does **not**
+lower the gate: "reproduced" still means the deterministic bug signal was observed.
+
+`--until-find` re-runs **all** scenarios in rounds until one reproduces a real,
+gate-passing bug **or** a budget (`--max-rounds`, `--max-seconds`) is hit. On a healthy
+system it stops at the budget with `found=0` ("nothing to fix") — it never invents a
+finding to satisfy the flag. Per-round artifacts land in `<out>/round-N/`.
+
+**Writing probes that can actually find bugs.** For `--until-find` to surface anything,
+scenarios must probe real invariants that break when the product is broken. To stay
+false-positive-resistant, emit the bug signal **only** on an unambiguous data-integrity
+violation (e.g. HTTP 200 but the value is wrong), and treat any non-200 / parse failure
+as transient — `exit 1` so the runner refuses rather than filing HTTP flakiness as a bug.
+See `wo-roundtrip.scenario` and `asset-detail-parity.scenario` for the pattern.
