@@ -25,6 +25,7 @@ OUT_OF_BASELINE = "OUT_OF_BASELINE"
 STUCK = "STUCK"
 DELAYED_TRANSITION = "DELAYED_TRANSITION"
 DRIFT = "DRIFT"
+NEVER_SEEN = "NEVER_SEEN_PATTERN"
 
 
 class Observation(object):
@@ -125,6 +126,45 @@ def detect_delayed_transition(a_signal, b_signal, a_ts, b_ts, normal_lag_s, tol_
                                  observed - normal_lag_s))
     return Observation(b_signal, DELAYED_TRANSITION, detail, value=observed,
                        expected=normal_lag_s, ts=b_ts, magnitude=observed - normal_lag_s)
+
+
+def detect_drift(signal, samples, baseline_mean, baseline_stddev, window_s,
+                 k_sigma=2.5, min_rel_change=0.1, ts_now=None):
+    """The recent mean has moved away from the learned baseline mean by BOTH
+    >= k_sigma * baseline_stddev AND >= min_rel_change of the baseline. The
+    two-gate design fires on real drift but stays quiet on noise when stddev is
+    tiny (a very stable signal). samples: [(ts, value), ...]. Returns Observation|None."""
+    if not samples or baseline_mean is None:
+        return None
+    vals = [v for _, v in samples if v is not None]
+    if not vals:
+        return None
+    cur = sum(vals) / float(len(vals))
+    delta = cur - baseline_mean
+    adelta = delta if delta >= 0 else -delta
+    sigma_gate = k_sigma * (baseline_stddev or 0.0)
+    rel_gate = min_rel_change * (abs(baseline_mean) if baseline_mean else 1.0)
+    if adelta < sigma_gate or adelta < rel_gate:
+        return None
+    direction = "up" if delta > 0 else "down"
+    detail = ("Signal %s has drifted %s: recent mean %.4g vs normal %.4g (%.3g off normal)." %
+              (signal, direction, cur, baseline_mean, adelta))
+    return Observation(signal, DRIFT, detail, value=cur, expected=baseline_mean,
+                       ts=ts_now if ts_now is not None else samples[-1][0], magnitude=adelta)
+
+
+def detect_never_seen_pattern(signal, value, seen_values, ts=None):
+    """A discrete signal (enum/mode/code) takes a value never observed in the
+    learned-normal set. Novelty anomaly -- no history needed, just the baseline
+    set. Returns Observation|None."""
+    if value is None or seen_values is None:
+        return None
+    if value in seen_values:
+        return None
+    detail = "Signal %s took value %r, never seen in normal operation (%d known values)." % (
+        signal, value, len(seen_values))
+    return Observation(signal, NEVER_SEEN, detail, value=value,
+                       expected=list(seen_values), ts=ts)
 
 
 def group_observations(observations, window_s):

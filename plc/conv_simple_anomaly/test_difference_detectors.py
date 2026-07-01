@@ -8,7 +8,9 @@ signal 318-325 -> 287; Signal A normally 0.4s after B -> 3.2s late).
 """
 from difference_detectors import (
     detect_out_of_baseline, detect_stuck, detect_delayed_transition,
+    detect_drift, detect_never_seen_pattern,
     group_observations, OUT_OF_BASELINE, STUCK, DELAYED_TRANSITION,
+    DRIFT, NEVER_SEEN,
 )
 
 
@@ -106,3 +108,38 @@ def test_group_splits_distant_observations():
 
 def test_group_empty_is_empty():
     assert group_observations([], window_s=2.0) == []
+
+
+# --- drift ---------------------------------------------------------------------
+def test_drift_flags_sustained_move():
+    # baseline mean 12.0, stddev ~0.05; recent window sits at ~5 -> drifted down
+    samples = [(80.0, 5.3), (81.0, 5.2), (82.0, 5.1), (83.0, 5.0)]
+    o = detect_drift("bowl", samples, baseline_mean=12.0, baseline_stddev=0.05, window_s=4.0)
+    assert o is not None and o.kind == DRIFT
+    assert o.value < 12.0 and o.magnitude > 6.0
+
+
+def test_drift_silent_within_noise():
+    # tiny move, under both the sigma gate and the 10% relative gate
+    samples = [(0.0, 12.01), (1.0, 11.99), (2.0, 12.0)]
+    assert detect_drift("bowl", samples, baseline_mean=12.0, baseline_stddev=0.05, window_s=2.0) is None
+
+
+def test_drift_none_inputs_silent():
+    assert detect_drift("s", [], 12.0, 0.05, 2.0) is None
+    assert detect_drift("s", [(0.0, 5.0)], None, 0.05, 2.0) is None
+
+
+# --- never-seen pattern --------------------------------------------------------
+def test_never_seen_flags_novel_value():
+    o = detect_never_seen_pattern("vfd_fault_code", 58, seen_values={0, 1, 2}, ts=10.0)
+    assert o is not None and o.kind == NEVER_SEEN and o.value == 58
+
+
+def test_never_seen_silent_for_known_value():
+    assert detect_never_seen_pattern("mode", "run", seen_values={"run", "idle"}) is None
+
+
+def test_never_seen_none_inputs_silent():
+    assert detect_never_seen_pattern("s", None, {1, 2}) is None
+    assert detect_never_seen_pattern("s", 5, None) is None
