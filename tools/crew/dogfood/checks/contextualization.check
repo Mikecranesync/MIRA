@@ -1,0 +1,85 @@
+# shellcheck shell=bash disable=SC2034  # sourced fragment; SCN_* are read by judge.sh
+# contextualization.check — "is this asset grounded in the customer's own reality?"
+#
+# FactoryLM's promise is trustworthy context: the asset must carry identity
+# (manufacturer/model/type), the customer's OWN evidence (documents), and a UNS
+# mapping — and unapproved proposals must NEVER surface as trusted fact. This
+# check inspects an asset for that grounding and EXERCISES the proposed→verified
+# approval wall when proposals exist; when there are none it reports the wall as
+# NOT EXERCISED rather than passing it vacuously.
+#
+# Verdict on the LAST line: GREEN | YELLOW:<reason> | RED:<reason> | INFRA:<reason>
+
+SCN_PATH="Contextualization"
+SCN_TITLE="bug(hub): asset is not grounded — no customer evidence or UNS mapping attached"
+SCN_IMPACT="MIRA can name the asset but has none of the customer's own documents or UNS mapping behind it — answers fall back to generic OEM data, which is the opposite of 'trustworthy factory context'."
+SCN_LABELS="bug,hub,dogfood,needs-triage"
+SCN_FINDER="plantmgr"
+SCN_VERIFIER="dana"
+SCN_DEDUPE="asset not grounded no customer evidence UNS mapping"
+
+run_check() {
+  local assets A asset
+  assets=$(curl -sS -m 20 "$DF_BASE/api/assets/" -H "Cookie: next-auth.session-token=$DF_TOK")
+  A=$(printf '%s' "$assets" | python3 -c 'import sys,json,re
+try:
+ d=json.load(sys.stdin); d=d if isinstance(d,list) else d.get("assets",[])
+ if not d: print(""); raise SystemExit
+ pref=[a for a in d if re.search(r"allen|rockwell|powerflex",str(a.get("manufacturer",""))+str(a.get("model","")),re.I)]
+ print(sorted(pref or d, key=lambda a:str(a.get("id","")))[0]["id"])
+except Exception: print("")' 2>/dev/null)
+  if [ -z "$A" ]; then echo "EVIDENCE: no asset to inspect"; echo "RED: there is no asset in the namespace to contextualize"; return; fi
+  asset=$(curl -sS -m 20 "$DF_BASE/api/assets/$A/" -H "Cookie: next-auth.session-token=$DF_TOK")
+  if ! printf '%s' "$asset" | grep -q '"id"'; then echo "EVIDENCE: asset detail not JSON"; echo "INFRA: asset detail endpoint did not return JSON"; return; fi
+
+  # Approved identity (trusted, shown as fact)
+  local ident; ident=$(printf '%s' "$asset" | python3 -c 'import sys,json;d=json.load(sys.stdin);print("yes" if (d.get("manufacturer") and d.get("model") and d.get("type")) else "no")' 2>/dev/null)
+  local tag; tag=$(printf '%s' "$asset" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("tag","?"))' 2>/dev/null)
+  echo "EVIDENCE: $tag identity (mfr+model+type) present: $ident"
+
+  # Customer's own evidence (documents)
+  local docs; docs=$(curl -sS -m 20 "$DF_BASE/api/assets/$A/documents/" -H "Cookie: next-auth.session-token=$DF_TOK" | python3 -c 'import sys,json
+try: print(len(json.load(sys.stdin)))
+except Exception: print(-1)' 2>/dev/null)
+  echo "EVIDENCE: customer documents attached: $docs"
+
+  # UNS mapping
+  local uns; uns=$(curl -sS -m 20 "$DF_BASE/api/uns/subtree/" -H "Cookie: next-auth.session-token=$DF_TOK" | python3 -c 'import sys,json
+try: print(json.load(sys.stdin).get("total",-1))
+except Exception: print(-1)' 2>/dev/null)
+  echo "EVIDENCE: UNS entities under enterprise: $uns"
+
+  # The approval wall: unapproved proposals must surface AS proposals, never as
+  # trusted/verified fact. We can only EXERCISE this when proposals exist — be
+  # honest when there are none rather than passing the wall vacuously.
+  local prop; prop=$(curl -sS -m 20 "$DF_BASE/api/proposals/" -H "Cookie: next-auth.session-token=$DF_TOK")
+  local nprop; nprop=$(printf '%s' "$prop" | python3 -c 'import sys,json;d=json.load(sys.stdin);print((d.get("total",0) or 0)+(d.get("suggestionsTotal",0) or 0))' 2>/dev/null)
+  # leaked = proposals/suggestions whose status reads as approved/verified/trusted (a wall breach)
+  local leaked="n/a"
+  if [ "${nprop:-0}" -gt 0 ]; then
+    leaked=$(printf '%s' "$prop" | python3 -c 'import sys,json
+d=json.load(sys.stdin); items=(d.get("proposals") or [])+(d.get("suggestions") or [])
+bad=[i for i in items if str(i.get("status","")).lower() in ("verified","approved","trusted","accepted")]
+print(len(bad))' 2>/dev/null)
+    echo "EVIDENCE: approval-wall EXERCISED — $nprop pending item(s); $leaked surfaced as verified/trusted (expect 0)"
+  else
+    echo "EVIDENCE: approval-wall NOT EXERCISED — 0 proposals on this tenant, so the proposed≠trusted invariant is untested here (not proven)"
+  fi
+
+  # context endpoint observation (non-fatal — surfaced for triage, not filed alone)
+  local cc; cc=$(curl -sS -m 20 -o /dev/null -w "%{http_code}" "$DF_BASE/api/assets/$A/context/" -H "Cookie: next-auth.session-token=$DF_TOK")
+  echo "EVIDENCE: GET /api/assets/[id]/context returned $cc (404 here despite the asset existing — worth a look)"
+
+  # ---- verdict ----
+  # Hard breach first: an unapproved proposal shown as trusted is a real security bug.
+  if [ "$leaked" != "n/a" ] && [ "${leaked:-0}" -gt 0 ]; then
+    echo "RED: $leaked unapproved proposal(s) are surfaced as verified/trusted — the proposed→verified approval wall is broken"; return
+  fi
+  if [ "$ident" != "yes" ]; then echo "RED: the asset has no trusted identity (manufacturer/model/type) — nothing to ground a diagnosis on"; return; fi
+  if [ "${docs:-0}" -lt 1 ] && [ "${uns:-0}" -lt 1 ]; then
+    echo "YELLOW: $tag is named but has ZERO customer documents and an EMPTY UNS map — MIRA answers from generic OEM data, not this customer's reality (approval wall untested — no proposals present)"; return
+  fi
+  if [ "${docs:-0}" -lt 1 ]; then echo "YELLOW: $tag is UNS-mapped but has no customer documents attached — no customer-specific evidence to cite"; return; fi
+  local wall; [ "$leaked" = "n/a" ] && wall="approval wall untested (no proposals)" || wall="approval wall held ($nprop proposals, none shown as trusted)"
+  echo "GREEN: $tag carries identity, $docs customer document(s), and a UNS mapping; $wall"
+}

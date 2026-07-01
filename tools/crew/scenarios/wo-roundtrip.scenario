@@ -1,0 +1,48 @@
+# wo-roundtrip.scenario — work-order create→read integrity probe.
+#
+# Invariant (same class as #2375): values written when CREATING a work order must
+# survive a re-read. Create a WO with priority="high" and a known title, then GET
+# it — priority and title must come back unchanged.
+#
+# False-positive-resistant: the bug signal fires ONLY on an unambiguous 200 +
+# dropped/changed field. Any non-200 at create or read (transient/ambiguous) exits
+# non-zero and the runner REFUSES. Needs a live Hub (QA_BASE_URL) + saved owner
+# session. This writes a throwaway WO to the caller's own tenant (staging only).
+#
+# SOURCED by run_synthetic_workers.sh — keep it plain var assignments.
+
+SCN_SUMMARY="WO create-time priority+title must survive a re-read (data integrity)"
+SCN_TITLE="bug(hub): POST work-order priority/title not returned on GET detail (drop on create)"
+SCN_LABELS="bug,hub,dogfood,needs-triage"
+SCN_SEVERITY="P2"
+SCN_FINDER="carlos"
+SCN_VERIFIER="dana"
+SCN_DEDUPE="work order create priority title dropped roundtrip"
+SCN_NOT_SHARED="the caller's own work order in their own tenant — no shared/public corpus involved"
+SCN_EVIDENCE="POST returns 200; GET /api/work-orders/[id] returns priority!=high or title changed"
+SCN_NARRATIVE="Synthetic data-integrity probe. A work order is created with priority=high and a known title; the GET detail then returns a different priority or title even though create returned 200."
+
+SCN_REPRO_CMD='
+set -e
+: "${QA_BASE_URL:?set QA_BASE_URL to a running Hub (e.g. http://localhost:4199)}"
+TOK=$(python3 -c "import json;print([c[\"value\"] for c in json.load(open(\"dogfood-output/.auth/cfo-state.json\"))[\"cookies\"] if c[\"name\"]==\"next-auth.session-token\"][0])")
+B="$QA_BASE_URL"
+probe=$(curl -sS -m 15 -o /dev/null -w "%{http_code}" "$B/api/assets/" -H "Cookie: next-auth.session-token=$TOK")
+[ "$probe" = "200" ] || B="$QA_BASE_URL/hub"
+WID=$(curl -sS -m 30 "$B/api/work-orders/" -H "Cookie: next-auth.session-token=$TOK" -H "Content-Type: application/json" \
+  -d "{\"equipment_id\":\"00000000-0000-0000-0000-000000001001\",\"title\":\"SW-roundtrip-probe\",\"priority\":\"high\",\"description\":\"x\"}" \
+  | python3 -c "import sys,json;w=json.load(sys.stdin);w=w.get(\"work_order\",w);print(w.get(\"id\",\"\"))")
+[ -n "$WID" ] || { echo "NO_WID"; exit 1; }
+curl -sS -m 30 -w "\n%{http_code}" "$B/api/work-orders/$WID/" -H "Cookie: next-auth.session-token=$TOK" \
+  | python3 -c "
+import sys,json
+raw=sys.stdin.read().splitlines()
+code=raw[-1] if raw else \"\"
+body=\"\n\".join(raw[:-1])
+if code!=\"200\": sys.exit(1)            # non-200 = transient/ambiguous, NOT a finding
+w=json.loads(body); w=w.get(\"work_order\",w)
+ok=(w.get(\"priority\")==\"high\" and w.get(\"title\")==\"SW-roundtrip-probe\")
+print(\"WO_ROUNDTRIP_OK\" if ok else \"WO_ROUNDTRIP_DROPPED\")
+"
+'
+SCN_REPRO_EXPECT="WO_ROUNDTRIP_DROPPED"

@@ -1,0 +1,46 @@
+# asset-detail-parity.scenario — read-only consistency probe.
+#
+# Invariant: an asset that appears in GET /api/assets/ must be fetchable at
+# GET /api/assets/[id] and return the SAME id. A violation (list shows it, detail
+# returns a different id) is a real consistency/IDOR-class bug.
+#
+# False-positive-resistant: the bug signal fires ONLY on an unambiguous 200 +
+# id-mismatch. Any non-200 (404/500/timeout) is treated as transient/ambiguous —
+# the command exits non-zero and the runner REFUSES (not a finding). Needs a live
+# Hub (QA_BASE_URL) + saved owner session; missing either => clean refusal.
+#
+# SOURCED by run_synthetic_workers.sh — keep it plain var assignments.
+
+SCN_SUMMARY="read-only: asset in list must be fetchable at detail with matching id"
+SCN_TITLE="bug(hub): GET /api/assets/[id] returns a different id than the list (consistency)"
+SCN_LABELS="bug,hub,dogfood,needs-triage"
+SCN_SEVERITY="P2"
+SCN_FINDER="dana"
+SCN_VERIFIER="carlos"
+SCN_DEDUPE="assets detail id mismatch list parity"
+SCN_NOT_SHARED="the caller's own tenant assets — no shared/public corpus involved"
+SCN_EVIDENCE="list returns asset id X; GET /api/assets/X returns a row whose id != X"
+SCN_NARRATIVE="Synthetic read-only consistency probe. The first asset from the list endpoint is re-fetched by id; the detail endpoint returns a row with a different id."
+
+SCN_REPRO_CMD='
+set -e
+: "${QA_BASE_URL:?set QA_BASE_URL to a running Hub (e.g. http://localhost:4199)}"
+TOK=$(python3 -c "import json;print([c[\"value\"] for c in json.load(open(\"dogfood-output/.auth/cfo-state.json\"))[\"cookies\"] if c[\"name\"]==\"next-auth.session-token\"][0])")
+B="$QA_BASE_URL"
+probe=$(curl -sS -m 15 -o /dev/null -w "%{http_code}" "$B/api/assets/" -H "Cookie: next-auth.session-token=$TOK")
+[ "$probe" = "200" ] || B="$QA_BASE_URL/hub"
+AID=$(curl -sS -m 30 "$B/api/assets/" -H "Cookie: next-auth.session-token=$TOK" \
+  | python3 -c "import sys,json;d=json.load(sys.stdin);a=d.get(\"assets\",d) if isinstance(d,dict) else d;a=a if isinstance(a,list) else [];print(a[0][\"id\"] if a else \"\")")
+[ -n "$AID" ] || { echo "NO_ASSETS"; exit 1; }
+curl -sS -m 30 -w "\n%{http_code}" "$B/api/assets/$AID/" -H "Cookie: next-auth.session-token=$TOK" \
+  | AID="$AID" python3 -c "
+import sys,os,json
+raw=sys.stdin.read().splitlines()
+code=raw[-1] if raw else \"\"
+body=\"\n\".join(raw[:-1])
+if code!=\"200\": sys.exit(1)            # non-200 = transient/ambiguous, NOT a finding
+w=json.loads(body); w=w.get(\"asset\",w)
+print(\"ASSET_DETAIL_OK\" if str(w.get(\"id\"))==os.environ[\"AID\"] else \"ASSET_DETAIL_MISMATCH\")
+"
+'
+SCN_REPRO_EXPECT="ASSET_DETAIL_MISMATCH"

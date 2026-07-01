@@ -1,0 +1,64 @@
+# shellcheck shell=bash disable=SC2034  # sourced fragment; SCN_* are read by judge.sh
+# demo-readiness.check — "can Mike run the ProveIt demo end to end?"
+#
+# The smallest end-to-end ProveIt story a prospect must be able to FOLLOW:
+#   asset → fault → live signal → cited evidence → recommended action.
+# This assembles those five beats from the live Hub and judges whether a
+# non-technical viewer would understand what they're seeing. It does NOT invent
+# a passing demo: if a beat is missing, it says which one and why it matters.
+#
+# Note: the dedicated demo tenant (live conveyor signals) needs DEMO_API_TOKEN,
+# which is not provisioned for this harness — so this runs the story on the
+# customer tenant and flags the missing live-signal beat honestly.
+#
+# Verdict on the LAST line: GREEN | YELLOW:<reason> | RED:<reason> | INFRA:<reason>
+
+SCN_PATH="Demo readiness"
+SCN_TITLE="bug(hub): ProveIt demo story is incomplete — a prospect cannot follow asset→fault→signal→evidence→action"
+SCN_IMPACT="In a live demo a prospect cannot see the full story land — at least one beat (live signal / cited evidence / recommended action) is missing, so the 'prove it' moment falls flat."
+SCN_LABELS="bug,hub,dogfood,needs-triage,demo"
+SCN_FINDER="operator"
+SCN_VERIFIER="carlos"
+
+run_check() {
+  local assets A asset tag fault mfr ans cites act comps
+  assets=$(curl -sS -m 20 "$DF_BASE/api/assets/" -H "Cookie: next-auth.session-token=$DF_TOK")
+  A=$(printf '%s' "$assets" | python3 -c 'import sys,json,re
+try:
+ d=json.load(sys.stdin); d=d if isinstance(d,list) else d.get("assets",[])
+ if not d: print(""); raise SystemExit
+ pref=[a for a in d if re.search(r"allen|rockwell|powerflex",str(a.get("manufacturer",""))+str(a.get("model","")),re.I)]
+ print(sorted(pref or d, key=lambda a:str(a.get("id","")))[0]["id"])
+except Exception: print("")' 2>/dev/null)
+  if [ -z "$A" ]; then echo "EVIDENCE: no asset"; echo "RED: there is no asset to build a demo around"; return; fi
+  asset=$(curl -sS -m 20 "$DF_BASE/api/assets/$A/" -H "Cookie: next-auth.session-token=$DF_TOK")
+
+  # Beat 1: asset
+  tag=$(printf '%s' "$asset" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("name") or json.load(sys.stdin).get("tag","?"))' 2>/dev/null)
+  [ -n "$tag" ] && echo "EVIDENCE: [1/5] asset: $tag"
+  # Beat 2: fault
+  fault=$(printf '%s' "$asset" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("lastFault") or "")' 2>/dev/null)
+  echo "EVIDENCE: [2/5] fault: ${fault:-<none>}"
+  mfr=$(printf '%s' "$asset" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("manufacturer") or "Allen-Bradley")' 2>/dev/null)
+  # Beat 3: live signal
+  comps=$(curl -sS -m 20 "$DF_BASE/api/assets/$A/signals/" -H "Cookie: next-auth.session-token=$DF_TOK" | python3 -c 'import sys,json
+try: print(len(json.load(sys.stdin).get("components",[])))
+except Exception: print(-1)' 2>/dev/null)
+  echo "EVIDENCE: [3/5] live signal: $comps component(s) reporting"
+  # Beat 4+5: cited evidence + recommended action
+  local fcode; fcode=$(printf '%s' "$fault" | grep -oE '[EF][0-9]+' | head -1); fcode="${fcode:-F004}"
+  ans=$(curl -sS -m 60 -X POST "$DF_BASE/api/quickstart/ask/" -H "Cookie: next-auth.session-token=$DF_TOK" -H "Content-Type: application/json" \
+        -d "{\"question\":\"What does $mfr fault $fcode mean and what is the recommended action?\",\"manufacturer\":\"$mfr\"}")
+  cites=$(printf '%s' "$ans" | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("citations",[])))' 2>/dev/null || echo -1)
+  act=$(printf '%s' "$ans" | python3 -c 'import sys,json,re;a=json.load(sys.stdin).get("answer","").lower();print("yes" if re.search(r"check|monitor|replace|reduce|inspect|verify|reset",a) else "no")' 2>/dev/null || echo no)
+  echo "EVIDENCE: [4/5] cited evidence: $cites citation(s)"
+  echo "EVIDENCE: [5/5] recommended action present in answer: $act"
+  echo "EVIDENCE: demo tenant (live conveyor) requires DEMO_API_TOKEN — not provisioned, so the live-signal beat is judged on the customer tenant"
+
+  # ---- verdict ----
+  if [ "${cites:--1}" -lt 1 ]; then echo "RED: the demo cannot cite any evidence for the fault — the 'prove it' moment has nothing behind it"; return; fi
+  if [ "$act" != "yes" ]; then echo "RED: the demo answer gives no recommended action — a prospect hears 'what' but not 'what to do'"; return; fi
+  if [ -z "$fault" ]; then echo "YELLOW: asset and cited action are there, but there is no fault on the asset — the demo has no problem to solve"; return; fi
+  if [ "${comps:-0}" -lt 1 ]; then echo "YELLOW: the story (asset→fault→evidence→action) lands, but NO live signal is moving on screen — the demo looks static; wire the demo tenant (DEMO_API_TOKEN) for the live beat"; return; fi
+  echo "GREEN: a prospect can follow $tag → $fault → live signal → cited evidence → recommended action end to end"
+}

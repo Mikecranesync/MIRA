@@ -1,0 +1,99 @@
+# shellcheck shell=bash disable=SC2034  # sourced fragment; SCN_* are read by judge.sh
+# maintenance-tech.check — "can a maintenance tech do their job?"
+#
+# The product path a plant technician walks: log in → open the asset they were
+# sent to → see its live status → ask MIRA what a fault means → get a CITED
+# answer that doesn't invent data. This is the wedge ("diagnose with citations"),
+# so if this path is degraded the product's core promise is degraded.
+#
+# Sourced by tools/crew/dogfood/judge.sh. Contract:
+#   inputs (env):  DF_BASE (hub root url)   DF_TOK (session token)   DF_PERSONA (name)
+#   run_check():   prints human EVIDENCE: lines, then a verdict on the LAST line:
+#                  GREEN | YELLOW:<business reason> | RED:<business reason> | INFRA:<reason>
+# Business-language reasons only — the report is read by a non-technical founder.
+
+SCN_PATH="Maintenance tech"
+SCN_TITLE="bug(hub): maintenance-tech path degraded — tech cannot complete a grounded diagnosis"
+SCN_IMPACT="A technician at the machine cannot see live status or get a cited answer — the core 'diagnose with citations' promise fails at the point of use."
+SCN_LABELS="bug,hub,dogfood,needs-triage"
+SCN_FINDER="carlos"      # the technician
+SCN_VERIFIER="dana"      # the manager — a second real session must see it too
+SCN_DEDUPE="maintenance tech path quickstart ask cited answer"
+
+run_check() {
+  local A name ans cites markers
+  # 1) Login / session usable.
+  local me; me=$(curl -sS -m 20 "$DF_BASE/api/me/" -H "Cookie: next-auth.session-token=$DF_TOK")
+  if ! printf '%s' "$me" | grep -q '"email"'; then
+    echo "EVIDENCE: /api/me did not return a session for $DF_PERSONA (got: $(printf '%s' "$me" | head -c 80))"
+    echo "INFRA: could not authenticate $DF_PERSONA against the staging Hub"; return
+  fi
+  echo "EVIDENCE: logged in as $DF_PERSONA ($(printf '%s' "$me" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("role","?"))' 2>/dev/null))"
+
+  # 2) Open the asset the tech was sent to. DETERMINISTIC: prefer an asset whose
+  #    manufacturer has OEM manuals in the corpus (so the cited-answer check is
+  #    stable run-to-run), else the lowest id. Avoids a flaky verdict from list reorder.
+  local assets; assets=$(curl -sS -m 20 "$DF_BASE/api/assets/" -H "Cookie: next-auth.session-token=$DF_TOK")
+  A=$(printf '%s' "$assets" | python3 -c 'import sys,json,re
+try:
+ d=json.load(sys.stdin); d=d if isinstance(d,list) else d.get("assets",[])
+ if not d: print(""); raise SystemExit
+ pref=[a for a in d if re.search(r"allen|rockwell|powerflex",str(a.get("manufacturer",""))+str(a.get("model","")),re.I)]
+ print(sorted(pref or d, key=lambda a:str(a.get("id","")))[0]["id"])
+except Exception: print("")' 2>/dev/null)
+  if [ -z "$A" ]; then
+    echo "EVIDENCE: /api/assets returned no asset to open (body: $(printf '%s' "$assets" | head -c 80))"
+    echo "RED: a technician logging in has no asset to work on — the namespace is empty"; return
+  fi
+  local asset; asset=$(curl -sS -m 20 "$DF_BASE/api/assets/$A/" -H "Cookie: next-auth.session-token=$DF_TOK")
+  local tag; tag=$(printf '%s' "$asset" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("tag","?"))' 2>/dev/null)
+  echo "EVIDENCE: opened asset $tag ($A)"
+  local mfr fault
+  mfr=$(printf '%s' "$asset" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("manufacturer","") or "Allen-Bradley")' 2>/dev/null)
+  fault=$(printf '%s' "$asset" | python3 -c 'import sys,json;print((json.load(sys.stdin).get("lastFault") or "F004").split()[0])' 2>/dev/null)
+
+  # 3) Live tag / status visible?
+  local sig comps
+  sig=$(curl -sS -m 20 "$DF_BASE/api/assets/$A/signals/" -H "Cookie: next-auth.session-token=$DF_TOK")
+  comps=$(printf '%s' "$sig" | python3 -c 'import sys,json
+try: print(len(json.load(sys.stdin).get("components",[])))
+except Exception: print(-1)' 2>/dev/null)
+  echo "EVIDENCE: live signals → $comps component(s) reporting"
+
+  # 4) Ask MIRA a real fault question → must cite evidence.
+  ans=$(curl -sS -m 60 -X POST "$DF_BASE/api/quickstart/ask/" -H "Cookie: next-auth.session-token=$DF_TOK" \
+        -H "Content-Type: application/json" \
+        -d "{\"question\":\"What does $mfr fault $fault mean and what should I check first?\",\"manufacturer\":\"$mfr\"}")
+  if ! printf '%s' "$ans" | grep -q '"answer"'; then
+    echo "EVIDENCE: quickstart/ask returned no answer (body: $(printf '%s' "$ans" | head -c 100))"
+    echo "INFRA: the Ask-MIRA endpoint did not return a JSON answer"; return
+  fi
+  cites=$(printf '%s' "$ans" | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("citations",[])))' 2>/dev/null)
+  markers=$(printf '%s' "$ans" | python3 -c 'import sys,json,re;print(len(set(re.findall(r"\[\d+\]",json.load(sys.stdin).get("answer","")))))' 2>/dev/null)
+  # Is a zero-citation answer a (correct) refusal, or a (wrong) confident-but-uncited answer?
+  local refused; refused=$(printf '%s' "$ans" | python3 -c "import sys,json,re;a=json.load(sys.stdin).get('answer','').lower();print('yes' if re.search(r\"don't have|do not have|no manual|sign up|knowledge base|couldn't find|i don't know\",a) else 'no')" 2>/dev/null)
+  echo "EVIDENCE: asked about $mfr $fault → $cites citation(s), $markers inline marker(s), refusal=$refused"
+
+  # 5) Does it invent data? A device with no manuals must be refused, not fabricated.
+  local nons ncites
+  nons=$(curl -sS -m 60 -X POST "$DF_BASE/api/quickstart/ask/" -H "Cookie: next-auth.session-token=$DF_TOK" \
+         -H "Content-Type: application/json" \
+         -d '{"question":"What does the Znordak 9000 plasma-flux fault QQ77 mean?","manufacturer":"Znordak"}')
+  ncites=$(printf '%s' "$nons" | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("citations",[])))' 2>/dev/null || echo "-1")
+  echo "EVIDENCE: nonsense-device control → $ncites citation(s) (expect 0 = refuses to invent)"
+
+  # ---- verdict (business language) ----
+  if [ "${ncites:--1}" != "0" ]; then
+    echo "RED: MIRA returned citations for a device that doesn't exist — it is inventing evidence"; return
+  fi
+  if [ "${cites:-0}" -lt 1 ]; then
+    if [ "$refused" = "yes" ]; then
+      echo "YELLOW: MIRA has no manual for $tag's manufacturer and correctly REFUSED rather than guessing — but this asset can't be answered until its docs are loaded"; return
+    fi
+    echo "RED: MIRA gave a confident answer about $mfr $fault with NO cited source and no refusal — it is answering without grounding, breaking 'diagnose with citations'"; return
+  fi
+  if [ "${comps:-0}" -lt 1 ]; then
+    echo "YELLOW: the tech gets a cited answer, but the asset shows NO live signal data — the live status panel is empty, so a prospect watching a demo sees nothing moving"; return
+  fi
+  echo "GREEN: tech logs in, opens $tag, sees live signals, and gets a cited fault answer that refuses to invent unknown devices"
+}
