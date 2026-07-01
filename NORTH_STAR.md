@@ -5,6 +5,11 @@
 > "Ignition module"). Those were front-doors and motions, not the wedge. The wedge below is the one
 > the June PRD identified and the 2026 competitive map independently confirmed. `STRATEGY.md`, the
 > root `CLAUDE.md` North Star, and the PRD are reconciled to *this*.
+>
+> **See also (2026-06-30):** the *engine* under this wedge is named in
+> `docs/product/mira_difference_engine_offering.md` — "signal difference engine with a contextual
+> supervisor" (find what changed → group into machine events → explain what they mean). A
+> **sharpening of this wedge, not a new one**; the context layer is still the lead.
 
 ---
 
