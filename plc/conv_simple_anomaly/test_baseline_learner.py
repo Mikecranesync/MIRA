@@ -2,7 +2,7 @@
 Deterministic unit tests for baseline_learner.
 Run: pytest plc/conv_simple_anomaly/test_baseline_learner.py -v
 """
-from baseline_learner import learn_signal_baseline, learn_paired_lag
+from baseline_learner import learn_paired_lag, learn_signal_baseline
 
 
 def test_learns_range_and_stats():

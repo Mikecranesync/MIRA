@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.53.4 (2026-07-01) - chore(plc): fix pre-existing ruff lint in conv_simple_anomaly (#2388)
+- Fixed 43 pre-existing ruff violations (E702, I001, E401, F401) in `plc/conv_simple_anomaly/` that were blocking the stop-hook lint gate. No logic changes.
+
 ### v3.53.2 (2026-06-30) - fix(hub): GET /api/work-orders/[id] returns resolution + closed_at (#2375)
 - A completed work order read back with `resolution=null` and `closed_at=null` even though PATCH persisted them — the GET detail `SELECT` and `rowToWO` serializer omitted the closure columns, so the next technician saw a blank closure. The GET now selects and returns `resolution`, `fault_description`, and `closed_at`.
 - Found by the dogfood judge (`tools/crew/dogfood`) and reproduced field-by-field against staging (PATCH returns the values; GET dropped the keys entirely). Regression test `mira-hub/src/app/api/work-orders/[id]/route.test.ts`. Hub release `mira-hub/v2.24.1`.

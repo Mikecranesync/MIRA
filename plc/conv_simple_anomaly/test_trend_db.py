@@ -1,5 +1,6 @@
 """Offline unit tests for the trend SQLite data layer (no bench, no Modbus)."""
 from __future__ import annotations
+
 import trend_db
 
 

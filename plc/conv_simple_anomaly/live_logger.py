@@ -24,8 +24,16 @@ trend_historian.py (the bench trend service) — they compete for the bus. The h
 is the sole poller when it's up; stop it before running a labeled capture here.
 """
 from __future__ import annotations
-import argparse, csv, json, os, sys, threading, time
+
+import argparse
+import csv
+import json
+import os
+import sys
+import threading
+import time
 from datetime import datetime, timezone
+
 from pymodbus.client import ModbusTcpClient
 
 try:  # Windows consoles default to cp1252; notes may be UTF-8
@@ -179,9 +187,11 @@ def main():
                     hz = row.get("vfd_frequency_hz", "?")
                     line = (f"\r#{n:>5} run={run} cmd={cw} comm={comm} pe={pe} "
                             f"{hz}Hz {cur}A   ")
-                    sys.stdout.write(line + (f"<{note}>" if note else "")); sys.stdout.flush()
+                    sys.stdout.write(line + (f"<{note}>" if note else ""))
+                    sys.stdout.flush()
                 else:
-                    sys.stdout.write(f"\r#{n:>5} (no data — PLC not answering)   "); sys.stdout.flush()
+                    sys.stdout.write(f"\r#{n:>5} (no data — PLC not answering)   ")
+                    sys.stdout.flush()
                 dt = period - (time.time() - t0)
                 if dt > 0:
                     time.sleep(dt)

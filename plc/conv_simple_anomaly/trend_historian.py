@@ -20,18 +20,17 @@ writes to the PLC. For the shipped product (Track B) this whole service is repla
 Ignition's native Modbus driver + Tag Historian + Perspective chart.
 """
 from __future__ import annotations
+
 import argparse
 import logging
 import os
 import threading
 import time
-from contextlib import asynccontextmanager
-
-from pymodbus.client import ModbusTcpClient
 
 import trend_db
 from live_logger import poll_once  # the proven per-register sparse-map poll
-from trend_accumulator import TrendAccumulator, UNITS
+from pymodbus.client import ModbusTcpClient
+from trend_accumulator import UNITS, TrendAccumulator
 
 log = logging.getLogger("trend-historian")
 
@@ -98,9 +97,9 @@ def poll_loop(host: str, port: int) -> None:
 
 # ── HTTP app ─────────────────────────────────────────────────────────────────
 def build_app():
+    import trend_chart_page
     from fastapi import FastAPI, Query
     from fastapi.responses import HTMLResponse, JSONResponse
-    import trend_chart_page
 
     app = FastAPI(title="MIRA Trend Historian", docs_url=None, redoc_url=None)
 

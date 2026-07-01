@@ -11,8 +11,9 @@ unit-testable offline (test_trend_accumulator.py). Thread-safety (the historian'
 writes while the HTTP handler reads) is the caller's concern; the historian holds a lock.
 """
 from __future__ import annotations
+
 from collections import deque
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 
 import rules  # DEFAULT_CFG thresholds live here
 
