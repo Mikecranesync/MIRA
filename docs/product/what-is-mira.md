@@ -1,6 +1,8 @@
 # What is MIRA?
 
-**MIRA — Maintenance Intelligence & Response Assistant** — is an AI-powered diagnostic assistant built for industrial maintenance technicians.
+**MIRA — Maintenance Intelligence & Response Assistant** — is a **signal difference engine with a contextual supervisor**: it watches a machine's raw signals, finds what changed, groups the differences into machine events, and explains what they mean for maintenance — grounded in your manuals, with citations.
+
+> **Positioning (2026-06-30):** raw PLC connectivity is commodity — Litmus, Ignition, OPC UA, and MQTT all do it. MIRA's value is *what changed and what it means*, not the wire. It **surfaces early-warning patterns, identifies maintenance targets, detects differences from normal, explains likely causes, and supports predictive maintenance** — it does **not** predict all failures, never invents a spec, and is **read-only** (no PLC writes). Full offering → [`mira_difference_engine_offering.md`](./mira_difference_engine_offering.md) · PRD → [`mira_signal_difference_engine_prd.md`](./mira_signal_difference_engine_prd.md).
 
 ## The problem we solve
 
