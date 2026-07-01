@@ -14,6 +14,7 @@ Retention is a ring buffer: prune_old() deletes rows past the window. value is N
 quality != 'good' (a comms miss records the gap without a misleading number).
 """
 from __future__ import annotations
+
 import sqlite3
 import time
 

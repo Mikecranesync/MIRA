@@ -11,6 +11,7 @@ See docs/plans/2026-06-14 (warm-wadler) Phase 1 and
 tests/regime7_ignition/test_diagnose_parity.py (parity + drift guard).
 """
 from rules_core import *  # noqa: F401,F403  (re-export public names: evaluate, RULES, Anomaly, ...)
+
 # Re-export the underscore-prefixed internals too, in case a bench tool/test references them
 # (import * skips leading-underscore names).
-from rules_core import _ev, _vfd_trustworthy, _CONF, _GS10_CRITICAL  # noqa: F401
+from rules_core import _CONF, _GS10_CRITICAL, _ev, _vfd_trustworthy  # noqa: F401

@@ -182,13 +182,15 @@ def group_observations(observations, window_s):
     cur_start = None
     for o in dated:
         if not cur:
-            cur = [o]; cur_start = o.ts
+            cur = [o]
+            cur_start = o.ts
             continue
         if o.ts - cur[-1].ts <= window_s:
             cur.append(o)
         else:
             events.append(MachineEvent(len(events), cur_start, cur[-1].ts, cur))
-            cur = [o]; cur_start = o.ts
+            cur = [o]
+            cur_start = o.ts
     if cur:
         events.append(MachineEvent(len(events), cur_start, cur[-1].ts, cur))
 

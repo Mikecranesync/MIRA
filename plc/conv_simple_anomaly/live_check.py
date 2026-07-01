@@ -9,7 +9,11 @@ Uses the SAME register map as plc/live-plc-bridge (kept in sync here so this too
 aiomqtt dependency). Read-only: never writes to the PLC.
 """
 from __future__ import annotations
-import argparse, sys, time
+
+import argparse
+import sys
+import time
+
 from pymodbus.client import ModbusTcpClient
 
 try:  # Windows consoles default to cp1252; rule messages are UTF-8
@@ -94,9 +98,12 @@ def watch(client, secs):
     while time.time() < t_end:
         now = time.time()
         try:
-            snap = poll(client); last_any = now
+            snap = poll(client)
+            last_any = now
         except Exception as e:
-            print(f"  {time.strftime('%H:%M:%S')}  poll error: {e}"); time.sleep(0.5); continue
+            print(f"  {time.strftime('%H:%M:%S')}  poll error: {e}")
+            time.sleep(0.5)
+            continue
         if snap.get(rules.T_FREQ) != freq_val:
             freq_val, freq_ts = snap.get(rules.T_FREQ), now
         cmd_run = snap.get(rules.T_CMD) in rules.DEFAULT_CFG["run_cmd_values"]
@@ -107,7 +114,8 @@ def watch(client, secs):
         cur = {a.rule_id: a for a in rules.evaluate(snap, derived)}
         ts = time.strftime("%H:%M:%S")
         for rid in cur.keys() - prev.keys():
-            a = cur[rid]; print(f"  {ts}  >>> FIRED  [{a.severity}] {rid}: {a.message}")
+            a = cur[rid]
+            print(f"  {ts}  >>> FIRED  [{a.severity}] {rid}: {a.message}")
         for rid in prev.keys() - cur.keys():
             print(f"  {ts}  --- cleared {rid}")
         if now >= next_hb:

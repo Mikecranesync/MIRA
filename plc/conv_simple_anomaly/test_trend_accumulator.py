@@ -1,7 +1,8 @@
 """Offline unit tests for the trend accumulator (no bench, synthetic samples)."""
 from __future__ import annotations
-from trend_accumulator import TrendAccumulator
+
 import rules
+from trend_accumulator import TrendAccumulator
 
 
 def _feed(acc, tag, series, t0=0.0, dt=1.0, quality="good"):
