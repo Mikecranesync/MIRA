@@ -23,7 +23,7 @@ What the code actually shows today:
 
 - **Connectivity is stronger than expected.** Three of the four universal surfaces are already in
   production: **REST/JSON** (`/api/v1/tags/ingest`), **MQTT/Sparkplug** (full Sparkplug B stack,
-  deploy-gated), and **Ignition push**. All converge on **one canonical, allowlisted, tenant-scoped
+  shipped as an opt-in compose profile), and **Ignition push**. All converge on **one canonical, allowlisted, tenant-scoped
   pipeline** with a **CI-enforced one-pipeline law**. **OPC UA is the one missing surface.**
 - **The contextualization wedge is mostly built (~6/10).** Propose → human-approve → cite is real:
   `relationship_proposals` + `relationship_evidence` (9 evidence types incl. `plc_rung`, `live_data`),
@@ -54,8 +54,8 @@ clear real path; Plan-only = design doc, no code; Missing = no code; Partial = s
 
 | Area | Verdict | Evidence |
 |---|---|---|
-| REST/JSON ingest | **Built(prod)** | `mira-relay/relay_server.py`, `ingest_contract.py`, `tag_ingest.py`, HMAC `mira-mcp/ignition_auth.py` |
-| MQTT/Sparkplug ingest | **Built(prod), deploy-gated** | `mira-relay/mqtt_ingest/**`; `test_sparkplug_*`; gated on PR #2280; plain-JSON codec planned |
+| REST/JSON ingest | **Built(prod)** | `mira-relay/relay_server.py` (`/api/v1/tags/ingest`, `/ws`, `/ws/tags`), `ingest_contract.py`, `tag_ingest.py`, relay HMAC `mira-relay/auth.py` |
+| MQTT/Sparkplug ingest | **Built(prod), opt-in deploy** | `mira-relay/mqtt_ingest/**`; `test_sparkplug_*`; ships as opt-in `sparkplug` compose profile in `docker-compose.saas.yml` (default deploy does not start it); plain-JSON codec planned |
 | Ignition push | **Built(prod)** | `ignition/gateway-scripts/tag-stream.py`, `ignition/webdev/FactoryLM/api/tags/collector.py` |
 | File / PLC-export import | **Built(prod)** | `mira-plc-parser/parsers/{rockwell_l5x,csv_tags,plcopen_xml,ignition_json,structured_text}.py`, `tag_csv.py` |
 | Modbus TCP driver | **Built(prod, bench)** | `mira-connect/drivers/modbus_driver.py` (read-only, ADR-0021) |
@@ -88,7 +88,7 @@ Evidence:
 | Surface | Verdict | Why it matters |
 |---|---|---|
 | **1. REST / JSON** | **Built(prod)** | Universal front door; anyone who can POST JSON is a customer. |
-| **2. MQTT / Sparkplug** | **Built(prod), deploy-gated** | The industrial-standard pipe; covers a class of plants (+ EMQX/HiveMQ/Cirrus/Node-RED as recipes). |
+| **2. MQTT / Sparkplug** | **Built(prod), opt-in deploy** | The industrial-standard pipe; covers a class of plants (+ EMQX/HiveMQ/Cirrus/Node-RED as recipes). Ships as an opt-in `sparkplug` compose profile. |
 | **3. OPC UA** | **Missing (conscious deferral, ADR-0001)** | The **one strategic connectivity gap**; one connector unlocks Kepware/HighByte/Siemens Edge/OPC Router. |
 | **4. Historian / file** | **Partial** | File/CSV/PLC-export built; real PI/SQL/xlsx are recipes over a proven shape. |
 
@@ -331,7 +331,7 @@ Beta-safe and **enforced hard** (not just doctrine):
 | Read-only-first / no PLC writes | Built (CI-enforced) | `.claude/rules/fieldbus-readonly.md`; `tests/regime7_ignition/test_no_customer_write_paths.py`; ADR-0021 |
 | Outbound-only / no inbound to gateway | Built (by design) | `docs/mira-ignition-secure-architecture.md` |
 | Tenant isolation (RLS + UUID sessions) | Built (DB-enforced) | `mira-hub/src/lib/tenant-context.ts`, `session.ts` |
-| AuthN (HMAC / Bearer / JWT) | Built | `mira-mcp/ignition_auth.py`; `MCP_REST_API_KEY`; `PLG_JWT_SECRET` |
+| AuthN (HMAC / Bearer / JWT) | Built | relay ingest HMAC `mira-relay/auth.py` (`verify_hmac`); Ignition/MCP HMAC `mira-mcp/ignition_auth.py`; Bearer `MCP_REST_API_KEY`; JWT `PLG_JWT_SECRET` |
 | Fail-closed tag allowlist | Built | `ignition/webdev/FactoryLM/api/tags/allowlist.py` |
 | PII sanitize (default-on) | Built | `mira-bots/shared/inference/router.py` |
 | Secrets via Doppler refs | Built | `tenant_cmms_config.auth_credential_ref` |
@@ -399,8 +399,10 @@ repeatable for future audits. **Fixtures/tests recommended:** a Context-Packet s
 - **Cirrus Link / Node-RED** — almost certainly reachable via the Sparkplug/MQTT surface, but **not
   verified** in code. **Unknown.**
 - **Scope of proprietary P3 protocols** — **Unknown** until a signed customer scopes one.
-- **PR #2280 deploy gate** for the Sparkplug surface — code complete; staging-green status at time of
-  writing is **Unknown**; verify before claiming MQTT/Sparkplug is live in prod.
+- **Sparkplug deployment** ships as an **opt-in `sparkplug` compose profile** (`docker-compose.saas.yml`;
+  a default VPS deploy does not start it). Whether it is enabled in any live prod environment is
+  **Unknown**; verify before claiming MQTT/Sparkplug is live in prod. (Note: earlier drafts cited
+  "PR #2280" as the gate — that PR is the broader one-pipeline/relay rollout, not the Sparkplug deploy.)
 
 ---
 

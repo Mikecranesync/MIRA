@@ -108,7 +108,7 @@ Each video maps back to a **product proof** — never a generic tutorial:
 
 ## H. Honest status legend (use on-screen)
 
-- 🟢 **Built (prod):** REST/JSON ingest · Ignition push · MQTT/Sparkplug (deploy-gated) · CSV import ·
+- 🟢 **Built (prod):** REST/JSON ingest · Ignition push · MQTT/Sparkplug (opt-in compose profile) · CSV import ·
   contextualize→approve→cite · security posture.
 - 🟡 **Partial / demo / mock:** Litmus (demo) · PI (mock) · Modbus driver (bench) · historian/file
   (real PI/SQL/xlsx missing) · outcome layer (~60%).

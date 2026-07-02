@@ -134,7 +134,7 @@ persistence** are the **core value gap**. Do not let connectivity crowd out valu
 | Risk / dependency | Impact | Mitigation |
 |---|---|---|
 | OPC UA client library / license (Apache/MIT only, PRD §4) | blocks P0-2 | verify license before adoption; **Unknown** today |
-| PR #2280 deploy gate (Sparkplug) | MQTT surface not live in prod | confirm staging-green before claiming prod |
+| Sparkplug ships as an opt-in `sparkplug` compose profile | MQTT surface not started by a default deploy | enable the profile / confirm it is live before claiming prod |
 | Two connector packages drift | erosion of one-pipeline law | do P0-1 before adding connectors |
 | Outcome model without persistence | no memory / no learned baselines | sequence P0-5 with P0-4 |
 | `tag_diff_logger` scheduler deferred | may be a P0-5 prerequisite | verify before P0-5 (**Unknown**) |
