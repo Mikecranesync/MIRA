@@ -1,0 +1,6 @@
+{
+  "label": "cv101_idle_healthy",
+  "source_note": "Real live raw register snapshot captured from the bench Micro820 (192.168.1.100:502) 2026-07-01 while the conveyor sat idle. Use for fixture/replay mode when the PLC is not connected.",
+  "holding": { "106": 0, "107": 0, "108": 0, "109": 3215, "114": 1, "117": 9472, "118": 0 },
+  "coils": { "0": false, "3": true, "5": false, "9": false }
+}

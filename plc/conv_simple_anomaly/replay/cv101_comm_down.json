@@ -1,0 +1,6 @@
+{
+  "label": "cv101_comm_down",
+  "source_note": "Synthetic fault scenario: the PLC<->GS10 RS-485 link is down (vfd_comm_ok=false). The VFD analog registers still hold their last-good values but are STALE; MIRA's trust gate must flag A1 CRITICAL and suppress the downstream VFD rules (A2/A9) as stale rather than alarm-storming. Derived from the idle_healthy snapshot with coil 3 forced false.",
+  "holding": { "106": 0, "107": 0, "108": 0, "109": 3215, "114": 1, "117": 9472, "118": 0 },
+  "coils": { "0": false, "3": false, "5": false, "9": false }
+}
