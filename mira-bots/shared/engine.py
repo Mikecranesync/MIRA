@@ -72,6 +72,7 @@ from .integrations.pm_suggestions import (
     is_pm_acceptance,
     suggest_followup_pm,
 )
+from .interlock_context import build_interlock_answer, fetch_interlocks
 from .live_snapshot import STALE, render_status_block
 from .live_snapshot import normalize as normalize_live_tags
 from .models.work_order import (
@@ -376,6 +377,16 @@ _LIVE_DATA_TIMEOUT_S = float(os.getenv("MIRA_LIVE_DATA_TIMEOUT_S", "2.0"))
 # MIRA_CTX_SIGNALS_ENABLED=1.
 _CTX_SIGNALS_ENABLED = os.getenv("MIRA_CTX_SIGNALS_ENABLED", "0") == "1"
 _CTX_SIGNALS_TIMEOUT_S = float(os.getenv("MIRA_CTX_SIGNALS_TIMEOUT_S", "3.0"))
+
+# Interlock-context enrichment — the CONSUME side of the interlock flywheel
+# (docs/north-star/interlock-flywheel-audit.md). Additive, OFF by default. When
+# on, recalls VERIFIED kg_relationships interlock edges (USED_IN_LOGIC / CAUSES)
+# under the resolved UNS path — the previously-invisible approved logic the
+# answer path never read — and injects an [APPROVED INTERLOCK LOGIC] block so MIRA
+# can explain *why a machine won't move*. Best-effort: "" on any miss. Enabled by
+# MIRA_INTERLOCK_CONTEXT_ENABLED=1.
+_INTERLOCK_CONTEXT_ENABLED = os.getenv("MIRA_INTERLOCK_CONTEXT_ENABLED", "0") == "1"
+_INTERLOCK_CONTEXT_TIMEOUT_S = float(os.getenv("MIRA_INTERLOCK_CONTEXT_TIMEOUT_S", "3.0"))
 
 # Single-shot kiosk mode (e.g. the Ignition Ask-MIRA panel). When on, MIRA
 # answers directly (see rag_worker DIRECT_ANSWER_SYSTEM_PROMPT) AND the engine
@@ -3562,6 +3573,68 @@ class Supervisor:
         lines.append("---\n")
         return "\n".join(lines)
 
+    # ------------------------------------------------------------------
+    # Interlock-context enrichment — consume side of the interlock flywheel
+    # (additive, flag-gated). Surfaces approved kg_relationships interlock edges.
+    # ------------------------------------------------------------------
+    async def _build_interlock_context(self, state: dict, tenant_id: str | None) -> str:
+        """Best-effort approved-interlock context for the confirmed asset.
+
+        Recalls VERIFIED interlock edges (USED_IN_LOGIC / CAUSES) from
+        kg_relationships under the asset's UNS subtree — the human-approved logic
+        the answer path historically never read — and renders them as grounded,
+        citable context. When a live tag snapshot is present on the turn, also
+        assembles the "why it won't move" explanation. Returns "" on any miss
+        (flag off, no asset/tenant, DB unreachable, nothing verified). Never
+        raises — diagnosis must be unaffected when interlock context is absent.
+        """
+        if not _INTERLOCK_CONTEXT_ENABLED or not tenant_id:
+            return ""
+        asset = (state.get("asset_identified") or "").strip()
+        if not asset:
+            return ""
+        try:
+            uns_path = resolve_uns_path(asset).uns_path
+            if not uns_path:
+                return ""
+            ltree_prefix = uns_path.replace("/", ".")
+            edges = await asyncio.wait_for(
+                asyncio.to_thread(fetch_interlocks, tenant_id, ltree_prefix),
+                timeout=_INTERLOCK_CONTEXT_TIMEOUT_S,
+            )
+            if not edges:
+                return ""  # nothing verified -> no approved context -> no block
+            live = ((state.get("context") or {}).get("session_context") or {}).get("tag_state") or {}
+            answer = build_interlock_answer(edges, live, asset) if live else None
+            return self._format_interlock_context(edges, answer)
+        except Exception as exc:  # noqa: BLE001 -- enrichment must never block diagnosis
+            logger.debug("INTERLOCK_CONTEXT miss asset=%r: %s", asset, exc)
+            return ""
+
+    @staticmethod
+    def _format_interlock_context(edges: list, answer: dict | None = None) -> str:
+        """Render recalled interlock edges (+ optional live explanation) as a
+        compact prompt block. Never raises; "" when there are no edges."""
+        if not edges:
+            return ""
+        lines = [
+            "\n--- APPROVED INTERLOCK LOGIC (verified relationships; grounded, citable) ---"
+        ]
+        for e in edges[:12]:
+            loc = ""
+            for ev in getattr(e, "evidence", None) or []:
+                if ev.get("location"):
+                    loc = f"  [{ev.get('type') or 'evidence'}: {ev['location']}]"
+                    break
+            lines.append(f"  {e.source} -[{e.relationship_type}]-> {e.target}{loc}")
+        if answer and answer.get("why"):
+            lines.append(f"Why not moving: {answer['why']}")
+            checks = answer.get("next_checks") or []
+            if checks:
+                lines.append("Suggested checks: " + "; ".join(checks[:3]))
+        lines.append("---\n")
+        return "\n".join(lines)
+
     async def _call_with_correction(
         self,
         message: str,
@@ -3586,7 +3659,8 @@ class Supervisor:
         kg_context = await self._build_kg_context(state, tenant_id)
         live_context = await self._build_live_data_context(state)
         ctx_signals_context = await self._build_ctx_signals_context(state, tenant_id)
-        extra_context = kg_context + live_context + ctx_signals_context
+        interlock_context = await self._build_interlock_context(state, tenant_id)
+        extra_context = kg_context + live_context + ctx_signals_context + interlock_context
 
         for attempt in range(max_attempts):
             try:
