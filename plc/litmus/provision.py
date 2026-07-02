@@ -6,47 +6,44 @@ READ registers only; never writes a PLC register). Re-run after each 2-hour
 Developer Edition reset instead of re-clicking tags in the UI.
 
 The DeviceHub write API is undocumented + the loopedge-dh binary is compressed;
-the schema below was reverse-engineered live -- see DEVICEHUB_API.md in this dir.
+the schema below was reverse-engineered + VERIFIED live -- see DEVICEHUB_API.md.
 
 Auth: DeviceHub writes need an Authorization: Bearer <JWT>. Two ways to get one:
   1. Mint it directly (no UI):  export LITMUS_PASSWORD=... (default 'Factory2026!')
      -- the script logs in to loopedge-auth and mints a token itself.
-  2. Or paste a token from the logged-in UI (F12 -> Network -> any /devicehub/*
-     request -> copy the 'Bearer <token>' value):   export LITMUS_TOKEN=<token>
+  2. Or paste a UI Bearer token (F12 -> Network -> any /devicehub/*):  export LITMUS_TOKEN=...
 
     python plc/litmus/provision.py               # mints its own token from LITMUS_PASSWORD
-    LITMUS_TOKEN=... python plc/litmus/provision.py
 
-Status: device creation is VERIFIED end-to-end. Register (tag) creation is
-scaffolded but the register `name` must be a value from the Modbus driver's
-register-name catalog -- the exact accepted format is the one OPEN item
-(confirm from the DeviceHub UI Add-Tag form, then set NAME_FN below). Until then
-the script fully provisions the DEVICE and reports each register attempt.
+VERIFIED end-to-end (2026-07-01): device + all 11 registers create, and Litmus
+polls the PLC with ZERO modbus exceptions (DC bus, freq, current, voltage, cmd,
+status, fault via FC3 holding; motor/comm/estop/wiring via FC1 coils).
+
+NOTE: the loopedge-dh poller caches its register set -- after add/deletes it may
+keep polling stale registers. Restart the driver to reload:
+    docker exec le /command/s6-svc -r /run/service/loopedge-dh
 """
 import argparse, json, os, ssl, urllib.request
 
 BASE = os.getenv("LITMUS_BASE", "https://localhost:8443")
-# loopedge-auth login via the nginx-fronted path; if minting fails, pass LITMUS_TOKEN.
 AUTH_LOGIN = os.getenv("LITMUS_AUTH_LOGIN", BASE.rstrip("/") + "/auth/v2/login")
 MODBUS_TCP_DRIVER = "2AF1FA08-D638-11E9-BB65-2A2AE2DBCCE4"  # GET /devicehub/drivers
 _CTX = ssl.create_default_context(); _CTX.check_hostname = False; _CTX.verify_mode = ssl.CERT_NONE
 
-# Proven Modbus map (0-based; mirror of mira_on_litmus.py read path). address is an INT.
-#   ("area", offset)  where area is "hr" (holding reg, FC3) or "coil" (FC1).
-REGISTERS = [
-    ("vfd_dc_bus",         "hr",   109), ("vfd_frequency",   "hr",   106),
-    ("vfd_current",        "hr",   107), ("vfd_voltage",     "hr",   108),
-    ("vfd_cmd_word",       "hr",   114), ("vfd_status_word", "hr",   117),
-    ("vfd_fault_code",     "hr",   118), ("motor_running",   "coil", 0),
-    ("vfd_comm_ok",        "coil", 3),   ("e_stop_active",   "coil", 5),
-    ("estop_wiring_fault", "coil", 9),
+# VERIFIED live map. Litmus register class code -> Modbus function:
+#   name="H" -> FC3 Holding registers   (valueType "word" = unsigned 16-bit)
+#   name="C" -> FC1 Coils               (valueType "bit")
+# addresses are 0-based (device property "Zero-Based Addressing"="1") and are all
+# confirmed to EXIST on the sparse Micro820 map (single-read scan, no exception 2).
+HOLDING = [  # (TagName, address)  read as name="H", valueType="word"
+    ("vfd_dc_bus", 109), ("vfd_frequency", 106), ("vfd_current", 107),
+    ("vfd_voltage", 108), ("vfd_cmd_word", 114), ("vfd_status_word", 117),
+    ("vfd_fault_code", 118),
 ]
-
-# OPEN ITEM: the accepted register `name` (driver catalog value). Confirm from the
-# UI Add-Tag form, then implement. Best current guess left for quick iteration.
-def NAME_FN(area, offset):
-    # e.g. Modbus 4xxxx/0xxxx reference -- TBD against the driver catalog.
-    return ("4%04d" % (offset + 1)) if area == "hr" else ("0%04d" % (offset + 1))
+COILS = [  # (TagName, address)  read as name="C", valueType="bit"
+    ("motor_running", 0), ("vfd_comm_ok", 3), ("e_stop_active", 5),
+    ("estop_wiring_fault", 9),
+]
 
 
 def _call(method, path, token, body=None):
@@ -63,8 +60,8 @@ def _call(method, path, token, body=None):
 
 
 def mint_token():
-    pw = os.getenv("LITMUS_PASSWORD", "Factory2026!")
-    body = json.dumps({"username": os.getenv("LITMUS_USER", "admin"), "password": pw}).encode()
+    body = json.dumps({"username": os.getenv("LITMUS_USER", "admin"),
+                       "password": os.getenv("LITMUS_PASSWORD", "Factory2026!")}).encode()
     req = urllib.request.Request(AUTH_LOGIN, data=body, method="POST",
                                  headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, context=_CTX, timeout=15) as r:
@@ -78,9 +75,10 @@ def device_body(name, host, port, unit):
                            "stationId": str(unit), "Zero-Based Addressing": "1"}}
 
 
-def register_body(device_id, tag, area, offset):
-    return {"deviceId": device_id, "name": NAME_FN(area, offset),
-            "TagName": tag, "address": int(offset)}
+def register_body(device_id, cls, tag, address, value_type):
+    # NOTE: address is an INT here (register bodies are typed; device props are strings).
+    return {"deviceId": device_id, "name": cls, "TagName": tag,
+            "address": int(address), "valueType": value_type}
 
 
 def main():
@@ -89,15 +87,12 @@ def main():
     ap.add_argument("--host", default=os.getenv("PLC_HOST", "192.168.1.100"))
     ap.add_argument("--port", type=int, default=502)
     ap.add_argument("--unit", type=int, default=1)
-    ap.add_argument("--skip-registers", action="store_true",
-                    help="provision the device only (registers need NAME_FN confirmed)")
     args = ap.parse_args()
 
     token = os.getenv("LITMUS_TOKEN")
     if not token:
         try:
-            token = mint_token()
-            print("Minted a token from LITMUS_PASSWORD.")
+            token = mint_token(); print("Minted a token from LITMUS_PASSWORD.")
         except Exception as e:  # noqa: BLE001
             print("ERROR: no LITMUS_TOKEN and mint failed (%s). Paste a UI Bearer token." % e)
             return 2
@@ -112,23 +107,21 @@ def main():
     device_id = resp.get("id") or args.name
     print("  device id: %s  (ip=%s)" % (device_id, resp.get("properties", {}).get("networkAddress")))
 
-    if args.skip_registers:
-        print("Device provisioned; --skip-registers set. Confirm NAME_FN then re-run for tags.")
-        return 0
-
     ok = 0
-    for tag, area, offset in REGISTERS:
-        st, resp = _call("POST", "/devicehub/registers", token, register_body(device_id, tag, area, offset))
-        print("  register %-20s (%s %d) -> HTTP %s" % (tag, area, offset, st))
-        if st in (200, 201):
-            ok += 1
-        elif resp:
-            print("       response: %s" % resp)
-    print("\nDone: %d/%d registers. (If 0, NAME_FN needs the real driver register-name format --"
-          " see /var/log/loopedge-dh/current + DEVICEHUB_API.md.)" % (ok, len(REGISTERS)))
+    for tag, addr in HOLDING:
+        st, resp = _call("POST", "/devicehub/registers", token, register_body(device_id, "H", tag, addr, "word"))
+        ok += st in (200, 201); print("  H  %-20s @%-3d -> HTTP %s" % (tag, addr, st))
+    for tag, addr in COILS:
+        st, resp = _call("POST", "/devicehub/registers", token, register_body(device_id, "C", tag, addr, "bit"))
+        ok += st in (200, 201); print("  C  %-20s @%-3d -> HTTP %s" % (tag, addr, st))
+
+    n = len(HOLDING) + len(COILS)
+    print("\nDone: %d/%d registers provisioned." % (ok, n))
+    print("Reload the poller so it drops any stale registers:\n"
+          "  docker exec le /command/s6-svc -r /run/service/loopedge-dh")
     print("Then read through Litmus:\n"
           "  LITMUS_API_KEY=... python plc/litmus/mira_on_litmus.py --source litmus --device-id %s" % device_id)
-    return 0
+    return 0 if ok == n else 1
 
 
 if __name__ == "__main__":
