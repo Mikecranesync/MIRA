@@ -32,8 +32,8 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 # Relationship types that carry interlock causality (CHECK vocab, migration 018).
-_CHAIN_REL = "USED_IN_LOGIC"   # structural dependency operand -> assigned signal
-_BLOCK_REL = "CAUSES"          # NOT-ed permissive operand: TRUE inhibits motion
+_CHAIN_REL = "USED_IN_LOGIC"  # structural dependency operand -> assigned signal
+_BLOCK_REL = "CAUSES"  # NOT-ed permissive operand: TRUE inhibits motion
 
 
 @dataclass(frozen=True)
@@ -119,8 +119,9 @@ def recall_interlocks(
     """
     sql = _RECALL_SQL
     if include_unapproved:
-        sql = sql.replace("r.approval_state = 'verified'",
-                          "r.approval_state IN ('verified', 'proposed')")
+        sql = sql.replace(
+            "r.approval_state = 'verified'", "r.approval_state IN ('verified', 'proposed')"
+        )
     cur.execute(sql, {"tenant": tenant_id, "subtree": asset_subtree})
     by_edge: dict[tuple[str, str, str], RecalledEdge] = {}
     for row in cur.fetchall():
@@ -129,15 +130,16 @@ def recall_interlocks(
         edge = by_edge.get(key)
         if edge is None:
             edge = RecalledEdge(
-                source=src, target=tgt, relationship_type=rel,
+                source=src,
+                target=tgt,
+                relationship_type=rel,
                 confidence=conf if conf is not None else 1.0,
-                evidence_summary=summary, evidence=[],
+                evidence_summary=summary,
+                evidence=[],
             )
             by_edge[key] = edge
         if ev_type:
-            edge.evidence.append(
-                {"type": ev_type, "location": ev_loc, "excerpt": ev_excerpt}
-            )
+            edge.evidence.append({"type": ev_type, "location": ev_loc, "excerpt": ev_excerpt})
     return list(by_edge.values())
 
 
@@ -209,8 +211,7 @@ def build_interlock_answer(
 
     # The permissive feeding motion that is currently FALSE.
     permissive = next(
-        (e.source for e in chain_edges
-         if e.target == motion and live_state.get(e.source) is False),
+        (e.source for e in chain_edges if e.target == motion and live_state.get(e.source) is False),
         None,
     )
 
@@ -231,16 +232,22 @@ def build_interlock_answer(
     evidence: list[dict] = []
     for e in used:
         for ev in e.evidence:
-            evidence.append({
-                "kind": ev.get("type"),
-                "location": ev.get("location"),
-                "excerpt": ev.get("excerpt"),
-                "edge": f"{e.source} -[{e.relationship_type}]-> {e.target}",
-            })
+            evidence.append(
+                {
+                    "kind": ev.get("type"),
+                    "location": ev.get("location"),
+                    "excerpt": ev.get("excerpt"),
+                    "edge": f"{e.source} -[{e.relationship_type}]-> {e.target}",
+                }
+            )
         if not e.evidence and e.evidence_summary:
-            evidence.append({"kind": "approved_edge", "edge":
-                             f"{e.source} -[{e.relationship_type}]-> {e.target}",
-                             "excerpt": e.evidence_summary})
+            evidence.append(
+                {
+                    "kind": "approved_edge",
+                    "edge": f"{e.source} -[{e.relationship_type}]-> {e.target}",
+                    "excerpt": e.evidence_summary,
+                }
+            )
 
     blocker_name = active_blocker.source if active_blocker else None
     blocker_val = live_state.get(blocker_name) if blocker_name else None
@@ -272,8 +279,9 @@ def build_interlock_answer(
         "affected_signal": motion,
         "permissive": permissive,
         "why": f"The {asset} is not running: {why}.",
-        "live_state": {k: live_state.get(k) for k in
-                       filter(None, [motion, permissive, blocker_name])},
+        "live_state": {
+            k: live_state.get(k) for k in filter(None, [motion, permissive, blocker_name])
+        },
         "evidence": evidence,
         "next_checks": next_checks,
         "grounded": bool(evidence),

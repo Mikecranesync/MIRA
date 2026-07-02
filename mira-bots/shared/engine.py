@@ -3604,7 +3604,9 @@ class Supervisor:
             )
             if not edges:
                 return ""  # nothing verified -> no approved context -> no block
-            live = ((state.get("context") or {}).get("session_context") or {}).get("tag_state") or {}
+            live = ((state.get("context") or {}).get("session_context") or {}).get(
+                "tag_state"
+            ) or {}
             answer = build_interlock_answer(edges, live, asset) if live else None
             return self._format_interlock_context(edges, answer)
         except Exception as exc:  # noqa: BLE001 -- enrichment must never block diagnosis
@@ -3617,9 +3619,7 @@ class Supervisor:
         compact prompt block. Never raises; "" when there are no edges."""
         if not edges:
             return ""
-        lines = [
-            "\n--- APPROVED INTERLOCK LOGIC (verified relationships; grounded, citable) ---"
-        ]
+        lines = ["\n--- APPROVED INTERLOCK LOGIC (verified relationships; grounded, citable) ---"]
         for e in edges[:12]:
             loc = ""
             for ev in getattr(e, "evidence", None) or []:
