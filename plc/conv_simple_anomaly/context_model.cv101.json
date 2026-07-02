@@ -113,7 +113,16 @@
       "effect": "MIRA must NOT assert or rule out a photo-eye jam (A12) from data. It has to say the signal is unavailable, not guess." },
     { "component": "vfd101", "signal": "vfd/vfd101/freq_setpoint",
       "reason": "Commanded-Hz setpoint (A7) is not in the provisioned 11-register set.",
-      "effect": "MIRA cannot judge freq-vs-setpoint tracking; it must not claim the drive is/ isn't holding commanded speed." }
+      "effect": "MIRA cannot judge freq-vs-setpoint tracking; it must not claim the drive is/ isn't holding commanded speed." },
+    { "component": "vfd101", "signal": "vfd/vfd101/torque_pct",
+      "reason": "VFD output torque % is not exposed on the current sparse Micro820 map (v1.9-only register, not flashed).",
+      "effect": "MIRA cannot assert torque or over-torque; a torque-based mechanical-load test is not supported until this register is added." },
+    { "component": "vfd101", "signal": "vfd/vfd101/motor_rpm",
+      "reason": "Motor RPM is not exposed on the current map.",
+      "effect": "MIRA cannot assert RPM or slip." },
+    { "component": "vfd101", "signal": "vfd/vfd101/output_power_kw",
+      "reason": "VFD output power (kW) is not exposed on the current map.",
+      "effect": "MIRA cannot assert output-power magnitude or trend; use motor current as the available load proxy instead." }
   ],
   "maintenance_question": {
     "prompt": "Why is CV-101 stopped?",

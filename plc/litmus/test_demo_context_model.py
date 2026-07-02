@@ -149,3 +149,149 @@ def test_no_internal_litmus_read_api_dependency():
     assert "by-device" not in src, "demo must not call the blocked loopedge-access read route"
     assert "/api/tags" not in src, "demo must not call the internal Litmus tag-read API"
     assert "x-api-key" not in src and "apiKey" not in src, "demo must not use the Litmus read credential"
+
+
+# --------------------------------------------------------------------------- #
+# 6. capability matrix + generated test plan (derived only from mapped signals)
+# --------------------------------------------------------------------------- #
+def _caps_and_plan(fixture="cv101_idle_healthy"):
+    r = demo.run_demo("replay", fixture, write=False)
+    avail = {c["capability"] for c in r["capabilities"] if c["status"] == "available"}
+    unavail = {c["capability"] for c in r["capabilities"] if c["status"] == "unavailable"}
+    return r, avail, unavail
+
+
+def test_capabilities_reflect_available_signals():
+    _r, avail, unavail = _caps_and_plan()
+    # present on the current 11-register map
+    for cap in ("communication health", "command / run state", "VFD fault state",
+                "DC bus health", "frequency / speed signal", "motor current (load proxy)"):
+        assert cap in avail, "expected available: %s" % cap
+    # honestly NOT on the current map / not an input -> must be reported unavailable, not faked
+    for cap in ("torque", "motor RPM", "output power", "visual confirmation (webcam)"):
+        assert cap in unavail, "expected unavailable: %s" % cap
+
+
+def test_unavailable_capabilities_carry_a_reason():
+    r, _avail, _unavail = _caps_and_plan()
+    for c in r["capabilities"]:
+        if c["status"] == "unavailable":
+            assert c["basis"], "unavailable capability %s has no reason" % c["capability"]
+    # torque/RPM/power cite the model's *declared* decline, not a generic guess
+    torque = next(c for c in r["capabilities"] if c["capability"] == "torque")
+    assert torque["basis"].startswith("declined:")
+
+
+def test_test_plan_allows_supported_and_skips_unsupported():
+    r, _avail, _unavail = _caps_and_plan()
+    plan = r["test_plan"]
+    allowed = {n for n, _ in plan["allowed"]}
+    skipped = {n for n, _ in plan["skipped"]}
+    assert "current-based load-proxy test" in allowed
+    assert "electrical-vs-mechanical separation test" in allowed
+    for s in ("torque / over-torque test", "RPM / slip test",
+              "output-power magnitude/trend test", "visual (webcam) root-cause confirmation"):
+        assert s in skipped, "expected skipped: %s" % s
+    joined = " | ".join(plan["refusals"]).lower()
+    assert "torque" in joined and "rpm" in joined and "visual" in joined
+
+
+def test_no_timeseries_drift_claim_from_single_snapshot():
+    r, _avail, _unavail = _caps_and_plan()
+    plan = r["test_plan"]
+    assert plan["is_timeseries"] is False
+    skipped = {n for n, _ in plan["skipped"]}
+    assert "load drift / spike detection test" in skipped
+    assert any("drift" in ref.lower() for ref in plan["refusals"])
+
+
+def test_comm_down_keeps_comm_capability_available_but_value_down():
+    # the CAPABILITY (assess comms) is available because the signal is mapped;
+    # its VALUE says comms are down. Availability != healthy.
+    r, avail, _unavail = _caps_and_plan("cv101_comm_down")
+    assert "communication health" in avail
+    assert r["snap"][rules.T_COMM] is False
+
+
+def test_capability_artifact_written(tmp_path):
+    out = str(tmp_path / "cap_out")
+    demo.run_demo("replay", "cv101_idle_healthy", out_dir=out, write=True)
+    path = os.path.join(out, "capability_and_test_plan.md")
+    assert os.path.isfile(path), "missing capability_and_test_plan.md"
+    with open(path, "r", encoding="utf-8") as f:
+        body = f.read()
+    assert "Capability matrix" in body
+    assert "UNAVAILABLE" in body
+    assert "torque" in body.lower()
+
+
+# --------------------------------------------------------------------------- #
+# 7. dashboard JSON contract (the stable shape the Perspective adapter consumes)
+# --------------------------------------------------------------------------- #
+def _contract(fixture="cv101_idle_healthy"):
+    return demo.run_demo("replay", fixture, write=False)["contract"]
+
+
+def test_contract_producible_from_idle_with_all_sections():
+    c = _contract()
+    for key in ("asset_id", "source", "timestamp", "mapped_signals", "declined_signals",
+                "trend_signals", "capability_matrix", "generated_tests", "skipped_tests",
+                "claim_boundary", "answer"):
+        assert key in c, "contract missing section: %s" % key
+    assert c["asset_id"] == "CV-101"
+    assert "replay" in c["source"].lower()
+
+
+def test_contract_mapped_signals_have_values_and_units():
+    c = _contract()
+    by_name = {m["signal"]: m for m in c["mapped_signals"]}
+    assert "vfd_dc_bus" in by_name
+    assert by_name["vfd_dc_bus"]["value"] == pytest.approx(321.5)
+    assert by_name["vfd_dc_bus"]["unit"] == "V"
+    assert by_name["motor_current"]["unit"] == "A" if "motor_current" in by_name else True
+    assert by_name["vfd_current"]["unit"] == "A"
+
+
+def test_contract_declined_include_torque_rpm_power_with_reasons():
+    c = _contract()
+    declined = {d["signal"]: d for d in c["declined_signals"]}
+    for sig in ("vfd/vfd101/torque_pct", "vfd/vfd101/motor_rpm", "vfd/vfd101/output_power_kw"):
+        assert sig in declined, "declined signal missing: %s" % sig
+        assert declined[sig]["reason"], "declined %s has no reason" % sig
+
+
+def test_contract_trend_availability_derived_from_mapped():
+    c = _contract()
+    avail = {t["signal"] for t in c["trend_signals"]["available"]}
+    unavail = {t["signal"] for t in c["trend_signals"]["unavailable"]}
+    # real, mapped analog signals are available to trend
+    assert {"vfd_dc_bus", "vfd_frequency", "vfd_current"} <= avail
+    # torque/RPM/power/webcam are explicitly UNAVAILABLE (never silently hidden)
+    assert {"torque", "motor RPM", "output power", "visual confirmation (webcam)"} <= unavail
+    for t in c["trend_signals"]["unavailable"]:
+        assert t["reason"], "unavailable trend %s must carry a reason" % t["signal"]
+
+
+def test_contract_answer_summary_and_claim_boundary_present():
+    c = _contract()
+    assert "not being commanded to run" in c["answer"]["summary"].lower()
+    assert c["answer"]["state"]["running"] is False
+    assert any("torque" in b.lower() for b in c["claim_boundary"])
+    assert any("drift" in b.lower() for b in c["claim_boundary"])
+
+
+def test_contract_timestamp_is_deterministic_when_supplied():
+    r = demo.run_demo("replay", "cv101_idle_healthy", write=False)
+    c = demo.build_contract(r, timestamp=1234567890)
+    assert c["timestamp"] == 1234567890
+
+
+def test_contract_written_as_artifact(tmp_path):
+    out = str(tmp_path / "contract_out")
+    demo.run_demo("replay", "cv101_idle_healthy", out_dir=out, write=True)
+    path = os.path.join(out, "dashboard_contract.json")
+    assert os.path.isfile(path)
+    import json as _json
+    with open(path, "r", encoding="utf-8") as f:
+        c = _json.load(f)
+    assert c["asset_id"] == "CV-101" and c["trend_signals"]["unavailable"]
