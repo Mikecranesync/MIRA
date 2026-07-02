@@ -1,0 +1,53 @@
+{
+  "_comment": "Deterministic CV-200 (Northwind) interlock edges for the LOCAL weekend demo. These are the rows a real propose->approve flow would leave in kg_relationships. Two approval states are present ON PURPOSE: 'verified' edges are the approved interlock chain MIRA may cite; 'proposed' edges are unapproved and MUST be ignored by the verified-only recall. No DB, no PLC, no secrets.",
+  "asset": "Discharge Conveyor CV-200",
+  "tenant_id": "northwind-demo",
+  "uns_subtree": "enterprise.riverside.area.packaging.line.line1.equipment.discharge_conveyor_cv200",
+  "source_rung": "plc/Prog_init_ConvSimple_v2.1.st (mirrors the Conv_Simple run-permissive chain)",
+  "edges": [
+    {
+      "source": "e_stop_ok", "target": "vfd_run_permit", "relationship_type": "USED_IN_LOGIC",
+      "approval_state": "verified", "confidence": 1.0, "evidence_summary": null,
+      "uns_path": "enterprise.riverside.area.packaging.line.line1.equipment.discharge_conveyor_cv200",
+      "evidence": [{"type": "plc_rung", "location": "Prog_init_ConvSimple_v2.1.st:214",
+                    "excerpt": "vfd_run_permit := _IO_EM_DO_02 AND e_stop_ok AND NOT pe_latched;"}]
+    },
+    {
+      "source": "_IO_EM_DO_02", "target": "vfd_run_permit", "relationship_type": "USED_IN_LOGIC",
+      "approval_state": "verified", "confidence": 1.0, "evidence_summary": null,
+      "uns_path": "enterprise.riverside.area.packaging.line.line1.equipment.discharge_conveyor_cv200",
+      "evidence": [{"type": "plc_rung", "location": "Prog_init_ConvSimple_v2.1.st:214",
+                    "excerpt": "vfd_run_permit := _IO_EM_DO_02 AND e_stop_ok AND NOT pe_latched;"}]
+    },
+    {
+      "source": "vfd_run_permit", "target": "motor_running", "relationship_type": "USED_IN_LOGIC",
+      "approval_state": "verified", "confidence": 1.0, "evidence_summary": null,
+      "uns_path": "enterprise.riverside.area.packaging.line.line1.equipment.discharge_conveyor_cv200",
+      "evidence": [{"type": "plc_rung", "location": "Prog_init_ConvSimple_v2.1.st:236",
+                    "excerpt": "motor_running := vfd_run_permit AND (dir_fwd OR dir_rev);"}]
+    },
+    {
+      "source": "pe_latched", "target": "vfd_run_permit", "relationship_type": "CAUSES",
+      "approval_state": "verified", "confidence": 1.0,
+      "evidence_summary": "NOT-ed permissive operand: TRUE inhibits run",
+      "uns_path": "enterprise.riverside.area.packaging.line.line1.equipment.discharge_conveyor_cv200",
+      "evidence": [{"type": "plc_rung", "location": "Prog_init_ConvSimple_v2.1.st:214",
+                    "excerpt": "vfd_run_permit := _IO_EM_DO_02 AND e_stop_ok AND NOT pe_latched;"}]
+    },
+
+    {
+      "source": "dust_collector_ok", "target": "vfd_run_permit", "relationship_type": "USED_IN_LOGIC",
+      "approval_state": "proposed", "confidence": 0.55,
+      "evidence_summary": "AI-proposed, NOT human-approved -- must not be cited",
+      "uns_path": "enterprise.riverside.area.packaging.line.line1.equipment.discharge_conveyor_cv200",
+      "evidence": [{"type": "inferred", "location": "proposal:auto", "excerpt": "plausible but unverified permissive operand"}]
+    },
+    {
+      "source": "upstream_jam", "target": "motor_running", "relationship_type": "CAUSES",
+      "approval_state": "proposed", "confidence": 0.4,
+      "evidence_summary": "AI-proposed, NOT human-approved -- must not be cited",
+      "uns_path": "enterprise.riverside.area.packaging.line.line1.equipment.discharge_conveyor_cv200",
+      "evidence": [{"type": "inferred", "location": "proposal:auto", "excerpt": "unverified downstream cause"}]
+    }
+  ]
+}
