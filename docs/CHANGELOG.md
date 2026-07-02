@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.55.2 (2026-07-02) - chore(lint): fix pre-existing ruff violations in plc/ and tests/flywheel/
+- Splits E702 semicolons onto separate lines in `plc/conv_simple_anomaly/difference_detectors.py`.
+- Renames E741 ambiguous loop variable `l` → `loc` in `tests/flywheel/test_interlock_answer.py`.
+- Removes F401 unused `import os` from `tests/flywheel/test_cv200_interlock_demo.py`.
+- Sorts I001 import blocks in `test_baseline_learner.py`, `test_difference_detectors.py`, and `plc/litmus/dashboard_api.py`. No logic changes.
+
 ### v3.53.4 (2026-07-01) - feat(crew): synthetic-worker runner + dogfood judge + retries/--until-find
 > Note: `v3.53.3` was independently taken by #2387 on main; this crew PR ships as `v3.53.4`, so the runner + judge (originally staged as 3.53.3) is released here together with the retries / `--until-find` work.
 - Adds `tools/crew/dogfood/judge.sh` + four `.check` packs (maintenance-tech, contextualization, work-order, demo-readiness) that walk MIRA's core product paths against the live staging Hub as real QA personas and classify each GREEN/YELLOW/RED in **business language**, writing a two-minute founder report to `qa/dogfood/latest-report.md`. Every RED is cross-verified under a **second** persona session before it can be filed (finder≠verifier), deduped first, refused on INFRA/ambiguous; deterministic corpus-aware asset selection avoids flaky verdicts.
