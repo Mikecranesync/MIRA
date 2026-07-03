@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sessionOrDemo } from "@/lib/demo-auth";
 import { withTenantContext } from "@/lib/tenant-context";
+import { fetchMachineMemory, isUndefinedRelationOrColumn } from "@/lib/machine-memory";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,36 @@ export async function GET(
         )
         .then((r) => r.rows[0]?.uns_path ?? null);
 
+      // Machine memory (T2 / seam 3): latest run, state window, and up to 3
+      // recent anomaly diffs, so the confirmation card can show what the
+      // machine has been doing. Null when the asset has no uns_path, or when
+      // the 038/040 machine-memory tables aren't applied in this env yet.
+      let machineMemory: {
+        latest_run: Record<string, unknown> | null;
+        latest_window: Record<string, unknown> | null;
+        latest_diffs: Record<string, unknown>[];
+        next_check: string | null;
+      } | null = null;
+      if (unsPath) {
+        try {
+          const memory = await fetchMachineMemory(c, ctx.tenantId, unsPath);
+          machineMemory = {
+            latest_run: memory.latest_run,
+            latest_window: memory.latest_window,
+            latest_diffs: memory.latest_diffs.slice(0, 3),
+            // The newest anomaly diff that carries a next_check in metadata.
+            next_check:
+              memory.latest_diffs.find((d) => d.next_check)?.next_check ?? null,
+          };
+        } catch (err) {
+          // 038 not applied in this env — machine memory simply isn't
+          // available. Anything else is a real error for the outer handler.
+          if (!isUndefinedRelationOrColumn(err)) throw err;
+          console.error("[api/assets/[id]/context GET] machine-memory tables unavailable (038/040 not applied?)", err);
+          machineMemory = null;
+        }
+      }
+
       const components = await c
         .query(
           `SELECT id, component_name, canonical_name, plc_tag
@@ -105,6 +136,7 @@ export async function GET(
           plc_tag: cmp.plc_tag,
         })),
         recent_signal_count_24h: signals,
+        machine_memory: machineMemory,
         ready_for_troubleshooting: components.length > 0,
       };
     });

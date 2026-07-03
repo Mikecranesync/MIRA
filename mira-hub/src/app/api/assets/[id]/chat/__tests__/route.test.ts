@@ -60,6 +60,18 @@ async function drain(res: Response): Promise<void> {
   }
 }
 
+async function readAll(res: Response): Promise<string> {
+  const reader = res.body?.getReader();
+  if (!reader) return "";
+  const dec = new TextDecoder();
+  let out = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return out;
+    out += dec.decode(value, { stream: true });
+  }
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
   process.env.NEON_DATABASE_URL = "postgres://test-only-not-used";
@@ -215,6 +227,103 @@ describe("POST /api/assets/[id]/chat", () => {
     expect(res.status).toBe(200);
     await drain(res);
     expect(fetchSpy).toHaveBeenCalled();
+  });
+
+  it("grounds the prompt in live machine memory and emits next_check (T2)", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(buildGraphContext).mockResolvedValue("[KG] verified relationship context");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+    fetchSpy.mockResolvedValue(
+      new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
+        status: 200,
+      }),
+    );
+
+    const release = vi.fn();
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("FROM cmms_equipment")) {
+        return {
+          rows: [
+            {
+              equipment_number: "MTR-101",
+              manufacturer: "FactoryLM",
+              model_number: "M100",
+              serial_number: "S100",
+              equipment_type: "Motor",
+              location: "Plant.Line",
+              criticality: "high",
+              description: "Line Motor",
+              installation_date: null,
+              last_maintenance_date: null,
+              last_reported_fault: null,
+              work_order_count: 0,
+            },
+          ],
+        };
+      }
+      if (sql.includes("FROM kg_relationships r")) return { rows: [{ count: 1 }] };
+      if (sql.includes("FROM kg_entities")) {
+        return { rows: [{ uns_path: "enterprise.garage.demo_cell.cv_101" }] };
+      }
+      if (sql.includes("FROM machine_run")) {
+        return {
+          rows: [
+            {
+              run_id: "r1", status: "closed", started_at: "2026-07-01T00:00:00Z",
+              stopped_at: "2026-07-01T01:00:00Z", duration_seconds: 3600,
+              run_trigger_tag: "cv101.run",
+            },
+          ],
+        };
+      }
+      if (sql.includes("FROM machine_state_window")) {
+        return {
+          rows: [
+            { window_id: "w1", state: "idle", started_at: "2026-07-01T01:00:00Z", ended_at: null },
+          ],
+        };
+      }
+      if (sql.includes("FROM run_diff")) {
+        return {
+          rows: [
+            {
+              diff_id: "d1", run_id: "r1", window_id: "w1",
+              tag_path: "cv101.motor_current", severity: "warning",
+              diff_type: "anomaly_A1_COMM_STALE", observed: 5.2, baseline: 4.0,
+              delta_percent: 30, from_event_id: null, to_event_id: null,
+              event_timestamp: "2026-07-01T00:30:00Z",
+              metadata: { next_check: "verify VFD comm cable" },
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    vi.mocked(pool.connect).mockResolvedValue({ query, release } as never);
+
+    const res = await POST(makeReq(userMsg("why did it stop?")), makeParams(VALID_UUID));
+
+    expect(res.status).toBe(200);
+    const sse = await readAll(res);
+
+    // The system prompt sent to the provider carries the machine-memory
+    // section, marked machine-observed, with the anomaly + next_check line.
+    expect(fetchSpy).toHaveBeenCalled();
+    const providerBody = JSON.parse(
+      (fetchSpy.mock.calls[0]?.[1] as { body: string }).body,
+    ) as { messages: Array<{ role: string; content: string }> };
+    const systemPrompt = providerBody.messages.find((m) => m.role === "system")?.content ?? "";
+    expect(systemPrompt).toContain("## Live Machine Memory");
+    expect(systemPrompt).toContain("MACHINE-OBSERVED");
+    expect(systemPrompt).toContain("Current state: idle");
+    expect(systemPrompt).toContain("Latest run: closed");
+    expect(systemPrompt).toContain(
+      "[anomaly_A1_COMM_STALE] warning — cv101.motor_current — next check: verify VFD comm cable",
+    );
+
+    // The response stream carries next_check alongside sources/traceId so the
+    // evidence UI can render a "Next check" line.
+    expect(sse).toContain('"next_check":"verify VFD comm cable"');
   });
 
   it("propagates a 401 from the session helper", async () => {
