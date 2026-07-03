@@ -259,3 +259,6 @@ Mike Harper (CEO) approved architecture document merge.
 
 **Key insight:** MIRA is ChatGPT that knows your plant when you need it to — general genie first, opportunistic machine binding, not fail-closed RAG.
 
+## 2026-07-03T14:08:08Z — session auto-commit
+
+Changed: `wiki/hot.md`
