@@ -479,7 +479,24 @@ async function main() {
        ON CONFLICT (id) DO NOTHING`,
       [SYNTH_ISOLATION_TENANT_ID, "Synthetic Isolation Plant — Lakeland FL"],
     );
-    console.log("[seed] Tenant upserted");
+    // #1899b: mirror both synthetic tenants into the DATA-side `tenants` table
+    // (the FK target of knowledge_entries.tenant_id / kg_entities.tenant_id).
+    // Real signup (lib/users.ts) does this in the same transaction; the seeder
+    // omitted it, so every QA-persona document upload 23503'd on
+    // knowledge_entries_tenant_id_fkey and surfaced as "Server storage error" —
+    // the beta-gate journey (upload manual → cited answer) could never run on a
+    // QA tenant. tenants.name + contact_email are NOT NULL (no default).
+    await client.query(
+      `INSERT INTO tenants (id, name, contact_email) VALUES ($1, $2, $3)
+       ON CONFLICT (id) DO NOTHING`,
+      [SYNTH_TENANT_ID, "Synthetic Test Plant — Lake Wales FL", "synthetic-qa@example.com"],
+    );
+    await client.query(
+      `INSERT INTO tenants (id, name, contact_email) VALUES ($1, $2, $3)
+       ON CONFLICT (id) DO NOTHING`,
+      [SYNTH_ISOLATION_TENANT_ID, "Synthetic Isolation Plant — Lakeland FL", "synthetic-isolation@example.com"],
+    );
+    console.log("[seed] Tenant upserted (hub_tenants + data-side tenants mirror)");
 
     // ── Users ────────────────────────────────────────────────────────────────
     for (const p of PERSONAS) {
