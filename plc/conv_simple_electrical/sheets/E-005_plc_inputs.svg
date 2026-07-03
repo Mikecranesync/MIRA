@@ -1,0 +1,211 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040"><rect width="1600" height="1040" fill="#FFFFFF"/><rect x="30.0" y="30.0" width="1540.0" height="980.0" fill="none" stroke="#111111" stroke-width="1.8"/>
+<rect x="40.0" y="40.0" width="1520.0" height="960.0" fill="none" stroke="#666666" stroke-width="0.8"/>
+<line x1="40.0" y1="30.0" x2="40.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="40.0" y1="1000.0" x2="40.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="135.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">1</text>
+<text x="135.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">1</text>
+<line x1="230.0" y1="30.0" x2="230.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="230.0" y1="1000.0" x2="230.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="325.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">2</text>
+<text x="325.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">2</text>
+<line x1="420.0" y1="30.0" x2="420.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="420.0" y1="1000.0" x2="420.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="515.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">3</text>
+<text x="515.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">3</text>
+<line x1="610.0" y1="30.0" x2="610.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="610.0" y1="1000.0" x2="610.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="705.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">4</text>
+<text x="705.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">4</text>
+<line x1="800.0" y1="30.0" x2="800.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="800.0" y1="1000.0" x2="800.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="895.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">5</text>
+<text x="895.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">5</text>
+<line x1="990.0" y1="30.0" x2="990.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="990.0" y1="1000.0" x2="990.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="1085.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">6</text>
+<text x="1085.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">6</text>
+<line x1="1180.0" y1="30.0" x2="1180.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="1180.0" y1="1000.0" x2="1180.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="1275.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">7</text>
+<text x="1275.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">7</text>
+<line x1="1370.0" y1="30.0" x2="1370.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="1370.0" y1="1000.0" x2="1370.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="1465.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">8</text>
+<text x="1465.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">8</text>
+<line x1="1560.0" y1="30.0" x2="1560.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="1560.0" y1="1000.0" x2="1560.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="35.0" y="160.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">A</text>
+<text x="1565.0" y="160.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">A</text>
+<text x="35.0" y="400.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">B</text>
+<text x="1565.0" y="400.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">B</text>
+<text x="35.0" y="640.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">C</text>
+<text x="1565.0" y="640.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">C</text>
+<text x="35.0" y="880.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">D</text>
+<text x="1565.0" y="880.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">D</text>
+<text x="70.0" y="78.0" font-size="22" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">E-005  PLC DIGITAL INPUTS</text>
+<text x="70.0" y="100.0" font-size="12" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Conv_Simple / CV-101 (garage conveyor)  —  Micro820 2080-LC20-20QBB embedded DI (24 VDC)</text>
+<line x1="60.0" y1="112.0" x2="1180.0" y2="112.0" stroke="#BBBBBB" stroke-width="1" stroke-linecap="butt"/>
+<line x1="250.0" y1="210.0" x2="250.0" y2="560.0" stroke="#111111" stroke-width="2.2" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<rect x="234.0" y="188.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="250.0" y="198.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W24</text>
+<text x="250.0" y="184.0" font-size="11" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">+24 VDC</text>
+<text x="250.0" y="170.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">(PS1 / E-004)</text>
+<rect x="1170.0" y="150.0" width="300.0" height="750.0" fill="none" stroke="#111111" stroke-width="1.8"/>
+<text x="1320.0" y="172.0" font-size="15" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">PLC1</text>
+<text x="1320.0" y="190.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">Micro820 2080-LC20-20QBB</text>
+<text x="1320.0" y="204.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">embedded digital inputs</text>
+<line x1="250.0" y1="235.0" x2="310.0" y2="235.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<line x1="310.0" y1="235.0" x2="378.0" y2="235.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<line x1="402.0" y1="235.0" x2="470.0" y2="235.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<circle cx="310.0" cy="235.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<circle cx="470.0" cy="235.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<line x1="378.0" y1="235.0" x2="398.0" y2="222.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<line x1="388.0" y1="226.0" x2="388.0" y2="217.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<text x="388.0" y="213.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">∓</text>
+<text x="390.0" y="205.0" font-size="9.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">SS1  FWD</text>
+<text x="390.0" y="251.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#666666">FWD contact</text>
+<line x1="470.0" y1="235.0" x2="1170.0" y2="235.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<rect x="804.0" y="215.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="820.0" y="225.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W200</text>
+<circle cx="1170.0" cy="235.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="1180.0" y="232.0" font-size="11" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="bold" fill="#111111">I-00</text>
+<text x="1180.0" y="245.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">dir_fwd (Forward selector)</text>
+<text x="1180.0" y="256.0" font-size="7.5" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#666666">_IO_EM_DI_00</text>
+<text x="1462.0" y="237.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">healthy: 1 when FWD selected</text>
+<line x1="250.0" y1="297.0" x2="310.0" y2="297.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<line x1="310.0" y1="297.0" x2="378.0" y2="297.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<line x1="402.0" y1="297.0" x2="470.0" y2="297.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<circle cx="310.0" cy="297.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<circle cx="470.0" cy="297.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<line x1="378.0" y1="297.0" x2="398.0" y2="284.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<line x1="388.0" y1="288.0" x2="388.0" y2="279.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<text x="388.0" y="275.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">∓</text>
+<text x="390.0" y="267.0" font-size="9.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">SS1  REV</text>
+<text x="390.0" y="313.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#666666">REV contact</text>
+<line x1="470.0" y1="297.0" x2="1170.0" y2="297.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<rect x="804.0" y="277.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="820.0" y="287.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W201</text>
+<circle cx="1170.0" cy="297.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="1180.0" y="294.0" font-size="11" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="bold" fill="#111111">I-01</text>
+<text x="1180.0" y="307.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">dir_rev (Reverse selector)</text>
+<text x="1180.0" y="318.0" font-size="7.5" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#666666">_IO_EM_DI_01</text>
+<text x="1462.0" y="299.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">healthy: 1 when REV selected</text>
+<line x1="250.0" y1="359.0" x2="310.0" y2="359.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<line x1="310.0" y1="359.0" x2="378.0" y2="359.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<line x1="402.0" y1="359.0" x2="470.0" y2="359.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<circle cx="310.0" cy="359.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<circle cx="470.0" cy="359.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<line x1="378.0" y1="359.0" x2="400.0" y2="347.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<line x1="396.0" y1="345.0" x2="396.0" y2="362.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<text x="390.0" y="339.0" font-size="9.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">S0  E-STOP</text>
+<text x="390.0" y="375.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#666666">S0 11-12 (NC)</text>
+<line x1="470.0" y1="359.0" x2="1170.0" y2="359.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<rect x="804.0" y="339.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="820.0" y="349.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W202</text>
+<circle cx="1170.0" cy="359.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="1180.0" y="356.0" font-size="11" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="bold" fill="#111111">I-02</text>
+<text x="1180.0" y="369.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">E-stop NC channel</text>
+<text x="1180.0" y="380.0" font-size="7.5" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#666666">_IO_EM_DI_02</text>
+<text x="1462.0" y="361.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">healthy: 1 = healthy (chain closed)</text>
+<line x1="250.0" y1="421.0" x2="310.0" y2="421.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<line x1="310.0" y1="421.0" x2="378.0" y2="421.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<line x1="402.0" y1="421.0" x2="470.0" y2="421.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<circle cx="310.0" cy="421.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<circle cx="470.0" cy="421.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<line x1="378.0" y1="421.0" x2="398.0" y2="408.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<text x="390.0" y="401.0" font-size="9.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">S0  E-STOP</text>
+<text x="390.0" y="437.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#666666">S0 23-24 (NO)</text>
+<line x1="470.0" y1="421.0" x2="1170.0" y2="421.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<rect x="804.0" y="401.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="820.0" y="411.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W203</text>
+<circle cx="1170.0" cy="421.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="1180.0" y="418.0" font-size="11" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="bold" fill="#111111">I-03</text>
+<text x="1180.0" y="431.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">E-stop NO channel</text>
+<text x="1180.0" y="442.0" font-size="7.5" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#666666">_IO_EM_DI_03</text>
+<text x="1462.0" y="423.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">healthy: 0 = healthy</text>
+<line x1="250.0" y1="483.0" x2="310.0" y2="483.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<line x1="310.0" y1="483.0" x2="378.0" y2="483.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<line x1="402.0" y1="483.0" x2="470.0" y2="483.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<circle cx="310.0" cy="483.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<circle cx="470.0" cy="483.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<line x1="378.0" y1="483.0" x2="398.0" y2="470.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<line x1="390.0" y1="474.0" x2="390.0" y2="463.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<line x1="384.0" y1="463.0" x2="396.0" y2="463.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<text x="390.0" y="457.0" font-size="9.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">S2  RUN</text>
+<text x="390.0" y="499.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#666666">S2 3-4</text>
+<line x1="470.0" y1="483.0" x2="1170.0" y2="483.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<rect x="804.0" y="463.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="820.0" y="473.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W204</text>
+<circle cx="1170.0" cy="483.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="1180.0" y="480.0" font-size="11" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="bold" fill="#111111">I-04</text>
+<text x="1180.0" y="493.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Run pushbutton (rearm)</text>
+<text x="1180.0" y="504.0" font-size="7.5" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#666666">_IO_EM_DI_04</text>
+<text x="1462.0" y="485.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">healthy: 1 while pressed</text>
+<line x1="250.0" y1="545.0" x2="310.0" y2="545.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<line x1="310.0" y1="545.0" x2="370.0" y2="545.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<line x1="410.0" y1="545.0" x2="470.0" y2="545.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<circle cx="310.0" cy="545.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<circle cx="470.0" cy="545.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<rect x="370.0" y="533.0" width="40.0" height="24.0" fill="none" stroke="#111111" stroke-width="1.4"/>
+<text x="390.0" y="549.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">▷→</text>
+<text x="390.0" y="527.0" font-size="9.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">B1  PHOTO-EYE</text>
+<text x="390.0" y="567.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#666666">B1 BK</text>
+<line x1="470.0" y1="545.0" x2="1170.0" y2="545.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<rect x="804.0" y="525.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="820.0" y="535.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W205</text>
+<circle cx="1170.0" cy="545.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="1180.0" y="542.0" font-size="11" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="bold" fill="#111111">I-05</text>
+<text x="1180.0" y="555.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Photo-eye (beam blocked -&gt; pe_latched)</text>
+<text x="1180.0" y="566.0" font-size="7.5" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#666666">_IO_EM_DI_05</text>
+<text x="1462.0" y="547.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">healthy: 0 = clear, 1 = blocked</text>
+<circle cx="1170.0" cy="600.0" r="3.0" fill="#FFFFFF" stroke="#111111" stroke-width="1.4"/>
+<text x="1180.0" y="603.0" font-size="10" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#666666">I-06</text>
+<text x="1230.0" y="603.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">spare (no field wire — confirmed unused)</text>
+<circle cx="1170.0" cy="626.0" r="3.0" fill="#FFFFFF" stroke="#111111" stroke-width="1.4"/>
+<text x="1180.0" y="629.0" font-size="10" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#666666">I-07</text>
+<text x="1230.0" y="629.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">spare (no field wire — confirmed unused)</text>
+<circle cx="1170.0" cy="652.0" r="3.0" fill="#FFFFFF" stroke="#111111" stroke-width="1.4"/>
+<text x="1180.0" y="655.0" font-size="10" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#666666">I-08</text>
+<text x="1230.0" y="655.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">spare (no field wire — confirmed unused)</text>
+<circle cx="1170.0" cy="678.0" r="3.0" fill="#FFFFFF" stroke="#111111" stroke-width="1.4"/>
+<text x="1180.0" y="681.0" font-size="10" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#666666">I-09</text>
+<text x="1230.0" y="681.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">spare (no field wire — confirmed unused)</text>
+<circle cx="1170.0" cy="704.0" r="3.0" fill="#FFFFFF" stroke="#111111" stroke-width="1.4"/>
+<text x="1180.0" y="707.0" font-size="10" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#666666">I-10</text>
+<text x="1230.0" y="707.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">spare (no field wire — confirmed unused)</text>
+<circle cx="1170.0" cy="730.0" r="3.0" fill="#FFFFFF" stroke="#111111" stroke-width="1.4"/>
+<text x="1180.0" y="733.0" font-size="10" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#666666">I-11</text>
+<text x="1230.0" y="733.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">spare (no field wire — confirmed unused)</text>
+<circle cx="1170.0" cy="766.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="1180.0" y="769.0" font-size="10" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="bold" fill="#111111">COM0</text>
+<line x1="1170.0" y1="766.0" x2="1050.0" y2="766.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<rect x="1094.0" y="746.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="1110.0" y="756.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W0V</text>
+<text x="1042.0" y="769.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">0V (PS1 / E-004)</text>
+<text x="1240.0" y="769.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">input common — sink/source FIELD VERIFY</text>
+<text x="70.0" y="590.0" font-size="11" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">LEGEND</text>
+<line x1="80.0" y1="606.0" x2="130.0" y2="606.0" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/>
+<text x="140.0" y="610.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VERIFIED — PLC terminal + function traced to the running program / Ignition OPC docs</text>
+<line x1="80.0" y1="624.0" x2="130.0" y2="624.0" stroke="#111111" stroke-width="1.8" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<text x="140.0" y="628.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">FIELD VERIFY — physical wiring not documented; meter it (see E-009 open items)</text>
+<rect x="84.0" y="638.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="94.0" y="648.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">Wxx</text>
+<text x="140.0" y="648.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">wire numbers are PROPOSED (no as-built wire list in the repo)</text>
+<text x="70.0" y="680.0" font-size="8.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">READS (acceptance): +24 VDC starts at PS1 (E-004) → device contact shown → proposed wire # → PLC terminal I-0x →</text>
+<text x="70.0" y="695.0" font-size="8.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">   function/OPC tag → returns via COM0 → 0V (E-004). Verified vs field-verify marked per conductor.</text>
+<text x="70.0" y="710.0" font-size="8.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">SAFETY: I-02/I-03 are MONITORED e-stop inputs only — a monitored input is NOT a safety stop. A compliant install must</text>
+<text x="70.0" y="725.0" font-size="8.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">   hardwire S0 to remove drive power (NFPA 79 / EN 60204-1, stop cat 0/1). De-energize + LOTO before metering.</text>
+<text x="70.0" y="740.0" font-size="8.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">SOURCES (verified): plc/Prog_init_ConvSimple_v2.1.st · plc/ignition-project/.../MIRA_IOCheck/Inputs/tags.json ·</text>
+<text x="70.0" y="755.0" font-size="8.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">   plc/ccw/controller/Controller/LogicalValues.csv · plc/GS10_Integration_Guide.md</text>
+<rect x="1120.0" y="894.0" width="430.0" height="96.0" fill="none" stroke="#111111" stroke-width="1.6"/>
+<line x1="1120.0" y1="940.0" x2="1550.0" y2="940.0" stroke="#111111" stroke-width="0.9" stroke-linecap="butt"/>
+<line x1="1400.0" y1="894.0" x2="1400.0" y2="990.0" stroke="#111111" stroke-width="0.9" stroke-linecap="butt"/>
+<text x="1132.0" y="916.0" font-size="13" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">PLC DIGITAL INPUTS</text>
+<text x="1132.0" y="932.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Conv_Simple / CV-101 (garage conveyor)</text>
+<text x="1132.0" y="960.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">MIRA / FactoryLM</text>
+<text x="1132.0" y="976.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Drawn: MIRA / FactoryLM</text>
+<text x="1408.0" y="914.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">SHEET</text>
+<text x="1408.0" y="932.0" font-size="16" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">E-005</text>
+<text x="1408.0" y="956.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">REV A</text>
+<text x="1408.0" y="974.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">2026-07-03</text>
+<text x="1538.0" y="956.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">5 of 9</text></svg>

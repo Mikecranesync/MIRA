@@ -1,0 +1,181 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040"><rect width="1600" height="1040" fill="#FFFFFF"/><rect x="30.0" y="30.0" width="1540.0" height="980.0" fill="none" stroke="#111111" stroke-width="1.8"/>
+<rect x="40.0" y="40.0" width="1520.0" height="960.0" fill="none" stroke="#666666" stroke-width="0.8"/>
+<line x1="40.0" y1="30.0" x2="40.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="40.0" y1="1000.0" x2="40.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="135.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">1</text>
+<text x="135.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">1</text>
+<line x1="230.0" y1="30.0" x2="230.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="230.0" y1="1000.0" x2="230.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="325.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">2</text>
+<text x="325.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">2</text>
+<line x1="420.0" y1="30.0" x2="420.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="420.0" y1="1000.0" x2="420.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="515.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">3</text>
+<text x="515.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">3</text>
+<line x1="610.0" y1="30.0" x2="610.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="610.0" y1="1000.0" x2="610.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="705.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">4</text>
+<text x="705.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">4</text>
+<line x1="800.0" y1="30.0" x2="800.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="800.0" y1="1000.0" x2="800.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="895.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">5</text>
+<text x="895.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">5</text>
+<line x1="990.0" y1="30.0" x2="990.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="990.0" y1="1000.0" x2="990.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="1085.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">6</text>
+<text x="1085.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">6</text>
+<line x1="1180.0" y1="30.0" x2="1180.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="1180.0" y1="1000.0" x2="1180.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="1275.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">7</text>
+<text x="1275.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">7</text>
+<line x1="1370.0" y1="30.0" x2="1370.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="1370.0" y1="1000.0" x2="1370.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="1465.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">8</text>
+<text x="1465.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">8</text>
+<line x1="1560.0" y1="30.0" x2="1560.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="1560.0" y1="1000.0" x2="1560.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="35.0" y="160.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">A</text>
+<text x="1565.0" y="160.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">A</text>
+<text x="35.0" y="400.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">B</text>
+<text x="1565.0" y="400.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">B</text>
+<text x="35.0" y="640.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">C</text>
+<text x="1565.0" y="640.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">C</text>
+<text x="35.0" y="880.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">D</text>
+<text x="1565.0" y="880.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">D</text>
+<text x="70.0" y="78.0" font-size="22" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">E-007  RS-485 / MODBUS RTU COMMUNICATION</text>
+<text x="70.0" y="100.0" font-size="12" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Conv_Simple / CV-101 (garage conveyor)  —  Micro820 (master) ↔ GS10 (node 1)  ·  Modbus RTU only</text>
+<line x1="60.0" y1="112.0" x2="1180.0" y2="112.0" stroke="#BBBBBB" stroke-width="1" stroke-linecap="butt"/>
+<rect x="250.0" y="200.0" width="250.0" height="258.0" fill="none" stroke="#111111" stroke-width="1.8"/>
+<text x="375.0" y="224.0" font-size="15" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">PLC1</text>
+<text x="375.0" y="242.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">Micro820 2080-LC20-20QBB</text>
+<text x="375.0" y="256.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#111111">embedded RS-485 (Ch 2)</text>
+<rect x="1090.0" y="200.0" width="250.0" height="258.0" fill="none" stroke="#111111" stroke-width="1.8"/>
+<text x="1215.0" y="224.0" font-size="15" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">VFD1</text>
+<text x="1215.0" y="242.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">GS10 DURApulse</text>
+<text x="1215.0" y="256.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#111111">RS-485 RJ45 jack</text>
+<circle cx="500.0" cy="288.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="492.0" y="284.0" font-size="9" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="normal" fill="#111111">D+ (A)</text>
+<circle cx="1090.0" cy="288.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="1098.0" y="284.0" font-size="9" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">pin 5 · SG+</text>
+<circle cx="500.0" cy="338.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="492.0" y="334.0" font-size="9" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="normal" fill="#111111">D- (B)</text>
+<circle cx="1090.0" cy="338.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="1098.0" y="334.0" font-size="9" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">pin 4 · SG-</text>
+<circle cx="500.0" cy="388.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="492.0" y="384.0" font-size="9" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="normal" fill="#111111">SG</text>
+<circle cx="1090.0" cy="388.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="1098.0" y="384.0" font-size="9" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">pin 3 · SGND</text>
+<line x1="500.0" y1="288.0" x2="1090.0" y2="288.0" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/>
+<rect x="779.0" y="268.0" width="32.0" height="13.0" fill="none" stroke="#111111" stroke-width="0.9"/>
+<text x="795.0" y="278.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#111111">485+</text>
+<text x="795.0" y="304.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">white of pair</text>
+<line x1="500.0" y1="338.0" x2="1090.0" y2="338.0" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/>
+<rect x="779.0" y="318.0" width="32.0" height="13.0" fill="none" stroke="#111111" stroke-width="0.9"/>
+<text x="795.0" y="328.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#111111">485-</text>
+<text x="795.0" y="354.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">black of pair</text>
+<line x1="500.0" y1="388.0" x2="1090.0" y2="388.0" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/>
+<rect x="779.0" y="368.0" width="32.0" height="13.0" fill="none" stroke="#111111" stroke-width="0.9"/>
+<text x="795.0" y="378.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#111111">SGND</text>
+<text x="795.0" y="404.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">third conductor</text>
+<circle cx="500.0" cy="443.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="492.0" y="439.0" font-size="9" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="normal" fill="#111111">shield / drain</text>
+<line x1="500.0" y1="443.0" x2="590.0" y2="443.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<line x1="590.0" y1="443.0" x2="590.0" y2="455.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<line x1="574.0" y1="455.0" x2="606.0" y2="455.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<line x1="580.0" y1="459.0" x2="600.0" y2="459.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<line x1="585.0" y1="463.0" x2="595.0" y2="463.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<text x="608.0" y="445.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">chassis — PLC end ONLY</text>
+<text x="1082.0" y="439.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">(floated / taped at GS10)</text>
+<line x1="1056.0" y1="288.0" x2="1056.0" y2="338.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="1090.0" y1="288.0" x2="1056.0" y2="288.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="1090.0" y1="338.0" x2="1056.0" y2="338.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<rect x="1050.0" y="301.0" width="12.0" height="24.0" fill="none" stroke="#111111" stroke-width="1.1"/>
+<text x="1044.0" y="315.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#111111">120Ω</text>
+<text x="1044.0" y="327.0" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">(drive end)</text>
+<text x="795.0" y="175.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">Belden 3105A — shielded twisted pair (485+/485-) + 1 conductor (SGND) + drain</text>
+<text x="1215.0" y="476.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">link up ⇒ vfd_comm_ok = TRUE ; read 0x2103 (FC03) for nonzero freq</text>
+<text x="70.0" y="492.0" font-size="11" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">CONNECTION TABLE</text>
+<rect x="70.0" y="500.0" width="1080.0" height="22.0" fill="#EEEEEE" stroke="#111111" stroke-width="1.0"/>
+<text x="75.0" y="515.0" font-size="8.3" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Src dev</text>
+<text x="145.0" y="515.0" font-size="8.3" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Src terminal</text>
+<text x="275.0" y="515.0" font-size="8.3" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Dst dev</text>
+<text x="345.0" y="515.0" font-size="8.3" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Dst terminal/pin</text>
+<text x="495.0" y="515.0" font-size="8.3" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Cable / conductor</text>
+<text x="670.0" y="515.0" font-size="8.3" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Wire</text>
+<text x="730.0" y="515.0" font-size="8.3" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Evidence</text>
+<text x="835.0" y="515.0" font-size="8.3" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Notes</text>
+<rect x="70.0" y="522.0" width="1080.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="537.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">PLC1</text>
+<text x="145.0" y="537.0" font-size="8.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">D+ (A)</text>
+<text x="275.0" y="537.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VFD1</text>
+<text x="345.0" y="537.0" font-size="8.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">RJ45 pin 5 / SG+</text>
+<text x="495.0" y="537.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Belden 3105A pair · white of pair</text>
+<text x="670.0" y="537.0" font-size="8.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">485+</text>
+<text x="730.0" y="537.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">verified</text>
+<text x="835.0" y="537.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Polarity: if silent/garbled, swap 485+/485- first.</text>
+<rect x="70.0" y="544.0" width="1080.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="559.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">PLC1</text>
+<text x="145.0" y="559.0" font-size="8.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">D- (B)</text>
+<text x="275.0" y="559.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VFD1</text>
+<text x="345.0" y="559.0" font-size="8.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">RJ45 pin 4 / SG-</text>
+<text x="495.0" y="559.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Belden 3105A pair · black of pair</text>
+<text x="670.0" y="559.0" font-size="8.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">485-</text>
+<text x="730.0" y="559.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">verified</text>
+<text x="835.0" y="559.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="70.0" y="566.0" width="1080.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="581.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">PLC1</text>
+<text x="145.0" y="581.0" font-size="8.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">SG</text>
+<text x="275.0" y="581.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VFD1</text>
+<text x="345.0" y="581.0" font-size="8.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">RJ45 pin 3 / SGND</text>
+<text x="495.0" y="581.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">3rd conductor · third conductor</text>
+<text x="670.0" y="581.0" font-size="8.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">SGND</text>
+<text x="730.0" y="581.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">verified</text>
+<text x="835.0" y="581.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Dedicated wire, NOT the shield.</text>
+<rect x="70.0" y="588.0" width="1080.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="603.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">PLC1</text>
+<text x="145.0" y="603.0" font-size="8.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">shield / chassis</text>
+<text x="275.0" y="603.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VFD1</text>
+<text x="345.0" y="603.0" font-size="8.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">(floated)</text>
+<text x="495.0" y="603.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">tinned drain · drain</text>
+<text x="670.0" y="603.0" font-size="8.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">SH</text>
+<text x="730.0" y="603.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="835.0" y="603.0" font-size="8.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Land drain at PLC end ONLY; tape/float at GS10 end.</text>
+<line x1="140.0" y1="500.0" x2="140.0" y2="610.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="270.0" y1="500.0" x2="270.0" y2="610.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="340.0" y1="500.0" x2="340.0" y2="610.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="490.0" y1="500.0" x2="490.0" y2="610.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="665.0" y1="500.0" x2="665.0" y2="610.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="725.0" y1="500.0" x2="725.0" y2="610.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="830.0" y1="500.0" x2="830.0" y2="610.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<text x="70.0" y="636.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">CCW SERIAL PORT:</text>
+<text x="190.0" y="636.0" font-size="9" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">Modbus RTU, Master · 9600 · 8N1 (P09.04 = 12) · Channel 2 · Node 1 (P09.00 = 1)</text>
+<text x="70.0" y="650.0" font-size="7.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Older GS10_Integration_Guide.md said 8N2 (P09.04=13) - SUPERSEDED by bench-verified 8N1.</text>
+<rect x="70.0" y="664.0" width="1180.0" height="20.0" fill="none" stroke="#C0392B" stroke-width="1.0"/>
+<text x="78.0" y="678.0" font-size="8.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">CORRECTED from May-16 draft:  Channel 0 → 2   ·   SGND pin 1/8 → pin 3   ·   8N2 → 8N1.  Do not copy the old values.</text>
+<text x="70.0" y="710.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">TROUBLESHOOTING (this circuit)</text>
+<text x="78.0" y="726.0" font-size="8.4" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• Nothing after config -&gt; swap 485+/485- (A/B polarity; vendors disagree).</text>
+<text x="78.0" y="740.0" font-size="8.4" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• CRC errors -&gt; usually polarity. Complete silence -&gt; usually baud mismatch (confirm 9600 8N1).</text>
+<text x="78.0" y="754.0" font-size="8.4" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• GS10 CE10 / F30 comm-timeout -&gt; no Modbus packets; check wiring, baud, P09.03 timeout.</text>
+<text x="78.0" y="768.0" font-size="8.4" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• 120 ohm termination across SG+/SG- at the GS10 end for long runs (bench &lt;2 m usually fine).</text>
+<text x="78.0" y="782.0" font-size="8.4" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• SGND is a dedicated conductor, not the shield; missing common -&gt; intermittent corruption.</text>
+<line x1="80.0" y1="812.0" x2="130.0" y2="812.0" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/>
+<text x="140.0" y="816.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VERIFIED (recovered CommsToVFD + Beginner_Verify p48 + Prog_init v2.1)</text>
+<line x1="80.0" y1="830.0" x2="130.0" y2="830.0" stroke="#111111" stroke-width="1.8" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<text x="140.0" y="834.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">FIELD VERIFY (exact PLC chassis ground point; cable P/N if not Belden 3105A)</text>
+<text x="70.0" y="856.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">SOURCES:</text>
+<text x="130.0" y="856.0" font-size="7.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">CCW/MIRA_PLC/docs/instructions/Conv_Simple_CommsToVFD.pdf §2 (recovered style + wiring)</text>
+<text x="130.0" y="868.0" font-size="7.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">CCW/MIRA_PLC/docs/instructions/Conv_Simple_GS10_Beginner_Verify_V2.pdf p48 (corrected pins/channel)</text>
+<text x="130.0" y="880.0" font-size="7.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">plc/Prog_init_ConvSimple_v2.1.st (Channel 2, node 1, 0x2103)</text>
+<text x="130.0" y="892.0" font-size="7.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">plc/GS10_Integration_Guide.md §3 (RJ45 pinout, register map)</text>
+<rect x="1120.0" y="894.0" width="430.0" height="96.0" fill="none" stroke="#111111" stroke-width="1.6"/>
+<line x1="1120.0" y1="940.0" x2="1550.0" y2="940.0" stroke="#111111" stroke-width="0.9" stroke-linecap="butt"/>
+<line x1="1400.0" y1="894.0" x2="1400.0" y2="990.0" stroke="#111111" stroke-width="0.9" stroke-linecap="butt"/>
+<text x="1132.0" y="916.0" font-size="13" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">RS-485 / MODBUS RTU</text>
+<text x="1132.0" y="932.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Conv_Simple / CV-101 (garage conveyor)</text>
+<text x="1132.0" y="958.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">MIRA / FactoryLM</text>
+<text x="1132.0" y="976.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">recovers MIRA-WI-001 / Conv_Simple_CommsToVFD §2</text>
+<text x="1408.0" y="914.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">SHEET</text>
+<text x="1408.0" y="932.0" font-size="16" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">E-007</text>
+<text x="1408.0" y="956.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">REV A</text>
+<text x="1408.0" y="974.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">2026-07-03</text>
+<text x="1538.0" y="956.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">7 of 9</text></svg>

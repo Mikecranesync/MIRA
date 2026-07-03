@@ -1,0 +1,78 @@
+# Terminals — the landing points a technician meters against.
+# status: verified (PLC terminal id + function traced to program/Ignition docs)
+#         field_verify (physical field-device terminal ids not documented in repo)
+
+PLC1:
+  # Micro820 embedded digital-input terminals. Terminal IDs I-00..I-11 are the
+  # real silk-screen designations on the 2080-LC20-20QBB embedded input block.
+  inputs:
+    - id: I-00
+      opc: _IO_EM_DI_00
+      function: dir_fwd (Forward selector)
+      healthy_state: "1 when FWD selected"
+      status: verified
+    - id: I-01
+      opc: _IO_EM_DI_01
+      function: dir_rev (Reverse selector)
+      healthy_state: "1 when REV selected"
+      status: verified
+    - id: I-02
+      opc: _IO_EM_DI_02
+      function: E-stop NC channel
+      healthy_state: "1 = healthy (chain closed)"
+      status: verified
+    - id: I-03
+      opc: _IO_EM_DI_03
+      function: E-stop NO channel
+      healthy_state: "0 = healthy"
+      status: verified
+    - id: I-04
+      opc: _IO_EM_DI_04
+      function: Run pushbutton (rearm)
+      healthy_state: "1 while pressed"
+      status: verified
+    - id: I-05
+      opc: _IO_EM_DI_05
+      function: Photo-eye (beam blocked -> pe_latched)
+      healthy_state: "0 = clear, 1 = blocked"
+      status: verified
+    - id: I-06
+      function: spare
+      status: verified   # confirmed UNused (no program/doc reference)
+    - id: I-07
+      function: spare
+      status: verified
+    - id: I-08
+      function: spare
+      status: verified
+    - id: I-09
+      function: spare
+      status: verified
+    - id: I-10
+      function: spare
+      status: verified
+    - id: I-11
+      function: spare
+      status: verified
+  common:
+    - id: COM0
+      function: Digital-input common (return to 0V)
+      status: field_verify   # sink/source jumpering + which COM serves I-00..I-05 not documented
+
+# Field-device terminals — PROPOSED designations; must be confirmed on the device.
+S0:   # E-stop
+  - {id: "11-12", function: NC channel out -> I-02, status: field_verify}
+  - {id: "23-24", function: NO channel out -> I-03, status: field_verify}
+SS1:  # direction selector
+  - {id: "FWD", function: FWD contact out -> I-00, status: field_verify}
+  - {id: "REV", function: REV contact out -> I-01, status: field_verify}
+  - {id: "COM", function: common fed from +24V, status: field_verify}
+S2:   # Run PB
+  - {id: "3-4", function: NO contact out -> I-04, status: field_verify}
+B1:   # photo-eye (3-wire)
+  - {id: "BN", function: "+24V (brown)", status: field_verify}
+  - {id: "BU", function: "0V (blue)", status: field_verify}
+  - {id: "BK", function: "output (black) -> I-05", status: field_verify}
+PS1:  # 24VDC supply (detailed on E-004)
+  - {id: "+24V", function: +24 VDC feed, status: field_verify}
+  - {id: "0V", function: 0V return, status: field_verify}
