@@ -30,6 +30,7 @@ Output: `qa/dogfood/latest-report.md` (the report) + raw transcripts under
 | `contextualization` | Is the asset grounded — identity, customer documents, UNS map? Exercises the proposed→trusted approval wall **when proposals exist** (reports NOT EXERCISED otherwise — never passes it vacuously). |
 | `work-order` | Does a completed work order keep its resolution + close time on read-back? (re-verifies #2375) |
 | `demo-readiness` | Can a prospect follow the ProveIt story end to end: asset → fault → live signal → cited evidence → recommended action? |
+| `beta-gate` | Can a stranger **upload their own manual** through the real folder=brain door and get a **cited answer from that manual**? (the release gate, walked live; node-scoped chat so a citation can't be faked by the shared corpus — the daily-deploy companion to `tests/beta/beta_ready_upload_retrieval_citation.py`) |
 
 ## Verdict contract
 
