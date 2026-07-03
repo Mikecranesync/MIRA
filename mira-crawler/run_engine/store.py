@@ -17,7 +17,15 @@ from __future__ import annotations
 
 from typing import Optional, Protocol
 
-from .models import PhaseStats, Reading, Run, RunAnomalyDiff, RunStep
+from .models import (
+    MachineAnomaly,
+    PhaseStats,
+    Reading,
+    Run,
+    RunAnomalyDiff,
+    RunStep,
+    StateWindow,
+)
 
 
 class RunStore(Protocol):
@@ -77,6 +85,38 @@ class RunStore(Protocol):
         """Append run_diff rows for a run. Returns rows written."""
         ...
 
+    # ── machine-memory extension (migration 040) ──────────────────────────
+
+    def existing_run_starts(self, *, tenant_id: str, uns_path: str) -> set[float]:
+        """started_at epochs of already-persisted runs (re-run idempotency)."""
+        ...
+
+    def upsert_state_window(self, window: StateWindow) -> str:
+        """Insert-or-refresh a machine_state_window on its idempotency key
+        (tenant, uns_path, state, started_at). Returns the CANONICAL window_id
+        (the existing row's id on conflict) so anomaly dedup keys are stable."""
+        ...
+
+    def close_state_window(
+        self, window_id: str, *, ended_at: Optional[float], tenant_id: str
+    ) -> None:
+        """Narrow update: set ended_at on a window (the only permitted UPDATE)."""
+        ...
+
+    def existing_anomaly_keys(
+        self, *, tenant_id: str, window_ids: list[str]
+    ) -> set[tuple]:
+        """Dedup keys (window_id, diff_type, tag_path, event_timestamp) of the
+        anomaly run_diff rows already persisted for these windows."""
+        ...
+
+    def insert_anomaly_diffs(
+        self, anomalies: list[MachineAnomaly], *, tenant_id: str
+    ) -> int:
+        """Append typed anomaly run_diff rows (diff_type='anomaly_<RULE_ID>',
+        window_id parent, evidence pointers). Returns rows written."""
+        ...
+
 
 # ──────────────────────────────────────────────────────────────────────────
 # In-memory store — for tests / pure-core pipeline verification.
@@ -91,6 +131,9 @@ class InMemoryRunStore:
         self.steps: list[RunStep] = []
         self.baselines: dict[tuple[str, str, str, str], PhaseStats] = {}
         self.diffs: list[tuple[str, RunAnomalyDiff]] = []
+        # machine-memory extension (migration 040)
+        self.state_windows: dict[tuple[str, str, str, float], StateWindow] = {}
+        self.anomaly_diffs: list[MachineAnomaly] = []
         self._events: list[Reading] = []
 
     # test helper — emulates the tag_events the run window owns
@@ -171,6 +214,69 @@ class InMemoryRunStore:
         for d in diffs:
             self.diffs.append((run_id, d))
         return len(diffs)
+
+    # ── machine-memory extension (migration 040) ──────────────────────────
+
+    def existing_run_starts(self, *, tenant_id: str, uns_path: str) -> set[float]:
+        return {
+            r.started_at
+            for r in self.runs.values()
+            if r.tenant_id == tenant_id and r.uns_path == uns_path
+        }
+
+    def upsert_state_window(self, window: StateWindow) -> str:
+        import uuid
+
+        key = (window.tenant_id, window.uns_path, window.state, window.started_at)
+        existing = self.state_windows.get(key)
+        if existing is not None:
+            # Refresh the mutable fields; keep the canonical window_id.
+            existing.ended_at = window.ended_at
+            existing.to_event_id = window.to_event_id
+            existing.metadata = window.metadata
+            window.window_id = existing.window_id
+            return existing.window_id  # type: ignore[return-value]
+        window.window_id = window.window_id or str(uuid.uuid4())
+        self.state_windows[key] = window
+        return window.window_id
+
+    def close_state_window(
+        self, window_id: str, *, ended_at: Optional[float], tenant_id: str
+    ) -> None:
+        for w in self.state_windows.values():
+            if w.window_id == window_id:
+                assert w.tenant_id == tenant_id
+                w.ended_at = ended_at
+                return
+
+    def existing_anomaly_keys(
+        self, *, tenant_id: str, window_ids: list[str]
+    ) -> set[tuple]:
+        wanted = set(window_ids)
+        return {
+            (a.window_id, a.diff_type, a.tag_path, a.event_timestamp)
+            for a in self.anomaly_diffs
+            if a.tenant_id == tenant_id and a.window_id in wanted
+        }
+
+    def insert_anomaly_diffs(
+        self, anomalies: list[MachineAnomaly], *, tenant_id: str
+    ) -> int:
+        # Mirror the migration-040 partial unique index: skip duplicates.
+        existing = {
+            (a.window_id, a.diff_type, a.tag_path, a.event_timestamp)
+            for a in self.anomaly_diffs
+            if a.tenant_id == tenant_id
+        }
+        written = 0
+        for a in anomalies:
+            key = (a.window_id, a.diff_type, a.tag_path, a.event_timestamp)
+            if key in existing:
+                continue
+            self.anomaly_diffs.append(a)
+            existing.add(key)
+            written += 1
+        return written
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -578,3 +684,173 @@ class NeonRunStore:
                 params,
             )
         return len(diffs)
+
+    # ── machine-memory extension (migration 040) ──────────────────────────
+    # Like the methods above, this SQL is NOT exercised against a live
+    # Postgres in CI; it is reviewed structurally and shares the verified
+    # SET LOCAL + NullPool pattern.
+
+    def existing_run_starts(self, *, tenant_id: str, uns_path: str) -> set[float]:
+        from sqlalchemy import text
+
+        with self._engine().connect() as conn:
+            conn.execute(
+                text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id}
+            )
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT extract(epoch FROM started_at) AS started_at
+                      FROM machine_run
+                     WHERE tenant_id = :tid AND uns_path = CAST(:uns AS LTREE)
+                    """
+                ),
+                {"tid": tenant_id, "uns": uns_path},
+            ).all()
+        return {float(r[0]) for r in rows}
+
+    def upsert_state_window(self, window: StateWindow) -> str:
+        import json
+
+        from sqlalchemy import text
+
+        metadata = dict(window.metadata)
+        # Evidence anchors travel in metadata (soft link, like 038's runs).
+        metadata.setdefault("from_event_id", window.from_event_id)
+        metadata.setdefault("to_event_id", window.to_event_id)
+
+        with self._engine().begin() as conn:
+            conn.execute(
+                text("SET LOCAL app.current_tenant_id = :tid"),
+                {"tid": window.tenant_id},
+            )
+            row = conn.execute(
+                text(
+                    """
+                    INSERT INTO machine_state_window
+                        (tenant_id, uns_path, state, started_at, ended_at,
+                         metadata)
+                    VALUES
+                        (CAST(:tenant_id AS UUID), CAST(:uns_path AS LTREE),
+                         :state, to_timestamp(:started_at),
+                         to_timestamp(:ended_at), CAST(:metadata AS JSONB))
+                    ON CONFLICT (tenant_id, uns_path, state, started_at)
+                    DO UPDATE SET
+                        ended_at = EXCLUDED.ended_at,
+                        metadata = EXCLUDED.metadata
+                    RETURNING window_id::text
+                    """
+                ),
+                {
+                    "tenant_id": window.tenant_id,
+                    "uns_path": window.uns_path,
+                    "state": window.state,
+                    "started_at": window.started_at,
+                    "ended_at": window.ended_at,
+                    "metadata": json.dumps(metadata),
+                },
+            ).one()
+        window.window_id = row[0]
+        return row[0]
+
+    def close_state_window(
+        self, window_id: str, *, ended_at: Optional[float], tenant_id: str
+    ) -> None:
+        from sqlalchemy import text
+
+        with self._engine().begin() as conn:
+            conn.execute(
+                text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id}
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE machine_state_window
+                       SET ended_at = to_timestamp(:ended_at)
+                     WHERE window_id = CAST(:window_id AS UUID)
+                    """
+                ),
+                {"window_id": window_id, "ended_at": ended_at},
+            )
+
+    def existing_anomaly_keys(
+        self, *, tenant_id: str, window_ids: list[str]
+    ) -> set[tuple]:
+        if not window_ids:
+            return set()
+        from sqlalchemy import text
+
+        with self._engine().connect() as conn:
+            conn.execute(
+                text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id}
+            )
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT window_id::text, diff_type, tag_path,
+                           extract(epoch FROM event_timestamp) AS ts
+                      FROM run_diff
+                     WHERE tenant_id = :tid
+                       AND window_id::text = ANY(:window_ids)
+                       AND diff_type IS NOT NULL
+                    """
+                ),
+                {"tid": tenant_id, "window_ids": list(window_ids)},
+            ).all()
+        return {
+            (r[0], r[1], r[2], float(r[3]) if r[3] is not None else None)
+            for r in rows
+        }
+
+    def insert_anomaly_diffs(
+        self, anomalies: list[MachineAnomaly], *, tenant_id: str
+    ) -> int:
+        if not anomalies:
+            return 0
+        import json
+
+        from sqlalchemy import text
+
+        params = [
+            {
+                "tid": tenant_id,
+                "window_id": a.window_id,
+                "diff_type": a.diff_type,
+                "tag_path": a.tag_path,
+                "uns_path": a.uns_path,
+                "severity": a.severity,
+                "event_timestamp": a.event_timestamp,
+                "from_event_id": a.from_event_id,
+                "to_event_id": a.to_event_id,
+                "metadata": json.dumps(a.metadata),
+            }
+            for a in anomalies
+        ]
+        with self._engine().begin() as conn:
+            conn.execute(
+                text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id}
+            )
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO run_diff
+                        (run_id, tenant_id, window_id, diff_type, tag_path,
+                         phase_name, uns_path, severity, event_timestamp,
+                         from_event_id, to_event_id, metadata)
+                    VALUES
+                        (NULL, CAST(:tid AS UUID), CAST(:window_id AS UUID),
+                         :diff_type, :tag_path, 'default',
+                         CAST(:uns_path AS LTREE), :severity,
+                         to_timestamp(:event_timestamp),
+                         CAST(:from_event_id AS UUID),
+                         CAST(:to_event_id AS UUID),
+                         CAST(:metadata AS JSONB))
+                    ON CONFLICT (tenant_id, window_id, diff_type, tag_path,
+                                 event_timestamp)
+                        WHERE window_id IS NOT NULL AND diff_type IS NOT NULL
+                        DO NOTHING
+                    """
+                ),
+                params,
+            )
+        return len(anomalies)
