@@ -97,6 +97,15 @@ class RunStore(Protocol):
         (the existing row's id on conflict) so anomaly dedup keys are stable."""
         ...
 
+    def latest_state_window(
+        self, *, tenant_id: str, uns_path: str
+    ) -> Optional[StateWindow]:
+        """Most-recent stored window for (tenant, uns_path) by started_at DESC,
+        or None. Used for cross-batch continuity: a state that outlives the
+        sliding lookback is EXTENDED (same window_id) instead of re-derived as a
+        new row each batch."""
+        ...
+
     def close_state_window(
         self, window_id: str, *, ended_at: Optional[float], tenant_id: str
     ) -> None:
@@ -239,6 +248,18 @@ class InMemoryRunStore:
         window.window_id = window.window_id or str(uuid.uuid4())
         self.state_windows[key] = window
         return window.window_id
+
+    def latest_state_window(
+        self, *, tenant_id: str, uns_path: str
+    ) -> Optional[StateWindow]:
+        candidates = [
+            w
+            for w in self.state_windows.values()
+            if w.tenant_id == tenant_id and w.uns_path == uns_path
+        ]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda w: w.started_at)
 
     def close_state_window(
         self, window_id: str, *, ended_at: Optional[float], tenant_id: str
@@ -753,6 +774,55 @@ class NeonRunStore:
         window.window_id = row[0]
         return row[0]
 
+    def latest_state_window(
+        self, *, tenant_id: str, uns_path: str
+    ) -> Optional[StateWindow]:
+        import json
+
+        from sqlalchemy import text
+
+        with self._engine().connect() as conn:
+            conn.execute(
+                text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id}
+            )
+            row = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT window_id::text, state,
+                               extract(epoch FROM started_at) AS started_at,
+                               extract(epoch FROM ended_at) AS ended_at,
+                               metadata
+                          FROM machine_state_window
+                         WHERE tenant_id = :tid AND uns_path = CAST(:uns AS LTREE)
+                         ORDER BY started_at DESC
+                         LIMIT 1
+                        """
+                    ),
+                    {"tid": tenant_id, "uns": uns_path},
+                )
+                .mappings()
+                .first()
+            )
+        if row is None:
+            return None
+        md = row["metadata"] or {}
+        if isinstance(md, str):
+            md = json.loads(md)
+        return StateWindow(
+            tenant_id=tenant_id,
+            uns_path=uns_path,
+            state=row["state"],
+            started_at=float(row["started_at"]),
+            ended_at=(
+                float(row["ended_at"]) if row["ended_at"] is not None else None
+            ),
+            from_event_id=md.get("from_event_id"),
+            to_event_id=md.get("to_event_id"),
+            window_id=row["window_id"],
+            metadata=md,
+        )
+
     def close_state_window(
         self, window_id: str, *, ended_at: Optional[float], tenant_id: str
     ) -> None:
@@ -826,31 +896,34 @@ class NeonRunStore:
             }
             for a in anomalies
         ]
+        stmt = text(
+            """
+            INSERT INTO run_diff
+                (run_id, tenant_id, window_id, diff_type, tag_path,
+                 phase_name, uns_path, severity, event_timestamp,
+                 from_event_id, to_event_id, metadata)
+            VALUES
+                (NULL, CAST(:tid AS UUID), CAST(:window_id AS UUID),
+                 :diff_type, :tag_path, 'default',
+                 CAST(:uns_path AS LTREE), :severity,
+                 to_timestamp(:event_timestamp),
+                 CAST(:from_event_id AS UUID),
+                 CAST(:to_event_id AS UUID),
+                 CAST(:metadata AS JSONB))
+            ON CONFLICT (tenant_id, window_id, diff_type, tag_path,
+                         event_timestamp)
+                WHERE window_id IS NOT NULL AND diff_type IS NOT NULL
+                DO NOTHING
+            """
+        )
+        # Execute per-row so ON CONFLICT DO NOTHING skips are reflected in the
+        # returned count (rowcount is 0 for a skipped row) — matching
+        # InMemoryRunStore's true-written semantics.
+        written = 0
         with self._engine().begin() as conn:
             conn.execute(
                 text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id}
             )
-            conn.execute(
-                text(
-                    """
-                    INSERT INTO run_diff
-                        (run_id, tenant_id, window_id, diff_type, tag_path,
-                         phase_name, uns_path, severity, event_timestamp,
-                         from_event_id, to_event_id, metadata)
-                    VALUES
-                        (NULL, CAST(:tid AS UUID), CAST(:window_id AS UUID),
-                         :diff_type, :tag_path, 'default',
-                         CAST(:uns_path AS LTREE), :severity,
-                         to_timestamp(:event_timestamp),
-                         CAST(:from_event_id AS UUID),
-                         CAST(:to_event_id AS UUID),
-                         CAST(:metadata AS JSONB))
-                    ON CONFLICT (tenant_id, window_id, diff_type, tag_path,
-                                 event_timestamp)
-                        WHERE window_id IS NOT NULL AND diff_type IS NOT NULL
-                        DO NOTHING
-                    """
-                ),
-                params,
-            )
-        return len(anomalies)
+            for p in params:
+                written += conn.execute(stmt, p).rowcount or 0
+        return written

@@ -183,6 +183,32 @@ def historize_machine_memory(
     windows = derive_state_windows(
         mapped, tenant_id=tenant_id, uns_path=uns_path, cfg=cfg
     )
+
+    # Cross-batch continuity: a continuous state (long idle, persistent
+    # comm_down) can outlive the sliding MIRA_RUN_LOOKBACK_SECONDS window. The
+    # next batch's first same-state window would otherwise re-derive with a
+    # LATER started_at -> a NEW machine_state_window row every batch. If the
+    # most-recent stored window is the SAME state as this batch's first window
+    # and is contiguous with it (still open, or ended at/after the batch's
+    # coverage start), EXTEND it in place: reuse its window_id + started_at +
+    # original evidence anchor so the (tenant, uns, state, started_at) upsert
+    # key hits the existing row instead of minting a new one.
+    reused_ids: set[str] = set()
+    if windows:
+        first = windows[0]
+        latest = store.latest_state_window(tenant_id=tenant_id, uns_path=uns_path)
+        if (
+            latest is not None
+            and latest.window_id is not None
+            and latest.state == first.state
+            and (latest.ended_at is None or latest.ended_at >= first.started_at)
+        ):
+            first.window_id = latest.window_id
+            first.started_at = latest.started_at
+            first.from_event_id = latest.from_event_id
+            first.metadata.setdefault("continued", True)
+            reused_ids.add(latest.window_id)
+
     for w in windows:
         store.upsert_state_window(w)
 
@@ -191,11 +217,18 @@ def historize_machine_memory(
     existing_keys = store.existing_anomaly_keys(
         tenant_id=tenant_id, window_ids=window_ids
     )
+    # For a REUSED (continued) window, a persistent condition re-detects every
+    # batch with a LATER evidence timestamp — dedup on (window_id, diff_type,
+    # tag_path) alone (drop event_timestamp) so the same continuing anomaly does
+    # not accrete a new run_diff row each lookback. New windows keep the full
+    # (window_id, diff_type, tag_path, event_timestamp) key (existing behavior).
+    existing_triples = {(wid, dt, tp) for (wid, dt, tp, _ts) in existing_keys}
     anomalies: list[MachineAnomaly] = []
     for w in windows:
         snap, upto = _snapshot_through(mapped, w.to_event_id)
         derived = derived_facts(upto, now=w.ended_at, cfg=cfg)
         win_events = window_events(mapped, w)
+        is_reused = w.window_id in reused_ids
         for a in evaluate(snap, derived, cfg):
             topics = [e["topic"] for e in a.evidence]
             tag_path = topics[0] if topics else a.rule_id
@@ -226,7 +259,12 @@ def historize_machine_memory(
                 anomaly.tag_path,
                 anomaly.event_timestamp,
             )
-            if key in existing_keys:
+            if is_reused:
+                triple = (anomaly.window_id, anomaly.diff_type, anomaly.tag_path)
+                if triple in existing_triples:
+                    continue
+                existing_triples.add(triple)
+            elif key in existing_keys:
                 continue
             existing_keys.add(key)
             anomalies.append(anomaly)

@@ -241,6 +241,107 @@ class TestTenantIsolation:
         assert b_anomalies[0].from_event_id.startswith("beef")
 
 
+def _ev(eid: str, tag_path: str, value: str, ts: float, value_type: str = "bool"):
+    """A tag_events-shaped dict row for the continuity fixtures."""
+    return {
+        "event_id": eid,
+        "tenant_id": TENANT,
+        "uns_path": UNS,
+        "tag_path": tag_path,
+        "value": value,
+        "value_type": value_type,
+        "quality": "good",
+        "event_timestamp": ts,
+    }
+
+
+def _comm_down_batch(prefix: str, base_ts: float) -> list[dict]:
+    """A full CV-101 comm_down snapshot (yields exactly the A1 anomaly), laid
+    out comm_down-from-the-first-event so it is a SINGLE window (no idle prefix).
+    Timestamps are epoch seconds starting at ``base_ts``.
+    """
+    n = [0]
+
+    def nxt() -> float:
+        n[0] += 1
+        return base_ts + n[0] * 5
+
+    return [
+        _ev(f"{prefix}01", "default_conveyor_vfd_comm_ok", "false", nxt()),
+        _ev(f"{prefix}02", "default_conveyor_motor_running", "false", nxt()),
+        _ev(f"{prefix}03", "default_conveyor_estop_active", "false", nxt()),
+        _ev(f"{prefix}04", "default_conveyor_estop_wiring_fault", "false", nxt()),
+        _ev(f"{prefix}05", "default_conveyor_vfd_hz", "0.0", nxt(), "float"),
+        _ev(f"{prefix}06", "default_conveyor_vfd_amps", "0.0", nxt(), "float"),
+        _ev(f"{prefix}07", "default_conveyor_vfd_dcbus_v", "321.5", nxt(), "float"),
+        _ev(f"{prefix}08", "default_conveyor_vfd_cmdword", "1", nxt(), "int"),
+        _ev(f"{prefix}09", "default_conveyor_vfd_faultcode", "0", nxt(), "int"),
+        _ev(f"{prefix}10", "default_conveyor_vfd_comm_ok", "false", nxt()),
+    ]
+
+
+class TestCrossBatchContinuity:
+    """Finding 1: a state that outlives the sliding lookback must EXTEND its
+    window (one row), not accrete a new machine_state_window + run_diff row
+    each batch."""
+
+    def test_continuing_state_extends_one_window_no_accretion(self):
+        store = InMemoryRunStore()
+
+        # Batch 1: t0..t1, a single long comm_down window.
+        batch1 = _comm_down_batch("aaaa0000-0000-4000-8000-0000000000", 1000.0)
+        historize_machine_memory(store, TENANT, UNS, batch1)
+        assert len(store.state_windows) == 1
+        assert len(store.anomaly_diffs) == 1
+        (w1,) = store.state_windows.values()
+        assert w1.state == "comm_down"
+        orig_window_id = w1.window_id
+        orig_started_at = w1.started_at
+        orig_ended_at = w1.ended_at
+
+        # Batch 2: sliding window t0+delta..t2 — SAME continuing comm_down, but
+        # the original start event (aaaa..01) is NO LONGER in the batch. New
+        # event_ids, later timestamps, overlapping batch-1 coverage.
+        batch2 = _comm_down_batch("bbbb0000-0000-4000-8000-0000000000", 1015.0)
+        assert all(r["event_id"] not in {e["event_id"] for e in batch1} for r in batch2)
+        historize_machine_memory(store, TENANT, UNS, batch2)
+
+        # ONE physical comm_down period -> ONE window row, extended.
+        assert len(store.state_windows) == 1
+        (w1b,) = store.state_windows.values()
+        assert w1b.window_id == orig_window_id
+        assert w1b.started_at == orig_started_at  # kept the original anchor
+        assert w1b.ended_at > orig_ended_at  # extended forward
+        # ONE anomaly row — the continuing condition did not mint a new run_diff.
+        assert len(store.anomaly_diffs) == 1
+        assert store.anomaly_diffs[0].window_id == orig_window_id
+
+    def test_state_change_across_batches_creates_new_window(self):
+        store = InMemoryRunStore()
+
+        # Batch 1: comm_down.
+        batch1 = _comm_down_batch("cccc0000-0000-4000-8000-0000000000", 1000.0)
+        historize_machine_memory(store, TENANT, UNS, batch1)
+        assert _window_states(store) == ["comm_down"]
+        comm_id = next(iter(store.state_windows.values())).window_id
+
+        # Batch 2: comm RESTORED -> idle. A genuine state change: a NEW window.
+        batch2 = [
+            _ev("dddd0000-0000-4000-8000-000000000001", "default_conveyor_vfd_comm_ok", "true", 1200.0),
+            _ev("dddd0000-0000-4000-8000-000000000002", "default_conveyor_motor_running", "false", 1205.0),
+            _ev("dddd0000-0000-4000-8000-000000000003", "default_conveyor_estop_active", "false", 1210.0),
+            _ev("dddd0000-0000-4000-8000-000000000004", "default_conveyor_estop_wiring_fault", "false", 1215.0),
+            _ev("dddd0000-0000-4000-8000-000000000005", "default_conveyor_vfd_hz", "0.0", 1220.0, "float"),
+        ]
+        historize_machine_memory(store, TENANT, UNS, batch2)
+
+        assert len(store.state_windows) == 2
+        states = {w.state for w in store.state_windows.values()}
+        assert states == {"comm_down", "idle"}
+        idle_win = [w for w in store.state_windows.values() if w.state == "idle"][0]
+        assert idle_win.window_id != comm_id  # a genuinely new row
+
+
 class TestUnmappedTags:
     def test_unknown_tags_excluded_counted_no_anomaly(self):
         rows, store, summary = _run("cv101_unmapped_tag.json")
