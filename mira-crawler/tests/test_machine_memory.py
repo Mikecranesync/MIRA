@@ -17,6 +17,8 @@ InMemoryRunStore — NO DB, no hardware, no network. Covers:
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 from run_engine.machine_memory import historize_machine_memory
@@ -167,6 +169,28 @@ class TestRunTrigger:
         # And the state layer saw the same story: idle -> running -> idle.
         assert _window_states(store) == ["idle", "running", "idle"]
         assert store.anomaly_diffs == []
+
+    def test_run_step_created_with_default_phase_and_run_linkage(self):
+        """Delta 1a: explicit run_step assertion (not just a count) — v1
+        creates exactly one 'default' step per run, and the step is linked
+        to its parent run by run_id (not just coincidentally co-present)."""
+        rows = _load("cv101_run_trigger.json")
+        store = InMemoryRunStore()
+        from run_engine.machine_memory import reading_from_row
+
+        store.seed_events([reading_from_row(r) for r in rows])
+        historize_machine_memory(store, TENANT, UNS, rows, triggers=self.TRIGGERS)
+
+        assert len(store.runs) >= 1
+        (run,) = store.runs.values()
+
+        assert len(store.steps) >= 1
+        (step,) = store.steps
+        assert step.run_id == run.run_id  # linkage: step belongs to THIS run
+        assert step.tenant_id == TENANT
+        assert step.phase_name == "default"  # v1: single 'default' step/run
+        assert step.phase_index == 0
+        assert step.started_at == run.started_at
 
 
 class TestIdempotency:
@@ -362,3 +386,65 @@ class TestUnmappedTags:
             )
         }
         assert window.to_event_id in mapped_ids
+
+
+class TestCliDryRun:
+    """Delta 1b: exercise dry-run through the CLI layer (subprocess — the CLI
+    always builds its own throwaway InMemoryRunStore, never returns it, so the
+    only externally-observable evidence of "rows landed" is the persisted-row
+    dump the CLI prints after processing). Per ``run_engine/machine_memory.py``
+    ``_cli()`` (~line 358), ``--dry-run`` suppresses exactly that dump; it does
+    not change what ``historize_machine_memory`` computes. So the CLI-layer
+    contract for "zero rows land in the store" is: the persisted-counts block
+    never appears in stdout, while the per-batch summary (what WOULD be
+    written — windows_upserted, anomaly_diffs_written, anomalies, …) still
+    does. A parallel non-dry-run invocation proves the same fixture DOES
+    confirm nonzero persisted counts absent the flag, so the suppression is
+    real, not a fixture artifact.
+    """
+
+    FIXTURE = FIXTURES / "cv101_comm_stale.json"
+
+    def _run_cli(self, *, dry_run: bool) -> str:
+        args = [
+            sys.executable,
+            "-m",
+            "run_engine.machine_memory",
+            "--fixture",
+            str(self.FIXTURE),
+        ]
+        if dry_run:
+            args.append("--dry-run")
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent),
+            check=True,
+        )
+        return result.stdout
+
+    def test_dry_run_reports_summary_but_confirms_zero_persisted_rows(self):
+        dry_stdout = self._run_cli(dry_run=True)
+        wet_stdout = self._run_cli(dry_run=False)
+
+        # The per-batch summary (what WOULD be written) is printed either way.
+        assert '"windows_upserted": 2' in dry_stdout
+        assert '"anomaly_diffs_written": 1' in dry_stdout
+        assert '"rule_id": "A1_COMM_STALE"' in dry_stdout
+
+        # --dry-run suppresses the persisted-row-count confirmation block —
+        # no evidence of any of the five tables ("machine_run", "run_step",
+        # "run_baseline", "run_diff_baseline_deviation",
+        # "machine_state_window", "run_diff_anomaly") having rows.
+        assert '"persisted"' not in dry_stdout
+        assert '"machine_run"' not in dry_stdout
+        assert '"machine_state_window"' not in dry_stdout
+        assert '"run_diff_anomaly"' not in dry_stdout
+
+        # Without --dry-run the SAME fixture DOES confirm persisted counts —
+        # proves the suppression above is the --dry-run flag's doing.
+        assert '"persisted"' in wet_stdout
+        assert '"machine_run": 0' in wet_stdout
+        assert '"machine_state_window": 2' in wet_stdout
+        assert '"run_diff_anomaly": 1' in wet_stdout
