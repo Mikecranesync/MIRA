@@ -78,12 +78,45 @@ describe("MachineMemoryCard", () => {
     expect(html).toContain("Evidence: tag_events");
   });
 
-  it("renders the work-order button disabled", () => {
+  // T4 — anomaly→work-order link: the button goes live once a diff exists,
+  // linking to /workorders/new with the diff prefilled.
+  it("enables the create-work-order button and links to the prefilled form when a diff exists", () => {
     const html = renderToStaticMarkup(
       <MachineMemoryCard assetId="asset-1" initialData={POPULATED} poll={false} />,
     );
 
-    const buttonMatch = html.match(/<button[^>]*>Create work order \(soon\)<\/button>/);
+    expect(html).toContain(">Create work order<");
+    expect(html).not.toContain("Create work order (soon)");
+    expect(html).not.toContain("Create work order (no anomaly yet)");
+
+    const hrefMatch = html.match(/href="([^"]*\/workorders\/new\?[^"]*)"/);
+    expect(hrefMatch).not.toBeNull();
+    const href = hrefMatch![1].replace(/&amp;/g, "&");
+    const params = new URLSearchParams(href.split("?")[1]);
+
+    expect(params.get("prefill_title")).toBe("[CV-101] anomaly_A1_COMM_STALE on cv101.motor_current");
+    expect(params.get("prefill_description")).toBe("warning — next check: verify VFD comm cable");
+    expect(params.get("source_run_diff_id")).toBe("d1");
+  });
+
+  it("keeps the create-work-order button disabled with a (no anomaly yet) label when there are no diffs", () => {
+    const noDiffs: MachineMemoryResponse = { ...POPULATED, latest_diffs: [] };
+    const html = renderToStaticMarkup(
+      <MachineMemoryCard assetId="asset-1" initialData={noDiffs} poll={false} />,
+    );
+
+    const buttonMatch = html.match(/<button[^>]*>Create work order \(no anomaly yet\)<\/button>/);
+    expect(buttonMatch).not.toBeNull();
+    expect(buttonMatch?.[0]).toContain("disabled");
+    expect(html).not.toContain("/workorders/new?");
+  });
+
+  it("disables the button on the empty-data state (no anomaly yet)", () => {
+    const html = renderToStaticMarkup(
+      <MachineMemoryCard assetId="asset-1" initialData={EMPTY} poll={false} />,
+    );
+
+    const buttonMatch = html.match(/<button[^>]*>Create work order \(no anomaly yet\)<\/button>/);
     expect(buttonMatch).not.toBeNull();
     expect(buttonMatch?.[0]).toContain("disabled");
   });
