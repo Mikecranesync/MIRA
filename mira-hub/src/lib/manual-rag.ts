@@ -49,7 +49,10 @@ const MAX_CONTENT_CHARS = 1200;
 const FORGED_HEADER_RE = /---\s*\[\s*\d+\s*\][^\n]*?---/gi;
 const SOURCE_TAG_RE = /\[Source:[^\]]+\]/gi;
 
-function neutralizeReferenceText(text: string): string {
+// Exported (not just module-local) so other prompt-interpolation call sites —
+// e.g. the chat route's machine-memory section (review Q1, PR #2414) — can
+// reuse this same forged-header/source-tag stripping instead of duplicating it.
+export function neutralizeReferenceText(text: string): string {
   return text
     .replace(FORGED_HEADER_RE, "[REF_DELIMITER]")
     .replace(SOURCE_TAG_RE, "[ref]");

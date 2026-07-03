@@ -10,6 +10,7 @@ import {
   appendManualContext,
   buildManualUserContent,
   chunksToSources,
+  neutralizeReferenceText,
   type ManualChunk,
   type ManualSource,
 } from "@/lib/manual-rag";
@@ -181,28 +182,59 @@ function buildSystemPrompt(asset: Record<string, unknown>): string {
 - If the question involves lockout/tagout, arc flash, confined space, or electrical safety, stop and instruct the tech to follow site safety procedures before proceeding.`;
 }
 
+// Review Q1 (PR #2414) — the strings below (tag_path, diff_type, severity,
+// metadata.title, next_check, state/status) are DB-sourced from ingested
+// anomaly-detection output, not technician/admin-authored text. The manual
+// context path (manual-rag.ts buildGroundedContext) already treats this exact
+// shape of untrusted text — reference content interpolated into the SYSTEM
+// prompt — as a prompt-injection vector: it caps length (MAX_CONTENT_CHARS)
+// then strips forged headers/instruction markers (neutralizeReferenceText).
+// Apply the same defense here, at a smaller per-field cap since these are
+// short labels, not paragraphs.
+//
+// NOTE the distinction from `context/route.ts`'s `machine_memory` block: that
+// route returns these same fields as raw JSON *data* for a client to render —
+// not interpolated into an LLM prompt — so it does not need this treatment.
+// Only prompt interpolations (this file) require neutralizing.
+const MACHINE_MEMORY_FIELD_MAX_CHARS = 120;
+
+// Accepts `unknown` because these fields come off `Record<string, unknown>`
+// rows straight from the DB driver (machine_run/machine_state_window/run_diff
+// columns aren't narrowed to `string`) — coerce defensively rather than trust
+// the column type.
+function sanitizeMachineMemoryField(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "";
+  const str = typeof value === "string" ? value : String(value);
+  return neutralizeReferenceText(str.slice(0, MACHINE_MEMORY_FIELD_MAX_CHARS));
+}
+
 // Live machine memory (T2 / seam 3) — persisted runs/state-windows/anomaly
 // diffs become a citable prompt section. Machine-observed, not manual text.
 function buildMachineMemorySection(memory: MachineMemory): string {
   const lines: string[] = [];
   const win = memory.latest_window;
   if (win) {
-    lines.push(`- Current state: ${win.state} (since ${win.started_at})`);
+    lines.push(`- Current state: ${sanitizeMachineMemoryField(win.state)} (since ${win.started_at})`);
   }
   const run = memory.latest_run;
   if (run) {
     lines.push(
-      `- Latest run: ${run.status} (started ${run.started_at}${run.stopped_at ? `, stopped ${run.stopped_at}` : ""})`,
+      `- Latest run: ${sanitizeMachineMemoryField(run.status)} (started ${run.started_at}${run.stopped_at ? `, stopped ${run.stopped_at}` : ""})`,
     );
   }
   const diffs = memory.latest_diffs.slice(0, 3);
   if (diffs.length > 0) {
     lines.push("- Recent anomalies:");
     for (const d of diffs) {
-      const title =
+      const rawTitle =
         (d.metadata as { title?: string } | null)?.title || d.tag_path || "anomaly";
-      const nextCheck = d.next_check ? ` — next check: ${d.next_check}` : "";
-      lines.push(`  - [${d.diff_type ?? "diff"}] ${d.severity ?? "info"} — ${title}${nextCheck}`);
+      const title = sanitizeMachineMemoryField(rawTitle);
+      const nextCheck = d.next_check
+        ? ` — next check: ${sanitizeMachineMemoryField(d.next_check)}`
+        : "";
+      const diffType = sanitizeMachineMemoryField(d.diff_type ?? "diff");
+      const severity = sanitizeMachineMemoryField(d.severity ?? "info");
+      lines.push(`  - [${diffType}] ${severity} — ${title}${nextCheck}`);
     }
   }
   if (lines.length === 0) return "";
@@ -396,9 +428,15 @@ export async function POST(
     ? `${withGraph}\n\n${machineMemorySection}`
     : withGraph;
   // The newest anomaly's next_check — surfaced to the client alongside sources
-  // so the evidence UI can render a "Next check" line (T2 Task 4).
-  const nextCheck =
+  // so the evidence UI can render a "Next check" line (T2 Task 4). Same
+  // neutralize+cap treatment as buildMachineMemorySection (review Q1): this
+  // value is DB-sourced from the same untrusted ingest fields, and rendering
+  // it verbatim would both bypass the defense (the prompt sees a neutralized
+  // version while the UI shows the raw injection payload) and echo forged
+  // content back to the technician.
+  const rawNextCheck =
     machineMemory?.latest_diffs.find((d) => d.next_check)?.next_check ?? null;
+  const nextCheck = rawNextCheck ? sanitizeMachineMemoryField(rawNextCheck) : null;
 
   const systemPrompt = appendManualContext(withMachineMemory, manualChunks);
   const manualSources: ManualSource[] = chunksToSources(manualChunks);

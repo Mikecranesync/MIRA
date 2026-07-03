@@ -73,6 +73,13 @@ export async function GET(
       // recent anomaly diffs, so the confirmation card can show what the
       // machine has been doing. Null when the asset has no uns_path, or when
       // the 038/040 machine-memory tables aren't applied in this env yet.
+      //
+      // Review Q1 (PR #2414): unlike the chat route's `buildMachineMemorySection`,
+      // this block is returned as raw JSON *data* for a client to render — it is
+      // never interpolated into an LLM prompt — so it does NOT need
+      // neutralizeReferenceText/length-capping. Only prompt interpolations of
+      // these DB-sourced fields are a prompt-injection vector; plain API
+      // pass-through is not.
       let machineMemory: {
         latest_run: Record<string, unknown> | null;
         latest_window: Record<string, unknown> | null;
