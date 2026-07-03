@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Dogfood judge on Bravo — every 4 hours. Install:
+    cp tools/crew/dogfood/com.factorylm.dogfood-judge.plist ~/Library/LaunchAgents/
+    launchctl unload ~/Library/LaunchAgents/com.factorylm.dogfood-judge.plist 2>/dev/null
+    launchctl load   ~/Library/LaunchAgents/com.factorylm.dogfood-judge.plist
+  Run now (test):  launchctl start com.factorylm.dogfood-judge
+  See tools/crew/dogfood/scheduled_run.sh for why this runs on Bravo, not GH Actions.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.factorylm.dogfood-judge</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/bravonode/Mira/tools/crew/dogfood/scheduled_run.sh</string>
+  </array>
+  <!-- Every 4 hours (14400s) from load. -->
+  <key>StartInterval</key>
+  <integer>14400</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/Users/bravonode/Mira/dogfood-output/qa-runs/dogfood-judge.launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/bravonode/Mira/dogfood-output/qa-runs/dogfood-judge.launchd.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/bravonode/.local/bin:/Users/bravonode/.bun/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+</dict>
+</plist>
