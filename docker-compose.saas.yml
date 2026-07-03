@@ -462,7 +462,11 @@ services:
     build: ./mira-relay
     container_name: mira-relay
     ports:
-      - "127.0.0.1:8765:8765"
+      # Bind address is env-controlled: default loopback (nginx-fronted). Set
+      # RELAY_BIND_ADDR to the VPS Tailscale IP (100.68.120.99) to expose the
+      # relay tailnet-only for gateway ingest (WireGuard-encrypted + HMAC; no
+      # public surface). See docs/runbooks/cv101-bench-to-cloud-first-tag-row.md.
+      - "${RELAY_BIND_ADDR:-127.0.0.1}:8765:8765"
     environment:
       - MIRA_DB_PATH=/mira-db/mira.db
       - RELAY_PORT=8765
