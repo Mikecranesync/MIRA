@@ -121,6 +121,53 @@ class RunAnomalyDiff:
     metadata: dict = field(default_factory=dict)
 
 
+@dataclass
+class StateWindow:
+    """One machine-state interval. Maps onto migration 040 ``machine_state_window``.
+
+    A state window is NOT a run: it records what state the machine was in
+    (idle / running / faulted / comm_down / estopped / unknown) over an
+    interval, including intervals where no run trigger ever rose and the 038
+    run layer records nothing. ``from_event_id``/``to_event_id`` anchor the
+    window to the first/last tag_events row observed while in the state; they
+    are persisted in ``metadata`` (soft link, like 038's implicit run link).
+    """
+
+    tenant_id: str
+    uns_path: str
+    state: str  # idle | running | faulted | comm_down | estopped | unknown
+    started_at: float  # epoch seconds
+    ended_at: Optional[float] = None
+    from_event_id: Optional[str] = None
+    to_event_id: Optional[str] = None
+    window_id: Optional[str] = None  # set by the store on upsert
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass
+class MachineAnomaly:
+    """One typed A0–A12 anomaly. Maps onto a migration-040 ``run_diff`` row
+    (``diff_type='anomaly_<RULE_ID>'``, ``window_id`` parent, evidence
+    pointers ``from_event_id``/``to_event_id``)."""
+
+    rule_id: str  # e.g. 'A1_COMM_STALE'
+    severity: str  # run_diff severity: info | warning | critical
+    title: str
+    message: str
+    tag_path: str  # primary evidence topic (rule input key)
+    tenant_id: str
+    uns_path: str
+    window_id: Optional[str] = None
+    from_event_id: Optional[str] = None
+    to_event_id: Optional[str] = None
+    event_timestamp: Optional[float] = None
+    metadata: dict = field(default_factory=dict)
+
+    @property
+    def diff_type(self) -> str:
+        return f"anomaly_{self.rule_id}"
+
+
 def parse_run_triggers(raw: Optional[str]) -> dict[str, RunTrigger]:
     """Parse ``MIRA_RUN_TRIGGERS`` into ``{uns_path: RunTrigger}``.
 
