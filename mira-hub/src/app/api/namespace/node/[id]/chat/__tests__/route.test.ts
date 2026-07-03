@@ -149,6 +149,30 @@ describe("POST /api/namespace/node/[id]/chat", () => {
     expect(vi.mocked(withTenantContext)).not.toHaveBeenCalled();
   });
 
+  // T3 / duplicate-systems-audit.md finding #1 regression guard: the physical-
+  // hazard category ("melted insulation" and siblings) was previously ABSENT
+  // from this route's hand-copied safety list — a technician reporting it got
+  // normal LLM troubleshooting here while Slack/Telegram would hard-stop. The
+  // route now imports the shared, guardrails.py-parity-tested SAFETY_PHRASES.
+  it("hard-stops on a physical-hazard phrase not present in the old local list WITHOUT calling any provider", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    const res = await POST(
+      makeReq(userMsg("I see melted insulation on this panel, what should I do?")),
+      makeParams(VALID_UUID),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Safety-Stop")).toBe("melted insulation");
+    expect(res.headers.get("Content-Type")).toContain("text/event-stream");
+
+    const { raw, content } = await drain(res);
+    expect(content).toContain("SAFETY STOP");
+    expect(raw).toContain("[DONE]");
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(vi.mocked(withTenantContext)).not.toHaveBeenCalled();
+  });
+
   it("returns 404 when the node is not found in the tenant", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
     vi.mocked(withTenantContext).mockImplementation(async (_tid, fn) => {
