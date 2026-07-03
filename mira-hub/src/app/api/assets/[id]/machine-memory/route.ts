@@ -4,6 +4,19 @@ import { withTenantContext } from "@/lib/tenant-context";
 
 export const dynamic = "force-dynamic";
 
+// Postgres error codes for "relation does not exist" / "column does not
+// exist" — the only cases that legitimately mean "040 not applied in this
+// env yet". Any other error (permission, syntax, connection, etc.) must
+// rethrow and hit the route's outer 500 handler, not be swallowed as a
+// silent empty/fallback state.
+const UNDEFINED_TABLE = "42P01";
+const UNDEFINED_COLUMN = "42703";
+
+function isUndefinedRelationOrColumn(err: unknown): boolean {
+  const code = (err as { code?: string } | null | undefined)?.code;
+  return code === UNDEFINED_TABLE || code === UNDEFINED_COLUMN;
+}
+
 /**
  * GET /api/assets/[id]/machine-memory
  *
@@ -85,6 +98,7 @@ export async function GET(
           )
           .then((r) => r.rows[0] ?? null);
       } catch (err) {
+        if (!isUndefinedRelationOrColumn(err)) throw err;
         console.error("[api/assets/[id]/machine-memory GET] machine_state_window unavailable (040 not applied?)", err);
         windowsAvailable = false;
       }
@@ -106,6 +120,7 @@ export async function GET(
           )
           .then((r) => r.rows);
       } catch (err) {
+        if (!isUndefinedRelationOrColumn(err)) throw err;
         console.error("[api/assets/[id]/machine-memory GET] run_diff 040 columns unavailable, falling back to 038 columns", err);
         latestDiffs = await c
           .query(

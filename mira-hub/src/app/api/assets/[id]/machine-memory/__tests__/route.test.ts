@@ -117,7 +117,9 @@ it("038-only env (state-window query throws relation-does-not-exist) -> 200 with
     [
       /FROM machine_state_window/,
       () => {
-        throw new Error('relation "machine_state_window" does not exist');
+        const err = new Error('relation "machine_state_window" does not exist') as Error & { code?: string };
+        err.code = "42P01";
+        throw err;
       },
     ],
     [/FROM run_diff/, { rows: [] }],
@@ -136,6 +138,32 @@ it("038-only env (state-window query throws relation-does-not-exist) -> 200 with
     stopped_at: run.stopped_at,
     uns_path: UNS_PATH,
   });
+});
+
+it("generic error (no pg code) in machine_state_window query -> 500, not a silent empty state", async () => {
+  const run = {
+    run_id: "r1", status: "open", started_at: "2026-07-01T00:00:00Z",
+    stopped_at: null, duration_seconds: null, run_trigger_tag: "cv101.run",
+  };
+  const client = mockClient([
+    KG_HIT,
+    [/FROM machine_run/, { rows: [run] }],
+    [
+      /FROM machine_state_window/,
+      () => {
+        // No .code — e.g. a connection error, permission error, or syntax
+        // error. This must NOT be treated as "040 not applied" and must NOT
+        // be swallowed into an empty state.
+        throw new Error("connection terminated unexpectedly");
+      },
+    ],
+    [/FROM run_diff/, { rows: [] }],
+  ]);
+  wire(client);
+  const res = await GET(new Request("http://t"), { params });
+  expect(res.status).toBe(500);
+  const body = await res.json();
+  expect(body).toEqual({ error: "Query failed" });
 });
 
 it("missing NEON_DATABASE_URL -> 503", async () => {

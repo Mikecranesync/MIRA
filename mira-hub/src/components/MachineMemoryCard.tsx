@@ -39,7 +39,7 @@ interface EvidenceWindow {
   uns_path: string;
 }
 
-interface MachineMemoryResponse {
+export interface MachineMemoryResponse {
   uns_path: string | null;
   latest_run: LatestRun | null;
   latest_window: LatestWindow | null;
@@ -52,14 +52,22 @@ interface Props {
 }
 
 const SEVERITY_COLOR: Record<LatestDiff["severity"], string> = {
-  info: "#94A3B8",
-  warning: "#EAB308",
-  critical: "#DC2626",
+  info: "var(--foreground-subtle)",
+  warning: "var(--status-yellow)",
+  critical: "var(--status-red)",
 };
 
-export function MachineMemoryCard({ assetId }: Props) {
-  const [data, setData] = useState<MachineMemoryResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+interface MachineMemoryCardProps extends Props {
+  /** Pre-fetched response — skips the client fetch when provided (used by tests/SSR). */
+  initialData?: MachineMemoryResponse | null;
+  /** Set false to disable the client-side fetch entirely (used by tests). Defaults true. */
+  poll?: boolean;
+}
+
+export function MachineMemoryCard({ assetId, initialData, poll = true }: MachineMemoryCardProps) {
+  const [data, setData] = useState<MachineMemoryResponse | null>(initialData ?? null);
+  const [loading, setLoading] = useState(!initialData && poll);
+  const [fetchFailed, setFetchFailed] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,18 +75,24 @@ export function MachineMemoryCard({ assetId }: Props) {
       const resp = await fetch(`/hub/api/assets/${assetId}/machine-memory/`);
       if (resp.ok && !resp.url.includes("/login")) {
         setData(await resp.json());
+        setFetchFailed(false);
+      } else {
+        setFetchFailed(true);
       }
+    } catch {
+      setFetchFailed(true);
     } finally {
       setLoading(false);
     }
   }, [assetId]);
 
   useEffect(() => {
+    if (!poll) return;
     const timeout = window.setTimeout(() => {
       void load();
     }, 0);
     return () => window.clearTimeout(timeout);
-  }, [load]);
+  }, [load, poll]);
 
   return (
     <div className="card p-4 space-y-3">
@@ -91,6 +105,10 @@ export function MachineMemoryCard({ assetId }: Props) {
 
       {loading ? (
         <div className="h-16 rounded-lg animate-pulse" style={{ backgroundColor: "var(--surface-1)" }} />
+      ) : fetchFailed && !data ? (
+        <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
+          Machine memory unavailable.
+        </p>
       ) : !data || !data.uns_path || (!data.latest_run && !data.latest_window) ? (
         <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
           No machine runs recorded for this asset yet.
@@ -144,14 +162,14 @@ export function MachineMemoryCard({ assetId }: Props) {
 
 function StatusPill({ label, value }: { label: string; value: string }) {
   const cfg = {
-    closed: { bg: "#DCFCE7", color: "#16A34A" },
-    running: { bg: "#DCFCE7", color: "#16A34A" },
-    open: { bg: "#DBEAFE", color: "#2563EB" },
+    closed: { bg: "var(--status-green-bg)", color: "var(--status-green)" },
+    running: { bg: "var(--status-green-bg)", color: "var(--status-green)" },
+    open: { bg: "var(--status-blue-bg)", color: "var(--brand-blue)" },
     idle: { bg: "var(--surface-1)", color: "var(--foreground-muted)" },
-    anomalous: { bg: "#FEE2E2", color: "#DC2626" },
-    faulted: { bg: "#FEE2E2", color: "#DC2626" },
-    comm_down: { bg: "#FEE2E2", color: "#DC2626" },
-    estopped: { bg: "#FEE2E2", color: "#DC2626" },
+    anomalous: { bg: "var(--status-red-bg)", color: "var(--status-red)" },
+    faulted: { bg: "var(--status-red-bg)", color: "var(--status-red)" },
+    comm_down: { bg: "var(--status-red-bg)", color: "var(--status-red)" },
+    estopped: { bg: "var(--status-red-bg)", color: "var(--status-red)" },
     unknown: { bg: "var(--surface-1)", color: "var(--foreground-muted)" },
   }[value] ?? { bg: "var(--surface-1)", color: "var(--foreground-muted)" };
 
