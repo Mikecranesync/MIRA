@@ -18,14 +18,26 @@ _ALLOWLIST_PATH = None
 # wins when set; otherwise we walk well-known Ignition install locations,
 # then fall back to the in-repo copy for dev/test.
 _DEFAULT_PATHS = [
+    "C:/Program Files/Inductive Automation/Ignition/data/factorylm/approved_tags.json",
     "C:/Program Files/Inductive Automation/Ignition/data/projects/factorylm/approved_tags.json",
+    "/usr/local/bin/ignition/data/factorylm/approved_tags.json",
     "/usr/local/bin/ignition/data/projects/factorylm/approved_tags.json",
+    "/var/lib/ignition/data/factorylm/approved_tags.json",
     "/var/lib/ignition/data/projects/factorylm/approved_tags.json",
-    os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "..", "..", "..", "..", "project", "approved_tags.json",
-    ),
 ]
+
+# In-repo fallback for dev/test. Ignition's Jython script library does not
+# define __file__ (module resources are exec'd, not loaded from a file), so
+# guard it — on a gateway the absolute install paths above are the real ones.
+try:
+    _DEFAULT_PATHS.append(
+        os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "..", "..", "..", "project", "approved_tags.json",
+        )
+    )
+except NameError:
+    pass  # __file__ undefined (Ignition script resource)
 
 
 def resolve_allowlist_path():
