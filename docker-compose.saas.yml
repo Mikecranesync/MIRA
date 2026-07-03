@@ -832,6 +832,11 @@ services:
       - MIRA_BASELINE_MIN_RUNS=${MIRA_BASELINE_MIN_RUNS:-2}
       - MIRA_SNAPSHOT_PRE_SECONDS=${MIRA_SNAPSHOT_PRE_SECONDS:-300}
       - MIRA_SNAPSHOT_POST_SECONDS=${MIRA_SNAPSHOT_POST_SECONDS:-300}
+      # Machine-memory extension (#2404): trigger-less assets whose state
+      # windows should be derived (comma-separated ltree paths), and the
+      # sliding lookback. Omitting UNS_PATHS = no idle/fault windows derive.
+      - MIRA_MACHINE_MEMORY_UNS_PATHS=${MIRA_MACHINE_MEMORY_UNS_PATHS:-}
+      - MIRA_RUN_LOOKBACK_SECONDS=${MIRA_RUN_LOOKBACK_SECONDS:-3600}
     networks:
       - mira-net
     restart: unless-stopped
