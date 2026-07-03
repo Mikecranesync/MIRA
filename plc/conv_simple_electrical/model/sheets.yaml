@@ -1,0 +1,39 @@
+# The print set for Conv_Simple / CV-101. One sheet = one circuit family.
+# status: drafted | stub (planned, not yet drawn)
+project: Conv_Simple
+asset: CV-101
+revision: A
+sheets:
+  - id: E-001
+    title: Cover / legend / device schedule
+    status: stub
+  - id: E-002
+    title: Power one-line
+    status: stub
+  - id: E-003
+    title: VFD power (Q1 -> VFD1 -> M1)
+    status: stub
+  - id: E-004
+    title: 24 VDC control power distribution (PS1)
+    status: stub
+  - id: E-005
+    title: PLC digital inputs
+    status: drafted          # <-- rendered first, per the new rule
+    scope: Micro820 I-00..I-05 (+ spares I-06..I-11); E-stop, direction selector, run PB, photo-eye
+  - id: E-006
+    title: PLC outputs (O-00..O-06)
+    status: stub
+  - id: E-007
+    title: RS-485 Modbus (PLC1 Ch2 <-> VFD1 RJ45)
+    status: drafted          # rebuilt from recovered CCW/MIRA_PLC CommsToVFD style, corrected values
+    scope: Modbus-only. PLC1 embedded RS-485 (Ch2) D+/D-/SG/shield <-> VFD1 GS10 RJ45 pin5/4/3. NO FWD/REV/VI/ACM/FA.
+    model: model/e007_rs485.yaml
+    note: >
+      Values reconciled to bench-verified: Channel 2 (not 0), SGND=pin 3 (not 1/8), 8N1 (not 8N2).
+      Mostly VERIFIED (CommsToVFD + Beginner_Verify p48 + Prog_init v2.1); shield chassis point = field-verify.
+  - id: E-008
+    title: Terminal strip (X1) + wire list
+    status: stub
+  - id: E-009
+    title: Open items / field verification
+    status: stub            # generated from open_items.yaml

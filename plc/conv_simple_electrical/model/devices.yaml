@@ -1,0 +1,71 @@
+# Conv_Simple / CV-101 — device schedule (source of truth for the print set)
+# evidence: verified | field_verify | proposed
+# Verified = traced to a repo artifact (cited). field_verify = must be metered/confirmed on the bench.
+meta:
+  project: Conv_Simple
+  asset: CV-101 (garage conveyor)
+  drawn_by: MIRA / FactoryLM
+  revision: A
+  date: "2026-07-03"
+
+devices:
+  - tag: PLC1
+    type: plc
+    model: Allen-Bradley Micro820 2080-LC20-20QBB
+    role: Conveyor controller; Modbus RTU master to VFD1
+    io: 12 DI (I-00..I-11), 7 relay DO (O-00..O-06), 4 AI, 1 AO
+    evidence: verified
+    source: plc/GS10_Integration_Guide.md; plc/ccw/controller/Controller/LogicalValues.csv
+
+  - tag: VFD1
+    type: vfd
+    model: AutomationDirect GS10 DURApulse
+    role: Drives conveyor motor; commanded over Modbus RTU (Ch2, node 1)
+    evidence: verified
+    source: plc/GS10_Integration_Guide.md; plc/Prog_init_ConvSimple_v2.1.st
+
+  - tag: M1
+    type: motor
+    role: Conveyor drive motor (3~ from VFD1 U/V/W)
+    evidence: field_verify   # nameplate FLA/kW/rpm/poles not captured in repo
+
+  - tag: S0
+    type: e_stop
+    role: Emergency stop, DUAL-CHANNEL (diverse) — NC ch to I-02, NO ch to I-03
+    evidence: verified        # channel assignment from Ignition OPC docs
+    note: >
+      DI-02 = NC channel (healthy = 1). DI-03 = NO channel (healthy = 0).
+      Whether a safety relay sits between S0 and the PLC is FIELD VERIFY.
+
+  - tag: SS1
+    type: selector_switch
+    role: Direction selector — FWD contact to I-00, REV contact to I-01 (FWD-OFF-REV)
+    evidence: verified        # function from program + Ignition "prod wiring" docs
+    source: plc/Prog_init_ConvSimple_v2.1.st (dir_fwd/dir_rev)
+
+  - tag: S2
+    type: pushbutton_no
+    role: Run / rearm pushbutton to I-04
+    evidence: verified
+    source: plc/ignition-project/.../Inputs/tags.json ("DI-04 Run pushbutton")
+
+  - tag: B1
+    type: photo_eye
+    role: Product-present beam to I-05 (blocked -> pe_latched soft stop)
+    evidence: verified        # function from program; physical sensor unmapped historically
+    source: plc/Prog_init_ConvSimple_v2.1.st (_IO_EM_DI_05 -> pe_latched)
+
+  - tag: PS1
+    type: power_supply
+    role: 24 VDC control supply (documented on E-004); feeds +24V/0V to input loop
+    evidence: field_verify
+
+  - tag: Q1
+    type: circuit_breaker
+    role: Main / branch protection (documented on E-002/E-003)
+    evidence: field_verify
+
+  - tag: X1
+    type: terminal_block
+    role: Field terminal strip — field devices land here before PLC (E-008)
+    evidence: field_verify    # strip layout / numbering not documented

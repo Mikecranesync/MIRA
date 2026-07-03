@@ -1,0 +1,93 @@
+# E-007 RS-485 / Modbus RTU comms link — source of truth (Modbus ONLY).
+# Recovered from CCW/MIRA_PLC Conv_Simple_CommsToVFD.pdf §2 (style) and reconciled to the
+# CORRECTED facts in Conv_Simple_GS10_Beginner_Verify_V2.pdf p48 + Prog_init_ConvSimple_v2.1.st.
+# NO FWD/REV/VI/ACM/FA control wiring on this sheet.
+sheet: E-007
+title: RS-485 / Modbus RTU Communication
+
+endpoints:
+  plc:
+    tag: PLC1
+    device: Allen-Bradley Micro820 2080-LC20-20QBB
+    port: embedded RS-485 serial port (top-edge connector)
+    channel: "MSG_MODBUS Channel 2"
+    channel_note: "bench-proven 2026-05-26 (v2.x). May-2026 Phase-A drawing said 'Channel 0' - SUPERSEDED."
+    terminals: ["D+ (A)", "D- (B)", "SG", "shield"]
+  vfd:
+    tag: VFD1
+    device: AutomationDirect GS10 DURApulse
+    port: RS-485 RJ45 jack (front face, near keypad)
+    pins: {"pin 5": "SG+", "pin 4": "SG-", "pin 3": "SGND"}
+    termination: "120 ohm across SG+/SG- at the drive end"
+
+# One row per conductor -> renders BOTH the drawn wire and a row in the connection table.
+links:
+  - wire_label: "485+"
+    src_device: PLC1
+    src_terminal: "D+ (A)"
+    dst_device: VFD1
+    dst_terminal: "RJ45 pin 5 / SG+"
+    cable: "Belden 3105A pair"
+    conductor: "white of pair"
+    signal: "RS-485 inverting (D+ = SG+)"
+    evidence: verified
+    source: "CommsToVFD 2.2 + Beginner_Verify p48"
+    notes: "Polarity: if silent/garbled, swap 485+/485- first."
+  - wire_label: "485-"
+    src_device: PLC1
+    src_terminal: "D- (B)"
+    dst_device: VFD1
+    dst_terminal: "RJ45 pin 4 / SG-"
+    cable: "Belden 3105A pair"
+    conductor: "black of pair"
+    signal: "RS-485 non-inverting (D- = SG-)"
+    evidence: verified
+    source: "CommsToVFD 2.2 + Beginner_Verify p48"
+    notes: ""
+  - wire_label: "SGND"
+    src_device: PLC1
+    src_terminal: "SG"
+    dst_device: VFD1
+    dst_terminal: "RJ45 pin 3 / SGND"
+    cable: "3rd conductor"
+    conductor: "third conductor"
+    signal: "signal ground / common reference"
+    evidence: verified
+    source: "Beginner_Verify p48 (SGND -> pin 3; CommsToVFD 'pin 1/8' SUPERSEDED)"
+    notes: "Dedicated wire, NOT the shield."
+  - wire_label: "SH"
+    src_device: PLC1
+    src_terminal: "shield / chassis"
+    dst_device: VFD1
+    dst_terminal: "(floated)"
+    cable: "tinned drain"
+    conductor: "drain"
+    signal: "cable shield"
+    evidence: field_verify
+    source: "shield-one-end rule (both docs); exact PLC chassis point = field verify"
+    notes: "Land drain at PLC end ONLY; tape/float at GS10 end."
+
+serial_config:
+  driver: "Modbus RTU, Master"
+  baud: "9600"
+  format: "8N1 (P09.04 = 12)"
+  channel: "2"
+  node: "1 (P09.00 = 1)"
+  note: "Older GS10_Integration_Guide.md said 8N2 (P09.04=13) - SUPERSEDED by bench-verified 8N1."
+
+readback:
+  - "vfd_comm_ok = TRUE proves the link is up (PLC global)."
+  - "Read 0x2103 (output freq, Hz x10) via FC03; nonzero readback confirms end-to-end."
+
+troubleshooting:
+  - "Nothing after config -> swap 485+/485- (A/B polarity; vendors disagree)."
+  - "CRC errors -> usually polarity. Complete silence -> usually baud mismatch (confirm 9600 8N1)."
+  - "GS10 CE10 / F30 comm-timeout -> no Modbus packets; check wiring, baud, P09.03 timeout."
+  - "120 ohm termination across SG+/SG- at the GS10 end for long runs (bench <2 m usually fine)."
+  - "SGND is a dedicated conductor, not the shield; missing common -> intermittent corruption."
+
+sources:
+  - "CCW/MIRA_PLC/docs/instructions/Conv_Simple_CommsToVFD.pdf §2 (recovered style + wiring)"
+  - "CCW/MIRA_PLC/docs/instructions/Conv_Simple_GS10_Beginner_Verify_V2.pdf p48 (corrected pins/channel)"
+  - "plc/Prog_init_ConvSimple_v2.1.st (Channel 2, node 1, 0x2103)"
+  - "plc/GS10_Integration_Guide.md §3 (RJ45 pinout, register map)"

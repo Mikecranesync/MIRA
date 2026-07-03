@@ -1,0 +1,72 @@
+# Wires — THE source of truth for what may be drawn as a conductor.
+# RULE: a wire renders SOLID only if status == verified. Otherwise it renders
+# DASHED with a "FIELD VERIFY" tag. No conductor may be drawn that is not listed here.
+#
+# For Conv_Simple there is NO as-built wire list in the repo, so every physical
+# conductor below is status: field_verify and its wire NUMBER is proposed_number.
+# The PLC terminal <-> function mapping IS verified (see terminals.yaml) and is
+# what makes this sheet useful even before the field wiring is confirmed.
+
+sheet: E-005
+signal_family: PLC digital inputs (24 VDC)
+
+wires:
+  # +24 VDC distribution to the input devices (source = PS1 on E-004)
+  - proposed_number: "W24"
+    from: PS1.+24V           # documented on E-004
+    to: "+24V rail (this sheet)"
+    signal: "+24 VDC"
+    type: control_24vdc
+    status: field_verify
+
+  # Direction selector -> I-00 / I-01
+  - proposed_number: "W200"
+    from: SS1.FWD
+    to: PLC1.I-00
+    signal: dir_fwd
+    type: input_24vdc
+    status: field_verify
+  - proposed_number: "W201"
+    from: SS1.REV
+    to: PLC1.I-01
+    signal: dir_rev
+    type: input_24vdc
+    status: field_verify
+
+  # E-stop dual channel -> I-02 (NC) / I-03 (NO)
+  - proposed_number: "W202"
+    from: S0.11-12
+    to: PLC1.I-02
+    signal: e_stop_nc (healthy=1)
+    type: input_24vdc
+    status: field_verify
+  - proposed_number: "W203"
+    from: S0.23-24
+    to: PLC1.I-03
+    signal: e_stop_no (healthy=0)
+    type: input_24vdc
+    status: field_verify
+
+  # Run PB -> I-04
+  - proposed_number: "W204"
+    from: S2.3-4
+    to: PLC1.I-04
+    signal: run_pb
+    type: input_24vdc
+    status: field_verify
+
+  # Photo-eye output -> I-05
+  - proposed_number: "W205"
+    from: B1.BK
+    to: PLC1.I-05
+    signal: photo_eye
+    type: input_24vdc
+    status: field_verify
+
+  # Input common return -> 0V (source = PS1 on E-004)
+  - proposed_number: "W0V"
+    from: PLC1.COM0
+    to: PS1.0V
+    signal: "0V / input common"
+    type: control_0v
+    status: field_verify

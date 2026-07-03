@@ -1,0 +1,36 @@
+# Open items = everything NOT yet verified. These are the meter-lead tasks.
+# Nothing here may be drawn as a solid conductor until closed with evidence.
+sheet_ref: E-009
+items:
+  - id: OI-01
+    sheet: E-005
+    item: "+24 VDC source terminal on PS1 feeding the input rail"
+    verify: "Meter PS1 +24V to 0V = 24 VDC; confirm which terminal feeds the input devices."
+  - id: OI-02
+    sheet: E-005
+    item: "Input common (COM0) grouping + sink vs source jumpering on the Micro820"
+    verify: "Confirm which embedded input common serves I-00..I-05 and whether inputs are sink or source; meter COM0 to 0V."
+  - id: OI-03
+    sheet: E-005
+    item: "All input wire numbers (W200..W205, W24, W0V are PROPOSED)"
+    verify: "Read the actual wire markers on the panel; replace proposed numbers with as-built."
+  - id: OI-04
+    sheet: E-005
+    item: "Field-device terminal designations (S0 11-12/23-24, SS1 FWD/REV/COM, S2 3-4, B1 BN/BU/BK)"
+    verify: "Confirm each device's real terminal markings against its nameplate/datasheet."
+  - id: OI-05
+    sheet: E-005
+    item: "E-stop architecture between S0 and the PLC"
+    verify: "Confirm whether S0 lands directly on I-02/I-03 or via a safety relay; a monitored input is NOT a safety stop (see safety note)."
+  - id: OI-06
+    sheet: E-005
+    item: "Photo-eye B1 device (historically 'unmapped') — make/model, PNP/NPN, powered source"
+    verify: "Identify the physical sensor; confirm BN/BU/BK to +24V/0V/I-05; PNP sourcing assumed."
+  - id: OI-07
+    sheet: E-005
+    item: "Direction selector SS1 physical device (2-pos vs 3-pos FWD-OFF-REV)"
+    verify: "Confirm selector type and that FWD/REV contacts map to I-00/I-01."
+  - id: OI-08
+    sheet: E-005
+    item: "Spares I-06..I-11 confirmed unused"
+    verify: "Confirm no field wires land on I-06..I-11 (program shows none)."
