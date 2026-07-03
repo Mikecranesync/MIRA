@@ -40,6 +40,22 @@ x-bot-common-env: &bot-common-env
   ASK_API_KEY: ${ASK_API_KEY:-}
 
 services:
+  mira-redis:
+    image: redis:7.4.2-alpine
+    container_name: mira-redis-saas
+    networks:
+      - mira-net
+    volumes:
+      - mira-redis-data:/data
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   mira-core:
     image: ghcr.io/open-webui/open-webui:v0.8.10
     container_name: mira-core-saas
@@ -474,6 +490,49 @@ services:
       retries: 3
       start_period: 10s
 
+  # ─── mira-sparkplug-consumer — Lane 3 / Phase 3b industrial ingest ──────────
+  # A read-only Sparkplug B MQTT subscriber: Ignition MQTT Transmission → Mosquitto
+  # → THIS consumer → tag_ingest.ingest_batch → tag_events + live_signal_cache, the
+  # SAME pipeline the HTTP relay route uses. The custom HTTP relay stays the
+  # bench/dev fallback; this is the preferred industrial path.
+  #
+  # OPT-IN: gated behind the "sparkplug" compose profile, so a normal
+  #   `docker compose -f docker-compose.saas.yml up` does NOT start it (and it is
+  #   absent from deploy-vps.yml TARGETS). Enable with:
+  #     docker compose -f docker-compose.saas.yml --profile sparkplug up -d mira-sparkplug-consumer
+  #
+  # BROKER REACHABILITY: this service joins `mosquitto-ext` (the broker's network,
+  #   mira-plc-dash_default) so MQTT_INGEST_BROKER_HOST=mira-mosquitto resolves.
+  #   The broker must be running first. Runbook:
+  #   docs/runbooks/2026-06-28-sparkplug-mqtt-consumer.md.
+  mira-sparkplug-consumer:
+    profiles: ["sparkplug"]
+    build:
+      context: ./mira-relay
+      dockerfile: Dockerfile.sparkplug
+    container_name: mira-sparkplug-consumer
+    environment:
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MQTT_INGEST_TENANT_ID=${MQTT_INGEST_TENANT_ID:-}
+      - MQTT_INGEST_BROKER_HOST=${MQTT_INGEST_BROKER_HOST:-mira-mosquitto}
+      - MQTT_INGEST_BROKER_PORT=${MQTT_INGEST_BROKER_PORT:-1883}
+      - MQTT_INGEST_TLS=${MQTT_INGEST_TLS:-0}
+      - MQTT_INGEST_USERNAME=${MQTT_INGEST_USERNAME:-}
+      - MQTT_INGEST_PASSWORD=${MQTT_INGEST_PASSWORD:-}
+      - MQTT_INGEST_SOURCE_SYSTEM=${MQTT_INGEST_SOURCE_SYSTEM:-ignition}
+      - MQTT_INGEST_GROUP_IDS=${MQTT_INGEST_GROUP_IDS:-}
+      - MQTT_INGEST_EDGE_NODES=${MQTT_INGEST_EDGE_NODES:-}
+      - MQTT_INGEST_DEVICES=${MQTT_INGEST_DEVICES:-}
+      - MQTT_INGEST_AUTO_DISCOVER=${MQTT_INGEST_AUTO_DISCOVER:-0}
+      - MQTT_INGEST_DRY_RUN=${MQTT_INGEST_DRY_RUN:-0}
+      - MQTT_INGEST_DEBUG=${MQTT_INGEST_DEBUG:-0}
+    networks:
+      - mira-net         # NeonDB egress + other saas services
+      - mosquitto-ext    # the MQTT broker's network (resolve mira-mosquitto by name)
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+
   # Nango — credential vault and auth proxy for third-party CMMS/platform integrations
   # Dashboard: http://nango-server:3003 (internal) — nginx-proxy to /nango on public domain
   # Free self-hosted: auth + proxy only. Syncs/actions require Nango Cloud or Enterprise.
@@ -650,6 +709,9 @@ services:
       - CMMS_PUBLIC_URL=${CMMS_PUBLIC_URL:-https://cmms.factorylm.com}
       - ATLAS_API_USER=${ATLAS_API_USER:-}
       - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
+      - HUB_SSO_SECRET=${HUB_SSO_SECRET:-}
+      - HUB_SSO_ISSUER=${HUB_SSO_ISSUER:-factorylm-hub}
+      - HUB_SSO_AUDIENCE=${HUB_SSO_AUDIENCE:-atlas-cmms}
       # /hub/admin/review reads filesystem assets relative to this root.
       # Must point at a directory that contains marketing/cartoons + docs/promo-screenshots
       # + tools/web-review-runs (see the volume mounts below).
@@ -678,6 +740,118 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  mira-synthetic-dogfood-worker:
+    build:
+      context: .
+      dockerfile: mira-crawler/Dockerfile.synthetic-dogfood
+    container_name: mira-synthetic-dogfood-worker
+    command: celery -A mira_crawler.celery_app worker --concurrency=1 -Q synthetic --loglevel=info
+    depends_on:
+      mira-redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - SYNTHETIC_DOGFOOD_ENABLED=${SYNTHETIC_DOGFOOD_ENABLED:-0}
+      - DOGFOOD_ISSUE_MODE=${DOGFOOD_ISSUE_MODE:-dry_run}
+      - DOGFOOD_TARGET_URL=${DOGFOOD_TARGET_URL:-https://app.factorylm.com}
+      - DOGFOOD_REPORT_DIR=/mira-db/synthetic-dogfood
+      - DOGFOOD_TIMEOUT_SECONDS=${DOGFOOD_TIMEOUT_SECONDS:-600}
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY:-Mikecranesync/MIRA}
+      - GITHUB_ISSUE_TOKEN=${GITHUB_ISSUE_TOKEN:-}
+      - SYNTHETIC_CARLOS_EMAIL=${SYNTHETIC_CARLOS_EMAIL:-}
+      - SYNTHETIC_CARLOS_PASSWORD=${SYNTHETIC_CARLOS_PASSWORD:-}
+      - SYNTHETIC_DANA_EMAIL=${SYNTHETIC_DANA_EMAIL:-}
+      - SYNTHETIC_DANA_PASSWORD=${SYNTHETIC_DANA_PASSWORD:-}
+      - SYNTHETIC_PLANTMGR_EMAIL=${SYNTHETIC_PLANTMGR_EMAIL:-}
+      - SYNTHETIC_PLANTMGR_PASSWORD=${SYNTHETIC_PLANTMGR_PASSWORD:-}
+      - SYNTHETIC_CFO_EMAIL=${SYNTHETIC_CFO_EMAIL:-}
+      - SYNTHETIC_CFO_PASSWORD=${SYNTHETIC_CFO_PASSWORD:-}
+    networks:
+      - mira-net
+    volumes:
+      - /opt/mira/data:/mira-db
+    restart: unless-stopped
+    mem_limit: 1.5g
+    memswap_limit: 1.5g
+
+  mira-synthetic-dogfood-beat:
+    build:
+      context: .
+      dockerfile: mira-crawler/Dockerfile.synthetic-dogfood
+    container_name: mira-synthetic-dogfood-beat
+    command: celery -A mira_crawler.celery_app beat --loglevel=info
+    depends_on:
+      mira-redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - CELERY_BEAT_PROFILE=synthetic-dogfood
+    networks:
+      - mira-net
+    volumes:
+      - /opt/mira/data:/mira-db
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
+
+  # ─── Historian recording (#2338 epic) ───────────────────────────────────────
+  # Turns the ingested tag_events stream into the tag_event_diffs analysis
+  # stream (#2343) and — when MIRA_RUN_DIFF_ENABLED=1 — records machine runs +
+  # baselines + run-diffs (#2341). Dedicated worker/beat (mirrors the synthetic-
+  # dogfood pattern) on the isolated "historian" queue so it can't disturb other
+  # queues. Needs NEON_DATABASE_URL (same DB the relay ingests into) + migrations
+  # 037 + 057 (and 038 once run-diff is enabled). Run-diff ships OFF; enable only
+  # after the live-Postgres integration test passes on staging.
+  mira-historian-worker:
+    build:
+      context: .
+      dockerfile: mira-crawler/Dockerfile.celery
+    container_name: mira-historian-worker
+    command: celery -A mira_crawler.celery_app worker --concurrency=1 -Q historian --loglevel=info
+    depends_on:
+      mira-redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+      - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
+      - TAG_DIFF_BATCH_SIZE=${TAG_DIFF_BATCH_SIZE:-1000}
+      - TAG_DIFF_CONFIG_JSON=${TAG_DIFF_CONFIG_JSON:-}
+      # Run-diff (#2341) — OFF until validated on staging (see epic #2338).
+      - MIRA_RUN_DIFF_ENABLED=${MIRA_RUN_DIFF_ENABLED:-0}
+      - MIRA_RUN_TRIGGERS=${MIRA_RUN_TRIGGERS:-}
+      - MIRA_BASELINE_NORMAL_RUN_COUNT=${MIRA_BASELINE_NORMAL_RUN_COUNT:-5}
+      - MIRA_BASELINE_MIN_RUNS=${MIRA_BASELINE_MIN_RUNS:-2}
+      - MIRA_SNAPSHOT_PRE_SECONDS=${MIRA_SNAPSHOT_PRE_SECONDS:-300}
+      - MIRA_SNAPSHOT_POST_SECONDS=${MIRA_SNAPSHOT_POST_SECONDS:-300}
+    networks:
+      - mira-net
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 512m
+
+  mira-historian-beat:
+    build:
+      context: .
+      dockerfile: mira-crawler/Dockerfile.celery
+    container_name: mira-historian-beat
+    command: celery -A mira_crawler.celery_app beat --loglevel=info
+    depends_on:
+      mira-redis:
+        condition: service_healthy
+    environment:
+      - CELERY_BROKER_URL=redis://mira-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://mira-redis:6379/1
+      - CELERY_BEAT_PROFILE=historian
+    networks:
+      - mira-net
+    restart: unless-stopped
+    mem_limit: 256m
+    memswap_limit: 256m
 
   # ─── mira-cmms-sync — NeonDB ↔ Atlas sync worker (P1) ───────────────────────
   # Long-running loop that pushes NeonDB changes to Atlas every 60s and pulls
@@ -714,9 +888,16 @@ networks:
   cmms-ext:
     external: true
     name: factorylm-cmms_default
+  # The MQTT broker (mira-mosquitto) runs in the mira-plc-dash stack on its own
+  # network. The opt-in mira-sparkplug-consumer joins this to reach the broker by
+  # name. External: the broker must be up first. If the broker moves, update name.
+  mosquitto-ext:
+    external: true
+    name: mira-plc-dash_default
 
 volumes:
   mira-webui-data:
+  mira-redis-data:
   mira-chroma:
   mira-docs:
   nango-db-data:

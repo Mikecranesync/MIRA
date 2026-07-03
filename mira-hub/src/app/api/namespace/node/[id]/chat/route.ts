@@ -21,10 +21,16 @@ import { scanBoth, handleSafetyAlert, safetyAlertSseChunk } from "@/lib/agents/s
 import {
   retrieveNodeChunks,
   appendManualContext,
+  buildManualUserContent,
   chunksToSources,
   type ManualChunk,
   type ManualSource,
 } from "@/lib/manual-rag";
+import {
+  approvedAskEnforcementEnabled,
+  approvedContextReady,
+  buildApprovedContextRefusal,
+} from "@/lib/approved-context";
 
 export const dynamic = "force-dynamic";
 
@@ -254,6 +260,7 @@ export async function POST(
         `SELECT name, uns_path::text AS uns_path
            FROM kg_entities
           WHERE id = $1 AND tenant_id = $2
+            AND approval_state = 'verified'
           LIMIT 1`,
         [id, ctx.tenantId],
       );
@@ -263,7 +270,10 @@ export async function POST(
         nodeId: id,
         unsPath: row.uns_path,
       });
-      return { row, chunks };
+      const approvedChunks = approvedAskEnforcementEnabled()
+        ? chunks.filter((chunk) => chunk.verified === true)
+        : chunks;
+      return { row, chunks: approvedChunks };
     });
     nodeRow = fetched.row;
     nodeChunks = fetched.chunks;
@@ -283,11 +293,32 @@ export async function POST(
   });
   const systemPrompt = appendManualContext(baseSystemPrompt, nodeChunks);
   const nodeSources: ManualSource[] = chunksToSources(nodeChunks);
+  const approvedSourceCount = nodeSources.filter((s) => s.verified).length;
   const safetyLabel = nodeRow.name || id;
+  const approvedSummary = {
+    approvedSourceCount,
+    verifiedRelationshipCount: 0,
+    approvedLiveSignalCount: 0,
+  };
+
+  if (approvedAskEnforcementEnabled() && !approvedContextReady(approvedSummary)) {
+    return NextResponse.json(buildApprovedContextRefusal(approvedSummary), { status: 412 });
+  }
+
+  const nonSystemMessages = messages.filter((m) => m.role !== "system");
+  const lastUserIndex = (() => {
+    for (let i = nonSystemMessages.length - 1; i >= 0; i--) {
+      if (nonSystemMessages[i].role === "user") return i;
+    }
+    return -1;
+  })();
+  const contextualMessages = nonSystemMessages.map((m, i) =>
+    i === lastUserIndex ? { ...m, content: buildManualUserContent(m.content, nodeChunks) } : m,
+  );
 
   const fullMessages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
-    ...messages.filter((m) => m.role !== "system"),
+    ...contextualMessages,
   ];
 
   const enc = new TextEncoder();
@@ -300,7 +331,12 @@ export async function POST(
       // alongside the streaming answer.
       if (nodeSources.length > 0) {
         controller.enqueue(
-          enc.encode(`data: ${JSON.stringify({ sources: nodeSources })}\n\n`),
+          enc.encode(
+            `data: ${JSON.stringify({
+              sources: nodeSources,
+              approved_source_count: approvedSourceCount,
+            })}\n\n`,
+          ),
         );
       }
 

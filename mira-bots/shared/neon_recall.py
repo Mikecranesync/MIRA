@@ -108,6 +108,7 @@ SHARED_TENANT_ID = os.getenv("MIRA_SHARED_TENANT_ID", "78917b56-f85f-43bb-9a08-1
 # degrades gracefully to positional priority when BM25 is empty.
 HYBRID_ENABLED = os.getenv("MIRA_RETRIEVAL_HYBRID_ENABLED", "true").lower() == "true"
 
+
 # Approval-gated retrieval (2026-06-24). When ON, restrict knowledge_entries
 # retrieval to human-APPROVED chunks (verified=true) — the column added in
 # docs/migrations/001_knowledge_entries.sql that retrieval historically never
@@ -129,6 +130,7 @@ def _approval_filter_sql() -> str:
     """SQL fragment appended to each knowledge_entries WHERE when the approval gate
     is enabled. Empty string when off → the query is byte-identical to prior behavior."""
     return " AND verified = true" if approval_gate_enabled() else ""
+
 
 # Reciprocal Rank Fusion constant (Cormack et al. 2009). 60 is the canonical
 # default — small enough that top ranks dominate, large enough that mid-rank

@@ -8,10 +8,16 @@ import { scanBoth, handleSafetyAlert, safetyAlertSseChunk } from "@/lib/agents/s
 import {
   retrieveManualChunks,
   appendManualContext,
+  buildManualUserContent,
   chunksToSources,
   type ManualChunk,
   type ManualSource,
 } from "@/lib/manual-rag";
+import {
+  approvedAskEnforcementEnabled,
+  approvedContextReady,
+  buildApprovedContextRefusal,
+} from "@/lib/approved-context";
 
 export const dynamic = "force-dynamic";
 
@@ -262,6 +268,7 @@ export async function POST(
   // `.claude/rules/knowledge-entries-tenant-scoping.md`.
   let assetRow: Record<string, unknown> | null = null;
   let manualChunks: ManualChunk[] = [];
+  let verifiedRelationshipCount = 0;
   try {
     const c = await pool.connect();
     try {
@@ -282,6 +289,34 @@ export async function POST(
         manufacturer: mfr,
         allowTenantFallback: false,
       });
+      if (approvedAskEnforcementEnabled()) {
+        manualChunks = manualChunks.filter((chunk) => chunk.verified === true);
+      }
+      const relRes = await c.query(
+        `WITH anchor AS (
+           SELECT id
+             FROM kg_entities
+            WHERE tenant_id = $1
+              AND approval_state = 'verified'
+              AND (id::text = $2 OR entity_id = $2)
+            LIMIT 1
+         )
+         SELECT COUNT(*)::int AS count
+           FROM kg_relationships r
+           JOIN anchor a ON (r.source_id = a.id OR r.target_id = a.id)
+           JOIN kg_entities src
+             ON src.id = r.source_id
+            AND src.tenant_id = r.tenant_id
+            AND src.approval_state = 'verified'
+           JOIN kg_entities tgt
+             ON tgt.id = r.target_id
+            AND tgt.tenant_id = r.tenant_id
+            AND tgt.approval_state = 'verified'
+          WHERE r.tenant_id = $1
+            AND r.approval_state = 'verified'`,
+        [ctx.tenantId, id],
+      );
+      verifiedRelationshipCount = Number(relRes.rows[0]?.count ?? 0);
     } finally {
       c.release();
     }
@@ -289,6 +324,7 @@ export async function POST(
     // Non-fatal: continue without DB context (graceful degradation)
     assetRow = null;
     manualChunks = [];
+    verifiedRelationshipCount = 0;
   }
 
   // KG graph context — fetch in parallel with (already completed) asset DB fetch
@@ -305,10 +341,33 @@ export async function POST(
 
   const systemPrompt = appendManualContext(withGraph, manualChunks);
   const manualSources: ManualSource[] = chunksToSources(manualChunks);
+  const approvedSourceCount = manualSources.filter((s) => s.verified).length;
+  const approvedSummary = {
+    approvedSourceCount,
+    verifiedRelationshipCount,
+    approvedLiveSignalCount: 0,
+  };
+
+  if (approvedAskEnforcementEnabled() && !approvedContextReady(approvedSummary)) {
+    return NextResponse.json(buildApprovedContextRefusal(approvedSummary), { status: 412 });
+  }
+
+  const nonSystemMessages = messages.filter((m) => m.role !== "system");
+  const lastUserIndex = (() => {
+    for (let i = nonSystemMessages.length - 1; i >= 0; i--) {
+      if (nonSystemMessages[i].role === "user") return i;
+    }
+    return -1;
+  })();
+  const contextualMessages = nonSystemMessages.map((m, i) =>
+    i === lastUserIndex
+      ? { ...m, content: buildManualUserContent(m.content, manualChunks) }
+      : m,
+  );
 
   const fullMessages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
-    ...messages.filter((m) => m.role !== "system"),
+    ...contextualMessages,
   ];
 
   const enc = new TextEncoder();
@@ -330,7 +389,12 @@ export async function POST(
       // alongside the streaming answer.
       if (manualSources.length > 0) {
         controller.enqueue(
-          enc.encode(`data: ${JSON.stringify({ sources: manualSources })}\n\n`),
+          enc.encode(
+            `data: ${JSON.stringify({
+              sources: manualSources,
+              approved_source_count: approvedSourceCount,
+            })}\n\n`,
+          ),
         );
       }
 
@@ -375,6 +439,7 @@ export async function POST(
           page: mc.sourcePage,
           url: mc.sourceUrl || null,
           rank: mc.rank,
+          verified: mc.verified === true,
         }));
         const grounded = manualSources.length > 0;
         await withTenantContext(ctx.tenantId, (c) =>

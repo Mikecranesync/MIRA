@@ -1,5 +1,23 @@
 # Changelog
 
+## v2.20.3 - 2026-06-27
+- fix(hub): synthetic QA seeding now creates real RBAC personas for all tenant roles plus a second-tenant isolation account, and the Hermes login helper fails loudly without a NextAuth session cookie.
+
+## v2.20.2 - 2026-06-27
+- fix(hub): secret-shopper QA password helper now accepts Hermes env vars, requires explicit prod confirmation, rejects weak passwords, and verifies the exact tenant member update.
+
+## v2.20.1 - 2026-06-26
+- fix(hub): CMMS quick links and Atlas record deep links now use the canonical Atlas app routes for preventive maintenance and work-order reporting.
+
+## v2.18.2 - 2026-06-25
+- security(hub): retrieved manual context for asset/node Ask MIRA is now injected as untrusted user-role reference data instead of system-role instructions, and `/api/knowledge/search` has a private-snippet regression test.
+
+## v2.18.1 - 2026-06-24
+- fix(hub): mobile More drawer now includes account context plus a working Sign out button, and desktop sidebar logout controls call the shared NextAuth sign-out action.
+
+## v2.18.0 - 2026-06-24
+- feat(hub): approval-gated retrieval surfaces. Node/manual retrieval honors `MIRA_ENFORCE_APPROVED_RETRIEVAL`, `HAS_DOCUMENT` approval marks the approved document chunks `verified=true`, and answer source payloads expose `verified` plus `approved_source_count` for human-test visibility.
+
 All notable changes to mira-hub. Format follows the project's Versioning Discipline rule: one line per release, namespaced semver tag at merge.
 
 ## v2.17.0 — 2026-06-21

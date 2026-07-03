@@ -124,6 +124,43 @@ rename a migration that has already been applied to any environment. If ordering
 between two same-prefix files ever actually matters, encode it in the suffix, not
 by renumbering an applied file.
 
+## 8. NEVER rewrite a migration file after it has been applied to ANY env
+
+This is the rule whose violation caused the 2026-06-24 **staging-only `tag_events`/
+`approved_tags` drift** (full writeup: `docs/plans/2026-06-24-ingest-schema-reconciliation-plan.md`;
+process issue #2284). The mechanism is a silent trap:
+
+- `migration-verify.yml` auto-applies migrations to the **persistent staging Neon branch**
+  on every PR touching `mira-hub/db/migrations/`. So an **early draft** of a migration is
+  applied to staging *during development*.
+- The migration ledger keys on the **filename** (`schema_migrations.migration_name`, §7), and
+  `033`/`035` (like most table migrations) use **`CREATE TABLE IF NOT EXISTS`**.
+- If you then **rewrite the file** (change the table shape) before merge, the canonical version
+  later "applies" on staging — but the `CREATE` is **skipped** (table already exists) and the
+  ledger marks the filename "done." Result: **staging is frozen at the draft shape while the
+  ledger and the repo say it's current.** Invisible. (Prod escaped only because it receives
+  migrations *post-merge* via gated `apply-migrations.yml`, with no pre-existing draft table.)
+
+**Rules:**
+1. **An applied migration file is immutable.** Once a migration has run in *any* env (dev/staging/
+   prod — and staging counts, because `migration-verify` auto-applies drafts), **do not edit its
+   body.** To change the schema it created, write a **new, next-numbered** migration (an additive
+   `ALTER`, or a guarded reconciliation) — never reshape the original `CREATE`.
+2. **`CREATE TABLE IF NOT EXISTS` does not make a rewrite safe** — it makes the drift *silent*.
+   The ledger reports success while the table keeps its old shape.
+3. **During development, treat the first push that `migration-verify` applies as the commit.**
+   If the design is still in flux, develop the migration against an **ephemeral/local** DB and
+   only add the file to `mira-hub/db/migrations/` once its shape is settled.
+4. **Detection:** the read-only ingest-schema drift probe in `db-inspect.yml` (added 2026-06-24)
+   compares deployed `tag_events`/`approved_tags` against canonical `033`/`035`. Extend the same
+   pattern (deployed-vs-canonical column/constraint diff) for any table this matters for, and
+   prefer the **structural prevention** below over relying on detection.
+
+**Permanent prevention (recommended, see #2284):** an **ephemeral verify DB** for
+`migration-verify` (so drafts never accumulate on persistent staging) is the root fix; a
+**content-hash column** in `schema_migrations` (fail loud when an applied filename's content
+changes) is the strong backstop; this immutability rule is the doctrine layer.
+
 ## When this applies
 - Any new or altered file under `mira-hub/db/migrations/`.
 - Any new Hub table/column that is tenant-scoped or RLS-protected.

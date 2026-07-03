@@ -5,6 +5,9 @@ All settings overridable via environment variables where noted.
 
 from __future__ import annotations
 
+import os
+from datetime import timedelta
+
 from celery.schedules import crontab
 
 # ---------------------------------------------------------------------------
@@ -59,6 +62,15 @@ task_routes = {
     "mira_crawler.tasks.gdrive.*": {"queue": "ingest"},
     "mira_crawler.tasks.freshness.*": {"queue": "freshness"},
     "mira_crawler.tasks.component_template.*": {"queue": "ingest"},
+    # --- Historian recording: tag-diff historizer (#2343) + run-diff (#2341) ---
+    # Isolated on the dedicated "historian" queue so the single-purpose
+    # mira-historian-worker drains them without picking up other default work.
+    "mira_crawler.tasks.historize_runs.*": {"queue": "historian"},
+    "tasks.historize_runs.*": {"queue": "historian"},
+    "mira_crawler.tasks.tag_diff_historizer.*": {"queue": "historian"},
+    "tasks.tag_diff_historizer.*": {"queue": "historian"},
+    "mira_crawler.tasks.synthetic_dogfood.*": {"queue": "synthetic"},
+    "tasks.synthetic_dogfood.*": {"queue": "synthetic"},
     # --- LinkedIn draft generation ---
     "linkedin.*": {"queue": "celery"},
 }
@@ -94,6 +106,13 @@ task_annotations = {
     "mira_crawler.tasks.component_template.extract_component_template": {
         "rate_limit": "10/m",
     },
+    # Run-diff historizer — beat owns cadence (30s); cap defensively. The task
+    # is a fast no-op unless MIRA_RUN_DIFF_ENABLED=1.
+    "tasks.historize_runs.historize_runs": {"rate_limit": "4/m"},
+    # Tag-diff historizer (issue #2343) — beat owns the 5-min cadence; the
+    # rate limit is a defensive cap so a manual burst can't stampede.
+    "tasks.tag_diff_historizer.historize_tag_diffs": {"rate_limit": "1/m"},
+    "tasks.synthetic_dogfood.run_synthetic_dogfood_cycle": {"rate_limit": "1/h"},
 }
 
 # ---------------------------------------------------------------------------
@@ -107,20 +126,60 @@ task_annotations = {
 # Hours are UTC. 06:00 ET ≈ 10:00 UTC (EDT) / 11:00 UTC (EST). Single cron entry
 # at 10:00 UTC accepts ±1h DST drift, per spec.
 
-beat_schedule = {
-    "reddit-intent-scan": {
-        "task": "tasks.reddit_intent.scan_reddit_intent",
+_SYNTHETIC_DOGFOOD_SCHEDULE = {
+    "synthetic-dogfood-cycle": {
+        "task": "tasks.synthetic_dogfood.run_synthetic_dogfood_cycle",
         "schedule": crontab(minute=0, hour="*/6"),
     },
-    "youtube-intent-scan": {
-        "task": "tasks.youtube_intent.scan_youtube_intent",
-        "schedule": crontab(minute=0, hour=4),  # 00:00 ET (EDT)
+}
+
+# Historian recording profile (prod mira-historian-beat). Schedules ONLY the
+# tag-diff historizer (#2343) + run-diff (#2341, self-gated by MIRA_RUN_DIFF_ENABLED)
+# — deliberately excludes the intent monitors so enabling history recording in
+# prod does not also start unrelated discovery jobs.
+_HISTORIAN_SCHEDULE = {
+    "tag-diff-historizer": {
+        "task": "tasks.tag_diff_historizer.historize_tag_diffs",
+        "schedule": crontab(minute="*/5"),
     },
-    "intent-daily-digest": {
-        "task": "tasks.intent_digest.send_daily_digest",
-        "schedule": crontab(minute=0, hour=10),  # 06:00 ET (EDT)
+    "historize-runs": {
+        "task": "tasks.historize_runs.historize_runs",
+        "schedule": timedelta(seconds=30),
     },
 }
+
+if os.getenv("CELERY_BEAT_PROFILE") == "synthetic-dogfood":
+    beat_schedule = _SYNTHETIC_DOGFOOD_SCHEDULE
+elif os.getenv("CELERY_BEAT_PROFILE") == "historian":
+    beat_schedule = _HISTORIAN_SCHEDULE
+else:
+    beat_schedule = {
+        "reddit-intent-scan": {
+            "task": "tasks.reddit_intent.scan_reddit_intent",
+            "schedule": crontab(minute=0, hour="*/6"),
+        },
+        "youtube-intent-scan": {
+            "task": "tasks.youtube_intent.scan_youtube_intent",
+            "schedule": crontab(minute=0, hour=4),  # 00:00 ET (EDT)
+        },
+        "intent-daily-digest": {
+            "task": "tasks.intent_digest.send_daily_digest",
+            "schedule": crontab(minute=0, hour=10),  # 06:00 ET (EDT)
+        },
+        # Tag-diff historizer (issue #2343) — turn the raw tag_events stream
+        # into the meaningful-change tag_event_diffs stream every 5 minutes.
+        "tag-diff-historizer": {
+            "task": "tasks.tag_diff_historizer.historize_tag_diffs",
+            "schedule": crontab(minute="*/5"),
+        },
+        # Run-centric fault detection (#2341). Polls every 30s; the task itself
+        # is a no-op unless MIRA_RUN_DIFF_ENABLED=1, so the cadence is cheap.
+        "historize-runs": {
+            "task": "tasks.historize_runs.historize_runs",
+            "schedule": timedelta(seconds=30),
+        },
+        **_SYNTHETIC_DOGFOOD_SCHEDULE,
+    }
 
 # LinkedIn draft (linkedin.draft_post) still scheduled via Trigger.dev: Mon/Wed/Fri 12:00 UTC
 

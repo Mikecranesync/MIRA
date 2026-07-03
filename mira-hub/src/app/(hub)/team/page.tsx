@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Users, CheckCircle2, Clock, XCircle, Phone, Wrench, ClipboardList } from "lucide-react";
+import { CheckCircle2, Clock, XCircle, Phone, Wrench, ClipboardList } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useTranslations } from "next-intl";
 import { API_BASE } from "@/lib/config";
@@ -106,6 +106,10 @@ export default function TeamPage() {
   if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
     return <LabsStub feature="Team" />;
   }
+  return <TeamLabsPage />;
+}
+
+function TeamLabsPage() {
   const t = useTranslations("team");
   const tStatus = useTranslations("status");
 

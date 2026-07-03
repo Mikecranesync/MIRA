@@ -1,5 +1,57 @@
 # MIRA Release Notes
 
+### v3.55.3 (2026-07-03) - fix(hub): GET /api/assets/[id]/context 404'd for real assets (wrong id-space)
+- The UNS confirmation-gate context endpoint looked the `[id]` path param up in **`kg_entities`**, but that param is a **`cmms_equipment.id`** — the canonical asset id-space every other asset sub-route (`detail`/`documents`/`chat`/`validation-qa`) keys on. A CMMS-registered asset that hasn't been promoted to a `kg_entities` row (the common case) therefore returned **404 "Asset not found"** for an asset that plainly exists, breaking the "is this the right asset?" confirmation card. The route now resolves identity from `cmms_equipment` (404 only if truly absent there) and enriches `uns_path` from `kg_entities` via the same `(id::text=$ OR entity_id=$)` bridge the asset-chat route uses — `null` when there's no kg row. (Separate query, not a join: `cmms_equipment.tenant_id` is TEXT but `kg_entities.tenant_id` is UUID, so a column compare errors.) Found by the dogfood judge's contextualization path (`/context` 404 despite the asset existing); verified live against staging (query returns the asset) + 3 regression tests (`context/__tests__/route.test.ts`). Hub release `mira-hub/v2.24.2`.
+
+### v3.53.4 (2026-07-01) - feat(crew): synthetic-worker runner + dogfood judge + retries/--until-find
+> Note: `v3.53.3` was independently taken by #2387 on main; this crew PR ships as `v3.53.4`, so the runner + judge (originally staged as 3.53.3) is released here together with the retries / `--until-find` work.
+- Adds `tools/crew/dogfood/judge.sh` + four `.check` packs (maintenance-tech, contextualization, work-order, demo-readiness) that walk MIRA's core product paths against the live staging Hub as real QA personas and classify each GREEN/YELLOW/RED in **business language**, writing a two-minute founder report to `qa/dogfood/latest-report.md`. Every RED is cross-verified under a **second** persona session before it can be filed (finder≠verifier), deduped first, refused on INFRA/ambiguous; deterministic corpus-aware asset selection avoids flaky verdicts.
+- Adds the gated filer `tools/qa/create_issue.sh` + `tools/crew/run_synthetic_workers.sh`: no finding is filed without an independent reproduction, a distinct verifier, `dogfood`/`crew` labels, and (for P0) `--allow-p0`. Dry-run by default; no app/runtime code.
+- The synthetic-worker runner now persists across transient blips and keeps probing until it finds a real bug — **without lowering the verify-before-file gate**. `--retries N` (default 3, `--retry-delay`) treats a scenario as reproduced if the bug signal appears on ANY attempt (defeats network/deploy-not-landed flakiness, catches intermittent bugs); "reproduced" still means the deterministic bug signal was observed.
+- `--until-find` (+ `--max-rounds`/`--max-seconds` budget) re-runs ALL scenarios in rounds until one reproduces a real, gate-passing bug OR the budget is hit. A healthy system stops honestly at the budget with `found=0` ("nothing to fix") — it never invents a finding to satisfy the flag. Per-round artifacts land in `<out>/round-N/`.
+- Adds two false-positive-resistant probe scenarios so `--until-find` has real invariants to test: `wo-roundtrip` (create-time work-order priority/title must survive a re-read — #2375-class) and `asset-detail-parity` (a listed asset must be fetchable by id, read-only consistency). Both emit a bug signal ONLY on an unambiguous HTTP-200-but-wrong-data violation; any non-200 is treated as transient and refused, so HTTP flakiness is never filed as a bug. Hermetic tests — judge 10/10, runner **19/19** (12 original + 7 new), gate 7/7; shellcheck clean. Verified live against staging: retries visible, honest budget-exhaust, no manufactured finding.
+
+### v3.53.2 (2026-06-30) - fix(hub): GET /api/work-orders/[id] returns resolution + closed_at (#2375)
+- A completed work order read back with `resolution=null` and `closed_at=null` even though PATCH persisted them — the GET detail `SELECT` and `rowToWO` serializer omitted the closure columns, so the next technician saw a blank closure. The GET now selects and returns `resolution`, `fault_description`, and `closed_at`.
+- Found by the dogfood judge (`tools/crew/dogfood`) and reproduced field-by-field against staging (PATCH returns the values; GET dropped the keys entirely). Regression test `mira-hub/src/app/api/work-orders/[id]/route.test.ts`. Hub release `mira-hub/v2.24.1`.
+
+### v3.44.1 (2026-06-26) - fix(hub): wire Atlas SSO deploy secrets
+- Passes the shared Hub-to-Atlas SSO signing configuration into the production `mira-hub` container so the merged `/api/cmms/sso` route can sign live Atlas handoff assertions.
+- Makes synthetic Hub user seeding consume Doppler/env-backed per-persona passwords for live proof runs without logging credential values.
+
+### v3.43.1 (2026-06-26) - fix(hub): add Atlas CMMS SSO handoff
+- Adds a signed Hub-to-Atlas SSO bridge so authenticated Hub users open FactoryLM Works routes through `/api/cmms/sso` without typing separate Atlas credentials.
+- Routes the Hub CMMS setup page CTA and quick links through the SSO handoff, with regression coverage for token exchange, safe redirect fallback, and missing-secret handling.
+
+### v3.42.6 (2026-06-26) - fix(hub): route CMMS links into FactoryLM Works app
+- Fixes the Hub CMMS setup quick links and Atlas record-level deep links to use the live FactoryLM Works app route family (`/app/work-orders`, `/app/assets`, `/app/preventive-maintenance`, `/app/reports`) instead of marketing paths that return the provider's 404 content.
+- Adds focused regression coverage for the setup-page quick links and Atlas provider deep-link templates.
+
+### v3.42.5 (2026-06-25) - fix(web): canonical trailing-slash redirects
+- Fixes FactoryLM trailing-slash redirects so HTTPS proxy requests like `/pricing/` trim to the canonical no-slash HTTPS public URL. Redirect authority is allowlisted and normalized so hostile `X-Forwarded-Host` values, loopback hosts, and attacker-supplied public-host ports cannot steer `Location` headers.
+- Adds a CMMS health regression proving the Hub browser-facing CMMS URL remains `https://cmms.factorylm.com` and never exposes the internal Docker hostname `cmms-backend`.
+
+### v3.42.4 (2026-06-25) - feat(hub): one-board command center status view
+- Adds a Command Center one-board status panel backed by `/api/hub/status`, showing conveyor cell and Stardust block-zone running, blocked, faulted, and stale states in a compact responsive grid.
+
+### v3.42.3 (2026-06-25) - feat(hub): tenant-scoped Hub status API
+- Adds `/api/hub/status` for tenant-scoped one-board Hub status cards, backed by `live_signal_cache` and a deterministic Stardust/conveyor signal summarizer with regression tests for tenant query scoping and demo-session fallback.
+
+### v3.42.2 (2026-06-25) - fix(hub): React hook lint cleanup
+- Cleans the reported Hub React hook lint violations in admin users, alerts, and asset detail documents by preserving hook order and moving initial data fetch state updates out of effect-body function calls.
+
+### v3.42.1 (2026-06-25) - security(rag): tenant isolation and prompt-boundary hardening
+- Keeps `/api/knowledge/search` pinned to shared OEM rows only (`is_private = false`) and adds a behavioral regression test proving private tenant snippets are not serialized while shared snippets still return.
+- Moves retrieved RAG reference blocks out of system-role authority for Hub asset/node chat and bot RAG prompts. Retrieved docs are now framed as untrusted reference data in the final user turn, with forged source headers neutralized and citation labels sanitized.
+
+### v3.42.0 (2026-06-25) - feat(qa): synthetic dogfood agent loop
+- Adds a Celery-backed synthetic dogfood loop for the Hub production QA tenant. The worker runs the existing persona Playwright suite, writes raw/summarized artifacts, redacts evidence, classifies findings, and dry-run/files deduplicated GitHub issues for P0-P2 problems while leaving P3 noise in reports.
+- Adds a dedicated Playwright worker image plus SaaS `mira-redis`, `mira-synthetic-dogfood-worker`, and `mira-synthetic-dogfood-beat` services. The loop is default-off (`SYNTHETIC_DOGFOOD_ENABLED=0`) and issue writes require `DOGFOOD_ISSUE_MODE=write`.
+- Dry-run proof against `https://app.factorylm.com`: Playwright exit code 0, 0 findings, 0 GitHub writes. Runbook: `docs/runbooks/synthetic-dogfood-agents.md`.
+
+### v3.41.0 (2026-06-24) - feat(retrieval): approval-gated garage conveyor retrieval
+- Adds `MIRA_ENFORCE_APPROVED_RETRIEVAL` for approved-only KB retrieval, keeps it default-off, and includes the trusted-corpus backfill SQL required before enabling the gate. Hub `HAS_DOCUMENT` approval now marks the approved upload's chunks `verified=true`, source payloads expose `verified` plus `approved_source_count`, and the garage conveyor golden path proves unreviewed context is hidden until approved.
+
 Extracted from CLAUDE.md to keep the build-state file within the ~200 line compliance budget.
 For current build state, see `CLAUDE.md` in project root.
 

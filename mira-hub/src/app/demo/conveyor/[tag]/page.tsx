@@ -108,7 +108,6 @@ export default function ConveyorDemoPage({
   useEffect(() => {
     if (!isAuthed) return;
     let cancelled = false;
-    setLoading(true);
     fetch(`${API_BASE}/api/demo/customer/`)
       .then(async (res) => {
         if (!res.ok) {
@@ -373,7 +372,7 @@ export default function ConveyorDemoPage({
             >
               {chatHistory.length === 0 ? (
                 <p className="opacity-60">
-                  Try: <em>"Is the photo eye seeing the box?"</em>
+                  Try: <em>&quot;Is the photo eye seeing the box?&quot;</em>
                 </p>
               ) : (
                 <ul className="flex flex-col gap-3">

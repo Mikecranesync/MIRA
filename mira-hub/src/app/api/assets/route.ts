@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
 import { enrichAsset } from "@/lib/agents/asset-intelligence";
 import { generateAssetTag, validateAssetTag } from "@/lib/asset-tag";
@@ -78,6 +79,8 @@ export async function POST(req: Request) {
   }
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  const denied = requireCapability(ctx, "assets.create");
+  if (denied) return denied;
   try {
     const body = await req.json();
     const { name, tag, manufacturer, model, serialNumber, location, criticality, installDate, parentAssetId } = body;

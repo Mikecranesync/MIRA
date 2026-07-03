@@ -55,6 +55,7 @@ export default function AdminUsersPage() {
   const [systemHidden, setSystemHidden] = useState(0);
 
   const loadUsers = useCallback(async () => {
+    setLoading(true);
     const qs = showSystem ? "?includeSystem=1" : "";
     const res = await fetch(`${API_BASE}/api/admin/users/${qs}`);
     // Clean no-access instead of an indefinite spinner when the caller lacks
@@ -75,7 +76,38 @@ export default function AdminUsersPage() {
     setLoading(false);
   }, [showSystem]);
 
-  useEffect(() => { loadUsers(); }, [loadUsers]);
+  useEffect(() => {
+    let cancelled = false;
+    const qs = showSystem ? "?includeSystem=1" : "";
+
+    fetch(`${API_BASE}/api/admin/users/${qs}`)
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.status === 401 || res.status === 403) {
+          setDenied(true);
+          setLoading(false);
+          return;
+        }
+        if (!res.ok) {
+          setLoading(false);
+          return;
+        }
+        const { users: data, systemHidden: hidden } =
+          await res.json() as { users: ApiUser[]; systemHidden?: number };
+        if (cancelled) return;
+        setDenied(false);
+        setUsers(data);
+        setSystemHidden(hidden ?? 0);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showSystem]);
 
   async function setStatus(id: string, status: MutationStatus, label: string) {
     // Destructive transitions (Revoke / Expire) confirm before mutating;

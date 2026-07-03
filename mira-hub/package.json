@@ -1,6 +1,6 @@
 {
   "name": "mira-hub",
-  "version": "2.17.4",
+  "version": "2.24.2",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -9,7 +9,10 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "db:integration:setup": "node scripts/setup-integration-db.mjs",
+    "test:integration:dev": "node scripts/run-dev-integration-tests.mjs",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration:db": "npm run db:integration:setup && npm run test:integration",
     "db:check-order": "node db/check-migration-order.mjs",
     "sitemap": "node scripts/sitemap.mjs",
     "sitemap:check": "node scripts/sitemap.mjs --check",
@@ -17,6 +20,7 @@
     "cmms:sync": "bun run scripts/cmms-sync-worker.ts",
     "cmms:sync:once": "bun run scripts/cmms-sync-worker.ts --once",
     "seed:synthetic": "bun run scripts/seed-synthetic-users.ts",
+    "qa:factory:provision": "bun run scripts/provision-qa-factory.ts",
     "health-score:worker": "bun run scripts/health-score-worker.ts"
   },
   "dependencies": {

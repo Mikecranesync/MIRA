@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **62** (8 dynamic) |
-| API routes | **147** (43 dynamic) |
+| API routes | **150** (43 dynamic) |
 
 ## Pages (62)
 
@@ -80,7 +80,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (147)
+## API routes (150)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -127,7 +127,9 @@
 | `/api/channels` | static | `api/channels/route.ts` |
 | `/api/cmms/deep-link` | static | `api/cmms/deep-link/route.ts` |
 | `/api/cmms/health` | static | `api/cmms/health/route.ts` |
+| `/api/cmms/sso` | static | `api/cmms/sso/route.ts` |
 | `/api/cmms/stats` | static | `api/cmms/stats/route.ts` |
+| `/api/command-center/commissioning` | static | `api/command-center/commissioning/route.ts` |
 | `/api/command-center/display` | static | `api/command-center/display/route.ts` |
 | `/api/command-center/display/[id]` | dynamic | `api/command-center/display/[id]/route.ts` |
 | `/api/command-center/gateways` | static | `api/command-center/gateways/route.ts` |
@@ -161,6 +163,7 @@
 | `/api/events/[id]` | dynamic | `api/events/[id]/route.ts` |
 | `/api/export` | static | `api/export/route.ts` |
 | `/api/health` | static | `api/health/route.ts` |
+| `/api/hub/status` | static | `api/hub/status/route.ts` |
 | `/api/i3x/v1/info` | static | `api/i3x/v1/info/route.ts` |
 | `/api/i3x/v1/namespaces` | static | `api/i3x/v1/namespaces/route.ts` |
 | `/api/i3x/v1/objects` | static | `api/i3x/v1/objects/route.ts` |

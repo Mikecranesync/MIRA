@@ -1,3 +1,16 @@
+# Hot Cache — 2026-06-25 — Hub one-board Command Center status view
+
+Branch `feat/hub-one-board-task3` off `origin/main` @ `fbca9071`. Task 3 wires the one-board Hub UI on
+`/command-center`: `HubStatusBoard` polls `/api/hub/status` every 2s and renders conveyor cell plus
+Stardust block-zone running/blocked/faulted/stale states in a compact responsive grid. Mounted below
+the connected-gateways bar so it avoids PR #2274's live-view button hunk. Tests: affected Hub status
+slice 8/8 green, full Hub vitest 883/883 green, targeted lint green, default `npm run build` green.
+Full repo-wide Hub lint still fails on unrelated existing lint debt. Browser proof used local
+production `next start` with the existing Command Center auth-cookie pattern plus mocked status/tree
+routes; desktop/mobile screenshots in ignored `mira-hub/test-results/hub-one-board-task3/`.
+
+---
+
 # Hot Cache — 2026-06-23 — SimLab→UNS ingest: HTTP relay path turnkey (L1+L2)
 
 Branch `feat/simlab-relay-ingest-emit` off `fix/heartbeat-docling-to-tika` (carries the proveit/cappy
@@ -1023,3 +1036,70 @@ Mitsubishi Electric: 16 chunks (NULL model)
 - Scorecard: 35/57 passing (61%) — runs/2026-06-03T0109-offline-text.md
 - Action: issue-filed (#1678)
 - 22 patchable failures but BOTH hard-stops tripped (>15 failures AND 3 file clusters: engine.py, guardrails.py, active.yaml). Broad FSM-routing regression — fixtures stuck in AWAITING_UNS_CONFIRMATION/Q1/IDLE or over-advancing to ASSET_IDENTIFIED. Needs human bisect of recent engine.py state-machine edits.
+# Hot Cache - 2026-06-25 - Context spine unification audit
+
+Read-only FactoryLM/MIRA context spine investigation completed in `C:\Users\hharp\.codex\worktrees\a113\MIRA`.
+- Deliverables:
+  - `docs/investigations/2026-06-25-context-spine-subagent-audit.md`
+  - `docs/plans/2026-06-25-context-spine-unification-plan.md`
+- Verdict: MIRA Hub is the canonical self-serve spine; FactoryLM should feed it as a read-only edge/demo/proof source, not become a parallel KG/approval/readiness product.
+- Existing spine: Offline Contextualizer / PLC parser -> Hub contextualization staging -> human approve/reject -> UNS/KG + `knowledge_entries` -> readiness -> approved-context MIRA answers -> optional relay-approved telemetry -> SimLab proof.
+- Main glue gaps: legacy bundle import vs JSON intake semantics, document chunks not consistently counted in readiness/approval, approved-only retrieval is flag-gated and not visibly enforced everywhere, `/api/mira/ask` relationship filtering needs verified-only proof, and SimLab/live proof is not yet one command.
+- Smallest PR plan from the audit was docs/contract alignment first, then import review unification, approved-context readiness/answer gates, and SimLab proof runner.
+- Follow-up implementation slice: legacy bundle import now computes a bundle SHA, upserts/returns `ctx_import_batches`, attaches `ctx_sources.import_batch_id`, updates batch counts, and treats same-bundle re-import as idempotent. Added `mira-hub/src/app/api/contextualization/import/__tests__/route.bundle.test.ts`; verified with focused Vitest + ESLint.
+
+---
+# Hot Cache - 2026-06-25 - Hub DB integration harness planned and partially implemented
+
+Context spine work is in progress on the local worktree. Investigation and plan docs are present:
+`docs/investigations/2026-06-25-context-spine-subagent-audit.md`,
+`docs/plans/2026-06-25-context-spine-unification-plan.md`, and
+`docs/superpowers/plans/2026-06-25-hub-db-integration-test-database.md`.
+
+Sub-agent-driven DB harness status:
+- Complete/reviewed: integration-only CMMS/RLS fixture at `mira-hub/db/integration-fixtures/000_base_cmms_rls.sql`.
+- Complete/reviewed: disposable setup script at `mira-hub/scripts/setup-integration-db.mjs`.
+- Complete/reviewed: `mira-hub` npm scripts `db:integration:setup` and `test:integration:db`, plus integration test headers.
+- Added guarded Doppler-dev runner: `mira-hub/scripts/run-dev-integration-tests.mjs` and `npm run test:integration:dev`.
+- Applied contextualization migrations 055/056 to Doppler `factorylm/dev` (guarded to `ep-lingering-salad`); before tables were missing, after `contextualization_projects` and `ctx_import_batches` exist.
+- Green against real dev Neon: `doppler run --project factorylm --config dev -- npm run test:integration:dev -- src/app/api/contextualization/import/import.integration.test.ts "src/app/api/contextualization/batches/[batchId]/review/review.integration.test.ts"` -> 2 files, 9 tests passed, cleanup ran.
+- Full dev integration still fails only on `src/lib/auth/__tests__/rls-deny.integration.test.ts`: shared dev lacks `cmms_areas`/`cmms_sites`, and the integration CMMS fixture assumes UUID `tenants.id` while dev's existing tenant schema is not compatible. Keep this suite on the disposable-branch path.
+- Verified: package JSON parses; ESLint passes for touched scripts/tests; setup script refuses missing/unguarded DB env.
+
+---
+
+# Hot Cache - 2026-06-25 - Hub DB integration harness proven on disposable Neon
+
+Continuation result:
+- Created disposable Neon branch `br-super-cake-ahzi2o9f` from dev branch `br-fancy-firefly-aha05dz2`; branch was created with an 8-hour expiry.
+- Created clean test database `hub_integration_test4` on that branch.
+- `npm run test:integration:db` is green from empty schema: setup applied integration fixture plus allowlisted migrations `001`, `010`, `026`, `027`, `029`, `055`, `056`; smoke check passed; Vitest passed 3 files / 17 tests.
+- The setup harness intentionally does not replay every Hub migration; earlier full replay failed on unrelated legacy dependencies (`knowledge_entries`, then `work_orders`). The allowlist is the current DB contract for the integration slice under test.
+- Fixes made during proof: integration fixture handles missing app tenant settings with `NULLIF(..., '')::uuid`; RLS missing-context test now drops to `factorylm_app`; setup grants `factorylm_app` the KG table permissions needed by contextualization approval publishing.
+- Verification after the pass: ESLint on touched DB scripts/tests passed, `package.json` parses, `git diff --check` passed with only normal CRLF warnings.
+- Note: Node `pg` emits the current sslmode warning for Neon `ssl=require`; this is a dependency warning, not a test failure.
+
+---
+
+# Hot Cache - 2026-06-25 - Synthetic dogfood Celery loop PR #2293
+
+Branch `codex/synthetic-dogfood-agents` / PR #2293 adds the autonomous beta-polish loop Mike asked for:
+seeded Hub personas run via Celery + Playwright, raw artifacts land under `/opt/mira/data/synthetic-dogfood`,
+and P0/P1/P2 failures become redacted, fingerprint-deduped GitHub issues. P3 noise stays in reports.
+- Core code: `mira-crawler/agents/synthetic_dogfood.py`, `agents/github_issue_reporter.py`,
+  `tasks/synthetic_dogfood.py`.
+- SaaS wiring: `mira-crawler/Dockerfile.synthetic-dogfood` plus `docker-compose.saas.yml` services
+  `mira-redis`, `mira-synthetic-dogfood-worker`, and `mira-synthetic-dogfood-beat`.
+- Safety switches: default off (`SYNTHETIC_DOGFOOD_ENABLED=0`) and dry-run issues
+  (`DOGFOOD_ISSUE_MODE=dry_run`). Flip Doppler `factorylm/prd` only after the first artifact looks sane.
+- Runbook: `docs/runbooks/synthetic-dogfood-agents.md`.
+- Verified locally: `python -m pytest tests/test_synthetic_dogfood.py -q` = 11 passed; `py_compile` green;
+  Python YAML parse confirmed compose services/volume. Not run: `docker compose config` because Docker is
+  not installed in this Windows remote session.
+
+---
+
+## eval-fixer run — 2026-06-28
+- Scorecard: 47/57 passing (82%) — from 2026-06-27T2229 run
+- Action: issue-filed (commented on #1876)
+- Multi-file cluster hard stop: failures span engine.py (8 fixtures, FSM state mismatches) + guardrails.py/prompts (1 fixture, gs3_ground_fault keyword miss). Autopatch skipped; next steps in issue comment.

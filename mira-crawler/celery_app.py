@@ -13,9 +13,13 @@ Start worker:
 
 from __future__ import annotations
 
+import importlib
+import logging
 import os
 
 from celery import Celery
+
+logger = logging.getLogger("mira_crawler.celery_app")
 
 broker_url = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
 result_backend = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
@@ -40,49 +44,44 @@ app = Celery(
 )
 app.config_from_object(_config_module)
 
-# Explicit imports ensure task registration in both Docker (mira_crawler.*) and local dev
-try:
-    import mira_crawler.tasks.blog  # noqa: F401
-    import mira_crawler.tasks.component_template  # noqa: F401
-    import mira_crawler.tasks.content  # noqa: F401
-    import mira_crawler.tasks.discover  # noqa: F401
-    import mira_crawler.tasks.foundational  # noqa: F401
-    import mira_crawler.tasks.freshness  # noqa: F401
-    import mira_crawler.tasks.gdrive  # noqa: F401
-    import mira_crawler.tasks.ingest  # noqa: F401
-    import mira_crawler.tasks.intent_digest  # noqa: F401
-    import mira_crawler.tasks.linkedin  # noqa: F401
-    import mira_crawler.tasks.patents  # noqa: F401
-    import mira_crawler.tasks.playwright_crawler  # noqa: F401
-    import mira_crawler.tasks.reddit  # noqa: F401
-    import mira_crawler.tasks.reddit_intent  # noqa: F401
-    import mira_crawler.tasks.report  # noqa: F401
-    import mira_crawler.tasks.rss  # noqa: F401
-    import mira_crawler.tasks.sitemaps  # noqa: F401
-    import mira_crawler.tasks.social  # noqa: F401
-    import mira_crawler.tasks.youtube  # noqa: F401
-    import mira_crawler.tasks.youtube_intent  # noqa: F401
-except ImportError:
-    import tasks.blog  # noqa: F401
-    import tasks.component_template  # noqa: F401
-    import tasks.content  # noqa: F401
-    import tasks.discover  # noqa: F401
-    import tasks.foundational  # noqa: F401
-    import tasks.freshness  # noqa: F401
-    import tasks.gdrive  # noqa: F401
-    import tasks.ingest  # noqa: F401
-    import tasks.intent_digest  # noqa: F401
-    import tasks.linkedin  # noqa: F401
-    import tasks.patents  # noqa: F401
-    import tasks.playwright_crawler  # noqa: F401
-    import tasks.reddit  # noqa: F401
-    import tasks.reddit_intent  # noqa: F401
-    import tasks.report  # noqa: F401
-    import tasks.rss  # noqa: F401
-    import tasks.sitemaps  # noqa: F401
-    import tasks.social  # noqa: F401
-    import tasks.youtube  # noqa: F401
-    import tasks.youtube_intent  # noqa: F401
+# Explicit task imports register tasks in both Docker (mira_crawler.*) and local
+# dev (tasks.*) layouts. Each module is imported INDEPENDENTLY, and a failure is
+# logged + skipped rather than aborting boot. A slim worker image legitimately
+# lacks the dependencies of tasks it never runs — e.g. the historian queue image
+# (Dockerfile.celery) has no tools/ for component_template and no browsers for
+# playwright_crawler. Before this loop, one unimportable optional task module
+# crash-looped the entire worker/beat (historian deploy, 2026-06-28).
+_TASK_MODULES = (
+    "blog",
+    "component_template",
+    "content",
+    "discover",
+    "foundational",
+    "freshness",
+    "gdrive",
+    "historize_runs",
+    "ingest",
+    "intent_digest",
+    "linkedin",
+    "patents",
+    "playwright_crawler",
+    "reddit",
+    "reddit_intent",
+    "report",
+    "rss",
+    "sitemaps",
+    "social",
+    "tag_diff_historizer",
+    "synthetic_dogfood",
+    "youtube",
+    "youtube_intent",
+)
+
+for _task_name in _TASK_MODULES:
+    try:
+        importlib.import_module(f"{_tasks_package}.{_task_name}")
+    except Exception as _exc:  # noqa: BLE001 — boot must survive a missing optional task
+        logger.warning("celery: task module %r not loaded (%s)", _task_name, _exc)
 
 if __name__ == "__main__":
     app.start()

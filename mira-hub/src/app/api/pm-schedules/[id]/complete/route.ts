@@ -18,6 +18,7 @@
 
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import { requireCapability } from "@/lib/capabilities";
 import { withTenantContext } from "@/lib/tenant-context";
 import { addInterval } from "@/lib/pm-interval";
 
@@ -36,6 +37,8 @@ export async function POST(
 
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  const denied = requireCapability(ctx, "pm_schedules.complete");
+  if (denied) return denied;
 
   const { id } = await params;
   if (!UUID_RE.test(id)) {

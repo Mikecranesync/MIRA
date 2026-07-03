@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 62,
-    "apiRoutes": 147
+    "apiRoutes": 150
   },
   "pages": [
     "/admin",
@@ -112,7 +112,9 @@
     "/api/channels",
     "/api/cmms/deep-link",
     "/api/cmms/health",
+    "/api/cmms/sso",
     "/api/cmms/stats",
+    "/api/command-center/commissioning",
     "/api/command-center/display",
     "/api/command-center/display/[id]",
     "/api/command-center/gateways",
@@ -146,6 +148,7 @@
     "/api/events/[id]",
     "/api/export",
     "/api/health",
+    "/api/hub/status",
     "/api/i3x/v1/info",
     "/api/i3x/v1/namespaces",
     "/api/i3x/v1/objects",

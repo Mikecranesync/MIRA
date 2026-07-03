@@ -1,0 +1,19 @@
+{
+  "pages": {
+    "/": {
+      "title": "Discharge Conveyor CV-200 — Control & Status",
+      "viewPath": "ConvSimpleLive",
+      "docks": {}
+    },
+    "/conveyor": {
+      "title": "Discharge Conveyor CV-200 — Live HMI",
+      "viewPath": "Conveyor",
+      "docks": {}
+    },
+    "/maintenance": {
+      "title": "CV-200 Maintenance Intelligence",
+      "viewPath": "MaintenancePanel",
+      "docks": {}
+    }
+  }
+}

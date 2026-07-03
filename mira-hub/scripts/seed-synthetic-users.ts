@@ -2,7 +2,7 @@
 /**
  * Synthetic user seeder (#761–#765).
  *
- * Creates 4 test personas + realistic plant data in NeonDB. Fully idempotent —
+ * Creates RBAC test personas + realistic plant data in NeonDB. Fully idempotent —
  * re-running produces the same state via deterministic UUIDs and ON CONFLICT.
  *
  * Usage:
@@ -11,7 +11,8 @@
  * Required env:
  *   NEON_DATABASE_URL — NeonDB connection string
  *
- * ⚠️  Test credentials are intentionally hardcoded. Never use in production.
+ * Synthetic credentials default locally, but can be supplied by Doppler/env
+ * for live proof runs. Never use these personas for real customer access.
  */
 
 import { Pool } from "pg";
@@ -20,44 +21,100 @@ import bcrypt from "bcryptjs";
 // ── Deterministic UUIDs (re-seeding is idempotent) ──────────────────────────
 
 const SYNTH_TENANT_ID = "00000000-0000-0000-0000-000000000099";
+const SYNTH_ISOLATION_TENANT_ID = "00000000-0000-0000-0000-000000000199";
 
 const PERSONAS = [
   {
     id: "00000000-0000-0000-0000-000000000091",
     email: "carlos@synthetic.test",
+    passwordEnv: "SYNTHETIC_CARLOS_PASSWORD",
     name: "Carlos Mendez",
-    role: "owner",
+    role: "technician",
     status: "approved",
     bio: "Maintenance Technician, 2AM shift, Line 1-3",
   },
   {
     id: "00000000-0000-0000-0000-000000000092",
     email: "dana@synthetic.test",
+    passwordEnv: "SYNTHETIC_DANA_PASSWORD",
     name: "Dana Reyes",
-    role: "owner",
+    role: "manager",
     status: "approved",
     bio: "Maintenance Manager, owns PM schedule + WO approvals",
   },
   {
     id: "00000000-0000-0000-0000-000000000093",
     email: "plantmgr@synthetic.test",
+    passwordEnv: "SYNTHETIC_PLANTMGR_PASSWORD",
     name: "Jordan Taylor",
-    role: "owner",
+    role: "admin",
     status: "approved",
-    bio: "Plant Manager, reviews OEE + KPIs",
+    bio: "Tenant Admin, manages team access + workspace settings",
   },
   {
     id: "00000000-0000-0000-0000-000000000094",
     email: "cfo@synthetic.test",
+    passwordEnv: "SYNTHETIC_CFO_PASSWORD",
     name: "Pat Hoffman",
     role: "owner",
     status: "approved",
     bio: "CFO, tracks maintenance cost and downtime ROI",
   },
+  {
+    id: "00000000-0000-0000-0000-000000000095",
+    email: "scheduler@synthetic.test",
+    passwordEnv: "SYNTHETIC_SCHEDULER_PASSWORD",
+    name: "Sam Patel",
+    role: "scheduler",
+    status: "approved",
+    bio: "Maintenance Scheduler, owns PM calendar + reports",
+  },
+  {
+    id: "00000000-0000-0000-0000-000000000096",
+    email: "operator@synthetic.test",
+    passwordEnv: "SYNTHETIC_OPERATOR_PASSWORD",
+    name: "Olivia Grant",
+    role: "operator",
+    status: "approved",
+    bio: "Line Operator, reports issues and requests maintenance help",
+  },
 ] as const;
 
-// Shared test password — intentionally weak, synthetic-only
-const TEST_PASSWORD = "SynthTest2026!";
+const ISOLATION_PERSONAS = [
+  {
+    id: "00000000-0000-0000-0000-000000000197",
+    email: "isolation@synthetic.test",
+    passwordEnv: "SYNTHETIC_ISOLATION_PASSWORD",
+    name: "Ivy Tenant",
+    role: "technician",
+    status: "approved",
+    bio: "Second-tenant technician for cross-tenant isolation probes",
+  },
+] as const;
+
+type Persona = (typeof PERSONAS)[number] | (typeof ISOLATION_PERSONAS)[number];
+
+// Shared fallback password — intentionally weak, synthetic-only
+const SHARED_TEST_PASSWORD =
+  process.env.HUB_SYNTHETIC_PASSWORD ??
+  process.env.SYNTHETIC_USER_PASSWORD ??
+  process.env.SYNTHETIC_CARLOS_PASSWORD ??
+  "SynthTest2026!";
+const SHARED_TEST_PASSWORD_SOURCE = process.env.HUB_SYNTHETIC_PASSWORD
+  ? "HUB_SYNTHETIC_PASSWORD"
+  : process.env.SYNTHETIC_USER_PASSWORD
+    ? "SYNTHETIC_USER_PASSWORD"
+    : process.env.SYNTHETIC_CARLOS_PASSWORD
+      ? "SYNTHETIC_CARLOS_PASSWORD"
+      : "local fallback";
+
+function passwordForPersona(persona: Persona) {
+  return process.env[persona.passwordEnv] ?? SHARED_TEST_PASSWORD;
+}
+
+function passwordSourceForPersona(persona: Persona) {
+  return process.env[persona.passwordEnv] ? persona.passwordEnv : SHARED_TEST_PASSWORD_SOURCE;
+}
 
 const EQUIPMENT = [
   {
@@ -132,6 +189,15 @@ const EQUIPMENT = [
   },
 ] as const;
 
+// work_orders.user_id is NOT NULL (the creating/owning user). Synthetic WOs are
+// owned by Carlos (technician) — a real hub_users row in the synthetic tenant.
+const WO_OWNER_USER_ID = "00000000-0000-0000-0000-000000000091"; // carlos@synthetic.test
+
+// NOTE: work_orders.source is the `sourcetype` ENUM — valid labels are
+// telegram_*, auto_pm, hub_ui (migration 006). "synthetic_user" is NOT a label,
+// so it threw `invalid input value for enum sourcetype` and rolled back the whole
+// seed transaction (equipment included), leaving 0 synthetic assets. Synthetic WOs
+// use `hub_ui`; the WO-2026-SYNTH-* numbers are how we identify them, not `source`.
 const WORK_ORDERS = [
   {
     id: "00000000-0000-0000-0000-000000002001",
@@ -143,7 +209,7 @@ const WORK_ORDERS = [
     description: "VFD-07 tripped F005 (overcurrent) at 06:42. Check motor load, coupling alignment, and accel ramp P042. Third occurrence this month.",
     status: "open",
     priority: "high",
-    source: "synthetic_user",
+    source: "hub_ui",
     suggested_actions: ["Check motor current draw", "Inspect coupling alignment", "Verify P042 accel ramp setting"],
     safety_warnings: ["De-energize VFD before inspecting terminals", "Verify zero-energy state before entering panel"],
   },
@@ -157,7 +223,7 @@ const WORK_ORDERS = [
     description: "Belt tension measured at 85% of spec. Gradual drift over 6 weeks. Adjust take-up screw 2 turns CW per OEM procedure.",
     status: "in_progress",
     priority: "medium",
-    source: "synthetic_user",
+    source: "hub_ui",
     suggested_actions: ["Adjust take-up screw", "Re-measure tension after adjustment", "Check belt for wear at splice"],
     safety_warnings: ["LOTO conveyor drive before adjustment"],
   },
@@ -171,7 +237,7 @@ const WORK_ORDERS = [
     description: "Mechanical seal weeping at 2 drops/min. Replace with Goulds 200-201 seal kit. Isolate pump suction and discharge before opening.",
     status: "completed",
     priority: "critical",
-    source: "synthetic_user",
+    source: "hub_ui",
     suggested_actions: ["Replace mechanical seal", "Pressure test after reassembly"],
     safety_warnings: ["Isolate suction and discharge valves", "Verify system pressure is zero before opening"],
   },
@@ -185,7 +251,7 @@ const WORK_ORDERS = [
     description: "Scheduled quarterly lubrication. Apply NLGI 2 spindle grease to all axis bearings per Haas service manual §4.2.",
     status: "open",
     priority: "low",
-    source: "synthetic_user",
+    source: "hub_ui",
     suggested_actions: ["Apply grease to X/Y/Z axis bearings", "Check way lube levels", "Log completion in CMMS"],
     safety_warnings: [],
   },
@@ -398,8 +464,7 @@ async function main() {
   const client = await pool.connect();
 
   try {
-    console.log("[seed] Hashing password...");
-    const passwordHash = await bcrypt.hash(TEST_PASSWORD, 12);
+    console.log("[seed] Hashing persona passwords...");
 
     await client.query("BEGIN");
 
@@ -409,19 +474,41 @@ async function main() {
        ON CONFLICT (id) DO NOTHING`,
       [SYNTH_TENANT_ID, "Synthetic Test Plant — Lake Wales FL"],
     );
+    await client.query(
+      `INSERT INTO hub_tenants (id, name) VALUES ($1, $2)
+       ON CONFLICT (id) DO NOTHING`,
+      [SYNTH_ISOLATION_TENANT_ID, "Synthetic Isolation Plant — Lakeland FL"],
+    );
     console.log("[seed] Tenant upserted");
 
     // ── Users ────────────────────────────────────────────────────────────────
     for (const p of PERSONAS) {
+      const passwordHash = await bcrypt.hash(passwordForPersona(p), 12);
       await client.query(
         `INSERT INTO hub_users (id, email, password_hash, tenant_id, name, role, status)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (id) DO UPDATE SET
+           password_hash = EXCLUDED.password_hash,
            name   = EXCLUDED.name,
+           role   = EXCLUDED.role,
            status = EXCLUDED.status`,
         [p.id, p.email, passwordHash, SYNTH_TENANT_ID, p.name, p.role, p.status],
       );
-      console.log(`[seed] User: ${p.name} <${p.email}>`);
+      console.log(`[seed] User: ${p.name} <${p.email}> role=${p.role}`);
+    }
+    for (const p of ISOLATION_PERSONAS) {
+      const passwordHash = await bcrypt.hash(passwordForPersona(p), 12);
+      await client.query(
+        `INSERT INTO hub_users (id, email, password_hash, tenant_id, name, role, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (id) DO UPDATE SET
+           password_hash = EXCLUDED.password_hash,
+           name   = EXCLUDED.name,
+           role   = EXCLUDED.role,
+           status = EXCLUDED.status`,
+        [p.id, p.email, passwordHash, SYNTH_ISOLATION_TENANT_ID, p.name, p.role, p.status],
+      );
+      console.log(`[seed] Isolation user: ${p.name} <${p.email}> role=${p.role}`);
     }
 
     // ── cmms_equipment ───────────────────────────────────────────────────────
@@ -453,13 +540,13 @@ async function main() {
     for (const wo of WORK_ORDERS) {
       await client.query(
         `INSERT INTO work_orders
-           (id, tenant_id, work_order_number, equipment_id, manufacturer, model_number,
+           (id, tenant_id, user_id, work_order_number, equipment_id, manufacturer, model_number,
             title, description, status, priority, source, suggested_actions, safety_warnings)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::text[],$13::text[])
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::text[],$14::text[])
          ON CONFLICT (id) DO UPDATE SET
            status = EXCLUDED.status`,
         [
-          wo.id, SYNTH_TENANT_ID, wo.work_order_number, wo.equipment_id,
+          wo.id, SYNTH_TENANT_ID, WO_OWNER_USER_ID, wo.work_order_number, wo.equipment_id,
           wo.manufacturer, wo.model_number, wo.title, wo.description,
           wo.status, wo.priority, wo.source,
           wo.suggested_actions, wo.safety_warnings,
@@ -478,14 +565,16 @@ async function main() {
             interval_value, interval_unit, interval_type, criticality, confidence,
             source_citation, parts_needed, tools_needed, safety_requirements,
             estimated_duration_minutes, next_due_at, auto_extracted)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::text[],$14::text[],$15::text[],$16,$17,$18)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17,$18)
          ON CONFLICT (id) DO UPDATE SET
            next_due_at = EXCLUDED.next_due_at`,
         [
           pm.id, SYNTH_TENANT_ID, pm.equipment_id, pm.manufacturer, pm.model_number,
           pm.task, pm.interval_value, pm.interval_unit, pm.interval_type,
           pm.criticality, pm.confidence, pm.source_citation,
-          pm.parts_needed, pm.tools_needed, pm.safety_requirements,
+          // parts_needed / tools_needed / safety_requirements are jsonb on the Hub
+          // schema (not text[]) — serialize so pg binds them as JSON, not arrays.
+          JSON.stringify(pm.parts_needed), JSON.stringify(pm.tools_needed), JSON.stringify(pm.safety_requirements),
           pm.estimated_duration_minutes, pm.next_due_at, pm.auto_extracted,
         ],
       ).catch((err) => {
@@ -494,62 +583,81 @@ async function main() {
     }
     console.log(`[seed] ${PM_SCHEDULES.length} PM schedules`);
 
-    // ── KG entities ──────────────────────────────────────────────────────────
-    for (const e of KG_ENTITIES) {
-      await client.query(
-        `INSERT INTO kg_entities (id, tenant_id, entity_type, entity_id, name, properties)
-         VALUES ($1,$2,$3,$4,$5,$6)
-         ON CONFLICT (tenant_id, entity_type, entity_id) DO UPDATE SET
-           name       = EXCLUDED.name,
-           properties = EXCLUDED.properties,
-           updated_at = now()`,
-        [e.id, SYNTH_TENANT_ID, e.entity_type, e.entity_id, e.name, JSON.stringify(e.properties)],
-      ).catch((err) => {
-        if (!String(err).includes("does not exist")) throw err;
-      });
-    }
-    console.log(`[seed] ${KG_ENTITIES.length} KG entities`);
-
-    // ── KG relationships ─────────────────────────────────────────────────────
-    // Use IDs that exist in kg_entities or cmms_equipment+work_orders as KG entities
-    for (const r of KG_RELATIONSHIPS) {
-      await client.query(
-        `INSERT INTO kg_relationships
-           (tenant_id, source_id, target_id, relationship_type, confidence)
-         VALUES ($1,$2,$3,$4,1.0)
-         ON CONFLICT DO NOTHING`,
-        [SYNTH_TENANT_ID, r.source_id, r.target_id, r.relationship_type],
-      ).catch(() => { /* FK constraint if entity IDs differ — ignore */ });
-    }
-    console.log(`[seed] KG relationships`);
-
-    // ── KG triples ───────────────────────────────────────────────────────────
-    // Triples have no unique constraint — only seed if none exist for this tenant
-    const { rows: existingTriples } = await client.query(
-      `SELECT COUNT(*) FROM kg_triples_log WHERE tenant_id = $1 AND source = 'synthetic_seed'`,
-      [SYNTH_TENANT_ID],
-    ).catch(() => ({ rows: [{ count: "1" }] })); // skip if table absent
-
-    if (Number(existingTriples[0]?.count ?? 0) === 0) {
-      for (const t of KG_TRIPLES) {
-        await client.query(
-          `INSERT INTO kg_triples_log (tenant_id, subject, predicate, object, confidence, source)
-           VALUES ($1,$2,$3,$4,1.0,$5)`,
-          [SYNTH_TENANT_ID, t.subject, t.predicate, t.object, t.source],
-        ).catch(() => {});
-      }
-      console.log(`[seed] ${KG_TRIPLES.length} KG triples`);
-    } else {
-      console.log(`[seed] KG triples already present — skipping`);
-    }
-
+    // ── Commit the RBAC-critical core ────────────────────────────────────────
+    // Everything the deny-grid + isolation probe need (tenants, users, equipment,
+    // work_orders, pm_schedules) is now banked. The KG enrichment below runs
+    // OUTSIDE this transaction (autocommit) so its schema drift can never roll back
+    // the QA fixtures: a single failed statement poisons a pg transaction, and a
+    // JS-level .catch cannot un-poison it — only a separate autocommit unit can.
     await client.query("COMMIT");
+    console.log("[seed] ✓ Core RBAC fixtures committed (tenants/users/equipment/WOs/PMs)");
+
+    // ── KG enrichment (best-effort, autocommit — NOT in a shared transaction) ──
+    // Neither RBAC probe reads kg_*; these only power richer diagnostics fixtures.
+    // Each statement is its own autocommit unit, so a bad row is skipped, not fatal.
+    try {
+      // Natural key is (tenant_id, entity_type, name) since migrations 025/026.
+      let kgEnt = 0;
+      for (const e of KG_ENTITIES) {
+        await client.query(
+          `INSERT INTO kg_entities (id, tenant_id, entity_type, entity_id, name, properties)
+           VALUES ($1,$2,$3,$4,$5,$6)
+           ON CONFLICT (tenant_id, entity_type, name) DO UPDATE SET
+             properties = EXCLUDED.properties,
+             updated_at = now()`,
+          [e.id, SYNTH_TENANT_ID, e.entity_type, e.entity_id, e.name, JSON.stringify(e.properties)],
+        ).then(() => { kgEnt++; }).catch((err) => {
+          console.warn(`[seed]   kg_entity ${e.entity_id} skipped: ${String(err).split("\n")[0]}`);
+        });
+      }
+      console.log(`[seed] ${kgEnt}/${KG_ENTITIES.length} KG entities`);
+
+      // source_id/target_id FK kg_entities(id); rows pointing elsewhere are skipped.
+      let kgRel = 0;
+      for (const r of KG_RELATIONSHIPS) {
+        await client.query(
+          `INSERT INTO kg_relationships
+             (tenant_id, source_id, target_id, relationship_type, confidence)
+           VALUES ($1,$2,$3,$4,1.0)
+           ON CONFLICT DO NOTHING`,
+          [SYNTH_TENANT_ID, r.source_id, r.target_id, r.relationship_type],
+        ).then(() => { kgRel++; }).catch(() => { /* FK if target isn't a kg_entity — skip */ });
+      }
+      console.log(`[seed] ${kgRel}/${KG_RELATIONSHIPS.length} KG relationships`);
+
+      // Triples have no unique constraint — only seed if none exist for this tenant.
+      const { rows: existingTriples } = await client.query(
+        `SELECT COUNT(*) FROM kg_triples_log WHERE tenant_id = $1 AND source = 'synthetic_seed'`,
+        [SYNTH_TENANT_ID],
+      ).catch(() => ({ rows: [{ count: "1" }] })); // skip if table absent
+
+      if (Number(existingTriples[0]?.count ?? 0) === 0) {
+        for (const t of KG_TRIPLES) {
+          await client.query(
+            `INSERT INTO kg_triples_log (tenant_id, subject, predicate, object, confidence, source)
+             VALUES ($1,$2,$3,$4,1.0,$5)`,
+            [SYNTH_TENANT_ID, t.subject, t.predicate, t.object, t.source],
+          ).catch(() => {});
+        }
+        console.log(`[seed] ${KG_TRIPLES.length} KG triples`);
+      } else {
+        console.log(`[seed] KG triples already present — skipping`);
+      }
+    } catch (kgErr) {
+      console.warn(`[seed] KG enrichment incomplete (non-fatal): ${String(kgErr).split("\n")[0]}`);
+    }
 
     console.log("\n[seed] ✓ Done. Synthetic tenant: " + SYNTH_TENANT_ID);
-    console.log("[seed] Test credentials: password = " + TEST_PASSWORD);
+    console.log("[seed] Test credentials: password sources = " + [
+      ...new Set([...PERSONAS, ...ISOLATION_PERSONAS].map((persona) => passwordSourceForPersona(persona))),
+    ].join(", "));
     console.log("[seed] Personas:");
     for (const p of PERSONAS) {
-      console.log(`  ${p.name.padEnd(16)} <${p.email}>`);
+      console.log(`  ${p.name.padEnd(16)} <${p.email}> role=${p.role}`);
+    }
+    console.log("[seed] Isolation personas:");
+    for (const p of ISOLATION_PERSONAS) {
+      console.log(`  ${p.name.padEnd(16)} <${p.email}> role=${p.role} tenant=${SYNTH_ISOLATION_TENANT_ID}`);
     }
   } catch (err) {
     await client.query("ROLLBACK");

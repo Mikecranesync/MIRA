@@ -9,12 +9,16 @@ import { sessionOr401 } from "@/lib/session";
 import { decideSuggestion } from "@/lib/suggestion-accept";
 
 const ID = "22222222-2222-2222-2222-222222222222";
+// role:"owner" so the proposals.decide capability gate (#2360/#578) passes —
+// these tests cover decide behavior, not RBAC (the gate is unit-tested in
+// src/app/api/__tests__/rbac-route-gates.test.ts + lib/__tests__/capabilities.test.ts).
 const goodSession = {
   tenantId: "11111111-1111-1111-1111-111111111111",
   userId: "u1",
   email: "t@e.com",
   status: "active",
   trialExpiresAt: null,
+  role: "owner",
 };
 
 function post(id: string, body: unknown): Promise<Response> {

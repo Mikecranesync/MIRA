@@ -58,6 +58,10 @@ export default function ReportsPage() {
   if (process.env.NEXT_PUBLIC_LABS_ENABLED !== "true") {
     return <LabsStub feature="Reports" />;
   }
+  return <ReportsLabsPage />;
+}
+
+function ReportsLabsPage() {
   const t = useTranslations("reports");
   const [mounted, setMounted] = useState(false);
   const [narrative, setNarrative] = useState<string | null>(null);
@@ -67,7 +71,10 @@ export default function ReportsPage() {
 
   // Guard: recharts ResponsiveContainer uses ResizeObserver/getBoundingClientRect
   // which don't exist on the server. Only render charts after client mount.
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setMounted(true), 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   async function generateReport() {
     setLoading(true);
