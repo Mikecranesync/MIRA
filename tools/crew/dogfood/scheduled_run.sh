@@ -88,4 +88,33 @@ echo "[dogfood] done rc=$rc — report: qa/dogfood/latest-report.md  evidence: $
 # Append a one-line trend entry so a human can skim the history without opening reports.
 verdict="$(grep -m1 -oE 'Overall: (GREEN|YELLOW|RED)' qa/dogfood/latest-report.md 2>/dev/null || echo 'Overall: ?')"
 printf '%s  %s  (run %s)\n' "$TS" "$verdict" "$(basename "$OUT")" >> "$REPO/qa/dogfood/history.log"
+
+# Post the verdict to the rolling-status issue (Phase 2 — GitHub-side observability +
+# the heartbeat producer). Best-effort: a failed post must NEVER fail the run.
+# Report-only runs still post status (this is separate from issue FILING). The
+# `<!-- dogfood-heartbeat -->` marker lets dogfood-judge-heartbeat.yml find the newest
+# verdict without human comments resetting the freshness clock.
+DOGFOOD_STATUS_ISSUE="${DOGFOOD_STATUS_ISSUE:-2417}"
+if [ -z "${GH_TOKEN:-}" ]; then
+  GH_TOKEN="$(doppler secrets get GITHUB_PAT --project factorylm --config stg --plain 2>/dev/null)"; export GH_TOKEN
+fi
+if [ -n "${GH_TOKEN:-}" ] && [ -n "$DOGFOOD_STATUS_ISSUE" ]; then
+  counts="$(grep -m1 -oE '[0-9]+ red . [0-9]+ yellow . [0-9]+ green . [0-9]+ infra' qa/dogfood/latest-report.md 2>/dev/null || true)"
+  blockers="$(grep -A4 'Top blockers' qa/dogfood/latest-report.md 2>/dev/null | grep -E '^[0-9]+\.' | head -3 || true)"
+  body_file="$OUT/status-comment.md"
+  {
+    echo "<!-- dogfood-heartbeat -->"
+    echo "**$verdict** — \`$TS\` · HEAD \`$(git rev-parse --short HEAD 2>/dev/null)\`"
+    [ -n "$counts" ] && echo "_${counts}_"
+    if [ -n "$blockers" ]; then echo; echo "Top blockers:"; printf '%s\n' "$blockers"; fi
+    echo; echo "<sub>evidence on Bravo: \`$(basename "$OUT")\` · filing=$([ "${DOGFOOD_FILE_ISSUES:-0}" = "1" ] && echo on || echo off)</sub>"
+  } > "$body_file"
+  if gh issue comment "$DOGFOOD_STATUS_ISSUE" --repo Mikecranesync/MIRA --body-file "$body_file" >/dev/null 2>&1; then
+    echo "[dogfood] posted verdict to status issue #$DOGFOOD_STATUS_ISSUE"
+  else
+    echo "[dogfood] WARN status post to #$DOGFOOD_STATUS_ISSUE failed (non-fatal)"
+  fi
+else
+  echo "[dogfood] status post skipped — no GH token or issue set (non-fatal)"
+fi
 exit "$rc"

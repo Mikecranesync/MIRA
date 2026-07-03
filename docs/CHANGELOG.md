@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.58.2 (2026-07-03) - feat(crew): dogfood routine observability + heartbeat (durability Phase 2)
+- Makes the 4h dogfood judge **observable and self-monitoring** so it can't die silently. `scheduled_run.sh` now posts each run's verdict (GREEN/YELLOW/RED + counts + top blockers + evidence pointer) to a durable tracking issue (**#2417**) with a `<!-- dogfood-heartbeat -->` marker — best-effort, never fails the run, works in report-only mode. You see every verdict in GitHub (phone/email), no SSH to Bravo.
+- Adds `.github/workflows/dogfood-judge-heartbeat.yml` — a **dead-man's-switch** that runs on GitHub every 6h, reads only #2417 (no staging access, so a Bravo reboot can't kill it), and **fails/notifies if the newest verdict is >9h old** (2+ missed 4h runs = the routine stopped). Verified live: a real run posted a YELLOW verdict to #2417; the freshness check reads it (fresh → OK, simulated 12h → fires). actionlint + `shellcheck -S warning` clean. Phase 2 of `docs/plans/2026-07-03-dogfood-routine-durability.md`.
+
 ### v3.57.1 (2026-07-03) - ci(crew): guard the synthetic-worker + dogfood safety tests
 - Adds `.github/workflows/crew-tests.yml` — Phase 1 of the dogfood-routine durability plan (`docs/plans/2026-07-03-dogfood-routine-durability.md`). Runs `shellcheck -S warning` on the crew scripts + the three hermetic suites (runner 19 / judge 10 / gate 7 = **36 tests**, `gh` shimmed, no network) on any PR touching `tools/crew/**` or `tools/qa/create_issue.sh`. These suites are the only thing that keeps the **verify-before-file gate** honest (independent reproduction + distinct verifier + dedupe); before this they ran in NO CI, so the gate could silently regress into filing false bugs. The plan doc lays out Phases 2–5 (heartbeat/observability, seeder-mirror guard, auto-filing + escalation, and moving execution off Bravo when a public staging URL exists).
 

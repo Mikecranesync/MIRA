@@ -14,7 +14,7 @@ regresses) *or* silently die (the Bravo schedule stops and nobody notices).
 | Versioning / rollback | ✅ | `version-gate.yml` + `version-tag.yml` |
 | 4h dogfood judge run | ⚠️ Bravo-only | `com.factorylm.dogfood-judge` launchd; **definition** committed (`scheduled_run.sh` + plist) |
 | Crew/dogfood hermetic tests (runner 19 / judge 10 / gate 7) | ❌ **no CI** | fixed by **Phase 1** |
-| Schedule observability (silent-death) | ❌ none | **Phase 2** |
+| Schedule observability (silent-death) | ✅ shipped | verdict → issue #2417 + `dogfood-judge-heartbeat.yml` dead-man's-switch (**Phase 2**) |
 | Seeder `tenants` mirror | ⚠️ unguarded | **Phase 3** |
 | Auto-filing + RED escalation | ⏭️ off by design | **Phase 4** |
 | Move execution off Bravo | ⛔ blocked (no public staging URL) | **Phase 5** |
@@ -31,7 +31,13 @@ plus the three hermetic suites (36 tests, `gh` shimmed, no network, ~1 min):
   they could silently regress into filing false bugs — the worst failure mode.
 - **Done when:** the workflow is green on a crew-touching PR (this PR).
 
-## Phase 2 — Observability + heartbeat (make silence detectable)
+## Phase 2 — Observability + heartbeat (make silence detectable) ✅ SHIPPED
+
+Tracking issue **#2417**; `scheduled_run.sh` posts each verdict there;
+`dogfood-judge-heartbeat.yml` is the GH-side dead-man's-switch. Verified live:
+a real run posted a YELLOW verdict to #2417, and the freshness check reads it
+(fresh → OK, >9h → fail). 2c (skip-clean placeholder) folded into the heartbeat's
+`workflow_dispatch` — not a separate file.
 
 The Bravo job can stop (reboot, LaunchAgent unload) and nobody would know. Fix by
 making it *report* and *alarm on staleness* — the RBAC job's "post to #578" pattern.
