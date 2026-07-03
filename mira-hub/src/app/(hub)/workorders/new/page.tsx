@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { API_BASE } from "@/lib/config";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Search, QrCode, Camera, CheckCircle2, Loader2, X, ImagePlus } from "lucide-react";
@@ -8,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OpenInCMMSButton } from "@/components/cmms/open-in-cmms-button";
 import { useTranslations } from "next-intl";
+import { parseWorkOrderPrefill } from "./prefill";
 
 type AssetOption = { id: string; name: string; tag: string; location: string };
 
@@ -41,6 +43,14 @@ function toAssetOption(a: AssetRow): AssetOption {
 }
 
 export default function NewWorkOrderPage() {
+  return (
+    <Suspense>
+      <NewWorkOrderPageInner />
+    </Suspense>
+  );
+}
+
+function NewWorkOrderPageInner() {
   const t = useTranslations("workorders");
   const tCommon = useTranslations("common");
   const tPriority = useTranslations("priority");
@@ -52,10 +62,18 @@ export default function NewWorkOrderPage() {
     { value: "Critical", label: tPriority("critical"), desc: t("priorityDescs.critical"), color: "#DC2626", bg: "#FEE2E2" },
   ];
 
+  // Prefill from an anomaly→work-order deep link (MachineMemoryCard "Create
+  // work order" button — master-plan T4). All three are optional; a normal
+  // "New work order" nav click carries none of them.
+  const searchParams = useSearchParams();
+  const prefill = parseWorkOrderPrefill(searchParams);
+  const prefillTitle = prefill.title;
+  const sourceRunDiffId = prefill.sourceRunDiffId;
+
   const [step, setStep] = useState(1);
   const [assetQuery, setAssetQuery] = useState("");
   const [selectedAsset, setSelectedAsset] = useState<AssetOption | null>(null);
-  const [description, setDescription] = useState("");
+  const [description, setDescription] = useState(() => prefill.description);
   const [priority, setPriority] = useState("Medium");
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -162,10 +180,11 @@ export default function NewWorkOrderPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           equipment_id: selectedAsset.id,
-          title: `Issue: ${selectedAsset.name}`,
+          title: prefillTitle || `Issue: ${selectedAsset.name}`,
           description: description.trim(),
           fault_description: description.trim(),
           priority: priority.toLowerCase(),
+          ...(sourceRunDiffId ? { source_run_diff_id: sourceRunDiffId } : {}),
         }),
       });
       if (!res.ok) {
@@ -519,6 +538,10 @@ export default function NewWorkOrderPage() {
               <h2 className="text-base font-semibold mb-1" style={{ color: "var(--foreground)" }}>{t("reviewSubmit")}</h2>
               <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>{t("confirmDetails")}</p>
             </div>
+
+            {sourceRunDiffId && (
+              <input type="hidden" name="source_run_diff_id" value={sourceRunDiffId} />
+            )}
 
             <div className="card divide-y" style={{ borderColor: "var(--border)" }}>
               {[

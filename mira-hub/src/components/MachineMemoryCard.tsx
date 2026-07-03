@@ -151,11 +151,17 @@ export function MachineMemoryCard({ assetId, initialData, poll = true }: Machine
         </>
       )}
 
-      <Link href="/workorders/new">
+      {data?.latest_diffs[0] ? (
+        <Link href={workOrderPrefillHref(data.uns_path, data.latest_diffs[0])}>
+          <Button variant="outline" size="sm">
+            Create work order
+          </Button>
+        </Link>
+      ) : (
         <Button variant="outline" size="sm" disabled>
-          Create work order (soon)
+          Create work order (no anomaly yet)
         </Button>
-      </Link>
+      )}
     </div>
   );
 }
@@ -186,4 +192,28 @@ function StatusPill({ label, value }: { label: string; value: string }) {
 function formatTs(ts: string | null): string {
   if (!ts) return "—";
   return ts.slice(0, 16).replace("T", " ");
+}
+
+/** Last UNS segment as a short human label, e.g. "enterprise...cv_101" -> "CV-101". */
+function assetLabelFromUnsPath(unsPath: string | null): string {
+  if (!unsPath) return "Asset";
+  const last = unsPath.split(".").filter(Boolean).pop() ?? unsPath;
+  return last.replace(/_/g, "-").toUpperCase();
+}
+
+/** Build the /workorders/new deep-link that prefills from the latest anomaly
+ * diff (master-plan T4 — the anomaly→work-order link). */
+function workOrderPrefillHref(unsPath: string | null, diff: LatestDiff): string {
+  const label = assetLabelFromUnsPath(unsPath);
+  const title = `[${label}] ${diff.diff_type ?? "anomaly"} on ${diff.tag_path}`;
+  const description = diff.next_check
+    ? `${diff.severity} — next check: ${diff.next_check}`
+    : diff.severity;
+
+  const params = new URLSearchParams({
+    prefill_title: title,
+    prefill_description: description,
+    source_run_diff_id: diff.diff_id,
+  });
+  return `/workorders/new?${params.toString()}`;
 }
