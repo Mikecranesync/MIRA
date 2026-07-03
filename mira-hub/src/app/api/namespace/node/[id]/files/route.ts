@@ -29,6 +29,8 @@ interface FileRow {
   size_bytes: string;
   source: "direct" | "upload";
   created_at: string;
+  upload_id: string | null;
+  verified: boolean;
 }
 
 export async function GET(
@@ -55,16 +57,27 @@ export async function GET(
       );
       if (nodeCheck.rows.length === 0) return null;
 
-      // Direct uploads — never select content.
+      // Parked originals — never select content.
       const directRes = await c.query<FileRow>(
-        `SELECT id, filename, mime_type, size_bytes::text, 'direct' AS source, created_at
+        `SELECT id, filename, mime_type, size_bytes::text, 'direct' AS source,
+                created_at, upload_id::text AS upload_id, verified
          FROM namespace_direct_uploads
          WHERE node_id = $1 AND tenant_id = $2
          ORDER BY created_at DESC`,
         [id, ctx.tenantId],
       );
 
-      return directRes.rows.map((r) => ({ ...r, size_bytes: Number(r.size_bytes) }));
+      return directRes.rows.map((r) => ({
+        id: r.id,
+        filename: r.filename,
+        mime_type: r.mime_type,
+        size_bytes: Number(r.size_bytes),
+        source: r.source,
+        created_at: r.created_at,
+        verified: r.verified === true,
+        indexed: r.upload_id !== null,
+        upload_id: r.upload_id,
+      }));
     });
 
     if (files === null) {
@@ -73,11 +86,22 @@ export async function GET(
 
     // #1900: also list PDFs indexed into this node (hub_uploads v2 attach) so a
     // folder holding a citable manual doesn't read "0 files / No files attached".
-    // hub_uploads is an app-pool table (no RLS) — query on the owner pool. These
-    // are read-only here (source 'upload'): no raw bytes are parked in
-    // namespace_direct_uploads, so the client renders them as indexed entries with
-    // no download/delete. A failure must never break the panel.
-    let indexed: Array<Omit<FileRow, "size_bytes"> & { size_bytes: number }> = [];
+    // hub_uploads is an app-pool table (no RLS) — query on the owner pool. Since
+    // the filing cabinet parks the original bytes alongside ingest, a document
+    // usually appears as a `direct` row carrying upload_id; only legacy uploads
+    // (pre-parking) surface here as read-only `upload` rows (no bytes to
+    // download/delete). A failure must never break the panel.
+    const parkedUploadIds = new Set(files.map((f) => f.upload_id).filter(Boolean));
+    let indexed: Array<{
+      id: string;
+      filename: string;
+      mime_type: string;
+      size_bytes: number;
+      source: "upload";
+      created_at: string;
+      verified: boolean;
+      indexed: boolean;
+    }> = [];
     try {
       const r = await pool.query<{
         id: string;
@@ -99,23 +123,52 @@ export async function GET(
           ORDER BY created_at DESC`,
         [ctx.tenantId, id],
       );
-      indexed = r.rows.map((row) => ({
-        id: row.id,
-        filename: row.filename,
-        mime_type: row.mime_type,
-        size_bytes: Number(row.size_bytes),
-        source: "upload" as const,
-        created_at: row.created_at,
-      }));
+      indexed = r.rows
+        .filter((row) => !parkedUploadIds.has(row.id))
+        .map((row) => ({
+          id: row.id,
+          filename: row.filename,
+          mime_type: row.mime_type,
+          size_bytes: Number(row.size_bytes),
+          source: "upload" as const,
+          created_at: row.created_at,
+          verified: false,
+          indexed: true,
+        }));
     } catch (err) {
       console.warn("[api/namespace/node/:id/files] indexed list skipped", err);
     }
 
-    return NextResponse.json({ files: [...indexed, ...files] });
+    // Strip the internal join key before responding.
+    const direct = files.map((f) => ({
+      id: f.id,
+      filename: f.filename,
+      mime_type: f.mime_type,
+      size_bytes: f.size_bytes,
+      source: f.source,
+      created_at: f.created_at,
+      verified: f.verified,
+      indexed: f.indexed,
+    }));
+    return NextResponse.json({ files: [...indexed, ...direct] });
   } catch (err) {
     console.error("[api/namespace/node/:id/files GET]", err);
     return NextResponse.json({ error: "Query failed" }, { status: 500 });
   }
+}
+
+/** Map a server-side ingest error to a message the panel can show verbatim. */
+function friendlyIngestError(msg: string): string {
+  if (/unpdf\/pdfjs|Serverless PDF\.js bundle|Cannot find module/i.test(msg)) {
+    return "PDF processing is temporarily unavailable on the server. Please try again shortly.";
+  }
+  if (/Invalid PDF|getDocument|extractText|XRef|FormatError/i.test(msg)) {
+    return "We couldn't read this PDF — it may be image-only, encrypted, or corrupted. Try a text-based PDF.";
+  }
+  if (/permission denied|does not exist|violates|constraint/i.test(msg)) {
+    return "Server storage error while saving the document. The error has been logged.";
+  }
+  return "Couldn't process this file. The error has been logged — please try again.";
 }
 
 export async function POST(
@@ -172,31 +225,10 @@ export async function POST(
       return NextResponse.json({ error: "node not found" }, { status: 404 });
     }
 
-    // Indexable docs (PDF) → mira-ingest-v2 path: chunk into knowledge_entries,
-    // attached to this node (folder = brain). Re-readable + citable via node chat.
-    if (isPdf) {
-      const { uploadId, chunkCount } = await ingestPdfToNode({
-        tenantId: ctx.tenantId,
-        nodeId: id,
-        unsPath: node.uns_path,
-        filename: file.name,
-        mimeType: mimeRaw,
-        sizeBytes: file.size,
-        buffer,
-      });
-      return NextResponse.json(
-        {
-          ok: true,
-          indexed: true,
-          uploadId,
-          chunkCount,
-          file: { filename: file.name, size_bytes: file.size },
-        },
-        { status: 201 },
-      );
-    }
-
-    // Non-indexable files (images / CAD / etc.) → park the raw bytes (unchanged).
+    // Filing cabinet: park the original bytes FIRST, for every upload. The
+    // document is kept even when downstream indexing fails (an image-only PDF
+    // used to 500 and be lost entirely) — the cabinet never loses a file it
+    // accepted.
     const directId = await withTenantContext(ctx.tenantId, async (c) => {
       const ins = await c.query<{ id: string }>(
         `INSERT INTO namespace_direct_uploads
@@ -207,6 +239,56 @@ export async function POST(
       );
       return ins.rows[0].id;
     });
+
+    // Indexable docs (PDF) → mira-ingest-v2 path: chunk into knowledge_entries,
+    // attached to this node (folder = brain). Re-readable + citable via node chat.
+    if (isPdf) {
+      try {
+        const { uploadId, chunkCount } = await ingestPdfToNode({
+          tenantId: ctx.tenantId,
+          nodeId: id,
+          unsPath: node.uns_path,
+          filename: file.name,
+          mimeType: mimeRaw,
+          sizeBytes: file.size,
+          buffer,
+        });
+        // Link the parked original to its indexed upload so the panel shows ONE
+        // row per document (downloadable AND citable) and the tree doesn't
+        // double-count it.
+        await withTenantContext(ctx.tenantId, async (c) => {
+          await c.query(
+            `UPDATE namespace_direct_uploads SET upload_id = $1
+              WHERE id = $2 AND tenant_id = $3`,
+            [uploadId, directId, ctx.tenantId],
+          );
+        });
+        return NextResponse.json(
+          {
+            ok: true,
+            indexed: true,
+            uploadId,
+            chunkCount,
+            file: { id: directId, filename: file.name, size_bytes: file.size },
+          },
+          { status: 201 },
+        );
+      } catch (err) {
+        // The original is already parked — the file is NOT lost. Report the
+        // indexing failure honestly (#1899: visible, durable) without failing
+        // the upload.
+        console.error("[api/namespace/node/:id/files POST] ingest failed (file kept)", err);
+        return NextResponse.json(
+          {
+            ok: true,
+            indexed: false,
+            warning: friendlyIngestError((err as Error)?.message ?? ""),
+            file: { id: directId, filename: file.name, size_bytes: file.size },
+          },
+          { status: 201 },
+        );
+      }
+    }
 
     return NextResponse.json(
       { ok: true, indexed: false, file: { id: directId, filename: file.name, size_bytes: file.size } },
@@ -219,11 +301,7 @@ export async function POST(
     // error row), while the full error stays server-side in the log above.
     const msg = (err as Error)?.message ?? "";
     let userError = "Couldn't save this file. The error has been logged — please try again.";
-    if (/unpdf\/pdfjs|Serverless PDF\.js bundle|Cannot find module/i.test(msg)) {
-      userError = "PDF processing is temporarily unavailable on the server. Please try again shortly.";
-    } else if (/Invalid PDF|getDocument|extractText|XRef|FormatError/i.test(msg)) {
-      userError = "We couldn't read this PDF — it may be image-only, encrypted, or corrupted. Try a text-based PDF.";
-    } else if (/permission denied|does not exist|violates|constraint/i.test(msg)) {
+    if (/permission denied|does not exist|violates|constraint/i.test(msg)) {
       userError = "Server storage error while saving the document. The error has been logged.";
     }
     return NextResponse.json({ error: userError }, { status: 500 });
