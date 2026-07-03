@@ -178,6 +178,7 @@
     "/api/me",
     "/api/mira/ask",
     "/api/namespace/files/[id]",
+    "/api/namespace/files/[id]/verify",
     "/api/namespace/node",
     "/api/namespace/node/[id]",
     "/api/namespace/node/[id]/chat",

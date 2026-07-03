@@ -5,9 +5,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown, ChevronRight,
   Folder, FolderOpen,
-  Cog, Factory, FileText, Layers,
+  Cog, Factory, FileText, FileImage, FileSpreadsheet, Layers,
   RefreshCw, FolderPlus, Upload, ChevronsDownUp, ChevronsUpDown,
-  Trash2, Pencil, Bot,
+  Trash2, Pencil, Bot, ShieldCheck, Shield,
 } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 import { NodeChat } from "@/components/namespace/NodeChat";
@@ -36,6 +36,10 @@ interface FileRecord {
   size_bytes: number;
   source: "direct" | "upload";
   created_at: string;
+  /** Human vouched for this document — retained forever, delete refused. */
+  verified: boolean;
+  /** Chunked into knowledge_entries (citable by Ask MIRA). */
+  indexed: boolean;
 }
 
 type EditingState = { nodeId: string; value: string } | null;
@@ -272,6 +276,7 @@ export default function NamespacePage() {
     if (!files || files.length === 0) return;
     setUploadState({ nodeId, state: "uploading" });
     try {
+      const warnings: string[] = [];
       for (const file of Array.from(files)) {
         const fd = new FormData();
         fd.append("file", file);
@@ -279,17 +284,22 @@ export default function NamespacePage() {
           method: "POST",
           body: fd,
         });
+        const body = await res.json().catch(() => ({})) as { error?: string; warning?: string };
         if (!res.ok) {
-          const body = await res.json().catch(() => ({})) as { error?: string };
           throw new Error(body.error ?? `HTTP ${res.status}`);
         }
+        // Filed but not indexed (e.g. an image-only PDF): the original is kept
+        // in the cabinet — tell the user why Ask MIRA won't cite it.
+        if (body.warning) warnings.push(`${file.name}: ${body.warning}`);
       }
       setUploadState({ nodeId, state: "done" });
       // Invalidate file cache so next view reload refetches.
       setNodeFiles((prev) => { const n = { ...prev }; delete n[nodeId]; return n; });
       if (selected?.id === nodeId) void loadFiles(nodeId);
       await refreshTree();
-      showToast(`${files.length} file${files.length === 1 ? "" : "s"} uploaded`);
+      showToast(warnings.length > 0
+        ? `Filed, but not indexed — ${warnings[0]}`
+        : `${files.length} file${files.length === 1 ? "" : "s"} uploaded`);
       setTimeout(() => setUploadState(null), 2000);
     } catch (e) {
       // #1899: keep the failure VISIBLE — a durable error row in the Files
@@ -314,6 +324,33 @@ export default function NamespacePage() {
       await refreshTree();
     } catch (e) {
       showToast(`Delete failed: ${(e as Error).message}`);
+    }
+  }
+
+  // ── File verify (kept forever) ─────────────────────────────────────────────
+
+  async function handleVerifyFile(fileId: string, nodeId: string, verified: boolean) {
+    try {
+      const res = await fetch(`${API_BASE}/api/namespace/files/${fileId}/verify/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ verified }),
+      });
+      if (res.status === 403) {
+        showToast("Only workspace admins can verify documents");
+        return;
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      setNodeFiles((prev) => ({
+        ...prev,
+        [nodeId]: (prev[nodeId] ?? []).map((f) => (f.id === fileId ? { ...f, verified } : f)),
+      }));
+      showToast(verified ? "Verified — this document is now kept forever" : "Verification removed");
+    } catch (e) {
+      showToast(`Verify failed: ${(e as Error).message}`);
     }
   }
 
@@ -501,6 +538,7 @@ export default function NamespacePage() {
               onChatOpened={() => setPendingChat(false)}
               onSelect={handleSelect}
               onDeleteFile={(fileId) => handleDeleteFile(fileId, selected.id)}
+              onVerifyFile={(fileId, verified) => handleVerifyFile(fileId, selected.id, verified)}
               onUpload={() => fileInputRef.current?.click()}
             />
           ) : (
@@ -776,7 +814,7 @@ function TreeNode({
 
 function ContentPanel({
   node, files, uploadState, openChat, onChatOpened,
-  onSelect, onDeleteFile, onUpload,
+  onSelect, onDeleteFile, onVerifyFile, onUpload,
 }: {
   node: NamespaceNode;
   files: FileRecord[] | undefined;
@@ -785,6 +823,7 @@ function ContentPanel({
   onChatOpened: () => void;
   onSelect: (n: NamespaceNode) => void;
   onDeleteFile: (fileId: string) => void;
+  onVerifyFile: (fileId: string, verified: boolean) => void;
   onUpload: () => void;
 }) {
   const breadcrumbs = useMemo(() => {
@@ -880,6 +919,7 @@ function ContentPanel({
             files={files}
             uploadState={uploadState}
             onDeleteFile={onDeleteFile}
+            onVerifyFile={onVerifyFile}
             onUpload={onUpload}
           />
         )}
@@ -934,11 +974,60 @@ function ChildrenSection({ node, onSelect }: {
   );
 }
 
-function FilesSection({ nodeId, files, uploadState, onDeleteFile, onUpload }: {
+function isPicture(f: FileRecord): boolean {
+  return f.source === "direct" && f.mime_type.startsWith("image/");
+}
+
+function FileTypeIcon({ mime, className }: { mime: string; className?: string }) {
+  if (mime.startsWith("image/")) return <FileImage className={className} />;
+  if (mime === "text/csv" || mime.includes("spreadsheet") || mime.includes("ms-excel")) {
+    return <FileSpreadsheet className={className} />;
+  }
+  return <FileText className={className} />;
+}
+
+/** Green shield chip on verified rows — the filing cabinet's "kept forever" mark. */
+function VerifiedBadge() {
+  return (
+    <span
+      className="ml-1 inline-flex items-center gap-0.5 rounded bg-emerald-100 px-1 text-[10px] text-emerald-700"
+      title="Verified — this document is retained forever"
+      data-testid="file-verified-badge"
+    >
+      <ShieldCheck className="h-3 w-3" />
+      verified
+    </span>
+  );
+}
+
+/** Verify / un-verify toggle. The server gates on namespace.admin (403 → toast). */
+function VerifyToggle({ file, onVerifyFile }: {
+  file: FileRecord;
+  onVerifyFile: (fileId: string, verified: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid="file-verify-toggle"
+      title={file.verified
+        ? "Un-verify (removes the keep-forever protection)"
+        : "Verify — keep this document forever"}
+      className={file.verified
+        ? "text-emerald-600 hover:text-emerald-800"
+        : "hidden group-hover:inline text-gray-400 hover:text-emerald-600"}
+      onClick={() => onVerifyFile(file.id, !file.verified)}
+    >
+      {file.verified ? <ShieldCheck className="h-3.5 w-3.5" /> : <Shield className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
+function FilesSection({ nodeId, files, uploadState, onDeleteFile, onVerifyFile, onUpload }: {
   nodeId: string;
   files: FileRecord[] | undefined;
   uploadState: UploadState;
   onDeleteFile: (fileId: string) => void;
+  onVerifyFile: (fileId: string, verified: boolean) => void;
   onUpload: () => void;
 }) {
   const isUploading = uploadState?.nodeId === nodeId && uploadState.state === "uploading";
@@ -946,9 +1035,11 @@ function FilesSection({ nodeId, files, uploadState, onDeleteFile, onUpload }: {
 
   if (files === undefined && !isUploading && !isError) return null;
 
+  const pictures = (files ?? []).filter(isPicture);
+  const documents = (files ?? []).filter((f) => !isPicture(f));
+
   return (
     <div>
-      <div className="mb-2 text-[11px] uppercase tracking-wide text-gray-400">Files</div>
       {isUploading && (
         <div className="mb-2 text-xs text-blue-500 animate-pulse">Uploading…</div>
       )}
@@ -963,67 +1054,140 @@ function FilesSection({ nodeId, files, uploadState, onDeleteFile, onUpload }: {
         </div>
       )}
       {files === undefined || files.length === 0 ? (
-        <div className="text-xs text-gray-400">
-          No files attached.{" "}
-          <button type="button" onClick={onUpload} className="text-blue-500 hover:underline">
-            Upload one
-          </button>{" "}
-          or drag a file onto this folder.
+        <div>
+          <div className="mb-2 text-[11px] uppercase tracking-wide text-gray-400">Files</div>
+          <div className="text-xs text-gray-400">
+            No files attached.{" "}
+            <button type="button" onClick={onUpload} className="text-blue-500 hover:underline">
+              Upload one
+            </button>{" "}
+            or drag a file onto this folder.
+          </div>
         </div>
       ) : (
-        <table className="w-full border-collapse text-[12px]">
-          <thead>
-            <tr className="border-b border-gray-200 text-left text-[11px] text-gray-400">
-              <th className="pb-1 pr-4 font-normal">Name</th>
-              <th className="pb-1 pr-4 font-normal">Size</th>
-              <th className="pb-1 pr-4 font-normal">Date</th>
-              <th className="pb-1 font-normal" />
-            </tr>
-          </thead>
-          <tbody>
-            {files.map((f) => (
-              <tr key={f.id} className="group hover:bg-[#e8e8f8]">
-                <td className="py-0.5 pr-4">
-                  {f.source === "upload" ? (
-                    // #1900: an indexed PDF (chunked into knowledge_entries, citable
-                    // by Ask MIRA) — no raw bytes are parked here to download, so show
-                    // it as a read-only "indexed" entry rather than a broken link.
-                    <span className="flex items-center gap-1.5 text-gray-800">
-                      <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                      {f.filename}
-                      <span className="ml-1 rounded bg-green-100 px-1 text-[10px] text-green-700">
-                        indexed
-                      </span>
-                    </span>
-                  ) : (
+        <>
+          {/* Pictures — thumbnail grid; raster images render inline (click to view). */}
+          {pictures.length > 0 && (
+            <div className="mb-4" data-testid="pictures-grid">
+              <div className="mb-2 text-[11px] uppercase tracking-wide text-gray-400">Pictures</div>
+              <div className="flex flex-wrap gap-3">
+                {pictures.map((f) => (
+                  <div key={f.id} className="group w-28">
                     <a
                       href={`${API_BASE}/api/namespace/files/${f.id}`}
-                      className="flex items-center gap-1.5 text-blue-700 hover:underline"
-                      download={f.filename}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={`${f.filename} — ${formatBytes(f.size_bytes)}`}
+                      className="block h-24 w-28 overflow-hidden rounded border border-gray-300 bg-[#f8f8f8] hover:border-[#0000c0]"
                     >
-                      <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                      {f.filename}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`${API_BASE}/api/namespace/files/${f.id}`}
+                        alt={f.filename}
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
                     </a>
-                  )}
-                </td>
-                <td className="py-0.5 pr-4 text-gray-500">{formatBytes(f.size_bytes)}</td>
-                <td className="py-0.5 pr-4 text-gray-400">{formatDate(f.created_at)}</td>
-                <td className="py-0.5 text-right">
-                  {f.source === "direct" && (
-                    <button
-                      type="button"
-                      title="Remove file"
-                      className="hidden group-hover:inline text-red-400 hover:text-red-600"
-                      onClick={() => onDeleteFile(f.id)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                    <div className="mt-0.5 flex items-center gap-1">
+                      <span className="min-w-0 flex-1 truncate text-[11px] text-gray-700" title={f.filename}>
+                        {f.filename}
+                      </span>
+                      <VerifyToggle file={f} onVerifyFile={onVerifyFile} />
+                      {!f.verified && (
+                        <button
+                          type="button"
+                          title="Remove file"
+                          className="hidden group-hover:inline text-red-400 hover:text-red-600"
+                          onClick={() => onDeleteFile(f.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Documents & other files */}
+          {documents.length > 0 && (
+            <div>
+              <div className="mb-2 text-[11px] uppercase tracking-wide text-gray-400">
+                {pictures.length > 0 ? "Documents & Files" : "Files"}
+              </div>
+              <table className="w-full border-collapse text-[12px]">
+                <thead>
+                  <tr className="border-b border-gray-200 text-left text-[11px] text-gray-400">
+                    <th className="pb-1 pr-4 font-normal">Name</th>
+                    <th className="pb-1 pr-4 font-normal">Size</th>
+                    <th className="pb-1 pr-4 font-normal">Date</th>
+                    <th className="pb-1 font-normal" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {documents.map((f) => (
+                    <tr key={f.id} className="group hover:bg-[#e8e8f8]">
+                      <td className="py-0.5 pr-4">
+                        {f.source === "upload" ? (
+                          // #1900: a legacy indexed PDF (chunked into knowledge_entries,
+                          // citable by Ask MIRA) with no parked original to download —
+                          // read-only "indexed" entry rather than a broken link.
+                          <span className="flex items-center gap-1.5 text-gray-800">
+                            <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                            {f.filename}
+                            <span className="ml-1 rounded bg-green-100 px-1 text-[10px] text-green-700">
+                              indexed
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1.5">
+                            <a
+                              href={`${API_BASE}/api/namespace/files/${f.id}`}
+                              className="flex min-w-0 items-center gap-1.5 text-blue-700 hover:underline"
+                              download={f.filename}
+                            >
+                              <FileTypeIcon mime={f.mime_type} className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                              <span className="truncate">{f.filename}</span>
+                            </a>
+                            {f.indexed && (
+                              <span
+                                className="rounded bg-green-100 px-1 text-[10px] text-green-700"
+                                title="Chunked into the knowledge base — Ask MIRA can cite it"
+                              >
+                                indexed
+                              </span>
+                            )}
+                            {f.verified && <VerifiedBadge />}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-0.5 pr-4 text-gray-500">{formatBytes(f.size_bytes)}</td>
+                      <td className="py-0.5 pr-4 text-gray-400">{formatDate(f.created_at)}</td>
+                      <td className="py-0.5 text-right">
+                        {f.source === "direct" && (
+                          <span className="inline-flex items-center gap-1.5">
+                            <VerifyToggle file={f} onVerifyFile={onVerifyFile} />
+                            {!f.verified && (
+                              <button
+                                type="button"
+                                title="Remove file"
+                                className="hidden group-hover:inline text-red-400 hover:text-red-600"
+                                onClick={() => onDeleteFile(f.id)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

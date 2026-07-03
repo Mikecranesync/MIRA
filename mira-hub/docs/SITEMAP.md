@@ -193,6 +193,7 @@
 | `/api/me` | static | `api/me/route.ts` |
 | `/api/mira/ask` | static | `api/mira/ask/route.ts` |
 | `/api/namespace/files/[id]` | dynamic | `api/namespace/files/[id]/route.ts` |
+| `/api/namespace/files/[id]/verify` | dynamic | `api/namespace/files/[id]/verify/route.ts` |
 | `/api/namespace/node` | static | `api/namespace/node/route.ts` |
 | `/api/namespace/node/[id]` | dynamic | `api/namespace/node/[id]/route.ts` |
 | `/api/namespace/node/[id]/chat` | dynamic | `api/namespace/node/[id]/chat/route.ts` |
