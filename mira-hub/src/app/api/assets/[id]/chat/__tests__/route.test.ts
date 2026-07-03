@@ -227,4 +227,53 @@ describe("POST /api/assets/[id]/chat", () => {
     expect(res.status).toBe(401);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  // T3 / duplicate-systems-audit.md finding #1 regression guard: the physical-
+  // hazard category ("melted insulation" and siblings) was previously ABSENT
+  // from this route's hand-copied safety list — a technician reporting it got
+  // normal LLM troubleshooting here while Slack/Telegram would hard-stop. The
+  // route now imports the shared, guardrails.py-parity-tested SAFETY_PHRASES.
+  it("hard-stops on a physical-hazard phrase not present in the old local list WITHOUT calling any provider or DB", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+
+    const res = await POST(
+      makeReq(userMsg("I see melted insulation on this panel, what should I do?")),
+      makeParams(VALID_UUID),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Safety-Stop")).toBe("melted insulation");
+    expect(res.headers.get("Content-Type")).toContain("text/event-stream");
+
+    let raw = "";
+    const reader = res.body?.getReader();
+    const dec = new TextDecoder();
+    if (reader) {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        raw += dec.decode(value, { stream: true });
+      }
+    }
+    // The safety stop streams word-by-word (one JSON object per SSE event),
+    // so reconstruct the concatenated content before asserting on the phrase.
+    let content = "";
+    for (const line of raw.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const data = trimmed.slice(5).trim();
+      if (data === "[DONE]") continue;
+      try {
+        const parsed = JSON.parse(data) as { content?: string };
+        if (parsed.content) content += parsed.content;
+      } catch {
+        /* skip */
+      }
+    }
+    expect(content).toContain("SAFETY STOP");
+    expect(raw).toContain("[DONE]");
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
 });

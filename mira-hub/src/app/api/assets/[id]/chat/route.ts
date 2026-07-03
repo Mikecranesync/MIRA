@@ -18,17 +18,9 @@ import {
   approvedContextReady,
   buildApprovedContextRefusal,
 } from "@/lib/approved-context";
+import { SAFETY_PHRASES } from "@/lib/safety-phrases";
 
 export const dynamic = "force-dynamic";
-
-// ── Safety keywords (mirrors mira-bots/shared/guardrails.py SAFETY_KEYWORDS) ──
-const SAFETY_PHRASES = [
-  "arc flash", "loto", "lockout tagout", "lockout/tagout",
-  "confined space", "fall arrest", "energized", "live wire",
-  "live electrical", "shock hazard", "electrocution",
-  "permit required", "hot work", "asphyxiation",
-  "explosive atmosphere", "ppe required",
-];
 
 function hasSafetyKeyword(text: string): string | null {
   const lower = text.toLowerCase();
