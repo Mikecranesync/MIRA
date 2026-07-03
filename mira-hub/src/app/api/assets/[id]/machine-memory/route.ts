@@ -1,21 +1,9 @@
 import { NextResponse } from "next/server";
 import { sessionOrDemo } from "@/lib/demo-auth";
 import { withTenantContext } from "@/lib/tenant-context";
+import { fetchMachineMemory } from "@/lib/machine-memory";
 
 export const dynamic = "force-dynamic";
-
-// Postgres error codes for "relation does not exist" / "column does not
-// exist" — the only cases that legitimately mean "040 not applied in this
-// env yet". Any other error (permission, syntax, connection, etc.) must
-// rethrow and hit the route's outer 500 handler, not be swallowed as a
-// silent empty/fallback state.
-const UNDEFINED_TABLE = "42P01";
-const UNDEFINED_COLUMN = "42703";
-
-function isUndefinedRelationOrColumn(err: unknown): boolean {
-  const code = (err as { code?: string } | null | undefined)?.code;
-  return code === UNDEFINED_TABLE || code === UNDEFINED_COLUMN;
-}
 
 /**
  * GET /api/assets/[id]/machine-memory
@@ -28,9 +16,11 @@ function isUndefinedRelationOrColumn(err: unknown): boolean {
  * Empty state is first-class — most assets have no machine_run/window/diff
  * rows yet, and that is not an error.
  *
+ * The queries live in the shared helper `@/lib/machine-memory`
+ * (fetchMachineMemory), reused by the asset context + chat routes (T2).
  * Tables read: machine_run (038), machine_state_window (040 — may not be
- * applied in every env, tolerated via try/catch), run_diff (038 + 040 typed-
- * anomaly columns, same tolerance).
+ * applied in every env, tolerated inside the helper), run_diff (038 + 040
+ * typed-anomaly columns, same tolerance).
  */
 export async function GET(
   req: Request,
@@ -72,84 +62,20 @@ export async function GET(
         };
       }
 
-      const latestRun = await c
-        .query(
-          `SELECT run_id, status, started_at, stopped_at, duration_seconds, run_trigger_tag
-             FROM machine_run
-            WHERE tenant_id = $1::uuid AND uns_path = $2::ltree
-            ORDER BY started_at DESC
-            LIMIT 1`,
-          [ctx.tenantId, unsPath],
-        )
-        .then((r) => r.rows[0] ?? null);
+      const memory = await fetchMachineMemory(c, ctx.tenantId, unsPath);
 
-      // machine_state_window is 040 — may not exist yet in every env.
-      let latestWindow: Record<string, unknown> | null = null;
-      let windowsAvailable = true;
-      try {
-        latestWindow = await c
-          .query(
-            `SELECT window_id, state, started_at, ended_at
-               FROM machine_state_window
-              WHERE tenant_id = $1::uuid AND uns_path = $2::ltree
-              ORDER BY started_at DESC
-              LIMIT 1`,
-            [ctx.tenantId, unsPath],
-          )
-          .then((r) => r.rows[0] ?? null);
-      } catch (err) {
-        if (!isUndefinedRelationOrColumn(err)) throw err;
-        console.error("[api/assets/[id]/machine-memory GET] machine_state_window unavailable (040 not applied?)", err);
-        windowsAvailable = false;
-      }
-
-      // run_diff 040 columns (window_id, from_event_id, to_event_id) may not
-      // exist yet either. Fall back to the 038-only column set.
-      let latestDiffs: Array<Record<string, unknown>> = [];
-      try {
-        latestDiffs = await c
-          .query(
-            `SELECT diff_id, run_id, window_id, tag_path, severity, diff_type,
-                    observed, baseline, delta_percent, from_event_id, to_event_id,
-                    event_timestamp, metadata
-               FROM run_diff
-              WHERE tenant_id = $1::uuid AND uns_path = $2::ltree
-              ORDER BY event_timestamp DESC NULLS LAST
-              LIMIT 5`,
-            [ctx.tenantId, unsPath],
-          )
-          .then((r) => r.rows);
-      } catch (err) {
-        if (!isUndefinedRelationOrColumn(err)) throw err;
-        console.error("[api/assets/[id]/machine-memory GET] run_diff 040 columns unavailable, falling back to 038 columns", err);
-        latestDiffs = await c
-          .query(
-            `SELECT diff_id, run_id, tag_path, severity,
-                    observed, baseline, delta_percent, event_timestamp, metadata
-               FROM run_diff
-              WHERE tenant_id = $1::uuid AND uns_path = $2::ltree
-              ORDER BY event_timestamp DESC NULLS LAST
-              LIMIT 5`,
-            [ctx.tenantId, unsPath],
-          )
-          .then((r) => r.rows);
-      }
-
-      const evidenceWindow = latestRun
-        ? { started_at: latestRun.started_at, stopped_at: latestRun.stopped_at, uns_path: unsPath }
-        : latestWindow
-          ? { started_at: latestWindow.started_at, stopped_at: latestWindow.ended_at, uns_path: unsPath }
+      const evidenceWindow = memory.latest_run
+        ? { started_at: memory.latest_run.started_at, stopped_at: memory.latest_run.stopped_at, uns_path: unsPath }
+        : memory.latest_window
+          ? { started_at: memory.latest_window.started_at, stopped_at: memory.latest_window.ended_at, uns_path: unsPath }
           : null;
 
       return {
         uns_path: unsPath,
-        latest_run: latestRun,
-        latest_window: latestWindow,
-        windows_available: windowsAvailable,
-        latest_diffs: latestDiffs.map((d) => ({
-          ...d,
-          next_check: (d.metadata as { next_check?: string } | null)?.next_check ?? null,
-        })),
+        latest_run: memory.latest_run,
+        latest_window: memory.latest_window,
+        windows_available: memory.windows_available,
+        latest_diffs: memory.latest_diffs,
         evidence_window: evidenceWindow,
       };
     });

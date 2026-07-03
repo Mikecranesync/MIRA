@@ -10,6 +10,7 @@ import {
   appendManualContext,
   buildManualUserContent,
   chunksToSources,
+  neutralizeReferenceText,
   type ManualChunk,
   type ManualSource,
 } from "@/lib/manual-rag";
@@ -19,6 +20,7 @@ import {
   buildApprovedContextRefusal,
 } from "@/lib/approved-context";
 import { SAFETY_PHRASES } from "@/lib/safety-phrases";
+import { fetchMachineMemory, type MachineMemory } from "@/lib/machine-memory";
 
 export const dynamic = "force-dynamic";
 
@@ -180,6 +182,68 @@ function buildSystemPrompt(asset: Record<string, unknown>): string {
 - If the question involves lockout/tagout, arc flash, confined space, or electrical safety, stop and instruct the tech to follow site safety procedures before proceeding.`;
 }
 
+// Review Q1 (PR #2414) — the strings below (tag_path, diff_type, severity,
+// metadata.title, next_check, state/status) are DB-sourced from ingested
+// anomaly-detection output, not technician/admin-authored text. The manual
+// context path (manual-rag.ts buildGroundedContext) already treats this exact
+// shape of untrusted text — reference content interpolated into the SYSTEM
+// prompt — as a prompt-injection vector: it caps length (MAX_CONTENT_CHARS)
+// then strips forged headers/instruction markers (neutralizeReferenceText).
+// Apply the same defense here, at a smaller per-field cap since these are
+// short labels, not paragraphs.
+//
+// NOTE the distinction from `context/route.ts`'s `machine_memory` block: that
+// route returns these same fields as raw JSON *data* for a client to render —
+// not interpolated into an LLM prompt — so it does not need this treatment.
+// Only prompt interpolations (this file) require neutralizing.
+const MACHINE_MEMORY_FIELD_MAX_CHARS = 120;
+
+// Accepts `unknown` because these fields come off `Record<string, unknown>`
+// rows straight from the DB driver (machine_run/machine_state_window/run_diff
+// columns aren't narrowed to `string`) — coerce defensively rather than trust
+// the column type.
+function sanitizeMachineMemoryField(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "";
+  const str = typeof value === "string" ? value : String(value);
+  return neutralizeReferenceText(str.slice(0, MACHINE_MEMORY_FIELD_MAX_CHARS));
+}
+
+// Live machine memory (T2 / seam 3) — persisted runs/state-windows/anomaly
+// diffs become a citable prompt section. Machine-observed, not manual text.
+function buildMachineMemorySection(memory: MachineMemory): string {
+  const lines: string[] = [];
+  const win = memory.latest_window;
+  if (win) {
+    lines.push(`- Current state: ${sanitizeMachineMemoryField(win.state)} (since ${win.started_at})`);
+  }
+  const run = memory.latest_run;
+  if (run) {
+    lines.push(
+      `- Latest run: ${sanitizeMachineMemoryField(run.status)} (started ${run.started_at}${run.stopped_at ? `, stopped ${run.stopped_at}` : ""})`,
+    );
+  }
+  const diffs = memory.latest_diffs.slice(0, 3);
+  if (diffs.length > 0) {
+    lines.push("- Recent anomalies:");
+    for (const d of diffs) {
+      const rawTitle =
+        (d.metadata as { title?: string } | null)?.title || d.tag_path || "anomaly";
+      const title = sanitizeMachineMemoryField(rawTitle);
+      const nextCheck = d.next_check
+        ? ` — next check: ${sanitizeMachineMemoryField(d.next_check)}`
+        : "";
+      const diffType = sanitizeMachineMemoryField(d.diff_type ?? "diff");
+      const severity = sanitizeMachineMemoryField(d.severity ?? "info");
+      lines.push(`  - [${diffType}] ${severity} — ${title}${nextCheck}`);
+    }
+  }
+  if (lines.length === 0) return "";
+  return `## Live Machine Memory
+The following is MACHINE-OBSERVED evidence recorded from this asset's live tag history (runs, state windows, anomaly detections). Treat it as current, citable observations — cite it as "machine memory" when you use it.
+
+${lines.join("\n")}`;
+}
+
 // Light PII scrub for the persisted question (mirrors the engine's intent —
 // IP/MAC out of stored troubleshooting context). The question already went to
 // the LLM providers; this only governs what we write to our own trace store.
@@ -261,6 +325,7 @@ export async function POST(
   let assetRow: Record<string, unknown> | null = null;
   let manualChunks: ManualChunk[] = [];
   let verifiedRelationshipCount = 0;
+  let machineMemory: MachineMemory | null = null;
   try {
     const c = await pool.connect();
     try {
@@ -309,6 +374,32 @@ export async function POST(
         [ctx.tenantId, id],
       );
       verifiedRelationshipCount = Number(relRes.rows[0]?.count ?? 0);
+
+      // Live machine memory (T2 / seam 3) — resolve uns_path via the same
+      // kg_entities bridge the context route uses (separate lookup, not a
+      // join: cmms_equipment.tenant_id is TEXT, kg_entities is UUID), then
+      // read the persisted runs/windows/anomaly diffs. Own try/catch so a
+      // missing 038/040 env (or any machine-memory error) never drops the
+      // asset/manual context already fetched above.
+      try {
+        const unsPath = await c
+          .query(
+            `SELECT uns_path::text AS uns_path
+               FROM kg_entities
+              WHERE tenant_id = $1
+                AND entity_type = 'equipment'
+                AND (id::text = $2 OR entity_id = $2)
+              LIMIT 1`,
+            [ctx.tenantId, id],
+          )
+          .then((r) => r.rows[0]?.uns_path ?? null);
+        if (unsPath) {
+          machineMemory = await fetchMachineMemory(c, ctx.tenantId, unsPath);
+        }
+      } catch {
+        // Non-fatal: chat still works without machine memory
+        machineMemory = null;
+      }
     } finally {
       c.release();
     }
@@ -317,6 +408,7 @@ export async function POST(
     assetRow = null;
     manualChunks = [];
     verifiedRelationshipCount = 0;
+    machineMemory = null;
   }
 
   // KG graph context — fetch in parallel with (already completed) asset DB fetch
@@ -331,7 +423,22 @@ export async function POST(
     ? `${baseSystemPrompt}\n\n## Knowledge Graph Context\nThe following relational context was retrieved from the plant knowledge graph. Use it to give more specific, history-aware answers.\n\n${graphContext}`
     : baseSystemPrompt;
 
-  const systemPrompt = appendManualContext(withGraph, manualChunks);
+  const machineMemorySection = machineMemory ? buildMachineMemorySection(machineMemory) : "";
+  const withMachineMemory = machineMemorySection
+    ? `${withGraph}\n\n${machineMemorySection}`
+    : withGraph;
+  // The newest anomaly's next_check — surfaced to the client alongside sources
+  // so the evidence UI can render a "Next check" line (T2 Task 4). Same
+  // neutralize+cap treatment as buildMachineMemorySection (review Q1): this
+  // value is DB-sourced from the same untrusted ingest fields, and rendering
+  // it verbatim would both bypass the defense (the prompt sees a neutralized
+  // version while the UI shows the raw injection payload) and echo forged
+  // content back to the technician.
+  const rawNextCheck =
+    machineMemory?.latest_diffs.find((d) => d.next_check)?.next_check ?? null;
+  const nextCheck = rawNextCheck ? sanitizeMachineMemoryField(rawNextCheck) : null;
+
+  const systemPrompt = appendManualContext(withMachineMemory, manualChunks);
   const manualSources: ManualSource[] = chunksToSources(manualChunks);
   const approvedSourceCount = manualSources.filter((s) => s.verified).length;
   const approvedSummary = {
@@ -388,6 +495,12 @@ export async function POST(
             })}\n\n`,
           ),
         );
+      }
+
+      // Machine-memory next_check (T2 Task 4) — emitted up front like sources
+      // so the evidence UI can render a "Next check" line with the answer.
+      if (nextCheck) {
+        controller.enqueue(enc.encode(`data: ${JSON.stringify({ next_check: nextCheck })}\n\n`));
       }
 
       let served = false;
