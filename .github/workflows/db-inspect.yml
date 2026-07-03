@@ -252,11 +252,17 @@ jobs:
           SELECT conname AS fk_name, confrelid::regclass AS references
             FROM pg_constraint
            WHERE conrelid = 'knowledge_entries'::regclass AND contype = 'f';
+          -- tenants.id is UUID; hub_tenants.id is TEXT (see migration 051). The regex
+          -- guard skips legacy slug ids (which could never have a uuid tenants row
+          -- anyway), so orphan_hub_tenants = rows migration 051 still needs to backfill.
           SELECT
             (SELECT COUNT(*) FROM hub_tenants) AS hub_tenants,
             (SELECT COUNT(*) FROM tenants) AS tenants,
             (SELECT COUNT(*) FROM hub_tenants ht
-               WHERE NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = ht.id)) AS orphan_hub_tenants;
+               WHERE ht.id ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM tenants t WHERE t.id = ht.id::uuid
+                 )) AS orphan_hub_tenants;
           SQL
 
       - name: Secret-shopper testing prerequisites probe
@@ -330,4 +336,46 @@ jobs:
           \echo === row counts (drift repair is data-safe if 0) ===
           SELECT 'tag_events' AS t, count(*) FROM tag_events
           UNION ALL SELECT 'approved_tags', count(*) FROM approved_tags;
+          SQL
+
+      - name: Machine memory scoreboard (038 layer) — READ-ONLY
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # READ-ONLY. machine_run/run_step/run_baseline/run_diff are the 038
+          # machine-memory tables. The presence probe below tells the reader
+          # whether 038 is applied in this env; the machine_run/run_diff
+          # scoreboard queries error harmlessly under ON_ERROR_STOP=0 where
+          # 038 isn't applied yet.
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=0 <<'SQL'
+          \echo === 038 machine-memory tables present? ===
+          SELECT t.name AS table_name,
+                 EXISTS(SELECT 1 FROM information_schema.tables
+                        WHERE table_schema='public' AND table_name = t.name) AS present
+          FROM (VALUES ('machine_run'),('run_step'),('run_baseline'),('run_diff')) AS t(name);
+
+          \echo === scoreboard: total tag_events ===
+          SELECT count(*) AS total_tag_events FROM tag_events;
+
+          \echo === scoreboard: tag_events by tenant / source_system / day (last 14 days) ===
+          SELECT tenant_id, source_system, date_trunc('day', event_timestamp) AS day, count(*) AS n
+            FROM tag_events
+           WHERE event_timestamp > now() - interval '14 days'
+           GROUP BY 1,2,3 ORDER BY day DESC, n DESC;
+
+          \echo === scoreboard: machine runs by tenant / uns_path / day ===
+          SELECT tenant_id, uns_path::text AS uns_path, date_trunc('day', started_at) AS day, status, count(*) AS n
+            FROM machine_run GROUP BY 1,2,3,4 ORDER BY day DESC, n DESC;
+
+          \echo === scoreboard: run_diffs by severity / tag_path / day ===
+          SELECT tenant_id, severity, tag_path, date_trunc('day', event_timestamp) AS day, count(*) AS n
+            FROM run_diff GROUP BY 1,2,3,4 ORDER BY day DESC, n DESC;
+
+          \echo === scoreboard: kg_relationships by type ===
+          SELECT relationship_type, count(*) AS n FROM kg_relationships GROUP BY 1 ORDER BY n DESC;
+
+          \echo === scoreboard: kg_entities NULL uns_path ===
+          SELECT count(*) AS null_uns_path_entities FROM kg_entities WHERE uns_path IS NULL;
+          SELECT id, tenant_id, entity_type, name FROM kg_entities WHERE uns_path IS NULL ORDER BY entity_type, name LIMIT 50;
           SQL
