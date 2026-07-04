@@ -168,11 +168,19 @@ def map_events(
         if topic is None:
             unmapped[tag_path] = unmapped.get(tag_path, 0) + 1
             continue
+        # The event clock prefers ingested_ts (SERVER receipt time) over the
+        # client event_timestamp: the client ts freezes when values stop
+        # changing (Ignition report-by-exception), which pinned the state
+        # windows. Rows without ingested_ts (pure-unit fixtures) fall back to
+        # event_timestamp — a fixed point, so existing behavior is unchanged.
+        clock = row.get("ingested_ts")
+        if clock is None:
+            clock = row.get("event_timestamp", 0.0)
         mapped.append(
             MappedEvent(
                 topic=topic,
                 value=coerce_value(row.get("value"), row.get("value_type", "string")),
-                event_timestamp=parse_event_timestamp(row.get("event_timestamp", 0.0)),
+                event_timestamp=parse_event_timestamp(clock),
                 event_id=row.get("event_id"),
                 tag_path=tag_path,
             )

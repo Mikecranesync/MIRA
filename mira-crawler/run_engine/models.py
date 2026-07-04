@@ -51,6 +51,11 @@ class Reading:
     source_system: Optional[str] = None
     raw_value: Optional[str] = None
     metadata: dict = field(default_factory=dict)
+    # Server receipt time (tag_events.ingested_at, epoch seconds). The client
+    # event_timestamp freezes when tag values stop changing (Ignition
+    # report-by-exception) — state-window/staleness math must run on this
+    # clock instead. Optional so pure-unit fixtures without it keep working.
+    ingested_ts: Optional[float] = None
 
 
 @dataclass
