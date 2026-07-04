@@ -15,8 +15,8 @@ regresses) *or* silently die (the Bravo schedule stops and nobody notices).
 | 4h dogfood judge run | ⚠️ Bravo-only | `com.factorylm.dogfood-judge` launchd; **definition** committed (`scheduled_run.sh` + plist) |
 | Crew/dogfood hermetic tests (runner 19 / judge 10 / gate 7) | ❌ **no CI** | fixed by **Phase 1** |
 | Schedule observability (silent-death) | ✅ shipped | verdict → issue #2417 + `dogfood-judge-heartbeat.yml` dead-man's-switch (**Phase 2**) |
-| Seeder `tenants` mirror | ⚠️ unguarded | **Phase 3** |
-| Auto-filing + RED escalation | ⏭️ off by design | **Phase 4** |
+| Seeder `tenants` mirror | ✅ shipped | `seed-synthetic-tenants-mirror.test.ts` (**Phase 3**) |
+| Auto-filing + RED escalation | ✅ shipped | `DOGFOOD_FILE_ISSUES=1` + heartbeat fails on RED + weekly digest (**Phase 4**) |
 | Move execution off Bravo | ⛔ blocked (no public staging URL) | **Phase 5** |
 
 ## Phase 1 — CI guard for the safety machinery ✅ SHIPPED
@@ -67,7 +67,16 @@ making it *report* and *alarm on staleness* — the RBAC job's "post to #578" pa
   `tools/crew/dogfood/checks/*.check`.
 - **Done when:** removing the `tenants` mirror turns a test red.
 
-## Phase 4 — From "test" to "routine": filing + escalation
+## Phase 4 — From "test" to "routine": filing + escalation ✅ SHIPPED
+
+Shipped: `DOGFOOD_FILE_ISSUES=1` in the plist (verified live: run logged "filing
+ENABLED", 0 REDs → filed nothing); heartbeat now fails on RED (verified: parses
+the verdict, YELLOW → no escalation, RED → fail); weekly digest
+`dogfood-weekly-digest.yml` posts a 7-day rollup to #2417 (verified: tallies
+5 verdicts). Safe by construction — a RED is filed only after a second persona
+reproduces it, deduped, and on a dedupe match in non-interactive mode
+`create_issue.sh` DECLINES silently (no re-file, no repeat comment), so a
+persistent RED files exactly once. 4c note below stays for context.
 
 - **4a.** Flip `DOGFOOD_FILE_ISSUES=1` (plist env) so confirmed, two-persona-
   verified, deduped REDs auto-open issues (needs `GITHUB_PAT` in stg).
