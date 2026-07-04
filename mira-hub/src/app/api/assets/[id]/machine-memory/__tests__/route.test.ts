@@ -88,12 +88,14 @@ it("run + window + diffs -> mapped response incl. next_check surfaced from metad
   const staleSeen = new Date(Date.now() - 10 * 60_000).toISOString();
   const freshSignal = {
     plc_tag: "[default]MIRA_IOCheck/VFD/vfd_dc_bus", last_value_text: null,
-    last_value_numeric: "320.4", last_value_bool: null, last_seen_at: freshSeen,
+    last_value_numeric: "3204", last_value_bool: null, last_seen_at: freshSeen,
+    last_changed_at: freshSeen,
     simulated: false, expected_freshness_seconds: null, uns_path: UNS_PATH,
   };
   const staleSignal = {
     plc_tag: "[default]MIRA_IOCheck/VFD/vfd_torque", last_value_text: null,
     last_value_numeric: null, last_value_bool: false, last_seen_at: staleSeen,
+    last_changed_at: staleSeen,
     simulated: false, expected_freshness_seconds: null, uns_path: UNS_PATH,
   };
   wire(
@@ -119,10 +121,19 @@ it("run + window + diffs -> mapped response incl. next_check surfaced from metad
     stopped_at: run.stopped_at,
     uns_path: UNS_PATH,
   });
-  // Live signals: value coalescing (numeric / bool) + per-tag freshness.
+  // Live signals: value coalescing (numeric / bool), per-tag freshness, and
+  // engineering-unit scaling (gs10-display: dc_bus raw 3204 -> 320.4 V).
   expect(body.live_tags).toEqual([
-    { tag_path: freshSignal.plc_tag, value: "320.4", last_seen_at: freshSeen, freshness: "live" },
-    { tag_path: staleSignal.plc_tag, value: false, last_seen_at: staleSeen, freshness: "stale" },
+    {
+      tag_path: freshSignal.plc_tag, value: "3204", display: "320.4 V",
+      numeric: 320.4, unit: "V", last_seen_at: freshSeen,
+      last_changed_at: freshSeen, freshness: "live",
+    },
+    {
+      tag_path: staleSignal.plc_tag, value: false, display: "false",
+      numeric: null, unit: null, last_seen_at: staleSeen,
+      last_changed_at: staleSeen, freshness: "stale",
+    },
   ]);
   // The window fixture is OPEN (ended_at null) and a live signal exists →
   // current state = the open window's state, fresh.

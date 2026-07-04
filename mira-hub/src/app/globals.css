@@ -222,6 +222,16 @@ body {
 .badge-orange { color: var(--status-orange); background: var(--status-orange-bg); }
 .badge-blue   { color: var(--brand-blue);    background: #EFF6FF; }
 
+/* ─── Live-signal change flash (attention cue, neutral surface tone — not a
+       state color; state colors stay reserved for status) ─────────────── */
+@keyframes signal-flash {
+  from { background-color: var(--surface-2); }
+  to   { background-color: transparent; }
+}
+.signal-flash {
+  animation: signal-flash 0.8s ease-out;
+}
+
 /* ─── Status Dot ────────────────────────────────────────────────────── */
 .status-dot {
   display: inline-block;

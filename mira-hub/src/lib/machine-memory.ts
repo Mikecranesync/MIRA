@@ -134,6 +134,7 @@ export interface LiveSignalRow {
   last_value_numeric: number | string | null; // pg numeric arrives as string
   last_value_bool: boolean | null;
   last_seen_at: string | null;
+  last_changed_at: string | null;
   simulated: boolean | null;
   expected_freshness_seconds: number | null;
   uns_path: string | null;
@@ -154,7 +155,8 @@ export async function fetchLiveSignals(
   try {
     const res = await client.query(
       `SELECT plc_tag, last_value_text, last_value_numeric, last_value_bool,
-              last_seen_at, simulated, expected_freshness_seconds, uns_path::text AS uns_path
+              last_seen_at, last_changed_at, simulated, expected_freshness_seconds,
+              uns_path::text AS uns_path
          FROM live_signal_cache
         WHERE tenant_id = $1::uuid
           AND uns_path IS NOT NULL
