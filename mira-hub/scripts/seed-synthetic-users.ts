@@ -451,6 +451,72 @@ const KG_TRIPLES = [
   { subject: "F005", predicate: "is_a", object: "fault_code", source: "synthetic_seed" },
 ] as const;
 
+// ── Live-signal + customer-document fixtures (dogfood YELLOW→GREEN) ───────────
+//
+// The dogfood judge's maintenance-tech and demo-readiness paths were YELLOW
+// because VFD-07 (the asset every check picks — Allen-Bradley/PowerFlex matches
+// the preference regex) had NO installed components (empty live-status panel)
+// and the contextualization path was YELLOW because it had NO customer documents
+// (MIRA could only answer from the generic OEM corpus). These fixtures close
+// both gaps on the synthetic tenant so those paths report a REAL GREEN.
+//
+// Signals: 3 components on VFD-07 with a fresh simulated history each run
+// (delete-then-insert, so the panel shows a recent value, not a frozen one).
+// Doc: a customer-specific commissioning record that BM25 can actually cite —
+// distinctive site details (P042 accel ramp, F005 trip history) that the OEM
+// manual does NOT contain, so a grounded answer cites THIS doc, not the manual.
+const VFD07_ASSET_ID = "00000000-0000-0000-0000-000000001001"; // EQUIPMENT[0], VFD-07
+
+const SIGNAL_COMPONENTS = [
+  {
+    id: "00000000-0000-0000-0000-000000005001",
+    component_name: "Output Current",
+    plc_tag: "VFD-07/output_current",
+    base: 12.4, jitter: 0.6, units: "A",
+  },
+  {
+    id: "00000000-0000-0000-0000-000000005002",
+    component_name: "DC Bus Voltage",
+    plc_tag: "VFD-07/dc_bus_voltage",
+    base: 648, jitter: 4, units: "V",
+  },
+  {
+    id: "00000000-0000-0000-0000-000000005003",
+    component_name: "Drive Temperature",
+    plc_tag: "VFD-07/drive_temp",
+    base: 42.5, jitter: 1.5, units: "degC",
+  },
+] as const;
+
+// One customer document, two chunks (same source_url → surfaces as ONE document
+// with a chunk count on /api/assets/[id]/documents). is_private=true + tenant=SYNTH
+// per the knowledge_entries hybrid law (a per-tenant upload, never the shared OEM
+// corpus). Retrieval is BM25-only (manual-rag.ts), so a NULL embedding is fine —
+// content_tsv is a GENERATED column and populates from `content` on insert.
+const CUSTOMER_DOC_SOURCE_URL = "customer-upload/VFD-07-site-commissioning-record.pdf";
+const CUSTOMER_DOC_CHUNKS = [
+  {
+    id: "00000000-0000-0000-0000-000000006001",
+    source_page: 0,
+    content:
+      "VFD-07 Site Commissioning Record — Pump Station A, Synthetic Test Plant (Lake Wales, FL). " +
+      "Drive: Allen-Bradley PowerFlex 755, 480V 3-phase, driving PUMP-01 (Goulds 3196). " +
+      "Accel ramp parameter P042 set to 8.0 seconds; decel P043 set to 6.0 seconds. " +
+      "Overcurrent trip point configured at 150% of rated FLA. F005 (overcurrent) trip history: " +
+      "3 events in January 2026, all traced to coupling misalignment between VFD-07 and PUMP-01 — " +
+      "corrected by re-aligning the coupling to 0.05 mm TIR. Commissioning electrician: J. Reyes.",
+  },
+  {
+    id: "00000000-0000-0000-0000-000000006002",
+    source_page: 1,
+    content:
+      "VFD-07 Panel Wiring (panel PS-A-01) — power terminals torqued to 1.5 N·m per site standard. " +
+      "Motor leads U/V/W landed on drive output terminals; DC bus nominal 648 V at 480 VAC input. " +
+      "Local site note: if F005 recurs after coupling alignment, verify P042 accel ramp has not been " +
+      "shortened below 8.0 s during any prior service — a steeper ramp re-introduces the overcurrent trip.",
+  },
+] as const;
+
 // ── Main seeder ───────────────────────────────────────────────────────────────
 
 async function main() {
@@ -662,6 +728,82 @@ async function main() {
       }
     } catch (kgErr) {
       console.warn(`[seed] KG enrichment incomplete (non-fatal): ${String(kgErr).split("\n")[0]}`);
+    }
+
+    // ── Live-signal + customer-document fixtures (best-effort, autocommit) ─────
+    // Same isolation discipline as the KG block: each statement is its own unit
+    // so schema drift on these tables can never roll back the RBAC core.
+    // Every write is strictly tenant_id = SYNTH_TENANT_ID (…099) — a stray write
+    // would break the cross-tenant isolation probe.
+    try {
+      // 1) Installed components on VFD-07 → the live-status panel has cards to fill.
+      let comps = 0;
+      for (const c of SIGNAL_COMPONENTS) {
+        await client.query(
+          `INSERT INTO installed_component_instances
+             (id, tenant_id, asset_id, component_name, plc_tag, human_confirmed, confidence, notes)
+           VALUES ($1,$2,$3,$4,$5,true,0.9,$6)
+           ON CONFLICT (id) DO UPDATE SET
+             component_name = EXCLUDED.component_name,
+             plc_tag        = EXCLUDED.plc_tag,
+             updated_at     = now()`,
+          [c.id, SYNTH_TENANT_ID, VFD07_ASSET_ID, c.component_name, c.plc_tag,
+           `Synthetic live-signal fixture (${c.units})`],
+        ).then(() => { comps++; }).catch((err) => {
+          console.warn(`[seed]   component ${c.component_name} skipped: ${String(err).split("\n")[0]}`);
+        });
+      }
+      console.log(`[seed] ${comps}/${SIGNAL_COMPONENTS.length} installed components on VFD-07`);
+
+      // 2) Fresh simulated signal history per component. Delete-then-insert
+      //    (scoped to the synthetic tenant + these component ids + simulated=true)
+      //    so the "latest" reading is seconds old at judge time, not frozen at
+      //    first seed. random()/now() run SQL-side (JS Math.random/Date are barred).
+      let events = 0;
+      for (const c of SIGNAL_COMPONENTS) {
+        await client.query(
+          `DELETE FROM live_signal_events
+            WHERE tenant_id = $1 AND component_id = $2 AND simulated = true`,
+          [SYNTH_TENANT_ID, c.id],
+        ).catch(() => { /* table drift — skip, insert below will no-op too */ });
+        await client.query(
+          `INSERT INTO live_signal_events
+             (tenant_id, component_id, plc_tag, value_numeric, simulated, source, properties, created_at)
+           SELECT $1, $2, $3,
+                  round(($4 + (random() - 0.5) * $5)::numeric, 2)::double precision,
+                  true, 'synthetic_seed', $6::jsonb,
+                  now() - (g * interval '20 seconds')
+             FROM generate_series(0, 8) AS g`,
+          [SYNTH_TENANT_ID, c.id, c.plc_tag, c.base, c.jitter,
+           JSON.stringify({ units: c.units, quality: "good" })],
+        ).then((r) => { events += r.rowCount ?? 0; }).catch((err) => {
+          console.warn(`[seed]   signals for ${c.component_name} skipped: ${String(err).split("\n")[0]}`);
+        });
+      }
+      console.log(`[seed] ${events} live-signal events across ${SIGNAL_COMPONENTS.length} components`);
+
+      // 3) Customer document (2 chunks) → contextualization has the customer's OWN
+      //    evidence, citable by BM25. is_private=true per the hybrid law.
+      let docs = 0;
+      for (const d of CUSTOMER_DOC_CHUNKS) {
+        await client.query(
+          `INSERT INTO knowledge_entries
+             (id, tenant_id, source_type, manufacturer, model_number, equipment_type,
+              content, source_url, source_page, metadata, is_private, verified, chunk_type)
+           VALUES ($1,$2,'customer_upload','Allen-Bradley','PowerFlex 755','VFD',
+                   $3,$4,$5,$6::jsonb,true,false,'text')
+           ON CONFLICT (id) DO UPDATE SET
+             content  = EXCLUDED.content,
+             metadata = EXCLUDED.metadata`,
+          [d.id, SYNTH_TENANT_ID, d.content, CUSTOMER_DOC_SOURCE_URL, d.source_page,
+           JSON.stringify({ title: "VFD-07 Site Commissioning Record", asset: "VFD-07", synthetic_seed: true })],
+        ).then(() => { docs++; }).catch((err) => {
+          console.warn(`[seed]   customer doc chunk ${d.source_page} skipped: ${String(err).split("\n")[0]}`);
+        });
+      }
+      console.log(`[seed] ${docs}/${CUSTOMER_DOC_CHUNKS.length} customer-document chunk(s) for VFD-07`);
+    } catch (fxErr) {
+      console.warn(`[seed] signal/doc fixtures incomplete (non-fatal): ${String(fxErr).split("\n")[0]}`);
     }
 
     console.log("\n[seed] ✓ Done. Synthetic tenant: " + SYNTH_TENANT_ID);
