@@ -9,10 +9,10 @@
   "attributes": {
     "lastModification": {
       "actor": "external",
-      "timestamp": "2026-07-03T22:45:00Z"
+      "timestamp": "2026-07-04T23:30:00Z"
     },
-    "delay": 2000,
-    "fixedDelay": false,
+    "delay": 500,
+    "fixedDelay": true,
     "sharedThread": false,
     "enabled": true
   }
