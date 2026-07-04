@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.61.0 (2026-07-04) - feat(repo): MODULES.md lifecycle manifest + CI guard (#2443)
+- Adds `MODULES.md` classifying all 26 top-level modules as DEPLOYED / BENCH / CI / DEFERRED / LEGACY / ORPHAN (matching `docs/audits/2026-07-04-cohesion-audit.md` §1), plus `tests/test_modules_manifest.py` as a CI guard so a new top-level module can't go unclassified and a removed one can't leave a stale entry.
+
 ### v3.60.4 (2026-07-04) - fix(ci): include mira-web in default deploy TARGETS
 - `deploy-vps.yml`'s default `TARGETS` list was missing `mira-web` — marketing-site PRs merged to main but never auto-deployed (no stated exclusion rationale in `docs/known-issues.md`). Adds it to the default rebuild list alongside the other services.
 
