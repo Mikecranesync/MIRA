@@ -22,16 +22,20 @@ Behaviour
 - Polls coils 0-6 and holding registers 100-105 every ``--poll-interval``
   seconds (default 1.0s).
 - Translates raw values to engineering units (current/10, temp/10).
-- Pushes each snapshot to ``mira-relay`` ``/ingest`` using the relay's
-  ``{type:"tags",equipment:{eq_id:{tag:{v,q,t}}}}`` schema.
-- Also writes the snapshot to ``live_signal_cache`` and any detected
-  rising/falling/value-changed transitions to ``live_signal_events`` in
-  NeonDB (best-effort; both targets are independent and either may be
-  disabled by leaving its URL unset).
+- Pushes each snapshot to ``mira-relay`` ``POST /api/v1/tags/ingest`` — the
+  ONE canonical ingest pipeline (``.claude/rules/one-pipeline-ingest.md``).
+  Tag entries are built via ``mira-relay/ingest_contract.py``
+  (``build_tag_entry`` / ``build_ingest_batch``), loaded by file path exactly
+  like ``simlab/publishers.py::RelayIngestPublisher`` — so this poller emits
+  the identical batch shape as every other tag source. The relay's own
+  ``tag_ingest.ingest_batch`` (migrations 020/033/036: ``tag_events`` +
+  ``live_signal_cache``) is the ONLY place that writes NeonDB; this tool does
+  not open a NeonDB connection, define DDL, or INSERT/UPSERT directly — doing
+  so would fork the ingest core (forbidden by the one-pipeline law).
 - Maps each PLC point to a UNS topic and a PLC tag name (see
   ``ADDRESS_MAP`` below).
-- ``--dry-run`` short-circuits both relay and DB writes — useful for
-  smoke-testing against ``tools/demo_plc_simulator.py``.
+- ``--dry-run`` short-circuits the relay push — useful for smoke-testing
+  against ``tools/demo_plc_simulator.py``.
 
 CLI
 ===
@@ -39,23 +43,47 @@ CLI
         --plc-ip 192.168.1.100 \\
         --poll-interval 1.0 \\
         --relay-url http://localhost:8765 \\
-        --db-url "$NEON_DATABASE_URL"
+        --tenant-id "$MIRA_TENANT_ID" \\
+        --relay-api-key "$RELAY_API_KEY"
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import json
+import importlib.util
 import logging
 import os
 import signal
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import httpx
+
+
+def _load_ingest_contract():
+    """Load ``mira-relay/ingest_contract.py`` by file path.
+
+    Mirrors ``simlab/publishers.py::_build_ingest_batch`` — this tool lives at
+    repo-root (``tools/``), same as SimLab, so the relay's dependency-free
+    contract module is on disk at runtime. Loading by path (instead of
+    ``sys.path`` manipulation or a package import) keeps this a standalone
+    tool while guaranteeing it builds the exact same batch shape every other
+    tag source uses. See ``.claude/rules/one-pipeline-ingest.md``.
+    """
+    path = Path(__file__).resolve().parents[1] / "mira-relay" / "ingest_contract.py"
+    spec = importlib.util.spec_from_file_location("mira_relay_ingest_contract", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
+
+
+_ingest_contract = _load_ingest_contract()
+build_tag_entry = _ingest_contract.build_tag_entry
+build_ingest_batch = _ingest_contract.build_ingest_batch
 
 try:
     from pymodbus.client import AsyncModbusTcpClient
@@ -119,60 +147,10 @@ ADDRESS_MAP: list[PLCPoint] = [
 
 EQUIPMENT_ID = "CONV-001"
 DEFAULT_TENANT_ID = "garage-demo"
-AGENT_ID = "demo-plc-poller"
 
 # Resilience tuning for the poll loop.
 FEED_DOWN_THRESHOLD = 5   # consecutive failures before one loud, actionable warning
 ERROR_LOG_EVERY = 30      # after the first, log a one-line error every Nth failure
-
-
-# ---------------------------------------------------------------------------
-# NeonDB DDL — created idempotently on first write.
-# ---------------------------------------------------------------------------
-
-
-SCHEMA_DDL = """
--- live_signal_cache: matches mira-hub migration 020 shape (PRIMARY KEY is
--- (tenant_id, plc_tag)). If mig 020 has already run, CREATE TABLE IF NOT EXISTS
--- no-ops safely. The old shape (topic TEXT PRIMARY KEY) collided: a migrated NeonDB
--- silently skipped DDL then failed on INSERT with mismatched column names.
-CREATE TABLE IF NOT EXISTS live_signal_cache (
-    tenant_id          UUID        NOT NULL,
-    plc_tag            TEXT        NOT NULL,
-    component_id       UUID,
-    last_value_text    TEXT,
-    last_value_numeric DOUBLE PRECISION,
-    last_value_bool    BOOLEAN,
-    last_seen_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_changed_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    prev_value_numeric DOUBLE PRECISION,
-    prev_value_bool    BOOLEAN,
-    simulated          BOOLEAN     NOT NULL DEFAULT true,
-    source             TEXT        NOT NULL DEFAULT 'demo_plc_poller',
-    properties         JSONB       NOT NULL DEFAULT '{}',
-    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (tenant_id, plc_tag)
-);
-
--- live_signal_events: matches mira-hub migration 019 shape. Poller-specific
--- fields (event_type, prev_value) are stored in properties JSONB.
-CREATE TABLE IF NOT EXISTS live_signal_events (
-    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id     UUID        NOT NULL,
-    component_id  UUID,
-    plc_tag       TEXT,
-    value_numeric DOUBLE PRECISION,
-    value_bool    BOOLEAN,
-    simulated     BOOLEAN     NOT NULL DEFAULT true,
-    source        TEXT        NOT NULL DEFAULT 'demo_plc_poller',
-    properties    JSONB       NOT NULL DEFAULT '{}',
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS live_signal_events_tenant_tag
-    ON live_signal_events (tenant_id, plc_tag, created_at DESC);
-"""
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +218,7 @@ class DemoPLCPoller:
         poll_interval: float,
         relay_url: str | None,
         relay_api_key: str | None,
-        db_url: str | None,
+        relay_hmac_key: str | None,
         tenant_id: str,
         dry_run: bool,
     ) -> None:
@@ -249,14 +227,12 @@ class DemoPLCPoller:
         self.poll_interval = poll_interval
         self.relay_url = relay_url.rstrip("/") if relay_url else None
         self.relay_api_key = relay_api_key
-        self.db_url = db_url
+        self.relay_hmac_key = relay_hmac_key
         self.tenant_id = tenant_id
         self.dry_run = dry_run
 
         self._modbus: AsyncModbusTcpClient | None = None
         self._http: httpx.AsyncClient | None = None
-        self._db_conn = None  # psycopg connection, lazily created
-        self._db_schema_ready = False
         self._prev: Snapshot | None = None
         self._stop = asyncio.Event()
 
@@ -271,10 +247,9 @@ class DemoPLCPoller:
             )
         self._http = httpx.AsyncClient(timeout=10.0)
         logger.info(
-            "Connected to PLC %s:%d (poll=%.2fs relay=%s db=%s dry_run=%s)",
+            "Connected to PLC %s:%d (poll=%.2fs relay=%s dry_run=%s)",
             self.plc_ip, self.plc_port, self.poll_interval,
             self.relay_url or "disabled",
-            "enabled" if self.db_url else "disabled",
             self.dry_run,
         )
 
@@ -284,11 +259,6 @@ class DemoPLCPoller:
             self._modbus.close()
         if self._http is not None:
             await self._http.aclose()
-        if self._db_conn is not None:
-            try:
-                self._db_conn.close()
-            except Exception:
-                logger.exception("Failed to close NeonDB connection")
         logger.info("Poller stopped cleanly")
 
     def request_stop(self) -> None:
@@ -306,11 +276,7 @@ class DemoPLCPoller:
                 events = detect_events(self._prev, snapshot)
                 self._prev = snapshot
 
-                await asyncio.gather(
-                    self._push_relay(snapshot),
-                    self._push_neondb(snapshot, events),
-                    return_exceptions=False,
-                )
+                await self._push_relay(snapshot, events)
 
                 if consecutive_failures:
                     logger.info("PLC feed RECOVERED after %d failed cycle(s)", consecutive_failures)
@@ -385,145 +351,97 @@ class DemoPLCPoller:
 
         return Snapshot(timestamp=datetime.now(timezone.utc), values=values)
 
-    # -- relay push ---------------------------------------------------------
+    # -- relay push (the ONE ingest pipeline) --------------------------------
+    #
+    # Builds tag entries via mira-relay/ingest_contract.py and posts the
+    # canonical batch to POST /api/v1/tags/ingest. This is the single write
+    # path — the relay's tag_ingest.ingest_batch is what writes tag_events +
+    # live_signal_cache in NeonDB (migrations 020/033/036). This poller never
+    # opens a NeonDB connection itself. See .claude/rules/one-pipeline-ingest.md.
 
-    async def _push_relay(self, snapshot: Snapshot) -> None:
+    async def _push_relay(self, snapshot: Snapshot, events: list[dict[str, Any]]) -> None:
+        payload = self._build_ingest_payload(snapshot)
+
         if not self.relay_url or self.dry_run:
             if self.dry_run:
-                logger.info("[dry-run] relay payload: %s", self._build_relay_payload(snapshot))
+                logger.info("[dry-run] ingest payload: %s", payload)
+                if events:
+                    logger.info("[dry-run] %d value-change event(s) this cycle", len(events))
             return
         assert self._http is not None
 
-        payload = self._build_relay_payload(snapshot)
-        headers = {}
-        if self.relay_api_key:
+        import json as _json
+
+        body_bytes = _json.dumps(payload, separators=(",", ":")).encode()
+        headers = {"Content-Type": "application/json"}
+        if self.relay_hmac_key:
+            headers.update(self._hmac_headers(body_bytes))
+        elif self.relay_api_key:
             headers["Authorization"] = f"Bearer {self.relay_api_key}"
 
         try:
             resp = await self._http.post(
-                f"{self.relay_url}/ingest",
-                json=payload,
+                f"{self.relay_url}/api/v1/tags/ingest",
+                content=body_bytes,
                 headers=headers,
             )
             resp.raise_for_status()
         except httpx.HTTPError as e:
-            logger.warning("relay push failed: %s", e)
+            logger.warning("relay ingest push failed: %s", e)
 
-    def _build_relay_payload(self, snapshot: Snapshot) -> dict[str, Any]:
-        t = snapshot.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-        tags: dict[str, dict[str, Any]] = {}
-        for p in ADDRESS_MAP:
-            if p.relay_tag is None:
-                continue
-            tags[p.relay_tag] = {
-                "v": snapshot.values[p.name],
-                "q": "Good",
-                "t": t,
-            }
+    def _build_ingest_payload(self, snapshot: Snapshot) -> dict[str, Any]:
+        """Build the canonical ``{source_system, tags[, tenant_id]}`` batch.
+
+        ``source_system="plc_bridge"`` matches tag_ingest.VALID_SOURCE_SYSTEMS
+        and the bench PLC-bridge precedent in
+        .claude/rules/fieldbus-readonly.md. Bench/legacy bearer carries the
+        tenant in the body; HMAC mode omits it (the relay treats the signed
+        X-MIRA-Tenant header as authoritative).
+        """
+        ts = snapshot.timestamp.isoformat()
+        entries = [
+            build_tag_entry(
+                p.plc_tag,
+                bool(snapshot.values[p.name]) if p.kind == COIL else snapshot.values[p.name],
+                value_type="bool" if p.kind == COIL else "float",
+                quality="good",
+                ts=ts,
+                metadata={"uns_topic": p.uns_topic, "equipment_id": EQUIPMENT_ID},
+            )
+            for p in ADDRESS_MAP
+            if p.relay_tag is not None
+        ]
+        return build_ingest_batch(
+            "plc_bridge",
+            entries,
+            tenant_id=None if self.relay_hmac_key else self.tenant_id,
+        )
+
+    def _hmac_headers(self, body_bytes: bytes) -> dict[str, str]:
+        """Build the four X-MIRA-* HMAC headers for body_bytes.
+
+        Mirrors mira-relay/auth.py's signed-string contract (also used by
+        simlab/publishers.py::RelayIngestPublisher):
+        f"{tenant}\n{nonce}\n{timestamp}\n{sha256_hex(body_bytes)}".
+        """
+        import hashlib
+        import hmac as _hmac
+        import time
+        import uuid
+
+        nonce = uuid.uuid4().hex
+        timestamp = str(int(time.time()))
+        body_hash = hashlib.sha256(body_bytes).hexdigest()
+        signed = f"{self.tenant_id}\n{nonce}\n{timestamp}\n{body_hash}"
+        signature = _hmac.new(
+            self.relay_hmac_key.encode(), signed.encode(), hashlib.sha256
+        ).hexdigest()
         return {
-            "type": "tags",
-            "tenant_id": self.tenant_id,
-            "agent_id": AGENT_ID,
-            "equipment": {EQUIPMENT_ID: tags},
+            "X-MIRA-Tenant": self.tenant_id,
+            "X-MIRA-Nonce": nonce,
+            "X-MIRA-Timestamp": timestamp,
+            "X-MIRA-Signature": signature,
         }
-
-    # -- neondb push --------------------------------------------------------
-
-    async def _push_neondb(self, snapshot: Snapshot, events: list[dict[str, Any]]) -> None:
-        if not self.db_url or self.dry_run:
-            if self.dry_run and events:
-                logger.info("[dry-run] would persist %d events", len(events))
-            return
-        # psycopg is synchronous; offload to a worker thread to avoid blocking the loop.
-        await asyncio.to_thread(self._sync_db_write, snapshot, events)
-
-    def _sync_db_write(self, snapshot: Snapshot, events: list[dict[str, Any]]) -> None:
-        try:
-            conn = self._get_db()
-        except Exception as e:
-            logger.warning("NeonDB connect failed: %s", e)
-            return
-
-        try:
-            with conn.cursor() as cur:
-                if not self._db_schema_ready:
-                    cur.execute(SCHEMA_DDL)
-                    self._db_schema_ready = True
-
-                # Upsert cache rows — migration-020 shape: PK=(tenant_id, plc_tag)
-                _coil_names = {p.name for p in ADDRESS_MAP if p.kind == COIL}
-                cur.executemany(
-                    """
-                    INSERT INTO live_signal_cache
-                        (tenant_id, plc_tag,
-                         last_value_numeric, last_value_bool,
-                         last_seen_at, source, simulated)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (tenant_id, plc_tag) DO UPDATE SET
-                        last_value_numeric = EXCLUDED.last_value_numeric,
-                        last_value_bool    = EXCLUDED.last_value_bool,
-                        last_seen_at       = EXCLUDED.last_seen_at,
-                        updated_at         = now()
-                    """,
-                    [
-                        (
-                            self.tenant_id,
-                            p.plc_tag,
-                            None if p.kind == COIL else float(snapshot.values[p.name]),
-                            bool(snapshot.values[p.name]) if p.kind == COIL else None,
-                            snapshot.timestamp,
-                            AGENT_ID,
-                            False,  # real PLC data
-                        )
-                        for p in ADDRESS_MAP
-                    ],
-                )
-
-                if events:
-                    # migration-019 shape: poller-specific fields in properties JSONB
-                    cur.executemany(
-                        """
-                        INSERT INTO live_signal_events
-                            (tenant_id, plc_tag,
-                             value_numeric, value_bool, source, simulated, properties)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
-                        """,
-                        [
-                            (
-                                self.tenant_id,
-                                e["plc_tag"],
-                                None if e["plc_tag"] in _coil_names else float(e["new_value"]),
-                                bool(e["new_value"]) if e["plc_tag"] in _coil_names else None,
-                                AGENT_ID,
-                                False,
-                                json.dumps({
-                                    "event_type": e["event_type"],
-                                    "prev_value": e.get("prev_value"),
-                                    "topic": e.get("topic"),
-                                    "equipment_id": e.get("equipment_id"),
-                                }),
-                            )
-                            for e in events
-                        ],
-                    )
-            conn.commit()
-        except Exception:
-            logger.exception("NeonDB write failed")
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-
-    def _get_db(self):
-        if self._db_conn is not None:
-            return self._db_conn
-        try:
-            import psycopg  # psycopg v3
-            self._db_conn = psycopg.connect(self.db_url)
-        except ImportError:
-            import psycopg2  # fallback
-            self._db_conn = psycopg2.connect(self.db_url)
-        return self._db_conn
 
 
 # ---------------------------------------------------------------------------
@@ -540,9 +458,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--poll-interval", type=float, default=float(os.getenv("DEMO_PLC_POLL_INTERVAL", "1.0")))
     p.add_argument("--relay-url", default=os.getenv("MIRA_RELAY_URL", "http://localhost:8765"))
     p.add_argument("--relay-api-key", default=os.getenv("RELAY_API_KEY"))
-    p.add_argument("--db-url", default=os.getenv("NEON_DATABASE_URL"))
+    p.add_argument("--relay-hmac-key", default=os.getenv("MIRA_RELAY_HMAC_KEY"))
     p.add_argument("--tenant-id", default=os.getenv("MIRA_TENANT_ID", DEFAULT_TENANT_ID))
-    p.add_argument("--dry-run", action="store_true", help="Skip relay + DB writes; log only")
+    p.add_argument("--dry-run", action="store_true", help="Skip the relay push; log only")
     p.add_argument("--log-level", default=os.getenv("LOG_LEVEL", "INFO"))
     return p.parse_args(argv)
 
@@ -554,7 +472,7 @@ async def _amain(args: argparse.Namespace) -> int:
         poll_interval=args.poll_interval,
         relay_url=args.relay_url,
         relay_api_key=args.relay_api_key,
-        db_url=args.db_url,
+        relay_hmac_key=args.relay_hmac_key,
         tenant_id=args.tenant_id,
         dry_run=args.dry_run,
     )
