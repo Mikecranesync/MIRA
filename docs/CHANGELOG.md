@@ -3,7 +3,7 @@
 ### v3.58.5 (2026-07-03) - feat(crew): dogfood routine observability + heartbeat (durability Phase 2)
 - Makes the 4h dogfood judge **observable and self-monitoring** so it can't die silently. `scheduled_run.sh` now posts each run's verdict (GREEN/YELLOW/RED + counts + top blockers + evidence pointer) to a durable tracking issue (**#2417**) with a `<!-- dogfood-heartbeat -->` marker — best-effort, never fails the run, works in report-only mode. You see every verdict in GitHub (phone/email), no SSH to Bravo.
 - Adds `.github/workflows/dogfood-judge-heartbeat.yml` — a **dead-man's-switch** that runs on GitHub every 6h, reads only #2417 (no staging access, so a Bravo reboot can't kill it), and **fails/notifies if the newest verdict is >9h old** (2+ missed 4h runs = the routine stopped). Verified live: a real run posted a YELLOW verdict to #2417; the freshness check reads it (fresh → OK, simulated 12h → fires). actionlint + `shellcheck -S warning` clean. Phase 2 of `docs/plans/2026-07-03-dogfood-routine-durability.md`.
-=======
+
 ### v3.58.4 (2026-07-03) - test(hub): guard the synthetic-seeder tenants mirror (durability Phase 3)
 - Adds `mira-hub/src/lib/seed-synthetic-tenants-mirror.test.ts` — a static guard that fails if `seed-synthetic-users.ts` stops mirroring **both** synthetic tenants into the data-side `tenants` table (the FK target of `knowledge_entries.tenant_id`, #1899b). Dropping the mirror silently re-breaks every QA-persona document upload (`knowledge_entries_tenant_id_fkey` 23503 → "Server storage error") and the beta-gate journey. Lives under `src/` so the existing Hub Unit vitest picks it up (vitest `include` is `src/**` only — a test under `scripts/` would never run). Phase 3 of `docs/plans/2026-07-03-dogfood-routine-durability.md`.
 
