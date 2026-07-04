@@ -30,6 +30,13 @@
   <dict>
     <key>PATH</key>
     <string>/Users/bravonode/.local/bin:/Users/bravonode/.bun/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <!-- Phase 4: auto-file confirmed, two-persona-verified, deduped REDs. Safe by
+         construction — the judge only files a RED reproduced by a SECOND persona,
+         dedupes first, and on a dedupe match in non-interactive mode create_issue.sh
+         DECLINES silently (no re-file, no repeat comment), so a persistent RED files
+         exactly once. Needs GITHUB_PAT in Doppler stg (present). Set to 0 to revert. -->
+    <key>DOGFOOD_FILE_ISSUES</key>
+    <string>1</string>
   </dict>
 </dict>
 </plist>
