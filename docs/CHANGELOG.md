@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.61.3 (2026-07-04) - chore(repo): clean root — archive handoffs/reports/screenshots, delete mira_copy dead weight (#2453)
+- Deletes `mira_copy/{outputs,prompts,templates}/` (generated marketing-copy artifacts) and archives root-level handoff docs / competitor reports / promo screenshots into `docs/archive/` + `docs/promo-screenshots/`. Keeps `mira_copy`'s 5 core importable module files (`__init__.py`, `__main__.py`, `cli.py`, `client.py`, `generate.py`) — still imported live by `mira-crawler/tasks/{social,blog,content}.py`. Referenced nginx confs left in place.
+
 ### v3.61.2 (2026-07-04) - fix(tools): route demo_plc_poller through the one-pipeline ingest contract (#2450)
 - `tools/demo_plc_poller.py` shipped its own rival `live_signal_cache`/`live_signal_events` DDL and wrote directly to NeonDB, bypassing `.claude/rules/one-pipeline-ingest.md`. Removes the rival schema/DB-write code and routes tag values through `build_tag_entry`/`build_ingest_batch` (`mira-relay/ingest_contract.py`) → `ingest_batch` (`mira-relay/tag_ingest.py`), mirroring `simlab/publishers.py::RelayIngestPublisher`.
 
