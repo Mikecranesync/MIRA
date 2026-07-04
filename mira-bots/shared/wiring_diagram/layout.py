@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-from .schema import Bus, Component, Connection, DiagramSpec
+from .schema import Component, Connection, DiagramSpec
 from .style import (
     BUS_SPACING,
     CONTROL_OFFSET_Y,
@@ -17,7 +17,6 @@ from .style import (
     GRID_UNIT,
     MARGIN_LEFT,
     MARGIN_TOP,
-    WORK_HEIGHT,
     WORK_WIDTH,
 )
 
@@ -96,13 +95,24 @@ def compute_layout(spec: DiagramSpec) -> LayoutResult:
     power_groups: dict[str, list[Component]] = {}
     control_groups: dict[str, list[Component]] = {}
     power_types = {
-        "circuit_breaker", "contactor_3pole", "overload_relay",
-        "motor_3ph", "motor_1ph", "vfd", "fuse", "transformer",
+        "circuit_breaker",
+        "contactor_3pole",
+        "overload_relay",
+        "motor_3ph",
+        "motor_1ph",
+        "vfd",
+        "fuse",
+        "transformer",
     }
     control_types = {
-        "pushbutton_no", "pushbutton_nc", "emergency_stop",
-        "contactor_coil", "relay_coil", "relay_contact_no",
-        "relay_contact_nc", "indicator_light",
+        "pushbutton_no",
+        "pushbutton_nc",
+        "emergency_stop",
+        "contactor_coil",
+        "relay_coil",
+        "relay_contact_no",
+        "relay_contact_nc",
+        "indicator_light",
     }
 
     for gname, comps in groups.items():
@@ -117,7 +127,9 @@ def compute_layout(spec: DiagramSpec) -> LayoutResult:
             # Mixed group — split
             power_comps = [c for c in comps if c.type in power_types]
             ctrl_comps = [c for c in comps if c.type in control_types]
-            other_comps = [c for c in comps if c.type not in power_types and c.type not in control_types]
+            other_comps = [
+                c for c in comps if c.type not in power_types and c.type not in control_types
+            ]
             if power_comps:
                 power_groups[gname] = power_comps + other_comps
             if ctrl_comps:
@@ -134,18 +146,28 @@ def compute_layout(spec: DiagramSpec) -> LayoutResult:
 
     for i, bus in enumerate(power_buses):
         by = _snap(bus_y_start + i * BUS_SPACING)
-        bus_bars.append(BusBar(
-            name=bus.name,
-            x1=bus_x_start, y1=by,
-            x2=bus_x_end, y2=by,
-            bus_type=bus.type,
-        ))
+        bus_bars.append(
+            BusBar(
+                name=bus.name,
+                x1=bus_x_start,
+                y1=by,
+                x2=bus_x_end,
+                y2=by,
+                bus_type=bus.type,
+            )
+        )
 
     # --- Place power components (top-to-bottom per group) ---
     # Vertical stacking order preference
     power_order = [
-        "circuit_breaker", "fuse", "contactor_3pole", "overload_relay",
-        "vfd", "transformer", "motor_3ph", "motor_1ph",
+        "circuit_breaker",
+        "fuse",
+        "contactor_3pole",
+        "overload_relay",
+        "vfd",
+        "transformer",
+        "motor_3ph",
+        "motor_1ph",
     ]
 
     num_power_groups = max(len(power_groups), 1)
@@ -173,29 +195,41 @@ def compute_layout(spec: DiagramSpec) -> LayoutResult:
     # Control bus bars (+24V left, 0V right)
     for bus in control_buses:
         if "+24" in bus.name or "pos" in bus.name.lower():
-            bus_bars.append(BusBar(
-                name=bus.name,
-                x1=bus_x_start, y1=ctrl_y - 30,
-                x2=bus_x_start, y2=ctrl_y + 60,
-                bus_type="control",
-            ))
+            bus_bars.append(
+                BusBar(
+                    name=bus.name,
+                    x1=bus_x_start,
+                    y1=ctrl_y - 30,
+                    x2=bus_x_start,
+                    y2=ctrl_y + 60,
+                    bus_type="control",
+                )
+            )
         elif "0V" in bus.name or "neg" in bus.name.lower() or "GND" in bus.name:
-            bus_bars.append(BusBar(
-                name=bus.name,
-                x1=bus_x_end, y1=ctrl_y - 30,
-                x2=bus_x_end, y2=ctrl_y + 60,
-                bus_type="control",
-            ))
+            bus_bars.append(
+                BusBar(
+                    name=bus.name,
+                    x1=bus_x_end,
+                    y1=ctrl_y - 30,
+                    x2=bus_x_end,
+                    y2=ctrl_y + 60,
+                    bus_type="control",
+                )
+            )
 
     # Earth bus
     for bus in earth_buses:
         by = _snap(CONTROL_OFFSET_Y + 100)
-        bus_bars.append(BusBar(
-            name=bus.name,
-            x1=bus_x_start, y1=by,
-            x2=bus_x_end, y2=by,
-            bus_type="earth",
-        ))
+        bus_bars.append(
+            BusBar(
+                name=bus.name,
+                x1=bus_x_start,
+                y1=by,
+                x2=bus_x_end,
+                y2=by,
+                bus_type="earth",
+            )
+        )
 
     ctrl_x = _snap(MARGIN_LEFT + 150)
     all_ctrl_comps = []
@@ -204,9 +238,14 @@ def compute_layout(spec: DiagramSpec) -> LayoutResult:
 
     # Sort control components: NC first (stop), then NO (start), then coils, then indicators
     ctrl_order = [
-        "emergency_stop", "pushbutton_nc", "pushbutton_no",
-        "contactor_coil", "relay_coil", "relay_contact_no",
-        "relay_contact_nc", "indicator_light",
+        "emergency_stop",
+        "pushbutton_nc",
+        "pushbutton_no",
+        "contactor_coil",
+        "relay_coil",
+        "relay_contact_no",
+        "relay_contact_nc",
+        "indicator_light",
     ]
     all_ctrl_comps.sort(
         key=lambda c: ctrl_order.index(c.type) if c.type in ctrl_order else 99,
@@ -255,7 +294,9 @@ def route_wires(
         dst = terminal_map.get(dst_key)
 
         if not src or not dst:
-            log.warning("Wire %s → %s: terminal not found (src=%s, dst=%s)", src_key, dst_key, src, dst)
+            log.warning(
+                "Wire %s → %s: terminal not found (src=%s, dst=%s)", src_key, dst_key, src, dst
+            )
             continue
 
         sx, sy = src
@@ -264,26 +305,50 @@ def route_wires(
         # Simple L-route: vertical then horizontal
         if abs(sx - dx) < 2:
             # Already vertically aligned — straight line
-            segments.append(WireSegment(
-                x1=sx, y1=sy, x2=dx, y2=dy,
-                wire_type=conn.wire_type, wire_label=conn.wire_label,
-            ))
+            segments.append(
+                WireSegment(
+                    x1=sx,
+                    y1=sy,
+                    x2=dx,
+                    y2=dy,
+                    wire_type=conn.wire_type,
+                    wire_label=conn.wire_label,
+                )
+            )
         elif abs(sy - dy) < 2:
             # Horizontally aligned — straight line
-            segments.append(WireSegment(
-                x1=sx, y1=sy, x2=dx, y2=dy,
-                wire_type=conn.wire_type, wire_label=conn.wire_label,
-            ))
+            segments.append(
+                WireSegment(
+                    x1=sx,
+                    y1=sy,
+                    x2=dx,
+                    y2=dy,
+                    wire_type=conn.wire_type,
+                    wire_label=conn.wire_label,
+                )
+            )
         else:
             # L-route: go vertical to dst Y, then horizontal to dst X
             mid_y = dy
-            segments.append(WireSegment(
-                x1=sx, y1=sy, x2=sx, y2=mid_y,
-                wire_type=conn.wire_type, wire_label=conn.wire_label,
-            ))
-            segments.append(WireSegment(
-                x1=sx, y1=mid_y, x2=dx, y2=dy,
-                wire_type=conn.wire_type, wire_label="",
-            ))
+            segments.append(
+                WireSegment(
+                    x1=sx,
+                    y1=sy,
+                    x2=sx,
+                    y2=mid_y,
+                    wire_type=conn.wire_type,
+                    wire_label=conn.wire_label,
+                )
+            )
+            segments.append(
+                WireSegment(
+                    x1=sx,
+                    y1=mid_y,
+                    x2=dx,
+                    y2=dy,
+                    wire_type=conn.wire_type,
+                    wire_label="",
+                )
+            )
 
     return segments

@@ -6,7 +6,6 @@ diagram as SVG, then to PNG/PDF via PyMuPDF (fitz).
 
 from __future__ import annotations
 
-import io
 import logging
 from datetime import date
 
@@ -36,15 +35,12 @@ from .style import (
     FONT_TITLE,
     FONT_WIRE_LABEL,
     HIRES_SCALE,
-    MARGIN_BOTTOM,
-    MARGIN_LEFT,
     STROKE_BUS,
     STROKE_DETAIL,
     STROKE_PRIMARY,
     TITLE_BLOCK_HEIGHT,
     TITLE_BLOCK_WIDTH,
     WIRE_COLORS,
-    WORK_WIDTH,
 )
 from .symbols import SYMBOL_REGISTRY
 
@@ -218,8 +214,7 @@ class WiringRenderer:
                 # Handle PLC cards with custom pins
                 if comp.type in ("plc_input_card", "plc_output_card") and comp.terminals:
                     pins = [
-                        {"name": t.id, "side": t.side, "label": t.label}
-                        for t in comp.terminals
+                        {"name": t.id, "side": t.side, "label": t.label} for t in comp.terminals
                     ]
                     svg, terminals = draw_fn(pc.cx, pc.cy, tag=comp.tag, pins=pins)
                 else:
@@ -367,7 +362,7 @@ class WiringRenderer:
             # Drawing number + revision
             f'<text x="{bx + 10}" y="{by + bh / 2 + 18}" font-size="{FONT_SUBTITLE}" '
             f'fill="{COLOR_BLACK}">{self.spec.drawing_number} Rev {self.spec.revision} | '
-            f'{self.spec.standard} | {d}</text>',
+            f"{self.spec.standard} | {d}</text>",
             # Author
             f'<text x="{bx + bw - 10}" y="{by + bh / 2 + 18}" font-size="{FONT_NOTE}" '
             f'text-anchor="end" fill="{COLOR_GRAY}">{self.spec.author}</text>',
@@ -407,8 +402,7 @@ class WiringRenderer:
                 f'stroke="{color}" stroke-width="{STROKE_PRIMARY}"/>'
             )
             parts.append(
-                f'<text x="{x + 25}" y="{ly + 4}" font-size="8" '
-                f'fill="{COLOR_BLACK}">{wt}</text>'
+                f'<text x="{x + 25}" y="{ly + 4}" font-size="8" fill="{COLOR_BLACK}">{wt}</text>'
             )
             offset += 80
 
@@ -418,10 +412,7 @@ class WiringRenderer:
 def _escape_xml(text: str) -> str:
     """Escape special XML characters."""
     return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
+        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
     )
 
 

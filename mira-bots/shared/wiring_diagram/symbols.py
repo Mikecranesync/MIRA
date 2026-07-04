@@ -7,6 +7,8 @@ Connection stubs extend from the symbol body for wire routing.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from .style import (
     COLOR_BLACK,
     COLOR_PE,
@@ -62,6 +64,7 @@ def _connection_dot(x: float, y: float) -> str:
 # ---------------------------------------------------------------------------
 # Component symbols
 # ---------------------------------------------------------------------------
+
 
 def motor_3ph(cx: float, cy: float, tag: str = "M1") -> tuple[str, dict[str, tuple[float, float]]]:
     """Three-phase motor: circle with 'M' + 3~ inside, U/V/W terminals top, PE bottom.
@@ -131,7 +134,9 @@ def motor_1ph(cx: float, cy: float, tag: str = "M1") -> tuple[str, dict[str, tup
     return "\n".join(parts), terminals
 
 
-def contactor_3pole(cx: float, cy: float, tag: str = "K1") -> tuple[str, dict[str, tuple[float, float]]]:
+def contactor_3pole(
+    cx: float, cy: float, tag: str = "K1"
+) -> tuple[str, dict[str, tuple[float, float]]]:
     """Three-pole contactor: rectangle with NO contact symbols inside.
 
     Terminals: 1,3,5 (top/line) and 2,4,6 (bottom/load) + A1,A2 (coil).
@@ -184,7 +189,9 @@ def contactor_3pole(cx: float, cy: float, tag: str = "K1") -> tuple[str, dict[st
     return "\n".join(parts), terminals
 
 
-def contactor_coil(cx: float, cy: float, tag: str = "K1") -> tuple[str, dict[str, tuple[float, float]]]:
+def contactor_coil(
+    cx: float, cy: float, tag: str = "K1"
+) -> tuple[str, dict[str, tuple[float, float]]]:
     """Contactor coil (for control circuit): rectangle with two horizontal leads."""
     w, h = 40, 30
     x0 = cx - w / 2
@@ -206,7 +213,9 @@ def contactor_coil(cx: float, cy: float, tag: str = "K1") -> tuple[str, dict[str
     return "\n".join(parts), terminals
 
 
-def overload_relay(cx: float, cy: float, tag: str = "F1") -> tuple[str, dict[str, tuple[float, float]]]:
+def overload_relay(
+    cx: float, cy: float, tag: str = "F1"
+) -> tuple[str, dict[str, tuple[float, float]]]:
     """Thermal overload relay: rectangle with OL zigzag + heater elements.
 
     Terminals: 1,3,5 (top) / 2,4,6 (bottom) + 95/96 (NC aux) + 97/98 (NO aux).
@@ -227,7 +236,7 @@ def overload_relay(cx: float, cy: float, tag: str = "F1") -> tuple[str, dict[str
         zx = cx - spacing + i * spacing
         # Simple zigzag
         zy = cy + 2
-        pts = f"{zx-4},{zy-6} {zx+4},{zy-2} {zx-4},{zy+2} {zx+4},{zy+6}"
+        pts = f"{zx - 4},{zy - 6} {zx + 4},{zy - 2} {zx - 4},{zy + 2} {zx + 4},{zy + 6}"
         parts.append(
             f'<polyline points="{pts}" fill="none" stroke="{COLOR_BLACK}" '
             f'stroke-width="{STROKE_DETAIL}"/>'
@@ -256,7 +265,9 @@ def overload_relay(cx: float, cy: float, tag: str = "F1") -> tuple[str, dict[str
     return "\n".join(parts), terminals
 
 
-def circuit_breaker(cx: float, cy: float, tag: str = "Q1") -> tuple[str, dict[str, tuple[float, float]]]:
+def circuit_breaker(
+    cx: float, cy: float, tag: str = "Q1"
+) -> tuple[str, dict[str, tuple[float, float]]]:
     """Circuit breaker: rectangle with X-pattern inside.
 
     Terminals: 1,3,5 (top) / 2,4,6 (bottom) for 3-pole.
@@ -312,7 +323,9 @@ def fuse(cx: float, cy: float, tag: str = "F1") -> tuple[str, dict[str, tuple[fl
     return "\n".join(parts), terminals
 
 
-def pushbutton_no(cx: float, cy: float, tag: str = "S1") -> tuple[str, dict[str, tuple[float, float]]]:
+def pushbutton_no(
+    cx: float, cy: float, tag: str = "S1"
+) -> tuple[str, dict[str, tuple[float, float]]]:
     """Normally-open pushbutton: diagonal arm NOT touching right terminal."""
     parts = [
         # Left terminal
@@ -336,7 +349,9 @@ def pushbutton_no(cx: float, cy: float, tag: str = "S1") -> tuple[str, dict[str,
     return "\n".join(parts), terminals
 
 
-def pushbutton_nc(cx: float, cy: float, tag: str = "S0") -> tuple[str, dict[str, tuple[float, float]]]:
+def pushbutton_nc(
+    cx: float, cy: float, tag: str = "S0"
+) -> tuple[str, dict[str, tuple[float, float]]]:
     """Normally-closed pushbutton: arm crosses vertical bar (touching)."""
     parts = [
         # Left terminal
@@ -362,7 +377,9 @@ def pushbutton_nc(cx: float, cy: float, tag: str = "S0") -> tuple[str, dict[str,
     return "\n".join(parts), terminals
 
 
-def emergency_stop(cx: float, cy: float, tag: str = "S0") -> tuple[str, dict[str, tuple[float, float]]]:
+def emergency_stop(
+    cx: float, cy: float, tag: str = "S0"
+) -> tuple[str, dict[str, tuple[float, float]]]:
     """Emergency stop: mushroom button NC contact (IEC 60617)."""
     parts = [
         # NC contact
@@ -387,7 +404,9 @@ def emergency_stop(cx: float, cy: float, tag: str = "S0") -> tuple[str, dict[str
     return "\n".join(parts), terminals
 
 
-def terminal_block(cx: float, cy: float, tag: str = "X1") -> tuple[str, dict[str, tuple[float, float]]]:
+def terminal_block(
+    cx: float, cy: float, tag: str = "X1"
+) -> tuple[str, dict[str, tuple[float, float]]]:
     """Terminal block: small unfilled circle with stubs top and bottom."""
     parts = [
         _circle(cx, cy, 5, fill="none"),
@@ -404,7 +423,9 @@ def terminal_block(cx: float, cy: float, tag: str = "X1") -> tuple[str, dict[str
     return "\n".join(parts), terminals
 
 
-def plc_io_card(cx: float, cy: float, tag: str = "PLC", pins: list[dict] | None = None) -> tuple[str, dict[str, tuple[float, float]]]:
+def plc_io_card(
+    cx: float, cy: float, tag: str = "PLC", pins: list[dict] | None = None
+) -> tuple[str, dict[str, tuple[float, float]]]:
     """PLC I/O card: tall rectangle with labeled pins on left and right sides.
 
     pins: list of {"name": "DI0", "side": "left", "label": "E-Stop"}
@@ -506,7 +527,9 @@ def relay_coil(cx: float, cy: float, tag: str = "K1") -> tuple[str, dict[str, tu
     return contactor_coil(cx, cy, tag)
 
 
-def relay_contact_no(cx: float, cy: float, tag: str = "K1") -> tuple[str, dict[str, tuple[float, float]]]:
+def relay_contact_no(
+    cx: float, cy: float, tag: str = "K1"
+) -> tuple[str, dict[str, tuple[float, float]]]:
     """Relay NO contact: diagonal arm with small arc at pivot (electromagnetic)."""
     parts = [
         _line(cx - 20, cy, cx - 8, cy),
@@ -527,7 +550,9 @@ def relay_contact_no(cx: float, cy: float, tag: str = "K1") -> tuple[str, dict[s
     return "\n".join(parts), terminals
 
 
-def relay_contact_nc(cx: float, cy: float, tag: str = "K1") -> tuple[str, dict[str, tuple[float, float]]]:
+def relay_contact_nc(
+    cx: float, cy: float, tag: str = "K1"
+) -> tuple[str, dict[str, tuple[float, float]]]:
     """Relay NC contact: arm crosses bar with arc at pivot."""
     parts = [
         _line(cx - 20, cy, cx - 8, cy),
@@ -550,7 +575,9 @@ def relay_contact_nc(cx: float, cy: float, tag: str = "K1") -> tuple[str, dict[s
     return "\n".join(parts), terminals
 
 
-def indicator_light(cx: float, cy: float, tag: str = "H1") -> tuple[str, dict[str, tuple[float, float]]]:
+def indicator_light(
+    cx: float, cy: float, tag: str = "H1"
+) -> tuple[str, dict[str, tuple[float, float]]]:
     """Indicator light: circle with X inside."""
     r = 12
     parts = [
@@ -570,7 +597,9 @@ def indicator_light(cx: float, cy: float, tag: str = "H1") -> tuple[str, dict[st
     return "\n".join(parts), terminals
 
 
-def proximity_sensor(cx: float, cy: float, tag: str = "B1") -> tuple[str, dict[str, tuple[float, float]]]:
+def proximity_sensor(
+    cx: float, cy: float, tag: str = "B1"
+) -> tuple[str, dict[str, tuple[float, float]]]:
     """Proximity sensor (IEC): rectangle with sensing face + 3-wire output."""
     w, h = 50, 30
     x0 = cx - w / 2
@@ -591,14 +620,16 @@ def proximity_sensor(cx: float, cy: float, tag: str = "B1") -> tuple[str, dict[s
         _terminal_dot(x0 + w + 20, y0 + h - 8),
     ]
     terminals = {
-        "BN": (x0 + w + 20, y0 + 8),      # +V (brown)
-        "BK": (x0 + w + 20, cy),            # signal (black)
-        "BU": (x0 + w + 20, y0 + h - 8),   # 0V (blue)
+        "BN": (x0 + w + 20, y0 + 8),  # +V (brown)
+        "BK": (x0 + w + 20, cy),  # signal (black)
+        "BU": (x0 + w + 20, y0 + h - 8),  # 0V (blue)
     }
     return "\n".join(parts), terminals
 
 
-def transformer(cx: float, cy: float, tag: str = "T1") -> tuple[str, dict[str, tuple[float, float]]]:
+def transformer(
+    cx: float, cy: float, tag: str = "T1"
+) -> tuple[str, dict[str, tuple[float, float]]]:
     """Transformer: two coil symbols side by side."""
     parts = [
         # Primary coil (left arcs)
@@ -639,7 +670,7 @@ def transformer(cx: float, cy: float, tag: str = "T1") -> tuple[str, dict[str, t
 # Symbol registry — maps component type strings to drawing functions
 # ---------------------------------------------------------------------------
 
-SYMBOL_REGISTRY: dict[str, callable] = {
+SYMBOL_REGISTRY: dict[str, Callable] = {
     "motor_3ph": motor_3ph,
     "motor_1ph": motor_1ph,
     "contactor_3pole": contactor_3pole,
