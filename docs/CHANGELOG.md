@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.60.4 (2026-07-04) - fix(ci): include mira-web in default deploy TARGETS
+- `deploy-vps.yml`'s default `TARGETS` list was missing `mira-web` — marketing-site PRs merged to main but never auto-deployed (no stated exclusion rationale in `docs/known-issues.md`). Adds it to the default rebuild list alongside the other services.
+
 ### v3.60.3 (2026-07-04) - perf(relay): one Neon connection per ingest_batch — cut the ~2s live-tag floor
 - **Bottleneck:** the Hub live-tag lag bottomed out at a ~2 s floor set by the relay ingest path, not the browser/collector. `NeonTagStore` opened **3 fresh Neon connections + 3 pre-pings per push** — `_engine()` rebuilt the SQLAlchemy engine on every call with `pool_pre_ping=True`, and `ingest_batch` called `load_allowlist` + `current_state_simulated` + `persist_batch` as three separate connections.
 - **Fix:** cache the engine at module level keyed by `neon_url` (`relay_server` builds a fresh `NeonTagStore` per request, so instance caching wouldn't persist); drop `pool_pre_ping` (pure overhead with `NullPool` + Neon's PgBouncer — every `connect()` is already a fresh physical connection); and add `NeonTagStore.session(tenant_id)`, a context manager that opens ONE transaction, runs `SET LOCAL` once, and binds all three pipeline ops to it via `_BoundNeonTagStore`. `ingest_batch` uses the session when the store provides one, else falls back to `nullcontext(store)` so the in-memory test double is unchanged.

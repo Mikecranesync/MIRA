@@ -210,7 +210,9 @@ jobs:
           # cycle — engine changes shipped to telegram/slack but mira-ask-saas
           # stayed on the old image because it was missing from this default
           # list). See docs/runbooks/kiosk-askmira-deploy-and-verify.md.
-          TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub mira-cmms-sync mira-bot-telegram mira-bot-slack mira-ask}"
+          # mira-web added 2026-07-04 - no stated exclusion rationale existed
+          # (docs/known-issues.md); marketing-site PRs silently did not auto-deploy.
+          TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub mira-web mira-cmms-sync mira-bot-telegram mira-bot-slack mira-ask}"
           echo "Rebuild targets: $TARGETS"
 
           echo "=== Pre-deploy cleanup: remove any stale containers blocking recreate ==="
