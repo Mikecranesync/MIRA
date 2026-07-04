@@ -388,6 +388,18 @@ jobs:
             FROM kg_entities WHERE entity_type = 'equipment'
            ORDER BY tenant_id, name LIMIT 30;
 
+          \echo === scoreboard: cmms_equipment columns (live schema) ===
+          SELECT column_name, data_type, is_nullable
+            FROM information_schema.columns
+           WHERE table_name = 'cmms_equipment' ORDER BY ordinal_position;
+
+          \echo === scoreboard: garage-tenant cmms_equipment rows ===
+          SELECT id, tenant_id, equipment_number,
+                 coalesce(to_jsonb(cmms_equipment)->>'name','(no name col)') AS name_ish
+            FROM cmms_equipment
+           WHERE tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'
+           ORDER BY equipment_number LIMIT 12;
+
           \echo === scoreboard: kg_relationships by type ===
           SELECT relationship_type, count(*) AS n FROM kg_relationships GROUP BY 1 ORDER BY n DESC;
 
