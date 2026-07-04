@@ -1,5 +1,6 @@
 import { withTenantContext } from "@/lib/tenant-context";
 import { applyHubProposalTransition, type QueryClient } from "@/lib/proposal-transition";
+import { normalizeTagPath } from "@/lib/normalize-tag-path";
 
 /**
  * Decide an `ai_suggestions` proposal (the non-edge accept path the offline PLC chain needs).
@@ -22,7 +23,18 @@ import { applyHubProposalTransition, type QueryClient } from "@/lib/proposal-tra
  *      materialized: the typed table must not hold an invented type. Enrich types via the CCW
  *      variables CSV (parser correlate path), then re-import.
  *
- * On `reject`: transition status → 'rejected'. No entity is created.
+ *      T5 (master plan) bridge: when a tag_mapping DOES materialize, also upsert `approved_tags`
+ *      (mig 035) so the tag is immediately ingestible by the relay allowlist — no follow-up SQL.
+ *      See `docs/discovery/integration-seams-register.md` Seam 6 ("PLC-import proposals never
+ *      became ingest-approved"). `source_system` provenance: the PLC-import `ai_suggestions`
+ *      payload (`plc-proposals.ts::plcReportToSuggestions`) carries no explicit source-system field
+ *      (verified by reading the extractedData shape) — it is always an offline L5X/CSV parse, and
+ *      'ignition' is the only live producer the relay allowlist gates today
+ *      (`mira-relay/tag_ingest.py`'s VALID set is {ignition, plc_bridge, relay, simulator}), so we
+ *      default to 'ignition' and record the bridge's provenance in `notes` rather than inventing a
+ *      new source_system value.
+ *
+ * On `reject`: transition status → 'rejected'. No entity is created; `approved_tags` is untouched.
  *
  * The other non-edge suggestion types (`component_profile`, `uns_confirmation`, `namespace_move`)
  * remain status-only here.
@@ -108,6 +120,42 @@ export function mapTagDataType(raw: unknown): string | null {
   return TAG_DATA_TYPE_MAP[key] ?? null;
 }
 
+// T5 bridge decision (see module docstring): PLC-import tag_mapping proposals carry no
+// source_system field. 'ignition' is the only live producer of the relay's approved_tags
+// allowlist today; a future connector-specific source_system can be threaded through
+// `extracted_data` once one exists.
+const APPROVED_TAGS_SOURCE_SYSTEM = "ignition";
+
+/**
+ * T5 bridge: upsert `approved_tags` (mig 035) for a tag_mapping proposal that materialized a
+ * `tag_entities` row, so the tag is ingestible by the relay allowlist with zero manual SQL.
+ * `source_tag_path` is the raw, pre-UNS symbol the PLC export used to name the tag (the same value
+ * `tag_entities.symbolic_name`/`source_address` stores) — the natural allowlist key, since
+ * `approved_tags` gates on the RAW path, not the resolved UNS path. Idempotent via
+ * ON CONFLICT (tenant_id, source_system, source_tag_path): re-accepting (or a re-import that
+ * re-approves the same raw tag) re-enables the row rather than erroring or duplicating.
+ */
+async function upsertApprovedTag(
+  c: QueryClient,
+  tenantId: string,
+  sourceTagPath: string,
+  unsPath: string,
+): Promise<void> {
+  const normalizedTagPath = normalizeTagPath(sourceTagPath);
+  await c.query(
+    `INSERT INTO approved_tags
+       (tenant_id, source_system, source_tag_path, normalized_tag_path, uns_path, enabled, notes)
+     VALUES ($1::uuid, $2, $3, $4, $5::ltree, true, $6)
+     ON CONFLICT (tenant_id, source_system, source_tag_path) DO UPDATE
+       SET enabled = true,
+           normalized_tag_path = EXCLUDED.normalized_tag_path,
+           uns_path = COALESCE(EXCLUDED.uns_path, approved_tags.uns_path),
+           notes = COALESCE(approved_tags.notes, EXCLUDED.notes),
+           updated_at = now()`,
+    [tenantId, APPROVED_TAGS_SOURCE_SYSTEM, sourceTagPath, normalizedTagPath, unsPath, "plc_import_bridge"],
+  );
+}
+
 async function createTagEntity(
   c: QueryClient,
   tenantId: string,
@@ -149,7 +197,14 @@ async function createTagEntity(
     [tenantId, unsPath, symbolic, dataType, symbolic, JSON.stringify(evidence)],
   );
   const rows = res.rows as { id: string }[];
-  return rows[0]?.id ?? null;
+  const entityId = rows[0]?.id ?? null;
+
+  // T5 bridge: the tag_entities row materialized — feed the ingest allowlist too.
+  if (entityId) {
+    await upsertApprovedTag(c, tenantId, symbolic, unsPath);
+  }
+
+  return entityId;
 }
 
 export async function decideSuggestion(

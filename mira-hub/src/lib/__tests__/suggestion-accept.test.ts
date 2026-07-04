@@ -68,6 +68,9 @@ beforeEach(() => {
     if (/INSERT INTO tag_entities/.test(sql)) {
       return { rows: [{ id: "tag-1" }] };
     }
+    if (/INSERT INTO approved_tags/.test(sql)) {
+      return { rows: [] };
+    }
     return { rows: [] };
   });
   transitionMock.mockReset();
@@ -199,5 +202,75 @@ describe("decideSuggestion", () => {
     const res = await decideSuggestion(TENANT, "u1", ID, "verify", "");
     expect(res).toEqual({ kind: "wrong_state", status: "accepted" });
     expect(transitionMock).not.toHaveBeenCalled();
+  });
+});
+
+// T5 (master plan): accepted tag_mapping proposals feed the ingest allowlist. Seam 6,
+// docs/discovery/integration-seams-register.md.
+describe("decideSuggestion — T5 approved_tags ingest bridge", () => {
+  function approvedTagsCalls() {
+    return queryMock.mock.calls.filter(([sql]) => /INSERT INTO approved_tags/.test(sql));
+  }
+
+  it("verify of a typed tag_mapping upserts an ENABLED approved_tags row with the normalized path", async () => {
+    suggestionRow = tagMappingSuggestion();
+    const res = await decideSuggestion(TENANT, "u1", ID, "verify", "");
+    expect(res).toMatchObject({ kind: "ok", decision: "verify", status: "accepted", entityId: "tag-1" });
+
+    const calls = approvedTagsCalls();
+    expect(calls).toHaveLength(1);
+    const [sql, params] = calls[0];
+    expect(sql).toContain("ON CONFLICT (tenant_id, source_system, source_tag_path) DO UPDATE");
+    expect(sql).toContain("enabled = true");
+    // [tenantId, source_system, source_tag_path(raw symbol), normalized_tag_path, uns_path(dotted), notes]
+    // (enabled=true is a literal in the SQL, not a bound param — see suggestion-accept.ts)
+    expect(params).toEqual([
+      TENANT,
+      "ignition",
+      "Conv_Fault",
+      "conv_fault",
+      "enterprise.site1.area1.line1.conv.fault",
+      "plc_import_bridge",
+    ]);
+  });
+
+  it("verify of a name-only tag_mapping (no declarable type) touches neither tag_entities nor approved_tags", async () => {
+    suggestionRow = tagMappingSuggestion({ data_type: "" });
+    await decideSuggestion(TENANT, "u1", ID, "verify", "");
+    expect(approvedTagsCalls()).toHaveLength(0);
+  });
+
+  it("reject of a tag_mapping does NOT touch approved_tags", async () => {
+    suggestionRow = tagMappingSuggestion();
+    const res = await decideSuggestion(TENANT, "u1", ID, "reject", "wrong tag");
+    expect(res).toMatchObject({ kind: "ok", decision: "reject", status: "rejected", entityId: null });
+    expect(approvedTagsCalls()).toHaveLength(0);
+  });
+
+  it("verify of a kg_entity proposal does NOT touch approved_tags", async () => {
+    const res = await decideSuggestion(TENANT, "u1", ID, "verify", "looks right");
+    expect(res).toMatchObject({ kind: "ok", entityId: "kg-1" });
+    expect(approvedTagsCalls()).toHaveLength(0);
+  });
+
+  it("re-accepting the same raw tag (a second suggestion) is idempotent — same upsert, no error", async () => {
+    // First accept.
+    suggestionRow = tagMappingSuggestion();
+    const first = await decideSuggestion(TENANT, "u1", ID, "verify", "");
+    expect(first).toMatchObject({ kind: "ok", entityId: "tag-1" });
+
+    // Second accept — e.g. a re-import producing a new ai_suggestions row for the same raw tag
+    // (tag_entities' own ON CONFLICT (tenant_id, uns_path) already upserts this case; the
+    // approved_tags upsert must tolerate it the same way).
+    const ID2 = "33333333-3333-3333-3333-333333333333";
+    suggestionRow = tagMappingSuggestion({}, { id: ID2 });
+    const second = await decideSuggestion(TENANT, "u1", ID2, "verify", "");
+    expect(second).toMatchObject({ kind: "ok", entityId: "tag-1" });
+
+    const calls = approvedTagsCalls();
+    expect(calls).toHaveLength(2);
+    // Both upserts target the identical conflict key and set enabled=true — idempotent by
+    // construction (ON CONFLICT DO UPDATE), never a duplicate-key error.
+    expect(calls[0][1]).toEqual(calls[1][1]);
   });
 });

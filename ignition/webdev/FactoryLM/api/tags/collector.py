@@ -32,9 +32,15 @@ from allowlist import load_allowlist, resolve_allowlist_path, tag_in_allowlist
 # uses for its default approved_tags.json locations. When deploying to a Gateway
 # whose script scope cannot cross-import, place collector.py + signing.py +
 # allowlist.py together in the project script library (see the integration doc).
-_CHAT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "chat")
-if _CHAT_DIR not in sys.path:
-    sys.path.insert(0, _CHAT_DIR)
+# In Ignition's Jython script library __file__ is undefined and signing.py is a
+# flat sibling module, so the sys.path dance below is only needed for the
+# non-Ignition (api/chat) source layout. Guard it so import works in both.
+try:
+    _CHAT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "chat")
+    if _CHAT_DIR not in sys.path:
+        sys.path.insert(0, _CHAT_DIR)
+except NameError:
+    pass  # __file__ undefined (Ignition script resource); signing is a flat sibling
 from signing import build_headers  # noqa: E402  (path set above)
 
 
