@@ -418,4 +418,17 @@ jobs:
           \echo === scoreboard: kg_entities NULL uns_path ===
           SELECT count(*) AS null_uns_path_entities FROM kg_entities WHERE uns_path IS NULL;
           SELECT id, tenant_id, entity_type, name FROM kg_entities WHERE uns_path IS NULL ORDER BY entity_type, name LIMIT 50;
+
+          \echo === scoreboard: work_orders schema probe (#2428 — source_run_diff_id / migration 060) ===
+          SELECT column_name, data_type, is_nullable
+            FROM information_schema.columns
+           WHERE table_name = 'work_orders' ORDER BY ordinal_position;
+          SELECT migration_name FROM schema_migrations
+           WHERE migration_name >= '055' ORDER BY migration_name;
+
+          \echo === scoreboard: latest machine_state_window rows (bench tenant — State bubble truth) ===
+          SELECT state, started_at, ended_at, now() - coalesce(ended_at, now()) AS ended_age
+            FROM machine_state_window
+           WHERE tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'
+           ORDER BY started_at DESC LIMIT 5;
           SQL
