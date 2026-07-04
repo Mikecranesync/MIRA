@@ -91,9 +91,14 @@ interface MachineMemoryCardProps extends Props {
   initialHistory?: Record<string, SparkPoint[]> | null;
 }
 
-/** Refresh cadence — matches the Ignition collector's 2 s stream so value
- * changes appear as they happen. */
-const POLL_INTERVAL_MS = 2000;
+/** Refresh cadence for the live-signal display. Keep this at or below the
+ * Ignition collector's push interval (the gateway tag-stream timer, default
+ * 2000 ms — see docs/perf/live-latency-budget.md) so a value change surfaces
+ * within roughly one poll of the collector writing it, not two stacked polls.
+ * 750 ms keeps the browser ahead of a 500–1000 ms collector without hammering
+ * the force-dynamic API. The real upstream lever is the collector timer +
+ * gateway scan class, which this constant is deliberately coupled to. */
+const POLL_INTERVAL_MS = 750;
 /** Sparkline history refresh — heavier query, slower cadence. */
 const HISTORY_INTERVAL_MS = 15000;
 
