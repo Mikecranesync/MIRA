@@ -371,7 +371,7 @@ function NewWorkOrderPageInner() {
               disabled={!selectedAsset}
               onClick={() => setStep(2)}
             >
-              {tCommon("description")} <ArrowRight className="w-4 h-4 ml-1" />
+              {tCommon("next")} <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
         )}
@@ -525,7 +525,7 @@ function NewWorkOrderPageInner() {
                 <ArrowLeft className="w-4 h-4 mr-1" /> {tCommon("back")}
               </Button>
               <Button className="flex-1" disabled={!description.trim()} onClick={() => setStep(3)}>
-                {t("review")} <ArrowRight className="w-4 h-4 ml-1" />
+                {tCommon("next")} <ArrowRight className="w-4 h-4 ml-1" />
               </Button>
             </div>
           </div>

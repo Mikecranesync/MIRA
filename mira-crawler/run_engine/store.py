@@ -126,6 +126,15 @@ class RunStore(Protocol):
         window_id parent, evidence pointers). Returns rows written."""
         ...
 
+    def recent_anomaly_pair_ts(
+        self, *, tenant_id: str, uns_path: str, since: float
+    ) -> dict[tuple[str, str], float]:
+        """Most-recent event_timestamp (epoch) per (diff_type, tag_path) among
+        anomaly run_diff rows for (tenant, uns_path) with event_timestamp >=
+        ``since``. Cross-window cooldown lookup (#2431) — window_id is
+        deliberately NOT part of the key."""
+        ...
+
 
 # ──────────────────────────────────────────────────────────────────────────
 # In-memory store — for tests / pure-core pipeline verification.
@@ -298,6 +307,20 @@ class InMemoryRunStore:
             existing.add(key)
             written += 1
         return written
+
+    def recent_anomaly_pair_ts(
+        self, *, tenant_id: str, uns_path: str, since: float
+    ) -> dict[tuple[str, str], float]:
+        out: dict[tuple[str, str], float] = {}
+        for a in self.anomaly_diffs:
+            if a.tenant_id != tenant_id or a.uns_path != uns_path:
+                continue
+            if a.event_timestamp is None or a.event_timestamp < since:
+                continue
+            pair = (a.diff_type, a.tag_path)
+            if pair not in out or a.event_timestamp > out[pair]:
+                out[pair] = a.event_timestamp
+        return out
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -927,3 +950,30 @@ class NeonRunStore:
             for p in params:
                 written += conn.execute(stmt, p).rowcount or 0
         return written
+
+    def recent_anomaly_pair_ts(
+        self, *, tenant_id: str, uns_path: str, since: float
+    ) -> dict[tuple[str, str], float]:
+        from sqlalchemy import text
+
+        with self._engine().connect() as conn:
+            conn.execute(
+                text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id}
+            )
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT diff_type, tag_path,
+                           max(extract(epoch FROM event_timestamp)) AS ts
+                      FROM run_diff
+                     WHERE tenant_id = :tid
+                       AND uns_path = CAST(:uns AS LTREE)
+                       AND window_id IS NOT NULL
+                       AND diff_type IS NOT NULL
+                       AND event_timestamp >= to_timestamp(:since)
+                     GROUP BY diff_type, tag_path
+                    """
+                ),
+                {"tid": tenant_id, "uns": uns_path, "since": since},
+            ).all()
+        return {(r[0], r[1]): float(r[2]) for r in rows if r[2] is not None}
