@@ -400,6 +400,18 @@ jobs:
            WHERE tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'
            ORDER BY equipment_number LIMIT 12;
 
+          \echo === scoreboard: live_signal_cache clock-skew probe (last_seen_at = client ts, updated_at = server NOW) ===
+          SELECT now() AS server_now,
+                 max(last_seen_at) AS max_last_seen,
+                 max(updated_at) AS max_updated,
+                 max(updated_at) - max(last_seen_at) AS client_clock_skew
+            FROM live_signal_cache
+           WHERE tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe';
+          SELECT plc_tag, last_seen_at, updated_at, updated_at - last_seen_at AS skew, simulated
+            FROM live_signal_cache
+           WHERE tenant_id = 'e88bd0e8-8a84-4e30-9803-c0dc6efb07fe'
+           ORDER BY updated_at DESC LIMIT 8;
+
           \echo === scoreboard: kg_relationships by type ===
           SELECT relationship_type, count(*) AS n FROM kg_relationships GROUP BY 1 ORDER BY n DESC;
 
