@@ -374,8 +374,8 @@ jobs:
 
           \echo === scoreboard: machine_state_window (040) by tenant / uns_path / state ===
           SELECT tenant_id, uns_path::text AS uns_path, state, count(*) AS n,
-                 max(window_start) AS latest_window_start
-            FROM machine_state_window GROUP BY 1,2,3 ORDER BY latest_window_start DESC NULLS LAST;
+                 max(started_at) AS latest_started_at, max(ended_at) AS latest_ended_at
+            FROM machine_state_window GROUP BY 1,2,3 ORDER BY latest_started_at DESC NULLS LAST;
 
           \echo === scoreboard: tag_events uns_path coverage (last 24h) ===
           SELECT coalesce(uns_path::text, '(null)') AS uns_path, count(*) AS n
