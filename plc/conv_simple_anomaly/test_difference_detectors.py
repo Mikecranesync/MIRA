@@ -7,10 +7,17 @@ no LLM, no broker, no DB. Examples use the PRD's canonical cases (DC-bus-like
 signal 318-325 -> 287; Signal A normally 0.4s after B -> 3.2s late).
 """
 from difference_detectors import (
-    detect_out_of_baseline, detect_stuck, detect_delayed_transition,
-    detect_drift, detect_never_seen_pattern,
-    group_observations, OUT_OF_BASELINE, STUCK, DELAYED_TRANSITION,
-    DRIFT, NEVER_SEEN,
+    DELAYED_TRANSITION,
+    DRIFT,
+    NEVER_SEEN,
+    OUT_OF_BASELINE,
+    STUCK,
+    detect_delayed_transition,
+    detect_drift,
+    detect_never_seen_pattern,
+    detect_out_of_baseline,
+    detect_stuck,
+    group_observations,
 )
 
 

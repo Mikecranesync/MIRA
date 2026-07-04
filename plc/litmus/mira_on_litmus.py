@@ -20,7 +20,15 @@ Two read sources, same MIRA brain (plc/conv_simple_anomaly rules):
 
 Zero third-party deps (stdlib socket + urllib) so it runs under any python3.
 """
-import argparse, json, os, socket, ssl, struct, sys, time, urllib.request
+import argparse
+import json
+import os
+import socket
+import ssl
+import struct
+import sys
+import time
+import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "conv_simple_anomaly"))
 import rules  # noqa: E402  -- the A0-A12 machine-card brain (evaluate, T_*, DEFAULT_CFG)
@@ -65,7 +73,9 @@ def _modbus(sock, fc, start, qty):
 def read_plc():
     """Direct Modbus TCP snapshot (no Litmus). Raw sockets, no pymodbus dep."""
     snap = {}
-    s = socket.socket(); s.settimeout(3); s.connect((PLC_HOST, PLC_PORT))
+    s = socket.socket()
+    s.settimeout(3)
+    s.connect((PLC_HOST, PLC_PORT))
     try:
         for off, topic in _COILS.items():
             d = _modbus(s, 1, off, 1)
@@ -84,7 +94,9 @@ def read_plc():
 def read_litmus(base, api_key, device_id):
     """Snapshot read THROUGH Litmus' external integration API (x-api-key)."""
     url = base.rstrip("/") + "/api/tags/by-device/" + urllib.request.quote(device_id)
-    ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
     req = urllib.request.Request(url, headers={"x-api-key": api_key, "Accept": "application/json"})
     with urllib.request.urlopen(req, context=ctx, timeout=10) as r:
         payload = json.load(r)

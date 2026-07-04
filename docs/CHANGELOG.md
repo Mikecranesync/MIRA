@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.58.9 (2026-07-04) - chore(lint): fix pre-existing ruff violations in plc/ and tests/flywheel/
+- Style-only fixes in bench-only tools (`plc/conv_simple_anomaly/`, `plc/litmus/`) and flywheel tests. Auto-fixed import sort (I001), unused imports (F401), and split imports (E401); manually split semicolon-separated statements (E702), removed unused `stamp` variable (F841), and renamed ambiguous loop variable `l` → `loc` (E741). No logic changes.
+
 ### v3.58.5 (2026-07-03) - feat(crew): dogfood routine observability + heartbeat (durability Phase 2)
 - Makes the 4h dogfood judge **observable and self-monitoring** so it can't die silently. `scheduled_run.sh` now posts each run's verdict (GREEN/YELLOW/RED + counts + top blockers + evidence pointer) to a durable tracking issue (**#2417**) with a `<!-- dogfood-heartbeat -->` marker — best-effort, never fails the run, works in report-only mode. You see every verdict in GitHub (phone/email), no SSH to Bravo.
 - Adds `.github/workflows/dogfood-judge-heartbeat.yml` — a **dead-man's-switch** that runs on GitHub every 6h, reads only #2417 (no staging access, so a Bravo reboot can't kill it), and **fails/notifies if the newest verdict is >9h old** (2+ missed 4h runs = the routine stopped). Verified live: a real run posted a YELLOW verdict to #2417; the freshness check reads it (fresh → OK, simulated 12h → fires). actionlint + `shellcheck -S warning` clean. Phase 2 of `docs/plans/2026-07-03-dogfood-routine-durability.md`.

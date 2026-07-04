@@ -24,8 +24,20 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 import rules  # the A0-A12 brain (shim over rules_core); same object the button calls  # noqa: E402
 from rules import (  # noqa: E402
-    T_RUN, T_COMM, T_ESTOP, T_WIRING, T_CONTACTOR, T_DI00, T_DI01, T_DI02, T_DI03,
-    T_FREQ, T_CUR, T_DCBUS, T_CMD, T_FAULT, T_FREQ_SP, T_PE_LATCH,
+    T_CMD,
+    T_COMM,
+    T_CUR,
+    T_DCBUS,
+    T_DI00,
+    T_DI01,
+    T_DI02,
+    T_DI03,
+    T_ESTOP,
+    T_FAULT,
+    T_FREQ,
+    T_FREQ_SP,
+    T_PE_LATCH,
+    T_RUN,
 )
 
 OUT = os.path.join(_HERE, "..", "..", "out", "anomaly_log")
@@ -174,7 +186,7 @@ def write(rows):
 
 def main():
     rows = run()
-    stamp = write(rows)
+    write(rows)
     fired = [c for r in rows for c in r["cards"]]
     coded = set(rid.split("_")[0] for rid in (c["ruleId"] for c in fired))
     print("=" * 92)

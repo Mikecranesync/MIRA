@@ -19,10 +19,16 @@ The device-create JSON shape is Litmus-version-specific; this script POSTs the
 best-known shape and PRINTS the server response so a field mismatch is obvious
 and quick to correct (it is not yet validated against a live token -- see README).
 """
-import argparse, json, os, ssl, sys, urllib.request
+import argparse
+import json
+import os
+import ssl
+import urllib.request
 
 BASE = os.getenv("LITMUS_BASE", "https://localhost:8443")
-_CTX = ssl.create_default_context(); _CTX.check_hostname = False; _CTX.verify_mode = ssl.CERT_NONE
+_CTX = ssl.create_default_context()
+_CTX.check_hostname = False
+_CTX.verify_mode = ssl.CERT_NONE
 
 # Verified live global vars (CIP read-by-name 2026-06-30). For the AB EtherNet/IP
 # driver the tag address IS the case-sensitive global-variable name.
