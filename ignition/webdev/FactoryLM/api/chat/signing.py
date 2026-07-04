@@ -20,6 +20,19 @@ import uuid
 DEFAULT_CLOUD_URL = "https://api.factorylm.com/api/v1/ignition/chat"
 
 
+def _to_bytes(value):
+    """UTF-8 encode any text value; pass bytes through unchanged.
+
+    Jython 2.7 gotcha: values coming from Java (e.g. Properties.getProperty)
+    are `unicode`, which is NOT an instance of Py2 `str` — an isinstance(str)
+    guard misses them and raw unicode crashes hmac.new with
+    "TypeError: character mapping must return integer, None or unicode".
+    """
+    if isinstance(value, bytes):
+        return value
+    return value.encode("utf-8")
+
+
 def sign_request(key, tenant_id, nonce, timestamp, body_bytes):
     """
     Build and return an HMAC-SHA256 hex signature.
@@ -43,20 +56,12 @@ def sign_request(key, tenant_id, nonce, timestamp, body_bytes):
     if not key:
         raise ValueError("HMAC key must not be empty")
 
-    body_hash = hashlib.sha256(body_bytes).hexdigest()
+    body_hash = hashlib.sha256(_to_bytes(body_bytes)).hexdigest()
     signed_string = "%s\n%s\n%s\n%s" % (tenant_id, nonce, str(timestamp), body_hash)
 
-    if isinstance(key, str):
-        key_bytes = key.encode("utf-8")
-    else:
-        key_bytes = key
-
-    if isinstance(signed_string, str):
-        signed_string_bytes = signed_string.encode("utf-8")
-    else:
-        signed_string_bytes = signed_string
-
-    digest = hmac.new(key_bytes, signed_string_bytes, hashlib.sha256).hexdigest()
+    digest = hmac.new(
+        _to_bytes(key), _to_bytes(signed_string), hashlib.sha256
+    ).hexdigest()
     return digest
 
 
