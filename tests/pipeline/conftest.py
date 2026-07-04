@@ -28,6 +28,22 @@ for p in (str(PIPELINE_ROOT), str(MIRA_BOTS)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
+
+def pytest_configure(config):  # noqa: ARG001
+    """Re-insert mira-pipeline at the front of sys.path after all conftests load.
+
+    mira-crawler/conftest.py also inserts mira-crawler/ at sys.path[0] (it too
+    has a main.py) — whichever conftest runs last wins the bare `import main`,
+    and once either main.py is cached in sys.modules the other is unreachable
+    for the rest of the process. Same collision + fix pattern as
+    tests/regime6_sidecar/conftest.py (config.py / app.py there).
+    """
+    p = str(PIPELINE_ROOT)
+    if p in sys.path:
+        sys.path.remove(p)
+    sys.path.insert(0, p)
+    sys.modules.pop("main", None)
+
 # ── Offline env: no bearer auth, no DB, no Neon, no provider keys ────────────
 os.environ.setdefault("PIPELINE_API_KEY", "")
 os.environ["MIRA_DB_PATH"] = "/tmp/mira-pipeline-tests-does-not-exist/mira.db"
@@ -91,6 +107,17 @@ def mock_engine():
 def pipeline_client(mock_engine, monkeypatch):
     """TestClient for main.app with the engine mocked and lifespan skipped."""
     from fastapi.testclient import TestClient
+
+    # Other test modules (tests/flywheel/test_interlock_extract.py,
+    # tests/regime2_rag/test_content_chunking.py) insert mira-crawler/ — which
+    # also has a main.py — at sys.path[0] during collection, in xdist-worker
+    # order we don't control. Re-win the path race and evict any stale cached
+    # `main` right before the import so this always binds to mira-pipeline's.
+    p = str(PIPELINE_ROOT)
+    if p in sys.path:
+        sys.path.remove(p)
+    sys.path.insert(0, p)
+    sys.modules.pop("main", None)
 
     import main
 
