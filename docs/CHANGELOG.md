@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.61.1 (2026-07-04) - test(pipeline): bootstrap offline unit suite for the live VPS chat path (#2449)
+- Adds 17 offline unit tests in `tests/pipeline/` covering mira-pipeline's OpenAI-compat `/v1/chat/completions` contract, the Ignition direct-connection UNS-certification contract (`.claude/rules/direct-connection-uns-certified.md`), and the Groq→Cerebras→Together inference cascade (incl. PII sanitization). Alongside the pre-existing `tests/test_mira_pipeline.py` (9 tests), not a replacement.
+- Fixes a `sys.modules['main']` cache collision: `tests/flywheel/test_interlock_extract.py` / `tests/regime2_rag/test_content_chunking.py` insert `mira-crawler/` (which also has a `main.py`) at `sys.path[0]` during collection, in xdist-worker order this suite doesn't control — whichever `main.py` wins the race gets cached for the rest of that worker. `tests/pipeline/conftest.py` now re-wins the path race and evicts the stale cache right before `import main`, same pattern as `tests/regime6_sidecar/conftest.py`.
+
 ### v3.61.0 (2026-07-04) - feat(repo): MODULES.md lifecycle manifest + CI guard (#2443)
 - Adds `MODULES.md` classifying all 26 top-level modules as DEPLOYED / BENCH / CI / DEFERRED / LEGACY / ORPHAN (matching `docs/audits/2026-07-04-cohesion-audit.md` §1), plus `tests/test_modules_manifest.py` as a CI guard so a new top-level module can't go unclassified and a removed one can't leave a stale entry.
 
