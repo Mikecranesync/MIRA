@@ -13,10 +13,10 @@ A tag present on only one side breaks somewhere in the pipeline:
     sent), so the relay-side row is simply inert.
 
 This test set-compares the two allowlists and pins the ACTUAL, inspected
-delta rather than silently tolerating drift. Inspected 2026-07-03 (see
+delta rather than silently tolerating drift. Inspected 2026-07-04 (see
 docs/runbooks/cv101-bench-to-cloud-first-tag-row.md): the SQL seed is a
-strict subset of the gateway JSON -- 58 of the gateway's 65 tags are seeded
-on the relay side. The 7 gateway-only tags are real, documented gaps (not a
+strict subset of the gateway JSON -- 64 of the gateway's 65 tags are seeded
+on the relay side. The 1 gateway-only tag is a real, documented gap (not a
 deliberate design choice) -- see KNOWN_GATEWAY_ONLY_TAGS below. If this test
 starts failing, either (a) a genuinely new, undocumented gap opened --
 investigate and fix the JSON/SQL -- or (b) a new, deliberate difference needs
@@ -45,20 +45,9 @@ KNOWN_GATEWAY_ONLY_TAGS: set[str] = {
     # telemetry value read by tag-stream.py's leaf-tag browse/read loop.
     # ignition/project/approved_tags.json line ~69.
     "[default]MIRA/Config/conveyor/map",
-    # 6 newer VFD-analyzer tags added to the gateway allowlist for the
-    # NorthwindBottling / VFD-analyzer work (see
-    # tests/test_northwind_cv200_seed_and_config.py::
-    # test_northwind_allowlist_is_superset_of_garage_rig_tags: "the staged
-    # NorthwindBottling Perspective project binds additional MIRA_IOCheck
-    # tags ... that the garage seed predates"). Not yet backfilled into
-    # tools/seeds/approved_tags_conveyor.sql -- a real gap, tracked as
-    # follow-up in the runbook, not a design decision.
-    "[default]MIRA_IOCheck/VFD/vfd_warn_code",
-    "[default]MIRA_IOCheck/VFD/vfd_freq_cmd",
-    "[default]MIRA_IOCheck/VFD/vfd_torque",
-    "[default]MIRA_IOCheck/VFD/vfd_motor_rpm",
-    "[default]MIRA_IOCheck/VFD/vfd_power",
-    "[default]MIRA_IOCheck/VFD/vfd_last_fault",
+    # The 6 VFD-analyzer tags (vfd_warn_code/freq_cmd/torque/motor_rpm/power/
+    # last_fault) were backfilled into the SQL seed 2026-07-04 -- parity
+    # restored, so they no longer appear here.
 }
 
 # No relay-only tags as of 2026-07-03 -- the SQL seed is a strict subset of
