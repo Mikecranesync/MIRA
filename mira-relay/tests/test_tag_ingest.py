@@ -323,3 +323,49 @@ def test_cache_upsert_stamps_server_time_not_client_ts():
     # tag_events keeps the client event_timestamp (history is history).
     events_part = src.split("INSERT INTO live_signal_cache", 1)[0]
     assert ":event_timestamp" in events_part
+
+
+# ── one-connection-per-push regression (2026-07-04 relay ingest optimization) ─
+# ingest_batch must run allowlist + current-state + persist in ONE store session
+# (one Neon connection/txn) when the store provides session(). Guards the perf fix.
+
+
+def test_ingest_batch_opens_one_session_when_store_supports_it():
+    from contextlib import contextmanager
+
+    inner = _store_with_tag()
+
+    class SpyBound:
+        def __init__(self, s): self._s = s; self.calls = []
+        def load_allowlist(self, *a, **k): self.calls.append("allowlist"); return self._s.load_allowlist(*a, **k)
+        def current_state_simulated(self, *a, **k): self.calls.append("current_state"); return self._s.current_state_simulated(*a, **k)
+        def persist_batch(self, *a, **k): self.calls.append("persist"); return self._s.persist_batch(*a, **k)
+
+    class SpyStore:
+        def __init__(self, s): self._s = s; self.sessions = 0; self.bound = None
+        @contextmanager
+        def session(self, tenant_id):
+            self.sessions += 1
+            self.bound = SpyBound(self._s)
+            yield self.bound
+
+    spy = SpyStore(inner)
+    res = ingest_batch(_batch(), "t-1", spy)
+    assert res.accepted == 1
+    # exactly ONE session (one connection/txn) for the whole push
+    assert spy.sessions == 1
+    # all three pipeline ops ran INSIDE that session, in order
+    assert spy.bound.calls == ["allowlist", "current_state", "persist"]
+    # data still landed correctly through the bound store
+    assert len(inner.events) == 1
+    assert TAG in inner.state
+
+
+def test_ingest_batch_without_session_falls_back_to_direct_calls():
+    # The in-memory store has no session() — ingest_batch must still work
+    # (nullcontext fallback path). This is the existing test-double contract.
+    store = _store_with_tag()
+    assert not hasattr(store, "session")
+    res = ingest_batch(_batch(), "t-1", store)
+    assert res.accepted == 1
+    assert len(store.events) == 1
