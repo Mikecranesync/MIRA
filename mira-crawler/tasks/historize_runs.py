@@ -23,6 +23,8 @@ Config (env):
   MIRA_SNAPSHOT_PRE_SECONDS        evidence window pre-roll (default 300)
   MIRA_SNAPSHOT_POST_SECONDS       evidence window post-roll (default 300)
   MIRA_RUN_LOOKBACK_SECONDS        tag_events read horizon per beat (default 3600)
+  MIRA_ANOMALY_COOLDOWN_SECONDS    cross-window suppression for info-severity
+                                   anomalies (#2431; default 1800, 0 disables)
 """
 
 from __future__ import annotations
@@ -220,12 +222,21 @@ def historize_runs() -> dict:
         # grows when the stream stops — A0_OFFLINE can fire instead of the
         # last state being pinned forever.
         batch_now = time.time()
+        anomaly_cooldown = float(os.getenv("MIRA_ANOMALY_COOLDOWN_SECONDS", "1800"))
         machine_memory: dict[str, dict] = {}
         for uns_path in uns_paths:
-            mm = historize_machine_memory(store, tenant_id, uns_path, rows, now=batch_now)
+            mm = historize_machine_memory(
+                store,
+                tenant_id,
+                uns_path,
+                rows,
+                now=batch_now,
+                anomaly_cooldown_seconds=anomaly_cooldown,
+            )
             machine_memory[uns_path] = {
                 "windows_upserted": mm["windows_upserted"],
                 "anomaly_diffs_written": mm["anomaly_diffs_written"],
+                "anomalies_cooldown_suppressed": mm["anomalies_cooldown_suppressed"],
                 "latest_window": mm["latest_window"],
                 "unmapped_tags": mm["unmapped_tags"],
             }
