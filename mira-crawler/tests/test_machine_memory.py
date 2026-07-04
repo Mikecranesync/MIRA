@@ -68,6 +68,37 @@ class TestHealthyIdle:
         assert window.ended_at is not None  # closed at batch end
 
 
+class TestRawTagPathNormalization:
+    """tag_events stores RAW Ignition source paths ([default]Conveyor/VFD_Hz),
+    while CV101_TAG_TOPIC_MAP keys are normalized. map_events must normalize at
+    lookup — before this, every prod row counted as unmapped and no state
+    window ever derived (2026-07-03 CV-101 live proof)."""
+
+    # normalized fixture path -> the raw Ignition path the relay actually stores
+    RAW_BY_NORM = {
+        "default_conveyor_dir_fwd": "[default]Conveyor/Dir_Fwd",
+        "default_conveyor_dir_rev": "[default]Conveyor/Dir_Rev",
+        "default_conveyor_estop_active": "[default]Conveyor/EStop_Active",
+        "default_conveyor_estop_wiring_fault": "[default]Conveyor/EStop_Wiring_Fault",
+        "default_conveyor_motor_running": "[default]Conveyor/Motor_Running",
+        "default_conveyor_vfd_amps": "[default]Conveyor/VFD_Amps",
+        "default_conveyor_vfd_cmdword": "[default]Conveyor/VFD_CmdWord",
+        "default_conveyor_vfd_comm_ok": "[default]Conveyor/VFD_Comm_OK",
+        "default_conveyor_vfd_dcbus_v": "[default]Conveyor/VFD_DCBus_V",
+        "default_conveyor_vfd_faultcode": "[default]Conveyor/VFD_FaultCode",
+        "default_conveyor_vfd_hz": "[default]Conveyor/VFD_Hz",
+    }
+
+    def test_raw_paths_derive_same_idle_window(self):
+        rows = _load("cv101_healthy_idle.json")
+        for r in rows:
+            r["tag_path"] = self.RAW_BY_NORM[r["tag_path"]]
+        store = InMemoryRunStore()
+        summary = historize_machine_memory(store, TENANT, UNS, rows)
+        assert _window_states(store) == ["idle"]
+        assert summary["unmapped_tags"] == {}
+
+
 class TestCommStale:
     def test_comm_down_window_and_a1_diff(self):
         rows, store, summary = _run("cv101_comm_stale.json")
