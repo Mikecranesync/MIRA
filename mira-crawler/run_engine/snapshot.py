@@ -22,6 +22,7 @@ snapshot. Mission rule: an unapproved tag must not become trusted context.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Union
@@ -129,10 +130,31 @@ def coerce_value(raw: object, value_type: str) -> object:
     return str(raw)
 
 
+_NON_ALNUM = re.compile(r"[^a-z0-9]+")
+
+
+def normalize_tag_path(raw: str) -> str:
+    """Mirror of mira-relay/ingest_contract.normalize_tag_path (the
+    approved_tags match key): lowercase, runs of non-alphanumerics -> '_',
+    trimmed. Inlined rather than imported because the run_engine cannot depend
+    on the relay package (same precedent as the relay inlining uns.slug).
+
+    tag_events rows store the RAW source path (e.g.
+    ``[default]MIRA_IOCheck/VFD/vfd_comm_ok``) while CV101_TAG_TOPIC_MAP keys
+    are normalized — without this, every prod row counted as unmapped and no
+    state window ever derived (found on the 2026-07-03 CV-101 live proof).
+    Normalized input is a fixed point, so pre-normalized fixtures still match.
+    """
+    return _NON_ALNUM.sub("_", raw.strip().lower()).strip("_")
+
+
 def map_events(
     rows: list[dict], mapping: dict[str, str]
 ) -> tuple[list[MappedEvent], dict[str, int]]:
     """Translate tag_events-shaped rows into MappedEvents, oldest first.
+
+    Rows are matched by ``normalize_tag_path(tag_path)`` so both raw source
+    paths (what the relay stores in tag_events) and pre-normalized paths map.
 
     Returns ``(mapped_events, unmapped_tags)`` where ``unmapped_tags`` counts
     the rows whose tag_path is not in the approved mapping — those rows are
@@ -142,7 +164,7 @@ def map_events(
     unmapped: dict[str, int] = {}
     for row in rows:
         tag_path = row.get("tag_path", "")
-        topic = mapping.get(tag_path)
+        topic = mapping.get(normalize_tag_path(tag_path))
         if topic is None:
             unmapped[tag_path] = unmapped.get(tag_path, 0) + 1
             continue
