@@ -1,0 +1,45 @@
+name: Dogfood Judge Heartbeat
+
+# Dead-man's-switch for the 4-hour dogfood judge (com.factorylm.dogfood-judge on
+# Bravo). The judge posts each verdict to issue #2417 with a
+# `<!-- dogfood-heartbeat -->` marker (tools/crew/dogfood/scheduled_run.sh). This
+# workflow runs ON GitHub and reads ONLY that issue — no staging access — so a
+# Bravo reboot can't kill it, and it FAILS (which notifies the workflow's last
+# editor) if the newest verdict is stale, i.e. the Bravo routine has stopped.
+# Phase 2 of docs/plans/2026-07-03-dogfood-routine-durability.md.
+
+on:
+  schedule:
+    - cron: "30 */6 * * *" # every 6h at :30 UTC
+  workflow_dispatch:
+
+permissions:
+  issues: read
+
+jobs:
+  freshness:
+    name: Dogfood verdict freshness
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE: "2417"
+      MAX_AGE_HOURS: "9" # 4h cadence → >9h means 2+ missed runs = broken
+    steps:
+      - name: Check newest dogfood verdict age
+        run: |
+          set -euo pipefail
+          latest="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments" \
+            --jq 'map(select(.body | contains("<!-- dogfood-heartbeat -->"))) | map(.created_at) | max // ""')"
+          if [ -z "$latest" ]; then
+            echo "::warning::No dogfood verdict posted to #${ISSUE} yet — the Bravo producer may not be live. Not failing."
+            exit 0
+          fi
+          now=$(date -u +%s)
+          posted=$(date -u -d "$latest" +%s)
+          age_h=$(( (now - posted) / 3600 ))
+          echo "Newest dogfood verdict: $latest  (age ${age_h}h, threshold ${MAX_AGE_HOURS}h)"
+          if [ "$age_h" -gt "${MAX_AGE_HOURS}" ]; then
+            echo "::error::Dogfood judge is STALE — newest verdict is ${age_h}h old (> ${MAX_AGE_HOURS}h). The Bravo 4h routine (com.factorylm.dogfood-judge) has likely stopped. Check: launchctl list | grep dogfood-judge"
+            exit 1
+          fi
+          echo "OK — dogfood routine is alive (last verdict ${age_h}h ago)."
