@@ -4,72 +4,16 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { MachineMemoryResponse, LatestDiff, LiveTag } from "@/lib/machine-memory-response";
 
-interface LatestRun {
-  run_id: string;
-  status: "open" | "closed" | "anomalous";
-  started_at: string;
-  stopped_at: string | null;
-  duration_seconds: number | null;
-  run_trigger_tag: string;
-}
-
-interface LatestWindow {
-  window_id: string;
-  state: "idle" | "running" | "faulted" | "comm_down" | "estopped" | "unknown";
-  started_at: string;
-  ended_at: string | null;
-}
-
-interface LatestDiff {
-  diff_id: string;
-  tag_path: string;
-  severity: "info" | "warning" | "critical";
-  diff_type: string | null;
-  observed: number | null;
-  baseline: number | null;
-  delta_percent: number | null;
-  event_timestamp: string | null;
-  next_check: string | null;
-}
-
-interface EvidenceWindow {
-  started_at: string | null;
-  stopped_at: string | null;
-  uns_path: string;
-}
-
-interface LiveTag {
-  tag_path: string;
-  value: string | number | boolean | null;
-  /** Engineering-unit display string from gs10-display (e.g. "328.6 V"). */
-  display?: string;
-  numeric?: number | null;
-  unit?: string | null;
-  last_seen_at: string | null;
-  last_changed_at?: string | null;
-  freshness: "live" | "stale" | "simulated" | "unknown";
-}
+// Single source of truth for the response shape is @/lib/machine-memory-response
+// (shared with the GET route and the SSE stream route). Re-exported here so
+// existing imports of MachineMemoryResponse from this module keep working.
+export type { MachineMemoryResponse } from "@/lib/machine-memory-response";
 
 interface SparkPoint {
   t: number;
   v: number;
-}
-
-interface CurrentState {
-  state: string;
-  since: string | null;
-  fresh: boolean;
-}
-
-export interface MachineMemoryResponse {
-  uns_path: string | null;
-  latest_run: LatestRun | null;
-  latest_window: LatestWindow | null;
-  latest_diffs: LatestDiff[];
-  evidence_window: EvidenceWindow | null;
-  live_tags?: LiveTag[];
-  current_state?: CurrentState | null;
 }
 
 interface Props {
@@ -113,6 +57,29 @@ export function MachineMemoryCard({ assetId, initialData, poll = true, initialHi
   const prevDisplayRef = useRef<Map<string, string>>(new Map());
   const [changeCounts, setChangeCounts] = useState<Record<string, number>>({});
 
+  // Shared success-branch handling for both the initial GET and each SSE
+  // message — detects per-tag value changes (so changed rows flash) and
+  // commits the new payload. Kept identical to the pre-SSE `load()` behavior.
+  const applyData = useCallback((json: MachineMemoryResponse) => {
+    const prev = prevDisplayRef.current;
+    const changed: string[] = [];
+    for (const t of json.live_tags ?? []) {
+      const disp = t.display ?? String(t.value ?? "");
+      if (prev.has(t.tag_path) && prev.get(t.tag_path) !== disp) changed.push(t.tag_path);
+      prev.set(t.tag_path, disp);
+    }
+    if (changed.length > 0) {
+      setChangeCounts((c) => {
+        const next = { ...c };
+        for (const tag of changed) next[tag] = (next[tag] ?? 0) + 1;
+        return next;
+      });
+    }
+    setData(json);
+    setFetchFailed(false);
+    hasLoadedRef.current = true;
+  }, []);
+
   const load = useCallback(async () => {
     // Skeleton only on the first load — refreshes must not flash the pulse.
     if (!hasLoadedRef.current) setLoading(true);
@@ -120,24 +87,7 @@ export function MachineMemoryCard({ assetId, initialData, poll = true, initialHi
       const resp = await fetch(`/hub/api/assets/${assetId}/machine-memory/`);
       if (resp.ok && !resp.url.includes("/login")) {
         const json = (await resp.json()) as MachineMemoryResponse;
-        // Detect value changes BEFORE rendering so changed rows flash.
-        const prev = prevDisplayRef.current;
-        const changed: string[] = [];
-        for (const t of json.live_tags ?? []) {
-          const disp = t.display ?? String(t.value ?? "");
-          if (prev.has(t.tag_path) && prev.get(t.tag_path) !== disp) changed.push(t.tag_path);
-          prev.set(t.tag_path, disp);
-        }
-        if (changed.length > 0) {
-          setChangeCounts((c) => {
-            const next = { ...c };
-            for (const tag of changed) next[tag] = (next[tag] ?? 0) + 1;
-            return next;
-          });
-        }
-        setData(json);
-        setFetchFailed(false);
-        hasLoadedRef.current = true;
+        applyData(json);
       } else {
         setFetchFailed(true);
       }
@@ -146,7 +96,7 @@ export function MachineMemoryCard({ assetId, initialData, poll = true, initialHi
     } finally {
       setLoading(false);
     }
-  }, [assetId]);
+  }, [assetId, applyData]);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -162,25 +112,54 @@ export function MachineMemoryCard({ assetId, initialData, poll = true, initialHi
 
   useEffect(() => {
     if (!poll) return;
-    let inFlight = false;
-    const tick = () => {
-      if (inFlight) return;
-      inFlight = true;
-      void load().finally(() => {
-        inFlight = false;
-      });
-    };
-    const timeout = window.setTimeout(tick, 0);
-    const interval = window.setInterval(tick, POLL_INTERVAL_MS);
+
+    // First paint: one GET so the card has data before the SSE connection
+    // delivers its initial snapshot.
+    const initialLoadTimeout = window.setTimeout(() => void load(), 0);
+
     const historyTimeout = window.setTimeout(() => void loadHistory(), 0);
     const historyInterval = window.setInterval(() => void loadHistory(), HISTORY_INTERVAL_MS);
+
+    // Live signals: SSE push (docs/perf/live-latency-budget.md Tier 2),
+    // falling back to the polling GET if the stream errors — a proxy that
+    // blocks SSE, a dropped connection, etc. Guarded so the poll and the SSE
+    // connection never both run at once.
+    let fallbackInterval: number | null = null;
+    let fallbackInFlight = false;
+    const startFallbackPoll = () => {
+      if (fallbackInterval !== null) return;
+      const tick = () => {
+        if (fallbackInFlight) return;
+        fallbackInFlight = true;
+        void load().finally(() => {
+          fallbackInFlight = false;
+        });
+      };
+      tick();
+      fallbackInterval = window.setInterval(tick, POLL_INTERVAL_MS);
+    };
+
+    const es = new EventSource(`/hub/api/assets/${assetId}/machine-memory/stream/`);
+    es.onmessage = (evt) => {
+      try {
+        applyData(JSON.parse(evt.data) as MachineMemoryResponse);
+      } catch {
+        // malformed SSE payload — ignore this message, keep listening
+      }
+    };
+    es.onerror = () => {
+      es.close();
+      startFallbackPoll();
+    };
+
     return () => {
-      window.clearTimeout(timeout);
-      window.clearInterval(interval);
+      window.clearTimeout(initialLoadTimeout);
       window.clearTimeout(historyTimeout);
       window.clearInterval(historyInterval);
+      es.close();
+      if (fallbackInterval !== null) window.clearInterval(fallbackInterval);
     };
-  }, [load, loadHistory, poll]);
+  }, [assetId, applyData, load, loadHistory, poll]);
 
   return (
     <div className="card p-4 space-y-3">
