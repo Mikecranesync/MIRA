@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.59.2 (2026-07-04) - chore(db-inspect): work_orders schema + migration-ledger probe (#2428)
+- Extends the read-only `db-inspect.yml` scoreboard with a `work_orders` column/`schema_migrations` ledger probe (the check that diagnosed #2428: migration 060 never applied to prod) and a latest-`machine_state_window` probe (bench tenant State-bubble truth, #2432 follow-through).
+
 ### v3.59.1 (2026-07-04) - fix(hub): WO wizard forward buttons say Next (#2427)
 - Adds the missing `common.next` i18n key ("Next" / "Siguiente") and relabels both `/workorders/new` step-forward buttons (previously "Description" / "Review" — destination nouns, not actions). Static-markup test pins every `<ArrowRight/>` forward button to `common.next` and the key's presence in both locales.
 
