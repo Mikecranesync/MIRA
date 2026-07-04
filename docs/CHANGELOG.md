@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.59.2 (2026-07-04) - chore(db-inspect): work_orders schema + migration-ledger probe (#2428)
+- Extends the read-only `db-inspect.yml` scoreboard with a `work_orders` column/`schema_migrations` ledger probe (the check that diagnosed #2428: migration 060 never applied to prod) and a latest-`machine_state_window` probe (bench tenant State-bubble truth, #2432 follow-through).
+
 ### v3.58.12 (2026-07-04) - feat(crew): dogfood autonomous filing + RED escalation (durability Phase 4)
 - Turns the dogfood judge from "tests + reports" into an autonomous QA routine. **4a**: `DOGFOOD_FILE_ISSUES=1` in `com.factorylm.dogfood-judge.plist` — the 4h run now auto-files confirmed, **two-persona-verified**, deduped REDs as issues. Safe by construction: a RED is filed only after a *second* persona reproduces it, deduped first, and on a dedupe match in non-interactive mode `create_issue.sh` **declines silently** (no re-file, no repeat comment), so a persistent RED files exactly once. Verified live on the real scheduled path: run logged "filing ENABLED", 0 REDs → filed nothing (correct).
 - **4b**: `dogfood-judge-heartbeat.yml` now **fails on RED** (not just staleness) — a customer-blocking verdict pages a human via the GH workflow-failure notification. YELLOW (degraded) does not fail. Verified: parses the newest #2417 verdict (YELLOW → no escalation; simulated RED → fails).
