@@ -226,7 +226,13 @@ def historize_machine_memory(
     anomalies: list[MachineAnomaly] = []
     for w in windows:
         snap, upto = _snapshot_through(mapped, w.to_event_id)
-        derived = derived_facts(upto, now=w.ended_at, cfg=cfg)
+        # The FINAL (batch_end) window's staleness runs against real `now` so
+        # max_stale_s grows when the stream stops and A0_OFFLINE (>=30 s) can
+        # fire. Closed transition windows keep their own ended_at — their
+        # staleness is historical fact, not current condition.
+        is_final = w is windows[-1]
+        derived_now = now if (is_final and now is not None) else w.ended_at
+        derived = derived_facts(upto, now=derived_now, cfg=cfg)
         win_events = window_events(mapped, w)
         is_reused = w.window_id in reused_ids
         for a in evaluate(snap, derived, cfg):
