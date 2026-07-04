@@ -3766,7 +3766,13 @@ class Supervisor:
         ctx_signals_context = await self._build_ctx_signals_context(state, tenant_id)
         interlock_context = await self._build_interlock_context(state, tenant_id)
         wo_evidence_context = await self._build_wo_evidence_context(state, tenant_id)
-        extra_context = kg_context + live_context + ctx_signals_context + interlock_context + wo_evidence_context
+        extra_context = (
+            kg_context
+            + live_context
+            + ctx_signals_context
+            + interlock_context
+            + wo_evidence_context
+        )
 
         for attempt in range(max_attempts):
             try:
