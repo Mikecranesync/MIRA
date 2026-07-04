@@ -139,8 +139,16 @@ export function MachineMemoryCard({ assetId, initialData, poll = true, initialHi
       fallbackInterval = window.setInterval(tick, POLL_INTERVAL_MS);
     };
 
+    // Only fall back to polling if SSE never worked at all (a proxy blocking
+    // text/event-stream, an unreachable endpoint). Once a message has arrived,
+    // a later error is a transient blip or the server's 10-minute recycle —
+    // let EventSource auto-reconnect natively instead of permanently
+    // downgrading a working card (esp. a dashboard left open) to the 750 ms
+    // poll.
+    let sseEverConnected = false;
     const es = new EventSource(`/hub/api/assets/${assetId}/machine-memory/stream/`);
     es.onmessage = (evt) => {
+      sseEverConnected = true;
       try {
         applyData(JSON.parse(evt.data) as MachineMemoryResponse);
       } catch {
@@ -148,8 +156,11 @@ export function MachineMemoryCard({ assetId, initialData, poll = true, initialHi
       }
     };
     es.onerror = () => {
-      es.close();
-      startFallbackPoll();
+      if (!sseEverConnected) {
+        es.close();
+        startFallbackPoll();
+      }
+      // else: EventSource reconnects on its own; keep the SSE path.
     };
 
     return () => {
