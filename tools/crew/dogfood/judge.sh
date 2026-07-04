@@ -83,7 +83,7 @@ echo "   base: $DF_BASE   mode: $([[ $DRY -eq 1 ]] && echo DRY-RUN || echo FILE-
 echo
 
 # methodology facts for the report
-TENANT_NOTE="RBAC personas live on a synthetic test tenant (assets seeded, live signals/docs sparse); the demo tenant needs DEMO_API_TOKEN (not provisioned), so demo-readiness is reported, not auto-driven."
+TENANT_NOTE="RBAC personas live on a synthetic test tenant. Assets, VFD-07 live signals, and a VFD-07 customer document are all SEEDED FIXTURES (seed-synthetic-users.ts) — a GREEN here means the product path works given that fixture, NOT that a cold stranger gets live signals + grounded docs automatically (only the beta-gate path proves the stranger case). The dedicated demo tenant (live conveyor) still needs DEMO_API_TOKEN (not provisioned), so demo-readiness is judged on the customer tenant."
 
 FILES=()
 if [[ -n "$ONLY" ]]; then FILES=("$CHECK_DIR/$ONLY.check")
