@@ -43,6 +43,7 @@ produced by the same normalization at seed time.
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional, Protocol
@@ -179,84 +180,91 @@ def ingest_batch(payload: dict, tenant_id: str, store: TagStore) -> IngestResult
 
     result = IngestResult(source_system=source_system, simulated=simulated)
 
-    allowlist = store.load_allowlist(tenant_id, source_system)
-    now = _now_iso()
+    # One store session per push: if the store provides session(), the three
+    # pipeline ops (allowlist read, current-state read, persist) share ONE
+    # connection/transaction instead of opening three. Stores without
+    # session() (e.g. the in-memory test double) fall back to calling
+    # themselves directly via nullcontext — unchanged behaviour.
+    session_cm = store.session(tenant_id) if hasattr(store, "session") else nullcontext(store)
+    with session_cm as s:
+        allowlist = s.load_allowlist(tenant_id, source_system)
+        now = _now_iso()
 
-    parsed: list[TagEventRow] = []
-    for tag in raw_tags:
-        if not isinstance(tag, dict):
-            result.rejected.append(RejectedTag(tag_path=str(tag), reason="malformed_entry"))
-            continue
-        tag_path = tag.get("tag_path")
-        if not tag_path:
-            result.rejected.append(RejectedTag(tag_path="", reason="missing_tag_path"))
-            continue
+        parsed: list[TagEventRow] = []
+        for tag in raw_tags:
+            if not isinstance(tag, dict):
+                result.rejected.append(RejectedTag(tag_path=str(tag), reason="malformed_entry"))
+                continue
+            tag_path = tag.get("tag_path")
+            if not tag_path:
+                result.rejected.append(RejectedTag(tag_path="", reason="missing_tag_path"))
+                continue
 
-        norm = normalize_tag_path(tag_path)
-        if norm not in allowlist:
-            # Fail-closed: not on the allowlist → rejected, never stored.
-            result.rejected.append(RejectedTag(tag_path=tag_path, reason="not_allowlisted"))
-            continue
+            norm = normalize_tag_path(tag_path)
+            if norm not in allowlist:
+                # Fail-closed: not on the allowlist → rejected, never stored.
+                result.rejected.append(RejectedTag(tag_path=tag_path, reason="not_allowlisted"))
+                continue
 
-        value_type = tag.get("value_type", "string")
-        if value_type not in VALID_VALUE_TYPES:
-            result.rejected.append(RejectedTag(tag_path=tag_path, reason="bad_value_type"))
-            continue
+            value_type = tag.get("value_type", "string")
+            if value_type not in VALID_VALUE_TYPES:
+                result.rejected.append(RejectedTag(tag_path=tag_path, reason="bad_value_type"))
+                continue
 
-        quality = tag.get("quality", "good")
-        if quality not in VALID_QUALITY:
-            quality = "uncertain"  # tolerate unknown quality codes, downgrade
+            quality = tag.get("quality", "good")
+            if quality not in VALID_QUALITY:
+                quality = "uncertain"  # tolerate unknown quality codes, downgrade
 
-        canonical = _canonical_value(tag.get("value"))
-        if canonical is None:
-            # A reading with no value (e.g. a Bad-quality read that carries no
-            # value) is not storable: live_signal_cache requires a value, and a
-            # valueless event is noise. Reject — never store. (0 / false are
-            # valid values: _canonical_value renders them "0" / "false".)
-            result.rejected.append(RejectedTag(tag_path=tag_path, reason="null_value"))
-            continue
+            canonical = _canonical_value(tag.get("value"))
+            if canonical is None:
+                # A reading with no value (e.g. a Bad-quality read that carries no
+                # value) is not storable: live_signal_cache requires a value, and a
+                # valueless event is noise. Reject — never store. (0 / false are
+                # valid values: _canonical_value renders them "0" / "false".)
+                result.rejected.append(RejectedTag(tag_path=tag_path, reason="null_value"))
+                continue
 
-        parsed.append(
-            TagEventRow(
-                tenant_id=tenant_id,
-                tag_path=tag_path,
-                value=canonical,
-                value_type=value_type,
-                quality=quality,
-                source_system=source_system,
-                simulated=simulated,
-                event_timestamp=tag.get("ts") or now,
-                uns_path=allowlist.get(norm),  # resolve UNS where possible
-                equipment_entity_id=tag.get("equipment_entity_id"),
-                source_connection_id=source_connection_id,
-                metadata=tag.get("metadata") or {},
+            parsed.append(
+                TagEventRow(
+                    tenant_id=tenant_id,
+                    tag_path=tag_path,
+                    value=canonical,
+                    value_type=value_type,
+                    quality=quality,
+                    source_system=source_system,
+                    simulated=simulated,
+                    event_timestamp=tag.get("ts") or now,
+                    uns_path=allowlist.get(norm),  # resolve UNS where possible
+                    equipment_entity_id=tag.get("equipment_entity_id"),
+                    source_connection_id=source_connection_id,
+                    metadata=tag.get("metadata") or {},
+                )
             )
-        )
 
-    result.accepted = len(parsed)
-    if not parsed:
-        return result
+        result.accepted = len(parsed)
+        if not parsed:
+            return result
 
-    # Cache protection: a simulated reading must not overwrite a real cache row.
-    # (Read current state first so we know which tags are real before deciding
-    # what to upsert.)
-    existing_sim = store.current_state_simulated(tenant_id, [p.tag_path for p in parsed])
-    state_rows: list[TagEventRow] = []
-    for p in parsed:
-        prev_sim = existing_sim.get(p.tag_path)
-        if prev_sim is False and p.simulated:
-            # Real data already cached; do NOT clobber it with a simulated value.
-            result.cache_skipped += 1
-            logger.info(
-                "CACHE_SKIP sim-over-real tenant=%s tag=%s", tenant_id, p.tag_path
-            )
-            continue
-        state_rows.append(p)
+        # Cache protection: a simulated reading must not overwrite a real cache row.
+        # (Read current state first so we know which tags are real before deciding
+        # what to upsert.)
+        existing_sim = s.current_state_simulated(tenant_id, [p.tag_path for p in parsed])
+        state_rows: list[TagEventRow] = []
+        for p in parsed:
+            prev_sim = existing_sim.get(p.tag_path)
+            if prev_sim is False and p.simulated:
+                # Real data already cached; do NOT clobber it with a simulated value.
+                result.cache_skipped += 1
+                logger.info(
+                    "CACHE_SKIP sim-over-real tenant=%s tag=%s", tenant_id, p.tag_path
+                )
+                continue
+            state_rows.append(p)
 
-    # Persist events + cache in ONE transaction. If the cache write fails, the
-    # events are NOT committed either — so a 5xx + collector retry can never
-    # duplicate rows in the append-only tag_events stream.
-    result.events_written, result.state_upserts = store.persist_batch(parsed, state_rows)
+        # Persist events + cache in ONE transaction. If the cache write fails, the
+        # events are NOT committed either — so a 5xx + collector retry can never
+        # duplicate rows in the append-only tag_events stream.
+        result.events_written, result.state_upserts = s.persist_batch(parsed, state_rows)
     return result
 
 
@@ -266,6 +274,31 @@ def ingest_batch(payload: dict, tenant_id: str, store: TagStore) -> IngestResult
 # handles pooling, so the app uses NullPool (no app-side pool).
 # ──────────────────────────────────────────────────────────────────────────
 
+# Engine cache — keyed by neon_url so per-request NeonTagStore instances reuse
+# one engine (relay_server._get_tag_store builds a fresh store per request).
+_ENGINE_CACHE: dict[str, Any] = {}
+
+
+class _BoundNeonTagStore:
+    """A TagStore view bound to one open connection/transaction (opened by
+    NeonTagStore.session). The three pipeline ops share the connection; the
+    canonical SQL still lives on NeonTagStore — this only threads `conn` in."""
+
+    def __init__(self, parent: "NeonTagStore", conn) -> None:
+        self._parent = parent
+        self._conn = conn
+
+    def load_allowlist(self, tenant_id: str, source_system: str) -> dict[str, Optional[str]]:
+        return self._parent.load_allowlist(tenant_id, source_system, conn=self._conn)
+
+    def current_state_simulated(self, tenant_id: str, tag_paths: list[str]) -> dict[str, bool]:
+        return self._parent.current_state_simulated(tenant_id, tag_paths, conn=self._conn)
+
+    def persist_batch(
+        self, event_rows: list[TagEventRow], state_rows: list[TagEventRow]
+    ) -> tuple[int, int]:
+        return self._parent.persist_batch(event_rows, state_rows, conn=self._conn)
+
 
 class NeonTagStore:
     """Writes tag_events + live_signal_cache to NeonDB (Hub schema)."""
@@ -274,22 +307,45 @@ class NeonTagStore:
         self.neon_url = neon_url
 
     def _engine(self):
-        from sqlalchemy import NullPool, create_engine
+        eng = _ENGINE_CACHE.get(self.neon_url)
+        if eng is None:
+            from sqlalchemy import NullPool, create_engine
 
-        return create_engine(
-            self.neon_url,
-            poolclass=NullPool,
-            connect_args={"sslmode": "require"},
-            pool_pre_ping=True,
-        )
+            # NullPool: Neon's PgBouncer handles pooling. pool_pre_ping dropped —
+            # with NullPool every connect() is a fresh physical connection (nothing
+            # pooled to go stale), so a pre-ping SELECT 1 is pure per-call overhead.
+            eng = create_engine(
+                self.neon_url,
+                poolclass=NullPool,
+                connect_args={"sslmode": "require"},
+            )
+            _ENGINE_CACHE[self.neon_url] = eng
+        return eng
 
-    def load_allowlist(self, tenant_id: str, source_system: str) -> dict[str, Optional[str]]:
+    @contextmanager
+    def session(self, tenant_id: str):
+        """Open ONE transaction and bind the three pipeline ops (allowlist read,
+        current-state read, persist) to it — so an ingest_batch push is ONE Neon
+        connection with ONE `SET LOCAL` tenant bind, not three. Preserves (and in
+        fact strengthens) persist_batch's one-transaction guarantee: the reads and
+        the writes now share the same transaction, so any failure rolls the whole
+        push back."""
         from sqlalchemy import text
 
         engine = self._engine()
-        with engine.connect() as conn:
-            conn.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id})
-            rows = conn.execute(
+        with engine.begin() as conn:
+            conn.execute(
+                text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id}
+            )
+            yield _BoundNeonTagStore(self, conn)
+
+    def load_allowlist(
+        self, tenant_id: str, source_system: str, conn=None
+    ) -> dict[str, Optional[str]]:
+        from sqlalchemy import text
+
+        def _run(c):
+            rows = c.execute(
                 text(
                     """
                     SELECT normalized_tag_path, uns_path::text AS uns_path
@@ -302,7 +358,14 @@ class NeonTagStore:
                 ),
                 {"tid": tenant_id, "ss": source_system},
             ).mappings().all()
-        return {r["normalized_tag_path"]: r["uns_path"] for r in rows}
+            return {r["normalized_tag_path"]: r["uns_path"] for r in rows}
+
+        if conn is not None:
+            return _run(conn)
+        engine = self._engine()
+        with engine.connect() as c:
+            c.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id})
+            return _run(c)
 
     def mark_tags_stale(self, tenant_id: str, tag_paths: list[str]) -> int:
         """Mark live_signal_cache rows stale (Sparkplug N/DDEATH → device offline).
@@ -377,15 +440,15 @@ class NeonTagStore:
                 inserted += res.rowcount or 0
         return inserted
 
-    def current_state_simulated(self, tenant_id: str, tag_paths: list[str]) -> dict[str, bool]:
+    def current_state_simulated(
+        self, tenant_id: str, tag_paths: list[str], conn=None
+    ) -> dict[str, bool]:
         if not tag_paths:
             return {}
         from sqlalchemy import text
 
-        engine = self._engine()
-        with engine.connect() as conn:
-            conn.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id})
-            rows = conn.execute(
+        def _run(c):
+            rows = c.execute(
                 text(
                     """
                     SELECT plc_tag, simulated
@@ -395,10 +458,17 @@ class NeonTagStore:
                 ),
                 {"tid": tenant_id, "tags": tag_paths},
             ).mappings().all()
-        return {r["plc_tag"]: r["simulated"] for r in rows}
+            return {r["plc_tag"]: r["simulated"] for r in rows}
+
+        if conn is not None:
+            return _run(conn)
+        engine = self._engine()
+        with engine.connect() as c:
+            c.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id})
+            return _run(c)
 
     def persist_batch(
-        self, event_rows: list[TagEventRow], state_rows: list[TagEventRow]
+        self, event_rows: list[TagEventRow], state_rows: list[TagEventRow], conn=None
     ) -> tuple[int, int]:
         """Append event_rows to tag_events AND upsert state_rows into
         live_signal_cache in ONE transaction. If the cache upsert fails, the
@@ -451,10 +521,9 @@ class NeonTagStore:
                 }
             )
 
-        with self._engine().begin() as conn:
-            conn.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id})
+        def _run(c):
             if event_params:
-                conn.execute(
+                c.execute(
                     text(
                         """
                         INSERT INTO tag_events
@@ -485,7 +554,7 @@ class NeonTagStore:
             # cards (bench-proven 2026-07-04: ts frozen 23 min while posts kept
             # landing). The client ts is preserved in tag_events.event_timestamp.
             if state_params:
-                conn.execute(
+                c.execute(
                     text(
                         """
                     INSERT INTO live_signal_cache
@@ -527,4 +596,11 @@ class NeonTagStore:
                     ),
                     state_params,
                 )
+
+        if conn is not None:
+            _run(conn)  # session already ran SET LOCAL + owns the txn
+        else:
+            with self._engine().begin() as c:
+                c.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id})
+                _run(c)
         return (len(event_rows), len(state_rows))
