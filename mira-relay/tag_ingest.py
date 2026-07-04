@@ -447,7 +447,6 @@ class NeonTagStore:
                     "source_system": r.source_system,
                     "quality": r.quality,
                     "freshness": "simulated" if r.simulated else "live",
-                    "seen": r.event_timestamp,
                     "props": json.dumps(r.metadata),
                 }
             )
@@ -477,6 +476,14 @@ class NeonTagStore:
             # bump last_changed_at; otherwise keep last_changed_at. last_seen_at
             # always advances (we saw a sample). source='relay_ingest' marks the
             # production write path distinctly from the demo simulator default.
+            #
+            # last_seen_at is SERVER receipt time (NOW()), NOT the client-provided
+            # event_timestamp: freshness means "is the collector reporting right
+            # now". Client tag timestamps freeze when values stop changing
+            # (Ignition report-by-exception) and drift with the gateway clock —
+            # trusting them turned a healthy 2 s stream into permanently-stale
+            # cards (bench-proven 2026-07-04: ts frozen 23 min while posts kept
+            # landing). The client ts is preserved in tag_events.event_timestamp.
             if state_params:
                 conn.execute(
                     text(
@@ -490,7 +497,7 @@ class NeonTagStore:
                     VALUES
                         (:tenant_id, :plc_tag, CAST(:uns_path AS LTREE),
                          :vt, :vn, :vb,
-                         CAST(:seen AS TIMESTAMPTZ), CAST(:seen AS TIMESTAMPTZ),
+                         NOW(), NOW(),
                          :simulated, 'relay_ingest', :source_system, :quality,
                          :freshness, CAST(:props AS JSONB), NOW())
                     ON CONFLICT (tenant_id, plc_tag) DO UPDATE SET
