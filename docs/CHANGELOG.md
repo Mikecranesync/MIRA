@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.61.2 (2026-07-04) - fix(tools): route demo_plc_poller through the one-pipeline ingest contract (#2450)
+- `tools/demo_plc_poller.py` shipped its own rival `live_signal_cache`/`live_signal_events` DDL and wrote directly to NeonDB, bypassing `.claude/rules/one-pipeline-ingest.md`. Removes the rival schema/DB-write code and routes tag values through `build_tag_entry`/`build_ingest_batch` (`mira-relay/ingest_contract.py`) → `ingest_batch` (`mira-relay/tag_ingest.py`), mirroring `simlab/publishers.py::RelayIngestPublisher`.
+
 ### v3.61.1 (2026-07-04) - test(pipeline): bootstrap offline unit suite for the live VPS chat path (#2449)
 - Adds 17 offline unit tests in `tests/pipeline/` covering mira-pipeline's OpenAI-compat `/v1/chat/completions` contract, the Ignition direct-connection UNS-certification contract (`.claude/rules/direct-connection-uns-certified.md`), and the Groq→Cerebras→Together inference cascade (incl. PII sanitization). Alongside the pre-existing `tests/test_mira_pipeline.py` (9 tests), not a replacement.
 - Fixes a `sys.modules['main']` cache collision: `tests/flywheel/test_interlock_extract.py` / `tests/regime2_rag/test_content_chunking.py` insert `mira-crawler/` (which also has a `main.py`) at `sys.path[0]` during collection, in xdist-worker order this suite doesn't control — whichever `main.py` wins the race gets cached for the rest of that worker. `tests/pipeline/conftest.py` now re-wins the path race and evicts the stale cache right before `import main`, same pattern as `tests/regime6_sidecar/conftest.py`.
