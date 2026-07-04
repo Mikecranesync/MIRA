@@ -169,8 +169,73 @@ describe("MachineMemoryCard", () => {
     expect(staleRow![0]).toContain("--foreground-muted");
     expect(staleRow![0]).not.toContain("underline");
 
-    // Full tag path preserved in the title attribute.
-    expect(html).toContain('title="[default]MIRA_IOCheck/VFD/vfd_dc_bus"');
+    // Full tag path + raw value preserved in the title attribute.
+    expect(html).toContain('title="[default]MIRA_IOCheck/VFD/vfd_dc_bus (raw: 320.4)"');
+  });
+
+  it("renders the engineering-unit display string when provided", () => {
+    const scaled: MachineMemoryResponse = {
+      ...POPULATED,
+      live_tags: [
+        {
+          tag_path: "[default]MIRA_IOCheck/VFD/vfd_dc_bus",
+          value: "3286",
+          display: "328.6 V",
+          numeric: 328.6,
+          unit: "V",
+          last_seen_at: new Date(Date.now() - 2_000).toISOString(),
+          last_changed_at: new Date(Date.now() - 4_000).toISOString(),
+          freshness: "live",
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <MachineMemoryCard assetId="asset-1" initialData={scaled} poll={false} />,
+    );
+    expect(html).toContain("vfd_dc_bus: 328.6 V");
+    expect(html).not.toContain("vfd_dc_bus: 3286");
+    expect(html).toContain("· chg 4s ago"); // last_changed_at surfaced on live rows
+  });
+
+  it("renders a sparkline for tags with history points", () => {
+    const html = renderToStaticMarkup(
+      <MachineMemoryCard
+        assetId="asset-1"
+        initialData={LIVE_AND_STALE}
+        poll={false}
+        initialHistory={{
+          "[default]MIRA_IOCheck/VFD/vfd_dc_bus": [
+            { t: 100, v: 320.4 },
+            { t: 102, v: 328.6 },
+            { t: 104, v: 322.1 },
+          ],
+        }}
+      />,
+    );
+    expect(html).toContain('data-testid="sparkline"');
+    expect(html).toContain("<polyline");
+    // only the tag with history gets a sparkline
+    expect(html.match(/data-testid="sparkline"/g)).toHaveLength(1);
+  });
+
+  it("collapses duplicate anomalies into one row with a ×N chip", () => {
+    const dup = (id: string) => ({
+      ...POPULATED.latest_diffs[0],
+      diff_id: id,
+      tag_path: "vfd/vfd101/dc_bus_v",
+      diff_type: "anomaly_A9_DC_BUS",
+    });
+    const withDups: MachineMemoryResponse = {
+      ...POPULATED,
+      latest_diffs: [dup("d1"), dup("d2"), dup("d3"), dup("d4")],
+    };
+    const html = renderToStaticMarkup(
+      <MachineMemoryCard assetId="asset-1" initialData={withDups} poll={false} />,
+    );
+    // one visible diff row (the "— <type>" span; the WO prefill href also
+    // carries the type but URL-encoded, so this matches rows only)
+    expect(html.match(/— anomaly_A9_DC_BUS/g)).toHaveLength(1);
+    expect(html).toContain("×4");
   });
 
   it("renders State: comm_down when current_state downgrades", () => {
