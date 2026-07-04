@@ -4,6 +4,7 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { fetchMachineMemory, fetchLiveSignals } from "@/lib/machine-memory";
 import { classifyTagFreshness, rollupFreshness, tagStatuses } from "@/lib/command-center-freshness";
 import { deriveCurrentState, type WindowRow } from "@/lib/machine-current-state";
+import { formatTagValue } from "@/lib/gs10-display";
 
 export const dynamic = "force-dynamic";
 
@@ -73,12 +74,20 @@ export async function GET(
       // comm_down/unknown when the signal stream dried up.
       const signals = await fetchLiveSignals(c, ctx.tenantId, unsPath);
       const nowMs = Date.now();
-      const liveTags = signals.map((s) => ({
-        tag_path: s.plc_tag,
-        value: s.last_value_text ?? s.last_value_numeric ?? s.last_value_bool ?? null,
-        last_seen_at: s.last_seen_at,
-        freshness: classifyTagFreshness(s, nowMs),
-      }));
+      const liveTags = signals.map((s) => {
+        const raw = s.last_value_text ?? s.last_value_numeric ?? s.last_value_bool ?? null;
+        const formatted = formatTagValue(s.plc_tag, raw);
+        return {
+          tag_path: s.plc_tag,
+          value: raw,
+          display: formatted.display,
+          numeric: formatted.numeric,
+          unit: formatted.unit,
+          last_seen_at: s.last_seen_at,
+          last_changed_at: s.last_changed_at,
+          freshness: classifyTagFreshness(s, nowMs),
+        };
+      });
       const freshness = rollupFreshness(unsPath, tagStatuses(signals, nowMs));
       const currentState = deriveCurrentState(
         memory.latest_window as WindowRow | null,

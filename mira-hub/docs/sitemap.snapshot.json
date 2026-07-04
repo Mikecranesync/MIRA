@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 62,
-    "apiRoutes": 151
+    "apiRoutes": 153
   },
   "pages": [
     "/admin",
@@ -88,6 +88,7 @@
     "/api/assets/[id]/enrich",
     "/api/assets/[id]/machine-memory",
     "/api/assets/[id]/qr",
+    "/api/assets/[id]/signal-history",
     "/api/assets/[id]/signals",
     "/api/assets/[id]/validation-qa",
     "/api/assets/[id]/validation-qa/[qaId]/verdict",
