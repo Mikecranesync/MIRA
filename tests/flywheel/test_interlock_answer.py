@@ -73,7 +73,7 @@ def test_blocked_conveyor_produces_grounded_answer():
     kinds = {e["kind"] for e in ans["evidence"]}
     assert "plc_rung" in kinds
     locs = {e.get("location") for e in ans["evidence"]}
-    assert any("Prog_init_ConvSimple" in (l or "") for l in locs)
+    assert any("Prog_init_ConvSimple" in (loc or "") for loc in locs)
     # actionable next checks reference the blocker
     assert ans["next_checks"]
     assert any("pe_latched" in c for c in ans["next_checks"])

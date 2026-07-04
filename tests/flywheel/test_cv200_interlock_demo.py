@@ -8,7 +8,6 @@ citations present; seeder idempotent; runs in local/replay mode; no PLC write pa
 """
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
