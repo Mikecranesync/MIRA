@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.59.5 (2026-07-04) - perf(ignition): collector timer 2000ms Fixed-Rate -> 500ms Fixed-Delay
+- The FactoryLM collector's gateway timer (`MiraTagStream/resource.json`) pushed one tag batch every 2000 ms (Fixed Rate) — the single biggest controllable stage in the tag->Hub latency budget (`docs/perf/live-latency-budget.md`). Now `delay: 500, fixedDelay: true` (Fixed Delay): waits 500 ms after each push completes, so a slow cloud POST can never overlap/pile up, and cache freshness improves ~2 s -> ~0.7 s. **Applies only after an Ignition service restart** (config-as-files is not hot-reloaded) — a bench deploy step, not automatic.
+
 ### v3.59.4 (2026-07-04) - perf(hub): faster live-tag display poll + latency budget doc
 - Live-tag latency was ~3.5 s typical / ~7 s worst because the pipeline stacks **three independent polls** (gateway scan ~1 s + collector push 2 s + browser poll 2 s), each adding up to its full interval. Documents the full per-layer budget in `docs/perf/live-latency-budget.md` and drops the card display poll (`MachineMemoryCard.tsx POLL_INTERVAL_MS`) from 2000 → 750 ms so the browser stays ahead of a faster collector. The dominant levers (collector timer 2000→500 ms, a 250 ms gateway scan class) are gateway settings; sub-second "instant" is the Tier-2 SSE-push follow-up (the relay already has a WebSocket).
 
