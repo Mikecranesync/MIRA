@@ -22,8 +22,13 @@ describe("workorders/new wizard forward buttons (#2427)", () => {
     }
   });
 
-  it("defines common.next in en and es (missing next-intl keys render raw key text)", () => {
+  it("defines common.next in every locale the i18n provider maps (en/es/hi/zh)", () => {
+    // i18n-provider.tsx types MESSAGES as Record<Locale, typeof en> — a key
+    // added to en.json without the other locales fails the Next build typecheck.
     expect(messages("en").common.next).toBe("Next");
     expect(messages("es").common.next).toBe("Siguiente");
+    for (const locale of ["hi", "zh"]) {
+      expect(messages(locale).common.next, `common.next missing in ${locale}.json`).toBeTruthy();
+    }
   });
 });
