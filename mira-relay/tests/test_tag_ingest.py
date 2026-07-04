@@ -291,3 +291,35 @@ def test_endpoint_invalid_json():
         "/api/v1/tags/ingest", content=b"not json", headers={"Content-Type": "application/json"}
     )
     assert resp.status_code == 400
+
+
+# ── Server-authoritative freshness (2026-07-04) ─────────────────────────────
+# live_signal_cache.last_seen_at / last_changed_at MUST be stamped with the
+# server's NOW(), never the client-provided event_timestamp. Client tag
+# timestamps freeze when values stop changing (Ignition report-by-exception)
+# and drift with the gateway clock — trusting them turned a healthy 2 s stream
+# into a permanently-stale card (bench, 2026-07-04: ts frozen 23 min while
+# posts kept landing). Source-level pin on the NeonTagStore upsert SQL.
+
+
+def test_cache_upsert_stamps_server_time_not_client_ts():
+    import inspect
+
+    import tag_ingest
+
+    src = inspect.getsource(tag_ingest.NeonTagStore.persist_batch)
+    insert_cache = src.split("INSERT INTO live_signal_cache", 1)[1]
+    # VALUES stamps NOW() twice (last_seen_at, last_changed_at) …
+    assert "NOW(), NOW()," in insert_cache, (
+        "live_signal_cache upsert must stamp last_seen_at/last_changed_at with "
+        "server NOW(), not the client event_timestamp"
+    )
+    # … and the client ts must not reach the cache write at all.
+    assert ":seen" not in insert_cache, (
+        "client event_timestamp must not be bound into the live_signal_cache "
+        "upsert (freshness is server receipt time; history keeps the client ts "
+        "in tag_events.event_timestamp)"
+    )
+    # tag_events keeps the client event_timestamp (history is history).
+    events_part = src.split("INSERT INTO live_signal_cache", 1)[0]
+    assert ":event_timestamp" in events_part
