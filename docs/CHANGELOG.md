@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.61.4 (2026-07-04) - feat(tools): env-var drift checker (docker-compose.saas.yml vs Doppler docs) + CI step (#2452)
+- Adds `tools/check_env_drift.py` — a stdlib-only static checker comparing env vars referenced in `docker-compose.saas.yml` / `docker-compose.staging-vps.yml` against `docs/env-vars.md` + `.env.template`, flagging used-but-undocumented and documented-but-unused vars. Seeded with an allowlist (`tools/env_drift_allowlist.txt`) of ~171 pre-existing offenders to burn down over time. Wired into the `architecture-check` CI job.
+- Documents the 14 `MQTT_INGEST_*` + `MIRA_MACHINE_MEMORY_UNS_PATHS` vars the checker caught (landed on main after the allowlist was seeded, genuinely undocumented) in `docs/env-vars.md` rather than adding them to the allowlist — per the checker's own "new drift must not be added here" policy.
+
 ### v3.61.3 (2026-07-04) - chore(repo): clean root — archive handoffs/reports/screenshots, delete mira_copy dead weight (#2453)
 - Deletes `mira_copy/{outputs,prompts,templates}/` (generated marketing-copy artifacts) and archives root-level handoff docs / competitor reports / promo screenshots into `docs/archive/` + `docs/promo-screenshots/`. Keeps `mira_copy`'s 5 core importable module files (`__init__.py`, `__main__.py`, `cli.py`, `client.py`, `generate.py`) — still imported live by `mira-crawler/tasks/{social,blog,content}.py`. Referenced nginx confs left in place.
 
