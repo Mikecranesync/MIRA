@@ -1,0 +1,221 @@
+{
+  "title": "CV-101 Garage Conveyor - Wiring Print (DRAFT)",
+  "drawing_number": "FLM-WD-CV101",
+  "revision": "A",
+  "author": "MIRA (cited bench photos 2026-07-02)",
+  "date": "2026-07-02",
+  "standard": "IEC",
+  "sheet": "1 of 1",
+  "description": "Control side from cited photos; power side pending photos.",
+  "notes": [
+    "DRIVE UNDERSIZED: GS11N-20P2 0.25HP/1.8A out vs motor 1HP/3.8A FLA -> overcurrent ceiling ~1.8A (drive), not 3.8A.",
+    "SUPPLY: 1-phase 200-240V per GS10 nameplate (DC bus ~320V). R/S/T landing + contactor NOT photographed.",
+    "CONFIRMED (not drawn - no RJ45 symbol): RS-485 Modbus RTU - Micro820 D+/D-/G <-> GS10 RJ45 (purple).",
+    "GAP: PLC outputs O-00..O-06 loads UNVERIFIED - no photo maps outputs to loads.",
+    "GAP: GS10 power terminals R/S/T (in) & U/V/W (out) UNVERIFIED - covered by caution label.",
+    "GAP: E-STOP dual-channel -> PLC inputs (I-02/I-03?) NOT label-confirmed - shown unwired.",
+    "GAP: Photo-eye PE-101 -> I-05 PROPOSED, not confirmed - shown unwired."
+  ],
+  "components": [
+    {
+      "tag": "M1",
+      "type": "motor_3ph",
+      "label": "M-101 Conveyor Motor",
+      "ratings": {
+        "voltage": "230/460 V",
+        "current": "3.8/1.9 A",
+        "power": "1 HP",
+        "frequency": "60 Hz",
+        "protection": null
+      },
+      "terminals": [],
+      "group": "power",
+      "position_hint": null
+    },
+    {
+      "tag": "T1",
+      "type": "vfd",
+      "label": "VFD-101 GS11N-20P2 (GS10, 0.25HP)",
+      "ratings": {
+        "voltage": "1PH 230V in / 3PH 0-230V out",
+        "current": "1.8 A out",
+        "power": "0.25 HP",
+        "frequency": null,
+        "protection": null
+      },
+      "terminals": [],
+      "group": "power",
+      "position_hint": null
+    },
+    {
+      "tag": "K-IN",
+      "type": "plc_input_card",
+      "label": "Micro820 2080-LC20-20QBB Inputs (192.168.1.100)",
+      "ratings": null,
+      "terminals": [
+        {
+          "id": "I-00",
+          "label": "I-00",
+          "side": "left"
+        },
+        {
+          "id": "I-01",
+          "label": "I-01",
+          "side": "left"
+        },
+        {
+          "id": "I-02",
+          "label": "I-02",
+          "side": "left"
+        },
+        {
+          "id": "I-03",
+          "label": "I-03",
+          "side": "left"
+        },
+        {
+          "id": "I-04",
+          "label": "I-04",
+          "side": "left"
+        },
+        {
+          "id": "I-05",
+          "label": "I-05",
+          "side": "left"
+        }
+      ],
+      "group": "control",
+      "position_hint": null
+    },
+    {
+      "tag": "K-OUT",
+      "type": "plc_output_card",
+      "label": "Micro820 Outputs (loads UNVERIFIED)",
+      "ratings": null,
+      "terminals": [
+        {
+          "id": "O-00",
+          "label": "O-00",
+          "side": "right"
+        },
+        {
+          "id": "O-01",
+          "label": "O-01",
+          "side": "right"
+        },
+        {
+          "id": "O-02",
+          "label": "O-02",
+          "side": "right"
+        },
+        {
+          "id": "O-03",
+          "label": "O-03",
+          "side": "right"
+        },
+        {
+          "id": "O-04",
+          "label": "O-04",
+          "side": "right"
+        },
+        {
+          "id": "O-05",
+          "label": "O-05",
+          "side": "right"
+        },
+        {
+          "id": "O-06",
+          "label": "O-06",
+          "side": "right"
+        }
+      ],
+      "group": "control",
+      "position_hint": null
+    },
+    {
+      "tag": "S1",
+      "type": "pushbutton_no",
+      "label": "START (green NO)",
+      "ratings": null,
+      "terminals": [],
+      "group": "control",
+      "position_hint": null
+    },
+    {
+      "tag": "SA1",
+      "type": "pushbutton_no",
+      "label": "Selector FWD-OFF-REV (3-pos)",
+      "ratings": null,
+      "terminals": [],
+      "group": "control",
+      "position_hint": null
+    },
+    {
+      "tag": "S2",
+      "type": "emergency_stop",
+      "label": "E-STOP (dual-channel)",
+      "ratings": null,
+      "terminals": [],
+      "group": "control",
+      "position_hint": null
+    },
+    {
+      "tag": "PE101",
+      "type": "proximity_sensor",
+      "label": "Photo-eye PE-101 (PROPOSED)",
+      "ratings": null,
+      "terminals": [],
+      "group": "control",
+      "position_hint": null
+    }
+  ],
+  "connections": [
+    {
+      "from": "S1.4",
+      "to": "K-IN.I-04",
+      "wire_label": "START",
+      "wire_type": "control",
+      "gauge": null
+    },
+    {
+      "from": "SA1.4",
+      "to": "K-IN.I-00",
+      "wire_label": "FWD=DI:0",
+      "wire_type": "control",
+      "gauge": null
+    },
+    {
+      "from": "SA1.3",
+      "to": "K-IN.I-01",
+      "wire_label": "REV=DI:1",
+      "wire_type": "control",
+      "gauge": null
+    },
+    {
+      "from": "T1.U",
+      "to": "M1.U1",
+      "wire_label": "3~",
+      "wire_type": "power",
+      "gauge": null
+    },
+    {
+      "from": "T1.V",
+      "to": "M1.V1",
+      "wire_label": "",
+      "wire_type": "power",
+      "gauge": null
+    },
+    {
+      "from": "T1.W",
+      "to": "M1.W1",
+      "wire_label": "",
+      "wire_type": "power",
+      "gauge": null
+    }
+  ],
+  "buses": [],
+  "layout": {
+    "power_flow": "top-to-bottom",
+    "control_flow": "left-to-right"
+  }
+}
