@@ -34,6 +34,7 @@
   /* STATE colors — reserved for status/abnormal, never decoration */
   --fl-ok: #16a34a;          /* running / healthy / accepted */
   --fl-ok-bg: #f0fdf4;
+  --fl-ok-ink: #15803d;      /* readable ok TEXT on light surfaces (green-700, ~5:1 on white) */
   --fl-warn: #d97706;        /* warning / medium confidence */
   --fl-warn-bg: #fffbeb;
   --fl-fault: #dc2626;       /* fault / stop / rejected */

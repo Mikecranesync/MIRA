@@ -47,10 +47,31 @@ function toMs(t: string | Date | null): number | null {
 }
 
 /**
- * Classify each cache row into a per-tag status at time `nowMs`.
- * Rows without a uns_path are dropped (they can't roll up to a tree node).
+ * Classify ONE cache row's freshness at time `nowMs` — the per-tag primitive
+ * behind both the tree roll-up (via tagStatuses) and per-tag surfaces like the
+ * asset Machine Memory card, where every row shares one uns_path and the
+ * PathStatus[] roll-up would lose per-tag identity.
  * Simulated rows are "simulated" regardless of age — freshness of fake data is
  * moot; what matters is that only simulated data is available for that tag.
+ * A row that has never been seen (null/unparseable last_seen_at) is "unknown".
+ */
+export function classifyTagFreshness(
+  row: Pick<FreshnessTagRow, "last_seen_at" | "simulated" | "expected_freshness_seconds">,
+  nowMs: number,
+  defaultWindowS: number = DEFAULT_FRESHNESS_WINDOW_S,
+): TagFreshness {
+  if (row.simulated) return "simulated";
+  const seen = toMs(row.last_seen_at);
+  if (seen === null) return "unknown";
+  const windowS = row.expected_freshness_seconds ?? defaultWindowS;
+  return nowMs - seen <= windowS * 1000 ? "live" : "stale";
+}
+
+/**
+ * Classify each cache row into a per-tag status at time `nowMs`.
+ * Rows without a uns_path are dropped (they can't roll up to a tree node).
+ * "unknown" (never-seen) collapses to stale_real, preserving the original
+ * roll-up contract.
  */
 export function tagStatuses(
   rows: FreshnessTagRow[],
@@ -60,14 +81,10 @@ export function tagStatuses(
   const out: PathStatus[] = [];
   for (const r of rows) {
     if (!r.uns_path) continue;
-    if (r.simulated) {
-      out.push({ path: r.uns_path, status: "simulated" });
-      continue;
-    }
-    const seen = toMs(r.last_seen_at);
-    const windowS = r.expected_freshness_seconds ?? defaultWindowS;
-    const fresh = seen !== null && nowMs - seen <= windowS * 1000;
-    out.push({ path: r.uns_path, status: fresh ? "live_real" : "stale_real" });
+    const freshness = classifyTagFreshness(r, nowMs, defaultWindowS);
+    const status: TagStatus =
+      freshness === "simulated" ? "simulated" : freshness === "live" ? "live_real" : "stale_real";
+    out.push({ path: r.uns_path, status });
   }
   return out;
 }

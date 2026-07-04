@@ -120,4 +120,81 @@ describe("MachineMemoryCard", () => {
     expect(buttonMatch).not.toBeNull();
     expect(buttonMatch?.[0]).toContain("disabled");
   });
+
+  // Live signals + current-state bubble (2026-07-04).
+  const LIVE_AND_STALE: MachineMemoryResponse = {
+    ...POPULATED,
+    live_tags: [
+      {
+        tag_path: "[default]MIRA_IOCheck/VFD/vfd_dc_bus",
+        value: "320.4",
+        last_seen_at: new Date(Date.now() - 2_000).toISOString(),
+        freshness: "live",
+      },
+      {
+        tag_path: "[default]MIRA_IOCheck/VFD/vfd_torque",
+        value: 0,
+        last_seen_at: new Date(Date.now() - 10 * 60_000).toISOString(),
+        freshness: "stale",
+      },
+    ],
+    current_state: { state: "running", since: "2026-07-01T01:00:00Z", fresh: true },
+  };
+
+  it("current_state wins over the (stale) latest_window in the State pill", () => {
+    // latest_window.state is "idle" but current_state says "running".
+    const html = renderToStaticMarkup(
+      <MachineMemoryCard assetId="asset-1" initialData={LIVE_AND_STALE} poll={false} />,
+    );
+    expect(html).toContain("State: running");
+    expect(html).not.toContain("State: idle");
+  });
+
+  it("live tags render underlined in the green ink token; stale tags render muted with last-seen", () => {
+    const html = renderToStaticMarkup(
+      <MachineMemoryCard assetId="asset-1" initialData={LIVE_AND_STALE} poll={false} />,
+    );
+    expect(html).toContain("Live signals");
+
+    // Live row: underlined + state-green ink token + value.
+    const liveRow = html.match(/<span class="underline[^"]*"[^>]*>vfd_dc_bus: 320\.4<\/span>/);
+    expect(liveRow).not.toBeNull();
+    expect(liveRow![0]).toContain("var(--status-green-ink)");
+
+    // Stale row: muted, no underline, "last seen Xm ago" suffix. Match the
+    // stale row's own opening <span> (the one directly wrapping vfd_torque).
+    expect(html).toMatch(/last seen 10m ago/);
+    const staleRow = html.match(/<span[^>]*>vfd_torque: 0/);
+    expect(staleRow).not.toBeNull();
+    expect(staleRow![0]).toContain("--foreground-muted");
+    expect(staleRow![0]).not.toContain("underline");
+
+    // Full tag path preserved in the title attribute.
+    expect(html).toContain('title="[default]MIRA_IOCheck/VFD/vfd_dc_bus"');
+  });
+
+  it("renders State: comm_down when current_state downgrades", () => {
+    const html = renderToStaticMarkup(
+      <MachineMemoryCard
+        assetId="asset-1"
+        initialData={{ ...POPULATED, current_state: { state: "comm_down", since: null, fresh: false } }}
+        poll={false}
+      />,
+    );
+    expect(html).toContain("State: comm_down");
+  });
+
+  it("live tags alone (no runs/windows) escape the empty state", () => {
+    const onlySignals: MachineMemoryResponse = {
+      ...EMPTY,
+      uns_path: "enterprise.garage.demo_cell.cv_101",
+      live_tags: LIVE_AND_STALE.live_tags,
+      current_state: { state: "unknown", since: null, fresh: true },
+    };
+    const html = renderToStaticMarkup(
+      <MachineMemoryCard assetId="asset-1" initialData={onlySignals} poll={false} />,
+    );
+    expect(html).not.toContain("No machine runs recorded for this asset yet.");
+    expect(html).toContain("Live signals");
+  });
 });

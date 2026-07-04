@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -39,12 +39,27 @@ interface EvidenceWindow {
   uns_path: string;
 }
 
+interface LiveTag {
+  tag_path: string;
+  value: string | number | boolean | null;
+  last_seen_at: string | null;
+  freshness: "live" | "stale" | "simulated" | "unknown";
+}
+
+interface CurrentState {
+  state: string;
+  since: string | null;
+  fresh: boolean;
+}
+
 export interface MachineMemoryResponse {
   uns_path: string | null;
   latest_run: LatestRun | null;
   latest_window: LatestWindow | null;
   latest_diffs: LatestDiff[];
   evidence_window: EvidenceWindow | null;
+  live_tags?: LiveTag[];
+  current_state?: CurrentState | null;
 }
 
 interface Props {
@@ -64,18 +79,25 @@ interface MachineMemoryCardProps extends Props {
   poll?: boolean;
 }
 
+/** Refresh cadence — the Ignition collector streams every ~2 s; 5 s keeps the
+ * state bubble and live-signal rows current without hammering the API. */
+const POLL_INTERVAL_MS = 5000;
+
 export function MachineMemoryCard({ assetId, initialData, poll = true }: MachineMemoryCardProps) {
   const [data, setData] = useState<MachineMemoryResponse | null>(initialData ?? null);
   const [loading, setLoading] = useState(!initialData && poll);
   const [fetchFailed, setFetchFailed] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    // Skeleton only on the first load — refreshes must not flash the pulse.
+    if (!hasLoadedRef.current) setLoading(true);
     try {
       const resp = await fetch(`/hub/api/assets/${assetId}/machine-memory/`);
       if (resp.ok && !resp.url.includes("/login")) {
         setData(await resp.json());
         setFetchFailed(false);
+        hasLoadedRef.current = true;
       } else {
         setFetchFailed(true);
       }
@@ -88,10 +110,20 @@ export function MachineMemoryCard({ assetId, initialData, poll = true }: Machine
 
   useEffect(() => {
     if (!poll) return;
-    const timeout = window.setTimeout(() => {
-      void load();
-    }, 0);
-    return () => window.clearTimeout(timeout);
+    let inFlight = false;
+    const tick = () => {
+      if (inFlight) return;
+      inFlight = true;
+      void load().finally(() => {
+        inFlight = false;
+      });
+    };
+    const timeout = window.setTimeout(tick, 0);
+    const interval = window.setInterval(tick, POLL_INTERVAL_MS);
+    return () => {
+      window.clearTimeout(timeout);
+      window.clearInterval(interval);
+    };
   }, [load, poll]);
 
   return (
@@ -109,7 +141,7 @@ export function MachineMemoryCard({ assetId, initialData, poll = true }: Machine
         <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
           Machine memory unavailable.
         </p>
-      ) : !data || !data.uns_path || (!data.latest_run && !data.latest_window) ? (
+      ) : !data || !data.uns_path || (!data.latest_run && !data.latest_window && !data.live_tags?.length) ? (
         <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
           No machine runs recorded for this asset yet.
         </p>
@@ -117,8 +149,23 @@ export function MachineMemoryCard({ assetId, initialData, poll = true }: Machine
         <>
           <div className="flex items-center gap-2 flex-wrap">
             {data.latest_run && <StatusPill label="Run" value={data.latest_run.status} />}
-            {data.latest_window && <StatusPill label="State" value={data.latest_window.state} />}
+            {(data.current_state || data.latest_window) && (
+              <StatusPill label="State" value={data.current_state?.state ?? data.latest_window!.state} />
+            )}
           </div>
+
+          {(data.live_tags?.length ?? 0) > 0 && (
+            <div className="space-y-1">
+              <p className="text-[11px] font-medium" style={{ color: "var(--foreground-subtle)" }}>
+                Live signals
+              </p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 max-h-44 overflow-y-auto pr-1">
+                {data.live_tags!.map((t) => (
+                  <LiveTagRow key={t.tag_path} tag={t} />
+                ))}
+              </div>
+            </div>
+          )}
 
           {data.latest_diffs.length > 0 && (
             <div className="space-y-1.5">
@@ -187,6 +234,40 @@ function StatusPill({ label, value }: { label: string; value: string }) {
       {label}: {value}
     </span>
   );
+}
+
+/** One live-signal row: last path segment + current value. Live tags are
+ * underlined readable-green (state color, per the UI-style law); anything not
+ * live renders muted with how long ago it was last seen. */
+function LiveTagRow({ tag }: { tag: LiveTag }) {
+  const label = tag.tag_path.split("/").filter(Boolean).pop() ?? tag.tag_path;
+  const live = tag.freshness === "live";
+  return (
+    <div className="text-xs font-mono truncate min-w-0" title={tag.tag_path}>
+      {live ? (
+        <span className="underline decoration-1 underline-offset-2" style={{ color: "var(--status-green-ink)" }}>
+          {label}: {String(tag.value ?? "—")}
+        </span>
+      ) : (
+        <span style={{ color: "var(--foreground-muted)" }}>
+          {label}: {String(tag.value ?? "—")}{" "}
+          <span style={{ color: "var(--foreground-subtle)" }}>· last seen {ago(tag.last_seen_at)}</span>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Compact "Xs/Xm/Xh ago" for stale-signal rows; "never" when null/invalid. */
+function ago(ts: string | null): string {
+  if (!ts) return "never";
+  const ms = Date.now() - new Date(ts).getTime();
+  if (Number.isNaN(ms)) return "never";
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  return `${Math.round(m / 60)}h ago`;
 }
 
 function formatTs(ts: string | null): string {
