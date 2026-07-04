@@ -97,9 +97,10 @@ def test_northwind_allowlist_exists_and_has_rows():
 
 def test_northwind_allowlist_is_superset_of_garage_rig_tags():
     # Same physical rig, but the staged NorthwindBottling Perspective project binds
-    # additional MIRA_IOCheck tags (DI_00/01/04, DO_00/01/03, vfd_freq_cmd/motor_rpm/
-    # power/torque/warn_code) that the garage seed predates. Constraint: the garage
-    # seed is NOT modified, so Northwind is a SUPERSET, not an exact mirror.
+    # additional MIRA_IOCheck tags (DI_00/01/04, DO_00/01/03) beyond the garage seed.
+    # 2026-07-04: the garage seed backfilled the 6 VFD-analyzer tags (vfd_warn_code/
+    # freq_cmd/torque/motor_rpm/power/last_fault) for gateway parity; Northwind
+    # remains a count-superset (it adds the extra DI/DO rows), not an exact mirror.
     nw = _allowlist_rows(_read(NW_ALLOWLIST))
     garage = _allowlist_rows(_read(GARAGE_ALLOWLIST))
     assert len(nw) >= len(garage), (
