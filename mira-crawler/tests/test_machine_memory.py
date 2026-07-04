@@ -335,6 +335,118 @@ def _comm_down_batch(prefix: str, base_ts: float) -> list[dict]:
     ]
 
 
+def _both_dirs_batch(prefix: str, base_ts: float, *, comm_ok: str = "true") -> list[dict]:
+    """A CV-101 snapshot with BOTH direction bits true — yields the A4
+    direction-fault anomaly (MEDIUM -> 'info'). ``comm_ok='false'`` makes the
+    same batch a comm_down window (adds the A1 CRITICAL anomaly)."""
+    n = [0]
+
+    def nxt() -> float:
+        n[0] += 1
+        return base_ts + n[0] * 5
+
+    return [
+        _ev(f"{prefix}01", "default_conveyor_vfd_comm_ok", comm_ok, nxt()),
+        _ev(f"{prefix}02", "default_conveyor_motor_running", "false", nxt()),
+        _ev(f"{prefix}03", "default_conveyor_estop_active", "false", nxt()),
+        _ev(f"{prefix}04", "default_conveyor_estop_wiring_fault", "false", nxt()),
+        _ev(f"{prefix}05", "default_conveyor_vfd_hz", "0.0", nxt(), "float"),
+        _ev(f"{prefix}06", "default_conveyor_vfd_amps", "0.0", nxt(), "float"),
+        _ev(f"{prefix}07", "default_conveyor_vfd_dcbus_v", "321.5", nxt(), "float"),
+        _ev(f"{prefix}08", "default_conveyor_vfd_cmdword", "1", nxt(), "int"),
+        _ev(f"{prefix}09", "default_conveyor_vfd_faultcode", "0", nxt(), "int"),
+        _ev(f"{prefix}10", "default_conveyor_dir_fwd", "true", nxt()),
+        _ev(f"{prefix}11", "default_conveyor_dir_rev", "true", nxt()),
+    ]
+
+
+class TestAnomalyCooldown:
+    """#2431: a persistent info-severity anomaly must not mint one identical
+    run_diff row per state-transition window. Cross-window suppression within
+    ``anomaly_cooldown_seconds``; CRITICAL/HIGH stay per-window."""
+
+    @staticmethod
+    def _a4_rows(store) -> list:
+        return [a for a in store.anomaly_diffs if a.rule_id == "A4_DIRECTION_FAULT"]
+
+    def test_info_anomaly_suppressed_across_windows_within_cooldown(self):
+        store = InMemoryRunStore()
+
+        # Batch 1: idle, both dirs true -> one A4 row.
+        historize_machine_memory(
+            store, TENANT, UNS, _both_dirs_batch("aaaa1000-0000-4000-8000-0000000000", 1000.0)
+        )
+        assert len(self._a4_rows(store)) == 1
+
+        # Batch 2 (~5 min later): state change -> NEW comm_down window; the
+        # still-true direction fault re-detects against it. Within cooldown ->
+        # suppressed. The comm_down window's own A1 (CRITICAL) is written.
+        summary2 = historize_machine_memory(
+            store,
+            TENANT,
+            UNS,
+            _both_dirs_batch("bbbb1000-0000-4000-8000-0000000000", 1300.0, comm_ok="false"),
+        )
+        assert len(self._a4_rows(store)) == 1  # no second identical row
+        assert summary2["anomalies_cooldown_suppressed"] == 1
+        a1_rows = [a for a in store.anomaly_diffs if a.rule_id == "A1_COMM_STALE"]
+        assert len(a1_rows) == 1  # critical NOT suppressed
+
+    def test_info_anomaly_written_again_after_cooldown_expires(self):
+        store = InMemoryRunStore()
+        historize_machine_memory(
+            store, TENANT, UNS, _both_dirs_batch("aaaa2000-0000-4000-8000-0000000000", 1000.0)
+        )
+        # comm_down breaks continuity so the later idle batch is a NEW window.
+        historize_machine_memory(
+            store,
+            TENANT,
+            UNS,
+            _both_dirs_batch("bbbb2000-0000-4000-8000-0000000000", 1300.0, comm_ok="false"),
+        )
+        # > cooldown (1800 s default) after the last A4 evidence -> re-written.
+        summary3 = historize_machine_memory(
+            store, TENANT, UNS, _both_dirs_batch("cccc2000-0000-4000-8000-0000000000", 4000.0)
+        )
+        assert len(self._a4_rows(store)) == 2
+        assert summary3["anomalies_cooldown_suppressed"] == 0
+
+    def test_critical_anomaly_keeps_per_window_rows_within_cooldown(self):
+        store = InMemoryRunStore()
+        # comm_down -> idle -> comm_down again: two distinct fault windows,
+        # both inside the cooldown horizon. Each deserves its own A1 row.
+        historize_machine_memory(
+            store, TENANT, UNS, _comm_down_batch("aaaa3000-0000-4000-8000-0000000000", 1000.0)
+        )
+        historize_machine_memory(
+            store, TENANT, UNS, _both_dirs_batch("bbbb3000-0000-4000-8000-0000000000", 1300.0)
+        )
+        historize_machine_memory(
+            store, TENANT, UNS, _comm_down_batch("cccc3000-0000-4000-8000-0000000000", 1600.0)
+        )
+        a1_rows = [a for a in store.anomaly_diffs if a.rule_id == "A1_COMM_STALE"]
+        assert len(a1_rows) == 2
+        assert len({a.window_id for a in a1_rows}) == 2
+
+    def test_cooldown_zero_disables_suppression(self):
+        store = InMemoryRunStore()
+        historize_machine_memory(
+            store,
+            TENANT,
+            UNS,
+            _both_dirs_batch("aaaa4000-0000-4000-8000-0000000000", 1000.0),
+            anomaly_cooldown_seconds=0,
+        )
+        historize_machine_memory(
+            store,
+            TENANT,
+            UNS,
+            _both_dirs_batch("bbbb4000-0000-4000-8000-0000000000", 1300.0, comm_ok="false"),
+            anomaly_cooldown_seconds=0,
+        )
+        assert len(self._a4_rows(store)) == 2  # escape hatch documented
+
+
 class TestCrossBatchContinuity:
     """Finding 1: a state that outlives the sliding lookback must EXTEND its
     window (one row), not accrete a new machine_state_window + run_diff row

@@ -126,6 +126,7 @@ def historize_machine_memory(
     min_baseline_runs: int = 2,
     pre_seconds: float = 300.0,
     post_seconds: float = 300.0,
+    anomaly_cooldown_seconds: float = 1800.0,
 ) -> dict:
     """Process one batch of tag_events rows into persisted machine memory.
 
@@ -223,6 +224,22 @@ def historize_machine_memory(
     # not accrete a new run_diff row each lookback. New windows keep the full
     # (window_id, diff_type, tag_path, event_timestamp) key (existing behavior).
     existing_triples = {(wid, dt, tp) for (wid, dt, tp, _ts) in existing_keys}
+    # Cross-window cooldown (#2431): a persistent MEDIUM/LOW/INFO condition
+    # (e.g. A9 out-of-range DC bus) re-detects against every NEW window a
+    # state transition mints — N windows = N identical rows. Suppress an
+    # info-severity anomaly when the same (diff_type, tag_path) was already
+    # written within the cooldown, regardless of window_id. CRITICAL
+    # ('critical') and HIGH ('warning') keep their per-window row — each
+    # fault window deserves one.
+    recent_pairs: dict[tuple[str, str], float] = {}
+    if anomaly_cooldown_seconds > 0 and windows:
+        cooldown_since = (
+            min(w.started_at for w in windows) - anomaly_cooldown_seconds
+        )
+        recent_pairs = store.recent_anomaly_pair_ts(
+            tenant_id=tenant_id, uns_path=uns_path, since=cooldown_since
+        )
+    cooldown_suppressed = 0
     anomalies: list[MachineAnomaly] = []
     for w in windows:
         snap, upto = _snapshot_through(mapped, w.to_event_id)
@@ -272,6 +289,20 @@ def historize_machine_memory(
                 existing_triples.add(triple)
             elif key in existing_keys:
                 continue
+            if anomaly.severity == "info" and anomaly_cooldown_seconds > 0:
+                pair = (anomaly.diff_type, anomaly.tag_path)
+                last_ts = recent_pairs.get(pair)
+                if (
+                    last_ts is not None
+                    and anomaly.event_timestamp is not None
+                    and anomaly.event_timestamp - last_ts < anomaly_cooldown_seconds
+                ):
+                    cooldown_suppressed += 1
+                    continue
+                if anomaly.event_timestamp is not None:
+                    recent_pairs[pair] = max(
+                        last_ts or 0.0, anomaly.event_timestamp
+                    )
             existing_keys.add(key)
             anomalies.append(anomaly)
     diffs_written = store.insert_anomaly_diffs(anomalies, tenant_id=tenant_id)
@@ -298,6 +329,7 @@ def historize_machine_memory(
         "latest_window": latest_window,
         "windows_upserted": len(windows),
         "anomaly_diffs_written": diffs_written,
+        "anomalies_cooldown_suppressed": cooldown_suppressed,
         "anomalies": [
             {
                 "rule_id": a.rule_id,

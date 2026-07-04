@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.59.3 (2026-07-04) - fix(historian): cross-window cooldown for info-severity anomalies (#2431)
+- A persistent MEDIUM/LOW/INFO condition (e.g. A9 out-of-range DC bus) re-fired one identical `run_diff` row per state-transition window. New `RunStore.recent_anomaly_pair_ts()` + `historize_machine_memory(anomaly_cooldown_seconds=1800)` suppress an info-severity anomaly when the same `(diff_type, tag_path)` was written within the cooldown, regardless of window; CRITICAL/HIGH keep their per-window row. Worker knob `MIRA_ANOMALY_COOLDOWN_SECONDS` (0 disables); summary gains `anomalies_cooldown_suppressed`. 4 new tests.
+
 ### v3.59.2 (2026-07-04) - chore(db-inspect): work_orders schema + migration-ledger probe (#2428)
 - Extends the read-only `db-inspect.yml` scoreboard with a `work_orders` column/`schema_migrations` ledger probe (the check that diagnosed #2428: migration 060 never applied to prod) and a latest-`machine_state_window` probe (bench tenant State-bubble truth, #2432 follow-through).
 
