@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { sessionOrDemo } from "@/lib/demo-auth";
 import { withTenantContext } from "@/lib/tenant-context";
-import { fetchMachineMemory } from "@/lib/machine-memory";
+import { fetchMachineMemory, fetchLiveSignals } from "@/lib/machine-memory";
+import { classifyTagFreshness, rollupFreshness, tagStatuses } from "@/lib/command-center-freshness";
+import { deriveCurrentState, type WindowRow } from "@/lib/machine-current-state";
 
 export const dynamic = "force-dynamic";
 
@@ -59,10 +61,29 @@ export async function GET(
           latest_window: null,
           latest_diffs: [],
           evidence_window: null,
+          live_tags: [],
+          current_state: null,
         };
       }
 
       const memory = await fetchMachineMemory(c, ctx.tenantId, unsPath);
+
+      // Per-tag live signals + the freshness-aware CURRENT state. The newest
+      // window may be closed/stale — deriveCurrentState downgrades to
+      // comm_down/unknown when the signal stream dried up.
+      const signals = await fetchLiveSignals(c, ctx.tenantId, unsPath);
+      const nowMs = Date.now();
+      const liveTags = signals.map((s) => ({
+        tag_path: s.plc_tag,
+        value: s.last_value_text ?? s.last_value_numeric ?? s.last_value_bool ?? null,
+        last_seen_at: s.last_seen_at,
+        freshness: classifyTagFreshness(s, nowMs),
+      }));
+      const freshness = rollupFreshness(unsPath, tagStatuses(signals, nowMs));
+      const currentState = deriveCurrentState(
+        memory.latest_window as WindowRow | null,
+        freshness,
+      );
 
       const evidenceWindow = memory.latest_run
         ? { started_at: memory.latest_run.started_at, stopped_at: memory.latest_run.stopped_at, uns_path: unsPath }
@@ -77,6 +98,8 @@ export async function GET(
         windows_available: memory.windows_available,
         latest_diffs: memory.latest_diffs,
         evidence_window: evidenceWindow,
+        live_tags: liveTags,
+        current_state: currentState,
       };
     });
 

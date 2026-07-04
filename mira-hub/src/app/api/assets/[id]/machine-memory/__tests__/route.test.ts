@@ -67,6 +67,8 @@ it("no kg uns_path -> 200 empty state", async () => {
     latest_window: null,
     latest_diffs: [],
     evidence_window: null,
+    live_tags: [],
+    current_state: null,
   });
 });
 
@@ -82,12 +84,25 @@ it("run + window + diffs -> mapped response incl. next_check surfaced from metad
     delta_percent: 30, from_event_id: "e1", to_event_id: "e2",
     event_timestamp: "2026-07-01T00:30:00Z", metadata: { next_check: "verify VFD comm cable" },
   };
+  const freshSeen = new Date(Date.now() - 2_000).toISOString();
+  const staleSeen = new Date(Date.now() - 10 * 60_000).toISOString();
+  const freshSignal = {
+    plc_tag: "[default]MIRA_IOCheck/VFD/vfd_dc_bus", last_value_text: null,
+    last_value_numeric: "320.4", last_value_bool: null, last_seen_at: freshSeen,
+    simulated: false, expected_freshness_seconds: null, uns_path: UNS_PATH,
+  };
+  const staleSignal = {
+    plc_tag: "[default]MIRA_IOCheck/VFD/vfd_torque", last_value_text: null,
+    last_value_numeric: null, last_value_bool: false, last_seen_at: staleSeen,
+    simulated: false, expected_freshness_seconds: null, uns_path: UNS_PATH,
+  };
   wire(
     mockClient([
       KG_HIT,
       [/FROM machine_run/, { rows: [run] }],
       [/FROM machine_state_window/, { rows: [win] }],
       [/FROM run_diff/, { rows: [diff] }],
+      [/FROM live_signal_cache/, { rows: [freshSignal, staleSignal] }],
     ]),
   );
   const res = await GET(new Request("http://t"), { params });
@@ -104,6 +119,63 @@ it("run + window + diffs -> mapped response incl. next_check surfaced from metad
     stopped_at: run.stopped_at,
     uns_path: UNS_PATH,
   });
+  // Live signals: value coalescing (numeric / bool) + per-tag freshness.
+  expect(body.live_tags).toEqual([
+    { tag_path: freshSignal.plc_tag, value: "320.4", last_seen_at: freshSeen, freshness: "live" },
+    { tag_path: staleSignal.plc_tag, value: false, last_seen_at: staleSeen, freshness: "stale" },
+  ]);
+  // The window fixture is OPEN (ended_at null) and a live signal exists →
+  // current state = the open window's state, fresh.
+  expect(body.current_state).toEqual({ state: win.state, since: win.started_at, fresh: true });
+});
+
+it("closed window + all-stale signals -> current_state downgrades to comm_down", async () => {
+  const win = {
+    window_id: "w1", state: "running",
+    started_at: "2026-07-01T01:00:00Z", ended_at: "2026-07-01T02:00:00Z",
+  };
+  const staleSignal = {
+    plc_tag: "[default]MIRA_IOCheck/VFD/vfd_dc_bus", last_value_text: null,
+    last_value_numeric: "318.9", last_value_bool: null,
+    last_seen_at: new Date(Date.now() - 30 * 60_000).toISOString(),
+    simulated: false, expected_freshness_seconds: null, uns_path: UNS_PATH,
+  };
+  wire(
+    mockClient([
+      KG_HIT,
+      [/FROM machine_state_window/, { rows: [win] }],
+      [/FROM live_signal_cache/, { rows: [staleSignal] }],
+    ]),
+  );
+  const res = await GET(new Request("http://t"), { params });
+  expect(res.status).toBe(200);
+  const body = await res.json();
+  expect(body.latest_window).toEqual(win);
+  expect(body.live_tags[0].freshness).toBe("stale");
+  expect(body.current_state).toEqual({ state: "comm_down", since: null, fresh: false });
+});
+
+it("live_signal_cache missing (42P01) -> 200 with live_tags [] and current_state null (no window)", async () => {
+  wire(
+    mockClient([
+      KG_HIT,
+      [/FROM machine_run/, { rows: [{ run_id: "r1", status: "open", started_at: "2026-07-01T00:00:00Z", stopped_at: null, duration_seconds: null, run_trigger_tag: "t" }] }],
+      [
+        /FROM live_signal_cache/,
+        () => {
+          const err = new Error('relation "live_signal_cache" does not exist') as Error & { code?: string };
+          err.code = "42P01";
+          throw err;
+        },
+      ],
+    ]),
+  );
+  const res = await GET(new Request("http://t"), { params });
+  expect(res.status).toBe(200);
+  const body = await res.json();
+  expect(body.live_tags).toEqual([]);
+  // No window + no signals ("unknown" freshness) → null current_state.
+  expect(body.current_state).toBeNull();
 });
 
 it("038-only env (state-window query throws relation-does-not-exist) -> 200 with latest_window null, latest_run still returned", async () => {
@@ -172,12 +244,13 @@ it("missing NEON_DATABASE_URL -> 503", async () => {
   expect(res.status).toBe(503);
 });
 
-it("SQL assertions: tenant_id = $1::uuid and $2::ltree present in the run/window/diff queries", async () => {
+it("SQL assertions: tenant_id = $1::uuid and $2::ltree present in the run/window/diff/signal queries", async () => {
   const client = mockClient([
     KG_HIT,
     [/FROM machine_run/, { rows: [] }],
     [/FROM machine_state_window/, { rows: [] }],
     [/FROM run_diff/, { rows: [] }],
+    [/FROM live_signal_cache/, { rows: [] }],
   ]);
   wire(client);
   await GET(new Request("http://t"), { params });
@@ -188,5 +261,12 @@ it("SQL assertions: tenant_id = $1::uuid and $2::ltree present in the run/window
   for (const call of scoped) {
     expect(call.sql).toMatch(/tenant_id = \$1::uuid/);
     expect(call.sql).toMatch(/uns_path = \$2::ltree/);
+  }
+  // live_signal_cache is subtree-scoped: ltree descendant operator, not =.
+  const signalCalls = client.calls.filter((c) => /FROM live_signal_cache/.test(c.sql));
+  expect(signalCalls.length).toBeGreaterThan(0);
+  for (const call of signalCalls) {
+    expect(call.sql).toMatch(/tenant_id = \$1::uuid/);
+    expect(call.sql).toMatch(/uns_path <@ \$2::ltree/);
   }
 });

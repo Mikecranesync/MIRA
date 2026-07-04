@@ -126,3 +126,46 @@ export async function fetchMachineMemory(
     })),
   };
 }
+
+/** A live_signal_cache row for one asset subtree (migrations 020 + 036). */
+export interface LiveSignalRow {
+  plc_tag: string;
+  last_value_text: string | null;
+  last_value_numeric: number | string | null; // pg numeric arrives as string
+  last_value_bool: boolean | null;
+  last_seen_at: string | null;
+  simulated: boolean | null;
+  expected_freshness_seconds: number | null;
+  uns_path: string | null;
+}
+
+/**
+ * Latest cached value per tag under one asset's UNS subtree — the per-tag
+ * companion to fetchMachineMemory for live-signal display. Kept separate so
+ * the context/chat callers of fetchMachineMemory don't pay for it.
+ * live_signal_cache (020) / its uns_path column (036) may not be applied in
+ * every env — degrade to [] like the machine_state_window block above.
+ */
+export async function fetchLiveSignals(
+  client: MachineMemoryClient,
+  tenantId: string,
+  unsPath: string,
+): Promise<LiveSignalRow[]> {
+  try {
+    const res = await client.query(
+      `SELECT plc_tag, last_value_text, last_value_numeric, last_value_bool,
+              last_seen_at, simulated, expected_freshness_seconds, uns_path::text AS uns_path
+         FROM live_signal_cache
+        WHERE tenant_id = $1::uuid
+          AND uns_path IS NOT NULL
+          AND uns_path <@ $2::ltree
+        ORDER BY plc_tag`,
+      [tenantId, unsPath],
+    );
+    return res.rows as unknown as LiveSignalRow[];
+  } catch (err) {
+    if (!isUndefinedRelationOrColumn(err)) throw err;
+    console.error("[lib/machine-memory] live_signal_cache unavailable (020/036 not applied?)", err);
+    return [];
+  }
+}
