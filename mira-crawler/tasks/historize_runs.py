@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 
 try:
     from mira_crawler.celery_app import app
@@ -86,6 +87,12 @@ def _read_recent_events(
         conn.execute(
             text("SET LOCAL app.current_tenant_id = :tid"), {"tid": tenant_id}
         )
+        # Horizon + ordering run on ingested_at (SERVER receipt time), NOT the
+        # client event_timestamp: Ignition report-by-exception freezes the
+        # client ts when values stop changing, which (a) pinned the window
+        # clock and (b) aged perfectly-fresh rows out of this horizon
+        # (bench-proven 2026-07-04: windows frozen at 11:06 while rows landed
+        # at 6/s). event_timestamp is still read as source-observed metadata.
         rows = (
             conn.execute(
                 text(
@@ -93,12 +100,13 @@ def _read_recent_events(
                     SELECT tag_path, value, value_type, quality,
                            uns_path::text AS uns_path,
                            event_id::text AS event_id, simulated, source_system,
-                           extract(epoch FROM event_timestamp) AS ts
+                           extract(epoch FROM event_timestamp) AS ts,
+                           extract(epoch FROM ingested_at) AS ingested_ts
                       FROM tag_events
                      WHERE tenant_id = :tid
                        AND uns_path::text = ANY(:uns_paths)
-                       AND event_timestamp >= NOW() - (:lookback || ' seconds')::interval
-                     ORDER BY event_timestamp ASC
+                       AND ingested_at >= NOW() - (:lookback || ' seconds')::interval
+                     ORDER BY ingested_at ASC
                     """
                 ),
                 {
@@ -130,6 +138,7 @@ def _read_recent_events(
                 simulated=bool(r["simulated"]),
                 source_system=r["source_system"],
                 raw_value=raw,
+                ingested_ts=float(r["ingested_ts"]),
             )
         )
     return out
@@ -203,12 +212,17 @@ def historize_runs() -> dict:
                 "value_type": r.value_type,
                 "quality": r.quality,
                 "event_timestamp": r.event_timestamp,
+                "ingested_ts": r.ingested_ts,
             }
             for r in readings
         ]
+        # Real wall-clock `now` so the final window's staleness (max_stale_s)
+        # grows when the stream stops — A0_OFFLINE can fire instead of the
+        # last state being pinned forever.
+        batch_now = time.time()
         machine_memory: dict[str, dict] = {}
         for uns_path in uns_paths:
-            mm = historize_machine_memory(store, tenant_id, uns_path, rows)
+            mm = historize_machine_memory(store, tenant_id, uns_path, rows, now=batch_now)
             machine_memory[uns_path] = {
                 "windows_upserted": mm["windows_upserted"],
                 "anomaly_diffs_written": mm["anomaly_diffs_written"],

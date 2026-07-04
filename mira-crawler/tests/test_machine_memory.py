@@ -479,3 +479,84 @@ class TestCliDryRun:
         assert '"machine_run": 0' in wet_stdout
         assert '"machine_state_window": 2' in wet_stdout
         assert '"run_diff_anomaly": 1' in wet_stdout
+
+
+class TestServerTimeWindowClock:
+    """State windows run on the SERVER clock (tag_events.ingested_at), not the
+    client event_timestamp — which freezes when values stop changing (Ignition
+    report-by-exception). Bench-proven 2026-07-04: windows pinned at 11:06
+    while fresh rows landed at 6/s, leaving a stale closed 'faulted' window as
+    the card's current state forever."""
+
+    BASE = 1_751_600_000.0  # arbitrary epoch anchor
+
+    def _rows(self, *, frozen_client_ts: bool, n: int = 10) -> list[dict]:
+        # comm_ok=true + frequency 0 -> idle snapshot. Client ts optionally
+        # frozen at BASE while ingested_ts advances 2 s per row.
+        rows = []
+        for i in range(n):
+            rows.append(
+                {
+                    "event_id": f"e{i}",
+                    "tenant_id": TENANT,
+                    "uns_path": UNS,
+                    "tag_path": "default_mira_iocheck_vfd_vfd_comm_ok",
+                    "value": "true",
+                    "value_type": "bool",
+                    "quality": "good",
+                    "event_timestamp": self.BASE if frozen_client_ts else self.BASE + i * 2.0,
+                    "ingested_ts": self.BASE + i * 2.0,
+                }
+            )
+        return rows
+
+    def test_frozen_client_ts_windows_still_advance(self):
+        rows = self._rows(frozen_client_ts=True)
+        store = InMemoryRunStore()
+        historize_machine_memory(store, TENANT, UNS, rows)
+        (window,) = store.state_windows.values()
+        # ended_at follows the advancing server clock, not the frozen client ts
+        assert window.ended_at == self.BASE + 9 * 2.0
+        assert window.started_at == self.BASE
+
+    def test_without_ingested_ts_falls_back_to_event_timestamp(self):
+        rows = self._rows(frozen_client_ts=False)
+        for r in rows:
+            del r["ingested_ts"]
+        store = InMemoryRunStore()
+        historize_machine_memory(store, TENANT, UNS, rows)
+        (window,) = store.state_windows.values()
+        assert window.ended_at == self.BASE + 9 * 2.0
+
+    def test_stale_stream_fires_a0_offline_on_final_window(self):
+        rows = self._rows(frozen_client_ts=True)
+        store = InMemoryRunStore()
+        # Stream stopped: real now is 120 s past the last sample (>= 30 s A0).
+        now = self.BASE + 9 * 2.0 + 120.0
+        summary = historize_machine_memory(store, TENANT, UNS, rows, now=now)
+        rule_ids = {a["rule_id"] for a in summary["anomalies"]}
+        assert "A0_OFFLINE" in rule_ids
+
+    def test_fresh_stream_does_not_fire_a0(self):
+        rows = self._rows(frozen_client_ts=True)
+        store = InMemoryRunStore()
+        now = self.BASE + 9 * 2.0 + 2.0  # 2 s after the last sample
+        summary = historize_machine_memory(store, TENANT, UNS, rows, now=now)
+        rule_ids = {a["rule_id"] for a in summary["anomalies"]}
+        assert "A0_OFFLINE" not in rule_ids
+
+    def test_reader_sql_keys_on_ingested_at(self):
+        # Source-level pin: the tag_events reader filters AND orders on
+        # ingested_at (server time), and surfaces it as ingested_ts.
+        import inspect
+
+        sys.path.insert(0, str(Path(__file__).parent.parent / "tasks"))
+        try:
+            import historize_runs
+        finally:
+            sys.path.remove(str(Path(__file__).parent.parent / "tasks"))
+        src = inspect.getsource(historize_runs._read_recent_events)
+        assert "ingested_at >= NOW()" in src
+        assert "ORDER BY ingested_at ASC" in src
+        assert "AS ingested_ts" in src
+        assert "event_timestamp >= NOW()" not in src
