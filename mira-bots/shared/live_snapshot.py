@@ -11,8 +11,12 @@ Hard boundary: this module NEVER writes, NEVER opens a socket, NEVER touches a
 fieldbus. It only reshapes data already received. No clock either — the caller
 passes ``ts`` so normalization stays deterministic and unit-testable.
 
-The GS10/Micro820 decode tables mirror ``mira-bots/ask_api/app.py`` and the
-machine card (``MIRA_PLC/specs/CONVEYOR_MACHINE_CARD.md``); keep them in sync.
+The GS10/Micro820 decode tables are sourced from the drive pack
+(``packs/durapulse_gs10/pack.json``, loaded once below via
+``shared.drive_packs.load_pack``) rather than hardcoded here — see ADR-0025.
+They still mirror ``mira-bots/ask_api/app.py`` and the machine card
+(``MIRA_PLC/specs/CONVEYOR_MACHINE_CARD.md``); keep those in sync (Task 7
+mirrors the pack into the Hub's ``gs10-display.ts``).
 Trust rule (from ``ask_api/machine_context.py``): ``vfd_comm_ok`` is the master
 trust gate — when it is false, every VFD-derived value is marked ``stale``.
 """
@@ -22,21 +26,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-# --- GS10 decode tables (mirror ask_api/app.py) ---
-_STATUS_BITS = {0: "STOPPED", 1: "DECEL", 2: "STANDBY", 3: "RUNNING"}
-_CMD_WORD = {1: "STOP", 18: "FWD+RUN", 20: "REV+RUN"}
-_FAULT_CODES = {
-    0: "no active fault",
-    4: "GFF ground fault",
-    12: "Lvd undervoltage",
-    21: "oL overload",
-    49: "EF external fault",
-    54: "CE1 comm illegal cmd",
-    55: "CE2 comm illegal addr",
-    56: "CE3 comm illegal data",
-    57: "CE4 comm fail",
-    58: "CE10 modbus timeout",
-}
+from shared.drive_packs import load_pack
+
+# --- GS10 decode tables, loaded once from the drive pack (ADR-0025) ---
+# Import-time load is deliberate: the pack ships in-repo, so a load failure
+# here is a real error we want surfaced loudly at import, not masked by a
+# fallback to stale literals.
+_GS10_PACK = load_pack("durapulse_gs10")
+_STATUS_BITS: dict[int, str] = _GS10_PACK.live_decode.status_bits
+_CMD_WORD: dict[int, str] = _GS10_PACK.live_decode.cmd_word
+_FAULT_CODES: dict[int, str] = _GS10_PACK.live_decode.fault_codes
+_REGISTERS = _GS10_PACK.live_decode.registers
 
 # Quality bands.
 GOOD = "good"
@@ -72,20 +72,47 @@ def _num(raw: Any) -> float | int | None:
     return None
 
 
+def _scaled(key: str, raw: Any) -> tuple[float, str | None] | None:
+    """Scale a raw analog register to its engineering value via the pack's
+    ``live_decode.registers[key].scaling``. ``n / (1 / scaling)`` rather than
+    ``n * scaling`` — for this pack's scalings (0.01, 0.1) the two are not
+    always bit-identical in float64 (e.g. 9999/100 != 9999*0.01), and the
+    division form matches the historical literals (``n / 100``, ``n / 10``)
+    exactly. None ⇒ raw wasn't a plain number.
+    """
+    n = _num(raw)
+    if n is None:
+        return None
+    entry = _REGISTERS[key]
+    return (n / (1 / entry.scaling), entry.unit)
+
+
 def _decode_one(key: str, raw: Any) -> tuple[Any, str | None, str] | None:
     """Decode a single known tag → (value, unit, label). None ⇒ unknown tag."""
     if key == "vfd_frequency":
-        n = _num(raw)
-        return None if n is None else (n / 100, "Hz", f"VFD output: {n / 100:.1f} Hz")
+        scaled = _scaled(key, raw)
+        if scaled is None:
+            return None
+        value, unit = scaled
+        return (value, unit, f"VFD output: {value:.1f} {unit}")
     if key == "vfd_freq_sp":
-        n = _num(raw)
-        return None if n is None else (n / 100, "Hz", f"Freq setpoint: {n / 100:.1f} Hz")
+        scaled = _scaled(key, raw)
+        if scaled is None:
+            return None
+        value, unit = scaled
+        return (value, unit, f"Freq setpoint: {value:.1f} {unit}")
     if key == "vfd_current":
-        n = _num(raw)
-        return None if n is None else (n / 100, "A", f"Current: {n / 100:.1f} A")
+        scaled = _scaled(key, raw)
+        if scaled is None:
+            return None
+        value, unit = scaled
+        return (value, unit, f"Current: {value:.1f} {unit}")
     if key == "vfd_dc_bus":
-        n = _num(raw)
-        return None if n is None else (n / 10, "V", f"DC bus: {n / 10:.1f} V")
+        scaled = _scaled(key, raw)
+        if scaled is None:
+            return None
+        value, unit = scaled
+        return (value, unit, f"DC bus: {value:.1f} {unit}")
     if key == "vfd_cmd_word":
         name = _CMD_WORD.get(raw, f"cmd {raw}")
         return (name, None, f"Command: {name}")
