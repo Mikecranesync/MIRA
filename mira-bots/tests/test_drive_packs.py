@@ -55,6 +55,23 @@ def test_gs10_pack_cmd_word_matches_live_snapshot_exactly():
     assert pack.live_decode.cmd_word == _CMD_WORD
 
 
+def test_gs10_pack_cmd_word_rev_run_matches_bench_verified_ground_truth():
+    """Ground-truth guard, NOT self-consistency.
+
+    The test above only proves the pack agrees with ``live_snapshot._CMD_WORD``
+    — but that module is itself pack-sourced (Task 2), so the two can drift
+    together and still "match." The real authority is
+    ``plc/conv_simple_anomaly/rules_core.py``'s ``run_cmd_values = (18, 34)``,
+    bench-verified 2026-06-12 (commit a882605a): REV+RUN = 34 (0x22 = 0x20 REV
+    | 0x02 RUN). The old value 20 (0x14) has no RUN bit set and left
+    A6/A7/A10 blind whenever the belt ran in reverse. Pin the pack against
+    that ground truth so a future edit can't silently revert to 20.
+    """
+    pack = load_pack(PACK_ID)
+    assert pack.live_decode.cmd_word.get(34) == "REV+RUN"
+    assert 20 not in pack.live_decode.cmd_word
+
+
 def test_gs10_pack_fault_codes_match_live_snapshot_exactly():
     pack = load_pack(PACK_ID)
     assert pack.live_decode.fault_codes == _FAULT_CODES

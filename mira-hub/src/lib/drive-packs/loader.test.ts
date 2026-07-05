@@ -23,10 +23,14 @@ describe("GS10_PACK", () => {
   });
 
   it("cmd_word matches the pack.json values exactly", () => {
+    // REV+RUN is 34 (0x22 = 0x20 REV | 0x02 RUN), bench-verified 2026-06-12 —
+    // see plc/conv_simple_anomaly/rules_core.py `run_cmd_values` + commit
+    // a882605a. This test previously asserted the stale value 20 (0x14, no
+    // RUN bit), which had silently ridden in from a pre-fix source.
     expect(GS10_PACK.live_decode.cmd_word).toEqual({
       1: "STOP",
       18: "FWD+RUN",
-      20: "REV+RUN",
+      34: "REV+RUN",
     });
   });
 

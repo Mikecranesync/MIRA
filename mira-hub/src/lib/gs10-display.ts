@@ -121,7 +121,7 @@ const DIRECTION: Record<number, string> = {
 
 /**
  * GS10 0x2000 command word — codes sourced from the pack's `live_decode.cmd_word`
- * ({1: STOP, 18: FWD+RUN, 20: REV+RUN}); display wording is this component's
+ * ({1: STOP, 18: FWD+RUN, 34: REV+RUN}); display wording is this component's
  * own copy. `0` ("no command word seen yet") has no pack entry — kept as a
  * local default.
  */
