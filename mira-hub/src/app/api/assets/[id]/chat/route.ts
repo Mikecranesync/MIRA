@@ -257,6 +257,27 @@ export async function POST(
     return NextResponse.json({ error: "No user message" }, { status: 400 });
   }
 
+  // Ownership pre-check (#2374): verify the caller owns this asset before proceeding.
+  // Returns 404 if the asset is not found for the caller's tenant (not owned).
+  // DB errors do not convert to 404 — they fall through to graceful degradation.
+  try {
+    const c = await pool.connect();
+    try {
+      const ownershipRes = await c.query(
+        `SELECT 1 FROM cmms_equipment WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+        [id, ctx.tenantId],
+      );
+      if (ownershipRes.rows.length === 0) {
+        return NextResponse.json({ error: "Asset not found" }, { status: 404 });
+      }
+    } finally {
+      c.release();
+    }
+  } catch {
+    // DB error during ownership check — do not convert to 404.
+    // Fall through to let the handler proceed with graceful degradation.
+  }
+
   // Safety gate — hard stop before touching LLM
   const trigger = hasSafetyKeyword(lastUser.content);
   if (trigger) {
