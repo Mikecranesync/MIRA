@@ -97,19 +97,27 @@ BODY
 
 Body must show **commands + results**, not "tests pass" (Cluster Law 1).
 
-## 4. Poll CI → triage real vs flaky
+## 4. Poll CI → triage real vs flaky (with re-verification for cache lag)
 
 ```bash
 gh pr checks <PR#> --watch
 ```
 
-- **Green** → report mergeable with the check rollup. STOP here — merge is a
-  human decision (and `ship`'s job).
+- **Green** → **Re-verify once more before declaring mergeable** (GitHub API caches responses; a single read is not enough, especially if it conflicts with what you expected). Wait a few seconds, then:
+  ```bash
+  sleep 2
+  gh pr checks <PR#> --json status,conclusion -q
+  ```
+  Only declare the PR "mergeable" if BOTH reads agree it's green. If they conflict, report the discrepancy explicitly rather than silently picking one.
 - **Red** → triage. Is it a real failure your branch introduced, or a known-
   flaky / pre-existing-on-main check? Compare against `origin/main`'s latest run
   before "fixing" anything. Note: on this repo, squash-merge can bypass
   pending/advisory checks — know which checks actually gate (see
   `reference_ci_checks` memory).
+
+## 4b. API cache lag: the insights-report pattern
+
+GitHub's API (`gh pr view`, `gh pr checks`) can lag behind the actual PR state by up to ~5 seconds when a merge or status change just landed. **If a single read conflicts with what you expected or what the user just told you, do NOT silently pick one — always re-fetch after a short delay.** The 2026-06-08 insights report noted this exact pattern: "A merge chain stalled when you reported a PR had merged but the GitHub API still showed it OPEN due to cache lag, requiring multiple re-checks before confirmation." Trust an answer only when two independent reads agree.
 
 ## 5. Handoff
 
