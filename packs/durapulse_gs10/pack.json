@@ -1,0 +1,65 @@
+{
+  "pack_id": "durapulse_gs10",
+  "schema_version": 1,
+  "family": {
+    "manufacturer": "AutomationDirect",
+    "series": "DURApulse GS10",
+    "aliases": ["GS10", "DURApulse", "GS-10"]
+  },
+  "nameplate": {
+    "match_keywords": ["GS10", "DURAPULSE", "GS-10"]
+  },
+  "live_decode": {
+    "status_bits": {
+      "0": "STOPPED",
+      "1": "DECEL",
+      "2": "STANDBY",
+      "3": "RUNNING"
+    },
+    "cmd_word": {
+      "1": "STOP",
+      "18": "FWD+RUN",
+      "20": "REV+RUN"
+    },
+    "fault_codes": {
+      "0": "no active fault",
+      "4": "GFF ground fault",
+      "12": "Lvd undervoltage",
+      "21": "oL overload",
+      "49": "EF external fault",
+      "54": "CE1 comm illegal cmd",
+      "55": "CE2 comm illegal addr",
+      "56": "CE3 comm illegal data",
+      "57": "CE4 comm fail",
+      "58": "CE10 modbus timeout"
+    },
+    "registers": {
+      "vfd_frequency": { "addr": null, "unit": "Hz", "scaling": 0.01, "datapoint": "frequency" },
+      "vfd_freq_sp": { "addr": null, "unit": "Hz", "scaling": 0.01, "datapoint": "freq_setpoint" },
+      "vfd_current": { "addr": null, "unit": "A", "scaling": 0.01, "datapoint": "current" },
+      "vfd_dc_bus": { "addr": null, "unit": "V", "scaling": 0.1, "datapoint": "dc_bus" }
+    }
+  },
+  "envelope": {
+    "dc_bus": { "nominal": 320.0, "min": 300.0, "max": 340.0, "unit": "V" },
+    "current": { "rated": null, "unit": "A" },
+    "frequency": { "min": 0.0, "max": 60.0, "unit": "Hz" }
+  },
+  "knowledge": {
+    "kb_document_ids": [],
+    "component_template_id": null,
+    "kg_entity_ids": []
+  },
+  "provenance": {
+    "items": {
+      "live_decode.status_bits": "bench_verified",
+      "live_decode.cmd_word": "bench_verified",
+      "live_decode.fault_codes": "manual_cited",
+      "live_decode.registers": "bench_verified",
+      "envelope.dc_bus": "bench_verified"
+    },
+    "sources": [
+      { "doc": "GS10 User Manual", "page": "", "excerpt": "" }
+    ]
+  }
+}
