@@ -535,20 +535,6 @@ def render_fault_diagnostic(fault_name: str) -> str:
     return _render_fault_card(card)
 
 
-def _render_active_fault_diagnostic(snapshots: list[LiveTagSnapshot]) -> str:
-    """Enriched per-fault diagnostic block for an active, GOOD-quality fault in
-    ``snapshots`` (via the shared card path), or "" when there is none. Shared by
-    the engine (``render_machine_evidence``) and the Ignition wire path
-    (``assess_from_paths``) so the fault-diagnostic gate + render live in ONE place.
-
-    Quality gate: only a GOOD-quality fault renders. A STALE fault (comms lost —
-    ``vfd_comm_ok`` is this module's master trust gate) is skipped; the assessment
-    already leads with the comms-LOST caveat and a confident card would contradict it.
-    """
-    card = _active_fault_card(snapshots)
-    return _render_fault_card(card) if card is not None else ""
-
-
 def render_machine_evidence(snapshots: list[LiveTagSnapshot]) -> str:
     """Render snapshots as a ``## Live Machine Evidence`` section for the engine.
 
@@ -655,10 +641,11 @@ def assess_from_paths(path_values: dict[str, Any] | None) -> str | None:
     fabricated assessment. Pure / deterministic.
 
     When an active, GOOD-quality (comms-OK) GS10 fault is present, the same
-    per-fault diagnostic card the engine path renders (``render_fault_diagnostic``,
-    via the shared ``_render_active_fault_diagnostic`` helper) is appended after
-    the one-line assessment — this is the Ignition "Ask MIRA" enrichment (Drive
-    Commander DriveSense follow-up). A STALE fault (comms lost) never gets a card.
+    per-fault diagnostic card the engine path renders is appended after the
+    one-line assessment — both surfaces build the same ``DriveDiagnostic``
+    (``build_drive_diagnostic``) and render its ``fault_card``. This is the
+    Ignition "Ask MIRA" enrichment (Drive Commander DriveSense). A STALE fault
+    (comms lost) never gets a card.
     """
     if not path_values:
         return None

@@ -382,10 +382,11 @@ def test_assess_from_paths_empty_is_none():
     assert assess_from_paths({}) is None
 
 
-# ── assess_from_paths — fault-card enrichment (shared _render_active_fault_diagnostic) ──
+# ── assess_from_paths — fault-card enrichment (shared DriveDiagnostic) ──
 #
 # The Ignition wire path now reuses the SAME fault-diagnostic card as the engine
-# path (`render_machine_evidence`), via `_render_active_fault_diagnostic`. These
+# path (`render_machine_evidence`): both build a `DriveDiagnostic` and render its
+# `fault_card`. These
 # tests prove: enrichment on a GOOD-quality mapped fault, suppression on a STALE
 # fault (comms lost), the safe no-card fallback for an unmapped fault, no change
 # for the no-fault case, honest None when nothing is assessable, that both
