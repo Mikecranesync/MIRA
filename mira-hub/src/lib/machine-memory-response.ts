@@ -12,8 +12,10 @@ import { fetchMachineMemory, fetchLiveSignals, type MachineMemoryClient } from "
 import { classifyTagFreshness, rollupFreshness, tagStatuses } from "@/lib/command-center-freshness";
 import { deriveCurrentState, type WindowRow, type CurrentState } from "@/lib/machine-current-state";
 import { formatTagValue } from "@/lib/gs10-display";
+import { deriveContextIntelligence, type ActiveCondition } from "@/lib/machine-context-intelligence";
 
 export type { CurrentState } from "@/lib/machine-current-state";
+export type { ActiveCondition } from "@/lib/machine-context-intelligence";
 
 export interface LatestRun {
   run_id: string;
@@ -70,6 +72,13 @@ export interface MachineMemoryResponse {
   evidence_window: EvidenceWindow | null;
   live_tags?: LiveTag[];
   current_state?: CurrentState | null;
+  // Deterministic intelligence layer (machine_memory_intelligence_bridge):
+  // a one-sentence assessment + normalized active conditions + recently-changed
+  // tags. Computed here so the card, the SSE stream, and the Ask-MIRA context
+  // packet all share ONE source of truth. `null`/[] in the empty state.
+  summary?: string | null;
+  active_conditions?: ActiveCondition[];
+  changed_recently?: string[];
 }
 
 /**
@@ -84,6 +93,7 @@ export async function buildMachineMemoryResponse(
   client: MachineMemoryClient,
   tenantId: string,
   id: string,
+  nowMs: number = Date.now(),
 ): Promise<MachineMemoryResponse> {
   // Resolve uns_path from kg_entities — the same bridge context/route.ts
   // uses. Do NOT join machine_run/run_diff to cmms_equipment directly:
@@ -110,6 +120,9 @@ export async function buildMachineMemoryResponse(
       evidence_window: null,
       live_tags: [],
       current_state: null,
+      summary: null,
+      active_conditions: [],
+      changed_recently: [],
     };
   }
 
@@ -119,7 +132,6 @@ export async function buildMachineMemoryResponse(
   // window may be closed/stale — deriveCurrentState downgrades to
   // comm_down/unknown when the signal stream dried up.
   const signals = await fetchLiveSignals(client, tenantId, unsPath);
-  const nowMs = Date.now();
   const liveTags: LiveTag[] = signals.map((s) => {
     const raw = s.last_value_text ?? s.last_value_numeric ?? s.last_value_bool ?? null;
     const formatted = formatTagValue(s.plc_tag, raw);
@@ -136,6 +148,15 @@ export async function buildMachineMemoryResponse(
   });
   const freshness = rollupFreshness(unsPath, tagStatuses(signals, nowMs));
   const currentState = deriveCurrentState(memory.latest_window as WindowRow | null, freshness);
+
+  // The deterministic assessment — one compute site shared by the card, the SSE
+  // stream, and the Ask-MIRA context packet (machine_memory_intelligence_bridge).
+  const intelligence = deriveContextIntelligence({
+    machine_state: currentState,
+    live_tags: liveTags,
+    latest_diffs: memory.latest_diffs as unknown as LatestDiff[],
+    nowMs,
+  });
 
   const evidenceWindow: EvidenceWindow | null = memory.latest_run
     ? {
@@ -160,5 +181,8 @@ export async function buildMachineMemoryResponse(
     evidence_window: evidenceWindow,
     live_tags: liveTags,
     current_state: currentState,
+    summary: intelligence.summary,
+    active_conditions: intelligence.active_conditions,
+    changed_recently: intelligence.changed_recently,
   };
 }

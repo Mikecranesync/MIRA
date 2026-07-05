@@ -69,6 +69,11 @@ it("no kg uns_path -> 200 empty state", async () => {
     evidence_window: null,
     live_tags: [],
     current_state: null,
+    // machine_memory_intelligence_bridge: the deterministic intelligence layer
+    // (empty in the no-uns_path state).
+    summary: null,
+    active_conditions: [],
+    changed_recently: [],
   });
 });
 
