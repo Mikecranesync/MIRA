@@ -1,15 +1,25 @@
 """The Drive Commander provable-read-only gate (Task 6, ADR-0025 amendment).
 
 ADR-0025 §4 amends ``.claude/rules/fieldbus-readonly.md`` with a narrow
-carve-out: a customer-run Drive Commander desktop MAY open **read-only**
-EtherNet/IP / Modbus-TCP connections directly to drives, under the same
-provable-read-only discipline ``plc/discover.py`` already enforces (read
-function codes only; never a write FC; no parameter/IP/baud/control-word
-write). §4 explicitly calls out a "Provable-read-only test" as the shipping
-gate for this surface (§6, item 6): *"assert no write FC (FC5/6/15/16) can be
-emitted (the Drive Commander shipping gate)."*
+carve-out: a customer-run *local desktop* Drive Commander MAY open supported
+**read-only** connections to supported drives on authorized plant networks,
+under a **protocol-specific** discipline — **Modbus (TCP/RTU): read-only
+function codes FC1–FC4 only, never FC5/6/15/16**; **EtherNet/IP: read /
+status / identity-safe services only** (no parameter/config/output-assembly/
+control-word writes, no state-changing service). "Read function codes only"
+is a Modbus concept and does NOT transfer to EtherNet/IP. §6 item 6 calls out
+a "Provable-read-only test" as the shipping gate.
 
-This module IS that gate. It statically scans ``mira-bots/shared/drive_packs``
+**Scope boundary — read this before trusting the gate.** This gate proves the
+**pack / loader / card surface** (``mira-bots/shared/drive_packs``) is *pure
+data reshaping* — no write FC, no fieldbus client, no socket. It does **NOT**
+prove that a future Drive Commander **desktop connector** is read-only: **no
+connector exists yet.** When the connector is added, it MUST be added to this
+gate (extend the scanned package set below) OR carry its own equivalent
+protocol-specific gate (Modbus FC1–FC4; EtherNet/IP safe-services allowlist).
+Do not read a green run here as "the desktop connector is safe."
+
+This module IS that (pack-surface) gate. It statically scans ``mira-bots/shared/drive_packs``
 (today: pure data-reshaping — a JSON loader, a nameplate-text matcher, and a
 diagnostic-card builder; see ``.claude/rules/fieldbus-readonly.md``) plus the
 pack JSON under the co-located ``mira-bots/shared/drive_packs/packs/`` (package

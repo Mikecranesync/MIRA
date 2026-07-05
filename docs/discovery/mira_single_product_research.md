@@ -66,6 +66,8 @@ Product sentence: *"MIRA service packs turn OEM drive manuals into field-ready d
 ## Maturity verdict
 Closer to **private beta** than sellable-beta: the *fault-code/manual mode* is shipped (beta gate MET); the *pack architecture, desktop app, and provenance model* are designed but unbuilt. GS10 live decode is bench-proven; generalization is the work.
 
+**What PR #2481 actually ships (be precise):** the **GS10 pack architecture *foundation*** — schema, drive-agnostic loader, live-decode + envelope data, and the *seams* for the manual-intelligence layers — **not** the complete manual-backed service pack. In this slice: `knowledge.kb_document_ids` / `component_template_id` / `kg_entity_ids` may be empty/null; diagnostic cards have a `TemplateReader` seam but are not KB/KG-enriched by default; real per-fault manual page/excerpt citations are a **tracked follow-up** to make GS10 the true gold service pack. The Drive Commander desktop *connector* is not built (the read-only gate proves the pack surface's purity, not a connector's).
+
 ## Open questions / assumptions
 - "Drive Commander" trademark clearance (assumption: usable; unverified).
 - Pack as in-repo data vs. separately-licensed SKU (assumed in-repo for v1).

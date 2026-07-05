@@ -1,5 +1,13 @@
 # Drive packs — schema
 
+> **Maturity (GS10 today):** this is the **pack architecture foundation**, not
+> yet the complete manual-backed service pack. The GS10 pack ships live-decode +
+> envelope data + provenance and the *seams* for the manual-intelligence layers,
+> but `knowledge.kb_document_ids` / `component_template_id` / `kg_entity_ids` may
+> be empty/null, diagnostic cards are not yet KB/KG-enriched by default (they use
+> the `TemplateReader` seam when a reader is injected), and real per-fault manual
+> page/excerpt citations are a **follow-up**. See ADR-0025 §1b.
+
 A **drive pack** is a language-neutral JSON manifest that turns a VFD
 manufacturer's own register maps, status/fault tables, and operating
 envelope into data a diagnostic engine can load — instead of hardcoding one

@@ -63,27 +63,42 @@ The signature mobile moment, and **already partly built** (`test_structured_visi
 3. **Answer from the family pack immediately**, and **ask targeted clarifiers** to sharpen to the model ("what's the full catalog number?", "what fault/keypad message?", "RUN / STOP / FAULT / ALARM?", "is the motor actually moving?").
 4. **Return a cited, model-specific answer** from layers 1–2 + the engine (layer 3): *"Likely overcurrent on acceleration — check mechanical binding, motor leads, accel time. Evidence: GA500 manual fault table, parameter group X, p.Y."*
 
+### 1b. Maturity in this PR — the GS10 pack is the *architecture foundation*, not yet the *complete manual-backed service pack*
+
+Be honest about what PR #2481 ships vs. the full vision above. This PR is the **GS10 pack architecture foundation** — the schema, the drive-agnostic loader, the live-decode + envelope data, and the *seams* for the manual-intelligence layers. It is **not yet the complete manual-backed service pack**. Specifically, in this slice:
+
+- **`knowledge.kb_document_ids`, `component_template_id`, and `kg_entity_ids` may remain empty/null.** The layer-1/2 reuse points exist as typed seams; they are not yet populated for GS10.
+- **Diagnostic cards have a `TemplateReader` seam but are not yet enriched from KB/KG by default.** With no reader injected (the default), cards carry the pack's fault table + provenance, but `likely_causes` / `first_checks` / rich per-fault citations stay empty until the real `component_templates`/KG reader is wired.
+- **Real manual page/excerpt citations are a follow-up** required to make GS10 the true *gold* service pack (today `provenance.sources` carries the crosswalk authority, not per-fault manual pages).
+
+This does **not** weaken the product vision — the three-layer, KB/KG-backed, cited service pack remains the target. This PR lays the foundation the enrichment plugs into. Full manual→KB/KG enrichment (and per-fault citations) is a tracked follow-up, not part of this slice.
+
 ### 2. Two surfaces, two jobs, two purpose-built UIs
 
-- **Desktop — the fleet console** (classic-but-elegant): connects **read-only** to the whole VFD fleet (the DriveExplorer/DriveExecutive model), live monitoring + pack intelligence overlaid on the raw parameters. On-network; the maintenance-office/bench oversight tool.
+- **Desktop — the fleet console** (classic-but-elegant): connects **read-only** to *supported* drives on *authorized* plant networks using *supported read-only protocol paths* (the DriveExplorer/DriveExecutive model), live monitoring + pack intelligence overlaid on the raw parameters. A "fleet console" is the UI concept (many drives in one view) — it does **not** imply universal protocol coverage; it reaches the drives whose protocol paths a pack supports. On-network; the maintenance-office/bench oversight tool.
 - **Mobile — point-of-service** (its *own* elegant UI, not a shrunk desktop): standalone, **zero integration** — type/scan a drive + fault code → cited cause + next check + Ask MIRA. Works anywhere on cellular. This is the **already-shipped** fault-code/manual path (beta gate MET, 2026-06-17).
 
 Both UIs are built under `factorylm-ui-style` tokens + `industrial-hmi-scada-design` (muted-normal, color-for-state). **Live-on-mobile** is a *later* desktop→phone relay feature — v1 does not stand up a live cloud-fleet pipeline just to light up mobile.
 
 ### 3. The new surface — a customer-run, provably-read-only desktop app
 
-**Drive Commander desktop opens read-only EtherNet/IP / Modbus-TCP connections directly to the customer's drives** (the DriveExplorer model), independent of whether the customer runs Ignition. This preserves the **zero-integration promise**: a maintenance laptop finds and reads the fleet with no SCADA dependency.
+**Drive Commander desktop opens read-only connections to *supported* drives on *authorized* plant networks** — **Modbus TCP/RTU where register maps are supported, and vendor-supported EtherNet/IP read/status/identity paths where available** (the DriveExplorer model), independent of whether the customer runs Ignition. This preserves the **zero-integration promise**: a maintenance laptop reads the supported drives with no SCADA dependency. Coverage is per-pack and per-protocol — not universal.
+
+> **Scope note (2026-07-05):** this connector is **not built in this PR**. PR #2481 / this ADR ship the *pack architecture foundation* (pure data reshaping — decode tables, envelope, seams), not a fieldbus connector. The connection behavior in this section is the **design target** for when the desktop connector lands; nothing in this PR opens a socket.
 
 This **amends `.claude/rules/fieldbus-readonly.md`** with a narrow carve-out (see below). It does **not** overturn ADR-0021: that rule governs the **MIRA *cloud* / customer-*install* surface** ("the plant LAN must not be reachable from a MIRA-*cloud* component; MIRA reads tags via Ignition"). Drive Commander is a **different trust model** — a local diagnostic app the customer runs on their own laptop, exactly the model that makes DriveExplorer trusted. The two coexist:
 
 | Surface | Connects how | Governed by |
 |---|---|---|
 | MIRA Cloud / Ignition install | **Never** opens a plant socket; reads via Ignition tag space; outbound 443 only | ADR-0021 (unchanged) |
-| **Drive Commander desktop** (new) | **Read-only** EtherNet/IP / Modbus-TCP direct to drives, on the customer's own machine | this ADR + amended fieldbus-readonly |
+| **Drive Commander desktop** (new, not built in this PR) | **Read-only** Modbus TCP/RTU (where register maps are supported) + vendor-supported EtherNet/IP read/status/identity paths (where available), to supported drives on authorized plant networks, on the customer's own machine | this ADR + amended fieldbus-readonly |
 
 ### 4. Trust & safety (non-negotiable)
 
-- **Read-only, provably.** Read function codes only (FC1–FC4); **never** a write FC (FC5/6/15/16), no parameter/IP/baud writes, no control words — the same discipline `plc/discover.py` already enforces. Serial RS-485 keeps the `--serial-bus-idle` two-master guard; EtherNet/IP has no bus-contention hazard.
+- **Read-only, provably — and protocol-specifically.** "Read function codes only" is a Modbus concept and does **not** map onto EtherNet/IP; each protocol gets its own read-only rule:
+  - **Modbus (TCP/RTU):** read-only **function codes only — FC1–FC4**. **Never FC5/6/15/16** (any write), no parameter/IP/baud writes, no control words — the same discipline `plc/discover.py` enforces. Serial RS-485 keeps the `--serial-bus-idle` two-master guard.
+  - **EtherNet/IP:** **read / status / identity-safe services only.** **Forbid** parameter writes, configuration writes, output-assembly writes, control-word writes, and **any service that can change drive state** (`Set_Attribute*`, control forward-opens, assembly-instance writes). Enumerate safe services explicitly — do not assume "read-only" transfers from the Modbus model.
+  - Full rule + the customer-run-desktop carve-out: `.claude/rules/fieldbus-readonly.md` (amended by this ADR).
 - **Tiered provenance, surfaced honestly.** A manual-cited answer says so ("per ABB ACS580 manual §6.3, fault 2310 = overcurrent — not hardware-verified by us"). **Confidently wrong is worse than no answer** — stay quiet when unsure (the Ignition-path lesson: assess only scaling-immune signals; show but don't reinterpret ambiguous ones).
 - GS10/DURApulse is the **bench-verified gold reference** that proves the extraction method.
 
@@ -115,11 +130,11 @@ First buyer = **plant maintenance teams with a drive fleet, DURApulse/GS10-first
 - **Amends `.claude/rules/fieldbus-readonly.md`** (carve-out below) — a change to project doctrine, recorded here.
 - Introduces a **pack schema + loader** and moves GS10 tables out of code (first build).
 - New desktop + mobile UIs to build and maintain (under the shared design system).
-- **Provable read-only** is now a shipping-gate for a customer-facing app, not just a bench script — needs a test that asserts no write FC can be emitted.
+- **Provable read-only** is a shipping-gate discipline for the customer-facing app. **Scope boundary (be honest):** the gate shipped in this PR (`mira-bots/tests/test_drive_packs_readonly.py`) proves the **pack / loader / card surface is pure data reshaping** (no write FC, no fieldbus client, no socket). It does **NOT** prove a future Drive Commander *desktop connector* is read-only — no connector exists yet. When the connector lands it must be **added to this gate** (or carry its own equivalent gate) with the protocol-specific rules above (Modbus FC1–FC4; EtherNet/IP read/status/identity-safe services only).
 - **Docker-packaging reality:** the pack ships as **co-located package data** inside `mira-bots/shared/drive_packs/packs/` (not a repo-root `packs/` dir) — the mira-pipeline Docker image only `COPY`s `mira-bots/shared/`, so a repo-root-relative walk-up loader would (and did) fail `import main` at container startup. The Hub keeps its own committed byte-identical copy (`mira-hub/src/lib/drive-packs/gs10-pack.json`) for the same reason (its build context is `./mira-hub`), drift-guarded by `mira-bots/tests/test_drive_pack_hub_copy_sync.py`.
 
-**Amendment to `.claude/rules/fieldbus-readonly.md`**
-> A **customer-run desktop diagnostic app** (Drive Commander) MAY open **read-only** EtherNet/IP / Modbus-TCP connections directly to drives, under the same provable read-only discipline as `plc/discover.py` (read FCs only; no write FC ever; serial RS-485 requires `--serial-bus-idle`). This carve-out is **scoped to the local desktop surface only**. The prohibition on a MIRA **cloud component / MIRA-named container** opening a plant socket (ADR-0021) is **unchanged**.
+**Amendment to `.claude/rules/fieldbus-readonly.md`** (applied to the rule file 2026-07-05, not just recorded here)
+> A **customer-run *local desktop* diagnostic app** (Drive Commander) MAY open supported **read-only** connections to supported drives on authorized plant networks — **Modbus TCP/RTU using read-only function codes FC1–FC4 only (never FC5/6/15/16)**, and **vendor-supported EtherNet/IP read/status/identity-safe services only (no parameter/config/output-assembly/control-word writes, no state-changing service)**; serial RS-485 requires `--serial-bus-idle`. This carve-out is **scoped to the local desktop surface only** and does **NOT** apply to MIRA cloud services or MIRA-named containers — the ADR-0021 prohibition on a MIRA cloud component / container opening a plant socket is **unchanged**.
 
 ## Open items (deferred, non-blocking)
 - **"Drive Commander" trademark diligence** before committing the name (no AB product by that name surfaced; third-party use possible).
