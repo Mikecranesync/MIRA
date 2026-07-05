@@ -110,6 +110,7 @@ from .telemetry import flush as tl_flush
 from .telemetry import span as tl_span
 from .telemetry import trace as tl_trace
 from .uns_resolver import UNSResolution, resolve_uns_path, resolve_uns_path_multi
+from .wo_evidence import recall_work_orders as _recall_work_orders
 from .workers.nameplate_worker import NameplateWorker
 from .workers.photo_ingest_worker import propose_from_nameplate
 from .workers.plc_worker import PLCWorker
@@ -388,6 +389,16 @@ _CTX_SIGNALS_TIMEOUT_S = float(os.getenv("MIRA_CTX_SIGNALS_TIMEOUT_S", "3.0"))
 # MIRA_INTERLOCK_CONTEXT_ENABLED=1.
 _INTERLOCK_CONTEXT_ENABLED = os.getenv("MIRA_INTERLOCK_CONTEXT_ENABLED", "0") == "1"
 _INTERLOCK_CONTEXT_TIMEOUT_S = float(os.getenv("MIRA_INTERLOCK_CONTEXT_TIMEOUT_S", "3.0"))
+
+# Work-order-history evidence (additive, OFF by default). When on, the diagnosis
+# path recalls recent CMMS work orders for the CONFIRMED asset from the Hub
+# NeonDB (work_orders JOIN cmms_equipment — the store hub_neon.py writes to) and
+# injects them as CITABLE evidence lines. Best-effort: "" on any miss (flag off,
+# no tenant/asset, NeonDB unreachable) — the diagnosis path is byte-for-byte
+# unchanged. Same wrap-don't-rewrite pattern as the ctx-signals block.
+_WO_EVIDENCE_ENABLED = os.getenv("ENABLE_WO_EVIDENCE", "0") == "1"
+_WO_EVIDENCE_TIMEOUT_S = float(os.getenv("MIRA_WO_EVIDENCE_TIMEOUT_S", "3.0"))
+_WO_EVIDENCE_LIMIT = int(os.getenv("MIRA_WO_EVIDENCE_LIMIT", "5"))
 
 # Single-shot kiosk mode (e.g. the Ignition Ask-MIRA panel). When on, MIRA
 # answers directly (see rag_worker DIRECT_ANSWER_SYSTEM_PROMPT) AND the engine
@@ -3653,6 +3664,82 @@ class Supervisor:
         lines.append("---\n")
         return "\n".join(lines)
 
+    # ------------------------------------------------------------------
+    # Work-order-history evidence (additive, flag-gated)
+    # ------------------------------------------------------------------
+    async def _build_wo_evidence_context(self, state: dict, tenant_id: str | None) -> str:
+        """Best-effort CMMS work-order history for the confirmed asset.
+
+        Recalls recent Hub work_orders rows for the asset and renders them as a
+        labeled, CITABLE evidence block for prompt injection. Returns "" on any
+        miss (flag off, no tenant/asset, DB unreachable). Never raises -- the
+        diagnosis path must be unaffected when the CMMS store is absent.
+        """
+        if not _WO_EVIDENCE_ENABLED:
+            return ""
+        if not tenant_id:
+            return ""
+        asset = (state.get("asset_identified") or "").strip()
+        if not asset:
+            return ""
+        try:
+            try:
+                uns_path = resolve_uns_path(asset).uns_path or ""
+            except Exception:  # noqa: BLE001 -- fall back to name-only matching
+                uns_path = ""
+            ltree_prefix = uns_path.replace("/", ".") if uns_path else None
+            wos = await asyncio.wait_for(
+                _recall_work_orders(
+                    tenant_id, asset, uns_path=ltree_prefix, limit=_WO_EVIDENCE_LIMIT
+                ),
+                timeout=_WO_EVIDENCE_TIMEOUT_S,
+            )
+            return self._format_wo_evidence(wos)
+        except Exception as exc:  # noqa: BLE001 -- enrichment must never block diagnosis
+            logger.debug("WO_EVIDENCE miss asset=%r: %s", asset, exc)
+            return ""
+
+    @staticmethod
+    def _format_wo_evidence(wos: list[dict]) -> str:
+        """Render work-order rows as a compact citable-evidence block.
+
+        Defensive: tolerates missing/extra keys and never raises. Only fields
+        read from the DB are rendered -- nothing is invented. Empty input
+        returns "".
+        """
+        if not wos:
+            return ""
+        lines: list[str] = []
+        for w in wos[:_WO_EVIDENCE_LIMIT]:
+            if not isinstance(w, dict):
+                continue
+            num = str(w.get("work_order_number") or "").strip()
+            title = str(w.get("title") or "").strip()
+            if not num or not title:
+                continue
+            created = w.get("created_at")
+            date = ""
+            try:
+                date = created.date().isoformat() if created else ""
+            except AttributeError:
+                date = str(created)[:10] if created else ""
+            status = str(w.get("status") or "").strip()
+            head = f"  [WO {num}]" + (f" {date}" if date else "")
+            if status:
+                head += f" ({status})"
+            head += f": {title}"
+            detail = str(w.get("resolution") or w.get("fault_description") or "").strip()
+            if detail:
+                head += f" -- {detail[:200]}"
+            lines.append(head)
+        if not lines:
+            return ""
+        return (
+            "\n--- WORK ORDER HISTORY (CMMS; citable -- cite as [WO <number>]) ---\n"
+            + "\n".join(lines)
+            + "\n---\n"
+        )
+
     async def _call_with_correction(
         self,
         message: str,
@@ -3678,7 +3765,14 @@ class Supervisor:
         live_context = await self._build_live_data_context(state)
         ctx_signals_context = await self._build_ctx_signals_context(state, tenant_id)
         interlock_context = await self._build_interlock_context(state, tenant_id)
-        extra_context = kg_context + live_context + ctx_signals_context + interlock_context
+        wo_evidence_context = await self._build_wo_evidence_context(state, tenant_id)
+        extra_context = (
+            kg_context
+            + live_context
+            + ctx_signals_context
+            + interlock_context
+            + wo_evidence_context
+        )
 
         for attempt in range(max_attempts):
             try:

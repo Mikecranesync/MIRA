@@ -1,5 +1,8 @@
 # MIRA Release Notes
 
+### v3.61.6 (2026-07-04) - feat(engine): CMMS work-order evidence context (flag-gated OFF)
+- Adds `mira-bots/shared/wo_evidence.py::recall_work_orders` + `Supervisor._build_wo_evidence_context`/`_format_wo_evidence` — a citable `[WO ####]` evidence block sourced only from real `work_orders`/`cmms_equipment` rows, injected into `_call_with_correction`'s context alongside the existing interlock/live/KG context. Gated behind `ENABLE_WO_EVIDENCE` (default off); every guard (no tenant, no asset, DB error, timeout) returns `""` rather than raising, so the diagnosis path is unaffected while off. 13 new tests (`tests/test_wo_evidence.py`); 141 existing engine tests unaffected.
+
 ### v3.61.5 (2026-07-04) - feat(engine): tenant plan/quota check at Supervisor entry (flag-gated, fail-open) (#2436)
 - Billing/quota was enforced only on the web path — Telegram, Slack, and Ignition chat accepted unlimited queries with no tenant plan check. Adds one quota/plan check (`mira-bots/shared/quota.py`) at the Supervisor's engine entry point so every chat surface inherits it, instead of each adapter reimplementing enforcement. `ENFORCE_PLAN_QUOTA` defaults `"0"` (off, zero DB calls/behavior change); fail-open on every error path (flag off, no tenant_id, no `NEON_DATABASE_URL`, DB exception/timeout, unknown tenant, no limits configured). Runs before `process_full()`, ahead of the UNS confirmation gate / direct-connection certification. 133 regression tests clean.
 
