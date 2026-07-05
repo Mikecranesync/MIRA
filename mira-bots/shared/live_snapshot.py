@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from shared.drive_packs import load_pack
+from shared.drive_packs.schema import RegisterEntry
 
 # --- GS10 decode tables, loaded once from the drive pack (ADR-0025) ---
 # Import-time load is deliberate: the pack ships in-repo, so a load failure
@@ -36,7 +37,23 @@ _GS10_PACK = load_pack("durapulse_gs10")
 _STATUS_BITS: dict[int, str] = _GS10_PACK.live_decode.status_bits
 _CMD_WORD: dict[int, str] = _GS10_PACK.live_decode.cmd_word
 _FAULT_CODES: dict[int, str] = _GS10_PACK.live_decode.fault_codes
-_REGISTERS = _GS10_PACK.live_decode.registers
+_REGISTERS: dict[str, RegisterEntry] = _GS10_PACK.live_decode.registers
+
+# This module's decode functions (`_scaled`/`_decode_one`) index `_REGISTERS`
+# by these keys directly. The generic pack loader (`drive_packs/loader.py`)
+# stays drive-agnostic and does not know these keys are required — so this
+# module validates its own dependency on the loaded pack, right after load,
+# and fails loudly and actionably at import time rather than with a bare
+# `KeyError` deep inside a decode call if a future `pack.json` edit renames
+# or removes one of them.
+_REQUIRED_REGISTER_KEYS = ("vfd_frequency", "vfd_freq_sp", "vfd_current", "vfd_dc_bus")
+_missing_register_keys = [k for k in _REQUIRED_REGISTER_KEYS if k not in _REGISTERS]
+if _missing_register_keys:
+    raise ValueError(
+        f"pack '{_GS10_PACK.pack_id}': live_decode.registers is missing required "
+        f"key(s) {_missing_register_keys!r} — shared.live_snapshot decodes these "
+        "directly and cannot start without them"
+    )
 
 # Quality bands.
 GOOD = "good"

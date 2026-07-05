@@ -11,6 +11,8 @@ import sys
 
 sys.path.insert(0, "mira-bots")
 
+import pytest  # noqa: E402
+
 from shared.live_snapshot import (  # noqa: E402
     GOOD,
     STALE,
@@ -54,6 +56,16 @@ def test_scaled_decode_and_uns_path():
     assert s.source == "ignition"
     assert s.ts == TS
     assert "60.0 Hz" in s.label
+
+
+def test_freq_setpoint_scaled_decode():
+    """Sibling of test_scaled_decode_and_uns_path for vfd_freq_sp — raw 6000 -> 60.0 Hz."""
+    s = _by_dp(normalize({"vfd_freq_sp": 6000}, BASE, source="ignition", ts=TS))["vfd_freq_sp"]
+    assert s.value == 60.0
+    assert s.unit == "Hz"
+    assert s.quality == GOOD
+    assert s.uns_path == f"{BASE}.vfd_freq_sp"
+    assert "Freq setpoint: 60.0 Hz" in s.label
 
 
 def test_fault_code_mapping():
@@ -266,3 +278,47 @@ def test_assess_from_paths_accepts_bare_scalar_values():
 def test_assess_from_paths_empty_is_none():
     assert assess_from_paths(None) is None
     assert assess_from_paths({}) is None
+
+
+# ── module-level register-key validation (fail fast at import, not KeyError) ──
+
+
+def test_missing_register_key_raises_clear_error_at_import(monkeypatch):
+    """If a future pack.json edit drops a register key this module's decode
+    depends on, the module must fail loudly and actionably at import time —
+    never with a bare KeyError deep inside `_scaled`/`_decode_one`."""
+    import importlib
+
+    import shared.drive_packs as drive_packs_pkg
+    import shared.live_snapshot as live_snapshot_module
+    from shared.drive_packs import load_pack as real_load_pack
+    from shared.drive_packs.schema import DrivePack, LiveDecode
+
+    good_pack = real_load_pack("durapulse_gs10")
+    bad_registers = dict(good_pack.live_decode.registers)
+    del bad_registers["vfd_freq_sp"]
+    bad_pack = DrivePack(
+        pack_id=good_pack.pack_id,
+        schema_version=good_pack.schema_version,
+        family=good_pack.family,
+        nameplate=good_pack.nameplate,
+        live_decode=LiveDecode(
+            status_bits=good_pack.live_decode.status_bits,
+            cmd_word=good_pack.live_decode.cmd_word,
+            fault_codes=good_pack.live_decode.fault_codes,
+            registers=bad_registers,
+        ),
+        envelope=good_pack.envelope,
+        knowledge=good_pack.knowledge,
+        provenance=good_pack.provenance,
+    )
+
+    monkeypatch.setattr(drive_packs_pkg, "load_pack", lambda pack_id: bad_pack)
+    try:
+        with pytest.raises(ValueError, match=r"durapulse_gs10.*vfd_freq_sp"):
+            importlib.reload(live_snapshot_module)
+    finally:
+        # Undo the monkeypatch BEFORE reloading again, so the module comes
+        # back up against the real, complete pack for any tests that follow.
+        monkeypatch.undo()
+        importlib.reload(live_snapshot_module)

@@ -60,6 +60,27 @@ def test_gs10_pack_fault_codes_match_live_snapshot_exactly():
     assert pack.live_decode.fault_codes == _FAULT_CODES
 
 
+def test_gs10_pack_registers_match_expected_scaling_and_units():
+    """Register-scaling equivalent of the status_bits/cmd_word/fault_codes
+    anti-drift asserts above — protects the analog decode scaling from a
+    silent ``pack.json`` edit."""
+    pack = load_pack(PACK_ID)
+    registers = pack.live_decode.registers
+    assert set(registers) == {"vfd_frequency", "vfd_freq_sp", "vfd_current", "vfd_dc_bus"}
+
+    assert registers["vfd_frequency"].scaling == 0.01
+    assert registers["vfd_frequency"].unit == "Hz"
+
+    assert registers["vfd_freq_sp"].scaling == 0.01
+    assert registers["vfd_freq_sp"].unit == "Hz"
+
+    assert registers["vfd_current"].scaling == 0.01
+    assert registers["vfd_current"].unit == "A"
+
+    assert registers["vfd_dc_bus"].scaling == 0.1
+    assert registers["vfd_dc_bus"].unit == "V"
+
+
 def test_gs10_pack_envelope_dc_bus_nominal_is_320():
     pack = load_pack(PACK_ID)
     assert pack.envelope.dc_bus.nominal == 320.0

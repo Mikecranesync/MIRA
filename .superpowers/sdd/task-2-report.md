@@ -150,3 +150,102 @@ literals exactly; `_decode_one("vfd_frequency", 9999)` and
 ## Blocking concerns
 
 None.
+
+## Fix pass
+
+Review found one Important + three Minor gaps. All four fixed, scoped to
+`mira-bots/shared/live_snapshot.py` + the two existing test files (no new
+files). Read-only/pure; `ask_api/app.py` and `gs10-display.ts` untouched.
+
+### Fix 1 (Important) — clear error on a missing register key, not a bare KeyError
+
+`mira-bots/shared/live_snapshot.py`: after `_REGISTERS` is loaded from the
+pack, added a module-level validation block naming the exact register keys
+this module's decode functions (`_scaled`/`_decode_one`) depend on
+(`vfd_frequency`, `vfd_freq_sp`, `vfd_current`, `vfd_dc_bus`). If any are
+missing from `_GS10_PACK.live_decode.registers`, raises a pack-id-scoped,
+actionable `ValueError` naming the missing key(s) — at import time, not deep
+inside a decode call. Did NOT touch `drive_packs/loader.py` — the generic
+loader stays drive-agnostic; the dependency is declared where it's used.
+
+```python
+_REQUIRED_REGISTER_KEYS = ("vfd_frequency", "vfd_freq_sp", "vfd_current", "vfd_dc_bus")
+_missing_register_keys = [k for k in _REQUIRED_REGISTER_KEYS if k not in _REGISTERS]
+if _missing_register_keys:
+    raise ValueError(
+        f"pack '{_GS10_PACK.pack_id}': live_decode.registers is missing required "
+        f"key(s) {_missing_register_keys!r} — shared.live_snapshot decodes these "
+        "directly and cannot start without them"
+    )
+```
+
+New test in `mira-bots/tests/test_live_snapshot.py`:
+`test_missing_register_key_raises_clear_error_at_import` — constructs a
+`DrivePack` copy missing `vfd_freq_sp`, monkeypatches
+`shared.drive_packs.load_pack` to return it, `importlib.reload`s
+`shared.live_snapshot`, and asserts the `ValueError` names both the pack id
+and the missing key. The `finally` block undoes the monkeypatch and reloads
+again with the real pack so the module is left in its correct state for
+every other test in the session.
+
+### Fix 2 (Minor) — register anti-drift test
+
+`mira-bots/tests/test_drive_packs.py`: added
+`test_gs10_pack_registers_match_expected_scaling_and_units` — the
+register-scaling sibling of the existing `status_bits`/`cmd_word`/
+`fault_codes` anti-drift asserts. Asserts the key set
+(`vfd_frequency`/`vfd_freq_sp`/`vfd_current`/`vfd_dc_bus`) plus each entry's
+`scaling` and `unit` against the known-correct GS10 values (0.01 Hz / 0.01 Hz
+/ 0.01 A / 0.1 V).
+
+### Fix 3 (Minor) — test `vfd_freq_sp` decode
+
+`mira-bots/tests/test_live_snapshot.py`: added
+`test_freq_setpoint_scaled_decode` immediately after the sibling
+`test_scaled_decode_and_uns_path` (`vfd_frequency`). Asserts raw `6000` →
+`60.0` Hz, `quality == GOOD`, correct `uns_path`, and the label
+`"Freq setpoint: 60.0 Hz"`.
+
+### Fix 4 (Minor) — type annotation
+
+`mira-bots/shared/live_snapshot.py`: `_REGISTERS` now explicitly annotated
+`dict[str, RegisterEntry]`, matching the sibling annotations
+(`_STATUS_BITS`/`_CMD_WORD`/`_FAULT_CODES: dict[int, str]`). Added
+`from shared.drive_packs.schema import RegisterEntry` import.
+
+## Test command + full output
+
+```
+python -m pytest mira-bots/tests/test_live_snapshot.py \
+  mira-bots/tests/test_engine_live_snapshot.py \
+  mira-bots/tests/test_drive_packs.py -q
+```
+```
+...................................................                      [100%]
+51 passed in 0.68s
+```
+(48 baseline + 3 new tests = 51; 0 regressions.)
+
+```
+python -m ruff check mira-bots/shared/live_snapshot.py mira-bots/tests/test_live_snapshot.py mira-bots/tests/test_drive_packs.py
+```
+→ `All checks passed!`
+
+```
+python -m ruff format --check mira-bots/shared/live_snapshot.py mira-bots/tests/test_live_snapshot.py mira-bots/tests/test_drive_packs.py
+```
+→ `3 files already formatted`
+
+**Broader regression check** (session-discipline): ran the full
+`mira-bots/tests/` suite (excluding `test_slack_relay.py` /
+`test_teams_adapter.py`, which fail to *collect* on both `main` and this
+branch — pre-existing missing-package errors, `slack_bolt`/`botbuilder`,
+confirmed via `git stash`/`git stash pop` A/B). Result: **1011 passed, 9
+skipped, 12 failed** — the same 12 pre-existing failures
+(`test_email_adapter.py`, `tools/test_active_learner.py` — unrelated
+env/Windows-file-locking issues) present on the unstashed baseline (1008
+passed / same 12 failed). Net: **+3 passing**, 0 regressions.
+
+## Blocking concerns
+
+None.
