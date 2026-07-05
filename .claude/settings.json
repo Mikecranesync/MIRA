@@ -60,7 +60,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "ruff check --fix \"$CLAUDE_FILE_PATH\" 2>/dev/null; ruff format \"$CLAUDE_FILE_PATH\" 2>/dev/null; pyright \"$CLAUDE_FILE_PATH\" 2>/dev/null | tail -1; bash tools/review_hook.sh \"$CLAUDE_FILE_PATH\" 2>&1 || true"
+            "command": "ruff check --fix \"$CLAUDE_FILE_PATH\" 2>/dev/null; ruff format \"$CLAUDE_FILE_PATH\" 2>/dev/null; pyright \"$CLAUDE_FILE_PATH\" 2>/dev/null | tail -1; bash tools/review_hook.sh \"$CLAUDE_FILE_PATH\" 2>&1 || true; (GITDIR=$(git rev-parse --git-common-dir 2>/dev/null || echo '.git') && mkdir -p \"${GITDIR}/claude-sessions\" 2>/dev/null && echo \"$CLAUDE_FILE_PATH\" | sort -u >> \"${GITDIR}/claude-sessions/${CLAUDE_CODE_SESSION_ID:-unknown}-touched-files\" 2>/dev/null) || true"
           }
         ]
       }
@@ -80,6 +80,15 @@
           {
             "type": "command",
             "command": "bash tools/hooks/prod-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash tools/hooks/worktree-file-guard.sh"
           }
         ]
       }

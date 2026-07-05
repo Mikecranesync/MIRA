@@ -35,6 +35,20 @@ DIFF_STAGED=$(git diff --cached --name-only 2>/dev/null || true)
 CHANGED=$(printf '%s\n%s\n%s\n' "$DIFF_BASE" "$DIFF_WORK" "$DIFF_STAGED" \
   | sort -u | grep -v '^$' || true)
 
+# If this session logged which files it touched (PostToolUse hook appends to log),
+# intersect with CHANGED so we only gate on files THIS session modified.
+# If log doesn't exist or session ID unset, use all CHANGED (backward compat).
+SESSION_TOUCHED_LOG=""
+if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+  GITDIR=$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")
+  SESSION_TOUCHED_LOG="${GITDIR}/claude-sessions/${CLAUDE_CODE_SESSION_ID}-touched-files"
+fi
+
+if [ -f "$SESSION_TOUCHED_LOG" ]; then
+  # Intersect: only files that are BOTH changed AND touched by this session
+  CHANGED=$(comm -12 <(printf '%s\n' $CHANGED | sort) <(sort -u "$SESSION_TOUCHED_LOG") || true)
+fi
+
 CHANGED_PY=$(echo "$CHANGED" | grep '\.py$' || true)
 CHANGED_SH=$(echo "$CHANGED" | grep '\.sh$' || true)
 CHANGED_HUB=$(echo "$CHANGED" | grep '^mira-hub/' || true)
