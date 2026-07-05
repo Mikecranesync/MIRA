@@ -92,6 +92,7 @@ from .photo_handler import (
     load_session_photo,
     save_session_photo,
 )
+from .quota import QUOTA_BLOCK_MESSAGE, check_quota
 from .response_formatter import (
     _VISION_PROSE_PREFIX_RE,
     deduplicate_options,  # noqa: F401 — re-exported for test_conversation_continuity.py
@@ -1207,6 +1208,23 @@ class Supervisor:
         # Per-call tenant flows through method params (tenant_id → process_full,
         # workers, and the decision-trace) — NOT stashed on self, which a
         # concurrent tenant would overwrite across this turn's awaits.
+        # Plan/quota gate (audit issue #1) — the ONE enforcement point every
+        # adapter (Telegram/Slack/Ignition/web) inherits. Flag-gated behind
+        # ENFORCE_PLAN_QUOTA (default OFF — no DB call, no behavior change) and
+        # fail-open on any error or missing tenant. Runs BEFORE inference so a
+        # blocked tenant costs zero LLM calls; does not touch the UNS gate,
+        # greeting, or safety paths (those live inside process_full).
+        quota_tenant = tenant_id or self.tenant_id or None
+        quota_allowed, quota_reason = await check_quota(quota_tenant)
+        if not quota_allowed:
+            logger.warning(
+                "QUOTA_BLOCKED chat_id=%s tenant_id=%s platform=%s reason=%s",
+                chat_id,
+                quota_tenant,
+                platform,
+                quota_reason,
+            )
+            return QUOTA_BLOCK_MESSAGE
         # Read-only live-tag snapshot — gated on a confirmed asset (see helper).
         message = self._maybe_attach_live_snapshot(chat_id, message, live_tags, platform)
 
