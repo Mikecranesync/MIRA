@@ -200,6 +200,15 @@ export function MachineMemoryCard({ assetId, initialData, poll = true, initialHi
             )}
           </div>
 
+          {/* Deterministic assessment from the live evidence (the same one MIRA
+              receives via the machine context packet). */}
+          {data.summary && (
+            <p className="text-xs leading-snug" style={{ color: "var(--foreground-muted)" }}>
+              <span style={{ color: "var(--foreground-subtle)" }}>Assessment: </span>
+              {data.summary}
+            </p>
+          )}
+
           {(data.live_tags?.length ?? 0) > 0 && (
             <div className="space-y-1">
               <p className="text-[11px] font-medium" style={{ color: "var(--foreground-subtle)" }}>

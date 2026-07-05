@@ -58,6 +58,9 @@ describe("buildMachineMemoryResponse", () => {
       evidence_window: null,
       live_tags: [],
       current_state: null,
+      summary: null,
+      active_conditions: [],
+      changed_recently: [],
     });
   });
 

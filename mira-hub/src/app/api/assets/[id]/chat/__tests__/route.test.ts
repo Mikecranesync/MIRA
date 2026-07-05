@@ -321,12 +321,15 @@ describe("POST /api/assets/[id]/chat", () => {
       (fetchSpy.mock.calls[0]?.[1] as { body: string }).body,
     ) as { messages: Array<{ role: string; content: string }> };
     const systemPrompt = providerBody.messages.find((m) => m.role === "system")?.content ?? "";
-    expect(systemPrompt).toContain("## Live Machine Memory");
+    // machine_memory_intelligence_bridge: the section is now "Live Machine
+    // Evidence" and carries the freshness-aware state + a deterministic
+    // assessment + the normalized active condition (with next_check).
+    expect(systemPrompt).toContain("## Live Machine Evidence (observed now)");
     expect(systemPrompt).toContain("MACHINE-OBSERVED");
-    expect(systemPrompt).toContain("Current state: idle");
-    expect(systemPrompt).toContain("Latest run: closed");
+    expect(systemPrompt).toContain("Machine state: idle");
+    expect(systemPrompt).toContain("Assessment:");
     expect(systemPrompt).toContain(
-      "[anomaly_A1_COMM_STALE] warning — cv101.motor_current — next check: verify VFD comm cable",
+      "[warning] comm stale on cv101.motor_current — next check: verify VFD comm cable",
     );
 
     // The response stream carries next_check alongside sources/traceId so the

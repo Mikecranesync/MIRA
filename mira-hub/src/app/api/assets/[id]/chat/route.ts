@@ -20,7 +20,11 @@ import {
   buildApprovedContextRefusal,
 } from "@/lib/approved-context";
 import { SAFETY_PHRASES } from "@/lib/safety-phrases";
-import { fetchMachineMemory, type MachineMemory } from "@/lib/machine-memory";
+import {
+  buildMachineContextPacket,
+  renderMachineEvidenceSection,
+  type MachineContextPacket,
+} from "@/lib/machine-context-packet";
 
 export const dynamic = "force-dynamic";
 
@@ -208,41 +212,9 @@ function sanitizeMachineMemoryField(value: unknown): string {
   return neutralizeReferenceText(str.slice(0, MACHINE_MEMORY_FIELD_MAX_CHARS));
 }
 
-// Live machine memory (T2 / seam 3) — persisted runs/state-windows/anomaly
-// diffs become a citable prompt section. Machine-observed, not manual text.
-function buildMachineMemorySection(memory: MachineMemory): string {
-  const lines: string[] = [];
-  const win = memory.latest_window;
-  if (win) {
-    lines.push(`- Current state: ${sanitizeMachineMemoryField(win.state)} (since ${win.started_at})`);
-  }
-  const run = memory.latest_run;
-  if (run) {
-    lines.push(
-      `- Latest run: ${sanitizeMachineMemoryField(run.status)} (started ${run.started_at}${run.stopped_at ? `, stopped ${run.stopped_at}` : ""})`,
-    );
-  }
-  const diffs = memory.latest_diffs.slice(0, 3);
-  if (diffs.length > 0) {
-    lines.push("- Recent anomalies:");
-    for (const d of diffs) {
-      const rawTitle =
-        (d.metadata as { title?: string } | null)?.title || d.tag_path || "anomaly";
-      const title = sanitizeMachineMemoryField(rawTitle);
-      const nextCheck = d.next_check
-        ? ` — next check: ${sanitizeMachineMemoryField(d.next_check)}`
-        : "";
-      const diffType = sanitizeMachineMemoryField(d.diff_type ?? "diff");
-      const severity = sanitizeMachineMemoryField(d.severity ?? "info");
-      lines.push(`  - [${diffType}] ${severity} — ${title}${nextCheck}`);
-    }
-  }
-  if (lines.length === 0) return "";
-  return `## Live Machine Memory
-The following is MACHINE-OBSERVED evidence recorded from this asset's live tag history (runs, state windows, anomaly detections). Treat it as current, citable observations — cite it as "machine memory" when you use it.
-
-${lines.join("\n")}`;
-}
+// Live machine evidence section is rendered by renderMachineEvidenceSection in
+// @/lib/machine-context-packet (pure + unit-tested); the route passes its
+// prompt-injection scrub (sanitizeMachineMemoryField) as the field sanitizer.
 
 // Light PII scrub for the persisted question (mirrors the engine's intent —
 // IP/MAC out of stored troubleshooting context). The question already went to
@@ -325,7 +297,7 @@ export async function POST(
   let assetRow: Record<string, unknown> | null = null;
   let manualChunks: ManualChunk[] = [];
   let verifiedRelationshipCount = 0;
-  let machineMemory: MachineMemory | null = null;
+  let machinePacket: MachineContextPacket | null = null;
   try {
     const c = await pool.connect();
     try {
@@ -375,30 +347,21 @@ export async function POST(
       );
       verifiedRelationshipCount = Number(relRes.rows[0]?.count ?? 0);
 
-      // Live machine memory (T2 / seam 3) — resolve uns_path via the same
-      // kg_entities bridge the context route uses (separate lookup, not a
-      // join: cmms_equipment.tenant_id is TEXT, kg_entities is UUID), then
-      // read the persisted runs/windows/anomaly diffs. Own try/catch so a
-      // missing 038/040 env (or any machine-memory error) never drops the
+      // Live machine context packet (machine_memory_intelligence_bridge) — the
+      // deterministic, read-only builder that resolves uns_path (same
+      // kg_entities bridge, a separate lookup not a join: cmms_equipment.
+      // tenant_id is TEXT, kg_entities is UUID), reads the persisted
+      // runs/windows/anomaly diffs AND the current live tag values, decodes
+      // them, and derives current state + an assessment. Runs on the same
+      // owner-pool client `c` used above; every underlying query filters
+      // `tenant_id = $1` explicitly, so it is tenant-scoped without RLS. Own
+      // try/catch so a missing 038/040/020 env (or any error) never drops the
       // asset/manual context already fetched above.
       try {
-        const unsPath = await c
-          .query(
-            `SELECT uns_path::text AS uns_path
-               FROM kg_entities
-              WHERE tenant_id = $1
-                AND entity_type = 'equipment'
-                AND (id::text = $2 OR entity_id = $2)
-              LIMIT 1`,
-            [ctx.tenantId, id],
-          )
-          .then((r) => r.rows[0]?.uns_path ?? null);
-        if (unsPath) {
-          machineMemory = await fetchMachineMemory(c, ctx.tenantId, unsPath);
-        }
+        machinePacket = await buildMachineContextPacket(c, ctx.tenantId, id);
       } catch {
-        // Non-fatal: chat still works without machine memory
-        machineMemory = null;
+        // Non-fatal: chat still works without machine context
+        machinePacket = null;
       }
     } finally {
       c.release();
@@ -408,7 +371,7 @@ export async function POST(
     assetRow = null;
     manualChunks = [];
     verifiedRelationshipCount = 0;
-    machineMemory = null;
+    machinePacket = null;
   }
 
   // KG graph context — fetch in parallel with (already completed) asset DB fetch
@@ -423,19 +386,21 @@ export async function POST(
     ? `${baseSystemPrompt}\n\n## Knowledge Graph Context\nThe following relational context was retrieved from the plant knowledge graph. Use it to give more specific, history-aware answers.\n\n${graphContext}`
     : baseSystemPrompt;
 
-  const machineMemorySection = machineMemory ? buildMachineMemorySection(machineMemory) : "";
+  const machineMemorySection = machinePacket
+    ? renderMachineEvidenceSection(machinePacket, sanitizeMachineMemoryField)
+    : "";
   const withMachineMemory = machineMemorySection
     ? `${withGraph}\n\n${machineMemorySection}`
     : withGraph;
-  // The newest anomaly's next_check — surfaced to the client alongside sources
-  // so the evidence UI can render a "Next check" line (T2 Task 4). Same
-  // neutralize+cap treatment as buildMachineMemorySection (review Q1): this
+  // The top active condition's next_check — surfaced to the client alongside
+  // sources so the evidence UI can render a "Next check" line (T2 Task 4). Same
+  // neutralize+cap treatment as buildMachineEvidenceSection (review Q1): this
   // value is DB-sourced from the same untrusted ingest fields, and rendering
   // it verbatim would both bypass the defense (the prompt sees a neutralized
   // version while the UI shows the raw injection payload) and echo forged
   // content back to the technician.
   const rawNextCheck =
-    machineMemory?.latest_diffs.find((d) => d.next_check)?.next_check ?? null;
+    machinePacket?.active_conditions.find((c) => c.next_check)?.next_check ?? null;
   const nextCheck = rawNextCheck ? sanitizeMachineMemoryField(rawNextCheck) : null;
 
   const systemPrompt = appendManualContext(withMachineMemory, manualChunks);
@@ -444,7 +409,9 @@ export async function POST(
   const approvedSummary = {
     approvedSourceCount,
     verifiedRelationshipCount,
-    approvedLiveSignalCount: 0,
+    // Live real (non-simulated, fresh) tags now count as approved context —
+    // the asset chat finally sees the current machine state as evidence.
+    approvedLiveSignalCount: machinePacket?.freshness.live ?? 0,
   };
 
   if (approvedAskEnforcementEnabled() && !approvedContextReady(approvedSummary)) {
