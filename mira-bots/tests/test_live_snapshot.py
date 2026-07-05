@@ -16,7 +16,9 @@ from shared.live_snapshot import (  # noqa: E402
     STALE,
     UNKNOWN,
     LiveTagSnapshot,
+    assess_snapshots,
     normalize,
+    render_machine_evidence,
     render_status_block,
 )
 
@@ -118,3 +120,75 @@ def test_render_status_block_empty():
 def test_no_uns_base_uses_datapoint_only():
     s = normalize({"vfd_current": 350}, "", source="bench", ts=TS)[0]
     assert s.uns_path == "vfd_current"
+
+
+# ── assess_snapshots — the deterministic assessment (Hub summary mirror) ──────
+
+
+def _assess(raw):
+    return assess_snapshots(normalize(raw, BASE, source="bench", ts=TS))
+
+
+def test_assess_vfd_healthy_but_stopped():
+    # comms OK, no fault, DC bus present, 0 Hz, cmd STOP.
+    a = _assess(
+        {
+            "vfd_comm_ok": True,
+            "vfd_fault_code": 0,
+            "vfd_dc_bus": 3200,  # /10 = 320 V
+            "vfd_frequency": 0,
+            "vfd_cmd_word": 1,  # STOP
+        }
+    )
+    assert "healthy" in a
+    assert "stopped" in a
+    assert "command/permissive/interlock" in a
+    # It must NOT tell the tech to replace the drive.
+    assert "replace" not in a.lower()
+
+
+def test_assess_active_fault_leads():
+    a = _assess({"vfd_comm_ok": True, "vfd_fault_code": 21})  # oL overload
+    assert a.startswith("Active VFD fault")
+    assert "oL overload" in a
+
+
+def test_assess_comms_lost_dominates():
+    a = _assess({"vfd_comm_ok": False, "vfd_frequency": 6000})
+    assert "comms are LOST" in a
+
+
+def test_assess_running():
+    a = _assess({"vfd_comm_ok": True, "vfd_fault_code": 0, "vfd_frequency": 3000})  # 30 Hz
+    assert a.startswith("Machine running")
+
+
+def test_assess_empty_is_none():
+    assert assess_snapshots([]) is None
+
+
+# ── render_machine_evidence — the structured section ─────────────────────────
+
+
+def test_render_machine_evidence_has_header_labels_and_assessment():
+    raw = {"vfd_comm_ok": True, "vfd_fault_code": 0, "vfd_dc_bus": 3200, "vfd_frequency": 0, "vfd_cmd_word": 1}
+    section = render_machine_evidence(normalize(raw, BASE, source="bench", ts=TS))
+    assert section.startswith("## Live Machine Evidence (observed now)")
+    # separation instruction
+    assert "separate" in section
+    assert "next checks" in section
+    # decoded value labels are present
+    assert "DC bus: 320.0 V" in section
+    # the assessment line
+    assert "Assessment:" in section
+    assert "healthy" in section
+
+
+def test_render_machine_evidence_marks_stale():
+    section = render_machine_evidence(normalize({"vfd_comm_ok": False, "vfd_frequency": 6000}, BASE, source="bench", ts=TS))
+    assert "[STALE]" in section
+    assert "VFD comms LOST" in section
+
+
+def test_render_machine_evidence_empty():
+    assert render_machine_evidence([]) == ""
