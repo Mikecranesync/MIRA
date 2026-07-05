@@ -7,6 +7,7 @@ the status-block renderer. No infra: the module is pure.
 
 from __future__ import annotations
 
+import socket
 import sys
 
 sys.path.insert(0, "mira-bots")
@@ -341,10 +342,16 @@ def test_assess_from_paths_never_judges_analog_even_when_out_of_nominal_range():
 
 
 def test_assess_from_paths_active_fault():
+    # Fault 58 (CE10 modbus timeout) is a MAPPED GS10 code -- assess_from_paths
+    # now enriches with the same fault-diagnostic card as the engine path
+    # (Drive Commander DriveSense Ignition-enrich follow-up), so this is no
+    # longer strictly the bare one-line assessment.
     snap = _merge(_ign("vfd_fault_code", "58"), _ign("vfd_comm_ok", "true"))
     a = assess_from_paths(snap)
     assert a.startswith("Active VFD fault")
     assert "CE10 modbus timeout" in a
+    assert "### Fault diagnostic:" in a
+    assert "Likely causes:" in a
 
 
 def test_assess_from_paths_false_string_is_comms_lost_not_truthy():
@@ -373,6 +380,87 @@ def test_assess_from_paths_accepts_bare_scalar_values():
 def test_assess_from_paths_empty_is_none():
     assert assess_from_paths(None) is None
     assert assess_from_paths({}) is None
+
+
+# ── assess_from_paths — fault-card enrichment (shared _render_active_fault_diagnostic) ──
+#
+# The Ignition wire path now reuses the SAME fault-diagnostic card as the engine
+# path (`render_machine_evidence`), via `_render_active_fault_diagnostic`. These
+# tests prove: enrichment on a GOOD-quality mapped fault, suppression on a STALE
+# fault (comms lost), the safe no-card fallback for an unmapped fault, no change
+# for the no-fault case, honest None when nothing is assessable, that both
+# surfaces render byte-identical card text (single source of truth), and that
+# the enriched path stays offline (no socket).
+
+
+def test_assess_from_paths_enriches_known_good_fault():
+    snap = _merge(_ign("vfd_fault_code", "4"), _ign("vfd_comm_ok", "true"))
+    a = assess_from_paths(snap)
+    assert "Active VFD fault" in a
+    assert "### Fault diagnostic:" in a
+    assert "Likely causes:" in a
+    assert "First checks:" in a
+    assert "Source:" in a
+    assert "Ground fault detected" in a
+
+
+def test_assess_from_paths_stale_fault_suppresses_card():
+    # vfd_comm_ok False -> the fault snapshot is STALE (last-known, untrusted).
+    # The comms-LOST caveat leads; a confident card would contradict it.
+    snap = _merge(_ign("vfd_fault_code", "4"), _ign("vfd_comm_ok", "false"))
+    a = assess_from_paths(snap)
+    assert "comms are LOST" in a
+    assert "### Fault diagnostic:" not in a
+    assert "Likely causes:" not in a
+
+
+def test_assess_from_paths_unmapped_fault_keeps_plain_assessment():
+    snap = _merge(_ign("vfd_fault_code", "999"), _ign("vfd_comm_ok", "true"))
+    a = assess_from_paths(snap)
+    assert a is not None
+    assert "### Fault diagnostic:" not in a
+
+
+def test_assess_from_paths_no_active_fault_unchanged():
+    snap = _merge(
+        _ign("vfd_fault_code", "0"),
+        _ign("vfd_comm_ok", "true"),
+        _ign("vfd_cmd_word", "1"),
+        _ign("vfd_status_word", "0"),
+    )
+    a = assess_from_paths(snap)
+    assert a is not None
+    assert "### Fault diagnostic:" not in a
+
+
+def test_assess_from_paths_nothing_assessable_is_none():
+    assert assess_from_paths({}) is None
+    assert assess_from_paths(_ign("vfd_dc_bus", "320.0")) is None
+
+
+def _fault_block(text: str) -> str:
+    idx = text.index("### Fault diagnostic:")
+    return text[idx:]
+
+
+def test_assess_from_paths_and_render_machine_evidence_share_identical_fault_card():
+    ignition_text = assess_from_paths(
+        _merge(_ign("vfd_fault_code", "4"), _ign("vfd_comm_ok", "true"))
+    )
+    engine_text = render_machine_evidence(
+        normalize({"vfd_fault_code": 4, "vfd_comm_ok": True}, BASE, source="bench", ts=TS)
+    )
+    assert _fault_block(ignition_text) == _fault_block(engine_text)
+
+
+def test_assess_from_paths_enriched_path_survives_socket_blocked(monkeypatch):
+    def _boom(*args, **kwargs):
+        raise AssertionError("socket.socket must never be called on this path")
+
+    monkeypatch.setattr(socket, "socket", _boom)
+
+    a = assess_from_paths(_merge(_ign("vfd_fault_code", "4"), _ign("vfd_comm_ok", "true")))
+    assert "### Fault diagnostic:" in a
 
 
 # ── module-level register-key validation (fail fast at import, not KeyError) ──
