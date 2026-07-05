@@ -55,6 +55,89 @@ def _post(tc, payload: dict):
     )
 
 
+def _real_assess_from_paths():
+    """Import the real shared.live_snapshot.assess_from_paths, adding mira-bots to
+    sys.path (the mira-pipeline conftest only adds mira-pipeline/). In the prod
+    container `shared` is already importable — mira-pipeline runs the Supervisor —
+    so ignition_chat's defensive import resolves the real fn; this just guarantees
+    it in the test env too."""
+    import os
+    import sys
+
+    mb = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "mira-bots",
+    )
+    if mb not in sys.path:
+        sys.path.insert(0, mb)
+    from shared.live_snapshot import assess_from_paths
+
+    return assess_from_paths
+
+
+def test_assessment_reaches_prompt_for_vfd_fault(client, monkeypatch):
+    """A VFD snapshot with an active fault produces a deterministic Assessment
+    line + the reasoning-separation instruction in the engine prompt (the HMI
+    mirror of the Hub packet / engine section)."""
+    tc, engine = client
+    monkeypatch.setattr(ignition_chat, "_assess_from_paths", _real_assess_from_paths())
+
+    async def _passthrough(snap, tenant_id):
+        return snap
+
+    monkeypatch.setattr(ignition_chat, "_enrich_tag_snapshot_with_semantics", _passthrough)
+
+    resp = _post(
+        tc,
+        {
+            "query": "why did the conveyor stop?",
+            "asset_id": "CV-101",
+            "tag_snapshot": {
+                "[default]Mira_Monitored/CV-101/vfd_fault_code": {"value": "58", "quality": "Good"},
+                "[default]Mira_Monitored/CV-101/vfd_comm_ok": {"value": "true", "quality": "Good"},
+            },
+        },
+    )
+    assert resp.status_code == 200
+    message = engine.process.await_args.kwargs.get("message", "")
+    # Deterministic assessment from the scaling-immune enum facts.
+    assert "Assessment: Active VFD fault: CE10 modbus timeout" in message
+    # The reasoning-separation instruction reaches the prompt.
+    assert "clearly separate" in message
+    # The raw live-tag block is still preserved.
+    assert "vfd_fault_code" in message
+
+
+def test_healthy_but_stopped_assessment_from_enum_facts(client, monkeypatch):
+    tc, engine = client
+    monkeypatch.setattr(ignition_chat, "_assess_from_paths", _real_assess_from_paths())
+
+    async def _passthrough(snap, tenant_id):
+        return snap
+
+    monkeypatch.setattr(ignition_chat, "_enrich_tag_snapshot_with_semantics", _passthrough)
+
+    resp = _post(
+        tc,
+        {
+            "query": "why won't it run?",
+            "asset_id": "CV-101",
+            "tag_snapshot": {
+                "[default]Mira_Monitored/CV-101/vfd_fault_code": {"value": "0"},
+                "[default]Mira_Monitored/CV-101/vfd_comm_ok": {"value": "true"},
+                "[default]Mira_Monitored/CV-101/vfd_cmd_word": {"value": "1"},  # STOP
+                # analog value present but never re-scaled into the assessment
+                "[default]Mira_Monitored/CV-101/vfd_frequency": {"value": "0.0"},
+            },
+        },
+    )
+    assert resp.status_code == 200
+    message = engine.process.await_args.kwargs.get("message", "")
+    assert "Assessment:" in message
+    assert "healthy" in message and "stopped" in message
+    assert "command/permissive/interlock" in message
+
+
 def test_asset_id_marks_direct_connection(client):
     tc, engine = client
     resp = _post(tc, {"query": "why did the conveyor stop?", "asset_id": "[default]Conv/State"})

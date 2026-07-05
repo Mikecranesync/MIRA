@@ -88,6 +88,15 @@ except Exception:  # pragma: no cover - shared not importable in this context
     _route_intent = None  # type: ignore[assignment]
 
 
+# Deterministic live-tag assessment (the same one the engine path + Hub packet
+# produce). Defensive import — degrades to no assessment if shared/ isn't
+# mounted, so a missing module never changes the endpoint's default behavior.
+try:
+    from shared.live_snapshot import assess_from_paths as _assess_from_paths
+except Exception:  # pragma: no cover - shared not importable in this context
+    _assess_from_paths = None  # type: ignore[assignment]
+
+
 async def _is_asset_specific(question: str) -> bool:
     """True when ``question`` is asset-specific troubleshooting (so a turn with
     no UNS identifier must be rejected). Uses the engine's own intent classifier.
@@ -493,7 +502,29 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
             req.tag_snapshot or {}, tenant_id
         )
         preamble = _format_tag_preamble(enriched_snapshot, asset_id)
-        message = f"{preamble}\n\n{question}" if preamble else question
+        # A deterministic assessment from the scaling-immune enum/bool signals
+        # (fault / comms / cmd / status) — the same one the engine path (#2478)
+        # and the Hub packet (#2476) produce, adapted to the Ignition wire form.
+        # Analog values (freq/current/dc_bus) are shown in the preamble but never
+        # re-scaled here (ambiguous wire scaling). Best-effort: never breaks chat.
+        assessment = None
+        if _assess_from_paths is not None:
+            try:
+                assessment = _assess_from_paths(req.tag_snapshot or {})
+            except Exception:  # pragma: no cover - defensive
+                assessment = None
+
+        if preamble:
+            evidence = [preamble]
+            if assessment:
+                evidence.append(f"Assessment: {assessment}")
+            evidence.append(
+                "In your answer, clearly separate: (1) this LIVE evidence, (2) "
+                "asset/manual context, (3) your inference, and (4) the recommended next checks."
+            )
+            message = "\n\n".join(evidence + [question])
+        else:
+            message = question
 
         tag_reads = sorted((req.tag_snapshot or {}).keys())
 
