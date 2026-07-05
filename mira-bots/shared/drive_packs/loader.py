@@ -57,9 +57,22 @@ def _packs_dir() -> Path:
     )
 
 
-def _int_keyed(raw: dict[str, str]) -> dict[int, str]:
-    """JSON object keys are always strings; the wire enum tables are int-keyed."""
-    return {int(k): v for k, v in raw.items()}
+def _int_keyed(raw: dict[str, str], *, pack_id: str, field_name: str) -> dict[int, str]:
+    """JSON object keys are always strings; the wire enum tables are int-keyed.
+
+    Raises ``ValueError`` (pack-id-scoped, actionable) on a non-numeric key —
+    never a bare ``ValueError: invalid literal for int()``.
+    """
+    out: dict[int, str] = {}
+    for key, value in raw.items():
+        try:
+            out[int(key)] = value
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"pack '{pack_id}': non-numeric key {key!r} in live_decode.{field_name} — "
+                "wire enum tables must be int-keyed"
+            ) from exc
+    return out
 
 
 def _band(raw: dict[str, Any] | None) -> EnvelopeBand:
@@ -123,9 +136,13 @@ def load_pack(pack_id: str) -> DrivePack:
 
     live_decode_raw = raw["live_decode"]
     live_decode = LiveDecode(
-        status_bits=_int_keyed(live_decode_raw["status_bits"]),
-        cmd_word=_int_keyed(live_decode_raw["cmd_word"]),
-        fault_codes=_int_keyed(live_decode_raw["fault_codes"]),
+        status_bits=_int_keyed(
+            live_decode_raw["status_bits"], pack_id=pack_id, field_name="status_bits"
+        ),
+        cmd_word=_int_keyed(live_decode_raw["cmd_word"], pack_id=pack_id, field_name="cmd_word"),
+        fault_codes=_int_keyed(
+            live_decode_raw["fault_codes"], pack_id=pack_id, field_name="fault_codes"
+        ),
         registers=_registers(live_decode_raw.get("registers", {})),
     )
 
@@ -183,20 +200,27 @@ def list_packs() -> list[str]:
 def resolve_pack(text: str) -> DrivePack | None:
     """Case-insensitive match of ``text`` against known packs' keywords.
 
-    Checks each pack's ``family.aliases`` first, then its
-    ``nameplate.match_keywords`` (family-first per ADR-0025 §1a). Returns the
-    first matching pack, or ``None`` when nothing matches. Pure text match —
-    no vision/LLM call, no network.
+    A true two-pass "family-first" match across ALL packs (ADR-0025 §1a): the
+    first pass checks every pack's ``family.aliases``; only if none of them
+    match does the second pass check every pack's ``nameplate.match_keywords``.
+    This guarantees a family-alias match always wins over a nameplate-keyword
+    match regardless of pack iteration order — a single pack-by-pack loop
+    would let an earlier pack's nameplate keyword win over a later pack's
+    family alias once more than one pack exists. Returns the first matching
+    pack in each pass, or ``None`` when nothing matches in either pass. Pure
+    text match — no vision/LLM call, no network.
     """
     if not text:
         return None
     haystack = text.lower()
-    for pack_id in list_packs():
-        pack = load_pack(pack_id)
-        family_hit = any(alias.lower() in haystack for alias in pack.family.aliases)
-        if family_hit:
+    packs = [load_pack(pack_id) for pack_id in list_packs()]
+
+    for pack in packs:
+        if any(alias.lower() in haystack for alias in pack.family.aliases):
             return pack
-        nameplate_hit = any(kw.lower() in haystack for kw in pack.nameplate.match_keywords)
-        if nameplate_hit:
+
+    for pack in packs:
+        if any(kw.lower() in haystack for kw in pack.nameplate.match_keywords):
             return pack
+
     return None

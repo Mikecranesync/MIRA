@@ -8,6 +8,7 @@ copies must independently agree, and this test is what catches drift.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -16,9 +17,25 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import pytest
 
 from shared.drive_packs import DrivePack, list_packs, load_pack, resolve_pack
+from shared.drive_packs import loader as drive_packs_loader
+from shared.drive_packs.schema import Envelope, Family, Knowledge, LiveDecode, Nameplate, Provenance
 from shared.live_snapshot import _CMD_WORD, _FAULT_CODES, _STATUS_BITS
 
 PACK_ID = "durapulse_gs10"
+
+
+def _minimal_pack(pack_id: str, *, aliases: list[str], match_keywords: list[str]) -> DrivePack:
+    """Bare-bones synthetic pack for resolve_pack precedence tests — no disk I/O."""
+    return DrivePack(
+        pack_id=pack_id,
+        schema_version=1,
+        family=Family(manufacturer="Test", series="Test Series", aliases=aliases),
+        nameplate=Nameplate(match_keywords=match_keywords),
+        live_decode=LiveDecode(status_bits={}, cmd_word={}, fault_codes={}),
+        envelope=Envelope(),
+        knowledge=Knowledge(),
+        provenance=Provenance(),
+    )
 
 
 def test_load_pack_gs10_succeeds():
@@ -97,3 +114,62 @@ def test_resolve_pack_returns_none_for_unrelated_drive():
 
 def test_resolve_pack_returns_none_for_empty_text():
     assert resolve_pack("") is None
+
+
+def test_resolve_pack_family_alias_beats_other_packs_nameplate_keyword_regardless_of_order(
+    monkeypatch,
+):
+    """Cross-pack "family-first" precedence (ADR-0025 §1a), independent of pack order.
+
+    pack_a has NO family alias for "widget" but DOES have it as a nameplate
+    keyword; pack_b has "widget" as a family alias. A pack-by-pack loop (the
+    pre-fix behavior) would return pack_a whenever it's listed before pack_b,
+    because pack_a's nameplate-keyword check would match before pack_b is even
+    considered. The two-pass loader must always return pack_b — the
+    family-alias match — no matter which pack list_packs() returns first.
+    """
+    pack_a = _minimal_pack("pack_a", aliases=[], match_keywords=["widget"])
+    pack_b = _minimal_pack("pack_b", aliases=["widget"], match_keywords=[])
+    packs_by_id = {"pack_a": pack_a, "pack_b": pack_b}
+
+    # Order 1: the nameplate-only pack is listed FIRST.
+    monkeypatch.setattr(drive_packs_loader, "list_packs", lambda: ["pack_a", "pack_b"])
+    monkeypatch.setattr(drive_packs_loader, "load_pack", lambda pack_id: packs_by_id[pack_id])
+    resolved = drive_packs_loader.resolve_pack("the widget drive is faulted")
+    assert resolved is not None
+    assert resolved.pack_id == "pack_b"
+
+    # Order 2: reversed — the family-alias pack is listed FIRST too, proving
+    # the win isn't an accident of iteration order either way.
+    monkeypatch.setattr(drive_packs_loader, "list_packs", lambda: ["pack_b", "pack_a"])
+    resolved = drive_packs_loader.resolve_pack("the widget drive is faulted")
+    assert resolved is not None
+    assert resolved.pack_id == "pack_b"
+
+
+def test_load_pack_non_numeric_live_decode_key_raises_actionable_pack_scoped_error(
+    tmp_path, monkeypatch
+):
+    pack_id = "bogus_pack"
+    pack_dir = tmp_path / pack_id
+    pack_dir.mkdir()
+    pack_json = {
+        "pack_id": pack_id,
+        "schema_version": 1,
+        "family": {"manufacturer": "Test", "series": "Test Series", "aliases": []},
+        "nameplate": {"match_keywords": []},
+        "live_decode": {
+            "status_bits": {"not_a_number": "RUNNING"},
+            "cmd_word": {},
+            "fault_codes": {},
+        },
+        "envelope": {},
+        "knowledge": {},
+        "provenance": {"items": {}, "sources": []},
+    }
+    (pack_dir / "pack.json").write_text(json.dumps(pack_json), encoding="utf-8")
+
+    monkeypatch.setattr(drive_packs_loader, "_packs_dir", lambda: tmp_path)
+
+    with pytest.raises(ValueError, match=r"pack 'bogus_pack'.*not_a_number.*status_bits"):
+        drive_packs_loader.load_pack(pack_id)
