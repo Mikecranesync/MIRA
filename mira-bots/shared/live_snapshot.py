@@ -310,3 +310,78 @@ def render_machine_evidence(snapshots: list[LiveTagSnapshot]) -> str:
     if assessment:
         parts += ["", f"Assessment: {assessment}"]
     return "\n".join(parts)
+
+
+# ── Assessment from the Ignition wire form ({full_path: str_value}) ───────────
+#
+# ``ignition_chat.py`` receives ``{ "[default]Mira_Monitored/<asset>/<leaf>":
+# {"value": str(qv.value), …} }`` (doPost.py) — full-path keys, string values,
+# and ambiguous analog scaling (raw register vs engineering). Only the ENUM/BOOL
+# canonical signals are scaling-immune, so ONLY those feed the assessment; the
+# analog values (freq/current/dc_bus) are shown in the preamble but never
+# re-scaled/re-interpreted here (a 10x/100x-wrong number is worse than none).
+_ASSESSABLE_INT_LEAVES = {"vfd_fault_code", "vfd_warn_code", "vfd_cmd_word", "vfd_status_word"}
+_ASSESSABLE_BOOL_LEAVES = {
+    "vfd_comm_ok",
+    "pe_latched",
+    "DI_02",
+    "e_stop",
+    "DI_05",
+    "pe_beam",
+    "DO_02",
+    "mlc",
+}
+_TRUE_STRINGS = {"true", "t", "1", "1.0", "on", "yes"}
+_FALSE_STRINGS = {"false", "f", "0", "0.0", "off", "no"}
+
+
+def _leaf(path: str) -> str:
+    return str(path).rsplit("/", 1)[-1]
+
+
+def _coerce_int(v: Any) -> int | None:
+    if isinstance(v, bool):
+        return None
+    try:
+        return int(float(str(v).strip()))
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_bool(v: Any) -> bool | None:
+    if isinstance(v, bool):
+        return v
+    s = str(v).strip().lower()
+    if s in _TRUE_STRINGS:
+        return True
+    if s in _FALSE_STRINGS:
+        return False
+    return None
+
+
+def assess_from_paths(path_values: dict[str, Any] | None) -> str | None:
+    """Deterministic assessment from a ``{tag_path: value}`` map (Ignition wire
+    form). Keys may be full Ignition browse paths; entries may be bare scalars or
+    ``{"value": …}`` dicts. ONLY the enum/bool canonical leaves feed the
+    assessment — analog leaves are deliberately excluded (their wire scaling is
+    ambiguous). Returns ``None`` when nothing assessable is present — never a
+    fabricated assessment. Pure / deterministic.
+    """
+    if not path_values:
+        return None
+    raw: dict[str, Any] = {}
+    for path, val in path_values.items():
+        if isinstance(val, dict):
+            val = val.get("value")
+        leaf = _leaf(path)
+        if leaf in _ASSESSABLE_INT_LEAVES:
+            n = _coerce_int(val)
+            if n is not None:
+                raw[leaf] = n
+        elif leaf in _ASSESSABLE_BOOL_LEAVES:
+            b = _coerce_bool(val)
+            if b is not None:
+                raw[leaf] = b
+    if not raw:
+        return None
+    return assess_snapshots(normalize(raw, "", source="ignition", ts=""))

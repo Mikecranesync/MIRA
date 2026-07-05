@@ -16,6 +16,7 @@ from shared.live_snapshot import (  # noqa: E402
     STALE,
     UNKNOWN,
     LiveTagSnapshot,
+    assess_from_paths,
     assess_snapshots,
     normalize,
     render_machine_evidence,
@@ -171,7 +172,13 @@ def test_assess_empty_is_none():
 
 
 def test_render_machine_evidence_has_header_labels_and_assessment():
-    raw = {"vfd_comm_ok": True, "vfd_fault_code": 0, "vfd_dc_bus": 3200, "vfd_frequency": 0, "vfd_cmd_word": 1}
+    raw = {
+        "vfd_comm_ok": True,
+        "vfd_fault_code": 0,
+        "vfd_dc_bus": 3200,
+        "vfd_frequency": 0,
+        "vfd_cmd_word": 1,
+    }
     section = render_machine_evidence(normalize(raw, BASE, source="bench", ts=TS))
     assert section.startswith("## Live Machine Evidence (observed now)")
     # separation instruction
@@ -185,10 +192,77 @@ def test_render_machine_evidence_has_header_labels_and_assessment():
 
 
 def test_render_machine_evidence_marks_stale():
-    section = render_machine_evidence(normalize({"vfd_comm_ok": False, "vfd_frequency": 6000}, BASE, source="bench", ts=TS))
+    section = render_machine_evidence(
+        normalize({"vfd_comm_ok": False, "vfd_frequency": 6000}, BASE, source="bench", ts=TS)
+    )
     assert "[STALE]" in section
     assert "VFD comms LOST" in section
 
 
 def test_render_machine_evidence_empty():
     assert render_machine_evidence([]) == ""
+
+
+# ── assess_from_paths — Ignition wire form (full-path keys, string values) ────
+
+
+def _ign(leaf, value):
+    """One Ignition-wire snapshot entry: full path + {"value": str} dict."""
+    return {f"[default]Mira_Monitored/CV-101/{leaf}": {"value": value}}
+
+
+def _merge(*dicts):
+    out = {}
+    for d in dicts:
+        out.update(d)
+    return out
+
+
+def test_assess_from_paths_healthy_but_stopped_from_enum_facts():
+    snap = _merge(
+        _ign("vfd_fault_code", "0"),
+        _ign("vfd_comm_ok", "true"),
+        _ign("vfd_cmd_word", "1"),  # STOP
+        _ign("vfd_frequency", "0.0"),  # analog — ignored by the assessment
+    )
+    a = assess_from_paths(snap)
+    assert "healthy" in a
+    assert "stopped" in a
+    assert "command/permissive/interlock" in a
+    # It must NOT claim an analog number (scaling is ambiguous on the wire).
+    assert "Hz" not in a and " V" not in a
+
+
+def test_assess_from_paths_active_fault():
+    snap = _merge(_ign("vfd_fault_code", "58"), _ign("vfd_comm_ok", "true"))
+    a = assess_from_paths(snap)
+    assert a.startswith("Active VFD fault")
+    assert "CE10 modbus timeout" in a
+
+
+def test_assess_from_paths_false_string_is_comms_lost_not_truthy():
+    # Regression guard: naive `if raw` treats the string "false" as truthy.
+    a = assess_from_paths(_ign("vfd_comm_ok", "False"))
+    assert "comms are LOST" in a
+
+
+def test_assess_from_paths_ignores_unassessable_and_analog_only():
+    # Arbitrary-keyed / pre-scaled tag → nothing assessable → honest None.
+    assert assess_from_paths({"Motor_Current_A": {"value": 11.2}}) is None
+    # Analog-only VFD tags (scaling-ambiguous) → also None, never a guess.
+    assert assess_from_paths(_ign("vfd_dc_bus", "320.0")) is None
+
+
+def test_assess_from_paths_accepts_bare_scalar_values():
+    snap = {
+        "[default]X/vfd_fault_code": 0,
+        "[default]X/vfd_comm_ok": True,
+        "[default]X/vfd_status_word": 3,  # RUNNING
+    }
+    a = assess_from_paths(snap)
+    assert a.startswith("Machine running")
+
+
+def test_assess_from_paths_empty_is_none():
+    assert assess_from_paths(None) is None
+    assert assess_from_paths({}) is None
