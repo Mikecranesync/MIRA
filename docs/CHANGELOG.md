@@ -1,5 +1,9 @@
 # MIRA Release Notes
 
+### v3.67.0 (2026-07-05) - feat(ci): guardrail against fabricated first-party import symbols
+- Adds `tools/verify_agent_symbols.py`, which indexes every `def`/`class`/module-level name in the repo and flags newly-added `from <first-party-module> import <Name>` lines whose `Name` doesn't resolve anywhere — targets the recurring agent-fabrication failure mode called out in CLAUDE.md's "Verify Subagent Output" rule (`ConnectorService`, `approved_state`).
+- Wired as a warn-only section in `.githooks/pre-commit` (avoids local Stop-hook thrash on the shared working tree) and as a PR-comment backstop in `code-review.yml`'s `static-analysis` job. Does not catch non-import fabrication (invented enum/state strings) — documented as a known gap.
+
 ### v3.66.0 (2026-07-05) - feat(drive-commander): GS10 pack enrichment — architecture doc + first TemplateReader (follow-up #1)
 - **What:** starts follow-up #1 of Drive Commander (ADR-0025). Adds `FaultCodesTemplateReader` (`mira-bots/shared/drive_packs/template_reader.py`) — the first concrete implementation of the `TemplateReader` seam in `cards.py`, so diagnostic cards can carry real per-fault `likely_causes`/`first_checks`/`citations`. Backed by the `fault_codes` table (the only store keyed 1:1 to the pack's `live_decode.fault_codes`); pure/offline/injected data — no DB/network imports, passes the read-only shipping gate.
 - **Also:** a reference doc `docs/drive-commander/pack-construction-and-observability.md` — how a pack is constructed, where its knowledge lives (**KB `knowledge_entries` + the `component_templates` layer + KG `kg_entities`** — the pack is a file that points at all three, never in the DB), and how a pack-driven diagnosis is traced (real trace = `decision_trace.py`; flags the phantom `agent_trace.py` and the missing per-pack/per-card trace record).
