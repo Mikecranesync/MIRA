@@ -8,7 +8,9 @@
  *
  * The `status_bits`/`cmd_word`/register-scaling FACTS (which numeric codes
  * exist, what they mean, and the scaling factor) are sourced from the shared
- * `durapulse_gs10` drive pack (`packs/durapulse_gs10/pack.json`) via
+ * `durapulse_gs10` drive pack
+ * (`mira-bots/shared/drive_packs/packs/durapulse_gs10/pack.json`, mirrored
+ * as a committed copy at `./drive-packs/gs10-pack.json`) via
  * `./drive-packs/loader`, the same pack `mira-bots/shared/live_snapshot.py`
  * loads — ADR-0025 §1 (one pack file, both Python and TS). This file still
  * owns its own DISPLAY WORDING ("RUN FWD" vs the pack's raw "FWD+RUN") via the

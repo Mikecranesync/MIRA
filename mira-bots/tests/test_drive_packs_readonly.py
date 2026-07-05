@@ -12,7 +12,8 @@ emitted (the Drive Commander shipping gate)."*
 This module IS that gate. It statically scans ``mira-bots/shared/drive_packs``
 (today: pure data-reshaping — a JSON loader, a nameplate-text matcher, and a
 diagnostic-card builder; see ``.claude/rules/fieldbus-readonly.md``) plus the
-pack JSON under ``packs/`` and asserts:
+pack JSON under the co-located ``mira-bots/shared/drive_packs/packs/`` (package
+data, shipped in the Docker image) and asserts:
 
   1. No Modbus/EtherNet-IP write-call names appear (``write_register``,
      ``Write_Tag``, ``forward_open``, ...).
@@ -51,7 +52,8 @@ from pathlib import Path
 # from mira-bots/, i.e. three parents up from this file.
 _ROOT = Path(__file__).resolve().parents[2]
 _DRIVE_PACKS_DIR = _ROOT / "mira-bots" / "shared" / "drive_packs"
-_PACKS_DIR = _ROOT / "packs"
+# Co-located package data (ships inside the Docker image), not a repo-root dir.
+_PACKS_DIR = _DRIVE_PACKS_DIR / "packs"
 
 # ---------------------------------------------------------------------------
 # The forbidden vocabulary (ADR-0025 §4 + .claude/rules/fieldbus-readonly.md)

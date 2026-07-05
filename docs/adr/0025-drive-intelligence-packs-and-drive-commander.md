@@ -116,6 +116,7 @@ First buyer = **plant maintenance teams with a drive fleet, DURApulse/GS10-first
 - Introduces a **pack schema + loader** and moves GS10 tables out of code (first build).
 - New desktop + mobile UIs to build and maintain (under the shared design system).
 - **Provable read-only** is now a shipping-gate for a customer-facing app, not just a bench script — needs a test that asserts no write FC can be emitted.
+- **Docker-packaging reality:** the pack ships as **co-located package data** inside `mira-bots/shared/drive_packs/packs/` (not a repo-root `packs/` dir) — the mira-pipeline Docker image only `COPY`s `mira-bots/shared/`, so a repo-root-relative walk-up loader would (and did) fail `import main` at container startup. The Hub keeps its own committed byte-identical copy (`mira-hub/src/lib/drive-packs/gs10-pack.json`) for the same reason (its build context is `./mira-hub`), drift-guarded by `mira-bots/tests/test_drive_pack_hub_copy_sync.py`.
 
 **Amendment to `.claude/rules/fieldbus-readonly.md`**
 > A **customer-run desktop diagnostic app** (Drive Commander) MAY open **read-only** EtherNet/IP / Modbus-TCP connections directly to drives, under the same provable read-only discipline as `plc/discover.py` (read FCs only; no write FC ever; serial RS-485 requires `--serial-bus-idle`). This carve-out is **scoped to the local desktop surface only**. The prohibition on a MIRA **cloud component / MIRA-named container** opening a plant socket (ADR-0021) is **unchanged**.

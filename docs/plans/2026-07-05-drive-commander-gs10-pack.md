@@ -74,7 +74,7 @@ packs/
 ## Loader (Python) — Task 1
 
 `mira-bots/shared/drive_packs/` : `schema.py` (frozen dataclasses mirroring pack.json), `loader.py`:
-- `load_pack(pack_id: str) -> DrivePack` — read+validate `packs/<pack_id>/pack.json`.
+- `load_pack(pack_id: str) -> DrivePack` — read+validate `packs/<pack_id>/pack.json` (co-located under `mira-bots/shared/drive_packs/packs/`, package data shipped in the Docker image).
 - `list_packs() -> list[str]`.
 - `resolve_pack(text: str) -> DrivePack | None` — match `nameplate.match_keywords` / `family.aliases` against nameplate/vision text (family-first). Case-insensitive.
 - Pure; only I/O is reading the JSON from the packs dir. No network, no DB.
@@ -82,7 +82,7 @@ packs/
 ## Tasks
 
 ### Task 1 (BARRIER — everything depends on it): pack schema + GS10 pack.json + Python loader
-- Author `packs/durapulse_gs10/pack.json` (data verbatim from `live_snapshot.py` dicts + envelope). `packs/README.md` documents the schema.
+- Author `packs/durapulse_gs10/pack.json` (data verbatim from `live_snapshot.py` dicts + envelope; lives co-located at `mira-bots/shared/drive_packs/packs/durapulse_gs10/pack.json` so it ships in the Docker image). `packs/README.md` documents the schema.
 - Build `mira-bots/shared/drive_packs/` (`schema.py`, `loader.py`, `__init__.py`).
 - Tests (`mira-bots/tests/test_drive_packs.py`): loads GS10, schema validates, decode tables match the current `live_snapshot.py` dicts exactly, `resolve_pack("DURApulse GS10 ...")` returns the pack, `resolve_pack("PowerFlex 525")` returns None.
 - **Does NOT modify `live_snapshot.py` yet.**
@@ -107,7 +107,7 @@ packs/
 - `mira-bots/tests/test_drive_packs_readonly.py`: assert the `drive_packs` package + pack JSON contain no write-FC constant (5/6/15/16 as Modbus write), no `pymodbus`/`pycomm3`/socket import, no write path. Fail loud if a future edit introduces one. The Drive Commander shipping gate.
 
 ### Task 7: TS mirror (Hub)
-- `mira-hub/src/lib/drive-packs/` loads the same `packs/durapulse_gs10/pack.json`; refactor `gs10-display.ts` to source decode from the pack.
+- `mira-hub/src/lib/drive-packs/` loads a committed byte-identical copy (`gs10-pack.json`, drift-guarded against `mira-bots/shared/drive_packs/packs/durapulse_gs10/pack.json`); refactor `gs10-display.ts` to source decode from the pack.
 - **Constraint 3:** `gs10-display.test.ts` stays green.
 
 ## Done = whole-branch review clean + all constraints held + all existing GS10 tests green with GS10 loaded as a pack.

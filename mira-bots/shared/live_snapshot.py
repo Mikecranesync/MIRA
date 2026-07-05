@@ -12,8 +12,9 @@ fieldbus. It only reshapes data already received. No clock either — the caller
 passes ``ts`` so normalization stays deterministic and unit-testable.
 
 The GS10/Micro820 decode tables are sourced from the drive pack
-(``packs/durapulse_gs10/pack.json``, loaded once below via
-``shared.drive_packs.load_pack``) rather than hardcoded here — see ADR-0025.
+(``mira-bots/shared/drive_packs/packs/durapulse_gs10/pack.json``, co-located
+package data loaded once below via ``shared.drive_packs.load_pack``) rather
+than hardcoded here — see ADR-0025.
 They still mirror ``mira-bots/ask_api/app.py`` and the machine card
 (``MIRA_PLC/specs/CONVEYOR_MACHINE_CARD.md``); keep those in sync (Task 7
 mirrors the pack into the Hub's ``gs10-display.ts``).

@@ -1,8 +1,10 @@
 """Language-neutral drive-pack loader — pure, read-only, no fieldbus I/O.
 
-A drive pack (``packs/<pack_id>/pack.json``) is a family-keyed manifest of
-live-decode tables, an expected operating envelope, and ID pointers into the
-existing KB/KG stores. See ``packs/README.md`` for the schema and
+A drive pack (co-located package data at ``packs/<pack_id>/pack.json``,
+i.e. ``mira-bots/shared/drive_packs/packs/<pack_id>/pack.json``) is a
+family-keyed manifest of live-decode tables, an expected operating envelope,
+and ID pointers into the existing KB/KG stores. See ``packs/README.md`` for
+the schema and
 ``docs/adr/0025-drive-intelligence-packs-and-drive-commander.md`` for the
 product decision.
 

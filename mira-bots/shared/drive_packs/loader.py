@@ -2,8 +2,9 @@
 
 Hard boundary (ADR-0025 + ``.claude/rules/fieldbus-readonly.md``): this module
 NEVER opens a socket, NEVER touches a fieldbus, NEVER writes. Its only I/O is
-reading a JSON file from the repo's ``packs/`` directory. See
-``packs/README.md`` for the schema and
+reading a JSON file from the co-located ``packs/`` directory shipped as
+package data alongside this module (``mira-bots/shared/drive_packs/packs/``)
+— NOT a repo-root directory. See ``packs/README.md`` for the schema and
 ``docs/adr/0025-drive-intelligence-packs-and-drive-commander.md`` for why
 packs exist (family-keyed drive intelligence, data not code).
 """
@@ -41,19 +42,21 @@ _REQUIRED_TOP_LEVEL_KEYS = {
 
 
 def _packs_dir() -> Path:
-    """Locate the repo's ``packs/`` directory relative to this module.
+    """Locate the co-located ``packs/`` directory next to this module.
 
-    Walks up from this file's location (never a hardcoded absolute path) so
-    the loader works no matter where the repo is checked out.
+    The pack JSON ships as package data inside ``drive_packs/`` (not a
+    repo-root directory) precisely so it is present in every Docker image
+    that copies ``mira-bots/shared/`` — a repo-root ``packs/`` walk-up broke
+    the mira-pipeline image, which never COPYs anything outside
+    ``mira-bots/shared/``. See ADR-0025 amendment + the Docker Build Check
+    fix.
     """
-    start = Path(__file__).resolve().parent
-    for parent in (start, *start.parents):
-        candidate = parent / "packs"
-        if candidate.is_dir():
-            return candidate
+    candidate = Path(__file__).resolve().parent / "packs"
+    if candidate.is_dir():
+        return candidate
     raise RuntimeError(
-        "Could not locate a 'packs/' directory above mira-bots/shared/drive_packs — "
-        "is the repo checked out correctly?"
+        f"Could not locate the co-located 'packs/' directory at {candidate} — "
+        "is mira-bots/shared/drive_packs/packs/ present in this checkout/image?"
     )
 
 
