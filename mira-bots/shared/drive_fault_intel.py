@@ -1,14 +1,27 @@
 """GS10 fault intelligence — INTERIM offline source for card enrichment.
 
-This module is the INTERIM offline source of GS10 fault intelligence: a
-curated, ``manual_cited`` mirror of the ``GS_SUPPLEMENT``/``GS10_NUMERIC``
-prose in ``mira-core/scripts/seed_fault_codes.py`` (DURApulse GS10 User
-Manual, P06.17 fault records — same source cited there). It stands in until a
-DB-backed ``TemplateReader`` reads the real ``fault_codes`` table
+This module is the INTERIM offline source of GS10 fault intelligence — one
+curated ``FaultCodeIntel`` per non-zero fault code in the GS10 pack. It stands
+in until a DB-backed ``TemplateReader`` reads the real ``fault_codes`` table
 (``docs/migrations/002_fault_codes.sql``); it exists so
 ``shared.drive_packs.cards.build_cards`` enrichment is product-visible in the
-engine's Live Machine Evidence section (``shared/live_snapshot.py``) without
-a DB dependency.
+engine's Live Machine Evidence section (``shared/live_snapshot.py``) without a
+DB dependency.
+
+Provenance (honest — ``manual_cited`` tier: from the manufacturer manual, NOT
+bench-verified):
+- Codes 4/12/21/49 (GFF/Lvd/oL/EF) — the cause/action summarizes the DURApulse
+  GS10 keypad-mnemonic fault descriptions (the GS10 mnemonics GF/UV/OL/EF), the
+  same conditions catalogued in ``mira-core/scripts/seed_fault_codes.py``'s
+  ``GS_SUPPLEMENT`` GS10 rows and recorded numerically in P06.17. Excerpts are
+  the numeric-code meanings from that file's ``GS10_NUMERIC`` table.
+- Codes 54–58 (CE1–CE10) — standard GS10 **RS-485 Modbus communication** error
+  codes (illegal command/address/value, read-only write, transmission
+  time-out). These are NOT in ``seed_fault_codes.py``; the cause/action is
+  summarized from the GS10 manual's Modbus-communication section (Group-09
+  comm parameters; CE10 relates to the P09.03 comm time-out). Not
+  independently verified against a specific manual page number — hence the
+  section-level ``page`` reference below, not a fabricated page.
 
 Pure/offline (``.claude/rules/fieldbus-readonly.md``): no DB/network/fieldbus
 import, data is a plain in-repo constant.
@@ -20,12 +33,16 @@ from shared.drive_packs.template_reader import FaultCodeIntel, FaultCodesTemplat
 
 _GS10_PACK_ID = "durapulse_gs10"
 _GS10_DOC = "DURApulse GS10 User Manual"
-_GS10_PAGE = "P06.17 (fault records)"
+# Numeric drive-fault records vs. the RS-485 comm (CE) fault section — cited
+# distinctly so a card never claims the fault-record page for a comm-error code.
+_GS10_FAULT_PAGE = "P06.17 (fault records)"
+_GS10_COMM_PAGE = "RS-485 Modbus communication — CE fault codes (Group-09 comm)"
 
 # One entry per non-zero fault code in
 # shared/drive_packs/packs/durapulse_gs10/pack.json's live_decode.fault_codes
-# (verbatim GS10 manual content — do not paraphrase or add codes; see
-# test_gs10_fault_intel_matches_pack_fault_codes_exactly, the drift guard).
+# (curated GS10 fault intelligence, manual_cited — see the provenance note in
+# the module docstring, and test_gs10_fault_intel_matches_pack_fault_codes_exactly,
+# the drift guard; do not add codes not in the pack).
 GS10_FAULT_INTEL: dict[int, FaultCodeIntel] = {
     4: FaultCodeIntel(
         cause="Ground fault detected at the drive output.",
@@ -34,7 +51,7 @@ GS10_FAULT_INTEL: dict[int, FaultCodeIntel] = {
             "3. Check for moisture at the motor/junction box."
         ),
         doc=_GS10_DOC,
-        page=_GS10_PAGE,
+        page=_GS10_FAULT_PAGE,
         excerpt="GFF — ground fault",
     ),
     12: FaultCodeIntel(
@@ -44,7 +61,7 @@ GS10_FAULT_INTEL: dict[int, FaultCodeIntel] = {
             "3. Extend decel time or add a braking resistor if it trips on decel."
         ),
         doc=_GS10_DOC,
-        page=_GS10_PAGE,
+        page=_GS10_FAULT_PAGE,
         excerpt="Lvd — low-voltage during deceleration",
     ),
     21: FaultCodeIntel(
@@ -57,7 +74,7 @@ GS10_FAULT_INTEL: dict[int, FaultCodeIntel] = {
             "4. Confirm the drive is sized for the motor."
         ),
         doc=_GS10_DOC,
-        page=_GS10_PAGE,
+        page=_GS10_FAULT_PAGE,
         excerpt="oL — overload",
     ),
     49: FaultCodeIntel(
@@ -67,7 +84,7 @@ GS10_FAULT_INTEL: dict[int, FaultCodeIntel] = {
             "terminal. 3. Clear the upstream condition, then reset."
         ),
         doc=_GS10_DOC,
-        page=_GS10_PAGE,
+        page=_GS10_FAULT_PAGE,
         excerpt="EF — external fault",
     ),
     54: FaultCodeIntel(
@@ -77,7 +94,7 @@ GS10_FAULT_INTEL: dict[int, FaultCodeIntel] = {
             "2. Verify the master's register map."
         ),
         doc=_GS10_DOC,
-        page=_GS10_PAGE,
+        page=_GS10_COMM_PAGE,
         excerpt="CE1 — illegal command",
     ),
     55: FaultCodeIntel(
@@ -87,7 +104,7 @@ GS10_FAULT_INTEL: dict[int, FaultCodeIntel] = {
             "2. Check the address offset (GS10 Addr = wire + 1)."
         ),
         doc=_GS10_DOC,
-        page=_GS10_PAGE,
+        page=_GS10_COMM_PAGE,
         excerpt="CE2 — illegal data address",
     ),
     56: FaultCodeIntel(
@@ -99,7 +116,7 @@ GS10_FAULT_INTEL: dict[int, FaultCodeIntel] = {
             "1. Check the value and range being written. 2. Verify parameter units and scaling."
         ),
         doc=_GS10_DOC,
-        page=_GS10_PAGE,
+        page=_GS10_COMM_PAGE,
         excerpt="CE3 — illegal data value",
     ),
     57: FaultCodeIntel(
@@ -109,7 +126,7 @@ GS10_FAULT_INTEL: dict[int, FaultCodeIntel] = {
             "2. Confirm which registers are writable in the master map."
         ),
         doc=_GS10_DOC,
-        page=_GS10_PAGE,
+        page=_GS10_COMM_PAGE,
         excerpt="CE4 — data written to read-only address",
     ),
     58: FaultCodeIntel(
@@ -120,7 +137,7 @@ GS10_FAULT_INTEL: dict[int, FaultCodeIntel] = {
             "3. Confirm the master is polling; review the comm-timeout parameter."
         ),
         doc=_GS10_DOC,
-        page=_GS10_PAGE,
+        page=_GS10_COMM_PAGE,
         excerpt="CE10 — Modbus transmission time-out",
     ),
 }
