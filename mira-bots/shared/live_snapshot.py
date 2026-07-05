@@ -27,7 +27,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from shared.drive_packs import load_pack
+from shared.drive_fault_intel import build_gs10_template_reader
+from shared.drive_packs import build_cards, load_pack
 from shared.drive_packs.schema import EnvelopeBand, RegisterEntry
 
 # --- GS10 decode tables, loaded once from the drive pack (ADR-0025) ---
@@ -55,6 +56,16 @@ if _missing_register_keys:
         f"key(s) {_missing_register_keys!r} — shared.live_snapshot decodes these "
         "directly and cannot start without them"
     )
+
+# --- GS10 fault-card enrichment (Drive Commander follow-up #2) ---
+# First runtime caller of `build_cards` -- until now it was only exercised in
+# tests. The reader is the INTERIM offline adapter (`shared.drive_fault_intel`,
+# no DB/network); cards are derived once at import and looked up by fault
+# NAME (`card.meaning`) when rendering the Live Machine Evidence section.
+_GS10_READER = build_gs10_template_reader()
+_GS10_CARDS_BY_MEANING = {
+    c.meaning: c for c in build_cards(_GS10_PACK, template_reader=_GS10_READER)
+}
 
 # --- Envelope-driven analog assessment (ADR-0025 §4; Task 3) ---
 # `_GS10_PACK.envelope` is the SAME typed `Envelope` a future writer would read
@@ -424,6 +435,27 @@ def assess_snapshots(snapshots: list[LiveTagSnapshot]) -> str | None:
     )
 
 
+def render_fault_diagnostic(fault_name: str) -> str:
+    """Enriched diagnostic block for an active fault NAME (card likely-causes/
+    first-checks/citation), or "" when there's no enrichment. Pure/offline --
+    reads module-level cards built once via the offline FaultCodesTemplateReader.
+    """
+    card = _GS10_CARDS_BY_MEANING.get(fault_name)
+    if card is None or (not card.likely_causes and not card.first_checks):
+        return ""
+    lines = [f"### Fault diagnostic: {card.fault_or_symptom}"]
+    if card.likely_causes:
+        lines.append("Likely causes: " + "; ".join(card.likely_causes))
+    if card.first_checks:
+        lines.append("First checks: " + " ".join(card.first_checks))
+    cites = "; ".join(
+        f"{c.doc}{f' — {c.page}' if c.page else ''}" for c in card.citations if c.doc
+    )
+    if cites:
+        lines.append(f"Source: {cites}")
+    return "\n".join(lines)
+
+
 def render_machine_evidence(snapshots: list[LiveTagSnapshot]) -> str:
     """Render snapshots as a ``## Live Machine Evidence`` section for the engine.
 
@@ -452,6 +484,11 @@ def render_machine_evidence(snapshots: list[LiveTagSnapshot]) -> str:
     assessment = assess_snapshots(snapshots)
     if assessment:
         parts += ["", f"Assessment: {assessment}"]
+    fault = _dp(snapshots).get("vfd_fault_code")
+    if fault is not None and fault.value not in (None, "no active fault"):
+        diagnostic = render_fault_diagnostic(str(fault.value))
+        if diagnostic:
+            parts += ["", diagnostic]
     return "\n".join(parts)
 
 
