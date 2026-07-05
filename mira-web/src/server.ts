@@ -99,6 +99,11 @@ import {
   activateHubUserByEmail,
   expireHubUserByEmail,
 } from "./lib/hub-user-activation.js";
+import {
+  recordPendingHubProvisioning,
+  markHubProvisioningDoneByEmail,
+  reconcilePendingHubProvisioning,
+} from "./lib/hub-provisioning-queue.js";
 import { FAULT_CODES } from "./data/fault-codes.js";
 import { BLOG_POSTS } from "./data/blog-posts.js";
 import { buildSitemapXml } from "./lib/sitemap.js";
@@ -701,6 +706,11 @@ app.post("/api/register", async (c) => {
           atlasRole: "USER",
         });
         c.header("Set-Cookie", buildSessionCookie(token));
+        // A paying customer touched us — sweep any queued Hub provisioning
+        // (e.g. they paid before registering on the Hub). Fire-and-forget.
+        reconcilePendingHubProvisioning({ email }).catch((err) =>
+          console.error("[register] Hub provisioning reconcile failed:", err),
+        );
         captureServerEvent({
           event: "register_submitted",
           distinctId: existing.id,
@@ -920,6 +930,13 @@ app.get("/api/magic/login", async (c) => {
     }).catch(() => {});
 
     c.header("Set-Cookie", buildSessionCookie(sessionToken));
+
+    // Login is a natural retry point for the Stripe → Hub bridge: if this
+    // tenant paid before their hub_users row existed, land it now.
+    reconcilePendingHubProvisioning({ email: tenant.email }).catch((err) =>
+      console.error("[magic-link/login] Hub provisioning reconcile failed:", err),
+    );
+
     return c.redirect(`/sample?token=${encodeURIComponent(sessionToken)}`, 302);
   } catch (err) {
     console.error("[magic-link/login] Error:", err);
@@ -1149,8 +1166,38 @@ app.post("/api/stripe/webhook", async (c) => {
           result.matched,
           tenant.email,
         );
+        if (result.matched > 0) {
+          // A prior delivery of this event may have queued a pending
+          // record — this pass landed, so close it out.
+          await markHubProvisioningDoneByEmail(tenant.email, "activate");
+        } else {
+          // Paid before registering on the Hub. Queue a durable retry;
+          // idempotent on the Stripe event id, so redeliveries no-op.
+          await recordPendingHubProvisioning({
+            stripeEventId: event.id,
+            email: tenant.email,
+            tenantId,
+            kind: "activate",
+            lastError: "hub_user_not_found",
+          });
+          console.warn(
+            "[stripe-webhook] Hub user missing for %s — queued for reconcile",
+            tenant.email,
+          );
+        }
       } catch (err) {
         console.error("[stripe-webhook] Hub user activation failed:", err);
+        try {
+          await recordPendingHubProvisioning({
+            stripeEventId: event.id,
+            email: tenant.email,
+            tenantId,
+            kind: "activate",
+            lastError: err instanceof Error ? err.message : String(err),
+          });
+        } catch (queueErr) {
+          console.error("[stripe-webhook] Failed to queue Hub retry:", queueErr);
+        }
       }
 
       const result = await finalizeActivation(tenant, {
@@ -1236,8 +1283,30 @@ app.post("/api/stripe/webhook", async (c) => {
             result.matched,
             churnedTenantEmail,
           );
+          if (result.matched > 0) {
+            await markHubProvisioningDoneByEmail(churnedTenantEmail, "expire");
+          } else {
+            await recordPendingHubProvisioning({
+              stripeEventId: event.id,
+              email: churnedTenantEmail,
+              tenantId: tenantId ?? null,
+              kind: "expire",
+              lastError: "hub_user_not_found",
+            });
+          }
         } catch (err) {
           console.error("[stripe-webhook] Hub user expiry failed:", err);
+          try {
+            await recordPendingHubProvisioning({
+              stripeEventId: event.id,
+              email: churnedTenantEmail,
+              tenantId: tenantId ?? null,
+              kind: "expire",
+              lastError: err instanceof Error ? err.message : String(err),
+            });
+          } catch (queueErr) {
+            console.error("[stripe-webhook] Failed to queue Hub retry:", queueErr);
+          }
         }
       }
       break;
@@ -1377,6 +1446,26 @@ app.get("/api/admin/activation-health", async (c) => {
      ORDER BY created_at DESC
      LIMIT 100`;
   return c.json({ count: stuck.length, tenants: stuck });
+});
+
+// Retry queued Stripe → Hub provisioning records (see
+// lib/hub-provisioning-queue.ts). Internal — hit from cron, e.g.
+//   curl -X POST -H "x-admin-token: $PLG_ADMIN_TOKEN" \
+//     https://factorylm.com/api/admin/hub-provisioning/reconcile
+// Idempotent: completed rows leave the queue; replays are no-ops.
+app.post("/api/admin/hub-provisioning/reconcile", async (c) => {
+  const token = c.req.header("x-admin-token");
+  if (!token || token !== ADMIN_TOKEN()) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+  try {
+    const result = await reconcilePendingHubProvisioning();
+    console.log("[hub-provisioning] Admin reconcile:", result);
+    return c.json(result);
+  } catch (err) {
+    console.error("[hub-provisioning] Admin reconcile failed:", err);
+    return c.json({ error: "reconcile failed" }, 500);
+  }
 });
 
 // Query quota (active subscribers only)
