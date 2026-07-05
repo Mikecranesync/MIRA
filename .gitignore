@@ -268,3 +268,6 @@ wiki/orchestrator/*.bundle
 /proposal-card-before-after.png
 /err.txt
 proof_simlab.db
+
+# SDD subagent-driven-development scratch (briefs/reports/ledger)
+.superpowers/
