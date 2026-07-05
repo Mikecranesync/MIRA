@@ -217,7 +217,29 @@ else
 fi
 
 # ------------------------------------------------------------------
-# 6. Scope guard — warn (never block) when a commit looks like it swept in
+# 6. Agent-symbol fabrication check — warn (never block locally) when a
+#    newly staged first-party import references a name that can't be found
+#    anywhere in the repo (the "ConnectorService" class of agent fabrication;
+#    see CLAUDE.md "Verify Subagent Output"). Warn-only here so a concurrent
+#    branch flip in the shared working tree can't turn this into the kind of
+#    Stop-hook thrash session-discipline.md already flags — the PR-diff CI
+#    step (code-review.yml) is the blocking backstop. Does NOT catch
+#    non-import fabrication (invented enum/state strings) — see the script's
+#    docstring for the full scope statement.
+# ------------------------------------------------------------------
+if [ -n "$STAGED_PY" ]; then
+  bold "Checking newly imported symbols for fabrication..."
+  if VERIFY_OUTPUT=$(python3 tools/verify_agent_symbols.py 2>&1); then
+    green "  ✓ $(echo "$VERIFY_OUTPUT" | tail -1)"
+    PASS=$((PASS + 1))
+  else
+    yellow "$VERIFY_OUTPUT" | sed 's/^/  /'
+    WARNINGS=$((WARNINGS + 1))
+  fi
+fi
+
+# ------------------------------------------------------------------
+# 7. Scope guard — warn (never block) when a commit looks like it swept in
 #    foreign WIP / out-of-scope files. Mirrors .claude/rules/session-discipline.md
 #    §3 ("stage only files your change touched"). Warn-only by design: a broad
 #    commit is sometimes correct, so this nudges, it does not block.
@@ -226,7 +248,7 @@ STAGED_ALL=$(git diff --cached --name-only --diff-filter=ACM || true)
 if [ -n "$STAGED_ALL" ]; then
   bold "Checking commit scope..."
 
-  # 6a. Known foreign-WIP / noise patterns that should rarely be committed.
+  # 7a. Known foreign-WIP / noise patterns that should rarely be committed.
   NOISE=$(echo "$STAGED_ALL" | grep -E '(^|/)tools/__init__\.py$|(^|/)ANTIGRAVITY_.*\.md$|(^|/)yt-pipeline/|\.orig$|\.rej$' || true)
   if [ -n "$NOISE" ]; then
     yellow "  ⚠️  Staged files look like foreign WIP / noise (session-discipline §3):"
@@ -235,7 +257,7 @@ if [ -n "$STAGED_ALL" ]; then
     WARNINGS=$((WARNINGS + 1))
   fi
 
-  # 6b. Untracked files present alongside a staged commit — did you `git add -A`
+  # 7b. Untracked files present alongside a staged commit — did you `git add -A`
   #     over someone else's WIP? Informational; the files are NOT being committed.
   UNTRACKED=$(git ls-files --others --exclude-standard || true)
   if [ -n "$UNTRACKED" ]; then
