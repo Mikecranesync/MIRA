@@ -108,6 +108,38 @@ def test_assessment_reaches_prompt_for_vfd_fault(client, monkeypatch):
     assert "vfd_fault_code" in message
 
 
+def test_fault_diagnostic_card_reaches_prompt_for_mapped_gs10_fault(client, monkeypatch):
+    """A mapped GS10 fault (GOOD comms) on the Ignition direct-connection surface
+    now carries the SAME fault-diagnostic card as the engine path (Drive
+    Commander DriveSense Ignition-enrich follow-up) — proves the enrichment is
+    actually visible end-to-end, not just at the shared.live_snapshot unit-test
+    layer."""
+    tc, engine = client
+    monkeypatch.setattr(ignition_chat, "_assess_from_paths", _real_assess_from_paths())
+
+    async def _passthrough(snap, tenant_id):
+        return snap
+
+    monkeypatch.setattr(ignition_chat, "_enrich_tag_snapshot_with_semantics", _passthrough)
+
+    resp = _post(
+        tc,
+        {
+            "query": "why did the conveyor stop?",
+            "asset_id": "CV-101",
+            "tag_snapshot": {
+                "[default]Mira_Monitored/CV-101/vfd_fault_code": {"value": "4", "quality": "Good"},
+                "[default]Mira_Monitored/CV-101/vfd_comm_ok": {"value": "true", "quality": "Good"},
+            },
+        },
+    )
+    assert resp.status_code == 200
+    message = engine.process.await_args.kwargs.get("message", "")
+    assert "Assessment: Active VFD fault: GFF ground fault" in message
+    assert "### Fault diagnostic:" in message
+    assert "Likely causes:" in message
+
+
 def test_healthy_but_stopped_assessment_from_enum_facts(client, monkeypatch):
     tc, engine = client
     monkeypatch.setattr(ignition_chat, "_assess_from_paths", _real_assess_from_paths())

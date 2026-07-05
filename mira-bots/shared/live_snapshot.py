@@ -454,6 +454,22 @@ def render_fault_diagnostic(fault_name: str) -> str:
     return "\n".join(lines)
 
 
+def _render_active_fault_diagnostic(snapshots: list[LiveTagSnapshot]) -> str:
+    """Enriched per-fault diagnostic block for an active, GOOD-quality fault in
+    ``snapshots`` (via the shared card path), or "" when there is none. Shared by
+    the engine (``render_machine_evidence``) and the Ignition wire path
+    (``assess_from_paths``) so the fault-diagnostic gate + render live in ONE place.
+
+    Quality gate: only a GOOD-quality fault renders. A STALE fault (comms lost —
+    ``vfd_comm_ok`` is this module's master trust gate) is skipped; the assessment
+    already leads with the comms-LOST caveat and a confident card would contradict it.
+    """
+    fault = _dp(snapshots).get("vfd_fault_code")
+    if fault is None or fault.quality != GOOD or fault.value in (None, "no active fault"):
+        return ""
+    return render_fault_diagnostic(str(fault.value))
+
+
 def render_machine_evidence(snapshots: list[LiveTagSnapshot]) -> str:
     """Render snapshots as a ``## Live Machine Evidence`` section for the engine.
 
@@ -482,16 +498,11 @@ def render_machine_evidence(snapshots: list[LiveTagSnapshot]) -> str:
     assessment = assess_snapshots(snapshots)
     if assessment:
         parts += ["", f"Assessment: {assessment}"]
-    # Only render the authoritative per-fault card for a GOOD-quality fault. When
-    # vfd_comm_ok is false the fault snapshot is STALE (a last-known code we can't
-    # trust — `vfd_comm_ok` is this module's master trust gate) and the assessment
-    # already leads with the comms-LOST caveat; surfacing a confident "Likely
-    # causes / First checks" block underneath would contradict that.
-    fault = _dp(snapshots).get("vfd_fault_code")
-    if fault is not None and fault.quality == GOOD and fault.value not in (None, "no active fault"):
-        diagnostic = render_fault_diagnostic(str(fault.value))
-        if diagnostic:
-            parts += ["", diagnostic]
+    # Only render the authoritative per-fault card for a GOOD-quality fault — see
+    # `_render_active_fault_diagnostic`'s docstring for the STALE-suppression rule.
+    diagnostic = _render_active_fault_diagnostic(snapshots)
+    if diagnostic:
+        parts += ["", diagnostic]
     return "\n".join(parts)
 
 
@@ -562,6 +573,12 @@ def assess_from_paths(path_values: dict[str, Any] | None) -> str | None:
     assessment — analog leaves are deliberately excluded (their wire scaling is
     ambiguous). Returns ``None`` when nothing assessable is present — never a
     fabricated assessment. Pure / deterministic.
+
+    When an active, GOOD-quality (comms-OK) GS10 fault is present, the same
+    per-fault diagnostic card the engine path renders (``render_fault_diagnostic``,
+    via the shared ``_render_active_fault_diagnostic`` helper) is appended after
+    the one-line assessment — this is the Ignition "Ask MIRA" enrichment (Drive
+    Commander DriveSense follow-up). A STALE fault (comms lost) never gets a card.
     """
     if not path_values:
         return None
@@ -580,4 +597,14 @@ def assess_from_paths(path_values: dict[str, Any] | None) -> str | None:
                 raw[leaf] = b
     if not raw:
         return None
-    return assess_snapshots(normalize(raw, "", source="ignition", ts=""))
+    snapshots = normalize(raw, "", source="ignition", ts="")
+    assessment = assess_snapshots(snapshots)
+    diagnostic = _render_active_fault_diagnostic(snapshots)
+    if diagnostic:
+        # A non-empty diagnostic implies a GOOD active fault, which also makes
+        # assess_snapshots emit its "Active VFD fault" line — so `assessment` is
+        # never None here today. The `else diagnostic` is a defensive fallback
+        # (never hit under current invariants), kept so a future assess_snapshots
+        # change can't drop the card.
+        return f"{assessment}\n\n{diagnostic}" if assessment else diagnostic
+    return assessment

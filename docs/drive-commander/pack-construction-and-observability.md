@@ -347,18 +347,24 @@ enrichment task depends on.
 
 **Shipped:** the reader is now a **runtime caller** (the first ever) — `live_snapshot.py` injects an
 offline `FaultCodesTemplateReader` into `build_cards` and renders the active GS10 fault's card
-(likely causes / first checks / cited source) into the engine's Live Machine Evidence section. Data
-is a curated `manual_cited` GS10 fault table (`drive_fault_intel.py`), so enrichment is product-visible
-with **no DB dependency**. Provenance is honest per code (numeric faults → P06.17; CE comm codes →
-the Modbus-comm section — never a page the text isn't grounded in).
+(likely causes / first checks / cited source). Data is a curated `manual_cited` GS10 fault table
+(`drive_fault_intel.py`), so enrichment is product-visible with **no DB dependency**. Provenance is
+honest per code (numeric faults → P06.17; CE comm codes → the Modbus-comm section — never a page the
+text isn't grounded in). **Both surfaces are now enriched:** the engine path
+(`render_machine_evidence`) *and* the Ignition direct "Ask MIRA" path (`assess_from_paths`), through a
+single shared helper `_render_active_fault_diagnostic(snapshots)` — the GOOD-quality gate + card render
+lives in **one** place, no duplicated diagnostic logic across surfaces.
 
 **Remaining gaps (deferred, documented):**
 1. **DB-backed reader** over the live `fault_codes` table — replaces the interim offline
    `drive_fault_intel.py` adapter. Needs a thin NeonDB adapter (outside `drive_packs/`).
-2. **Ignition path** — `assess_from_paths` (the direct-connection "Ask MIRA" preamble) is **not** yet
-   enriched; only the engine's `render_machine_evidence` path is. Small follow-up.
-3. **Trace threading** — card citation → `decision_traces` (see §5.2); engine + schema work.
-4. **`knowledge.*` id-pointers**, **register `addr`**, **`confidence_for()`** — as in §6/§7 above.
+2. **Trace threading** — card citation → `decision_traces` (see §5.2); engine + schema work.
+3. **`knowledge.*` id-pointers**, **register `addr`**, **`confidence_for()`** — as in §6/§7 above.
+4. **Shared cross-surface response object** (Hub / Slack / Telegram / HMI) — NOT yet built; the current
+   reuse (`_render_active_fault_diagnostic`) is a text helper. A structured DriveSense response object
+   is a larger step, deferred until a second consuming surface actually needs it.
+
+*(The Ignition-path gap listed here in follow-up #2 is now closed — this §7.1 entry reflects that.)*
 
 ---
 
