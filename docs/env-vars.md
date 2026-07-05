@@ -61,3 +61,17 @@ Full reference. Top 10 are in `CLAUDE.md`; this file has all of them.
 | `DISCORD_ALERT_WEBHOOK` | tools/lead-hunter — optional Discord webhook URL for degraded/failed runs |
 | `COMMAND_CENTER_DISPLAY_HOST_ALLOWLIST` | mira-hub — comma-separated exact hosts allowed as Command Center display targets (e.g. `127.0.0.1,192.168.1.20,100.72.2.99`). The tree route server-side-probes each registered display host; **set this in prod** to bound the SSRF surface of `POST /api/command-center/display` to known proxy/HMI origins. Unset = no restriction beyond the validator's link-local/metadata block (dev/bench). Interim control until #578 enables a true admin-role gate. |
 | `CSP_FRAME_SRC_DISPLAY_HOSTS` | mira-hub `src/middleware.ts` — comma-separated hosts added to the site-wide CSP `frame-src` allowlist (for any framed display surface). Distinct from the allowlist above: this governs what the browser may frame, not what may be registered. |
+| `MIRA_MACHINE_MEMORY_UNS_PATHS` | `mira-crawler/tasks/historize_runs.py` — extra `uns_path`s (comma-separated) to derive state windows + A0-A12 anomaly diffs for, even without a `MIRA_RUN_TRIGGERS` entry (migration 040). |
+| `MQTT_INGEST_BROKER_HOST` | `mira-relay/mqtt_ingest/config.py` — Sparkplug B subscriber broker hostname. Default `mosquitto`. |
+| `MQTT_INGEST_BROKER_PORT` | `mira-relay/mqtt_ingest/config.py` — broker port. Default `1883` (`8883` for TLS). |
+| `MQTT_INGEST_TLS` | `mira-relay/mqtt_ingest/config.py` — `"1"`/`"true"` enables TLS to the broker. |
+| `MQTT_INGEST_USERNAME` | `mira-relay/mqtt_ingest/config.py` — broker username (optional). |
+| `MQTT_INGEST_PASSWORD` | `mira-relay/mqtt_ingest/config.py` — broker password (optional; never logged). |
+| `MQTT_INGEST_GROUP_IDS` | `mira-relay/mqtt_ingest/config.py` — comma list of Sparkplug `group_id`s to subscribe to (`""` = all). |
+| `MQTT_INGEST_EDGE_NODES` | `mira-relay/mqtt_ingest/config.py` — comma list of `edge_node_id`s to subscribe to (`""` = all). |
+| `MQTT_INGEST_DEVICES` | `mira-relay/mqtt_ingest/config.py` — comma list of `device_id`s to subscribe to (`""` = all). |
+| `MQTT_INGEST_TENANT_ID` | `mira-relay/mqtt_ingest/config.py` — REQUIRED: the tenant every ingested tag lands under (tenant is config, never derived from the topic — Lane 3 design). |
+| `MQTT_INGEST_SOURCE_SYSTEM` | `mira-relay/mqtt_ingest/config.py` — `source_system` stamped on the ingest batch. Default `ignition`. |
+| `MQTT_INGEST_DRY_RUN` | `mira-relay/mqtt_ingest/config.py` — `"1"` decodes + logs Sparkplug payloads but never writes to the DB. |
+| `MQTT_INGEST_AUTO_DISCOVER` | `mira-relay/mqtt_ingest/config.py` — `"1"` records unknown tags as seen instead of dropping them (default disabled). |
+| `MQTT_INGEST_DEBUG` | `mira-relay/mqtt_ingest/config.py` — `"1"` enables debug logging for the subscriber. |

@@ -257,6 +257,12 @@ jobs:
       - name: Check module boundaries
         run: pytest tests/test_architecture.py -v
 
+      - name: Check env-var drift (docker-compose.saas.yml vs docs/env-vars.md + .env.template)
+        # Stdlib-only static check (docs/known-issues.md) -- no extra deps needed.
+        # Exits 1 on any used-but-undocumented or documented-but-unused var not
+        # already covered by tools/env_drift_allowlist.txt (pre-existing drift).
+        run: python3 tools/check_env_drift.py
+
   simlab-gate:
     name: SimLab Grader Gate
     runs-on: ubuntu-latest
