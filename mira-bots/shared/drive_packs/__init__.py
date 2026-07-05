@@ -7,12 +7,14 @@ existing KB/KG stores. See ``packs/README.md`` for the schema and
 product decision.
 
 Public API: ``load_pack``, ``list_packs``, ``resolve_pack`` (``loader.py``),
-``resolve_pack_from_vision`` (``nameplate.py``) plus the frozen dataclasses in
-``schema.py``.
+``resolve_pack_from_vision`` (``nameplate.py``), ``build_cards`` +
+``DiagnosticCard``/``Citation``/``TemplateReader`` (``cards.py``) plus the
+frozen dataclasses in ``schema.py``.
 """
 
 from __future__ import annotations
 
+from .cards import Citation, DiagnosticCard, TemplateReader, build_cards
 from .loader import list_packs, load_pack, resolve_pack
 from .nameplate import resolve_pack_from_vision
 from .schema import (
@@ -28,6 +30,8 @@ from .schema import (
 )
 
 __all__ = [
+    "Citation",
+    "DiagnosticCard",
     "DrivePack",
     "Envelope",
     "EnvelopeBand",
@@ -37,6 +41,8 @@ __all__ = [
     "Nameplate",
     "Provenance",
     "RegisterEntry",
+    "TemplateReader",
+    "build_cards",
     "list_packs",
     "load_pack",
     "resolve_pack",
