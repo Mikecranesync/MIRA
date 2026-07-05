@@ -73,7 +73,7 @@ from .integrations.pm_suggestions import (
     suggest_followup_pm,
 )
 from .interlock_context import build_interlock_answer, fetch_interlocks
-from .live_snapshot import STALE, render_status_block
+from .live_snapshot import STALE, render_machine_evidence
 from .live_snapshot import normalize as normalize_live_tags
 from .models.work_order import (
     UNSWorkOrder,
@@ -1560,7 +1560,11 @@ class Supervisor:
             uns_base = uns_ctx.get("uns_path") or ""
             ts = datetime.now(timezone.utc).isoformat()
             snapshots = normalize_live_tags(live_tags, uns_base, source=platform, ts=ts)
-            block = render_status_block(snapshots)
+            # Attach the structured Live Machine Evidence section (decoded values
+            # + deterministic assessment + separation instruction) — the Python
+            # mirror of the Hub machine-context packet. Same gated, best-effort,
+            # read-only text-preamble mechanism as before.
+            block = render_machine_evidence(snapshots)
             if not block:
                 return message
             n_stale = sum(1 for s in snapshots if s.quality == STALE)

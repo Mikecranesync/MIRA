@@ -190,3 +190,123 @@ def render_status_block(snapshots: list[LiveTagSnapshot]) -> str:
         return ""
     lines = [s.label + (" [STALE]" if s.quality == STALE else "") for s in snapshots]
     return "[LIVE CONVEYOR STATUS]\n" + "\n".join(lines)
+
+
+def _dp(snapshots: list[LiveTagSnapshot]) -> dict[str, LiveTagSnapshot]:
+    return {s.datapoint: s for s in snapshots}
+
+
+def assess_snapshots(snapshots: list[LiveTagSnapshot]) -> str | None:
+    """Deterministic one-line machine assessment from decoded snapshots.
+
+    The Python mirror of the Hub's ``deriveContextIntelligence`` summary
+    (``mira-hub/src/lib/machine-context-intelligence.ts``): it COMPOSES the
+    already-decoded VFD facts (comm_ok / fault_code / dc_bus / freq / cmd /
+    status) into an honest assessment — the "VFD-healthy-but-stopped" case above
+    all. It never invents a value; a missing signal is simply not asserted.
+    Returns ``None`` when there's nothing to assess. Pure / deterministic.
+    """
+    if not snapshots:
+        return None
+    by = _dp(snapshots)
+    comm = by.get("vfd_comm_ok")
+    fault = by.get("vfd_fault_code")
+    dc = by.get("vfd_dc_bus")
+    freq = by.get("vfd_frequency")
+    cmd = by.get("vfd_cmd_word")
+    status = by.get("vfd_status_word")
+    any_stale = any(s.quality == STALE for s in snapshots)
+
+    # 1. Comms lost — every VFD value is untrustworthy; say so first.
+    if comm is not None and comm.value == "LOST":
+        return (
+            "VFD comms are LOST — the live VFD values can't be trusted. Check the drive's comm "
+            "cable, Modbus address, and control power before diagnosing further."
+        )
+    # 2. An active fault dominates.
+    if fault is not None and fault.value not in (None, "no active fault"):
+        return (
+            f"Active VFD fault: {fault.value}. Clear the cause and reset the drive; verify wiring "
+            "and comms before restart."
+        )
+
+    # 3. No fault, comms OK (or comm not reported) — assess running vs stopped.
+    facts: list[str] = []
+    if comm is not None and comm.value == "OK":
+        facts.append("comms OK")
+    if fault is not None and fault.value == "no active fault":
+        facts.append("no fault")
+    if dc is not None and isinstance(dc.value, (int, float)):
+        facts.append(f"DC bus {dc.value:.0f} V")
+    if freq is not None and isinstance(freq.value, (int, float)):
+        facts.append(f"output {freq.value:.1f} Hz")
+    facts_str = ", ".join(facts)
+
+    def _num(s: LiveTagSnapshot | None) -> float | None:
+        return s.value if s is not None and isinstance(s.value, (int, float)) else None
+
+    freq_n = _num(freq)
+    running = (
+        (status is not None and status.value == "RUNNING")
+        or (freq_n is not None and freq_n > 0.1)
+        or (cmd is not None and "RUN" in str(cmd.value))
+    )
+    stopped = (
+        (status is not None and status.value == "STOPPED")
+        or (cmd is not None and cmd.value == "STOP")
+        or (freq_n is not None and freq_n <= 0.1)
+    )
+    healthy = (
+        (comm is None or comm.value == "OK")
+        and (fault is None or fault.value == "no active fault")
+        and not any_stale
+    )
+
+    if running:
+        return f"Machine running{f' ({facts_str})' if facts_str else ''}. No active VFD fault."
+    if stopped:
+        if healthy and facts_str:
+            return (
+                f"VFD looks healthy ({facts_str}) but the machine is stopped. Most likely a "
+                "command/permissive/interlock, not the drive — check operator command, run "
+                "permissive, E-stop/interlock, and PLC logic."
+            )
+        return (
+            f"Machine stopped{f' ({facts_str})' if facts_str else ''}. Confirm comms, fault code, "
+            "and DC bus before isolating the cause."
+        )
+    return (
+        f"Live VFD readings{f' ({facts_str})' if facts_str else ''} — not enough to tell "
+        "running from stopped; confirm the command word and drive status."
+    )
+
+
+def render_machine_evidence(snapshots: list[LiveTagSnapshot]) -> str:
+    """Render snapshots as a ``## Live Machine Evidence`` section for the engine.
+
+    The Python mirror of the Hub's ``renderMachineEvidenceSection``: the decoded
+    live values (with ``[STALE]`` markers) PLUS a deterministic assessment and
+    the live/context/inference/next-checks separation instruction. Returns ``""``
+    when there is nothing to report. Read-only text; the caller decides when to
+    attach it (the engine attaches only after the UNS gate).
+    """
+    if not snapshots:
+        return ""
+    # Embed the canonical ``[LIVE CONVEYOR STATUS]`` block verbatim — the engine
+    # keys the kiosk quality-gate bypass and the direct live-tag fast-path on that
+    # marker's presence (engine.py ``_LIVE_STATUS_HEADER``); dropping it would
+    # silently disable both. We only WRAP it with the section header + assessment.
+    parts = [
+        "## Live Machine Evidence (observed now)",
+        (
+            "Machine-observed live tags. In your answer, clearly separate: (1) this LIVE "
+            "evidence, (2) asset/manual context, (3) your inference, and (4) the recommended "
+            "next checks."
+        ),
+        "",
+        render_status_block(snapshots),
+    ]
+    assessment = assess_snapshots(snapshots)
+    if assessment:
+        parts += ["", f"Assessment: {assessment}"]
+    return "\n".join(parts)
