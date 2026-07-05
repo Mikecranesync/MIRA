@@ -66,8 +66,7 @@ GS10_FAULT_INTEL: dict[int, FaultCodeIntel] = {
     ),
     21: FaultCodeIntel(
         cause=(
-            "Drive overload protection activated (output current above the "
-            "drive's overload curve)."
+            "Drive overload protection activated (output current above the drive's overload curve)."
         ),
         action=(
             "1. Reduce the load. 2. Extend accel time. 3. Check for mechanical binding. "

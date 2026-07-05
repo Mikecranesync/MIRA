@@ -448,9 +448,7 @@ def render_fault_diagnostic(fault_name: str) -> str:
         lines.append("Likely causes: " + "; ".join(card.likely_causes))
     if card.first_checks:
         lines.append("First checks: " + " ".join(card.first_checks))
-    cites = "; ".join(
-        f"{c.doc}{f' — {c.page}' if c.page else ''}" for c in card.citations if c.doc
-    )
+    cites = "; ".join(f"{c.doc}{f' — {c.page}' if c.page else ''}" for c in card.citations if c.doc)
     if cites:
         lines.append(f"Source: {cites}")
     return "\n".join(lines)
@@ -490,11 +488,7 @@ def render_machine_evidence(snapshots: list[LiveTagSnapshot]) -> str:
     # already leads with the comms-LOST caveat; surfacing a confident "Likely
     # causes / First checks" block underneath would contradict that.
     fault = _dp(snapshots).get("vfd_fault_code")
-    if (
-        fault is not None
-        and fault.quality == GOOD
-        and fault.value not in (None, "no active fault")
-    ):
+    if fault is not None and fault.quality == GOOD and fault.value not in (None, "no active fault"):
         diagnostic = render_fault_diagnostic(str(fault.value))
         if diagnostic:
             parts += ["", diagnostic]
