@@ -180,6 +180,82 @@ def test_assess_empty_is_none():
     assert assess_snapshots([]) is None
 
 
+# ── envelope-driven analog assessment (ADR-0025 §4, Task 3) ──────────────────
+#
+# Only `assess_snapshots` (decoded engineering units) gets this check;
+# `assess_from_paths` (Ignition wire form) stays silent on analog exactly as
+# today — see the dedicated test in the `assess_from_paths` section below.
+
+
+def test_assess_dc_bus_within_band_no_out_of_band_warning():
+    # Same tags as test_assess_vfd_healthy_but_stopped: dc_bus 3200 -> 320.0 V,
+    # squarely inside the pack's 300-340 V band.
+    a = _assess(
+        {
+            "vfd_comm_ok": True,
+            "vfd_fault_code": 0,
+            "vfd_dc_bus": 3200,
+            "vfd_frequency": 0,
+            "vfd_cmd_word": 1,
+        }
+    )
+    assert "healthy" in a
+    assert "stopped" in a
+    assert "below the normal" not in a
+    assert "above the normal" not in a
+
+
+def test_assess_dc_bus_below_min_out_of_band_observation():
+    # 2100 -> 210.0 V, below the pack's 300 V floor.
+    a = _assess(
+        {
+            "vfd_comm_ok": True,
+            "vfd_fault_code": 0,
+            "vfd_dc_bus": 2100,
+            "vfd_frequency": 0,
+            "vfd_cmd_word": 1,
+        }
+    )
+    assert "DC bus" in a
+    assert "210.0" in a
+    assert "below the normal" in a
+    assert "300" in a and "340" in a
+    # Base assessment still leads; the observation is additive.
+    assert "healthy" in a
+
+
+def test_assess_dc_bus_above_max_out_of_band_observation():
+    # 3600 -> 360.0 V, above the pack's 340 V ceiling.
+    a = _assess(
+        {
+            "vfd_comm_ok": True,
+            "vfd_fault_code": 0,
+            "vfd_dc_bus": 3600,
+            "vfd_frequency": 0,
+            "vfd_cmd_word": 1,
+        }
+    )
+    assert "DC bus" in a
+    assert "360.0" in a
+    assert "above the normal" in a
+    assert "300" in a and "340" in a
+
+
+def test_assess_datapoint_with_no_envelope_band_stays_silent():
+    # The GS10 pack's `current` band ships with no min/max (only `rated`, and
+    # that's null too) — no full band means no judgment, ever, at any value.
+    a = _assess(
+        {
+            "vfd_comm_ok": True,
+            "vfd_fault_code": 0,
+            "vfd_current": 9999,  # far outside anything plausible
+            "vfd_cmd_word": 2,  # RUN-ish, keeps this out of the stopped branch
+            "vfd_frequency": 3000,
+        }
+    )
+    assert "band" not in a
+
+
 # ── render_machine_evidence — the structured section ─────────────────────────
 
 
@@ -242,6 +318,25 @@ def test_assess_from_paths_healthy_but_stopped_from_enum_facts():
     assert "stopped" in a
     assert "command/permissive/interlock" in a
     # It must NOT claim an analog number (scaling is ambiguous on the wire).
+    assert "Hz" not in a and " V" not in a
+
+
+def test_assess_from_paths_never_judges_analog_even_when_out_of_nominal_range():
+    # dc_bus "210.0" would be out-of-band (below the 300 V floor) if it were
+    # decoded engineering units — but on the Ignition wire the scaling is
+    # ambiguous, so this MUST stay silent on it exactly like the in-band case
+    # above. Guards the honesty boundary in the comment above assess_from_paths.
+    snap = _merge(
+        _ign("vfd_fault_code", "0"),
+        _ign("vfd_comm_ok", "true"),
+        _ign("vfd_cmd_word", "1"),  # STOP
+        _ign("vfd_dc_bus", "210.0"),  # analog — ignored by the assessment
+    )
+    a = assess_from_paths(snap)
+    assert "healthy" in a
+    assert "stopped" in a
+    assert "below the normal" not in a
+    assert "band" not in a
     assert "Hz" not in a and " V" not in a
 
 
