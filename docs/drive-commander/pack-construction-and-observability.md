@@ -165,14 +165,19 @@ This is the **ADR-sanctioned enrichment source** the `TemplateReader` seam is de
 
 `docs/migrations/002_fault_codes.sql` defines a structured `fault_codes` table
 (`code, description, cause, action, severity, equipment_model, manufacturer, source_chunk_id,
-source_url, page_num`). `mira-core/scripts/seed_fault_codes.py` already seeds a **`GS10_NUMERIC`**
-set whose numeric keys (register 0x2100 codes) **match the pack's `live_decode.fault_codes` 1:1** —
-e.g. `4: GFF ground fault`, `12: Lvd`, `21: oL`, `49: EF`, `54–58: CE1..CE10` — each with real
-cause/action prose and a manual citation (`P06.17`). PowerFlex 525 has a parallel `POWERFLEX_SUPPLEMENT`.
+source_url, page_num`). `mira-core/scripts/seed_fault_codes.py` seeds GS10 fault content in two shapes:
+**`GS10_NUMERIC`** — the numeric register-0x2100 codes → *name only* (`4: GFF — ground fault`,
+`12: Lvd`, `21: oL`, `49: EF`, `54–58: CE1..CE10`), matching the pack's `live_decode.fault_codes` 1:1
+but carrying **generic boilerplate** cause/action; and **`GS_SUPPLEMENT`** — the *keypad-mnemonic*
+rows (`GF`/`UV`/`OL`/`EF`/`CF1`, letter codes not numeric) which DO carry real per-condition
+cause/action. So the code-specific prose must be assembled by mapping numeric → mnemonic, and the CE
+comm codes (54–58) have no cause/action row in this file at all. (This corrects an earlier draft that
+said `GS10_NUMERIC` carries real per-code prose — it does not.)
 
-This is the fastest available source of real `causes_for` / `checks_for` / citations, but it is **not**
-one of the three stores the `knowledge` block names. **See §5 for the decision on how (and whether) it
-flows into a pack.**
+This is the fastest available source of `causes_for` / `checks_for` / citations, but it is **not** one
+of the three stores the `knowledge` block names. **Follow-up #2 wired an offline, `manual_cited`
+GS10 fault table (`drive_fault_intel.py`) derived from these sources into the card path** (§3); a
+DB-backed reader over the live `fault_codes` table remains the deferred next step.
 
 ### 2.5 The split, stated plainly
 
@@ -206,15 +211,21 @@ class TemplateReader(Protocol):
     def citations_for(self, pack_id: str, fault_code: int) -> list[Citation]: ...
 ```
 
-- **Default path (`template_reader=None`) — the current shipped state:** `likely_causes=[]`,
-  `first_checks=[]`, `confidence=None`; `citations` fall back to the pack-level `provenance.sources`
-  (today `{"doc": "GS10 User Manual", "page": "", "excerpt": ""}` — no real page/excerpt).
+- **Default path (`template_reader=None`):** `likely_causes=[]`, `first_checks=[]`, `confidence=None`;
+  `citations` fall back to the pack-level `provenance.sources`.
 - **Enriched path:** when a reader is injected, its three methods are called per fault code and each
   non-empty result overrides the card field (`cards.py:106-116`).
-- **No caller injects a real reader today** — `build_cards` is always called with `None`. Implementing
-  a real reader and wiring it in is the core of follow-up #1.
+- **SHIPPED (follow-up #2) — a real reader is now wired for GS10 at runtime.**
+  `mira-bots/shared/live_snapshot.py` builds a `FaultCodesTemplateReader` once at import (fed by the
+  **offline** adapter `mira-bots/shared/drive_fault_intel.py`, `build_gs10_template_reader()`), calls
+  `build_cards(_GS10_PACK, template_reader=reader)`, and — in `render_machine_evidence`'s active-fault
+  branch — renders the matching card's `likely_causes` / `first_checks` / citation into the engine's
+  **`## Live Machine Evidence`** section (`render_fault_diagnostic`). So a live GS10 fault now surfaces
+  cited, per-fault troubleshooting in Supervisor replies. Read-only/offline: the adapter holds a
+  curated `manual_cited` GS10 fault table — **no DB dependency** (the DB-backed reader over the real
+  `fault_codes` table is still deferred; this offline adapter is the interim source).
 - The Protocol has no `confidence_for()` yet (`DiagnosticCard.confidence` stays `None`) — a deferred
-  follow-up to add when the real reader lands.
+  follow-up to add when the DB-backed reader lands.
 
 ---
 
@@ -271,16 +282,20 @@ or `observe/` logs which pack loaded, which fault code resolved, or which per-fa
 used. `decision_traces.manual_evidence` is shaped generically from RAG `_last_sources`
 (`decision_trace._manual_evidence_from_sources`), **not** from `DiagnosticCard.citations`.
 
-**Consequence for enrichment:** once a real `TemplateReader` makes cards carry
-`component_template_sources` citations, nothing currently threads that citation into
-`decision_traces.manual_evidence`/`kg_evidence`. The **card layer and the trace layer are not wired
-together.** A follow-up task (out of the first enrichment slice) should:
+**Consequence for enrichment:** as of follow-up #2 the card *is* rendered into the engine's Live
+Machine Evidence text (§3), but its citation is still **not** threaded into the structured
+`decision_traces` row. The **card layer and the trace layer remain unwired.** A follow-up task should:
 
 1. Record `pack_id` + resolved `fault_code` on the trace row (a new field or into `metadata`).
 2. Map `DiagnosticCard.citations` → `decision_traces.manual_evidence` so a cited pack diagnosis is
    auditable via the existing uncited-sweep index.
 
-Until then, a pack diagnosis is observable only at the generic RAG-source granularity, not per-card.
+**Deferred in follow-up #2 (deliberately, to keep the PR small):** threading the card into
+`decision_traces` requires touching `engine.py`'s `_schedule_decision_trace` *and* either a new
+nullable column (a Hub migration) or overloading the existing `metadata`/`tag_evidence` JSONB — that
+is engine + schema surface, well beyond a small wiring PR. Recorded here rather than expanded into
+scope. Until it lands, a pack diagnosis is observable only at the generic RAG-source granularity, not
+per-card.
 
 ---
 
@@ -292,7 +307,7 @@ Until then, a pack diagnosis is observable only at the generic RAG-source granul
 | `knowledge.kb_document_ids` | `knowledge_entries.id` for the GS10 seed chunks | Rows exist but are **tenant-scoped** (`78917b56-…`); packs have no tenant concept. **Decision owed** (§7). Ids may be non-deterministic (`gen_random_uuid`) → requires a NeonDB lookup, not an offline edit. |
 | `knowledge.component_template_id` | a `component_templates` row for GS10 | `build_component_template.py --commit` must run (LLM + DB) or an existing row be verified. DB/LLM step, not offline code. |
 | `knowledge.kg_entity_ids` | `kg_entities` rows | Greenfield; blocked on the KG-schema ambiguity (§2.3). |
-| card `causes_for`/`checks_for`/`citations_for` | `fault_codes` (per-code, keys match the pack 1:1); `component_templates`/KG layered in later as component-level context | **The offline-testable code slice** — implement the fault-code-keyed Protocol against injected rows, unit-tested with fixtures. This is where enrichment starts (see §7). |
+| card `causes_for`/`checks_for`/`citations_for` | `fault_codes`-shaped intel (per-code, keys match the pack 1:1); `component_templates`/KG layered in later as component-level context | **SHIPPED** — `FaultCodesTemplateReader` (#2482) + wired into `render_machine_evidence` via the offline `drive_fault_intel.py` adapter (#2482 follow-up #2). DB-backed reader over the live `fault_codes` table still deferred. |
 
 ---
 
@@ -328,6 +343,23 @@ recorded here; revisit with the user if any proves wrong.
 fully unit-tested.** It is ADR-faithful, offline, reviewable, and it is the seam every other
 enrichment task depends on.
 
+### 7.1 Follow-up #2 — shipped state and remaining gaps
+
+**Shipped:** the reader is now a **runtime caller** (the first ever) — `live_snapshot.py` injects an
+offline `FaultCodesTemplateReader` into `build_cards` and renders the active GS10 fault's card
+(likely causes / first checks / cited source) into the engine's Live Machine Evidence section. Data
+is a curated `manual_cited` GS10 fault table (`drive_fault_intel.py`), so enrichment is product-visible
+with **no DB dependency**. Provenance is honest per code (numeric faults → P06.17; CE comm codes →
+the Modbus-comm section — never a page the text isn't grounded in).
+
+**Remaining gaps (deferred, documented):**
+1. **DB-backed reader** over the live `fault_codes` table — replaces the interim offline
+   `drive_fault_intel.py` adapter. Needs a thin NeonDB adapter (outside `drive_packs/`).
+2. **Ignition path** — `assess_from_paths` (the direct-connection "Ask MIRA" preamble) is **not** yet
+   enriched; only the engine's `render_machine_evidence` path is. Small follow-up.
+3. **Trace threading** — card citation → `decision_traces` (see §5.2); engine + schema work.
+4. **`knowledge.*` id-pointers**, **register `addr`**, **`confidence_for()`** — as in §6/§7 above.
+
 ---
 
 ## 8. Cross-references
@@ -335,7 +367,9 @@ enrichment task depends on.
 - `docs/adr/0025-drive-intelligence-packs-and-drive-commander.md` — the product decision (§1b maturity).
 - `mira-bots/shared/drive_packs/packs/README.md` — the pack schema, field by field.
 - `mira-bots/shared/drive_packs/{schema,loader,nameplate,cards}.py` — the pack model + card seam.
-- `mira-bots/shared/live_snapshot.py` — the pack's live-decode + envelope consumer.
+- `mira-bots/shared/live_snapshot.py` — the pack's live-decode + envelope consumer; **the first
+  runtime caller of `build_cards`** (`render_fault_diagnostic`, follow-up #2).
+- `mira-bots/shared/drive_fault_intel.py` — the interim offline GS10 fault-intel adapter (follow-up #2).
 - `mira-bots/tests/test_drive_packs_readonly.py`, `test_drive_pack_hub_copy_sync.py` — the guards.
 - `mira-bots/shared/decision_trace.py` + Hub migrations `032`/`033` — the real trace layer.
 - `docs/migrations/001_knowledge_entries.sql`, `002_fault_codes.sql`;
