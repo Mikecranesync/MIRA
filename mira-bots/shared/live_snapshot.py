@@ -24,12 +24,13 @@ trust gate — when it is false, every VFD-derived value is marked ``stale``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from shared.drive_fault_intel import build_gs10_template_reader
 from shared.drive_packs import build_cards, load_pack
 from shared.drive_packs.schema import EnvelopeBand, RegisterEntry
+from shared.wire_scaling import TagScaling, to_engineering
 
 # --- GS10 decode tables, loaded once from the drive pack (ADR-0025) ---
 # Import-time load is deliberate: the pack ships in-repo, so a load failure
@@ -276,6 +277,43 @@ def _dp(snapshots: list[LiveTagSnapshot]) -> dict[str, LiveTagSnapshot]:
     return {s.datapoint: s for s in snapshots}
 
 
+@dataclass(frozen=True)
+class _BandStatus:
+    """Structured result of comparing one analog value to the pack envelope.
+
+    ``status`` is one of ``normal`` / ``below`` / ``above`` / ``no_band``. Shared
+    by the engine path (``_analog_band_observation``, out-of-band text only) and
+    the Ignition scaling-contract path (``assess_analog_from_paths``, which also
+    renders the ``normal`` case). One place owns the band lookup — no duplicate
+    envelope logic.
+    """
+
+    status: str
+    attr: str
+    label: str
+    band: EnvelopeBand
+
+
+def _analog_band_status(datapoint: str, value: float) -> _BandStatus | None:
+    """Compare a DECODED (engineering-unit) analog value to the pack's band.
+
+    ``None`` when ``datapoint`` isn't an envelope-covered analog signal.
+    ``status="no_band"`` when the pack ships no full ``[min, max]`` for it (e.g.
+    this pack's ``current``) — the caller must NOT guess a band. Otherwise
+    ``normal`` / ``below`` / ``above``. Pure; no I/O.
+    """
+    config = _ANALOG_ENVELOPE_DATAPOINTS.get(datapoint)
+    if config is None:
+        return None
+    attr, label = config
+    band: EnvelopeBand = getattr(_GS10_PACK.envelope, attr)
+    if band.min is None or band.max is None:
+        return _BandStatus("no_band", attr, label, band)
+    if band.min <= value <= band.max:
+        return _BandStatus("normal", attr, label, band)
+    return _BandStatus("below" if value < band.min else "above", attr, label, band)
+
+
 def _analog_band_observation(datapoint: str, snap: LiveTagSnapshot | None) -> str | None:
     """Out-of-band-only observation for one decoded analog datapoint.
 
@@ -297,26 +335,22 @@ def _analog_band_observation(datapoint: str, snap: LiveTagSnapshot | None) -> st
     (never an "in normal range" filler) — see ``_with_analog_notes``, which
     only appends when this returns something.
     """
-    config = _ANALOG_ENVELOPE_DATAPOINTS.get(datapoint)
-    if config is None or snap is None or snap.quality != GOOD:
+    if snap is None or snap.quality != GOOD:
         return None
     value = snap.value
     if not isinstance(value, (int, float)):
         return None
-    attr, label = config
-    band: EnvelopeBand = getattr(_GS10_PACK.envelope, attr)
-    if band.min is None or band.max is None:
+    status = _analog_band_status(datapoint, value)
+    if status is None or status.status in ("normal", "no_band"):
         return None
-    if band.min <= value <= band.max:
-        return None
-    direction = "below" if value < band.min else "above"
+    band = status.band
     unit = band.unit or snap.unit or ""
     unit_sfx = f" {unit}" if unit else ""
     guidance = _ANALOG_OUT_OF_BAND_GUIDANCE.get(
-        (attr, direction), "check wiring, load, and drive parameters"
+        (status.attr, status.status), "check wiring, load, and drive parameters"
     )
     return (
-        f"{label} {value:.1f}{unit_sfx} is {direction} the normal "
+        f"{status.label} {value:.1f}{unit_sfx} is {status.status} the normal "
         f"{band.min:.0f}–{band.max:.0f}{unit_sfx} band — {guidance}."
     )
 
@@ -608,3 +642,102 @@ def assess_from_paths(path_values: dict[str, Any] | None) -> str | None:
         # change can't drop the card.
         return f"{assessment}\n\n{diagnostic}" if assessment else diagnostic
     return assessment
+
+
+# ── Analog assessment from the Ignition wire form — the SCALING CONTRACT ──────
+#
+# This is the sanctioned way through the HARD BOUNDARY above (Drive Commander
+# follow-up #2). ``assess_from_paths`` abstains on analog because the wire
+# scaling is ambiguous. ``assess_analog_from_paths`` does NOT guess: it assesses
+# an analog wire value against the pack envelope ONLY when the caller supplies an
+# explicit, trusted ``TagScaling`` (from ``tag_entities.scaling`` — see
+# ``shared.wire_scaling``). ``unknown``/missing scaling ⇒ no card ⇒ the current
+# display-only behavior (never a false alarm). The boundary above stays intact:
+# analog leaves are still NOT in the enum/bool assessable sets; this is a
+# SEPARATE, opt-in path gated on explicit scaling, exactly as that comment
+# anticipates. Pure / read-only — the DB read that produces ``scaling_by_path``
+# lives in ``ignition_chat.py`` (an already-existing query), not here.
+
+
+def _fmt_num(v: float) -> str:
+    """Whole numbers render without a decimal (``320`` not ``320.0``); otherwise
+    one decimal — matches the ``DC bus: 320 V`` card style in the spec."""
+    return f"{v:.0f}" if float(v).is_integer() else f"{v:.1f}"
+
+
+def _render_analog_card(
+    raw_value: Any, eng_value: float, scaling: TagScaling, status: _BandStatus
+) -> str:
+    """Self-explaining analog assessment card: source value → scaling →
+    engineering value → band → assessment. Only called for an in-band or
+    out-of-band result (never ``no_band``)."""
+    band = status.band
+    unit = band.unit or scaling.unit or ""
+    unit_sfx = f" {unit}" if unit else ""
+    if scaling.mode == "raw_register":
+        scale_txt = f"raw register ×{scaling.scale:g} ({scaling.source})"
+    else:
+        scale_txt = f"already engineering units ({scaling.source})"
+    if status.status == "normal":
+        assessment = "normal"
+    else:
+        guidance = _ANALOG_OUT_OF_BAND_GUIDANCE.get(
+            (status.attr, status.status), "check wiring, load, and drive parameters"
+        )
+        assessment = (
+            f"{status.status} the {band.min:.0f}–{band.max:.0f}{unit_sfx} band — {guidance}"
+        )
+    return "\n".join(
+        [
+            f"{status.label}: {_fmt_num(eng_value)}{unit_sfx}",
+            f"Source value: {raw_value}",
+            f"Scaling: {scale_txt}",
+            f"Normal band: {band.min:.0f}–{band.max:.0f}{unit_sfx}",
+            f"Assessment: {assessment}",
+        ]
+    )
+
+
+def assess_analog_from_paths(
+    path_values: dict[str, Any] | None,
+    scaling_by_path: dict[str, TagScaling] | None,
+) -> str | None:
+    """Assess Ignition analog wire values against the pack envelope, gated on an
+    explicit per-tag scaling contract.
+
+    ``path_values`` is the Ignition wire form (``{tag_path: value}``; values may
+    be bare scalars or ``{"value": …}`` dicts). ``scaling_by_path`` maps the SAME
+    tag paths to a ``TagScaling``. A tag is assessed only when its ``TagScaling``
+    is explicit (``raw_register`` or ``engineering_value``) AND the pack defines a
+    full band for it. A ``raw_register`` tag with no explicit ``scale`` inherits
+    the pack's trusted register scaling. Anything ``unknown``/missing/ambiguous is
+    skipped — no card, no guess. Returns the joined card(s) or ``None``. Pure.
+    """
+    if not path_values:
+        return None
+    by_path = scaling_by_path or {}
+    cards: list[str] = []
+    for path, val in path_values.items():
+        leaf = _leaf(path)
+        if leaf not in _ANALOG_ENVELOPE_DATAPOINTS:
+            continue
+        scaling = by_path.get(path)
+        if scaling is None or scaling.mode == "unknown":
+            continue
+        # A raw_register tag may lean on the pack's trusted register scaling.
+        if scaling.mode == "raw_register" and scaling.scale is None:
+            reg = _REGISTERS.get(leaf)
+            if reg is None:
+                continue
+            scaling = replace(scaling, scale=reg.scaling)
+        raw_value = val.get("value") if isinstance(val, dict) else val
+        eng = to_engineering(raw_value, scaling)
+        if eng is None:
+            continue
+        status = _analog_band_status(leaf, eng)
+        if status is None or status.status == "no_band":
+            continue
+        cards.append(_render_analog_card(raw_value, eng, scaling, status))
+    if not cards:
+        return None
+    return "\n\n".join(cards)
