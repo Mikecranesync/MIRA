@@ -16,6 +16,36 @@ docker-compose, and never get referenced from any path that ships in the
 Ignition Module. See `docs/mira-ignition-secure-architecture.md` §8
 anti-patterns #1, #4, and #6.
 
+## Carve-out: the customer-run Drive Commander desktop (ADR-0025)
+
+**A customer-run *local desktop* diagnostic app (Drive Commander) MAY open
+supported *read-only* connections to supported drives on authorized plant
+networks. This carve-out does NOT apply to MIRA cloud services or
+MIRA-named containers** — the prohibition above (no MIRA cloud/container
+component opens a Modbus / EtherNet/IP / OPC-UA socket to the plant) is
+**unchanged**. The trust model is what differs: a local tool the customer
+runs on their own maintenance laptop is the model that makes DriveExplorer /
+DriveExecutive trusted; a cloud component reaching into the plant LAN is not.
+
+The read-only discipline is **protocol-specific** — "read function codes only"
+is a Modbus concept and does NOT map onto EtherNet/IP:
+
+- **Modbus (TCP/RTU):** read-only **function codes only — FC1–FC4** (read coils,
+  discrete inputs, holding registers, input registers). **Never FC5/6/15/16**
+  (any write). RS-485/RTU still carries the two-master hazard above — needs the
+  bus master offline or the app as sole master (`--serial-bus-idle` discipline).
+- **EtherNet/IP:** use **read / status / identity-safe services only**. **Forbid**
+  parameter writes, configuration writes, output-assembly writes, control-word
+  writes, and **any service that can change drive state** (no `Set_Attribute*`,
+  no forward-open for control, no assembly-instance writes). "Read FCs only" is
+  not the EtherNet/IP model — enumerate safe services explicitly.
+
+**Status (2026-07-05):** the Drive Commander desktop **connector is not built
+yet** — ADR-0025 / PR #2481 ship the *pack architecture foundation* (pure data
+reshaping), not a connector. When the connector lands it MUST honor the above
+AND be added to the read-only gate (see `mira-bots/tests/test_drive_packs_readonly.py`)
+or carry its own equivalent gate. Until then, no code exercises this carve-out.
+
 > **TL;DR:** Discovery never writes. The Ethernet scan is fully side-effect-free. The
 > RS-485 sweep is read-only but **not** safe on a live PLC-mastered bus (two-master
 > contention can fault-stop a motor) — it requires `--serial-bus-idle`.
@@ -98,3 +128,6 @@ Rules for *anything new* under `plc/` or that touches a fieldbus:
 2. **Writes don't exist in the customer-shipped story.** If a future feature needs a write, it is a NEW, explicitly-gated, two-step-approved tool — not a flag on an existing module. See `docs/mira-ignition-secure-architecture.md` §4.2 "Writes require explicit two-step approval."
 3. **Bench tools carry a BENCH-ONLY banner at the top of the file** (4-line ASCII box; both `live_monitor.py` and `live-plc-bridge/bridge.py` ship the standard header). The banner names the architecture doc and this rule.
 4. **`docker-compose.fault-detective.yml` is a bench harness, not a customer architecture.** Its comments must say so; do not promote it to a customer install pattern.
+5. **The Drive Commander desktop carve-out (above, ADR-0025) is the *only* customer-shipped read-only-fieldbus exception, and it is a *local desktop app* — not a container and not the Ignition Module.** Rule 1's ban on `pymodbus`/`pycomm3`/`python-snap7`/`opcua` still holds for any MIRA *container* or Ignition WebDev/gateway code. A read-only fieldbus client is permitted **only** inside the customer-run Drive Commander desktop, under the protocol-specific read-only discipline above, and its connector must be covered by the read-only gate.
+
+Cross-reference: `docs/adr/0025-drive-intelligence-packs-and-drive-commander.md` (Drive Commander, the desktop carve-out, and the pack-architecture-foundation scope of PR #2481).

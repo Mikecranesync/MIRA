@@ -11,6 +11,8 @@ import sys
 
 sys.path.insert(0, "mira-bots")
 
+import pytest  # noqa: E402
+
 from shared.live_snapshot import (  # noqa: E402
     GOOD,
     STALE,
@@ -54,6 +56,16 @@ def test_scaled_decode_and_uns_path():
     assert s.source == "ignition"
     assert s.ts == TS
     assert "60.0 Hz" in s.label
+
+
+def test_freq_setpoint_scaled_decode():
+    """Sibling of test_scaled_decode_and_uns_path for vfd_freq_sp — raw 6000 -> 60.0 Hz."""
+    s = _by_dp(normalize({"vfd_freq_sp": 6000}, BASE, source="ignition", ts=TS))["vfd_freq_sp"]
+    assert s.value == 60.0
+    assert s.unit == "Hz"
+    assert s.quality == GOOD
+    assert s.uns_path == f"{BASE}.vfd_freq_sp"
+    assert "Freq setpoint: 60.0 Hz" in s.label
 
 
 def test_fault_code_mapping():
@@ -168,6 +180,82 @@ def test_assess_empty_is_none():
     assert assess_snapshots([]) is None
 
 
+# ── envelope-driven analog assessment (ADR-0025 §4, Task 3) ──────────────────
+#
+# Only `assess_snapshots` (decoded engineering units) gets this check;
+# `assess_from_paths` (Ignition wire form) stays silent on analog exactly as
+# today — see the dedicated test in the `assess_from_paths` section below.
+
+
+def test_assess_dc_bus_within_band_no_out_of_band_warning():
+    # Same tags as test_assess_vfd_healthy_but_stopped: dc_bus 3200 -> 320.0 V,
+    # squarely inside the pack's 300-340 V band.
+    a = _assess(
+        {
+            "vfd_comm_ok": True,
+            "vfd_fault_code": 0,
+            "vfd_dc_bus": 3200,
+            "vfd_frequency": 0,
+            "vfd_cmd_word": 1,
+        }
+    )
+    assert "healthy" in a
+    assert "stopped" in a
+    assert "below the normal" not in a
+    assert "above the normal" not in a
+
+
+def test_assess_dc_bus_below_min_out_of_band_observation():
+    # 2100 -> 210.0 V, below the pack's 300 V floor.
+    a = _assess(
+        {
+            "vfd_comm_ok": True,
+            "vfd_fault_code": 0,
+            "vfd_dc_bus": 2100,
+            "vfd_frequency": 0,
+            "vfd_cmd_word": 1,
+        }
+    )
+    assert "DC bus" in a
+    assert "210.0" in a
+    assert "below the normal" in a
+    assert "300" in a and "340" in a
+    # Base assessment still leads; the observation is additive.
+    assert "healthy" in a
+
+
+def test_assess_dc_bus_above_max_out_of_band_observation():
+    # 3600 -> 360.0 V, above the pack's 340 V ceiling.
+    a = _assess(
+        {
+            "vfd_comm_ok": True,
+            "vfd_fault_code": 0,
+            "vfd_dc_bus": 3600,
+            "vfd_frequency": 0,
+            "vfd_cmd_word": 1,
+        }
+    )
+    assert "DC bus" in a
+    assert "360.0" in a
+    assert "above the normal" in a
+    assert "300" in a and "340" in a
+
+
+def test_assess_datapoint_with_no_envelope_band_stays_silent():
+    # The GS10 pack's `current` band ships with no min/max (only `rated`, and
+    # that's null too) — no full band means no judgment, ever, at any value.
+    a = _assess(
+        {
+            "vfd_comm_ok": True,
+            "vfd_fault_code": 0,
+            "vfd_current": 9999,  # far outside anything plausible
+            "vfd_cmd_word": 2,  # RUN-ish, keeps this out of the stopped branch
+            "vfd_frequency": 3000,
+        }
+    )
+    assert "band" not in a
+
+
 # ── render_machine_evidence — the structured section ─────────────────────────
 
 
@@ -233,6 +321,25 @@ def test_assess_from_paths_healthy_but_stopped_from_enum_facts():
     assert "Hz" not in a and " V" not in a
 
 
+def test_assess_from_paths_never_judges_analog_even_when_out_of_nominal_range():
+    # dc_bus "210.0" would be out-of-band (below the 300 V floor) if it were
+    # decoded engineering units — but on the Ignition wire the scaling is
+    # ambiguous, so this MUST stay silent on it exactly like the in-band case
+    # above. Guards the honesty boundary in the comment above assess_from_paths.
+    snap = _merge(
+        _ign("vfd_fault_code", "0"),
+        _ign("vfd_comm_ok", "true"),
+        _ign("vfd_cmd_word", "1"),  # STOP
+        _ign("vfd_dc_bus", "210.0"),  # analog — ignored by the assessment
+    )
+    a = assess_from_paths(snap)
+    assert "healthy" in a
+    assert "stopped" in a
+    assert "below the normal" not in a
+    assert "band" not in a
+    assert "Hz" not in a and " V" not in a
+
+
 def test_assess_from_paths_active_fault():
     snap = _merge(_ign("vfd_fault_code", "58"), _ign("vfd_comm_ok", "true"))
     a = assess_from_paths(snap)
@@ -266,3 +373,47 @@ def test_assess_from_paths_accepts_bare_scalar_values():
 def test_assess_from_paths_empty_is_none():
     assert assess_from_paths(None) is None
     assert assess_from_paths({}) is None
+
+
+# ── module-level register-key validation (fail fast at import, not KeyError) ──
+
+
+def test_missing_register_key_raises_clear_error_at_import(monkeypatch):
+    """If a future pack.json edit drops a register key this module's decode
+    depends on, the module must fail loudly and actionably at import time —
+    never with a bare KeyError deep inside `_scaled`/`_decode_one`."""
+    import importlib
+
+    import shared.drive_packs as drive_packs_pkg
+    import shared.live_snapshot as live_snapshot_module
+    from shared.drive_packs import load_pack as real_load_pack
+    from shared.drive_packs.schema import DrivePack, LiveDecode
+
+    good_pack = real_load_pack("durapulse_gs10")
+    bad_registers = dict(good_pack.live_decode.registers)
+    del bad_registers["vfd_freq_sp"]
+    bad_pack = DrivePack(
+        pack_id=good_pack.pack_id,
+        schema_version=good_pack.schema_version,
+        family=good_pack.family,
+        nameplate=good_pack.nameplate,
+        live_decode=LiveDecode(
+            status_bits=good_pack.live_decode.status_bits,
+            cmd_word=good_pack.live_decode.cmd_word,
+            fault_codes=good_pack.live_decode.fault_codes,
+            registers=bad_registers,
+        ),
+        envelope=good_pack.envelope,
+        knowledge=good_pack.knowledge,
+        provenance=good_pack.provenance,
+    )
+
+    monkeypatch.setattr(drive_packs_pkg, "load_pack", lambda pack_id: bad_pack)
+    try:
+        with pytest.raises(ValueError, match=r"durapulse_gs10.*vfd_freq_sp"):
+            importlib.reload(live_snapshot_module)
+    finally:
+        # Undo the monkeypatch BEFORE reloading again, so the module comes
+        # back up against the real, complete pack for any tests that follow.
+        monkeypatch.undo()
+        importlib.reload(live_snapshot_module)

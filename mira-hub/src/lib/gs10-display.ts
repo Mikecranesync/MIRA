@@ -4,8 +4,26 @@
  *
  * Source of truth for divisors: ignition/webdev/FactoryLM/api/diagnose/
  * tag_topic_map.py LEAF_MAP (parity-pinned by gs10-display.test.ts — edit
- * that file first, then mirror here). Status/cmd word decode transcribed from
- * mira-trend-viewer/js/adapters/gs10.js (GS10 UM 1st Ed Rev B).
+ * that file first, then mirror here).
+ *
+ * The `status_bits`/`cmd_word`/register-scaling FACTS (which numeric codes
+ * exist, what they mean, and the scaling factor) are sourced from the shared
+ * `durapulse_gs10` drive pack
+ * (`mira-bots/shared/drive_packs/packs/durapulse_gs10/pack.json`, mirrored
+ * as a committed copy at `./drive-packs/gs10-pack.json`) via
+ * `./drive-packs/loader`, the same pack `mira-bots/shared/live_snapshot.py`
+ * loads — ADR-0025 §1 (one pack file, both Python and TS). This file still
+ * owns its own DISPLAY WORDING ("RUN FWD" vs the pack's raw "FWD+RUN") via the
+ * `*_LABELS` translation tables below; the pack's job is the enum *domain*
+ * (which codes are valid), not this component's presentation copy. A pack
+ * code with no translation entry throws at import — fail loud, not a silent
+ * fallback to the raw pack string.
+ *
+ * `direction` (FWD/REV, bits 4–3) has no pack equivalent — DURApulse GS10
+ * register 0x2101 packs direction and operation-status into the same word,
+ * but the pack schema's `status_bits` only models operation status. Kept
+ * hardcoded here until the pack schema grows a direction table.
+ *
  * ⚠️ plc/live_monitor.py divides freq/current by 10 — that is WRONG for the
  * V2.1 MIRA_IOCheck tags (÷100); do not "fix" this file against it.
  *
@@ -13,20 +31,46 @@
  * scaling (migration 025) is the eventual DB-driven home; nothing writes it
  * yet, so a lookup there would render nothing.
  */
+import { GS10_PACK } from "./drive-packs/loader";
 
 interface ScaleSpec {
   divisor: number;
   unit: string;
 }
 
+/** The 4 raw MIRA_IOCheck leaves the pack's `live_decode.registers` covers. */
+const PACK_REGISTER_LEAVES = [
+  "vfd_dc_bus",
+  "vfd_frequency",
+  "vfd_freq_sp",
+  "vfd_current",
+] as const;
+
+const _missingPackRegisters = PACK_REGISTER_LEAVES.filter(
+  (leaf) => !(leaf in GS10_PACK.live_decode.registers),
+);
+if (_missingPackRegisters.length > 0) {
+  throw new Error(
+    `gs10-display: durapulse_gs10 pack is missing required register key(s) ` +
+      `${_missingPackRegisters.join(", ")} — this module decodes these directly`,
+  );
+}
+
+/** `divisor` is the inverse of the pack's `scaling` (e.g. scaling 0.01 → ÷100). */
+function scaleSpecFromPack(leaf: (typeof PACK_REGISTER_LEAVES)[number]): ScaleSpec {
+  const reg = GS10_PACK.live_decode.registers[leaf];
+  return { divisor: 1 / reg.scaling, unit: reg.unit };
+}
+
 /** Leaf tag name (last "/" segment, as-is) → divisor + unit. */
 const SCALE_BY_LEAF: Record<string, ScaleSpec> = {
-  // MIRA_IOCheck/VFD raw V2.1 registers
-  vfd_dc_bus: { divisor: 10, unit: "V" },
-  vfd_frequency: { divisor: 100, unit: "Hz" },
+  // MIRA_IOCheck/VFD raw V2.1 registers — sourced from the durapulse_gs10 pack.
+  vfd_dc_bus: scaleSpecFromPack("vfd_dc_bus"),
+  vfd_frequency: scaleSpecFromPack("vfd_frequency"),
+  vfd_freq_sp: scaleSpecFromPack("vfd_freq_sp"), // raw V2.1 setpoint mirror of freq_cmd
+  vfd_current: scaleSpecFromPack("vfd_current"),
+  // Not in the pack's register table (yet) — stays hardcoded.
   vfd_freq_cmd: { divisor: 100, unit: "Hz" },
-  vfd_freq_sp: { divisor: 100, unit: "Hz" }, // raw V2.1 setpoint mirror of freq_cmd
-  vfd_current: { divisor: 100, unit: "A" },
   vfd_torque: { divisor: 10, unit: "%" },
   vfd_power: { divisor: 1000, unit: "kW" },
   vfd_motor_rpm: { divisor: 1, unit: "rpm" },
@@ -42,15 +86,34 @@ const SCALE_BY_LEAF: Record<string, ScaleSpec> = {
   vfd_freqsetpoint_raw: { divisor: 10, unit: "Hz" },
 };
 
-/** GS10 0x2101 op_status bits 1–0 (2-bit enum). */
-const OP_STATUS: Record<number, string> = {
-  0: "Stopped",
-  1: "Decelerating",
-  2: "Standby",
-  3: "Operating",
+/**
+ * GS10 0x2101 op_status bits 1–0 (2-bit enum) — codes sourced from the pack's
+ * `live_decode.status_bits`; display wording is this component's own copy.
+ */
+const OP_STATUS_LABELS: Record<string, string> = {
+  STOPPED: "Stopped",
+  DECEL: "Decelerating",
+  STANDBY: "Standby",
+  RUNNING: "Operating",
 };
 
-/** GS10 0x2101 direction bits 4–3 (2-bit enum). */
+function buildOpStatus(): Record<number, string> {
+  const out: Record<number, string> = {};
+  for (const [code, raw] of Object.entries(GS10_PACK.live_decode.status_bits)) {
+    const label = OP_STATUS_LABELS[raw];
+    if (!label) {
+      throw new Error(
+        `gs10-display: no display label mapped for pack status_bits value '${raw}' (code ${code})`,
+      );
+    }
+    out[Number(code)] = label;
+  }
+  return out;
+}
+
+const OP_STATUS: Record<number, string> = buildOpStatus();
+
+/** GS10 0x2101 direction bits 4–3 (2-bit enum) — no pack equivalent, see header. */
 const DIRECTION: Record<number, string> = {
   0: "FWD",
   1: "REV→FWD",
@@ -58,13 +121,33 @@ const DIRECTION: Record<number, string> = {
   3: "REV",
 };
 
-/** GS10 0x2000 command word — run values per rules_core DEFAULT_CFG (18, 34). */
-const CMD_WORD: Record<number, string> = {
-  0: "—",
-  1: "STOP",
-  18: "RUN FWD",
-  34: "RUN REV",
+/**
+ * GS10 0x2000 command word — codes sourced from the pack's `live_decode.cmd_word`
+ * ({1: STOP, 18: FWD+RUN, 34: REV+RUN}); display wording is this component's
+ * own copy. `0` ("no command word seen yet") has no pack entry — kept as a
+ * local default.
+ */
+const CMD_WORD_LABELS: Record<string, string> = {
+  STOP: "STOP",
+  "FWD+RUN": "RUN FWD",
+  "REV+RUN": "RUN REV",
 };
+
+function buildCmdWord(): Record<number, string> {
+  const out: Record<number, string> = { 0: "—" };
+  for (const [code, raw] of Object.entries(GS10_PACK.live_decode.cmd_word)) {
+    const label = CMD_WORD_LABELS[raw];
+    if (!label) {
+      throw new Error(
+        `gs10-display: no display label mapped for pack cmd_word value '${raw}' (code ${code})`,
+      );
+    }
+    out[Number(code)] = label;
+  }
+  return out;
+}
+
+const CMD_WORD: Record<number, string> = buildCmdWord();
 
 export interface FormattedTag {
   /** Human display string, e.g. "328.6 V", "Stopped · FWD", "true". */

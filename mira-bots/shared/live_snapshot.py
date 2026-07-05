@@ -11,8 +11,13 @@ Hard boundary: this module NEVER writes, NEVER opens a socket, NEVER touches a
 fieldbus. It only reshapes data already received. No clock either — the caller
 passes ``ts`` so normalization stays deterministic and unit-testable.
 
-The GS10/Micro820 decode tables mirror ``mira-bots/ask_api/app.py`` and the
-machine card (``MIRA_PLC/specs/CONVEYOR_MACHINE_CARD.md``); keep them in sync.
+The GS10/Micro820 decode tables are sourced from the drive pack
+(``mira-bots/shared/drive_packs/packs/durapulse_gs10/pack.json``, co-located
+package data loaded once below via ``shared.drive_packs.load_pack``) rather
+than hardcoded here — see ADR-0025.
+They still mirror ``mira-bots/ask_api/app.py`` and the machine card
+(``MIRA_PLC/specs/CONVEYOR_MACHINE_CARD.md``); keep those in sync (Task 7
+mirrors the pack into the Hub's ``gs10-display.ts``).
 Trust rule (from ``ask_api/machine_context.py``): ``vfd_comm_ok`` is the master
 trust gate — when it is false, every VFD-derived value is marked ``stale``.
 """
@@ -22,20 +27,57 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-# --- GS10 decode tables (mirror ask_api/app.py) ---
-_STATUS_BITS = {0: "STOPPED", 1: "DECEL", 2: "STANDBY", 3: "RUNNING"}
-_CMD_WORD = {1: "STOP", 18: "FWD+RUN", 20: "REV+RUN"}
-_FAULT_CODES = {
-    0: "no active fault",
-    4: "GFF ground fault",
-    12: "Lvd undervoltage",
-    21: "oL overload",
-    49: "EF external fault",
-    54: "CE1 comm illegal cmd",
-    55: "CE2 comm illegal addr",
-    56: "CE3 comm illegal data",
-    57: "CE4 comm fail",
-    58: "CE10 modbus timeout",
+from shared.drive_packs import load_pack
+from shared.drive_packs.schema import EnvelopeBand, RegisterEntry
+
+# --- GS10 decode tables, loaded once from the drive pack (ADR-0025) ---
+# Import-time load is deliberate: the pack ships in-repo, so a load failure
+# here is a real error we want surfaced loudly at import, not masked by a
+# fallback to stale literals.
+_GS10_PACK = load_pack("durapulse_gs10")
+_STATUS_BITS: dict[int, str] = _GS10_PACK.live_decode.status_bits
+_CMD_WORD: dict[int, str] = _GS10_PACK.live_decode.cmd_word
+_FAULT_CODES: dict[int, str] = _GS10_PACK.live_decode.fault_codes
+_REGISTERS: dict[str, RegisterEntry] = _GS10_PACK.live_decode.registers
+
+# This module's decode functions (`_scaled`/`_decode_one`) index `_REGISTERS`
+# by these keys directly. The generic pack loader (`drive_packs/loader.py`)
+# stays drive-agnostic and does not know these keys are required — so this
+# module validates its own dependency on the loaded pack, right after load,
+# and fails loudly and actionably at import time rather than with a bare
+# `KeyError` deep inside a decode call if a future `pack.json` edit renames
+# or removes one of them.
+_REQUIRED_REGISTER_KEYS = ("vfd_frequency", "vfd_freq_sp", "vfd_current", "vfd_dc_bus")
+_missing_register_keys = [k for k in _REQUIRED_REGISTER_KEYS if k not in _REGISTERS]
+if _missing_register_keys:
+    raise ValueError(
+        f"pack '{_GS10_PACK.pack_id}': live_decode.registers is missing required "
+        f"key(s) {_missing_register_keys!r} — shared.live_snapshot decodes these "
+        "directly and cannot start without them"
+    )
+
+# --- Envelope-driven analog assessment (ADR-0025 §4; Task 3) ---
+# `_GS10_PACK.envelope` is the SAME typed `Envelope` a future writer would read
+# to populate `tag_entities.expected_envelope` (per ADR-0025's "expected range
+# lives with the pack, not hand-maintained per tag" intent). This module does
+# not perform that DB write — it is read-only/pure (module docstring) — it only
+# reads the pack's bands to make an honest, additive analog observation below.
+# Maps a decoded datapoint key -> (envelope attribute name, display label) for
+# the three analog signals ADR-0025 calls out. Anything not listed here (or
+# whose pack band lacks both `min` and `max`) gets NO analog judgment — see
+# `_analog_band_observation`.
+_ANALOG_ENVELOPE_DATAPOINTS: dict[str, tuple[str, str]] = {
+    "vfd_dc_bus": ("dc_bus", "DC bus"),
+    "vfd_current": ("current", "Current"),
+    "vfd_frequency": ("frequency", "Frequency"),
+}
+_ANALOG_OUT_OF_BAND_GUIDANCE: dict[tuple[str, str], str] = {
+    ("dc_bus", "below"): "check input power / a possible undervoltage condition",
+    ("dc_bus", "above"): "check for overvoltage or a regenerative-energy condition on the bus",
+    ("current", "below"): "confirm the drive is actually loaded",
+    ("current", "above"): "check for a mechanical overload or a binding load",
+    ("frequency", "below"): "confirm the commanded speed / setpoint",
+    ("frequency", "above"): "check the speed reference and drive parameter limits",
 }
 
 # Quality bands.
@@ -72,20 +114,47 @@ def _num(raw: Any) -> float | int | None:
     return None
 
 
+def _scaled(key: str, raw: Any) -> tuple[float, str | None] | None:
+    """Scale a raw analog register to its engineering value via the pack's
+    ``live_decode.registers[key].scaling``. ``n / (1 / scaling)`` rather than
+    ``n * scaling`` — for this pack's scalings (0.01, 0.1) the two are not
+    always bit-identical in float64 (e.g. 9999/100 != 9999*0.01), and the
+    division form matches the historical literals (``n / 100``, ``n / 10``)
+    exactly. None ⇒ raw wasn't a plain number.
+    """
+    n = _num(raw)
+    if n is None:
+        return None
+    entry = _REGISTERS[key]
+    return (n / (1 / entry.scaling), entry.unit)
+
+
 def _decode_one(key: str, raw: Any) -> tuple[Any, str | None, str] | None:
     """Decode a single known tag → (value, unit, label). None ⇒ unknown tag."""
     if key == "vfd_frequency":
-        n = _num(raw)
-        return None if n is None else (n / 100, "Hz", f"VFD output: {n / 100:.1f} Hz")
+        scaled = _scaled(key, raw)
+        if scaled is None:
+            return None
+        value, unit = scaled
+        return (value, unit, f"VFD output: {value:.1f} {unit}")
     if key == "vfd_freq_sp":
-        n = _num(raw)
-        return None if n is None else (n / 100, "Hz", f"Freq setpoint: {n / 100:.1f} Hz")
+        scaled = _scaled(key, raw)
+        if scaled is None:
+            return None
+        value, unit = scaled
+        return (value, unit, f"Freq setpoint: {value:.1f} {unit}")
     if key == "vfd_current":
-        n = _num(raw)
-        return None if n is None else (n / 100, "A", f"Current: {n / 100:.1f} A")
+        scaled = _scaled(key, raw)
+        if scaled is None:
+            return None
+        value, unit = scaled
+        return (value, unit, f"Current: {value:.1f} {unit}")
     if key == "vfd_dc_bus":
-        n = _num(raw)
-        return None if n is None else (n / 10, "V", f"DC bus: {n / 10:.1f} V")
+        scaled = _scaled(key, raw)
+        if scaled is None:
+            return None
+        value, unit = scaled
+        return (value, unit, f"DC bus: {value:.1f} {unit}")
     if key == "vfd_cmd_word":
         name = _CMD_WORD.get(raw, f"cmd {raw}")
         return (name, None, f"Command: {name}")
@@ -196,6 +265,69 @@ def _dp(snapshots: list[LiveTagSnapshot]) -> dict[str, LiveTagSnapshot]:
     return {s.datapoint: s for s in snapshots}
 
 
+def _analog_band_observation(datapoint: str, snap: LiveTagSnapshot | None) -> str | None:
+    """Out-of-band-only observation for one decoded analog datapoint.
+
+    Honest by construction (ADR-0025 §4 — confidently wrong is worse than no
+    answer): returns ``None`` — i.e. stays silent — unless ALL of the following
+    hold, and states the value plainly (with the band) only then:
+
+    - ``datapoint`` is one of the three analog signals the pack's ``envelope``
+      covers (``vfd_dc_bus``/``vfd_current``/``vfd_frequency``);
+    - the snapshot is present, numeric, and ``GOOD`` quality (a ``STALE``
+      value — e.g. after a comm loss — is exactly the case we must NOT judge);
+    - the pack defines a FULL band for it (``min`` AND ``max`` both set — a
+      pack that ships only ``rated``/``nominal`` with no min/max, like this
+      pack's ``current`` band today, has no band to compare against, so it
+      stays silent rather than guess one);
+    - the value actually falls outside ``[min, max]``.
+
+    In-band values and datapoints with no usable band produce no text at all
+    (never an "in normal range" filler) — see ``_with_analog_notes``, which
+    only appends when this returns something.
+    """
+    config = _ANALOG_ENVELOPE_DATAPOINTS.get(datapoint)
+    if config is None or snap is None or snap.quality != GOOD:
+        return None
+    value = snap.value
+    if not isinstance(value, (int, float)):
+        return None
+    attr, label = config
+    band: EnvelopeBand = getattr(_GS10_PACK.envelope, attr)
+    if band.min is None or band.max is None:
+        return None
+    if band.min <= value <= band.max:
+        return None
+    direction = "below" if value < band.min else "above"
+    unit = band.unit or snap.unit or ""
+    unit_sfx = f" {unit}" if unit else ""
+    guidance = _ANALOG_OUT_OF_BAND_GUIDANCE.get(
+        (attr, direction), "check wiring, load, and drive parameters"
+    )
+    return (
+        f"{label} {value:.1f}{unit_sfx} is {direction} the normal "
+        f"{band.min:.0f}–{band.max:.0f}{unit_sfx} band — {guidance}."
+    )
+
+
+def _with_analog_notes(text: str, by: dict[str, LiveTagSnapshot]) -> str:
+    """Append any out-of-band analog observations to ``text`` as a SECONDARY,
+    additive sentence — the base assessment (comm/fault/command logic) always
+    leads and is never altered. Only ``assess_snapshots`` calls this: its
+    inputs are already-decoded (engineering-unit) snapshots, so an envelope
+    comparison is meaningful. ``assess_from_paths`` (Ignition wire form) never
+    reaches this — its analog leaves are filtered out before normalization
+    (see the boundary comment above ``assess_from_paths``), so this function
+    is simply never invoked for ambiguous-scaling wire values.
+    """
+    notes = [
+        note
+        for dp in _ANALOG_ENVELOPE_DATAPOINTS
+        if (note := _analog_band_observation(dp, by.get(dp))) is not None
+    ]
+    return f"{text} {' '.join(notes)}" if notes else text
+
+
 def assess_snapshots(snapshots: list[LiveTagSnapshot]) -> str | None:
     """Deterministic one-line machine assessment from decoded snapshots.
 
@@ -217,17 +349,23 @@ def assess_snapshots(snapshots: list[LiveTagSnapshot]) -> str | None:
     status = by.get("vfd_status_word")
     any_stale = any(s.quality == STALE for s in snapshots)
 
-    # 1. Comms lost — every VFD value is untrustworthy; say so first.
+    # 1. Comms lost — every VFD value is untrustworthy; say so first. (Every
+    # other vfd_* snapshot is STALE whenever we reach this branch — see
+    # `normalize()` — so `_with_analog_notes` is a no-op here by construction;
+    # wrapped anyway for a single, uniform "analog notes never override the
+    # lead" code path rather than a special case.)
     if comm is not None and comm.value == "LOST":
-        return (
+        return _with_analog_notes(
             "VFD comms are LOST — the live VFD values can't be trusted. Check the drive's comm "
-            "cable, Modbus address, and control power before diagnosing further."
+            "cable, Modbus address, and control power before diagnosing further.",
+            by,
         )
     # 2. An active fault dominates.
     if fault is not None and fault.value not in (None, "no active fault"):
-        return (
+        return _with_analog_notes(
             f"Active VFD fault: {fault.value}. Clear the cause and reset the drive; verify wiring "
-            "and comms before restart."
+            "and comms before restart.",
+            by,
         )
 
     # 3. No fault, comms OK (or comm not reported) — assess running vs stopped.
@@ -263,21 +401,26 @@ def assess_snapshots(snapshots: list[LiveTagSnapshot]) -> str | None:
     )
 
     if running:
-        return f"Machine running{f' ({facts_str})' if facts_str else ''}. No active VFD fault."
+        return _with_analog_notes(
+            f"Machine running{f' ({facts_str})' if facts_str else ''}. No active VFD fault.", by
+        )
     if stopped:
         if healthy and facts_str:
-            return (
+            return _with_analog_notes(
                 f"VFD looks healthy ({facts_str}) but the machine is stopped. Most likely a "
                 "command/permissive/interlock, not the drive — check operator command, run "
-                "permissive, E-stop/interlock, and PLC logic."
+                "permissive, E-stop/interlock, and PLC logic.",
+                by,
             )
-        return (
+        return _with_analog_notes(
             f"Machine stopped{f' ({facts_str})' if facts_str else ''}. Confirm comms, fault code, "
-            "and DC bus before isolating the cause."
+            "and DC bus before isolating the cause.",
+            by,
         )
-    return (
+    return _with_analog_notes(
         f"Live VFD readings{f' ({facts_str})' if facts_str else ''} — not enough to tell "
-        "running from stopped; confirm the command word and drive status."
+        "running from stopped; confirm the command word and drive status.",
+        by,
     )
 
 
@@ -320,6 +463,19 @@ def render_machine_evidence(snapshots: list[LiveTagSnapshot]) -> str:
 # canonical signals are scaling-immune, so ONLY those feed the assessment; the
 # analog values (freq/current/dc_bus) are shown in the preamble but never
 # re-scaled/re-interpreted here (a 10x/100x-wrong number is worse than none).
+#
+# HARD BOUNDARY (Task 3 / ADR-0025 §4): the envelope-driven analog check
+# (`_analog_band_observation` / `_with_analog_notes`) compares a DECODED,
+# engineering-unit value against the pack's ``min``/``max`` band — that
+# comparison is only meaningful when the scaling is known-good, which is true
+# for ``assess_snapshots`` (fed by already-scaled `LiveTagSnapshot`s) and NOT
+# true here. `assess_from_paths` filters analog leaves out of `raw` below
+# (they're not in ``_ASSESSABLE_INT_LEAVES``/``_ASSESSABLE_BOOL_LEAVES``), so
+# they never reach `normalize()`/`assess_snapshots()` from this path — the
+# envelope check is therefore structurally never applied to a wire-form value.
+# Do NOT add analog leaves to the assessable sets above to "get" an envelope
+# judgment here; that would silently reintroduce the ambiguous-scaling risk
+# this boundary exists to prevent.
 _ASSESSABLE_INT_LEAVES = {"vfd_fault_code", "vfd_warn_code", "vfd_cmd_word", "vfd_status_word"}
 _ASSESSABLE_BOOL_LEAVES = {
     "vfd_comm_ok",
