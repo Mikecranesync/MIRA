@@ -96,6 +96,16 @@ try:
 except Exception:  # pragma: no cover - shared not importable in this context
     _assess_from_paths = None  # type: ignore[assignment]
 
+# Analog assessment via the explicit per-tag scaling contract (Drive Commander
+# follow-up #2). Same defensive import — a missing module leaves the enum/bool
+# assessment and preamble untouched.
+try:
+    from shared.live_snapshot import assess_analog_from_paths as _assess_analog_from_paths
+    from shared.wire_scaling import from_jsonb as _tag_scaling_from_jsonb
+except Exception:  # pragma: no cover - shared not importable in this context
+    _assess_analog_from_paths = None  # type: ignore[assignment]
+    _tag_scaling_from_jsonb = None  # type: ignore[assignment]
+
 
 async def _is_asset_specific(question: str) -> bool:
     """True when ``question`` is asset-specific troubleshooting (so a turn with
@@ -271,7 +281,7 @@ async def _enrich_tag_snapshot_with_semantics(
             with _engine.connect() as conn:
                 rows = conn.execute(
                     text(
-                        "SELECT source_address, units, data_type "
+                        "SELECT source_address, units, data_type, scaling "
                         "FROM tag_entities "
                         "WHERE tenant_id::text = :tid "
                         "  AND source_address = ANY(:paths) "
@@ -285,8 +295,15 @@ async def _enrich_tag_snapshot_with_semantics(
         logger.debug("_enrich_tag_snapshot: DB unavailable, enrichment skipped")
         return tag_snapshot
 
+    # `scaling` (JSONB, the per-tag scaling contract — see shared.wire_scaling)
+    # rides alongside units/data_type so the analog assessment can read it; it is
+    # NOT rendered in the preamble (only units/data_type are).
     enrichment: dict[str, dict[str, Any]] = {
-        row[0]: {k: v for k, v in {"units": row[1], "data_type": row[2]}.items() if v is not None}
+        row[0]: {
+            k: v
+            for k, v in {"units": row[1], "data_type": row[2], "scaling": row[3]}.items()
+            if v is not None
+        }
         for row in rows
         if row[0]
     }
@@ -514,10 +531,28 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
             except Exception:  # pragma: no cover - defensive
                 assessment = None
 
+        # Analog assessment — ONLY for tags carrying an explicit, verified scaling
+        # contract (tag_entities.scaling). Unknown/missing scaling ⇒ no card ⇒ the
+        # value is still shown in the preamble but not (mis)interpreted. The raw
+        # wire values live on the enriched snapshot alongside the scaling.
+        analog_assessment = None
+        if _assess_analog_from_paths is not None and _tag_scaling_from_jsonb is not None:
+            try:
+                scaling_by_path = {
+                    path: _tag_scaling_from_jsonb(entry.get("scaling"), unit=entry.get("units"))
+                    for path, entry in enriched_snapshot.items()
+                    if isinstance(entry, dict)
+                }
+                analog_assessment = _assess_analog_from_paths(enriched_snapshot, scaling_by_path)
+            except Exception:  # pragma: no cover - defensive
+                analog_assessment = None
+
         if preamble:
             evidence = [preamble]
             if assessment:
                 evidence.append(f"Assessment: {assessment}")
+            if analog_assessment:
+                evidence.append(analog_assessment)
             evidence.append(
                 "In your answer, clearly separate: (1) this LIVE evidence, (2) "
                 "asset/manual context, (3) your inference, and (4) the recommended next checks."

@@ -304,3 +304,93 @@ def test_tag_preamble_enriched_with_verified_entities(client, monkeypatch):
     message = engine.process.await_args.kwargs.get("message", "")
     assert "11.2 A" in message
     assert "REAL" in message
+
+
+def _real_analog():
+    """The real analog assessment + scaling adapter, with mira-bots on sys.path
+    (mirrors `_real_assess_from_paths`)."""
+    import os
+    import sys
+
+    mb = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "mira-bots",
+    )
+    if mb not in sys.path:
+        sys.path.insert(0, mb)
+    from shared.live_snapshot import assess_analog_from_paths
+    from shared.wire_scaling import from_jsonb
+
+    return assess_analog_from_paths, from_jsonb
+
+
+def _use_real_analog(monkeypatch):
+    assess_analog, from_jsonb = _real_analog()
+    monkeypatch.setattr(ignition_chat, "_assess_analog_from_paths", assess_analog)
+    monkeypatch.setattr(ignition_chat, "_tag_scaling_from_jsonb", from_jsonb)
+
+
+def test_analog_card_reaches_prompt_for_explicitly_scaled_dc_bus(client, monkeypatch):
+    """A dc_bus tag with a verified raw_register scaling contract is scaled to
+    engineering units and assessed against the pack envelope; the self-explaining
+    card reaches the engine prompt. End-to-end proof of the scaling contract."""
+    tc, engine = client
+    _use_real_analog(monkeypatch)
+
+    dc = "[default]Mira_Monitored/CV-101/vfd_dc_bus"
+
+    async def _mock_enrich(tag_snapshot, tenant_id):
+        # Verified tag_entities row: raw_register scaling + units for this tag.
+        return {
+            k: (
+                {**v, "units": "V", "scaling": {"mode": "raw_register", "scale": 0.1}}
+                if isinstance(v, dict)
+                else v
+            )
+            for k, v in tag_snapshot.items()
+        }
+
+    monkeypatch.setattr(ignition_chat, "_enrich_tag_snapshot_with_semantics", _mock_enrich)
+
+    resp = _post(
+        tc,
+        {
+            "query": "is the DC bus healthy?",
+            "asset_id": "CV-101",
+            "tag_snapshot": {dc: {"value": "3200", "quality": "Good"}},
+        },
+    )
+    assert resp.status_code == 200
+    message = engine.process.await_args.kwargs.get("message", "")
+    assert "DC bus: 320 V" in message
+    assert "Source value: 3200" in message
+    assert "Normal band: 300–340 V" in message
+    assert "Assessment: normal" in message
+
+
+def test_no_analog_card_when_scaling_unknown(client, monkeypatch):
+    """Without a verified scaling contract, the dc_bus value is still shown in the
+    preamble but NEVER assessed — no card, no false undervoltage from '3200'."""
+    tc, engine = client
+    _use_real_analog(monkeypatch)
+
+    dc = "[default]Mira_Monitored/CV-101/vfd_dc_bus"
+
+    async def _passthrough(snap, tenant_id):
+        return snap  # no enrichment → no scaling → unknown
+
+    monkeypatch.setattr(ignition_chat, "_enrich_tag_snapshot_with_semantics", _passthrough)
+
+    resp = _post(
+        tc,
+        {
+            "query": "is the DC bus healthy?",
+            "asset_id": "CV-101",
+            "tag_snapshot": {dc: {"value": "3200", "quality": "Good"}},
+        },
+    )
+    assert resp.status_code == 200
+    message = engine.process.await_args.kwargs.get("message", "")
+    assert "3200" in message  # raw value still visible in the preamble
+    assert "Normal band" not in message  # but no analog assessment card
+    assert "undervoltage" not in message
