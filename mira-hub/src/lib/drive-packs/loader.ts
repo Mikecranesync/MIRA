@@ -17,8 +17,17 @@
  * import time (mirrors the Python module's "import-time load is deliberate"
  * stance in `mira-bots/shared/live_snapshot.py`) rather than adding
  * multi-pack discovery machinery with no caller.
+ *
+ * Imports `./gs10-pack.json`, a committed byte-for-byte copy of the canonical
+ * `packs/durapulse_gs10/pack.json`, NOT the repo-root file directly. The Hub's
+ * Docker build context is `./mira-hub` (`docker-compose.saas.yml`), so a
+ * `../../../../packs/...` import resolves in a full-repo checkout (CI) but is
+ * unreachable inside the Hub's image build — `next build` fails at deploy
+ * time only. The copy keeps the import inside `mira-hub/`; drift between the
+ * two files is caught by `mira-bots/tests/test_drive_pack_hub_copy_sync.py`
+ * (runs on a full-repo checkout in CI, where both files exist).
  */
-import gs10PackJson from "../../../../packs/durapulse_gs10/pack.json";
+import gs10PackJson from "./gs10-pack.json";
 
 export interface RegisterEntry {
   addr: number | null;
