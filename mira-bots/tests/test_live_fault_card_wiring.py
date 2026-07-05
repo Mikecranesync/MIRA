@@ -70,6 +70,18 @@ def test_unknown_fault_keeps_safe_fallback():
     assert "### Fault diagnostic:" not in text
 
 
+def test_stale_fault_suppresses_card_but_keeps_comms_lost_caveat():
+    # vfd_comm_ok False -> normalize() marks the fault snapshot STALE (last-known,
+    # untrusted). The authoritative per-fault card must NOT render; the assessment
+    # still leads with the comms-LOST caveat. (vfd_comm_ok is the master trust gate.)
+    snaps = _snaps({"vfd_fault_code": 4, "vfd_comm_ok": False})
+    text = render_machine_evidence(snaps)
+
+    assert "### Fault diagnostic:" not in text
+    assert "Likely causes:" not in text
+    assert "comms are LOST" in text
+
+
 # ---------------------------------------------------------------------------
 # 3. Missing/empty fields don't create bad text
 # ---------------------------------------------------------------------------

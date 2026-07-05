@@ -484,8 +484,17 @@ def render_machine_evidence(snapshots: list[LiveTagSnapshot]) -> str:
     assessment = assess_snapshots(snapshots)
     if assessment:
         parts += ["", f"Assessment: {assessment}"]
+    # Only render the authoritative per-fault card for a GOOD-quality fault. When
+    # vfd_comm_ok is false the fault snapshot is STALE (a last-known code we can't
+    # trust — `vfd_comm_ok` is this module's master trust gate) and the assessment
+    # already leads with the comms-LOST caveat; surfacing a confident "Likely
+    # causes / First checks" block underneath would contradict that.
     fault = _dp(snapshots).get("vfd_fault_code")
-    if fault is not None and fault.value not in (None, "no active fault"):
+    if (
+        fault is not None
+        and fault.quality == GOOD
+        and fault.value not in (None, "no active fault")
+    ):
         diagnostic = render_fault_diagnostic(str(fault.value))
         if diagnostic:
             parts += ["", diagnostic]
