@@ -601,5 +601,10 @@ def assess_from_paths(path_values: dict[str, Any] | None) -> str | None:
     assessment = assess_snapshots(snapshots)
     diagnostic = _render_active_fault_diagnostic(snapshots)
     if diagnostic:
+        # A non-empty diagnostic implies a GOOD active fault, which also makes
+        # assess_snapshots emit its "Active VFD fault" line — so `assessment` is
+        # never None here today. The `else diagnostic` is a defensive fallback
+        # (never hit under current invariants), kept so a future assess_snapshots
+        # change can't drop the card.
         return f"{assessment}\n\n{diagnostic}" if assessment else diagnostic
     return assessment
