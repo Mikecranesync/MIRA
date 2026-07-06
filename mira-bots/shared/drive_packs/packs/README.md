@@ -49,13 +49,52 @@ file alongside this doc.
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `pack_id` | `string` | yes | Must equal the containing directory name. |
-| `schema_version` | `int` | yes | `1` for this schema generation. |
+| `schema_version` | `int` | yes | `1` or `2` (loader accepts both; unknown → error). |
 | `family` | object | yes | See below. |
 | `nameplate` | object | yes | See below. |
 | `live_decode` | object | yes | See below. |
 | `envelope` | object | yes | See below. |
 | `knowledge` | object | yes | ID pointers into existing stores; empty/null is valid. |
 | `provenance` | object | yes | Per-item provenance tier; see below. |
+| `parameters` | array | no (v2) | Cited configurable-parameter cards; see below. Absent/empty in v1. |
+| `keypad_navigation` | array | no (v2) | View-only keypad-step cards; see below. Absent/empty in v1. |
+
+### `parameters` (schema_version 2)
+
+Each entry is a `ParameterCard` — a cited view of one configurable drive
+parameter (the keypad/manual id like `P09.03`, **not** a Modbus register).
+`drive_family` is injected from `pack_id` (don't repeat it in JSON).
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `parameter_id` | `string` | yes | Keypad/manual identifier, e.g. `"P09.03"`. |
+| `name` | `string` | no | Human name, e.g. `"Comm Time-out Detection"`. |
+| `purpose` | `string` | no | What it controls / why a tech checks it. |
+| `value_meanings` | array | no | `[{value, meaning}]` decode of setting values. |
+| `default` / `range` / `unit` | `string \| null` | no | As printed in the manual; `null` when unknown. |
+| `related_faults` | array | no | Fault codes/mnemonics this param bears on, e.g. `["CE10"]`. |
+| `source_citation` | object | no | `{doc, page, excerpt}`; page only when provable. |
+| `provenance_tier` | `string` | no | `"bench_verified"` \| `"manual_cited"` (default). |
+| `confidence_tier` | `string \| null` | no | Coarse band `"low"`/`"medium"`/`"high"` or null. |
+
+### `keypad_navigation` (schema_version 2)
+
+Each entry is a `KeypadNavigationCard` — ordered, **view-only** button-press
+steps to reach and view a parameter. `keypad_steps` are display strings, never
+executable. `view_only_warning` is **mandatory and non-empty** (safety
+contract, enforced by the loader).
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `goal` | `string` | no | e.g. `"View the Modbus comm-timeout setting"`. |
+| `parameter_id` | `string \| null` | no | Target parameter, e.g. `"P09.03"`. |
+| `menu_group` | `string \| null` | no | e.g. `"P09 - Communication"`. |
+| `keypad_steps` | array | no | Ordered display strings. |
+| `view_only_warning` | `string` | **yes** | Non-empty; the safety contract. |
+| `edit_warning` | `string \| null` | no | Only if an edit path is documented; normally `null` (beta = view-only). |
+| `source_citation` | object | no | `{doc, page, excerpt}`. |
+| `confidence_tier` | `string` | no | `"low"` (default) / `"medium"` / `"high"`. |
+| `provenance_tier` | `string` | no | `"bench_verified"` \| `"manual_cited"` (default). |
 
 ### `family`
 

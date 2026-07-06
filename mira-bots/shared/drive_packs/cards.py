@@ -20,19 +20,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-from .schema import DrivePack
+from .schema import Citation, DrivePack
+
+# ``Citation`` is defined in ``schema.py`` (so the pack-stored v2 cards can
+# reference it without a schema→cards cycle) and re-exported here for backward
+# compatibility — existing callers do ``from .cards import Citation``.
+__all__ = ["Citation", "DiagnosticCard", "TemplateReader", "build_cards"]
 
 _NO_ACTIVE_FAULT_CODE = 0
-
-
-@dataclass(frozen=True)
-class Citation:
-    """A single evidence pointer — mirrors ``component_template_sources`` /
-    ``pack.provenance.sources`` shape."""
-
-    doc: str
-    page: str
-    excerpt: str
 
 
 @runtime_checkable
