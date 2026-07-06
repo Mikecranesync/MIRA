@@ -1,0 +1,651 @@
+{
+  "manual": {
+    "vendor": "Rockwell Automation",
+    "family": "PowerFlex 525",
+    "publication": "520-UM001O-EN-E",
+    "revision": "O",
+    "date": "September 2025",
+    "filename": "pf525_520-um001.pdf",
+    "sha256": "b9445a63c78865037d22238ddedbb785b4309c9798da9da35029d628658636a6",
+    "page_numbering": "printed == pdfplumber page_number (1-indexed), no offset"
+  },
+  "faults": [
+    {
+      "fault_id": "F000",
+      "code": 0,
+      "name": "No Fault",
+      "fault_type": "—",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F002",
+      "code": 2,
+      "name": "Auxiliary Input",
+      "fault_type": "1",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F003",
+      "code": 3,
+      "name": "Power Loss",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F004",
+      "code": 4,
+      "name": "UnderVoltage",
+      "fault_type": "1",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": true
+    },
+    {
+      "fault_id": "F005",
+      "code": 5,
+      "name": "OverVoltage",
+      "fault_type": "1",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": true
+    },
+    {
+      "fault_id": "F006",
+      "code": 6,
+      "name": "Motor Stalled",
+      "fault_type": "1",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F007",
+      "code": 7,
+      "name": "Motor Overload",
+      "fault_type": "1",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": true
+    },
+    {
+      "fault_id": "F008",
+      "code": 8,
+      "name": "Heatsink OvrTmp",
+      "fault_type": "1",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": true
+    },
+    {
+      "fault_id": "F009",
+      "code": 9,
+      "name": "CC OvrTmp",
+      "fault_type": "1",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F012",
+      "code": 12,
+      "name": "HW OverCurrent",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F013",
+      "code": 13,
+      "name": "Ground Fault",
+      "fault_type": "1",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": true
+    },
+    {
+      "fault_id": "F015",
+      "code": 15,
+      "name": "Load Loss",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F021",
+      "code": 21,
+      "name": "Output Ph Loss",
+      "fault_type": "1",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F029",
+      "code": 29,
+      "name": "Analog In Loss",
+      "fault_type": "1",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F033",
+      "code": 33,
+      "name": "Auto Rstrt Tries",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F038",
+      "code": 38,
+      "name": "Phase U to Gnd",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F039",
+      "code": 39,
+      "name": "Phase V to Gnd",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F040",
+      "code": 40,
+      "name": "Phase W to Gnd",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 161,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F041",
+      "code": 41,
+      "name": "Phase UV Short",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 162,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F042",
+      "code": 42,
+      "name": "Phase UW Short",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 162,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F043",
+      "code": 43,
+      "name": "Phase VW Short",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 162,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F048",
+      "code": 48,
+      "name": "Params Defaulted",
+      "fault_type": "1",
+      "references_parameters": [],
+      "page": 162,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F059",
+      "code": 59,
+      "name": "Safety Open",
+      "fault_type": "1",
+      "references_parameters": [],
+      "page": 162,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F063",
+      "code": 63,
+      "name": "SW OverCurrent",
+      "fault_type": "1",
+      "references_parameters": [],
+      "page": 162,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F064",
+      "code": 64,
+      "name": "Drive Overload",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 162,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F070",
+      "code": 70,
+      "name": "Power Unit",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 162,
+      "diagnostic_critical": true
+    },
+    {
+      "fault_id": "F071",
+      "code": 71,
+      "name": "DSI Net Loss",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 162,
+      "diagnostic_critical": true
+    },
+    {
+      "fault_id": "F072",
+      "code": 72,
+      "name": "Opt Net Loss",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 162,
+      "diagnostic_critical": true
+    },
+    {
+      "fault_id": "F073",
+      "code": 73,
+      "name": "EN Net Loss",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 162,
+      "diagnostic_critical": true
+    },
+    {
+      "fault_id": "F080",
+      "code": 80,
+      "name": "Autotune Failure",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 162,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F081",
+      "code": 81,
+      "name": "DSI Comm Loss",
+      "fault_type": "2",
+      "references_parameters": [
+        "C125"
+      ],
+      "page": 162,
+      "diagnostic_critical": true,
+      "note": "cross-vendor comm-loss proof (parallel to GS10 CE10->P09.03)"
+    },
+    {
+      "fault_id": "F082",
+      "code": 82,
+      "name": "Opt Comm Loss",
+      "fault_type": "2",
+      "references_parameters": [
+        "C125"
+      ],
+      "page": 162,
+      "diagnostic_critical": true,
+      "note": "cross-vendor comm-loss proof (parallel to GS10 CE10->P09.03)"
+    },
+    {
+      "fault_id": "F083",
+      "code": 83,
+      "name": "EN Comm Loss",
+      "fault_type": "2",
+      "references_parameters": [
+        "C125"
+      ],
+      "page": 162,
+      "diagnostic_critical": true,
+      "note": "cross-vendor comm-loss proof (parallel to GS10 CE10->P09.03)"
+    },
+    {
+      "fault_id": "F091",
+      "code": 91,
+      "name": "Encoder Loss",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 163,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F094",
+      "code": 94,
+      "name": "Function Loss",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 163,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F100",
+      "code": 100,
+      "name": "Parameter Chksum",
+      "fault_type": "2",
+      "references_parameters": [
+        "P053"
+      ],
+      "page": 163,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F101",
+      "code": 101,
+      "name": "External Storage",
+      "fault_type": "2",
+      "references_parameters": [
+        "P053"
+      ],
+      "page": 163,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F105",
+      "code": 105,
+      "name": "C Connect Err",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 163,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F106",
+      "code": 106,
+      "name": "Incompat C-P",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 163,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F107",
+      "code": 107,
+      "name": "Replaced C-P",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 163,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F109",
+      "code": 109,
+      "name": "Mismatch C-P",
+      "fault_type": "2",
+      "references_parameters": [
+        "P053"
+      ],
+      "page": 163,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F110",
+      "code": 110,
+      "name": "Keypad Membrane",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 163,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F111",
+      "code": 111,
+      "name": "Safety Hardware",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 163,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F114",
+      "code": 114,
+      "name": "uC Failure",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 163,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F122",
+      "code": 122,
+      "name": "I/O Board Fail",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 163,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F125",
+      "code": 125,
+      "name": "Flash Update Req",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 163,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F126",
+      "code": 126,
+      "name": "NonRecoverablErr",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 163,
+      "diagnostic_critical": false
+    },
+    {
+      "fault_id": "F127",
+      "code": 127,
+      "name": "DSIFlashUpdatReq",
+      "fault_type": "2",
+      "references_parameters": [],
+      "page": 163,
+      "diagnostic_critical": false
+    }
+  ],
+  "parameters": [
+    {
+      "parameter_id": "C123",
+      "name": "RS485 Data Rate",
+      "range": null,
+      "default": "3",
+      "unit": null,
+      "related_parameters": [],
+      "related_faults": [],
+      "page": 102,
+      "diagnostic_critical": true
+    },
+    {
+      "parameter_id": "C124",
+      "name": "RS485 Node Addr",
+      "range": "1/247",
+      "default": "100",
+      "unit": null,
+      "related_parameters": [],
+      "related_faults": [],
+      "page": 102,
+      "diagnostic_critical": true
+    },
+    {
+      "parameter_id": "C125",
+      "name": "Comm Loss Action",
+      "range": null,
+      "default": "0",
+      "unit": null,
+      "related_parameters": [
+        "P045"
+      ],
+      "related_faults": [
+        "F081",
+        "F082",
+        "F083"
+      ],
+      "page": 102,
+      "diagnostic_critical": true
+    },
+    {
+      "parameter_id": "C126",
+      "name": "Comm Loss Time",
+      "range": "0.1/60.0",
+      "default": "5.0",
+      "unit": "s",
+      "related_parameters": [
+        "C125"
+      ],
+      "related_faults": [],
+      "page": 102,
+      "diagnostic_critical": true
+    },
+    {
+      "parameter_id": "C127",
+      "name": "RS485 Format",
+      "range": null,
+      "default": "0",
+      "unit": null,
+      "related_parameters": [],
+      "related_faults": [],
+      "page": 103,
+      "diagnostic_critical": true
+    },
+    {
+      "parameter_id": "t094",
+      "name": "Anlg In V Loss",
+      "range": null,
+      "default": "0",
+      "unit": null,
+      "related_parameters": [
+        "P043",
+        "P044",
+        "A426",
+        "A427"
+      ],
+      "related_faults": [],
+      "page": 99,
+      "diagnostic_critical": false
+    },
+    {
+      "parameter_id": "P032",
+      "name": "Motor NP Hertz",
+      "range": "15/500",
+      "default": "60",
+      "unit": "Hz",
+      "related_parameters": [],
+      "related_faults": [],
+      "page": 65,
+      "diagnostic_critical": false
+    },
+    {
+      "parameter_id": "P035",
+      "name": "Motor NP Poles",
+      "range": "2/40",
+      "default": "4",
+      "unit": null,
+      "related_parameters": [],
+      "related_faults": [],
+      "page": 65,
+      "diagnostic_critical": false
+    },
+    {
+      "parameter_id": "P036",
+      "name": "Motor NP RPM",
+      "range": "0/24000",
+      "default": "1750",
+      "unit": "rpm",
+      "related_parameters": [],
+      "related_faults": [],
+      "page": 65,
+      "diagnostic_critical": false
+    },
+    {
+      "parameter_id": "P041",
+      "name": "Accel Time 1",
+      "range": "0.00/600.00",
+      "default": "10.00",
+      "unit": "s",
+      "related_parameters": [],
+      "related_faults": [],
+      "page": 65,
+      "diagnostic_critical": false
+    },
+    {
+      "parameter_id": "P042",
+      "name": "Decel Time 1",
+      "range": "0.00/600.00",
+      "default": "10.00",
+      "unit": "s",
+      "related_parameters": [],
+      "related_faults": [],
+      "page": 66,
+      "diagnostic_critical": false
+    },
+    {
+      "parameter_id": "P043",
+      "name": "Minimum Freq",
+      "range": "0.00/500.00",
+      "default": "0.00",
+      "unit": "Hz",
+      "related_parameters": [],
+      "related_faults": [],
+      "page": 66,
+      "diagnostic_critical": false
+    },
+    {
+      "parameter_id": "P044",
+      "name": "Maximum Freq",
+      "range": "0.00/500.00",
+      "default": "60.00",
+      "unit": "Hz",
+      "related_parameters": [],
+      "related_faults": [],
+      "page": 66,
+      "diagnostic_critical": false
+    }
+  ],
+  "edge_cases": [
+    {
+      "kind": "comma_group_skip",
+      "ids": [
+        "P046",
+        "P048",
+        "P050"
+      ],
+      "page": 66,
+      "expectation": "extractor SKIPS comma-grouped rows (no single-id attribution); pack must NOT contain a P046/P048/P050 entry",
+      "note": "[Start Source x], each own default (P046=1, P048=2, P050=3/5 depending on drive); page confirmed via footer 'Rockwell Automation Publication ... 66' in the source text, not the task-suggested fallback of 88"
+    },
+    {
+      "kind": "multi_id_shared_desc",
+      "ids": [
+        "C129",
+        "C130",
+        "C131",
+        "C132"
+      ],
+      "page": 103,
+      "expectation": "four param IDs (EN IP Addr Cfg 1-4) share one description block; pack must not merge them into one junk id or bleed the desc across unrelated params"
+    },
+    {
+      "kind": "related_parameters_not_faults",
+      "ids": [
+        "t094"
+      ],
+      "page": 99,
+      "expectation": "t094 [Anlg In V Loss] 'Related Parameters: P043,P044,A426,A427' must land in related_parameters, NEVER related_faults"
+    }
+  ]
+}
