@@ -44,9 +44,12 @@ except Exception: print('')" 2>/dev/null
 
 run_check() {
   local me nid up code libs seen leak other other_tok
-  # A stable per-persona source_url: the library groups by source_url, so re-runs
-  # do not accumulate visible rows. Upload success is gated on the HTTP status
-  # directly (below), so a stale row can't mask an upload regression.
+  # A stable per-persona source_url. The upload route has no ON CONFLICT, so each
+  # run DOES insert a new knowledge_entries row (minor, bounded growth on the
+  # staging DB only) — but GET /api/documents GROUPs BY source_url, so the library
+  # UI shows exactly one entry per persona regardless of run count. Upload success
+  # is gated on the HTTP status directly (below), so a stale row from a prior run
+  # can never mask a fresh upload regression.
   local marker="dogfood-doc-roundtrip-${DF_PERSONA}"
   local src="demo://dogfood/${marker}"
 
