@@ -296,6 +296,56 @@ def test_gold_score_edge_cases():
     assert result.metrics["edge_case_results"]["related_parameters_not_faults:P045"] == "pass"
 
 
+# ---------------------------------------------------------------------------
+# related_parameters — now a SCORED recall item (param<->param link, e.g.
+# C125->P045), same gold-floor semantics as the fault->param link. Previously
+# this was informational-only because ParameterCard had no such field; now
+# that the schema carries it, a missing expected entry must lower recall
+# (never a fabrication), and pack entries not in gold must never be flagged.
+# ---------------------------------------------------------------------------
+
+
+def test_gold_score_related_parameters_present_scores_as_recall():
+    pack = _toy_pack()
+    pack["parameters"][0]["related_parameters"] = ["P045"]  # C125 -> P045
+    gold = _toy_gold()
+    gold["parameters"][0]["related_parameters"] = ["P045"]
+    result = gold_score.score_against_gold(pack, gold)
+    # _toy_gold's baseline total_gold is 5 (2 faults + 2 params + 1 fault->param
+    # link); one related_parameters expectation adds one more scored item = 6,
+    # and it's satisfied, so matched_gold also grows by one to 6.
+    assert result.metrics["total_gold"] == 6
+    assert result.metrics["matched_gold"] == 6
+    assert result.metrics["overall_recall"] == 1.0
+    assert result.metrics["fabrication_detected"] is False
+    assert not any("informational" in d or "not scored" in d for d in result.details)
+
+
+def test_gold_score_related_parameters_missing_is_recall_gap_not_fabrication():
+    pack = _toy_pack()
+    # C125 has no related_parameters in the pack — gold expects P045.
+    gold = _toy_gold()
+    gold["parameters"][0]["related_parameters"] = ["P045"]
+    result = gold_score.score_against_gold(pack, gold)
+    assert result.metrics["total_gold"] == 6
+    assert result.metrics["matched_gold"] == 5  # the missing link isn't matched
+    assert result.metrics["overall_recall"] == 5 / 6
+    assert result.metrics["fabrication_detected"] is False
+    assert any("related_parameters" in d and "missing from pack" in d for d in result.details)
+
+
+def test_gold_score_related_parameters_extra_entry_not_flagged():
+    pack = _toy_pack()
+    # Pack claims an extra related_parameters entry gold has no opinion on —
+    # gold is a floor, not a ceiling, so this must NOT be treated as a
+    # fabrication or extra/precision penalty.
+    pack["parameters"][0]["related_parameters"] = ["P045", "P999"]
+    gold = _toy_gold()  # gold's C125.related_parameters stays []
+    result = gold_score.score_against_gold(pack, gold)
+    assert result.metrics["fabrication_detected"] is False
+    assert result.metrics["overall_precision"] == 1.0
+
+
 def _link_gold() -> dict:
     """Synthetic gold: one diagnostic-critical fault (F_A) linked to param X,
     one non-critical fault (F_B) linked to param Y. Used to prove the

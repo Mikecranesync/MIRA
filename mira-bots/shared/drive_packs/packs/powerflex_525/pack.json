@@ -340,7 +340,8 @@
         "page": "65",
         "excerpt": "P030 Selects the language displayed. 8 = Reserved 1"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "P031",
@@ -356,7 +357,8 @@
         "page": "65",
         "excerpt": "P031 [Motor NP Volts]"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "P032",
@@ -372,7 +374,8 @@
         "page": "65",
         "excerpt": "P032 [Motor NP Hertz] 15/500 Hz"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "P033",
@@ -390,7 +393,8 @@
         "page": "65",
         "excerpt": "P033 0.1 A Based on Drive Rating"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "P034",
@@ -406,7 +410,8 @@
         "page": "65",
         "excerpt": "P034 0.1 A Drive Rated Amps"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "P035",
@@ -422,7 +427,8 @@
         "page": "65",
         "excerpt": "P035 1 4"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "P036",
@@ -438,7 +444,8 @@
         "page": "65",
         "excerpt": "P036 [Motor NP RPM] 0/24000 rpm"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "P037",
@@ -454,7 +461,8 @@
         "page": "65",
         "excerpt": "P037"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "P039",
@@ -470,7 +478,8 @@
         "page": "65",
         "excerpt": "P039 (2) Setting is available in PowerFlex 525 FRN 5.xxx 2 = “Economize”"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "P040",
@@ -486,7 +495,8 @@
         "page": "65",
         "excerpt": "P040 [Autotune] 0/2 0 = “Ready/Idle”"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "P041",
@@ -502,7 +512,8 @@
         "page": "65",
         "excerpt": "P041 Sets the time for the drive to accel from 0 Hz 0.01 s 10.00 s"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "P042",
@@ -518,7 +529,8 @@
         "page": "66",
         "excerpt": "P042 Sets the time for the drive to decel from 0.01 s 10.00 s"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "P043",
@@ -534,7 +546,8 @@
         "page": "66",
         "excerpt": "P043 [Minimum Freq] 0.00/500.00 Hz"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "P044",
@@ -550,7 +563,8 @@
         "page": "66",
         "excerpt": "P044 [Maximum Freq] 0.00/500.00 Hz"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "P045",
@@ -566,7 +580,8 @@
         "page": "66",
         "excerpt": "P045 drive setting. 5= “Coast” 0"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "P052",
@@ -582,7 +597,8 @@
         "page": "66",
         "excerpt": "P052 Cost] 0.01 0.00"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "P053",
@@ -600,7 +616,8 @@
         "page": "66",
         "excerpt": "P053 this parameter returns to zero."
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "t091",
@@ -616,7 +633,12 @@
         "page": "99",
         "excerpt": "t091 [Anlg In 0-10V Lo] Related Parameters: P043, t092, t093"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "P043",
+        "t092",
+        "t093"
+      ]
     },
     {
       "parameter_id": "t092",
@@ -632,7 +654,12 @@
         "page": "99",
         "excerpt": "t092 [Anlg In 0-10V Hi] Related Parameters: P044, t091, t093"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "P044",
+        "t091",
+        "t093"
+      ]
     },
     {
       "parameter_id": "t093",
@@ -657,7 +684,11 @@
         "page": "99",
         "excerpt": "t093 [10V Bipolar Enbl] Related Parameters: t091, t092"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "t091",
+        "t092"
+      ]
     },
     {
       "parameter_id": "t094",
@@ -706,7 +737,13 @@
         "page": "99",
         "excerpt": "t094 [Anlg In V Loss] Related Parameters: P043, P044, A426, A427"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "P043",
+        "P044",
+        "A426",
+        "A427"
+      ]
     },
     {
       "parameter_id": "t095",
@@ -722,7 +759,11 @@
         "page": "99",
         "excerpt": "t095 [Anlg In4-20mA Lo] Related Parameters: P043, t096"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "P043",
+        "t096"
+      ]
     },
     {
       "parameter_id": "t096",
@@ -738,7 +779,11 @@
         "page": "100",
         "excerpt": "t096 [Anlg In4-20mA Hi] Related Parameters: P044, t095"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "P044",
+        "t095"
+      ]
     },
     {
       "parameter_id": "t097",
@@ -787,7 +832,13 @@
         "page": "100",
         "excerpt": "t097 [Anlg In mA Loss] Related Parameters: P043, P044, A426, A427"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "P043",
+        "P044",
+        "A426",
+        "A427"
+      ]
     },
     {
       "parameter_id": "t099",
@@ -803,7 +854,13 @@
         "page": "100",
         "excerpt": "t099 [Analog In Filter] Related Parameters: t091, t092, t095, t096"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "t091",
+        "t092",
+        "t095",
+        "t096"
+      ]
     },
     {
       "parameter_id": "t098",
@@ -819,7 +876,11 @@
         "page": "100",
         "excerpt": "t098 [Anlg Loss Delay] Related Parameters: t094, t097"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "t094",
+        "t097"
+      ]
     },
     {
       "parameter_id": "t100",
@@ -852,7 +913,12 @@
         "page": "100",
         "excerpt": "t100 [Sleep-Wake Sel] Related Parameters: t101, t102, t103"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "t101",
+        "t102",
+        "t103"
+      ]
     },
     {
       "parameter_id": "t101",
@@ -868,7 +934,8 @@
         "page": "101",
         "excerpt": "t101 [Sleep Level]"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "t102",
@@ -884,7 +951,8 @@
         "page": "101",
         "excerpt": "t102 [Sleep Time]"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "t103",
@@ -900,7 +968,8 @@
         "page": "101",
         "excerpt": "t103 [Wake Level]"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "t104",
@@ -916,7 +985,8 @@
         "page": "101",
         "excerpt": "t104 [Wake Time]"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "t105",
@@ -941,7 +1011,8 @@
         "page": "101",
         "excerpt": "t105 [Safety Open En]"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "t106",
@@ -966,7 +1037,8 @@
         "page": "101",
         "excerpt": "t106 [SafetyFlt RstCfg]"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "C121",
@@ -991,7 +1063,8 @@
         "page": "102",
         "excerpt": "C121 [Comm Write Mode]"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "C122",
@@ -1016,7 +1089,8 @@
         "page": "102",
         "excerpt": "C122 [Cmd Stat Select]"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "C123",
@@ -1057,7 +1131,8 @@
         "page": "102",
         "excerpt": "C123 [RS485 Data Rate]"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "C124",
@@ -1073,7 +1148,8 @@
         "page": "102",
         "excerpt": "C124 [RS485 Node Addr]"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "C125",
@@ -1110,7 +1186,10 @@
         "page": "102",
         "excerpt": "C125 [Comm Loss Action] Related Parameters: P045"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "P045"
+      ]
     },
     {
       "parameter_id": "C126",
@@ -1126,7 +1205,10 @@
         "page": "102",
         "excerpt": "C126 [Comm Loss Time] Related Parameters: C125"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "C125"
+      ]
     },
     {
       "parameter_id": "C127",
@@ -1167,7 +1249,8 @@
         "page": "103",
         "excerpt": "C127 [RS485 Format]"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "C128",
@@ -1192,7 +1275,12 @@
         "page": "103",
         "excerpt": "C128 [EN Addr Sel] Related Parameters: C129…C132, C133…C136, C137…C140"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "C129…C132",
+        "C133…C136",
+        "C137…C140"
+      ]
     },
     {
       "parameter_id": "C129",
@@ -1208,7 +1296,10 @@
         "page": "103",
         "excerpt": "C129 [EN IP Addr Cfg 1] Related Parameters: C128"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "C128"
+      ]
     },
     {
       "parameter_id": "C130",
@@ -1224,7 +1315,8 @@
         "page": "103",
         "excerpt": "C130 [EN IP Addr Cfg 2]"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "C131",
@@ -1240,7 +1332,8 @@
         "page": "103",
         "excerpt": "C131 [EN IP Addr Cfg 3]"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     },
     {
       "parameter_id": "C132",
@@ -1256,7 +1349,8 @@
         "page": "103",
         "excerpt": "C132 [EN IP Addr Cfg 4]"
       },
-      "provenance_tier": "manual_cited"
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
     }
   ],
   "keypad_navigation": []

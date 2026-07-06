@@ -153,23 +153,14 @@ def _score_one_param(
         if missing:
             details.append(f"param {pid}.related_faults: missing entries {sorted(missing)} (gap)")
 
-    # related_parameters is NOT part of the ParameterCard schema — the extractor
-    # drops it (adding it is a runtime/schema PR, out of scope). Grading a field
-    # the pack cannot represent would be grading the impossible, so any
-    # difference here is INFORMATIONAL only: it never sets fabrication, never
-    # counts toward matched/precision/recall, and never lowers the trust status.
-    # (The related_parameters_not_faults edge case still verifies, separately,
-    # that no related_parameters value leaks into related_faults.)
-    gold_related_params = _norm_set(gp.get("related_parameters"))
-    if gold_related_params:
-        pack_related_params = _norm_set(pack_param.get("related_parameters"))
-        missing_related = gold_related_params - pack_related_params
-        if missing_related:
-            details.append(
-                f"param {pid}.related_parameters: gold lists {sorted(gold_related_params)} "
-                "but ParameterCard schema has no related_parameters field (informational; "
-                "not scored)"
-            )
+    # related_parameters (the param<->param "Related Parameters:" link, e.g.
+    # C125->P045) is scored separately in _score_params — each expected entry
+    # is its own scored recall item there, on the same gold-floor semantics as
+    # the fault->param link in _score_faults. Not handled here because it
+    # needs its own total/present/correct counters, not a single pass/fail
+    # contradiction flag. (The related_parameters_not_faults edge case still
+    # verifies, separately, that no related_parameters value leaks into
+    # related_faults.)
 
     for rf in pack_param.get("related_faults", []) or []:
         if rf in all_param_ids:
@@ -201,18 +192,41 @@ def _score_params(
         pack_param = params_by_id.get(pid)
         if pack_param is None:
             details.append(f"param {pid}: missing from pack")
-            continue
-
-        present += 1
-        if dc:
-            dc_present += 1
-        contradicted = _score_one_param(gp, pack_param, all_param_ids, details)
-        if contradicted:
-            fabrication = True
         else:
-            correct += 1
+            present += 1
             if dc:
-                dc_correct += 1
+                dc_present += 1
+            contradicted = _score_one_param(gp, pack_param, all_param_ids, details)
+            if contradicted:
+                fabrication = True
+            else:
+                correct += 1
+                if dc:
+                    dc_correct += 1
+
+        # related_parameters is a SCORED recall item (GRADING_SPEC.md §C, same
+        # gold-floor semantics as the fault->param link in _score_faults):
+        # each expected entry is its own scored item, on top of (not instead
+        # of) the param-presence/field check above. A missing link reduces
+        # recall; it is never a fabrication, and pack entries NOT listed in
+        # gold are fine (gold is a floor, not a ceiling) so they are never
+        # flagged as extra/fabrication.
+        for expected in gp.get("related_parameters", []) or []:
+            total += 1
+            if dc:
+                dc_total += 1
+            pack_related = _norm_set((pack_param or {}).get("related_parameters"))
+            if _norm(expected) in pack_related:
+                present += 1
+                correct += 1
+                if dc:
+                    dc_present += 1
+                    dc_correct += 1
+            else:
+                details.append(
+                    f"param {pid}.related_parameters: expected entry {expected!r} "
+                    "missing from pack (gap)"
+                )
 
     return {
         "total": total,

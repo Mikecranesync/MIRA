@@ -40,7 +40,7 @@ Run via `python generate_pf525_pack.py --manual <path-to-manual>` from
 
 ## Tooling provenance
 
-- Extractor source git short-sha: `e6fe9a31` (`tools/drive-pack-extract/extractor.py`
+- Extractor source git short-sha: `fe2ae714` (`tools/drive-pack-extract/extractor.py`
   at generation time)
 - Generation date: <fill at generation>
 
@@ -72,3 +72,19 @@ Run via `python generate_pf525_pack.py --manual <path-to-manual>` from
 - Every fault_code and parameter entry passed `cite_integrity` verification
   against the real manual (unverifiable entries are dropped by the
   extractor before this script ever sees them).
+
+## Promotion to live (human sign-off)
+
+- **2026-07-06 — PROMOTED to the live served `mira-bots/shared/drive_packs/packs/`
+  tree** (from the staged candidate location) by **human approval (Mike)**.
+- Trust status at promotion: **`beta`** (schema PASS; cite-integrity 93 verified /
+  0 unverifiable; gold precision 100%, diagnostic-critical recall+precision 100%,
+  0 fabrications; domain clean). Grading report: `grading_report.md` in this dir.
+- **Manual-cited-only scope waiver:** PF525 has no bench data, so `live_decode`
+  (status_bits/cmd_word/registers) and `envelope` are empty. It is deployed as a
+  **read-only, manual-cited** diagnostic pack — the doctrine's explicit manual-only
+  waiver for promoting a `beta` pack (see `docs/drive-commander/runbook-pr-b-acceptance.md`
+  § "Promotion gates"). No control writes; no invented bench values.
+- Effect: `resolve_pack("PowerFlex 525")` now returns this pack in production; the
+  `test_drive_packs.py::test_resolve_pack_returns_none_for_unrelated_drive` example
+  was moved to "Yaskawa GA800" (a still-unpackaged drive).

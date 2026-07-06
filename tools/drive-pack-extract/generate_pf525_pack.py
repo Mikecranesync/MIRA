@@ -170,15 +170,36 @@ def _sanitize_param_bleed(param: dict[str, Any]) -> list[str]:
     return nulled
 
 
+def _related_parameters_map(manual_path: Path) -> dict[str, list[str]]:
+    """Build ``{parameter_id: related_parameters}`` from the manual's raw,
+    per-parameter "Related Parameters:" line — the param<->param link that
+    ``extractor.assemble_pack_fragment`` intentionally drops (it only carries
+    ``related_faults``, the fault->param direction; see ``extractor.py``
+    module docstring). Calls ``extractor.parse_parameters`` a second time
+    (read-only, same page range as the main extraction) purely to recover
+    this field; does not re-run cite-integrity verification — the values
+    injected here are manual-STATED metadata, not cited excerpts (see
+    ``_build_pack`` for why that's correct)."""
+    raw_params = extractor.parse_parameters(manual_path, pages=PARAM_PAGES)
+    return {
+        entry["parameter_id"]: list(entry.get("related_parameters", [])) for entry in raw_params
+    }
+
+
 def _coerce_parameters(
     parameters: list[dict[str, Any]],
+    related_parameters_map: dict[str, list[str]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Pass the fragment's parameter cards through unchanged, except coerce
     ``source_citation.page`` to a string (schema wants str; extractor already
-    emits str(page), but coerce defensively in case that ever changes) and
-    sanitize cross-row bleed values. Returns (coerced_params, sanitized_fields)
-    where sanitized_fields is a list of 'parameter_id.field' entries that were
-    nulled."""
+    emits str(page), but coerce defensively in case that ever changes),
+    sanitize cross-row bleed values, and inject ``related_parameters`` (the
+    manual-stated param<->param link recovered via
+    ``_related_parameters_map``, keyed by ``parameter_id``; defaults to `[]`
+    when the manual carried none for that parameter). Returns
+    (coerced_params, sanitized_fields) where sanitized_fields is a list of
+    'parameter_id.field' entries that were nulled."""
+    related_parameters_map = related_parameters_map or {}
     out = []
     all_nulled = []
     for param in parameters:
@@ -191,6 +212,11 @@ def _coerce_parameters(
         # Apply bleed sanitization
         nulled = _sanitize_param_bleed(param)
         all_nulled.extend(nulled)
+
+        # Manual-stated param<->param link (not a cited excerpt value — see
+        # module note in _related_parameters_map — so it does NOT go through
+        # cite-integrity; that's correct and expected).
+        param["related_parameters"] = related_parameters_map.get(param.get("parameter_id", ""), [])
 
         out.append(param)
 
@@ -212,10 +238,15 @@ def _coerce_parameters(
     return out, all_nulled
 
 
-def _build_pack(fragment: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+def _build_pack(
+    fragment: dict[str, Any],
+    related_parameters_map: dict[str, list[str]] | None = None,
+) -> tuple[dict[str, Any], list[str]]:
     fault_codes = fragment["fault_codes"]
     fault_citations = fragment["fault_citations"]
-    parameters, sanitized_fields = _coerce_parameters(fragment["parameters"])
+    parameters, sanitized_fields = _coerce_parameters(
+        fragment["parameters"], related_parameters_map
+    )
 
     sources = [
         {
@@ -432,7 +463,10 @@ def main() -> int:
         param_pages=PARAM_PAGES,
     )
 
-    pack, sanitized_fields = _build_pack(fragment)
+    print("Recovering related_parameters (manual-stated param<->param link)...")
+    related_parameters_map = _related_parameters_map(manual_path)
+
+    pack, sanitized_fields = _build_pack(fragment, related_parameters_map)
 
     pack_dir = args.out / PACK_ID
     pack_dir.mkdir(parents=True, exist_ok=True)

@@ -163,7 +163,9 @@ def test_resolve_pack_matches_nameplate_keyword():
 
 
 def test_resolve_pack_returns_none_for_unrelated_drive():
-    assert resolve_pack("PowerFlex 525") is None
+    # NB: "PowerFlex 525" is now a packaged family (promoted 2026-07-06), so it
+    # resolves. Use a drive with no pack as the "unrelated" example.
+    assert resolve_pack("Yaskawa GA800") is None
 
 
 def test_resolve_pack_returns_none_for_empty_text():
