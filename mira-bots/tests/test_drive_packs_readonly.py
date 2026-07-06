@@ -242,6 +242,8 @@ _ALLOWED_TOP_LEVEL_PACK_KEYS = {
     "envelope",
     "knowledge",
     "provenance",
+    "parameters",
+    "keypad_navigation",
 }
 
 
