@@ -42,7 +42,23 @@ def test_load_pack_gs10_succeeds():
     pack = load_pack(PACK_ID)
     assert isinstance(pack, DrivePack)
     assert pack.pack_id == PACK_ID
-    assert pack.schema_version == 1
+    assert pack.schema_version == 2
+
+
+def test_gs10_pack_carries_p0903_parameter_and_keypad_card_live():
+    """schema_version 2 flip: the shipped pack now carries the cited P09.03
+    ParameterCard + its KeypadNavigationCard — the CE10<->P09.03 content is
+    live, not just in the test fixture."""
+    pack = load_pack(PACK_ID)
+    assert len(pack.parameters) == 1
+    param = pack.parameters[0]
+    assert param.parameter_id == "P09.03"
+    assert "CE10" in param.related_faults
+
+    assert len(pack.keypad_navigation) == 1
+    keypad = pack.keypad_navigation[0]
+    assert keypad.parameter_id == "P09.03"
+    assert keypad.view_only_warning
 
 
 def test_gs10_pack_status_bits_match_live_snapshot_exactly():

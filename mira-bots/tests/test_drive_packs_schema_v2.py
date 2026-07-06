@@ -103,7 +103,15 @@ def _v2_raw(**overrides) -> dict:
 
 
 def test_v1_pack_still_loads_with_empty_new_blocks():
-    pack = load_pack("durapulse_gs10")
+    # A schema_version 1 pack (no parameters/keypad_navigation blocks) must still
+    # load with those slots defaulting to empty. Uses a synthetic v1 dict via the
+    # _parse_pack seam — the shipped durapulse_gs10 pack is now v2 (its P09.03/keypad
+    # content shipped), so it can no longer serve as the "v1, empty blocks" example;
+    # the shipped pack's v2 content is asserted in test_drive_packs.py.
+    raw = _v2_raw(schema_version=1)
+    del raw["parameters"]
+    del raw["keypad_navigation"]
+    pack = _parse_pack(raw, PACK_ID, "<v1-memory>")
     assert pack.schema_version == 1
     assert pack.parameters == []
     assert pack.keypad_navigation == []

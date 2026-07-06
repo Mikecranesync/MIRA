@@ -1,6 +1,6 @@
 {
   "pack_id": "durapulse_gs10",
-  "schema_version": 1,
+  "schema_version": 2,
   "family": {
     "manufacturer": "AutomationDirect",
     "series": "DURApulse GS10",
@@ -66,5 +66,46 @@
         "excerpt": "REV+RUN cmd word is 34 (0x22 = 0x20 REV | 0x02 RUN), bench-verified 2026-06-12. The prior value 20 (0x14) has no RUN bit set and left A6/A7/A10 blind whenever the belt ran in reverse."
       }
     ]
-  }
+  },
+  "parameters": [
+    {
+      "parameter_id": "P09.03",
+      "name": "COM1 Time-out Detection",
+      "purpose": "Sets the RS-485 Modbus communication time-out value. If the drive receives no valid Modbus packets within this time, it declares a communication timeout (fault CE10).",
+      "value_meanings": [],
+      "default": "00",
+      "range": "00–1000 sec",
+      "unit": "sec",
+      "related_faults": ["CE10"],
+      "source_citation": {
+        "doc": "DURApulse GS10 AC Drive User Manual (1st Ed., Rev B)",
+        "page": "4-188",
+        "excerpt": "P09.03 sets the communication time-out value. Range/Units 00–1000 sec, Default 00. The detection time is based on the P09.03 setting. When a transmission error occurs (for example, the error code CE10 displays), the error remains even if the transmission status returns to normal, and is not cleared automatically."
+      },
+      "provenance_tier": "manual_cited",
+      "confidence_tier": "high"
+    }
+  ],
+  "keypad_navigation": [
+    {
+      "goal": "View the COM1 communication time-out setting (P09.03) on the GS10 keypad",
+      "parameter_id": "P09.03",
+      "menu_group": "P09 Communication Parameters",
+      "keypad_steps": [
+        "Press MENU until the parameter screen appears (typically \"H 0.0\").",
+        "Press ENTER to switch to the parameter group, then press UP to select group 09.",
+        "Press ENTER to switch to the parameter number, then press UP to select 03 (parameter 09.03 / P09.03).",
+        "Press ENTER to display the current value of P09.03 (the timeout setting, in seconds)."
+      ],
+      "view_only_warning": "These steps only VIEW P09.03. At the value screen, do NOT press UP/DOWN then ENTER — that changes and saves the setting (the keypad shows \"END\" when a change is stored). To exit without changing, press MENU.",
+      "edit_warning": null,
+      "source_citation": {
+        "doc": "DURApulse GS10 AC Drive User Manual (1st Ed., Rev B)",
+        "page": "3-6",
+        "excerpt": "Parameter Setting Instructions: 1) Press MENU until the parameter screen appears (typically H 0.0). 2) Press ENTER to switch to the parameter group, then press the UP button to select the desired group number. 3) Press ENTER to switch to the parameter number, then press the UP button to select the number. 4) Press ENTER to switch to the parameter value. 5) Press ENTER. If END displays, the parameter was successfully updated."
+      },
+      "confidence_tier": "medium",
+      "provenance_tier": "manual_cited"
+    }
+  ]
 }

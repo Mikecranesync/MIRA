@@ -1,15 +1,21 @@
 """Tests for wiring the DriveSense schema-v2 cards (``ParameterCard`` /
-``KeypadNavigationCard``) into the diagnostic path (PR D).
+``KeypadNavigationCard``) into the diagnostic path (PR D), and the live flip
+of the SHIPPED pack to schema_version 2 (PR E).
 
 ``build_drive_diagnostic`` populates ``related_parameters``/``keypad_navigation``
-from the module-global pack (``shared.live_snapshot._GS10_PACK``). For the
-SHIPPED v1 pack both blocks are empty, so this is a no-op and both rendering
-surfaces (``render_machine_evidence``, ``assess_from_paths``) are
-byte-identical to their pre-v2 behavior -- proven here by asserting no
-parameter/keypad text appears anywhere in their output. The v2 behavior is
-proven separately by monkeypatching the module global with the PR C fixture
-pack (``tests/fixtures/drive_packs/gs10_v2_pack.json``), which carries a real,
-manual-cited P09.03 parameter + keypad-navigation card related to fault CE10.
+from the module-global pack (``shared.live_snapshot._GS10_PACK``). The SHIPPED
+``durapulse_gs10`` pack is now schema_version 2 and carries the real,
+manual-cited P09.03 parameter + keypad-navigation card related to fault CE10
+-- so a GOOD (non-stale) CE10 fault now renders the "Related parameter" and
+"Keypad (view-only)" sections on BOTH rendering surfaces
+(``render_machine_evidence``, ``assess_from_paths``), with no monkeypatch
+needed. That live proof is asserted directly below. The safety properties
+(view-only warning always present, no write imperative on a step line, a
+STALE/comm-lost fault renders no card at all) are asserted both against the
+shipped pack directly and, further down, against the standalone PR C fixture
+pack (``tests/fixtures/drive_packs/gs10_v2_pack.json``) via monkeypatch --
+kept as an independent regression pin that doesn't depend on whichever pack
+happens to be shipped.
 """
 
 from __future__ import annotations
@@ -69,23 +75,49 @@ def test_fault_58_decodes_to_ce10_modbus_timeout():
 
 
 # ---------------------------------------------------------------------------
-# 1. v1 render_machine_evidence is byte-identical: no parameter/keypad text
+# 1. LIVE PROOF -- shipped pack's build_drive_diagnostic populates the P09.03
+#    parameter + keypad card for a GOOD CE10 fault, no monkeypatch needed.
 # ---------------------------------------------------------------------------
 
 
-def test_v1_render_machine_evidence_has_no_parameter_or_keypad_text():
-    # NOTE: don't assert "P09.03" is absent here -- the SHIPPED v1 pack's own
-    # fault-card enrichment (`shared.drive_fault_intel`, unrelated to the
-    # schema-v2 ParameterCard this PR wires in) already cites "P09.03" in its
-    # first-checks text for this fault. The section-header markers below are
-    # what this PR actually adds, so they're the correct byte-identical proof.
+def test_shipped_pack_build_drive_diagnostic_populates_p0903_live():
+    """The shipped ``durapulse_gs10`` pack is now schema_version 2 -- this is
+    the flip-live proof: no monkeypatch, just the module-global pack that
+    ships in ``mira-bots/shared/drive_packs/packs/durapulse_gs10/pack.json``."""
+    diag = build_drive_diagnostic(_snaps({"vfd_fault_code": 58, "vfd_comm_ok": True}))
+
+    assert diag.fault_card is not None  # sanity: this IS a GOOD active fault
+    assert len(diag.related_parameters) == 1
+    assert diag.related_parameters[0].parameter_id == "P09.03"
+    assert "CE10" in diag.related_parameters[0].related_faults
+    assert diag.keypad_navigation is not None
+    assert diag.keypad_navigation.parameter_id == "P09.03"
+
+
+# ---------------------------------------------------------------------------
+# 2. LIVE PROOF -- render_machine_evidence carries the parameter + keypad
+#    sections, with the manual citations, for the shipped pack.
+# ---------------------------------------------------------------------------
+
+
+def test_shipped_pack_render_machine_evidence_has_parameter_and_keypad_sections_live():
     snaps = _snaps({"vfd_fault_code": 58, "vfd_comm_ok": True})
     text = render_machine_evidence(snaps)
-    assert "Related parameter" not in text
-    assert "Keypad" not in text
+
+    assert "Related parameter" in text
+    assert "Keypad" in text
+    assert "P09.03" in text
+    assert "COM1 Time-out Detection" in text
+    # manual citations for both cards (source_citation.page from the fixture).
+    assert "4-188" in text
+    assert "3-6" in text
+    assert "Source:" in text
 
 
-def test_v1_render_machine_evidence_no_fault_and_stale_also_clean():
+def test_shipped_pack_render_machine_evidence_no_fault_and_stale_still_clean():
+    """Safety property, kept unchanged: a fault-free or STALE/comm-lost
+    reading renders no parameter/keypad card at all, even though the shipped
+    pack now carries P09.03/keypad content."""
     no_fault = render_machine_evidence(
         _snaps({"vfd_fault_code": 0, "vfd_comm_ok": True, "vfd_cmd_word": 1})
     )
@@ -96,28 +128,22 @@ def test_v1_render_machine_evidence_no_fault_and_stale_also_clean():
 
 
 # ---------------------------------------------------------------------------
-# 2. v1 assess_from_paths is byte-identical: no parameter/keypad text
+# 3. LIVE PROOF -- assess_from_paths (the Ignition-wire surface) carries the
+#    same parameter + keypad sections for the shipped pack.
 # ---------------------------------------------------------------------------
 
 
-def test_v1_assess_from_paths_has_no_parameter_or_keypad_text():
-    # Same caveat as above: the v1 fault card's own text already cites "P09.03".
+def test_shipped_pack_assess_from_paths_has_parameter_and_keypad_sections_live():
     text = assess_from_paths(_merge(_ign("vfd_fault_code", "58"), _ign("vfd_comm_ok", "true")))
+
     assert text is not None
-    assert "Related parameter" not in text
-    assert "Keypad" not in text
-
-
-# ---------------------------------------------------------------------------
-# 3. v1 build_drive_diagnostic -- empty related_parameters + None keypad
-# ---------------------------------------------------------------------------
-
-
-def test_v1_build_drive_diagnostic_empty_v2_slots():
-    diag = build_drive_diagnostic(_snaps({"vfd_fault_code": 58, "vfd_comm_ok": True}))
-    assert diag.fault_card is not None  # sanity: this IS a GOOD active fault
-    assert diag.related_parameters == []
-    assert diag.keypad_navigation is None
+    assert "Related parameter" in text
+    assert "Keypad" in text
+    assert "P09.03" in text
+    assert "COM1 Time-out Detection" in text
+    assert "4-188" in text
+    assert "3-6" in text
+    assert "Source:" in text
 
 
 # ---------------------------------------------------------------------------
