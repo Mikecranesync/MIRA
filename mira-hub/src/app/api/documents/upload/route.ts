@@ -68,10 +68,14 @@ export async function POST(req: Request) {
       // The canonical read filter `(is_private = false OR tenant_id = $caller)`
       // relies on this so /api/documents never leaks it to another tenant.
       // See `.claude/rules/knowledge-entries-tenant-scoping.md` (#1833).
+      // knowledge_entries.id is a UUID PRIMARY KEY with NO server default — every
+      // other writer (node-knowledge-ingest.ts, seed-synthetic-users.ts) supplies
+      // it explicitly. Omitting it here made every upload 500 with a NOT NULL
+      // violation on id ("Insert failed"). Generate it in-SQL to match those writers.
       const result = await c.query(
         `INSERT INTO knowledge_entries
-           (tenant_id, source_url, manufacturer, model_number, equipment_type, content, is_private)
-         VALUES ($1, $2, $3, $4, $5, $6, true)
+           (id, tenant_id, source_url, manufacturer, model_number, equipment_type, content, is_private)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, true)
          RETURNING id`,
         [
           ctx.tenantId,

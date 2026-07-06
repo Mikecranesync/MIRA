@@ -1,0 +1,123 @@
+# shellcheck shell=bash disable=SC2034  # sourced fragment; SCN_* are read by judge.sh
+# document-upload-retrieval.check — "a customer uploads a document to their
+# library, sees it come back, and it stays private to their tenant."
+#
+# Walks the CUSTOMER DOCUMENTS door (NOT the beta-gate node/brain door) as a human
+# against the live Hub:
+#   1. upload a document through the real per-tenant door
+#      (`POST /api/documents/upload/` → knowledge_entries, is_private=true)
+#   2. read the caller's own library back (`GET /api/documents/`) and confirm the
+#      upload appears — the #1761 "my documents disappeared" regression guard
+#   3. read the SAME library as a DIFFERENT tenant and confirm the upload is NOT
+#      visible — the #1833 cross-tenant leak guard
+#
+# This exercises the hybrid-corpus read law directly
+# (`.claude/rules/knowledge-entries-tenant-scoping.md`): the caller sees the shared
+# OEM corpus + their own private uploads, and never another tenant's uploads. It is
+# distinct from beta-gate.check, which uses the node/brain door + node-scoped chat.
+#
+# Sourced by tools/crew/dogfood/judge.sh. Contract:
+#   inputs (env):  DF_BASE (hub root url)   DF_TOK (session token)   DF_PERSONA (name)
+#                  AUTH_DIR (persona auth-state dir; inherited from judge, defaulted below)
+#   run_check():   prints human EVIDENCE: lines, then a verdict on the LAST line:
+#                  GREEN | YELLOW:<business reason> | RED:<business reason> | INFRA:<reason>
+# Business-language reasons only — the report is read by a non-technical founder.
+
+SCN_PATH="Document upload→retrieval"
+SCN_TITLE="bug(hub): a customer's uploaded document does not come back in their library (or leaks across tenants)"
+SCN_IMPACT="A customer uploads a document to their own library and it either fails to save, never appears for them, or is visible to another tenant. Breaks the core 'your documents, private to you' promise and is a data-isolation risk."
+SCN_LABELS="bug,hub,dogfood,needs-triage"
+SCN_FINDER="dana"        # a manager on the primary tenant — can upload + read the library
+SCN_VERIFIER="carlos"    # a second session on the SAME tenant must reproduce a RED before filing
+SCN_DEDUPE="customer document upload library retrieval tenant isolation knowledge_entries"
+
+# Session-token for a persona's saved auth-state (self-contained: does not rely on
+# judge's tok_for, so the check also runs standalone via --check).
+_df_tok_for() { # <persona> -> token (empty if missing)
+  local f="${AUTH_DIR:-dogfood-output/.auth}/$1-state.json"
+  [ -f "$f" ] || return 0
+  python3 -c "import json,sys
+try:
+ d=json.load(open('$f')); print(next((c['value'] for c in d['cookies'] if c['name']=='next-auth.session-token'),''))
+except Exception: print('')" 2>/dev/null
+}
+
+run_check() {
+  local me nid up code libs seen leak other other_tok
+  # A stable per-persona source_url. The upload route has no ON CONFLICT, so each
+  # run DOES insert a new knowledge_entries row (minor, bounded growth on the
+  # staging DB only) — but GET /api/documents GROUPs BY source_url, so the library
+  # UI shows exactly one entry per persona regardless of run count. Upload success
+  # is gated on the HTTP status directly (below), so a stale row from a prior run
+  # can never mask a fresh upload regression.
+  local marker="dogfood-doc-roundtrip-${DF_PERSONA}"
+  local src="demo://dogfood/${marker}"
+
+  # 1) Session usable.
+  me=$(curl -sS -m 20 "$DF_BASE/api/me/" -H "Cookie: next-auth.session-token=$DF_TOK")
+  if ! printf '%s' "$me" | grep -q '"email"'; then
+    echo "EVIDENCE: /api/me did not return a session for $DF_PERSONA (got: $(printf '%s' "$me" | head -c 80))"
+    echo "INFRA: could not authenticate $DF_PERSONA against the staging Hub"; return
+  fi
+  echo "EVIDENCE: logged in as $DF_PERSONA ($(printf '%s' "$me" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("role","?"))' 2>/dev/null))"
+
+  # 2) Upload a document through the real per-tenant customer door.
+  up=$(curl -sS -m 30 -w '\n%{http_code}' -X POST "$DF_BASE/api/documents/upload/" \
+        -H "Cookie: next-auth.session-token=$DF_TOK" -H "Content-Type: application/json" \
+        -d "{\"filename\":\"${marker}.pdf\",\"source_url\":\"${src}\",\"excerpt\":\"Ephemeral dogfood round-trip probe for ${DF_PERSONA}. Verifies upload persists and stays tenant-private.\"}")
+  code=$(printf '%s' "$up" | tail -n1); up=$(printf '%s' "$up" | sed '$d')
+  if [ "$code" != "201" ] && [ "$code" != "200" ]; then
+    local emsg; emsg=$(printf '%s' "$up" | python3 -c 'import sys,json
+try: print(json.load(sys.stdin).get("error",""))
+except Exception: print("")' 2>/dev/null)
+    echo "EVIDENCE: uploading a document to the customer library returned HTTP $code — \"$emsg\""
+    # A provisioning gap (this QA tenant has no data-side `tenants` row → knowledge_entries
+    # FK violation) is an environment problem, not proof the product is broken for real
+    # signups — classify it INFRA, matching beta-gate.check.
+    if printf '%s' "$emsg" | grep -qiE 'storage error|constraint|does not exist|violates|not configured'; then
+      echo "INFRA: this QA tenant cannot store uploads (data-side provisioning gap — re-seed with seed-synthetic-users.ts). Cannot judge the door here."; return
+    fi
+    echo "RED: the customer document upload door is broken — a customer cannot save a document to their library at all (HTTP $code)"; return
+  fi
+  echo "EVIDENCE: uploaded a document to the customer library through the real per-tenant door (HTTP $code)"
+
+  # 3) Read the caller's OWN library back — the upload must appear (#1761 guard).
+  libs=$(curl -sS -m 20 "$DF_BASE/api/documents/" -H "Cookie: next-auth.session-token=$DF_TOK")
+  seen=$(printf '%s' "$libs" | python3 -c "import sys,json
+try:
+ d=json.load(sys.stdin); srcs=[ (x.get('source_url') or '') for x in d.get('documents',[]) ]
+ print('yes' if any('$marker' in s for s in srcs) else 'no')
+except Exception: print('err')" 2>/dev/null)
+  if [ "$seen" = "err" ]; then
+    echo "EVIDENCE: the library list did not return valid JSON for $DF_PERSONA"
+    echo "INFRA: the customer library endpoint returned a non-JSON response — cannot judge retrieval"; return
+  fi
+  if [ "$seen" != "yes" ]; then
+    echo "EVIDENCE: after uploading, $DF_PERSONA's own document library did NOT list the upload ($src)"
+    echo "RED: a customer uploaded a document but it does not come back in their own library — the upload→retrieval path is broken (the #1761 disappeared-corpus failure)"; return
+  fi
+  echo "EVIDENCE: the upload is retrievable in $DF_PERSONA's own library"
+
+  # 4) Read the SAME library as a DIFFERENT tenant — the upload must NOT be visible (#1833 leak guard).
+  if [ "$DF_PERSONA" = "isolation" ]; then other="dana"; else other="isolation"; fi
+  other_tok="$(_df_tok_for "$other")"
+  if [ -z "$other_tok" ]; then
+    echo "EVIDENCE: no saved session for the isolation persona '$other' — cannot run the cross-tenant leak probe"
+    echo "YELLOW: verified the customer sees their own upload, but could NOT verify it stays private (no '$other' session to probe cross-tenant leakage)"; return
+  fi
+  leak=$(curl -sS -m 20 "$DF_BASE/api/documents/" -H "Cookie: next-auth.session-token=$other_tok" | python3 -c "import sys,json
+try:
+ d=json.load(sys.stdin); srcs=[ (x.get('source_url') or '') for x in d.get('documents',[]) ]
+ print('yes' if any('$marker' in s for s in srcs) else 'no')
+except Exception: print('err')" 2>/dev/null)
+  if [ "$leak" = "yes" ]; then
+    echo "EVIDENCE: a DIFFERENT tenant ('$other') can see $DF_PERSONA's private upload ($src) in its own library"
+    echo "RED: a customer's private uploaded document leaks into another tenant's document library — cross-tenant data isolation is broken (#1833)"; return
+  fi
+  if [ "$leak" = "err" ]; then
+    echo "EVIDENCE: the isolation library read for '$other' returned non-JSON — leak probe inconclusive"
+    echo "YELLOW: the customer sees their own upload, but the cross-tenant leak probe was inconclusive (non-JSON from the '$other' session)"; return
+  fi
+  echo "EVIDENCE: the upload is NOT visible to another tenant ('$other') — isolation holds"
+  echo "GREEN"
+}
