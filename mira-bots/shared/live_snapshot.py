@@ -24,11 +24,17 @@ trust gate — when it is false, every VFD-derived value is marked ``stale``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from shared.drive_fault_intel import build_gs10_template_reader
-from shared.drive_packs import DiagnosticCard, build_cards, load_pack
+from shared.drive_packs import (
+    DiagnosticCard,
+    KeypadNavigationCard,
+    ParameterCard,
+    build_cards,
+    load_pack,
+)
 from shared.drive_packs.schema import EnvelopeBand, RegisterEntry
 from shared.wire_scaling import TagScaling, to_engineering
 
@@ -130,10 +136,18 @@ class DriveDiagnostic:
     snapshot is GOOD quality (a STALE/comms-lost fault yields ``None`` — the
     assessment already carries the comms-LOST caveat); ``None`` also when there
     is no active fault or no enrichment for it.
+
+    ``related_parameters`` / ``keypad_navigation`` are the DriveSense schema-v2
+    carry slots (parameter decode + how-to-reach-it keypad steps). They are
+    additive and default empty/None; ``build_drive_diagnostic`` does NOT populate
+    them yet (a later DriveSense phase composes them once packs ship v2 blocks),
+    so the current assessment/fault-card rendering is unchanged.
     """
 
     assessment: str | None
     fault_card: DiagnosticCard | None
+    related_parameters: list[ParameterCard] = field(default_factory=list)
+    keypad_navigation: KeypadNavigationCard | None = None
 
 
 def _active_fault_card(snapshots: list[LiveTagSnapshot]) -> DiagnosticCard | None:
