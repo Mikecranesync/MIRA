@@ -28,7 +28,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from shared.drive_fault_intel import build_gs10_template_reader
-from shared.drive_packs import build_cards, load_pack
+from shared.drive_packs import DiagnosticCard, build_cards, load_pack
 from shared.drive_packs.schema import EnvelopeBand, RegisterEntry
 from shared.wire_scaling import TagScaling, to_engineering
 
@@ -115,6 +115,46 @@ class LiveTagSnapshot:
     label: str
     source: str
     ts: str
+
+
+@dataclass(frozen=True)
+class DriveDiagnostic:
+    """Surface-agnostic structured diagnosis for a drive at a moment in time.
+
+    Every DriveSense surface (engine Live Machine Evidence, Ignition Ask-MIRA,
+    and future Hub/Slack/Telegram) builds THIS from live snapshots, then renders
+    it — so all surfaces present the SAME deterministic assessment + cited fault
+    card. Read-only/offline; holds no live handles, only decoded values.
+
+    ``fault_card`` is the active fault's ``DiagnosticCard`` ONLY when the fault
+    snapshot is GOOD quality (a STALE/comms-lost fault yields ``None`` — the
+    assessment already carries the comms-LOST caveat); ``None`` also when there
+    is no active fault or no enrichment for it.
+    """
+
+    assessment: str | None
+    fault_card: DiagnosticCard | None
+
+
+def _active_fault_card(snapshots: list[LiveTagSnapshot]) -> DiagnosticCard | None:
+    """The active, GOOD-quality fault's diagnostic card (the STALE-suppression
+    gate), or ``None``. Single source of truth for 'which card, if any'."""
+    fault = _dp(snapshots).get("vfd_fault_code")
+    if fault is None or fault.quality != GOOD or fault.value in (None, "no active fault"):
+        return None
+    card = _GS10_CARDS_BY_MEANING.get(str(fault.value))
+    if card is None or (not card.likely_causes and not card.first_checks):
+        return None
+    return card
+
+
+def build_drive_diagnostic(snapshots: list[LiveTagSnapshot]) -> DriveDiagnostic:
+    """Compose the deterministic assessment + the active-fault card into one
+    structured, surface-agnostic payload. Pure/offline."""
+    return DriveDiagnostic(
+        assessment=assess_snapshots(snapshots),
+        fault_card=_active_fault_card(snapshots),
+    )
 
 
 def _num(raw: Any) -> float | int | None:
@@ -469,14 +509,10 @@ def assess_snapshots(snapshots: list[LiveTagSnapshot]) -> str | None:
     )
 
 
-def render_fault_diagnostic(fault_name: str) -> str:
-    """Enriched diagnostic block for an active fault NAME (card likely-causes/
-    first-checks/citation), or "" when there's no enrichment. Pure/offline --
-    reads module-level cards built once via the offline FaultCodesTemplateReader.
-    """
-    card = _GS10_CARDS_BY_MEANING.get(fault_name)
-    if card is None or (not card.likely_causes and not card.first_checks):
-        return ""
+def _render_fault_card(card: DiagnosticCard) -> str:
+    """Render a ``DiagnosticCard`` (likely-causes/first-checks/citation) as the
+    ``### Fault diagnostic:`` block text. Pure formatting -- the caller decides
+    whether a card should render at all (the GOOD-quality / non-empty gates)."""
     lines = [f"### Fault diagnostic: {card.fault_or_symptom}"]
     if card.likely_causes:
         lines.append("Likely causes: " + "; ".join(card.likely_causes))
@@ -488,20 +524,15 @@ def render_fault_diagnostic(fault_name: str) -> str:
     return "\n".join(lines)
 
 
-def _render_active_fault_diagnostic(snapshots: list[LiveTagSnapshot]) -> str:
-    """Enriched per-fault diagnostic block for an active, GOOD-quality fault in
-    ``snapshots`` (via the shared card path), or "" when there is none. Shared by
-    the engine (``render_machine_evidence``) and the Ignition wire path
-    (``assess_from_paths``) so the fault-diagnostic gate + render live in ONE place.
-
-    Quality gate: only a GOOD-quality fault renders. A STALE fault (comms lost —
-    ``vfd_comm_ok`` is this module's master trust gate) is skipped; the assessment
-    already leads with the comms-LOST caveat and a confident card would contradict it.
+def render_fault_diagnostic(fault_name: str) -> str:
+    """Enriched diagnostic block for an active fault NAME (card likely-causes/
+    first-checks/citation), or "" when there's no enrichment. Pure/offline --
+    reads module-level cards built once via the offline FaultCodesTemplateReader.
     """
-    fault = _dp(snapshots).get("vfd_fault_code")
-    if fault is None or fault.quality != GOOD or fault.value in (None, "no active fault"):
+    card = _GS10_CARDS_BY_MEANING.get(fault_name)
+    if card is None or (not card.likely_causes and not card.first_checks):
         return ""
-    return render_fault_diagnostic(str(fault.value))
+    return _render_fault_card(card)
 
 
 def render_machine_evidence(snapshots: list[LiveTagSnapshot]) -> str:
@@ -529,14 +560,15 @@ def render_machine_evidence(snapshots: list[LiveTagSnapshot]) -> str:
         "",
         render_status_block(snapshots),
     ]
-    assessment = assess_snapshots(snapshots)
-    if assessment:
-        parts += ["", f"Assessment: {assessment}"]
+    # Both surfaces (this one and `assess_from_paths`) build the SAME
+    # structured `DriveDiagnostic` object, then render it -- see `DriveDiagnostic`.
+    diag = build_drive_diagnostic(snapshots)
+    if diag.assessment:
+        parts += ["", f"Assessment: {diag.assessment}"]
     # Only render the authoritative per-fault card for a GOOD-quality fault — see
-    # `_render_active_fault_diagnostic`'s docstring for the STALE-suppression rule.
-    diagnostic = _render_active_fault_diagnostic(snapshots)
-    if diagnostic:
-        parts += ["", diagnostic]
+    # `DriveDiagnostic`'s docstring for the STALE-suppression rule.
+    if diag.fault_card is not None:
+        parts += ["", _render_fault_card(diag.fault_card)]
     return "\n".join(parts)
 
 
@@ -609,10 +641,11 @@ def assess_from_paths(path_values: dict[str, Any] | None) -> str | None:
     fabricated assessment. Pure / deterministic.
 
     When an active, GOOD-quality (comms-OK) GS10 fault is present, the same
-    per-fault diagnostic card the engine path renders (``render_fault_diagnostic``,
-    via the shared ``_render_active_fault_diagnostic`` helper) is appended after
-    the one-line assessment — this is the Ignition "Ask MIRA" enrichment (Drive
-    Commander DriveSense follow-up). A STALE fault (comms lost) never gets a card.
+    per-fault diagnostic card the engine path renders is appended after the
+    one-line assessment — both surfaces build the same ``DriveDiagnostic``
+    (``build_drive_diagnostic``) and render its ``fault_card``. This is the
+    Ignition "Ask MIRA" enrichment (Drive Commander DriveSense). A STALE fault
+    (comms lost) never gets a card.
     """
     if not path_values:
         return None
@@ -632,16 +665,16 @@ def assess_from_paths(path_values: dict[str, Any] | None) -> str | None:
     if not raw:
         return None
     snapshots = normalize(raw, "", source="ignition", ts="")
-    assessment = assess_snapshots(snapshots)
-    diagnostic = _render_active_fault_diagnostic(snapshots)
-    if diagnostic:
-        # A non-empty diagnostic implies a GOOD active fault, which also makes
-        # assess_snapshots emit its "Active VFD fault" line — so `assessment` is
-        # never None here today. The `else diagnostic` is a defensive fallback
-        # (never hit under current invariants), kept so a future assess_snapshots
-        # change can't drop the card.
-        return f"{assessment}\n\n{diagnostic}" if assessment else diagnostic
-    return assessment
+    # Both surfaces (this one and `render_machine_evidence`) build the SAME
+    # structured `DriveDiagnostic` object, then render it -- see `DriveDiagnostic`.
+    diag = build_drive_diagnostic(snapshots)
+    if diag.fault_card is not None:
+        card_text = _render_fault_card(diag.fault_card)
+        # A non-empty card implies a GOOD active fault, so assess_snapshots emitted
+        # its "Active VFD fault" line — assessment is non-None here today; the
+        # `else card_text` is a defensive fallback (never hit under current invariants).
+        return f"{diag.assessment}\n\n{card_text}" if diag.assessment else card_text
+    return diag.assessment
 
 
 # ── Analog assessment from the Ignition wire form — the SCALING CONTRACT ──────
