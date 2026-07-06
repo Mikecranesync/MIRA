@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.79.3 (2026-07-06) - fix(hooks): exempt rebase --continue/--abort/--skip/--quit from git-state-guard's mid-rebase block
+- **Problem:** `tools/hooks/git-state-guard.sh` blocks git mutators while mid-rebase, but its mutator regex matched `git rebase` unconditionally — including the `--continue`/`--abort`/`--skip` invocations that are the ONLY way to resolve the wedge. A single Bash tool call doing `git rebase --continue` while mid-rebase was denied outright. The hook's own documented escape hatch (`MIRA_ALLOW_GIT_WEDGE=1`) doesn't help here either: the hook evaluates the submitted command text before any of it executes, so `export MIRA_ALLOW_GIT_WEDGE=1 && git rebase --continue` in one call is evaluated with the var still unset.
+- **Fix:** new `RESOLVER` regex matches `--continue|--abort|--skip|--quit` on `rebase`/`cherry-pick`/`revert`/`am` and allows those through even while mid-rebase — they resolve the wedge, they don't create one. A plain `git commit`/`git rebase <target>` while mid-rebase is still denied as before.
+- **Verified manually** (no existing test harness for this hook): built a throwaway repo with a fake `.git/rebase-merge/` marker and confirmed `git rebase --continue`, `--abort`, and `--skip` are now allowed (no deny output) while `git commit -m test` is still denied with the original message.
+- **Scope:** one file, `tools/hooks/git-state-guard.sh`. No change to the detached-HEAD branch or the mutator list. shellcheck clean.
+
 ### v3.79.2 (2026-07-06) - feat(ci): migration CHECK constraint drift guardrail
 - Adds `tools/check_migration_check_drift.py`, a READ-ONLY drift detector that prevents silent CHECK constraint value shrinkage (regression like migration 032's near-loss of 31 enum values → 28). Parses CHECK constraints from new/modified `.sql` migration files and diffs their declared values against the live staging database schema via `information_schema.check_constraints`.
 - **Wired into `migration-verify.yml`** as a post-apply, pre-verification gate: fails (returns 1) if any migration declares a SUBSET of live constraint values (specific missing values named in error). Growth (values added) always passes. New constraint (not yet live) passes.
