@@ -139,6 +139,10 @@ def test_v2_parameter_card_fields():
     assert p.name == "Comm Time-out Detection"
     assert p.default == "3"
     assert p.related_faults == ["CE10"]
+    # No 'related_parameters' key in the raw dict — defaults to [] (additive,
+    # backward-compatible field; GS10's pack has none of these and must keep
+    # loading unchanged).
+    assert p.related_parameters == []
     assert p.provenance_tier == "manual_cited"
     assert p.confidence_tier == "medium"
     assert isinstance(p.source_citation, Citation)
@@ -146,6 +150,25 @@ def test_v2_parameter_card_fields():
         ValueMeaning(value="0", meaning="Warn and continue"),
         ValueMeaning(value="3", meaning="Fault and coast to stop"),
     ]
+
+
+def test_v2_parameter_card_related_parameters_round_trips():
+    # Additive field: a ParameterCard JSON WITH related_parameters (the
+    # "Related Parameters:" line, e.g. C125 -> P045) round-trips as a list.
+    raw = _v2_raw()
+    raw["parameters"][0]["related_parameters"] = ["P045", "C126"]
+    pack = _parse_pack(raw, PACK_ID, "<memory>")
+    p = pack.parameters[0]
+    assert p.related_parameters == ["P045", "C126"]
+
+
+def test_v2_parameter_card_related_parameters_defaults_empty_when_absent():
+    # A ParameterCard JSON WITHOUT related_parameters (e.g. every GS10
+    # parameter today) defaults to [] rather than raising or requiring the key.
+    raw = _v2_raw()
+    assert "related_parameters" not in raw["parameters"][0]
+    pack = _parse_pack(raw, PACK_ID, "<memory>")
+    assert pack.parameters[0].related_parameters == []
 
 
 def test_v2_keypad_card_fields():
