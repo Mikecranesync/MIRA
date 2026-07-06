@@ -300,6 +300,26 @@ jobs:
             tests/simlab/test_dashboard.py \
             tests/beta/test_simlab_beta_gate.py -v
 
+  drive-pack-extract-tests:
+    name: Drive Pack Extract Tests
+    runs-on: ubuntu-latest
+    # PR-A extractor + PR-B grading self-tests (ADR-0025 / docs/drive-commander/). OFFLINE ONLY —
+    # runs against the committed synthetic fixture (fixtures/pf_sample.pdf, ~4KB, no licensed
+    # manual content). Grading a real manual with grade.py is a documented LOCAL command
+    # (docs/drive-commander/runbook-pr-b-acceptance.md), never run in CI (no manual available).
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install pdfplumber + reportlab (pinned to match mira-core/mira-ingest/requirements.txt)
+        run: pip install pytest pdfplumber==0.11.9 reportlab
+
+      - name: Run extractor + grading offline tests
+        run: pytest tools/drive-pack-extract/tests/ tools/drive-pack-extract/grading/tests/ -q
+
   license-check:
     name: License Check
     runs-on: ubuntu-latest
