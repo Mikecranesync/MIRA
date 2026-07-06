@@ -32,9 +32,28 @@ prove the JSON matches the source PDF within declared limits* — and, for
    records the new `pdf_sha256` + `pack_trust_status` in the registry.
 5. The **old pack stays live** until the replacement is approved.
 
+## The discovery bridge is candidate-only too
+
+The manual-discovery fleet is now wired to this path via `mira-crawler/drive_pack_bridge.py`
+(default-off, `MIRA_DRIVE_PACK_BRIDGE=1`), fired from `kb_growth_cron` after a **successful** KB
+ingest. It carries the same rule end-to-end: **a discovered/changed manual creates a review-only
+candidate record, never a trusted pack.** The bridge does NOT run the extractor/grader inline and
+structurally cannot write into `mira-bots/shared/drive_packs/packs/` — it only records
+`{trust_status:"candidate", promoted:false, review_only:true}` under `~/.mira/drive-pack-candidates/`,
+with the `next_step` command a human runs to extract + grade + review. Full runbook:
+`docs/runbooks/manual-kb-ingest-to-drive-pack-bridge.md`.
+
+So neither a crawler finding a PDF, nor the AB hunter downloading one, nor this bridge creating a
+candidate, ever changes MIRA's diagnostic truth. Only extraction + grading + cite-integrity +
+domain checks + **human approval** do.
+
 ## Enforcement
 
+- `mira-crawler/drive_pack_bridge.py` — default-off, STOP_INGEST-aware, fail-open; writes only a
+  review-only candidate record (`trust_status:"candidate"`, `promoted:false`) outside `packs/`.
 - `registry/update_candidate.py::assert_not_live_packs` — refuses to write into the served tree.
 - `registry/update_candidate.py::assemble_candidate_report` — hard-codes `promoted: false`.
 - `grading/report.py` — automated ceiling is `beta`; `trusted` needs a recorded human sign-off.
-- Tests: `registry/tests/test_update_candidate.py` (no-auto-promote, no-live-packs, unchanged-noop).
+- Tests: `mira-crawler/tests/test_drive_pack_bridge.py` (default-off, STOP_INGEST, fail-open,
+  unchanged-no-op, changed/new→candidate, never-targets-packs, review-only, provenance) +
+  `registry/tests/test_update_candidate.py` (no-auto-promote, no-live-packs, unchanged-noop).

@@ -1,6 +1,6 @@
-# Bridge: Manual Discovery → Drive-Pack Grading (design)
+# Bridge: Manual Discovery → Drive-Pack Grading
 
-**Status: DESIGN / follow-up PR. Not implemented — deliberately.** This is the missing connection from the manual-discovery fleet to the trust-graded drive-pack path. It is *not* in the smallest slice because it modifies a live ingest cron and first needs a `(manufacturer, model) → manual_id` mapping that does not exist today.
+**Status: IMPLEMENTED — default-OFF (`MIRA_DRIVE_PACK_BRIDGE=1`).** `mira-crawler/drive_pack_bridge.py`, fired from `kb_growth_cron::_process_entry`. Operator runbook: `docs/runbooks/manual-kb-ingest-to-drive-pack-bridge.md`; workflow: `docs/drive-commander/workflow-create-candidate-from-discovered-manual.md`. This doc is the design rationale; the sections below describe what was built. It creates review-only **candidate records** only — it does not run the extractor inline and never touches trusted packs.
 
 ## The gap (verified)
 
