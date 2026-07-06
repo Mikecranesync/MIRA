@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "_comment": "Manual source registry for DriveSense drive-pack automation. Human-curated. NEVER commit the source PDFs themselves (see ../.gitignore: manuals/ is ignored). Each entry records a manual's identity, where it was retrieved, its approved sha256, the reproducible generator + gold set (if the source is automatable), and the last-known trust status of the pack it produces. A changed PDF (hash mismatch) creates a CANDIDATE, never an automatic trusted replacement. Field contract + lifecycle: docs/drive-commander/workflow-register-a-manual-source.md and registry.py.",
+  "manuals": [
+    {
+      "manual_id": "rockwell_powerflex_525_520-um001",
+      "vendor": "Rockwell Automation",
+      "product_family": "PowerFlex 525",
+      "applicable_drive_models": ["PowerFlex 525", "PowerFlex 520-series", "25B"],
+      "manual_title": "PowerFlex 525 Adjustable Frequency AC Drive User Manual",
+      "publication": "520-UM001O-EN-E",
+      "revision": "O",
+      "revision_date": "2025-09",
+      "source_url": null,
+      "source_classification": ["official", "downloadable_pdf", "requires_login"],
+      "automatable": true,
+      "retrieved_date": "2026-07-06",
+      "local_pdf_hint": "manuals/pf525_520-um001.pdf",
+      "pdf_sha256": "b9445a63c78865037d22238ddedbb785b4309c9798da9da35029d628658636a6",
+      "pack_id": "powerflex_525",
+      "pack_version": 2,
+      "gold_path": "gold/powerflex_525/gold.json",
+      "generator": "generate_pf525_pack.py",
+      "candidate_dir": "candidates",
+      "pack_trust_status": "beta",
+      "known_residuals": [
+        "fault->param link recall gap: extractor did not link F100/F109 -> P053 (non-diagnostic-critical)",
+        "page 98 analog-output block (t088-t090) deferred: multi-column layout parses with bleed/duplicate; not diagnostic-critical, none in gold",
+        "related_parameters (e.g. C125->P045) not represented: ParameterCard schema has no such field; deferred to a runtime schema PR"
+      ],
+      "approval": {
+        "approved_by": null,
+        "approved_at": null,
+        "note": "Automated grading ceiling is 'beta'. Promotion to 'trusted' requires a recorded human sign-off per docs/drive-commander/runbook-pr-b-acceptance.md."
+      }
+    },
+    {
+      "manual_id": "automationdirect_gs10_gs10m-um",
+      "vendor": "AutomationDirect",
+      "product_family": "DURApulse GS10",
+      "applicable_drive_models": ["GS10", "GS-10"],
+      "manual_title": "DURApulse GS10 Series AC Drive User Manual",
+      "publication": "GS10M-UM",
+      "revision": null,
+      "revision_date": null,
+      "source_url": null,
+      "source_classification": ["official", "downloadable_pdf", "metadata_only"],
+      "automatable": false,
+      "retrieved_date": null,
+      "local_pdf_hint": null,
+      "pdf_sha256": null,
+      "pack_id": "durapulse_gs10",
+      "pack_version": 2,
+      "gold_path": null,
+      "generator": null,
+      "candidate_dir": "candidates",
+      "pack_trust_status": "beta",
+      "known_residuals": [],
+      "approval": {
+        "approved_by": null,
+        "approved_at": null,
+        "note": "MANUAL-REVIEW-ONLY: the live durapulse_gs10 pack shipped via PR #2501 but has no reproducible extractor generator + gold set wired into this pipeline yet. Registered for identity + update tracking; not auto-generatable until a generator + gold are added. Set source_url + pdf_sha256 when the manual is curated locally."
+      }
+    }
+  ]
+}
