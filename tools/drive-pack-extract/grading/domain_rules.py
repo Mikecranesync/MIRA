@@ -17,10 +17,54 @@ _VALID_PROVENANCE = {"bench_verified", "manual_cited"}
 _JUNK_NAME_RE = re.compile(
     r"Rockwell Automation Publication|Chapter\s+\d+|^\s*\d+\s*$", re.IGNORECASE
 )
-_PARAM_ID_RE = re.compile(r"^[APCTBDapctbd]\d{2,3}$")
-_FAULT_ID_RE = re.compile(r"^F\d+$")
-_FAULT_ID_RE_ANY_CASE = re.compile(r"^F\d+$", re.IGNORECASE)
 _LEADING_FAULT_ID_RE = re.compile(r"^([A-Za-z]\d{2,3})\b")
+
+# --- Family-aware ID conventions --------------------------------------------
+# Different drive families label parameters and faults differently, and an id
+# that is legitimate for one family is contamination in another. The rules are
+# therefore keyed off the pack's declared ``family``, NOT a single hardcoded
+# vocabulary. This is deliberately NOT a broad relaxation: each family has its
+# own explicit pattern, an UNKNOWN family falls back to the strict PowerFlex
+# pattern, and the param-id-leak guard (``rf in all_param_ids``) stays absolute
+# for every family. So a PowerFlex id in a GS10 pack (or vice-versa) is still
+# flagged — the shape simply belongs to the wrong family.
+#
+#   powerflex  : params A105/P042/C125/t094/d015 (^[APCTBDapctbd]\d{2,3}$);
+#                fault refs F081 (^F\d+$).
+#   durapulse  : AutomationDirect GS10/GS20 — dotted params P09.03
+#                (^[A-Za-z]\d{2}\.\d{2}$); alphanumeric fault mnemonics
+#                CE10/GFF/Lvd/oL/EF/CE1..4 — anything that is NOT the PowerFlex
+#                F\d+ form and is a short letter(+digit) token.
+_FAMILY_CONVENTIONS = {
+    "powerflex": {
+        "param_id": re.compile(r"^[APCTBDapctbd]\d{2,3}$"),
+        "fault_ref": re.compile(r"^F\d+$"),
+    },
+    "durapulse": {
+        "param_id": re.compile(r"^[A-Za-z]\d{2}\.\d{2}$"),
+        "fault_ref": re.compile(r"^(?!F\d+$)[A-Za-z]{1,4}\d{0,2}$"),
+    },
+}
+_DEFAULT_FAMILY = "powerflex"  # strict fallback for an unrecognized family
+
+# Back-compat aliases (the powerflex convention == the original hardcoded rules).
+_PARAM_ID_RE = _FAMILY_CONVENTIONS["powerflex"]["param_id"]
+_FAULT_ID_RE = _FAMILY_CONVENTIONS["powerflex"]["fault_ref"]
+
+
+def _family_key(pack_dict: dict[str, Any]) -> str:
+    """Resolve the pack's family to a convention key from its declared
+    ``family`` (manufacturer / series / aliases). Unknown -> strict default."""
+    fam = pack_dict.get("family", {}) or {}
+    hay = " ".join(
+        [str(fam.get("manufacturer", "")), str(fam.get("series", ""))]
+        + [str(a) for a in (fam.get("aliases") or [])]
+    ).lower()
+    if "powerflex" in hay:
+        return "powerflex"
+    if any(t in hay for t in ("durapulse", "automationdirect", "gs10", "gs20")):
+        return "durapulse"
+    return _DEFAULT_FAMILY
 
 
 def _is_blank(value: Any) -> bool:
@@ -37,29 +81,38 @@ def check_domain(pack_dict: dict[str, Any]) -> LayerResult:
     keypad_navigation = pack_dict.get("keypad_navigation", []) or []
     provenance = pack_dict.get("provenance", {}) or {}
 
+    family = _family_key(pack_dict)
+    conv = _FAMILY_CONVENTIONS[family]
+
     # --- fault_codes name junk -------------------------------------------
     for code, name in fault_codes.items():
         if _JUNK_NAME_RE.search(str(name)):
             violations.append(f"fault_codes[{code}]: junk name {name!r} (header/footer bleed)")
 
-    # --- parameter_id shape ------------------------------------------------
+    # --- parameter_id shape (family-aware) ---------------------------------
     all_param_ids: set[str] = set()
     for param in parameters:
         pid = param.get("parameter_id", "")
         all_param_ids.add(pid)
-        if not _PARAM_ID_RE.match(pid) or _FAULT_ID_RE_ANY_CASE.match(pid):
+        # invalid if it doesn't match THIS family's param shape, or it looks
+        # like a fault reference (a fault id masquerading as a param).
+        if not conv["param_id"].match(pid) or conv["fault_ref"].match(pid):
             violations.append(
-                f"parameter_id {pid!r}: does not match ^[APCTBDapctbd]\\d{{2,3}}$ or is a fault id"
+                f"parameter_id {pid!r}: does not match the {family} parameter convention "
+                f"or is a fault id (wrong-family contamination or malformed)"
             )
 
-    # --- related_faults shape + no param-id leaked in ----------------------
+    # --- related_faults shape (family-aware) + no param-id leaked in --------
     for param in parameters:
         pid = param.get("parameter_id", "")
         for rf in param.get("related_faults", []) or []:
-            if not _FAULT_ID_RE.match(rf):
+            if not conv["fault_ref"].match(rf):
                 violations.append(
-                    f"parameter {pid!r}: related_faults entry {rf!r} does not match ^F\\d+$"
+                    f"parameter {pid!r}: related_faults entry {rf!r} is not a valid "
+                    f"{family} fault reference (wrong-family contamination or malformed)"
                 )
+            # The param-id-leak guard is ABSOLUTE for every family — a parameter
+            # id must never appear in related_faults, whatever the convention.
             if rf in all_param_ids:
                 violations.append(
                     f"parameter {pid!r}: related_faults contains a parameter id {rf!r} "

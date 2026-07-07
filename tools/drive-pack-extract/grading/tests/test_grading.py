@@ -454,6 +454,89 @@ def test_domain_rules_flags_duplicate_parameter_id():
     assert any("duplicate" in d for d in result.details)
 
 
+# ---------------------------------------------------------------------------
+# Family-aware ID conventions (refs #2516): GS10 uses dotted params (P09.03) and
+# alphanumeric fault mnemonics (CE10); PowerFlex uses A105/F081. Each family's
+# ids must grade, the OTHER family's ids are wrong-family contamination, and the
+# param-id-leak guard stays absolute for every family.
+# ---------------------------------------------------------------------------
+def _family_pack(family: dict, params: list[dict]) -> dict:
+    return {
+        "pack_id": "t",
+        "family": family,
+        "live_decode": {"fault_codes": {}},
+        "parameters": params,
+        "keypad_navigation": [],
+        "provenance": {"items": {"parameters": "manual_cited"}, "sources": []},
+    }
+
+
+_GS10 = {"manufacturer": "AutomationDirect", "series": "DURApulse GS10", "aliases": ["GS10"]}
+_PF = {"manufacturer": "Rockwell Automation", "series": "PowerFlex 525", "aliases": ["pf525"]}
+
+
+def test_domain_rules_accepts_gs10_conventions():
+    """GS10 dotted param P09.03 + mnemonic fault ref CE10 are valid FOR GS10."""
+    pack = _family_pack(_GS10, [{"parameter_id": "P09.03", "related_faults": ["CE10"]}])
+    assert domain_rules.check_domain(pack).status == "pass"
+
+
+def test_domain_rules_powerflex_conventions_still_grade():
+    pack = _family_pack(_PF, [{"parameter_id": "C125", "related_faults": ["F081"]}])
+    assert domain_rules.check_domain(pack).status == "pass"
+
+
+def test_domain_rules_catches_powerflex_param_in_gs10_pack():
+    pack = _family_pack(_GS10, [{"parameter_id": "A105", "related_faults": []}])
+    result = domain_rules.check_domain(pack)
+    assert result.status == "fail"
+    assert any("durapulse parameter convention" in d for d in result.details)
+
+
+def test_domain_rules_catches_powerflex_fault_ref_in_gs10_pack():
+    pack = _family_pack(_GS10, [{"parameter_id": "P09.03", "related_faults": ["F081"]}])
+    result = domain_rules.check_domain(pack)
+    assert result.status == "fail"
+    assert any("not a valid durapulse fault reference" in d for d in result.details)
+
+
+def test_domain_rules_catches_gs10_param_in_powerflex_pack():
+    pack = _family_pack(_PF, [{"parameter_id": "P09.03", "related_faults": []}])
+    result = domain_rules.check_domain(pack)
+    assert result.status == "fail"
+    assert any("powerflex parameter convention" in d for d in result.details)
+
+
+def test_domain_rules_catches_gs10_fault_ref_in_powerflex_pack():
+    pack = _family_pack(_PF, [{"parameter_id": "C125", "related_faults": ["CE10"]}])
+    result = domain_rules.check_domain(pack)
+    assert result.status == "fail"
+    assert any("not a valid powerflex fault reference" in d for d in result.details)
+
+
+def test_domain_rules_leak_guard_absolute_under_gs10_convention():
+    """A parameter id in related_faults is a leak for EVERY family — even one
+    that is itself a valid GS10-shaped id (P09.03 referencing another param)."""
+    pack = _family_pack(
+        _GS10,
+        [
+            {"parameter_id": "P09.03", "related_faults": ["P09.04"]},  # P09.04 is a param id
+            {"parameter_id": "P09.04", "related_faults": []},
+        ],
+    )
+    result = domain_rules.check_domain(pack)
+    assert result.status == "fail"
+    assert any("leaked param-id link" in d for d in result.details)
+
+
+def test_domain_rules_unknown_family_falls_back_to_strict_powerflex():
+    """An unrecognized family gets the strict PowerFlex convention — NOT a broad
+    relaxation: a GS10-style dotted id in an unknown-family pack is flagged."""
+    unknown = {"manufacturer": "Mystery Co", "series": "MX9000"}
+    pack = _family_pack(unknown, [{"parameter_id": "P09.03", "related_faults": []}])
+    assert domain_rules.check_domain(pack).status == "fail"
+
+
 def test_domain_rules_flags_duplicate_fault_code_citation():
     pack = _toy_pack()
     pack["provenance"]["sources"].append(
