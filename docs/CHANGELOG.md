@@ -1,6 +1,14 @@
 # MIRA Release Notes
 
 
+### v3.129.6 (2026-07-11) - docs(discovery): prod manual-ingest broken (dead docling) + VPS memory over-subscription
+- **What:** discovery record from enabling the drive-pack bridge on prod. Read-only VPS investigation surfaced two pre-existing prod issues beyond the bridge.
+- **Bridge:** `MIRA_DRIVE_PACK_BRIDGE=1` enabled + verified injected into the hourly cron; candidate creation proven on the live box via a one-shot against the cached PF525 PDF (`review_only`, `promoted:false`).
+- **Bug found:** `kb_growth_cron` manual ingest has failed for ~3 weeks — `mira-docling` was removed 2026-06-06 (OOM) but `full_ingest_pipeline` still calls it at `:5001` → `Connection refused` on every PDF. A real PowerFlex-525 manual is stuck failing in the queue purely because of this; fixing it makes the bridge fire automatically.
+- **Memory:** the 8 GB VPS is over-subscribed (swap 3.6/4.0 GiB) — a full staging stack (`stg-*` ≈ 870 MiB+) runs alongside prod, plus two MinIO instances + JVM services (java 777 MiB swapped). That's why docling has no room. Recommend: repoint ingest off docling onto the Tika/OW path; move staging off the prod box.
+- **Scope:** docs only. No code/runtime change. Full findings: `docs/discovery/2026-07-07-prod-ingest-docling-and-vps-memory.md`.
+
+
 ### v3.129.1 (2026-07-10) - fix(ci): install pytest-asyncio in the offline pytest jobs — stop the asyncio_mode PytestConfigWarning→exit-1 flake
 - **Why:** the `Architecture Check` job (and the two other offline pytest jobs) install only `pytest pyyaml`, but every pytest run reads `asyncio_mode = "auto"` from the shared `[tool.pytest.ini_options]` in `pyproject.toml`. Without `pytest-asyncio` present that's an **unknown ini option** → `PytestConfigWarning: Unknown config option: asyncio_mode`, which some resolved pytest versions escalate to **exit 1 despite all tests passing** (`9 passed, 1 warning` + exit 1). It flaked red on 4 PRs (#2547/#2549/#2550 Drive Commander convergence) while passing on clean-env draws (#2553).
 - **What:** add `pytest-asyncio` to the three offline pytest jobs in `.github/workflows/ci.yml` — `architecture-check`, the **required** `simlab-gate` (would *hard-block* merges if it flaked the same way), and `drive-pack-extract-tests`. This makes `asyncio_mode` a recognized option → no warning → the failure mode is removed at its source regardless of pytest version. No test-behavior change: these suites are synchronous, so `asyncio_mode=auto` is a no-op for them, and `pytest-asyncio`'s only dependency is `pytest` (no chromadb shadow risk).
@@ -78,7 +86,6 @@
 - **Mapping:** `rel.source_entity_id`→source device, `properties.from_terminal` (`"K1:A1"`)→`source_terminal` (`A1`); same for dest; `properties.wire_number`→`wire_number`. `drawing_ref`/`parent_equipment_id`/schematic type/symbol subtypes preserved in `evidence_summary`; `proposed_by='llm:schematic_intelligence'`; `approval_state='proposed'`.
 - **Two honest gaps surfaced (not papered over):** (1) the extractor emits **no `function_class`** (a traced connection carries only from/to/wire) → rows land `function_class='unknown'` with `evidence_summary.function_class_source='unclassified_by_extractor'`, awaiting human/later classification; (2) **doctrine tension** — migration 026 reserves direct INSERT for structured imports and routes *LLM-derived* rows via `ai_suggestions`; schematic output is LLM-derived, so this reuses the PR-1 direct-INSERT seam per instruction but keeps every row `proposed` + `proposed_by='llm:*'` (auditable), flagging `ai_suggestions` routing as the doctrine-strict follow-up. No new migration; no second table; no Drive-Pack schema change; no `schema_version` bump.
 - **Tests:** `+10` `tests/test_wiring_schematic_import.py` over a fixture payload — electrical-only filtering, exact mapping, envelope/raw equivalence, provenance, `proposed` default, `unknown` fclass + gap marker, dedup, reused-seam idempotency. Named CI "Unit Tests" step. Staging-only, no prod deploy.
-
 
 
 ### v3.124.0 (2026-07-09) - feat(wiring): prove the dormant wiring_connections seam — cited YAML → proposed rows (PR-1)
