@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.93.0 (2026-07-07) - chore(ops): per-container memory limits on saas.yml
+- All services in the production Docker Compose already have per-container memory limits configured.
+- This change mirrors the staging-vps.yml configuration style, ensuring consistency across environments.
+- Prevents any single container from consuming all 8 GB and OOMing the VPS (per the Docling incident of 2026-06-06).
+- Applies on next deploy via container recreation; no immediate action required.
+
 ### v3.91.0 (2026-07-07) - docs(drive-commander): scientific-grading runbook + CI promotion-gate design + discovery record
 - **Runbook** (`docs/drive-commander/scientific-grading/runbook.md`): how to run scientific grading locally, read A/B/C/D/F + INCOMPLETE, author a gold set (precision-over-recall, match the pack, don't fake completeness), add a vendor's identifier conventions to the family-aware domain rules, and the five prerequisites before a pack may be promoted (grader measures, humans promote).
 - **CI promotion-gate design note** (`ci-promotion-gate-design.md`): the gate blocks a promotion PR (a diff touching `mira-bots/shared/drive_packs/packs/*/pack.json`) when a pack is sub-B / INCOMPLETE / hard-gate-fail / critical-failure, scoped to trigger ONLY on promotion paths (not docs/tooling). **Deliberately NOT wired** — documents the two unresolved prerequisites (manuals aren't committed → citation can't run in CI; GS10 chapter-section page labels aren't int-verifiable) with options + a draft workflow, per the mission's "design note, don't force it".
