@@ -135,6 +135,15 @@ def _parse_iso(s: str | None) -> datetime | None:
 
 
 def load_queue() -> list[dict]:
+    """Return the queue, or an empty list if the file doesn't exist yet.
+
+    ``manual_queue.json`` is runtime state (not version-controlled — see
+    .gitignore); a freshly-provisioned box, or this file right after it was
+    untracked, may have none yet. Self-heal instead of crashing so the cron
+    (and ``--status``) still work.
+    """
+    if not QUEUE_FILE.exists():
+        return []
     with open(QUEUE_FILE) as f:
         return json.load(f)
 
@@ -361,9 +370,6 @@ def _queue_stats(queue: list[dict]) -> dict[str, int]:
 
 def run_batch() -> dict:
     """Process up to BATCH_SIZE eligible entries. Returns a run summary."""
-    if not QUEUE_FILE.exists():
-        _log(f"ERROR: queue file not found: {QUEUE_FILE}")
-        sys.exit(1)
     if not PIPELINE.exists():
         _log(f"ERROR: pipeline not found: {PIPELINE}")
         sys.exit(1)
@@ -581,9 +587,6 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.status:
-        if not QUEUE_FILE.exists():
-            _log(f"queue file not found: {QUEUE_FILE}")
-            sys.exit(1)
         print(json.dumps(_queue_stats(load_queue()), indent=2))
         return
 
