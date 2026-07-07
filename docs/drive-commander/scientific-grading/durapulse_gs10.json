@@ -4,16 +4,11 @@
   "manufacturer": "AutomationDirect",
   "series": "DURApulse GS10",
   "schema_version": 2,
-  "overall_score": 60.0,
-  "grade": "D",
-  "grade_meaning": "Research only",
+  "overall_score": 95.2,
+  "grade": "A",
+  "grade_meaning": "Production-ready after human sign-off",
   "incomplete": true,
   "not_applicable_categories": [
-    "fault_coverage_precision",
-    "fault_field_accuracy",
-    "parameter_coverage_precision",
-    "parameter_field_accuracy",
-    "relationship_accuracy",
     "citation_fidelity"
   ],
   "categories": [
@@ -31,51 +26,41 @@
       "key": "fault_coverage_precision",
       "name": "Fault coverage and precision",
       "weight": 20,
-      "score": null,
-      "gradeable": false,
-      "findings": [
-        "no gold set for this pack"
-      ]
+      "score": 100.0,
+      "gradeable": true,
+      "findings": []
     },
     {
       "key": "fault_field_accuracy",
       "name": "Fault field accuracy",
       "weight": 20,
-      "score": null,
-      "gradeable": false,
-      "findings": [
-        "no gold set for this pack"
-      ]
+      "score": 100.0,
+      "gradeable": true,
+      "findings": []
     },
     {
       "key": "parameter_coverage_precision",
       "name": "Parameter coverage and precision",
       "weight": 20,
-      "score": null,
-      "gradeable": false,
-      "findings": [
-        "no gold set for this pack"
-      ]
+      "score": 100.0,
+      "gradeable": true,
+      "findings": []
     },
     {
       "key": "parameter_field_accuracy",
       "name": "Parameter field accuracy",
       "weight": 15,
-      "score": null,
-      "gradeable": false,
-      "findings": [
-        "no gold set for this pack"
-      ]
+      "score": 100.0,
+      "gradeable": true,
+      "findings": []
     },
     {
       "key": "relationship_accuracy",
       "name": "Relationship accuracy",
       "weight": 10,
-      "score": null,
-      "gradeable": false,
-      "findings": [
-        "no gold set for this pack"
-      ]
+      "score": 100.0,
+      "gradeable": true,
+      "findings": []
     },
     {
       "key": "citation_fidelity",
@@ -91,12 +76,9 @@
       "key": "safety_usability",
       "name": "Safety and technician usability",
       "weight": 10,
-      "score": 70.0,
+      "score": 100.0,
       "gradeable": true,
-      "findings": [
-        "parameter_id 'P09.03': does not match ^[APCTBDapctbd]\\d{2,3}$ or is a fault id",
-        "parameter 'P09.03': related_faults entry 'CE10' does not match ^F\\d+$"
-      ]
+      "findings": []
     }
   ],
   "hard_gates": [
@@ -116,19 +98,16 @@
       "detail": "provenance.items present with valid tiers"
     }
   ],
-  "critical_failures": [
-    "domain hard violation(s): domain rules: 2 violation(s)"
-  ],
-  "fault_recall": null,
-  "fault_precision": null,
-  "parameter_recall": null,
-  "diagnostic_critical_precision": null,
+  "critical_failures": [],
+  "fault_recall": 100.0,
+  "fault_precision": 100.0,
+  "parameter_recall": 100.0,
+  "diagnostic_critical_precision": 100.0,
   "citation_accuracy": null,
   "missing_evidence": [
-    "gold set (author gold/<family>/gold.json) \u2014 coverage/accuracy unscored",
     "source manual PDF \u2014 citation fidelity unscored"
   ],
   "promotable": false,
-  "promotion_recommendation": "NOT PROMOTABLE \u2014 1 unresolved critical failure(s) must be fixed first.",
+  "promotion_recommendation": "NOT PROMOTABLE (INCOMPLETE) \u2014 missing evidence prevents a full scientific grade; un-graded categories: ['citation_fidelity']. Provide the missing evidence, then re-grade.",
   "note": "COMPLEMENTS the beta/trusted trust-status (grade.py); does not replace it."
 }

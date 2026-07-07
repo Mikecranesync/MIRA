@@ -89,7 +89,7 @@ Every current pack, graded before any future promotion. Reports in this director
 |---|---|---|---:|---|---|
 | **powerflex_40** | staged candidate | **A** | 100.0 | after sign-off | none — full gold + manual; graded against 22B-UM001J (sha `15c10c64…`) |
 | **powerflex_525** | live pack | **A** | 96.9 | after sign-off | live pack still carries the P053 cross-ref gap (2/6 links missing). Fixed **candidate** grades **A / 100** — see below. Full gold + manual (520-UM001O, sha `b9445a63…`) |
-| **durapulse_gs10** | live pack | **D** | 60.0 | **NO (INCOMPLETE)** | no gold set; non-PowerFlex ID conventions flagged (see below) |
+| **durapulse_gs10** | live pack | **A** | 95.2 | **NO (INCOMPLETE)** | now has a gold set + GS10-aware domain rules (was D/60). Only citation fidelity N/A (no manual + chapter-section page labels). Provenance 50 = honestly bench_verified |
 
 ## Findings
 
@@ -118,20 +118,30 @@ is why the *live* pack's honest score against the more-complete gold is **96.9**
 live pack reaches 100 only on a separate, human-gated **re-promotion** — the
 grader measures, humans promote.
 
-**durapulse_gs10 (D, 60, INCOMPLETE)** — **cannot be scientifically graded as-is**,
-for two independent reasons the rubric correctly exposes:
-1. **No gold set** → coverage/accuracy categories (2–6) are N/A → INCOMPLETE.
-   *Recommendation: author `gold/durapulse_gs10/gold.json`.*
-2. **Non-PowerFlex ID conventions** flagged by the (PowerFlex-oriented) domain
-   rules: GS10 uses dotted params (`P09.03`) and `CE`-prefix comm faults (`CE10`
-   in `related_faults`), which don't match `^[APCTBDapctbd]\d{2,3}$` / `^F\d+$`.
-   *Recommendation: generalize `grading/domain_rules.py` to recognize GS10's
-   dotted-param + CE-fault conventions (or confirm the IDs), so a legitimately
-   cross-vendor pack isn't penalized as "wrong-drive contamination".*
-   The GS10 pack is also `bench_verified` (no manual citations by design), so
-   citation fidelity is N/A here too.
+**durapulse_gs10 (A/95.2, INCOMPLETE — was D/60, refs #2516)** — the two blockers
+the first back-grade exposed are now resolved:
+1. **Gold set authored** — `gold/durapulse_gs10/gold.json` (10 faults with GS10
+   mnemonics, P09.03, the CE10→P09.03 comm-loss link). Coverage/accuracy
+   categories now score **100** (fault + parameter recall/precision, field
+   accuracy, relationship accuracy).
+2. **Domain rules made family-aware** — `grading/domain_rules.py` now keys ID
+   conventions off the pack's declared `family`: PowerFlex (`A105`/`F081`) and
+   DURApulse (dotted `P09.03`, mnemonic `CE10`) each grade, an **unknown family
+   falls back to the strict PowerFlex pattern** (not a broad relaxation), and the
+   param-id-leak guard stays absolute — so a PowerFlex id in a GS10 pack (or
+   vice-versa) is still caught as wrong-family contamination. GS10 domain is clean.
 
-GS10 clearing this bar (author a gold set + generalize the domain rules) is
-tracked as the follow-up before any GS10 re-promotion review. This back-grade is
-exactly the intended result: **a pack promoted before this bar existed does not
-automatically pass it.**
+What remains N/A (honest, not a bug):
+- **Citation fidelity — N/A.** GS10 is graded without a manual, and even with one
+  its citations use **chapter-section page labels** (`4-188`, `3-6`) that the
+  current integer-page `cite_integrity` cannot verify. A chapter-section-aware
+  cite check is a documented future enhancement; until then GS10 stays
+  **INCOMPLETE on citation** and is **not promotable**.
+- **Provenance 50** is *truthful*: GS10 is largely `bench_verified`
+  (status_bits/cmd_word/registers/envelope) — only P09.03 + the keypad card are
+  `manual_cited` — so its *manual* traceability is genuinely partial. Not penalized
+  unfairly; scored honestly.
+
+GS10 is now scientifically gradeable on 7 of 8 categories with no critical
+failures — a large, honest improvement — but stays **not promotable** until the
+citation gap is closed and a human approves. The grader measures; humans promote.
