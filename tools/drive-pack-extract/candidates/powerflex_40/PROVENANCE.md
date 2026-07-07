@@ -39,7 +39,7 @@ Run via `python generate_pf40_pack.py --manual <path-to-manual>` from
 
 ## Tooling provenance
 
-- Extractor source git short-sha: `e8b43888` (`tools/drive-pack-extract/extractor.py`
+- Extractor source git short-sha: `bdd4b715` (`tools/drive-pack-extract/extractor.py`
   at generation time)
 - Generation date: <fill at generation>
 

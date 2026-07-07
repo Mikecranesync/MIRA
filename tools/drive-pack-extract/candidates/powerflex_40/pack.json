@@ -243,7 +243,7 @@
     {
       "parameter_id": "P033",
       "name": "Motor OL Current",
-      "purpose": "A098, A114, A118 Set to the maximum allowable motor current. The drive will fault on an F7 Motor Overload if the value of this parameter is exceeded by 150% for 60 seconds.",
+      "purpose": "Set to the maximum allowable motor current. The drive will fault on an F7 Motor Overload if the value of this parameter is exceeded by 150% for 60 seconds.",
       "value_meanings": [],
       "default": null,
       "range": null,
@@ -262,13 +262,16 @@
         "A058",
         "A061",
         "A089",
-        "A090"
+        "A090",
+        "A098",
+        "A114",
+        "A118"
       ]
     },
     {
       "parameter_id": "P034",
       "name": "Minimum Freq",
-      "purpose": "A086, A087, A110, A112 Sets the lowest frequency the drive will output continuously.",
+      "purpose": "Sets the lowest frequency the drive will output continuously.",
       "value_meanings": [],
       "default": "0.0",
       "range": "0.0/400.0",
@@ -285,13 +288,17 @@
         "d002",
         "d013",
         "P035",
-        "A085"
+        "A085",
+        "A086",
+        "A087",
+        "A110",
+        "A112"
       ]
     },
     {
       "parameter_id": "P035",
       "name": "Maximum Freq",
-      "purpose": "A078, A085, A086, A087, A111, A113 Stop drive before changing this parameter. Sets the highest frequency the drive will output.",
+      "purpose": "Stop drive before changing this parameter. Sets the highest frequency the drive will output.",
       "value_meanings": [],
       "default": "60",
       "range": "0/400",
@@ -308,7 +315,13 @@
         "d002",
         "d013",
         "P034",
-        "A065"
+        "A065",
+        "A078",
+        "A085",
+        "A086",
+        "A087",
+        "A111",
+        "A113"
       ]
     },
     {

@@ -889,6 +889,11 @@ _RANGE_LINE_RE = re.compile(
 # A Default:/Min/Max: LABEL line whose value wasn't numeric (worded default) must
 # still be recognized as a label and kept OUT of the purpose free-text.
 _VALUE_LABEL_LINE_RE = re.compile(r"^(?:Values\s+)?(?:Default|Min/Max):")
+# A "Related Parameters:" list that wrapped onto a following line renders as a
+# line of PURELY bare, comma-separated param ids ("A098, A114, A118") — no
+# bracket, no prose. Unambiguous (prose never looks like this), so it is safe to
+# treat as a related-list continuation regardless of block position.
+_RELATED_CONT_LINE_RE = re.compile(r"^(?:[A-Za-z]\d{2,3}\s*,\s*)*[A-Za-z]\d{2,3},?$")
 _OPTIONS_LINE_RE = re.compile(r"^Options:\s*(?P<options>.+)$")
 _OPTION_ITEM_RE = re.compile(r"(?P<value>\d+)\s+(?P<meaning>[^,]+)")
 # The real manual's enum options render as one option per line, quoted, with
@@ -995,6 +1000,7 @@ def _parse_labeled_param_page(
 
         block_lines = [line]
         purpose_lines: list[str] = []
+        related_cont: list[str] = []
         default: str | None = None
         unit: str | None = None
         param_range: str | None = None
@@ -1027,6 +1033,13 @@ def _parse_labeled_param_page(
                 )
                 if quoted_option["is_default"] and default is None:
                     default = quoted_option["value"]
+            elif _RELATED_CONT_LINE_RE.match(detail):
+                # A "Related Parameters:" list that wrapped to a second line —
+                # a line that is PURELY bare, comma-separated param ids (no
+                # bracket, no prose), e.g. "A098, A114, A118" under P033. Extend
+                # related_parameters and keep it OUT of the purpose free-text
+                # (the real manual wraps these lists on the motor params).
+                related_cont.extend(_split_related(detail))
             elif (
                 not detail.startswith("Display:")
                 and detail != "Options"
@@ -1036,7 +1049,9 @@ def _parse_labeled_param_page(
 
             j += 1
 
-        related_parameters = _split_related(labeled["related"]) if labeled["related"] else []
+        related_parameters = (_split_related(labeled["related"]) if labeled["related"] else []) + [
+            r for r in related_cont if r not in _split_related(labeled["related"] or "")
+        ]
         pid = labeled["pid"]
         raw_excerpt = _find_raw_line(raw_lines, pid) or line
 

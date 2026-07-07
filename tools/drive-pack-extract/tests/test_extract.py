@@ -528,8 +528,12 @@ def test_pf40_options_prefixed_enum_recovers_meanings_and_default():
 
 def test_pf40_related_parameters_not_related_faults():
     a200 = _pf40_params()["A200"]
-    assert a200["related_parameters"] == ["A201"]
+    # "Related Parameters: A201," wraps to a second line "A202, A203" — the
+    # continuation extends related_parameters and never leaks into purpose.
+    assert a200["related_parameters"] == ["A201", "A202", "A203"]
     assert a200["related_faults"] == []  # populated only by the fault->param link
+    assert "A202" not in a200["purpose"]
+    assert "A203" not in a200["purpose"]
 
 
 def test_pf40_bold_header_gate_rejects_a_plain_helvetica_graph_callout():

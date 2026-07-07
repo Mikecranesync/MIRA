@@ -372,8 +372,13 @@ def _pf40_labeled_param_page(c: canvas.Canvas) -> None:
     y = 730
 
     # A200 — enum whose FIRST option line is prefixed with the label word
-    # "Options"; the default comes from the inline "(Default)" marker.
-    _draw(c, 100, y, "A200 [Comm Loss Action] Related Parameters: A201", font=BOLD)
+    # "Options"; the default comes from the inline "(Default)" marker. Its
+    # "Related Parameters:" list wraps to a second line of pure param ids (the
+    # real PF40 motor-param shape) — the continuation must extend
+    # related_parameters and NOT bleed into the purpose free-text.
+    _draw(c, 100, y, "A200 [Comm Loss Action] Related Parameters: A201,", font=BOLD)
+    y -= 13
+    _draw(c, 100, y, "A202, A203")  # wrapped Related-Parameters continuation (pure ids)
     y -= 13
     _draw(c, 100, y, "Selects the drive's response to a loss of the connection.")
     y -= 13
