@@ -83,10 +83,12 @@ packs, (5) design a CI promotion gate, (6) write a runbook, (7) record findings.
 
 ## Remaining risks / open items
 
-- **Citation for chapter-section page labels (GS10):** the int-page
-  `cite_integrity` can't verify `4-188`. GS10 stays INCOMPLETE on citation until a
-  chapter-section-aware cite check exists. Tracked implicitly by GS10's INCOMPLETE
-  grade + `ci-promotion-gate-design.md` §2.
+- **Citation for chapter-section page labels (GS10):** ~~the int-page
+  `cite_integrity` can't verify `4-188`.~~ **RESOLVED (follow-up, 2026-07-07):**
+  `cite_integrity.verify_excerpt_in_document` now verifies a chapter-section-label
+  citation whole-document. Residual: GS10's manual ships as separate chapter PDFs,
+  so a merged/single PDF is needed for a full GS10 re-grade to clear its
+  citation-N/A INCOMPLETE.
 - **CI promotion gate not wired** — blocked on the manual-in-CI decision
   (design note options a/b/c) and on #2519/#2520 merging. Deliberate.
 - **PF525 live pack still carries the gap (A/96.9)** — reaches A/100 only on a

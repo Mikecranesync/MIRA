@@ -7,7 +7,7 @@
     "date": "unknown",
     "filename": "gs10m.pdf",
     "sha256": null,
-    "page_numbering": "GS10 uses CHAPTER-SECTION page labels (e.g. '4-188', '3-6'), NOT integer pdfplumber page numbers. The current int-page cite-integrity (cite_integrity.verify_excerpt_on_page) therefore CANNOT verify GS10 citations — grade GS10 without --manual (citation fidelity N/A) until a chapter-section-aware cite check exists. Honest limitation, not a pack defect.",
+    "page_numbering": "GS10 uses CHAPTER-SECTION page labels (e.g. '4-188', '3-6'), NOT integer pdfplumber page numbers. As of 2026-07-07 the cite check is chapter-section-aware: a citation with such a label is verified WHOLE-DOCUMENT (cite_integrity.verify_excerpt_in_document — the excerpt must appear on some page; still catches fabrication, just not pinned to one page). So grading GS10 WITH a single manual PDF now scores citation fidelity. NOTE: the GS10 manual ships as separate chapter PDFs (ch3/ch4/…), so a merged/single PDF must be supplied; until then GS10 is graded without --manual (citation N/A) and stays INCOMPLETE.",
     "notes": "Human-approved reference for the live durapulse_gs10 pack (schema_v2, the CE10->P09.03 comm-timeout proof). GS10 is a BENCH_VERIFIED pack for live_decode/envelope; only P09.03 + the keypad card are manual_cited. IDs use GS10 conventions: dotted params (P09.03) and alphanumeric fault mnemonics (GFF, Lvd, oL, EF, CE1..CE4, CE10) — NOT the PowerFlex A105/F081 style. Values mirror the pack's manual-cited data (P09.03 from page 4-188); the sha256 is null because the manual is not committed."
   },
   "faults": [

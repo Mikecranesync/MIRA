@@ -87,12 +87,20 @@ schema rules (single source of truth with the runtime).
 ### B. Citation integrity (`grading/cite_check.py`)
 Re-read the source PDF. For every `source_citation` in `pack.parameters[]` and
 `pack.keypad_navigation[]` (and every entry in a `provenance.sources`/citation
-list that carries `{page, excerpt}`), call
-`cite_integrity.verify_excerpt_on_page(pdf, page, excerpt)`. Report verified /
-unverifiable counts. A dropped **diagnostic-critical** citation is a hard fail.
-The PDF is the source of truth. Requires the manual locally; if absent, this
-layer reports `skipped (manual not available)` and the trust status caps at
-`internal_only`.
+list that carries `{page, excerpt}`):
+- an **integer page** ("162") is verified ON that page —
+  `cite_integrity.verify_excerpt_on_page(pdf, page, excerpt)` (strong,
+  page-pinned);
+- a **chapter-section page label** ("4-188", "3-6" — the AutomationDirect GS10
+  convention) can't be resolved to a physical page index, so it is verified
+  **whole-document** — `cite_integrity.verify_excerpt_in_document(pdf, excerpt)`
+  (the excerpt must appear on some page; still catches fabrication, just not
+  pinned to one page; tallied as `verified_by_label_count`).
+
+Report verified / unverifiable counts. A dropped **diagnostic-critical**
+citation is a hard fail. The PDF is the source of truth. Requires the manual
+locally; if absent, this layer reports `skipped (manual not available)` and the
+trust status caps at `internal_only`.
 
 ### C. Gold-set scoring (`grading/gold_score.py`)
 Compare the pack against `gold.json`. Precision over recall.

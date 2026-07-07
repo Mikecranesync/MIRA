@@ -63,10 +63,14 @@ just needs to locate the changed packs and pass each the right gold/manual.
    committed, human-reviewed graded candidate), with **(a)** as the waiver escape
    hatch for bench-verified / chapter-section-citation packs like GS10.
 
-2. **Chapter-section page labels** (GS10 `4-188`) aren't verifiable by the
-   integer-page `cite_integrity`. Until a chapter-section-aware cite check
-   exists, GS10-style packs are structurally INCOMPLETE on citation and need the
-   waiver path (option a) to be promotable.
+2. **Chapter-section page labels** (GS10 `4-188`) — **RESOLVED 2026-07-07.**
+   `cite_integrity` is now chapter-section-aware: a citation with such a label is
+   verified **whole-document** (`verify_excerpt_in_document`). So a GS10-style
+   pack graded **with a single manual PDF** now scores citation fidelity and is
+   no longer structurally INCOMPLETE on that axis. Residual: the GS10 manual
+   ships as separate chapter PDFs, so a merged/single PDF must be supplied for a
+   full GS10 re-grade — until then GS10 is graded without a manual (citation N/A)
+   and the waiver path (option a) still applies.
 
 ## Why not wired yet
 

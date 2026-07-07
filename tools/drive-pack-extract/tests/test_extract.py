@@ -347,6 +347,42 @@ def test_cite_integrity_rejects_empty_excerpt():
     assert cite_integrity.verify_excerpt_on_page(FIXTURE, 1, "   ") is False
 
 
+def test_is_chapter_section_label():
+    # chapter-section labels (AutomationDirect GS10 style) vs integer pages
+    assert cite_integrity.is_chapter_section_label("4-188") is True
+    assert cite_integrity.is_chapter_section_label("3-6") is True
+    assert cite_integrity.is_chapter_section_label("A-12") is True
+    assert cite_integrity.is_chapter_section_label("162") is False  # int-string
+    assert cite_integrity.is_chapter_section_label(162) is False  # int
+    assert cite_integrity.is_chapter_section_label("F004") is False
+    assert cite_integrity.is_chapter_section_label("") is False
+
+
+def test_load_normalized_pages_reads_only_requested_pages():
+    # The batch helper backs the "read the manual once" perf fix in cite_check.
+    # A page filter must extract_text ONLY the requested pages (a pack citing a
+    # few of a large manual must not read the whole document).
+    only_two = cite_integrity.load_normalized_pages(FIXTURE, pages={1, 2})
+    assert set(only_two) == {1, 2}
+    assert "F004 UnderVoltage".lower() in only_two[1].lower()
+    every = cite_integrity.load_normalized_pages(FIXTURE)  # None -> whole doc
+    assert set(every) >= {1, 2, 3}
+    # a requested page that doesn't exist is simply absent, never a crash
+    assert cite_integrity.load_normalized_pages(FIXTURE, pages={999}) == {}
+
+
+def test_verify_excerpt_in_document_finds_real_text_anywhere():
+    # A citation whose page is a chapter-section label ("4-188") is verified
+    # whole-document — the excerpt exists on SOME page (still catches fabrication),
+    # just not pinned to one page.
+    # "F004 UnderVoltage" is on fixture page 1; "[Decel Time 1]" on page 2 — both
+    # found whole-document regardless of the (chapter-section) page cited.
+    assert cite_integrity.verify_excerpt_in_document(FIXTURE, "F004 UnderVoltage") is True
+    assert cite_integrity.verify_excerpt_in_document(FIXTURE, "[Decel Time 1]") is True
+    assert cite_integrity.verify_excerpt_in_document(FIXTURE, "invented text nowhere in manual") is False
+    assert cite_integrity.verify_excerpt_in_document(FIXTURE, "") is False
+
+
 def test_cite_integrity_is_tolerant_of_whitespace_normalization():
     # Same words, different internal whitespace/newlines — must still verify,
     # since extract_text() line-wrapping shouldn't break a genuine citation.

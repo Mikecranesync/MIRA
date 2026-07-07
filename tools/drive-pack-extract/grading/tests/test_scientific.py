@@ -315,3 +315,23 @@ def test_integration_pf40_candidate_no_manual_is_incomplete_but_scores_gold_cate
     fault_cov = next(c for c in r["categories"] if c["key"] == "fault_coverage_precision")
     assert fault_cov["score"] == 100.0
     assert r["critical_failures"] == []  # domain clean, no fabrication
+
+
+# ---------------------------------------------------------------------------
+# CLI: auto-discovery of gold/<pack>/gold.json when --gold is omitted, so a
+# reviewer can't accidentally grade a pack that HAS a gold set on
+# gold-independent categories only and get a misleadingly low "no gold" verdict.
+# ---------------------------------------------------------------------------
+def test_grade_scientific_cli_auto_discovers_gold(tmp_path):
+    import grade_scientific
+
+    # powerflex_40 has BOTH a committed candidate and gold/powerflex_40/gold.json.
+    # Invoke WITHOUT --gold (and without --manual): the gold must be auto-found so
+    # the coverage/accuracy categories are scored, not marked N/A.
+    grade_scientific.main(["--pack", "powerflex_40", "--out", str(tmp_path)])
+    report = json.loads((tmp_path / "scientific_report.json").read_text(encoding="utf-8"))
+    na = set(report["not_applicable_categories"])
+    assert "fault_coverage_precision" not in na  # gold was auto-discovered + scored
+    assert scientific._GOLD_CATEGORIES.isdisjoint(na)
+    # only citation_fidelity is N/A here (no --manual)
+    assert na == {"citation_fidelity"}
