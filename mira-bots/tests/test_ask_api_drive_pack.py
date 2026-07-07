@@ -87,7 +87,7 @@ class TestDrivePackAskBasic:
 
 
 class TestDrivePackAskResolution:
-    """Pack resolution strategy (pack_id > drive > question)."""
+    """Pack resolution strategy: pack_id > question > drive (asset fallback)."""
 
     def test_pack_id_takes_precedence_over_drive(self):
         """Explicit pack_id bypasses drive field resolution."""
@@ -105,8 +105,8 @@ class TestDrivePackAskResolution:
         body = resp.json()
         assert body["matched"] is True
 
-    def test_drive_takes_precedence_over_question_resolution(self):
-        """Explicit drive field is resolved before question text."""
+    def test_drive_used_as_fallback_when_question_names_no_drive(self):
+        """When the question names no drive, the `drive` hint resolves the pack."""
         client = _client()
         resp = client.post(
             "/drive-pack/ask",
@@ -119,6 +119,40 @@ class TestDrivePackAskResolution:
         body = resp.json()
         assert body["matched"] is True
         assert body["pack_id"] == "durapulse_gs10"
+
+    def test_question_named_drive_wins_over_drive_fallback(self):
+        """A drive named in the question beats a different `drive` hint (asset)."""
+        client = _client()
+        resp = client.post(
+            "/drive-pack/ask",
+            json={
+                # `drive` hint says PowerFlex 525, but the question explicitly
+                # names the GS10 — the question must win.
+                "drive": "PowerFlex 525",
+                "question": "what does CE10 mean on my gs10?",
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["matched"] is True
+        assert body["pack_id"] == "durapulse_gs10"
+
+    def test_asset_manufacturer_model_drive_answers_without_naming_drive(self):
+        """The Hub passes the open asset's 'manufacturer model' as `drive` so a
+        GS10 asset answers a bare 'CE10' question without the user typing gs10."""
+        client = _client()
+        resp = client.post(
+            "/drive-pack/ask",
+            json={
+                "drive": "AutomationDirect DURApulse GS10",
+                "question": "what does CE10 mean?",
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["matched"] is True
+        assert body["pack_id"] == "durapulse_gs10"
+        assert body["answer_source"] == "drive_pack"
 
     def test_unresolved_drive_returns_unresolved_shape(self):
         """Unknown drive alias returns UNRESOLVED dict, HTTP 200."""

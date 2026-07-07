@@ -86,15 +86,16 @@ async def drive_pack_ask(req: DrivePackAskRequest, x_mira_key: str = Header(None
         if req.pack_id:
             # Explicit pack_id — use directly.
             pack_id = req.pack_id
-        elif req.drive:
-            # Resolve drive alias/keyword to a pack.
-            pack = resolve_pack(req.drive)
-            if pack is None:
-                return _UNRESOLVED.copy()
-            pack_id = pack.pack_id
         else:
-            # Fallback: try to resolve the question text itself.
+            # Prefer a drive named in the question itself; only then fall back
+            # to the caller's asset/drive hint. This lets a surface bound to a
+            # known asset (e.g. the Hub asset-chat passing the open asset's
+            # manufacturer+model as `drive`) answer "what does CE10 mean?"
+            # WITHOUT the user typing "gs10" — while a question that DOES name a
+            # different drive still wins over the bound asset. (#2527 follow-up.)
             pack = resolve_pack(req.question)
+            if pack is None and req.drive:
+                pack = resolve_pack(req.drive)
             if pack is None:
                 return _UNRESOLVED.copy()
             pack_id = pack.pack_id

@@ -478,4 +478,49 @@ describe("POST /api/assets/[id]/chat", () => {
     expect(res.headers.get("X-Drive-Pack")).toBeNull();
     await drain(res);
   });
+
+  it("passes the open asset's manufacturer+model as `drive` so a bare fault question resolves", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+
+    let sentBody: Record<string, unknown> | null = null;
+    fetchSpy.mockImplementation(async (url: string | URL, init?: RequestInit) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.includes("/drive-pack/ask")) {
+        sentBody = JSON.parse(String(init?.body ?? "{}"));
+        return new Response(
+          JSON.stringify({
+            matched: true,
+            answer_source: "drive_pack",
+            answer: "GS10 fault CE10 — modbus timeout...",
+            citations: [{ doc: "DURApulse GS10 User Manual", page: "4-188" }],
+            pack_id: "durapulse_gs10",
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error("LLM cascade should not run when the asset-drive resolves the pack");
+    });
+
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      // NB: the real asset-fetch SELECT is multi-line, so a `.` regex can't
+      // match it (dot ≠ newline); anchor on a column that only that query has.
+      [/manufacturer, model_number/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    // Question names NO drive — resolution must come from the asset's make/model.
+    const res = await POST(makeReq(userMsg("what does CE10 mean?")), makeParams(VALID_UUID));
+
+    // The asset's manufacturer + model_number are sent as the `drive` fallback.
+    expect(sentBody).not.toBeNull();
+    expect((sentBody as Record<string, unknown>).question).toBe("what does CE10 mean?");
+    expect((sentBody as Record<string, unknown>).drive).toBe("FactoryLM M100");
+    // And the pack answer short-circuits the cascade.
+    expect(res.headers.get("X-Drive-Pack")).toBe("durapulse_gs10");
+    await drain(res);
+  });
 });
