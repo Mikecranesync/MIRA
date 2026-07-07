@@ -11,11 +11,18 @@ Crontab entry (VPS, set by ``scripts/install_crons.sh``):
   0 * * * * cd /opt/mira && doppler run -- python3 \\
       mira-crawler/cron/kb_growth_cron.py >> /var/log/kb_growth.log 2>&1
 
+A 0-char (scanned/image-only) PDF is OCR'd via Apache Tika (``--ocr`` on the
+pipeline) before it is quarantined ``needs_ocr``; if Tika is unreachable the
+entry still lands ``needs_ocr`` (fail-safe). Existing ``needs_ocr`` entries are
+drained on demand with ``--drain-needs-ocr``. Spec: issue #2539.
+
 CLI:
   python3 kb_growth_cron.py                 # run a batch (default)
   python3 kb_growth_cron.py --status        # print queue stats and exit
   python3 kb_growth_cron.py --hydrate-from-cache
                                             # append manual_cache rows as pending
+  python3 kb_growth_cron.py --drain-needs-ocr
+                                            # one-time OCR retry of needs_ocr PDFs
 """
 
 from __future__ import annotations
@@ -231,11 +238,15 @@ def revive_stale(queue: list[dict]) -> int:
 
 
 # ─── pipeline driver ─────────────────────────────────────────────────────────
-def run_pipeline(entry: dict) -> tuple[bool, str, int]:
+def run_pipeline(entry: dict, ocr: bool = False) -> tuple[bool, str, int]:
     """Run full_ingest_pipeline.py for one entry.
 
     Returns (success, output_tail, chunks_inserted).
     chunks_inserted is parsed best-effort from the report; defaults to 0.
+
+    ``ocr=True`` adds ``--ocr`` so the pipeline falls back to Tika OCR when
+    local (pdfplumber/pypdf) extraction finds no text layer — the scanned /
+    image-only manual case.
     """
     cmd = [
         sys.executable,
@@ -250,6 +261,8 @@ def run_pipeline(entry: dict) -> tuple[bool, str, int]:
         entry.get("type", "installation_manual"),
         "--no-quality-gate",
     ]
+    if ocr:
+        cmd.append("--ocr")
     env = dict(os.environ)
     env["PYTHONUNBUFFERED"] = "1"
 
@@ -277,6 +290,64 @@ def run_pipeline(entry: dict) -> tuple[bool, str, int]:
             break
 
     return result.returncode == 0, tail, chunks
+
+
+def _run_drive_pack_bridge(entry: dict) -> None:
+    """Best-effort drive-pack update candidate (default-OFF, fail-open).
+
+    A successful manual ingest MAY create a review-only drive-pack update
+    candidate if the PDF matches a known drive family and its hash is new/
+    changed. It never extracts/grades inline, never promotes, never touches a
+    trusted pack — and MUST NOT affect the (already-successful) KB ingest.
+    """
+    try:
+        import sys as _sys
+
+        _cdir = str(Path(__file__).resolve().parent.parent)  # mira-crawler/
+        if _cdir not in _sys.path:
+            _sys.path.insert(0, _cdir)
+        from drive_pack_bridge import maybe_create_candidate
+
+        _b = maybe_create_candidate(entry, now_iso=entry.get("done_at", _ts()))
+        if _b.get("status") == "candidate_created":
+            _log(
+                f"drive-pack candidate: {_b.get('registry_manual_id')} ({_b.get('change_state')}) → {_b.get('candidate_path')}"
+            )
+        elif _b.get("status") not in ("disabled", "unchanged"):
+            _log(f"drive-pack bridge: {_b.get('status')} ({_b.get('reason', '')})")
+    except Exception as _exc:  # noqa: BLE001 — bridge must NEVER fail KB ingest
+        _log(f"drive-pack bridge skipped (non-fatal): {_exc}")
+
+
+def _finalize_success(entry: dict, name: str, chunks: int, ocr: bool = False) -> None:
+    """Mark an entry done and run the drive-pack bridge. Shared by the normal
+    ingest path and the OCR-drain path so a scanned manual that OCRs cleanly
+    becomes a drive-pack candidate exactly like a text-layer manual."""
+    entry["status"] = "done"
+    entry["done_at"] = _ts()
+    entry["chunks_inserted"] = chunks
+    entry.pop("next_retry_at", None)
+    entry.pop("last_error", None)
+    if ocr:
+        entry["ocr_used"] = True
+    _log(f"SUCCESS{' via OCR' if ocr else ''}: {name} ({chunks} chunks)")
+    _run_drive_pack_bridge(entry)
+
+
+def _attempt_ocr(entry: dict) -> tuple[bool, str, int]:
+    """Re-run the ingest pipeline with Tika OCR enabled for a 0-char PDF.
+
+    Fail-safe: any error (incl. Tika unreachable / timeout) returns
+    ``(False, tail, 0)`` so the caller quarantines ``needs_ocr`` — it never
+    raises, never crashes the cron. When Tika is not deployed the pipeline
+    simply reports 0 chars again and this returns a non-success tuple.
+    """
+    try:
+        return run_pipeline(entry, ocr=True)
+    except subprocess.TimeoutExpired:
+        return False, f"OCR TIMEOUT after {PIPELINE_TIMEOUT_SEC}s", 0
+    except Exception as exc:  # noqa: BLE001 — OCR must never crash the cron
+        return False, f"OCR attempt failed: {exc}", 0
 
 
 def _process_entry(entry: dict, queue: list[dict]) -> dict:
@@ -315,44 +386,26 @@ def _process_entry(entry: dict, queue: list[dict]) -> dict:
         success, tail, chunks = False, str(exc), 0
 
     if success:
-        entry["status"] = "done"
-        entry["done_at"] = _ts()
-        entry["chunks_inserted"] = chunks
-        entry.pop("next_retry_at", None)
-        entry.pop("last_error", None)
-        _log(f"SUCCESS: {name} ({chunks} chunks)")
-        # --- drive-pack bridge (default-OFF via MIRA_DRIVE_PACK_BRIDGE; fail-open) ---
-        # A successful manual ingest MAY create a review-only drive-pack update
-        # candidate if the PDF matches a known drive family and its hash is new/
-        # changed. It never extracts/grades inline, never promotes, never touches
-        # a trusted pack — and MUST NOT affect this (already-successful) KB ingest.
-        try:
-            import sys as _sys
-
-            _cdir = str(Path(__file__).resolve().parent.parent)  # mira-crawler/
-            if _cdir not in _sys.path:
-                _sys.path.insert(0, _cdir)
-            from drive_pack_bridge import maybe_create_candidate
-
-            _b = maybe_create_candidate(entry, now_iso=entry["done_at"])
-            if _b.get("status") == "candidate_created":
-                _log(
-                    f"drive-pack candidate: {_b.get('registry_manual_id')} ({_b.get('change_state')}) → {_b.get('candidate_path')}"
-                )
-            elif _b.get("status") not in ("disabled", "unchanged"):
-                _log(f"drive-pack bridge: {_b.get('status')} ({_b.get('reason', '')})")
-        except Exception as _exc:  # noqa: BLE001 — bridge must NEVER fail KB ingest
-            _log(f"drive-pack bridge skipped (non-fatal): {_exc}")
+        _finalize_success(entry, name, chunks)
     else:
         entry["last_error"] = tail[-200:]
         if _is_zero_char_extraction(tail):
-            # Scanned/image-only PDF — no text layer, no OCR available.
-            # Retrying will never produce text; quarantine instead of
-            # burning attempts every hour.
-            entry["status"] = "needs_ocr"
-            entry["needs_ocr_at"] = _ts()
-            entry.pop("next_retry_at", None)
-            _log(f"NEEDS_OCR (0 chars extracted, no text layer): {name}")
+            # Scanned/image-only PDF — no text layer. Attempt Tika OCR BEFORE
+            # quarantining (#2539). If OCR yields chunks, continue the normal
+            # ingest (chunk/embed/KG) via the pipeline's --ocr path; only
+            # quarantine needs_ocr when OCR is unavailable or still empty.
+            ocr_success, ocr_tail, ocr_chunks = _attempt_ocr(entry)
+            if ocr_success and ocr_chunks > 0:
+                _finalize_success(entry, name, ocr_chunks, ocr=True)
+                tail = ocr_tail
+            else:
+                # Fail-safe: Tika unreachable/empty → quarantine (prior
+                # behavior). Retrying every hour will never produce text.
+                entry["status"] = "needs_ocr"
+                entry["needs_ocr_at"] = _ts()
+                entry.pop("next_retry_at", None)
+                tail = ocr_tail or tail
+                _log(f"NEEDS_OCR (0 chars; OCR unavailable/empty): {name}")
         else:
             kind = _classify_error(tail)
             if kind == "hard" or entry["attempts"] >= MAX_ATTEMPTS:
@@ -442,6 +495,58 @@ def run_batch() -> dict:
         "done_after": done_after,
         "started_at": _ts(),
     }
+
+
+# ─── needs_ocr drain (opt-in, one-time OCR retry of quarantined PDFs) ─────────
+def drain_needs_ocr() -> dict:
+    """Re-attempt OCR on up to BATCH_SIZE entries stuck in ``needs_ocr``.
+
+    Opt-in via ``--drain-needs-ocr`` — a normal cron run never touches
+    ``needs_ocr`` entries (they stay terminal / ineligible). This is the drain
+    that closes the dead-letter once ``mira-tika`` is deployed: each entry gets
+    a one-time OCR retry; on success it becomes ``done`` (and a drive-pack
+    candidate), on failure it stays ``needs_ocr`` for a later drain. Fail-safe:
+    ``_attempt_ocr`` never raises, so an unreachable Tika leaves entries in
+    ``needs_ocr``.
+    """
+    if not PIPELINE.exists():
+        _log(f"ERROR: pipeline not found: {PIPELINE}")
+        sys.exit(1)
+
+    queue = load_queue()
+    targets = [i for i, e in enumerate(queue) if e.get("status") == "needs_ocr"]
+    if not targets:
+        _log("drain-needs-ocr: no needs_ocr entries")
+        return {"processed": [], "stats": _queue_stats(queue), "started_at": _ts()}
+
+    started_at = time.monotonic()
+    processed: list[dict] = []
+    for idx in targets[:BATCH_SIZE]:
+        if time.monotonic() - started_at > RUN_BUDGET_SEC:
+            _log(f"Run budget exceeded ({RUN_BUDGET_SEC}s) — stopping drain early")
+            break
+        entry = queue[idx]
+        name = f"{entry.get('manufacturer', '?')} {entry.get('model', '?')}"
+        entry["attempts"] = int(entry.get("attempts", 0)) + 1
+        entry["started_at"] = _ts()
+        _log(f"Draining needs_ocr [{idx + 1}/{len(queue)}]: {name}")
+
+        ocr_success, ocr_tail, ocr_chunks = _attempt_ocr(entry)
+        if ocr_success and ocr_chunks > 0:
+            _finalize_success(entry, name, ocr_chunks, ocr=True)
+        else:
+            # Stays needs_ocr — record the attempt so operators can see it was
+            # tried (and when). Not counted as "remaining".
+            entry["status"] = "needs_ocr"
+            entry["last_ocr_attempt_at"] = _ts()
+            entry["last_error"] = (ocr_tail or "OCR produced no text")[-200:]
+            _log(f"STILL needs_ocr (OCR unavailable/empty): {name}")
+        save_queue(queue)
+        processed.append(entry)
+
+    stats = _queue_stats(queue)
+    _log(f"Drain complete. Attempted {len(processed)} entries. Stats: {stats}")
+    return {"processed": processed, "stats": stats, "started_at": _ts()}
 
 
 # ─── reporting ───────────────────────────────────────────────────────────────
@@ -609,6 +714,11 @@ def main() -> None:
         action="store_true",
         help="Append manual_cache rows to the queue as pending",
     )
+    parser.add_argument(
+        "--drain-needs-ocr",
+        action="store_true",
+        help="One-time OCR retry of quarantined needs_ocr PDFs (requires TIKA_URL)",
+    )
     args = parser.parse_args()
 
     if args.status:
@@ -617,6 +727,13 @@ def main() -> None:
 
     if args.hydrate_from_cache:
         hydrate_from_manual_cache()
+        return
+
+    if args.drain_needs_ocr:
+        _log("KB growth cron: draining needs_ocr via Tika OCR")
+        summary = drain_needs_ocr()
+        _emit_run_report(summary)
+        _log("KB growth cron done (drain)")
         return
 
     _log(f"KB growth cron starting (batch={BATCH_SIZE}, budget={RUN_BUDGET_SEC}s)")

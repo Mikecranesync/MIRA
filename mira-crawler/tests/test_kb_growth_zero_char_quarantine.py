@@ -118,9 +118,11 @@ class TestZeroCharQuarantine:
         self, queue_file, make_entry, patch_io, monkeypatch
     ):
         queue_file.write_text(json.dumps([make_entry()]))
+        # Both local extraction and the OCR retry (ocr=True) find 0 chars —
+        # i.e. Tika is unavailable / also empty, so the entry quarantines.
         monkeypatch.setattr(
             cron, "run_pipeline",
-            lambda entry: (False, _ZERO_CHAR_TAIL, 0),
+            lambda entry, ocr=False: (False, _ZERO_CHAR_TAIL, 0),
         )
 
         cron.run_batch()

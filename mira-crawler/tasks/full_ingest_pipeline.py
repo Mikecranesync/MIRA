@@ -174,7 +174,32 @@ def _download(url: str, dest: Path) -> tuple[bool, int]:
 # fallback — the only PDF lib guaranteed on the ingest host). No socket opened.
 
 
-def step_extract(pdf_path: Path, report: PipelineReport) -> str:
+def _ocr_extract(pdf_path: Path, report: PipelineReport) -> str:
+    """OCR a no-text-layer PDF via Apache Tika (Tesseract). Fail-safe.
+
+    `converter.extract_from_tika` already catches every exception (incl. Tika
+    unreachable / timeout) and returns [] — so this never raises. Returns the
+    joined OCR text, or "" when Tika is unavailable or produced nothing.
+    """
+    try:
+        from ingest.converter import extract_from_tika
+    except ImportError:
+        from mira_crawler.ingest.converter import extract_from_tika
+
+    try:
+        data = pdf_path.read_bytes()
+    except OSError as exc:
+        report.errors.append(f"OCR: read failed: {exc}")
+        return ""
+
+    blocks = extract_from_tika(data)  # fail-safe: [] on unreachable/empty
+    text = "\n\n".join(b["text"] for b in blocks if b.get("text"))
+    if text:
+        logger.info("OCR (Tika) extracted %d chars from %s", len(text), pdf_path.name)
+    return text
+
+
+def step_extract(pdf_path: Path, report: PipelineReport, ocr: bool = False) -> str:
     # Dual import path: `tasks.*` when mira-crawler is on sys.path (the cron),
     # `mira_crawler.*` when imported as a package — same idiom as tasks._shared.
     try:
@@ -191,6 +216,15 @@ def step_extract(pdf_path: Path, report: PipelineReport) -> str:
     try:
         md, method = extract_pdf_text(pdf_path)
         if not md:
+            # Scanned/image-only PDF — local extraction found no text layer.
+            # With --ocr, fall back to Tika OCR before giving up (fail-safe).
+            if ocr:
+                ocr_text = _ocr_extract(pdf_path, report)
+                if ocr_text:
+                    report.extract_pages = ocr_text.count("\n\n") + 1
+                    report.extract_chars = len(ocr_text)
+                    report.extract_method = "tika_ocr"
+                    return ocr_text
             report.extract_method = f"{method} (empty)"
             report.errors.append(f"Extract: {method} produced 0 chars")
             return ""
@@ -491,6 +525,7 @@ def run(
     manual_type: str,
     baseline_path: str | None = None,
     no_quality_gate: bool = False,
+    ocr: bool = False,
 ) -> PipelineReport:
     report = PipelineReport(pdf_url=pdf_url)
 
@@ -511,7 +546,7 @@ def run(
         return report
 
     # 2. Extract
-    text = step_extract(dest, report)
+    text = step_extract(dest, report, ocr=ocr)
     txt_path = dest.with_suffix(".txt")
     if text:
         txt_path.write_text(text, encoding="utf-8")
@@ -549,6 +584,9 @@ def _parse_args() -> argparse.Namespace:
                    help="Path to kb_quality_gate baseline JSON (enables gate comparison)")
     p.add_argument("--no-quality-gate", action="store_true",
                    help="Skip quality gate step entirely")
+    p.add_argument("--ocr", action="store_true",
+                   help="Fall back to Tika OCR when local extraction finds no "
+                        "text layer (scanned/image-only PDFs). Requires TIKA_URL.")
     return p.parse_args()
 
 
@@ -561,5 +599,6 @@ if __name__ == "__main__":
         manual_type=args.manual_type,
         baseline_path=args.baseline,
         no_quality_gate=args.no_quality_gate,
+        ocr=args.ocr,
     )
     sys.exit(1 if report.errors else 0)
