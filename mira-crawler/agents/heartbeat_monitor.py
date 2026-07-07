@@ -115,7 +115,11 @@ CRITICAL_CONTAINERS = [
     "mira-bot-telegram",
     "mira-scan-backend",
     "cmms-backend",
-    "mira-docling-saas",
+    # mira-docling-saas removed 2026-07-07: docling was decommissioned 2026-06-06
+    # (OOM — docs/known-issues/2026-06-06-hub-upload-failures-docling-oom.md) and is
+    # no longer in docker-compose.saas.yml. Keeping it here made the self-healer
+    # try to recreate a non-existent container every 15 min. Ingest now extracts
+    # in-process (mira-crawler/ingest/pdf_extract.py), no docling service.
     "mira-web",
     "mira-mcp-saas",
 ]
