@@ -56,6 +56,24 @@ function tagMappingSuggestion(extracted: Record<string, unknown> = {}, over: Rec
   };
 }
 
+function drivePackSuggestion(over: Record<string, unknown> = {}) {
+  return {
+    id: ID,
+    suggestion_type: "drive_pack_update",
+    status: "pending",
+    extracted_data: {
+      registry_manual_id: "rockwell_powerflex_525_520-um001",
+      pdf_sha256: "ba2bd0f5",
+      change_state: "changed_by_hash",
+      local_pdf_path: "/opt/mira/manuals/Rockwell/PowerFlex 525/pf525.pdf",
+      next_step:
+        "python tools/drive-pack-extract/registry/update_candidate.py --manual … --id rockwell_powerflex_525_520-um001",
+      review_only: true,
+    },
+    ...over,
+  };
+}
+
 beforeEach(() => {
   queryMock.mockReset();
   queryMock.mockImplementation(async (sql: string) => {
@@ -188,6 +206,41 @@ describe("decideSuggestion", () => {
     const res = await decideSuggestion(TENANT, "u1", ID, "verify", "");
     expect(res).toMatchObject({ kind: "ok", entityId: null });
     expect(queryMock.mock.calls.some(([sql]) => /INSERT INTO kg_entities/.test(sql))).toBe(false);
+  });
+
+  // #2544: accepting a drive_pack_update ENQUEUES a build+grade (durable marker on the row) —
+  // it does NOT extract inline and NEVER promotes into the live packs/ tree.
+  function buildRequestedCalls() {
+    return queryMock.mock.calls.filter(([sql]) =>
+      /UPDATE ai_suggestions[\s\S]*build_requested/.test(sql),
+    );
+  }
+
+  it("verify of a drive_pack_update writes a durable build-requested marker (no entity)", async () => {
+    suggestionRow = drivePackSuggestion();
+    const res = await decideSuggestion(TENANT, "u1", ID, "verify", "");
+    expect(res).toMatchObject({ kind: "ok", decision: "verify", status: "accepted", entityId: null });
+    // status transitioned via the helper, as for every accept
+    expect(transitionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ trigger: "accept", aiSuggestionId: ID }),
+    );
+    // durable enqueue: the row's own extracted_data is marked build_requested + status 'requested'
+    const calls = buildRequestedCalls();
+    expect(calls).toHaveLength(1);
+    const [sql, params] = calls[0];
+    expect(sql).toContain("'requested'");
+    expect(params).toEqual([ID, TENANT]);
+    // no KG/tag entity is created for a drive_pack_update
+    expect(queryMock.mock.calls.some(([s]) => /INSERT INTO kg_entities/.test(s))).toBe(false);
+    expect(queryMock.mock.calls.some(([s]) => /INSERT INTO tag_entities/.test(s))).toBe(false);
+  });
+
+  it("reject of a drive_pack_update transitions status and enqueues NO build", async () => {
+    suggestionRow = drivePackSuggestion();
+    const res = await decideSuggestion(TENANT, "u1", ID, "reject", "not worth processing");
+    expect(res).toMatchObject({ kind: "ok", decision: "reject", status: "rejected", entityId: null });
+    expect(buildRequestedCalls()).toHaveLength(0);
   });
 
   it("returns not_found when the suggestion is absent (no transition)", async () => {
