@@ -66,7 +66,9 @@ def test_ask_mira_gs10_pack_only_no_fallback():
 
 
 def test_gs10_pack_only_directive_reports_coverage_honestly():
-    r = answer_question(_GS10, "Only answer from the GS10 drive pack. If the pack is not loaded, say so.")
+    r = answer_question(
+        _GS10, "Only answer from the GS10 drive pack. If the pack is not loaded, say so."
+    )
     assert r.resolved is True
     assert r.answer_source in {"drive_pack", "none"}
     assert r.fallback_used is False

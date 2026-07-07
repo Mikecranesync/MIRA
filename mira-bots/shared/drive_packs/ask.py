@@ -207,9 +207,9 @@ def answer_question(pack_id: str, question: str) -> DrivePackAnswer:
     # no fault/parameter matched — honest, pack-scoped, never a generic guess
     mnemonics = sorted({_fault_mnemonic(c) for c in cards if _fault_mnemonic(c)})
     param_ids = sorted(p.parameter_id for p in pack.parameters)
-    covered = (
-        f" It covers faults: {', '.join(mnemonics)}." if mnemonics else ""
-    ) + (f" Parameters: {', '.join(param_ids)}." if param_ids else "")
+    covered = (f" It covers faults: {', '.join(mnemonics)}." if mnemonics else "") + (
+        f" Parameters: {', '.join(param_ids)}." if param_ids else ""
+    )
     return DrivePackAnswer(
         pack_id=pack.pack_id,
         resolved=True,
