@@ -1,8 +1,34 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-07-07
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-07-07
+
+### Most actionable change for the playbook
+Three major industrial vendors (Augury, Siemens, Rockwell) each launched "AI agent orchestration" products in a 6-week window (May 18–June 22, 2026). The MIRA context-platform framing is now mainstream; the window to own cited-answer grounding as a differentiator is compressing. MaintainX's $3.6B Autodesk acquisition removes the most MIRA-adjacent CMMS competitor from the independent market — reframe competitive positioning from "vs. standalone CMMS" toward "FactoryLM context layer alongside Autodesk Operations Solutions."
+
+### New findings
+
+**CMMS / EAM**
+- **MaintainX** — Autodesk acquisition ($3.6B, May 28, 2026): https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video — Autodesk CEO on Bloomberg; MaintainX absorbed into Autodesk Operations Solutions (AOS). $135M+ ARR, 50%+ YoY growth. No longer an independent competitor. OEM-manual-knowledge framing that was directly adjacent to MIRA disappears into enterprise software.
+- **MaintainX** — Summer 2026 AI features (no dedicated video): Smart Time Estimates (AI-estimated WO duration from work history), expanded Anomaly Detection for non-recurring WOs + manual meter readings, Integrations Marketplace.
+
+**Predictive Maintenance**
+- **Augury** — "Industrial AI Workforce" (May 18, 2026): https://www.augury.com/media-center/press/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce/ — Press-release launch at AVEVA World Milan; no standalone video confirmed [transcript not verified]. Role-based AI agents for reliability/maintenance/operations. Stack: Machine Health + AVEVA CONNECT + Google Gemini. Industrial Context Graph: dynamic layer connecting machine health signals with operational data. Category claim shift: "predictive maintenance" → "autonomous factory agents."
+
+**Automation / SCADA**
+- **Siemens** — Intelligence Center X (June 1, 2026): https://news.siemens.com/en-us/siemens-intelligence-center-x/ — Announced at Realize LIVE Americas, Detroit; no standalone video confirmed [transcript not verified]. Industrial AI orchestration. Framing: "hybrid workforce where people and AI agents work together with shared context, workflows, and lifecycle intelligence." Claim: 95% reduction in manual effort (Vivix customer). Built: Mendix + Graph Studio + Rapidminer. Vivix case study uses Amazon Bedrock + Claude.
+- **Rockwell Automation** — FactoryTalk Orchestration (June 22, 2026): https://www.prnewswire.com/news-releases/rockwell-automation-launches-factorytalk-orchestration-software-at-automate-302805607.html — Launched at Automate 2026 Chicago; live floor demo, no standalone video confirmed [transcript not verified]. End-to-end factory coordination: orders + conveyors + AMRs in real time. Proof: 70% drop-off zone utilization improvement, 50% material handling reduction (Twinsburg, Ohio). Style shift: component automation → full-plant orchestration.
+- **Rockwell Automation** — ROKStudios Interpack 2026 season (June 4, 2026): https://www.prnewswire.com/news-releases/rockwell-automation-launches-new-season-of-rokstudios-video-series-highlighting-oem-leaders-on-machine-lifecycle-innovation-302788178.html — Recorded at Interpack 2026 Düsseldorf; focus on OEM machine lifecycle innovation in packaging. 150+ total episodes now in the series.
+
+**B2B SaaS / Dev-Tools**
+- **Notion** — 3.5 Developer Platform keynote (May 13, 2026): https://www.youtube.com/watch?v=rpE2rzKO6L0 — CEO Ivan Zhao. Notion Workers (cloud sandbox for custom code), External Agent API (Claude Code, Cursor, Codex, Decagon supported at launch). Workers free through August. Style shift: Notion repositioned from productivity workspace to AI agent orchestration platform.
+- **Figma** — Config 2026 keynote (June 24, 2026): https://www.youtube.com/watch?v=2ZCc4k_IV5w — CEO Dylan Field. Hook: "Code is not the opposite of design. Code is material for design." Launches: Code Layers (any layer → interactive code with one click or prompt), native motion/animation/3D transforms, Figma Agent with Skills + Connectors (Notion, Slack, GitHub, Atlassian). Second consecutive year of code-design convergence framing.
+- **Vercel** — Ship 26 London keynote (June 2026): https://www.youtube.com/watch?v=T1vs9jE-EEI — Opening hook: "The agent era arrived faster than anyone planned for — fewer than 3% of deployments on Vercel were triggered by coding agents six months ago." Launches: Vercel Services (July 1), Agent Stack, open-source framework "eve," Vercel Connect. New hook pattern: before/after ratio without a named proof customer.
 
 ---
 
@@ -86,7 +112,19 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Digitize Fast with MaintainX and AI": https://www.youtube.com/watch?v=X8cY-d-_KZM
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
-**Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+**Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner. $135M+ ARR.
+
+**Autodesk acquisition (May 28, 2026)**
+- Source: https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video
+- $3.6B all-cash deal; CEO Andrew Anagnost on Bloomberg "Open Interest" (May 29, 2026)
+- MaintainX absorbed into Autodesk Operations Solutions (AOS); no longer independent
+- Strategic signal: Autodesk is building a design→make→**operate** lifecycle — exactly the layer MIRA occupies
+- Competitive note: OEM-manual-knowledge framing that was MaintainX's Feb 2025 differentiator now belongs to Autodesk's enterprise portfolio
+
+**Summer 2026 AI features (no dedicated video)**
+- Smart Time Estimates: AI estimates WO duration from work history + asset type
+- Anomaly Detection expanded: now covers non-recurring work orders + manual meter readings
+- Integrations Marketplace launched
 
 ---
 
@@ -145,6 +183,16 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Footage style: real factory floor + exec interviews
 
 **Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
+
+**Industrial AI Workforce (May 18, 2026)**
+- Source: https://www.augury.com/media-center/press/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce/
+- Previewed at AVEVA World 2026, Milan; no standalone YouTube video confirmed [transcript not verified]
+- Architecture: Augury Machine Health + AVEVA CONNECT operational context + Google Gemini reasoning
+- Industrial Context Graph: dynamic layer connecting machine health signals with operational, process, and environmental data; enables agents to reason across the whole production system, not just per-machine
+- Role-based agents for reliability, maintenance, and operations teams
+- First customer: ICL Group (specialty minerals); reports faster root-cause analysis
+- Category claim shift: "machine health / predictive maintenance" → "autonomous factory agents"
+- Competitive note: Augury now directly competing on the "AI agent that bridges insight to action" frame — same territory as MIRA
 
 ---
 
@@ -205,11 +253,35 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - NVIDIA NeMoTron partnership: edge-based generative AI for industrial intelligence
 - No standalone launch video URL confirmed
 
+**FactoryTalk Orchestration (June 22, 2026)**
+- PR: https://www.prnewswire.com/news-releases/rockwell-automation-launches-factorytalk-orchestration-software-at-automate-302805607.html
+- Launched at Automate 2026, Chicago (June 22–25); live floor demo at booth S2267, no standalone video confirmed [transcript not verified]
+- End-to-end factory coordination: orders, conveyors, and OTTO AMRs orchestrated in real time via FactoryTalk Optix platform
+- Demo scenario: equipment fails or rush order arrives → screens update in seconds, tasks re-route, no production halt
+- Proof: 70% improvement in drop-off zone space utilization, 50% reduction in material handling space (Twinsburg, Ohio)
+- Style shift: Rockwell moving from component/machine automation to full-plant orchestration
+
+**ROKStudios Interpack 2026 season (June 4, 2026)**
+- PR: https://www.prnewswire.com/news-releases/rockwell-automation-launches-new-season-of-rokstudios-video-series-highlighting-oem-leaders-on-machine-lifecycle-innovation-302788178.html
+- Recorded at Interpack 2026, Düsseldorf; focus on OEM machine lifecycle innovation in packaging industry
+- 150+ total ROKStudios episodes now in archive
+- Format: executive interview series; not product demos
+
 ---
 
 ### Siemens
 
-See Senseye section above. No standalone Siemens industrial video found distinct from the Senseye/Maintenance Copilot material.
+See Senseye section above for Maintenance Copilot (Dec 2025). Siemens made a major positioning move in mid-2026.
+
+**Intelligence Center X (June 1, 2026)**
+- Source: https://news.siemens.com/en-us/siemens-intelligence-center-x/
+- Announced at Realize LIVE Americas, Detroit; no standalone promo video confirmed [transcript not verified]
+- Industrial AI orchestration software for "turning industrial AI from isolated experimentation into scalable business impact"
+- Core framing: "hybrid workforce where people and AI agents work together with shared context, workflows, and lifecycle intelligence"
+- Architecture: Mendix low-code + Siemens Graph Studio + Rapidminer AI Studio on a single governed foundation
+- Three deploy patterns: (1) layered on Siemens AI products, (2) standalone for multi-OT-vendor environments, (3) pure agentic enterprise platform
+- Proof: 95% reduction in manual effort (Vivix customer); Vivix's Virtual Engineer built with Amazon Bedrock + Claude + Intelligence Center X
+- Style shift: Siemens moving from hardware/PLC brand to industrial AI orchestration platform
 
 ---
 
@@ -270,6 +342,15 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 
 ### Vercel
 
+**Ship 2026 conference (June 2026)**
+- London keynote URL: https://www.youtube.com/watch?v=T1vs9jE-EEI
+- Event format: global multi-city roadshow (London + NYC June 30)
+- Opening hook: "The agent era arrived faster than anyone planned for — fewer than 3% of deployments on Vercel were triggered by coding agents six months ago." [search-derived]
+- Launches: Vercel Services (backend framework hosting at scale, July 1), Agent Stack, open-source agent framework "eve," Vercel Connect (newest Agent Stack building block)
+- VO register: CEO Guillermo Rauch
+- CTA: "available July 1"
+- New hook pattern: before/after ratio with no named proof customer — "X% of [metric] was Y 6 months ago, now it's Z" as a market-velocity claim. Transfer for MIRA: "six months ago, techs looked up fault codes in a binder. Ask them now."
+
 **v0.app launch (Aug 11, 2025)**
 - Source: https://siliconangle.com/2025/08/11/vercels-v0-app-launches-allowing-anyone-create-deploy-working-app-website-using-prompts/
 - Claim: "allowing anyone to create and deploy a working app or website using prompts"
@@ -283,9 +364,15 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 
 **"Supabase Wrapped 2025"**
 - URL: https://supabase.com/wrapped
-- Launch Week format: new features announced daily for a week; currently on cycle toward Launch Week 15 (Jul 14–18, 2026)
+- Launch Week format: new features announced daily for a week
 - No standalone YouTube launch video; blog/GitHub-native launch strategy
 - Hook pattern: "developers around the world shipped faster, scaled further"
+
+**June 2026 updates**
+- $500M Series F funding round announced
+- AI Agent Plugin: single install that gives coding agents Supabase MCP server + agent skills (query DBs, manage migrations, deploy Edge Functions)
+- Passkey authentication, ChatGPT integration, Multigres 0.1 (scalable Postgres OS), token-based database access
+- Launch Week 15 announced: July 14–18, 2026
 
 ---
 
@@ -301,8 +388,12 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 
 - "How AI Starts Doing the Work in 2026 with Anthropic CPO Mike Krieger": https://www.youtube.com/watch?v=VSLEGpCemtE
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
-- 30+ product releases in recent months per search results
 - No standalone promo video; analyst/conference appearances as primary video channel
+
+**2026 model launches (post–May 3)**
+- Claude Fable 5 + Claude Mythos 5 (June 9, 2026): announced as most capable widely released model (1M-token context, 128K output, adaptive thinking) — then suspended June 12 due to US government export-control directive
+- Claude Sonnet 5 (June 30, 2026): "most agentic Sonnet" — makes plans, uses tools (browser/terminal), runs autonomously, checks its own output; performance near Opus 4.8; $2/M input tokens introductory through Aug 31
+- Claude Science (June 30, 2026): AI workbench for researchers — 60+ scientific databases, genomics/proteomics/cheminformatics connectors; up to $30K compute credits per project
 
 ---
 
@@ -340,6 +431,15 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**3.5 Developer Platform (May 13, 2026)**
+- URL: https://www.youtube.com/watch?v=rpE2rzKO6L0
+- Title: "Introducing Notion's Developer Platform: Keynote (Ivan Zhao)"
+- Hook: developers and coding agents can "write code to sync any data and build any agent tool, all running on Notion's infrastructure" [search-derived]
+- Launches: Notion Workers (cloud sandbox for custom agent code), External Agent API (Claude Code, Cursor, Codex, Decagon at launch), Workers free through August
+- VO register: CEO/founder
+- CTA: "available now" for developers to experiment
+- Style shift: Notion repositioned from "productivity workspace with AI" to "AI agent orchestration platform built on a knowledge base" — directly parallels FactoryLM's context-platform framing applied to knowledge work vs. factory work
+
 ---
 
 ### Figma
@@ -354,6 +454,18 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**Config 2026 keynote (June 24, 2026)**
+- URL: https://www.youtube.com/watch?v=2ZCc4k_IV5w
+- Title: "Config 2026 Keynote with Dylan Field (CEO & Co-founder, Figma)"
+- Event: Config 2026, Moscone Center SF, June 23–25; in-person sold out, free virtual
+- Hook: "Code is not the opposite of design. Code is material for design." [verified via Figma blog]
+- Core theme: three new "materials" on the canvas — code, motion, AI
+- Launches: Code Layers (turn any design layer into interactive code with one click or prompt), native motion/animation/3D transforms, Figma Agent with Skills + Connectors (Notion, Slack, GitHub, Atlassian)
+- Footage style: on-stage keynote, polished production
+- VO register: founder
+- CTA: soft awareness; "Figma Agent launched to everyone yesterday"
+- Pattern: second consecutive Config with code-design convergence as central frame; agent-with-connectors is now the product standard across the category
 
 ---
 
@@ -385,6 +497,8 @@ No video content surfaced for 2025–2026.
 | ROI proof via named customer + specific number | Augury: Fortune Brands 2.5x ROI, 1,000 machines | Plant name + "from first alarm to root cause in [X mins]" |
 | Category creator: "industry's first AI for [niche]" | Augury: first AI for 1–150 RPM | "first AI trained on OEM fault libraries for [equipment type]" |
 | Educational top-of-funnel outperforms product demo | Inductive Automation: "What Is SCADA?" was most-watched | "What Is Predictive Maintenance?" or "How to Diagnose a Bearing Fault" |
+| Before/after ratio — market velocity, no named customer | Vercel Ship 26: "3% of deployments were agent-triggered six months ago" | "Six months ago, techs looked up fault codes in a binder. Ask them now." |
+| "Hybrid workforce" — human + AI agents with shared context | Siemens Intelligence Center X: "people and AI agents work together with shared context, workflows, lifecycle intelligence" | FactoryLM as the shared context layer that makes the hybrid work |
 
 ### Anti-patterns (avoid)
 
@@ -395,6 +509,10 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. **Acquired by Autodesk May 2026** — no longer an independent competitor; style/positioning will reset under AOS umbrella.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience. **June 2026: expanded scope from machine health → "autonomous factory agents"** via Industrial AI Workforce (AVEVA + Google Gemini).
+- **Siemens**: moved from hardware/PLC brand and Senseye point-solution to industrial AI orchestration platform (Intelligence Center X, June 2026). "Hybrid workforce" framing signals direct competition with FactoryLM context-layer positioning.
+- **Rockwell**: moved from component automation to full-plant orchestration (FactoryTalk Orchestration, June 2026). Competing at the coordination layer, not just the device layer.
+- **Notion**: from "workspace with AI copilot" to "AI agent orchestration platform built on a knowledge base" (Developer Platform, May 2026). Closest structural parallel to FactoryLM in the B2B SaaS world.
+- **Figma**: two consecutive Configs anchored on "design ↔ code convergence"; agent-with-connectors is now the standard product pattern across design tools.
