@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.100.0 (2026-07-07) - fix(test): un-jam the deploy pipeline — E2E signup-flow strict-locator flake
+- **Impact:** the VPS deploy gate had been jammed since v3.92.0 (#2528). `deploy-vps.yml` only runs when Smoke Test concludes `success`, but the `Smoke Test` E2E job failed on **every** commit after #2528 (v3.93.0→v3.99.0), so nothing shipped — including the merged, locally-verified drive-pack `/drive` work. The failure was **unrelated** to any of those commits (0 of them touch `mira-hub`).
+- **Root cause:** `mira-hub/tests/e2e/signup-flow.spec.ts` "valid email submits and shows success (or rate-limited on repeat runs)" hits the **live** factorylm.com magic-link form. On repeat CI runs the live site returns 429, and the page renders a **hidden** `#fl-form-success` in the DOM *alongside* the visible `#fl-form-error` ("You requested a link recently. Check your inbox…"). The assertion `expect(success.or(rateLimited)).toBeVisible()` then matched **two** elements → Playwright strict-mode violation → red smoke → gate closed for everyone.
+- **Fix:** the two acceptable outcomes are mutually exclusive in *visibility*, so narrow the union with `.filter({ visible: true })` (Playwright 1.59) — exactly one element matches regardless of the 200/429 outcome. Test-only change; no product code touched.
+- **Note:** shipped alongside a `skip_staging_gate=true` hotfix dispatch of `mira-bot-telegram`+`mira-pipeline` (drive-pack `/drive` was stuck behind this same jam); this PR restores the normal gated deploy path so the queued crawler fixes (v3.97.0/v3.98.0) and future merges deploy without a bypass.
+
 ### v3.99.0 (2026-07-07) - chore(ops): fail2ban SSH-hardening setup script (operator-run, not auto-applied)
 - **VPS fail2ban installation script** (`scripts/vps_fail2ban_setup.sh`): idempotent bash script for SSH brute-force protection on Ubuntu/Debian VPS.
 - **Configuration:** [sshd] jail with maxretry=5, findtime=10m, bantime=1h; backend=systemd on supported systems.
