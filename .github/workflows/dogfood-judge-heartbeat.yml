@@ -28,6 +28,7 @@ jobs:
       MAX_AGE_HOURS: "9" # 4h cadence → >9h means 2+ missed runs = broken
     steps:
       - name: Check newest dogfood verdict (freshness + RED)
+        id: check
         run: |
           set -euo pipefail
           latest="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments" \
@@ -44,14 +45,53 @@ jobs:
           verdict="$(printf '%s' "$body" | grep -oE 'Overall: (GREEN|YELLOW|RED)' | head -1 | awk '{print $2}')"
           echo "Newest dogfood verdict: ${verdict:-?}  posted ${created}  (age ${age_h}h, threshold ${MAX_AGE_HOURS}h)"
 
-          fail=0
+          fail=0; reason=""
           if [ "$age_h" -gt "${MAX_AGE_HOURS}" ]; then
             echo "::error::STALE — newest verdict is ${age_h}h old (> ${MAX_AGE_HOURS}h). The Bravo 4h routine (com.factorylm.dogfood-judge) has likely stopped. Check: launchctl list | grep dogfood-judge"
+            reason="⏱️ STALE — no dogfood run in ${age_h}h (>${MAX_AGE_HOURS}h). The Bravo 4h routine has likely stopped."
             fail=1
           fi
           if [ "$verdict" = "RED" ]; then
             echo "::error::RED — the dogfood judge found a CUSTOMER-BLOCKING failure. See issue #${ISSUE} (newest comment) and the auto-filed dogfood issue. This pages a human."
+            reason="${reason:+$reason | }🔴 RED — the dogfood judge found a customer-blocking failure. See issue #${ISSUE}."
             fail=1
           fi
-          if [ "$fail" -eq 1 ]; then exit 1; fi
-          echo "OK — dogfood routine is alive and healthy (verdict ${verdict:-?}, ${age_h}h ago)."
+          # Expose the alert decision to the notify step BEFORE any exit.
+          {
+            echo "alert=${fail}"
+            echo "verdict=${verdict:-?}"
+            echo "age_h=${age_h}"
+            printf 'reason<<EOF\n%s\nEOF\n' "$reason"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$fail" -eq 0 ]; then
+            echo "OK — dogfood routine is alive and healthy (verdict ${verdict:-?}, ${age_h}h ago)."
+          fi
+
+      - name: Telegram alert (STALE or RED)
+        # Independent of Bravo — this runs on GitHub, so it fires even when the
+        # Bravo host is offline (the case the local scheduled_run.sh can't self-report).
+        # Best-effort; no-op if the alert secrets aren't configured on the repo.
+        if: always() && steps.check.outputs.alert == '1'
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN_STG }}
+          TG_CHAT: ${{ secrets.DOGFOOD_ALERT_CHAT_ID }}
+          REASON: ${{ steps.check.outputs.reason }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          if [ -z "${TG_TOKEN:-}" ] || [ -z "${TG_CHAT:-}" ]; then
+            echo "::warning::Alert condition met but TELEGRAM_BOT_TOKEN_STG / DOGFOOD_ALERT_CHAT_ID secrets are not set — skipping Telegram."
+            exit 0
+          fi
+          msg="$(printf 'FactoryLM Dogfood — heartbeat alert\n%s\nissue: https://github.com/%s/issues/%s' "${REASON}" "${REPO}" "${ISSUE}")"
+          curl -s --max-time 15 "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TG_CHAT}" \
+            --data-urlencode "text=${msg}" \
+            --data-urlencode "disable_web_page_preview=true" >/dev/null \
+            && echo "Telegram alert sent." || echo "::warning::Telegram alert failed (non-fatal)."
+
+      - name: Fail the run if unhealthy
+        if: always() && steps.check.outputs.alert == '1'
+        run: |
+          echo "::error::Dogfood heartbeat unhealthy — see the check step. Alert dispatched to Telegram."
+          exit 1
