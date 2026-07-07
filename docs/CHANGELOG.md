@@ -1,5 +1,13 @@
 # MIRA Release Notes
 
+### v3.99.0 (2026-07-07) - chore(ops): fail2ban SSH-hardening setup script (operator-run, not auto-applied)
+- **VPS fail2ban installation script** (`scripts/vps_fail2ban_setup.sh`): idempotent bash script for SSH brute-force protection on Ubuntu/Debian VPS.
+- **Configuration:** [sshd] jail with maxretry=5, findtime=10m, bantime=1h; backend=systemd on supported systems.
+- **Operator-run only** — does NOT execute automatically. Must be run manually as root on the VPS: `sudo bash scripts/vps_fail2ban_setup.sh`.
+- **Critical:** Operator MUST edit ignoreip to include their admin IP + Tailscale subnet before running to avoid self-lockout.
+- **Purpose:** respond to 126 MB of failed-login records (btmp) indicating SSH brute-force traffic on production VPS.
+- Syntax validated; ready for manual deployment.
+
 ### v3.98.0 (2026-07-07) - feat(crawler): quarantine 0-char (scanned) PDFs as needs_ocr instead of retrying
 - **Problem:** ingest now extracts PDF text in-process (`mira-crawler/ingest/pdf_extract.py`, pdfplumber→pypdf). For scanned/image-only manuals with no text layer, extraction returns 0 chars with no OCR available — the entry then either retried forever (`failed_retryable`) or eventually burned all `MAX_ATTEMPTS` into a hard `failed`, wasting a cron cycle every hour for a PDF that will never yield text.
 - **Fix:** `mira-crawler/cron/kb_growth_cron.py::_process_entry` now detects the exact "produced 0 chars" marker `full_ingest_pipeline.step_extract` appends to `PipelineReport.errors` (rendered in the subprocess's report tail) via a new `_is_zero_char_extraction()` helper, and routes that case straight to a new terminal status `needs_ocr` on the FIRST occurrence — no retry scheduled, no attempt burned. Genuine download/network/transient failures are unaffected (they don't carry the marker) and keep going through `_classify_error()`'s existing retryable/hard path. Text-layer PDFs (chars > 0) are unaffected.
@@ -50,8 +58,7 @@
 - **Flaky stop-gate (fix):** `tools/hooks/stop-gate.sh` Gate 3 (mira-hub build) now serializes with `flock` (where available) and treats Next's `"Another next build process is already running"` as a **benign race, not a failure** — two overlapping Stop-hook invocations were both running `next build` and racing on the Next build lock, producing spurious "build failed" blocks even though the build compiled cleanly.
 - **Ingest overlap guard (automate):** `kb_growth_cron` now wraps its batch in a `singleton_lock` (advisory `fcntl` lock, OS-released on crash so it can't permanently block ingest; a second concurrent run exits cleanly). Prevents an overrunning hourly batch from being double-processed by the next tick. Fail-open if the helper isn't importable.
 - **Weekly docker GC (automate):** new `scripts/vps_docker_gc.sh` (build-cache + unused-image prune, before/after log) for a weekly VPS cron — bounds the dangling-image/cache churn that re-accumulates on every deploy.
-- **Scope / safety:** ops/reliability only; no product-runtime behavior change. Additive.
-### v3.91.0 (2026-07-07) - docs(drive-commander): scientific-grading runbook + CI promotion-gate design + discovery record
+- **Scope / safety:** ops/reliability only; no product-runtime behavior change. Additive.### v3.91.0 (2026-07-07) - docs(drive-commander): scientific-grading runbook + CI promotion-gate design + discovery record
 - **Runbook** (`docs/drive-commander/scientific-grading/runbook.md`): how to run scientific grading locally, read A/B/C/D/F + INCOMPLETE, author a gold set (precision-over-recall, match the pack, don't fake completeness), add a vendor's identifier conventions to the family-aware domain rules, and the five prerequisites before a pack may be promoted (grader measures, humans promote).
 - **CI promotion-gate design note** (`ci-promotion-gate-design.md`): the gate blocks a promotion PR (a diff touching `mira-bots/shared/drive_packs/packs/*/pack.json`) when a pack is sub-B / INCOMPLETE / hard-gate-fail / critical-failure, scoped to trigger ONLY on promotion paths (not docs/tooling). **Deliberately NOT wired** — documents the two unresolved prerequisites (manuals aren't committed → citation can't run in CI; GS10 chapter-section page labels aren't int-verifiable) with options + a draft workflow, per the mission's "design note, don't force it".
 - **Discovery record** (`docs/discovery/2026-07-07-scientific-grading-followups.md`): question, files, commands, results (the P053 float-jitter root cause; GS10 conventions; before/after grades), conclusions, the deterministic workflow, tests/fixtures, and remaining risks.
