@@ -1,0 +1,60 @@
+{
+  "manual": {
+    "vendor": "Rockwell Automation",
+    "family": "PowerFlex 40",
+    "publication": "22B-UM001J-EN-E",
+    "revision": "J",
+    "date": "September 2025",
+    "filename": "22b-um001.pdf",
+    "sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9",
+    "page_numbering": "printed == pdfplumber page_number (1-indexed), no offset",
+    "notes": "Human-approved reference for the PowerFlex 40 pack. Fault table pp.93-95 (Table 10 – Fault Types, Descriptions, and Actions); diagnostic-critical params on p.53 (motor) + p.76 (comm/Advanced Program). Fault-Type is the manual's literal per-row ZapfDingbats circled-digit (1=auto-reset ➀, 2=non-resettable ➁, '—'=no marker on that row — shared-group continuations and a few informational faults carry no own glyph). fault_type is documentary only (not carried into the pack, not scored). Names verified from the fault Name column, independent of the extractor."
+  },
+  "faults": [
+    { "fault_id": "F2", "code": 2, "name": "Auxiliary Input", "fault_type": "1", "references_parameters": [], "page": 93, "diagnostic_critical": false },
+    { "fault_id": "F3", "code": 3, "name": "Power Loss", "fault_type": "2", "references_parameters": [], "page": 93, "diagnostic_critical": false },
+    { "fault_id": "F4", "code": 4, "name": "UnderVoltage", "fault_type": "1", "references_parameters": [], "page": 93, "diagnostic_critical": true },
+    { "fault_id": "F5", "code": 5, "name": "OverVoltage", "fault_type": "1", "references_parameters": [], "page": 93, "diagnostic_critical": true },
+    { "fault_id": "F6", "code": 6, "name": "Motor Stalled", "fault_type": "1", "references_parameters": [], "page": 93, "diagnostic_critical": false },
+    { "fault_id": "F7", "code": 7, "name": "Motor Overload", "fault_type": "1", "references_parameters": ["P033"], "page": 93, "diagnostic_critical": true, "note": "action references P033 [Motor OL Current]" },
+    { "fault_id": "F8", "code": 8, "name": "Heatsink OvrTmp", "fault_type": "1", "references_parameters": [], "page": 93, "diagnostic_critical": true },
+    { "fault_id": "F12", "code": 12, "name": "HW OverCurrent", "fault_type": "2", "references_parameters": [], "page": 93, "diagnostic_critical": false },
+    { "fault_id": "F13", "code": 13, "name": "Ground Fault", "fault_type": "2", "references_parameters": [], "page": 93, "diagnostic_critical": true },
+    { "fault_id": "F29", "code": 29, "name": "Analog Input Loss", "fault_type": "1", "references_parameters": [], "page": 93, "diagnostic_critical": false },
+    { "fault_id": "F33", "code": 33, "name": "Auto Rstrt Tries", "fault_type": "2", "references_parameters": [], "page": 94, "diagnostic_critical": false },
+    { "fault_id": "F38", "code": 38, "name": "Phase U to Gnd", "fault_type": "2", "references_parameters": [], "page": 94, "diagnostic_critical": false },
+    { "fault_id": "F39", "code": 39, "name": "Phase V to Gnd", "fault_type": "—", "references_parameters": [], "page": 94, "diagnostic_critical": false, "note": "shared-group continuation of F38 — no own Fault-Type glyph" },
+    { "fault_id": "F40", "code": 40, "name": "Phase W to Gnd", "fault_type": "—", "references_parameters": [], "page": 94, "diagnostic_critical": false, "note": "shared-group continuation of F38 — no own Fault-Type glyph" },
+    { "fault_id": "F41", "code": 41, "name": "Phase UV Short", "fault_type": "2", "references_parameters": [], "page": 94, "diagnostic_critical": false },
+    { "fault_id": "F42", "code": 42, "name": "Phase UW Short", "fault_type": "—", "references_parameters": [], "page": 94, "diagnostic_critical": false, "note": "shared-group continuation of F41 — no own Fault-Type glyph" },
+    { "fault_id": "F43", "code": 43, "name": "Phase VW Short", "fault_type": "—", "references_parameters": [], "page": 94, "diagnostic_critical": false, "note": "shared-group continuation of F41 — no own Fault-Type glyph" },
+    { "fault_id": "F48", "code": 48, "name": "Params Defaulted", "fault_type": "—", "references_parameters": [], "page": 94, "diagnostic_critical": false, "note": "no Fault-Type glyph on this row in the manual" },
+    { "fault_id": "F63", "code": 63, "name": "SW OverCurrent", "fault_type": "1", "references_parameters": [], "page": 94, "diagnostic_critical": false },
+    { "fault_id": "F64", "code": 64, "name": "Drive Overload", "fault_type": "2", "references_parameters": [], "page": 94, "diagnostic_critical": false },
+    { "fault_id": "F70", "code": 70, "name": "Power Unit", "fault_type": "2", "references_parameters": [], "page": 94, "diagnostic_critical": true },
+    { "fault_id": "F71", "code": 71, "name": "Net Loss", "fault_type": "—", "references_parameters": [], "page": 94, "diagnostic_critical": true, "note": "no Fault-Type glyph on this row in the manual" },
+    { "fault_id": "F80", "code": 80, "name": "SVC Autotune", "fault_type": "—", "references_parameters": [], "page": 94, "diagnostic_critical": false, "note": "no Fault-Type glyph on this row in the manual" },
+    { "fault_id": "F81", "code": 81, "name": "Comm Loss", "fault_type": "2", "references_parameters": ["A105"], "page": 94, "diagnostic_critical": true, "note": "cross-vendor comm-loss proof — action 'Turn off using A105 [Comm Loss Action]' (analog of GS10 CE10->P09.03 and PF525 F081->C125)" },
+    { "fault_id": "F100", "code": 100, "name": "Parameter Checksum", "fault_type": "2", "references_parameters": [], "page": 94, "diagnostic_critical": false },
+    { "fault_id": "F122", "code": 122, "name": "I/O Board Fail", "fault_type": "2", "references_parameters": [], "page": 95, "diagnostic_critical": false }
+  ],
+  "parameters": [
+    { "parameter_id": "P031", "name": "Motor NP Volts", "range": null, "default": null, "unit": null, "related_parameters": [], "related_faults": [], "page": 53, "diagnostic_critical": false, "note": "default is worded ('Based on Drive Rating') -> null, honest not a miss" },
+    { "parameter_id": "P032", "name": "Motor NP Hertz", "range": "15/400", "default": "60", "unit": "Hz", "related_parameters": [], "related_faults": [], "page": 53, "diagnostic_critical": false },
+    { "parameter_id": "P033", "name": "Motor OL Current", "range": null, "default": null, "unit": null, "related_parameters": [], "related_faults": ["F7"], "page": 53, "diagnostic_critical": true, "note": "default worded -> null; F7 [Motor Overload] references it" },
+    { "parameter_id": "P034", "name": "Minimum Freq", "range": "0.0/400.0", "default": "0.0", "unit": "Hz", "related_parameters": [], "related_faults": [], "page": 53, "diagnostic_critical": false },
+    { "parameter_id": "P035", "name": "Maximum Freq", "range": "0/400", "default": "60", "unit": "Hz", "related_parameters": [], "related_faults": [], "page": 53, "diagnostic_critical": false },
+    { "parameter_id": "A105", "name": "Comm Loss Action", "range": null, "default": "0", "unit": null, "related_parameters": ["A106"], "related_faults": ["F81"], "page": 76, "diagnostic_critical": true, "note": "enum, default 0 '\"Fault\"'; F81 [Comm Loss] references it — the headline cross-vendor comm-loss link" },
+    { "parameter_id": "A106", "name": "Comm Loss Time", "range": "0.1/60.0", "default": "5.0", "unit": "s", "related_parameters": ["A105"], "related_faults": [], "page": 76, "diagnostic_critical": true },
+    { "parameter_id": "A107", "name": "Comm Format", "range": null, "default": "0", "unit": null, "related_parameters": [], "related_faults": [], "page": 76, "diagnostic_critical": true },
+    { "parameter_id": "A108", "name": "Language", "range": null, "default": "1", "unit": null, "related_parameters": [], "related_faults": [], "page": 76, "diagnostic_critical": false }
+  ],
+  "edge_cases": [
+    {
+      "kind": "related_parameters_not_faults",
+      "ids": ["A105", "A106", "P033", "P034"],
+      "page": 76,
+      "expectation": "each param's 'Related Parameters:' list (A105 -> d015,P037,A106; A106 -> d015,A105; P033 -> A055,A058,A061,...; P034 -> d001,d002,d013,P035,...) must land in related_parameters, NEVER related_faults — related_faults may contain only fault ids (F...)"
+    }
+  ]
+}
