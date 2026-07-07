@@ -1,6 +1,6 @@
 # MIRA Release Notes
 
-### v3.83.0 (2026-07-07) - feat(hub): surface drive-pack update candidates in the Command Center review queue
+### v3.84.0 (2026-07-07) - feat(hub): surface drive-pack update candidates in the Command Center review queue
 - **What:** closes the last mile of the default-off bridge (v3.82.0). A review-only drive-pack update candidate can now be filed into the Hub `ai_suggestions` queue as a new `drive_pack_update` suggestion and reviewed in **Knowledge → Suggestions** alongside every other AI proposal. **Acceptance:** *a bridge candidate appears in the Command Center as a review item; accepting it records "worth processing" and never extracts, grades, or promotes a pack.*
 - **Migration `062_ai_suggestions_drive_pack_update.sql`:** widens the mig-027 `suggestion_type` CHECK to add `drive_pack_update` (idempotent DROP+ADD; no data change). Proven on ephemeral `postgres:16` (real 027→062, re-applied for idempotency): `drive_pack_update` accepted, legacy types still accepted, a bogus type still rejected by the CHECK.
 - **Ingestion seam (`mira-hub/src/lib/drive-pack-suggestion.ts`):** pure `candidateToSuggestion(record)` maps a bridge candidate record (`build_candidate_record`) → the `ai_suggestions` row shape (human-readable title/body carrying the review-only doctrine + the exact `next_step`; provenance in `extracted_data`). `insertDrivePackSuggestion()` inserts at `status='pending'`, **idempotent** on `(registry_manual_id, pdf_sha256)`.
