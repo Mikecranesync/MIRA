@@ -1,0 +1,134 @@
+{
+  "generated_at": "2026-07-07",
+  "pack_id": "durapulse_gs10",
+  "manufacturer": "AutomationDirect",
+  "series": "DURApulse GS10",
+  "schema_version": 2,
+  "overall_score": 60.0,
+  "grade": "D",
+  "grade_meaning": "Research only",
+  "incomplete": true,
+  "not_applicable_categories": [
+    "fault_coverage_precision",
+    "fault_field_accuracy",
+    "parameter_coverage_precision",
+    "parameter_field_accuracy",
+    "relationship_accuracy",
+    "citation_fidelity"
+  ],
+  "categories": [
+    {
+      "key": "provenance_traceability",
+      "name": "Manual provenance and traceability",
+      "weight": 10,
+      "score": 50.0,
+      "gradeable": true,
+      "findings": [
+        "provenance.sources missing page+excerpt evidence"
+      ]
+    },
+    {
+      "key": "fault_coverage_precision",
+      "name": "Fault coverage and precision",
+      "weight": 20,
+      "score": null,
+      "gradeable": false,
+      "findings": [
+        "no gold set for this pack"
+      ]
+    },
+    {
+      "key": "fault_field_accuracy",
+      "name": "Fault field accuracy",
+      "weight": 20,
+      "score": null,
+      "gradeable": false,
+      "findings": [
+        "no gold set for this pack"
+      ]
+    },
+    {
+      "key": "parameter_coverage_precision",
+      "name": "Parameter coverage and precision",
+      "weight": 20,
+      "score": null,
+      "gradeable": false,
+      "findings": [
+        "no gold set for this pack"
+      ]
+    },
+    {
+      "key": "parameter_field_accuracy",
+      "name": "Parameter field accuracy",
+      "weight": 15,
+      "score": null,
+      "gradeable": false,
+      "findings": [
+        "no gold set for this pack"
+      ]
+    },
+    {
+      "key": "relationship_accuracy",
+      "name": "Relationship accuracy",
+      "weight": 10,
+      "score": null,
+      "gradeable": false,
+      "findings": [
+        "no gold set for this pack"
+      ]
+    },
+    {
+      "key": "citation_fidelity",
+      "name": "Citation fidelity",
+      "weight": 15,
+      "score": null,
+      "gradeable": false,
+      "findings": [
+        "manual not available \u2014 citation fidelity could not be measured"
+      ]
+    },
+    {
+      "key": "safety_usability",
+      "name": "Safety and technician usability",
+      "weight": 10,
+      "score": 70.0,
+      "gradeable": true,
+      "findings": [
+        "parameter_id 'P09.03': does not match ^[APCTBDapctbd]\\d{2,3}$ or is a fault id",
+        "parameter 'P09.03': related_faults entry 'CE10' does not match ^F\\d+$"
+      ]
+    }
+  ],
+  "hard_gates": [
+    {
+      "key": "schema_validity",
+      "passed": true,
+      "detail": "schema OK (schema_version=2) \u2014 10 fault codes, 1 parameters"
+    },
+    {
+      "key": "runtime_compatibility",
+      "passed": true,
+      "detail": "pack loads + validates through the runtime drive_packs loader"
+    },
+    {
+      "key": "provenance_present",
+      "passed": true,
+      "detail": "provenance.items present with valid tiers"
+    }
+  ],
+  "critical_failures": [
+    "domain hard violation(s): domain rules: 2 violation(s)"
+  ],
+  "fault_recall": null,
+  "fault_precision": null,
+  "parameter_recall": null,
+  "diagnostic_critical_precision": null,
+  "citation_accuracy": null,
+  "missing_evidence": [
+    "gold set (author gold/<family>/gold.json) \u2014 coverage/accuracy unscored",
+    "source manual PDF \u2014 citation fidelity unscored"
+  ],
+  "promotable": false,
+  "promotion_recommendation": "NOT PROMOTABLE \u2014 1 unresolved critical failure(s) must be fixed first.",
+  "note": "COMPLEMENTS the beta/trusted trust-status (grade.py); does not replace it."
+}
