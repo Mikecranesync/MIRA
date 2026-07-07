@@ -75,8 +75,19 @@ if [ -n "$CHANGED_SH" ] && command -v shellcheck >/dev/null 2>&1; then
 fi
 
 # Gate 3: mira-hub TypeScript build.
+# Serialized with flock (where available) so two overlapping Stop-hook invocations
+# don't both run `next build` and race on Next's build lock. On a lock loss, the
+# concurrent build still completes — so a "Another next build process is already
+# running" failure is a benign race, NOT a real build error, and must not block.
 if [ -n "$CHANGED_HUB" ] && [ -f "mira-hub/package.json" ] && [ -d "mira-hub/node_modules" ]; then
-  if ! (cd mira-hub && npm run build >/tmp/mira-hub-stop-build.log 2>&1); then
+  BUILD_LOG=/tmp/mira-hub-stop-build.log
+  if command -v flock >/dev/null 2>&1; then
+    ( flock -w 300 9 || exit 0; cd mira-hub && npm run build >"$BUILD_LOG" 2>&1 ) 9>/tmp/mira-hub-stop-build.lock
+    build_rc=$?
+  else
+    ( cd mira-hub && npm run build >"$BUILD_LOG" 2>&1 ); build_rc=$?
+  fi
+  if [ "$build_rc" -ne 0 ] && ! grep -q "Another next build process is already running" "$BUILD_LOG"; then
     FAILS+=("mira-hub build failed (tail /tmp/mira-hub-stop-build.log)")
   fi
 fi

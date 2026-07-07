@@ -592,8 +592,23 @@ def main() -> None:
         return
 
     _log(f"KB growth cron starting (batch={BATCH_SIZE}, budget={RUN_BUDGET_SEC}s)")
-    summary = run_batch()
-    _emit_run_report(summary)
+    # Singleton lock: if a slow batch hasn't finished before the next hourly tick,
+    # a second run would double-process the queue and double memory/CPU. The lock
+    # is an advisory fcntl lock (OS-released if the holder dies, so a crash can't
+    # permanently block ingest); a second concurrent run exits cleanly (0).
+    # Fail-open: if the hardening helper isn't importable, run without the lock.
+    try:
+        sys.path.insert(0, str(_REPO_ROOT / "tools" / "lead-hunter"))
+        from hardening import singleton_lock
+
+        lock_cm = singleton_lock("kb-growth")
+    except Exception:  # noqa: BLE001 — never let lock setup block ingest
+        from contextlib import nullcontext
+
+        lock_cm = nullcontext()
+    with lock_cm:
+        summary = run_batch()
+        _emit_run_report(summary)
     _log("KB growth cron done")
 
 
