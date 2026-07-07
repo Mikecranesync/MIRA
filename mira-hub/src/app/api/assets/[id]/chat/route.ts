@@ -302,68 +302,6 @@ export async function POST(
     });
   }
 
-  // Drive-pack pre-check (#2527) — read-only pre-check against the
-  // deterministic drive-pack answer service (mira-ask). If it matches, this
-  // question has a manual-cited, deterministic answer that should win over a
-  // generic LLM-cascade reply. Best-effort only: ANY failure, timeout,
-  // non-200, or non-match falls straight through to the existing cascade
-  // below — this block must never break chat.
-  try {
-    const askBase = process.env.MIRA_ASK_URL ?? "http://mira-ask:8011";
-    const askRes = await fetch(`${askBase}/drive-pack/ask`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(process.env.ASK_API_KEY ? { "X-Mira-Key": process.env.ASK_API_KEY } : {}),
-      },
-      body: JSON.stringify({ question: lastUser.content }),
-      signal: AbortSignal.timeout(4000),
-    });
-
-    if (askRes.ok) {
-      const askData = (await askRes.json()) as {
-        pack_id?: string;
-        matched?: boolean;
-        answer?: string;
-        answer_source?: string;
-        citations?: { doc: string; page?: string | number | null }[];
-      };
-
-      if (askData.matched === true && askData.answer_source === "drive_pack" && askData.answer) {
-        const citationLines = (askData.citations ?? [])
-          .map((c) => `[Source: ${c.doc}${c.page ? ` p.${c.page}` : ""}]`)
-          .join("\n");
-        // The drive-pack answer is always static reference material, never
-        // live telemetry — so the prefix below is unconditionally accurate.
-        // (This pre-check runs before the machine-memory context packet is
-        // built further down, so there is no clean live-vs-static signal
-        // available at this point to make the prefix conditional instead.)
-        const replyText = `Static pack reference — not from live telemetry.\n\n${askData.answer}${
-          citationLines ? `\n\n${citationLines}` : ""
-        }`;
-
-        const askEnc = new TextEncoder();
-        const askStream = new ReadableStream<Uint8Array>({
-          start(controller) {
-            controller.enqueue(askEnc.encode(`data: ${JSON.stringify({ content: replyText })}\n\n`));
-            controller.enqueue(askEnc.encode("data: [DONE]\n\n"));
-            controller.close();
-          },
-        });
-        return new Response(askStream, {
-          headers: {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache, no-transform",
-            "X-Accel-Buffering": "no",
-            "X-Drive-Pack": String(askData.pack_id ?? ""),
-          },
-        });
-      }
-    }
-  } catch {
-    // Best-effort pre-check: any error/timeout falls through to the cascade.
-  }
-
   // Fetch asset context + manual chunks. Both are non-fatal: chat still works
   // without them.
   //
@@ -455,6 +393,82 @@ export async function POST(
     manualChunks = [];
     verifiedRelationshipCount = 0;
     machinePacket = null;
+  }
+
+  // Drive-pack pre-check (#2527 + UNS follow-up) — read-only pre-check against
+  // the deterministic drive-pack answer service (mira-ask). If it matches, this
+  // question has a manual-cited, deterministic answer that should win over a
+  // generic LLM-cascade reply. We pass the OPEN ASSET's manufacturer+model as a
+  // `drive` fallback so a GS10 asset answers "what does CE10 mean?" WITHOUT the
+  // user typing "gs10" (a drive named in the question still wins — the service
+  // resolves question > drive). Placed AFTER the asset fetch (so we have the
+  // asset's make/model) but BEFORE the approved-context gate + cascade: the
+  // pack answer is generic OEM manual knowledge, available regardless of the
+  // asset agent's approval state, consistent with the engine surfaces.
+  // Best-effort only: ANY failure/timeout/non-200/non-match falls straight
+  // through to the cascade below — this block must never break chat.
+  try {
+    const askBase = process.env.MIRA_ASK_URL ?? "http://mira-ask:8011";
+    const assetDrive = [assetRow?.manufacturer, assetRow?.model_number]
+      .filter(Boolean)
+      .map(String)
+      .join(" ")
+      .trim();
+    const askRes = await fetch(`${askBase}/drive-pack/ask`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(process.env.ASK_API_KEY ? { "X-Mira-Key": process.env.ASK_API_KEY } : {}),
+      },
+      body: JSON.stringify({
+        question: lastUser.content,
+        ...(assetDrive ? { drive: assetDrive } : {}),
+      }),
+      signal: AbortSignal.timeout(4000),
+    });
+
+    if (askRes.ok) {
+      const askData = (await askRes.json()) as {
+        pack_id?: string;
+        matched?: boolean;
+        answer?: string;
+        answer_source?: string;
+        citations?: { doc: string; page?: string | number | null }[];
+      };
+
+      if (askData.matched === true && askData.answer_source === "drive_pack" && askData.answer) {
+        const citationLines = (askData.citations ?? [])
+          .map((c) => `[Source: ${c.doc}${c.page ? ` p.${c.page}` : ""}]`)
+          .join("\n");
+        const packBody = `${askData.answer}${citationLines ? `\n\n${citationLines}` : ""}`;
+        // The drive-pack answer is always static reference material. Add the
+        // static-vs-live disambiguation prefix ONLY when this turn actually
+        // carries live machine telemetry (else there is nothing to disambiguate).
+        const hasLive = (machinePacket?.freshness.live ?? 0) > 0;
+        const replyText = hasLive
+          ? `Static pack reference — not from live telemetry.\n\n${packBody}`
+          : packBody;
+
+        const askEnc = new TextEncoder();
+        const askStream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(askEnc.encode(`data: ${JSON.stringify({ content: replyText })}\n\n`));
+            controller.enqueue(askEnc.encode("data: [DONE]\n\n"));
+            controller.close();
+          },
+        });
+        return new Response(askStream, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "X-Drive-Pack": String(askData.pack_id ?? ""),
+          },
+        });
+      }
+    }
+  } catch {
+    // Best-effort pre-check: any error/timeout falls through to the cascade.
   }
 
   // KG graph context — fetch in parallel with (already completed) asset DB fetch
