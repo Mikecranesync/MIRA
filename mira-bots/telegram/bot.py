@@ -24,6 +24,7 @@ from shared.contextualization_intake import (
     submit_intake_to_hub,
 )
 from shared.conversation_logger import log_turn, measure_ms
+from shared.drive_packs import answer_question, list_packs, resolve_pack
 from shared.engine import Supervisor
 from shared.identity.service import get_identity_service
 from shared.integrations.atlas_cmms import AtlasCMMSClient
@@ -869,6 +870,58 @@ async def faults_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"MIRA error: {e}")
 
 
+async def drive_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Answer a drive-pack question — deterministic, pack-grounded, read-only.
+
+    ``/drive <pack-alias> <question>``. The ONLY answer source is
+    ``shared.drive_packs.answer_question`` (deterministic pack JSON) — never
+    the engine or an LLM. An unmatched question still renders the pack's own
+    honest "I won't guess" answer, never a generic fallback.
+    """
+    if not context.args or len(context.args) < 2:
+        packs = ", ".join(list_packs())
+        await update.message.reply_text(
+            "Usage: /drive <drive> <question>\n"
+            "Example: /drive gs10 What does CE10 mean?\n"
+            f"Available: {packs}"
+        )
+        return
+
+    pack_alias = context.args[0]
+    question = " ".join(context.args[1:])
+    pack = resolve_pack(pack_alias)
+    if pack is None:
+        packs = ", ".join(list_packs())
+        await update.message.reply_text(
+            f"I don't have a drive pack matching '{pack_alias}'. Available: {packs}."
+        )
+        return
+
+    try:
+        async with typing_action(context, update.effective_chat.id):
+            result = await asyncio.to_thread(answer_question, pack.pack_id, question)
+        reply = result.answer
+        if result.citations:
+            reply += "\n\nSources:"
+            for c in result.citations:
+                page = f" p.{c['page']}" if c.get("page") else ""
+                reply += f"\n[Source: {c['doc']}{page}]"
+        reply += (
+            f"\n\nsource: {result.answer_source} · pack: {result.pack_id} · "
+            f"fallback_used: {str(result.fallback_used).lower()} · "
+            f"live_telemetry: {str(result.live_telemetry).lower()} · "
+            f"read_only: {str(result.read_only).lower()}"
+        )
+        # Plain text (no parse_mode): the pack answer contains OEM text with
+        # unbalanced brackets ("[COM1 Time-out Detection]", "[Source: ...]") that
+        # Telegram's legacy Markdown parser rejects with a 400 "can't parse
+        # entities" — send it verbatim instead.
+        await update.message.reply_text(reply)
+    except Exception as e:
+        logger.error("Drive command error: %s", e)
+        await update.message.reply_text(f"MIRA error: {e}")
+
+
 async def bad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Flag the last response as unhelpful."""
     chat_id = str(update.effective_chat.id)
@@ -892,6 +945,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/invite_status \u2014 (admin) list pending/used invites\n"
         "/equipment [id] \u2014 Live equipment status (instant)\n"
         "/faults \u2014 Active fault list (instant)\n"
+        "/drive <drive> <question> \u2014 Ask a drive pack (instant, pack-grounded)\n"
         "/status \u2014 AI equipment summary\n"
         "/voice on|off \u2014 Enable/disable spoken responses\n"
         "/bad [reason] \u2014 Flag this response as unhelpful\n"
@@ -1116,6 +1170,7 @@ def main():
     app.add_handler(CommandHandler("invite_status", _wrap_invite_status))
     app.add_handler(CommandHandler("equipment", equipment_command))
     app.add_handler(CommandHandler("faults", faults_command))
+    app.add_handler(CommandHandler("drive", drive_command))
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("reset", reset_command))
     app.add_handler(CommandHandler("voice", voice_command))
