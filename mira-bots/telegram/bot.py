@@ -19,9 +19,8 @@ from PIL import Image
 from shared import chat_tenant, tts
 from shared.chat.dispatcher import ChatDispatcher
 from shared.contextualization_intake import (
-    INGEST_ROUTE_TELEGRAM,
-    build_intake_envelope,
-    submit_intake_to_hub,
+    hub_folder_upload_configured,
+    submit_file_to_hub_folder,
 )
 from shared.conversation_logger import log_turn, measure_ms
 from shared.drive_packs import answer_question, list_packs, resolve_pack
@@ -72,11 +71,23 @@ MCP_REST_API_KEY = os.environ.get("MCP_REST_API_KEY", "")
 KNOWLEDGE_COLLECTION_ID = os.environ.get(
     "KNOWLEDGE_COLLECTION_ID", "dd9004b9-3af2-4751-9993-3307e478e9a3"
 )
-# HubV3: Telegram is a thin evidence-capture client. Photos/docs are submitted as
-# the §2 contextualization intake contract to the Hub import endpoint (the Hub is
-# the system of record). Replaces the legacy mira-ingest {asset_tag, image} path.
-HUB_IMPORT_URL = os.environ.get("HUB_IMPORT_URL", "")
-HUB_IMPORT_TOKEN = os.environ.get("HUB_IMPORT_TOKEN", "")
+# Telegram is a thin evidence-capture client. Photos/docs are POSTed as raw
+# files to the Hub's citable folder-upload door (POST /api/uploads/folder,
+# Bearer HUB_INGEST_TOKEN + X-Mira-Tenant-Id), which routes through the golden
+# path to `knowledge_entries` (per-tenant, citable) — #2540. Env-var names match
+# tools/mira-drop-watcher. HUB_IMPORT_URL is kept only as a back-compat base.
+HUB_URL = os.environ.get("HUB_URL", "")
+HUB_BASE_PATH = os.environ.get("HUB_BASE_PATH", "/hub")
+HUB_INGEST_TOKEN = os.environ.get("HUB_INGEST_TOKEN", "")
+HUB_IMPORT_URL = os.environ.get("HUB_IMPORT_URL", "")  # back-compat base only
+
+
+def _hub_intake_configured() -> bool:
+    """True when the Hub folder-upload door has a base URL + Bearer token."""
+    return hub_folder_upload_configured(
+        hub_url=HUB_URL or HUB_IMPORT_URL or None,
+        token=HUB_INGEST_TOKEN or None,
+    )
 
 engine = Supervisor(
     db_path=os.environ.get("MIRA_DB_PATH", "/data/mira.db"),
@@ -207,70 +218,45 @@ def _intake_meta(update: Update) -> tuple[str, str, str]:
     return uploader, captured_at, tenant_id
 
 
-def _asset_hints_from_caption(caption: str) -> dict:
-    """Minimal asset-identity hint from a caption (first token = asset name).
-
-    Preserves today's ``asset_tag`` behaviour. Richer hints (mfr/model/serial/
-    IP/UNS) are the Hub's job to derive from evidence — the client owns no truth.
-    """
-    tokens = caption.split() if caption else []
-    return {"name": tokens[0]} if tokens else {}
-
-
 async def _submit_photo_to_hub(raw_bytes: bytes, caption: str, update: Update) -> None:
-    """Build the §2 intake envelope for a photo and POST it to the Hub.
+    """POST a photo to the Hub's citable folder-upload door (#2540).
 
-    Runs in background — ``submit_intake_to_hub`` never raises, so a failed Hub
-    POST cannot break the chat reply. Replaces the legacy mira-ingest path.
+    Runs in background — ``submit_file_to_hub_folder`` never raises, so a failed
+    Hub POST cannot break the chat reply. The tenant header keeps the upload
+    per-tenant and citable. ``caption`` is unused on this path (the folder door
+    ingests the raw file; the Hub derives context on its own).
     """
-    if not HUB_IMPORT_URL:
+    if not _hub_intake_configured():
         return
-    uploader, captured_at, tenant_id = _intake_meta(update)
-    envelope = build_intake_envelope(
-        raw_bytes=raw_bytes,
-        filename="photo.jpg",
-        mime="image/jpeg",
-        uploader=uploader,
-        captured_at=captured_at,
-        caption=caption,
-        asset_hints=_asset_hints_from_caption(caption),
-        ingest_route=INGEST_ROUTE_TELEGRAM,
-    )
-    await submit_intake_to_hub(
-        envelope,
+    _uploader, _captured_at, tenant_id = _intake_meta(update)
+    await submit_file_to_hub_folder(
         raw_bytes=raw_bytes,
         filename="photo.jpg",
         mime="image/jpeg",
         tenant_id=tenant_id,
-        token=HUB_IMPORT_TOKEN or None,
+        hub_url=HUB_URL or HUB_IMPORT_URL or None,
+        base_path=HUB_BASE_PATH,
+        token=HUB_INGEST_TOKEN or None,
     )
 
 
 async def _submit_doc_to_hub(pdf_bytes: bytes, filename: str, caption: str, update: Update) -> bool:
-    """Build the §2 intake envelope for a PDF and POST it to the Hub.
+    """POST a PDF to the Hub's citable folder-upload door (#2540).
 
-    Returns True on a 2xx Hub response. Never raises.
+    Returns True on a 2xx Hub response. Never raises. ``caption`` is unused on
+    this path (the folder door ingests the raw file).
     """
-    if not HUB_IMPORT_URL:
+    if not _hub_intake_configured():
         return False
-    uploader, captured_at, tenant_id = _intake_meta(update)
-    envelope = build_intake_envelope(
-        raw_bytes=pdf_bytes,
-        filename=filename,
-        mime="application/pdf",
-        uploader=uploader,
-        captured_at=captured_at,
-        caption=caption,
-        asset_hints=_asset_hints_from_caption(caption),
-        ingest_route=INGEST_ROUTE_TELEGRAM,
-    )
-    return await submit_intake_to_hub(
-        envelope,
+    _uploader, _captured_at, tenant_id = _intake_meta(update)
+    return await submit_file_to_hub_folder(
         raw_bytes=pdf_bytes,
         filename=filename,
         mime="application/pdf",
         tenant_id=tenant_id,
-        token=HUB_IMPORT_TOKEN or None,
+        hub_url=HUB_URL or HUB_IMPORT_URL or None,
+        base_path=HUB_BASE_PATH,
+        token=HUB_INGEST_TOKEN or None,
     )
 
 
@@ -294,7 +280,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"{filename} is {doc.file_size // MB}MB — limit is 20MB.")
         return
 
-    if not HUB_IMPORT_URL:
+    if not _hub_intake_configured():
         await update.message.reply_text("Hub intake is not configured.")
         return
 
@@ -523,7 +509,7 @@ async def _dispatch_single_photo(
             logger.error("Photo processing error: %s", e)
             final_reply = f"MIRA error: {e}"
 
-    if HUB_IMPORT_URL:
+    if _hub_intake_configured():
         asyncio.create_task(_submit_photo_to_hub(raw_bytes, caption, update))
         final_reply += "\n\nPhoto submitted to the Hub for review."
 
@@ -588,7 +574,7 @@ async def _enqueue_multi_photo_burst(
         await photo_queue.mark_failed(batch_id, "queue full at close_burst")
         return
 
-    if HUB_IMPORT_URL:
+    if _hub_intake_configured():
         for raw_bytes, _ in batches:
             asyncio.create_task(_submit_photo_to_hub(raw_bytes, caption, update))
 

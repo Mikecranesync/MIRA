@@ -48,6 +48,21 @@ HUB_IMPORT_PATH = "/api/contextualization/import"
 HUB_IMPORT_URL = os.environ.get("HUB_IMPORT_URL", "")
 HUB_IMPORT_TOKEN = os.environ.get("HUB_IMPORT_TOKEN", "")
 
+# --- Citable folder-upload door (#2540) --------------------------------------
+# The §2 /api/contextualization/import path above is a verified dead-end for a
+# raw Telegram file: it auths with a browser session (a Bearer token 401s), its
+# multipart branch expects a `.zip` bundle (a raw PDF/JPEG 400s), and its env is
+# dark in prod. The WORKING citable door is POST /api/uploads/folder — Bearer
+# `HUB_INGEST_TOKEN` + an `X-Mira-Tenant-Id` header, multipart raw file — which
+# routes through the golden path (mira-hub/src/lib/local-upload.ts -> v2 Inbox
+# -> `knowledge_entries`, per-tenant `is_private=true`, citable). MiraDrop
+# already uses this exact shape; env-var names match tools/mira-drop-watcher.
+HUB_FOLDER_UPLOAD_PATH = "/api/uploads/folder"
+HUB_URL = os.environ.get("HUB_URL", "")
+# mira-hub runs under basePath=/hub with trailingSlash=true (next.config.ts).
+HUB_BASE_PATH = os.environ.get("HUB_BASE_PATH", "/hub")
+HUB_INGEST_TOKEN = os.environ.get("HUB_INGEST_TOKEN", "")
+
 # Domain-proposal keys the client always leaves empty — it owns no truth.
 _EMPTY_PROPOSAL_KEYS = (
     "entities",
@@ -182,4 +197,80 @@ async def submit_intake_to_hub(
             return False
     except Exception as exc:  # noqa: BLE001 - background task must never raise
         logger.error("Hub intake submit error: %s", exc)
+        return False
+
+
+def hub_folder_upload_configured(
+    *, hub_url: str | None = None, token: str | None = None
+) -> bool:
+    """True when the citable folder-upload door has the env it needs.
+
+    Needs a base URL and a Bearer service token. A legacy ``HUB_IMPORT_URL``
+    counts as a base (back-compat), so an existing deploy keeps submitting —
+    now to the citable ``/api/uploads/folder`` path.
+    """
+    base = hub_url or HUB_URL or HUB_IMPORT_URL
+    return bool(base) and bool(token or HUB_INGEST_TOKEN)
+
+
+async def submit_file_to_hub_folder(
+    *,
+    raw_bytes: bytes,
+    filename: str,
+    mime: str,
+    tenant_id: str,
+    hub_url: str | None = None,
+    base_path: str | None = None,
+    token: str | None = None,
+    timeout: float = 180,
+) -> bool:
+    """POST a raw file to the Hub's citable folder-upload door (#2540).
+
+    Mirrors ``tools/mira-drop-watcher/main.py::_post_to_hub`` — the golden path
+    that routes through ``mira-hub/src/lib/local-upload.ts`` -> v2 Inbox ->
+    ``knowledge_entries`` (per-tenant, ``is_private=true``, citable). Auth is a
+    Bearer service token (``HUB_INGEST_TOKEN``) plus an ``X-Mira-Tenant-Id``
+    header (NOT a browser session), and the body is the raw file (NOT a zip
+    bundle). The tenant header keeps uploads per-tenant — the Hub route sets
+    ``is_private=true`` (`.claude/rules/knowledge-entries-tenant-scoping.md`).
+
+    Background-safe: never raises. Returns True on a 2xx Hub response, False on
+    a missing-config skip, non-2xx, or transport error.
+    """
+    base = (hub_url or HUB_URL or HUB_IMPORT_URL or "").rstrip("/")
+    bp = (base_path if base_path is not None else HUB_BASE_PATH).rstrip("/")
+    bearer = token if token is not None else HUB_INGEST_TOKEN
+    if not base or not bearer:
+        logger.warning("Hub folder upload not configured — skipping intake submit")
+        return False
+
+    # Hub uses trailingSlash=true — match MiraDrop's trailing-slash URL exactly.
+    url = f"{base}{bp}{HUB_FOLDER_UPLOAD_PATH}/"
+    sha = hashlib.sha256(raw_bytes).hexdigest()
+    headers = {
+        "Authorization": f"Bearer {bearer}",
+        "X-Mira-Tenant-Id": tenant_id or "",
+        "X-Request-Id": f"telegram-{sha[:12]}",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(
+                url,
+                files={"file": (filename, raw_bytes, mime)},
+                headers=headers,
+            )
+            if 200 <= resp.status_code < 300:
+                logger.info(
+                    "Hub folder upload OK file=%s tenant=%s sha256=%s",
+                    filename,
+                    (tenant_id or "")[:8],
+                    sha[:12],
+                )
+                return True
+            logger.warning(
+                "Hub folder upload failed %s: %s", resp.status_code, resp.text[:200]
+            )
+            return False
+    except Exception as exc:  # noqa: BLE001 - background task must never raise
+        logger.error("Hub folder upload error: %s", exc)
         return False
