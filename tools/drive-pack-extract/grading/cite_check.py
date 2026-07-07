@@ -127,6 +127,7 @@ def check_citations(
     citations = _collect_citations(pack_dict)
 
     verified = 0
+    verified_by_label = 0  # verified whole-document via a chapter-section page label
     unverifiable = 0
     dropped_critical: list[str] = []
     details: list[str] = []
@@ -138,9 +139,19 @@ def check_citations(
         except (TypeError, ValueError):
             page_int = None
 
-        ok = page_int is not None and cite_integrity.verify_excerpt_on_page(
-            pdf_path, page_int, citation["excerpt"]
-        )
+        # An integer page is verified ON that page (strong, page-pinned). A
+        # chapter-section label ("4-188") can't be resolved to a physical page
+        # index, so it is verified WHOLE-DOCUMENT — still catches fabrication,
+        # just not pinned to one page. Anything else is unverifiable.
+        if page_int is not None:
+            ok = cite_integrity.verify_excerpt_on_page(pdf_path, page_int, citation["excerpt"])
+        elif cite_integrity.is_chapter_section_label(page_raw):
+            ok = cite_integrity.verify_excerpt_in_document(pdf_path, citation["excerpt"])
+            if ok:
+                verified_by_label += 1
+        else:
+            ok = False
+
         if ok:
             verified += 1
             continue
@@ -158,6 +169,8 @@ def check_citations(
     dropped_critical = sorted(set(dropped_critical))
     status = "fail" if dropped_critical else "pass"
     summary = f"cite-integrity: {verified} verified, {unverifiable} unverifiable"
+    if verified_by_label:
+        summary += f" ({verified_by_label} whole-document via chapter-section page label)"
     if dropped_critical:
         summary += f"; DROPPED diagnostic-critical citation(s): {dropped_critical}"
 
@@ -168,6 +181,7 @@ def check_citations(
         details=details,
         metrics={
             "verified_count": verified,
+            "verified_by_label_count": verified_by_label,
             "unverifiable_count": unverifiable,
             "dropped_diagnostic_critical": dropped_critical,
         },

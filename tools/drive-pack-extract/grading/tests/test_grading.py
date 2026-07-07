@@ -220,6 +220,48 @@ def test_cite_check_flags_dropped_diagnostic_critical_citation():
     assert "C125" in result.metrics["dropped_diagnostic_critical"]
 
 
+def test_cite_check_verifies_a_chapter_section_page_label_whole_document():
+    """A GS10-style citation with a chapter-section page label ("4-188") — which
+    can't be resolved to an integer pdfplumber page — is verified WHOLE-DOCUMENT
+    (the excerpt exists on some page). It counts as verified, tallied distinctly."""
+    pack = {
+        "parameters": [
+            {
+                "parameter_id": "P09.03",
+                "source_citation": {"page": "4-188", "excerpt": "F004 UnderVoltage"},
+            }
+        ],
+        "keypad_navigation": [],
+        "provenance": {"sources": []},
+    }
+    result = cite_check.check_citations(pack, FIXTURE_PDF)
+    assert result.status == "pass"
+    assert result.metrics["verified_count"] == 1
+    assert result.metrics["verified_by_label_count"] == 1
+    assert result.metrics["unverifiable_count"] == 0
+
+
+def test_cite_check_chapter_section_label_still_catches_fabrication():
+    """The whole-document fallback must NOT be a free pass — a fabricated excerpt
+    on a chapter-section page is still unverifiable (and a dropped diagnostic-
+    critical citation still hard-fails)."""
+    pack = {
+        "parameters": [
+            {
+                "parameter_id": "P09.03",
+                "source_citation": {"page": "4-188", "excerpt": "invented text nowhere in manual"},
+            }
+        ],
+        "keypad_navigation": [],
+        "provenance": {"sources": []},
+    }
+    gold = {"parameters": [{"parameter_id": "P09.03", "diagnostic_critical": True}], "faults": []}
+    result = cite_check.check_citations(pack, FIXTURE_PDF, gold=gold)
+    assert result.status == "fail"
+    assert result.metrics["unverifiable_count"] == 1
+    assert "P09.03" in result.metrics["dropped_diagnostic_critical"]
+
+
 # ---------------------------------------------------------------------------
 # Layer C — gold_score
 # ---------------------------------------------------------------------------

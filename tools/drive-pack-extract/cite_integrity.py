@@ -24,6 +24,27 @@ logger = logging.getLogger("drive-pack-extract.cite_integrity")
 
 _WHITESPACE_RE = re.compile(r"\s+")
 
+# A CHAPTER-SECTION page label ("4-188", "3-6", "A-12") — the convention some
+# OEM manuals (AutomationDirect DURApulse GS10/GS20) use instead of a single
+# running page number. Such a label cannot be resolved to a pdfplumber page
+# index without the manual's own page-label map, so a citation carrying one is
+# verified whole-document instead (see ``verify_excerpt_in_document``).
+_PAGE_LABEL_RE = re.compile(r"^\s*[0-9A-Za-z]+[-–][0-9]+[A-Za-z]?\s*$")
+
+
+def is_chapter_section_label(page: object) -> bool:
+    """True if ``page`` is a chapter-section label ("4-188") rather than an int
+    page number. An int (or int-string like "162") is NOT a label."""
+    if isinstance(page, int):
+        return False
+    if not isinstance(page, str):
+        return False
+    try:
+        int(page)
+    except ValueError:
+        return bool(_PAGE_LABEL_RE.match(page))
+    return False
+
 
 def normalize(text: str) -> str:
     """Collapse all whitespace — including the line-wraps ``extract_text()``
@@ -57,4 +78,27 @@ def verify_excerpt_on_page(pdf_path: str | Path, page: int, excerpt: str) -> boo
                 return excerpt_norm in normalize(page_text)
 
     logger.warning("cite_integrity: page %s not found in %s", page, pdf_path)
+    return False
+
+
+def verify_excerpt_in_document(pdf_path: str | Path, excerpt: str) -> bool:
+    """Return True iff ``excerpt`` appears verbatim on SOME page of ``pdf_path``.
+
+    The fallback for a citation whose ``page`` is a chapter-section label
+    ("4-188") that can't be resolved to a physical pdfplumber page index. This
+    verifies the excerpt is genuine manual text — it still catches a fabricated
+    excerpt (invented text appears on no page) — but does NOT pin it to a
+    specific page. A weaker, honest guarantee; callers report it distinctly from
+    page-pinned verification. Same normalization as ``verify_excerpt_on_page``,
+    so line-wrapping is tolerated. Reads the PDF once per call, never trusting a
+    cached copy.
+    """
+    excerpt_norm = normalize(excerpt)
+    if not excerpt_norm:
+        return False
+
+    with pdfplumber.open(str(pdf_path)) as pdf:
+        for pdf_page in pdf.pages:
+            if excerpt_norm in normalize(pdf_page.extract_text() or ""):
+                return True
     return False
