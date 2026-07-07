@@ -89,6 +89,7 @@ def _hub_intake_configured() -> bool:
         token=HUB_INGEST_TOKEN or None,
     )
 
+
 engine = Supervisor(
     db_path=os.environ.get("MIRA_DB_PATH", "/data/mira.db"),
     openwebui_url=OPENWEBUI_BASE_URL,

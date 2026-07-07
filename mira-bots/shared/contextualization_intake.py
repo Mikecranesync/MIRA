@@ -200,9 +200,7 @@ async def submit_intake_to_hub(
         return False
 
 
-def hub_folder_upload_configured(
-    *, hub_url: str | None = None, token: str | None = None
-) -> bool:
+def hub_folder_upload_configured(*, hub_url: str | None = None, token: str | None = None) -> bool:
     """True when the citable folder-upload door has the env it needs.
 
     Needs a base URL and a Bearer service token. A legacy ``HUB_IMPORT_URL``
@@ -267,9 +265,7 @@ async def submit_file_to_hub_folder(
                     sha[:12],
                 )
                 return True
-            logger.warning(
-                "Hub folder upload failed %s: %s", resp.status_code, resp.text[:200]
-            )
+            logger.warning("Hub folder upload failed %s: %s", resp.status_code, resp.text[:200])
             return False
     except Exception as exc:  # noqa: BLE001 - background task must never raise
         logger.error("Hub folder upload error: %s", exc)
