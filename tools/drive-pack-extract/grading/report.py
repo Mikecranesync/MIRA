@@ -60,6 +60,13 @@ class LayerResult:
         }
 
 
+def _basename(path: str | Path) -> str:
+    """Filename of ``path``, splitting on BOTH separators regardless of the host
+    OS — ``Path(...).name`` on POSIX does not treat ``\\`` as a separator, so a
+    Windows path handed to a Linux/CI run would otherwise keep its full form."""
+    return str(path).replace("\\", "/").rsplit("/", 1)[-1]
+
+
 def _has_undeclared_gaps(gold_result: LayerResult, cite_result: LayerResult) -> bool:
     """A "gap" is any known shortfall a real gold/cite run can surface:
     incomplete overall gold recall, or an unverifiable (non-critical)
@@ -200,7 +207,10 @@ def build_report(
             # report is a committed, reproducible artifact and a machine-specific
             # temp path (the manual is never committed) is both noise and a
             # (minor) local-path leak. The manual's identity is its name + sha256.
-            "path": Path(str(manual_path)).name if manual_path else None,
+            # Separator-agnostic (normalize "\\" -> "/" first) so a Windows path
+            # basenames correctly even when the grader runs on Linux/CI, where
+            # ``Path("C:\\..").name`` would NOT split on backslashes.
+            "path": _basename(manual_path) if manual_path else None,
             "sha256": manual_sha256,
         },
         "extractor_commit": extractor_commit,
