@@ -358,6 +358,19 @@ def test_is_chapter_section_label():
     assert cite_integrity.is_chapter_section_label("") is False
 
 
+def test_load_normalized_pages_reads_only_requested_pages():
+    # The batch helper backs the "read the manual once" perf fix in cite_check.
+    # A page filter must extract_text ONLY the requested pages (a pack citing a
+    # few of a large manual must not read the whole document).
+    only_two = cite_integrity.load_normalized_pages(FIXTURE, pages={1, 2})
+    assert set(only_two) == {1, 2}
+    assert "F004 UnderVoltage".lower() in only_two[1].lower()
+    every = cite_integrity.load_normalized_pages(FIXTURE)  # None -> whole doc
+    assert set(every) >= {1, 2, 3}
+    # a requested page that doesn't exist is simply absent, never a crash
+    assert cite_integrity.load_normalized_pages(FIXTURE, pages={999}) == {}
+
+
 def test_verify_excerpt_in_document_finds_real_text_anywhere():
     # A citation whose page is a chapter-section label ("4-188") is verified
     # whole-document — the excerpt exists on SOME page (still catches fabrication),

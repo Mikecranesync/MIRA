@@ -83,7 +83,22 @@ def main(argv: list[str] | None = None) -> int:
 
     pack_path = packs_dir / args.pack / "pack.json"
     pack_dict = _load_json(pack_path)
-    gold_dict = _load_json(Path(args.gold)) if args.gold else None
+
+    # Resolve the gold set. If --gold wasn't passed, AUTO-DISCOVER the
+    # conventional gold/<pack_id>/gold.json so a reviewer can't accidentally
+    # grade a pack that HAS a gold set on gold-independent categories only and
+    # get a misleadingly low "no gold set" / INCOMPLETE verdict. --gold always
+    # overrides; a pack with no gold file is still graded gold-independent.
+    gold_path = Path(args.gold) if args.gold else _TOOL_DIR / "gold" / args.pack / "gold.json"
+    if gold_path.is_file():
+        gold_dict = _load_json(gold_path)
+        if not args.gold:
+            logger.info("auto-discovered gold set %s (pass --gold to override)", gold_path)
+    elif args.gold:
+        raise FileNotFoundError(f"--gold {args.gold} not found")
+    else:
+        gold_dict = None
+        logger.info("no gold set for %s — grading gold-independent categories only", args.pack)
     manual_path = Path(args.manual) if args.manual else None
 
     schema_result = check_schema(args.pack, packs_dir=str(packs_dir))

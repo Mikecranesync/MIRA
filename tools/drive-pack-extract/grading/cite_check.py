@@ -126,6 +126,26 @@ def check_citations(
     diagnostic_critical_ids = _diagnostic_critical_ids(gold)
     citations = _collect_citations(pack_dict)
 
+    # Read the manual ONCE and verify all citations in memory — not
+    # once-per-citation (each of which would reopen the 34MB PDF; O(citations x
+    # pages), ~90 s per whole-document call). Only the distinct INTEGER pages the
+    # pack cites are read (a pack citing ~6 of a 156-page manual reads 6 pages)
+    # UNLESS a chapter-section-label citation is present, which needs every page
+    # for its whole-document check. Same semantics as verify_excerpt_on_page /
+    # verify_excerpt_in_document.
+    needed_int_pages: set[int] = set()
+    needs_whole_document = False
+    for citation in citations:
+        try:
+            needed_int_pages.add(int(citation["page"]))
+        except (TypeError, ValueError):
+            if cite_integrity.is_chapter_section_label(citation["page"]):
+                needs_whole_document = True
+    page_texts = cite_integrity.load_normalized_pages(
+        pdf_path, pages=None if needs_whole_document else needed_int_pages
+    )
+    all_page_texts = list(page_texts.values())
+
     verified = 0
     verified_by_label = 0  # verified whole-document via a chapter-section page label
     unverifiable = 0
@@ -133,6 +153,7 @@ def check_citations(
     details: list[str] = []
 
     for citation in citations:
+        excerpt_norm = cite_integrity.normalize(citation["excerpt"])
         page_raw = citation["page"]
         try:
             page_int = int(page_raw)
@@ -142,11 +163,15 @@ def check_citations(
         # An integer page is verified ON that page (strong, page-pinned). A
         # chapter-section label ("4-188") can't be resolved to a physical page
         # index, so it is verified WHOLE-DOCUMENT — still catches fabrication,
-        # just not pinned to one page. Anything else is unverifiable.
-        if page_int is not None:
-            ok = cite_integrity.verify_excerpt_on_page(pdf_path, page_int, citation["excerpt"])
+        # just not pinned to one page. Anything else is unverifiable. An empty
+        # excerpt is never verifiable.
+        if not excerpt_norm:
+            ok = False
+        elif page_int is not None:
+            page_text = page_texts.get(page_int)
+            ok = page_text is not None and excerpt_norm in page_text
         elif cite_integrity.is_chapter_section_label(page_raw):
-            ok = cite_integrity.verify_excerpt_in_document(pdf_path, citation["excerpt"])
+            ok = any(excerpt_norm in text for text in all_page_texts)
             if ok:
                 verified_by_label += 1
         else:
