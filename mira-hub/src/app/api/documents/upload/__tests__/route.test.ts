@@ -85,6 +85,12 @@ describe("POST /api/documents/upload", () => {
     expect(capturedSql).toMatch(/INSERT INTO knowledge_entries/i);
     expect(capturedSql).toMatch(/\(\s*id\s*,/i); // id is the first inserted column
     expect(capturedSql.toLowerCase()).toContain("gen_random_uuid()");
+    // source_type is ALSO NOT NULL with no default on the live schema — omitting it
+    // 500'd every upload after the id fix landed (the second cause). Guard its
+    // presence + the per-tenant-upload value. (query() is mocked, so this asserts
+    // the column list, not the DB constraint; the live guard is the dogfood check.)
+    expect(capturedSql.toLowerCase()).toContain("source_type");
+    expect(capturedSql.toLowerCase()).toContain("'customer_upload'");
     // And it stays a private per-tenant upload (the #1833 hybrid-corpus law).
     expect(capturedSql.toLowerCase()).toContain("is_private");
     expect(capturedSql).toMatch(/true/);
