@@ -16,6 +16,7 @@ frozen dataclasses in ``schema.py``.
 
 from __future__ import annotations
 
+from .ask import DrivePackAnswer, answer_question
 from .cards import Citation, DiagnosticCard, TemplateReader, build_cards
 from .loader import list_packs, load_pack, resolve_pack
 from .nameplate import resolve_pack_from_vision
@@ -38,6 +39,7 @@ __all__ = [
     "Citation",
     "DiagnosticCard",
     "DrivePack",
+    "DrivePackAnswer",
     "Envelope",
     "EnvelopeBand",
     "Family",
@@ -50,6 +52,7 @@ __all__ = [
     "RegisterEntry",
     "TemplateReader",
     "ValueMeaning",
+    "answer_question",
     "build_cards",
     "list_packs",
     "load_pack",
