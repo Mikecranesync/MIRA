@@ -53,11 +53,10 @@ def test_summarize_queue_malformed_does_not_crash(tmp_path):
     assert s["exists"] and "error" in s
 
 
-def test_shipped_manual_queue_parses():
-    # The real committed queue must summarize without error.
-    real = _CRAWLER / "cron" / "manual_queue.json"
-    s = fs.summarize_queue(real)
-    assert s["exists"] and s["total"] > 0 and s["counts_by_status"]
+# NOTE: the old `test_shipped_manual_queue_parses` was removed with #2531 —
+# manual_queue.json is now runtime-only (untracked, gitignored), so there is no
+# committed queue to parse. summarize_queue() parsing is covered by the synthetic
+# tests above (counts_by_status / missing_file_is_soft / malformed).
 
 
 # --- STOP_INGEST kill switch ------------------------------------------------
