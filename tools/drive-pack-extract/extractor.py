@@ -28,8 +28,19 @@ Column geometry is discovered PER PAGE from that page's own header row (the
 words "No.", "Description", "Action" for the fault table; "No.", "Parameter",
 "Min/Max", "Display/Options", "Default" for the parameter grid) — not
 hardcoded pixel constants — so a page with a slightly shifted layout still
-bins correctly. Hardcoded fallbacks exist only for the rare page missing its
-own header.
+bins correctly. A fault page is identified by carrying BOTH the "Description"
+and "Action" headers; a page without them yields no faults (the safe drop a
+whole-document or over-broad page range relies on).
+
+Two manual dialects are supported. The PowerFlex 520/525 fault table encodes
+Fault-Type as a trailing "1"/"2"/"—" TEXT token; the PowerFlex 40 table encodes
+it as a ZapfDingbats circled-digit glyph (➀/➁) in its own column, rendered ~3pt
+above its code row, and uses single-digit fault codes (F2..F8) — both handled
+by the fault parser. The parameter labeled-block parser tolerates both label
+dialects ("Default:" vs "Values Default:", "Values Min/Max:" vs "Min/Max:") and
+gates parameter headers on a BOLD heading font so a plain-Helvetica graph/curve
+callout (the PF40 p.71 "A034 [Minimum Freq]" typo) is never emitted as a real
+parameter.
 
 Cross-references (``references_parameters`` on a fault, ``related_faults`` on
 a parameter) are populated ONLY from explicit manual text, and the DIRECTION
@@ -159,8 +170,6 @@ def _find_raw_line(raw_lines: list[str], code: str) -> str | None:
 # Fault table parsing (position-aware)
 # ---------------------------------------------------------------------------
 
-_FAULT_DESC_HEADER_X_FALLBACK = 334.0
-_FAULT_ACTION_HEADER_X_FALLBACK = 444.4
 # Header-word x0 measures the LABEL, which sits almost flush against its own
 # column's data (e.g. "Description" header at x0=334.02, real Description
 # data also starting at x0=333.98..334.06 on the SAME page) — using the raw
@@ -176,14 +185,21 @@ _COLUMN_MARGIN_SMALL = 3.0
 # "F015(3)"), name, then the Fault-Type column (1=Auto-Reset/Run,
 # 2=Non-Resettable, or an em-dash for "no type" like F000 "No Fault") with an
 # optional footnote paren attached to the TYPE instead (e.g. "F013 ... 1(2)").
+# ``\d{1,3}`` (not ``\d{2,3}``) so single-digit fault codes parse: the
+# PowerFlex 40 fault table uses F2..F8 (7 of its 26 codes are single-digit),
+# where the 520/525 table starts at F000. Only the FAULT-code regexes are
+# relaxed — parameter ids (``_PARAM_CODE_RE``, ``_LABELED_HEADER_RE``,
+# ``_CROSS_REF_ID_RE``, the grid comma-group check) are ALWAYS >=2 digits in
+# both manuals, so they stay ``\d{2,3}`` to keep the false-positive surface
+# small (a single-digit param id does not exist in either family).
 _FAULT_ROW_RE = re.compile(
-    r"^(?P<code>[A-Za-z]\d{2,3})(?:\(\d+\))?\s+(?P<name>.+?)\s+(?P<ftype>[12]|—)(?:\(\d+\))?$"
+    r"^(?P<code>[A-Za-z]\d{1,3})(?:\(\d+\))?\s+(?P<name>.+?)\s+(?P<ftype>[12]|—)(?:\(\d+\))?$"
 )
 # A "name only" row: a code sharing its Fault-Type/description/action with a
 # later row in the same shared multi-code group (real manual's F038/F039/F040
 # "Phase U/V/W to Gnd" style groups). Tried only after the full-row regex
 # fails, so it never swallows a full row.
-_FAULT_NAME_ONLY_RE = re.compile(r"^(?P<code>[A-Za-z]\d{2,3})(?:\(\d+\))?\s+(?P<name>.+)$")
+_FAULT_NAME_ONLY_RE = re.compile(r"^(?P<code>[A-Za-z]\d{1,3})(?:\(\d+\))?\s+(?P<name>.+)$")
 # A bare Fault-Type token closing a pending group (the real manual centers
 # the shared type value on its own line within the merged row).
 _FAULT_FTYPE_ONLY_RE = re.compile(r"^(?P<ftype>[12]|—)(?:\(\d+\))?$")
@@ -191,7 +207,73 @@ _FAULT_FTYPE_ONLY_RE = re.compile(r"^(?P<ftype>[12]|—)(?:\(\d+\))?$")
 # An explicit fault -> parameter cross-reference: "Modify using C125 [Comm
 # Loss Action]." ``pdfplumber`` tokenizes the id and the bracketed name as
 # separate words, so this matches on adjacent WORDS, not within one regex.
+# Parameter ids are always >=2 digits (see the ``\d{1,3}`` note above), so this
+# stays ``\d{2,3}``.
 _CROSS_REF_ID_RE = re.compile(r"^[A-Za-z]\d{2,3}$")
+
+# ---------------------------------------------------------------------------
+# Fault-Type dingbat column (PowerFlex 40 layout)
+# ---------------------------------------------------------------------------
+# The PF40 fault table encodes Fault-Type NOT as a trailing "1"/"2"/"—" text
+# token (the 520/525 shape ``_FAULT_ROW_RE`` handles) but as a ZapfDingbats
+# circled digit — ➀ (U+2780) = type 1, ➁ (U+2781) = type 2 — in a dedicated
+# column at a per-page-constant x0, rendered ~3pt ABOVE its own code row. That
+# 3pt gap is larger than ``_LINE_TOL`` so the glyph never clusters onto its
+# row's text line, which is exactly why the 520/525 line-regex dropped every
+# PF40 row. We detect the column by the glyphs themselves (the "Type" header
+# renders as a garbled reversed ")1(epyT" and can't be matched), map each
+# glyph to its digit, and nearest-assign it to the fault row it sits above.
+_DINGBAT_ROW_TOL = 8.0  # < row spacing (~19pt), > the ~3pt glyph-above-row gap
+_CIRCLED_DIGIT_BASES = (0x2460, 0x2776, 0x2780)  # ①.. ❶.. ➀.. — all "n at base+n-1"
+# A wrapped fault name continues on the very next line (~one line-height below);
+# anything farther is a different row, the page footer, or a following section
+# heading — NOT part of the name. Bounds name collection so the LAST fault on a
+# page doesn't sweep in the footer / a trailing "Common Symptoms" table.
+_NAME_WRAP_TOL = 15.0
+# The action of the LAST fault on a page has no next-row to bound it. Cap its
+# action span so a cross-reference that lives in an UNRELATED table below the
+# fault table (the PF40 p.95 "Common Symptoms" corrective-action column, ~230pt
+# below F122) is not misattributed to that last fault. Comfortably covers a real
+# multi-line numbered action list (F81's "…4. Turn off using A105" is ~78pt).
+_MAX_ACTION_SPAN = 130.0
+
+
+def _circled_digit(text: str) -> str | None:
+    """Return "1".."9" if ``text`` is a single circled-digit glyph, else None.
+
+    Covers the three Unicode circled-digit runs a manual might use for a
+    Fault-Type marker (the real PF40 uses ➀/➁ = U+2780/U+2781). A general
+    lookup, not a fixture-specific hack — any manual using circled digits for
+    its fault-type column parses through this one path.
+    """
+    if len(text) != 1:
+        return None
+    cp = ord(text)
+    for base in _CIRCLED_DIGIT_BASES:
+        if base <= cp <= base + 8:  # digits 1..9
+            return str(cp - base + 1)
+    return None
+
+
+def _find_ftype_dingbats(words: list[Word]) -> list[tuple[str, float]]:
+    """Every Fault-Type circled-digit glyph as ``(ftype, top)`` (PF40 layout).
+
+    Empty for the 520/525 layout (no circled digits), so the presence of any
+    entry is the signal that this page uses the dingbat Fault-Type column.
+    """
+    return [(d, w["top"]) for w in words if (d := _circled_digit(w["text"])) is not None]
+
+
+def _dingbat_type_for_row(dingbats: list[tuple[str, float]], top: float) -> str | None:
+    """The Fault-Type of the circled-digit glyph nearest ``top`` within
+    ``_DINGBAT_ROW_TOL``, or None when this row has no own glyph (a shared-group
+    continuation like F39/F40, or a genuinely untyped fault like F48)."""
+    best: tuple[float, str] | None = None
+    for ftype, dtop in dingbats:
+        dist = abs(dtop - top)
+        if dist <= _DINGBAT_ROW_TOL and (best is None or dist < best[0]):
+            best = (dist, ftype)
+    return best[1] if best is not None else None
 
 
 def _find_cross_refs(action_words: list[Word]) -> list[tuple[str, float]]:
@@ -204,20 +286,113 @@ def _find_cross_refs(action_words: list[Word]) -> list[tuple[str, float]]:
     return refs
 
 
-def _parse_fault_page(
-    words: list[Word], raw_lines: list[str], page_number: int
+def _assign_cross_refs(
+    groups: list[dict[str, Any]], refs: list[tuple[str, float]], *, span_bounded: bool
+) -> None:
+    """Attribute each fault->parameter cross-reference to the fault whose action
+    text contains it — mutating each group's ``references_parameters``.
+
+    Two attribution strategies, because the two manual layouts place a fault's
+    action differently relative to its own code line:
+
+    - ``span_bounded=True`` (PF40 dingbat layout): the action is a numbered list
+      running BELOW the code line, often many lines long, so a late step's ref
+      is vertically far from its own code and CLOSER to the next fault. Attribute
+      by row span: the ref belongs to the last fault at-or-above it, bounded so a
+      ref in an unrelated table below the LAST fault (PF40 p.95 "Common Symptoms"
+      column, ~230pt under F122) is dropped rather than misattributed.
+    - ``span_bounded=False`` (520/525 layout): the action can render ABOVE its
+      own code line, so nearest-by-top is correct there (unchanged behavior).
+    """
+    if not groups:
+        return
+    if not span_bounded:
+        for param_id, ref_top in refs:
+            nearest = min(groups, key=lambda g: abs(g["top"] - ref_top))
+            if param_id not in nearest["references_parameters"]:
+                nearest["references_parameters"].append(param_id)
+        return
+
+    ordered = sorted(groups, key=lambda g: g["top"])
+    bounds = [
+        (
+            g,
+            g["top"] - _DINGBAT_ROW_TOL,
+            (ordered[i + 1]["top"] if i + 1 < len(ordered) else g["top"] + _MAX_ACTION_SPAN),
+        )
+        for i, g in enumerate(ordered)
+    ]
+    for param_id, ref_top in refs:
+        for group, lo, hi in bounds:
+            if lo <= ref_top < hi:
+                if param_id not in group["references_parameters"]:
+                    group["references_parameters"].append(param_id)
+                break
+
+
+def _fault_groups_from_dingbats(
+    left_lines: list[list[Word]], dingbats: list[tuple[str, float]]
 ) -> list[dict[str, Any]]:
-    desc_header_x = _find_header_x(words, "Description") or _FAULT_DESC_HEADER_X_FALLBACK
-    action_header_x = _find_header_x(words, "Action") or _FAULT_ACTION_HEADER_X_FALLBACK
+    """PF40 fault rows: one group per code line, Fault-Type from the nearest
+    circled-digit glyph (or ``"—"`` for a shared-group continuation like
+    F39/F40, or a genuinely untyped fault like F48 — never fabricated).
 
-    left_words = [w for w in words if w["x0"] < desc_header_x - _COLUMN_MARGIN]
-    action_words = [w for w in words if w["x0"] >= action_header_x - _COLUMN_MARGIN_SMALL]
+    Names that wrap onto a following line (the real manual's "Heatsink" /
+    "OvrTmp" for F8) are rejoined within the row's vertical span — the span is
+    bounded below by the NEXT code row, and the description column is already
+    excluded from ``left_lines`` by x-position, so a continuation line can only
+    be a wrapped name fragment.
 
+    No pending/backward accumulation here: each code emits its own entry (which
+    is what lands in the pack's ``fault_codes`` map). Fault-Type is NOT carried
+    into the pack, so declining to fabricate a shared-continuation's type costs
+    nothing downstream while keeping the extractor honest.
+    """
+    code_rows: list[tuple[int, str, str, float]] = []  # (line_idx, code, name0, top)
+    for i, line_words in enumerate(left_lines):
+        text = _line_text(line_words)
+        m = _FAULT_NAME_ONLY_RE.match(text)
+        if m:
+            code_rows.append((i, m["code"], m["name"].strip(), line_words[0]["top"]))
+
+    groups: list[dict[str, Any]] = []
+    for k, (i, code, name0, top) in enumerate(code_rows):
+        next_line_idx = code_rows[k + 1][0] if k + 1 < len(code_rows) else len(left_lines)
+        name_parts = [name0]
+        prev_top = top
+        for j in range(i + 1, next_line_idx):
+            cont_words = left_lines[j]
+            cont_top = cont_words[0]["top"]
+            cont = _line_text(cont_words).strip()
+            # A wrapped-name line sits ~one line-height below the previous one
+            # and is neither a footnote nor page furniture. Anything else ends
+            # the name (stops the last row on a page sweeping in the footer / a
+            # following section table — the real F29/F100/F122 bleed).
+            if (
+                not cont
+                or _FOOTNOTE_DEF_RE.match(cont)
+                or _PAGE_FURNITURE_RE.search(cont)
+                or cont_top - prev_top > _NAME_WRAP_TOL
+            ):
+                break
+            name_parts.append(cont)
+            prev_top = cont_top
+        name = " ".join(p for p in name_parts if p).strip()
+        ftype = _dingbat_type_for_row(dingbats, top) or "—"
+        groups.append({"members": [(code, name, top)], "ftype": ftype, "top": top})
+    return groups
+
+
+def _fault_groups_from_text(left_lines: list[list[Word]], page_number: int) -> list[dict[str, Any]]:
+    """520/525 fault rows: Fault-Type is a trailing ``[12]|—`` text token (or a
+    bare type line closing a shared multi-code group). This is the original
+    position-aware machinery, unchanged except that a shared group with no
+    recoverable type now emits ``fault_type="—"`` instead of being dropped
+    (emit-not-drop: an untyped fault still belongs in the pack's fault map)."""
     groups: list[dict[str, Any]] = []  # {"members": [(code,name,top)], "ftype": str, "top": float}
     pending: list[tuple[str, str, float]] = []
     last_ftype: str | None = None
 
-    left_lines = _cluster_lines(left_words)
     idx = 0
     while idx < len(left_lines):
         line_words = left_lines[idx]
@@ -288,30 +463,63 @@ def _parse_fault_page(
         # lines rather than after the last one (the real manual does this —
         # see F038/F039/F040, where the bare "2" line closes after F039 but
         # F040 still follows). The manual's own convention is one Fault-Type
-        # per shared row, so the dangling trailing member(s) inherit the
-        # last confirmed value on this page. If no type was ever seen on the
-        # page, we drop rather than invent one.
-        if last_ftype is not None:
-            groups.append({"members": pending, "ftype": last_ftype, "top": pending[-1][2]})
-        else:
-            logger.warning(
-                "drive-pack-extract: dropping %d fault row(s) with no recoverable "
-                "Fault-Type on page %s: %s",
+        # per shared row, so the dangling trailing member(s) inherit the last
+        # confirmed value on this page. If no type was ever seen on the page,
+        # emit "—" (unknown) rather than drop the fault or invent a type —
+        # the code+name still belong in the pack's fault map.
+        ftype = last_ftype if last_ftype is not None else "—"
+        if last_ftype is None:
+            logger.info(
+                "drive-pack-extract: %d fault row(s) with no recoverable Fault-Type "
+                "on page %s emitted as unknown ('—'): %s",
                 len(pending),
                 page_number,
                 [code for code, _, _ in pending],
             )
+        groups.append({"members": pending, "ftype": ftype, "top": pending[-1][2]})
+
+    return groups
+
+
+def _parse_fault_page(
+    words: list[Word], raw_lines: list[str], page_number: int
+) -> list[dict[str, Any]]:
+    desc_header_x = _find_header_x(words, "Description")
+    action_header_x = _find_header_x(words, "Action")
+    # Page-identity gate: a fault table carries BOTH the "Description" and
+    # "Action" column headers. A parameter-only page does not — and its left
+    # band is full of "P042 [Decel Time 1]" lines that also match the
+    # vendor-neutral fault-code shape, so without this gate they would emit as
+    # fabricated faults (previously masked by dropping untyped rows; now that
+    # untyped faults are EMITTED, this gate carries the "no fabricated faults on
+    # a param page" guarantee). Returning [] here is the safe drop a whole-doc or
+    # over-broad page range relies on.
+    if desc_header_x is None or action_header_x is None:
+        return []
+
+    action_words = [w for w in words if w["x0"] >= action_header_x - _COLUMN_MARGIN_SMALL]
+
+    # PF40 encodes Fault-Type as a circled-digit glyph in its own column; the
+    # presence of any such glyph selects the dingbat parser. The glyphs are
+    # excluded from ``left_words`` so they never pollute a fault name.
+    dingbats = _find_ftype_dingbats(words)
+    left_words = [
+        w
+        for w in words
+        if w["x0"] < desc_header_x - _COLUMN_MARGIN and _circled_digit(w["text"]) is None
+    ]
+    left_lines = _cluster_lines(left_words)
+
+    if dingbats:
+        groups = _fault_groups_from_dingbats(left_lines, dingbats)
+    else:
+        groups = _fault_groups_from_text(left_lines, page_number)
 
     anchors = [(code, group["top"]) for group in groups for (code, _, _) in group["members"]]
     refs = _find_cross_refs(action_words)
     for group in groups:
         group["references_parameters"] = []
-    for param_id, ref_top in refs:
-        if not groups:
-            continue
-        nearest = min(groups, key=lambda g: abs(g["top"] - ref_top))
-        if param_id not in nearest["references_parameters"]:
-            nearest["references_parameters"].append(param_id)
+    _assign_cross_refs(groups, refs, span_bounded=bool(dingbats))
 
     action_text_by_code = _nearest_assign_text(action_words, anchors) if anchors else {}
 
@@ -664,18 +872,99 @@ _LABELED_HEADER_RE = re.compile(
     r"^(?P<pid>[A-Za-z]\d{2,3})\s+\[(?P<name>[^\]]+)\]"
     r"(?:\s+Related Parameters:\s*(?P<related>.+))?$"
 )
-_DEFAULT_LINE_RE = re.compile(r"^Default:\s*(?P<default>\S+)")
-_RANGE_LINE_RE = re.compile(r"^Values Min/Max:\s*(?P<range>[\d.]+/[\d.]+)")
+# ``(?:Values\s+)?`` tolerates BOTH label dialects: the PF525 manual attaches
+# "Values" to Min/Max ("Default: 100" / "Values Min/Max: 1/247"); the PF40
+# manual attaches it to Default instead ("Values Default: 5.0 Secs" /
+# "Min/Max: 0.1/60.0 Secs"). The default group is NUMERIC-only: a worded/
+# conditional default ("Based on Drive Rating") does NOT match, so ``default``
+# stays None (honest null, not a truncated "Based"). A trailing engineering unit
+# (Secs, Hz, %, …) — glued as "0.0%" or spaced as "5.0 Secs" — is captured and
+# normalized so a numeric labeled value carries its unit.
+_DEFAULT_LINE_RE = re.compile(
+    r"^(?:Values\s+)?Default:\s*(?P<default>-?\d[\d.]*)\s*(?P<unit>%|[A-Za-z°]+)?"
+)
+_RANGE_LINE_RE = re.compile(
+    r"^(?:Values\s+)?Min/Max:\s*(?P<range>-?[\d.]+/-?[\d.]+)\s*(?P<unit>%|[A-Za-z°]+)?"
+)
+# A Default:/Min/Max: LABEL line whose value wasn't numeric (worded default) must
+# still be recognized as a label and kept OUT of the purpose free-text.
+_VALUE_LABEL_LINE_RE = re.compile(r"^(?:Values\s+)?(?:Default|Min/Max):")
+# A "Related Parameters:" list that wrapped onto a following line renders as a
+# line of PURELY bare, comma-separated param ids ("A098, A114, A118") — no
+# bracket, no prose. Unambiguous (prose never looks like this), so it is safe to
+# treat as a related-list continuation regardless of block position.
+_RELATED_CONT_LINE_RE = re.compile(r"^(?:[A-Za-z]\d{2,3}\s*,\s*)*[A-Za-z]\d{2,3},?$")
 _OPTIONS_LINE_RE = re.compile(r"^Options:\s*(?P<options>.+)$")
 _OPTION_ITEM_RE = re.compile(r"(?P<value>\d+)\s+(?P<meaning>[^,]+)")
 # The real manual's enum options render as one option per line, quoted, with
 # an inline "(Default)" annotation on whichever value is the default — e.g.
 # `0 "Fault" (Default)` — rather than the synthetic fixture's old single
 # "Options: 0 Fault, 1 Coast Stop, ..." shape. Recovers value_meanings AND
-# the default for this common real-manual enum shape.
+# the default for this common real-manual enum shape. The PF40 manual prefixes
+# the FIRST option line with the label word ("Options 0 "Fault" (Default) …");
+# ``_strip_options_prefix`` removes it so the first option parses like the rest.
 _QUOTED_OPTION_LINE_RE = re.compile(
     r'^(?P<value>\d+)\s+[“"](?P<meaning>[^”"]+)[”"](?:\s*\((?P<is_default>Default)\))?'
 )
+_OPTIONS_PREFIX_RE = re.compile(r"^Options\s+(?=\d)")
+
+# Engineering-unit normalization for labeled-block values — maps the manual's
+# spelling to the canonical token the pack/grading use (and that the candidate
+# generator's ``_KNOWN_UNITS`` accepts). Anything not listed returns None, so a
+# bleed word never becomes a unit.
+_UNIT_NORMALIZE = {
+    "secs": "s",
+    "sec": "s",
+    "seconds": "s",
+    "second": "s",
+    "s": "s",
+    "hz": "Hz",
+    "ms": "ms",
+    "min": "min",
+    "mins": "min",
+    "a": "A",
+    "amps": "A",
+    "amp": "A",
+    "v": "V",
+    "vac": "VAC",
+    "vdc": "VDC",
+    "rpm": "rpm",
+    "poles": "poles",
+    "%": "%",
+    "kw": "kW",
+    "w": "W",
+    "ma": "mA",
+}
+
+
+def _normalize_unit(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    return _UNIT_NORMALIZE.get(raw.strip().lower())
+
+
+def _strip_options_prefix(detail: str) -> str:
+    return _OPTIONS_PREFIX_RE.sub("", detail, count=1)
+
+
+def _bold_header_pids(words: list[Word]) -> set[str]:
+    """Parameter ids whose header word is a BOLD heading font.
+
+    Real param-definition headers (Helvetica-Narrow-Bold on the PF40/525
+    template) are bold; plain-Helvetica graph/curve callouts (the PF40 p.71
+    "A034 [Minimum Freq]" typo — a label that does NOT exist as a real
+    parameter — plus duplicated callouts like A087/P031) and Helvetica-Narrow
+    body references are NOT. Requiring the pid word to be bold rejects a callout
+    before it becomes a fabricated parameter that would otherwise pass
+    cite-integrity (the callout line really IS on the page). This generalizes
+    PR-B's hardcoded page-98 skip. Precision over recall: a manual whose headers
+    aren't bold loses recall (an honest gap), never ships a callout as real.
+    """
+    return {
+        w["text"]
+        for w in words
+        if "bold" in (w.get("fontname") or "").lower() and _PARAM_CODE_RE.match(w["text"])
+    }
 
 
 def _split_related(raw: str) -> list[str]:
@@ -683,8 +972,20 @@ def _split_related(raw: str) -> list[str]:
 
 
 def _parse_labeled_param_page(
-    text: str, raw_lines: list[str], page_number: int
+    text: str, raw_lines: list[str], page_number: int, words: list[Word] | None = None
 ) -> list[dict[str, Any]]:
+    # Bold-header gate: only a pid rendered in a bold heading font is a real
+    # parameter definition; a plain-Helvetica graph callout that happens to
+    # match the header shape (PF40 p.71 "A034 [Minimum Freq]") is rejected. When
+    # no font info is available (``words`` None/empty), fall back to accepting
+    # every header (legacy behavior — keeps callers that pass only text working).
+    words = words or []
+    bold_pids = _bold_header_pids(words)
+    font_seen = any(w.get("fontname") for w in words)
+
+    def _is_real_header(m: re.Match[str] | None) -> bool:
+        return bool(m) and (not font_seen or m["pid"] in bold_pids)
+
     entries: list[dict[str, Any]] = []
     lines = [
         ln.strip() for ln in text.splitlines() if ln.strip() and not _PAGE_FURNITURE_RE.search(ln)
@@ -693,30 +994,34 @@ def _parse_labeled_param_page(
     while i < len(lines):
         line = lines[i]
         labeled = _LABELED_HEADER_RE.match(line)
-        if not labeled:
+        if not _is_real_header(labeled):
             i += 1
             continue
 
         block_lines = [line]
         purpose_lines: list[str] = []
+        related_cont: list[str] = []
         default: str | None = None
+        unit: str | None = None
         param_range: str | None = None
         value_meanings: list[dict[str, str]] = []
 
         j = i + 1
-        while j < len(lines) and not _LABELED_HEADER_RE.match(lines[j]):
+        while j < len(lines) and not _is_real_header(_LABELED_HEADER_RE.match(lines[j])):
             detail = lines[j]
             block_lines.append(detail)
 
             default_match = _DEFAULT_LINE_RE.match(detail)
             range_match = _RANGE_LINE_RE.match(detail)
             options_match = _OPTIONS_LINE_RE.match(detail)
-            quoted_option = _QUOTED_OPTION_LINE_RE.match(detail)
+            quoted_option = _QUOTED_OPTION_LINE_RE.match(_strip_options_prefix(detail))
 
             if default_match:
                 default = default_match["default"]
+                unit = unit or _normalize_unit(default_match["unit"])
             elif range_match:
                 param_range = range_match["range"]
+                unit = unit or _normalize_unit(range_match["unit"])
             elif options_match:
                 for item in _OPTION_ITEM_RE.finditer(options_match["options"]):
                     value_meanings.append(
@@ -728,12 +1033,25 @@ def _parse_labeled_param_page(
                 )
                 if quoted_option["is_default"] and default is None:
                     default = quoted_option["value"]
-            elif not detail.startswith("Display:") and detail != "Options":
+            elif _RELATED_CONT_LINE_RE.match(detail):
+                # A "Related Parameters:" list that wrapped to a second line —
+                # a line that is PURELY bare, comma-separated param ids (no
+                # bracket, no prose), e.g. "A098, A114, A118" under P033. Extend
+                # related_parameters and keep it OUT of the purpose free-text
+                # (the real manual wraps these lists on the motor params).
+                related_cont.extend(_split_related(detail))
+            elif (
+                not detail.startswith("Display:")
+                and detail != "Options"
+                and not _VALUE_LABEL_LINE_RE.match(detail)
+            ):
                 purpose_lines.append(detail)
 
             j += 1
 
-        related_parameters = _split_related(labeled["related"]) if labeled["related"] else []
+        related_parameters = (_split_related(labeled["related"]) if labeled["related"] else []) + [
+            r for r in related_cont if r not in _split_related(labeled["related"] or "")
+        ]
         pid = labeled["pid"]
         raw_excerpt = _find_raw_line(raw_lines, pid) or line
 
@@ -744,7 +1062,7 @@ def _parse_labeled_param_page(
                 "purpose": " ".join(purpose_lines).strip(),
                 "range": param_range,
                 "default": default,
-                "unit": None,
+                "unit": unit,
                 "value_meanings": value_meanings,
                 "related_faults": [],  # filled by link_fault_actions_to_parameters
                 "related_parameters": related_parameters,
@@ -790,13 +1108,16 @@ def parse_parameters(
         for page in pdf.pages:
             if wanted is not None and page.page_number not in wanted:
                 continue
-            words = page.extract_words()
+            # ``fontname`` is needed by the labeled parser's bold-header gate to
+            # tell a real (bold) parameter header from a plain-Helvetica graph
+            # callout; it is harmless to the grid parser (x0/top only).
+            words = page.extract_words(extra_attrs=["fontname"])
             text = page.extract_text() or ""
             raw_lines = text.splitlines()
             if _looks_like_grid_page(words):
                 entries.extend(_parse_grid_param_page(words, raw_lines, page.page_number))
             else:
-                entries.extend(_parse_labeled_param_page(text, raw_lines, page.page_number))
+                entries.extend(_parse_labeled_param_page(text, raw_lines, page.page_number, words))
     return entries
 
 

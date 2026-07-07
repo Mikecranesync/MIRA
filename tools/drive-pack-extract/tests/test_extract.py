@@ -269,19 +269,20 @@ def test_related_faults_non_linked_entries_stay_empty_no_inference():
 # out (>280s) walking all 274 pages, and that re-slicing into a new PDF (an
 # earlier, wrong fix attempt) reorders pages and destroys the per-page
 # column geometry the position-aware parsers depend on — proven above by the
-# Fault-Type recovery regression. The fixture has 3 pages: 1 = fault table,
-# 2 = grid parameters, 3 = labeled-block parameters.
+# Fault-Type recovery regression. The fixture has 5 pages: 1 = 520/525 fault
+# table, 2 = grid parameters, 3 = labeled-block parameters, 4 = PowerFlex 40
+# fault table (circled-digit Fault-Type), 5 = PowerFlex 40 labeled parameters.
 # ---------------------------------------------------------------------------
 
 
 def test_parse_faults_pages_scopes_to_the_requested_page():
-    scoped = extractor.parse_faults(FIXTURE, pages=[1])
+    scoped = extractor.parse_faults(FIXTURE, pages=[1, 4])
     assert {f["fault_id"] for f in scoped} == {f["fault_id"] for f in _faults()}
-    assert all(f["page"] == 1 for f in scoped)
+    assert all(f["page"] in (1, 4) for f in scoped)
 
 
 def test_parse_parameters_pages_scopes_to_the_requested_pages():
-    scoped = extractor.parse_parameters(FIXTURE, pages=[2, 3])
+    scoped = extractor.parse_parameters(FIXTURE, pages=[2, 3, 5])
     assert {p["parameter_id"] for p in scoped} == {p["parameter_id"] for p in _params()}
 
 
@@ -290,7 +291,7 @@ def test_extract_threads_fault_pages_and_param_pages_through():
     underlying parsers — a scoped run must recover the same fragment as the
     whole-document (``pages=None``) default on this small fixture."""
     scoped = extractor.extract(
-        FIXTURE, doc="pf_sample.pdf (synthetic)", fault_pages=[1], param_pages=[2, 3]
+        FIXTURE, doc="pf_sample.pdf (synthetic)", fault_pages=[1, 4], param_pages=[2, 3, 5]
     )
     whole_doc = extractor.extract(FIXTURE, doc="pf_sample.pdf (synthetic)")
     assert scoped["fault_codes"] == whole_doc["fault_codes"]
@@ -312,6 +313,7 @@ def test_extract_threads_fault_pages_and_param_pages_through():
 def test_fault_parser_on_a_param_only_page_yields_no_fabricated_faults():
     assert extractor.parse_faults(FIXTURE, pages=[2]) == []  # grid param page
     assert extractor.parse_faults(FIXTURE, pages=[3]) == []  # labeled param page
+    assert extractor.parse_faults(FIXTURE, pages=[5]) == []  # PF40 labeled param page
 
 
 def test_param_parser_on_a_fault_only_page_yields_no_fabricated_parameters():
@@ -413,3 +415,164 @@ def test_fixture_is_clearly_marked_synthetic():
     full_text = " ".join(text for _, text in pages)
     assert "SYNTHETIC TEST FIXTURE" in full_text
     assert "not a licensed manual" in full_text
+
+
+# ---------------------------------------------------------------------------
+# PowerFlex 40 layout hardening — circled-digit Fault-Type column, single-digit
+# fault codes, emit-not-drop for untyped faults, wrapped names, the PF40 label
+# dialect ("Values Default:" / bare "Min/Max:"), the "Options"-prefixed enum,
+# and the bold-header gate that rejects a plain-Helvetica graph callout. All on
+# the fixture's pages 4 (PF40 faults) and 5 (PF40 labeled params).
+# ---------------------------------------------------------------------------
+
+_PF40_FAULT_PAGES = [4]
+_PF40_PARAM_PAGES = [5]
+
+
+def _pf40_faults():
+    return {f["fault_id"]: f for f in extractor.parse_faults(FIXTURE, pages=_PF40_FAULT_PAGES)}
+
+
+def _pf40_params():
+    return {
+        p["parameter_id"]: p for p in extractor.parse_parameters(FIXTURE, pages=_PF40_PARAM_PAGES)
+    }
+
+
+def test_circled_digit_helper_maps_all_three_unicode_runs():
+    # ➀/➁ (U+2780/1, the real PF40), ①/② (U+2460/1), ❶/❷ (U+2776/7).
+    assert extractor._circled_digit("➀") == "1"
+    assert extractor._circled_digit("➁") == "2"
+    assert extractor._circled_digit("①") == "1"
+    assert extractor._circled_digit("❶") == "1"
+    assert extractor._circled_digit("A") is None
+    assert extractor._circled_digit("2") is None  # a plain digit is not circled
+    assert extractor._circled_digit("12") is None  # only single glyphs
+
+
+def test_pf40_single_digit_fault_codes_parse():
+    faults = _pf40_faults()
+    assert faults["F2"]["code"] == 2
+    assert faults["F2"]["name"] == "Input Fault"
+    assert faults["F3"]["code"] == 3
+    assert faults["F3"]["name"] == "Bus Warning"
+
+
+def test_pf40_fault_type_comes_from_the_circled_digit_column():
+    faults = _pf40_faults()
+    assert faults["F2"]["fault_type"] == "1"  # ➀
+    assert faults["F3"]["fault_type"] == "2"  # ➁
+    assert faults["F5"]["fault_type"] == "2"  # ➁ on the shared-group leader
+
+
+def test_pf40_untyped_faults_are_emitted_not_dropped():
+    """A shared-group continuation with no own glyph (F6) and a genuinely
+    untyped fault (F7, no glyph at all) must still appear in the fault set with
+    fault_type "—" — the code+name belongs in the pack's fault map, and the
+    type is never fabricated by inheritance."""
+    faults = _pf40_faults()
+    assert faults["F6"]["fault_type"] == "—"
+    assert faults["F6"]["name"] == "Phase B Short"
+    assert faults["F7"]["fault_type"] == "—"
+    assert faults["F7"]["name"] == "Config Reset"
+
+
+def test_pf40_wrapped_fault_name_is_rejoined():
+    faults = _pf40_faults()
+    assert faults["F8"]["name"] == "Heatsink OverTemp"
+
+
+def test_pf40_last_fault_on_page_does_not_bleed_footer_into_name():
+    """The last fault's wrapped-name span must not sweep in the page footer."""
+    faults = _pf40_faults()
+    for f in faults.values():
+        assert "SYNTHETIC" not in f["name"]
+        assert "not a licensed" not in f["name"]
+
+
+def test_pf40_single_digit_code_carries_its_cross_reference():
+    """F9 (single-digit code) references A205 via a multi-line numbered action
+    list — the cross-vendor comm-loss proof analog (F81 -> A105 on the real
+    PF40)."""
+    faults = _pf40_faults()
+    assert faults["F9"]["references_parameters"] == ["A205"]
+
+
+def test_pf40_cross_ref_span_containment_attributes_to_the_right_fault():
+    """The A205 ref lives several action lines BELOW F9's code line; nearest-by-
+    top would misattribute it. No OTHER PF40 fault picks it up."""
+    faults = _pf40_faults()
+    for fid, f in faults.items():
+        if fid != "F9":
+            assert "A205" not in f["references_parameters"]
+
+
+def test_pf40_labeled_value_dialect_and_unit_extraction():
+    """A201 uses the PF40 label dialect: 'Values Default: 5.0 Secs' (Values on
+    Default) + bare 'Min/Max: 0.1/60.0 Secs', with the unit extracted+normalized."""
+    a201 = _pf40_params()["A201"]
+    assert a201["default"] == "5.0"
+    assert a201["range"] == "0.1/60.0"
+    assert a201["unit"] == "s"
+
+
+def test_pf40_options_prefixed_enum_recovers_meanings_and_default():
+    """The first option line is prefixed with the label word ('Options 0 "Fault"
+    (Default) …'); stripping it recovers the value_meanings and the (Default)."""
+    a200 = _pf40_params()["A200"]
+    values = {vm["value"]: vm["meaning"] for vm in a200["value_meanings"]}
+    assert values["0"] == "Fault"
+    assert values["1"] == "Coast Stop"
+    assert a200["default"] == "0"
+
+
+def test_pf40_related_parameters_not_related_faults():
+    a200 = _pf40_params()["A200"]
+    # "Related Parameters: A201," wraps to a second line "A202, A203" — the
+    # continuation extends related_parameters and never leaks into purpose.
+    assert a200["related_parameters"] == ["A201", "A202", "A203"]
+    assert a200["related_faults"] == []  # populated only by the fault->param link
+    assert "A202" not in a200["purpose"]
+    assert "A203" not in a200["purpose"]
+
+
+def test_pf40_bold_header_gate_rejects_a_plain_helvetica_graph_callout():
+    """A299 [Phantom Freq] is a plain-Helvetica curve callout — its line IS on
+    the page (so it would pass cite-integrity), but it is not a real parameter
+    and MUST be rejected by the bold-header gate (the real PF40 p.71 A034 typo).
+    """
+    params = _pf40_params()
+    assert "A299" not in params
+    # ...but the callout text really is on the page — proving the GATE (not
+    # cite-integrity) is what dropped it.
+    page5_text = dict(extractor.read_pages(FIXTURE))[5]
+    assert "A299" in page5_text
+    assert "Phantom Freq" in page5_text
+
+
+def test_pf40_fault_page_fed_to_the_param_parser_yields_nothing():
+    assert extractor.parse_parameters(FIXTURE, pages=_PF40_FAULT_PAGES) == []
+
+
+def test_pf40_end_to_end_extract_links_fault_to_parameter_and_verifies_cites():
+    """End-to-end on the PF40 pages: F9 -> A205 would link if A205 were in the
+    param pages; here A200/A201 are, and every emitted PF40 entry cite-verifies."""
+    fragment = extractor.extract(
+        FIXTURE,
+        doc="pf_sample.pdf (synthetic)",
+        fault_pages=_PF40_FAULT_PAGES,
+        param_pages=_PF40_PARAM_PAGES,
+    )
+    # single-digit codes reached the fault map
+    assert fragment["fault_codes"][2] == "Input Fault"
+    assert fragment["fault_codes"][9] == "Net Fault"
+    # the graph callout never became a parameter
+    assert "A299" not in {p["parameter_id"] for p in fragment["parameters"]}
+    # every emitted citation verifies verbatim on its page
+    for citation in fragment["fault_citations"]:
+        assert cite_integrity.verify_excerpt_on_page(
+            FIXTURE, int(citation["page"]), citation["excerpt"]
+        )
+    for param in fragment["parameters"]:
+        sc = param["source_citation"]
+        assert cite_integrity.verify_excerpt_on_page(FIXTURE, int(sc["page"]), sc["excerpt"])
