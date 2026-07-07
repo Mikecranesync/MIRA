@@ -631,6 +631,25 @@ def test_build_report_end_to_end_and_write(tmp_path):
     assert "INTERNAL_ONLY" in md_path.read_text(encoding="utf-8")
 
 
+def test_build_report_stores_manual_basename_not_absolute_path():
+    """The report is a committed, reproducible artifact — it must record the
+    manual by FILENAME, never a machine-specific absolute/temp path (the manual
+    itself is never committed). Guards the local-path leak fixed in report.py."""
+    ok = LayerResult(name="x", status="pass", summary="s")
+    rendered = build_report(
+        pack_id="toy_drive",
+        pack_dict=_toy_pack(),
+        schema_result=ok,
+        cite_result=ok,
+        gold_result=ok,
+        domain_result=ok,
+        manual_path=r"C:\Users\someone\AppData\Local\Temp\scratch\pf525_520-um001.pdf",
+        manual_sha256="deadbeef",
+    )
+    assert rendered["manual"]["path"] == "pf525_520-um001.pdf"
+    assert "Temp" not in (rendered["manual"]["path"] or "")
+
+
 # ---------------------------------------------------------------------------
 # CLI smoke test
 # ---------------------------------------------------------------------------

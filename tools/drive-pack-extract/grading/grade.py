@@ -25,6 +25,7 @@ import argparse
 import hashlib
 import json
 import logging
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -33,8 +34,11 @@ from typing import Any
 from cite_check import check_citations
 from domain_rules import check_domain
 from gold_score import score_against_gold
-from report import build_report, write_report
+from report import _basename, build_report, write_report
 from schema_check import check_schema
+
+# A machine-specific absolute path: POSIX "/..." or a Windows drive "C:\..".
+_ABS_PATH_RE = re.compile(r"^(?:/|[A-Za-z]:[\\/])")
 
 logger = logging.getLogger("drive-pack-extract.grading.grade")
 
@@ -76,6 +80,15 @@ def _extractor_commit() -> str | None:
 def _load_pack_dict(pack_id: str, packs_dir: Path) -> dict[str, Any]:
     path = packs_dir / pack_id / "pack.json"
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _sanitized_command(argv: list[str]) -> str:
+    """Reproducible command string for the committed report: reduce any
+    ABSOLUTE local path (the manual, an out dir) to its basename so a
+    machine-specific temp path never lands in a committed artifact. Repo-relative
+    paths (``grading/grade.py``, ``gold/<family>/gold.json``) are left readable.
+    Recognizes both POSIX and Windows absolute paths on any host OS."""
+    return " ".join(_basename(tok) if _ABS_PATH_RE.match(tok) else tok for tok in argv)
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -135,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
         manual_path=manual_path,
         manual_sha256=manual_sha256,
         extractor_commit=_extractor_commit(),
-        extraction_command=" ".join(sys.argv),
+        extraction_command=_sanitized_command(sys.argv),
         residuals=args.residual,
         generated_at=args.generated_at,
     )

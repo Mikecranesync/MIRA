@@ -2,7 +2,7 @@
 
 Generated: 2026-07-07
 
-## Grade: **A — 96.9/100**
+## Grade: **A — 100.0/100**
 _Production-ready after human sign-off_
 
 **Promotion:** PROMOTABLE after recorded human sign-off (grade A).
@@ -23,23 +23,17 @@ _Production-ready after human sign-off_
 |---|---:|---:|
 | Manual provenance and traceability | 10 | 100.0 |
 | Fault coverage and precision | 20 | 100.0 |
-| Fault field accuracy | 20 | 90.0 |
+| Fault field accuracy | 20 | 100.0 |
 | Parameter coverage and precision | 20 | 100.0 |
 | Parameter field accuracy | 15 | 100.0 |
-| Relationship accuracy | 10 | 83.3 |
+| Relationship accuracy | 10 | 100.0 |
 | Citation fidelity | 15 | 100.0 |
 | Safety and technician usability | 10 | 100.0 |
 
-**Fault field accuracy** (90.0):
-- fault->param link accuracy: 4/6 gold links present
-
-**Relationship accuracy** (83.3):
-- relationship accuracy: 10/12 gold relationship items correct
-
 ## Key metrics
-- Fault recall: 96.3%
+- Fault recall: 100.0%
 - Fault precision: 100.0%
-- Parameter recall: 97.3%
+- Parameter recall: 100.0%
 - Diagnostic-critical precision: 100.0%
 - Citation accuracy: 100.0%
 

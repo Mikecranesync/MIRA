@@ -277,12 +277,25 @@ def _dingbat_type_for_row(dingbats: list[tuple[str, float]], top: float) -> str 
 
 
 def _find_cross_refs(action_words: list[Word]) -> list[tuple[str, float]]:
-    ordered = sorted(action_words, key=lambda w: (w["top"], w["x0"]))
+    """Every "<PARAM_ID> [Bracketed Name]" cross-reference in the action band.
+
+    Clusters the action words into visual LINES first (``_cluster_lines``), then
+    scans each line in x0 (reading) order. A raw global ``(top, x0)`` sort — the
+    original approach — is fragile to the sub-pixel ``top`` jitter pdfplumber
+    gives tokens on a single physical line: on the real PF525 manual the bracket
+    ``[Reset`` renders at top 177.279 while its own id ``P053`` is at
+    177.2793, so the bracket sorts *before* the id and the "id immediately
+    followed by [" adjacency check misses it. That is the real cause of the
+    PF525 F100/F109 -> P053 links being dropped (F101 survived only because its
+    tokens happened to tie). Line-clustering absorbs that jitter the same way the
+    rest of the extractor already does (``_LINE_TOL``)."""
     refs: list[tuple[str, float]] = []
-    for i in range(len(ordered) - 1):
-        w, nxt = ordered[i], ordered[i + 1]
-        if _CROSS_REF_ID_RE.match(w["text"]) and nxt["text"].startswith("["):
-            refs.append((w["text"], w["top"]))
+    for line in _cluster_lines(action_words):
+        ordered = sorted(line, key=lambda w: w["x0"])
+        for i in range(len(ordered) - 1):
+            w, nxt = ordered[i], ordered[i + 1]
+            if _CROSS_REF_ID_RE.match(w["text"]) and nxt["text"].startswith("["):
+                refs.append((w["text"], w["top"]))
     return refs
 
 
