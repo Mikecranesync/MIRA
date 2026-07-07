@@ -94,6 +94,24 @@ function mockClient(handlers: Array<[RegExp, { rows: unknown[] }]>) {
   };
 }
 
+// The route now calls fetch() twice on the "reaches the cascade" path: once
+// for the drive-pack pre-check (#2527) and once for the LLM provider. A bare
+// `fetchSpy.mockResolvedValue(sameResponseInstance)` breaks because the same
+// Response object's body gets consumed by the first call (drive-pack .json())
+// and is then unreadable for the second (provider .body.getReader()). This
+// helper differentiates by URL and returns a fresh Response per call.
+function mockFetchNoMatchThenProvider(providerBody: string) {
+  fetchSpy.mockImplementation(async (url: string | URL) => {
+    const u = typeof url === "string" ? url : url.toString();
+    if (u.includes("/drive-pack/ask")) {
+      return new Response(JSON.stringify({ matched: false, answer_source: "none" }), {
+        status: 200,
+      });
+    }
+    return new Response(providerBody, { status: 200 });
+  });
+}
+
 const goodAssetRow = {
   equipment_number: "MTR-101",
   manufacturer: "FactoryLM",
@@ -241,11 +259,7 @@ describe("POST /api/assets/[id]/chat", () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
     vi.mocked(buildGraphContext).mockResolvedValue("[KG] verified relationship context");
     vi.mocked(retrieveManualChunks).mockResolvedValue([]);
-    fetchSpy.mockResolvedValue(
-      new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
-        status: 200,
-      }),
-    );
+    mockFetchNoMatchThenProvider('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n');
 
     const client = mockClient([
       [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
@@ -288,11 +302,7 @@ describe("POST /api/assets/[id]/chat", () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
     vi.mocked(buildGraphContext).mockResolvedValue("");
     vi.mocked(retrieveManualChunks).mockResolvedValue([]);
-    fetchSpy.mockResolvedValue(
-      new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
-        status: 200,
-      }),
-    );
+    mockFetchNoMatchThenProvider('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n');
 
     // Mock pool.connect() to return a client that has the asset for the owner
     const client = mockClient([
@@ -326,11 +336,7 @@ describe("POST /api/assets/[id]/chat", () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
     vi.mocked(buildGraphContext).mockResolvedValue("");
     vi.mocked(retrieveManualChunks).mockResolvedValue([]);
-    fetchSpy.mockResolvedValue(
-      new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
-        status: 200,
-      }),
-    );
+    mockFetchNoMatchThenProvider('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n');
 
     // Mock pool.connect to return a client whose query() throws
     const errorClient = {
@@ -350,5 +356,126 @@ describe("POST /api/assets/[id]/chat", () => {
     expect(res.status).not.toBe(404);
     // Confirm it tries to proceed (200 or 412 depending on context)
     expect([200, 412, 503]).toContain(res.status);
+  });
+
+  // ── Drive-pack pre-check regression tests (#2527) ───────────────────────
+  // The route pre-checks the read-only drive-pack answer service before the
+  // LLM cascade. A match short-circuits with the pack's cited answer; a
+  // non-match or any error falls straight through to the existing cascade.
+
+  it("drive-pack match short-circuits the cascade with a cited answer", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+
+    fetchSpy.mockImplementation(async (url: string | URL) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.includes("/drive-pack/ask")) {
+        return new Response(
+          JSON.stringify({
+            matched: true,
+            answer_source: "drive_pack",
+            answer: "GS10 fault CE10 — modbus timeout...",
+            citations: [{ doc: "DURApulse GS10 User Manual", page: "4-188" }],
+            pack_id: "durapulse_gs10",
+            fallback_used: false,
+            live_telemetry: false,
+            read_only: true,
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error("LLM provider cascade should not be called on a drive-pack match");
+    });
+
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(
+      makeReq(userMsg("what does CE10 mean on my gs10")),
+      makeParams(VALID_UUID)
+    );
+
+    expect(res.headers.get("Content-Type")).toContain("text/event-stream");
+    expect(res.headers.get("X-Drive-Pack")).toBe("durapulse_gs10");
+
+    let raw = "";
+    const reader = res.body?.getReader();
+    const dec = new TextDecoder();
+    if (reader) {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        raw += dec.decode(value, { stream: true });
+      }
+    }
+    expect(raw).toContain("GS10 fault CE10");
+    expect(raw).toContain("[Source: DURApulse GS10 User Manual p.4-188]");
+    expect(raw.trim().endsWith("data: [DONE]")).toBe(true);
+
+    // Only the drive-pack pre-check fetch happened — the LLM cascade never ran.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("drive-pack no-match falls through to the existing LLM cascade", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+    mockFetchNoMatchThenProvider('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n');
+
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(
+      makeReq(userMsg("what is a proximity sensor")),
+      makeParams(VALID_UUID)
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Drive-Pack")).toBeNull();
+    await drain(res);
+
+    // The drive-pack pre-check fired (no match) AND the cascade provider fired.
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("drive-pack endpoint error falls through to the existing LLM cascade", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+
+    fetchSpy.mockImplementation(async (url: string | URL) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.includes("/drive-pack/ask")) {
+        throw new Error("connection refused");
+      }
+      return new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
+        status: 200,
+      });
+    });
+
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(
+      makeReq(userMsg("help")),
+      makeParams(VALID_UUID)
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Drive-Pack")).toBeNull();
+    await drain(res);
   });
 });

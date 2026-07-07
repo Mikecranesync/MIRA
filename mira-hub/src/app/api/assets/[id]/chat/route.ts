@@ -302,6 +302,68 @@ export async function POST(
     });
   }
 
+  // Drive-pack pre-check (#2527) — read-only pre-check against the
+  // deterministic drive-pack answer service (mira-ask). If it matches, this
+  // question has a manual-cited, deterministic answer that should win over a
+  // generic LLM-cascade reply. Best-effort only: ANY failure, timeout,
+  // non-200, or non-match falls straight through to the existing cascade
+  // below — this block must never break chat.
+  try {
+    const askBase = process.env.MIRA_ASK_URL ?? "http://mira-ask:8011";
+    const askRes = await fetch(`${askBase}/drive-pack/ask`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(process.env.ASK_API_KEY ? { "X-Mira-Key": process.env.ASK_API_KEY } : {}),
+      },
+      body: JSON.stringify({ question: lastUser.content }),
+      signal: AbortSignal.timeout(4000),
+    });
+
+    if (askRes.ok) {
+      const askData = (await askRes.json()) as {
+        pack_id?: string;
+        matched?: boolean;
+        answer?: string;
+        answer_source?: string;
+        citations?: { doc: string; page?: string | number | null }[];
+      };
+
+      if (askData.matched === true && askData.answer_source === "drive_pack" && askData.answer) {
+        const citationLines = (askData.citations ?? [])
+          .map((c) => `[Source: ${c.doc}${c.page ? ` p.${c.page}` : ""}]`)
+          .join("\n");
+        // The drive-pack answer is always static reference material, never
+        // live telemetry — so the prefix below is unconditionally accurate.
+        // (This pre-check runs before the machine-memory context packet is
+        // built further down, so there is no clean live-vs-static signal
+        // available at this point to make the prefix conditional instead.)
+        const replyText = `Static pack reference — not from live telemetry.\n\n${askData.answer}${
+          citationLines ? `\n\n${citationLines}` : ""
+        }`;
+
+        const askEnc = new TextEncoder();
+        const askStream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(askEnc.encode(`data: ${JSON.stringify({ content: replyText })}\n\n`));
+            controller.enqueue(askEnc.encode("data: [DONE]\n\n"));
+            controller.close();
+          },
+        });
+        return new Response(askStream, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "X-Drive-Pack": String(askData.pack_id ?? ""),
+          },
+        });
+      }
+    }
+  } catch {
+    // Best-effort pre-check: any error/timeout falls through to the cascade.
+  }
+
   // Fetch asset context + manual chunks. Both are non-fatal: chat still works
   // without them.
   //

@@ -679,6 +679,11 @@ services:
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}
       # mira-ingest target for Knowledge upload pipeline
       - INGEST_URL=${INGEST_URL:-http://mira-ingest-saas:8001}
+      # mira-ask drive-pack read-only pre-check (#2527) — asset-chat calls
+      # POST /drive-pack/ask before the LLM cascade; falls through on any
+      # error/non-match.
+      - MIRA_ASK_URL=${MIRA_ASK_URL:-http://mira-ask:8011}
+      - ASK_API_KEY=${ASK_API_KEY:-}
       # Where local-upload bytes are persisted so a FAILED local upload can be
       # retried without the user re-picking the file from disk (2026-06-06).
       # Buffers are deleted on success; a sweep prunes stragglers. Volume-backed
