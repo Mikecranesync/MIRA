@@ -308,6 +308,10 @@ services:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
       - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS:-}
+      # Citable file intake → Hub folder-upload door (#2540). Unset token = skip.
+      - HUB_URL=${MIRA_HUB_URL:-http://mira-hub:3000}
+      - HUB_BASE_PATH=${HUB_BASE_PATH:-/hub}
+      - HUB_INGEST_TOKEN=${HUB_INGEST_TOKEN:-}
       - VISION_MODEL=qwen2.5vl:7b
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - INFERENCE_BACKEND=cloud
