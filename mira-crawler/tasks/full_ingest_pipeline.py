@@ -6,7 +6,7 @@ The pipeline never crashes; it always prints a report.
 Steps
 -----
 1. DOWNLOAD       — HTTP stream to /opt/mira/manuals/{manufacturer}/{model}/
-2. EXTRACT        — Docling sync (≤512 KB) or page-split fallback for larger PDFs
+2. EXTRACT        — local pdfplumber/pypdf text extraction (ingest.pdf_extract)
 3. CHUNK + EMBED  — ingest_text_inline() → knowledge_entries (pgvector)
 4. KG ENTITIES    — extract_equipment + extract_fault_codes → kg_entities + relationships
 5. QUALITY GATE   — compare 10 KB-sensitive cases before/after (optional, subprocess)
@@ -29,10 +29,7 @@ import argparse
 import json
 import logging
 import os
-import re
 import sys
-import tempfile
-import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -62,22 +59,16 @@ logger = logging.getLogger("mira.full_ingest")
 # Config from environment
 # ---------------------------------------------------------------------------
 
-DOCLING_URL = os.getenv("DOCLING_URL", "http://localhost:5001")
 OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text:latest")
 TENANT_ID = os.getenv("MIRA_TENANT_ID", "")
 NEON_URL = os.getenv("NEON_DATABASE_URL", "")
 MANUALS_ROOT = Path(os.getenv("MANUALS_ROOT", "/opt/mira/manuals"))
 
-DOCLING_SYNC_LIMIT = 512 * 1024          # 512 KB — use sync below this
-DOCLING_TIMEOUT_SYNC = 300               # seconds
-DOCLING_TIMEOUT_ASYNC_POLL = 600         # max poll wait
-LARGE_SKIP_BYTES = 50 * 1024 * 1024     # 50 MB — skip docling entirely
+LARGE_SKIP_BYTES = 50 * 1024 * 1024     # 50 MB — skip extraction entirely
 
 REQUEST_HEADERS = {"User-Agent": "MIRA-KB/1.0 (+https://factorylm.com; ops@factorylm.com)"}
 QUALITY_GATE = _BOTS_ROOT / "benchmarks" / "kb_quality_gate.py"
-
-_B64_RE = re.compile(r"data:image/[a-zA-Z]+;base64,[A-Za-z0-9+/=\s]+")
 
 # ---------------------------------------------------------------------------
 # Report dataclass
@@ -89,9 +80,9 @@ class PipelineReport:
     pdf_url: str
     pdf_path: str = ""
     pdf_bytes: int = 0
-    docling_pages: int = 0
-    docling_chars: int = 0
-    docling_method: str = ""  # sync | split | skip | failed
+    extract_pages: int = 0
+    extract_chars: int = 0
+    extract_method: str = ""  # pdfplumber | pypdf | skip | failed
     kb_chunks: int = 0
     kg_equipment_entities: int = 0
     kg_fault_code_entities: int = 0
@@ -107,7 +98,7 @@ class PipelineReport:
         print("INGEST PIPELINE REPORT")
         print(f"{'═'*w}")
         print(f"PDF:          {Path(self.pdf_path).name} ({self.pdf_bytes/1024/1024:.1f} MB)")
-        print(f"Docling:      {self.docling_method} → {self.docling_chars:,} chars extracted")
+        print(f"Extract:      {self.extract_method} → {self.extract_chars:,} chars extracted")
         print(f"KB Chunks:    {self.kb_chunks} chunks created (2000 char, 200 overlap)")
         print(f"KG Entities:  {self.kg_equipment_entities} equipment, "
               f"{self.kg_fault_code_entities} fault codes")
@@ -174,111 +165,44 @@ def _download(url: str, dest: Path) -> tuple[bool, int]:
 
 
 # ---------------------------------------------------------------------------
-# STEP 2: EXTRACT TEXT (Docling)
+# STEP 2: EXTRACT TEXT (local — pdfplumber/pypdf, no external service)
 # ---------------------------------------------------------------------------
-
-
-def _strip_images(md: str) -> str:
-    md = re.sub(r"!\[.*?\]\(data:image/[^)]+\)", "[image]", md)
-    return _B64_RE.sub("[image]", md).strip()
-
-
-def _docling_sync(pdf_path: Path) -> tuple[str, str]:
-    """Send PDF to docling sync endpoint. Returns (markdown, method_label)."""
-    with open(pdf_path, "rb") as f:
-        data = f.read()
-    options = {"image_export_mode": "placeholder"}
-    with httpx.Client(timeout=DOCLING_TIMEOUT_SYNC) as client:
-        resp = client.post(
-            f"{DOCLING_URL}/v1/convert/file",
-            files={"files": (pdf_path.name, data, "application/pdf")},
-            data={"options": json.dumps(options)},
-        )
-    resp.raise_for_status()
-    md = resp.json().get("document", {}).get("md_content", "") or ""
-    return _strip_images(md), "sync"
-
-
-def _docling_split(pdf_path: Path, chunk_pages: int = 15) -> tuple[str, str]:
-    """Split PDF into page chunks, run each through docling, concatenate."""
-    try:
-        import pypdf
-    except ImportError:
-        raise RuntimeError("pypdf not installed — cannot split PDF")
-
-    reader = pypdf.PdfReader(str(pdf_path))
-    total = len(reader.pages)
-    texts: list[str] = []
-
-    for start in range(0, total, chunk_pages):
-        end = min(start + chunk_pages, total)
-        writer = pypdf.PdfWriter()
-        for i in range(start, end):
-            writer.add_page(reader.pages[i])
-
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tf:
-            tmp = Path(tf.name)
-            writer.write(tf)
-
-        try:
-            md, _ = _docling_sync(tmp)
-            texts.append(md)
-            logger.info("Split chunk pages %d-%d: %d chars", start + 1, end, len(md))
-        except Exception as exc:
-            logger.warning("Split chunk %d-%d failed: %s", start + 1, end, exc)
-        finally:
-            tmp.unlink(missing_ok=True)
-
-        time.sleep(1)
-
-    return "\n\n".join(texts), "split"
+# Docling was removed 2026-06-06 (OOM on the 8 GB VPS —
+# docs/known-issues/2026-06-06-hub-upload-failures-docling-oom.md) but this
+# pipeline kept POSTing to it, Connection-refusing on every manual. Extraction
+# now runs in-process via ingest.pdf_extract (pdfplumber when available, pypdf
+# fallback — the only PDF lib guaranteed on the ingest host). No socket opened.
 
 
 def step_extract(pdf_path: Path, report: PipelineReport) -> str:
-    size = pdf_path.stat().st_size
+    # Dual import path: `tasks.*` when mira-crawler is on sys.path (the cron),
+    # `mira_crawler.*` when imported as a package — same idiom as tasks._shared.
+    try:
+        from ingest.pdf_extract import extract_pdf_text
+    except ImportError:
+        from mira_crawler.ingest.pdf_extract import extract_pdf_text
 
+    size = pdf_path.stat().st_size
     if size >= LARGE_SKIP_BYTES:
-        report.docling_method = "skip (>50 MB)"
-        logger.warning("PDF too large for docling: %.1f MB", size / 1024 / 1024)
+        report.extract_method = "skip (>50 MB)"
+        logger.warning("PDF too large to extract: %.1f MB", size / 1024 / 1024)
         return ""
 
     try:
-        if size <= DOCLING_SYNC_LIMIT:
-            md, method = _docling_sync(pdf_path)
-        else:
-            # Try sync first; fall back to split on 504
-            try:
-                md, method = _docling_sync(pdf_path)
-            except Exception as exc:
-                if "504" in str(exc) or "timeout" in str(exc).lower():
-                    logger.info("Sync timed out — retrying with 15-page splits")
-                    md, method = _docling_split(pdf_path, chunk_pages=15)
-                    if not md:
-                        # 15-page chunks also 504'd (PowerFlex-525 saw this on
-                        # 2026-04-29 — heavy-image PDF). Retry with 5-page
-                        # chunks before giving up; smaller chunks usually
-                        # finish well under DOCLING_SERVE_MAX_SYNC_WAIT.
-                        logger.info("15-page split empty — retrying with 5-page chunks")
-                        md, method = _docling_split(pdf_path, chunk_pages=5)
-                        method = "split-5"
-                else:
-                    raise
-
-        # Estimate page count from headings
+        md, method = extract_pdf_text(pdf_path)
         if not md:
-            report.errors.append(f"Docling: {method} produced 0 chars — all chunks timed out")
-            report.docling_method = f"{method} (empty)"
+            report.extract_method = f"{method} (empty)"
+            report.errors.append(f"Extract: {method} produced 0 chars")
             return ""
-        report.docling_pages = md.count("\n# ") + md.count("\n## ") or 1
-        report.docling_chars = len(md)
-        report.docling_method = method
-        logger.info("Docling %s: %d chars", method, len(md))
+        report.extract_pages = md.count("\n# ") + md.count("\n## ") or 1
+        report.extract_chars = len(md)
+        report.extract_method = method
+        logger.info("Extracted %d chars via %s", len(md), method)
         return md
-
     except Exception as exc:
-        report.docling_method = "failed"
-        report.errors.append(f"Docling: {exc}")
-        logger.error("Docling failed: %s", exc)
+        report.extract_method = "failed"
+        report.errors.append(f"Extract: {exc}")
+        logger.error("Extraction failed: %s", exc)
         return ""
 
 
