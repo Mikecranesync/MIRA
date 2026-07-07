@@ -103,12 +103,19 @@ test.describe("factorylm.com/cmms — magic link form", () => {
     // Two acceptable outcomes:
     //   200 success  → form hidden, #fl-form-success visible
     //   429 rate-limited → error says "Check your inbox"
+    // On a 429 the page keeps a HIDDEN #fl-form-success in the DOM alongside
+    // the visible #fl-form-error, so a bare `success.or(rateLimited)` matches
+    // two elements and toBeVisible() trips Playwright strict mode. The two
+    // outcomes are mutually exclusive in *visibility*, so filter the union to
+    // the visible element — exactly one matches regardless of which outcome.
     const success = page.locator("#fl-form-success");
     const rateLimited = page
       .locator("#fl-form-error")
       .filter({ hasText: /check your inbox/i });
 
-    await expect(success.or(rateLimited)).toBeVisible({ timeout: 15_000 });
+    await expect(
+      success.or(rateLimited).filter({ visible: true }),
+    ).toBeVisible({ timeout: 15_000 });
   });
 });
 
