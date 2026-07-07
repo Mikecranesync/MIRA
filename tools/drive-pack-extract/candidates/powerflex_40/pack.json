@@ -1,0 +1,478 @@
+{
+  "pack_id": "powerflex_40",
+  "schema_version": 2,
+  "family": {
+    "manufacturer": "Rockwell Automation",
+    "series": "PowerFlex 40",
+    "aliases": [
+      "powerflex 40",
+      "pf40",
+      "pf 40",
+      "powerflex 22b",
+      "22b"
+    ]
+  },
+  "nameplate": {
+    "match_keywords": [
+      "powerflex 40",
+      "pf40",
+      "22b-um001",
+      "22b"
+    ]
+  },
+  "live_decode": {
+    "status_bits": {},
+    "cmd_word": {},
+    "fault_codes": {
+      "2": "Auxiliary Input",
+      "3": "Power Loss",
+      "4": "UnderVoltage",
+      "5": "OverVoltage",
+      "6": "Motor Stalled",
+      "7": "Motor Overload",
+      "8": "Heatsink OvrTmp",
+      "12": "HW OverCurrent",
+      "13": "Ground Fault",
+      "29": "Analog Input Loss",
+      "33": "Auto Rstrt Tries",
+      "38": "Phase U to Gnd",
+      "39": "Phase V to Gnd",
+      "40": "Phase W to Gnd",
+      "41": "Phase UV Short",
+      "42": "Phase UW Short",
+      "43": "Phase VW Short",
+      "48": "Params Defaulted",
+      "63": "SW OverCurrent",
+      "64": "Drive Overload",
+      "70": "Power Unit",
+      "71": "Net Loss",
+      "80": "SVC Autotune",
+      "81": "Comm Loss",
+      "100": "Parameter Checksum",
+      "122": "I/O Board Fail"
+    },
+    "registers": {}
+  },
+  "envelope": {},
+  "knowledge": {},
+  "provenance": {
+    "items": {
+      "live_decode.fault_codes": "manual_cited",
+      "parameters": "manual_cited"
+    },
+    "sources": [
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "93",
+        "excerpt": "F2 Auxiliary Input ➀ Auxiliary input interlock is open. 1. Check remote wiring."
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "93",
+        "excerpt": "F3 Power Loss ➁ Excessive DC Bus voltage 1. Monitor the incoming line for"
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "93",
+        "excerpt": "F4 UnderVoltage ➀ DC bus voltage fell below the Monitor the incoming AC line for low"
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "93",
+        "excerpt": "F5 OverVoltage ➀ DC bus voltage exceeded Monitor the AC line for high line"
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "93",
+        "excerpt": "F6 Motor Stalled ➀ Drive is unable to accelerate Increase P039…A067 [Accel Time x]"
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "93",
+        "excerpt": "F7 Motor Overload Internal electronic overload trip. 1. An excessive motor load exists."
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "93",
+        "excerpt": "F8 Heatsink Heatsink temperature exceeds a 1. Check for blocked or dirty heat"
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "93",
+        "excerpt": "F12 HW OverCurrent The drive output current has Check programming. Check for"
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "93",
+        "excerpt": "F13 Ground Fault A current path to earth ground Check the motor and external wiring"
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "93",
+        "excerpt": "F29 Analog Input ➀ An analog input is configured to 1. Check parameters."
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "94",
+        "excerpt": "F33 Auto Rstrt Tries Drive unsuccessfully attempted Correct the cause of the fault and"
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "94",
+        "excerpt": "F38 Phase U to Gnd ➁ A phase to ground fault has 1. Check the wiring between the"
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "94",
+        "excerpt": "F39 Phase V to Gnd been detected between the drive drive and motor."
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "94",
+        "excerpt": "F40 Phase W to Gnd and motor in this phase. 2. Check motor for grounded phase."
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "94",
+        "excerpt": "F41 Phase UV Short Excessive current has been 1. Check the motor and drive output"
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "94",
+        "excerpt": "F42 Phase UW detected between these two terminal wiring for a shorted"
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "94",
+        "excerpt": "F43 Phase VW Short 2. Replace drive if fault cannot be"
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "94",
+        "excerpt": "F48 Params The drive was commanded to 1. Clear the fault or cycle power to"
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "94",
+        "excerpt": "F63 SW OverCurrent Programmed A098 [SW Current Check load requirements and A098"
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "94",
+        "excerpt": "F64 Drive Overload Drive rating of 150% for 1 Reduce load or extend Accel Time."
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "94",
+        "excerpt": "F70 Power Unit ➁ Failure has been detected in the 1. Cycle power."
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "94",
+        "excerpt": "F71 Net Loss The communication network has 1. Cycle power."
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "94",
+        "excerpt": "F80 SVC Autotune The autotune function was either Restart procedure."
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "94",
+        "excerpt": "F81 Comm Loss RS-485 (DSI) port stopped 1. If adapter was not intentionally"
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "94",
+        "excerpt": "F100 Parameter ➁ The checksum read from the Set P041 [Reset To Defalts] to option"
+      },
+      {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "95",
+        "excerpt": "F122 I/O Board Fail Failure has been detected in the 1. Cycle power."
+      }
+    ]
+  },
+  "parameters": [
+    {
+      "parameter_id": "P031",
+      "name": "Motor NP Volts",
+      "purpose": "Stop drive before changing this parameter. Set to the motor nameplate rated volts.",
+      "value_meanings": [],
+      "default": null,
+      "range": null,
+      "unit": null,
+      "related_faults": [],
+      "source_citation": {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "53",
+        "excerpt": "P031 [Motor NP Volts] Related Parameters: d004, A084, A085, A086, A087"
+      },
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "d004",
+        "A084",
+        "A085",
+        "A086",
+        "A087"
+      ]
+    },
+    {
+      "parameter_id": "P032",
+      "name": "Motor NP Hertz",
+      "purpose": "Stop drive before changing this parameter. Set to the motor nameplate rated frequency.",
+      "value_meanings": [],
+      "default": "60",
+      "range": "15/400",
+      "unit": "Hz",
+      "related_faults": [],
+      "source_citation": {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "53",
+        "excerpt": "P032 [Motor NP Hertz] Related Parameters: A084, A085, A086, A087, A090"
+      },
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "A084",
+        "A085",
+        "A086",
+        "A087",
+        "A090"
+      ]
+    },
+    {
+      "parameter_id": "P033",
+      "name": "Motor OL Current",
+      "purpose": "A098, A114, A118 Set to the maximum allowable motor current. The drive will fault on an F7 Motor Overload if the value of this parameter is exceeded by 150% for 60 seconds.",
+      "value_meanings": [],
+      "default": null,
+      "range": null,
+      "unit": null,
+      "related_faults": [
+        "F7"
+      ],
+      "source_citation": {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "53",
+        "excerpt": "P033 [Motor OL Current] Related Parameters: A055, A058, A061, A089, A090,"
+      },
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "A055",
+        "A058",
+        "A061",
+        "A089",
+        "A090"
+      ]
+    },
+    {
+      "parameter_id": "P034",
+      "name": "Minimum Freq",
+      "purpose": "A086, A087, A110, A112 Sets the lowest frequency the drive will output continuously.",
+      "value_meanings": [],
+      "default": "0.0",
+      "range": "0.0/400.0",
+      "unit": "Hz",
+      "related_faults": [],
+      "source_citation": {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "53",
+        "excerpt": "P034 [Minimum Freq] Related Parameters: d001, d002, d013, P035, A085,"
+      },
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "d001",
+        "d002",
+        "d013",
+        "P035",
+        "A085"
+      ]
+    },
+    {
+      "parameter_id": "P035",
+      "name": "Maximum Freq",
+      "purpose": "A078, A085, A086, A087, A111, A113 Stop drive before changing this parameter. Sets the highest frequency the drive will output.",
+      "value_meanings": [],
+      "default": "60",
+      "range": "0/400",
+      "unit": "Hz",
+      "related_faults": [],
+      "source_citation": {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "53",
+        "excerpt": "P035 [Maximum Freq] Related Parameters: d001, d002, d013, P034, A065,"
+      },
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "d001",
+        "d002",
+        "d013",
+        "P034",
+        "A065"
+      ]
+    },
+    {
+      "parameter_id": "A105",
+      "name": "Comm Loss Action",
+      "purpose": "Selects the drive’s response to a loss of the communication connection or excessive communication errors. RAM.",
+      "value_meanings": [
+        {
+          "value": "0",
+          "meaning": "Fault"
+        },
+        {
+          "value": "1",
+          "meaning": "Coast Stop"
+        },
+        {
+          "value": "2",
+          "meaning": "Stop"
+        },
+        {
+          "value": "3",
+          "meaning": "Continu Last"
+        }
+      ],
+      "default": "0",
+      "range": null,
+      "unit": null,
+      "related_faults": [
+        "F81"
+      ],
+      "source_citation": {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "76",
+        "excerpt": "A105 [Comm Loss Action] Related Parameters: d015, P037, A106"
+      },
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "d015",
+        "P037",
+        "A106"
+      ]
+    },
+    {
+      "parameter_id": "A106",
+      "name": "Comm Loss Time",
+      "purpose": "Sets the time that the drive will remain in communication loss before implementing the option selected in A105 [Comm Loss Action].",
+      "value_meanings": [],
+      "default": "5.0",
+      "range": "0.1/60.0",
+      "unit": "s",
+      "related_faults": [],
+      "source_citation": {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "76",
+        "excerpt": "A106 [Comm Loss Time] Related Parameters: d015, A105"
+      },
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "d015",
+        "A105"
+      ]
+    },
+    {
+      "parameter_id": "A107",
+      "name": "Comm Format",
+      "purpose": "Selects the protocol (RTU only), data bits (8 data bits only), parity (None, Even, Odd), and stop bits (1 stop bit only) used by the RS-485 port on the drive. See Appendix C for details on using the drive communication features. Important: Power to drive must be cycled before any changes will affect drive operation.",
+      "value_meanings": [
+        {
+          "value": "0",
+          "meaning": "RTU 8-N-1"
+        },
+        {
+          "value": "1",
+          "meaning": "RTU 8-E-1"
+        },
+        {
+          "value": "2",
+          "meaning": "RTU 8-O-1"
+        },
+        {
+          "value": "3",
+          "meaning": "RTU 8-N-2"
+        },
+        {
+          "value": "4",
+          "meaning": "RTU 8-E-2"
+        },
+        {
+          "value": "5",
+          "meaning": "RTU 8-O-2"
+        }
+      ],
+      "default": "0",
+      "range": null,
+      "unit": null,
+      "related_faults": [],
+      "source_citation": {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "76",
+        "excerpt": "A107 [Comm Format] Related Parameters: d015"
+      },
+      "provenance_tier": "manual_cited",
+      "related_parameters": [
+        "d015"
+      ]
+    },
+    {
+      "parameter_id": "A108",
+      "name": "Language",
+      "purpose": "Selects the language displayed by the remote communications option.",
+      "value_meanings": [
+        {
+          "value": "1",
+          "meaning": "English"
+        },
+        {
+          "value": "2",
+          "meaning": "Français"
+        },
+        {
+          "value": "3",
+          "meaning": "Español"
+        },
+        {
+          "value": "4",
+          "meaning": "Italiano"
+        },
+        {
+          "value": "5",
+          "meaning": "Deutsch"
+        },
+        {
+          "value": "6",
+          "meaning": "Reserved"
+        },
+        {
+          "value": "7",
+          "meaning": "Português"
+        },
+        {
+          "value": "8",
+          "meaning": "Reserved"
+        },
+        {
+          "value": "9",
+          "meaning": "Reserved"
+        },
+        {
+          "value": "10",
+          "meaning": "Nederlands"
+        }
+      ],
+      "default": "1",
+      "range": null,
+      "unit": null,
+      "related_faults": [],
+      "source_citation": {
+        "doc": "PowerFlex 40 Adjustable Frequency AC Drive User Manual (22B-UM001J-EN-E)",
+        "page": "76",
+        "excerpt": "A108 [Language]"
+      },
+      "provenance_tier": "manual_cited",
+      "related_parameters": []
+    }
+  ],
+  "keypad_navigation": []
+}

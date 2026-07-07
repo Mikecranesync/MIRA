@@ -875,14 +875,20 @@ _LABELED_HEADER_RE = re.compile(
 # ``(?:Values\s+)?`` tolerates BOTH label dialects: the PF525 manual attaches
 # "Values" to Min/Max ("Default: 100" / "Values Min/Max: 1/247"); the PF40
 # manual attaches it to Default instead ("Values Default: 5.0 Secs" /
-# "Min/Max: 0.1/60.0 Secs"). A trailing engineering unit (Secs, Hz, %, A, V…)
-# is captured and normalized so a numeric labeled value carries its unit.
+# "Min/Max: 0.1/60.0 Secs"). The default group is NUMERIC-only: a worded/
+# conditional default ("Based on Drive Rating") does NOT match, so ``default``
+# stays None (honest null, not a truncated "Based"). A trailing engineering unit
+# (Secs, Hz, %, …) — glued as "0.0%" or spaced as "5.0 Secs" — is captured and
+# normalized so a numeric labeled value carries its unit.
 _DEFAULT_LINE_RE = re.compile(
-    r"^(?:Values\s+)?Default:\s*(?P<default>\S+)(?:\s+(?P<unit>[A-Za-z%°]+))?"
+    r"^(?:Values\s+)?Default:\s*(?P<default>-?\d[\d.]*)\s*(?P<unit>%|[A-Za-z°]+)?"
 )
 _RANGE_LINE_RE = re.compile(
-    r"^(?:Values\s+)?Min/Max:\s*(?P<range>-?[\d.]+/-?[\d.]+)(?:\s+(?P<unit>[A-Za-z%°]+))?"
+    r"^(?:Values\s+)?Min/Max:\s*(?P<range>-?[\d.]+/-?[\d.]+)\s*(?P<unit>%|[A-Za-z°]+)?"
 )
+# A Default:/Min/Max: LABEL line whose value wasn't numeric (worded default) must
+# still be recognized as a label and kept OUT of the purpose free-text.
+_VALUE_LABEL_LINE_RE = re.compile(r"^(?:Values\s+)?(?:Default|Min/Max):")
 _OPTIONS_LINE_RE = re.compile(r"^Options:\s*(?P<options>.+)$")
 _OPTION_ITEM_RE = re.compile(r"(?P<value>\d+)\s+(?P<meaning>[^,]+)")
 # The real manual's enum options render as one option per line, quoted, with
@@ -1021,7 +1027,11 @@ def _parse_labeled_param_page(
                 )
                 if quoted_option["is_default"] and default is None:
                     default = quoted_option["value"]
-            elif not detail.startswith("Display:") and detail != "Options":
+            elif (
+                not detail.startswith("Display:")
+                and detail != "Options"
+                and not _VALUE_LABEL_LINE_RE.match(detail)
+            ):
                 purpose_lines.append(detail)
 
             j += 1
