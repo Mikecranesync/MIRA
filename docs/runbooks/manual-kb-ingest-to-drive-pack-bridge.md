@@ -48,12 +48,39 @@ manual ingested → hash computed → registry checked
 
 The bridge does the first two lines. **Everything after "candidate record created" is deliberate and human-approved.** No automated step promotes.
 
+## Surface candidates in the Command Center (Hub review queue)
+
+The bridge writes candidate JSON to the node filesystem. To review them in the
+Command Center instead of by hand, POST the candidate record to the Hub
+ingestion seam, which files it as a `drive_pack_update` suggestion in
+`ai_suggestions` (mig 062) — it then appears in **Knowledge → Suggestions**
+alongside the other AI proposals.
+
+```bash
+# One candidate file → the Hub review queue (authenticated Hub session cookie):
+curl -sS -X POST https://app.factorylm.com/api/suggestions/drive-pack-candidate \
+  -H "Content-Type: application/json" -b "$HUB_SESSION_COOKIE" \
+  --data-binary @~/.mira/drive-pack-candidates/<manual_id>/candidate-<sha12>.json
+# → { "ok": true, "id": "<suggestion-uuid>", "created": true }   (idempotent on manual_id+sha)
+```
+
+- **Create = any authenticated session; decide = admin.** Mirrors the PLC-import
+  path: proposing is harmless (a `pending` row); only an admin may accept/reject
+  via `POST /api/suggestions/[id]/decide`.
+- **Accept is status-only — it does NOT extract, grade, or promote a pack.** It
+  records "this changed manual is worth processing." The real work is still the
+  candidate's `next_step` command, human-gated per the acceptance runbook. This
+  is `.claude/rules/train-before-deploy.md` at the suggestion layer.
+- Seam: `mira-hub/src/lib/drive-pack-suggestion.ts` +
+  `mira-hub/src/app/api/suggestions/drive-pack-candidate/route.ts`.
+
 ## Operator checklist to enable
 
 1. Confirm the drive family is registered (`tools/drive-pack-extract/registry/sources.json`; `docs/drive-commander/workflow-register-a-manual-source.md`).
 2. Set `MIRA_DRIVE_PACK_BRIDGE=1` in the cron's env (Doppler).
 3. Watch `~/.mira/drive-pack-candidates/` and the cron log line `drive-pack candidate: <id> (<state>) → <path>`.
-4. For each candidate, run its `next_step`, review, and accept/reject per the acceptance runbook.
+4. (Optional) POST each candidate to `/api/suggestions/drive-pack-candidate` to review it in the Command Center (see above).
+5. For each candidate, run its `next_step`, review, and accept/reject per the acceptance runbook.
 
 ## Why this cannot silently rewrite trusted diagnostic truth
 
