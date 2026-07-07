@@ -99,6 +99,21 @@ _HARD_MARKERS = (
     "name resolution",
 )
 
+# Marker printed in the pipeline's report when the PDF downloaded/opened fine
+# but extraction produced zero characters (scanned/image-only manual, no text
+# layer, no OCR available). This is the exact error string
+# `full_ingest_pipeline.step_extract` appends to `PipelineReport.errors`
+# (`f"Extract: {method} produced 0 chars"`), rendered under the report's
+# "Errors (N):" section. It is NOT emitted for download/network failures or
+# the >50MB skip case, so it uniquely identifies a no-text-layer PDF —
+# retrying will never produce text, so we quarantine instead of retrying.
+_ZERO_CHAR_MARKER = "produced 0 chars"
+
+
+def _is_zero_char_extraction(tail: str) -> bool:
+    """True iff the pipeline downloaded/opened the PDF but extracted 0 chars."""
+    return _ZERO_CHAR_MARKER in (tail or "")
+
 
 def _classify_error(err: str) -> str:
     """Return ``'retryable'`` or ``'hard'`` for an error tail."""
@@ -329,20 +344,29 @@ def _process_entry(entry: dict, queue: list[dict]) -> dict:
         except Exception as _exc:  # noqa: BLE001 — bridge must NEVER fail KB ingest
             _log(f"drive-pack bridge skipped (non-fatal): {_exc}")
     else:
-        kind = _classify_error(tail)
         entry["last_error"] = tail[-200:]
-        if kind == "hard" or entry["attempts"] >= MAX_ATTEMPTS:
-            entry["status"] = "failed"
-            entry["failed_at"] = _ts()
+        if _is_zero_char_extraction(tail):
+            # Scanned/image-only PDF — no text layer, no OCR available.
+            # Retrying will never produce text; quarantine instead of
+            # burning attempts every hour.
+            entry["status"] = "needs_ocr"
+            entry["needs_ocr_at"] = _ts()
             entry.pop("next_retry_at", None)
-            _log(f"FAILED (hard, attempt {entry['attempts']}): {name}")
+            _log(f"NEEDS_OCR (0 chars extracted, no text layer): {name}")
         else:
-            entry["status"] = "failed_retryable"
-            delay = _backoff_seconds(entry["attempts"])
-            entry["next_retry_at"] = (_now() + timedelta(seconds=delay)).isoformat(
-                timespec="seconds"
-            )
-            _log(f"FAILED (retry in {delay}s, attempt {entry['attempts']}): {name}")
+            kind = _classify_error(tail)
+            if kind == "hard" or entry["attempts"] >= MAX_ATTEMPTS:
+                entry["status"] = "failed"
+                entry["failed_at"] = _ts()
+                entry.pop("next_retry_at", None)
+                _log(f"FAILED (hard, attempt {entry['attempts']}): {name}")
+            else:
+                entry["status"] = "failed_retryable"
+                delay = _backoff_seconds(entry["attempts"])
+                entry["next_retry_at"] = (_now() + timedelta(seconds=delay)).isoformat(
+                    timespec="seconds"
+                )
+                _log(f"FAILED (retry in {delay}s, attempt {entry['attempts']}): {name}")
 
     _log(f"Pipeline output (tail):\n{tail}")
     save_queue(queue)
@@ -359,6 +383,7 @@ def _queue_stats(queue: list[dict]) -> dict[str, int]:
         "failed": 0,
         "failed_retryable": 0,
         "skipped_dedup": 0,
+        "needs_ocr": 0,
     }
     for e in queue:
         s = e.get("status", "pending")
