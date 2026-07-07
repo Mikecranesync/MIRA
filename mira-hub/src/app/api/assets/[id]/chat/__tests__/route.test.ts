@@ -48,7 +48,15 @@ import { sessionOr401 } from "@/lib/session";
 import pool from "@/lib/db";
 import { buildGraphContext } from "@/lib/knowledge-graph/context-builder";
 import { retrieveManualChunks, appendManualContext } from "@/lib/manual-rag";
-import { approvedAskEnforcementEnabled } from "@/lib/approved-context";
+import {
+  approvedAskEnforcementEnabled,
+  approvedContextReady,
+} from "@/lib/approved-context";
+import { KB_GAP_ADMISSION } from "@/lib/kb-gap";
+
+// A stable, unique fragment of the appended admission — used to assert the
+// server-side safety net fired (or did not).
+const GAP_MARKER = "so MIRA can cite it";
 
 const VALID_UUID = "11111111-2222-3333-4444-555555555555";
 const TENANT_ID = "tenant-aaaa-bbbb";
@@ -81,6 +89,21 @@ async function drain(res: Response): Promise<void> {
     const { done } = await reader.read();
     if (done) return;
   }
+}
+
+// Read the entire SSE stream into a single string (for content assertions).
+async function readAll(res: Response): Promise<string> {
+  let raw = "";
+  const reader = res.body?.getReader();
+  const dec = new TextDecoder();
+  if (reader) {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      raw += dec.decode(value, { stream: true });
+    }
+  }
+  return raw;
 }
 
 // Mock client factory for test handlers
@@ -479,6 +502,7 @@ describe("POST /api/assets/[id]/chat", () => {
     await drain(res);
   });
 
+  // ── Drive-resolution from the open asset (#2527 follow-up) ──────────────
   it("passes the open asset's manufacturer+model as `drive` so a bare fault question resolves", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
     vi.mocked(buildGraphContext).mockResolvedValue("");
@@ -522,5 +546,132 @@ describe("POST /api/assets/[id]/chat", () => {
     // And the pack answer short-circuits the cascade.
     expect(res.headers.get("X-Drive-Pack")).toBe("durapulse_gs10");
     await drain(res);
+  });
+
+  // ── H4 gap-admission parity (#2542) ─────────────────────────────────────
+  // In the DEFAULT (non-enforced) path, an evidence-less asset chat must not
+  // stream a confident, ungrounded answer — the reply must carry an honest
+  // KB-gap admission. A question WITH evidence is unchanged.
+
+  it("appends a KB-gap admission when there is no evidence and the model didn't admit it", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]); // no sources
+    // Confident, ungrounded answer with no [Source:] tag and no gap phrase.
+    mockFetchNoMatchThenProvider(
+      'data: {"choices":[{"delta":{"content":"The fault is F5 — replace the drive."}}]}\n\ndata: [DONE]\n\n',
+    );
+
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(
+      makeReq(userMsg("what does this fault mean?")),
+      makeParams(VALID_UUID)
+    );
+
+    expect(res.status).toBe(200);
+    const raw = await readAll(res);
+    // The safety net appended the honest admission before [DONE].
+    expect(raw).toContain(GAP_MARKER);
+    expect(raw).toContain("knowledge base");
+    const doneIdx = raw.lastIndexOf("data: [DONE]");
+    expect(raw.indexOf(GAP_MARKER)).toBeLessThan(doneIdx);
+  });
+
+  it("does NOT append the admission when the model already admitted the gap", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]); // no sources
+    // Model already admits the gap in its own words.
+    mockFetchNoMatchThenProvider(
+      'data: {"choices":[{"delta":{"content":"I do not have specific documentation for this asset."}}]}\n\ndata: [DONE]\n\n',
+    );
+
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(
+      makeReq(userMsg("what does this fault mean?")),
+      makeParams(VALID_UUID)
+    );
+
+    const raw = await readAll(res);
+    // No double admission — the stock note (with its unique marker) is absent.
+    expect(raw).not.toContain(GAP_MARKER);
+    expect(raw).toContain("do not have specific documentation");
+  });
+
+  it("does NOT append the admission when manual sources ground the answer", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([
+      {
+        content: "Set parameter P0.03 to 5 to clear the fault.",
+        manufacturer: "FactoryLM",
+        modelNumber: "M100",
+        sourceUrl: "https://docs.test/manual",
+        sourcePage: 12,
+        title: "Service Manual",
+        rank: 0.95,
+        verified: true,
+      },
+    ]);
+    mockFetchNoMatchThenProvider(
+      'data: {"choices":[{"delta":{"content":"Per the manual, set P0.03 to 5. [Source: Service Manual p.12]"}}]}\n\ndata: [DONE]\n\n',
+    );
+
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(
+      makeReq(userMsg("how do I clear this fault?")),
+      makeParams(VALID_UUID)
+    );
+
+    const raw = await readAll(res);
+    expect(raw).not.toContain(GAP_MARKER);
+    expect(raw).toContain("P0.03");
+  });
+
+  it("opt-in 412 gate still refuses when enforcement is on and no context exists", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(approvedAskEnforcementEnabled).mockReturnValue(true);
+    vi.mocked(approvedContextReady).mockReturnValue(false);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(
+      makeReq(userMsg("what does this fault mean?")),
+      makeParams(VALID_UUID)
+    );
+
+    expect(res.status).toBe(412);
+    const body = await res.json();
+    expect(body.gate).toBe("approved_context");
+  });
+
+  it("KB_GAP_ADMISSION carries the honest gap phrasing", () => {
+    expect(KB_GAP_ADMISSION).toContain("knowledge base");
+    expect(KB_GAP_ADMISSION).toContain(GAP_MARKER);
   });
 });
