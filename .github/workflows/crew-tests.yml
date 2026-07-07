@@ -52,5 +52,8 @@ jobs:
       - name: Dogfood judge tests (classification + two-persona gate)
         run: bash tools/crew/dogfood/test_judge.sh
 
+      - name: Dogfood INFRA-guard tests (Hub outage → INFRA, never a false RED)
+        run: bash tools/crew/dogfood/test_infra_guard.sh
+
       - name: create_issue.sh gate tests (adversarial-verification gate)
         run: bash tools/qa/test_create_issue_gate.sh
