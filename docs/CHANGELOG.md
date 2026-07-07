@@ -1,5 +1,11 @@
 # MIRA Release Notes
 
+### v3.91.0 (2026-07-07) - docs(drive-commander): scientific-grading runbook + CI promotion-gate design + discovery record
+- **Runbook** (`docs/drive-commander/scientific-grading/runbook.md`): how to run scientific grading locally, read A/B/C/D/F + INCOMPLETE, author a gold set (precision-over-recall, match the pack, don't fake completeness), add a vendor's identifier conventions to the family-aware domain rules, and the five prerequisites before a pack may be promoted (grader measures, humans promote).
+- **CI promotion-gate design note** (`ci-promotion-gate-design.md`): the gate blocks a promotion PR (a diff touching `mira-bots/shared/drive_packs/packs/*/pack.json`) when a pack is sub-B / INCOMPLETE / hard-gate-fail / critical-failure, scoped to trigger ONLY on promotion paths (not docs/tooling). **Deliberately NOT wired** — documents the two unresolved prerequisites (manuals aren't committed → citation can't run in CI; GS10 chapter-section page labels aren't int-verifiable) with options + a draft workflow, per the mission's "design note, don't force it".
+- **Discovery record** (`docs/discovery/2026-07-07-scientific-grading-followups.md`): question, files, commands, results (the P053 float-jitter root cause; GS10 conventions; before/after grades), conclusions, the deterministic workflow, tests/fixtures, and remaining risks.
+- **Scope:** docs only. No code, no runtime change, no pack promoted.
+
 ### v3.90.0 (2026-07-07) - feat(drive-commander): GS10 scientific gold set + family-aware domain rules (refs #2516)
 - **What:** makes the live **durapulse_gs10** pack scientifically gradeable. Two coupled changes close the two blockers the first back-grade exposed. GS10 goes **D/60/INCOMPLETE → A/95.2/INCOMPLETE** — a large, honest improvement, still **not promotable** (citation N/A).
 - **GS10 gold set** (`tools/drive-pack-extract/gold/durapulse_gs10/gold.json`): 10 fault codes with GS10 mnemonics (GFF/Lvd/oL/EF/CE1..4/**CE10**), the P09.03 [COM1 Time-out Detection] parameter, and the **CE10 → P09.03** comm-loss link (the AutomationDirect analog of PowerFlex F081→C125 / PF40 F81→A105). Values mirror the manual-cited pack; honestly flags that GS10 is largely `bench_verified` and that its citations use **chapter-section page labels** (`4-188`) the int-page cite-integrity can't verify.
