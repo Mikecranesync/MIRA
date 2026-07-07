@@ -65,13 +65,21 @@ import extractor  # noqa: E402  (path must be set up first)
 PACK_ID = "powerflex_525"
 DOC_LABEL = "PowerFlex 525 Adjustable Frequency AC Drive User Manual (520-UM001O-EN-E)"
 FAULT_PAGES = list(range(161, 166))
-# Page 98 (the multi-column Analog Output block: t088/t089/t090) is deliberately
-# EXCLUDED — its 3-column layout makes the position-aware parser emit a duplicate
-# t089 and bleed footnote text into values. None of those params are diagnostic-
-# critical or in the gold set (the gold's t094 lives on p.99). Precision over
-# recall: skip the known-messy region and declare it a residual rather than ship
-# a duplicate/junk parameter. Widening back to 98 requires an extractor hardening
-# pass (PR-A scope), not a pack change.
+# P053 [Reset To Defaults] — the parameter the fault-checksum family (F100
+# [Parameter Chksum] / F101 [External Storage] / F109 [Mismatch C-P]) tells the
+# technician to "Set … to 2/3" — is ALREADY carried here via the page-66 Basic
+# Program grid summary; it does NOT need its own page. The F100/F101/F109 ->
+# P053 links resolve once the extractor's cross-reference detector is jitter-
+# tolerant (see extractor._find_cross_refs) — previously only F101 captured the
+# ref, so P053.related_faults held just ["F101"]. (Do NOT add page 89, the
+# labeled P053 definition — it duplicates the page-66 grid P053 and the dup
+# guard rejects it.)
+# Page 98 (the multi-column Analog Output block: t088/t089/t090) stays EXCLUDED —
+# its 3-column layout makes the position-aware parser emit a duplicate t089 and
+# bleed footnote text into values. None of those params are diagnostic-critical
+# or in the gold set (the gold's t094 lives on p.99). Precision over recall: skip
+# the known-messy region and declare it a residual rather than ship a
+# duplicate/junk parameter.
 PARAM_PAGES = [65, 66, 99, 100, 101, 102, 103]
 
 # Known-good sha256 of the real manual this script targets — printed for the

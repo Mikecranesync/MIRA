@@ -88,7 +88,7 @@ Every current pack, graded before any future promotion. Reports in this director
 | Pack | Status | Grade | Score | Promotable | Blockers / evidence |
 |---|---|---|---:|---|---|
 | **powerflex_40** | staged candidate | **A** | 100.0 | after sign-off | none — full gold + manual; graded against 22B-UM001J (sha `15c10c64…`) |
-| **powerflex_525** | live pack | **A** | 98.3 | after sign-off | 4/6 fault→param links present (P053 links absent — P053 not extracted). Full gold + manual (520-UM001O, sha `b9445a63…`) |
+| **powerflex_525** | live pack | **A** | 96.9 | after sign-off | live pack still carries the P053 cross-ref gap (2/6 links missing). Fixed **candidate** grades **A / 100** — see below. Full gold + manual (520-UM001O, sha `b9445a63…`) |
 | **durapulse_gs10** | live pack | **D** | 60.0 | **NO (INCOMPLETE)** | no gold set; non-PowerFlex ID conventions flagged (see below) |
 
 ## Findings
@@ -97,12 +97,26 @@ Every current pack, graded before any future promotion. Reports in this director
 Confirms the staged candidate is production-grade *pending human sign-off* — the
 promotion gate this rubric enforces.
 
-**powerflex_525 (A, 98.3)** — the only deduction is **fault field accuracy (90)**:
-2 of 6 gold fault→param links are missing because **P053 was never extracted into
-the pack** (it is not in the pack's parameter pages). A real, precise gap in the
-live pack surfaced by back-grading — not a blocker (the F081/F082/F083→C125
-headline chain is intact), but a recommended follow-up (extract P053 so
-F100/F101/F109→P053 resolve).
+**powerflex_525 (live A/96.9 → fixed candidate A/100)** — the deduction is **fault
+field accuracy**: of the 6 gold fault→param links, the live pack resolves only 4.
+**Root cause (corrected 2026-07-07, refs #2517):** the earlier back-grade guessed
+"P053 was never extracted" — that was wrong. P053 *is* in the pack (from the
+page-66 Basic Program grid). The real bug was in the extractor's cross-reference
+detector: `F100 [Parameter Chksum]` and `F109 [Mismatch C-P]` both say *"Set P053
+[Reset To Defaults] to 2/3"* in their action text, but pdfplumber renders the
+bracket `[Reset` ~0.0003 pt *above* its own id `P053` on that physical line, so a
+raw global `(top, x0)` sort put the bracket *before* the id and the "id
+immediately followed by `[`" adjacency check silently dropped the reference
+(`F101` survived only because its tokens tied). `extractor._find_cross_refs` now
+clusters the action band into visual lines first (the same `_LINE_TOL` tolerance
+the rest of the extractor uses) and scans each line in reading order. With the
+fix, `P053.related_faults = [F100, F101, F109]` and all 6 links resolve. The gold
+was also completed (P053 added as a graded parameter with its fault links), which
+is why the *live* pack's honest score against the more-complete gold is **96.9**
+(the gap was slightly undercounted before). The **regenerated staged candidate**
+(`tools/drive-pack-extract/candidates/powerflex_525/`) grades **A / 100**; the
+live pack reaches 100 only on a separate, human-gated **re-promotion** — the
+grader measures, humans promote.
 
 **durapulse_gs10 (D, 60, INCOMPLETE)** — **cannot be scientifically graded as-is**,
 for two independent reasons the rubric correctly exposes:

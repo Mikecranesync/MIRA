@@ -78,6 +78,14 @@ def _load_pack_dict(pack_id: str, packs_dir: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _sanitized_command(argv: list[str]) -> str:
+    """Reproducible command string for the committed report: reduce any
+    ABSOLUTE local path (the manual, an out dir) to its basename so a
+    machine-specific temp path never lands in a committed artifact. Repo-relative
+    paths (``grading/grade.py``, ``gold/<family>/gold.json``) are left readable."""
+    return " ".join(Path(tok).name if Path(tok).is_absolute() else tok for tok in argv)
+
+
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Grade a drive pack against its source PDF.")
     parser.add_argument("--pack", required=True, help="pack_id, e.g. powerflex_525")
@@ -135,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
         manual_path=manual_path,
         manual_sha256=manual_sha256,
         extractor_commit=_extractor_commit(),
-        extraction_command=" ".join(sys.argv),
+        extraction_command=_sanitized_command(sys.argv),
         residuals=args.residual,
         generated_at=args.generated_at,
     )

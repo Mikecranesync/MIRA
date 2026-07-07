@@ -4,7 +4,7 @@
   "manufacturer": "Rockwell Automation",
   "series": "PowerFlex 525",
   "schema_version": 2,
-  "overall_score": 96.9,
+  "overall_score": 100.0,
   "grade": "A",
   "grade_meaning": "Production-ready after human sign-off",
   "incomplete": false,
@@ -30,11 +30,9 @@
       "key": "fault_field_accuracy",
       "name": "Fault field accuracy",
       "weight": 20,
-      "score": 90.0,
+      "score": 100.0,
       "gradeable": true,
-      "findings": [
-        "fault->param link accuracy: 4/6 gold links present"
-      ]
+      "findings": []
     },
     {
       "key": "parameter_coverage_precision",
@@ -56,11 +54,9 @@
       "key": "relationship_accuracy",
       "name": "Relationship accuracy",
       "weight": 10,
-      "score": 83.3,
+      "score": 100.0,
       "gradeable": true,
-      "findings": [
-        "relationship accuracy: 10/12 gold relationship items correct"
-      ]
+      "findings": []
     },
     {
       "key": "citation_fidelity",
@@ -97,9 +93,9 @@
     }
   ],
   "critical_failures": [],
-  "fault_recall": 96.3,
+  "fault_recall": 100.0,
   "fault_precision": 100.0,
-  "parameter_recall": 97.3,
+  "parameter_recall": 100.0,
   "diagnostic_critical_precision": 100.0,
   "citation_accuracy": 100.0,
   "missing_evidence": [],

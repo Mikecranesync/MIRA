@@ -507,6 +507,24 @@ def test_pf40_cross_ref_span_containment_attributes_to_the_right_fault():
             assert "A205" not in f["references_parameters"]
 
 
+def test_find_cross_refs_tolerates_subpixel_top_jitter():
+    """Regression for the real PF525 F100/F109 -> P053 miss: pdfplumber renders
+    the bracket token ~0.0003pt ABOVE its own id on one physical line, so a raw
+    global (top, x0) sort puts "[Reset" BEFORE "P053" and the "id immediately
+    followed by [" adjacency check silently drops the reference. Line-clustering
+    (the fix) absorbs that jitter — the same tolerance the rest of the extractor
+    already uses (`_LINE_TOL`). The old global-sort implementation returned []
+    for exactly these words."""
+    words = [
+        {"text": "Set", "x0": 444.4, "top": 177.279},
+        {"text": "P053", "x0": 456.0, "top": 177.2793},  # id renders 0.0003pt LOWER
+        {"text": "[Reset", "x0": 473.1, "top": 177.279},  # its bracket, 0.0003pt HIGHER
+        {"text": "To", "x0": 494.7, "top": 177.279},
+        {"text": "Defalts]", "x0": 503.5, "top": 177.279},
+    ]
+    assert [ref for ref, _top in extractor._find_cross_refs(words)] == ["P053"]
+
+
 def test_pf40_labeled_value_dialect_and_unit_extraction():
     """A201 uses the PF40 label dialect: 'Values Default: 5.0 Secs' (Values on
     Default) + bare 'Min/Max: 0.1/60.0 Secs', with the unit extracted+normalized."""

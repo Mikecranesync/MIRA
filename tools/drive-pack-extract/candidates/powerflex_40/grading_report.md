@@ -1,6 +1,6 @@
 # Drive-Pack Grading Report — powerflex_40
 
-Generated: unknown
+Generated: 2026-07-07
 
 ## Trust status: **BETA**
 
@@ -19,10 +19,10 @@ Generated: unknown
 - bench-verified live_decode: False
 
 ## Source manual
-- path: C:\Users\hharp\AppData\Local\Temp\claude\C--Users-hharp-Documents-GitHub-MIRA\adea5d16-6d63-4379-8f05-3c0e6ab273eb\scratchpad\pf40\22b-um001.pdf
+- path: 22b-um001.pdf
 - sha256: 15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9
-- extractor commit: bdd4b715
-- extraction command: `grading/grade.py --pack powerflex_40 --gold gold/powerflex_40/gold.json --manual C:/Users/hharp/AppData/Local/Temp/claude/C--Users-hharp-Documents-GitHub-MIRA/adea5d16-6d63-4379-8f05-3c0e6ab273eb/scratchpad/pf40/22b-um001.pdf --out C:/Users/hharp/AppData/Local/Temp/gr_pf40`
+- extractor commit: 974e79df
+- extraction command: `grading/grade.py --pack powerflex_40 --gold gold/powerflex_40/gold.json --manual 22b-um001.pdf --generated-at 2026-07-07 --out candidates/powerflex_40`
 
 ## Layers
 ### schema — PASS

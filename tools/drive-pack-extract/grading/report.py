@@ -196,7 +196,11 @@ def build_report(
             "schema_version": pack_dict.get("schema_version"),
         },
         "manual": {
-            "path": str(manual_path) if manual_path else None,
+            # Store the FILENAME only, never the absolute local path — the
+            # report is a committed, reproducible artifact and a machine-specific
+            # temp path (the manual is never committed) is both noise and a
+            # (minor) local-path leak. The manual's identity is its name + sha256.
+            "path": Path(str(manual_path)).name if manual_path else None,
             "sha256": manual_sha256,
         },
         "extractor_commit": extractor_commit,

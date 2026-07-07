@@ -614,6 +614,22 @@
       "related_faults": [],
       "page": 66,
       "diagnostic_critical": false
+    },
+    {
+      "parameter_id": "P053",
+      "name": "Reset To Defaults",
+      "range": null,
+      "default": "0",
+      "unit": null,
+      "related_parameters": [],
+      "related_faults": [
+        "F100",
+        "F101",
+        "F109"
+      ],
+      "page": 66,
+      "diagnostic_critical": false,
+      "note": "already carried via the page-66 Basic Program grid; the fault-checksum family (F100/F101/F109) action 'Set P053 [Reset To Defaults] to 2/3' inverts to P053.related_faults once the extractor's cross-ref detector is jitter-tolerant (previously only F101 resolved)"
     }
   ],
   "edge_cases": [
