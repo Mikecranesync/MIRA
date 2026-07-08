@@ -193,6 +193,13 @@ jobs:
         # clarification invariants. Hermetic, no LLM, runs in <1s.
         run: pytest tests/bot_regression.py -v
 
+      - name: Deploy-target guard (staging deploy must rebuild the bot)
+        # Guards the 2026-07-08 staging drift (#2557): deploy-staging.yml's
+        # default TARGETS must include mira-bot-telegram and must name only
+        # real services in docker-compose.staging-vps.yml. Hermetic (reads two
+        # repo files), pyyaml already installed above.
+        run: pytest tests/test_deploy_staging_targets.py -v
+
       - name: Connector framework tests
         # mira-connectors/ is its own package (pyproject pythonpath=["."]) — run from
         # inside it. Hermetic mock connectors (Maximo/Ignition/SAP/MaintainX/PI), no
