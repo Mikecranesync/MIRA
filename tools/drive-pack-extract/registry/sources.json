@@ -38,7 +38,7 @@
       "manual_id": "automationdirect_gs10_gs10m-um",
       "vendor": "AutomationDirect",
       "product_family": "DURApulse GS10",
-      "applicable_drive_models": ["GS10", "GS-10"],
+      "applicable_drive_models": ["GS10", "GS-10", "GS11N", "GS13N"],
       "manual_title": "DURApulse GS10 Series AC Drive User Manual",
       "publication": "GS10M-UM",
       "revision": null,

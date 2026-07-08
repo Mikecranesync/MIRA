@@ -4,10 +4,10 @@
   "family": {
     "manufacturer": "AutomationDirect",
     "series": "DURApulse GS10",
-    "aliases": ["GS10", "DURApulse", "GS-10"]
+    "aliases": ["GS10", "DURApulse", "GS-10", "GS11N", "GS13N"]
   },
   "nameplate": {
-    "match_keywords": ["GS10", "DURAPULSE", "GS-10"]
+    "match_keywords": ["GS10", "DURAPULSE", "GS-10", "GS11N", "GS13N"]
   },
   "live_decode": {
     "status_bits": {
