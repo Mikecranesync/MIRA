@@ -1,3 +1,26 @@
+# Hot Cache — 2026-07-03 — Namespace filing cabinet (PR #2410)
+
+Branch `feat/namespace-filing-cabinet` (worktree `~/MIRA-wt/namespace-filing-cabinet`), rebased on
+`origin/main` @ `9a3c6f80`, PR #2410 open with **auto-merge armed**. Goal: /namespace = filing
+cabinet for pics/docs/other uploads; **verified documents kept forever**.
+- Migration `mira-hub/db/migrations/059_namespace_filing_cabinet.sql`: reconciles the undeclared
+  `content` BYTEA drift (routes used it since Phase 2 Slice 1; no migration defined it — confirmed
+  on dev Neon), adds `upload_id` link to `hub_uploads`, `verified/verified_at/verified_by`, and a
+  BEFORE DELETE trigger blocking deletion of verified rows. Applied to dev Neon; proven on ephemeral
+  postgres:16 (027→059, idempotent re-run, trigger raises).
+- POST files route now **parks original bytes for every upload** (PDFs included — previously the raw
+  PDF was discarded after chunking; image-only PDFs were lost with a 500 → now 201 + warning, file kept).
+- New `POST /api/namespace/files/[id]/verify` gated `namespace.admin`; DELETE → 409
+  `verified_retention`; raster images (png/jpeg/gif/webp, NOT svg) serve inline; Files panel =
+  Pictures thumbnail grid + Documents & Files table with verify-shield toggle + verified badge.
+- Tree/files dedupe one-row-per-document via `upload_id`. 44 namespace vitest green, full hub
+  1003/1003, live-proven on local dev hub (fresh tenant, upload→verify→409). Screenshots in
+  `docs/promo-screenshots/2026-07-03_namespace-filing-cabinet_*.png`. VERSION → 3.57.0.
+- Known follow-ups (in PR body): auto-verify on review-queue chunk approval; pre-existing
+  stale-closure in page.tsx `loadFiles` (panel needs node re-select after upload).
+
+---
+
 # Hot Cache — 2026-06-25 — Hub one-board Command Center status view
 
 Branch `feat/hub-one-board-task3` off `origin/main` @ `fbca9071`. Task 3 wires the one-board Hub UI on
