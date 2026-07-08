@@ -23,7 +23,13 @@ from shared.contextualization_intake import (
     submit_file_to_hub_folder,
 )
 from shared.conversation_logger import log_turn, measure_ms
-from shared.drive_packs import answer_question, list_packs, resolve_pack
+from shared.drive_packs import (
+    answer_question,
+    list_packs,
+    load_pack,
+    resolve_pack,
+    resolve_service_pack,
+)
 from shared.engine import Supervisor
 from shared.identity.service import get_identity_service
 from shared.integrations.atlas_cmms import AtlasCMMSClient
@@ -201,6 +207,27 @@ def _resize_for_vision(image_bytes: bytes) -> bytes:
     buf = _io.BytesIO()
     img.save(buf, format="JPEG", quality=85)
     return buf.getvalue()
+
+
+def _format_drive_pack_reply(result) -> str:
+    """Render a ``DrivePackAnswer`` the same way for every surface that asks a
+    drive pack a question (the ``/drive`` command and the nameplate-photo fast
+    path below) — plain text, inline ``[Source: ...]`` citations, and the
+    metadata footer a technician can use to see this was pack-grounded, not a
+    guess."""
+    reply = result.answer
+    if result.citations:
+        reply += "\n\nSources:"
+        for c in result.citations:
+            page = f" p.{c['page']}" if c.get("page") else ""
+            reply += f"\n[Source: {c['doc']}{page}]"
+    reply += (
+        f"\n\nsource: {result.answer_source} · pack: {result.pack_id} · "
+        f"fallback_used: {str(result.fallback_used).lower()} · "
+        f"live_telemetry: {str(result.live_telemetry).lower()} · "
+        f"read_only: {str(result.read_only).lower()}"
+    )
+    return reply
 
 
 def _intake_meta(update: Update) -> tuple[str, str, str]:
@@ -473,6 +500,73 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(f"MIRA error: {exc}")
 
 
+async def _try_nameplate_drive_pack_reply(
+    vision_bytes: bytes,
+    caption: str,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> bool:
+    """Nameplate-photo -> drive-pack fast path (additive, read-only, no LLM
+    fallback). Reuses ``engine.nameplate`` (the same ``NameplateWorker`` the
+    Supervisor's own nameplate flow uses) purely to EXTRACT fields, then
+    resolves them via ``resolve_service_pack`` — the surface-agnostic
+    service-pack contract. Never touches ``engine.process``/the FSM.
+
+    Only short-circuits the normal photo dispatch (returns ``True``) when the
+    nameplate signal confidently identifies a LIVE drive pack, or names a
+    recognized manufacturer the technician explicitly asked a question about.
+    Any photo whose nameplate extraction doesn't identify a known drive family
+    falls through unchanged to the existing engine-dispatched photo flow
+    (returns ``False``) — non-nameplate photos are untouched by this path.
+    """
+    photo_b64 = base64.b64encode(vision_bytes).decode()
+    try:
+        fields = await engine.nameplate.extract(photo_b64)
+    except Exception as e:
+        logger.warning("nameplate drive-pack extract failed: %s", e)
+        return False
+
+    if not isinstance(fields, dict) or "parse_error" in fields:
+        return False
+
+    resolution = resolve_service_pack(nameplate=fields)
+    has_question = bool(caption) and caption != DEFAULT_PHOTO_CAPTION
+
+    if resolution.pack_id is not None:
+        pack = load_pack(resolution.pack_id)
+        if has_question:
+            async with typing_action(context, update.effective_chat.id):
+                result = await asyncio.to_thread(answer_question, resolution.pack_id, caption)
+            await update.message.reply_text(_format_drive_pack_reply(result))
+            return True
+
+        # No question yet — confirm identification, invite one. Per
+        # `.claude/rules/train-before-deploy.md` / session discipline this
+        # session does NOT stash pack_id for a text follow-up turn: the only
+        # per-chat conversation state is the engine's private SQLite
+        # `conversation_state` (`_load_state`/`_save_state`, no public
+        # accessor) and no clean migration-free per-chat KV exists outside
+        # it. Deferred — see the PR description / runbook note.
+        await update.message.reply_text(
+            f"\U0001f4c7 Identified: {pack.family.manufacturer} {pack.family.series} "
+            f'— ask me about it, e.g. "what does CE10 mean?"'
+        )
+        return True
+
+    if has_question and "recognized manufacturer" in resolution.reason:
+        # A drive nameplate was clearly present (we recognized the
+        # manufacturer) but the model/series didn't resolve to a live pack —
+        # give the honest, actionable refusal instead of guessing or silently
+        # falling through to a generic engine answer.
+        await update.message.reply_text(resolution.reason)
+        return True
+
+    # Nothing recognized at all (not a drive nameplate, or extraction was too
+    # thin to tell) — let the existing engine-dispatched photo flow handle it,
+    # unchanged.
+    return False
+
+
 async def _dispatch_single_photo(
     raw_bytes: bytes,
     vision_bytes: bytes,
@@ -485,7 +579,16 @@ async def _dispatch_single_photo(
     Unchanged behaviour from the previous in-memory PHOTO_BUFFER. Single
     photos still need work-order / FSM context, so they bypass the durable
     queue and run synchronously while we still hold the original Update.
+
+    Before any of that: try the read-only nameplate -> drive-pack fast path
+    (see ``_try_nameplate_drive_pack_reply``). It only claims the turn when it
+    confidently resolves a LIVE service pack (or a recognized-manufacturer
+    refusal) from the nameplate — everything else falls through to the
+    unchanged engine dispatch below.
     """
+    if await _try_nameplate_drive_pack_reply(vision_bytes, caption, update, context):
+        return
+
     chat_id = str(update.effective_chat.id)
     await update.message.reply_text("Analyzing equipment...")
     update_dict = update.to_dict()
@@ -887,23 +990,11 @@ async def drive_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         async with typing_action(context, update.effective_chat.id):
             result = await asyncio.to_thread(answer_question, pack.pack_id, question)
-        reply = result.answer
-        if result.citations:
-            reply += "\n\nSources:"
-            for c in result.citations:
-                page = f" p.{c['page']}" if c.get("page") else ""
-                reply += f"\n[Source: {c['doc']}{page}]"
-        reply += (
-            f"\n\nsource: {result.answer_source} · pack: {result.pack_id} · "
-            f"fallback_used: {str(result.fallback_used).lower()} · "
-            f"live_telemetry: {str(result.live_telemetry).lower()} · "
-            f"read_only: {str(result.read_only).lower()}"
-        )
         # Plain text (no parse_mode): the pack answer contains OEM text with
         # unbalanced brackets ("[COM1 Time-out Detection]", "[Source: ...]") that
         # Telegram's legacy Markdown parser rejects with a 400 "can't parse
         # entities" — send it verbatim instead.
-        await update.message.reply_text(reply)
+        await update.message.reply_text(_format_drive_pack_reply(result))
     except Exception as e:
         logger.error("Drive command error: %s", e)
         await update.message.reply_text(f"MIRA error: {e}")
