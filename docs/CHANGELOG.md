@@ -2,6 +2,13 @@
 
 
 
+### v3.117.0 (2026-07-08) - feat(eval): on-demand drive-pack gap report (distillation flywheel, Phase 3a)
+- **Why:** Phases 1–2 capture (v3.115.0) and label (v3.116.0) every drive-pack turn; unmatched turns (`meta.matched=false`) are real technician questions the pack couldn't answer. Phase 3a turns those into the **worklist** — exactly the report that would have surfaced "what is P01.24?" before we added it by hand. On-demand file delivery (Mike's choice), not a Telegram digest. `.claude/plans/use-avail-skills-to-functional-wave.md` Phase 3.
+- **Tool:** new `tools/drive-pack-extract/gap_report.py` — reads unmatched drive-pack turns from `conversation_eval` (uses the migration-013 partial index), groups per `pack_id` + per parameter/fault token, ranks by ask-frequency then recency, and writes `gap_report.{md,json}`. Run: `NEON_DATABASE_URL=… python tools/drive-pack-extract/gap_report.py [--limit N] [--out DIR]`.
+- **Read-only.** Never writes `conversation_eval`, never touches live packs. Token regex kept in sync with `ask._PARAM_ID_RE` (copied, not imported — matches how the standalone `tools/` scripts avoid pulling the drive_packs package). Pure aggregation + thin psycopg2 `main()` glue, mirroring `registry/drain_build_requests.py`.
+- **Deferred to Phase 3b (separate gated PR):** turning a recurring gap into a `drive_pack_update` `ai_suggestions` proposal (touches the Hub seam + `drive_pack_update` contract; never auto-promoted).
+- **Tests:** `tools/drive-pack-extract/tests/test_gap_report.py` (+10: token extraction, per-pack/per-token grouping + ranking, no-token bucket, sample cap, missing pack_id, empty, JSON round-trip, MD rendering + pipe-escaping) — auto-collected by the CI offline-tests job. 10 green; ruff clean.
+
 ### v3.116.0 (2026-07-08) - feat(eval): auto-scorer/labeler for conversation_eval (distillation flywheel, Phase 2)
 - **Why:** Phase 1 (v3.115.0) started capturing every drive-pack Q&A into `conversation_eval`; those rows had no signal yet. Phase 2 builds the never-built scorer (`docs/specs/bot-eval-loop-spec.md`, spec'd but only the logger/migration ever shipped) so the flywheel can rank gaps and verified answers. `.claude/plans/use-avail-skills-to-functional-wave.md` Phase 2.
 - **Deterministic drive-pack labeler (no LLM):** `mira-crawler/tasks/eval_scorer.py::label_drive_pack_row` — a `matched` pack answer is grounded-by-construction → `auto_score=5`; an unmatched turn is a correct decline (no fabrication, no-guess intact) → `auto_score=3`, with the knowledge-gap signal carried by `meta.matched=false` for the Phase 3 gap report (not by the score). Cheaper + more reliable than judging these.
