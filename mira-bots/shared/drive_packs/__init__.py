@@ -18,6 +18,7 @@ contract), ``build_cards`` + ``DiagnosticCard``/``Citation``/``TemplateReader``
 from __future__ import annotations
 
 from .ask import DrivePackAnswer, answer_question
+from .asset_identity import AssetIdentityPacket, build_asset_identity
 from .cards import Citation, DiagnosticCard, TemplateReader, build_cards
 from .loader import list_packs, load_pack, resolve_pack
 from .nameplate import resolve_pack_from_vision
@@ -38,6 +39,7 @@ from .schema import (
 )
 
 __all__ = [
+    "AssetIdentityPacket",
     "Citation",
     "DiagnosticCard",
     "DrivePack",
@@ -56,6 +58,7 @@ __all__ = [
     "TemplateReader",
     "ValueMeaning",
     "answer_question",
+    "build_asset_identity",
     "build_cards",
     "list_packs",
     "load_pack",
