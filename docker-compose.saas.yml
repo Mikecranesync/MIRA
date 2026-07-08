@@ -455,7 +455,10 @@ services:
       - mira-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9998/tika"]
+      # apache/tika image has no curl/wget — probe the Tika port with a bash
+      # /dev/tcp TCP connect (image is Ubuntu-based, so /bin/bash exists).
+      # The old curl test always failed → false "(unhealthy)" while Tika worked.
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/127.0.0.1/9998'"]
       interval: 30s
       timeout: 10s
       retries: 3
