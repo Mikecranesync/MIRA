@@ -231,6 +231,64 @@ def _format_drive_pack_reply(result) -> str:
     return reply
 
 
+def _drive_pack_meta(entry: str, result, resolution=None) -> dict:
+    """The ``conversation_eval.meta`` payload for a drive-pack turn — the labels
+    the distillation flywheel mines. ``matched=False`` is the knowledge-gap
+    signal (e.g. a technician asking about an undocumented parameter)."""
+    d = result.to_dict()
+    meta = {
+        "surface": "drive_pack",
+        "entry": entry,  # "nameplate" | "followup" | "command"
+        "pack_id": d.get("pack_id"),
+        "matched": d.get("matched"),
+        "matched_kind": d.get("matched_kind"),
+        "answer_source": d.get("answer_source"),
+        "resolved": d.get("resolved"),
+    }
+    if resolution is not None:
+        try:
+            r = resolution.to_dict()
+            meta["resolution"] = {
+                "source": r.get("source"),
+                "confidence": r.get("confidence"),
+                "ambiguous": r.get("ambiguous"),
+            }
+        except Exception:  # noqa: BLE001 — resolution meta is best-effort
+            pass
+    return meta
+
+
+async def _capture_drive_pack_turn(
+    *,
+    question: str,
+    result,
+    update: Update,
+    entry: str,
+    resolution=None,
+) -> None:
+    """Capture a drive-pack Q&A turn into ``conversation_eval`` (fail-open, via
+    the shared ``log_turn``). Called AFTER the reply is sent, so it never delays
+    the technician's answer. Carries drive-pack labels (pack_id / matched /
+    matched_kind) so the flywheel can surface knowledge gaps per pack. No LLM,
+    no behaviour change to the reply."""
+    try:
+        _uploader, _captured_at, tenant_id = _intake_meta(update)
+    except Exception:  # noqa: BLE001 — tenant is optional metadata
+        tenant_id = ""
+    meta = _drive_pack_meta(entry, result, resolution)
+    if tenant_id:
+        meta["tenant_id"] = tenant_id
+    await log_turn(
+        chat_id=str(update.effective_chat.id),
+        user_message=question or "",
+        bot_response=_format_drive_pack_reply(result),
+        source="telegram",
+        intent="drive_pack",
+        has_citations=bool(result.citations),
+        meta=meta,
+    )
+
+
 def _intake_meta(update: Update) -> tuple[str, str, str]:
     """(uploader_id, captured_at_iso, tenant_id) from a Telegram update.
 
@@ -509,6 +567,7 @@ async def _try_drive_pack_followup(
     await update.message.reply_text(reply)
     _set_drive_context(chat_id, pack_id)  # refresh TTL on continued use
     await _maybe_send_voice(update, context, chat_id, reply)
+    await _capture_drive_pack_turn(question=text, result=result, update=update, entry="followup")
     return True
 
 
@@ -679,6 +738,13 @@ async def _try_nameplate_drive_pack_reply(
             async with typing_action(context, update.effective_chat.id):
                 result = await asyncio.to_thread(answer_question, resolution.pack_id, caption)
             await update.message.reply_text(_format_drive_pack_reply(result))
+            await _capture_drive_pack_turn(
+                question=caption,
+                result=result,
+                update=update,
+                entry="nameplate",
+                resolution=resolution,
+            )
             return True
 
         # No question yet — confirm identification, invite one. Per
@@ -1140,6 +1206,9 @@ async def drive_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Telegram's legacy Markdown parser rejects with a 400 "can't parse
         # entities" — send it verbatim instead.
         await update.message.reply_text(_format_drive_pack_reply(result))
+        await _capture_drive_pack_turn(
+            question=question, result=result, update=update, entry="command"
+        )
     except Exception as e:
         logger.error("Drive command error: %s", e)
         await update.message.reply_text(f"MIRA error: {e}")
