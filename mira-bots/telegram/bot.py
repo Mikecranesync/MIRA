@@ -25,6 +25,7 @@ from shared.contextualization_intake import (
 from shared.conversation_logger import log_turn, measure_ms
 from shared.drive_packs import (
     answer_question,
+    build_asset_identity,
     list_packs,
     load_pack,
     resolve_pack,
@@ -530,6 +531,25 @@ async def _try_nameplate_drive_pack_reply(
         return False
 
     resolution = resolve_service_pack(nameplate=fields)
+
+    # Phase 2 (#2561): preserve the extracted nameplate as a structured Asset
+    # Identity Packet (raw OCR kept separate from interpreted fields; nothing
+    # fabricated) instead of discarding the fields after routing. Persisting it
+    # to a Hub review record is Phase 3 — here it is built + audit-logged so the
+    # evidence is not silently dropped. The full raw_text lives on the packet
+    # (for a future Hub sink); the log line stays a concise identity summary.
+    identity = build_asset_identity(nameplate=fields, resolution=resolution)
+    logger.info(
+        "nameplate asset identity: manufacturer=%s model=%s sku_prefix=%s "
+        "serial=%s candidate_pack=%s approval=%s",
+        identity.manufacturer,
+        identity.model_number,
+        identity.sku_prefix,
+        identity.serial_number,
+        identity.candidate_pack_id,
+        identity.approval_status,
+    )
+
     has_question = bool(caption) and caption != DEFAULT_PHOTO_CAPTION
 
     if resolution.pack_id is not None:

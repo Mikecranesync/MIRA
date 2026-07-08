@@ -2,9 +2,12 @@
 
 Sends a photo (base64-encoded JPEG) to the inference router or, on failure,
 to a local Open WebUI vision model. Returns a structured dict of nameplate
-fields: manufacturer, model, serial, voltage, fla, hp, frequency, rpm.
+fields: manufacturer, model, serial, voltage, fla, hp, frequency, rpm — plus
+"raw_text", the verbatim untruncated OCR/model response preserved as evidence
+for downstream consumers.
 
-Missing fields are set to None; total parse failure returns {"parse_error": ...}.
+Missing fields are set to None; total parse failure returns {"parse_error": ...,
+"raw_text": ...}.
 """
 
 from __future__ import annotations
@@ -106,7 +109,9 @@ class NameplateWorker:
         """Extract nameplate fields from a base64-encoded JPEG.
 
         Returns a dict with keys from NAMEPLATE_FIELDS (values are strings or
-        None).  On total failure returns {"parse_error": "<reason>"}.
+        None) plus "raw_text" — the verbatim, untruncated model response (or
+        None if no raw text is available).  On total failure returns
+        {"parse_error": "<reason>", "raw_text": ...}.
         """
         messages = [
             {
@@ -129,14 +134,18 @@ class NameplateWorker:
         raw_text = await self._call_inference(messages)
         if not raw_text:
             logger.warning("nameplate_worker: all inference paths returned empty response")
-            return {"parse_error": "empty response from all inference backends"}
+            return {"parse_error": "empty response from all inference backends", "raw_text": None}
 
         parsed = _try_parse(raw_text)
         if parsed is None:
             logger.warning("nameplate_worker: could not parse JSON from response: %.120s", raw_text)
-            return {"parse_error": f"unparseable response: {raw_text[:120]}"}
+            return {
+                "parse_error": f"unparseable response: {raw_text[:120]}",
+                "raw_text": raw_text,
+            }
 
         result = _normalise(parsed)
+        result["raw_text"] = raw_text
         logger.info(
             "nameplate_worker: extracted fields — manufacturer=%s model=%s serial=%s",
             result.get("manufacturer"),
