@@ -461,6 +461,29 @@ services:
     depends_on:
       - mira-hub
 
+  # ── OCR / text extraction — staging mirror of prod `mira-tika`
+  #    (docker-compose.saas.yml). Stock pinned image, no build. Lets the
+  #    crawler needs_ocr → OCR drain path (#2539/#2548) be proven in staging.
+  #    Staging SHARES the prod host, so it publishes on 9999 (prod's mira-tika
+  #    owns host 9998); the container port stays 9998. Isolated on staging-net.
+  #    Host-safe staging value: TIKA_URL=http://localhost:9999 in factorylm/stg.
+  mira-tika:
+    image: apache/tika:3.1.0.0-full
+    container_name: stg-mira-tika
+    mem_limit: 1g
+    memswap_limit: 1g
+    ports:
+      - "127.0.0.1:9999:9998"
+    networks:
+      - staging-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9998/tika"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 networks:
   staging-net:
     name: staging-net
