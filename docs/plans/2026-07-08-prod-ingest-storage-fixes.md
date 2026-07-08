@@ -106,6 +106,32 @@ cloud provider.
 - **Priority: secondary** — this blocks the *knowledge-graph* write, not the
   citable `knowledge_entries` chunk (that's Root Cause 1). Fix after the embedder.
 
+### RC2 deeper diagnosis (2026-07-08, read-only on prod) — CONFIRMED secondary, cause still anomalous
+- **Confirmed independent of citability:** a clean ingest run stored the chunk
+  (`KB ingest: 1 chunks stored`, entry `done`) **while** `upsert_entity` errored —
+  so the KG failure does NOT roll back the KB chunk (`step_kb_ingest` and `step_kg`
+  are separate calls / transactions). OCR→citable is unaffected.
+- **Reproducible:** every ingest of the test doc logs
+  `upsert_entity equipment/… failed: no unique or exclusion constraint matching the
+  ON CONFLICT specification`, then the remaining 3 KG upserts hit
+  `current transaction is aborted` (all 4 share one connection; the first aborts it).
+- **Ruled out by inspection (so the cause is genuinely anomalous):**
+  index `kg_entities_tenant_type_name_key` is `valid=true, ready=true, unique=true`,
+  **non-partial**, on exactly `(tenant_id, entity_type, name)`; `kg_entities` is a
+  plain table (`relkind=r`), **no** partitioning/view, **0** duplicate
+  `(tenant_id,entity_type,name)` groups, **0** user triggers, **0** rewrite rules,
+  **no** schema shadowing (single `public.kg_entities`; unqualified name resolves to
+  it; `search_path="$user",public`); `kg_writer` shares `store`'s engine
+  (`NEON_DATABASE_URL`) — the same DB where the chunk stored fine. By every static
+  check `ON CONFLICT (tenant_id, entity_type, name)` should infer this index.
+- **Next step (needs a live repro — do NOT guess-fix prod):** reproduce the exact
+  `INSERT … ON CONFLICT` on **staging** (Neon `factorylm/stg`) with `SET ROLE` matching
+  the app; capture the true failure. Likely candidates left: a collation/opclass subtlety
+  on the text columns, or a client-side statement issue. **Robust fix regardless of cause:**
+  promote the index to a named constraint (`ALTER TABLE … ADD CONSTRAINT … UNIQUE USING INDEX
+  kg_entities_tenant_type_name_key`) via `apply-migrations.yml` and switch the code to
+  `ON CONFLICT ON CONSTRAINT …` (named target sidesteps inference). Verify on staging before prod.
+
 ## Verification (re-run the #2562 Phase-1 proof once the embedder is back)
 1. Restore the embedder (Option A now, B/C later).
 2. Re-run the exact OCR proof (synthetic image-only PDF → queue one → `kb_growth`).
