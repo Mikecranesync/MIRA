@@ -1,7 +1,23 @@
 # Prod ingest storage fixes — embedder (Bravo Ollama) + KG upsert `ON CONFLICT`
 
-**Status:** PLAN (grounded in the 2026-07-08 OCR proof, issue #2562 Phase 1).
-**Owner decision required:** embedder architecture (see Root Cause 1 options).
+**Status:** Root Cause 1 **RESOLVED 2026-07-08** (see "Resolution" below); Root Cause 2 (KG upsert) still open.
+**Original owner decision (embedder architecture) — settled:** keep Bravo, hardened via a rebind (not a resource fix).
+
+## Resolution (2026-07-08) — Root Cause 1 was a BIND issue, not "down/starved"
+
+The scan corrected the diagnosis: Bravo is healthy (16 GB RAM, 77% free, **0 swap**, up 10 days) and **Ollama was already running with `nomic-embed-text` pulled** — it was simply **bound to `127.0.0.1:11434`** (no `OLLAMA_HOST` set), so the prod VPS's `100.86.236.11:11434` request was refused. Fix: added `OLLAMA_HOST=100.86.236.11:11434` to the brew launchd plist (`~/Library/LaunchAgents/homebrew.mxcl.ollama.plist`, backed up first) + reloaded via `launchctl bootout/bootstrap`. Now `lsof` shows `TCP 100.86.236.11:11434 (LISTEN)` and the prod VPS reaches it (sees `nomic-embed-text:latest`).
+
+**Re-ran the #2562 OCR proof e2e → PASS:** `OCR (Tika) 224 chars → KB ingest: 1 chunk stored → done`; `knowledge_entries` row `669f7a86-…` has a 768-dim embedding and is content-searchable (`MIRAOCRPROOF*` → 1 hit). Memory safe (VPS min-avail 2061 MB; embedding compute runs on Bravo). **OCR is now citable end-to-end on prod.**
+
+**Caveats / hardening follow-ups (still worth doing):**
+- **Boot-order:** binding to the specific Tailscale IP means if Bravo reboots before Tailscale is up, `ollama serve` can't bind that IP and fails to start. Add a login/health watchdog, or fall back to `0.0.0.0` if this bites.
+- **`brew services restart` may regenerate the plist** and drop `OLLAMA_HOST` — re-apply if that happens (the pre-existing custom env vars suggest manual plist edits have persisted here so far).
+- **Localhost on Bravo:** Ollama no longer answers on `127.0.0.1:11434` (bound to the tailnet IP only) — if any local Bravo process needs it, switch to `0.0.0.0`.
+- **Add monitoring** so a silent Ollama death (or wrong bind after an update) is caught, rather than surfacing weeks later as empty KB growth.
+
+---
+
+_Original plan (diagnosis + options) preserved below for the record; Root Cause 1 sections describe the pre-fix state._
 
 ## Summary
 
