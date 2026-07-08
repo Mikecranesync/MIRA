@@ -401,6 +401,117 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+# --- Per-chat drive-pack context (bot-local; NOT the engine's FSM state) -----
+# When a nameplate photo or /drive identifies a drive, remember its pack for
+# this chat so a TEXT follow-up ("what is P09.03?") continues in that drive's
+# context and answers from the pack — the multi-turn continuity that the
+# photo-only fast path deliberately deferred. Deliberately a DEDICATED table,
+# separate from the engine's `conversation_state` (no engine.py change), keyed
+# by chat_id with a freshness TTL so a stale context can't hijack a new topic.
+_DRIVE_CONTEXT_TTL_S = 1800  # 30 min
+
+# A drive-question signal in free text: a dotted parameter id (P09.03 / P01.24),
+# a bare Pxxx(x) parameter, or explicit drive vocabulary. Used only to decide
+# whether an ALREADY-established drive conversation should stay in-pack when the
+# pack itself didn't match the question (e.g. an undocumented parameter → the
+# pack's honest "not documented" answer, not the enrollment wall).
+_DRIVE_QUESTION_RE = re.compile(
+    r"\b[A-Za-z]\d{2}\.\d{2}\b"
+    r"|\bP\d{3,4}\b"
+    r"|\b(parameter|param|fault|error\s*code|alarm|trip|keypad|register)\b",
+    re.IGNORECASE,
+)
+
+
+def _drive_context_db():
+    import sqlite3
+
+    db_path = os.environ.get("MIRA_DB_PATH", "/data/mira.db")
+    db = sqlite3.connect(db_path)
+    db.execute("PRAGMA journal_mode=WAL")
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS telegram_drive_context ("
+        "chat_id TEXT PRIMARY KEY, pack_id TEXT NOT NULL, updated_at REAL NOT NULL)"
+    )
+    return db
+
+
+def _set_drive_context(chat_id: str, pack_id: str) -> None:
+    """Remember (or refresh) the drive pack this chat is talking about."""
+    import time as _time
+
+    try:
+        db = _drive_context_db()
+        db.execute(
+            "INSERT INTO telegram_drive_context (chat_id, pack_id, updated_at) "
+            "VALUES (?, ?, ?) ON CONFLICT(chat_id) DO UPDATE SET "
+            "pack_id = excluded.pack_id, updated_at = excluded.updated_at",
+            (chat_id, pack_id, _time.time()),
+        )
+        db.commit()
+        db.close()
+    except Exception as exc:  # never let a context write break the turn
+        logger.warning("drive-context write failed: %s", exc)
+
+
+def _get_drive_context(chat_id: str, max_age_s: int | None = None) -> str | None:
+    """The pack this chat is talking about, if identified within the TTL.
+
+    ``max_age_s`` defaults to the module ``_DRIVE_CONTEXT_TTL_S`` read at call
+    time (not bound at definition), so the freshness window stays overridable.
+    """
+    import time as _time
+
+    max_age = _DRIVE_CONTEXT_TTL_S if max_age_s is None else max_age_s
+    try:
+        db = _drive_context_db()
+        row = db.execute(
+            "SELECT pack_id, updated_at FROM telegram_drive_context WHERE chat_id = ?",
+            (chat_id,),
+        ).fetchone()
+        db.close()
+    except Exception:
+        return None
+    if not row:
+        return None
+    pack_id, updated_at = row
+    if (_time.time() - float(updated_at)) > max_age:
+        return None
+    return pack_id
+
+
+async def _try_drive_pack_followup(
+    text: str,
+    chat_id: str,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> bool:
+    """Continue an established drive conversation on a TEXT turn (read-only,
+    cited, no LLM, un-gated — same public-OEM contract as the photo fast path).
+
+    Only claims the turn (returns ``True``) when this chat recently identified a
+    drive AND the text either maps to the pack's content OR reads like a drive
+    question. Everything else falls through (returns ``False``) to the normal,
+    enrollment-gated engine dispatch — so general chat, FSM confirmations
+    ("yes"/"no"), and non-drive questions are untouched.
+    """
+    if not text:
+        return False
+    pack_id = _get_drive_context(chat_id)
+    if not pack_id:
+        return False
+
+    result = await asyncio.to_thread(answer_question, pack_id, text)
+    if not (result.matched or _DRIVE_QUESTION_RE.search(text)):
+        return False
+
+    reply = _format_drive_pack_reply(result)
+    await update.message.reply_text(reply)
+    _set_drive_context(chat_id, pack_id)  # refresh TTL on continued use
+    await _maybe_send_voice(update, context, chat_id, reply)
+    return True
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Route text messages through the GSD engine via ChatAdapter."""
     import time as _time
@@ -408,6 +519,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     chat_id = str(update.effective_chat.id)
     logger.info("Received from %s: %s", update.effective_user.first_name, text)
+
+    # Drive-conversation continuity: a text follow-up after a nameplate / /drive
+    # identification answers from that pack directly (read-only, cited, un-gated)
+    # instead of dropping to the enrollment-gated engine path with no memory of
+    # the drive. Falls through unchanged for non-drive text.
+    if await _try_drive_pack_followup(text, chat_id, update, context):
+        return
     if any(kw in text.lower() for kw in FAULT_KEYWORDS):
         await update.message.reply_text("Diagnosing...")
     normalized = await adapter.normalize_incoming(update.to_dict())
@@ -554,6 +672,9 @@ async def _try_nameplate_drive_pack_reply(
 
     if resolution.pack_id is not None:
         pack = load_pack(resolution.pack_id)
+        # Remember this drive for the chat so a TEXT follow-up (a parameter or
+        # fault question with no photo) continues in this pack's context.
+        _set_drive_context(str(update.effective_chat.id), resolution.pack_id)
         if has_question:
             async with typing_action(context, update.effective_chat.id):
                 result = await asyncio.to_thread(answer_question, resolution.pack_id, caption)
@@ -1006,6 +1127,10 @@ async def drive_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"I don't have a drive pack matching '{pack_alias}'. Available: {packs}."
         )
         return
+
+    # Remember this drive for the chat so a plain-text follow-up continues in
+    # this pack's context (no need to repeat "/drive gs10 ..." every turn).
+    _set_drive_context(str(update.effective_chat.id), pack.pack_id)
 
     try:
         async with typing_action(context, update.effective_chat.id):

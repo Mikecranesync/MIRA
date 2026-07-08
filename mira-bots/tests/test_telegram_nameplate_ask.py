@@ -103,11 +103,10 @@ async def test_manufacturer_only_nameplate_with_question_asks_for_model():
 @pytest.mark.asyncio
 async def test_gs10_nameplate_no_caption_confirms_identification_without_engine():
     """No question caption yet: confirm the identified drive and invite a
-    question. NOTE: this repo has no clean, migration-free, engine.py-free
-    per-chat KV to stash the resolved pack_id for a LATER text turn — see the
-    module docstring in ``_try_nameplate_drive_pack_reply`` and the PR report.
-    A follow-up-TEXT-message flow is deferred; this only covers the
-    single-message (caption-on-the-photo) case."""
+    question. The drive is also remembered for the chat (bot-local
+    ``telegram_drive_context``) so a LATER text turn continues in this pack's
+    context — see ``test_telegram_drive_followup.py`` for that continuity path.
+    This test covers the single-message (caption-on-the-photo) confirmation."""
     update, context = _mock_photo_update_context()
     fields = {"manufacturer": "AutomationDirect", "model": "GS10", "serial": None}
     with _mock_nameplate_extract(fields):

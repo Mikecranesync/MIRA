@@ -100,24 +100,29 @@ auto-fill the UNS context and bypass the confirmation gate." It was **rejected**
 direct, and requires no controversial UNS clobbering. The engine-level backstop remains
 deferred; a future session may explore it for Slack/email chats, but not for Telegram.
 
-## Deferred: multi-turn "scan nameplate, ask later"
+## Multi-turn continuity (shipped)
 
-A natural follow-up is a two-turn flow: scan nameplate (turn 1, stash result), ask a question
-(turn 2, retrieve stashed pack). It was deferred because:
+A nameplate photo (or `/drive`) that identifies a drive now **remembers it for the chat**, so a
+later plain-**text** follow-up ("what is P09.03?") continues in that pack's context — no need to
+re-attach a photo or repeat `/drive gs10 …`.
 
-- The only per-chat state today is the engine's private SQLite `conversation_state` table,
-  keyed by `chat_id`. Adding a `pack_id` column to that table requires a migration, but more
-  importantly requires **stashing state inside `engine.py`** — modifying the engine's FSM to
-  remember a pack choice across turns, which is forbidden by `train-before-deploy.md`
-  (the engine is the troubleshooting **reasoner**, not a dumb state bag).
+- **Store:** a dedicated bot-local SQLite table `telegram_drive_context(chat_id, pack_id, updated_at)`
+  — separate from the engine's private `conversation_state`, so there is **no `engine.py` change**
+  (the engine stays the reasoner, not a state bag, per `train-before-deploy.md`). A 30-minute TTL
+  keeps a stale context from hijacking a new topic.
+- **Write:** `_set_drive_context` fires when `_try_nameplate_drive_pack_reply` or `drive_command`
+  resolves a pack.
+- **Read:** `handle_message` calls `_try_drive_pack_followup` **before** the engine dispatch. If the
+  chat has a fresh drive context AND the text maps to the pack (or reads like a drive question — a
+  parameter id / fault code / drive vocabulary), it answers from the pack: read-only, cited, and
+  **un-gated** (same public-OEM contract as the photo path, so an unenrolled tester isn't dropped to
+  the enrollment wall mid-conversation). Everything else — general chat, FSM `yes`/`no`
+  confirmations, non-drive questions — falls through unchanged to the normal gated dispatch.
+- **No-guess preserved:** an undocumented parameter (e.g. `P01.24`, which the GS10 pack doesn't yet
+  carry) gets the pack's honest "not documented, here's what is covered" answer — never a fabricated
+  value. Expanding pack parameter coverage from the manual is separate content work.
 
-- The **correct architecture:** a dedicated, per-chat non-engine KV store, keyed by `chat_id`,
-  separate from the engine's conversation state. Something like `per_chat_context.py` or
-  a simple Redis cache. No engine changes needed.
-
-**Today (shipped slice):** single-message flow only. Nameplate photo **must** have a caption
-with a question; confirmation+later-answer is not yet wired. A later session should implement
-the dedicated per-chat KV and wire it into `bot.py`'s photo handler without touching `engine.py`.
+Tests: `mira-bots/tests/test_telegram_drive_followup.py`.
 
 ## Next service-pack onboarding checklist
 
