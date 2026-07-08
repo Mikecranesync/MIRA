@@ -114,12 +114,13 @@ def test_p0903_keypad_citation_is_real_manual_page():
 
 def test_shipped_pack_now_loads_as_v2_with_p0903_content():
     """The shipped pack (mira-bots/shared/drive_packs/packs/durapulse_gs10/pack.json)
-    has been upgraded to schema_version 2 with the same P09.03 parameter +
-    keypad content this fixture carries — the fixture's content is now live,
-    not just a standalone test double."""
+    is schema_version 2 and carries the P09.03 parameter + keypad content this
+    fixture describes. It has since gained the grounded P01 Basic-Parameter set,
+    so this asserts P09.03 is PRESENT (not the only parameter) — survives
+    future expansion."""
     pack = load_pack("durapulse_gs10")
     assert pack.schema_version == 2
-    assert len(pack.parameters) == 1
-    assert pack.parameters[0].parameter_id == "P09.03"
-    assert len(pack.keypad_navigation) == 1
-    assert pack.keypad_navigation[0].parameter_id == "P09.03"
+    param_ids = {p.parameter_id for p in pack.parameters}
+    assert "P09.03" in param_ids
+    keypad_ids = {k.parameter_id for k in pack.keypad_navigation}
+    assert "P09.03" in keypad_ids
