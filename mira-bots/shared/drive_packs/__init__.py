@@ -9,9 +9,10 @@ the schema and
 product decision.
 
 Public API: ``load_pack``, ``list_packs``, ``resolve_pack`` (``loader.py``),
-``resolve_pack_from_vision`` (``nameplate.py``), ``build_cards`` +
-``DiagnosticCard``/``Citation``/``TemplateReader`` (``cards.py``) plus the
-frozen dataclasses in ``schema.py``.
+``resolve_pack_from_vision`` (``nameplate.py``), ``resolve_service_pack`` +
+``PackResolution`` (``resolver.py`` — the surface-agnostic resolution
+contract), ``build_cards`` + ``DiagnosticCard``/``Citation``/``TemplateReader``
+(``cards.py``) plus the frozen dataclasses in ``schema.py``.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from .ask import DrivePackAnswer, answer_question
 from .cards import Citation, DiagnosticCard, TemplateReader, build_cards
 from .loader import list_packs, load_pack, resolve_pack
 from .nameplate import resolve_pack_from_vision
+from .resolver import PackResolution, resolve_service_pack
 from .schema import (
     DrivePack,
     Envelope,
@@ -47,6 +49,7 @@ __all__ = [
     "Knowledge",
     "LiveDecode",
     "Nameplate",
+    "PackResolution",
     "ParameterCard",
     "Provenance",
     "RegisterEntry",
@@ -58,4 +61,5 @@ __all__ = [
     "load_pack",
     "resolve_pack",
     "resolve_pack_from_vision",
+    "resolve_service_pack",
 ]
