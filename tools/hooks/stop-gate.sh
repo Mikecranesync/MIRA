@@ -6,8 +6,12 @@
 # hooks run deterministically while CLAUDE.md rules are advisory.
 #
 # Gates (only fire if relevant files changed):
-#   1. ruff check on changed *.py
-#   2. shellcheck (warning) on changed *.sh
+#   1. ruff check on changed *.py — REGRESSION-ONLY (tools/hooks/lint_regression.py):
+#      blocks only on violations this session introduced, not lint debt the file
+#      already had. (2026-07-06 insights report: this gate previously ran
+#      whole-file `ruff check`, which looped forever on a pre-existing E741 in a
+#      foreign/abandoned-rebase commit the session never touched.)
+#   2. shellcheck (warning) on changed *.sh — same regression-only treatment.
 #   3. mira-hub `npm run build` if any mira-hub/* changed and node_modules present
 #
 # Per-session escape hatch: MIRA_SKIP_STOP_GATE=1 (use sparingly; defeats the purpose).
@@ -41,22 +45,24 @@ CHANGED_HUB=$(echo "$CHANGED" | grep '^mira-hub/' || true)
 
 FAILS=()
 
-# Gate 1: ruff on changed Python files.
-# --force-exclude honours pyproject.toml's [tool.ruff] exclude list even when
-# files are passed explicitly (Jython under ignition/webdev/ would otherwise
-# be linted as if it were CPython and fail with F821 on system.*/java.io.*).
+# Gate 1: ruff on changed Python files — regression-only (new violations vs
+# MERGE_BASE), not whole-file. --force-exclude honours pyproject.toml's
+# [tool.ruff] exclude list even when files are passed explicitly (Jython under
+# ignition/webdev/ would otherwise be linted as if it were CPython and fail
+# with F821 on system.*/java.io.*) — lint_regression.py's ruff_violations()
+# always passes it.
 if [ -n "$CHANGED_PY" ] && command -v ruff >/dev/null 2>&1; then
   # shellcheck disable=SC2086
-  if ! ruff check --force-exclude $CHANGED_PY --quiet >/tmp/mira-stop-ruff.log 2>&1; then
-    FAILS+=("ruff failed (cat /tmp/mira-stop-ruff.log)")
+  if ! python3 tools/hooks/lint_regression.py ruff "$MERGE_BASE" $CHANGED_PY >/tmp/mira-stop-ruff.log 2>&1; then
+    FAILS+=("new ruff violations this session (cat /tmp/mira-stop-ruff.log)")
   fi
 fi
 
-# Gate 2: shellcheck on changed shell scripts.
+# Gate 2: shellcheck on changed shell scripts — regression-only, same rationale.
 if [ -n "$CHANGED_SH" ] && command -v shellcheck >/dev/null 2>&1; then
   # shellcheck disable=SC2086
-  if ! shellcheck -S warning $CHANGED_SH >/tmp/mira-stop-shellcheck.log 2>&1; then
-    FAILS+=("shellcheck failed (cat /tmp/mira-stop-shellcheck.log)")
+  if ! python3 tools/hooks/lint_regression.py shellcheck "$MERGE_BASE" $CHANGED_SH >/tmp/mira-stop-shellcheck.log 2>&1; then
+    FAILS+=("new shellcheck violations this session (cat /tmp/mira-stop-shellcheck.log)")
   fi
 fi
 
