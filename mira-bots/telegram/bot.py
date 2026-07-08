@@ -739,7 +739,11 @@ async def _try_nameplate_drive_pack_reply(
                 result = await asyncio.to_thread(answer_question, resolution.pack_id, caption)
             await update.message.reply_text(_format_drive_pack_reply(result))
             await _capture_drive_pack_turn(
-                question=caption, result=result, update=update, entry="nameplate", resolution=resolution
+                question=caption,
+                result=result,
+                update=update,
+                entry="nameplate",
+                resolution=resolution,
             )
             return True
 

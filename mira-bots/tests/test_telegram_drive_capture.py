@@ -108,9 +108,7 @@ async def test_capture_never_raises_on_bad_update(monkeypatch):
     broken = MagicMock()
     broken.effective_chat.id = 1
     # _intake_meta may blow up on a bare mock — capture must swallow it.
-    await bot._capture_drive_pack_turn(
-        question="q", result=result, update=broken, entry="command"
-    )
+    await bot._capture_drive_pack_turn(question="q", result=result, update=broken, entry="command")
 
 
 @pytest.mark.asyncio
