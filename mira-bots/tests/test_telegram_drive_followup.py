@@ -77,16 +77,36 @@ async def test_text_followup_answers_covered_parameter_from_pack(drive_db):
 
 
 @pytest.mark.asyncio
-async def test_text_followup_uncovered_parameter_stays_in_context_not_invite_wall(drive_db):
-    """The reported bug: 'what is P01.24?' (a real GS10 param NOT in the pack).
-    It must stay in the GS10 conversation with the pack's HONEST 'not
-    documented' answer — never fabricate it, and never drop to the invite-only
-    enrollment wall."""
+async def test_text_followup_answers_p0124_now_that_it_is_in_the_pack(drive_db):
+    """The originally-reported turn: 'what is P01.24?' as a text follow-up. The
+    GS10 pack now documents P01.24 (grounded from the manual), so it answers
+    with real, cited content — never the invite-only wall."""
     bot._set_drive_context("12345", "durapulse_gs10")
     update, context = _mock_update_context()
 
     handled = await bot._try_drive_pack_followup(
         "What is p01.24? What is it used for?", "12345", update, context
+    )
+
+    assert handled is True
+    text = update.message.reply_text.call_args[0][0]
+    assert "invite-only" not in text.lower()
+    assert "P01.24" in text
+    assert "s-curve" in text.lower()  # the real, grounded meaning
+    assert "[Source:" in text
+    assert "source: drive_pack" in text
+
+
+@pytest.mark.asyncio
+async def test_text_followup_uncovered_parameter_stays_in_context_not_invite_wall(drive_db):
+    """A still-uncovered parameter (P02.00 is not in the pack) must stay in the
+    GS10 conversation with the pack's HONEST 'not documented' answer — never
+    fabricate it, and never drop to the invite-only enrollment wall."""
+    bot._set_drive_context("12345", "durapulse_gs10")
+    update, context = _mock_update_context()
+
+    handled = await bot._try_drive_pack_followup(
+        "What is P02.00? What is it used for?", "12345", update, context
     )
 
     assert handled is True  # claimed the turn — did NOT fall through to the gate
