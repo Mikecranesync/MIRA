@@ -86,15 +86,15 @@ MIRA_HEALER_ALLOW_ROOT=1
 # Morning Brief: daily 5 AM ET (9 UTC)
 # Sends overnight WO summary via Telegram (dana)
 # -e flags pass Doppler secrets into the container without a full restart
-0 9 * * *     cd \$MIRA_DIR && doppler run -- docker exec -e TELEGRAM_CHAT_ID -e TELEGRAM_BOT_TOKEN mira-bot-telegram $PYTHON /app/agents/morning_brief_runner.py >> \$LOG_DIR/morning_brief.log 2>&1
+0 9 * * *     cd \$MIRA_DIR && doppler run -- docker exec -e TELEGRAM_CHAT_ID -e TELEGRAM_BOT_TOKEN -e TELEGRAM_ALERT_CHAT_ID -e TELEGRAM_ALERT_BOT_TOKEN mira-bot-telegram $PYTHON /app/agents/morning_brief_runner.py >> \$LOG_DIR/morning_brief.log 2>&1
 
 # PM Escalation: daily 8 AM ET (12 UTC)
 # Flags overdue preventive maintenance tasks
-0 12 * * *    cd \$MIRA_DIR && doppler run -- docker exec -e TELEGRAM_CHAT_ID -e TELEGRAM_BOT_TOKEN mira-bot-telegram $PYTHON /app/agents/pm_escalation_runner.py >> \$LOG_DIR/pm_escalation.log 2>&1
+0 12 * * *    cd \$MIRA_DIR && doppler run -- docker exec -e TELEGRAM_CHAT_ID -e TELEGRAM_BOT_TOKEN -e TELEGRAM_ALERT_CHAT_ID -e TELEGRAM_ALERT_BOT_TOKEN mira-bot-telegram $PYTHON /app/agents/pm_escalation_runner.py >> \$LOG_DIR/pm_escalation.log 2>&1
 
 # Safety Alert sweep: daily 6 AM ET (10 UTC)
 # Checks for safety keyword triggers in recent conversations
-0 10 * * *    cd \$MIRA_DIR && doppler run -- docker exec -e TELEGRAM_CHAT_ID -e TELEGRAM_BOT_TOKEN mira-bot-telegram $PYTHON /app/agents/safety_alert_runner.py >> \$LOG_DIR/safety_alert.log 2>&1
+0 10 * * *    cd \$MIRA_DIR && doppler run -- docker exec -e TELEGRAM_CHAT_ID -e TELEGRAM_BOT_TOKEN -e TELEGRAM_ALERT_CHAT_ID -e TELEGRAM_ALERT_BOT_TOKEN mira-bot-telegram $PYTHON /app/agents/safety_alert_runner.py >> \$LOG_DIR/safety_alert.log 2>&1
 
 # ─── QUALITY ASSURANCE ──────────────────────────────────────────────────────
 

@@ -25,8 +25,18 @@ logging.basicConfig(
 logger = logging.getLogger("morning_brief")
 
 DB_PATH     = Path(os.environ.get("MIRA_DB_PATH", "/data/mira.db"))
-BOT_TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-CHAT_ID     = os.environ.get("TELEGRAM_CHAT_ID", os.environ.get("TELEGRAM_REPORT_CHAT_ID", ""))
+# Ops brief goes to the alert bot (staging), never the prod user-facing bot
+# @FactoryLM_Diagnose. Falls back to the old prod vars only if unwired.
+BOT_TOKEN   = (
+    os.environ.get("TELEGRAM_ALERT_BOT_TOKEN")
+    or os.environ.get("TELEGRAM_BOT_TOKEN_STG")
+    or os.environ.get("TELEGRAM_BOT_TOKEN", "")
+)
+CHAT_ID     = (
+    os.environ.get("TELEGRAM_ALERT_CHAT_ID")
+    or os.environ.get("TELEGRAM_CHAT_ID")
+    or os.environ.get("TELEGRAM_REPORT_CHAT_ID", "")
+)
 
 
 # ── Data queries ──────────────────────────────────────────────────────────────
@@ -96,7 +106,7 @@ def build_brief(data: dict) -> str:
     safety_note  = "acknowledged ✓" if safety_count > 0 else "none"
 
     lines = [
-        f"Good morning, Mike.",
+        "Good morning, Mike.",
         "",
         f"*Overnight Summary* ({date_str})",
         f"• {wo_count} work order{'s' if wo_count != 1 else ''} created",

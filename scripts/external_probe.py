@@ -80,10 +80,17 @@ def probe_one(label: str, url: str, expect: set[int], timeout: float = 15.0) -> 
 
 
 def send_telegram_alert(message: str, dry_run: bool = False) -> bool:
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    chat = os.environ.get("TELEGRAM_CHAT_ID")
+    # Ops alerts go to the dedicated alert bot (staging), NEVER the prod
+    # user-facing bot @FactoryLM_Diagnose. Falls back to the old prod vars only
+    # if the alert channel isn't configured, so this stays inert until wired.
+    token = (
+        os.environ.get("TELEGRAM_ALERT_BOT_TOKEN")
+        or os.environ.get("TELEGRAM_BOT_TOKEN_STG")
+        or os.environ.get("TELEGRAM_BOT_TOKEN")
+    )
+    chat = os.environ.get("TELEGRAM_ALERT_CHAT_ID") or os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat:
-        logger.warning("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set — alert suppressed")
+        logger.warning("no alert token/chat set (TELEGRAM_ALERT_BOT_TOKEN/…CHAT_ID) — alert suppressed")
         return False
     if dry_run:
         logger.info("DRY-RUN telegram alert:\n%s", message)
