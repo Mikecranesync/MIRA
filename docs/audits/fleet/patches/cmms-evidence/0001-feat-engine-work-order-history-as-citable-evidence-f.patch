@@ -1,0 +1,514 @@
+From 740bef93b218a7624e3e9a3da6bf0e2e3e9b840e Mon Sep 17 00:00:00 2001
+From: Claude Fleet <fleet@factorylm.local>
+Date: Sat, 4 Jul 2026 11:52:29 -0400
+Subject: [PATCH] feat(engine): work-order history as citable evidence
+ (flag-gated)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Atlas CMMS is deployed but the diagnostic path never read work-order
+history as evidence (audit issue #10). Add shared/wo_evidence.py:
+recall_work_orders() reads Hub NeonDB work_orders JOIN cmms_equipment
+(the store hub_neon.py writes to; TEXT-family tenant_id, matched by
+uns_path descendant or equipment_number ILIKE) via psycopg2 +
+asyncio.to_thread — same pattern as ctx_enrichment.py.
+
+Engine injects a citable WORK ORDER HISTORY block for the CONFIRMED
+asset in _call_with_correction, next to the existing kg/live/ctx
+blocks. Gated by ENABLE_WO_EVIDENCE (default OFF); any miss (no
+tenant/asset, DB unreachable, timeout) returns "" — flag-off and
+error paths are byte-for-byte unchanged. Offline tests mock the DB.
+---
+ mira-bots/shared/engine.py      |  90 +++++++++++-
+ mira-bots/shared/wo_evidence.py | 106 ++++++++++++++
+ tests/test_wo_evidence.py       | 242 ++++++++++++++++++++++++++++++++
+ 3 files changed, 437 insertions(+), 1 deletion(-)
+ create mode 100644 mira-bots/shared/wo_evidence.py
+ create mode 100644 tests/test_wo_evidence.py
+
+diff --git a/mira-bots/shared/engine.py b/mira-bots/shared/engine.py
+index a988dd4a..3b2b57a7 100644
+--- a/mira-bots/shared/engine.py
++++ b/mira-bots/shared/engine.py
+@@ -108,6 +108,7 @@ from .telemetry import flush as tl_flush
+ from .telemetry import span as tl_span
+ from .telemetry import trace as tl_trace
+ from .uns_resolver import UNSResolution, resolve_uns_path, resolve_uns_path_multi
++from .wo_evidence import recall_work_orders as _recall_work_orders
+ from .workers.nameplate_worker import NameplateWorker
+ from .workers.photo_ingest_worker import propose_from_nameplate
+ from .workers.plc_worker import PLCWorker
+@@ -377,6 +378,16 @@ _LIVE_DATA_TIMEOUT_S = float(os.getenv("MIRA_LIVE_DATA_TIMEOUT_S", "2.0"))
+ _CTX_SIGNALS_ENABLED = os.getenv("MIRA_CTX_SIGNALS_ENABLED", "0") == "1"
+ _CTX_SIGNALS_TIMEOUT_S = float(os.getenv("MIRA_CTX_SIGNALS_TIMEOUT_S", "3.0"))
+ 
++# Work-order-history evidence (additive, OFF by default). When on, the diagnosis
++# path recalls recent CMMS work orders for the CONFIRMED asset from the Hub
++# NeonDB (work_orders JOIN cmms_equipment — the store hub_neon.py writes to) and
++# injects them as CITABLE evidence lines. Best-effort: "" on any miss (flag off,
++# no tenant/asset, NeonDB unreachable) — the diagnosis path is byte-for-byte
++# unchanged. Same wrap-don't-rewrite pattern as the ctx-signals block.
++_WO_EVIDENCE_ENABLED = os.getenv("ENABLE_WO_EVIDENCE", "0") == "1"
++_WO_EVIDENCE_TIMEOUT_S = float(os.getenv("MIRA_WO_EVIDENCE_TIMEOUT_S", "3.0"))
++_WO_EVIDENCE_LIMIT = int(os.getenv("MIRA_WO_EVIDENCE_LIMIT", "5"))
++
+ # Single-shot kiosk mode (e.g. the Ignition Ask-MIRA panel). When on, MIRA
+ # answers directly (see rag_worker DIRECT_ANSWER_SYSTEM_PROMPT) AND the engine
+ # suppresses interactive follow-ups that a kiosk operator can't act on: the
+@@ -3562,6 +3573,82 @@ class Supervisor:
+         lines.append("---\n")
+         return "\n".join(lines)
+ 
++    # ------------------------------------------------------------------
++    # Work-order-history evidence (additive, flag-gated)
++    # ------------------------------------------------------------------
++    async def _build_wo_evidence_context(self, state: dict, tenant_id: str | None) -> str:
++        """Best-effort CMMS work-order history for the confirmed asset.
++
++        Recalls recent Hub work_orders rows for the asset and renders them as a
++        labeled, CITABLE evidence block for prompt injection. Returns "" on any
++        miss (flag off, no tenant/asset, DB unreachable). Never raises -- the
++        diagnosis path must be unaffected when the CMMS store is absent.
++        """
++        if not _WO_EVIDENCE_ENABLED:
++            return ""
++        if not tenant_id:
++            return ""
++        asset = (state.get("asset_identified") or "").strip()
++        if not asset:
++            return ""
++        try:
++            try:
++                uns_path = resolve_uns_path(asset).uns_path or ""
++            except Exception:  # noqa: BLE001 -- fall back to name-only matching
++                uns_path = ""
++            ltree_prefix = uns_path.replace("/", ".") if uns_path else None
++            wos = await asyncio.wait_for(
++                _recall_work_orders(
++                    tenant_id, asset, uns_path=ltree_prefix, limit=_WO_EVIDENCE_LIMIT
++                ),
++                timeout=_WO_EVIDENCE_TIMEOUT_S,
++            )
++            return self._format_wo_evidence(wos)
++        except Exception as exc:  # noqa: BLE001 -- enrichment must never block diagnosis
++            logger.debug("WO_EVIDENCE miss asset=%r: %s", asset, exc)
++            return ""
++
++    @staticmethod
++    def _format_wo_evidence(wos: list[dict]) -> str:
++        """Render work-order rows as a compact citable-evidence block.
++
++        Defensive: tolerates missing/extra keys and never raises. Only fields
++        read from the DB are rendered -- nothing is invented. Empty input
++        returns "".
++        """
++        if not wos:
++            return ""
++        lines: list[str] = []
++        for w in wos[:_WO_EVIDENCE_LIMIT]:
++            if not isinstance(w, dict):
++                continue
++            num = str(w.get("work_order_number") or "").strip()
++            title = str(w.get("title") or "").strip()
++            if not num or not title:
++                continue
++            created = w.get("created_at")
++            date = ""
++            try:
++                date = created.date().isoformat() if created else ""
++            except AttributeError:
++                date = str(created)[:10] if created else ""
++            status = str(w.get("status") or "").strip()
++            head = f"  [WO {num}]" + (f" {date}" if date else "")
++            if status:
++                head += f" ({status})"
++            head += f": {title}"
++            detail = str(w.get("resolution") or w.get("fault_description") or "").strip()
++            if detail:
++                head += f" -- {detail[:200]}"
++            lines.append(head)
++        if not lines:
++            return ""
++        return (
++            "\n--- WORK ORDER HISTORY (CMMS; citable -- cite as [WO <number>]) ---\n"
++            + "\n".join(lines)
++            + "\n---\n"
++        )
++
+     async def _call_with_correction(
+         self,
+         message: str,
+@@ -3586,7 +3673,8 @@ class Supervisor:
+         kg_context = await self._build_kg_context(state, tenant_id)
+         live_context = await self._build_live_data_context(state)
+         ctx_signals_context = await self._build_ctx_signals_context(state, tenant_id)
+-        extra_context = kg_context + live_context + ctx_signals_context
++        wo_evidence_context = await self._build_wo_evidence_context(state, tenant_id)
++        extra_context = kg_context + live_context + ctx_signals_context + wo_evidence_context
+ 
+         for attempt in range(max_attempts):
+             try:
+diff --git a/mira-bots/shared/wo_evidence.py b/mira-bots/shared/wo_evidence.py
+new file mode 100644
+index 00000000..911cfc9e
+--- /dev/null
++++ b/mira-bots/shared/wo_evidence.py
+@@ -0,0 +1,106 @@
++"""wo_evidence — recall CMMS work-order history for a confirmed asset as citable evidence.
++
++Reads the Hub NeonDB ``work_orders`` JOIN ``cmms_equipment`` tables (same store
++``integrations/hub_neon.py`` writes to; CMMS family — ``tenant_id`` is TEXT, no
++uuid cast). Equipment is matched by UNS-path descendant (``uns_path <@ prefix``)
++or by ``equipment_number ILIKE`` the asset label, mirroring hub_neon's lookup.
++
++Called from engine.py's _build_wo_evidence_context() (flag ENABLE_WO_EVIDENCE,
++default off). psycopg2 is synchronous, so ``recall_work_orders`` wraps the query
++in ``asyncio.to_thread`` — same pattern as ctx_enrichment.py. Never raises —
++returns [] on any miss (unset NEON_DATABASE_URL, DB error, no rows). Every
++returned field comes straight from a table column; nothing is invented.
++"""
++
++from __future__ import annotations
++
++import asyncio
++import logging
++import os
++
++import psycopg2
++
++logger = logging.getLogger("mira-gsd")
++
++_WO_FIELDS = (
++    "work_order_number",
++    "title",
++    "status",
++    "priority",
++    "created_at",
++    "closed_at",
++    "fault_description",
++    "resolution",
++)
++
++
++def _fetch_work_orders(
++    tenant_id: str,
++    asset_name: str,
++    ltree_prefix: str | None,
++    limit: int,
++) -> list[dict]:
++    """Synchronous Hub-NeonDB read. Returns [] on any miss; never raises."""
++    db_url = os.getenv("NEON_DATABASE_URL", "")
++    if not db_url or not tenant_id or not asset_name:
++        return []
++    match_clauses = ["eq.equipment_number ILIKE %s"]
++    params: list = [tenant_id, tenant_id, f"%{asset_name[:80]}%"]
++    if ltree_prefix:
++        match_clauses.append("(eq.uns_path IS NOT NULL AND eq.uns_path <@ %s::ltree)")
++        params.append(ltree_prefix)
++    params.append(limit)
++    sql = f"""
++        SELECT wo.work_order_number,
++               wo.title,
++               wo.status::text,
++               wo.priority::text,
++               wo.created_at,
++               wo.closed_at,
++               wo.fault_description,
++               wo.resolution
++          FROM work_orders wo
++          JOIN cmms_equipment eq ON eq.id = wo.equipment_id
++         WHERE wo.tenant_id = %s
++           AND eq.tenant_id = %s
++           AND ({" OR ".join(match_clauses)})
++         ORDER BY wo.created_at DESC
++         LIMIT %s
++    """
++    try:
++        conn = psycopg2.connect(db_url)
++        with conn:
++            with conn.cursor() as cur:
++                cur.execute(sql, params)
++                rows = cur.fetchall()
++        conn.close()
++        return [dict(zip(_WO_FIELDS, row)) for row in rows]
++    except Exception as exc:  # noqa: BLE001 -- evidence recall must never block diagnosis
++        logger.debug(
++            "wo_evidence miss tenant=%r asset=%r prefix=%r: %s",
++            tenant_id,
++            asset_name,
++            ltree_prefix,
++            exc,
++        )
++        return []
++
++
++async def recall_work_orders(
++    tenant_id: str,
++    asset_name: str,
++    uns_path: str | None = None,
++    limit: int = 5,
++) -> list[dict]:
++    """Recent work orders for the confirmed asset, newest first. Never raises.
++
++    ``uns_path`` is a dot-notation ltree prefix (e.g. ``enterprise.site1.line2``);
++    optional — when absent the match falls back to equipment_number ILIKE only.
++    """
++    try:
++        return await asyncio.to_thread(
++            _fetch_work_orders, tenant_id, asset_name, uns_path or None, limit
++        )
++    except Exception as exc:  # noqa: BLE001
++        logger.debug("wo_evidence recall failed asset=%r: %s", asset_name, exc)
++        return []
+diff --git a/tests/test_wo_evidence.py b/tests/test_wo_evidence.py
+new file mode 100644
+index 00000000..3d9296fd
+--- /dev/null
++++ b/tests/test_wo_evidence.py
+@@ -0,0 +1,242 @@
++"""Work-order-history evidence for the diagnosis path (audit issue #10).
++
++The engine recalls recent CMMS work orders (Hub NeonDB work_orders JOIN
++cmms_equipment) for the CONFIRMED asset and injects them as a citable evidence
++block. Flag-gated (ENABLE_WO_EVIDENCE, default off) and fail-safe: any miss
++(flag off, no tenant/asset, DB error) returns "" and the diagnosis path is
++untouched. Offline -- psycopg2 and the recall coroutine are mocked.
++"""
++
++from __future__ import annotations
++
++import sys
++from datetime import datetime, timezone
++
++sys.path.insert(0, "mira-bots")
++
++from unittest.mock import AsyncMock, MagicMock, patch
++
++import pytest
++from shared import wo_evidence
++from shared.engine import Supervisor
++
++_ROWS = [
++    (
++        "MIRA-20260601-AB12",
++        "GS10 VFD trips OC on start",
++        "closed",
++        "high",
++        datetime(2026, 6, 1, 14, 30, tzinfo=timezone.utc),
++        datetime(2026, 6, 2, 9, 0, tzinfo=timezone.utc),
++        "Trips overcurrent immediately on start command",
++        "Replaced cooling fan; cleared F0004",
++    ),
++    (
++        "MIRA-20260520-CD34",
++        "Conveyor motor overtemp",
++        "open",
++        "medium",
++        datetime(2026, 5, 20, 8, 0, tzinfo=timezone.utc),
++        None,
++        "Motor housing hot to touch",
++        None,
++    ),
++]
++
++_WOS = [dict(zip(wo_evidence._WO_FIELDS, r)) for r in _ROWS]
++
++
++def _mock_conn(rows):
++    conn = MagicMock()
++    cur = MagicMock()
++    cur.fetchall.return_value = rows
++    conn.cursor.return_value.__enter__.return_value = cur
++    return conn, cur
++
++
++# ── shared.wo_evidence.recall_work_orders (mock DB) ────────────────────────
++
++
++@pytest.mark.asyncio
++async def test_recall_maps_rows_to_dicts(monkeypatch):
++    monkeypatch.setenv("NEON_DATABASE_URL", "postgresql://test")
++    conn, cur = _mock_conn(_ROWS)
++    with patch("shared.wo_evidence.psycopg2.connect", return_value=conn):
++        wos = await wo_evidence.recall_work_orders("tenant-1", "PowerFlex 525", limit=5)
++    assert len(wos) == 2
++    assert wos[0]["work_order_number"] == "MIRA-20260601-AB12"
++    assert wos[0]["resolution"] == "Replaced cooling fan; cleared F0004"
++    assert wos[1]["status"] == "open"
++    # tenant is bound as a parameter (both wo + eq sides), never interpolated
++    params = cur.execute.call_args.args[1]
++    assert params[0] == "tenant-1" and params[1] == "tenant-1"
++    assert params[-1] == 5
++
++
++@pytest.mark.asyncio
++async def test_recall_includes_uns_prefix_param_when_given(monkeypatch):
++    monkeypatch.setenv("NEON_DATABASE_URL", "postgresql://test")
++    conn, cur = _mock_conn([])
++    with patch("shared.wo_evidence.psycopg2.connect", return_value=conn):
++        await wo_evidence.recall_work_orders(
++            "tenant-1", "PowerFlex 525", uns_path="enterprise.plant_a.line_2", limit=5
++        )
++    sql, params = cur.execute.call_args.args
++    assert "uns_path <@" in sql
++    assert "enterprise.plant_a.line_2" in params
++
++
++@pytest.mark.asyncio
++async def test_recall_empty_without_db_url(monkeypatch):
++    monkeypatch.delenv("NEON_DATABASE_URL", raising=False)
++    assert await wo_evidence.recall_work_orders("tenant-1", "PowerFlex 525") == []
++
++
++@pytest.mark.asyncio
++async def test_recall_swallows_db_errors(monkeypatch):
++    monkeypatch.setenv("NEON_DATABASE_URL", "postgresql://test")
++    with patch(
++        "shared.wo_evidence.psycopg2.connect", side_effect=RuntimeError("neon down")
++    ):
++        assert await wo_evidence.recall_work_orders("tenant-1", "PowerFlex 525") == []
++
++
++@pytest.mark.asyncio
++async def test_recall_empty_without_tenant_or_asset(monkeypatch):
++    monkeypatch.setenv("NEON_DATABASE_URL", "postgresql://test")
++    assert await wo_evidence.recall_work_orders("", "PowerFlex 525") == []
++    assert await wo_evidence.recall_work_orders("tenant-1", "") == []
++
++
++# ── engine wiring ──────────────────────────────────────────────────────────
++
++
++def _make_sv(db_path: str) -> Supervisor:
++    with patch.dict("os.environ", {"INFERENCE_BACKEND": "local"}):
++        with (
++            patch("shared.engine.VisionWorker"),
++            patch("shared.engine.NameplateWorker"),
++            patch("shared.engine.RAGWorker"),
++            patch("shared.engine.PrintWorker"),
++            patch("shared.engine.PLCWorker"),
++            patch("shared.engine.NemotronClient"),
++            patch("shared.engine.InferenceRouter"),
++        ):
++            return Supervisor(
++                db_path=db_path,
++                openwebui_url="http://localhost:3000",
++                api_key="test",
++                collection_id="test",
++            )
++
++
++def _state(asset: str | None) -> dict:
++    return {"state": "IDLE", "context": {}, "asset_identified": asset, "exchange_count": 0}
++
++
++# _format_wo_evidence
++
++
++def test_format_renders_citable_lines(tmp_path):
++    sv = _make_sv(str(tmp_path / "t.db"))
++    block = sv._format_wo_evidence(_WOS)
++    assert "WORK ORDER HISTORY" in block and "citable" in block
++    assert "[WO MIRA-20260601-AB12] 2026-06-01 (closed)" in block
++    assert "Replaced cooling fan; cleared F0004" in block
++    # open WO with no resolution falls back to fault_description
++    assert "[WO MIRA-20260520-CD34] 2026-05-20 (open)" in block
++    assert "Motor housing hot to touch" in block
++
++
++def test_format_empty_or_garbage_returns_empty(tmp_path):
++    sv = _make_sv(str(tmp_path / "t.db"))
++    assert sv._format_wo_evidence([]) == ""
++    assert sv._format_wo_evidence([{"no": "fields"}, "junk"]) == ""
++
++
++# _build_wo_evidence_context gating
++
++
++@pytest.mark.asyncio
++async def test_build_returns_empty_when_flag_off(tmp_path, monkeypatch):
++    monkeypatch.setattr("shared.engine._WO_EVIDENCE_ENABLED", False)
++    sv = _make_sv(str(tmp_path / "t.db"))
++    # recall would blow up if called -- flag off must never reach it
++    with patch(
++        "shared.engine._recall_work_orders",
++        new=AsyncMock(side_effect=AssertionError("must not be called")),
++    ):
++        assert (
++            await sv._build_wo_evidence_context(
++                _state("Allen-Bradley, PowerFlex 525"), "tenant-1"
++            )
++            == ""
++        )
++
++
++@pytest.mark.asyncio
++async def test_build_returns_empty_without_asset_or_tenant(tmp_path, monkeypatch):
++    monkeypatch.setattr("shared.engine._WO_EVIDENCE_ENABLED", True)
++    sv = _make_sv(str(tmp_path / "t.db"))
++    assert await sv._build_wo_evidence_context(_state(None), "tenant-1") == ""
++    assert (
++        await sv._build_wo_evidence_context(_state("Allen-Bradley, PowerFlex 525"), None) == ""
++    )
++
++
++@pytest.mark.asyncio
++async def test_build_returns_block_on_success(tmp_path, monkeypatch):
++    monkeypatch.setattr("shared.engine._WO_EVIDENCE_ENABLED", True)
++    sv = _make_sv(str(tmp_path / "t.db"))
++    with patch("shared.engine._recall_work_orders", new=AsyncMock(return_value=_WOS)):
++        block = await sv._build_wo_evidence_context(
++            _state("Allen-Bradley, PowerFlex 525"), "tenant-1"
++        )
++    assert "MIRA-20260601-AB12" in block and "WORK ORDER HISTORY" in block
++
++
++@pytest.mark.asyncio
++async def test_build_swallows_recall_errors(tmp_path, monkeypatch):
++    monkeypatch.setattr("shared.engine._WO_EVIDENCE_ENABLED", True)
++    sv = _make_sv(str(tmp_path / "t.db"))
++    with patch(
++        "shared.engine._recall_work_orders",
++        new=AsyncMock(side_effect=RuntimeError("neon down")),
++    ):
++        assert (
++            await sv._build_wo_evidence_context(
++                _state("Allen-Bradley, PowerFlex 525"), "tenant-1"
++            )
++            == ""
++        )
++
++
++# wiring: _call_with_correction forwards the WO block to RAGWorker.process
++
++
++@pytest.mark.asyncio
++async def test_diagnose_path_forwards_wo_evidence(tmp_path):
++    sv = _make_sv(str(tmp_path / "t.db"))
++    sv.rag.process = AsyncMock(return_value='{"reply": "ok"}')
++    sv.rag._last_sources = []
++    with patch.object(
++        sv, "_build_wo_evidence_context", new=AsyncMock(return_value="SENTINEL_WO_BLOCK")
++    ):
++        await sv._call_with_correction(
++            "why is it faulting", _state("Allen-Bradley, PowerFlex 525"), tenant_id="tenant-1"
++        )
++    assert sv.rag.process.await_count >= 1
++    assert "SENTINEL_WO_BLOCK" in sv.rag.process.await_args.kwargs.get("kg_context", "")
++
++
++@pytest.mark.asyncio
++async def test_flag_off_leaves_rag_context_untouched(tmp_path, monkeypatch):
++    """Default-off: extra_context reaching RAGWorker carries no WO block."""
++    monkeypatch.setattr("shared.engine._WO_EVIDENCE_ENABLED", False)
++    sv = _make_sv(str(tmp_path / "t.db"))
++    sv.rag.process = AsyncMock(return_value='{"reply": "ok"}')
++    sv.rag._last_sources = []
++    await sv._call_with_correction(
++        "why is it faulting", _state("Allen-Bradley, PowerFlex 525"), tenant_id="tenant-1"
++    )
++    assert "WORK ORDER HISTORY" not in sv.rag.process.await_args.kwargs.get("kg_context", "")
+-- 
+2.34.1
+

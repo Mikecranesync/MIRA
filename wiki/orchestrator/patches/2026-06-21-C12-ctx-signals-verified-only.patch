@@ -1,0 +1,78 @@
+# C12-1 — ctx_enrichment injects 'proposed' signals under an "APPROVED PLC SIGNALS" label
+#
+# Finding (Lens C, 2026-06-21, audited origin/main@f6a9bec2):
+#   commit 4c1cf00c ("P6 grounded Ask MIRA -- inject approved ctx signals into engine")
+#   wires Supervisor._build_ctx_signals_context() into the engine answer path's
+#   extra_context. It calls fetch_ctx_approved_signals(), which queries
+#   kg_entities WHERE approval_state IN ('proposed','verified'), and renders the
+#   rows via _format_ctx_signals() under a block header literally titled
+#   "--- APPROVED PLC SIGNALS ---" with NO per-row approval_state shown. So a
+#   *proposed* (unverified) signal is presented to the LLM indistinguishably from
+#   a verified one, under a header that asserts approval it does not have.
+#
+#   Why this matters (North Star: "nothing ... lies"): a deployment-consumed
+#   surface (Ignition Ask MIRA) could ground an answer on an unverified PLC-signal
+#   mapping and present it as approved. Violates the train-before-deploy doctrine
+#   (deployed answers cite VERIFIED only) and is inconsistent with the i3x external
+#   API, which A13 confirmed exposes only approval_state='verified' kg_entities.
+#
+# Severity: YELLOW-grade, NOT RED — and C stays GREEN this round because:
+#   - The path is gated behind MIRA_CTX_SIGNALS_ENABLED, default "0" (off), and
+#     nothing in compose/env sets it to 1 → INERT in production today (latent).
+#   - It is tenant-scoped (tenant_id = %s::uuid) → no cross-tenant leak.
+#   - SQL is fully parameterized → no injection.
+#   - It is best-effort / never-raises → no stability regression.
+#   - It runs in the ANSWER path after asset_identified → NOT a UNS-gate bypass
+#     (INV1/INV2 intact); it does not write or auto-verify (no DB pollution).
+#   If MIRA_CTX_SIGNALS_ENABLED is ever set to 1 on a deployment surface WITHOUT
+#   this fix, re-grade C to YELLOW.
+#
+# FIX (chosen — Option A, verified-only): filter the query to
+#   approval_state = 'verified', which makes the "APPROVED PLC SIGNALS" label
+#   truthful and matches the train-before-deploy + i3x verified-only precedent.
+#   Smallest change that removes the lie. (Diff below.)
+#
+# ALTERNATIVE (Option B, honest labeling) — only if surfacing proposed signals to
+#   a *training/validation* operator is intended: keep approval_state IN
+#   ('proposed','verified'), but (1) SELECT approval_state, (2) render it per row
+#   in _format_ctx_signals (e.g. "  name: path [roles] (87%) [proposed]"), and
+#   (3) rename the block header so it no longer says "APPROVED" for proposed rows
+#   (e.g. "--- PLC SIGNALS (approval state shown) ---"). Do NOT ship Option B on a
+#   stranger/deployment surface — proposed signals must never reach a deployed
+#   answer (train-before-deploy). Option A is the correct default for the engine.
+#
+# APPLY (from repo root, on a fresh feature branch off origin/main):
+#   git checkout -b fix/c12-ctx-signals-verified-only origin/main
+#   git apply wiki/orchestrator/patches/2026-06-21-C12-ctx-signals-verified-only.patch
+#
+# VERIFY:
+#   git show :mira-bots/shared/ctx_enrichment.py | grep -n approval_state
+#     # expect: AND approval_state = 'verified'   (no IN (...) anymore)
+#   ruff check mira-bots/shared/ctx_enrichment.py
+#   # Update mira-bots/shared/tests/test_ctx_enrichment.py: the formatter tests
+#   # still pass (header unchanged), but add a fetch-layer test asserting the
+#   # query string contains "approval_state = 'verified'" and NOT "'proposed'".
+#   uv run pytest mira-bots/shared/tests/test_ctx_enrichment.py -q
+#   # Then the staging gate (engine/RAG change) before any merge:
+#   #   smoke-test.yml + the relevant tests/eval/ regime  (per docs/environments.md)
+#
+--- a/mira-bots/shared/ctx_enrichment.py
++++ b/mira-bots/shared/ctx_enrichment.py
+@@ -20,7 +20,7 @@
+ def fetch_ctx_approved_signals(tenant_id: str, ltree_prefix: str) -> list[dict]:
+     """Return approved kg_entity signals whose uns_path is a descendant of ltree_prefix.
+
+-    Queries entity_type='signal', approval_state IN ('proposed','verified').
++    Queries entity_type='signal', approval_state = 'verified' (deployed answers cite verified only — train-before-deploy).
+     ltree_prefix is a dot-notation path (e.g. 'enterprise.site1.area1').
+
+     Returns a list of dicts with keys: name, uns_path, roles, confidence.
+@@ -42,7 +42,7 @@
+                       FROM kg_entities
+                      WHERE tenant_id = %s::uuid
+                        AND entity_type = 'signal'
+-                       AND approval_state IN ('proposed', 'verified')
++                       AND approval_state = 'verified'
+                        AND uns_path <@ %s::ltree
+                      ORDER BY uns_path
+                      LIMIT %s

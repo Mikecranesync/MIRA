@@ -1,0 +1,168 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]
+   /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 2732 >>
+stream
+BT
+/F1 11 Tf
+50 750 Td
+12 TL
+(PowerFlex 525 AC Drive) Tj
+T*
+(Fault Code Reference Manual) Tj
+T*
+(Rockwell Automation / Allen-Bradley) Tj
+T*
+() Tj
+T*
+(SECTION 1: FAULT CODES) Tj
+T*
+() Tj
+T*
+(F004 UnderVoltage) Tj
+T*
+(Description: DC bus voltage fell below minimum level.) Tj
+T*
+(Possible Causes:) Tj
+T*
+(  - Low incoming line voltage) Tj
+T*
+(  - Loose input power connections) Tj
+T*
+(  - Power line disturbance or momentary power loss) Tj
+T*
+() Tj
+T*
+(Corrective Actions:) Tj
+T*
+(  1. Check incoming line voltage at the drive input terminals.) Tj
+T*
+(     Verify voltage is within drive rating \(480VAC +/-10%\).) Tj
+T*
+(  2. Inspect input power connections for loose terminals or corrosion.) Tj
+T*
+(  3. Check for other loads on the same power circuit causing voltage sag.) Tj
+T*
+(  4. Verify DC bus voltage using a multimeter on the DC+ and DC- terminals.) Tj
+T*
+(  5. If voltage dips are momentary, consider adding a line reactor or UPS.) Tj
+T*
+() Tj
+T*
+(F005 OverVoltage) Tj
+T*
+(Description: DC bus voltage exceeded maximum level.) Tj
+T*
+(Possible Causes:) Tj
+T*
+(  - High incoming line voltage) Tj
+T*
+(  - Regenerative energy from decelerating load) Tj
+T*
+(  - Deceleration rate set too fast) Tj
+T*
+() Tj
+T*
+(Corrective Actions:) Tj
+T*
+(  1. Check incoming line voltage - must not exceed drive maximum rating.) Tj
+T*
+(  2. Increase deceleration time \(Parameter A440\).) Tj
+T*
+(  3. Install a dynamic braking resistor if load is regenerative.) Tj
+T*
+(  4. Verify DC bus voltage is within normal operating range \(650-700VDC for 480V) Tj
+T*
+(\).) Tj
+T*
+() Tj
+T*
+(SECTION 2: SAFETY WARNINGS) Tj
+T*
+() Tj
+T*
+(WARNING: LOCKOUT/TAGOUT REQUIRED) Tj
+T*
+(Before performing any maintenance on this drive:) Tj
+T*
+(  - Disconnect and lockout all power sources per LOTO procedures.) Tj
+T*
+(  - Wait 5 minutes after power removal before opening enclosure.) Tj
+T*
+(  - Verify zero voltage with a calibrated meter before touching internal parts.) Tj
+T*
+(  - Follow site lockout/tagout policy and OSHA 1910.147 requirements.) Tj
+T*
+() Tj
+T*
+(SECTION 3: MAINTENANCE INTERVALS) Tj
+T*
+() Tj
+T*
+(Monthly:) Tj
+T*
+(  - Inspect drive cooling vents for blockage) Tj
+T*
+(  - Check ambient temperature \(must be below 50 deg C\)) Tj
+T*
+(  - Verify fan operation) Tj
+T*
+() Tj
+T*
+(Annual:) Tj
+T*
+(  - Clean heat sink fins with compressed air \(drive de-energized, LOTO applied\)) Tj
+T*
+(  - Inspect power connections for torque and corrosion) Tj
+T*
+(  - Test ESTOP function) Tj
+T*
+() Tj
+T*
+(SECTION 4: SPECIFICATIONS) Tj
+T*
+() Tj
+T*
+(Drive model: 25B-D010N104) Tj
+T*
+(Input: 480VAC 3-Phase 50/60 Hz) Tj
+T*
+(Output: 0-480VAC 3-Phase) Tj
+T*
+(HP Rating: 5 HP \(3.7 kW\)) Tj
+T*
+(DC Bus Nominal: 675 VDC) Tj
+T*
+(Overload: 150% for 60 seconds) Tj
+T*
+() Tj
+T*
+ET
+
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000018 00000 n 
+0000000067 00000 n 
+0000000124 00000 n 
+0000000253 00000 n 
+0000003037 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+3107
+%%EOF

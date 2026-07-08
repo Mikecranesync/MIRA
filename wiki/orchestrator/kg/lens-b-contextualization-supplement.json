@@ -1,0 +1,35 @@
+{
+  "_comment": "Hand-extracted KG supplement for Lens B (B12, 2026-06-21). The nightly graphify build (kg/graph.json, 4,168 nodes, built 2026-06-20 12:01 from the 79-behind working tree) is BLIND to the contextualization publish-gate decision layer: decideBatchReview / decidePublish / buildEntityInsert / buildPublishEntityUpdate all return 0 node hits, and ctx_import_batches returns 0. Only the shared ADR-0017 helper applyHubProposalTransition resolves (1 hit). This file documents, on deploy truth (origin/main@f6a9bec2), the publish-gate call graph the nightly build misses, scoped to the routes B12 audited. NOT a graphify artifact — append-only hand triples per the orchestrator KG rule 5 (do-not-fake clause).",
+  "_source_of_truth": "origin/main (git show), NOT working tree (80 behind at audit time)",
+  "_audit": "B12 — Lens B Hub functional readiness — contextualization functional half",
+  "nodes": [
+    {"id": "route:ctx/batches/[batchId]/review:POST", "kind": "route", "method": "POST", "file": "mira-hub/src/app/api/contextualization/batches/[batchId]/review/route.ts", "risk": "write", "guards": ["sessionOr401", "withTenantContext"], "test_coverage": "NONE (no route test, no shadow test; decision logic only via lib/approval.test.ts)", "note": "ADR-0017 publish gate: proposed->verified. The single most consequential write in the HubV3 contextualization surface."},
+    {"id": "route:ctx/batches/[batchId]:GET", "kind": "route", "method": "GET", "file": "mira-hub/src/app/api/contextualization/batches/[batchId]/route.ts", "risk": "read", "guards": ["sessionOr401", "withTenantContext"], "test_coverage": "NONE"},
+    {"id": "route:ctx/batches:GET", "kind": "route", "method": "GET", "file": "mira-hub/src/app/api/contextualization/batches/route.ts", "risk": "read", "guards": ["sessionOr401", "withTenantContext"], "test_coverage": "NONE"},
+    {"id": "route:ctx/[id]/extractions:GET", "kind": "route", "method": "GET", "file": "mira-hub/src/app/api/contextualization/[id]/extractions/route.ts", "risk": "read", "guards": ["sessionOr401", "withTenantContext"], "test_coverage": "NONE"},
+    {"id": "route:assets/[id]/context:GET", "kind": "route", "method": "GET", "file": "mira-hub/src/app/api/assets/[id]/context/route.ts", "risk": "read", "guards": ["sessionOrDemo", "withTenantContext"], "test_coverage": "NONE", "note": "sessionOrDemo (demo-accessible) — wider than the sessionOr401 siblings; verify demo tenant cannot read another tenant's asset context."},
+    {"id": "fn:decideBatchReview", "kind": "function", "file": "mira-hub/src/lib/contextualization/approval.ts", "graphify_node_hits": 0, "test_coverage": "lib/approval.test.ts + acceptance-matrix.test.ts (15+13 cases) — logic tested directly (good pattern)"},
+    {"id": "fn:decidePublish", "kind": "function", "file": "mira-hub/src/lib/contextualization/approval.ts", "graphify_node_hits": 0, "test_coverage": "lib/approval.test.ts (insert/update/skip + no-overwrite guard)"},
+    {"id": "fn:buildEntityInsert", "kind": "function", "file": "mira-hub/src/lib/contextualization/approval.ts", "graphify_node_hits": 0, "test_coverage": "lib unit only — never exercised through the route handler"},
+    {"id": "fn:buildPublishEntityUpdate", "kind": "function", "file": "mira-hub/src/lib/contextualization/approval.ts", "graphify_node_hits": 0, "test_coverage": "lib unit only — never exercised through the route handler"},
+    {"id": "fn:applyHubProposalTransition", "kind": "function", "file": "mira-hub/src/lib/proposal-transition.ts", "graphify_node_hits": 1, "note": "ADR-0017 helper — the ONLY publish-gate dependency the nightly graph resolves. Shared spine visible; ctx-local decision layer invisible."},
+    {"id": "table:kg_entities", "kind": "table", "note": "publish target: proposed->verified insert/update, no-overwrite guard on verified/deprecated"},
+    {"id": "table:ai_suggestions", "kind": "table", "note": "lockstep projection: pending->accepted via applyHubProposalTransition (ADR-0017), keyed on extracted_data->>'ctx_extraction_id'"},
+    {"id": "table:ctx_import_batches", "kind": "table", "graphify_node_hits": 0, "note": "review_status FSM: proposed/approved/rejected/needs_review"},
+    {"id": "table:ctx_extractions", "kind": "table", "note": "source of publishable rows: status='accepted' AND uns_path_proposed IS NOT NULL"},
+    {"id": "table:ctx_sources", "kind": "table", "note": "join key import_batch_id ties extractions to a batch"}
+  ],
+  "edges": [
+    {"from": "route:ctx/batches/[batchId]/review:POST", "to": "fn:decideBatchReview", "type": "calls", "evidence": "route.ts:84"},
+    {"from": "route:ctx/batches/[batchId]/review:POST", "to": "fn:decidePublish", "type": "calls", "evidence": "route.ts:139"},
+    {"from": "route:ctx/batches/[batchId]/review:POST", "to": "fn:buildEntityInsert", "type": "calls", "evidence": "route.ts:151 (insert branch — approval IS verification)"},
+    {"from": "route:ctx/batches/[batchId]/review:POST", "to": "fn:buildPublishEntityUpdate", "type": "calls", "evidence": "route.ts:164 (update branch — no-overwrite guarded)"},
+    {"from": "route:ctx/batches/[batchId]/review:POST", "to": "fn:applyHubProposalTransition", "type": "calls", "evidence": "route.ts:188 (ai_suggestions pending->accepted, ADR-0017)"},
+    {"from": "route:ctx/batches/[batchId]/review:POST", "to": "table:ctx_import_batches", "type": "reads+writes", "evidence": "review_status UPDATE, tenant-scoped"},
+    {"from": "route:ctx/batches/[batchId]/review:POST", "to": "table:ctx_extractions", "type": "reads", "evidence": "JOIN ctx_sources, status='accepted'"},
+    {"from": "route:ctx/batches/[batchId]/review:POST", "to": "table:kg_entities", "type": "writes", "evidence": "insert verified / guarded update"},
+    {"from": "route:ctx/batches/[batchId]/review:POST", "to": "table:ai_suggestions", "type": "writes-via-helper", "evidence": "applyHubProposalTransition"},
+    {"from": "fn:decidePublish", "to": "fn:buildEntityInsert", "type": "guards", "evidence": "action=insert -> buildEntityInsert; action=skip protects verified/deprecated"}
+  ],
+  "insight": "The publish gate's dependency graph splits exactly along the test-coverage line: the one dependency the nightly graphify build can see (applyHubProposalTransition, the shared ADR-0017 spine) is the part already proven sound by A12/A13; the four ctx-local decision functions it can't see (decideBatchReview/decidePublish/buildEntityInsert/buildPublishEntityUpdate) are the half whose ROUTE-LEVEL wiring is test-orphaned. Same present-target/missing-newest fingerprint A10/B11/E10/F11/A13 keep surfacing — now localized to the publish gate's route handler."
+}

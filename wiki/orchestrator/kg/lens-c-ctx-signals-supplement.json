@@ -1,0 +1,20 @@
+{
+  "_comment": "Hand-extracted KG supplement for Lens C (C12 run, 2026-06-21). The nightly graphify build (4157n/77335e) is from the 83-behind working tree and returns 0 node hits for the three new P6 'grounded Ask MIRA' symbols, while resolving the pre-existing extra_context builders (_build_kg_context, _build_live_data_context, check_citation_compliance = 1 hit each). These nodes/edges are extracted from origin/main deploy-truth bytes (commit 4c1cf00c) so the new engine-grounding sibling is graph-representable. Edge type 'reads_with_predicate' flags the proposed/verified data dependency that carries the C12-1 finding.",
+  "extracted_from": "origin/main@f6a9bec2 (4c1cf00c feat(contextualization): P6 grounded Ask MIRA)",
+  "extracted_at": "2026-06-21",
+  "lens": "C — Engine integrity",
+  "nodes": [
+    {"id": "shared_engine_build_ctx_signals_context", "label": "Supervisor._build_ctx_signals_context()", "file_type": "code", "source_file": "mira-bots/shared/engine.py", "source_location": "L3483", "kind": "method", "note": "flag-gated (MIRA_CTX_SIGNALS_ENABLED, default 0); runs in answer path after asset_identified — NOT a gate bypass"},
+    {"id": "shared_engine_format_ctx_signals", "label": "Supervisor._format_ctx_signals()", "file_type": "code", "source_file": "mira-bots/shared/engine.py", "source_location": "L3511", "kind": "method", "note": "renders '--- APPROVED PLC SIGNALS ---' block; renders confidence but NOT approval_state — C12-1"},
+    {"id": "shared_ctx_enrichment_fetch", "label": "fetch_ctx_approved_signals()", "file_type": "code", "source_file": "mira-bots/shared/ctx_enrichment.py", "source_location": "L19", "kind": "function", "note": "tenant-scoped (%s::uuid) + parameterized; queries approval_state IN ('proposed','verified') — C12-1"},
+    {"id": "table_kg_entities", "label": "kg_entities", "file_type": "table", "source_file": "docs/migrations/004_kg_entities.sql", "source_location": "table", "kind": "table"},
+    {"id": "shared_engine_call_with_correction", "label": "Supervisor._call_with_correction()", "file_type": "code", "source_file": "mira-bots/shared/engine.py", "source_location": "L3520", "kind": "method", "note": "extra_context = kg_context + live_context + ctx_signals_context"}
+  ],
+  "edges": [
+    {"from": "shared_engine_call_with_correction", "to": "shared_engine_build_ctx_signals_context", "type": "calls", "evidence": "engine.py:3555 ctx_signals_context = await self._build_ctx_signals_context(state, tenant_id)"},
+    {"from": "shared_engine_build_ctx_signals_context", "to": "shared_ctx_enrichment_fetch", "type": "calls", "evidence": "engine.py:3501 asyncio.to_thread(_fetch_ctx_approved_signals, tenant_id, ltree_prefix)"},
+    {"from": "shared_engine_build_ctx_signals_context", "to": "shared_engine_format_ctx_signals", "type": "calls", "evidence": "engine.py:3504 return self._format_ctx_signals(signals)"},
+    {"from": "shared_ctx_enrichment_fetch", "to": "table_kg_entities", "type": "reads_with_predicate", "evidence": "ctx_enrichment.py:38 approval_state IN ('proposed','verified') — proposed rows reach the 'APPROVED PLC SIGNALS' prompt block (C12-1)"}
+  ],
+  "insight": "The new P6 grounding sibling (_build_ctx_signals_context -> fetch_ctx_approved_signals -> kg_entities) parallels the graph-visible _build_kg_context / _build_live_data_context / check_citation_compliance builders, but all three new symbols are 0-hit in the nightly graph. The defect-carrying edge is fetch_ctx_approved_signals --reads_with_predicate('proposed','verified')--> kg_entities: it pulls UNVERIFIED rows into a block labeled 'APPROVED PLC SIGNALS'. Same present-target/missing-newest fingerprint A10/B11/E10/F11/A13/B12 keep hitting — the graph sees the grounding builders already proven sound and is blind to the one carrying the finding."
+}

@@ -1,0 +1,39 @@
+--- a/wiki/hot.md
++++ b/wiki/hot.md
+@@ -1,9 +1,9 @@
+ # Hot Cache — 2026-06-21 — HubV3/i3x
+ 
+-**Migration head: 056** (contextualization + intake). Three Round 13 fix branches open:
+-- `fix/ctx-zipbomb-cap` — A13-1 zip-bomb decompression guard (unzip.ts + import/route.ts 413 pre-check)
+-- `fix/publish-gate-integration-test` — B12-1 batch-review route integration test
+-- `fix/ctx-signals-verified-only` — C12-1 ctx_enrichment verified-only (ENGINE CHANGE, needs staging gate)
++**Migration head: 056** (contextualization + intake). Three Round 13 fixes MERGED on deploy truth (verified F13 2026-06-22):
++- A13-1 zip-bomb decompression guard — MERGED `974717bb` (`unzip.ts` MAX_ENTRY/TOTAL/ENTRIES caps + `import/route.ts` 413 pre-check)
++- B12-1 batch-review route integration test — MERGED `3783dea7` (`review.integration.test.ts`)
++- C12-1 ctx_enrichment verified-only — MERGED `7b491b0d` (`approval_state = 'verified'`, train-before-deploy)
+ 
+ ---
+ 
+--- a/docs/known-issues.md
++++ b/docs/known-issues.md
+@@ -21,7 +21,7 @@
+   computed CSS visibility AND live tag value patterns. See issue #2064 and the
+   disambiguation section in `docs/runbooks/hermes-find-convsimple-screen.md`.
+ 
+-- **Gemini key blocked** — `GEMINI_API_KEY` in Doppler returns 403 "Your project has been denied access". Get fresh key from aistudio.google.com and update Doppler `factorylm/prd`. Cascade falls through to Groq/Cerebras in the meantime (smoke-tested OK).
++- ~~**Gemini key blocked**~~ — **MOOT.** Gemini was removed from the cascade and replaced by Together AI as the 3rd provider (#2214; Cerebras model → `gpt-oss-120b` #2217). Active cascade is Groq → Cerebras → Together (OpenAI-compat, key-gated `TOGETHERAI_API_KEY`). The old `GEMINI_API_KEY` 403 no longer affects the cascade.
+ - **Teams + WhatsApp** — Code-complete, pending **cloud setup only** (Azure Bot Service for Teams; Twilio account + public domain for WhatsApp). WhatsApp FastAPI webhook is wired (`mira-bots/whatsapp/bot.py:96-113`); it just needs Twilio to point at it.
+ - **PLC at 192.168.1.100** — Unreachable from PLC laptop; needs physical check (power/switch/cable).
+ - **Charlie Doppler keychain** — Same SSH keychain lock as Bravo had; needs `doppler configure set token-storage file`.
+@@ -82,7 +82,7 @@
+ 
+ **i3x Bearer API:** `GET /api/i3x/[...path]` — read-only external API (Bearer-gated, exposes only `approval_state='verified'` kg_entities).
+ 
+-**Open findings from Round 13 orchestrator audit:**
+-- **A13-1** (YELLOW) — zip-bomb / OOM: `importFromBundle` inflates zip entries with no `maxOutputLength` cap and no `file.size` pre-check. Fix in `fix/ctx-zipbomb-cap`: decompression caps in `mira-hub/src/lib/contextualization/unzip.ts` + 413 size pre-check in `import/route.ts`.
+-- **B12-1** (YELLOW) — no route-level test for the ADR-0017 publish gate (decision logic unit-tested; route wiring — tenant SQL, insert/update/skip, `applyHubProposalTransition` lockstep — unexercised). Integration test in `fix/publish-gate-integration-test`.
+-- **C12-1** (YELLOW, LATENT) — `ctx_enrichment.fetch_ctx_approved_signals` queries `approval_state IN ('proposed','verified')` but renders rows under `"--- APPROVED PLC SIGNALS ---"` with no per-row state shown. Inert in prod (`MIRA_CTX_SIGNALS_ENABLED` default `"0"`). Fix in `fix/ctx-signals-verified-only` (engine change, needs staging gate before merge).
++**Round 13 orchestrator findings — ALL RESOLVED (merged on deploy truth, verified 2026-06-22 F13):**
++- **A13-1** (RESOLVED `974717bb`) — zip-bomb / OOM cap merged: `mira-hub/src/lib/contextualization/unzip.ts` enforces `MAX_ENTRY_BYTES`/`MAX_TOTAL_BYTES`/`MAX_ENTRIES` + `import/route.ts` 413 pre-check.
++- **B12-1** (RESOLVED `3783dea7`) — ADR-0017 publish-gate route integration test merged: `batches/[batchId]/review/review.integration.test.ts`.
++- **C12-1** (RESOLVED `7b491b0d`) — `ctx_enrichment.py` queries `approval_state = 'verified'` only (train-before-deploy verified-only).

@@ -1,0 +1,70 @@
+You are running as a QA agent playing the role of a first-time maintenance manager evaluating MIRA (Maintenance Intelligence Resource Agent) at app.factorylm.com.
+
+CREDENTIALS (QA test account — no real data, safe to use):
+- Email: hermes-qa-maint@example.com
+- Password: Hermes67204240f92e7add!Aa9
+
+TASK: Perform a complete outside-in QA pass of app.factorylm.com and report your findings.
+
+SIGN-IN PROCEDURE:
+1. Navigate to https://app.factorylm.com/login/
+2. Wait 2 seconds for the page to fully hydrate
+3. Click "Sign in with password" button if visible
+4. Fill in email and password
+5. Click the Sign In button
+6. You should land on /feed/, /namespace/, /hub/, or /onboarding/
+
+FLOWS TO TEST (in order of priority):
+
+1. ONBOARDING / FEED (P0)
+   - What does a first-time user see?
+   - Is it clear what to do next?
+   - Take a screenshot of the feed/landing page
+
+2. NAMESPACE / UNS TREE (P0)
+   - Navigate to the namespace/UNS section
+   - Can you see or build a namespace?
+   - Take a screenshot
+
+3. PROPOSALS / AI SUGGESTIONS (P1)
+   - Find the Proposals or AI Suggestions section
+   - Are there any pending proposals?
+   - Can you approve/reject one?
+   - Take a screenshot
+
+4. KNOWLEDGE / LIBRARY (P1)
+   - Navigate to knowledge or library section
+   - Can you search for equipment manuals?
+   - Search for "PowerFlex 525" or "conveyor"
+   - Take a screenshot of results
+
+5. CHAT / DIAGNOSTIC FLOW (P0 — BETA GATE)
+   - Find the chat or "Ask MIRA" interface
+   - Ask: "How do I troubleshoot a PowerFlex 525 F004 fault?"
+   - Does MIRA ask for context (UNS location)?
+   - Does it provide a grounded, cited answer?
+   - Take a screenshot of the response
+   - Note: does the answer include a citation like "[1]" pointing to a manual?
+
+EVIDENCE REQUIREMENTS:
+- Take a screenshot after each major page load (browser_screenshot)
+- Note any console errors (browser_console)
+- For each finding, note: URL, what happened, what was expected, severity (P0/P1/P2/P3)
+
+SAVE FINDINGS:
+Save a summary report to: /Users/charlienode/MIRA/dogfood-output/hermes-qa-run-TIMESTAMP/findings.md
+(Replace TIMESTAMP with actual time)
+Include: each flow tested, pass/fail, screenshots taken, issues found.
+
+SAFETY RULES:
+- Do NOT make real payments
+- Do NOT upload files (cannot do this via browser anyway — skip upload tests)
+- Do NOT delete data you didn't create
+- Do NOT push to git or create GitHub issues (report findings in the file only)
+- This is a QA test account with its own isolated tenant — safe to create test data
+
+BETA GATE CHECK (most important):
+The beta gate is: "A stranger uploads their own equipment manual and gets a grounded, cited answer without Mike manually fixing anything."
+We can't test the upload directly (no file upload capability), but test the chat/diagnostic path to check if existing manuals surface cited answers. Report whether MIRA's chat response includes citations.
+
+Report your complete findings when done.

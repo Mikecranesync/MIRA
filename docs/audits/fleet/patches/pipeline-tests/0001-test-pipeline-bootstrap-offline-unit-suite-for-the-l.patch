@@ -1,0 +1,538 @@
+From 02480d1715c05bfdd0e8ee0b49e372a79c3312bf Mon Sep 17 00:00:00 2001
+From: Claude Fleet <fleet@factorylm.local>
+Date: Sat, 4 Jul 2026 11:32:46 -0400
+Subject: [PATCH] test(pipeline): bootstrap offline unit suite for the live VPS
+ chat path
+
+17 fully-offline tests (no LLM, no DB, no network) covering:
+- /v1/chat/completions OpenAI-compat contract, OWUI synthetic-task
+  filtering, Continue echo, reset+QR-cookie clear, 400/503 paths
+- InferenceRouter cascade: Groq-first, Groq->Cerebras fallback,
+  full exhaustion order, INFERENCE_BACKEND=local disablement, and the
+  default-on PII sanitization seam (IP/MAC/serial never leave process)
+- Ignition direct-connection UNS contract: 422 uns_required rejection,
+  general-question carve-out, uns_source=direct_connection certification,
+  classifier fail-open, per-asset chat_id + tag_evidence shape
+
+Supervisor/PIL/telemetry are stubbed in tests/pipeline/conftest.py so
+main.py imports light; lifespan never runs (no threads/schedulers).
+---
+ tests/pipeline/__init__.py                    |   0
+ tests/pipeline/conftest.py                    | 102 +++++++++++++
+ .../test_chat_completions_contract.py         |  97 ++++++++++++
+ tests/pipeline/test_ignition_chat_uns.py      | 137 +++++++++++++++++
+ tests/pipeline/test_inference_cascade.py      | 141 ++++++++++++++++++
+ 5 files changed, 477 insertions(+)
+ create mode 100644 tests/pipeline/__init__.py
+ create mode 100644 tests/pipeline/conftest.py
+ create mode 100644 tests/pipeline/test_chat_completions_contract.py
+ create mode 100644 tests/pipeline/test_ignition_chat_uns.py
+ create mode 100644 tests/pipeline/test_inference_cascade.py
+
+diff --git a/tests/pipeline/__init__.py b/tests/pipeline/__init__.py
+new file mode 100644
+index 00000000..e69de29b
+diff --git a/tests/pipeline/conftest.py b/tests/pipeline/conftest.py
+new file mode 100644
+index 00000000..c20e39e6
+--- /dev/null
++++ b/tests/pipeline/conftest.py
+@@ -0,0 +1,102 @@
++"""Offline unit-test fixtures for mira-pipeline (the live VPS chat path).
++
++Everything runs fully offline:
++  * heavy imports main.py pulls in (PIL, shared.engine, shared.telemetry) are
++    replaced with light stubs BEFORE `import main` so no LLM/DB/vision dep is
++    needed;
++  * the Supervisor engine is an AsyncMock injected onto the module globals;
++  * lifespan never runs (TestClient is used without a `with` block), so no
++    background threads, schedulers, or real Supervisor are started.
++"""
++
++from __future__ import annotations
++
++import os
++import sys
++import types
++from contextlib import contextmanager
++from pathlib import Path
++from unittest.mock import AsyncMock, MagicMock
++
++import pytest
++
++REPO_ROOT = Path(__file__).resolve().parent.parent.parent
++PIPELINE_ROOT = REPO_ROOT / "mira-pipeline"
++MIRA_BOTS = REPO_ROOT / "mira-bots"
++
++for p in (str(PIPELINE_ROOT), str(MIRA_BOTS)):
++    if p not in sys.path:
++        sys.path.insert(0, p)
++
++# ── Offline env: no bearer auth, no DB, no Neon, no provider keys ────────────
++os.environ.setdefault("PIPELINE_API_KEY", "")
++os.environ["MIRA_DB_PATH"] = "/tmp/mira-pipeline-tests-does-not-exist/mira.db"
++os.environ.pop("NEON_DATABASE_URL", None)
++os.environ.pop("ENFORCE_ASSET_AGENT_GATE", None)
++
++
++def _stub_module(name: str, **attrs) -> None:
++    """Insert a stub module into sys.modules unless the real one is loaded."""
++    if name in sys.modules:
++        return
++    mod = types.ModuleType(name)
++    for key, value in attrs.items():
++        setattr(mod, key, value)
++    sys.modules[name] = mod
++
++
++class _StubSupervisor:
++    """Stands in for shared.engine.Supervisor at import time (lifespan-only)."""
++
++    def __init__(self, *args, **kwargs):
++        raise RuntimeError("Supervisor must not be constructed in offline tests")
++
++
++class _StubTrace:
++    def update(self, **kwargs):
++        return None
++
++
++@contextmanager
++def _stub_span(trace, name, **kwargs):
++    yield None
++
++
++def _stub_trace(name, **kwargs):
++    return _StubTrace()
++
++
++def _stub_flush():
++    return None
++
++
++# PIL is only exercised on photo turns; a stub keeps the import light.
++_stub_module("PIL", Image=MagicMock(name="PIL.Image"))
++_stub_module("PIL.Image", open=MagicMock(name="PIL.Image.open"))
++_stub_module("shared.engine", Supervisor=_StubSupervisor)
++_stub_module("shared.telemetry", trace=_stub_trace, span=_stub_span, flush=_stub_flush)
++
++
++@pytest.fixture
++def mock_engine():
++    """Recording Supervisor stand-in: async process/process_multi_photo + reset."""
++    engine = AsyncMock()
++    engine.process = AsyncMock(return_value="Grounded diagnostic reply [manual p.12]")
++    engine.process_multi_photo = AsyncMock(return_value="Multi-photo reply")
++    engine.reset = MagicMock()
++    return engine
++
++
++@pytest.fixture
++def pipeline_client(mock_engine, monkeypatch):
++    """TestClient for main.app with the engine mocked and lifespan skipped."""
++    from fastapi.testclient import TestClient
++
++    import main
++
++    monkeypatch.setattr(main, "engine", mock_engine)
++    monkeypatch.setattr(main, "memory", None)
++    # Never let a stray cookie reach the QR bridge's NeonDB lookup.
++    monkeypatch.setattr(main, "process_pending_scan", lambda cookie, chat_id: False)
++    client = TestClient(main.app, raise_server_exceptions=False)
++    return client
+diff --git a/tests/pipeline/test_chat_completions_contract.py b/tests/pipeline/test_chat_completions_contract.py
+new file mode 100644
+index 00000000..2f963b4f
+--- /dev/null
++++ b/tests/pipeline/test_chat_completions_contract.py
+@@ -0,0 +1,97 @@
++"""Contract tests for POST /v1/chat/completions (OpenAI-compat surface).
++
++This is the live VPS chat path: Open WebUI → mira-pipeline → Supervisor.
++The Supervisor is mocked (tests/pipeline/conftest.py); everything is offline.
++"""
++
++from __future__ import annotations
++
++
++def _chat_payload(content, role: str = "user", **extra):
++    return {"model": "mira-diagnostic", "messages": [{"role": role, "content": content}], **extra}
++
++
++def test_chat_completion_openai_shape(pipeline_client, mock_engine):
++    """A plain user turn returns the full OpenAI chat.completion envelope."""
++    resp = pipeline_client.post(
++        "/v1/chat/completions",
++        json=_chat_payload("why is conveyor CV-101 stopped?"),
++        headers={"X-OpenWebUI-Chat-Id": "chat-abc"},
++    )
++    assert resp.status_code == 200
++    body = resp.json()
++
++    assert body["id"].startswith("chatcmpl-")
++    assert body["object"] == "chat.completion"
++    assert body["model"] == "mira-diagnostic"
++    assert isinstance(body["created"], int)
++    choice = body["choices"][0]
++    assert choice["index"] == 0
++    assert choice["finish_reason"] == "stop"
++    assert choice["message"]["role"] == "assistant"
++    assert choice["message"]["content"] == "Grounded diagnostic reply [manual p.12]"
++    assert set(body["usage"]) == {"prompt_tokens", "completion_tokens", "total_tokens"}
++
++    # The engine saw the OW chat id and the OpenWebUI platform tag.
++    kwargs = mock_engine.process.await_args.kwargs
++    assert kwargs["chat_id"] == "chat-abc"
++    assert kwargs["platform"] == "openwebui"
++    assert kwargs["message"] == "why is conveyor CV-101 stopped?"
++
++
++def test_chat_completion_no_user_message_is_400(pipeline_client, mock_engine):
++    resp = pipeline_client.post(
++        "/v1/chat/completions", json=_chat_payload("You are MIRA.", role="system")
++    )
++    assert resp.status_code == 400
++    mock_engine.process.assert_not_awaited()
++
++
++def test_chat_completion_engine_uninitialized_is_503(pipeline_client, monkeypatch):
++    import main
++
++    monkeypatch.setattr(main, "engine", None)
++    resp = pipeline_client.post("/v1/chat/completions", json=_chat_payload("hello"))
++    assert resp.status_code == 503
++
++
++def test_owui_synthetic_title_task_never_reaches_engine(pipeline_client, mock_engine):
++    """Open WebUI title-generation tasks must not corrupt FSM state."""
++    resp = pipeline_client.post(
++        "/v1/chat/completions",
++        json=_chat_payload("### Task:\nGenerate a title for this chat."),
++    )
++    assert resp.status_code == 200
++    assert resp.json()["choices"][0]["message"]["content"] == ""
++    mock_engine.process.assert_not_awaited()
++
++
++def test_owui_continue_echoes_last_assistant_turn(pipeline_client, mock_engine):
++    resp = pipeline_client.post(
++        "/v1/chat/completions",
++        json={
++            "model": "mira-diagnostic",
++            "messages": [
++                {"role": "user", "content": "check the VFD"},
++                {"role": "assistant", "content": "Fault F0004 — check DC bus."},
++                {"role": "user", "content": "### Task: Continue the response"},
++            ],
++        },
++    )
++    assert resp.status_code == 200
++    assert resp.json()["choices"][0]["message"]["content"] == "Fault F0004 — check DC bus."
++    mock_engine.process.assert_not_awaited()
++
++
++def test_reset_phrase_resets_fsm_and_clears_qr_cookie(pipeline_client, mock_engine):
++    resp = pipeline_client.post(
++        "/v1/chat/completions",
++        json=_chat_payload("reset"),
++        headers={"X-OpenWebUI-Chat-Id": "chat-reset"},
++    )
++    assert resp.status_code == 200
++    assert "reset" in resp.json()["choices"][0]["message"]["content"].lower()
++    mock_engine.reset.assert_called_once_with("chat-reset")
++    mock_engine.process.assert_not_awaited()
++    # Reset wins over any pending QR scan (#409) — one-shot cookie is cleared.
++    assert "mira_pending_scan" in resp.headers.get("set-cookie", "")
+diff --git a/tests/pipeline/test_ignition_chat_uns.py b/tests/pipeline/test_ignition_chat_uns.py
+new file mode 100644
+index 00000000..1c326748
+--- /dev/null
++++ b/tests/pipeline/test_ignition_chat_uns.py
+@@ -0,0 +1,137 @@
++"""Direct-connection UNS contract on the Ignition endpoint (offline).
++
++Rule (.claude/rules/direct-connection-uns-certified.md):
++  * a turn WITH an asset identifier is UNS-certified by construction —
++    the engine gets uns_source="direct_connection", no chat-gate question;
++  * an asset-specific turn WITHOUT any identifier is REJECTED with
++    422 {"error": "uns_required"} — never downgraded to a chat-gate;
++  * general/educational questions pass through with no gate on any surface.
++
++Engine is a recording mock; HMAC is bypassed the same way as the existing
++mira-pipeline/tests/test_ignition_chat_*.py suites. No Neon, no LLM.
++"""
++
++from __future__ import annotations
++
++import json
++from unittest.mock import AsyncMock
++
++import pytest
++from fastapi import FastAPI
++from fastapi.testclient import TestClient
++
++import ignition_chat
++
++
++@pytest.fixture
++def recording_engine():
++    engine = AsyncMock()
++    engine.process = AsyncMock(return_value="Check VFD fault F0004 [manual p.42].")
++    return engine
++
++
++@pytest.fixture
++def ignition_client(monkeypatch, recording_engine):
++    monkeypatch.setattr(ignition_chat, "MIRA_IGNITION_HMAC_KEY", "test-key")
++    monkeypatch.setattr(ignition_chat, "_verify_hmac", lambda headers, body, key: "tenant-1")
++    monkeypatch.delenv("NEON_DATABASE_URL", raising=False)
++    monkeypatch.delenv("ENFORCE_ASSET_AGENT_GATE", raising=False)
++    app = FastAPI()
++    app.include_router(ignition_chat.build_router(lambda: recording_engine))
++    return TestClient(app, raise_server_exceptions=False)
++
++
++def _post(client, payload: dict):
++    return client.post(
++        "/api/v1/ignition/chat",
++        content=json.dumps(payload).encode(),
++        headers={"Content-Type": "application/json"},
++    )
++
++
++def _classifier(intent: str):
++    async def _route(question, history):
++        return {"intent": intent}
++
++    return _route
++
++
++def test_asset_specific_turn_without_uns_identifier_is_rejected_422(
++    ignition_client, recording_engine, monkeypatch
++):
++    """No asset_id, no asset_context, troubleshooting intent → uns_required."""
++    monkeypatch.setattr(ignition_chat, "_route_intent", _classifier("diagnose_equipment"))
++    resp = _post(ignition_client, {"question": "why is the conveyor stopped?"})
++    assert resp.status_code == 422
++    assert resp.json() == {"error": "uns_required"}
++    recording_engine.process.assert_not_awaited()
++
++
++def test_general_question_without_identifier_passes(ignition_client, recording_engine, monkeypatch):
++    """Educational questions need no gate on any surface — not rejected."""
++    monkeypatch.setattr(ignition_chat, "_route_intent", _classifier("greeting"))
++    resp = _post(ignition_client, {"question": "what is a VFD?"})
++    assert resp.status_code == 200
++    kwargs = recording_engine.process.await_args.kwargs
++    assert kwargs["uns_source"] is None  # plain chat turn, no false certification
++
++
++def test_turn_with_asset_id_is_uns_certified_direct_connection(
++    ignition_client, recording_engine, monkeypatch
++):
++    """An asset identifier certifies the UNS path — engine skips the chat-gate."""
++
++    # Classifier must NOT be consulted when an identifier is present.
++    async def _explodes(question, history):
++        raise AssertionError("classifier must not run for identified turns")
++
++    monkeypatch.setattr(ignition_chat, "_route_intent", _explodes)
++    resp = _post(
++        ignition_client,
++        {
++            "question": "why is this conveyor stopped?",
++            "asset_id": "cv_101",
++            "tag_snapshot": {"[default]Conv/State": {"value": "FAULT", "quality": "Good"}},
++        },
++    )
++    assert resp.status_code == 200
++    body = resp.json()
++    assert body["answer"] == "Check VFD fault F0004 [manual p.42]."
++    assert body["tenant_id"] == "tenant-1"
++    assert body["asset_id"] == "cv_101"
++    assert "latency_ms" in body
++
++    kwargs = recording_engine.process.await_args.kwargs
++    assert kwargs["uns_source"] == "direct_connection"
++    assert kwargs["platform"] == "ignition"
++    # per-asset FSM isolation: chat_id keys on (tenant, asset)
++    assert kwargs["chat_id"] == "ignition:tenant-1:cv_101"
++    # live tag snapshot surfaced as structured evidence rows
++    assert kwargs["tag_evidence"] == [
++        {
++            "tag_path": "[default]Conv/State",
++            "value": "FAULT",
++            "quality": "Good",
++            "source": "ignition",
++        }
++    ]
++
++
++def test_classifier_failure_fails_open_to_plain_chat(
++    ignition_client, recording_engine, monkeypatch
++):
++    """A classifier blip must never brick the HMI — turn passes as general chat."""
++
++    async def _blip(question, history):
++        raise RuntimeError("neon down")
++
++    monkeypatch.setattr(ignition_chat, "_route_intent", _blip)
++    resp = _post(ignition_client, {"question": "why is the conveyor stopped?"})
++    assert resp.status_code == 200
++    recording_engine.process.assert_awaited_once()
++
++
++def test_missing_question_is_400(ignition_client, recording_engine):
++    resp = _post(ignition_client, {"asset_id": "cv_101"})
++    assert resp.status_code == 400
++    recording_engine.process.assert_not_awaited()
+diff --git a/tests/pipeline/test_inference_cascade.py b/tests/pipeline/test_inference_cascade.py
+new file mode 100644
+index 00000000..e9d900ad
+--- /dev/null
++++ b/tests/pipeline/test_inference_cascade.py
+@@ -0,0 +1,141 @@
++"""Offline tests for the cloud provider cascade (Groq → Cerebras → Together).
++
++httpx.AsyncClient is replaced with a canned-response fake — no network, no keys
++leave the process. Covers fallback order, exhaustion, enablement, and the PII
++sanitization seam every pipeline turn flows through (security-boundaries rule).
++"""
++
++from __future__ import annotations
++
++import httpx
++import pytest
++
++from shared.inference import router as router_mod
++from shared.inference.router import InferenceRouter
++
++GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
++CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
++TOGETHER_URL = "https://api.together.xyz/v1/chat/completions"
++
++
++def _ok_body(content: str) -> dict:
++    return {
++        "choices": [{"message": {"content": content}}],
++        "usage": {"prompt_tokens": 10, "completion_tokens": 5},
++    }
++
++
++class FakeAsyncClient:
++    """Drop-in for httpx.AsyncClient: replays canned responses per provider URL."""
++
++    #: {url: (status_code, json_body)} — configured per test
++    responses: dict = {}
++    #: chronological record of (url, payload) posts
++    calls: list = []
++
++    def __init__(self, *args, **kwargs):
++        pass
++
++    async def __aenter__(self):
++        return self
++
++    async def __aexit__(self, *exc):
++        return False
++
++    async def post(self, url, headers=None, json=None):
++        FakeAsyncClient.calls.append((url, json))
++        status, body = FakeAsyncClient.responses[url]
++        return httpx.Response(status, json=body, request=httpx.Request("POST", url))
++
++
++@pytest.fixture
++def cascade(monkeypatch, tmp_path):
++    """A cloud-enabled router with all three providers keyed + fake transport."""
++    monkeypatch.setenv("INFERENCE_BACKEND", "cloud")
++    monkeypatch.setenv("GROQ_API_KEY", "test-groq")
++    monkeypatch.setenv("CEREBRAS_API_KEY", "test-cerebras")
++    monkeypatch.setenv("TOGETHERAI_API_KEY", "test-together")
++    # write_api_usage early-returns when the DB file doesn't exist
++    monkeypatch.setenv("MIRA_DB_PATH", str(tmp_path / "missing" / "mira.db"))
++    monkeypatch.setattr(router_mod.httpx, "AsyncClient", FakeAsyncClient)
++    FakeAsyncClient.responses = {}
++    FakeAsyncClient.calls = []
++    return InferenceRouter()
++
++
++def _msgs(text: str) -> list[dict]:
++    return [{"role": "user", "content": text}]
++
++
++async def test_groq_answers_first_no_fallback(cascade):
++    FakeAsyncClient.responses = {
++        GROQ_URL: (200, _ok_body("groq says hi")),
++        CEREBRAS_URL: (200, _ok_body("never reached")),
++        TOGETHER_URL: (200, _ok_body("never reached")),
++    }
++    content, usage = await cascade.complete(_msgs("hello"))
++    assert content == "groq says hi"
++    assert usage["provider"] == "groq"
++    assert [url for url, _ in FakeAsyncClient.calls] == [GROQ_URL]
++
++
++async def test_fallback_groq_error_to_cerebras(cascade):
++    FakeAsyncClient.responses = {
++        GROQ_URL: (500, {"error": "boom"}),
++        CEREBRAS_URL: (200, _ok_body("cerebras catches it")),
++        TOGETHER_URL: (200, _ok_body("never reached")),
++    }
++    content, usage = await cascade.complete(_msgs("hello"))
++    assert content == "cerebras catches it"
++    assert usage["provider"] == "cerebras"
++    assert [url for url, _ in FakeAsyncClient.calls] == [GROQ_URL, CEREBRAS_URL]
++
++
++async def test_cascade_exhausted_returns_empty(cascade):
++    """All providers 5xx → ("", last_error); order is Groq → Cerebras → Together."""
++    FakeAsyncClient.responses = {
++        GROQ_URL: (503, {"error": "down"}),
++        CEREBRAS_URL: (503, {"error": "down"}),
++        TOGETHER_URL: (503, {"error": "down"}),
++    }
++    content, _usage = await cascade.complete(_msgs("hello"))
++    assert content == ""
++    assert [url for url, _ in FakeAsyncClient.calls] == [GROQ_URL, CEREBRAS_URL, TOGETHER_URL]
++
++
++async def test_local_backend_disables_cascade(monkeypatch):
++    monkeypatch.setenv("INFERENCE_BACKEND", "local")
++    monkeypatch.setenv("GROQ_API_KEY", "test-groq")
++    router = InferenceRouter()
++    assert router.enabled is False
++    assert await router.complete(_msgs("hello")) == ("", {})
++
++
++async def test_pii_sanitized_before_leaving_process(cascade):
++    """complete() strips IP/MAC/serial by default — providers never see raw PII."""
++    FakeAsyncClient.responses = {GROQ_URL: (200, _ok_body("ok"))}
++    await cascade.complete(
++        _msgs("PLC at 192.168.4.28 mac 00:1B:44:11:3A:B7 serial SN: ABC12345 is down")
++    )
++    sent = FakeAsyncClient.calls[0][1]["messages"][0]["content"]
++    assert "192.168.4.28" not in sent
++    assert "00:1B:44:11:3A:B7" not in sent
++    assert "[IP]" in sent and "[MAC]" in sent
++
++
++def test_sanitize_context_strips_pii_from_text_blocks():
++    messages = [
++        {"role": "user", "content": "gateway 10.0.0.1"},
++        {
++            "role": "user",
++            "content": [
++                {"type": "text", "text": "switch at 192.168.1.11"},
++                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,xx"}},
++            ],
++        },
++    ]
++    out = InferenceRouter.sanitize_context(messages)
++    assert out[0]["content"] == "gateway [IP]"
++    assert out[1]["content"][0]["text"] == "switch at [IP]"
++    # non-text blocks pass through untouched
++    assert out[1]["content"][1]["type"] == "image_url"
+-- 
+2.34.1
+

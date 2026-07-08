@@ -1,0 +1,165 @@
+# B12 staged fix — route-level integration test for the ADR-0017 publish gate
+# Lens B (Hub functional readiness), 2026-06-21, audited on origin/main@f6a9bec2 (working tree 80 behind).
+#
+# WHY: contextualization/batches/[batchId]/review/route.ts is the single most consequential
+#      WRITE in the HubV3 contextualization surface (proposed -> verified publish + ai_suggestions
+#      lockstep via ADR-0017). It has ZERO route-level test. Its decision LOGIC is unit-tested in
+#      lib/contextualization/approval.test.ts (good), but the route WIRING — tenant-scoped SQL,
+#      the insert/update/skip no-overwrite branches, the applyHubProposalTransition lockstep, and
+#      the 400/404/503/500 envelope — is unexercised. This test closes that gap, modeled byte-for-byte
+#      on the ONE existing real route-handler harness: import/import.integration.test.ts.
+#
+# APPLY (creates one new test file; route.ts is NOT modified):
+#   cd <repo> && git checkout origin/main -b fix/B12-review-publish-test   # work on deploy truth
+#   git apply --recount wiki/orchestrator/patches/2026-06-21-B12-review-publish-gate-integration-test.patch
+#
+# VERIFY (needs a throwaway Postgres with migs 055+056, per the import test header):
+#   docker run --rm -d -p 5440:5432 -e POSTGRES_PASSWORD=test --name mira-ctx-test postgres:16
+#   psql "postgres://postgres:test@localhost:5440/postgres" -c "CREATE ROLE factorylm_app NOLOGIN; GRANT USAGE ON SCHEMA public TO factorylm_app;"
+#   psql "postgres://postgres:test@localhost:5440/postgres" -f mira-hub/db/migrations/055_contextualization.sql
+#   psql "postgres://postgres:test@localhost:5440/postgres" -f mira-hub/db/migrations/056_contextualization_intake.sql
+#   cd mira-hub && TEST_DATABASE_URL=postgres://postgres:test@localhost:5440/postgres \
+#     bunx vitest run --config vitest.config.ts \
+#     src/app/api/contextualization/batches/\[batchId\]/review/review.integration.test.ts
+#
+# NOTE: *.integration.test.ts is excluded from the default `vitest run` (vitest.config.ts), so this
+#       does NOT change the offline scorecard count — it runs in the integration lane only, exactly
+#       like import.integration.test.ts. Wire it into the same CI integration job that runs the import test.
+#
+diff --git a/mira-hub/src/app/api/contextualization/batches/[batchId]/review/review.integration.test.ts b/mira-hub/src/app/api/contextualization/batches/[batchId]/review/review.integration.test.ts
+new file mode 100644
+--- /dev/null
++++ b/mira-hub/src/app/api/contextualization/batches/[batchId]/review/review.integration.test.ts
+@@
++// Integration test: the HubV3 batch-review PUBLISH gate (ADR-0017).
++// Exercises the REAL route handler (not shadow helpers) against a Postgres test DB.
++// Asserts: approve -> kg_entities proposed->verified + ai_suggestions pending->accepted;
++// no-overwrite guard protects an existing verified row; reject/needs_review do NOT publish;
++// cross-tenant batch is invisible (404); bad decision/id -> 400; missing DB -> 503.
++//
++// Setup is identical to import/import.integration.test.ts — see that file's header for the
++// docker + migrations 055/056 + factorylm_app role recipe. Run in the integration lane.
++
++import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
++import type { Pool } from "pg";
++
++const { testPool } = vi.hoisted(() => {
++  // eslint-disable-next-line @typescript-eslint/no-require-imports
++  const { Pool: PgPool } = require("pg");
++  return { testPool: new PgPool({ connectionString: process.env.TEST_DATABASE_URL }) as Pool };
++});
++vi.mock("@/lib/db", () => ({ default: testPool }));
++vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
++
++import { POST } from "./route";
++import { sessionOr401 } from "@/lib/session";
++
++const TENANT_A = "000000a1-0000-0000-0000-0000000000a1";
++const TENANT_B = "000000b2-0000-0000-0000-0000000000b2";
++const sessionMock = vi.mocked(sessionOr401);
++
++function asSession(tenantId: string) {
++  // Shape mirrors what sessionOr401 returns (ctx.tenantId + ctx.userId).
++  sessionMock.mockResolvedValue({ tenantId, userId: "u-test" } as never);
++}
++
++function reviewReq(decision: string): Request {
++  return new Request("http://test/review", {
++    method: "POST",
++    headers: { "content-type": "application/json" },
++    body: JSON.stringify({ decision }),
++  });
++}
++
++// Seed one batch with one accepted, UNS-pathed extraction. Returns the batchId.
++async function seedBatch(tenantId: string, tagName: string): Promise<string> {
++  const batch = await testPool.query(
++    `INSERT INTO ctx_import_batches (tenant_id, project_id, review_status)
++     VALUES ($1::uuid, $1::uuid, 'proposed') RETURNING id`,
++    [tenantId],
++  );
++  const batchId = batch.rows[0].id as string;
++  const src = await testPool.query(
++    `INSERT INTO ctx_sources (tenant_id, import_batch_id, source_sha256, source_type)
++     VALUES ($1::uuid, $2, $3, 'st') RETURNING id`,
++    [tenantId, batchId, tagName + "-sha".padEnd(64, "0")],
++  );
++  await testPool.query(
++    `INSERT INTO ctx_extractions (tenant_id, source_id, tag_name, roles, uns_path_proposed, confidence, status)
++     VALUES ($1::uuid, $2, $3, ARRAY['output'], $4, 0.9, 'accepted')`,
++    [tenantId, src.rows[0].id, tagName, "enterprise/garage/demo/" + tagName],
++  );
++  return batchId;
++}
++
++beforeAll(() => {
++  if (!process.env.TEST_DATABASE_URL) {
++    throw new Error("TEST_DATABASE_URL is required. See import.integration.test.ts header.");
++  }
++  process.env.NEON_DATABASE_URL = process.env.TEST_DATABASE_URL; // satisfy the 503 guard
++});
++afterAll(async () => { await testPool.end(); });
++beforeEach(async () => {
++  vi.clearAllMocks();
++  await testPool.query("DELETE FROM ai_suggestions WHERE tenant_id = ANY($1::uuid[])", [[TENANT_A, TENANT_B]]);
++  await testPool.query("DELETE FROM kg_entities WHERE tenant_id = ANY($1::uuid[])", [[TENANT_A, TENANT_B]]);
++  await testPool.query("DELETE FROM ctx_extractions WHERE tenant_id = ANY($1::uuid[])", [[TENANT_A, TENANT_B]]);
++  await testPool.query("DELETE FROM ctx_sources WHERE tenant_id = ANY($1::uuid[])", [[TENANT_A, TENANT_B]]);
++  await testPool.query("DELETE FROM ctx_import_batches WHERE tenant_id = ANY($1::uuid[])", [[TENANT_A, TENANT_B]]);
++});
++
++describe("contextualization batch-review publish gate (ADR-0017)", () => {
++  it("approve publishes accepted extractions as VERIFIED kg_entities", async () => {
++    asSession(TENANT_A);
++    const batchId = await seedBatch(TENANT_A, "Conv_Run");
++    const res = await POST(reviewReq("approve"), { params: Promise.resolve({ batchId }) });
++    expect(res.status).toBe(200);
++    const body = await res.json();
++    expect(body).toMatchObject({ ok: true, reviewStatus: "approved", published: 1 });
++    const ent = await testPool.query(
++      `SELECT approval_state FROM kg_entities WHERE tenant_id=$1::uuid AND name='Conv_Run' AND entity_type='signal'`,
++      [TENANT_A],
++    );
++    expect(ent.rows[0].approval_state).toBe("verified");
++  });
++
++  it("approve does NOT overwrite an already-verified row (no-overwrite guard)", async () => {
++    asSession(TENANT_A);
++    const batchId = await seedBatch(TENANT_A, "Conv_Run");
++    await testPool.query(
++      `INSERT INTO kg_entities (tenant_id, entity_type, name, approval_state, properties)
++       VALUES ($1::uuid, 'signal', 'Conv_Run', 'verified', '{"sentinel":true}'::jsonb)`,
++      [TENANT_A],
++    );
++    const res = await POST(reviewReq("approve"), { params: Promise.resolve({ batchId }) });
++    const body = await res.json();
++    expect(body.skipped).toBeGreaterThanOrEqual(1);
++    const ent = await testPool.query(
++      `SELECT properties FROM kg_entities WHERE tenant_id=$1::uuid AND name='Conv_Run'`, [TENANT_A]);
++    expect(ent.rows[0].properties.sentinel).toBe(true); // untouched
++  });
++
++  it("reject transitions review_status and publishes nothing", async () => {
++    asSession(TENANT_A);
++    const batchId = await seedBatch(TENANT_A, "Conv_Run");
++    const res = await POST(reviewReq("reject"), { params: Promise.resolve({ batchId }) });
++    const body = await res.json();
++    expect(body).toMatchObject({ reviewStatus: "rejected", published: 0 });
++    const ent = await testPool.query(`SELECT 1 FROM kg_entities WHERE tenant_id=$1::uuid AND name='Conv_Run'`, [TENANT_A]);
++    expect(ent.rowCount).toBe(0);
++  });
++
++  it("a batch owned by another tenant is invisible (404)", async () => {
++    asSession(TENANT_A);
++    const foreign = await seedBatch(TENANT_B, "Conv_Run");
++    const res = await POST(reviewReq("approve"), { params: Promise.resolve({ batchId: foreign }) });
++    expect(res.status).toBe(404);
++  });
++
++  it("rejects an invalid decision (400) and a malformed id (400)", async () => {
++    asSession(TENANT_A);
++    const batchId = await seedBatch(TENANT_A, "Conv_Run");
++    expect((await POST(reviewReq("yolo"), { params: Promise.resolve({ batchId }) })).status).toBe(400);
++    expect((await POST(reviewReq("approve"), { params: Promise.resolve({ batchId: "not-a-uuid" }) })).status).toBe(400);
++  });
++});

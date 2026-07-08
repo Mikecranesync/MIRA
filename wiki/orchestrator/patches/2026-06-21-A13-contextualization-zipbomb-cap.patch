@@ -1,0 +1,87 @@
+# A13 patch — cap zip-bomb / OOM on the stranger-reachable .zip bundle import
+#
+# Lens A (Hub security & auth), Round 13, audited origin/main@926dda41.
+#
+# FINDING (availability hardening; NOT a cross-tenant leak):
+#   POST /api/contextualization/import (multipart .zip "Factory Context Bundle"
+#   → importFromBundle → readZipEntries) inflates every deflated entry with
+#   `inflateRawSync(data)` and **no `maxOutputLength` cap**, and the route does
+#   **no `file.size > MAX_UPLOAD_BYTES` pre-check**. The sibling single-file route
+#   `/api/contextualization/[id]/sources` DOES cap (413 over MAX_UPLOAD_BYTES);
+#   the bundle path does not. An authenticated tenant can therefore upload a
+#   small crafted .zip whose entries inflate to GBs and OOM the shared hub
+#   (DoS for every tenant on the box). It is sessionOr401-gated (not anonymous)
+#   and writes only tenant-scoped ctx_* rows — no confidentiality leak — so this
+#   is YELLOW-grade availability hardening, not a RED beta blocker.
+#
+# This patch adds the missing decompression guards in unzip.ts (self-contained;
+# exact origin/main@926dda41 bytes). FOLLOW-UP (not in this patch — different
+# file): also add `if (file.size > MAX_UPLOAD_BYTES) return 413` to
+# importFromBundle() in src/app/api/contextualization/import/route.ts, mirroring
+# src/app/api/contextualization/[id]/sources/route.ts:104.
+#
+# APPLY (on a CLEAN origin/main worktree — the orchestrator branch is 79 behind;
+#        do NOT apply to the working tree):
+#   cd <repo> && git fetch origin main && git switch -c fix/ctx-zipbomb-cap origin/main
+#   git apply wiki/orchestrator/patches/2026-06-21-A13-contextualization-zipbomb-cap.patch
+#
+# VERIFY:
+#   cd mira-hub && npx tsc --noEmit                         # types still pass
+#   cd mira-hub && npx vitest run src/lib/contextualization # unzip tests still green
+#   git grep -n "maxOutputLength" src/lib/contextualization/unzip.ts  # guard present
+#   # optional manual: feed a 1-entry deflate of 1 GB of zeros → expect a thrown
+#   # Error (ERR_BUFFER_TOO_LARGE / "exceeds total inflated size cap"), not OOM.
+#
+--- a/mira-hub/src/lib/contextualization/unzip.ts
++++ b/mira-hub/src/lib/contextualization/unzip.ts
+@@
+ import { inflateRawSync } from "node:zlib";
+
++// A13 (orchestrator): decompression-bomb guards for the stranger-reachable
++// /api/contextualization/import .zip path. A Factory Context Bundle is small
++// structured JSON; these caps fail a crafted bundle loudly instead of letting
++// inflate OOM the shared hub. (The sibling /sources route already caps via
++// MAX_UPLOAD_BYTES; the bundle path did not.)
++const MAX_ENTRY_BYTES = 64 * 1024 * 1024; // inflated, per entry
++const MAX_TOTAL_BYTES = 256 * 1024 * 1024; // inflated, whole bundle
++const MAX_ENTRIES = 10_000;
++
+ /**
+@@
+ export function readZipEntries(buf: Buffer): Record<string, Buffer> {
+   const out: Record<string, Buffer> = {};
+   let off = 0;
++  let total = 0;
++  let count = 0;
+   while (off + 4 <= buf.length) {
+     const sig = buf.readUInt32LE(off);
+@@
+     const dataStart = nameStart + nameLen + extraLen;
+     const data = buf.subarray(dataStart, dataStart + compSize);
+-    if (method === 0) {
+-      out[name] = Buffer.from(data);
+-    } else if (method === 8) {
+-      out[name] = inflateRawSync(data);
+-    } else {
+-      throw new Error(`unsupported zip compression method ${method} for ${name}`);
+-    }
+-    off = dataStart + compSize;
++    let entry: Buffer;
++    if (method === 0) {
++      if (data.length > MAX_ENTRY_BYTES) throw new Error(`zip entry ${name} exceeds per-entry cap`);
++      entry = Buffer.from(data);
++    } else if (method === 8) {
++      // maxOutputLength → zlib throws ERR_BUFFER_TOO_LARGE instead of inflating
++      // an unbounded (zip-bomb) payload into memory.
++      entry = inflateRawSync(data, { maxOutputLength: MAX_ENTRY_BYTES });
++    } else {
++      throw new Error(`unsupported zip compression method ${method} for ${name}`);
++    }
++    total += entry.length;
++    if (total > MAX_TOTAL_BYTES) throw new Error("zip bundle exceeds total inflated size cap");
++    if (++count > MAX_ENTRIES) throw new Error("zip bundle exceeds entry count cap");
++    out[name] = entry;
++    off = dataStart + compSize;
+   }
+   return out;
+ }

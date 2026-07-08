@@ -1,0 +1,73 @@
+From 0112a2b7fee2967ba09fa14c151b701d47d7e059 Mon Sep 17 00:00:00 2001
+From: Claude Fleet <fleet@factorylm.local>
+Date: Sat, 4 Jul 2026 11:25:27 -0400
+Subject: [PATCH 3/4] =?UTF-8?q?docs(specs):=20fault-detective=20dispositio?=
+ =?UTF-8?q?n=20one-pager=20=E2=80=94=20fold=20into=20SimLab=20as=20detecto?=
+ =?UTF-8?q?r=20+=20harness=20(Option=20B)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ docs/specs/fault-detective-disposition.md | 49 +++++++++++++++++++++++
+ 1 file changed, 49 insertions(+)
+ create mode 100644 docs/specs/fault-detective-disposition.md
+
+diff --git a/docs/specs/fault-detective-disposition.md b/docs/specs/fault-detective-disposition.md
+new file mode 100644
+index 00000000..d5ac3ed5
+--- /dev/null
++++ b/docs/specs/fault-detective-disposition.md
+@@ -0,0 +1,49 @@
++# mira-fault-detective — Disposition One-Pager
++
++**Date:** 2026-07-04 · **Status:** Proposed (decision for Mike)
++**Companion:** ADR-0025 (one diagnostic engine — Supervisor; everything else is a harness)
++
++## What it is
++
++A standalone MQTT-driven rule engine, 704 lines total (`mira-fault-detective/engine.py` 359 +
++`rules.py` 345, plus `tests/test_rules.py` / `test_http_api.py`). It subscribes to `$UNS_PREFIX/#`,
++evaluates priority-ordered rules over a `Snapshot`, **names a root cause** (`Diagnosis`), publishes
++it to `{prefix}/diagnostics/current_fault`, persists to its own SQLite table, and serves a
++token-gated read-only HTTP API on `:8077` (`/health`, `/current_fault`).
++
++## Evidence of current usage
++
++- **Deployment:** ONLY `docker-compose.fault-detective.yml`, whose 18-line header banner says
++  *"BENCH HARNESS — NOT a customer architecture"* and explicitly forbids promoting it to a
++  customer install. It appears in no customer compose (`docker-compose.yml`, `.saas.yml`,
++  `.staging*.yml`).
++- **Supervisor dependency (evidence-in, live):** `mira-bots/shared/engine.py:369`
++  (`_FAULT_DETECTIVE_URL`, default `http://mira-fault-detective:8077`) +
++  `_build_live_data_context()` / `_fetch_live_status()` (engine.py:3462–3486) pull
++  `/current_fault` as a flag-gated, never-raising `[LIVE EQUIPMENT STATUS]` enrichment block.
++  Covered by `tests/test_live_data_enrichment.py`.
++- **Marketing:** two comic-pipeline video scripts reference its HMI screenshots
++  (`marketing/comic-pipeline/scripts/phase5-video-13-ask-conveyor.yaml`,
++  `phase5-video-16-photo-to-plant.yaml` → `docs/promo-screenshots/2026-05-27_fault-detective-*`,
++  `2026-06-01_fault-detective-*`). Screenshots are append-only archive; no live dependency.
++- **Overlap:** SimLab (`simlab/scenarios.py`) already provides 6 replayable fault scenarios A–F
++  with ground-truth rubrics, run against the **real Supervisor** by `tests/simlab/runner.py`;
++  `simlab/diagnostic.py` is explicitly "an evidence-packet assembler — NOT an answer engine."
++
++## Options
++
++| Option | What it means | Verdict |
++|---|---|---|
++| **A. Productize behind the Supervisor** | Ship fault-detective as a cloud detector service; Supervisor consumes it as evidence | ❌ Not now. Its MQTT ingest + own persistence violate `.claude/rules/one-pipeline-ingest.md`; the customer-shipped detection path is the in-gateway Ignition rules (`plc/conv_simple_anomaly/rules_core.py`, A0–A12) per ADR-0021. Productizing means a rewrite through `mira-relay/ingest_contract.py`, not a promotion. |
++| **B. Fold into SimLab as detector + eval harness** | Keep `rules.py` as a pure detector library; port its conveyor fault map into `simlab/scenarios.py`-style replayable scenarios; keep the `:8077` evidence API for the bench; delete/deprecate its MQTT-publish of `Diagnosis` verdicts and its private SQLite persistence | ✅ **Recommended** — this is exactly ADR-0025's reclassification (detector + harness, never a customer-facing verdict). |
++| **C. Archive like mira-hud** | `archive/mira-fault-detective-2026-07` branch, remove from tree | ❌ Premature. The Supervisor's live-data enrichment path and the bench demo (which feeds the promo pipeline) still consume it. Archive only after Option B lands and the bench compose points at the SimLab-hosted detector. |
++
++## Recommendation
++
++**Option B.** Rationale: it resolves the only real problem — a second component that *names root
++causes* without citations or groundedness (ADR-0025 Context §2) — while preserving everything that
++is actually used: the rules as a detector, the `:8077` evidence feed into
++`_build_live_data_context`, and the bench demo behind the marketing screenshots. Concrete steps
++and the archive criterion are in ADR-0025 "Fold-in steps"; the one-line summary: **demote
++`Diagnosis` from verdict to evidence packet, move scenario replay into SimLab, keep the compose
++bench-only, archive the leftover shell afterwards.**
+-- 
+2.34.1
+

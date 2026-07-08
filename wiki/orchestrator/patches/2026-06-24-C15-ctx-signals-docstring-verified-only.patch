@@ -1,0 +1,11 @@
+--- a/mira-bots/shared/engine.py
++++ b/mira-bots/shared/engine.py
+@@ -3519,6 +3519,6 @@
+         """Best-effort approved PLC-signal context from kg_entities.
+ 
+-        Queries for signals (entity_type='signal', approval_state IN
+-        ('proposed','verified')) whose uns_path is a descendant of the asset's
++        Queries for signals (entity_type='signal', approval_state = 'verified'
++        -- verified-only, train-before-deploy) whose uns_path is under the asset's
+         resolved UNS path.  Returns a labeled block for prompt injection, or ""
+         on any miss.  Never raises.

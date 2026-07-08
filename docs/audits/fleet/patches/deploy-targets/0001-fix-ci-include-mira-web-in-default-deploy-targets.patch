@@ -1,0 +1,27 @@
+From 52ba11d7e355c0118e5501f9f37ddf0de63c1cc2 Mon Sep 17 00:00:00 2001
+From: Claude Fleet <fleet@factorylm.local>
+Date: Sat, 4 Jul 2026 10:20:19 -0400
+Subject: [PATCH] fix(ci): include mira-web in default deploy targets
+
+---
+ .github/workflows/deploy-vps.yml | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/.github/workflows/deploy-vps.yml b/.github/workflows/deploy-vps.yml
+index 1c320d5b..c079cb0c 100644
+--- a/.github/workflows/deploy-vps.yml
++++ b/.github/workflows/deploy-vps.yml
+@@ -210,7 +210,9 @@ jobs:
+           # cycle — engine changes shipped to telegram/slack but mira-ask-saas
+           # stayed on the old image because it was missing from this default
+           # list). See docs/runbooks/kiosk-askmira-deploy-and-verify.md.
+-          TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub mira-cmms-sync mira-bot-telegram mira-bot-slack mira-ask}"
++          # mira-web added 2026-07-04 - no stated exclusion rationale existed
++          # (docs/known-issues.md); marketing-site PRs silently did not auto-deploy.
++          TARGETS="${SERVICES:-mira-pipeline mira-ingest mira-mcp mira-hub mira-web mira-cmms-sync mira-bot-telegram mira-bot-slack mira-ask}"
+           echo "Rebuild targets: $TARGETS"
+ 
+           echo "=== Pre-deploy cleanup: remove any stale containers blocking recreate ==="
+-- 
+2.34.1
+

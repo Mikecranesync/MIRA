@@ -1,0 +1,172 @@
+From 07bb3f6052a8d2dbafc946c931911ae73b51c141 Mon Sep 17 00:00:00 2001
+From: Claude Fleet <fleet@factorylm.local>
+Date: Sat, 4 Jul 2026 10:36:21 -0400
+Subject: [PATCH] feat(repo): MODULES.md lifecycle manifest + CI guard
+
+---
+ MODULES.md                     |  39 ++++++++++++
+ tests/test_modules_manifest.py | 106 +++++++++++++++++++++++++++++++++
+ 2 files changed, 145 insertions(+)
+ create mode 100644 MODULES.md
+ create mode 100644 tests/test_modules_manifest.py
+
+diff --git a/MODULES.md b/MODULES.md
+new file mode 100644
+index 00000000..22eb91d3
+--- /dev/null
++++ b/MODULES.md
+@@ -0,0 +1,39 @@
++# MODULES.md — Module Lifecycle Manifest
++
++Status of every top-level module directory. Guarded by `tests/test_modules_manifest.py`
++(fails CI if a qualifying dir is missing here or a listed dir no longer exists).
++
++Statuses: **DEPLOYED** (built/mounted by a production compose — `docker-compose.saas.yml`,
++`.observability.yml`, `.hub.yml`, or a module-owned prod compose), **BENCH** (dev/staging/
++fault-detective/pathb composes only), **CI** (exercised only by `.github/workflows/`),
++**DEFERRED** / **LEGACY** (per root `CLAUDE.md` § Deferred / Archived Modules), **ORPHAN**
++(no compose, no workflow reference found).
++
++| Module | Status | Evidence | Note |
++|---|---|---|---|
++| mira-bots | DEPLOYED | saas.yml builds `mira-bot-telegram`, `mira-bot-slack`, `mira-ask` | Telegram/Slack adapters + ask_api + shared engine |
++| mira-bridge | BENCH | only in docker-compose.yml / .override.yml / .fault-detective.yml | saas.yml references only `/opt/mira/mira-bridge/data` host volumes, not the module |
++| mira-cmms | DEPLOYED | own prod compose `mira-cmms/docker-compose.yml` (atlas-api/atlas-db, PR #1439); included by root docker-compose.yml; staging mirror in .staging-vps.yml | Not in saas.yml directly — saas `mira-hub`/`mira-web` proxy to `cmms-backend:8080` |
++| mira-connect | DEFERRED | root CLAUDE.md § Deferred ("Config 4", post-MVP); no compose or workflow | Modbus/PLC drivers, dormant |
++| mira-connectors | DEPLOYED | `mira-pipeline/Dockerfile` COPYs + pip-installs `mira-connectors/`; own pytest job in ci.yml | Ships inside mira-pipeline-saas image |
++| mira-contextualizer | ORPHAN | no compose, workflow, or test reference found | Desktop GUI tool; runs outside docker |
++| mira-core | DEPLOYED | saas.yml `mira-core` (Open WebUI image + entrypoint) and `mira-ingest` (builds `mira-core/mira-ingest/Dockerfile`) | |
++| mira-crawler | DEPLOYED | saas.yml builds `mira-synthetic-dogfood-worker`/`-beat` from `mira-crawler/Dockerfile.synthetic-dogfood` | Also KB ingest tooling used from CI seeds |
++| mira-fault-detective | BENCH | docker-compose.fault-detective.yml builds `./mira-fault-detective` | Bench Fault-Detective demo harness |
++| mira-fault-sim | BENCH | docker-compose.fault-detective.yml builds `./mira-fault-sim` | |
++| mira-hub | DEPLOYED | saas.yml builds `mira-hub` + `mira-cmms-sync` (context `./mira-hub`); also docker-compose.hub.yml | Command Center, app.factorylm.com |
++| mira-ignition-exchange | ORPHAN | no compose, workflow, or test reference found | Ignition Exchange packaging artifacts |
++| mira-machine-logic-graph | ORPHAN | no compose, workflow, or test reference found | |
++| mira-mcp | DEPLOYED | saas.yml builds `./mira-mcp` | |
++| mira-pipeline | DEPLOYED | saas.yml builds `mira-pipeline/Dockerfile` | Active VPS chat path |
++| mira-plc-parser | DEPLOYED | `mira-core/mira-ingest/Dockerfile` COPYs `mira-plc-parser/mira_plc_parser/` (powers /ingest/plc-parse) | Ships inside mira-ingest-saas image; GUI itself is a desktop tool |
++| mira-relay | DEPLOYED | saas.yml builds `./mira-relay`; root CLAUDE.md: "Active SaaS infrastructure (NOT deferred)" | Ignition factory→cloud tag streaming |
++| mira-scan-monday | ORPHAN | no compose, workflow, or test reference found | |
++| mira-sidecar | LEGACY | root CLAUDE.md: sunset pending (ADR-0008/0014); saas.yml mentions are removal comments; only built by docker-compose.pathb.yml | Awaiting OEM migration before stop |
++| mira-trend-viewer | ORPHAN | no compose, workflow, or test reference found | |
++| mira-web | DEPLOYED | saas.yml builds `./mira-web` | PLG funnel, factorylm.com |
++| nango-integrations | DEPLOYED | saas.yml mounts `./nango-integrations/providers.yaml` into `nango-server` | Config consumed by pinned nango image |
++| plc | BENCH | docker-compose.fault-detective.yml builds `./plc/conv_simple_anomaly` + `./plc/live-plc-bridge` | Also CI-exercised: `tests/regime7_ignition/test_diagnose_parity.py` drift-guards `plc/conv_simple_anomaly/rules_core.py` |
++| ignition | CI | `tests/regime7_ignition/` (ci.yml full offline suite) exercises `ignition/webdev/` + `ignition/gateway-scripts/` + `ignition/project/` | Deployed to the Ignition gateway out-of-band, not via docker compose |
++| simlab | CI | ci.yml `simlab-gate` job runs `tests/simlab/*` against the `simlab/` package | Headless juice-bottling benchmark, runs locally via `python -m simlab` |
++| paperclip | ORPHAN | no compose, workflow, or test reference found | |
+diff --git a/tests/test_modules_manifest.py b/tests/test_modules_manifest.py
+new file mode 100644
+index 00000000..a2dbe938
+--- /dev/null
++++ b/tests/test_modules_manifest.py
+@@ -0,0 +1,106 @@
++"""Guard: MODULES.md lifecycle manifest stays in sync with top-level module dirs.
++
++Fails if:
++  1. A qualifying top-level directory is missing from the MODULES.md table.
++  2. A module listed in MODULES.md no longer exists as a top-level directory.
++
++Qualifying = top-level dirs matching ``mira-*`` plus the explicit extras below.
++"""
++
++from __future__ import annotations
++
++import re
++from pathlib import Path
++
++REPO_ROOT = Path(__file__).resolve().parent.parent
++MANIFEST = REPO_ROOT / "MODULES.md"
++
++# Non-module top-level dirs matching nothing here are simply ignored; this set
++# documents dirs one might *think* qualify (repo plumbing, docs, scratch output,
++# archives) so the qualifying rule stays intentional. `mira_copy` uses an
++# underscore, so it does not match the `mira-*` glob and is excluded as a
++# scratch copy, not a module.
++EXCLUDED = {
++    "docs",
++    "wiki",
++    "tests",
++    "tools",
++    "scripts",
++    "deployment",
++    "install",
++    "config",
++    "marketing",
++    "evals",
++    "contracts",
++    "research",
++    "reports",
++    "samples",
++    "outputs",
++    "infra",
++    "calendar",
++    "bravo",
++    "device-profiles",
++    "content_strategy",
++    "PRDS",
++    "Mira-BizDev",
++    "dogfood-output",
++    "graphify-out",
++    "mira_copy",
++}
++
++# Non-mira-* dirs that DO qualify as modules.
++EXTRA_MODULES = {"plc", "simlab", "ignition", "paperclip", "nango-integrations"}
++
++VALID_STATUSES = {"DEPLOYED", "BENCH", "CI", "DEFERRED", "LEGACY", "ORPHAN"}
++
++
++def qualifying_dirs() -> set[str]:
++    out: set[str] = set()
++    for p in REPO_ROOT.iterdir():
++        if not p.is_dir() or p.name.startswith("."):
++            continue
++        if p.name in EXCLUDED:
++            continue
++        if p.name.startswith("mira-") or p.name in EXTRA_MODULES:
++            out.add(p.name)
++    return out
++
++
++def manifest_rows() -> dict[str, str]:
++    """Parse the MODULES.md table -> {module: status}."""
++    assert MANIFEST.exists(), "MODULES.md is missing at repo root"
++    rows: dict[str, str] = {}
++    for line in MANIFEST.read_text(encoding="utf-8").splitlines():
++        m = re.match(r"^\|\s*([A-Za-z0-9_-]+)\s*\|\s*([A-Z]+)\s*\|", line)
++        if not m:
++            continue
++        name, status = m.group(1), m.group(2)
++        if name.lower() == "module":  # header row
++            continue
++        rows[name] = status
++    assert rows, "MODULES.md contains no parseable table rows"
++    return rows
++
++
++def test_every_qualifying_dir_is_in_manifest():
++    missing = sorted(qualifying_dirs() - set(manifest_rows()))
++    assert not missing, (
++        f"Top-level module dir(s) missing from MODULES.md: {missing}. "
++        "Add a row (module | status | evidence | note) or add the dir to "
++        "EXCLUDED in this test with a justification."
++    )
++
++
++def test_every_manifest_module_exists():
++    stale = sorted(
++        name for name in manifest_rows() if not (REPO_ROOT / name).is_dir()
++    )
++    assert not stale, (
++        f"MODULES.md lists module dir(s) that no longer exist: {stale}. "
++        "Remove the row or restore the directory."
++    )
++
++
++def test_statuses_are_valid():
++    bad = {n: s for n, s in manifest_rows().items() if s not in VALID_STATUSES}
++    assert not bad, f"Invalid status value(s) in MODULES.md: {bad} (valid: {sorted(VALID_STATUSES)})"
+-- 
+2.34.1
+

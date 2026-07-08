@@ -1,0 +1,97 @@
+From b6656cd1db050386923aedf89fb696525beaf674 Mon Sep 17 00:00:00 2001
+From: Claude Fleet <fleet@factorylm.local>
+Date: Sat, 4 Jul 2026 10:40:47 -0400
+Subject: [PATCH 1/4] =?UTF-8?q?docs(adr):=20ADR-0024=20unified=20identity?=
+ =?UTF-8?q?=20=E2=80=94=20Hub/NextAuth=20as=20account=20of=20record?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ docs/adr/0024-unified-identity.md | 74 +++++++++++++++++++++++++++++++
+ 1 file changed, 74 insertions(+)
+ create mode 100644 docs/adr/0024-unified-identity.md
+
+diff --git a/docs/adr/0024-unified-identity.md b/docs/adr/0024-unified-identity.md
+new file mode 100644
+index 00000000..02dd1925
+--- /dev/null
++++ b/docs/adr/0024-unified-identity.md
+@@ -0,0 +1,74 @@
++# ADR-0024: Unified identity — Hub/NextAuth as the account of record
++
++## Status
++**Proposed** — 2026-07-04
++
++**Related:** ADR-0014 (product-led wedge), ADR-0015 (mira-core sunset), ADR-0023 (Hub system of record)
++**Prior art:** Atlas SSO handoff — branch `fix/atlas-sso-handoff`, PR #2311 (`4e86440d`), secrets wired PR #2319 (`36b1dc7d`)
++
++---
++
++## Context
++
++MIRA runs **three separate login systems** today:
++
++| Surface | Auth system | Evidence |
++|---|---|---|
++| **mira-web** (PLG funnel, `factorylm.com`) | Custom JWT via `jose`, `PLG_JWT_SECRET`, 30-day `mira_session` cookie; magic-link 24h sessions; TOTP MFA keyed off HKDF(`PLG_JWT_SECRET`) | `mira-web/src/lib/auth.ts`, `mira-web/src/lib/cookie-session.ts`, `mira-web/src/lib/magic-link.ts`, `mira-web/src/lib/mfa.ts` |
++| **mira-hub** (Command Center, `app.factorylm.com`) | NextAuth v4 JWT session cookie (`next-auth.session-token` / `__Secure-` variant), decoded directly in `requireSession()`; **UUID-only tenants** (non-UUID `tid` → 401 since `369513cb`); user/tenant bootstrap via `ensureUserAndTenant()` | `mira-hub/src/lib/session.ts`, `mira-hub/src/lib/users.ts:246`, `mira-hub/src/app/api/auth/[...nextauth]/`, `.../api/auth/register/` |
++| **Open WebUI** (mira-core) | Open WebUI's own account table + JWT; **public signup is ON in prod** (`ENABLE_SIGNUP=true`, `DEFAULT_USER_ROLE=pending`) | `docker-compose.saas.yml:68-70`, `mira-core/docker-compose.yml:12-14` (note `mira-core/.env.example:4` already says `ENABLE_SIGNUP=false`) |
++
++The three systems already leak into each other:
++
++- mira-web's Stripe webhook **writes `hub_users` directly** to flip a paying customer to `approved` (`mira-web/src/lib/hub-user-activation.ts`) — cross-app coupling through the shared NeonDB, with the documented "paid first, registered later" backfill gap in its own header comment.
++- mira-web uses Open WebUI as an inbox backend and cascades account deletion through it (`mira-web/src/routes/inbox.ts`, `mira-web/src/lib/account-deletion.ts`; consumer map in ADR-0015 §1).
++- The Hub records per-tenant Open WebUI instance bindings at `mira-hub/src/app/api/auth/openwebui/route.ts` — a binding, not an identity bridge.
++- Three secrets (`PLG_JWT_SECRET`, `AUTH_SECRET`/`NEXTAUTH_SECRET`, `WEBUI_SECRET_KEY`) mint three mutually unintelligible tokens for the same human.
++
++**Cost today:** a beta tester can hold three passwords, three sessions, and three user rows; support cannot answer "which account is this customer"; the beta-gate journey (stranger uploads a manual, gets a cited answer) crosses at least two of the three systems.
++
++**Prior art that proves the pattern:** the Atlas CMMS handoff. `mira-hub/src/app/api/cmms/sso/route.ts` (PR #2311) has the Hub sign a **2-minute HS256 assertion** (`HUB_SSO_SECRET`, issuer `factorylm-hub`, audience `atlas-cmms`, claims `email`/`tenantId`/`userId`) that Atlas redeems for its own session. Atlas is no longer a fourth login. The same mechanism generalizes.
++
++## Decision
++
++1. **mira-hub / NextAuth is the account of record.** `hub_users` + `hub_tenants` (UUID tenants, per `.claude/rules/mira-hub-migrations.md`) are the canonical identity tables. All other surfaces hold *derived* sessions, never independent accounts.
++2. **mira-web → Hub session handoff replaces the parallel PLG account.** Registration/magic-link on `factorylm.com` calls the Hub's `ensureUserAndTenant()` path (via a Hub-issued API or the shared DB it already uses), then hands the browser to `app.factorylm.com` with a short-lived Hub-signed assertion — the `cmms/sso` pattern with audience `factorylm-web`→`hub`. The 30-day `mira_session` JWT survives only as a funnel/analytics session, not as an identity.
++3. **Open WebUI public signup is disabled** (`ENABLE_SIGNUP=false` in `docker-compose.saas.yml`, matching `mira-core/.env.example`). OWUI accounts become **per-tenant service accounts, auto-provisioned** by the Hub on tenant creation via Open WebUI's admin API (helper home: extend `tools/owui_tools/`), credentials stored per tenant in Doppler-managed config — never typed by a customer. Humans never see an OWUI login page.
++
++## Consequences
++
++**Positive**
++- One password, one user row, one tenant UUID per customer; `hub-user-activation.ts`'s cross-DB UPDATE becomes an in-family status change.
++- The UUID-only tenancy migration (`session.ts`) automatically governs every surface.
++- ADR-0015's mira-core sunset gets easier: OWUI holds no customer identities to migrate.
++
++**Negative / risks**
++- Hub becomes a single point of failure for login on every surface — mitigated by short-lived assertions (surfaces keep their own session after redemption, as Atlas does).
++- Stripe webhook ordering ("paid before registered") must be re-handled explicitly at `ensureUserAndTenant()` time instead of silently affecting 0 rows.
++- Existing OWUI human accounts (prod signup has been open) need a one-time map-or-orphan pass before signup is disabled.
++- `PLG_JWT_SECRET` remains load-bearing for MFA encryption (`mira-web/src/lib/mfa.ts`) even after sessions move — do not rotate it as part of this work.
++
++## Migration plan (phased)
++
++**Phase 1 — stop the bleeding (no user-visible change)**
++1. Set `ENABLE_SIGNUP=false` for `mira-core-saas` in `docker-compose.saas.yml`; deploy via `deploy-vps.yml`. Existing sessions unaffected.
++2. Inventory OWUI users vs `hub_users` by email; record unmatched accounts.
++
++**Phase 2 — provisioning**
++3. Hub tenant creation (`ensureUserAndTenant`) auto-provisions the per-tenant OWUI service account; store the API key per tenant (Doppler / `tenant` config, pattern of `.../api/auth/openwebui/route.ts` bindings).
++4. Point `mira-web` inbox + account-deletion OWUI calls at the tenant service account instead of a shared key.
++
++**Phase 3 — web→hub handoff**
++5. Add `mira-hub/src/app/api/auth/handoff/route.ts` mirroring `cmms/sso/route.ts` (2-min HS256 assertion, new audience, new Doppler secret — do NOT reuse `HUB_SSO_SECRET`).
++6. mira-web signup/magic-link redirects into the handoff; `mira_session` demoted to funnel-only. Stripe webhook keys off the Hub user id it now always has.
++
++**Phase 4 — retire**
++7. Remove PLG login UI; keep `/api/magic/login` as a redirect shim for old emails. Audit remaining `PLG_JWT_SECRET` verifiers; leave MFA key derivation.
++
++**Rollout gates:** each phase behind its own PR + `smoke-test.yml`; Phase 1 is a config-only hotfix-shaped change; Phases 3–4 verified on staging (`factorylm/stg`) with a UUID tenant per `.claude/rules/mira-hub-migrations.md` §6 before prod.
++
++## Alternatives considered
++
++- **mira-web JWT as the record** — rejected: no tenancy model, no RLS integration, no admin surface; Hub already owns `hub_users` and the UUID migration.
++- **Open WebUI as the record** — rejected: ADR-0015 is sunsetting it; its auth cannot express MIRA tenancy.
++- **Full third-party IdP (Auth0/Keycloak)** — deferred: license/ops cost not justified pre-first-dollar; the Atlas-assertion pattern already works and is ours.
+-- 
+2.34.1
+

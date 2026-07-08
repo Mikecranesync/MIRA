@@ -1,0 +1,32 @@
+From d3444e7dfd0101c6aea674ccb464fcea1fc75141 Mon Sep 17 00:00:00 2001
+From: Claude Fleet <fleet@factorylm.local>
+Date: Sat, 4 Jul 2026 10:29:56 -0400
+Subject: [PATCH 2/2] ci: run env-var drift check in architecture-check job
+
+Adds a stdlib-only step invoking tools/check_env_drift.py after the existing
+module-boundary check, so docker-compose.saas.yml / docker-compose.staging-vps.yml
+env vars drifting from docs/env-vars.md + .env.template fail CI going forward.
+---
+ .github/workflows/ci.yml | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 36c7f5b0..11da2c02 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -257,6 +257,12 @@ jobs:
+       - name: Check module boundaries
+         run: pytest tests/test_architecture.py -v
+ 
++      - name: Check env-var drift (docker-compose.saas.yml vs docs/env-vars.md + .env.template)
++        # Stdlib-only static check (docs/known-issues.md) -- no extra deps needed.
++        # Exits 1 on any used-but-undocumented or documented-but-unused var not
++        # already covered by tools/env_drift_allowlist.txt (pre-existing drift).
++        run: python3 tools/check_env_drift.py
++
+   simlab-gate:
+     name: SimLab Grader Gate
+     runs-on: ubuntu-latest
+-- 
+2.34.1
+

@@ -1,0 +1,28 @@
+E14-1 (low, observability-accuracy, non-blocking) — deploy-identity gitSha precedence.
+
+deploy-vps.yml bakes MIRA_GIT_SHA into the hub image (#2226) so /api/version + /api/health
+report which code is live. It currently prefers the workflow-trigger ${GITHUB_SHA} over the
+on-disk tree. But the deploy step has ALREADY checked out the pinned release tag
+(`git checkout --force "$RELEASE_TAG"`, #736 pin-to-tag) before this export runs, so the
+on-disk HEAD IS the deployed commit. If origin/main advances between the workflow_run trigger
+and the on-VPS `git fetch origin main --tags`, pin-to-tag deploys a NEWER tag while
+/api/version.gitSha reports the OLDER trigger SHA — under-reporting the very thing #2226 exists
+to confirm. Fix: source the SHA from the actually-deployed tree (post-checkout HEAD), falling
+back to GITHUB_SHA only if git is unavailable.
+
+Audited origin/main@47e6fb42. `git apply --check` CLEAN vs origin/main.
+Verify after apply: `grep -n 'export MIRA_GIT_SHA' .github/workflows/deploy-vps.yml`
+
+diff --git a/.github/workflows/deploy-vps.yml b/.github/workflows/deploy-vps.yml
+index 1c320d5..e2e7a88 100644
+--- a/.github/workflows/deploy-vps.yml
++++ b/.github/workflows/deploy-vps.yml
+@@ -228,7 +228,7 @@ jobs:
+           # Deploy identity (#2226) — bake the SHA/version/time into the hub image
+           # so /api/version + /api/health report which code is live. Exported here
+           # so docker-compose build.args pick them up; default "unknown" otherwise.
+-          export MIRA_GIT_SHA="${GITHUB_SHA:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
++          export MIRA_GIT_SHA="$(git rev-parse HEAD 2>/dev/null || echo "${GITHUB_SHA:-unknown}")"
+           export MIRA_APP_VERSION="$(cat VERSION 2>/dev/null | tr -d '[:space:]' || echo unknown)"
+           export MIRA_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+           echo "Deploy identity: sha=${MIRA_GIT_SHA} version=${MIRA_APP_VERSION} built=${MIRA_BUILD_TIME}"

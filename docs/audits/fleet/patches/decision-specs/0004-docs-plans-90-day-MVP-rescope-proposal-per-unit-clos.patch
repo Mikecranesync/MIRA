@@ -1,0 +1,76 @@
+From 783b47acc7e89e8f088bed8478dd132363f73bd0 Mon Sep 17 00:00:00 2001
+From: Claude Fleet <fleet@factorylm.local>
+Date: Sat, 4 Jul 2026 11:26:19 -0400
+Subject: [PATCH 4/4] =?UTF-8?q?docs(plans):=2090-day=20MVP=20rescope=20pro?=
+ =?UTF-8?q?posal=20=E2=80=94=20per-unit=20close/cut/carry=20for=20Mike's?=
+ =?UTF-8?q?=20approval?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ docs/plans/2026-07-04-mvp-rescope-proposal.md | 52 +++++++++++++++++++
+ 1 file changed, 52 insertions(+)
+ create mode 100644 docs/plans/2026-07-04-mvp-rescope-proposal.md
+
+diff --git a/docs/plans/2026-07-04-mvp-rescope-proposal.md b/docs/plans/2026-07-04-mvp-rescope-proposal.md
+new file mode 100644
+index 00000000..3b635773
+--- /dev/null
++++ b/docs/plans/2026-07-04-mvp-rescope-proposal.md
+@@ -0,0 +1,52 @@
++# 90-Day MVP Rescope Proposal — close-out at 2026-07-19
++
++**Date:** 2026-07-04 · **Status:** PROPOSAL — needs Mike's approval before any plan edits
++**Scope:** `docs/plans/2026-04-19-mira-90-day-mvp.md` (locked 2026-04-19 → 2026-07-19; 15 days left)
++
++## Why now
++
++The plan file's own "Execution Status" last synced **2026-04-20** and `wiki/hot.md` already flags
++the drift ("the plan file needs a sync before new unit work is claimed"). Meanwhile the strategic
++frame moved twice under it: the canonical wedge changed on 2026-06-22 (`NORTH_STAR.md` — lead with
++the context platform, not the copilot) and the beta gate is **MET/PASSING** (root `CLAUDE.md`,
++`.github/workflows/beta-gate.yml`). Proposal: close the plan at term with an honest per-unit
++disposition rather than a silent expiry.
++
++## Judgment standard
++
++Each unit is judged against the two live yardsticks: the **beta gate** (stranger uploads a manual →
++cited answer, no manual fix) and the plan's own **first-dollar path** (§"First dollar": Units 2, 6,
++9a).
++
++## Per-unit disposition (Units 2, 3, 4, 5, 7, 8, 9a)
++
++| Unit | Evidence of state (verified 2026-07-04) | Proposal | One-line justification |
++|---|---|---|---|
++| **2 — Source citations** | Shipped: citation gate (`rag_worker.py` `_compute_kb_status`, PR #418) + `mira-bots/shared/citation_compliance.py`; beta gate passing on cited answers | **CLOSE as done** | Citations ARE the beta gate and item #1 on the first-dollar path — delivered and CI-enforced. |
++| **3 — Magic inbox** | Shipped: `mira-web/src/routes/inbox.ts`; PRs #543 (safety gates), #545, #560, #585 (Apps Script + Gmail, HMAC) | **CLOSE as done** | A second door into the upload→cited-answer journey the beta gate proves; already in prod. |
++| **4 — Excel/CSV export** | Shipped: `mira-mcp/exports.py`, PR #644 merged | **CLOSE as done** | Cheap retention feature, done; no further investment — it touches neither gate nor wedge. |
++| **5 — UNS asset model** | Original shape (ltree `assets` table in mira-ingest + Telegram `/asset`) never shipped; superseded by the namespace-builder program (`docs/plans/2026-05-15-maintenance-namespace-builder.md`; hub migrations `010/014/015_*uns_path*`, `021_namespace_builder.sql`; `.claude/rules/uns-compliance.md`) | **CUT (mark superseded)** | The UNS goal got a bigger, better home — the namespace builder IS the wedge now; reviving the Telegram-first shape would fork it. |
++| **7 — QR pre-load** | Partial: `/m/:asset_tag` scan/chooser/report routes live (`mira-web/src/routes/m.ts`); QR is a certified direct-connection surface in `engine.py` (`.claude/rules/direct-connection-uns-certified.md`); the spec'd "inject Atlas WO history into FSM initial context" not found in `m.ts`/`session_memory.py` | **CUT remainder** | QR already delivers its context-certification value; the WO-history injection serves neither the beta gate nor first dollar and QR is a *retained surface*, not the wedge. |
++| **8 — Atlas sync hardening** | Shipped: PR #989 (`feat(atlas): Unit 8 — retry + durable WO outbox + 3h admin alert`, CRA-17) | **CLOSE as done** | Reliability floor under the CMMS surface — done; no follow-on in scope. |
++| **9a — Landing rewrite** | Shipped: PR #637 (three named features above fold, $97/mo) | **CLOSE as done; flag re-audit** | First-dollar item delivered, BUT its copilot-era framing predates the 2026-06-22 wedge — queue a repositioning pass (already noted in `wiki/hot.md` "Marketing repositioning queued for Phase 4"), as new work, not as this unit. |
++| *(9b — case study, same unit family)* | Not shipped: no case-study-with-metric commits found | **CARRY into next phase** | The only first-dollar artifact still missing; it needs a real beta tester's metric, which the now-passing beta gate finally makes producible. |
++
++## Net proposal
++
++1. **Close the 90-day plan on 2026-07-19** with the table above appended to its Execution Status —
++   6 closed, 1.5 cut (Unit 5 superseded; Unit 7 remainder), 1 carried (9b case study).
++2. **Carry exactly one item forward:** Unit 9b, reframed as "first beta-tester case study with a
++   metric," attached to the Path-to-Beta phase (`docs/plans/2026-06-07-path-to-beta.md`) — it is
++   the bridge from a passing beta gate to a first dollar.
++3. **No new units enter through this plan.** Post-close work is governed by `NORTH_STAR.md`, the
++   master architecture plan, and the ProveIt 2027 runbook — not by extending a locked MVP plan
++   whose wedge framing is two revisions old.
++
++## What Mike needs to decide
++
++- [ ] Approve the per-unit dispositions (esp. cutting Unit 5 as superseded and Unit 7's remainder).
++- [ ] Approve carrying 9b into path-to-beta rather than extending this plan past 2026-07-19.
++- [ ] Approve the 9a landing-copy re-audit as a *new* work item under the repositioning track.
++
++On approval, a follow-up PR updates `docs/plans/2026-04-19-mira-90-day-mvp.md` Execution Status and
++`wiki/hot.md`. No code changes are proposed here.
+-- 
+2.34.1
+

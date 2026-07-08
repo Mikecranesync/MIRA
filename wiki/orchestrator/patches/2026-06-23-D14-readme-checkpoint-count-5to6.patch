@@ -1,0 +1,33 @@
+From: MIRA Orchestrator (D14 lens audit)
+Subject: docs(eval): fix README binary-checkpoint count 5 -> 6 (matches grader.py)
+
+D13-3 doc-drift, persisting since D11. tests/eval/README.md (lines 7 + 13) says
+"5 binary checkpoints" but tests/eval/grader.py docstring says "Six checkpoints"
+and defines 6 cp_* functions (cp_reached_state, cp_pipeline_active,
+cp_keyword_match, cp_no_5xx, cp_turn_budget, cp_citation_groundedness). The 6th
+(cp_citation_groundedness) is the beta-critical numeric-spec grounding check and
+IS implemented — the README simply undercounts by one. Cosmetic, non-blocking.
+
+Apply:   cd <repo> && git apply wiki/orchestrator/patches/2026-06-23-D14-readme-checkpoint-count-5to6.patch
+Verify:  grep -n "6 binary checkpoint" tests/eval/README.md   # expect 2 hits (L7, L13)
+         grep -c "^def cp_" tests/eval/grader.py              # expect 6
+Checked: git apply --check CLEAN against origin/main@47e6fb42 (deploy truth).
+
+--- a/tests/eval/README.md
++++ b/tests/eval/README.md
+@@ -4,13 +4,13 @@
+
+ ## Continuous Eval Loop
+
+-MIRA has two automated eval tiers — 51 scenario fixtures (31 `NN_*.yaml` + 20 `vfd_*.yaml`), 5 binary checkpoints + 4 LLM-as-judge dimensions (v2.6.0+).
++MIRA has two automated eval tiers — 51 scenario fixtures (31 `NN_*.yaml` + 20 `vfd_*.yaml`), 6 binary checkpoints + 4 LLM-as-judge dimensions (v2.6.0+).
+
+ | Path | Purpose |
+ |------|---------|
+ | `tests/eval/fixtures/` | YAML scenario fixtures (51 total: 31 `NN_*.yaml` + 20 VFD `vfd_*.yaml`) |
+ | `tests/eval/run_eval.py` | CLI runner — `python3 tests/eval/run_eval.py` |
+-| `tests/eval/grader.py` | 5 binary checkpoint definitions |
++| `tests/eval/grader.py` | 6 binary checkpoint definitions |
+ | `tests/eval/judge.py` | LLM-as-judge — 4 Likert dimensions, cross-model routing |
+ | `tests/eval/test_judge.py` | Offline unit tests for judge (mocked APIs) |
+ | `tests/eval/celery_tasks.py` | Celery tasks: hourly (no judge) + nightly (with judge) |

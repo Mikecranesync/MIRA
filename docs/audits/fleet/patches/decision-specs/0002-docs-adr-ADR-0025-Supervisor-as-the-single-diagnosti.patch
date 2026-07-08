@@ -1,0 +1,78 @@
+From a322495a43ace34752d02d26d79f8da188fde8fc Mon Sep 17 00:00:00 2001
+From: Claude Fleet <fleet@factorylm.local>
+Date: Sat, 4 Jul 2026 10:41:26 -0400
+Subject: [PATCH 2/4] docs(adr): ADR-0025 Supervisor as the single diagnostic
+ engine
+
+---
+ docs/adr/0025-single-diagnostic-engine.md | 58 +++++++++++++++++++++++
+ 1 file changed, 58 insertions(+)
+ create mode 100644 docs/adr/0025-single-diagnostic-engine.md
+
+diff --git a/docs/adr/0025-single-diagnostic-engine.md b/docs/adr/0025-single-diagnostic-engine.md
+new file mode 100644
+index 00000000..fa4125d9
+--- /dev/null
++++ b/docs/adr/0025-single-diagnostic-engine.md
+@@ -0,0 +1,58 @@
++# ADR-0025: One diagnostic engine — Supervisor; everything else is a harness
++
++## Status
++**Proposed** — 2026-07-04
++
++**Related:** ADR-0011 (no LangGraph), ADR-0021 (Ignition module-first edge), `.claude/rules/one-pipeline-ingest.md`, `docs/specs/fault-detective-disposition.md` (companion one-pager)
++
++---
++
++## Context
++
++MIRA's product claim is a **grounded agent that diagnoses with citations** (`NORTH_STAR.md`). The thing that does that is the **Supervisor** (`mira-bots/shared/engine.py`): UNS gate, groundedness scoring, citation compliance, KB recall, cascade inference. Every consumption surface (Telegram, Slack, mira-pipeline, Ignition chat, AskMira) renders *its* answer.
++
++But the repo contains three code paths that produce diagnosis-shaped output, and only one of them is the Supervisor:
++
++1. **Supervisor** — `mira-bots/shared/engine.py`. The real engine; the only one with citations, groundedness, and the UNS gate.
++2. **mira-fault-detective** — a standalone MQTT-driven rule engine (`mira-fault-detective/engine.py`, 359 lines + `rules.py`, 345 lines). It subscribes to `$UNS_PREFIX/#`, evaluates priority-ordered rules over a `Snapshot` dataclass, **names a root cause** (`Diagnosis`), publishes it to `{prefix}/diagnostics/current_fault`, and persists to its own SQLite table (`conveyor_events`). It duplicates, outside the Supervisor: fault *naming* authority (no citations, no groundedness score), its own persistence path, and its own MQTT ingest — the exact shape `.claude/rules/one-pipeline-ingest.md` forbids for new transports. It is deployed only by the bench-only `docker-compose.fault-detective.yml` (header: "BENCH HARNESS — NOT a customer architecture").
++3. **SimLab diagnostics** — `simlab/diagnostic.py`. Already correctly scoped: its module docstring says *"This module is an evidence-packet assembler + rubric grader — NOT an answer engine. It surfaces WHAT is abnormal; it does NOT name the root cause."* `assemble_evidence()` feeds the real Supervisor; `grade()` scores the reply.
++
++**The precedent already exists.** `tests/simlab/runner.py` runs every SimLab scenario **in-process against the real Supervisor**: `_build_supervisor()` imports `from shared.engine import Supervisor`, binds it to `SIMLAB_TENANT_ID` so KB recall cites the seeded juice-bottling corpus, pre-seeds `direct_connection` UNS context, and calls `process_full` directly (runner.py:180-202). SimLab is a harness; the Supervisor answers.
++
++And the Supervisor already *consumes* fault-detective rather than competing with it — `engine.py:369` (`_FAULT_DETECTIVE_URL`) and `engine.py:3463-3482` pull the latest diagnosis from fault-detective's opt-in read-only HTTP API (`:8077`) into `_build_live_data_context`. The relationship is live-signal *evidence in*, not diagnosis *out*. The problem is that fault-detective ALSO publishes its own root-cause verdict to MQTT/SQLite, which any surface could render uncited.
++
++The same split is codified for the Ignition module: `plc/conv_simple_anomaly/rules_core.py` (A0–A12) runs **detection** in-gateway; the "explain" half is grounded Ask MIRA — i.e., the Supervisor (`docs/RESUME_2026-06-14_maintenance-intelligence-module.md`, "detect AND explain").
++
++## Decision
++
++**The Supervisor (`mira-bots/shared/engine.py`) is the ONLY component allowed to produce a diagnosis (root-cause naming, troubleshooting guidance) shown to a human.** Everything else is one of:
++
++- a **detector** — pure rules that flag *what is abnormal* (fault-detective `rules.py`, `rules_core.py` A0–A12), emitting evidence, never a customer-facing verdict;
++- a **harness** — drives the Supervisor and grades it (`tests/simlab/runner.py`, `simlab/diagnostic.py`);
++- an **adapter** — renders the Supervisor's answer (bots, pipeline, AskMira, Ignition).
++
++mira-fault-detective is reclassified from "engine" to **detector + eval harness**: its rules become a replayable scenario source; its `Diagnosis` output is demoted to an evidence packet consumed by the Supervisor's existing `_build_live_data_context` path.
++
++## Consequences
++
++**Positive**
++- One place where citations/groundedness/UNS-gate invariants are enforced; hallucination audits (`mira-run-hallucination-audit`) have one target.
++- Eval scenarios (SimLab + fault-detective fault map) all exercise the code that ships.
++- Removes a second persistence/ingest fork, aligning with the one-pipeline law.
++
++**Negative**
++- The bench demo's sub-second rule verdict on the HMI becomes "rule flag now, grounded explanation follows" — acceptable: that is exactly the Ignition-module design.
++- Fault-detective's `conveyor_events` history has consumers in the bench Node-RED HMI; migrating them is real (small) work.
++
++## Fold-in steps (concrete)
++
++1. **Freeze the verdict surface:** stop treating `{prefix}/diagnostics/current_fault` as customer-facing; keep the read-only HTTP API (already consumed by `engine.py:3463`) as an *evidence* feed. Docs-level now; code change is a one-line topic rename to `.../diagnostics/evidence` when touched next.
++2. **Port the fault map to SimLab scenarios:** each rule in `mira-fault-detective/rules.py` (PE-jam, chatter, fuse, VFD-comm, vision cases) becomes a scenario + behavior checkpoint under `tests/simlab/scenarios/`, graded via `tests/simlab/checkpoints.py` against the real Supervisor — the conveyor joins the juice line as a second eval line.
++3. **Re-home the detector:** if the live conveyor still needs in-loop detection, the rules run where A0–A12 run (in-gateway, `plc/conv_simple_anomaly/` pattern) or feed `mira-relay` via `ingest_contract.py` — not as a standalone MQTT core (one-pipeline law).
++4. **Archive the module** once 2–3 land: `git branch archive/mira-fault-detective-2026-07 && git rm -r mira-fault-detective/ docker-compose.fault-detective.yml`, add a row to the CLAUDE.md Deferred/Archived table (the `mira-hud` pattern). Keep `FAULT_DETECTIVE_URL` handling in `engine.py` fail-soft (it already returns None on non-ok) until then.
++5. **Guard the invariant:** add an architecture test (pattern of `tests/test_architecture.py` Contract 5) asserting no module outside `mira-bots/shared/engine.py` constructs a customer-facing diagnosis payload.
++
++## Alternatives considered
++
++- **Keep fault-detective as a fast local engine beside the Supervisor** — rejected: two diagnosis authorities means one of them answers uncited; contradicts the citation invariant and the north star.
++- **Fold rules INTO the Supervisor** — rejected: detection belongs at the edge (latency, offline); the Supervisor explains. Keep detect/explain split, single explain.
+-- 
+2.34.1
+
