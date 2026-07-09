@@ -105,3 +105,34 @@ def test_md_escapes_pipe_in_example():
     md = gap_report.render_md(gap_report.aggregate_gaps(rows))
     # The literal pipe in the question must be escaped so it doesn't break the table.
     assert "\\|" in md
+
+
+# --- capture-schema guard (fail-clean when mig 013's meta column is absent) ---
+
+
+class _FakeCursor:
+    """Minimal cursor stub: returns a canned row for the information_schema probe."""
+
+    def __init__(self, has_meta):
+        self._has_meta = has_meta
+        self._result = None
+
+    def execute(self, sql, params=None):
+        self._result = (1,) if self._has_meta else None
+
+    def fetchone(self):
+        return self._result
+
+
+def test_capture_schema_ready_true_when_meta_present():
+    assert gap_report.capture_schema_ready(_FakeCursor(has_meta=True)) is True
+
+
+def test_capture_schema_ready_false_when_meta_absent():
+    assert gap_report.capture_schema_ready(_FakeCursor(has_meta=False)) is False
+
+
+def test_meta_missing_message_is_actionable():
+    # The operator must be told exactly which migration to apply.
+    assert "013" in gap_report.META_MISSING_MSG
+    assert "conversation_eval.meta" in gap_report.META_MISSING_MSG

@@ -262,6 +262,7 @@ def main(argv: Optional[list[str]] = None) -> int:  # pragma: no cover - DB glue
         )
         return 2
 
+    gap_report._utf8_stdout()
     pack_index = load_pack_manual_index(_load_registry(Path(args.registry)))
 
     import psycopg2  # local import: only main() needs the driver
@@ -269,6 +270,9 @@ def main(argv: Optional[list[str]] = None) -> int:  # pragma: no cover - DB glue
     conn = psycopg2.connect(db_url)
     try:
         with conn.cursor() as cur:
+            if not gap_report.capture_schema_ready(cur):
+                print(f"ERROR: {gap_report.META_MISSING_MSG}", file=sys.stderr)
+                return 3
             report = _fetch_gap_report(cur, args.limit)
         suggestions = build_gap_suggestions(report, pack_index, min_gap_count=args.min_gap_count)
 

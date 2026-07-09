@@ -169,7 +169,16 @@ def _fetch_queue(cur, limit: int) -> list[dict[str, Any]]:
     return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 
+def _utf8_stdout() -> None:
+    """Corrections may carry non-ASCII — keep a Windows cp1252 console from choking."""
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:  # noqa: BLE001 - best-effort
+        pass
+
+
 def main(argv: Optional[list[str]] = None) -> int:  # pragma: no cover - DB glue
+    _utf8_stdout()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit", type=int, default=200, help="max queue rows to propose")
     parser.add_argument(
