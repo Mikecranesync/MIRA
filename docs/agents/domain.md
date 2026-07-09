@@ -6,7 +6,7 @@ How the engineering skills should consume MIRA's domain documentation when explo
 
 - **`docs/THEORY_OF_OPERATIONS.md`** — MIRA's primary doctrine (what it is, how it works, why). This is the project glossary equivalent until a real `CONTEXT.md` is grown lazily.
 - **`CONTEXT-MAP.md`** at the repo root — points at MIRA's per-module contexts (mira-bots, mira-core, mira-hub, etc.).
-- **`docs/adr/`** — 16 system-wide ADRs (0001–0016). Read ones that touch the area you're about to work in.
+- **`docs/adr/`** — 26 system-wide ADRs (0001–0025). Read ones that touch the area you're about to work in.
 - **Per-module `CLAUDE.md`** — each module dir (`mira-bots/`, `mira-core/`, `mira-hub/`, `mira-cmms/`, `mira-mcp/`, `mira-pipeline/`, `mira-web/`, `mira-sidecar/`, `mira-bridge/`) carries its own deep context. These are the seed "CONTEXT.md per context" until lazy per-module CONTEXT.md files emerge via `/grill-with-docs`.
 - **Specs:** `docs/specs/` — product surface contracts (UNS gate, namespace builder, DST FSM).
 - **Plans:** `docs/plans/` — phased execution. Active: 90-day MVP plan + namespace-builder plan.
@@ -21,7 +21,7 @@ If any per-module `CONTEXT.md` doesn't exist yet, proceed silently — `/grill-w
 ├── CLAUDE.md                            ← root build-state + repo map
 ├── docs/
 │   ├── THEORY_OF_OPERATIONS.md          ← primary doctrine (glossary seed)
-│   ├── adr/                             ← 16 system-wide decisions
+│   ├── adr/                             ← 26 system-wide decisions
 │   ├── specs/                           ← product-surface contracts
 │   └── plans/                           ← phased execution
 ├── mira-bots/      CLAUDE.md            ← Slack/Telegram adapters + engine
@@ -62,6 +62,6 @@ Especially watch for conflicts with:
 - ADR-0013 (UNS namespace builder schema canonicalization)
 - ADR-0016 (mira-bridge → FlowFuse)
 
-## Marketplace objective lock
+## North Star objective lock
 
-Per `~/.claude/CLAUDE.md` (global) and root `CLAUDE.md`: MIRA is locked on the monday.com marketplace objective through 2026-07-19. Engineering skills that propose architectural changes, refactors, or new features must check whether the work falls inside Phase 1/Phase 2 of `~/.claude/plans/dev-api-key-for-optimized-badger.md` or is captured in `docs/ideation/` for later. This is enforced by `mira-saas-scope-guard` skill — invoke it when a Pocock skill output proposes scope expansion.
+Per root `CLAUDE.md` and `NORTH_STAR.md` (canonical wedge, 2026-06-22): FactoryLM is the maintenance-context layer that makes messy factory data trustworthy for AI on *any* UNS; MIRA is the grounded agent that proves it by diagnosing with cited sources. **Lead with the context platform, never the copilot.** The active release gate is the **beta gate** — a stranger uploads their own equipment manual and gets a cited answer with no manual fixing (`tests/beta/beta_ready_upload_retrieval_citation.py`). Engineering skills that propose architectural changes, refactors, or new features must check alignment with the master architecture plan (`docs/plans/2026-06-01-mira-master-architecture-plan.md`) — no unrelated dev projects until its phases are complete. This is enforced by the `mira-saas-scope-guard` skill — invoke it when a Pocock skill output proposes scope expansion.

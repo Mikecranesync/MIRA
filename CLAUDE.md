@@ -255,7 +255,7 @@ This file targets **~120 lines** (map, not encyclopedia). Agent compliance drops
 
 ### Issue tracker
 
-GitHub Issues at `Mikecranesync/MIRA` via `gh` CLI. See `docs/agents/issue-tracker.md`.
+GitHub Issues at `Mikecranesync/MIRA` via `gh` CLI; external PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
