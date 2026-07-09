@@ -38,6 +38,12 @@ from typing import Any, Optional
 # via relative imports, which these standalone tools deliberately avoid.
 PARAM_TOKEN_RE = re.compile(r"\b[A-Za-z]\d{2}\.\d{2}\b|\b[A-Za-z]{1,3}\d{2,3}\b")
 
+# A dotted parameter id (P01.24) is the strongest gap signal. A bare short token
+# (GS10, CE10, oC) also matches PARAM_TOKEN_RE but can be a *model name* — so when
+# a tech leads with the model ("GS10 P01.24?") the first token is the model, not
+# the parameter. Prefer a dotted token as the grouping key so those consolidate.
+_DOTTED_PARAM_RE = re.compile(r"^[A-Za-z]\d{2}\.\d{2}$")
+
 _NO_TOKEN = "(no parameter id)"
 _MAX_SAMPLES = 3
 
@@ -53,6 +59,21 @@ def _utf8_stdout() -> None:
 def extract_tokens(question: str) -> list[str]:
     """Uppercased parameter/fault tokens in a question (e.g. ``["P02.00"]``)."""
     return [t.upper() for t in PARAM_TOKEN_RE.findall(question or "")]
+
+
+def grouping_token(tokens: list[str]) -> str:
+    """The token a gap groups under: prefer a dotted parameter id over a bare one.
+
+    ``"GS10 P01.24 meaning?"`` → tokens ``["GS10", "P01.24"]`` groups under
+    ``P01.24`` (the parameter), not ``GS10`` (the model). Falls back to the first
+    token when no dotted parameter is present (e.g. a bare fault code ``CE10``).
+    """
+    if not tokens:
+        return _NO_TOKEN
+    for t in tokens:
+        if _DOTTED_PARAM_RE.match(t):
+            return t
+    return tokens[0]
 
 
 def _as_iso(value: Any) -> str:
@@ -80,7 +101,7 @@ def aggregate_gaps(
         question = row.get("user_message") or ""
         asked = _as_iso(row.get("created_at"))
         tokens = extract_tokens(question)
-        key = tokens[0] if tokens else _NO_TOKEN
+        key = grouping_token(tokens)
 
         bucket = packs[pack_id][key]
         bucket["count"] += 1
