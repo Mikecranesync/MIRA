@@ -24,7 +24,7 @@ def test_healthy_fixture_scores_100_and_passes():
     result = bench.run_benchmark()
     assert result["overall"] == 100.0
     assert result["passed"] is True
-    assert len(result["criteria"]) == 5
+    assert len(result["criteria"]) == 6
     for c in result["criteria"]:
         assert c["score"] == 100.0, f"{c['name']} regressed: {c}"
 
@@ -100,6 +100,20 @@ def test_label_accuracy_fails_on_mislabeled_row():
     assert bench.grade_label_accuracy(rows)["score"] < 100.0
 
 
+def test_relational_distill_fails_if_wrong_edge_extracted():
+    rows = bench.build_fixture()
+    # Corrupt the matched fault turn so the distiller yields CE99, not the CE10
+    # the grader's answer key expects — the equality decision must fail.
+    fault_turn = next(
+        r
+        for r in rows
+        if (r.get("meta") or {}).get("matched") is True
+        and (r.get("meta") or {}).get("matched_kind") == "fault"
+    )
+    fault_turn["user_message"] = "what does fault CE99 mean?"
+    assert bench.grade_relational_distill(rows)["score"] < 100.0
+
+
 # --- fixture shape sanity ---------------------------------------------------
 
 
@@ -111,3 +125,6 @@ def test_fixture_covers_the_intended_scenario():
     assert len(dp) == 10  # 6 gap + 2 grounded + powerflex + acme
     assert len(gaps) == 8  # 4 P01.24 + 2 P02.00 + 1 P044 + 1 Q10
     assert len(harvest) == 2  # two bad+correction turns
+    # exactly one grounded relational edge: the matched CE10 fault turn.
+    idx = bench.gap_suggestion.load_pack_manual_index(bench._BENCH_REGISTRY)
+    assert len(bench.relational_distill.extract_relation_assertions(rows, idx)) == 1

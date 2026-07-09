@@ -27,8 +27,9 @@ human-corrected turns for harvest.
 | Phase 3a — gap report | `tools/drive-pack-extract/gap_report.py::aggregate_gaps` | surfaces exactly the unmatched turns, ranked by ask-frequency |
 | Phase 3b — gap → suggestion | `tools/drive-pack-extract/gap_suggestion.py::build_gap_suggestions` | fires for registered packs over threshold only, with manual provenance |
 | Phase 4a — harvest | `tools/harvest_golden_cases.py::row_to_proposal` | emits exactly the bad-with-correction turns |
+| Phase 4b — relational distill | `tools/relational_distill.py::extract_relation_assertions` | matched **fault** turn → one grounded `HAS_FAILURE_MODE` edge; parameter/unmatched/engine turns → none |
 
-## The rubric (5 criteria, 0–100 each)
+## The rubric (6 criteria, 0–100 each)
 
 Each criterion scores `correct_decisions / total_decisions × 100`. The overall
 grade is the **unweighted mean**; the benchmark **PASSES at ≥ 90** (the fixture is
@@ -44,13 +45,20 @@ the intent explicit, not to tolerate silent drift).
 3. **Distill precision** — gap→suggestion fires for exactly the registered,
    over-threshold packs (each carrying a `registry_manual_id`), and harvest emits
    exactly the bad-with-correction turns. Catches over- or under-firing.
-4. **No-fabrication / no-guess integrity** — no matched turn is ever relabeled a
+4. **Relational distillation** — a matched **fault** turn distils into exactly one
+   grounded `HAS_FAILURE_MODE` edge (drive family → fault mnemonic); a matched
+   *parameter* turn, an unmatched turn, and an engine turn distil into none; the
+   model token (GS10) is never mistaken for the fault; no fault mnemonic is
+   invented. Catches an extractor that over-fires or fabricates edges.
+5. **No-fabrication / no-guess integrity** — no matched turn is ever relabeled a
    gap; no unmatched turn is ever "upgraded" to matched; the report never emits a
    token that wasn't in a real question. Catches the cardinal sin: fabricating an
    answer to make `matched=true`.
-5. **Gate safety** — every produced suggestion is `review_only` and carries no
-   auto-promote/verified flag; harvest is data-only (marks nothing). Catches any
-   path that would auto-promote into live packs or the golden set without a human.
+6. **Gate safety** — every produced suggestion is `review_only` and carries no
+   auto-promote/verified flag; harvest is data-only (marks nothing); the relational
+   edge is a `has_fault` proposal type that only a human decide verifies. Catches any
+   path that would auto-promote into live packs, the golden set, or the graph
+   without a human.
 
 A criterion is only meaningful because the grader is itself unit-tested
 (`tests/test_flywheel_benchmark.py`) — a green benchmark asserts the graders can

@@ -107,6 +107,7 @@ def propose_relationship(
     proposed_by: str = "import:kg_writer",
     source_chunk_id: str | UUID | None = None,
     source_description: str | None = None,
+    evidence_type: str = "oem_kb",
 ) -> str | None:
     """Propose an ingest-derived edge instead of verifying it.
 
@@ -114,6 +115,10 @@ def propose_relationship(
     source is known) and a bridging `ai_suggestions(kg_edge)` row.
     Evidence rows are created for both chunk-level sources (source_chunk_id)
     and document-level sources (source_description without a chunk UUID).
+    `evidence_type` is the `relationship_evidence.evidence_type` bucket for
+    the document-level branch (default `oem_kb`; a conversation-sourced
+    caller passes e.g. `technician_note`). Chunk-level sources are always
+    `document_page`.
     Idempotent: if an open proposal OR an already-verified edge exists for
     the same (tenant, source, target, canonical_type), no new rows are
     written and the existing proposal id (or None) is returned.
@@ -274,12 +279,13 @@ def propose_relationship(
                     (proposal_id, evidence_type,
                      source_description, confidence_contribution)
                 VALUES
-                    (cast(:proposal_id AS uuid), 'oem_kb',
+                    (cast(:proposal_id AS uuid), :evidence_type,
                      :descr, :conf)
                 """
             ),
             {
                 "proposal_id": proposal_id,
+                "evidence_type": evidence_type,
                 "descr": source_description,
                 "conf": confidence,
             },
@@ -375,12 +381,14 @@ def propose_relationship_cursor(
     proposed_by: str = "import:full_ingest",
     source_chunk_id: str | UUID | None = None,
     source_description: str | None = None,
+    evidence_type: str = "oem_kb",
 ) -> str | None:
     """psycopg2-cursor variant of `propose_relationship` for callers that run
     inside a raw psycopg2 transaction (`tasks/full_ingest_pipeline.py`).
 
-    Same contract and invariants as `propose_relationship`, but uses `%s`
-    paramstyle and the caller's `cur` — so it reads the entities created
+    Same contract and invariants as `propose_relationship` (including the
+    `evidence_type` bucket for the document-level evidence branch), but uses
+    `%s` paramstyle and the caller's `cur` — so it reads the entities created
     (uncommitted) earlier in the same transaction. Returns the
     relationship_proposals id, or None when nothing was proposed (self-edge,
     unmapped type, or already-present edge)."""
@@ -474,9 +482,9 @@ def propose_relationship_cursor(
                 (proposal_id, evidence_type,
                  source_description, confidence_contribution)
             VALUES
-                (%s::uuid, 'oem_kb', %s, %s)
+                (%s::uuid, %s, %s, %s)
             """,
-            (proposal_id, source_description, confidence),
+            (proposal_id, evidence_type, source_description, confidence),
         )
 
     title, body, extracted_json = _kg_edge_suggestion_fields(
