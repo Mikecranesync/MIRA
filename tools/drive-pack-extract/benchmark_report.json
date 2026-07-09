@@ -11,8 +11,8 @@
     {
       "pack_id": "durapulse_gs10",
       "trust_level": "bench-proven",
-      "score": 79.0,
-      "promotable_gates_pass": false,
+      "score": 94.0,
+      "promotable_gates_pass": true,
       "metrics": {
         "fault_count": 10,
         "param_count": 8,
@@ -21,10 +21,8 @@
         "broken_citations": [],
         "uncited_params": [],
         "fault_link_total": 1,
-        "fault_link_resolved": 0,
-        "fault_link_unresolved": [
-          "P09.03->CE10"
-        ],
+        "fault_link_resolved": 1,
+        "fault_link_unresolved": [],
         "param_link_resolved": "10/16",
         "has_bench_live_decode": true,
         "status_bits": 4,
@@ -42,19 +40,18 @@
         "schema_valid": true,
         "param_citation_coverage>=0.9": true,
         "no_broken_citations": true,
-        "fault_links_all_resolve": false,
+        "fault_links_all_resolve": true,
         "no_fabrication": true,
         "graded_at_least_beta": true
       },
       "strengths": [
         "param citation coverage 100%",
         "broken citations: 0",
+        "fault->param link resolve 100%",
         "gold fault recall 100%",
         "bench live_decode present (status/cmd/registers)"
       ],
-      "weaknesses": [
-        "fault->param link resolve 0%"
-      ],
+      "weaknesses": [],
       "production_blockers": [
         "no recorded human approval in registry"
       ],

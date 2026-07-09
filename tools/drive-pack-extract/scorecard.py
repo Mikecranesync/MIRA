@@ -84,12 +84,17 @@ def score_pack(pack_dir: str, approval: dict) -> dict:
     ]
     uncited = [p["parameter_id"] for p in params if not p.get("source_citation")]
 
+    # A related_fault resolves if it matches a fault by NUMBER (pf-style "F007"/"F7"/"7")
+    # OR by KEYPAD CODE (gs10-style "CE10"/"GFF"/"oL" — stored as the leading token of the
+    # fault name, e.g. fault "58" = "CE10 modbus timeout"). Both are deterministic.
+    num_keys = {fault_num(k) for k in fault_keys}
+    keypad_codes = {v.split(" ", 1)[0] for v in faults.values() if v.split()}
     rf_total = rf_resolved = 0
     rf_unresolved = []
     for p in params:
         for rf in p.get("related_faults", []) or []:
             rf_total += 1
-            if fault_num(rf) in fault_keys:
+            if fault_num(rf) in num_keys or rf in keypad_codes:
                 rf_resolved += 1
             else:
                 rf_unresolved.append(f"{p['parameter_id']}->{rf}")
@@ -290,3 +295,18 @@ if __name__ == "__main__":
         print(f"wrote {out_md}")
     for p in report["packs"]:
         print(f"  {p['pack_id']:<16} {p['trust_level']:<22} score={p['score']:<6} gates={sum(p['gates'].values())}/{len(p['gates'])}")
+
+    # CI gate: every LIVE (promoted) pack must pass all reliability gates.
+    if "--ci" in sys.argv:
+        failed = [
+            (p["pack_id"], [k for k, v in p["gates"].items() if not v])
+            for p in report["packs"]
+            if not p["promotable_gates_pass"]
+        ]
+        if failed:
+            print("\nGATE FAIL -- a live pack regressed:")
+            for pid, gates in failed:
+                print(f"   {pid}: {', '.join(gates)}")
+            sys.exit(1)
+        print("\nOK -- all live packs pass reliability gates")
+        sys.exit(0)

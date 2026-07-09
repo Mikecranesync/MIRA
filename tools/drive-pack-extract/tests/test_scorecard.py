@@ -106,13 +106,39 @@ def test_manual_cited_pack_cannot_be_production_even_with_approval():
         assert r["trust_level"] != "production"
 
 
-# ---- regression: the scorecard DETECTS internal link inconsistency ----------
-def test_scorecard_detects_unresolved_fault_link():
-    # gs10 references keypad code CE10 while its table is keyed by numeric values.
+# ---- keypad-code references (gs10 CE10) resolve deterministically -----------
+def test_scorecard_resolves_keypad_code_refs():
+    # gs10's P09.03 references fault CE10; the fault table is keyed numerically
+    # ("58") with the keypad code in the name ("CE10 modbus timeout"). It resolves.
     report = scorecard.build()
     gs10 = next(p for p in report["packs"] if p["pack_id"] == "durapulse_gs10")
-    assert gs10["metrics"]["fault_link_unresolved"], "expected the CE10 dangling link to be caught"
-    assert gs10["gates"]["fault_links_all_resolve"] is False
+    assert gs10["metrics"]["fault_link_unresolved"] == [], gs10["metrics"]["fault_link_unresolved"]
+    assert gs10["gates"]["fault_links_all_resolve"] is True
+
+
+# ---- but a genuinely bogus fault reference is STILL caught -------------------
+def test_scorecard_still_catches_bogus_fault_ref():
+    with tempfile.TemporaryDirectory() as tmp:
+        d = os.path.join(tmp, "syn_bogus")
+        _write_pack(
+            d,
+            {
+                "pack_id": "syn_bogus",
+                "schema_version": 2,
+                "family": {"manufacturer": "X", "series": "Y"},
+                "live_decode": {"fault_codes": {"1": "A comm ok"}, "status_bits": {}, "cmd_word": {}, "registers": {}},
+                "envelope": {},
+                "parameters": [
+                    {"parameter_id": "P1", "name": "p1", "related_faults": ["ZZ99"], "related_parameters": [],
+                     "value_meanings": [], "source_citation": {"doc": "m", "page": "1"}}
+                ],
+                "keypad_navigation": [],
+                "provenance": {"items": {"parameters": "manual_cited"}},
+            },
+        )
+        r = scorecard.score_pack(d, {})
+        assert "P1->ZZ99" in r["metrics"]["fault_link_unresolved"]
+        assert r["gates"]["fault_links_all_resolve"] is False
 
 
 if __name__ == "__main__":

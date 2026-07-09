@@ -8,17 +8,17 @@
 
 | pack | trust | score | faults | params | cite cov | links | bench | gates |
 |---|---|---|---|---|---|---|---|---|
-| `durapulse_gs10` | bench-proven | 79.0 | 10 | 8 | 100% | 0/1 | yes | 5/6 |
+| `durapulse_gs10` | bench-proven | 94.0 | 10 | 8 | 100% | 1/1 | yes | 6/6 |
 | `powerflex_40` | beta (manual-cited) | 74.5 | 26 | 9 | 100% | 2/2 | no | 6/6 |
 | `powerflex_525` | beta (manual-cited) | 74.0 | 48 | 45 | 100% | 5/5 | no | 6/6 |
 
-## `durapulse_gs10` — bench-proven (score 79.0)
+## `durapulse_gs10` — bench-proven (score 94.0)
 
-**Gates:** schema_valid ✅, param_citation_coverage>=0.9 ✅, no_broken_citations ✅, fault_links_all_resolve ❌, no_fabrication ✅, graded_at_least_beta ✅
+**Gates:** schema_valid ✅, param_citation_coverage>=0.9 ✅, no_broken_citations ✅, fault_links_all_resolve ✅, no_fabrication ✅, graded_at_least_beta ✅
 
-**Strengths:** param citation coverage 100%; broken citations: 0; gold fault recall 100%; bench live_decode present (status/cmd/registers)
+**Strengths:** param citation coverage 100%; broken citations: 0; fault->param link resolve 100%; gold fault recall 100%; bench live_decode present (status/cmd/registers)
 
-**Weaknesses:** fault->param link resolve 0%
+**Weaknesses:** —
 
 **Blocks production:** no recorded human approval in registry
 

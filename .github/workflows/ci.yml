@@ -344,6 +344,13 @@ jobs:
       - name: Run extractor + grading + registry + fleet-status + bridge + pdf-extract + eval-scorer offline tests
         run: pytest tools/drive-pack-extract/tests/ tools/drive-pack-extract/grading/tests/ tools/drive-pack-extract/registry/tests/ mira-crawler/tests/test_fleet_status.py mira-crawler/tests/test_drive_pack_bridge.py mira-crawler/tests/test_pdf_extract.py mira-crawler/tests/test_eval_scorer.py -q
 
+      - name: Pack reliability gate (deterministic scorecard)
+        # Fails the build if ANY live/promoted drive pack regresses a reliability
+        # gate (schema, citation coverage, broken citations, fault<->param link
+        # consistency, fabrication, grading). See tools/drive-pack-extract/scorecard.py
+        # + docs/drive-commander/pack-reliability-benchmark.md. Deterministic, no LLM.
+        run: python tools/drive-pack-extract/scorecard.py --json-only --ci
+
   license-check:
     name: License Check
     runs-on: ubuntu-latest
