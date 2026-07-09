@@ -72,7 +72,7 @@ def render(repo: list[str], applied: set[str], drift: list[str]) -> str:
         lines += [f"  - {name}" for name in drift]
     else:
         lines.append("")
-        lines.append("No drift — every repo migration is recorded in the ledger.")
+        lines.append("No drift - every repo migration is recorded in the ledger.")
     return "\n".join(lines) + "\n"
 
 

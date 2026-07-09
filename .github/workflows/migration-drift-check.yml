@@ -5,10 +5,13 @@ name: Migration Drift Check
 # it compares every repo migration (mira-hub + mira-ingest) to that DB's
 # schema_migrations ledger and reports anything in the repo but not recorded.
 #
-# Ships WARN-ONLY (--warn-only): staging/prod ledgers are being baselined and a
-# hard fail would be noise until then. Once a target's ledger is clean (see
-# docs/runbooks/migration-apply-and-drift.md), drop --warn-only for that target
-# to turn drift into a hard, fail-loud gate.
+# Gate posture (per target):
+#   - staging: HARD gate. Staging's ledger was baselined to zero drift on
+#     2026-07-09 (docs/runbooks/migration-apply-and-drift.md), so any new drift
+#     is a real regression — the scheduled run fails loud.
+#   - prod: WARN-ONLY. Prod's ledger has NOT been baselined yet (needs an
+#     approved path); a hard fail would be noise until it is. Flip prod to hard
+#     (drop --warn-only below) once prod drift is zero.
 #
 # Read-only: it only SELECTs schema_migrations — no mutation, so it is safe
 # against prod (prod-guard governs mutations, not reads).
@@ -63,13 +66,18 @@ jobs:
           echo "::add-mask::$URL"
           echo "DATABASE_URL=$URL" >> "$GITHUB_ENV"
 
-      - name: Check migration drift (warn-only)
+      - name: Check migration drift (staging = hard gate, prod = warn-only)
         run: |
           set -euo pipefail
-          python tools/migration_drift.py --warn-only --database-url "$DATABASE_URL" | tee /tmp/drift.out
+          TARGET="${{ github.event.inputs.target || 'staging' }}"
+          # prod isn't baselined yet -> advisory; staging is zero-drift -> hard fail.
+          FLAG=""
+          [ "$TARGET" = "prod" ] && FLAG="--warn-only"
+          python tools/migration_drift.py $FLAG --database-url "$DATABASE_URL" | tee /tmp/drift.out || RC=$?
           {
-            echo "## Migration drift — ${{ github.event.inputs.target || 'staging' }}"
+            echo "## Migration drift — ${TARGET}"
             echo '```'
             cat /tmp/drift.out
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          exit "${RC:-0}"

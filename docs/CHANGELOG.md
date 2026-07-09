@@ -2,6 +2,13 @@
 
 
 
+### v3.121.1 (2026-07-09) - chore(infra): baseline staging migration ledger to zero drift + hard-gate (W3 follow-up)
+- **Why:** W3 (v3.121.0) shipped the ingest apply path + drift guard but the guard was **warn-only** because staging's `schema_migrations` ledger was 22 behind. This closes the foundation: staging is baselined to **zero drift** and the staging drift check is now a **hard gate** — so migration drift can't be silently ignored before Phase 4b adds `relationship_proposals` tables.
+- **Staging baseline (verify-then-record, no blind marking):** each of the 21 remaining drifting migrations was classified by probing staging's **actual** schema (the table/column/constraint it creates). **17** whose DDL was already present were recorded via `seed-ledger` (no SQL re-run); **4** were `apply`d after verifying prerequisites + idempotency — `059_namespace_filing_cabinet` (the one genuinely-missing column `namespace_direct_uploads.makes`), plus `053` (scoped no-op DELETE), `058` (DROP+CREATE POLICY), `061` (GRANT). Result: `migration_drift.py` → **82/82 recorded, 0 drift**.
+- **Hard gate:** `migration-drift-check.yml` now fails loud for **staging** (zero-drift baseline established); **prod stays warn-only** (its ledger isn't baselined — needs the approved `production`-gated path; no prod psql from a code session). Also made the drift tool's summary ASCII-clean (was an em-dash that mojibaked on Windows).
+- **Runbook:** `docs/runbooks/migration-apply-and-drift.md` updated with the completed baseline (exact 17+4 reconciliation), the staging hard-gate state, and the prod-baseline follow-up.
+- **Prod follow-up (owner: human/DBA):** baseline the prod ledger the same way via the approved path, then drop `--warn-only` for prod to make it a hard gate too.
+
 ### v3.121.0 (2026-07-09) - feat(infra): mira-ingest migration automation + drift detection (W3)
 - **Why (root cause):** the flywheel's mig 013 (`conversation_eval.meta`) reached prod via a one-off manual script but **never staging** — `apply-ingest-migrations.yml` was **prod-only and ledger-less**, so nothing could apply ingest migrations to staging and nothing detected the gap. That silent drift is why the `--live` benchmark crashed on staging. This is the durable fix so migrations can't silently diverge across dev/staging/prod again.
 - **Apply path:** `apply-ingest-migrations.yml` rewritten to mirror the Hub workflow — a `target` (staging | prod) input, a `schema_migrations` **ledger** (records each applied file; `migrations=all` auto-skips already-applied), a `seed-ledger` mode to baseline an existing DB, and a generic post-apply ledger report (was hardcoded to the 006 tsvector probe). Keeps the `-- Block 1/2` `CONCURRENTLY` split.
