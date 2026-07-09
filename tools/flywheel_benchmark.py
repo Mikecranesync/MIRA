@@ -40,6 +40,7 @@ import eval_scorer  # noqa: E402
 import gap_report  # noqa: E402
 import gap_suggestion  # noqa: E402
 import harvest_golden_cases as harvest  # noqa: E402
+import relational_distill  # noqa: E402
 
 _PASS_THRESHOLD = 90.0  # deterministic fixture scores 100; margin is intent, not slack
 
@@ -68,14 +69,17 @@ _BENCH_REGISTRY = {
 # ---------------------------------------------------------------------------
 
 
-def _dp(i, pack, question, matched, **gt):
+def _dp(i, pack, question, matched, *, matched_kind=None, **gt):
     """A drive-pack turn with its ground truth."""
+    meta = {"surface": "drive_pack", "pack_id": pack, "matched": matched}
+    if matched_kind is not None:
+        meta["matched_kind"] = matched_kind
     return {
         "id": f"00000000-0000-0000-0000-0000000000{i:02d}",
         "user_message": question,
         "bot_response": ("(grounded answer)" if matched else "The pack doesn't document that."),
         "intent": "industrial",
-        "meta": {"surface": "drive_pack", "pack_id": pack, "matched": matched},
+        "meta": meta,
         "human_verdict": None,
         "correction": None,
         "_gt": {"label_score": 5 if matched else 3, "is_gap": not matched, **gt},
@@ -110,9 +114,11 @@ def build_fixture() -> list[dict[str, Any]]:
         rows.append(
             _dp(20 + i, "durapulse_gs10", "what does P02.00 do?", False, gap_token="P02.00")
         )
-    # durapulse_gs10 grounded turns → label 5, NOT gaps.
-    rows.append(_dp(30, "durapulse_gs10", "what does fault CE10 mean?", True))
-    rows.append(_dp(31, "durapulse_gs10", "what is P00.02?", True))
+    # durapulse_gs10 grounded turns → label 5, NOT gaps. The matched FAULT turn is
+    # also the Phase-4b relational signal → one HAS_FAILURE_MODE edge; the matched
+    # PARAMETER turn is NOT (parameters aren't failure modes).
+    rows.append(_dp(30, "durapulse_gs10", "what does fault CE10 mean?", True, matched_kind="fault"))
+    rows.append(_dp(31, "durapulse_gs10", "what is P00.02?", True, matched_kind="parameter"))
     # powerflex_525: 1 gap → registered but BELOW threshold → no suggestion.
     rows.append(_dp(40, "powerflex_525", "what is P044?", False, gap_token="P044"))
     # unregistered pack: a gap that cannot be routed to a manual → no suggestion.
@@ -271,6 +277,37 @@ def grade_no_fabrication(rows, report) -> dict[str, Any]:
     return _grade("No-fabrication / no-guess integrity", decisions)
 
 
+def grade_relational_distill(rows) -> dict[str, Any]:
+    """Phase 4b: matched fault turns distil into grounded HAS_FAILURE_MODE edges."""
+    pack_index = gap_suggestion.load_pack_manual_index(_BENCH_REGISTRY)
+    assertions = relational_distill.extract_relation_assertions(rows, pack_index)
+    got = {(a.source_name, a.target_name, a.relation_type) for a in assertions}
+    expected = {("DURApulse GS10", "CE10", "has_fault")}
+
+    decisions = [(f"grounded edges == expected ({len(expected)})", got == expected)]
+    # Only matched FAULT turns produce edges — never a parameter/unmatched/engine turn.
+    fault_turns = [
+        r
+        for r in rows
+        if (r.get("meta") or {}).get("matched") is True
+        and (r.get("meta") or {}).get("matched_kind") == "fault"
+    ]
+    decisions.append(("edges only from matched fault turns", len(assertions) <= len(fault_turns)))
+    # No fabricated fault mnemonic — every target token appears in a real question.
+    all_qs = " ".join(r["user_message"] for r in rows).upper()
+    decisions.append(
+        ("no phantom fault token", all(a.target_name.upper() in all_qs for a in assertions))
+    )
+    # Every edge is a proposal type that goes through the gate (never a direct write).
+    decisions.append(
+        (
+            "edge type is has_fault (→ HAS_FAILURE_MODE proposal, human-gated)",
+            all(a.relation_type == "has_fault" for a in assertions),
+        )
+    )
+    return _grade("Relational distillation", decisions)
+
+
 def grade_gate_safety(rows, suggestions) -> dict[str, Any]:
     decisions = []
     decisions.append(
@@ -318,6 +355,7 @@ def run_benchmark(rows: Optional[list[dict[str, Any]]] = None) -> dict[str, Any]
         grade_label_accuracy(rows),
         grade_gap_surfacing(rows, report),
         grade_distill_precision(rows, suggestions),
+        grade_relational_distill(rows),
         grade_no_fabrication(rows, report),
         grade_gate_safety(rows, suggestions),
     ]
