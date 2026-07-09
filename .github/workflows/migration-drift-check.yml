@@ -1,0 +1,75 @@
+name: Migration Drift Check
+
+# The guard that makes "staging/prod silently missed a migration" impossible to
+# ignore (W3, 2026-07-09). Runs tools/migration_drift.py against a deployed DB:
+# it compares every repo migration (mira-hub + mira-ingest) to that DB's
+# schema_migrations ledger and reports anything in the repo but not recorded.
+#
+# Ships WARN-ONLY (--warn-only): staging/prod ledgers are being baselined and a
+# hard fail would be noise until then. Once a target's ledger is clean (see
+# docs/runbooks/migration-apply-and-drift.md), drop --warn-only for that target
+# to turn drift into a hard, fail-loud gate.
+#
+# Read-only: it only SELECTs schema_migrations — no mutation, so it is safe
+# against prod (prod-guard governs mutations, not reads).
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'staging | prod'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - prod
+  schedule:
+    # Daily 06:00 UTC — catch accumulated drift before it bites a deploy.
+    - cron: '0 6 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: Migration drift (${{ github.event.inputs.target || 'staging' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install psycopg2 + Doppler
+        run: pip install psycopg2-binary
+
+      - uses: dopplerhq/cli-action@v4
+
+      - name: Resolve DATABASE_URL for target
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          set -euo pipefail
+          case "${{ github.event.inputs.target || 'staging' }}" in
+            staging) CFG="stg" ;;
+            prod)    CFG="prd" ;;
+            *) echo "::error::unknown target"; exit 1 ;;
+          esac
+          URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config "$CFG" --plain)"
+          if [ -z "$URL" ]; then echo "::error::empty DATABASE_URL for factorylm/$CFG"; exit 1; fi
+          echo "::add-mask::$URL"
+          echo "DATABASE_URL=$URL" >> "$GITHUB_ENV"
+
+      - name: Check migration drift (warn-only)
+        run: |
+          set -euo pipefail
+          python tools/migration_drift.py --warn-only --database-url "$DATABASE_URL" | tee /tmp/drift.out
+          {
+            echo "## Migration drift — ${{ github.event.inputs.target || 'staging' }}"
+            echo '```'
+            cat /tmp/drift.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
