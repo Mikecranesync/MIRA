@@ -24,6 +24,13 @@ import { test, expect } from "@playwright/test";
 const WEB = (process.env.WEB_URL ?? "https://factorylm.com").replace(/\/$/, "");
 const HUB = (process.env.HUB_URL ?? "https://app.factorylm.com").replace(/\/$/, "");
 
+// The paid product does not exist yet: there is no live Stripe SKU for anonymous
+// trial entry, so /api/checkout/session intentionally returns /pricing?checkout=error
+// rather than 303ing to checkout.stripe.com. The checkout→Stripe assertion is
+// NON-BLOCKING until a sellable product ships — set SMOKE_CHECKOUT_CHECK=1 (in
+// smoke-test.yml) to re-enable it once checkout is live. Wayfinder #2577 / DC money-slice.
+const RUN_CHECKOUT_CHECK = process.env.SMOKE_CHECKOUT_CHECK === "1";
+
 // ---------------------------------------------------------------------------
 // Pricing page — trial CTA + Stripe checkout gate
 // ---------------------------------------------------------------------------
@@ -55,6 +62,8 @@ test.describe("factorylm.com/pricing — trial CTA", () => {
   test("checkout session API: 303 redirects to checkout.stripe.com", async ({
     request,
   }) => {
+    // Non-blocking until a sellable product exists — see RUN_CHECKOUT_CHECK above.
+    test.skip(!RUN_CHECKOUT_CHECK, "checkout→Stripe gate is off until a sellable product ships (set SMOKE_CHECKOUT_CHECK=1)");
     // GET /api/checkout/session creates a Stripe Checkout session and 303s
     // to checkout.stripe.com — no tenant ID required (anonymous trial entry).
     const res = await request.get(WEB + "/api/checkout/session", {
