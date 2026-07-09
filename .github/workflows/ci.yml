@@ -210,6 +210,11 @@ jobs:
         # Prints the scored rubric table; exits non-zero if the flywheel regresses.
         run: python tools/flywheel_benchmark.py
 
+      - name: Migration drift detector (pure core)
+        # Guards tools/migration_drift.py — the fail-loud check that no env
+        # silently misses a repo migration (W3). Hermetic, no DB.
+        run: pytest tests/test_migration_drift.py -v
+
       - name: Deploy-target guard (staging deploy must rebuild the bot)
         # Guards the 2026-07-08 staging drift (#2557): deploy-staging.yml's
         # default TARGETS must include mira-bot-telegram and must name only
