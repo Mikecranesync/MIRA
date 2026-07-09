@@ -193,6 +193,23 @@ jobs:
         # clarification invariants. Hermetic, no LLM, runs in <1s.
         run: pytest tests/bot_regression.py -v
 
+      - name: Golden-case harvester (flywheel Phase 4a)
+        # Pure core of tools/harvest_golden_cases.py — renders corrected
+        # conversation_eval rows into paste-ready bot_regression GOLDEN_CASES.
+        # Hermetic, no DB/LLM. Root tests/ is NOT collected wholesale here, so
+        # this file is named explicitly (like bot_regression.py above).
+        run: pytest tests/test_harvest_golden_cases.py -v
+
+      - name: Flywheel benchmark (grades every distillation stage)
+        # Guards the whole flywheel: run the real stage cores over a ground-truth
+        # fixture and grade the 5-criterion rubric. The test also proves the
+        # graders can FAIL on a broken stage (so 100 isn't vacuous). Hermetic.
+        run: pytest tests/test_flywheel_benchmark.py -v
+
+      - name: Flywheel benchmark scorecard (visible in the log)
+        # Prints the scored rubric table; exits non-zero if the flywheel regresses.
+        run: python tools/flywheel_benchmark.py
+
       - name: Deploy-target guard (staging deploy must rebuild the bot)
         # Guards the 2026-07-08 staging drift (#2557): deploy-staging.yml's
         # default TARGETS must include mira-bot-telegram and must name only
@@ -324,8 +341,8 @@ jobs:
       - name: Install pdfplumber + reportlab + pypdf (pinned to match mira-core/mira-ingest/requirements.txt)
         run: pip install pytest pdfplumber==0.11.9 reportlab pypdf
 
-      - name: Run extractor + grading + registry + fleet-status + bridge + pdf-extract offline tests
-        run: pytest tools/drive-pack-extract/tests/ tools/drive-pack-extract/grading/tests/ tools/drive-pack-extract/registry/tests/ mira-crawler/tests/test_fleet_status.py mira-crawler/tests/test_drive_pack_bridge.py mira-crawler/tests/test_pdf_extract.py -q
+      - name: Run extractor + grading + registry + fleet-status + bridge + pdf-extract + eval-scorer offline tests
+        run: pytest tools/drive-pack-extract/tests/ tools/drive-pack-extract/grading/tests/ tools/drive-pack-extract/registry/tests/ mira-crawler/tests/test_fleet_status.py mira-crawler/tests/test_drive_pack_bridge.py mira-crawler/tests/test_pdf_extract.py mira-crawler/tests/test_eval_scorer.py -q
 
   license-check:
     name: License Check

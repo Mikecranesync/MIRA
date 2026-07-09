@@ -177,6 +177,8 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - **FactoryLM UI style** — every front end (mira-contextualizer, mira-plc-parser `gui/`, mira-hub, mira-web, Ignition Perspective) uses the shared design tokens (`docs/design/factorylm-tokens.css`): flat/modern, muted-normal + color-for-state, never hardcode a hex. See `.claude/rules/ui-style.md` + skill `factorylm-ui-style` + runbook `docs/design/factorylm-style.md`.
 - **Debugging & verification** — perf problems are multi-cause (re-measure after each fix); verify exact table/column names + API auth paths from the codebase before guessing. See `.claude/rules/debugging-conventions.md`.
 - **Session discipline** — verify stated premises against the codebase + `git log` before building; re-run the full suite before reporting eval gains; stage only files your change touched (never `git add -A` over foreign WIP); validate migration/seed prerequisites + schema constraints; checkpoint long tasks to `.planning/STATE.md` early. See `.claude/rules/session-discipline.md`.
+- **Sub-agent worktree isolation** — any parallel-dispatched sub-agent that Edits/Writes files runs in its own git worktree (or has confirmed there's no foreign WIP in the shared checkout it could clobber). See `.claude/rules/subagent-worktree-isolation.md`.
+- **Dangerous commands** — before `rm -rf`, `git reset --hard`, or any other irreversible command, print the resolved absolute path/target and confirm it matches intent before executing. See `.claude/rules/dangerous-commands-safety.md`.
 - **Don't break the UNS confirmation gate.** Run `mira-run-hallucination-audit` after engine/bot edits.
 
 ## Testing expectations
@@ -220,6 +222,8 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - `.claude/rules/karpathy-principles.md` — coding behavior
 - `.claude/rules/debugging-conventions.md` — multi-cause perf debugging + verify schema/API paths before guessing
 - `.claude/rules/session-discipline.md` — premise-verify, regression-recheck, scoped-commits, migration-safety, long-task checkpointing
+- `.claude/rules/subagent-worktree-isolation.md` — parallel-dispatched sub-agents isolate via git worktree before touching files
+- `.claude/rules/dangerous-commands-safety.md` — print + confirm the resolved path before `rm -rf`/`git reset --hard`/etc.
 - `.claude/rules/codegraph-usage.md` — when to use CodeGraph vs grep/Read + trust model + preflight + blind spots
 - `.claude/rules/graphify-excluded.md` — Graphify excluded from code navigation (CodeGraph is the single code-nav graph)
 - `docs/specs/uns-kg-unification-spec.md` — UNS authority (data architecture)
