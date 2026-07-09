@@ -5,11 +5,20 @@
  * only (no server/DB import).
  */
 import { describe, test, expect } from "bun:test";
-import { getPack, getFault, listFaults } from "../drive-pack-data.js";
+import {
+  getPack,
+  getFault,
+  getParameter,
+  listFaults,
+  listParameters,
+  driveCommanderSitemapLocs,
+} from "../drive-pack-data.js";
 import {
   renderDriveLandingPage,
   renderFaultPage,
   renderFaultNotFound,
+  renderParameterPage,
+  renderParameterNotFound,
 } from "../drive-commander-renderer.js";
 import powerflex525 from "../../data/drive-packs/powerflex_525.json";
 
@@ -100,5 +109,56 @@ describe("unknown fault code", () => {
     const html = renderFaultNotFound(getPack("powerflex-525")!, "F999");
     expect(html).toContain("noindex");
     expect(html).toContain("F999");
+  });
+});
+
+describe("parameter pages (AB-2)", () => {
+  const pack = getPack("powerflex-525")!;
+
+  test("case-insensitive parameter lookup", () => {
+    expect(getParameter(pack, "C125")?.parameter_id).toBe("C125");
+    expect(getParameter(pack, "c125")?.parameter_id).toBe("C125");
+    expect(getParameter(pack, "nope")).toBeNull();
+  });
+
+  test("renders cited, indexable, and cross-links related faults — no value table", () => {
+    const c125 = getParameter(pack, "C125")!;
+    const html = renderParameterPage(pack, c125);
+    expect(html).toContain("<title>");
+    expect(html).toContain("C125");
+    expect(html).toContain('rel="canonical"');
+    expect(html).not.toContain("noindex");
+    expect(html).toContain(MANUAL); // cited
+    expect(html).toMatch(/p\.\d+/);
+    // cross-links to its related faults (F081/F082/F083)
+    expect(html).toContain("/drive-commander/powerflex-525/faults/F081");
+    // Pro value table still withheld
+    const distinctive: string[] = (c125.value_meanings ?? [])
+      .map((v) => v.meaning)
+      .filter((m) => m.includes(" "));
+    for (const m of distinctive) expect(html).not.toContain(m);
+    expect(html).not.toContain("value_meanings");
+  });
+
+  test("fault page links out to full parameter pages", () => {
+    const html = renderFaultPage(pack, getFault(pack, "F081")!);
+    expect(html).toContain("/drive-commander/powerflex-525/parameters/C125");
+  });
+
+  test("unknown parameter -> noindex placeholder", () => {
+    const html = renderParameterNotFound(pack, "Z999");
+    expect(html).toContain("noindex");
+    expect(html).toContain("Z999");
+  });
+});
+
+describe("sitemap", () => {
+  test("includes the landing, a fault page, and a parameter page", () => {
+    const locs = driveCommanderSitemapLocs();
+    expect(locs).toContain("/drive-commander/powerflex-525");
+    expect(locs.some((l) => /\/faults\/F\d+$/.test(l))).toBe(true);
+    expect(locs.some((l) => /\/parameters\/C125$/.test(l))).toBe(true);
+    // one landing + 47 faults + 45 params
+    expect(locs.length).toBe(1 + listFaults(getPack("powerflex-525")!).length + listParameters(getPack("powerflex-525")!).length);
   });
 });

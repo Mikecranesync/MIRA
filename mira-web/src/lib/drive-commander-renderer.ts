@@ -20,7 +20,12 @@
  * nothing is generic-AI-generated.
  */
 import type { DrivePackDisplay, FaultView, ParameterCard } from "./drive-pack-data.js";
-import { getParametersForFault, listFaults } from "./drive-pack-data.js";
+import {
+  getParametersForFault,
+  getFaultsForParameter,
+  listFaults,
+  listParameters,
+} from "./drive-pack-data.js";
 
 const BASE_URL = "https://factorylm.com";
 const WAITLIST_HREF =
@@ -215,8 +220,8 @@ function proLock(): string {
   </div>`;
 }
 
-function paramCardFree(p: ParameterCard): string {
-  const cite = p.source_citation
+function citeBlock(p: ParameterCard): string {
+  return p.source_citation
     ? `<div class="cite"><div class="cite-src">&#128279; ${escHtml(p.source_citation.doc)}, p.${escHtml(
         p.source_citation.page,
       )}</div>${
@@ -225,11 +230,19 @@ function paramCardFree(p: ParameterCard): string {
           : ""
       }</div>`
     : `<div class="cite"><div class="cite-src">Cited in the pack (manual-cited)</div></div>`;
+}
+
+function paramCardFree(p: ParameterCard, modelSlug: string): string {
   return `<div class="param-card">
     <div class="p-id">${escHtml(p.parameter_id)}</div>
     <div class="p-name">${escHtml(p.name)}</div>
     ${p.purpose ? `<div class="p-purpose">${escHtml(p.purpose)}</div>` : ""}
-    ${cite}
+    ${citeBlock(p)}
+    <p style="margin-top:12px"><a class="muted" href="/drive-commander/${escAttr(
+      modelSlug,
+    )}/parameters/${escAttr(p.parameter_id)}">Full ${escHtml(
+      p.parameter_id,
+    )} reference &rarr;</a></p>
   </div>`;
 }
 
@@ -288,6 +301,22 @@ export function renderDriveLandingPage(pack: DrivePackDisplay): string {
     </section>
 
     <section class="block">
+      <h2 class="dc-h2">Parameter reference (${listParameters(pack).length})</h2>
+      <p class="callout" style="margin-bottom:18px">Cited ${escHtml(
+        pack.family.series,
+      )} parameters &mdash; click one for its manual reference.</p>
+      <div class="fault-grid">${listParameters(pack)
+        .map(
+          (p) => `<a class="fault-chip" href="/drive-commander/${pack.modelSlug}/parameters/${escAttr(
+            p.parameter_id,
+          )}"><span class="code">${escHtml(p.parameter_id)}</span><span class="name">${escHtml(
+            p.name,
+          )}</span></a>`,
+        )
+        .join("")}</div>
+    </section>
+
+    <section class="block">
       <h2 class="dc-h2">Go deeper with Drive Commander Pro</h2>
       ${proLock()}
     </section>
@@ -314,7 +343,7 @@ export function renderFaultPage(pack: DrivePackDisplay, fault: FaultView): strin
 
   const free = params.length
     ? `<h2 class="dc-h2">Parameters to check</h2>
-       ${params.map(paramCardFree).join("")}`
+       ${params.map((p) => paramCardFree(p, pack.modelSlug)).join("")}`
     : `<div class="callout">This fault is decoded from the ${escHtml(
         pack.manualDoc,
       )} (manual-cited). Cited parameter-level troubleshooting for <strong>${escHtml(
@@ -378,6 +407,105 @@ export function renderFaultNotFound(pack: DrivePackDisplay, code: string): strin
       <p><a class="cta" href="/drive-commander/${pack.modelSlug}"><small>Drive Commander</small>See all ${escHtml(
         product,
       )} fault codes &rarr;</a></p>
+    </section>
+  </div></main>
+  ${FOOTER}
+</body></html>`;
+}
+
+export function renderParameterPage(pack: DrivePackDisplay, param: ParameterCard): string {
+  const canonical = `${BASE_URL}/drive-commander/${pack.modelSlug}/parameters/${param.parameter_id}`;
+  const product = productName(pack);
+  const relFaults = getFaultsForParameter(pack, param);
+  const title = `${product} Parameter ${param.parameter_id} — ${param.name} | Drive Commander`;
+  const description = `${product} parameter ${param.parameter_id} (${param.name}): what it does, cited to the ${pack.family.series} manual. Free reference from Drive Commander.`;
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    headline: `${product} Parameter ${param.parameter_id} — ${param.name}`,
+    description,
+    url: canonical,
+    citation: pack.manualDoc,
+    isPartOf: { "@type": "WebSite", name: "FactoryLM" },
+  };
+
+  const faultsBlock = relFaults.length
+    ? `<section class="block"><h2 class="dc-h2">Related faults</h2><div class="fault-grid">${relFaults
+        .map(
+          (f) => `<a class="fault-chip" href="/drive-commander/${pack.modelSlug}/faults/${escAttr(
+            f.display,
+          )}"><span class="code">${escHtml(f.display)}</span><span class="name">${escHtml(
+            f.name,
+          )}</span></a>`,
+        )
+        .join("")}</div></section>`
+    : "";
+
+  // FREE = id + name + purpose + citation only. Value/setting tables, range, default
+  // and wiring are PRO — never emitted here (see proLock, which lists but doesn't show them).
+  return `<!DOCTYPE html>
+<html lang="en"><head>${pageHead(title, description, canonical, jsonLd)}</head>
+<body>
+  ${NAV}
+  <main id="main-content"><div class="inner">
+    <div class="breadcrumb"><a href="/">Home</a> <span>&rsaquo;</span> <a href="/drive-commander/${pack.modelSlug}">${escHtml(
+      product,
+    )}</a> <span>&rsaquo;</span> ${escHtml(param.parameter_id)}</div>
+    <section class="hero">
+      <div class="section-label">${escHtml(product)} &middot; Parameter ${escHtml(
+        param.parameter_id,
+      )}</div>
+      <h1 class="dc-h1">${escHtml(param.parameter_id)} &mdash; ${escHtml(param.name)}</h1>
+      ${param.purpose ? `<p class="dc-lede">${escHtml(param.purpose)}</p>` : ""}
+      <div style="margin-bottom:8px">${provBadge(pack)}</div>
+    </section>
+
+    <section class="block">
+      <h2 class="dc-h2">Cited reference</h2>
+      <div class="param-card">
+        <div class="p-id">${escHtml(param.parameter_id)}</div>
+        <div class="p-name">${escHtml(param.name)}</div>
+        ${param.purpose ? `<div class="p-purpose">${escHtml(param.purpose)}</div>` : ""}
+        ${citeBlock(param)}
+      </div>
+    </section>
+
+    ${faultsBlock}
+
+    <section class="block">
+      <h2 class="dc-h2">Full settings &amp; value table</h2>
+      ${proLock()}
+    </section>
+  </div></main>
+  ${FOOTER}
+</body></html>`;
+}
+
+export function renderParameterNotFound(pack: DrivePackDisplay, pid: string): string {
+  const product = productName(pack);
+  const title = `Parameter "${escHtml(pid)}" not found — ${product} | Drive Commander`;
+  const canonical = `${BASE_URL}/drive-commander/${pack.modelSlug}`;
+  return `<!DOCTYPE html>
+<html lang="en"><head>${pageHead(
+    title,
+    `That parameter isn't in the ${product} pack.`,
+    canonical,
+  )}<meta name="robots" content="noindex"></head>
+<body>
+  ${NAV}
+  <main id="main-content"><div class="inner">
+    <div class="breadcrumb"><a href="/">Home</a> <span>&rsaquo;</span> <a href="/drive-commander/${pack.modelSlug}">${escHtml(
+      product,
+    )}</a> <span>&rsaquo;</span> Not found</div>
+    <section class="hero">
+      <div class="section-label">${escHtml(product)}</div>
+      <h1 class="dc-h1">We don't have &ldquo;${escHtml(pid)}&rdquo; in this pack.</h1>
+      <p class="dc-lede">That parameter isn't in the ${escHtml(
+        pack.family.series,
+      )} pack. We only show what we can cite to the manual.</p>
+      <p><a class="cta" href="/drive-commander/${pack.modelSlug}"><small>Drive Commander</small>Back to ${escHtml(
+        product,
+      )} &rarr;</a></p>
     </section>
   </div></main>
   ${FOOTER}

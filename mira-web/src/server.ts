@@ -120,11 +120,13 @@ import {
   ensureConnectSchema,
 } from "./lib/connect.js";
 import { FEATURES, renderFeaturePage } from "./lib/feature-renderer.js";
-import { getPack, getFault } from "./lib/drive-pack-data.js";
+import { getPack, getFault, getParameter } from "./lib/drive-pack-data.js";
 import {
   renderDriveLandingPage,
   renderFaultPage,
   renderFaultNotFound,
+  renderParameterPage,
+  renderParameterNotFound,
 } from "./lib/drive-commander-renderer.js";
 import {
   getLiveFaultCodes,
@@ -569,6 +571,14 @@ app.get("/drive-commander/:model/faults/:code", (c) => {
   const fault = getFault(pack, c.req.param("code"));
   if (!fault) return c.html(renderFaultNotFound(pack, c.req.param("code")), 404);
   return c.html(renderFaultPage(pack, fault));
+});
+
+app.get("/drive-commander/:model/parameters/:pid", (c) => {
+  const pack = getPack(c.req.param("model"));
+  if (!pack) return c.notFound();
+  const param = getParameter(pack, c.req.param("pid"));
+  if (!param) return c.html(renderParameterNotFound(pack, c.req.param("pid")), 404);
+  return c.html(renderParameterPage(pack, param));
 });
 
 // Static demo work orders for unauthenticated hero ticker

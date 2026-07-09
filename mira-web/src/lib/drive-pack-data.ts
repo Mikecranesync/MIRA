@@ -154,3 +154,38 @@ export function listFaults(pack: DrivePackDisplay): FaultView[] {
       hasDetail: getParametersForFault(pack, key).length > 0,
     }));
 }
+
+/** Case-insensitive parameter lookup by id (P033 / p033 / C125). */
+export function getParameter(pack: DrivePackDisplay, pid: string): ParameterCard | null {
+  if (!pid) return null;
+  const want = pid.trim().toLowerCase();
+  return pack.parameters.find((p) => p.parameter_id.toLowerCase() === want) ?? null;
+}
+
+/** All parameters, id-sorted. */
+export function listParameters(pack: DrivePackDisplay): ParameterCard[] {
+  return [...pack.parameters].sort((a, b) => a.parameter_id.localeCompare(b.parameter_id));
+}
+
+/** The faults a parameter links to (related_faults "F007" -> FaultView), for cross-links. */
+export function getFaultsForParameter(pack: DrivePackDisplay, param: ParameterCard): FaultView[] {
+  return param.related_faults
+    .map((tag) => {
+      const key = tag.replace(/^[Ff]/, "").replace(/^0+(?=\d)/, "");
+      const name = pack.faultCodes[key];
+      return name ? { key, display: faultTag(key), name, hasDetail: true } : null;
+    })
+    .filter((f): f is FaultView => f !== null);
+}
+
+/** Every Drive Commander page path (landing + faults + parameters) for the sitemap. */
+export function driveCommanderSitemapLocs(): string[] {
+  const locs: string[] = [];
+  for (const slug of PACK_MODELS) {
+    const pack = PACKS[slug];
+    locs.push(`/drive-commander/${slug}`);
+    for (const f of listFaults(pack)) locs.push(`/drive-commander/${slug}/faults/${f.display}`);
+    for (const p of pack.parameters) locs.push(`/drive-commander/${slug}/parameters/${p.parameter_id}`);
+  }
+  return locs;
+}
