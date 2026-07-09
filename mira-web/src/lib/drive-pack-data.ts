@@ -12,8 +12,9 @@
  * (see drive-commander-renderer.ts); this module surfaces those citations.
  */
 
-// Bun/TS native JSON import. AB-1: PowerFlex 525 only.
+// Bun/TS native JSON import — one per promoted+vendored pack.
 import powerflex525 from "../data/drive-packs/powerflex_525.json";
+import powerflex40 from "../data/drive-packs/powerflex_40.json";
 
 export interface Citation {
   doc: string;
@@ -66,10 +67,19 @@ function pad3(n: number): string {
   return String(n).padStart(3, "0");
 }
 
-/** Fault key ("7") -> the "F007" form used in parameters[].related_faults. */
+/** Fault key ("7") -> the display form "F007" (zero-padded). Display only. */
 function faultTag(key: string): string {
   const n = parseInt(key, 10);
   return Number.isNaN(n) ? `F${key}` : `F${pad3(n)}`;
+}
+
+/**
+ * Normalise any fault reference to a bare number string ("7").
+ * Packs are inconsistent: pf525 writes related_faults as "F007" (padded),
+ * pf40 as "F7" (unpadded), and fault_codes keys are bare ("7"). Match on this.
+ */
+function faultNum(s: string): string {
+  return s.replace(/^[Ff]/, "").replace(/^0+(?=\d)/, "");
 }
 
 function buildPack(raw: any, modelSlug: string): DrivePackDisplay {
@@ -114,6 +124,7 @@ function buildPack(raw: any, modelSlug: string): DrivePackDisplay {
 // URL model-slug -> vendored pack. Add entries as packs are promoted + vendored.
 const PACKS: Record<string, DrivePackDisplay> = {
   "powerflex-525": buildPack(powerflex525 as any, "powerflex-525"),
+  "powerflex-40": buildPack(powerflex40 as any, "powerflex-40"),
 };
 
 export const PACK_MODELS = Object.keys(PACKS);
@@ -125,7 +136,7 @@ export function getPack(modelSlug: string): DrivePackDisplay | null {
 /** Normalise a user/URL fault code ("F007", "f7", "007", "7") to the bare pack key. */
 export function getFault(pack: DrivePackDisplay, code: string): FaultView | null {
   if (!code) return null;
-  const stripped = code.replace(/^[Ff]/, "").replace(/^0+(?=\d)/, "");
+  const stripped = faultNum(code);
   const key = pack.faultCodes[stripped] !== undefined ? stripped : undefined;
   if (key === undefined) return null;
   return {
@@ -136,10 +147,10 @@ export function getFault(pack: DrivePackDisplay, code: string): FaultView | null
   };
 }
 
-/** Parameters whose cited card links to this fault (fault "7" -> related_faults "F007"). */
+/** Parameters whose cited card links to this fault (normalised: "7" == "F7" == "F007"). */
 export function getParametersForFault(pack: DrivePackDisplay, key: string): ParameterCard[] {
-  const tag = faultTag(key);
-  return pack.parameters.filter((p) => p.related_faults.includes(tag));
+  const want = faultNum(key);
+  return pack.parameters.filter((p) => p.related_faults.some((rf) => faultNum(rf) === want));
 }
 
 /** All faults, numeric-sorted, flagged whether they have cited parameter detail. */
@@ -171,7 +182,7 @@ export function listParameters(pack: DrivePackDisplay): ParameterCard[] {
 export function getFaultsForParameter(pack: DrivePackDisplay, param: ParameterCard): FaultView[] {
   return param.related_faults
     .map((tag) => {
-      const key = tag.replace(/^[Ff]/, "").replace(/^0+(?=\d)/, "");
+      const key = faultNum(tag);
       const name = pack.faultCodes[key];
       return name ? { key, display: faultTag(key), name, hasDetail: true } : null;
     })

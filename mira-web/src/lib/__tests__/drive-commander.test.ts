@@ -158,7 +158,41 @@ describe("sitemap", () => {
     expect(locs).toContain("/drive-commander/powerflex-525");
     expect(locs.some((l) => /\/faults\/F\d+$/.test(l))).toBe(true);
     expect(locs.some((l) => /\/parameters\/C125$/.test(l))).toBe(true);
-    // one landing + 47 faults + 45 params
-    expect(locs.length).toBe(1 + listFaults(getPack("powerflex-525")!).length + listParameters(getPack("powerflex-525")!).length);
+    // per pack: 1 landing + N faults + M params — summed over every promoted pack
+    const packLocCount = (slug: string) => {
+      const p = getPack(slug)!;
+      return 1 + listFaults(p).length + listParameters(p).length;
+    };
+    expect(locs.length).toBe(packLocCount("powerflex-525") + packLocCount("powerflex-40"));
+  });
+});
+
+describe("second pack — PowerFlex 40 (AB-3)", () => {
+  const pf40 = getPack("powerflex-40");
+
+  test("loads and is distinct from PowerFlex 525", () => {
+    expect(pf40).not.toBeNull();
+    expect(pf40!.family.series).toBe("PowerFlex 40");
+    expect(Object.keys(pf40!.faultCodes).length).toBe(26);
+    expect(pf40!.parameters.length).toBe(9);
+    expect(pf40!.provenanceLabel).toBe("manual-cited");
+  });
+
+  test("landing + a cited fault page render and stay indexable", () => {
+    const landing = renderDriveLandingPage(pf40!);
+    expect(landing).toContain("PowerFlex 40");
+    expect(landing).toContain('rel="canonical"');
+    expect(landing).not.toContain("noindex");
+
+    const withDetail = listFaults(pf40!).filter((f) => f.hasDetail);
+    expect(withDetail.length).toBeGreaterThan(0);
+    const fh = renderFaultPage(pf40!, getFault(pf40!, withDetail[0].display)!);
+    expect(fh).toContain(pf40!.manualDoc); // cited
+    expect(fh).toMatch(/p\.\d+/);
+    expect(fh).not.toContain("noindex");
+  });
+
+  test("sitemap includes the pf40 landing", () => {
+    expect(driveCommanderSitemapLocs()).toContain("/drive-commander/powerflex-40");
   });
 });

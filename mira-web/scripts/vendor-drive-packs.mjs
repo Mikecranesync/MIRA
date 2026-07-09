@@ -18,8 +18,8 @@ const repoRoot = join(webRoot, ".."); // monorepo root (worktree or main checkou
 const SRC = join(repoRoot, "mira-bots", "shared", "drive_packs", "packs");
 const OUT = join(webRoot, "src", "data", "drive-packs");
 
-// AB-1: PowerFlex 525 only. Add pack ids here as more packs are promoted.
-const PACKS = ["powerflex_525"];
+// Add pack ids here as more packs are promoted to the live tree.
+const PACKS = ["powerflex_525", "powerflex_40"];
 
 mkdirSync(OUT, { recursive: true });
 let ok = 0;

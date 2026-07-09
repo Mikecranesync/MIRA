@@ -287,10 +287,14 @@ export function renderDriveLandingPage(pack: DrivePackDisplay): string {
       <div style="margin-bottom:8px">${provBadge(pack)}</div>
     </section>
 
-    <section class="block">
+    ${
+      withDetail.length
+        ? `<section class="block">
       <h2 class="dc-h2">Faults with cited troubleshooting detail</h2>
       <div class="fault-grid">${withDetail.map(chip).join("")}</div>
-    </section>
+    </section>`
+        : ""
+    }
 
     <section class="block">
       <h2 class="dc-h2">All ${faults.length} ${escHtml(pack.family.series)} fault codes</h2>
