@@ -22,20 +22,21 @@ See ``docs/specs/bot-eval-loop-spec.md`` for the full loop.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger("mira-gsd.conversation_logger")
 
 _INSERT_SQL = """
 INSERT INTO conversation_eval (
     chat_id, source, user_message, bot_response, intent,
-    has_citations, response_time_ms
+    has_citations, response_time_ms, meta
 ) VALUES (
     :chat_id, :source, :user_message, :bot_response, :intent,
-    :has_citations, :response_time_ms
+    :has_citations, :response_time_ms, CAST(:meta AS JSONB)
 )
 """
 
@@ -51,12 +52,19 @@ async def log_turn(
     intent: Optional[str] = None,
     has_citations: bool = False,
     response_time_ms: Optional[int] = None,
+    meta: Optional[dict[str, Any]] = None,
 ) -> None:
     """Record one bot turn. Never raises.
 
     ``source`` is ``"telegram"`` or ``"slack"`` — drives downstream routing
     of the daily review digest. ``response_time_ms`` is the wall time
     measured by the caller around ``dispatcher.dispatch``.
+
+    ``meta`` is optional surface-specific metadata stored as JSONB — e.g. the
+    drive-pack labels ``{surface, pack_id, matched, matched_kind,
+    answer_source, ...}`` the distillation flywheel mines for knowledge gaps.
+    Serialized best-effort; a non-serialisable value degrades to ``NULL``
+    rather than dropping the row.
     """
     try:
         await _insert(
@@ -67,10 +75,22 @@ async def log_turn(
             intent=intent,
             has_citations=has_citations,
             response_time_ms=response_time_ms,
+            meta=_serialize_meta(meta),
         )
     except Exception as exc:
         # Fail-open: a logging error must not propagate to the user-reply path.
         logger.warning("conversation_eval insert skipped: %s", exc)
+
+
+def _serialize_meta(meta: Optional[dict[str, Any]]) -> Optional[str]:
+    """JSON-encode ``meta`` for the JSONB column; ``None``/unserialisable → None."""
+    if meta is None:
+        return None
+    try:
+        return json.dumps(meta, default=str)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("meta not serialisable, storing NULL: %s", exc)
+        return None
 
 
 def _sanitize(text: str) -> str:
@@ -98,6 +118,7 @@ async def _insert(
     intent: Optional[str],
     has_citations: bool,
     response_time_ms: Optional[int],
+    meta: Optional[str] = None,
 ) -> None:
     """Perform the actual INSERT. Lazy SQLAlchemy import."""
     url = os.environ.get("NEON_DATABASE_URL")
@@ -131,6 +152,7 @@ async def _insert(
                     "intent": intent,
                     "has_citations": has_citations,
                     "response_time_ms": response_time_ms,
+                    "meta": meta,
                 },
             )
             conn.commit()
