@@ -1,8 +1,52 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-07-09
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-07-09
+
+### Most actionable change for the playbook
+MaintainX's Smart Tag Mapping (Ignition/Kepware/MQTT) with AI-powered asset-to-tag matching is a direct encroachment on MIRA's context-layer wedge. CMMS vendors are now building the OT data connectors that MIRA's context layer provides. MIRA's counter must sharpen around *grounded fault-citation from OEM sources* and *UNS-compliant namespace context* that CMMS systems cannot replicate by connecting tags.
+
+### New findings (post 2026-05-03)
+
+**CMMS / EAM — MaintainX**
+- Smart Tag Mapping for OT Data Connectors (Ignition/Kepware/MQTT) Beta — AI maps OT tags to CMMS assets with confidence ratings. No dedicated video; docs: https://help.getmaintainx.com/ot-data-connectors/map-ot-data-tags-to-assets
+- Report Builder AI launch (Mar 19, 2026): natural language → custom maintenance reports. Press: https://www.businesswire.com/news/home/20260319628689/en/MaintainX-Launches-Reporting-AI-for-Maintenance-and-Reliability — no YouTube video confirmed
+- Root Cause Analysis GA (Mar 2026): structured failure analysis in-workflow
+- "AI Goes Mainstream on the Factory Floor" industry report (May 5, 2026): https://www.businesswire.com/news/home/20260505457914/en/AI-Goes-Mainstream-on-the-Factory-Floor-MaintainX-Report-Finds — research-led content, no video
+
+**CMMS / EAM — Fiix**
+- Fiix MAX AI assistant announced for July 14, 2026. No video yet; revisit post-launch.
+
+**Automation / SCADA — Siemens**
+- Intelligence Center X (June 2026): combines Mendix low-code + Graph Studio + AI Studio for industrial AI orchestration at enterprise scale. Press: https://press.siemens.com/global/en/pressrelease/siemens-introduces-ai-agents-industrial-automation — no standalone video confirmed
+- Maintenance Copilot Senseye expanded claim: "25% reduction in reactive maintenance time" during pilots. New concrete number for the category.
+
+**B2B SaaS — Stripe (Sessions 2026)**
+- Opening keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8 [transcript not verified]
+- Developer keynote: https://www.youtube.com/watch?v=m2omCJcrkE0 [transcript not verified]; theme: "making products legible to agents" — new hook pattern
+- 288 new products launched. Notable: Bridge (stablecoin orchestration), Privy (wallet-building), Tempo blockchain (built with Paradigm)
+
+**B2B SaaS — Figma (Config 2026, June 23–25)**
+- Keynote: https://www.youtube.com/watch?v=2ZCc4k_IV5w — Dylan Field, Moscone Center [transcript not verified]
+- New products: Figma Motion (GA June 24), Weave (generative AI + video/animation/VFX platform on open canvas), Shaders via Figma agent
+- Style drift: Figma pivoting from "design tool" to "creative platform" competing with After Effects / Runway
+
+**B2B SaaS — Anthropic (May–June 2026)**
+- Claude Science launch (June 30, 2026): domain-specific AI for research/pharma, analogous to Claude Code for software. Video: https://www.youtube.com/watch?v=9zK0omjrwWY [transcript not verified]. MIT Tech Review: https://www.technologyreview.com/2026/06/30/1139987/claude-science-is-anthropics-newest-flagship-product/
+- Claude Design: AI-native visual design tool (Opus 4.7-powered); https://appdevelopermagazine.com/anthropic-launches-claude-design/
+- Code with Claude Tokyo 2026 keynote: https://www.youtube.com/watch?v=N4efO8viXXo [transcript not verified]
+- Pattern: Anthropic releasing vertical AI products (Code → Science → Design) — validates "AI for [domain]" as repeatable product template
+
+**B2B SaaS — Notion (May–July 2026)**
+- Developer platform launch (May 13, 2026): connect external agents, data sources, custom code directly into Notion (TechCrunch: https://techcrunch.com/2026/05/13/notion-just-turned-its-workspace-into-a-hub-for-ai-agents/)
+- Notion 3.6: External Agents (July 1, 2026) — Claude and Cursor assignable as External Agents from a shared Notion board. Source: https://www.notion.com/releases/2026-07-01
+- "Notion Just Announced A Massive Shift" reaction video: https://www.youtube.com/watch?v=zCFlM2XhJJE [transcript not verified]
+- Pattern drift: Notion as multi-agent orchestration hub — "assign in Notion, execute in Claude/Cursor" — extends the "You assign, Agents do" frame from 3.0 launch
 
 ---
 
@@ -88,11 +132,21 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 
 **Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
 
+**2026 product launches (no YouTube launch videos confirmed; blog/press-only):**
+- **Smart Tag Mapping for OT Data Connectors** (Beta, Jan/Mar 2026): AI maps Ignition/Kepware/MQTT tags to CMMS assets with confidence ratings. Docs: https://help.getmaintainx.com/ot-data-connectors/map-ot-data-tags-to-assets — closest direct competition to MIRA's OT context layer.
+- **Report Builder AI** (Mar 19, 2026): natural language → custom maintenance reports + visualizations, in-platform. Press: https://www.businesswire.com/news/home/20260319628689/en/MaintainX-Launches-Reporting-AI-for-Maintenance-and-Reliability
+- **Root Cause Analysis GA** (Mar 2026): structured failure analysis in-workflow, tied to work order history.
+- **AI Maintenance State of the Industry Report** (May 5, 2026): "AI Goes Mainstream on the Factory Floor" — market positioning vehicle, not a feature. https://www.businesswire.com/news/home/20260505457914/en/AI-Goes-Mainstream-on-the-Factory-Floor-MaintainX-Report-Finds
+
+**Vendor drift note (2026):** MaintainX added Ignition/Kepware/MQTT data connectivity with AI-assisted tag mapping. Previously a pure workflow/CMMS product, it is now bridging OT data — the same layer MIRA's context platform occupies. Their differentiation angle: connect OT → trigger CMMS work orders. MIRA's counter: connect OT → ground diagnostic *answers with citations from OEM sources*, not just work order triggers.
+
 ---
 
 ### Fiix
 
 No dedicated promo/launch video found for 2025–2026. Product page positions AI-powered work orders. Starting at $45/mo. Rating: 4.5/5 (627 reviews). Rockwell Automation subsidiary — may be consolidating under Rockwell brand.
+
+**2026 — Fiix MAX (pending launch July 14, 2026):** AI-powered assistant announced for launch July 14, 2026. Exists under Fiix Foresight umbrella. No video available at time of this refresh; check post-July 14.
 
 ---
 
@@ -156,6 +210,13 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Claim: "consolidates collective knowledge of maintenance workers"; single source of truth
 - No standalone YouTube launch video confirmed; operated under Siemens brand umbrella
 - Acquired by Siemens 2022; now fully rebranded as Senseye Cloud Application
+
+**Intelligence Center X (June 2026)**
+- Press: https://press.siemens.com/global/en/pressrelease/siemens-introduces-ai-agents-industrial-automation
+- Combines Mendix low-code + Graph Studio + AI Studio for enterprise industrial AI orchestration
+- New claim: "AI agents for industrial automation" — Siemens is now using "agent" framing for the Senseye/copilot stack
+- Pilot claim for Maintenance Copilot Senseye expansion: "25% reduction in reactive maintenance time"
+- No standalone video confirmed [transcript not verified]
 
 ---
 
@@ -254,11 +315,16 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026 (multiple keynotes)**
+- Opening keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8 [transcript not verified]
+- Full keynote: https://www.youtube.com/watch?v=lIsHZfRl2zw [transcript not verified]
+- Developer keynote: https://www.youtube.com/watch?v=m2omCJcrkE0 [transcript not verified]; theme: "making products legible to agents" — designing Stripe APIs for AI agent consumption
+- 12-min highlight: https://www.youtube.com/watch?v=8F4XyWYqZi8
+- 288 new products launched
+- New launches: Bridge (stablecoin orchestration), Privy (wallet-building), Tempo blockchain (built with Paradigm)
+- New hook pattern: "agent legibility" — building developer products for an agent-primary world, not a human-primary one
 
-**Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
+**Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube. Sessions 2026 introduces a new "agent-legible APIs" framing that signals where B2B SaaS is heading: your API is not just for humans, it's for the agents your customers run.
 
 ---
 
@@ -304,6 +370,12 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - 30+ product releases in recent months per search results
 - No standalone promo video; analyst/conference appearances as primary video channel
 
+**2026 launches:**
+- **Claude Science** (June 30, 2026): domain-specific AI for research/pharma, framed as "Claude Code for science." Available to all paid subscribers. Video: https://www.youtube.com/watch?v=9zK0omjrwWY [transcript not verified]. Coverage: https://www.technologyreview.com/2026/06/30/1139987/claude-science-is-anthropics-newest-flagship-product/
+- **Claude Design**: AI-native visual design tool (Opus 4.7-powered) — turns text prompts into websites, decks, mockups, marketing collateral. https://appdevelopermagazine.com/anthropic-launches-claude-design/
+- **Code with Claude Tokyo 2026** keynote: https://www.youtube.com/watch?v=N4efO8viXXo [transcript not verified]
+- **Pattern:** Anthropic is running a vertical product strategy — Claude Code (engineering) → Claude Science (research) → Claude Design (creative). Each product targets a specific domain with a named product, not just a model. This "AI for [profession]" template is worth stealing: "FactoryLM for Maintenance" follows the same logic.
+
 ---
 
 ### Cursor
@@ -340,6 +412,13 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
 
+**Notion 3.3–3.6 (Feb–July 2026)**
+- 3.3 Custom Agents (Feb 24, 2026): build agents that run on a schedule or trigger
+- Developer platform (May 13, 2026): external agents, data sources, custom code connected into Notion. TechCrunch: https://techcrunch.com/2026/05/13/notion-just-turned-its-workspace-into-a-hub-for-ai-agents/
+- 3.6 External Agents (July 1, 2026): Claude and Cursor assignable from a shared Notion board — they operate in their own apps, not inside Notion. Source: https://www.notion.com/releases/2026-07-01
+- Reaction video "Notion Just Announced A Massive Shift": https://www.youtube.com/watch?v=zCFlM2XhJJE [transcript not verified]
+- Pattern drift: Notion becoming an agent orchestration hub, not just a knowledge tool. The "assign from Notion, execute in Claude/Cursor" pattern separates the coordination surface from the execution environment — a new multi-surface architecture others can adapt.
+
 ---
 
 ### Figma
@@ -354,6 +433,13 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - VO register: founder
 - CTA: none explicit; awareness
 - London keynote: https://www.youtube.com/watch?v=xwb5Gq5go9o (May 14, 2025)
+
+**Config 2026 keynote (June 23–25, 2026)**
+- URL: https://www.youtube.com/watch?v=2ZCc4k_IV5w [transcript not verified]
+- Presenter: CEO Dylan Field, Moscone Center
+- Launches: Figma Motion (GA June 24), Weave (generative AI + pro editing platform on open canvas: image, video, animation, motion design, VFX), Shaders via Figma agent
+- Style drift: Figma repositioning from "UI design tool" to "creative platform" competing in generative image/video/animation space (After Effects / Runway territory)
+- Pattern: "expand the canvas" is now a platform strategy — not just UI, but any visual creative output
 
 ---
 
@@ -395,6 +481,19 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. In 2026 added OT data connectivity (Ignition/Kepware/MQTT Smart Tag Mapping) — now bridging from CMMS into the OT context layer that MIRA occupies.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
 - **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Figma**: pivoted from "design tool" to "creative platform" at Config 2026 (June 23–25) — launching into video/animation/VFX (Weave). Signals that design-tool vendors are expanding canvas scope rather than deepening feature depth.
+- **Anthropic**: moved from model-release announcements to vertical product launches (Code → Science → Design). Each named product targets a professional domain — the "Claude for [profession]" template is the new form factor.
+- **Notion**: expanded from "workspace / knowledge tool" to "agent orchestration hub" — assign tasks to external agents (Claude, Cursor) from a Notion board. The surface separates coordination (Notion) from execution (external agent).
+- **Siemens**: dropped "Senseye" framing in favor of "AI agents for industrial automation" and "Intelligence Center X" — platform-and-orchestration language replacing single-product language.
+
+### New hook patterns (2026 vintage)
+
+| Pattern | Example | Transfer to MIRA |
+|---|---|---|
+| "Making X legible to agents" | Stripe developer keynote: "making products legible to agents" | "making factory data legible to AI — any AI, any UNS" |
+| Vertical product per domain | Anthropic: Code (engineering) / Science (research) / Design (creative) | "FactoryLM for Maintenance" — named product for named profession |
+| Orchestrate from one surface, execute in another | Notion External Agents: assign in Notion, Claude/Cursor execute externally | MIRA as the maintenance context layer any surface can call |
+| Concrete pilot metric as category claim | Siemens Senseye: "25% reduction in reactive maintenance time" | "from first alarm to cited root cause in [X min]" — own the response-time claim |
