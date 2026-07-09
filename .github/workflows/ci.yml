@@ -200,6 +200,16 @@ jobs:
         # this file is named explicitly (like bot_regression.py above).
         run: pytest tests/test_harvest_golden_cases.py -v
 
+      - name: Flywheel benchmark (grades every distillation stage)
+        # Guards the whole flywheel: run the real stage cores over a ground-truth
+        # fixture and grade the 5-criterion rubric. The test also proves the
+        # graders can FAIL on a broken stage (so 100 isn't vacuous). Hermetic.
+        run: pytest tests/test_flywheel_benchmark.py -v
+
+      - name: Flywheel benchmark scorecard (visible in the log)
+        # Prints the scored rubric table; exits non-zero if the flywheel regresses.
+        run: python tools/flywheel_benchmark.py
+
       - name: Deploy-target guard (staging deploy must rebuild the bot)
         # Guards the 2026-07-08 staging drift (#2557): deploy-staging.yml's
         # default TARGETS must include mira-bot-telegram and must name only
