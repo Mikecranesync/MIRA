@@ -185,6 +185,14 @@ jobs:
           set -euo pipefail
           cd /opt/mira
 
+          # Signal "deploy in progress" so the heartbeat + self-healer crons stand
+          # down instead of racing this deploy's container recreate and firing
+          # false 502/container-missing escalations every 15 min (incident
+          # 2026-07-08). Removed on exit (success OR failure) via trap; the healer
+          # also ages out a stale sentinel after 30 min in case this trap is missed.
+          touch /opt/mira/.deploy-in-progress
+          trap 'rm -f /opt/mira/.deploy-in-progress' EXIT
+
           echo "=== Pull latest code (pin to release tag, not main HEAD) ==="
           # Rollback target is only real if prod references a tag, not a moving main HEAD
           # (docs/versioning.md). version-tag.yml lays vX.Y.Z on every merge commit, so we

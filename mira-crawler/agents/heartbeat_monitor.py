@@ -60,6 +60,46 @@ logging.basicConfig(
 )
 logger = logging.getLogger("heartbeat_monitor")
 
+# Where the prod compose project lives; also where deploy-vps.yml drops its
+# in-progress sentinel. Kept in sync with self_healer.MIRA_DIR.
+MIRA_DIR = os.environ.get("MIRA_DIR", "/opt/mira")
+# A deploy shouldn't outlast this; a sentinel older than it is treated as stale
+# (a crashed deploy that never cleaned up) so a stuck file can't disable
+# monitoring forever.
+DEPLOY_SENTINEL_TTL_SEC = int(os.environ.get("DEPLOY_SENTINEL_TTL_SEC", "1800"))
+# While a service stays DOWN, re-alert at most this often instead of on every
+# 15-min run — the heartbeat is the bell, but hourly is enough for a sustained
+# outage (2026-07-08: every-15-min for hours). First detection always alerts.
+DOWN_RENOTIFY_MIN = int(os.environ.get("HEARTBEAT_DOWN_RENOTIFY_MIN", "60"))
+
+
+def deploy_in_progress() -> bool:
+    """True while a VPS deploy is running.
+
+    ``deploy-vps.yml`` touches ``$MIRA_DIR/.deploy-in-progress`` at the start of
+    the remote block and removes it on exit (trap). The heartbeat and self-healer
+    check this to STAND DOWN instead of racing the deploy's own container
+    recreate — the 2026-07-08 incident, where the healer crash-looped
+    ``compose up`` against a deploy and fired a Telegram escalation every 15 min
+    for the transient 502 window. A sentinel older than DEPLOY_SENTINEL_TTL_SEC
+    is ignored as stale.
+    """
+    sentinel = Path(os.environ.get("MIRA_DIR", MIRA_DIR)) / ".deploy-in-progress"
+    try:
+        if not sentinel.exists():
+            return False
+        return (time.time() - sentinel.stat().st_mtime) < DEPLOY_SENTINEL_TTL_SEC
+    except OSError:
+        return False
+
+
+def is_retryable_db_error(exc: Exception) -> bool:
+    """True for transient Postgres errors worth one more attempt — deadlock
+    (SQLSTATE 40P01) and serialization failure (40001). These surface through
+    SQLAlchemy as OperationalError with the code/text in the message."""
+    s = str(exc).lower()
+    return any(t in s for t in ("deadlock detected", "40p01", "could not serialize", "40001"))
+
 
 def _load_notify():
     """Import telegram_notify resiliently — the parent dir is `mira-crawler`
@@ -514,34 +554,56 @@ def persist(checks: list[HealthCheck], score: int, dry_run: bool = False) -> boo
     try:
         from sqlalchemy import create_engine, text
         from sqlalchemy.pool import NullPool
-
-        engine = create_engine(url, poolclass=NullPool, connect_args={"sslmode": "require"})
-        with engine.begin() as conn:
-            for stmt in CREATE_TABLE_SQL.strip().split(";"):
-                stmt = stmt.strip()
-                if stmt:
-                    conn.execute(text(stmt))
-            for c in checks:
-                conn.execute(
-                    text(
-                        "INSERT INTO system_health_log "
-                        "(service, status, latency_ms, details, category, score, extra) "
-                        "VALUES (:service, :status, :latency_ms, :details, :category, :score, :extra)"
-                    ),
-                    {
-                        "service": c.service,
-                        "status": c.status,
-                        "latency_ms": c.latency_ms,
-                        "details": c.details[:500],
-                        "category": c.category,
-                        "score": score,
-                        "extra": json.dumps(c.extra) if c.extra else None,
-                    },
-                )
-        return True
     except Exception as exc:  # noqa: BLE001
-        logger.warning("persist failed: %s", exc)
+        logger.warning("persist failed (sqlalchemy import): %s", exc)
         return False
+
+    engine = create_engine(url, poolclass=NullPool, connect_args={"sslmode": "require"})
+
+    # Deadlock root cause (2026-07-08): running the DDL (CREATE TABLE + two
+    # CREATE INDEX IF NOT EXISTS) inside the same transaction as the INSERTs, on
+    # EVERY call, made concurrent runs take a SHARE lock (DDL) and RowExclusive
+    # lock (INSERT) in interleaved order → deadlock on system_health_log. Fix:
+    # only touch DDL when the table is actually missing (a one-time cold start),
+    # so the steady-state hot path is INSERT-only and can't self-deadlock. Retry
+    # once more on the off chance of a transient deadlock/serialization failure.
+    for attempt in range(3):
+        try:
+            with engine.begin() as conn:
+                exists = conn.execute(
+                    text("SELECT to_regclass('system_health_log')")
+                ).scalar()
+                if exists is None:
+                    for stmt in CREATE_TABLE_SQL.strip().split(";"):
+                        stmt = stmt.strip()
+                        if stmt:
+                            conn.execute(text(stmt))
+                for c in checks:
+                    conn.execute(
+                        text(
+                            "INSERT INTO system_health_log "
+                            "(service, status, latency_ms, details, category, score, extra) "
+                            "VALUES (:service, :status, :latency_ms, :details, :category, :score, :extra)"
+                        ),
+                        {
+                            "service": c.service,
+                            "status": c.status,
+                            "latency_ms": c.latency_ms,
+                            "details": c.details[:500],
+                            "category": c.category,
+                            "score": score,
+                            "extra": json.dumps(c.extra) if c.extra else None,
+                        },
+                    )
+            return True
+        except Exception as exc:  # noqa: BLE001
+            if is_retryable_db_error(exc) and attempt < 2:
+                logger.warning("persist: retryable DB error (attempt %d) — %s", attempt + 1, exc)
+                time.sleep(0.2 * (attempt + 1))
+                continue
+            logger.warning("persist failed: %s", exc)
+            return False
+    return False
 
 
 def degraded_for_minutes(service: str) -> int | None:
@@ -575,6 +637,67 @@ def degraded_for_minutes(service: str) -> int | None:
         return int(delta.total_seconds() // 60)
     except Exception:  # noqa: BLE001
         return None
+
+
+def _should_send_down_alert(mins_since_last: float | None, renotify_min: int) -> bool:
+    """First DOWN detection (no prior alert) always alerts; while a service stays
+    down we re-alert at most once per renotify_min instead of every run — so a
+    sustained outage pages hourly, not every 15 min."""
+    return mins_since_last is None or mins_since_last >= renotify_min
+
+
+def _minutes_since_last_down_alert() -> float | None:
+    """Minutes since the last DOWN alert marker, or None if never / on DB error
+    (fail toward alerting)."""
+    url = os.environ.get("NEON_DATABASE_URL", "")
+    if not url:
+        return None
+    try:
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.pool import NullPool
+
+        engine = create_engine(url, poolclass=NullPool, connect_args={"sslmode": "require"})
+        with engine.connect() as conn:
+            val = conn.execute(
+                text(
+                    "SELECT EXTRACT(EPOCH FROM (NOW() - MAX(ts)))/60 "
+                    "FROM system_health_log WHERE status = 'down_alert' AND category = 'alert'"
+                )
+            ).scalar()
+        return float(val) if val is not None else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _record_down_alert() -> None:
+    """Stamp that we sent a DOWN alert, so the next runs can throttle. Marker row
+    (category='alert', score NULL) is excluded from funnel_tracker's uptime avg."""
+    url = os.environ.get("NEON_DATABASE_URL", "")
+    if not url:
+        return
+    try:
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.pool import NullPool
+
+        engine = create_engine(url, poolclass=NullPool, connect_args={"sslmode": "require"})
+        for attempt in range(3):
+            try:
+                with engine.begin() as conn:
+                    conn.execute(
+                        text(
+                            "INSERT INTO system_health_log (service, status, latency_ms, category) "
+                            "VALUES ('heartbeat', 'down_alert', 0, 'alert')"
+                        )
+                    )
+                return
+            except Exception as exc:  # noqa: BLE001
+                if is_retryable_db_error(exc) and attempt < 2:
+                    time.sleep(0.2 * (attempt + 1))
+                    continue
+                logger.warning("_record_down_alert failed: %s", exc)
+                return
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("_record_down_alert failed: %s", exc)
 
 
 # ── Reporting ────────────────────────────────────────────────────────────────
@@ -678,8 +801,28 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if not down else 2
 
     if down:
-        notify("system", format_alert(checks, score))
-        logger.warning("DOWN: %s", [c.service for c in down])
+        # Stand down during a deploy: the deploy force-recreates the core stack,
+        # so a transient 502 / container-missing window is expected, not an
+        # outage. Don't alert and don't return 2 (which would trigger the
+        # self-healer to fight the deploy). Persisted above for the record.
+        if deploy_in_progress():
+            logger.warning(
+                "DOWN during deploy — suppressing alert + self-heal: %s",
+                [c.service for c in down],
+            )
+            return 0
+        # Throttle repeat alerts for a sustained outage (hourly, not every run).
+        mins_since = _minutes_since_last_down_alert()
+        if _should_send_down_alert(mins_since, DOWN_RENOTIFY_MIN):
+            notify("system", format_alert(checks, score))
+            _record_down_alert()
+            logger.warning("DOWN: %s", [c.service for c in down])
+        else:
+            logger.warning(
+                "DOWN (alert throttled — last sent %.0fm ago): %s",
+                mins_since or 0.0,
+                [c.service for c in down],
+            )
         return 2  # exit code 2 — caller (self_healer wrapper) can branch on this
 
     if degraded:
