@@ -66,7 +66,7 @@
       "manual_id": "rockwell_powerflex_40_22b-um001",
       "vendor": "Rockwell Automation",
       "product_family": "PowerFlex 40",
-      "applicable_drive_models": ["PowerFlex 40", "PowerFlex 22B-series", "22B"],
+      "applicable_drive_models": ["PowerFlex 40", "PowerFlex 22B", "22B"],
       "manual_title": "PowerFlex 40 Adjustable Frequency AC Drive User Manual",
       "publication": "22B-UM001J-EN-E",
       "revision": "J",
