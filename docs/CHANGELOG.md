@@ -2,6 +2,11 @@
 
 
 
+### v3.120.4 (2026-07-09) - fix(eval): gap report groups under the parameter, not the model name
+- **Why:** seeding the P01.24 scenario into **staging** and running the real pipeline surfaced a grouping weakness. The gap report keyed each gap on the *first* token in the question, and a model name like `GS10` also matches the parameter-token regex — so `"GS10 P01.24 meaning?"` grouped under a phantom **`GS10`** bucket instead of `P01.24`, fragmenting the count (P01.24 showed 3 asks, not 4). Real technician traffic constantly leads with the model, so this would fragment real reports.
+- **Fix:** `gap_report.grouping_token(tokens)` — prefer a **dotted parameter id** (`P01.24`) as the grouping key when present, falling back to the first token otherwise (bare fault codes like `CE10` are unaffected). `aggregate_gaps` now uses it. Verified on the real staging DB: model-led and parameter-led asks consolidate into one `P01.24 = 4` bucket, no phantom `GS10`.
+- **Tests:** `+3` in `tools/drive-pack-extract/tests/test_gap_report.py` (dotted-preference both orderings, fallback for bare/empty, model-led + param-led consolidate into one bucket).
+
 ### v3.120.1 (2026-07-08) - fix(eval): flywheel tools fail-clean when capture schema is absent
 - **Why:** the first `flywheel_benchmark.py --live` run against **staging** surfaced two real weaknesses. (1) Migration 013 (`conversation_eval.meta`) had reached prod (manual script) but **never staging** — apply-migrations.yml is Hub-only and doesn't cover `mira-ingest` migrations. Applied 013 to staging out-of-band (additive/idempotent), so `--live` now runs there. (2) With `meta` absent, every flywheel tool crashed with a raw `psycopg2 UndefinedColumn` traceback.
 - **Fix:** `gap_report.capture_schema_ready(cur)` + `META_MISSING_MSG` — the DB-glue `main()`s of `gap_report.py`, `gap_suggestion.py`, and `flywheel_benchmark.py --live` now check for the `meta` column first and exit `3` with an **actionable** message ("apply migration 013 to this environment") instead of a traceback. Also added a best-effort `sys.stdout.reconfigure("utf-8")` to the tool `main()`s so the em-dash/`…`/`×` in summaries don't mojibake on a Windows cp1252 console.
