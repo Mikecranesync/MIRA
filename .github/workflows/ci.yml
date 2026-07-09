@@ -193,6 +193,13 @@ jobs:
         # clarification invariants. Hermetic, no LLM, runs in <1s.
         run: pytest tests/bot_regression.py -v
 
+      - name: Golden-case harvester (flywheel Phase 4a)
+        # Pure core of tools/harvest_golden_cases.py — renders corrected
+        # conversation_eval rows into paste-ready bot_regression GOLDEN_CASES.
+        # Hermetic, no DB/LLM. Root tests/ is NOT collected wholesale here, so
+        # this file is named explicitly (like bot_regression.py above).
+        run: pytest tests/test_harvest_golden_cases.py -v
+
       - name: Deploy-target guard (staging deploy must rebuild the bot)
         # Guards the 2026-07-08 staging drift (#2557): deploy-staging.yml's
         # default TARGETS must include mira-bot-telegram and must name only
