@@ -42,6 +42,14 @@ _NO_TOKEN = "(no parameter id)"
 _MAX_SAMPLES = 3
 
 
+def _utf8_stdout() -> None:
+    """Keep the em-dash/arrow in our summaries from choking a Windows cp1252 console."""
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:  # noqa: BLE001 - best-effort; older/odd streams lack reconfigure
+        pass
+
+
 def extract_tokens(question: str) -> list[str]:
     """Uppercased parameter/fault tokens in a question (e.g. ``["P02.00"]``)."""
     return [t.upper() for t in PARAM_TOKEN_RE.findall(question or "")]
@@ -159,6 +167,25 @@ _SELECT_SQL = """
     LIMIT %s
 """
 
+# The flywheel reads the mig-013 `meta` column on `conversation_eval`. On a
+# database where capture (Phase 1) hasn't been provisioned, that column (or the
+# whole table) is absent — fail with an actionable message, not a raw traceback.
+META_MISSING_MSG = (
+    "conversation_eval.meta is missing on this database — the distillation "
+    "flywheel can't read captured turns here. Apply migration 013 "
+    "(mira-core/mira-ingest/db/migrations/013_conversation_eval_meta.sql) to this "
+    "environment first."
+)
+
+
+def capture_schema_ready(cur) -> bool:
+    """True iff ``conversation_eval.meta`` exists (Phase-1 capture provisioned)."""
+    cur.execute(
+        "SELECT 1 FROM information_schema.columns "
+        "WHERE table_name = 'conversation_eval' AND column_name = 'meta'"
+    )
+    return cur.fetchone() is not None
+
 
 def main(argv: Optional[list[str]] = None) -> int:  # pragma: no cover - DB glue
     parser = argparse.ArgumentParser(description="Drive-pack gap report (read-only).")
@@ -167,6 +194,7 @@ def main(argv: Optional[list[str]] = None) -> int:  # pragma: no cover - DB glue
     parser.add_argument("--database-url", default=None, help="override NEON_DATABASE_URL")
     args = parser.parse_args(argv)
 
+    _utf8_stdout()
     db_url = args.database_url or os.getenv("NEON_DATABASE_URL") or os.getenv("DATABASE_URL")
     if not db_url:
         print(
@@ -179,6 +207,9 @@ def main(argv: Optional[list[str]] = None) -> int:  # pragma: no cover - DB glue
     conn = psycopg2.connect(db_url)
     try:
         with conn.cursor() as cur:
+            if not capture_schema_ready(cur):
+                print(f"ERROR: {META_MISSING_MSG}", file=sys.stderr)
+                return 3
             cur.execute(_SELECT_SQL, (args.limit,))
             rows = [
                 {"pack_id": r[0], "user_message": r[1], "created_at": r[2]} for r in cur.fetchall()

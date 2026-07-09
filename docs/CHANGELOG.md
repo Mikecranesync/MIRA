@@ -2,6 +2,12 @@
 
 
 
+### v3.120.1 (2026-07-08) - fix(eval): flywheel tools fail-clean when capture schema is absent
+- **Why:** the first `flywheel_benchmark.py --live` run against **staging** surfaced two real weaknesses. (1) Migration 013 (`conversation_eval.meta`) had reached prod (manual script) but **never staging** — apply-migrations.yml is Hub-only and doesn't cover `mira-ingest` migrations. Applied 013 to staging out-of-band (additive/idempotent), so `--live` now runs there. (2) With `meta` absent, every flywheel tool crashed with a raw `psycopg2 UndefinedColumn` traceback.
+- **Fix:** `gap_report.capture_schema_ready(cur)` + `META_MISSING_MSG` — the DB-glue `main()`s of `gap_report.py`, `gap_suggestion.py`, and `flywheel_benchmark.py --live` now check for the `meta` column first and exit `3` with an **actionable** message ("apply migration 013 to this environment") instead of a traceback. Also added a best-effort `sys.stdout.reconfigure("utf-8")` to the tool `main()`s so the em-dash/`…`/`×` in summaries don't mojibake on a Windows cp1252 console.
+- **Tests:** `+3` in `tools/drive-pack-extract/tests/test_gap_report.py` (fake-cursor `capture_schema_ready` true/false + the message is actionable). Verified live: `--live`, `gap_report`, `gap_suggestion --dry-run`, and `harvest` all run clean against staging after the fix.
+- **Known follow-up (W3):** `mira-ingest` migrations still have **no automated apply path** (only Hub migrations are covered by `apply-migrations.yml`). That's the root cause of the staging drift; a workflow fix to cover `mira-ingest` migrations is the durable remedy (not in this PR).
+
 ### v3.120.0 (2026-07-08) - feat(eval): flywheel benchmark + grading rubric (proof the loop works)
 - **Why:** Each phase shipped unit tests, but "tests pass" ≠ "the loop works end-to-end." This is the proof: a grading rubric + a benchmark that runs the **real** stage cores over one ground-truth scenario and scores how faithfully the flywheel distils it. Deterministic + CI-gated — a regression in any stage drops the score and fails the build.
 - **Rubric:** `docs/specs/flywheel-benchmark-rubric.md` — 5 criteria (0–100 each, PASS ≥ 90): capture→label accuracy, gap surfacing, distill precision, no-fabrication/no-guess integrity, gate safety. The scenario is the real one that motivated the flywheel (technicians repeatedly ask GS10 **P01.24**, undocumented) plus grounded turns, other packs, an unregistered pack, engine turns, and human-corrected turns.

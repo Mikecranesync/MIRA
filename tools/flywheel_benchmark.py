@@ -375,6 +375,9 @@ def _run_live(db_url: str, limit: int) -> int:  # pragma: no cover - DB glue
     conn = psycopg2.connect(db_url)
     try:
         with conn.cursor() as cur:
+            if not gap_report.capture_schema_ready(cur):
+                print(f"ERROR: {gap_report.META_MISSING_MSG}", file=sys.stderr)
+                return 3
             cur.execute(_LIVE_SQL, (limit,))
             dp = cur.fetchall()
             cur.execute(_LIVE_HARVEST_SQL)
