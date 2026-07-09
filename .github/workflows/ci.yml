@@ -222,6 +222,13 @@ jobs:
         # silently misses a repo migration (W3). Hermetic, no DB.
         run: pytest tests/test_migration_drift.py -v
 
+      - name: Wiring-map import (wiring_connections seam proof)
+        # Pure core of tools/wiring_map_import.py — cited electrical-model YAML →
+        # proposed wiring_connections rows (idempotent, evidence-preserving,
+        # approval_state='proposed'). Hermetic, no DB/vision. Named explicitly
+        # (root tests/ is not collected wholesale here).
+        run: pytest tests/test_wiring_map_import.py -v
+
       - name: Deploy-target guard (staging deploy must rebuild the bot)
         # Guards the 2026-07-08 staging drift (#2557): deploy-staging.yml's
         # default TARGETS must include mira-bot-telegram and must name only
