@@ -1,43 +1,60 @@
 name: Apply mira-ingest Migrations
 
-# Applies migrations under mira-core/mira-ingest/db/migrations/*.sql against
-# prod NeonDB. Sister workflow to apply-migrations.yml (which only targets
-# mira-hub/db/migrations/) — closes the orphan-migration gap that left
-# migration 006_knowledge_tsvector unapplied for weeks (#1308 root cause).
+# Applies migrations under mira-core/mira-ingest/db/migrations/*.sql against the
+# chosen NeonDB target (staging or prod). Sister workflow to apply-migrations.yml
+# (which targets mira-hub/db/migrations/). Both write the SAME schema_migrations
+# ledger on the shared Neon DB, keyed by full basename — the two sets coexist.
 #
-# Migrations in this directory may have a CONCURRENTLY index step that
-# CANNOT run inside a transaction. The runner therefore splits each file
-# on "-- Block 1" / "-- Block 2" comments and applies Block 1 inside a
-# psql -1 (single transaction) and Block 2 outside. Files without those
-# markers run as a single transaction.
+# W3 (2026-07-09): this workflow was previously PROD-ONLY and LEDGER-LESS, which
+# is why staging silently never got mig 013 (conversation_eval.meta) — nothing
+# could apply it there and nothing tracked that it was missing. It now:
+#   - takes a `target` (staging | prod) like apply-migrations.yml,
+#   - records every applied file in schema_migrations (mode=apply),
+#   - can baseline an existing DB without running SQL (mode=seed-ledger),
+#   - auto-skips already-applied files for migrations=all.
+# The companion guard is tools/migration_drift.py (fail-loud drift detection).
+#
+# Some ingest migrations (006_knowledge_tsvector) have a CONCURRENTLY index step
+# that CANNOT run in a transaction. The apply step splits each file on
+# "-- Block 1" / "-- Block 2" markers: Block 1 runs in a single transaction,
+# Block 2 outside one. Files without those markers run as one transaction.
 
 on:
   workflow_dispatch:
     inputs:
-      migrations:
-        description: 'Migration numbers to apply, comma-separated (e.g. "006" or "006,007"). Use "all" for every file in mira-core/mira-ingest/db/migrations/.'
+      target:
+        description: 'NeonDB target. staging = factorylm/stg, prod = factorylm/prd. Default staging — promote to prod only after staging is verified.'
         required: true
-        default: '006'
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - prod
+      migrations:
+        description: 'Migration numbers, comma-separated (e.g. "013" or "012,013"). "all" = every file not yet in the ledger.'
+        required: true
+        default: 'all'
         type: string
       mode:
-        description: 'dry-run = print plan + diagnostics. apply = actually run.'
+        description: 'dry-run = print plan only. apply = run un-applied files + record them. seed-ledger = mark files applied WITHOUT running SQL (one-time baseline of an existing DB).'
         required: true
         default: 'dry-run'
         type: choice
         options:
           - dry-run
           - apply
+          - seed-ledger
 
 permissions:
   contents: read
 
 concurrency:
-  group: prod-ingest-migrations
+  group: ingest-migrations-${{ inputs.target }}
   cancel-in-progress: false
 
 jobs:
   apply:
-    name: Apply ingest migrations (${{ inputs.mode }})
+    name: Apply ingest migrations (${{ inputs.target }} / ${{ inputs.mode }})
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 15
@@ -55,7 +72,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends postgresql-client-16
           psql --version
 
-      - name: Authenticate Doppler + resolve DATABASE_URL
+      - name: Authenticate Doppler + resolve DATABASE_URL for target
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: |
@@ -64,13 +81,22 @@ jobs:
             echo "::error::DOPPLER_TOKEN secret not set."
             exit 1
           fi
-          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config prd --plain)"
+          case "${{ inputs.target }}" in
+            staging) DOPPLER_CFG="stg" ;;
+            prod)    DOPPLER_CFG="prd" ;;
+            *) echo "::error::Unknown target ${{ inputs.target }}"; exit 1 ;;
+          esac
+          echo "Doppler config: factorylm/${DOPPLER_CFG}"
+          DATABASE_URL="$(doppler secrets get NEON_DATABASE_URL --project factorylm --config "${DOPPLER_CFG}" --plain)"
           if [ -z "$DATABASE_URL" ]; then
-            echo "::error::NEON_DATABASE_URL empty after Doppler fetch — token scope wrong?"
+            echo "::error::NEON_DATABASE_URL empty after Doppler fetch — token scope wrong (expected factorylm/${DOPPLER_CFG})."
             exit 1
           fi
           echo "::add-mask::$DATABASE_URL"
           echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
+          HOST=$(printf '%s' "$DATABASE_URL" | sed -E 's|.*@([^/:]+).*|\1|')
+          echo "DB host: $HOST"
+          echo "DB_HOST=$HOST" >> "$GITHUB_ENV"
 
       - name: Resolve migration file list
         id: resolve
@@ -84,62 +110,62 @@ jobs:
           REQUESTED="${{ inputs.migrations }}"
           FILES=()
           if [ "$REQUESTED" = "all" ]; then
-            while IFS= read -r f; do
-              FILES+=("$f")
-            done < <(ls "$MIG_DIR"/*.sql | sort)
+            while IFS= read -r f; do FILES+=("$f"); done < <(ls "$MIG_DIR"/*.sql | sort)
           else
             IFS=',' read -ra NUMS <<< "$REQUESTED"
             for n in "${NUMS[@]}"; do
               n_trimmed="$(echo "$n" | xargs)"
-              # match files starting with the number (e.g. "006_*.sql")
-              matched=( "$MIG_DIR"/${n_trimmed}_*.sql )
+              matched=( "$MIG_DIR"/"${n_trimmed}"_*.sql )
               if [ ! -f "${matched[0]}" ]; then
                 echo "::error::No file matched: $MIG_DIR/${n_trimmed}_*.sql"
                 exit 1
               fi
-              for m in "${matched[@]}"; do
-                FILES+=("$m")
-              done
+              for m in "${matched[@]}"; do FILES+=("$m"); done
             done
           fi
           if [ "${#FILES[@]}" -eq 0 ]; then
             echo "::error::Resolved zero migration files."
             exit 1
           fi
-          printf '%s\n' "${FILES[@]}" > .migration_plan
-          echo "Plan:"
-          cat .migration_plan
+          printf '%s\n' "${FILES[@]}" | sort > .migration_plan
+          echo "Plan:"; cat .migration_plan
 
-      - name: Pre-flight — column existence check for tsvector
+      - name: Ledger — bootstrap + skip already-applied (apply/dry-run, 'all')
+        if: inputs.mode != 'seed-ledger'
         run: |
           set -euo pipefail
-          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "
-          SELECT column_name, data_type, is_generated
-            FROM information_schema.columns
-           WHERE table_name='knowledge_entries'
-             AND column_name IN ('embedding','content_tsv')
-           ORDER BY column_name;
-          " | tee /tmp/preflight.out
-          {
-            echo "## Pre-flight: knowledge_entries column probe"
-            echo ""
-            echo '```'
-            cat /tmp/preflight.out
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          # Canonical schema_migrations shape (shared with apply-migrations.yml).
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c \
+            "CREATE TABLE IF NOT EXISTS schema_migrations (id integer GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, migration_name varchar NOT NULL UNIQUE, applied_at timestamptz NOT NULL DEFAULT now());"
+          # Only 'all' auto-skips applied files; an explicit number list is a
+          # deliberate (re-)apply request and runs as-is (still recorded).
+          if [ "${{ inputs.migrations }}" = "all" ]; then
+            APPLIED="$(psql "$DATABASE_URL" --no-psqlrc -tA -c 'SELECT migration_name FROM schema_migrations;' | sort -u)"
+            : > .migration_plan.filtered
+            SKIPPED=0
+            while IFS= read -r f; do
+              base="$(basename "$f")"
+              if printf '%s\n' "$APPLIED" | grep -qxF "$base"; then
+                echo "skip (already applied): $base"; SKIPPED=$((SKIPPED+1))
+              else
+                echo "$f" >> .migration_plan.filtered
+              fi
+            done < .migration_plan
+            mv .migration_plan.filtered .migration_plan
+            echo "Ledger: skipped ${SKIPPED} already-applied file(s)." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Plan summary
         run: |
           {
-            echo "## Plan"
+            echo "## Ingest migration plan"
             echo ""
-            echo "Mode: \`${{ inputs.mode }}\`"
+            echo "Target: \`${{ inputs.target }}\` · Mode: \`${{ inputs.mode }}\` · DB host: \`${DB_HOST}\`"
             echo ""
             echo "Files (in apply order):"
             while IFS= read -r f; do
-              SIZE=$(wc -c < "$f" | tr -d ' ')
-              LINES=$(wc -l < "$f" | tr -d ' ')
-              echo "- \`$f\` (${SIZE} bytes, ${LINES} lines)"
+              [ -f "$f" ] || continue
+              echo "- \`$f\` ($(wc -c < "$f" | tr -d ' ') bytes)"
             done < .migration_plan
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -151,58 +177,65 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "#### $f" >> "$GITHUB_STEP_SUMMARY"
             echo '```sql' >> "$GITHUB_STEP_SUMMARY"
-            head -60 "$f" >> "$GITHUB_STEP_SUMMARY"
+            head -40 "$f" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           done < .migration_plan
           echo "Dry-run complete — no SQL executed."
 
-      - name: Apply — split on Block 1 / Block 2 markers
+      - name: Seed ledger — mark files applied WITHOUT running them
+        if: inputs.mode == 'seed-ledger'
+        run: |
+          set -euo pipefail
+          # One-time baseline for an existing DB whose schema is already present
+          # but unrecorded. Runs NO migration SQL — only records the ledger. Use
+          # ONLY for migrations whose DDL you have verified is already applied.
+          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c \
+            "CREATE TABLE IF NOT EXISTS schema_migrations (id integer GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, migration_name varchar NOT NULL UNIQUE, applied_at timestamptz NOT NULL DEFAULT now());"
+          echo "### Seeded ledger (no SQL executed)" >> "$GITHUB_STEP_SUMMARY"
+          while IFS= read -r f; do
+            base="$(basename "$f")"
+            psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c \
+              "INSERT INTO schema_migrations (migration_name) VALUES ('$base') ON CONFLICT (migration_name) DO NOTHING;"
+            echo "- recorded: \`$base\`" >> "$GITHUB_STEP_SUMMARY"
+          done < .migration_plan
+
+      - name: Apply — Block-split + record in ledger
         if: inputs.mode == 'apply'
         run: |
           set -euo pipefail
+          echo "### Apply results" >> "$GITHUB_STEP_SUMMARY"
+          echo "| File | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|--------|" >> "$GITHUB_STEP_SUMMARY"
           while IFS= read -r f; do
-            echo "=== Applying $f ==="
+            echo "::group::Applying $f"
             if grep -q "^-- Block 1" "$f" && grep -q "^-- Block 2" "$f"; then
-              # Two-block file (CONCURRENTLY index pattern from 006_knowledge_tsvector.sql).
-              # Split on the literal "-- Block 2" comment marker.
               awk '
                 /^-- Block 1/ {phase="b1"; next}
                 /^-- Block 2/ {phase="b2"; next}
                 phase=="b1" {print > "/tmp/block1.sql"}
                 phase=="b2" {print > "/tmp/block2.sql"}
               ' "$f"
-              echo "--- Block 1 (transactional) ---"
               psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -1 -f /tmp/block1.sql
-              echo "--- Block 2 (non-transactional; CONCURRENTLY index) ---"
               psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -f /tmp/block2.sql
               rm -f /tmp/block1.sql /tmp/block2.sql
             else
-              echo "--- Single transaction ---"
               psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -1 -f "$f"
             fi
-            echo "=== $f applied OK ==="
+            # Record in the ledger so a later 'all' run skips this file + drift clears.
+            psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c \
+              "INSERT INTO schema_migrations (migration_name) VALUES ('$(basename "$f")') ON CONFLICT (migration_name) DO NOTHING;"
+            echo "| \`$(basename "$f")\` | OK |" >> "$GITHUB_STEP_SUMMARY"
+            echo "::endgroup::"
           done < .migration_plan
 
-      - name: Post-apply verification
-        if: inputs.mode == 'apply'
+      - name: Ledger state (post)
+        if: inputs.mode != 'dry-run'
         run: |
           set -euo pipefail
-          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "
-          SELECT column_name, data_type, is_generated
-            FROM information_schema.columns
-           WHERE table_name='knowledge_entries'
-             AND column_name IN ('embedding','content_tsv')
-           ORDER BY column_name;
-          " | tee /tmp/post.out
-          psql "$DATABASE_URL" --no-psqlrc -v ON_ERROR_STOP=1 -c "
-          SELECT COUNT(*) AS rows_with_content_tsv
-            FROM knowledge_entries
-           WHERE content_tsv IS NOT NULL;
-          " | tee -a /tmp/post.out
           {
-            echo "## Post-apply verification"
-            echo ""
+            echo "## schema_migrations (ingest files recorded)"
             echo '```'
-            cat /tmp/post.out
+            psql "$DATABASE_URL" --no-psqlrc -tA -c \
+              "SELECT migration_name FROM schema_migrations WHERE migration_name ~ '^0(0[3-9]|1[0-3])_' ORDER BY migration_name;"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

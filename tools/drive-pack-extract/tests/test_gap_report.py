@@ -136,3 +136,30 @@ def test_meta_missing_message_is_actionable():
     # The operator must be told exactly which migration to apply.
     assert "013" in gap_report.META_MISSING_MSG
     assert "conversation_eval.meta" in gap_report.META_MISSING_MSG
+
+
+# --- grouping-key preference (model name must not hijack the parameter bucket) ---
+
+
+def test_grouping_token_prefers_dotted_param_over_model():
+    # "GS10 P01.24 meaning?" — model leads, but the gap groups under the parameter.
+    assert gap_report.grouping_token(["GS10", "P01.24"]) == "P01.24"
+    # Order-independent: parameter-first phrasing groups the same way.
+    assert gap_report.grouping_token(["P01.24", "GS10"]) == "P01.24"
+
+
+def test_grouping_token_falls_back_to_first_when_no_dotted():
+    assert gap_report.grouping_token(["CE10"]) == "CE10"  # bare fault code
+    assert gap_report.grouping_token([]) == gap_report._NO_TOKEN
+
+
+def test_model_led_and_param_led_asks_consolidate_into_one_bucket():
+    rows = [
+        _row("durapulse_gs10", "what is P01.24 on the GS10?", "2026-07-01T10:00:00"),
+        _row("durapulse_gs10", "GS10 P01.24 meaning?", "2026-07-02T10:00:00"),
+    ]
+    report = gap_report.aggregate_gaps(rows)
+    pack = report["packs"][0]
+    tokens = {t["token"]: t["count"] for t in pack["tokens"]}
+    # Both asks land under P01.24 — no phantom "GS10" bucket.
+    assert tokens == {"P01.24": 2}
