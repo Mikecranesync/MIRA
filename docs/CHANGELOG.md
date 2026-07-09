@@ -2,7 +2,7 @@
 
 
 
-### v3.120.2 (2026-07-09) - fix(eval): gap report groups under the parameter, not the model name
+### v3.120.4 (2026-07-09) - fix(eval): gap report groups under the parameter, not the model name
 - **Why:** seeding the P01.24 scenario into **staging** and running the real pipeline surfaced a grouping weakness. The gap report keyed each gap on the *first* token in the question, and a model name like `GS10` also matches the parameter-token regex — so `"GS10 P01.24 meaning?"` grouped under a phantom **`GS10`** bucket instead of `P01.24`, fragmenting the count (P01.24 showed 3 asks, not 4). Real technician traffic constantly leads with the model, so this would fragment real reports.
 - **Fix:** `gap_report.grouping_token(tokens)` — prefer a **dotted parameter id** (`P01.24`) as the grouping key when present, falling back to the first token otherwise (bare fault codes like `CE10` are unaffected). `aggregate_gaps` now uses it. Verified on the real staging DB: model-led and parameter-led asks consolidate into one `P01.24 = 4` bucket, no phantom `GS10`.
 - **Tests:** `+3` in `tools/drive-pack-extract/tests/test_gap_report.py` (dotted-preference both orderings, fallback for bare/empty, model-led + param-led consolidate into one bucket).
