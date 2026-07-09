@@ -79,12 +79,43 @@ or manual scripts) but never **recorded**. To get a clean ledger:
 Do **not** blanket `seed-ledger` all drift — that would mark unapplied migrations
 as done and hide true schema drift.
 
-## Proven (2026-07-09, staging)
+## Staging baseline — DONE (2026-07-09, drift = 0)
 
-Drift detector reported 22 missing on staging including
-`013_conversation_eval_meta.sql`; applying + recording 013 via the ledger path
-dropped drift to 21 and cleared 013 (61/82 recorded). The apply→ledger→drift loop
-works end-to-end on staging.
+The one-time staging baseline is **complete**. Starting from 22 drifting
+migrations, each was classified by probing staging's actual schema (a table /
+column / constraint the migration creates), then reconciled per the rule above:
+
+- `013_conversation_eval_meta.sql` was already recorded during the W3 proof
+  (applied + recorded), so this baseline reconciled the remaining **21**:
+- **17 recorded via `seed-ledger`** (DDL verified already present, no SQL re-run):
+  003–012 (ingest: `asset_qr_tags`, `tenant_channel_config`, `guest_reports`,
+  `knowledge_entries.content_tsv`, `tenant_ingested_files`, `hub_tenants`,
+  `cmms_equipment.tenant_id`, `work_orders.tenant_id`, `intent_signals`,
+  `conversation_eval`) and hub 038/040/048/054/055/057/062 (`machine_run`,
+  `run_diff.diff_type`, `asset_agent_status.tenant_id`, `i3x_api_keys`,
+  `decision_trace_feedback`, `historian_cursor`, the `ai_suggestions`
+  drive_pack_update CHECK).
+- **4 `apply`d** (idempotent; prerequisites verified present first):
+  `053_cleanup_dogfood_test_account` (scoped no-op DELETE), `058_ai_suggestions_rls_nullif_guard`
+  (DROP+CREATE POLICY), `059_namespace_filing_cabinet` (the one genuinely-missing
+  column, `namespace_direct_uploads.makes`), `061_grant_app_asset_enrichment_reports` (GRANT).
+
+Result: **`migration_drift.py` reports 82/82 recorded, 0 drift** on staging. The
+`migration-drift-check.yml` staging run is therefore a **HARD gate** now — any
+future staging drift fails the scheduled run.
+
+Earlier proof of the loop: the detector first reported 22 missing including
+`013_conversation_eval_meta.sql`; applying + recording 013 dropped drift to 21 and
+cleared 013. The apply→ledger→drift loop works end-to-end on staging.
+
+## Prod — NOT baselined yet (advisory)
+
+Prod's ledger has **not** been baselined, so `migration-drift-check.yml` keeps
+prod **warn-only**. Baselining prod requires the approved path (the `production`
+environment gate on `apply-ingest-migrations.yml` / `apply-migrations.yml`, or a
+DBA running the same verify→seed-ledger/apply procedure against prod). **Do not
+psql prod from a code session.** Once prod drift is zero, drop `--warn-only` for
+the prod branch in `migration-drift-check.yml` to make it a hard gate too.
 
 ## Cross-references
 - `.github/workflows/apply-migrations.yml` — Hub sister workflow (same ledger).
