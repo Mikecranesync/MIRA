@@ -120,6 +120,14 @@ import {
   ensureConnectSchema,
 } from "./lib/connect.js";
 import { FEATURES, renderFeaturePage } from "./lib/feature-renderer.js";
+import { getPack, getFault, getParameter } from "./lib/drive-pack-data.js";
+import {
+  renderDriveLandingPage,
+  renderFaultPage,
+  renderFaultNotFound,
+  renderParameterPage,
+  renderParameterNotFound,
+} from "./lib/drive-commander-renderer.js";
 import {
   getLiveFaultCodes,
   getLiveBlogPosts,
@@ -542,6 +550,35 @@ app.get("/feature/:slug", (c) => {
   const feature = FEATURES[slug];
   if (!feature) return c.notFound();
   return c.html(renderFeaturePage(feature));
+});
+
+// ---------------------------------------------------------------------------
+// Drive Commander — public, indexable pack pages (AB-1: PowerFlex 525)
+//   GET /drive-commander/:model                -> landing (fault-code library)
+//   GET /drive-commander/:model/faults/:code   -> cited fault page
+// Content is served from a vendored, committed pack (src/data/drive-packs/*.json);
+// every answer is cited from the pack — no generic AI. No auth; free tier only.
+// ---------------------------------------------------------------------------
+app.get("/drive-commander/:model", (c) => {
+  const pack = getPack(c.req.param("model"));
+  if (!pack) return c.notFound();
+  return c.html(renderDriveLandingPage(pack));
+});
+
+app.get("/drive-commander/:model/faults/:code", (c) => {
+  const pack = getPack(c.req.param("model"));
+  if (!pack) return c.notFound();
+  const fault = getFault(pack, c.req.param("code"));
+  if (!fault) return c.html(renderFaultNotFound(pack, c.req.param("code")), 404);
+  return c.html(renderFaultPage(pack, fault));
+});
+
+app.get("/drive-commander/:model/parameters/:pid", (c) => {
+  const pack = getPack(c.req.param("model"));
+  if (!pack) return c.notFound();
+  const param = getParameter(pack, c.req.param("pid"));
+  if (!param) return c.html(renderParameterNotFound(pack, c.req.param("pid")), 404);
+  return c.html(renderParameterPage(pack, param));
 });
 
 // Static demo work orders for unauthenticated hero ticker

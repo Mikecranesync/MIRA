@@ -34,7 +34,7 @@ def test_explicit_live_pack_id_resolves_high_confidence():
 def test_explicit_candidate_pack_id_is_rejected_not_live():
     """A candidate/unpromoted pack id (not in list_packs()) always refuses —
     there is no runtime candidate loader."""
-    result = resolve_service_pack(explicit_pack_id="powerflex_40")
+    result = resolve_service_pack(explicit_pack_id="powerflex_755")
     assert result.pack_id is None
     assert result.confidence == "none"
     assert result.source == "pack_id"
