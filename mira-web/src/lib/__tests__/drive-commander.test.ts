@@ -196,3 +196,17 @@ describe("second pack — PowerFlex 40 (AB-3)", () => {
     expect(driveCommanderSitemapLocs()).toContain("/drive-commander/powerflex-40");
   });
 });
+
+describe("citation invariant — every public technical page is grounded", () => {
+  for (const slug of ["powerflex-525", "powerflex-40"]) {
+    test(`${slug}: every fault + parameter page carries the pack citation`, () => {
+      const p = getPack(slug)!;
+      for (const f of listFaults(p)) {
+        expect(renderFaultPage(p, getFault(p, f.display)!)).toContain(p.manualDoc);
+      }
+      for (const param of listParameters(p)) {
+        expect(renderParameterPage(p, param)).toContain(p.manualDoc);
+      }
+    });
+  }
+});
