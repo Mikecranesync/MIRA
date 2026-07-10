@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "case_id": "18",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 12,
+    "power_control_flow": 18,
+    "sequence_interlocks_logic": 20,
+    "evidence_grounding_unsupported_claims": 17,
+    "technician_usefulness_clarity": 8
+  },
+  "total": 85,
+  "deductions": [
+    {
+      "claim": "INPUT terminals: PE, U1/L, V1/N, W1, BRK+, BRK-",
+      "evidence": "In the image the \"INPUT\" header bracket sits above only PE/U1-L/V1-N/W1; BRK+ and BRK- are drawn to the right of a separate ground-symbol icon and are not enclosed under the \"INPUT\" label bracket. They are the drive's brake-resistor/DC-bus terminals, a distinct group from the mains INPUT terminals, even though both sit on the same side of the drive box.",
+      "category": "component_label_recognition",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "List BRK+/BRK- separately as the drive's brake-resistor/common-DC terminals rather than folding them into \"INPUT terminals.\"",
+      "confidence": "medium"
+    },
+    {
+      "claim": "OUTPUT terminals: U2, V2, W2 [... connects to] Motor",
+      "evidence": "The image shows a second, distinct set of terminal labels \"U1 V1 W1\" printed directly on the motor circle symbol (separate from the drive's own INPUT U1/L-V1/N-W1 and OUTPUT U2/V2/W2 labels). The candidate response never mentions these motor-side terminal labels at all, despite the label reuse (U1/V1/W1) being a legible and potentially confusing detail on the page.",
+      "category": "component_label_recognition",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Note that drive OUTPUT (U2, V2, W2) connects via the motor cable to the motor's own terminals, labeled U1, V1, W1 on the motor.",
+      "confidence": "high"
+    },
+    {
+      "claim": "(omission) — grounding/PE terminals treated as a single generic \"PE\"",
+      "evidence": "The image shows ground/earth symbol icons at two points in the drive box outline (between W1 and BRK+ on the input side, and to the right of W2 on the output side), plus a separate \"PE\" label with footnotes 6) and 7) at the bottom-left of the diagram describing a second grounding-conductor path. The response collapses all of this into one undifferentiated \"grounding (PE)\" requirement.",
+      "category": "component_label_recognition",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Mention the drive's internal ground terminals (input and output) and the separate line-side PE/grounding-conductor path called out by footnotes 6) and 7).",
+      "confidence": "medium"
+    },
+    {
+      "claim": "(omission) — power path described as supply -> drive INPUT -> drive OUTPUT -> motor with no mention of a disconnect device",
+      "evidence": "Three switch/disconnect symbols (with footnote marker \"5)\") are drawn in series between the supply terminals (L1/L, L2/N, L3/-) and the drive INPUT terminals (U1/L, V1/N, W1), indicating a supply disconnecting device ahead of the drive. The candidate's power-flow description skips this element entirely.",
+      "category": "power_control_flow",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Note the supply disconnecting device (switches, footnote 5) shown in series ahead of the drive's INPUT terminals.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "\"Nothing major appears to be unreadable in the provided image.\"",
+      "evidence": "The image is in fact legible, but this blanket completeness claim glosses over several clearly-legible elements the response never addresses: the motor-side U1/V1/W1 terminal labels, the ground symbols, the disconnect-switch symbols, and the seven numbered footnotes (1-7) carrying substantive installation requirements (e.g. 360-degree shield grounding, one-phase wiring). Asserting nothing is unreadable, without engaging with content that plainly is readable, implies a completeness the answer doesn't back up.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 3,
+      "severity": "minor",
+      "correction": "Either work the numbered footnotes and the motor/ground labels into the explanation, or explicitly scope the answer as covering only the main power-terminal path rather than implying full coverage.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "(omission) — L1/L, L2/N, L3/- discussed with no mention of the one-phase installation note",
+      "evidence": "Footnote \"4)\" directly beneath the L1/L, L2/N, L3/- labels states: \"In one-phase installations, connect phase to L, neutral to N, leave L3/- disconnected.\" This is a legible, directly relevant caveat on the exact terminals the response already discusses, and omitting it reduces the practical usefulness of the explanation for a technician wiring a single-phase supply.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Include the one-phase wiring note (footnote 4) since it directly qualifies the L1/L, L2/N, L3/- terminals already discussed.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": false,
+  "hard_failure_reasons": [],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "high",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "Clean power/connection diagram (ABB ACS355 manual p.50-51), no control/interlock logic present, so sequence_interlocks_logic scores full since the candidate invents no false sequence/interlock content. All identifiers the candidate asserted (PE, U1/L, V1/N, W1, BRK+, BRK-, U2, V2, W2, L1/L, L2/N, L3/-) are genuinely legible in the image -- no invented tags or components, so no hard failure. Deductions are for omissions of other clearly-legible, technically relevant content (motor-side terminal labels, disconnect switches, ground symbols, footnotes) and one grouping inaccuracy (BRK+/BRK- called INPUT terminals), not for false claims."
+}

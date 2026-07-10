@@ -1,0 +1,52 @@
+{
+  "case_id": "13",
+  "ocr_source": "cascade_vision_transcription_proxy_not_production_glm_ocr",
+  "oem": "AutomationDirect",
+  "document": "CLICK PLC I/O Wiring (User Manual, Ch. 3)",
+  "url": "cdn.automationdirect.com/static/manuals/c0userm/ch3.pdf",
+  "category": "PLC I/O",
+  "question": "Describe the theory of operation.",
+  "source_image_path": "C:\\Users\\hharp\\Downloads\\print-translator-eval-images\\13.png",
+  "source_image_sha256": "cd9481115213c424f07c84a44b9a0dc18c4d03a799e3116208cbf2f611862918",
+  "run_timestamp_utc": "2026-07-10T10:22:58.111491+00:00",
+  "mode": "baseline_b_ocr_grounded",
+  "ocr_items": [
+    "DC Input Wiring Methods",
+    "Chapter 3: Installation and Wiring",
+    "Sinking Input Sensor (NPN Type) to PLC Sourcing Input",
+    "Sourcing Input Sensor (PNP Type) to PLC Sinking Input",
+    "DC Output Wiring Methods",
+    "PLC Sinking Output to Sourcing Load Device",
+    "Input",
+    "Common",
+    "Output (sinking)",
+    "Input (sourcing)",
+    "Supply",
+    "Ground",
+    "DC NPN Sensor (Sinking)",
+    "DC PNP Sensor (Sourcing)",
+    "Input (sinking)",
+    "Output (sourcing)",
+    "PLC DC Output",
+    "Field Device",
+    "20-28 VDC",
+    "CLICK PLC Hardware User Manual, 6th Edition, Rev. Q - C0-USER-M",
+    "3-31"
+  ],
+  "ocr_proxy_usage": {
+    "input_tokens": 2711,
+    "output_tokens": 165,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "ocr_proxy_raw_response": "[\"DC Input Wiring Methods\", \"Chapter 3: Installation and Wiring\", \"Sinking Input Sensor (NPN Type) to PLC Sourcing Input\", \"Sourcing Input Sensor (PNP Type) to PLC Sinking Input\", \"DC Output Wiring Methods\", \"PLC Sinking Output to Sourcing Load Device\", \"Input\", \"Common\", \"Output (sinking)\", \"Input (sourcing)\", \"Supply\", \"Ground\", \"DC NPN Sensor (Sinking)\", \"DC PNP Sensor (Sourcing)\", \"Input (sinking)\", \"Output (sourcing)\", \"PLC DC Output\", \"Field Device\", \"20-28 VDC\", \"CLICK PLC Hardware User Manual, 6th Edition, Rev. Q - C0-USER-M\", \"3-31\"]",
+  "messages_ocr_block": "Drawing type: electrical drawing\n\nOCR labels extracted from the drawing (ground truth — use these verbatim, do not invent new labels):\n- DC Input Wiring Methods\n- Chapter 3: Installation and Wiring\n- Sinking Input Sensor (NPN Type) to PLC Sourcing Input\n- Sourcing Input Sensor (PNP Type) to PLC Sinking Input\n- DC Output Wiring Methods\n- PLC Sinking Output to Sourcing Load Device\n- Input\n- Common\n- Output (sinking)\n- Input (sourcing)\n- Supply\n- Ground\n- DC NPN Sensor (Sinking)\n- DC PNP Sensor (Sourcing)\n- Input (sinking)\n- Output (sourcing)\n- PLC DC Output\n- Field Device\n- 20-28 VDC\n- CLICK PLC Hardware User Manual, 6th Edition, Rev. Q - C0-USER-M\n- 3-31",
+  "router_usage": {
+    "input_tokens": 3119,
+    "output_tokens": 474,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "translator_reply": "## 1. **What this appears to be**\nThis appears to be a page from an electrical engineering manual, specifically focusing on DC input and output wiring methods for CLICK PLCs and I/O modules.\n\n## 2. **Main visible components**\nThe main visible components in the drawing are:\n- DC NPN Sensor (Sinking)\n- DC PNP Sensor (Sourcing)\n- Field Device\n- PLC DC Input\n- PLC DC Output\n\n## 3. **Plain-English theory of operation**\nAccording to this print, there are two types of sensor configurations:\n- **Sinking Input Sensor (NPN Type) to PLC Sourcing Input**: \n  - The DC NPN Sensor (Sinking) is connected to the PLC DC Input (Sourcing).\n  - When the sensor is energized, it sinks current to ground from the DC input point.\n  - The PLC input current is sourced from the common terminal connected to the power supply (+).\n\n- **Sourcing Input Sensor (PNP Type) to PLC Sinking Input**: \n  - The DC PNP Sensor (Sourcing) is connected to the PLC DC Input (Sinking).\n  - When energized, the sensor sources current to the PLC input point, which sinks the current to ground.\n\n- **DC Output Wiring Methods - PLC Sinking Output to Sourcing Load Device**: \n  - The PLC DC Output is connected to a field device load with a sourcing input.\n  - The PLC output point sinks current to ground (common) when energized.\n\n## 4. **What must be true for it to work**\n- The DC input and output circuits must operate within the range of +12-24 VDC for inputs and +5-24 VDC for outputs.\n- The field device loop must be properly connected to the PLC input or output points.\n- The power supply must be connected to the common terminal for DC input and output circuits.\n\n## 5. **What would stop it from working**\n- Incorrect wiring of the DC NPN or PNP sensors to the PLC input points.\n- Mismatched voltage levels between the field devices and the PLC input/output points.\n- Open circuits or poor connections in the wiring.\n\n## 6. **Unclear or unreadable items**\n- Nothing major unreadable. All labels and regions appear clear and readable.",
+  "invented_label_check": null
+}
