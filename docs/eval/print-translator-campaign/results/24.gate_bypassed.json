@@ -1,0 +1,31 @@
+{
+  "id": 24,
+  "oem": "Siemens",
+  "document": "3RU/3RB Thermal Overload Relay & Braking Module (60298164)",
+  "url": "https://www.pes-group.co.uk/media/parkuk%20cms/datasheets/siemens/extra/SIRIUS%20Overload%20Relay%203RU%203RB.pdf",
+  "manifest_page_ref": "Ch. 2, overload winding & braking contact diagram",
+  "print_type": "Overload relay & DC braking element",
+  "standard": "IEC 60947-4-1",
+  "category": "Reversing/Braking",
+  "rendered_page_number": 162,
+  "image_path": "docs/eval/print-translator-campaign/images/24.png",
+  "run_timestamp_utc": "2026-07-10T12:10:07.796064+00:00",
+  "mode": "gate_bypassed_real_prompt_real_model_real_image_ocr_empty",
+  "caption": "Describe the theory of operation.",
+  "image_sha256": "b90a480db60c1cb3c4fa45fc8fbcc2b89a1308668c4c48a8dee1f1ce8409d969",
+  "drawing_type": "wiring diagram",
+  "ocr_item_count": 0,
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: wiring diagram\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2945,
+    "output_tokens": 401,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "response": "## **1. What this appears to be**\nThis appears to be a technical diagram illustrating two different wiring configurations for electrical remote reset systems, specifically for SIRIUS 3RB thermal overload relays and SIRIUS 3RB electronic overload relays.\n\n## **2. Main visible components**\nThe diagrams show:\n* Two overload relay configurations (Figure 12-22 and Figure 12-23)\n* A motor (M1) with connections labeled U, V, W\n* Fuses (F1, F2, F3)\n* Control devices (pushbuttons S1, S2, S3)\n* Relay or contactor (Q1)\n* Terminal blocks with designations like L1, L2, L3, N\n\n## **3. Plain-English theory of operation**\nAccording to this print, the system appears to control a motor (M1) with remote reset functionality. \n* In Figure 12-22, pressing the reset button (S1) seems to reset the overload relay (3RB21 / 3RB31).\n* The system uses fuses (F1, F2, F3) for protection.\n* The motor (M1) is connected to the overload relay.\n\n## **4. What must be true for it to work**\nBased on the diagrams, for the system to operate:\n* Power must be supplied to L1, L2, L3, and N.\n* The overload relay (3RB) must be properly configured.\n* The reset button (S1) must be functional.\n\n## **5. What would stop it from working**\nPotential issues that would prevent the system from working:\n* Blown fuses (F1, F2, F3)\n* Faulty control devices (S1, S2, S3)\n* Issues with the overload relay (3RB)\n\n## **6. Unclear or unreadable items**\nNothing major appears to be unreadable in the provided diagrams."
+}

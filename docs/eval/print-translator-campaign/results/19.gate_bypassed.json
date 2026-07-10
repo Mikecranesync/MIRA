@@ -1,0 +1,31 @@
+{
+  "id": 19,
+  "oem": "Schneider Electric",
+  "document": "ATV340 Wiring Manual (NVE97896)",
+  "url": "https://download.schneider-electric.com/files?p_enDocType=Instruction+sheet&p_File_Name=ATV340_IS_Wiring_Diagrams_S1-S2-S3_NVE97896_02.pdf&p_Doc_Ref=NVE97896",
+  "manifest_page_ref": "Wiring diagram section (p. 3–5)",
+  "print_type": "VFD power & signal wiring",
+  "standard": "IEC 61800-5-1",
+  "category": "VFD",
+  "rendered_page_number": 0,
+  "image_path": "docs/eval/print-translator-campaign/images/19.png",
+  "run_timestamp_utc": "2026-07-10T12:09:48.118508+00:00",
+  "mode": "gate_bypassed_real_prompt_real_model_real_image_ocr_empty",
+  "caption": "Describe the theory of operation.",
+  "image_sha256": "cfb816119352d6c72874d0c785cfb6a40c8699c4d7a62eaa4c07537fb04e86be",
+  "drawing_type": "wiring diagram",
+  "ocr_item_count": 0,
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: wiring diagram\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2800,
+    "output_tokens": 336,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "response": "1. **What this appears to be**\n* This appears to be a wiring diagram for ATV340 devices, specifically S1, S2, and S3 configurations.\n\n2. **Main visible components**\n* The diagram shows power and control sections.\n* Power section:\n\t+ Three-phase power input\n\t+ Motor output\n\t+ Braking resistor (optional)\n* Control section:\n\t* ATV340 device\n\t* HMI (Human-Machine Interface)\n\t* PLC (Programmable Logic Controller)\n\t* Encoder (ENC)\n\t* Various digital and analog I/O connections\n\n3. **Plain-English theory of operation**\n* Power section:\n\t+ Three-phase power is supplied to the ATV340 device.\n\t+ The device controls the motor output.\n\t+ A braking resistor is optionally connected for dynamic braking.\n* Control section:\n\t+ The ATV340 device communicates with the HMI and PLC.\n\t+ The encoder provides feedback to the ATV340.\n\t+ Digital and analog I/O connections are made to the PLC.\n\n4. **What must be true for it to work**\n* Power supply must be connected to the ATV340 device.\n* Motor must be properly connected to the ATV340 output.\n* HMI and PLC must be properly configured and connected.\n* Encoder must be properly connected and providing feedback.\n\n5. **What would stop it from working**\n* Power supply issues (e.g., phase loss, undervoltage).\n* Motor or ATV340 output connection issues.\n* HMI or PLC configuration errors.\n* Encoder failure or incorrect connection.\n\n6. **Unclear or unreadable items**\n* Nothing major appears to be unreadable."
+}
