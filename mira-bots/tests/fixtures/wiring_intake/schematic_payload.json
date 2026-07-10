@@ -1,0 +1,90 @@
+{
+  "entities": [
+    {
+      "entity_id": "PLC1",
+      "entity_type": "programmable_logic_controller",
+      "properties": {
+        "manufacturer": "Allen-Bradley",
+        "model": "CompactLogix"
+      }
+    },
+    {
+      "entity_id": "PS1",
+      "entity_type": "power_supply",
+      "properties": {
+        "manufacturer": "Phoenix Contact",
+        "voltage_output": "24VDC"
+      }
+    },
+    {
+      "entity_id": "GS10_VFD",
+      "entity_type": "variable_frequency_drive",
+      "properties": {
+        "manufacturer": "Automation Direct",
+        "model": "GS10"
+      }
+    },
+    {
+      "entity_id": "MOTOR",
+      "entity_type": "motor",
+      "properties": {
+        "hp": 2,
+        "phase": 3
+      }
+    },
+    {
+      "entity_id": "TB2",
+      "entity_type": "terminal_block",
+      "properties": {}
+    }
+  ],
+  "relationships": [
+    {
+      "source_entity_id": "PLC1",
+      "target_entity_id": "PS1",
+      "relationship_type": "electrically_connected",
+      "properties": {
+        "from_terminal": "I-00",
+        "to_terminal": "OUT",
+        "wire_number": "W200",
+        "gauge_awg": 18,
+        "color": "red"
+      }
+    },
+    {
+      "source_entity_id": "GS10_VFD",
+      "target_entity_id": "PLC1",
+      "relationship_type": "electrically_connected",
+      "properties": {
+        "from_terminal": "I-00",
+        "to_terminal": "I-01",
+        "wire_number": "W201",
+        "gauge_awg": 18,
+        "color": "blue"
+      }
+    },
+    {
+      "source_entity_id": "MOTOR",
+      "target_entity_id": "GS10_VFD",
+      "relationship_type": "electrically_connected",
+      "properties": {
+        "from_terminal": "T1",
+        "to_terminal": "U",
+        "wire_number": "W202",
+        "gauge_awg": 14,
+        "color": "brown"
+      }
+    },
+    {
+      "source_entity_id": "TB2",
+      "target_entity_id": "PS1",
+      "relationship_type": "controls",
+      "properties": {
+        "from_terminal": "14",
+        "to_terminal": "GND"
+      }
+    }
+  ],
+  "schematic_type": "electrical_print",
+  "notes": "CV-101 wiring schematic from intake"
+}
