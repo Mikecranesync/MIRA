@@ -25,6 +25,7 @@ deploy step, not this file — see ``docs/specs/bot-eval-loop-spec.md`` § "Sche
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 import logging
 import os
@@ -241,9 +242,16 @@ def score_unscored_rows(limit: int = _DEFAULT_BATCH, router: Any = None) -> dict
         return stats
 
     if router is None:
+        # Architecture boundary (tests/test_architecture.py::test_crawler_cannot_
+        # import_bots): mira-crawler must not STATICALLY import the bots/shared
+        # inference cascade. The eval scorer's need for the router is an OPTIONAL,
+        # fail-open RUNTIME dependency — drive-pack rows score deterministically
+        # without it — so resolve it dynamically instead of coupling the crawler
+        # to shared.inference at import time.
         try:
-            from shared.inference.router import InferenceRouter
-
+            InferenceRouter = importlib.import_module(
+                "shared.inference.router"
+            ).InferenceRouter
             router = InferenceRouter()
         except Exception as exc:  # noqa: BLE001 - drive-pack rows still score
             logger.warning("eval scorer: could not build InferenceRouter: %s", exc)
