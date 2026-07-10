@@ -229,6 +229,13 @@ jobs:
         # (root tests/ is not collected wholesale here).
         run: pytest tests/test_wiring_map_import.py -v
 
+      - name: Wiring schematic import (/api/kg/schematic → wiring_connections)
+        # Pure core of tools/wiring_schematic_import.py — schematic-extractor
+        # payload → the SAME WiringRow/write_rows seam (PR-2), over a fixture
+        # (no live vision). Only electrically_connected edges become conductors;
+        # provenance preserved; proposed + idempotent. Hermetic, no DB.
+        run: pytest tests/test_wiring_schematic_import.py -v
+
       - name: Deploy-target guard (staging deploy must rebuild the bot)
         # Guards the 2026-07-08 staging drift (#2557): deploy-staging.yml's
         # default TARGETS must include mira-bot-telegram and must name only
