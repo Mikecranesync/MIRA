@@ -36,6 +36,12 @@ Build the next industrial-maintenance capability layer (Machine Pack + PLC reade
 2. **CV-101 proof: bench-first** — the primary proof (plan PR-8.2) runs against the physical CV-101 conveyor (Micro820 PLC, GS10 drive, live tags, real documentation). SimLab reproduces the scenario as a deterministic CI regression fixture (PR-8.1) but **must not substitute** for the live proof.
 3. **ADR-0026 trust mapping: approved in principle** with required boundaries — immutable raw/extracted evidence; observed/extracted/inferred/technician-confirmed/approved kept distinct; no silent promotion of agent inference; conflicts preserved and surfaced; approvals record reviewer/time/evidence/artifact-version; unapproved data usable at runtime only when labeled, never authoritative; consequential guidance requires approved mappings or explicit insufficient-evidence behavior; full provenance to source document / PLC location / live tag / technician record. See `docs/adr/0026-machine-pack-and-provenance-unification.md` (PR-1.2).
 
+## Post-review corrections (2026-07-10, from independent verification agents)
+
+- **`demo/factory_difference_engine/` is NOT on `origin/main`.** The fault-intelligence trio (`fault_dictionary.py`, `fault_bundle.py`, `fault_report.py`) and the difference-engine pipeline live on the unmerged branch `origin/feat/proveit-difference-engine-demo` (commits `9de9dc3a`/`81cf90d3`/`7b109bdd`). Inventory 07 describes them as built+tested, which is true — *on that branch*. Consequence for the plan: Phase 0 PR-0.4 (GS10_FAULT_CODES fold-in) and Phase 6 (evidence chain) acquire a prerequisite: **merge or port `feat/proveit-difference-engine-demo` first** — treat it like the branch-B migration, another recovered-work item, not a rebuild.
+- `docs/discovery/drive_commander_convergence_audit_2026-07-07.md` was an uncommitted local artifact; it is committed alongside this index so its references resolve.
+- The drive-pack field doc path is `mira-bots/shared/drive_packs/packs/README.md` (inventories sometimes shorthand it as `packs/README.md`).
+
 ## Status labels used across the inventories
 
 - **production** — on `origin/main`, tested, in active use. Reuse.
