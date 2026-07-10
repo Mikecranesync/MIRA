@@ -1,6 +1,16 @@
 # MIRA Release Notes
 
 
+### v3.126.0 (2026-07-09) - feat(wiring): machine wiring profile + trust scorecard + citable Q&A + eval pack (read-only lane over wiring_connections)
+- **Why:** PR-1/PR-2 gave `wiring_connections` its first *writers* (cited YAML + schematic extractor → `proposed` rows) but the table had no *reader*. This builds the product lane that turns those rows into trustworthy maintenance intelligence — strengthening the evidence loop (proof, never guess, read-only, human-approval-before-trust), never loosening it.
+- **What:** new read-only package `mira-bots/shared/wiring_profile/` — four modules, all reading the ONE `wiring_connections` table (no second architecture, no new writer, no schema change; the reader scopes an asset via the existing `evidence_summary->>'asset'`):
+  - `schema.py` — `WiringConnection` / `MachineWiringProfile`. **Only `approval_state='verified'` is trusted**; `trusted()`==`approved` is the only set an answer is built from; `find_by_wire` is exact-normalized (`"200"` ≠ `"W200"` — false-positive guard).
+  - `reader.py` — `profile_from_rows` (pure) + `load_profile` (SELECT-only, RLS via `set_config`, `psycopg2` local-import). Never coerces: absent optional fields stay `None`, `function_class='unknown'` stays `'unknown'`, `evidence_summary` round-trips verbatim.
+  - `scorecard.py` — `score_profile` → `WiringTrustScore`, mirroring the drive-pack scorecard gate-dict + trust ladder (`no_wiring`→`proposed_only`→`partial`→`trusted`). Gates: has_wiring, has_approved (not proposed-only), approved_all_sourced, approved_human_readable, approved_field_confirmed. Deliberately NOT wired into a repo-wide CI gate over live data (CV-101 is all-`proposed` by design and MUST score `proposed_only`).
+  - `ask.py` — `answer_wiring_question` → `WiringAnswer`, mirroring the `DrivePackAnswer` contract. Answers "Where does W200 land?" / "What is connected to I-00?" from **approved rows only**, ≥1 citation each; REFUSES with "not enough APPROVED evidence" when a match exists only in `proposed`/`needs_review`; honest "no record" when absent. Never invents an endpoint/wire/terminal; `read_only=True`, `fallback_used=False` always.
+- **Doctrine:** trusted == verified-only; a `wiring_connections`-sourced answer always carries a citation, a refusal always carries none; unknown stays unknown; no control writes; reuses the existing writers (`tools/wiring_map_import.py`, `tools/wiring_schematic_import.py`) untouched.
+- **Tests:** `+74` `mira-bots/tests/test_wiring_profile_{reader,scorecard,ask}.py` (+ `fixtures/wiring_profile/`) — six hermetic suites: approval enforcement, provenance preservation, unknown-field, false-positive (W200≠200, absent→no-record), citation-or-refuse, scorecard ladder. Auto-collected by the existing `pytest mira-bots/tests/` CI step under `--cov=mira-bots/shared` (no new CI step). No migration; staging-only, no prod deploy.
+
 
 ### v3.125.0 (2026-07-09) - feat(wiring): wire /api/kg/schematic output into the wiring_connections seam (PR-2)
 - **Why:** PR-1 (v3.124.0) proved the dormant `wiring_connections` writer with cited YAML. PR-2 wires the **live vision extractor** into the *same* seam so a real electrical drawing can propose structured connections — reuse, not a parallel path.
