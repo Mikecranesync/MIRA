@@ -16,7 +16,7 @@ from admin_commands import (
 )
 from chat_adapter import TelegramChatAdapter
 from PIL import Image
-from shared import chat_tenant, tts
+from shared import chat_tenant, tts, wiring_intake
 from shared.chat.dispatcher import ChatDispatcher
 from shared.contextualization_intake import (
     hub_folder_upload_configured,
@@ -571,6 +571,87 @@ async def _try_drive_pack_followup(
     return True
 
 
+# --- Wiring loop (PR-4): photo -> proposed rows; text -> verified-only cited
+# Q&A (`shared/wiring_intake.py`). Additive, fall-through fast paths — mirror
+# the drive-pack precedent above. See `shared/wiring_intake.py` module
+# docstring for the full doctrine + the mig-026 direct-INSERT decision.
+#
+# Per-chat wiring-asset memory was deliberately NOT added: the existing
+# `telegram_drive_context` table (`_set_drive_context`/`_get_drive_context`,
+# above) is keyed `chat_id -> pack_id` with no context-kind column, so it
+# cannot be reused for a second concept (a wiring asset) with "a distinct
+# key" — that would require either a schema change to that table or a new
+# table, and the PR-4 spec says: if trivial reuse isn't available, skip
+# memory rather than add one. The asset must be named in the text/caption
+# ("CV-101 add this wiring", "CV-101 where does W200 land?") or MIRA asks
+# for it (`wiring_intake.MISSING_ASSET_REPLY`) — it never guesses.
+def _write_rows_blocking(tenant_id: str, rows: list) -> tuple[int, int]:
+    """Sync DB glue for `_try_wiring_intake_reply` (psycopg2 is sync — run in
+    a thread via `asyncio.to_thread`). Opens a NeonDB connection, writes the
+    PR-2-converted rows through the reused writer seam (always
+    `approval_state='proposed'`), commits, and closes.
+    """
+    conn = wiring_intake.open_neon_conn()
+    try:
+        with conn.cursor() as cur:
+            inserted, skipped = wiring_intake.write_proposed_rows(cur, tenant_id, rows)
+        conn.commit()
+    finally:
+        conn.close()
+    return inserted, skipped
+
+
+def _answer_wiring_blocking(
+    tenant_id: str, asset: str, question: str
+) -> "wiring_intake.WiringAnswer":
+    """Sync DB glue for `_try_wiring_question_reply` — read-only. Loads the
+    asset's `MachineWiringProfile` and answers the question from `verified`
+    rows only (`shared.wiring_profile.answer_wiring_question`'s gate).
+    """
+    conn = wiring_intake.open_neon_conn()
+    try:
+        with conn.cursor() as cur:
+            profile = wiring_intake.load_profile(cur, tenant_id, asset=asset)
+    finally:
+        conn.close()
+    return wiring_intake.answer_wiring_question(profile, question)
+
+
+async def _try_wiring_question_reply(
+    text: str,
+    chat_id: str,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> bool:
+    """Wiring-question TEXT fast path (read-only, cited, no LLM fallback).
+
+    Only claims the turn (returns ``True``) when ``text`` reads as a wiring
+    question per ``wiring_intake.parse_wiring_intent`` — a question marker
+    ("where does", "connected to", ...) PLUS a parseable wire/terminal
+    token. Answers ONLY from ``verified`` rows; a match that exists only
+    among proposed/needs_review/rejected rows is an explicit refusal, never
+    an assertion, and an absent record is an honest "no record" — never a
+    guess, never a generic LLM fallback. Falls through unchanged (returns
+    ``False``) for anything that isn't a wiring question, so the normal
+    enrollment-gated engine dispatch in ``handle_message`` is untouched.
+    """
+    intent = wiring_intake.parse_wiring_intent(text)
+    if intent.kind != "question":
+        return False
+
+    asset = intent.asset
+    if not asset:
+        await update.message.reply_text(wiring_intake.MISSING_ASSET_REPLY)
+        return True
+
+    tenant_id = chat_tenant.resolve(str(update.effective_user.id))
+    answer = await asyncio.to_thread(
+        _answer_wiring_blocking, tenant_id, asset, intent.question or text
+    )
+    await update.message.reply_text(wiring_intake.format_wiring_answer(answer, asset))
+    return True
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Route text messages through the GSD engine via ChatAdapter."""
     import time as _time
@@ -584,6 +665,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # instead of dropping to the enrollment-gated engine path with no memory of
     # the drive. Falls through unchanged for non-drive text.
     if await _try_drive_pack_followup(text, chat_id, update, context):
+        return
+    # Wiring Q&A: verified-only, cited answers over `wiring_connections`
+    # (PR-4). Falls through unchanged for anything that isn't a wiring
+    # question. See `_try_wiring_question_reply` docstring.
+    if await _try_wiring_question_reply(text, chat_id, update, context):
         return
     if any(kw in text.lower() for kw in FAULT_KEYWORDS):
         await update.message.reply_text("Diagnosing...")
@@ -774,6 +860,61 @@ async def _try_nameplate_drive_pack_reply(
     return False
 
 
+async def _try_wiring_intake_reply(
+    vision_bytes: bytes,
+    caption: str,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> bool:
+    """Wiring-photo -> proposed-rows fast path (additive, no LLM fallback).
+
+    Only claims the turn (returns ``True``) when ``caption`` reads as wiring
+    INTAKE per ``wiring_intake.parse_wiring_intent`` (e.g. "CV-101 add this
+    wiring"). Reuses ``engine._extract_schematic`` — the SAME schematic
+    extractor the engine's own ELECTRICAL_PRINT path calls — purely to get
+    the KG-shaped payload, then writes it through the merged PR-1/PR-2 seam
+    (``wiring_intake.payload_to_proposed_rows`` -> ``write_proposed_rows``)
+    as ``approval_state='proposed'`` — NEVER verified; a human must approve
+    before MIRA will answer from these rows (see ``wiring_profile``).
+
+    Falls through unchanged (returns ``False``) for any caption that isn't
+    wiring intake, so the existing ELECTRICAL_PRINT/PrintWorker photo flow
+    in ``_dispatch_single_photo`` is untouched.
+    """
+    intent = wiring_intake.parse_wiring_intent(caption)
+    if intent.kind != "intake":
+        return False
+
+    chat_id = str(update.effective_chat.id)
+    asset = intent.asset
+    if not asset:
+        await update.message.reply_text(wiring_intake.MISSING_ASSET_REPLY)
+        return True
+
+    tenant_id = chat_tenant.resolve(str(update.effective_user.id))
+    photo_b64 = base64.b64encode(vision_bytes).decode()
+    payload = await engine._extract_schematic(photo_b64)
+    if not payload or not payload.get("relationships"):
+        await update.message.reply_text(
+            "I couldn't read any wiring connections from that image. "
+            "Send a clearer electrical print."
+        )
+        return True
+
+    rows = wiring_intake.payload_to_proposed_rows(
+        payload,
+        asset,
+        drawing_ref=f"telegram:{chat_id}",
+        proposed_by="telegram:wiring_intake",
+        source=f"telegram:chat:{chat_id}",
+    )
+    inserted, skipped = await asyncio.to_thread(_write_rows_blocking, tenant_id, rows)
+    await update.message.reply_text(
+        wiring_intake.build_intake_preview(payload, inserted, skipped, asset)
+    )
+    return True
+
+
 async def _dispatch_single_photo(
     raw_bytes: bytes,
     vision_bytes: bytes,
@@ -794,6 +935,13 @@ async def _dispatch_single_photo(
     unchanged engine dispatch below.
     """
     if await _try_nameplate_drive_pack_reply(vision_bytes, caption, update, context):
+        return
+
+    # Wiring intake: propose rows into `wiring_connections` from an
+    # electrical-print photo captioned "add this wiring" (PR-4). Falls
+    # through unchanged for any other caption. See
+    # `_try_wiring_intake_reply` docstring.
+    if await _try_wiring_intake_reply(vision_bytes, caption, update, context):
         return
 
     chat_id = str(update.effective_chat.id)
