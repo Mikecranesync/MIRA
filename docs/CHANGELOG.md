@@ -1,6 +1,12 @@
 # MIRA Release Notes
 
 
+### v3.128.5 (2026-07-10) - docs(eval): Print Translator automated benchmark + Next-Steps (Claude-judge baseline + OCR A/B)
+- **Why:** durable, evidence-grounded benchmark for the Print Translator, plus the "Next-Step Plan" (freeze baseline, prove the OCR path, run the OCR A/B, regression fixtures, calibration packet) — all NON-authoritative until technician calibration, no product/prompt/deploy change.
+- **What:** `docs/eval/print-translator-benchmark/` — anonymized Claude (Sonnet-subagent) judging of the 10 preserved responses on a 100-pt rubric with independent 2nd-judge escalation; **Baseline A** frozen (`BASELINE_A.sha256`, immutable); **OCR-path proof** (code trace glm-ocr → theory prompt); **Baseline B** OCR A/B (image-only vs image+OCR-proxy).
+- **Key finding:** OCR grounding barely moved the mean (65.4→66.6) but **doubled the hard-failure rate (20%→40%)** — it removed 2 freelance inventions but caused OCR-error propagation + confident-wrong assignments (2 clean cases flipped to independently-confirmed hard-failures). Decision (per plan): build the smallest deterministic **evidence-binding guard**; don't optimize the prompt against the judge; honest caveat that B used a cascade-vision OCR proxy (production glm-OCR unreachable from the dev box). The 4 known hallucinations (K1/K2, control-transformer, XC00, XC90) are captured as skipped-until-guard regression fixtures; a 5-case technician calibration packet (blank scorecards) is included.
+- Eval artifacts only — no `mira-bots` change, nothing deployed, images kept local/out-of-git. VERSION 3.128.4 → 3.128.5.
+
 ### v3.128.4 (2026-07-10) - docs(eval): Print Translator real-world campaign package (text-only)
 - **Why:** durable record of the autonomous Print Translator evaluation that surfaced (and quantified) the classifier-gate defect fixed in v3.128.3.
 - **What:** `docs/eval/print-translator-campaign/` — 25-print official-OEM `corpus_manifest`, `results/` (11 real handler runs + 10 gate-bypassed real-prompt/real-cascade/real-image explanations, OCR-empty on the dev box and caveated throughout), `review_worksheet.csv` (technician-judgment columns blank), `RANKED_REPORT.md`, `GAPS.md`, `rejected.md`, `LIVE_TELEGRAM_RUNBOOK.md`, `regression_fixtures/` (xfail, not CI-collected), `images/MANIFEST.md` (hashes + source URLs). Runner: `tools/print_translator_eval/`.

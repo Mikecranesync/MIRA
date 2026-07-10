@@ -1,0 +1,13 @@
+{
+  "case_id": "25",
+  "image_path": "C:\\Users\\hharp\\Downloads\\print-translator-eval-images\\25.png",
+  "oem": "Yaskawa",
+  "document": "V1000 VFD Control Wiring (Technical Data WD.V1000.01)",
+  "source_url": "www.yaskawa.com/delegate/getAttachment?documentId=WD.V1000.01&cmd=documents&documentName=WD.V1000.01.pdf",
+  "page": 1,
+  "category": "Reversing/Braking",
+  "standard": "IEC 61800",
+  "question": "Describe the theory of operation.",
+  "candidate_response": "## 1. What this appears to be\nThis appears to be a standard connection diagram for a Yaskawa V1000 AC drive.\n\n## 2. Main visible components\nThe main visible components include:\n* Power supply connections for single-phase 200 V and three-phase power supplies\n* A motor with a cooling fan\n* A DC reactor (optional)\n* A thermal relay (optional)\n* Braking resistor (optional)\n* Digital inputs and outputs\n* Analog monitor output\n* MEMOBUS/Modbus communication\n\n## 3. Plain-English theory of operation\nThe drawing indicates the following sequence of operation:\n* Power is supplied to the drive through the main circuit terminals\n* The drive controls the motor through the U, V, and W terminals\n* Digital inputs (S1-S7) control the drive's operation, including forward and reverse run/stop, external fault, fault reset, and multi-step speed control\n* The drive has various optional components, such as a DC reactor, thermal relay, and braking resistor, which can be installed as needed\n\n## 4. What must be true for it to work\nThe following conditions must be satisfied for the drive to operate:\n* Power supply connections must be made correctly\n* Motor connections must be made correctly\n* Digital inputs must be configured correctly\n* Optional components must be installed and configured correctly\n\n## 5. What would stop it from working\nThe following issues would prevent the drive from working:\n* Incorrect power supply connections\n* Incorrect motor connections\n* Faulty or incorrectly configured digital inputs\n* Failure of optional components, such as the DC reactor or thermal relay\n\n## 6. Unclear or unreadable items\nNothing major appears to be unreadable in the image.",
+  "context_notes": "This candidate had NO OCR text extracted — it was grounded on the image only (ocr_grounding='unavailable_on_this_box'). Judge whether it correctly separates what is visibly readable from inference accordingly: do not penalize it for declining to cite a specific tag/wire-number string it could not have OCR'd, but do penalize it under evidence_grounding_unsupported_claims if it invents a specific tag/wire-number/label that is not actually legible in the image."
+}

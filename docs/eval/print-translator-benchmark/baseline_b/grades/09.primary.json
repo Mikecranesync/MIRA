@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "case_id": "09",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 17,
+    "power_control_flow": 18,
+    "sequence_interlocks_logic": 15,
+    "evidence_grounding_unsupported_claims": 10,
+    "technician_usefulness_clarity": 9
+  },
+  "total": 79,
+  "deductions": [
+    {
+      "claim": "Main visible components list (S11/S21/S22/S12/S34/A1/13/23/S32/S42/L11/L12/A2/14/24/Y32, K1, K2, Reset, OSSD1/OSSD2) omits the \"LOGIC\" rotary selector switch entirely.",
+      "evidence": "Both Figure 45 and Figure 46 show a clearly printed \"LOGIC\" label with a rotary dial marked 0-8 on the front face of the 440R-D22R2 relay body; it is a prominent, labeled, visible component that never appears in the candidate's component inventory.",
+      "category": "component_label_recognition",
+      "points_deducted": 3,
+      "severity": "minor",
+      "correction": "List the LOGIC rotary selector switch as a visible component of the relay.",
+      "confidence": "high"
+    },
+    {
+      "claim": "In the second configuration (Figure 46), the DI safety relay monitors a safety mat and a non-contact interlock with OSSD outputs. The safety mat must be configured for AND logic for the two inputs.",
+      "evidence": "The printed text directly above Figure 46 explicitly states \"The DI safety relay logic setting is 6: (IN1 AND IN2) OR L12 with automatic reset.\" The candidate's answer never states this specific logic-setting number or the (IN1 AND IN2) OR L12 formula, despite it being printed, legible text describing exactly how the AND-logic behavior it does mention is actually configured.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 5,
+      "severity": "material",
+      "correction": "State the specific logic-setting value and formula (\"logic setting 6: (IN1 AND IN2) OR L12 with automatic reset\") so a technician can verify the rotary dial is set correctly, and flag that this differs from the \"monitored manual reset\" requirement stated elsewhere on the same page for safety-mat applications.",
+      "confidence": "high"
+    },
+    {
+      "claim": "the auxiliary signal at terminal Y32 turns on and reports the status to a PLC (stated for both Figure 45 and Figure 46, with no further detail on the mechanism)",
+      "evidence": "Both diagrams show two dashed-line normally-closed contact symbols wired in the current path between terminals 13/23 (top row) and 14/24 (bottom row), directly in line with the Y32 output wire -- these are the relay's internal auxiliary output contacts that actually switch the Y32 signal. The candidate never identifies or describes this visible contact pair.",
+      "category": "power_control_flow",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Note that terminals 13-23 and 14-24 carry the safety relay's internal auxiliary contacts that switch the Y32 signal to the PLC.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Nothing major unreadable. All labels appear to be clear and match the provided OCR data.",
+      "evidence": "This case's OCR grounding was unavailable (no OCR-extracted text was supplied to the candidate for this benchmark run, per the benchmark's stated methodology for this case set) -- there was no \"provided OCR data\" for the labels to match against. The candidate asserts corroboration from a data source that did not exist for this run.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 8,
+      "severity": "severe",
+      "correction": "State the readability assessment as based on direct visual inspection of the image only; do not claim agreement with OCR data that was not supplied.",
+      "confidence": "high"
+    },
+    {
+      "claim": "The safety mat and non-contact interlock (OSSD1, OSSD2) must be configured for AND logic.",
+      "evidence": "OSSD1 and OSSD2 are wire labels feeding a single terminal pair (S32/S42) from one device symbol in the diagram; the print does not label which of the two physical device symbols (the one wired to S11/S21/S22/S12, or the one wired via OSSD1/OSSD2 to S32/S42) is the \"safety mat\" versus the \"non-contact interlock.\" Attributing the OSSD1/OSSD2 labels jointly to \"the safety mat and non-contact interlock\" asserts a specific device-to-terminal correspondence that is not actually shown.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Describe the two safety inputs by terminal (S11/S21/S22/S12 for one device, S32/S42 via OSSD1/OSSD2 for the other) without asserting which named device (mat vs. interlock) corresponds to which terminal pair, since the print does not label that correspondence.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Both devices (S11, S21, S22, S12) must be closed.",
+      "evidence": "Figure 45 shows only two switch/contact symbols at the upper left, each wired through a pair of these four terminals (not four separate devices) -- the phrasing equates four terminal labels with the device count.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 1,
+      "severity": "minor",
+      "correction": "Clarify as \"both devices (one wired through S11/S21, the other through S22/S12) must be closed\" to avoid implying four separate devices.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": false,
+  "hard_failure_reasons": [],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "medium",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "Page image includes the manual's own explanatory prose alongside both figures, and the candidate's narrative closely tracks that printed text (component tags, terminal labels, and operation description all check out against what is visibly printed/drawn) -- no invented components and no reversed sequence found, so no hard failure. The two real defects are (1) the same false 'provided OCR data' claim pattern seen elsewhere in this benchmark despite OCR being unavailable for this case, and (2) omitting the specific printed LOGIC-setting formula for Figure 46, which is a materially relevant configuration/interlock detail. overall_confidence set to medium because two minor deductions (OSSD1/OSSD2 device attribution, the internal 13-23/14-24 output-contact description) depend on reading device-to-terminal correspondence that is not explicitly text-labeled in the print, only inferable from position."
+}

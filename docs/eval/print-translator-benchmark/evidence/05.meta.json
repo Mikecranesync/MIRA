@@ -1,0 +1,10 @@
+{
+  "case_id": "05",
+  "translator": "mira_print_translator",
+  "translator_version": "47717ccb4ab4265211bb33cde0f031c544ebce40",
+  "classifier_commit": "04a62c9c19804140c18796f1cf6c2a1ba1d9b5d1",
+  "runner": "tools/print_translator_eval/gate_bypass.py",
+  "execution_path": "gate_bypassed_real_prompt_real_model_real_image_ocr_empty",
+  "timestamp": "2026-07-10T04:56:52.137193+00:00",
+  "ocr_grounding": "unavailable_on_this_box"
+}
