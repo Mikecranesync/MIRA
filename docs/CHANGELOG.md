@@ -1,6 +1,11 @@
 # MIRA Release Notes
 
 
+### v3.128.4 (2026-07-10) - docs(eval): Print Translator real-world campaign package (text-only)
+- **Why:** durable record of the autonomous Print Translator evaluation that surfaced (and quantified) the classifier-gate defect fixed in v3.128.3.
+- **What:** `docs/eval/print-translator-campaign/` — 25-print official-OEM `corpus_manifest`, `results/` (11 real handler runs + 10 gate-bypassed real-prompt/real-cascade/real-image explanations, OCR-empty on the dev box and caveated throughout), `review_worksheet.csv` (technician-judgment columns blank), `RANKED_REPORT.md`, `GAPS.md`, `rejected.md`, `LIVE_TELEGRAM_RUNBOOK.md`, `regression_fixtures/` (xfail, not CI-collected), `images/MANIFEST.md` (hashes + source URLs). Runner: `tools/print_translator_eval/`.
+- **Copyright:** the downloaded single-page OEM schematic PNGs are kept **local and git-ignored** (`images/*.png`) — only metadata (hashes + URLs) is committed. Eval artifacts only; no production/prompt/wiring change.
+
 ### v3.128.3 (2026-07-10) - fix(vision): print-classifier gate — real electrical prints stop mis-routing to EQUIPMENT_PHOTO
 - **Why:** the autonomous Print Translator campaign (`docs/eval/print-translator-campaign/RANKED_REPORT.md`) measured, on real official-OEM prints with real inference, that `VisionWorker._classify_photo` mis-classified **10/11 (91%)** to `EQUIPMENT_PHOTO`/`NAMEPLATE` — the vision model correctly described each as a drawing, but two deterministic defects blocked the Print Translator (and the whole ELECTRICAL_PRINT path) from ever triggering.
 - **What:** two surgical fixes to `mira-bots/shared/workers/vision_worker.py::_classify_photo`:

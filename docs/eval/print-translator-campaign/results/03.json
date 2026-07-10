@@ -1,0 +1,32 @@
+{
+  "id": 3,
+  "oem": "ABB",
+  "document": "STAR DELTA Open-Type Starter Technical Data (1SXU...)",
+  "url": "library.e.abb.com/public/ac6b6e46df1ea3e6c1256e35004c9145/Star-delta%20Starters%20Open%20Type_technical%20data.pdf",
+  "manifest_page_ref": "Sheet 1–2, terminal arrangement & wiring",
+  "print_type": "Open-type starter schematic",
+  "standard": "IEC 60947-4-1",
+  "category": "European/IEC",
+  "manifest_status": "CONFIRMED-2026-07-10",
+  "rendered_page_number": 4,
+  "image_sha256": "767a57393b57bd99df9475a6313b7f721be62bdfba450d6b10e915b7ed74b498",
+  "caption": "Explain this print.",
+  "run_timestamp_utc": "2026-07-10T04:34:46.573284+00:00",
+  "bot_importable": true,
+  "code_path": "bot._try_print_translator_reply (real handler, spied engine, no Telegram)",
+  "handled": false,
+  "vision_called": true,
+  "router_called": false,
+  "inference": "not_triggered",
+  "reason": "vision classified as 'EQUIPMENT_PHOTO', not ELECTRICAL_PRINT",
+  "vision": {
+    "classification": "EQUIPMENT_PHOTO",
+    "classification_confidence": 0.65,
+    "drawing_type": null,
+    "drawing_type_confidence": 0.0,
+    "vision_result": "The image shows an electrical drawing, specifically a wiring diagram for YKA..-30, YDA..-30 Star-Delta Starters Open Type Version Protection by Thermal O/L Relay. The diagram includes power circuits, local control, and remote control sections with various symbols and labels.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "id": 7,
+  "oem": "AutomationDirect",
+  "document": "SR44 Soft Starter User Manual (SFT44...)",
+  "url": "cdn.automationdirect.com/static/manuals/softstartersr44/ch2.pdf",
+  "rendered_page_number": 9,
+  "category": "NEMA Starters",
+  "mode": "gate_bypassed_real_prompt_real_model_real_image_ocr_empty",
+  "explanation_of_mode": "REAL print_translator.build_theory_messages + REAL engine.router.complete + REAL format_theory_reply on the REAL rendered image. Skips ONLY the buggy classifier gate (vision_worker._classify_photo). Prompt is unchanged production code. NOT a mock. vision_data is the real captured vision output from results/07.json (ocr_items empty on this box).",
+  "caption_submitted": "Describe the theory of operation.",
+  "caption_is_theory_request": true,
+  "caption_note": "Caption governs ONLY print_translator.is_theory_request() (the trigger gate); it is NOT passed to build_theory_messages, so this explanation is caption-independent.",
+  "ocr_grounding": "unavailable_on_this_box",
+  "vision": {
+    "classification": "EQUIPMENT_PHOTO",
+    "classification_confidence": 0.65,
+    "drawing_type": null,
+    "drawing_type_confidence": 0.0,
+    "vision_result": "The image shows an electrical drawing, specifically a wiring diagram for motor reversing. The diagram is titled \"2.4.6 - Wiring Diagram for Motor Reversing\" and features a detailed schematic of the control supply, SR44 control supply card, and induction motor.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  },
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: electrical drawing\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2800,
+    "output_tokens": 364,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "run_timestamp_utc": "2026-07-10T04:56:57.251525+00:00",
+  "inference": "ran",
+  "translator_reply": "## **1. What this appears to be**\nThis appears to be a wiring diagram for a motor reversing circuit, specifically showing the power and contactor control circuits for motor reversing.\n\n## **2. Main visible components**\n- The diagram shows a control supply circuit and a power circuit.\n- The control supply circuit includes:\n  - E-stop\n  - Off-enable\n  - Stop\n  - Forward and reverse buttons\n  - SR44 control supply card\n  - SR44 electronic control card\n- The power circuit includes:\n  - Mains supply (L1, L2, L3)\n  - Feeder cables\n  - Isolation and protection switch-gear (provided by the customer)\n  - Mechanical interlock\n  - Forward contactor (C1)\n  - Reversing contactor (C2)\n  - Induction motor\n\n## **3. Plain-English theory of operation**\n- The start button, once pressed, appears to energize the motor starter coil provided the e-stop is released and the control voltage switch is set properly.\n- The circuit allows for motor reversing using forward and reverse buttons.\n- The mechanical interlock prevents both forward and reverse contactors from being energized simultaneously.\n\n## **4. What must be true for it to work**\n- The control voltage switch must be set to the proper control voltage (115VAC or 230VAC).\n- The e-stop must be released.\n- The off-enable switch must be in the enable position.\n\n## **5. What would stop it from working**\n- E-stop engaged\n- Control voltage switch not set properly\n- Mechanical interlock failure\n- Failure of either the forward or reversing contactor\n\n## **6. Unclear or unreadable items**\n- Nothing major appears to be unreadable."
+}

@@ -1,0 +1,39 @@
+{
+  "id": 13,
+  "oem": "AutomationDirect",
+  "document": "CLICK PLC I/O Wiring (User Manual, Ch. 3)",
+  "url": "cdn.automationdirect.com/static/manuals/c0userm/ch3.pdf",
+  "rendered_page_number": 30,
+  "category": "PLC I/O",
+  "mode": "gate_bypassed_real_prompt_real_model_real_image_ocr_empty",
+  "explanation_of_mode": "REAL print_translator.build_theory_messages + REAL engine.router.complete + REAL format_theory_reply on the REAL rendered image. Skips ONLY the buggy classifier gate (vision_worker._classify_photo). Prompt is unchanged production code. NOT a mock. vision_data is the real captured vision output from results/13.json (ocr_items empty on this box).",
+  "caption_submitted": "Describe the theory of operation.",
+  "caption_is_theory_request": true,
+  "caption_note": "Caption governs ONLY print_translator.is_theory_request() (the trigger gate); it is NOT passed to build_theory_messages, so this explanation is caption-independent.",
+  "ocr_grounding": "unavailable_on_this_box",
+  "vision": {
+    "classification": "EQUIPMENT_PHOTO",
+    "classification_confidence": 0.75,
+    "drawing_type": null,
+    "drawing_type_confidence": 0.0,
+    "vision_result": "The image shows an electrical drawing, specifically a wiring diagram for DC input and output methods. The diagram illustrates various configurations for connecting devices to a PLC (Programmable Logic Controller), including sinking and sourcing inputs and outputs, with detailed explanations of each configuration.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  },
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: electrical drawing\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2945,
+    "output_tokens": 427,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "run_timestamp_utc": "2026-07-10T04:57:08.909444+00:00",
+  "inference": "ran",
+  "translator_reply": "## 1. What this appears to be\nThis appears to be a technical diagram illustrating various methods for wiring DC inputs and outputs to a programmable logic controller (PLC). The diagram shows different configurations for connecting sensors and devices to a PLC.\n\n## 2. Main visible components\nThe main visible components in the diagram are:\n* PLCs with DC input and output circuits\n* DC NPN (sinking) and PNP (sourcing) sensors\n* Field devices with open-collector transistor outputs\n* Wiring diagrams showing connections between sensors, field devices, and PLCs\n\n## 3. Plain-English theory of operation\nAccording to this print, there are several methods for wiring DC inputs and outputs to a PLC:\n* A sinking input sensor (NPN type) can be connected to a sourcing input on a PLC. When the sensor is energized, it sinks current to ground from the DC input point.\n* A sourcing input sensor (PNP type) can be connected to a sinking input on a PLC. When the sensor is energized, it sources current to the PLC input point, which sinks the current to ground.\n* A PLC output point can be connected to a sourcing input on a field device. When the PLC output point is energized, it sinks current to ground (common).\n\n## 4. What must be true for it to work\nFor the configurations shown to work:\n* The PLC inputs must be compatible with the type of sensor or device being connected (sinking or sourcing).\n* The field devices must have open-collector transistor outputs.\n* The PLC output points must be able to sink current to ground.\n\n## 5. What would stop it from working\nThe following could prevent the configurations from working:\n* Incorrect wiring or connections between sensors, field devices, and PLCs.\n* Incompatible PLC inputs or outputs (e.g., trying to connect a sourcing sensor to a sinking input).\n* Faulty or damaged sensors, field devices, or PLC components.\n\n## 6. Unclear or unreadable items\nNothing major appears to be unreadable in the provided image."
+}

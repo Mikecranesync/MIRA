@@ -1,0 +1,32 @@
+{
+  "id": 14,
+  "oem": "AutomationDirect",
+  "document": "D0–06 PLC I/O Configuration (User Manual, Ch. 2)",
+  "url": "cdn.automationdirect.com/static/manuals/d006userm/ch2.pdf",
+  "manifest_page_ref": "Ch. 2, modular I/O cards wiring",
+  "print_type": "PLC modular I/O terminal layout",
+  "standard": "Industrial 24VDC",
+  "category": "PLC I/O",
+  "manifest_status": "NEEDS-BROWSER",
+  "rendered_page_number": 31,
+  "image_sha256": "5412c54b1337b9728b35b890b2a4a73591dfc0cf68ec92d0f9141b5f481f4813",
+  "caption": "Explain this print.",
+  "run_timestamp_utc": "2026-07-10T04:35:54.867984+00:00",
+  "bot_importable": true,
+  "code_path": "bot._try_print_translator_reply (real handler, spied engine, no Telegram)",
+  "handled": false,
+  "vision_called": true,
+  "router_called": false,
+  "inference": "not_triggered",
+  "reason": "vision classified as 'EQUIPMENT_PHOTO', not ELECTRICAL_PRINT",
+  "vision": {
+    "classification": "EQUIPMENT_PHOTO",
+    "classification_confidence": 0.7,
+    "drawing_type": null,
+    "drawing_type_confidence": 0.0,
+    "vision_result": "The image shows an electrical drawing, specifically a wiring diagram for a D0-06AR I/O. The diagram includes a derating chart for relay outputs, typical relay life at room temperature, and equivalent input and output circuits. It is titled \"Chapter 2: Installation, Wiring, and Specifications.\"",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  }
+}
