@@ -70,14 +70,31 @@ from pathlib import Path
 from typing import Any, Optional
 
 # ---------------------------------------------------------------------------
-# The ONE encapsulated `tools/` sys.path insert (per spec — do this nowhere
-# else). `tools/wiring_schematic_import.py` does a bare `import
-# wiring_map_import as base`, so `<repo>/tools` must be importable.
+# LAZY `tools/` writer import. `tools/wiring_schematic_import.py` (which does a
+# bare `import wiring_map_import as base`) is only ever needed on the wiring
+# INTAKE (writer) path — never at import time, and never on the reader Q&A path.
+# Loading it eagerly here crash-loops any image that ships `shared/` but not
+# `tools/` (e.g. the telegram bot image → `ModuleNotFoundError: No module named
+# 'wiring_schematic_import'` at `bot.py` startup). Import it on first *use*
+# instead, so `import wiring_intake` (and the reader path) always works. This
+# stays the ONE encapsulated `tools/` sys.path insert (per spec).
 # ---------------------------------------------------------------------------
-_TOOLS_DIR = Path(__file__).resolve().parents[2] / "tools"  # shared/ -> mira-bots/ -> repo root
-if str(_TOOLS_DIR) not in sys.path:
-    sys.path.insert(0, str(_TOOLS_DIR))
-import wiring_schematic_import as _schematic  # noqa: E402  — pulls in `_schematic.base` (the writer)
+_schematic = None  # lazily loaded writer module (see _load_schematic)
+
+
+def _load_schematic():
+    """Import & cache the `tools/` writer on first use. Only the wiring-intake
+    (writer) code paths call this; the reader Q&A path never does."""
+    global _schematic
+    if _schematic is None:
+        _tools_dir = Path(__file__).resolve().parents[2] / "tools"  # shared/ -> mira-bots/ -> repo root
+        if str(_tools_dir) not in sys.path:
+            sys.path.insert(0, str(_tools_dir))
+        import wiring_schematic_import as _mod  # noqa: E402 — writer (pulls in `_mod.base`)
+
+        _schematic = _mod
+    return _schematic
+
 
 from .wiring_profile import (  # noqa: E402
     WiringAnswer,
@@ -280,7 +297,7 @@ def payload_to_proposed_rows(
     Passes provenance straight through; every returned row is
     `approval_state='proposed'` by construction of the reused converter.
     """
-    return _schematic.kg_payload_to_rows(
+    return _load_schematic().kg_payload_to_rows(
         payload,
         asset,
         drawing_ref=drawing_ref,
@@ -298,7 +315,7 @@ def write_proposed_rows(cur, tenant_id: str, rows: list) -> tuple[int, int]:
     `'proposed'` on every row by `kg_payload_to_rows`.
     """
     cur.execute("SELECT set_config('app.current_tenant_id', %s, true)", (tenant_id,))
-    return _schematic.base.write_rows(cur, tenant_id, rows)
+    return _load_schematic().base.write_rows(cur, tenant_id, rows)
 
 
 # ---------------------------------------------------------------------------
@@ -309,7 +326,7 @@ def write_proposed_rows(cur, tenant_id: str, rows: list) -> tuple[int, int]:
 def count_connections(payload: dict[str, Any]) -> int:
     """Number of `electrically_connected` relationships in a (possibly
     enveloped) `/api/kg/schematic`-shaped payload."""
-    payload = _schematic.unwrap_payload(payload or {})
+    payload = _load_schematic().unwrap_payload(payload or {})
     return sum(
         1
         for rel in payload.get("relationships") or []
@@ -320,7 +337,7 @@ def count_connections(payload: dict[str, Any]) -> int:
 def sample_wires_terminals(payload: dict[str, Any], n: int = 3) -> list[str]:
     """Up to `n` human-readable `"<from> -> <to> (wire <n>)"` samples from
     the payload's `electrically_connected` relationships."""
-    payload = _schematic.unwrap_payload(payload or {})
+    payload = _load_schematic().unwrap_payload(payload or {})
     lines: list[str] = []
     for rel in payload.get("relationships") or []:
         if not isinstance(rel, dict) or rel.get("relationship_type") != "electrically_connected":
@@ -340,7 +357,7 @@ def sample_wires_terminals(payload: dict[str, Any], n: int = 3) -> list[str]:
 
 def build_intake_preview(payload: dict[str, Any], inserted: int, skipped: int, asset: str) -> str:
     """The reply sent right after a wiring photo is proposed into the graph."""
-    payload_u = _schematic.unwrap_payload(payload or {})
+    payload_u = _load_schematic().unwrap_payload(payload or {})
     connections = count_connections(payload)
     components = len(payload_u.get("entities") or [])
     samples = sample_wires_terminals(payload, n=3)
