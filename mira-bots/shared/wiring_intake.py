@@ -87,7 +87,9 @@ def _load_schematic():
     (writer) code paths call this; the reader Q&A path never does."""
     global _schematic
     if _schematic is None:
-        _tools_dir = Path(__file__).resolve().parents[2] / "tools"  # shared/ -> mira-bots/ -> repo root
+        _tools_dir = (
+            Path(__file__).resolve().parents[2] / "tools"
+        )  # shared/ -> mira-bots/ -> repo root
         if str(_tools_dir) not in sys.path:
             sys.path.insert(0, str(_tools_dir))
         import wiring_schematic_import as _mod  # noqa: E402 — writer (pulls in `_mod.base`)
