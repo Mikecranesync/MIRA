@@ -1,0 +1,32 @@
+{
+  "id": 13,
+  "oem": "AutomationDirect",
+  "document": "CLICK PLC I/O Wiring (User Manual, Ch. 3)",
+  "url": "cdn.automationdirect.com/static/manuals/c0userm/ch3.pdf",
+  "manifest_page_ref": "Ch. 3, digital & analog I/O terminal blocks",
+  "print_type": "PLC discrete input/output wiring",
+  "standard": "Industrial standard (24VDC)",
+  "category": "PLC I/O",
+  "manifest_status": "CONFIRMED-2026-07-10",
+  "rendered_page_number": 30,
+  "image_sha256": "deb8bce24f0a3a48c19fbb649ede51640ca27962c97ec8e6f35a70c2402201d6",
+  "caption": "Explain this print.",
+  "run_timestamp_utc": "2026-07-10T04:35:44.818954+00:00",
+  "bot_importable": true,
+  "code_path": "bot._try_print_translator_reply (real handler, spied engine, no Telegram)",
+  "handled": false,
+  "vision_called": true,
+  "router_called": false,
+  "inference": "not_triggered",
+  "reason": "vision classified as 'EQUIPMENT_PHOTO', not ELECTRICAL_PRINT",
+  "vision": {
+    "classification": "EQUIPMENT_PHOTO",
+    "classification_confidence": 0.75,
+    "drawing_type": null,
+    "drawing_type_confidence": 0.0,
+    "vision_result": "The image shows an electrical drawing, specifically a wiring diagram for DC input and output methods. The diagram illustrates various configurations for connecting devices to a PLC (Programmable Logic Controller), including sinking and sourcing inputs and outputs, with detailed explanations of each configuration.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  }
+}

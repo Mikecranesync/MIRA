@@ -1,0 +1,5 @@
+# Copyrighted single-page OEM schematic excerpts — kept LOCAL for private eval review.
+# Do NOT commit reproductions of manual pages. Metadata (hashes + source URLs) lives in images/MANIFEST.md.
+images/*.png
+images/*.jpg
+images/*.jpeg

@@ -1,0 +1,32 @@
+{
+  "id": 5,
+  "oem": "Rockwell Automation",
+  "document": "Bulletin 509 NEMA Motor Starters (GI-WD005)",
+  "url": "literature.rockwellautomation.com/idc/groups/literature/documents/wd/gi-wd005_-en-p.pdf",
+  "manifest_page_ref": "Sheet 1–3, typical NEMA 3-phase starter",
+  "print_type": "NEMA 3-phase contactor starter",
+  "standard": "NEMA ICS 2",
+  "category": "NEMA Starters",
+  "manifest_status": "CONFIRMED-2026-07-10",
+  "rendered_page_number": 12,
+  "image_sha256": "295d9a652234ad138ae9e1f8301f643bd6eabb1e4c7db6c8545b48539a488a48",
+  "caption": "Explain this print.",
+  "run_timestamp_utc": "2026-07-10T04:34:59.978253+00:00",
+  "bot_importable": true,
+  "code_path": "bot._try_print_translator_reply (real handler, spied engine, no Telegram)",
+  "handled": false,
+  "vision_called": true,
+  "router_called": false,
+  "inference": "not_triggered",
+  "reason": "vision classified as 'EQUIPMENT_PHOTO', not ELECTRICAL_PRINT",
+  "vision": {
+    "classification": "EQUIPMENT_PHOTO",
+    "classification_confidence": 0.65,
+    "drawing_type": null,
+    "drawing_type_confidence": 0.0,
+    "vision_result": "The image displays an electrical drawing, specifically a wiring diagram for 3-phase starters, Bulletin 509. The diagram illustrates the standard wiring configuration with a start-stop push button station for Bulletin 509 Sizes 7 and 8.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  }
+}
