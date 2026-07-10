@@ -1,0 +1,167 @@
+"""Tests for `shared/print_translator.py` — pure intent + prompt logic.
+
+No I/O, no DB, no network — mirrors the module under test.
+"""
+
+from __future__ import annotations
+
+from shared import print_translator
+
+
+# ── is_theory_request ────────────────────────────────────────────────────────
+
+
+class TestIsTheoryRequest:
+    def test_explain_this_print(self):
+        assert print_translator.is_theory_request("explain this print") is True
+
+    def test_what_does_this_circuit_do(self):
+        assert print_translator.is_theory_request("what does this circuit do?") is True
+
+    def test_theory_of_operation(self):
+        assert print_translator.is_theory_request("theory of operation") is True
+
+    def test_how_does_this_work(self):
+        assert print_translator.is_theory_request("how does this work") is True
+
+    def test_walk_me_through_this_print(self):
+        assert print_translator.is_theory_request("walk me through this print") is True
+
+    def test_case_insensitive(self):
+        assert print_translator.is_theory_request("EXPLAIN THIS PRINT") is True
+
+    def test_wiring_intake_caption_falls_through(self):
+        assert print_translator.is_theory_request("add this wiring") is False
+
+    def test_wiring_intake_with_asset_falls_through(self):
+        assert print_translator.is_theory_request("CV-101 add this wiring") is False
+
+    def test_unrelated_text_falls_through(self):
+        assert print_translator.is_theory_request("what's the weather") is False
+
+    def test_greeting_falls_through(self):
+        assert print_translator.is_theory_request("hello") is False
+
+    def test_empty_string_falls_through(self):
+        assert print_translator.is_theory_request("") is False
+
+    def test_none_falls_through(self):
+        assert print_translator.is_theory_request(None) is False
+
+    def test_nameplate_caption_does_not_steal(self):
+        """A plain nameplate/drive caption must not be claimed by this module."""
+        assert print_translator.is_theory_request("what drive is this?") is False
+
+
+# ── build_theory_messages ────────────────────────────────────────────────────
+
+
+class TestBuildTheoryMessages:
+    def _vision_data(self, ocr_items=None, drawing_type="ladder logic"):
+        return {
+            "classification": "ELECTRICAL_PRINT",
+            "ocr_items": ocr_items if ocr_items is not None else [],
+            "drawing_type": drawing_type,
+        }
+
+    def test_returns_system_and_user_messages(self):
+        messages = print_translator.build_theory_messages(
+            "B64DATA", self._vision_data(["K10 contactor", "CR1"])
+        )
+        assert len(messages) == 2
+        assert messages[0]["role"] == "system"
+        assert messages[1]["role"] == "user"
+
+    def test_system_prompt_is_theory_system_prompt(self):
+        messages = print_translator.build_theory_messages(
+            "B64DATA", self._vision_data(["K10 contactor", "CR1"])
+        )
+        assert messages[0]["content"] == print_translator.THEORY_SYSTEM_PROMPT
+
+    def test_system_prompt_has_all_six_headings(self):
+        system = print_translator.THEORY_SYSTEM_PROMPT
+        for heading in (
+            "What this appears to be",
+            "Main visible components",
+            "Plain-English theory of operation",
+            "What must be true for it to work",
+            "What would stop it from working",
+            "Unclear or unreadable items",
+        ):
+            assert heading in system
+
+    def test_system_prompt_has_grounding_language(self):
+        system = print_translator.THEORY_SYSTEM_PROMPT
+        assert "According to this print" in system
+        assert "NEVER invent" in system or "never invent" in system.lower()
+
+    def test_user_content_is_image_then_text(self):
+        messages = print_translator.build_theory_messages(
+            "MYB64", self._vision_data(["K10 contactor"])
+        )
+        user_content = messages[1]["content"]
+        assert isinstance(user_content, list)
+        assert len(user_content) == 2
+        assert user_content[0]["type"] == "image_url"
+        assert "MYB64" in user_content[0]["image_url"]["url"]
+        assert user_content[1]["type"] == "text"
+
+    def test_user_text_contains_drawing_type(self):
+        messages = print_translator.build_theory_messages(
+            "B64", self._vision_data(["K10 contactor"], drawing_type="ladder logic")
+        )
+        text = messages[1]["content"][1]["text"]
+        assert "ladder logic" in text
+
+    def test_user_text_contains_every_ocr_item_verbatim(self):
+        ocr_items = ["K10 contactor", "CR1", "W200"]
+        messages = print_translator.build_theory_messages("B64", self._vision_data(ocr_items))
+        text = messages[1]["content"][1]["text"]
+        for item in ocr_items:
+            assert item in text
+
+    def test_user_text_has_no_label_not_in_ocr_items(self):
+        """Grounding: the block must be built ONLY from the provided items."""
+        ocr_items = ["K10 contactor", "CR1"]
+        messages = print_translator.build_theory_messages("B64", self._vision_data(ocr_items))
+        text = messages[1]["content"][1]["text"]
+        ocr_lines = [line for line in text.splitlines() if line.startswith("- ")]
+        assert ocr_lines == [f"- {item}" for item in ocr_items]
+
+    def test_empty_ocr_items_gives_honest_fallback_line(self):
+        messages = print_translator.build_theory_messages("B64", self._vision_data([]))
+        text = messages[1]["content"][1]["text"]
+        assert "No OCR labels were extracted" in text
+
+    def test_missing_drawing_type_defaults(self):
+        vision_data = {"classification": "ELECTRICAL_PRINT", "ocr_items": []}
+        messages = print_translator.build_theory_messages("B64", vision_data)
+        text = messages[1]["content"][1]["text"]
+        assert "electrical drawing" in text
+
+    def test_ocr_items_capped_at_80(self):
+        many_items = [f"item-{i}" for i in range(100)]
+        messages = print_translator.build_theory_messages("B64", self._vision_data(many_items))
+        text = messages[1]["content"][1]["text"]
+        assert "item-79" in text
+        assert "item-80" not in text
+
+
+# ── format_theory_reply ──────────────────────────────────────────────────────
+
+
+class TestFormatTheoryReply:
+    def test_empty_raw_returns_fallback(self):
+        assert print_translator.format_theory_reply("") == print_translator.FALLBACK_REPLY
+
+    def test_none_raw_returns_fallback(self):
+        assert print_translator.format_theory_reply(None) == print_translator.FALLBACK_REPLY
+
+    def test_nonempty_raw_returned_unchanged(self):
+        raw = "1. **What this appears to be**\nA motor control circuit."
+        assert print_translator.format_theory_reply(raw) == raw
+
+    def test_nonempty_raw_with_drawing_type_still_unchanged(self):
+        raw = "Some explanation text."
+        result = print_translator.format_theory_reply(raw, drawing_type="ladder logic")
+        assert result == raw
