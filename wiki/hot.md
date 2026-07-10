@@ -1126,3 +1126,8 @@ and P0/P1/P2 failures become redacted, fingerprint-deduped GitHub issues. P3 noi
 - Scorecard: 47/57 passing (82%) — from 2026-06-27T2229 run
 - Action: issue-filed (commented on #1876)
 - Multi-file cluster hard stop: failures span engine.py (8 fixtures, FSM state mismatches) + guardrails.py/prompts (1 fixture, gs3_ground_fault keyword miss). Autopatch skipped; next steps in issue comment.
+
+## eval-fixer run — 2026-07-10
+- Scorecard: 47/57 passing (82%) — from 2026-07-10T0116 run
+- Action: issue-filed (commented on #1876)
+- Multi-file cluster hard stop: 9 patchable failures span engine.py (8 fixtures, FSM stuck at Q1/Q2/IDLE instead of advancing) + guardrails.py/prompts (keyword misses, mostly downstream of the FSM cluster). 1 non-patchable wrong-vendor citation (ABB fixture citing Rockwell). Autopatch skipped; diagnosis + next steps in issue comment.
