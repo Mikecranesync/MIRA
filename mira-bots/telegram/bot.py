@@ -16,7 +16,7 @@ from admin_commands import (
 )
 from chat_adapter import TelegramChatAdapter
 from PIL import Image
-from shared import chat_tenant, tts, wiring_intake
+from shared import chat_tenant, print_translator, tts, wiring_intake
 from shared.chat.dispatcher import ChatDispatcher
 from shared.contextualization_intake import (
     hub_folder_upload_configured,
@@ -915,6 +915,58 @@ async def _try_wiring_intake_reply(
     return True
 
 
+# --- Print Translator: read-only LLM explanation of an electrical print,
+# NOT the wiring loop. See `shared/print_translator.py` module docstring for
+# the full grounding doctrine (OCR-only, hedged framing, no invention). This
+# fast path never writes to `wiring_connections`, never touches control, and
+# never persists anything — it reads the vision classification + OCR, calls
+# the inference cascade, and replies.
+async def _try_print_translator_reply(
+    vision_bytes: bytes,
+    caption: str,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> bool:
+    """Print Translator: an electrical-print photo + an "explain this / theory
+    of operation" caption -> a plain-English, OCR-grounded explanation of what
+    the circuit appears to do. Read-only generation — NO wiring DB writes, NO
+    control writes. Falls through (returns ``False``) for any caption that
+    isn't a print-explanation request, and for photos the vision worker does
+    NOT classify as ``ELECTRICAL_PRINT`` — so non-print photos and the
+    existing nameplate/drive and wiring-intake flows are untouched.
+    """
+    if not print_translator.is_theory_request(caption):
+        return False  # cheap reject, no vision call
+
+    photo_b64 = base64.b64encode(vision_bytes).decode()
+    try:
+        vision_data = await engine.vision.process(photo_b64, caption)
+    except Exception as e:
+        logger.warning("print translator vision classify failed: %s", e)
+        return False  # a vision hiccup shouldn't eat the turn — fall through
+
+    if (vision_data or {}).get("classification") != "ELECTRICAL_PRINT":
+        return False  # not a print → fall through unchanged
+
+    messages = print_translator.build_theory_messages(photo_b64, vision_data)
+    try:
+        reply, _usage = await engine.router.complete(
+            messages,
+            max_tokens=1200,
+            session_id=str(update.effective_chat.id),
+        )
+    except Exception as e:  # noqa: BLE001 — a malformed provider reply must not eat the turn
+        # router.complete's per-provider guard only catches _ProviderSkip, so a
+        # JSONDecodeError/KeyError on a malformed 200 can escape. Mirror the
+        # vision-call handling above: degrade to the graceful fallback, never crash.
+        logger.warning("print translator LLM call failed: %s", e)
+        reply = ""  # -> FALLBACK_REPLY via format_theory_reply
+    await update.message.reply_text(
+        print_translator.format_theory_reply(reply, vision_data.get("drawing_type"))
+    )
+    return True
+
+
 async def _dispatch_single_photo(
     raw_bytes: bytes,
     vision_bytes: bytes,
@@ -942,6 +994,13 @@ async def _dispatch_single_photo(
     # through unchanged for any other caption. See
     # `_try_wiring_intake_reply` docstring.
     if await _try_wiring_intake_reply(vision_bytes, caption, update, context):
+        return
+
+    # Print Translator: read-only LLM explanation of an electrical print for
+    # an "explain this / theory of operation" caption. Falls through
+    # unchanged for anything else. See `_try_print_translator_reply`
+    # docstring.
+    if await _try_print_translator_reply(vision_bytes, caption, update, context):
         return
 
     chat_id = str(update.effective_chat.id)
