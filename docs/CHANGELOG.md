@@ -1,6 +1,14 @@
 # MIRA Release Notes
 
 
+### v3.129.9 (2026-07-12) - feat(drive-packs): Siemens SINAMICS G120 fault/parameter pack (cited)
+- **What:** new G120 pack with 13 faults (F30001–F7011) + 18 cited parameters (P0100–P2011). Schema matches powerflex_525.json reference. 100% manual-cited from G120X operational instructions (0319_en-US).
+- **Routes:** `/drive-commander/siemens-g120` (landing + faults + parameters all resolve).
+- **Citation coverage:** 100% — F30001 overcurrent, F30004 motor overtemp, F30006 inverter overtemp, P1200 ramp acceleration, etc. all grounded.
+- **Validation:** JSON parse OK, schema compliance, all 13 faults registered, all 18 parameters resolvable. Eval fixture `vfd_siemens_01_sinamics_g120_f30001.yaml` grounds to pack.
+- **Impact:** Proves schema + renderer portability across manufacturers (Siemens/Rockwell).
+- **VERSION:** 3.129.1 → 3.129.2 (patch).
+
 ### v3.129.8 (2026-07-11) - feat(ops): wire ENABLE_WO_EVIDENCE (default-off) into every engine service in saas.yml (#2445 Step 1)
 - **Why:** the CMMS work-order-history evidence path (`ENABLE_WO_EVIDENCE` + `MIRA_WO_EVIDENCE_TIMEOUT_S`/`MIRA_WO_EVIDENCE_LIMIT`, shipped flag-gated OFF in #2472) was settable in code but wired into **no** deployment, so enabling it meant hand-editing several services. This makes enabling a single Doppler-var flip, with **zero runtime behavior change** until then.
 - **What:** added the three vars (default-off: `${ENABLE_WO_EVIDENCE:-0}`, `${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}`, `${MIRA_WO_EVIDENCE_LIMIT:-5}`) to **every** `docker-compose.saas.yml` service that instantiates `shared.engine.Supervisor` — verified by grepping `Supervisor(` and mapping each hit to its saas build: **mira-pipeline, mira-bot-telegram, mira-bot-slack, mira-ask** (4 — the "assume three" trap: `mira-ask`/AskMira kiosk also runs the engine). Excluded (verified): `mira-mcp` proxies to mira-pipeline over HTTP (no engine); `mira-relay`/`mira-sparkplug-consumer` are ingest-only; teams/whatsapp/reddit/gchat/email adapters instantiate `Supervisor` in code but have no saas service.

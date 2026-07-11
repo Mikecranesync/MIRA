@@ -1,0 +1,450 @@
+{
+  "pack_id": "siemens_g120",
+  "schema_version": 2,
+  "family": {
+    "manufacturer": "Siemens",
+    "series": "SINAMICS G120",
+    "aliases": [
+      "sinamics g120",
+      "g120",
+      "siemens g120",
+      "sinamics",
+      "g120x"
+    ]
+  },
+  "nameplate": {
+    "match_keywords": [
+      "sinamics g120",
+      "g120",
+      "siemens g120",
+      "sinamics g120x",
+      "g120x"
+    ]
+  },
+  "live_decode": {
+    "status_bits": {},
+    "cmd_word": {},
+    "fault_codes": {
+      "30001": "DC link overvoltage",
+      "30002": "DC link undervoltage",
+      "30003": "Input phase loss",
+      "30004": "Motor overtemperature",
+      "30005": "Drive overtemperature",
+      "30006": "Inverter overtemperature",
+      "30007": "Overcurrent",
+      "30008": "Ground fault",
+      "30009": "Parameter checksum error",
+      "30010": "Internal software error",
+      "30011": "Communication timeout",
+      "30012": "Encoder error",
+      "7011": "Motor overtemperature warning"
+    }
+  },
+  "envelope": {},
+  "knowledge": {},
+  "parameters": [
+    {
+      "parameter_id": "P0100",
+      "name": "Relative frequency setpoint",
+      "purpose": "Sets the motor speed reference as a percentage of base frequency",
+      "default": "0",
+      "range": "-100.00 ... 100.00",
+      "unit": "%",
+      "related_faults": ["30001", "30007"],
+      "related_parameters": ["P0104", "P0105", "P1000"],
+      "value_meanings": [],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "413",
+        "excerpt": "P0100: Relative frequency setpoint — Sets the motor speed reference as a percentage of base frequency (fmax)."
+      }
+    },
+    {
+      "parameter_id": "P0104",
+      "name": "Maximum frequency",
+      "purpose": "Defines the maximum motor frequency limit to prevent overspeed and mechanical damage",
+      "default": "50",
+      "range": "0.00 ... 650.00",
+      "unit": "Hz",
+      "related_faults": ["30001", "30007"],
+      "related_parameters": ["P0100", "P0105"],
+      "value_meanings": [],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "413",
+        "excerpt": "P0104: Maximum frequency — Defines the maximum motor frequency to limit overspeed conditions."
+      }
+    },
+    {
+      "parameter_id": "P0105",
+      "name": "Minimum frequency",
+      "purpose": "Defines the minimum motor frequency to ensure adequate motor cooling at low speeds",
+      "default": "0",
+      "range": "0.00 ... 60.00",
+      "unit": "Hz",
+      "related_faults": ["30001"],
+      "related_parameters": ["P0100", "P0104"],
+      "value_meanings": [],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "413",
+        "excerpt": "P0105: Minimum frequency — Defines the minimum motor frequency for low-speed operation."
+      }
+    },
+    {
+      "parameter_id": "P0300",
+      "name": "Motor type selection",
+      "purpose": "Selects the motor type (1AC, 3AC, DC, PM) and operating mode for proper control algorithms",
+      "default": "1",
+      "range": "0 ... 5",
+      "unit": "",
+      "related_faults": ["30004", "30007"],
+      "related_parameters": ["P0304", "P0305"],
+      "value_meanings": [
+        {"value": "1", "meaning": "3-phase AC motor"},
+        {"value": "2", "meaning": "1-phase AC motor"},
+        {"value": "3", "meaning": "DC motor"},
+        {"value": "4", "meaning": "Permanent magnet motor"},
+        {"value": "5", "meaning": "Switched reluctance motor"}
+      ],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "413",
+        "excerpt": "P0300: Motor type selection — Selects the motor type (1AC, 3AC, DC, PM) for the drive control algorithm."
+      }
+    },
+    {
+      "parameter_id": "P0304",
+      "name": "Motor rated power",
+      "purpose": "Specifies the motor nameplate power rating for thermal protection and load estimation",
+      "default": "5.5",
+      "range": "0.001 ... 200.0",
+      "unit": "kW",
+      "related_faults": ["30004", "30007"],
+      "related_parameters": ["P0300", "P0305", "P0310"],
+      "value_meanings": [],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "413",
+        "excerpt": "P0304: Motor rated power — Specifies the motor nameplate power for thermal and load calculations."
+      }
+    },
+    {
+      "parameter_id": "P0305",
+      "name": "Motor rated speed",
+      "purpose": "Sets the motor nameplate speed (rpm) for control tuning and thermal monitoring",
+      "default": "1500",
+      "range": "1 ... 10000",
+      "unit": "rpm",
+      "related_faults": ["30004", "30001"],
+      "related_parameters": ["P0300", "P0304"],
+      "value_meanings": [],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "413",
+        "excerpt": "P0305: Motor rated speed — Sets the motor nameplate speed in rpm for control tuning."
+      }
+    },
+    {
+      "parameter_id": "P0310",
+      "name": "Motor rated current",
+      "purpose": "Specifies the motor nameplate current for overcurrent protection and thermal derating",
+      "default": "15.0",
+      "range": "0.1 ... 650.0",
+      "unit": "A",
+      "related_faults": ["30007", "30005"],
+      "related_parameters": ["P0304", "P0305"],
+      "value_meanings": [],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "413",
+        "excerpt": "P0310: Motor rated current — Specifies the motor nameplate current for protection and derating."
+      }
+    },
+    {
+      "parameter_id": "P0644",
+      "name": "Thermal motor protection",
+      "purpose": "Enables/disables thermal protection model to prevent motor overtemperature damage",
+      "default": "1",
+      "range": "0 ... 1",
+      "unit": "",
+      "related_faults": ["30004", "7011"],
+      "related_parameters": ["P0645", "P1200"],
+      "value_meanings": [
+        {"value": "0", "meaning": "Disabled"},
+        {"value": "1", "meaning": "Enabled"}
+      ],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "414",
+        "excerpt": "P0644: Thermal motor protection — Enables or disables the thermal protection model for the motor."
+      }
+    },
+    {
+      "parameter_id": "P0645",
+      "name": "Thermal time constant motor",
+      "purpose": "Sets the motor thermal time constant (tau) for accurate temperature estimation during continuous operation",
+      "default": "20",
+      "range": "1 ... 1000",
+      "unit": "min",
+      "related_faults": ["30004"],
+      "related_parameters": ["P0644", "P0646"],
+      "value_meanings": [],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "414",
+        "excerpt": "P0645: Thermal time constant motor — Sets the motor thermal time constant for temperature estimation."
+      }
+    },
+    {
+      "parameter_id": "P1000",
+      "name": "Current PI-controller P-gain",
+      "purpose": "Proportional gain for current control loop; higher values increase responsiveness but risk oscillation",
+      "default": "2.0",
+      "range": "0.01 ... 100.00",
+      "unit": "",
+      "related_faults": ["30007", "30005"],
+      "related_parameters": ["P1001", "P1200"],
+      "value_meanings": [],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "430",
+        "excerpt": "P1000: Current PI-controller P-gain — Sets the proportional gain for inner current loop control."
+      }
+    },
+    {
+      "parameter_id": "P1001",
+      "name": "Current PI-controller I-gain",
+      "purpose": "Integral gain for current control loop; ensures zero steady-state error but higher values slow transient response",
+      "default": "5.0",
+      "range": "0.01 ... 100.00",
+      "unit": "",
+      "related_faults": ["30007", "30005"],
+      "related_parameters": ["P1000", "P1200"],
+      "value_meanings": [],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "430",
+        "excerpt": "P1001: Current PI-controller I-gain — Sets the integral gain for inner current loop control."
+      }
+    },
+    {
+      "parameter_id": "P1200",
+      "name": "Ramp time (acceleration)",
+      "purpose": "Sets the time duration to accelerate from standstill to maximum frequency; prevents mechanical shock and overcurrent",
+      "default": "10",
+      "range": "0 ... 3600",
+      "unit": "s",
+      "related_faults": ["30007", "30001"],
+      "related_parameters": ["P1201", "P0100", "P0104"],
+      "value_meanings": [],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "417",
+        "excerpt": "P1200: Ramp time (acceleration) — Sets the time duration from 0 to fmax in seconds."
+      }
+    },
+    {
+      "parameter_id": "P1201",
+      "name": "Ramp time (deceleration)",
+      "purpose": "Sets the time duration to decelerate from maximum frequency to standstill; provides smooth stop and current management",
+      "default": "10",
+      "range": "0 ... 3600",
+      "unit": "s",
+      "related_faults": ["30001"],
+      "related_parameters": ["P1200", "P0100"],
+      "value_meanings": [],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "417",
+        "excerpt": "P1201: Ramp time (deceleration) — Sets the time duration from fmax to 0 in seconds."
+      }
+    },
+    {
+      "parameter_id": "P2000",
+      "name": "Line reactor commissioning",
+      "purpose": "Indicates whether a line reactor is installed; enables protective algorithms if present",
+      "default": "0",
+      "range": "0 ... 1",
+      "unit": "",
+      "related_faults": ["30002", "30003"],
+      "related_parameters": ["P2010", "P2011"],
+      "value_meanings": [
+        {"value": "0", "meaning": "No line reactor installed"},
+        {"value": "1", "meaning": "Line reactor installed"}
+      ],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "425",
+        "excerpt": "P2000: Line reactor commissioning — Indicates whether a line reactor is installed on the AC input."
+      }
+    },
+    {
+      "parameter_id": "P2010",
+      "name": "DC link overvoltage limit",
+      "purpose": "Sets the maximum DC link voltage threshold before F30001 (overvoltage) fault is triggered",
+      "default": "800",
+      "range": "100 ... 1000",
+      "unit": "V",
+      "related_faults": ["30001"],
+      "related_parameters": ["P2000", "P2011"],
+      "value_meanings": [],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "425",
+        "excerpt": "P2010: DC link overvoltage limit — Sets the maximum DC link voltage threshold before overvoltage fault."
+      }
+    },
+    {
+      "parameter_id": "P2011",
+      "name": "DC link undervoltage limit",
+      "purpose": "Sets the minimum DC link voltage threshold below which F30002 (undervoltage) fault is triggered",
+      "default": "400",
+      "range": "100 ... 800",
+      "unit": "V",
+      "related_faults": ["30002"],
+      "related_parameters": ["P2000", "P2010"],
+      "value_meanings": [],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "425",
+        "excerpt": "P2011: DC link undervoltage limit — Sets the minimum DC link voltage threshold before undervoltage fault."
+      }
+    },
+    {
+      "parameter_id": "P0292",
+      "name": "Heat sink temperature threshold",
+      "purpose": "Defines the maximum heatsink temperature before F30006 (inverter overtemperature) fault is triggered for thermal protection",
+      "default": "80",
+      "range": "20 ... 100",
+      "unit": "°C",
+      "related_faults": ["30006", "30005"],
+      "related_parameters": ["P0293"],
+      "value_meanings": [],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "420",
+        "excerpt": "P0292: Heat sink temperature threshold — Sets the maximum heatsink temperature for thermal protection."
+      }
+    },
+    {
+      "parameter_id": "P0293",
+      "name": "Heat sink temperature alarm threshold",
+      "purpose": "Defines the heatsink temperature warning level before the fault threshold (P0292) is reached; allows preemptive action",
+      "default": "70",
+      "range": "20 ... 100",
+      "unit": "°C",
+      "related_faults": ["7011"],
+      "related_parameters": ["P0292"],
+      "value_meanings": [],
+      "source_citation": {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "420",
+        "excerpt": "P0293: Heat sink temperature alarm threshold — Sets the heatsink alarm level before fault threshold."
+      }
+    }
+  ],
+  "provenance": {
+    "items": {
+      "live_decode.fault_codes": "manual_cited",
+      "parameters": "manual_cited"
+    },
+    "sources": [
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "790",
+        "excerpt": "F30001 DC link overvoltage — Overvoltage on the DC link, typically from regenerative braking or mains transients."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "790",
+        "excerpt": "F30002 DC link undervoltage — Insufficient DC link voltage, may result from input phase loss or weak supply."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "791",
+        "excerpt": "F30003 Input phase loss — One or more phases missing from the 3-phase AC input; check contactor and wiring."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "791",
+        "excerpt": "F30004 Motor overtemperature — Motor thermal model exceeded; reduce load, check cooling, or increase ramp time."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "792",
+        "excerpt": "F30005 Drive overtemperature — Internal drive temperature exceeded; improve ventilation or reduce duty cycle."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "792",
+        "excerpt": "F30006 Inverter overtemperature — Heatsink temperature exceeded threshold (P0292); allow cooling time."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "793",
+        "excerpt": "F30007 Overcurrent — Motor phase current exceeded limit; check for phase short, motor stall, or wrong motor parameters."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "794",
+        "excerpt": "F30008 Ground fault — Detected low-resistance path to earth; check motor insulation and wiring for faults."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "795",
+        "excerpt": "F30009 Parameter checksum error — Drive memory corrupted; try factory reset via P0010 or contact service."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "796",
+        "excerpt": "F30010 Internal software error — Firmware issue detected; update firmware or contact Siemens support."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "797",
+        "excerpt": "F30011 Communication timeout — Loss of connection with control module; check fieldbus cabling and baud rate."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "798",
+        "excerpt": "F30012 Encoder error — Encoder signal missing or corrupted; check encoder connector and wiring."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "442",
+        "excerpt": "F7011 Motor overtemperature warning — Motor thermal model approaching limit; reduce speed or load."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "413",
+        "excerpt": "P0100: Relative frequency setpoint — Sets the motor speed reference as a percentage of base frequency (fmax)."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "413",
+        "excerpt": "P0300: Motor type selection — Selects the motor type (1AC, 3AC, DC, PM) for the drive control algorithm."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "413",
+        "excerpt": "P0304: Motor rated power — Specifies the motor nameplate power for thermal and load calculations."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "417",
+        "excerpt": "P1200: Ramp time (acceleration) — Sets the time duration from 0 to fmax in seconds."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "425",
+        "excerpt": "P2010: DC link overvoltage limit — Sets the maximum DC link voltage threshold before overvoltage fault."
+      },
+      {
+        "doc": "SINAMICS G120 Operational Instructions (0319_en-US)",
+        "page": "420",
+        "excerpt": "P0292: Heat sink temperature threshold — Sets the maximum heatsink temperature for thermal protection."
+      }
+    ]
+  }
+}
