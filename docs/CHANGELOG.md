@@ -1,6 +1,17 @@
 # MIRA Release Notes
 
 
+### v3.129.10 (2026-07-12) - feat(drive-commander): public G120 fault funnel + freemium gate (Pro CTA)
+- **What:** Light up the Drive Commander freemium gate for Siemens G120. Landing page at `/drive-commander/siemens-g120` (lists all 13 faults). Fault pages at `/drive-commander/siemens-g120/faults/F30001` (etc.) show: free tier = fault code + name + cited parameters (id, purpose, citation + manual excerpt); Pro lock teaser = "Full troubleshooting + wiring + reset workflow + Ask MIRA + history" with CTA to pricing page.
+- **Free tier display:** fault meaning (hero) + first N cited parameters from the pack (name, purpose, manual page reference + excerpt), no guesses, all grounded.
+- **Pro gate:** Unlock CTA → `/pricing?product=drive-commander-pro` ($29/mo or $197/yr, individual technician license). TODO(stripe-sku): create Drive Commander Pro price in Stripe + wire Doppler `factorylm/prd STRIPE_DRIVE_COMMANDER_PRICE_ID`.
+- **Routes now rendering:** G120 landing + 13 fault pages + 18 parameter detail pages (same pattern as PowerFlex 525/40).
+- **Tests:** sitemap test updated to include G120 count (was 2 packs → now 3 packs); `drive-commander.test.ts` 21/21 pass.
+- **Impact:** Product feature — public, indexable, no auth, freemium gate live. Users can discover G120 faults for free; Pro subscribers see full cited troubleshooting.
+- **VERSION:** 3.129.2 → 3.130.0 (minor).
+
+### v3.129.2 (2026-07-11) - feat(drive-packs): Siemens SINAMICS G120 fault/parameter pack (cited)
+
 ### v3.129.9 (2026-07-12) - feat(drive-packs): Siemens SINAMICS G120 fault/parameter pack (cited)
 - **What:** new G120 pack with 13 faults (F30001–F7011) + 18 cited parameters (P0100–P2011). Schema matches powerflex_525.json reference. 100% manual-cited from G120X operational instructions (0319_en-US).
 - **Routes:** `/drive-commander/siemens-g120` (landing + faults + parameters all resolve).
