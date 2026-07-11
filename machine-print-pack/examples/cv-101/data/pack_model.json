@@ -1,0 +1,2776 @@
+{
+  "devices": [
+    {
+      "citations": [
+        {
+          "date": "2026-07-11",
+          "photo": "review/photos/wire_2.jpg"
+        },
+        {
+          "doc": "plc/GS10_Integration_Guide.md",
+          "locator": null
+        },
+        {
+          "doc": "plc/ccw/controller/Controller/LogicalValues.csv",
+          "locator": null
+        }
+      ],
+      "evidence": "verified",
+      "io": "12 DI (I-00..I-11), 7 relay DO (O-00..O-06), 4 AI, 1 AO",
+      "model": "Allen-Bradley Micro820 2080-LC20-20QBB",
+      "role": "Conveyor controller; Modbus RTU master to VFD1",
+      "source": "photo review/photos/wire_2.jpg (2026-07-11 — model label + MAC ID 5C:88:16:D8:E4:D7 read directly); plc/GS10_Integration_Guide.md; plc/ccw/controller/Controller/LogicalValues.csv",
+      "status": "verified",
+      "tag": "PLC1",
+      "type": "plc"
+    },
+    {
+      "citations": [
+        {
+          "date": "2026-07-11",
+          "photo": "review/photos/wire_4.jpg"
+        },
+        {
+          "doc": "plc/GS10_Integration_Guide.md",
+          "locator": null
+        },
+        {
+          "doc": "plc/Prog_init_ConvSimple_v2.1.st",
+          "locator": null
+        },
+        {
+          "doc": "review/photos/gs10_full.jpg",
+          "locator": null
+        },
+        {
+          "doc": "gs10_control_terminals.jpg",
+          "locator": null
+        }
+      ],
+      "evidence": "verified",
+      "model": "AutomationDirect GS10 DURApulse",
+      "note": "GS10 control is HYBRID (full-res photo 2026-07-11): the top run/DI connector (FWD/REV/DI3-5/+24V/DCM) is EMPTY — run/dir/speed command is Modbus (RJ45 landed); the bottom analog/output connector (+10V/ACM/AI/AO1/DO1/DOC/PE) is WIRED, likely analog speed reference + feedback. Map = OI-22. Input is 230 V single-phase (2-wire), fed through the MLC NO contacts (E-003). Output to motor = 230 V 3-phase (motor is 230 V, technician-confirmed 2026-07-11, review/PHOTO_EVIDENCE_V7.md §3 — not PHOTO_EVIDENCE_V6.md, which predates this confirmation; standard 230 V 1φ-in / 230 V 3φ-out GS10).",
+      "role": "Drives conveyor motor. Power input is 230 V single-phase (R/L1, S/L2; T/L3 unused — technician-confirmed 2026-07-11, see E-003). Commanded over Modbus RTU (RJ45, Ch2 node 1) — photo confirms the RS-485 cable is landed. NOTE the GS10 control connector is ALSO wired (hybrid, not Modbus-only) — see OI-22.",
+      "source": "photo review/photos/wire_4.jpg (2026-07-11 — keypad, control-terminal legend, RJ45 read directly); plc/GS10_Integration_Guide.md; plc/Prog_init_ConvSimple_v2.1.st; review/photos/gs10_full.jpg + gs10_control_terminals.jpg (2026-07-11 — full-resolution control-terminal read)",
+      "status": "verified",
+      "tag": "VFD1",
+      "type": "vfd"
+    },
+    {
+      "citations": [
+        {
+          "doc": "review/PHOTO_EVIDENCE_V7.md",
+          "locator": null
+        },
+        {
+          "doc": "PHOTO_EVIDENCE_V6.md",
+          "locator": null
+        }
+      ],
+      "evidence": "field_verify",
+      "role": "Conveyor drive motor — 230 V 3~ from VFD1 U/V/W (voltage technician-confirmed 2026-07-11)",
+      "source": "review/PHOTO_EVIDENCE_V7.md (technician confirmation 2026-07-11 — \"it's 230\"; OI-27 resolved). NOT PHOTO_EVIDENCE_V6.md, which predates this confirmation and still shows 480 V/pending.",
+      "status": "field_verify",
+      "tag": "M1",
+      "type": "motor"
+    },
+    {
+      "citations": [],
+      "evidence": "verified",
+      "note": "DI-02 = NC channel (healthy = 1). DI-03 = NO channel (healthy = 0). Whether a safety relay sits between S0 and the PLC is FIELD VERIFY.",
+      "role": "Emergency stop, DUAL-CHANNEL (diverse) — NC ch to I-02, NO ch to I-03",
+      "status": "verified",
+      "tag": "S0",
+      "type": "e_stop"
+    },
+    {
+      "citations": [
+        {
+          "doc": "plc/Prog_init_ConvSimple_v2.1.st",
+          "locator": null
+        }
+      ],
+      "evidence": "verified",
+      "role": "Direction selector — FWD contact to I-00, REV contact to I-01 (FWD-OFF-REV)",
+      "source": "plc/Prog_init_ConvSimple_v2.1.st (dir_fwd/dir_rev)",
+      "status": "verified",
+      "tag": "SS1",
+      "type": "selector_switch"
+    },
+    {
+      "citations": [
+        {
+          "doc": "plc/ignition-project/.../Inputs/tags.json",
+          "locator": null
+        },
+        {
+          "doc": "plc/CCW_VARIABLES_v4.0.txt",
+          "locator": "L73"
+        }
+      ],
+      "evidence": "verified",
+      "role": "Run / rearm pushbutton to I-04; illuminated — lamp fed by PLC O-03 (PBRunLED)",
+      "source": "plc/ignition-project/.../Inputs/tags.json (\"DI-04 Run pushbutton\"); plc/CCW_VARIABLES_v4.0.txt:73 (\"I-04 _IO_EM_DI_04 PBRun (illuminated momentary)\")",
+      "status": "verified",
+      "tag": "S2",
+      "type": "pushbutton_no"
+    },
+    {
+      "citations": [
+        {
+          "doc": "plc/Prog_init_ConvSimple_v2.1.st",
+          "locator": null
+        }
+      ],
+      "evidence": "verified",
+      "role": "Product-present beam to I-05 (blocked -> pe_latched soft stop)",
+      "source": "plc/Prog_init_ConvSimple_v2.1.st (_IO_EM_DI_05 -> pe_latched)",
+      "status": "verified",
+      "tag": "B1",
+      "type": "photo_eye"
+    },
+    {
+      "citations": [
+        {
+          "date": "2026-07-11",
+          "photo": "review/photos/wire_2.jpg"
+        },
+        {
+          "text": "caption \"MW 120 to 24 volt DC power supply\""
+        }
+      ],
+      "evidence": "verified",
+      "model": "Mean Well DIN-rail supply (24 V / 1.0 A; 100-240 VAC in @ 0.55 A; +V / -V / DC-OK out, N / L / PE in, +V ADJ pot, DC-OK LED)",
+      "note": "Exact model number + branch fusing + which distribution circuits it feeds = FIELD VERIFY (OI-25).",
+      "role": "24 VDC control supply (E-004). Feeds the DC +/- distribution block (blue = one polarity, white = the other) and the +24V/0V control loop.",
+      "short_label": "Mean Well 24 V / 1.0 A DIN supply",
+      "source": "photo review/photos/wire_2.jpg (2026-07-11 — Mean Well nameplate read directly); caption \"MW 120 to 24 volt DC power supply\"",
+      "status": "verified",
+      "tag": "PS1",
+      "type": "power_supply"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/dc_block_full.jpg"
+        },
+        {
+          "doc": "wire_1.jpg",
+          "locator": null
+        }
+      ],
+      "evidence": "verified",
+      "note": "A bare-copper jumper bridges the top-left terminals in the photo, a red conductor feeds in top; exact circuit count and any branch fusing = FIELD VERIFY (OI-25).",
+      "role": "24 VDC +/- distribution block (push-in, WAGO-style, 2-level), fed from PS1's +V/-V output — blue = one polarity, white = the other (caption); which color is +24V vs 0V = FIELD VERIFY (OI-25).",
+      "source": "photo review/photos/dc_block_full.jpg + wire_1.jpg (2026-07-11 — push-in distribution block read directly)",
+      "status": "verified",
+      "tag": "DB1",
+      "type": "distribution_block"
+    },
+    {
+      "citations": [],
+      "evidence": "field_verify",
+      "role": "2-pole branch breaker on the 230 V single-phase supply (existence/type/rating unconfirmed)",
+      "status": "field_verify",
+      "tag": "CB1",
+      "type": "circuit_breaker"
+    },
+    {
+      "citations": [
+        {
+          "date": "2026-07-11",
+          "photo": "review/photos/wire_3.jpg"
+        },
+        {
+          "doc": "plc/CCW_VARIABLES_v4.0.txt",
+          "locator": "L80"
+        },
+        {
+          "doc": "plc/Prog_init_ConvSimple_v2.1.st",
+          "locator": "L214"
+        },
+        {
+          "doc": "review/photos/mlc_full.jpg",
+          "locator": null
+        },
+        {
+          "doc": "mlc_top_terminals.jpg",
+          "locator": null
+        },
+        {
+          "doc": "mlc_bottom_terminals.jpg",
+          "locator": null
+        }
+      ],
+      "evidence": "verified",
+      "model": "Schneider Electric TeSys CA3KN22BD (control relay, 2 NO + 2 NC, 24 VDC coil)",
+      "note": "CORRECTED V4 from photo: the earlier \"safety POWER contactor / power poles on E-003\" was an inference error — the physical 'MLC' device is a TeSys CA3K CONTROL RELAY (aux contacts only, no main poles). Coil A1/A2 + 24 VDC now verified. Aux-contact destinations = FIELD VERIFY (OI-26). A separate 3-phase motor contactor upstream of the GS10 = FIELD VERIFY (OI-21; none observed in the 2026-07-11 photos). Full-res photo confirms coil A1/A2 wired and NO contacts 13-14 & 43-44 in use (NC 21-22/31-32 appear unused); contact destinations FIELD VERIFY (OI-26). V6: MLC is the single-phase drive-supply contactor (technician-confirmed 2026-07-11), not out of the power path — reverses the V4 removal; device is still a CA3K control relay used within its contact rating for the small drive (P00.01=1.60 A). CR-2: Schneider TeSys CA3KN22BD catalog rating: Ith = 10 A conventional thermal current, classed for AC-15/DC-13 pilot (control-circuit) duty — NOT a power-circuit-rated contactor. Used well within its thermal rating for the ~1.6 A drive; OI: confirm suitability for the switched inrush (see OI-26, aux-contact destinations).",
+      "role": "Control relay (Schneider CA3KN22BD, hand-labeled 'MLC') USED AS THE VFD SUPPLY SWITCH — its two NO contacts 13-14 & 43-44 switch the 230 V single-phase supply into the GS10 (R/L1, S/L2); coil A1(+)/A2(-) 24 VDC driven by PLC O-02. Energizing O-02 closes the contacts and powers the drive. Shown on E-003 (power contacts) + E-006 (coil). NC 21-22/31-32 unused.",
+      "sheet_label": "Q1/MLC — Schneider TeSys CA3KN22BD control relay (24 VDC coil)",
+      "source": "photo review/photos/wire_3.jpg (2026-07-11 — device label 'MLC', part no CA3KN22BD, coil A1/A2 24V, aux 13-14/21-22/31-32/43-44 read directly); plc/CCW_VARIABLES_v4.0.txt:80 (O-02 coil); plc/Prog_init_ConvSimple_v2.1.st:214 (vfd_run_permit reads O-02); review/photos/mlc_full.jpg + mlc_top_terminals.jpg + mlc_bottom_terminals.jpg (2026-07-11 — full-resolution terminal read)",
+      "status": "verified",
+      "tag": "Q1",
+      "type": "control_relay"
+    },
+    {
+      "citations": [
+        {
+          "doc": "plc/CCW_VARIABLES_v4.0.txt",
+          "locator": "L78"
+        }
+      ],
+      "evidence": "verified",
+      "note": "Device model + lamp terminals FIELD VERIFY.",
+      "role": "Green RUNNING pilot — load of O-00 (LightGreen)",
+      "source": "plc/CCW_VARIABLES_v4.0.txt:78",
+      "status": "verified",
+      "tag": "PL1",
+      "type": "pilot_light"
+    },
+    {
+      "citations": [
+        {
+          "doc": "plc/CCW_VARIABLES_v4.0.txt",
+          "locator": "L79"
+        },
+        {
+          "doc": "plc/GS10_Integration_Guide.md",
+          "locator": null
+        }
+      ],
+      "evidence": "verified",
+      "note": "Device model + lamp terminals FIELD VERIFY.",
+      "role": "Red FAULT/E-STOP pilot — load of O-01 (LightRed)",
+      "source": "plc/CCW_VARIABLES_v4.0.txt:79; plc/GS10_Integration_Guide.md (Lineage-A fault_lamp)",
+      "status": "verified",
+      "tag": "PL2",
+      "type": "pilot_light"
+    },
+    {
+      "citations": [],
+      "evidence": "field_verify",
+      "role": "Field terminal strip — field devices land here before PLC (E-008)",
+      "status": "field_verify",
+      "tag": "X1",
+      "type": "terminal_block"
+    }
+  ],
+  "drawing_revision": "A",
+  "e002_oneline": {
+    "convention": "Each tick mark across a run = one conductor (e.g. 2 ticks = 2-wire single-phase; 3 ticks = 3-wire three-phase). Solid = verified, dashed = FIELD VERIFY, same as every other sheet (see the line-style legend). No per-conductor wire numbers on this sheet — see wires.yaml `convention` (E-001) for the numbered detail carried on E-003 / E-004.",
+    "nodes": [
+      {
+        "citations": [],
+        "evidence": "field_verify",
+        "id": "SOURCE",
+        "kind": "source",
+        "label": "230 V 1φ SUPPLY",
+        "note": "Bench supply voltage/phase count is not a nameplate/panel read — it is a technician field correction (2026-07-11, review/PHOTO_EVIDENCE_V6.md) reversing the earlier assumed 3-phase supply.",
+        "status": "field_verify"
+      },
+      {
+        "citations": [],
+        "evidence": "field_verify",
+        "id": "CB1",
+        "kind": "breaker",
+        "label": "CB1 (2-pole)",
+        "note": "Existence/type/rating unconfirmed on the bench (OI-15).",
+        "status": "field_verify"
+      },
+      {
+        "citations": [],
+        "evidence": "verified",
+        "id": "Q1",
+        "kind": "control_relay",
+        "label": "Q1/MLC supply switch",
+        "note": "Schneider TeSys CA3KN22BD control relay used as the single-phase drive-supply switch (2 NO contacts) — device + coil verified from photo; see E-003 for the power-contact detail and E-006 for the coil.",
+        "status": "verified"
+      },
+      {
+        "citations": [],
+        "evidence": "verified",
+        "id": "VFD1",
+        "kind": "vfd",
+        "label": "VFD1 (GS10)",
+        "status": "verified"
+      },
+      {
+        "citations": [],
+        "evidence": "field_verify",
+        "id": "M1",
+        "kind": "motor",
+        "label": "M1",
+        "status": "field_verify"
+      },
+      {
+        "citations": [],
+        "evidence": "verified",
+        "id": "PS1",
+        "kind": "power_supply",
+        "label": "PS1 — 24 VDC control (E-004)",
+        "status": "verified"
+      }
+    ],
+    "segments": [
+      {
+        "citations": [
+          {
+            "doc": "review/PHOTO_EVIDENCE_V6.md",
+            "locator": null
+          }
+        ],
+        "conductors": "1φ, 2W",
+        "evidence": "field_verify",
+        "from": "SOURCE",
+        "label": "230 V 1φ supply",
+        "n_conductors": 2,
+        "source": "review/PHOTO_EVIDENCE_V6.md (technician field correction 2026-07-11)",
+        "status": "field_verify",
+        "to": "CB1"
+      },
+      {
+        "citations": [
+          {
+            "doc": "review/PHOTO_EVIDENCE_V6.md",
+            "locator": null
+          }
+        ],
+        "conductors": "1φ, 2W",
+        "evidence": "field_verify",
+        "from": "CB1",
+        "label": "protected 230 V 1φ",
+        "n_conductors": 2,
+        "source": "review/PHOTO_EVIDENCE_V6.md",
+        "status": "field_verify",
+        "to": "Q1"
+      },
+      {
+        "citations": [
+          {
+            "doc": "plc/GS10_UM.txt",
+            "locator": null
+          },
+          {
+            "doc": "review/PHOTO_EVIDENCE_V6.md",
+            "locator": null
+          }
+        ],
+        "conductors": "1φ, 2W",
+        "evidence": "field_verify",
+        "from": "Q1",
+        "label": "switched 230 V 1φ (R/L1, S/L2)",
+        "n_conductors": 2,
+        "source": "plc/GS10_UM.txt (terminals L1971-1986); review/PHOTO_EVIDENCE_V6.md",
+        "status": "field_verify",
+        "to": "VFD1"
+      },
+      {
+        "citations": [
+          {
+            "doc": "plc/GS10_UM.txt",
+            "locator": null
+          },
+          {
+            "doc": "review/PHOTO_EVIDENCE_V7.md",
+            "locator": null
+          }
+        ],
+        "conductors": "3φ, 3W",
+        "evidence": "field_verify",
+        "from": "VFD1",
+        "label": "230 V 3φ motor output (U/T1, V/T2, W/T3)",
+        "n_conductors": 3,
+        "source": "plc/GS10_UM.txt (terminals L1971-1986); motor voltage technician-confirmed 2026-07-11 (OI-27 resolved) — review/PHOTO_EVIDENCE_V7.md §3, not V6 (which predates this confirmation)",
+        "status": "field_verify",
+        "to": "M1"
+      },
+      {
+        "citations": [
+          {
+            "date": "2026-07-11",
+            "photo": "review/photos/wire_2.jpg"
+          },
+          {
+            "text": "see E-004"
+          }
+        ],
+        "conductors": "1φ, 2W+PE",
+        "evidence": "field_verify",
+        "from": "SOURCE",
+        "label": "branch tap — 24 VDC control supply",
+        "n_conductors": 3,
+        "source": "photo review/photos/wire_2.jpg (2026-07-11 — Mean Well nameplate); see E-004",
+        "status": "field_verify",
+        "to": "PS1"
+      }
+    ],
+    "sources": [
+      "review/PHOTO_EVIDENCE_V6.md (technician field correction 2026-07-11 — single-phase topology, OI-21 resolved)",
+      "review/PHOTO_EVIDENCE_V7.md (technician confirmation 2026-07-11 — 230 V motor output, OI-27 resolved; supersedes V6, which predates this confirmation and still showed 480 V/pending)",
+      "plc/GS10_UM.txt (terminals L1971-1986)",
+      "photo review/photos/wire_2.jpg (2026-07-11 — PS1 nameplate)"
+    ]
+  },
+  "e007_rs485": {
+    "command_words": {
+      "freq_register": "0x2001",
+      "fwd_run": 18,
+      "register": "0x2000",
+      "rev_run": 34,
+      "rev_run_supersession": "34 NOT 20 — GS10_Integration_Guide.md (2026-03-16) and ControlsToVFD/original PhaseB.st print 20; corrected by PhaseB_V1.4 'FIX 2' (bit 5 REV + bit 1 Run), Beginner_Verify_V2 ('NOT 20!'), WI-001 Table 9, and live Prog_init v2.1 (vfd_cmd_word := 34).",
+      "source": "Beginner_Verify_V2 §4.4 (GS10 manual p.6); WI-001 Tables 8-10; PhaseB_V1.4.st; Prog_init_ConvSimple_v2.1.st",
+      "stop": 1
+    },
+    "endpoints": {
+      "plc": {
+        "channel": "MSG_MODBUS Channel 2",
+        "channel_note": "bench-proven 2026-05-26 (v2.x). May-2026 Phase-A drawing said 'Channel 0' - SUPERSEDED.",
+        "device": "Allen-Bradley Micro820 2080-LC20-20QBB",
+        "port": "embedded RS-485 serial port (top-edge connector)",
+        "tag": "PLC1",
+        "terminals": [
+          "D+ (A)",
+          "D- (B)",
+          "SG",
+          "shield"
+        ]
+      },
+      "vfd": {
+        "device": "AutomationDirect GS10 DURApulse",
+        "pins": {
+          "pin 3": "SGND",
+          "pin 4": "SG-",
+          "pin 5": "SG+"
+        },
+        "port": "RS-485 RJ45 jack (front face, near keypad)",
+        "tag": "VFD1",
+        "termination": "120 ohm across SG+/SG- at the drive end"
+      }
+    },
+    "links": [
+      {
+        "cable": "Belden 3105A pair",
+        "citations": [
+          {
+            "text": "CommsToVFD 2.2 + Beginner_Verify p48"
+          }
+        ],
+        "conductor": "white of pair",
+        "dst_device": "VFD1",
+        "dst_terminal": "RJ45 pin 5 / SG+",
+        "evidence": "verified",
+        "notes": "Polarity: if silent/garbled, swap 485+/485- first.",
+        "signal": "RS-485 inverting (D+ = SG+)",
+        "source": "CommsToVFD 2.2 + Beginner_Verify p48",
+        "src_device": "PLC1",
+        "src_terminal": "D+ (A)",
+        "status": "verified",
+        "wire_label": "485+"
+      },
+      {
+        "cable": "Belden 3105A pair",
+        "citations": [
+          {
+            "text": "CommsToVFD 2.2 + Beginner_Verify p48"
+          }
+        ],
+        "conductor": "black of pair",
+        "dst_device": "VFD1",
+        "dst_terminal": "RJ45 pin 4 / SG-",
+        "evidence": "verified",
+        "notes": "",
+        "signal": "RS-485 non-inverting (D- = SG-)",
+        "source": "CommsToVFD 2.2 + Beginner_Verify p48",
+        "src_device": "PLC1",
+        "src_terminal": "D- (B)",
+        "status": "verified",
+        "wire_label": "485-"
+      },
+      {
+        "cable": "3rd conductor",
+        "citations": [
+          {
+            "text": "Beginner_Verify p48 (SGND -> pin 3"
+          },
+          {
+            "text": "CommsToVFD 'pin 1/8' SUPERSEDED)"
+          }
+        ],
+        "conductor": "third conductor",
+        "dst_device": "VFD1",
+        "dst_terminal": "RJ45 pin 3 / SGND",
+        "evidence": "verified",
+        "notes": "Dedicated wire, NOT the shield.",
+        "signal": "signal ground / common reference",
+        "source": "Beginner_Verify p48 (SGND -> pin 3; CommsToVFD 'pin 1/8' SUPERSEDED)",
+        "src_device": "PLC1",
+        "src_terminal": "SG",
+        "status": "verified",
+        "wire_label": "SGND"
+      },
+      {
+        "cable": "tinned drain",
+        "citations": [
+          {
+            "text": "shield-one-end rule (both docs)"
+          },
+          {
+            "text": "exact PLC chassis point = field verify"
+          }
+        ],
+        "conductor": "drain",
+        "dst_device": "VFD1",
+        "dst_terminal": "(floated)",
+        "evidence": "field_verify",
+        "notes": "Land drain at PLC end ONLY; tape/float at GS10 end.",
+        "signal": "cable shield",
+        "source": "shield-one-end rule (both docs); exact PLC chassis point = field verify",
+        "src_device": "PLC1",
+        "src_terminal": "shield / chassis",
+        "status": "field_verify",
+        "wire_label": "SH"
+      }
+    ],
+    "readback": [
+      "vfd_comm_ok = TRUE proves the link is up (PLC global).",
+      "Read 0x2103 (output freq, Hz x100) via FC03; nonzero readback confirms end-to-end. (Prog_init v2.1:164 'Hz x100'; GS10_UM.txt L15703-05 format XXX.XX Hz)"
+    ],
+    "serial_config": {
+      "baud": "9600",
+      "channel": "2",
+      "driver": "Modbus RTU, Master",
+      "format": "8N1 (P09.04 = 12)",
+      "node": "1 (P09.00 = 1)",
+      "note": "Older GS10_Integration_Guide.md said 8N2 (P09.04=13) - SUPERSEDED by bench-verified 8N1.",
+      "oi20_note": "Line params pending re-verify (OI-20): 2026-05-20 export read 38.4k/8N2; 2026-05-26 bench sniff read 9600/8N1 (shown). Fresh keypad/readback to adjudicate."
+    },
+    "sources": [
+      "CCW/MIRA_PLC/docs/instructions/Conv_Simple_CommsToVFD.pdf §2 (recovered style + wiring)",
+      "CCW/MIRA_PLC/docs/instructions/Conv_Simple_GS10_Beginner_Verify_V2.pdf p48 (corrected pins/channel)",
+      "plc/Prog_init_ConvSimple_v2.1.st (Channel 2, node 1, 0x2103)",
+      "plc/GS10_Integration_Guide.md §3 (RJ45 pinout, register map)"
+    ],
+    "troubleshooting": [
+      "Nothing after config -> swap 485+/485- (A/B polarity; vendors disagree).",
+      "CRC errors -> usually polarity. Complete silence -> usually baud mismatch (confirm 9600 8N1).",
+      "GS10 CE10 / F30 comm-timeout -> no Modbus packets; check wiring, baud, P09.03 timeout.",
+      "120 ohm termination across SG+/SG- at the GS10 end for long runs (bench <2 m usually fine).",
+      "SGND is a dedicated conductor, not the shield; missing common -> intermittent corruption."
+    ]
+  },
+  "intake": {
+    "asset": {
+      "label": "Garage conveyor (Conv_Simple)",
+      "tag": "CV-101",
+      "uns_path": "enterprise.garage.demo_cell.cv_101"
+    },
+    "build": {
+      "as_of": "2026-07-11",
+      "requested_tier": "field_verification"
+    },
+    "model_source": {
+      "package_dir": "plc/conv_simple_electrical"
+    }
+  },
+  "meta": {
+    "asset": "CV-101 (garage conveyor)",
+    "date": "2026-07-11",
+    "drawn_by": "MIRA / FactoryLM",
+    "project": "Conv_Simple",
+    "revision": "A"
+  },
+  "open_items": [
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-01",
+      "item": "+24 VDC source terminal on PS1 feeding the input rail",
+      "severity": "functional",
+      "sheet": "E-005",
+      "status": "open",
+      "tooling_needed": "multimeter",
+      "verify": "Meter PS1 +24V to 0V = 24 VDC; confirm which terminal feeds the input devices."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-02",
+      "item": "Input common (COM0) grouping + sink vs source jumpering on the Micro820",
+      "severity": "functional",
+      "sheet": "E-005",
+      "status": "open",
+      "tooling_needed": "multimeter",
+      "verify": "Confirm which embedded input common serves I-00..I-05 and whether inputs are sink or source; meter COM0 to 0V."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-03",
+      "item": "All input wire numbers (W200..W205, W24, W0V are PROPOSED)",
+      "severity": "functional",
+      "sheet": "E-005",
+      "status": "open",
+      "tooling_needed": "visual inspection",
+      "verify": "Read the actual wire markers on the panel; replace proposed numbers with as-built."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-04",
+      "item": "Field-device terminal designations (S0 11-12/23-24, SS1 FWD/REV/COM, S2 3-4, B1 BN/BU/BK)",
+      "severity": "functional",
+      "sheet": "E-005",
+      "status": "open",
+      "tooling_needed": "visual inspection",
+      "verify": "Confirm each device's real terminal markings against its nameplate/datasheet."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-05",
+      "item": "E-stop architecture between S0 and the PLC",
+      "severity": "safety_code",
+      "sheet": "E-005",
+      "status": "open",
+      "tooling_needed": "visual inspection",
+      "verify": "Confirm whether S0 lands directly on I-02/I-03 or via a safety relay; a monitored input is NOT a safety stop (see safety note)."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-06",
+      "item": "Photo-eye B1 device (historically 'unmapped') — make/model, PNP/NPN, powered source",
+      "severity": "functional",
+      "sheet": "E-005",
+      "status": "open",
+      "tooling_needed": "visual inspection",
+      "verify": "Identify the physical sensor; confirm BN/BU/BK to +24V/0V/I-05; PNP sourcing assumed."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-07",
+      "item": "Direction selector SS1 physical device (2-pos vs 3-pos FWD-OFF-REV)",
+      "severity": "functional",
+      "sheet": "E-005",
+      "status": "open",
+      "tooling_needed": "visual inspection",
+      "verify": "Confirm selector type and that FWD/REV contacts map to I-00/I-01."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-08",
+      "item": "Spares I-06..I-11 confirmed unused",
+      "severity": "informational",
+      "sheet": "E-005",
+      "status": "open",
+      "tooling_needed": "visual inspection",
+      "verify": "Confirm no field wires land on I-06..I-11 (program shows none)."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-09",
+      "item": "Output bank technology + common feeds. +CM0/-CM0/+CM1/-CM1 polarity naming suggests DC transistor banks; devices.yaml io line says 'relay DO' — conflict.",
+      "severity": "functional",
+      "sheet": "E-006",
+      "status": "open",
+      "tooling_needed": "multimeter",
+      "verify": "Resolve per 2080-IN009 + meter the bank feed (expect PS1 +24V/0V)."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-10",
+      "item": "Q1 contactor identity — part number, coil voltage, pole count; coil terminal ids A1/A2 are PROPOSED.",
+      "severity": "functional",
+      "sheet": "E-006",
+      "status": "open",
+      "tooling_needed": "multimeter",
+      "verify": "Meter coil circuit from O-02."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-11",
+      "item": "PL1/PL2 devices + lamp terminal ids (X1/X2 proposed); S2 lamp terminals.",
+      "severity": "functional",
+      "sheet": "E-006",
+      "status": "open",
+      "tooling_needed": "multimeter",
+      "verify": "Meter the light circuits and confirm device markings."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-12",
+      "item": "Confirm no field wires on spare O-04..O-06 (+CM1 bank unused).",
+      "severity": "informational",
+      "sheet": "E-006",
+      "status": "open",
+      "tooling_needed": "multimeter (continuity)",
+      "verify": "Trace the PLC output block and verify no wires to O-04, O-05, O-06."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-13",
+      "item": "Re-confirm input AND output map against the live Conv_Simple_1.8 CCW project; v4.0 vintage drift proven on I-05 'Entry sensor' vs live photo-eye.",
+      "severity": "functional",
+      "sheet": "E-005, E-006",
+      "status": "open",
+      "tooling_needed": "CCW laptop (live project)",
+      "verify": "Open the live Conv_Simple_1.8 CCW project and cross-check every I-xx and O-xx assignment against the drawn functions (I-05 drift already proven; O-02 has independent Prog_init corroboration)."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-14",
+      "item": "Q1 contactor placement in the power chain (assumed line side of VFD1 per 'safety power'; could be elsewhere).",
+      "severity": "functional",
+      "sheet": "E-003",
+      "status": "open",
+      "tooling_needed": "multimeter (continuity)",
+      "verify": "Trace conductors on the bench; verify Q1 poles 1-6 actual locations. R-C surge absorber both ends recommended per GS10 manual."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-15",
+      "item": "Supply voltage/receptacle + CB1 existence/type/rating (2-pole, single-phase 230 V branch breaker).",
+      "severity": "safety_code",
+      "sheet": "E-003",
+      "status": "open",
+      "tooling_needed": "visual inspection",
+      "verify": "Identify the bench supply; confirm CB1 device and rating. NEC and GS10 manual require upstream protection."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-16",
+      "item": "GS10 exact model+frame (enables wire-gauge/fuse tables); M1 nameplate; conductor gauges; PE points + ground resistance ≤0.1Ω check.",
+      "severity": "safety_code",
+      "sheet": "E-003",
+      "status": "open",
+      "tooling_needed": "camera",
+      "verify": "Photograph GS10 nameplate and motor nameplate; measure PE resistance between drive/motor grounds and supply PE."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-17",
+      "item": "RFI jumper in/out per grounding topology (symmetrical vs corner-grounded unknown).",
+      "severity": "safety_code",
+      "sheet": "E-003",
+      "status": "open",
+      "tooling_needed": "visual inspection",
+      "verify": "Determine bench PE bonding strategy; verify RFI jumpers per GS10_UM.txt L1693-1718 if present."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-18",
+      "item": "Fallback DI wiring physical presence (expected ABSENT — P02.0x factory default).",
+      "severity": "functional",
+      "sheet": "E-006",
+      "status": "open",
+      "tooling_needed": "multimeter (continuity)",
+      "verify": "Trace the PLC output block; confirm zero hardwired leads to any GS10 digital inputs (fallback path should be unpopulated)."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-19",
+      "item": "Wire-numbering convention adopted: W[sheet-digit][line-2d] (see wires.yaml convention + the E-001 key). E-005 renumbered W200..W205 → W500..W505. Rails (W24, W0V) and E-007 mnemonic labels (485+/485-/SGND/SH) are exempt. All numbers PROPOSED until as-built.",
+      "severity": "functional",
+      "sheet": "E-003, E-005, E-006",
+      "status": "open",
+      "tooling_needed": "visual inspection",
+      "verify": "Read the actual wire markers on the panel; replace proposed W-numbers with as-built (mirror of OI-03)."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-20",
+      "item": "GS10 comms line params: 2026-05-20 export = 38.4k/8N2 vs 2026-05-26 bench sniff = 9600/8N1 — adjudicate.",
+      "severity": "functional",
+      "sheet": "E-007",
+      "status": "open",
+      "tooling_needed": "GS10 keypad",
+      "verify": "Fresh keypad readback of the GS10 serial config; update print if params differ from current 9600/8N1 assumption."
+    },
+    {
+      "as_found": "no separate motor contactor — the MLC control relay IS the single-phase drive-supply switch (2 NO contacts). See E-003.",
+      "closed_by": "",
+      "closed_date": "2026-07-11",
+      "id": "OI-21",
+      "item": "RESOLVED (2026-07-11): no separate motor contactor — the MLC control relay IS the single-phase drive-supply switch (2 NO contacts). See E-003.",
+      "severity": "functional",
+      "sheet": "E-003",
+      "status": "closed",
+      "tooling_needed": "visual inspection",
+      "verify": "Confirm whether a separate motor contactor exists between CB1 and VFD1; the device labeled 'MLC' (Q1) is a Schneider TeSys CA3KN22BD CONTROL RELAY — it has no main power poles."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-22",
+      "item": "GS10 control map (full-res photo): top run/DI connector (FWD/REV/DI3-5/+24V/DCM) confirmed EMPTY; bottom analog/output row (+10V/ACM/AI/AO1/DO1/DOC) confirmed WIRED. Identify which bottom-row terminals are used (speed reference +10V/AI/ACM vs feedback AO1/DO1/DOC) and to what. Confirm nothing on the top run/DI row.",
+      "severity": "functional",
+      "sheet": "E-006, E-007",
+      "status": "open",
+      "tooling_needed": "visual inspection",
+      "verify": "Map which of FWD/REV/DI3/DI4/DI5/AI/AO1/DO1/DOC are landed and to what; reconcile hybrid Modbus + hardwired-terminal control."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-23",
+      "item": "Siemens CPU 1212C AC/DC/RLY (S7-1200) observed on the panel (photo wire_2) — role vs CV-101 unknown.",
+      "severity": "informational",
+      "sheet": "panel",
+      "status": "open",
+      "tooling_needed": "visual inspection",
+      "verify": "Confirm whether the Siemens CPU 1212C controls any CV-101 function before referencing it on any CV-101 sheet; not drawn until evidenced."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-24",
+      "item": "Device labeled \"PMC 192.x\" observed on the panel (photo wire_2).",
+      "severity": "informational",
+      "sheet": "panel",
+      "status": "open",
+      "tooling_needed": "multimeter",
+      "verify": "Identify the device (network device / meter?) and its relationship, if any, to CV-101."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-25",
+      "item": "DC +/- distribution block: which color (blue vs white) is +24V vs 0V, circuit count, PS1 branch fusing; PLUS PS1's AC input source — which leg/circuit feeds L and N (120 V leg vs the 230 V 1φ supply) is not documented.",
+      "severity": "functional",
+      "sheet": "E-004",
+      "status": "open",
+      "tooling_needed": "multimeter",
+      "verify": "Trace/meter the distribution block conductors against PS1 +V/-V output; confirm color-to-polarity mapping, circuit count, and any branch fusing (photo wire_1/wire_2). Separately, identify the branch circuit feeding PS1.L/PS1.N and its voltage (single leg of the 230 V 1φ supply, or a dedicated 120 V circuit)."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-26",
+      "item": "MLC (Q1) aux contacts (full-res photo): coil A1/A2 wired + NO contacts 13-14 & 43-44 in use confirmed; NC 21-22/31-32 appear unused. Trace where 13-14 and 43-44 land in the control circuit.",
+      "severity": "functional",
+      "sheet": "E-006",
+      "status": "open",
+      "tooling_needed": "multimeter (continuity)",
+      "verify": "Trace each aux contact to its destination in the control circuit; confirm function (e.g., interlock feedback, seal-in, indicator)."
+    },
+    {
+      "as_found": "motor is 230 V (technician-confirmed) — the GS10 is a standard 230 V 1φ-in / 230 V 3φ-out drive; the earlier reported 480 V was a misstatement. E-003 letters 230 V 3φ output.",
+      "closed_by": "",
+      "closed_date": "2026-07-11",
+      "id": "OI-27",
+      "item": "RESOLVED (2026-07-11): motor is 230 V (technician-confirmed) — the GS10 is a standard 230 V 1φ-in / 230 V 3φ-out drive; the earlier reported 480 V was a misstatement. E-003 letters 230 V 3φ output.",
+      "severity": "functional",
+      "sheet": "E-003",
+      "status": "closed",
+      "tooling_needed": "visual inspection",
+      "verify": "Closed by technician confirmation — review/PHOTO_EVIDENCE_V7.md §3 ('it's 230'), not PHOTO_EVIDENCE_V6.md (which predates this confirmation and still shows 480 V/pending). Exact GS10 model/frame still tracked under OI-16 (for wire-gauge/fuse tables)."
+    },
+    {
+      "as_found": "",
+      "closed_by": "",
+      "closed_date": "",
+      "id": "OI-28",
+      "item": "PS1 enclosure/chassis ground and DC-0V-to-PE bonding not documented — is PS1's DIN-rail/enclosure bonded to PE, and is the 24 VDC 0V rail (DB1 0V-bus) intentionally tied to PE anywhere (SELV/PELV grounding scheme), or left floating?",
+      "severity": "safety_code",
+      "sheet": "E-004",
+      "status": "open",
+      "tooling_needed": "multimeter",
+      "verify": "Meter PS1 enclosure/DIN rail to the PE bus for continuity; meter DB1 0V-bus to the PE bus for continuity/resistance; confirm whether a deliberate 0V-PE bond exists or the 24 VDC system is intentionally floating."
+    }
+  ],
+  "pack_format_version": "1.0.0",
+  "sheets": [
+    {
+      "annotations": {
+        "notes": [
+          "LINE-STYLE LEGEND, red: red marks EITHER FIELD-VERIFY status (a dashed, unverified conductor/device or an unverified wire-number tag) OR a safety-critical prohibition (a NOT/never instruction inside a sheet's SAFETY block, e.g. 'a monitored input is NOT a safety stop') — same color, two distinct meanings distinguished by context (dashed line vs. SAFETY-block bullet). This is intentional package-wide convention, not per-sheet drift."
+        ],
+        "safety": [
+          "LOTO + wait ≥5 min for DC-bus discharge before touching (WI p.2 §2).",
+          "Monitored e-stop is NOT a safety stop — hardwire S0 to remove drive power per NFPA 79 / EN 60204-1 (style law §7; docs/references/industrial-wiring-diagram-standards.md)."
+        ]
+      },
+      "id": "E-001",
+      "scope": "Cover / legend / device schedule / wire-numbering key / sheet index",
+      "status": "drafted",
+      "title": "Cover / legend / device schedule"
+    },
+    {
+      "annotations": {
+        "caveat": [
+          "Summary sheet only — no wire numbers are assigned here (see the wire-numbering key on E-001). For per-conductor evidence and FIELD VERIFY status, use E-003 (VFD power) and E-004 (24 VDC control power)."
+        ],
+        "notes": [
+          "Conductor-count ticks (e.g. 2 ticks = '1φ, 2W') mark circuit conductor count only — not a conduit/cable schedule.",
+          "Supply is 230 V SINGLE-PHASE (2-wire), technician-confirmed 2026-07-11 — this sheet corrects the earlier 3-phase assumption.",
+          "PS1 branch is drawn as a tap off the same incoming supply; the exact AC leg/circuit feeding PS1 is FIELD VERIFY (OI-25)."
+        ],
+        "sources": [
+          "model/e002_oneline.yaml · review/PHOTO_EVIDENCE_V6.md (technician field correction 2026-07-11)"
+        ]
+      },
+      "id": "E-002",
+      "model": "model/e002_oneline.yaml",
+      "scope": "Single-line summary of the CV-101 power distribution — one line per circuit, device symbols, conductor-count tick marks, NO per-conductor wire numbers. Map between E-003 (VFD power detail) and E-004 (24 VDC control power detail); not a substitute for either.",
+      "status": "drafted",
+      "subtitle": "230 V 1φ supply → CB1 → Q1/MLC → VFD1 (GS10) → M1 · branch tap → PS1 (24 VDC control, E-004)",
+      "title": "Power one-line"
+    },
+    {
+      "annotations": {
+        "caveat": [
+          "Supply is CONFIRMED 230 V single-phase (technician-confirmed 2026-07-11, review/PHOTO_EVIDENCE_V7.md) — R/L1, S/L2 only; T/L3 unused. Only the GS10 exact model/frame, breaker rating, and wire gauge remain NOT DOCUMENTED — every conductor FIELD VERIFY. P00.01 = 1.60 A (2026-05-20 export) is the only sizing clue.",
+          "MLC (Q1) is a control relay USED AS the single-phase drive-supply switch — its 2 NO contacts (13-14, 43-44) carry the 230 V 1φ supply into the GS10; coil A1/A2 from O-02 (E-006). Energizing O-02 powers the drive (technician-confirmed 2026-07-11)."
+        ],
+        "notes": [
+          "CB1 REQUIRED per GS10_UM L1758-1759 — type/rating unknown (OI-15).",
+          "M1: swap any two motor leads to reverse — GS10_UM L1773-1776.",
+          "VFD control source = Modbus — see E-007. No control wiring on this sheet.",
+          "Supply is 230 V SINGLE-PHASE (2-wire); drive output = 230 V 3φ to a 230 V motor (technician-confirmed 2026-07-11).",
+          "GS10 manual also warns against cycling a POWER-CIRCUIT switching device for normal run/stop — emergency situations only (GS10_UM.txt L1754-1757), same caution as L1811-1813 above. This applies to Q1/MLC (the device that powers the drive) exactly as it applies to CB1: normal run/stop is via Modbus (E-007), never by cycling Q1's coil."
+        ],
+        "safety": [
+          "Never start/stop via input power (L1811-1813); CB1 is branch protection only, not a run/stop device.",
+          "LOTO + wait ≥5 min for DC-bus discharge before touching (WI p.2 §2).",
+          "Monitored e-stop is NOT a safety stop — hardwire S0 to remove drive power per NFPA 79 / EN 60204-1.",
+          "PE resistance ≤0.1Ω (L1760-61); shield/conduit bonded both ends (L1792-95); RFI jumper in/out FIELD VERIFY (L1693-1718, OI-17)."
+        ],
+        "sources": [
+          "plc/GS10_UM.txt (terminals L1971-1986; topology L1750-1813) · plc/GS10_Integration_Guide.md (Q1 phase-5 test)",
+          "plc/Prog_init_ConvSimple_v2.1.st (vfd_run_permit) · plc/MIRA_PLC_WorkInstruction_v3.pdf (LOTO §2)",
+          "photos review/photos/wire_1..4.jpg (2026-07-11, actual devices)",
+          "review/PHOTO_EVIDENCE_V6.md (technician field correction 2026-07-11 — single-phase supply topology, MLC in power path)",
+          "review/PHOTO_EVIDENCE_V7.md (technician confirmation 2026-07-11 — 230 V motor output, OI-27 resolved)"
+        ]
+      },
+      "id": "E-003",
+      "lineage": "terminals per GS10 UM 1st Ed Rev B",
+      "scope": "Upstream supply → branch protection (CB1) → Q1/MLC (single-phase drive-supply switch, 2 NO contacts) → VFD1 power input (R/L1, S/L2; T/L3 unused, 1φ) → motor output (U/T1, V/T2, W/T3) → motor M1; PE bonding. Q1/MLC's NO contacts 13-14 & 43-44 ARE the power path between CB1 and VFD1 (2026-07-11 technician field correction — reverses the earlier \"no motor contactor, CB1 feeds VFD1 directly\" reading; OI-21 RESOLVED).",
+      "status": "drafted",
+      "subtitle": "supply → CB1 → Q1/MLC (supply switch) → VFD1 (GS10) → M1 · 230 V 1φ in → 230 V 3φ to motor",
+      "title": "VFD power (CB1 -> VFD1 -> M1)"
+    },
+    {
+      "annotations": {
+        "caveat": [
+          "PS1 is a verified Mean Well DIN-rail supply (24 V / 1.0 A out, 100-240 VAC / 0.55 A in) — nameplate read directly (photo review/photos/wire_2.jpg, 2026-07-11). DB1 polarity (blue vs white = +24V vs 0V), circuit count, PS1 branch fusing, and PS1's AC input source (which leg/circuit feeds L, N) are FIELD VERIFY (OI-25)."
+        ],
+        "notes": [
+          "DB1 is a push-in (WAGO-style), 2-level distribution block fed from PS1's +V/-V output; a bare-copper jumper bridges its top-left terminals in the photo (review/photos/dc_block_full.jpg) — internal jumpering/circuit count not documented.",
+          "PS1's DC-OK terminal (LED/relay status output) and PE input terminal are shown for reference only; neither carries a modeled conductor on this sheet.",
+          "PS1 enclosure/chassis ground and whether DC-0V is bonded to PE anywhere (SELV/PELV scheme vs intentionally floating) is NOT documented — FIELD VERIFY (OI-28).",
+          "+24V / 0V downstream of DB1 feed the E-005 input rail (W24/W0V) and the E-006 output bank 0 feed/return (W600/W609) — same electrical nodes, different sheet."
+        ],
+        "safety": [
+          "PS1 is fed from AC mains — LOTO + de-energize before opening the panel or metering DB1 (WI p.2 §2).",
+          "Monitored e-stop is NOT a safety stop; de-energizing DB1/PS1 does not remove drive power — see E-003 for the drive supply isolation point."
+        ],
+        "sources": [
+          "photo review/photos/wire_2.jpg (2026-07-11 — Mean Well nameplate read directly)",
+          "photo review/photos/dc_block_full.jpg + wire_1.jpg (2026-07-11 — DC distribution block)",
+          "review/PHOTO_EVIDENCE_V4.md · review/PHOTO_EVIDENCE_V5.md (OI-25)"
+        ]
+      },
+      "id": "E-004",
+      "scope": "AC supply → PS1 (Mean Well 24 VDC / 1.0 A DIN supply, verified device) → DB1 (+/- push-in distribution block, verified to exist) → +24V / 0V control power consumed as PS1.+24V / PS1.0V on E-005 (PLC digital inputs) and E-006 (PLC outputs) — same electrical nodes, different sheet.",
+      "status": "drafted",
+      "subtitle": "AC → PS1 (Mean Well 24V/1A) → DB1 +/- distribution block → +24V/0V to E-005, E-006 loads",
+      "title": "24 VDC control power distribution (PS1)"
+    },
+    {
+      "annotations": {
+        "notes": [
+          "READS (acceptance): +24 VDC starts at PS1 (E-004) → device contact shown → proposed wire # → PLC terminal I-0x → function/OPC tag → returns via COM0 → 0V (E-004). Verified vs field-verify marked per conductor.",
+          "VERIFIED (solid) = PLC terminal + function traced to the running program / Ignition OPC docs; FIELD VERIFY (dashed) = physical wiring not documented — meter it (see E-009 open items). Red is also used inside the SAFETY block above for a NOT/never prohibition (e.g. 'a monitored input is NOT a safety stop') — same color, a different meaning by context (see E-001 LINE-STYLE LEGEND note).",
+          "COM0 input common — sink/source jumpering FIELD VERIFY (OI-02)."
+        ],
+        "safety": [
+          "I-02/I-03 are MONITORED e-stop inputs only — a monitored input is NOT a safety stop. A compliant install must hardwire S0 to remove drive power (NFPA 79 / EN 60204-1, stop cat 0/1) (style law §7; docs/references/industrial-wiring-diagram-standards.md).",
+          "De-energize + LOTO before metering."
+        ],
+        "sources": [
+          "plc/Prog_init_ConvSimple_v2.1.st · plc/ignition-project/.../MIRA_IOCheck/Inputs/tags.json",
+          "plc/ccw/controller/Controller/LogicalValues.csv · plc/GS10_Integration_Guide.md"
+        ]
+      },
+      "id": "E-005",
+      "scope": "Micro820 I-00..I-05 (+ spares I-06..I-11); E-stop, direction selector, run PB, photo-eye",
+      "status": "drafted",
+      "title": "PLC digital inputs"
+    },
+    {
+      "annotations": {
+        "caveat": [
+          "Hardwired fallback documented in MIRA-WI-001 v3 §3 Fig 1 (DO_03..DO_07 → GS10 DI1..DI5 + DCM) — NOT ACTIVE and NOT drawn: P02.0x at factory default per the 2026-05-20 parameter export; DO_07 does not exist on the 2080-LC20-20QBB (O-00..O-06); DO_03 collides with PBRunLED in the live I/O map. Bench presence of any such wiring = FIELD VERIFY (OI-18)."
+        ],
+        "notes": [
+          "Q1/MLC = Schneider TeSys CA3KN22BD control relay (2 NO + 2 NC, 24 VDC coil); coil A1(+)/A2(-) driven by O-02 (verified from photo wire_3). NO contacts 13-14/43-44 switch the VFD's 230 V 1φ supply (see E-003); 21-22/31-32 NC unused.",
+          "GS10 control (full-res photo): run/dir/speed = Modbus — top FWD/REV/DI connector is EMPTY, RJ45 landed. Bottom analog/output row (+10V/ACM/AI/AO1/DO1/DOC) is wired — likely speed reference + feedback. Map = OI-22.",
+          "NO contacts 13-14 & 43-44 switch the 230 V 1φ VFD supply (see E-003); coil A1/A2 from O-02. NC 21-22/31-32 unused.",
+          "GS10 run/dir/freq = Modbus — see E-007 (P00.20=1, P00.21=2 per 2026-05-20 parameter export)",
+          "No as-built: O-00/O-01/O-03 from CCW v4.0; O-02 corroborated by live Prog_init v2.1.",
+          "Output bank technology + common feed = FIELD VERIFY (OI-09): WI-001 p.4 says relay dry contacts; ±CM polarity naming suggests DC-fed banks — conflicting evidence, resolve per 2080-IN009 + meter.",
+          "GS10 manual warns against cycling a power-circuit switching device for normal run/stop — emergency situations only (GS10_UM.txt L1754-1757, L1811-1813). This applies to Q1/MLC (energized by O-02, switches the drive's 230 V 1φ supply — see E-003): O-02/Q1 stays energized during normal operation; run/stop is commanded via Modbus (E-007), never by cycling Q1.",
+          "S2 lamp (this sheet, O-03/PBRunLED) and S2's run/rearm pushbutton contact (E-005, I-04) are two elements of the SAME physical device — same cross-reference symmetry as Q1/MLC's coil (this sheet) ↔ power contacts (E-003)."
+        ],
+        "safety": [
+          "Monitored outputs are NOT a safety function.",
+          "E-stop must remove power per NFPA 79.",
+          "Q1/MLC is a CONTROL RELAY (24 VDC coil, driven by O-02) whose 2 NO contacts (13-14, 43-44) switch the drive's 230 V 1φ supply (V6 correction, E-003) — de-energizing O-02 DOES remove Q1's switched supply to the GS10. Q1 is NOT an NFPA-79/EN-60204-1 safety-rated disconnect (small control-relay contacts, not a lockable safety contactor); the e-stop (S0) → O-02 relationship is FIELD VERIFY (OI-26). Do not treat this circuit as the LOTO isolation point — always LOTO at CB1 or upstream.",
+          "O-02 is the sole MLC/Q1 drive-enable coil output — do not reuse it for any other load (MIRA_PLC_WorkInstruction_v3.pdf §3: \"DO_02 is already the MLC drive-enable coil and must never be reused\")."
+        ],
+        "sources": [
+          "CCW_VARIABLES_v4.0.txt",
+          "Prog_init_ConvSimple_v2.1.st",
+          "MIRA_PLC_WorkInstruction_v3.pdf",
+          "GS10_actual_parameters_5.20.26.xlsx",
+          "GS10_UM.txt",
+          "photos review/photos/wire_1..4.jpg (2026-07-11, actual devices)",
+          "full-res photos review/photos/*_full.jpg + crops (2026-07-11); review/PHOTO_EVIDENCE_V5.md"
+        ]
+      },
+      "id": "E-006",
+      "lineage": "output map CCW v4.0 + live Prog_init v2.1; O-02 do-not-reuse (MIRA_PLC_WorkInstruction_v3.pdf §3) — see SAFETY",
+      "note": "Hardwired fallback documented in MIRA-WI-001 v3 §3 Fig 1 (DO_03..DO_07 → GS10 DI1..DI5 + DCM) — NOT ACTIVE and NOT drawn: P02.0x at factory default per 2026-05-20 parameter export; DO_07 does not exist on the 2080-LC20-20QBB (O-00..O-06); DO_03 collides with PBRunLED in the live I/O map. Bench presence of any such wiring = FIELD VERIFY (OI-18). Correction: July-3 target sketch assumed CR relay → GS10 DI — SUPERSEDED by P00.21=2 (RS-485 Modbus) + ContactorQ1 evidence. NOTE (2026-07-11): photo evidence shows the GS10 control-terminal connector IS populated on the bench — control is HYBRID Modbus + hardwired I/O; the specific WI-001 DO_03..DO_07 fallback pattern remains unconfirmed (OI-18) but \"Modbus-only\" is no longer the working assumption — see OI-22.",
+      "scope": "Micro820 outputs O-00..O-06 (banks +CM0/-CM0, +CM1/-CM1): PL1/PL2 pilots, Q1/MLC control-relay coil, S2 lamp; O-04..O-06 spare. GS10 run/dir/freq = Modbus (E-007, P00.21=2); the GS10 control-terminal connector is ALSO populated on the bench (hybrid, not Modbus-only — map = OI-22).",
+      "status": "drafted",
+      "subtitle": "O-00..O-06 · pilots, Q1/MLC control-relay coil, button lamp · GS10 control = HYBRID Modbus + hardwired I/O (E-007; map OI-22)",
+      "title": "PLC outputs (O-00..O-06)"
+    },
+    {
+      "annotations": {
+        "caveat": [
+          "CORRECTED from May-16 draft:  Channel 0 → 2   ·   SGND pin 1/8 → pin 3   ·   8N2 → 8N1.  Do not copy the old values."
+        ],
+        "notes": [
+          "Belden 3105A — shielded twisted pair (485+/485-) + 1 conductor (SGND) + drain",
+          "VERIFIED (solid) = recovered CommsToVFD + Beginner_Verify p48 + Prog_init v2.1; FIELD VERIFY (dashed) = exact PLC chassis ground point; cable P/N if not Belden 3105A.",
+          "Port locations per CommsToVFD (PLC top-edge connector; GS10 front-face RJ45) — WI-001 says bottom-front. Wayfinding only; confirm on unit (FIELD VERIFY).",
+          "GS10 RS-485 RJ45 cable confirmed landed (photo wire_4). The GS10 control connector (FWD/REV/DI/AI/AO1/DO1) is also wired — see OI-22.",
+          "GS10 RS-485 RJ45 confirmed landed (full-res photo). The GS10 top run/DI control connector is EMPTY — no hardwired run/dir; command is Modbus. Bottom analog/output row is wired (OI-22).",
+          "GS10 run/freq source = Modbus: P00.20=1, P00.21=2 (2026-05-20 export; same fact as E-006).",
+          "P09.09 (Response Delay) = 10.0 ms — program flags CRITICAL (default 2.0 ms → ErrorID-55): Prog_init_ConvSimple_v2.1.st:79.",
+          "120 ohm termination (SG+/SG- at GS10 end): often omitted on a <2 m bench run — presence is FIELD VERIFY, not confirmed here."
+        ],
+        "sources": [
+          "full-res photos review/photos/*_full.jpg + crops (2026-07-11); review/PHOTO_EVIDENCE_V5.md"
+        ]
+      },
+      "id": "E-007",
+      "lineage": "recovers MIRA-WI-001 / Conv_Simple_CommsToVFD §2",
+      "model": "model/e007_rs485.yaml",
+      "note": "Values reconciled to bench-verified: Channel 2 (not 0), SGND=pin 3 (not 1/8), 8N1 (not 8N2). Mostly VERIFIED (CommsToVFD + Beginner_Verify p48 + Prog_init v2.1); shield chassis point = field-verify.",
+      "scope": "Modbus-only. PLC1 embedded RS-485 (Ch2) D+/D-/SG/shield <-> VFD1 GS10 RJ45 pin5/4/3. NO FWD/REV/VI/ACM/FA.",
+      "status": "drafted",
+      "title": "RS-485 Modbus (PLC1 Ch2 <-> VFD1 RJ45)"
+    },
+    {
+      "annotations": {
+        "notes": [
+          "X1 (field terminal strip, devices.yaml) is where field devices land before the PLC. Its physical terminal-strip layout and numbering are NOT documented in any recovered source — FIELD VERIFY. This table lists the conductors on each side of it, indexed by their owning sheet — it is not X1's internal terminal map.",
+          "Rows are sorted by sheet, then wire number/label. VERIFIED (black) vs FIELD VERIFY (red) mirrors each conductor's status on its owning sheet — see that sheet for the drawn circuit and evidence."
+        ],
+        "sources": [
+          "model/wires.yaml · model/e007_rs485.yaml (generated — do not hand-edit this table; re-run emit after any model change)"
+        ]
+      },
+      "id": "E-008",
+      "scope": "Full-package wire list, generated from wires.yaml (all sheets) and e007_rs485.yaml. Reference/audit sheet — carries no conductors or devices of its own; X1 (devices.yaml) is an existing field terminal strip whose physical layout is undocumented.",
+      "status": "drafted",
+      "subtitle": "Generated wire list — every conductor across E-003..E-007 (this sheet carries no wires of its own)",
+      "title": "Terminal strip (X1) + wire list"
+    },
+    {
+      "annotations": {
+        "notes": [
+          "RESOLVED items stay listed (grayed, not deleted) for traceability — see the item text for the resolving evidence and date.",
+          "Closing an open item requires evidence — a repo artifact citation or a bench measurement — not a re-assertion (see the model discipline note on E-001)."
+        ],
+        "sources": [
+          "model/open_items.yaml (generated — do not hand-edit this table; re-run emit after any model change)"
+        ]
+      },
+      "id": "E-009",
+      "scope": "Every open item tracked across the print set, generated from open_items.yaml. The docket a technician works during commissioning / field verification; nothing may be drawn as a solid (verified) conductor on any sheet until its open item is closed with evidence.",
+      "status": "drafted",
+      "subtitle": "Generated from open_items.yaml — the formal field-verification docket",
+      "title": "Open items / field verification"
+    }
+  ],
+  "source_ref": "model-sha256:7561b203f61424e9",
+  "terminals": [
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "dir_fwd (Forward selector)",
+      "healthy_state": "1 when FWD selected",
+      "id": "I-00",
+      "note": "",
+      "opc": "_IO_EM_DI_00",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "dir_rev (Reverse selector)",
+      "healthy_state": "1 when REV selected",
+      "id": "I-01",
+      "note": "",
+      "opc": "_IO_EM_DI_01",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "E-stop NC channel",
+      "healthy_state": "1 = healthy (chain closed)",
+      "id": "I-02",
+      "note": "",
+      "opc": "_IO_EM_DI_02",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "E-stop NO channel",
+      "healthy_state": "0 = healthy",
+      "id": "I-03",
+      "note": "",
+      "opc": "_IO_EM_DI_03",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "Run pushbutton (rearm)",
+      "healthy_state": "1 while pressed",
+      "id": "I-04",
+      "note": "",
+      "opc": "_IO_EM_DI_04",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "Photo-eye (beam blocked -> pe_latched)",
+      "healthy_state": "0 = clear, 1 = blocked",
+      "id": "I-05",
+      "note": "CCW_VARIABLES v4.0 labels I-05 'Entry sensor (spare)' — superseded by live Prog_init v2.1 (_IO_EM_DI_05 -> pe_latched photo-eye). See OI-13.",
+      "opc": "_IO_EM_DI_05",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "spare",
+      "healthy_state": "",
+      "id": "I-06",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "spare",
+      "healthy_state": "",
+      "id": "I-07",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "spare",
+      "healthy_state": "",
+      "id": "I-08",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "spare",
+      "healthy_state": "",
+      "id": "I-09",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "spare",
+      "healthy_state": "",
+      "id": "I-10",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "spare",
+      "healthy_state": "",
+      "id": "I-11",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "Digital-input common (return to 0V)",
+      "healthy_state": "",
+      "id": "COM0",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "LightGreen -> PL1 (running)",
+      "healthy_state": "",
+      "id": "O-00",
+      "note": "",
+      "opc": "_IO_EM_DO_00",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "LightRed -> PL2 (fault/e-stop)",
+      "healthy_state": "",
+      "id": "O-01",
+      "note": "",
+      "opc": "_IO_EM_DO_01",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "ContactorQ1 coil (safety power)",
+      "healthy_state": "",
+      "id": "O-02",
+      "note": "",
+      "opc": "_IO_EM_DO_02",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "PBRunLED -> S2 lamp",
+      "healthy_state": "",
+      "id": "O-03",
+      "note": "",
+      "opc": "_IO_EM_DO_03",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "spare",
+      "healthy_state": "",
+      "id": "O-04",
+      "note": "",
+      "opc": "_IO_EM_DO_04",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "spare",
+      "healthy_state": "",
+      "id": "O-05",
+      "note": "",
+      "opc": "_IO_EM_DO_05",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "spare",
+      "healthy_state": "",
+      "id": "O-06",
+      "note": "",
+      "opc": "_IO_EM_DO_06",
+      "source": "",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "output bank 0 feed (O-00..O-03)",
+      "healthy_state": "",
+      "id": "+CM0",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "output bank 0 return",
+      "healthy_state": "",
+      "id": "-CM0",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "output bank 1 feed (O-04..O-06, spare)",
+      "healthy_state": "",
+      "id": "+CM1",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "PLC1",
+      "function": "output bank 1 return",
+      "healthy_state": "",
+      "id": "-CM1",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "S0",
+      "function": "NC channel out -> I-02",
+      "healthy_state": "",
+      "id": "11-12",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "S0",
+      "function": "NO channel out -> I-03",
+      "healthy_state": "",
+      "id": "23-24",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "SS1",
+      "function": "FWD contact out -> I-00",
+      "healthy_state": "",
+      "id": "FWD",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "SS1",
+      "function": "REV contact out -> I-01",
+      "healthy_state": "",
+      "id": "REV",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "SS1",
+      "function": "common fed from +24V",
+      "healthy_state": "",
+      "id": "COM",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "S2",
+      "function": "NO contact out -> I-04",
+      "healthy_state": "",
+      "id": "3-4",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "S2",
+      "function": "lamp terminal (proposed)",
+      "healthy_state": "",
+      "id": "X1",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "S2",
+      "function": "lamp terminal (proposed)",
+      "healthy_state": "",
+      "id": "X2",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "B1",
+      "function": "+24V (brown)",
+      "healthy_state": "",
+      "id": "BN",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "B1",
+      "function": "0V (blue)",
+      "healthy_state": "",
+      "id": "BU",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "B1",
+      "function": "output (black) -> I-05",
+      "healthy_state": "",
+      "id": "BK",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "PS1",
+      "function": "+24 VDC feed",
+      "healthy_state": "",
+      "id": "+24V",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "PS1",
+      "function": "0V return",
+      "healthy_state": "",
+      "id": "0V",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_2.jpg"
+        }
+      ],
+      "device": "PS1",
+      "function": "DC output + (adjustable, +V ADJ pot)",
+      "healthy_state": "",
+      "id": "+V",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_2.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_2.jpg"
+        }
+      ],
+      "device": "PS1",
+      "function": "DC output -",
+      "healthy_state": "",
+      "id": "-V",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_2.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_2.jpg"
+        }
+      ],
+      "device": "PS1",
+      "function": "DC-OK relay/LED output",
+      "healthy_state": "",
+      "id": "DC-OK",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_2.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_2.jpg"
+        }
+      ],
+      "device": "PS1",
+      "function": "AC line in",
+      "healthy_state": "",
+      "id": "L",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_2.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_2.jpg"
+        }
+      ],
+      "device": "PS1",
+      "function": "AC neutral in",
+      "healthy_state": "",
+      "id": "N",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_2.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_2.jpg"
+        }
+      ],
+      "device": "PS1",
+      "function": "AC protective earth in",
+      "healthy_state": "",
+      "id": "PE",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_2.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "DB1",
+      "function": "+24 VDC distribution rail (proposed id; fed from PS1.+V)",
+      "healthy_state": "",
+      "id": "+24V-bus",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "DB1",
+      "function": "0V distribution rail (proposed id; fed from PS1.-V)",
+      "healthy_state": "",
+      "id": "0V-bus",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [
+        {
+          "doc": "GS10_UM.txt",
+          "locator": "L1971-1973"
+        }
+      ],
+      "device": "VFD1",
+      "function": "input power L1",
+      "healthy_state": "",
+      "id": "R/L1",
+      "note": "",
+      "opc": "",
+      "source": "GS10_UM.txt L1971/L1973",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "doc": "GS10_UM.txt",
+          "locator": "L1971-1973"
+        }
+      ],
+      "device": "VFD1",
+      "function": "input power L2",
+      "healthy_state": "",
+      "id": "S/L2",
+      "note": "",
+      "opc": "",
+      "source": "GS10_UM.txt L1971/L1973",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "doc": "GS10_UM.txt",
+          "locator": "L1973"
+        }
+      ],
+      "device": "VFD1",
+      "function": "input power L3 (3-phase models only)",
+      "healthy_state": "",
+      "id": "T/L3",
+      "note": "unused on single-phase 230 V input",
+      "opc": "",
+      "source": "GS10_UM.txt L1973",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "doc": "GS10_UM.txt",
+          "locator": "L1975"
+        }
+      ],
+      "device": "VFD1",
+      "function": "motor output T1",
+      "healthy_state": "",
+      "id": "U/T1",
+      "note": "",
+      "opc": "",
+      "source": "GS10_UM.txt L1975 (prose form T1: L1773-1776)",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "doc": "GS10_UM.txt",
+          "locator": "L1975"
+        }
+      ],
+      "device": "VFD1",
+      "function": "motor output T2",
+      "healthy_state": "",
+      "id": "V/T2",
+      "note": "",
+      "opc": "",
+      "source": "GS10_UM.txt L1975",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "doc": "GS10_UM.txt",
+          "locator": "L1975"
+        }
+      ],
+      "device": "VFD1",
+      "function": "motor output T3",
+      "healthy_state": "",
+      "id": "W/T3",
+      "note": "",
+      "opc": "",
+      "source": "GS10_UM.txt L1975",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "doc": "GS10_UM.txt",
+          "locator": "L1824-1826"
+        }
+      ],
+      "device": "VFD1",
+      "function": "DC reactor (factory jumper +1/+2 — leave unless reactor installed)",
+      "healthy_state": "",
+      "id": "+1",
+      "note": "",
+      "opc": "",
+      "source": "GS10_UM.txt L1824-1826, L1977-1978",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "doc": "GS10_UM.txt",
+          "locator": "L1977-1978"
+        }
+      ],
+      "device": "VFD1",
+      "function": "DC reactor jumper partner",
+      "healthy_state": "",
+      "id": "+2",
+      "note": "",
+      "opc": "",
+      "source": "GS10_UM.txt L1977-1978",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "doc": "GS10_UM.txt",
+          "locator": "L1842"
+        }
+      ],
+      "device": "VFD1",
+      "function": "brake resistor (optional; else OPEN)",
+      "healthy_state": "",
+      "id": "B1",
+      "note": "",
+      "opc": "",
+      "source": "GS10_UM.txt L1842, L1980",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "doc": "GS10_UM.txt",
+          "locator": "L1980"
+        }
+      ],
+      "device": "VFD1",
+      "function": "brake resistor partner (else OPEN)",
+      "healthy_state": "",
+      "id": "B2",
+      "note": "",
+      "opc": "",
+      "source": "GS10_UM.txt L1980",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "doc": "GS10_UM.txt",
+          "locator": "L1982"
+        }
+      ],
+      "device": "VFD1",
+      "function": "common DC bus (leave open; absent on 120VAC models)",
+      "healthy_state": "",
+      "id": "DC+",
+      "note": "",
+      "opc": "",
+      "source": "GS10_UM.txt L1982, L1986",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "doc": "GS10_UM.txt",
+          "locator": "L1982"
+        }
+      ],
+      "device": "VFD1",
+      "function": "common DC bus (leave open)",
+      "healthy_state": "",
+      "id": "DC-",
+      "note": "",
+      "opc": "",
+      "source": "GS10_UM.txt L1982, L1844",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "doc": "GS10_UM.txt",
+          "locator": "L1984"
+        }
+      ],
+      "device": "VFD1",
+      "function": "drive ground terminal (manual table row L1984; silk-screen symbol — id GND is OUR label)",
+      "healthy_state": "",
+      "id": "GND",
+      "note": "",
+      "opc": "",
+      "source": "GS10_UM.txt L1984, L1760-1762",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_4.jpg"
+        }
+      ],
+      "device": "VFD1",
+      "function": "forward run command input",
+      "healthy_state": "",
+      "id": "FWD",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_4.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_4.jpg"
+        }
+      ],
+      "device": "VFD1",
+      "function": "reverse run command input",
+      "healthy_state": "",
+      "id": "REV",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_4.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_4.jpg"
+        }
+      ],
+      "device": "VFD1",
+      "function": "digital input 3 (multi-function)",
+      "healthy_state": "",
+      "id": "DI3",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_4.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_4.jpg"
+        }
+      ],
+      "device": "VFD1",
+      "function": "digital input 4 (multi-function)",
+      "healthy_state": "",
+      "id": "DI4",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_4.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_4.jpg"
+        }
+      ],
+      "device": "VFD1",
+      "function": "digital input 5 (multi-function)",
+      "healthy_state": "",
+      "id": "DI5",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_4.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_4.jpg"
+        }
+      ],
+      "device": "VFD1",
+      "function": "internal +24VDC supply for digital inputs",
+      "healthy_state": "",
+      "id": "+24V",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_4.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_4.jpg"
+        }
+      ],
+      "device": "VFD1",
+      "function": "digital input common",
+      "healthy_state": "",
+      "id": "DCM",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_4.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_4.jpg"
+        }
+      ],
+      "device": "VFD1",
+      "function": "internal +10VDC reference for analog input",
+      "healthy_state": "",
+      "id": "+10V",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_4.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_4.jpg"
+        }
+      ],
+      "device": "VFD1",
+      "function": "analog common",
+      "healthy_state": "",
+      "id": "ACM",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_4.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_4.jpg"
+        }
+      ],
+      "device": "VFD1",
+      "function": "analog input (speed reference)",
+      "healthy_state": "",
+      "id": "AI",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_4.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_4.jpg"
+        }
+      ],
+      "device": "VFD1",
+      "function": "analog output 1 (monitor)",
+      "healthy_state": "",
+      "id": "AO1",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_4.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_4.jpg"
+        }
+      ],
+      "device": "VFD1",
+      "function": "digital output 1 (open-collector)",
+      "healthy_state": "",
+      "id": "DO1",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_4.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_4.jpg"
+        }
+      ],
+      "device": "VFD1",
+      "function": "digital output 1 common",
+      "healthy_state": "",
+      "id": "DOC",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_4.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_4.jpg"
+        }
+      ],
+      "device": "VFD1",
+      "function": "control-terminal-strip ground",
+      "healthy_state": "",
+      "id": "PE",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_4.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "M1",
+      "function": "motor lead 1",
+      "healthy_state": "",
+      "id": "T1",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "M1",
+      "function": "motor lead 2",
+      "healthy_state": "",
+      "id": "T2",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "M1",
+      "function": "motor lead 3 (swap any two to reverse — GS10_UM.txt L1773-1776)",
+      "healthy_state": "",
+      "id": "T3",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "M1",
+      "function": "motor frame ground",
+      "healthy_state": "",
+      "id": "PE",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_3.jpg"
+        }
+      ],
+      "device": "Q1",
+      "function": "coil + (from PLC1 O-02, E-006)",
+      "healthy_state": "",
+      "id": "A1",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_3.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_3.jpg"
+        }
+      ],
+      "device": "Q1",
+      "function": "coil - (to output return)",
+      "healthy_state": "",
+      "id": "A2",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_3.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_3.jpg"
+        }
+      ],
+      "device": "Q1",
+      "function": "aux contact 1 — NO (destination FIELD VERIFY, OI-26)",
+      "healthy_state": "",
+      "id": "13",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_3.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_3.jpg"
+        }
+      ],
+      "device": "Q1",
+      "function": "aux contact 1 — NO (destination FIELD VERIFY, OI-26)",
+      "healthy_state": "",
+      "id": "14",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_3.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_3.jpg"
+        }
+      ],
+      "device": "Q1",
+      "function": "aux contact 2 — NC (destination FIELD VERIFY, OI-26)",
+      "healthy_state": "",
+      "id": "21",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_3.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_3.jpg"
+        }
+      ],
+      "device": "Q1",
+      "function": "aux contact 2 — NC (destination FIELD VERIFY, OI-26)",
+      "healthy_state": "",
+      "id": "22",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_3.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_3.jpg"
+        }
+      ],
+      "device": "Q1",
+      "function": "aux contact 3 — NC (destination FIELD VERIFY, OI-26)",
+      "healthy_state": "",
+      "id": "31",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_3.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_3.jpg"
+        }
+      ],
+      "device": "Q1",
+      "function": "aux contact 3 — NC (destination FIELD VERIFY, OI-26)",
+      "healthy_state": "",
+      "id": "32",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_3.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_3.jpg"
+        }
+      ],
+      "device": "Q1",
+      "function": "aux contact 4 — NO (destination FIELD VERIFY, OI-26)",
+      "healthy_state": "",
+      "id": "43",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_3.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [
+        {
+          "date": null,
+          "photo": "review/photos/wire_3.jpg"
+        }
+      ],
+      "device": "Q1",
+      "function": "aux contact 4 — NO (destination FIELD VERIFY, OI-26)",
+      "healthy_state": "",
+      "id": "44",
+      "note": "",
+      "opc": "",
+      "source": "photo review/photos/wire_3.jpg",
+      "status": "verified"
+    },
+    {
+      "citations": [],
+      "device": "CB1",
+      "function": "line in L1 (proposed)",
+      "healthy_state": "",
+      "id": "1",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "CB1",
+      "function": "load out L1 (proposed)",
+      "healthy_state": "",
+      "id": "2",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "CB1",
+      "function": "line in L2 (proposed)",
+      "healthy_state": "",
+      "id": "3",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "CB1",
+      "function": "load out L2 (proposed)",
+      "healthy_state": "",
+      "id": "4",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "CB1",
+      "function": "line in L3 (proposed, if 3φ)",
+      "healthy_state": "",
+      "id": "5",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "CB1",
+      "function": "load out L3 (proposed, if 3φ)",
+      "healthy_state": "",
+      "id": "6",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "PL1",
+      "function": "pilot light terminal (proposed)",
+      "healthy_state": "",
+      "id": "X1",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "PL1",
+      "function": "pilot light terminal (proposed)",
+      "healthy_state": "",
+      "id": "X2",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "PL2",
+      "function": "pilot light terminal (proposed)",
+      "healthy_state": "",
+      "id": "X1",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    },
+    {
+      "citations": [],
+      "device": "PL2",
+      "function": "pilot light terminal (proposed)",
+      "healthy_state": "",
+      "id": "X2",
+      "note": "",
+      "opc": "",
+      "source": "",
+      "status": "field_verify"
+    }
+  ],
+  "wires": [
+    {
+      "citations": [],
+      "from": "PS1.+24V",
+      "proposed_number": "W24",
+      "sheet": "E-005",
+      "signal": "+24 VDC",
+      "status": "field_verify",
+      "to": "+24V rail (this sheet)",
+      "type": "control_24vdc"
+    },
+    {
+      "citations": [],
+      "from": "SS1.FWD",
+      "proposed_number": "W500",
+      "sheet": "E-005",
+      "signal": "dir_fwd",
+      "status": "field_verify",
+      "to": "PLC1.I-00",
+      "type": "input_24vdc"
+    },
+    {
+      "citations": [],
+      "from": "SS1.REV",
+      "proposed_number": "W501",
+      "sheet": "E-005",
+      "signal": "dir_rev",
+      "status": "field_verify",
+      "to": "PLC1.I-01",
+      "type": "input_24vdc"
+    },
+    {
+      "citations": [],
+      "from": "S0.11-12",
+      "proposed_number": "W502",
+      "sheet": "E-005",
+      "signal": "e_stop_nc (healthy=1)",
+      "status": "field_verify",
+      "to": "PLC1.I-02",
+      "type": "input_24vdc"
+    },
+    {
+      "citations": [],
+      "from": "S0.23-24",
+      "proposed_number": "W503",
+      "sheet": "E-005",
+      "signal": "e_stop_no (healthy=0)",
+      "status": "field_verify",
+      "to": "PLC1.I-03",
+      "type": "input_24vdc"
+    },
+    {
+      "citations": [],
+      "from": "S2.3-4",
+      "proposed_number": "W504",
+      "sheet": "E-005",
+      "signal": "run_pb",
+      "status": "field_verify",
+      "to": "PLC1.I-04",
+      "type": "input_24vdc"
+    },
+    {
+      "citations": [],
+      "from": "B1.BK",
+      "proposed_number": "W505",
+      "sheet": "E-005",
+      "signal": "photo_eye",
+      "status": "field_verify",
+      "to": "PLC1.I-05",
+      "type": "input_24vdc"
+    },
+    {
+      "citations": [],
+      "from": "PLC1.COM0",
+      "proposed_number": "W0V",
+      "sheet": "E-005",
+      "signal": "0V / input common",
+      "status": "field_verify",
+      "to": "PS1.0V",
+      "type": "control_0v"
+    },
+    {
+      "citations": [],
+      "from": "PS1.+24V",
+      "proposed_number": "W600",
+      "sheet": "E-006",
+      "signal": "output bank 0 feed",
+      "status": "field_verify",
+      "to": "PLC1.+CM0",
+      "type": "power_24vdc"
+    },
+    {
+      "citations": [],
+      "from": "PLC1.O-00",
+      "proposed_number": "W601",
+      "sheet": "E-006",
+      "signal": "LightGreen (run light)",
+      "status": "field_verify",
+      "to": "PL1.X1",
+      "type": "control_output"
+    },
+    {
+      "citations": [],
+      "from": "PLC1.O-01",
+      "proposed_number": "W602",
+      "sheet": "E-006",
+      "signal": "LightRed (fault/e-stop light)",
+      "status": "field_verify",
+      "to": "PL2.X1",
+      "type": "control_output"
+    },
+    {
+      "citations": [],
+      "from": "PLC1.O-02",
+      "proposed_number": "W603",
+      "sheet": "E-006",
+      "signal": "ContactorQ1 coil (safety power)",
+      "status": "field_verify",
+      "to": "Q1.A1",
+      "type": "control_output"
+    },
+    {
+      "citations": [],
+      "from": "PLC1.O-03",
+      "proposed_number": "W604",
+      "sheet": "E-006",
+      "signal": "PBRunLED (run button lamp)",
+      "status": "field_verify",
+      "to": "S2.X1",
+      "type": "control_output"
+    },
+    {
+      "citations": [],
+      "from": "PL1.X2",
+      "proposed_number": "W605",
+      "sheet": "E-006",
+      "signal": "run light return",
+      "status": "field_verify",
+      "to": "output return rail (E-006)",
+      "type": "control_return"
+    },
+    {
+      "citations": [],
+      "from": "PL2.X2",
+      "proposed_number": "W606",
+      "sheet": "E-006",
+      "signal": "fault light return",
+      "status": "field_verify",
+      "to": "output return rail (E-006)",
+      "type": "control_return"
+    },
+    {
+      "citations": [],
+      "from": "Q1.A2",
+      "proposed_number": "W607",
+      "sheet": "E-006",
+      "signal": "contactor coil return",
+      "status": "field_verify",
+      "to": "output return rail (E-006)",
+      "type": "control_return"
+    },
+    {
+      "citations": [],
+      "from": "S2.X2",
+      "proposed_number": "W608",
+      "sheet": "E-006",
+      "signal": "PB lamp return",
+      "status": "field_verify",
+      "to": "output return rail (E-006)",
+      "type": "control_return"
+    },
+    {
+      "citations": [],
+      "from": "PLC1.-CM0",
+      "proposed_number": "W609",
+      "sheet": "E-006",
+      "signal": "output bank 0 return",
+      "status": "field_verify",
+      "to": "PS1.0V",
+      "type": "power_0v"
+    },
+    {
+      "citations": [],
+      "from": "SUPPLY (source — see E-002)",
+      "proposed_number": "W300",
+      "sheet": "E-003",
+      "signal": "L1 230V 1ph supply",
+      "status": "field_verify",
+      "to": "CB1.1",
+      "type": "power_line"
+    },
+    {
+      "citations": [],
+      "from": "SUPPLY (source — see E-002)",
+      "proposed_number": "W301",
+      "sheet": "E-003",
+      "signal": "L2 230V 1ph supply",
+      "status": "field_verify",
+      "to": "CB1.3",
+      "type": "power_line"
+    },
+    {
+      "citations": [],
+      "from": "CB1.2",
+      "proposed_number": "W303",
+      "sheet": "E-003",
+      "signal": "L1 protected -> MLC",
+      "status": "field_verify",
+      "to": "Q1.13",
+      "type": "power_line"
+    },
+    {
+      "citations": [],
+      "from": "CB1.4",
+      "proposed_number": "W304",
+      "sheet": "E-003",
+      "signal": "L2 protected -> MLC",
+      "status": "field_verify",
+      "to": "Q1.43",
+      "type": "power_line"
+    },
+    {
+      "citations": [],
+      "from": "Q1.14",
+      "proposed_number": "W305",
+      "sheet": "E-003",
+      "signal": "L1 switched -> drive",
+      "status": "field_verify",
+      "to": "VFD1.R/L1",
+      "type": "power_line"
+    },
+    {
+      "citations": [],
+      "from": "Q1.44",
+      "proposed_number": "W306",
+      "sheet": "E-003",
+      "signal": "L2 switched -> drive",
+      "status": "field_verify",
+      "to": "VFD1.S/L2",
+      "type": "power_line"
+    },
+    {
+      "citations": [],
+      "from": "VFD1.U/T1",
+      "proposed_number": "W310",
+      "sheet": "E-003",
+      "signal": "motor phase U",
+      "status": "field_verify",
+      "to": "M1.T1",
+      "type": "motor_lead"
+    },
+    {
+      "citations": [],
+      "from": "VFD1.V/T2",
+      "proposed_number": "W311",
+      "sheet": "E-003",
+      "signal": "motor phase V",
+      "status": "field_verify",
+      "to": "M1.T2",
+      "type": "motor_lead"
+    },
+    {
+      "citations": [],
+      "from": "VFD1.W/T3",
+      "proposed_number": "W312",
+      "sheet": "E-003",
+      "signal": "motor phase W",
+      "status": "field_verify",
+      "to": "M1.T3",
+      "type": "motor_lead"
+    },
+    {
+      "citations": [],
+      "from": "VFD1.GND",
+      "proposed_number": "W315",
+      "sheet": "E-003",
+      "signal": "drive PE (≤0.1Ω)",
+      "status": "field_verify",
+      "to": "PE bus",
+      "type": "ground"
+    },
+    {
+      "citations": [],
+      "from": "M1.PE",
+      "proposed_number": "W316",
+      "sheet": "E-003",
+      "signal": "motor frame PE",
+      "status": "field_verify",
+      "to": "PE bus",
+      "type": "ground"
+    },
+    {
+      "citations": [],
+      "from": "PE bus",
+      "proposed_number": "W317",
+      "sheet": "E-003",
+      "signal": "PE to source",
+      "status": "field_verify",
+      "to": "SUPPLY (source — see E-002)",
+      "type": "ground"
+    },
+    {
+      "citations": [],
+      "from": "230 V 1φ (E-002)",
+      "proposed_number": "W400",
+      "sheet": "E-004",
+      "signal": "AC line in",
+      "status": "field_verify",
+      "to": "PS1.L",
+      "type": "power_line"
+    },
+    {
+      "citations": [],
+      "from": "230 V 1φ (E-002)",
+      "proposed_number": "W401",
+      "sheet": "E-004",
+      "signal": "AC neutral in",
+      "status": "field_verify",
+      "to": "PS1.N",
+      "type": "power_line"
+    },
+    {
+      "citations": [],
+      "from": "PS1.+V",
+      "proposed_number": "W402",
+      "sheet": "E-004",
+      "signal": "+24 VDC distribution feed",
+      "status": "field_verify",
+      "to": "DB1.+24V-bus",
+      "type": "control_24vdc"
+    },
+    {
+      "citations": [],
+      "from": "PS1.-V",
+      "proposed_number": "W403",
+      "sheet": "E-004",
+      "signal": "0V distribution return",
+      "status": "field_verify",
+      "to": "DB1.0V-bus",
+      "type": "control_0v"
+    },
+    {
+      "citations": [],
+      "from": "DB1.+24V-bus",
+      "proposed_number": "W404",
+      "sheet": "E-004",
+      "signal": "+24V to E-005/E-006 loads",
+      "status": "field_verify",
+      "to": "control loads (E-005/E-006)",
+      "type": "control_24vdc"
+    },
+    {
+      "citations": [],
+      "from": "DB1.0V-bus",
+      "proposed_number": "W405",
+      "sheet": "E-004",
+      "signal": "0V to E-005/E-006 loads",
+      "status": "field_verify",
+      "to": "control loads (E-005/E-006)",
+      "type": "control_0v"
+    }
+  ]
+}
