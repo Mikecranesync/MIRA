@@ -42,6 +42,26 @@ The docket of everything NOT yet verified. Every wire with status ≠ verified, 
 - **W317**: PE bus → SUPPLY (source — see E-002)
   - Verify: confirm conductor + endpoints + wire number
 
+## E-004 — Wires to Verify
+
+- **W400**: 230 V 1φ (E-002) → PS1.L
+  - Verify: confirm conductor + endpoints + wire number
+
+- **W401**: 230 V 1φ (E-002) → PS1.N
+  - Verify: confirm conductor + endpoints + wire number
+
+- **W402**: PS1.+V → DB1.+24V-bus
+  - Verify: confirm conductor + endpoints + wire number
+
+- **W403**: PS1.-V → DB1.0V-bus
+  - Verify: confirm conductor + endpoints + wire number
+
+- **W404**: DB1.+24V-bus → control loads (E-005/E-006)
+  - Verify: confirm conductor + endpoints + wire number
+
+- **W405**: DB1.0V-bus → control loads (E-005/E-006)
+  - Verify: confirm conductor + endpoints + wire number
+
 ## E-005 — Wires to Verify
 
 - **W0V**: PLC1.COM0 → PS1.0V
@@ -126,6 +146,16 @@ The docket of everything NOT yet verified. Every wire with status ≠ verified, 
 - **M1.T2**: motor lead 2
 
 - **M1.T3**: motor lead 3 (swap any two to reverse — GS10_UM.txt L1773-1776)
+
+## E-004 — Terminals to Verify
+
+- **DB1.+24V-bus**: +24 VDC distribution rail (proposed id; fed from PS1.+V)
+
+- **DB1.0V-bus**: 0V distribution rail (proposed id; fed from PS1.-V)
+
+- **PS1.+24V**: +24 VDC feed
+
+- **PS1.0V**: 0V return
 
 ## E-005 — Terminals to Verify
 
@@ -237,9 +267,9 @@ The docket of everything NOT yet verified. Every wire with status ≠ verified, 
 | OI-24 | panel | Device labeled "PMC 192.x" observed on the panel ( | Identify the device (network device / meter?) and  |
 | OI-25 | E-004 | DC +/- distribution block: which color (blue vs wh | Trace/meter the distribution block conductors agai |
 | OI-26 | E-006 | MLC (Q1) aux contacts (full-res photo): coil A1/A2 | Trace each aux contact to its destination in the c |
-| OI-27 | E-003 | GS10 output voltage: technician reported 480 V out | Read the motor nameplate voltage; read the GS10 ke |
+| OI-27 | E-003 | RESOLVED (2026-07-11): motor is 230 V (technician- | Closed by technician confirmation. Exact GS10 mode |
 
 ### Summary
-- Total field-verify wires: 31
-- Total field-verify terminals: 32
+- Total field-verify wires: 37
+- Total field-verify terminals: 34
 - Total open items: 27

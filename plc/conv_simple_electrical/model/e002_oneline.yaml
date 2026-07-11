@@ -1,0 +1,93 @@
+# E-002 power one-line — source of truth for the single-line summary sheet.
+# Renderer draws a compact single-line: one line per circuit, device symbols,
+# conductor-count tick marks (from n_conductors, a machine field so the
+# renderer never parses the human-readable `conductors` string). NO
+# per-conductor wire numbers on this sheet (see wires.yaml `convention` on
+# E-001) — E-003 (VFD power) and E-004 (24 VDC control power) carry the
+# numbered, evidence-cited detail this sheet only summarizes.
+sheet: E-002
+title: Power one-line
+
+convention: >
+  Each tick mark across a run = one conductor (e.g. 2 ticks = 2-wire single-phase;
+  3 ticks = 3-wire three-phase). Solid = verified, dashed = FIELD VERIFY, same as
+  every other sheet (see the line-style legend). No per-conductor wire numbers on
+  this sheet — see wires.yaml `convention` (E-001) for the numbered detail carried
+  on E-003 / E-004.
+
+nodes:
+  - id: SOURCE
+    label: "230 V 1φ SUPPLY"
+    kind: source
+    evidence: field_verify
+    note: >
+      Bench supply voltage/phase count is not a nameplate/panel read — it is a
+      technician field correction (2026-07-11, review/PHOTO_EVIDENCE_V6.md)
+      reversing the earlier assumed 3-phase supply.
+  - id: CB1
+    label: "CB1 (2-pole)"
+    kind: breaker
+    evidence: field_verify
+    note: "Existence/type/rating unconfirmed on the bench (OI-15)."
+  - id: Q1
+    label: "Q1/MLC supply switch"
+    kind: control_relay
+    evidence: verified
+    note: >
+      Schneider TeSys CA3KN22BD control relay used as the single-phase
+      drive-supply switch (2 NO contacts) — device + coil verified from
+      photo; see E-003 for the power-contact detail and E-006 for the coil.
+  - id: VFD1
+    label: "VFD1 (GS10)"
+    kind: vfd
+    evidence: verified
+  - id: M1
+    label: "M1"
+    kind: motor
+    evidence: field_verify
+  - id: PS1
+    label: "PS1 — 24 VDC control (E-004)"
+    kind: power_supply
+    evidence: verified
+
+segments:
+  - from: SOURCE
+    to: CB1
+    label: "230 V 1φ supply"
+    conductors: "1φ, 2W"
+    n_conductors: 2
+    evidence: field_verify
+    source: "review/PHOTO_EVIDENCE_V6.md (technician field correction 2026-07-11)"
+  - from: CB1
+    to: Q1
+    label: "protected 230 V 1φ"
+    conductors: "1φ, 2W"
+    n_conductors: 2
+    evidence: field_verify
+    source: "review/PHOTO_EVIDENCE_V6.md"
+  - from: Q1
+    to: VFD1
+    label: "switched 230 V 1φ (R/L1, S/L2)"
+    conductors: "1φ, 2W"
+    n_conductors: 2
+    evidence: field_verify
+    source: "plc/GS10_UM.txt (terminals L1971-1986); review/PHOTO_EVIDENCE_V6.md"
+  - from: VFD1
+    to: M1
+    label: "230 V 3φ motor output (U/T1, V/T2, W/T3)"
+    conductors: "3φ, 3W"
+    n_conductors: 3
+    evidence: field_verify
+    source: "plc/GS10_UM.txt (terminals L1971-1986); motor voltage technician-confirmed 2026-07-11 (OI-27 resolved)"
+  - from: SOURCE
+    to: PS1
+    label: "branch tap — 24 VDC control supply"
+    conductors: "1φ, 2W+PE"
+    n_conductors: 3
+    evidence: field_verify
+    source: "photo review/photos/wire_2.jpg (2026-07-11 — Mean Well nameplate); see E-004"
+
+sources:
+  - "review/PHOTO_EVIDENCE_V6.md (technician field correction 2026-07-11 — single-phase topology, OI-21/OI-27 resolved)"
+  - "plc/GS10_UM.txt (terminals L1971-1986)"
+  - "photo review/photos/wire_2.jpg (2026-07-11 — PS1 nameplate)"

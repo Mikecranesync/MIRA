@@ -70,6 +70,18 @@ devices:
     source: photo review/photos/wire_2.jpg (2026-07-11 — Mean Well nameplate read directly); caption "MW 120 to 24 volt DC power supply"
     note: Exact model number + branch fusing + which distribution circuits it feeds = FIELD VERIFY (OI-25).
 
+  - tag: DB1
+    type: distribution_block
+    role: >
+      24 VDC +/- distribution block (push-in, WAGO-style, 2-level), fed from PS1's
+      +V/-V output — blue = one polarity, white = the other (caption); which color
+      is +24V vs 0V = FIELD VERIFY (OI-25).
+    evidence: verified   # device exists per photo; internal circuit count/polarity FIELD VERIFY
+    source: photo review/photos/dc_block_full.jpg + wire_1.jpg (2026-07-11 — push-in distribution block read directly)
+    note: >
+      A bare-copper jumper bridges the top-left terminals in the photo, a red conductor
+      feeds in top; exact circuit count and any branch fusing = FIELD VERIFY (OI-25).
+
   - tag: CB1
     type: circuit_breaker
     role: 2-pole branch breaker on the 230 V single-phase supply (existence/type/rating unconfirmed)

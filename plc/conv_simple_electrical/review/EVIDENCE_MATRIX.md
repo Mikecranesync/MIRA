@@ -25,6 +25,23 @@
 - Field verify: 12
 - Proposed: 0
 
+## E-004
+
+| Wire | From | To | Signal | Type | Status | Source | Notes | Rendered | Tagged |
+|------|------|----|---------|---------|----|--------|-------|----------|--------|
+| W400 | 230 V 1φ (E-002) | PS1.L | AC line in | power_line | field_verify |  |  | dashed | yes |
+| W401 | 230 V 1φ (E-002) | PS1.N | AC neutral in | power_line | field_verify |  |  | dashed | yes |
+| W402 | PS1.+V | DB1.+24V-bus | +24 VDC distribution feed | control_24vdc | field_verify |  |  | dashed | yes |
+| W403 | PS1.-V | DB1.0V-bus | 0V distribution return | control_0v | field_verify |  |  | dashed | yes |
+| W404 | DB1.+24V-bus | control loads (E-005/E-006) | +24V to E-005/E-006 loads | control_24vdc | field_verify |  |  | dashed | yes |
+| W405 | DB1.0V-bus | control loads (E-005/E-006) | 0V to E-005/E-006 loads | control_0v | field_verify |  |  | dashed | yes |
+
+### SUMMARY
+- Total wires: 6
+- Verified: 0
+- Field verify: 6
+- Proposed: 0
+
 ## E-005
 
 | Wire | From | To | Signal | Type | Status | Source | Notes | Rendered | Tagged |

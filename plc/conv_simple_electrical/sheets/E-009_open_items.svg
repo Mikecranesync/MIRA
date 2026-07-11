@@ -1,0 +1,274 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040"><rect width="1600" height="1040" fill="#FFFFFF"/><rect x="30.0" y="30.0" width="1540.0" height="980.0" fill="none" stroke="#111111" stroke-width="1.8"/>
+<rect x="40.0" y="40.0" width="1520.0" height="960.0" fill="none" stroke="#666666" stroke-width="0.8"/>
+<line x1="40.0" y1="30.0" x2="40.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="40.0" y1="1000.0" x2="40.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="135.0" y="36.4" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">1</text>
+<text x="135.0" y="1006.4" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">1</text>
+<line x1="230.0" y1="30.0" x2="230.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="230.0" y1="1000.0" x2="230.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="325.0" y="36.4" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">2</text>
+<text x="325.0" y="1006.4" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">2</text>
+<line x1="420.0" y1="30.0" x2="420.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="420.0" y1="1000.0" x2="420.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="515.0" y="36.4" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">3</text>
+<text x="515.0" y="1006.4" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">3</text>
+<line x1="610.0" y1="30.0" x2="610.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="610.0" y1="1000.0" x2="610.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="705.0" y="36.4" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">4</text>
+<text x="705.0" y="1006.4" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">4</text>
+<line x1="800.0" y1="30.0" x2="800.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="800.0" y1="1000.0" x2="800.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="895.0" y="36.4" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">5</text>
+<text x="895.0" y="1006.4" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">5</text>
+<line x1="990.0" y1="30.0" x2="990.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="990.0" y1="1000.0" x2="990.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="1085.0" y="36.4" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">6</text>
+<text x="1085.0" y="1006.4" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">6</text>
+<line x1="1180.0" y1="30.0" x2="1180.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="1180.0" y1="1000.0" x2="1180.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="1275.0" y="36.4" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">7</text>
+<text x="1275.0" y="1006.4" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">7</text>
+<line x1="1370.0" y1="30.0" x2="1370.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="1370.0" y1="1000.0" x2="1370.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="1465.0" y="36.4" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">8</text>
+<text x="1465.0" y="1006.4" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">8</text>
+<line x1="1560.0" y1="30.0" x2="1560.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="1560.0" y1="1000.0" x2="1560.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="35.0" y="160.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">A</text>
+<text x="1565.0" y="160.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">A</text>
+<text x="35.0" y="400.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">B</text>
+<text x="1565.0" y="400.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">B</text>
+<text x="35.0" y="640.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">C</text>
+<text x="1565.0" y="640.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">C</text>
+<text x="35.0" y="880.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">D</text>
+<text x="1565.0" y="880.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">D</text>
+<text x="70.0" y="78.0" font-size="22" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">E-009  OPEN ITEMS / FIELD VERIFICATION</text>
+<text x="70.0" y="100.0" font-size="12" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Conv_Simple / CV-101 (garage conveyor)  —  Generated from open_items.yaml — the formal field-verification docket</text>
+<line x1="60.0" y1="112.0" x2="1180.0" y2="112.0" stroke="#BBBBBB" stroke-width="1" stroke-linecap="butt"/>
+<text x="70.0" y="172.0" font-size="11" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">OPEN ITEMS (generated)</text>
+<text x="70.0" y="186.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">27 open items; 2 resolved</text>
+<rect x="70.0" y="204.0" width="690.0" height="13.5" fill="#EEEEEE" stroke="#111111" stroke-width="1.0"/>
+<text x="75.0" y="212.5" font-size="7.3" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">OI</text>
+<text x="115.0" y="212.5" font-size="7.3" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Sheet</text>
+<text x="205.0" y="212.5" font-size="7.3" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Item</text>
+<text x="485.0" y="212.5" font-size="7.3" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Verify</text>
+<rect x="70.0" y="217.5" width="690.0" height="27.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="226.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-01</text>
+<text x="115.0" y="226.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-005</text>
+<text x="205.0" y="226.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">+24 VDC source terminal on PS1 feeding the input rail</text>
+<text x="485.0" y="226.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Meter PS1 +24V to 0V = 24 VDC; confirm which terminal feeds the input</text>
+<text x="485.0" y="239.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">devices.</text>
+<rect x="70.0" y="244.5" width="690.0" height="27.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="253.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-02</text>
+<text x="115.0" y="253.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-005</text>
+<text x="205.0" y="253.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Input common (COM0) grouping + sink vs source jumpering on the</text>
+<text x="205.0" y="266.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Micro820</text>
+<text x="485.0" y="253.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Confirm which embedded input common serves I-00..I-05 and whether</text>
+<text x="485.0" y="266.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">inputs are sink or source; meter COM0 to 0V.</text>
+<rect x="70.0" y="271.5" width="690.0" height="27.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="280.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-03</text>
+<text x="115.0" y="280.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-005</text>
+<text x="205.0" y="280.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">All input wire numbers (W200..W205, W24, W0V are PROPOSED)</text>
+<text x="485.0" y="280.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Read the actual wire markers on the panel; replace proposed numbers</text>
+<text x="485.0" y="293.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">with as-built.</text>
+<rect x="70.0" y="298.5" width="690.0" height="27.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="307.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-04</text>
+<text x="115.0" y="307.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-005</text>
+<text x="205.0" y="307.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Field-device terminal designations (S0 11-12/23-24, SS1 FWD/REV/COM,</text>
+<text x="205.0" y="320.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">S2 3-4, B1 BN/BU/BK)</text>
+<text x="485.0" y="307.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Confirm each device's real terminal markings against its</text>
+<text x="485.0" y="320.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">nameplate/datasheet.</text>
+<rect x="70.0" y="325.5" width="690.0" height="27.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="334.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-05</text>
+<text x="115.0" y="334.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-005</text>
+<text x="205.0" y="334.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">E-stop architecture between S0 and the PLC</text>
+<text x="485.0" y="334.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Confirm whether S0 lands directly on I-02/I-03 or via a safety relay;</text>
+<text x="485.0" y="347.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">a monitored input is NOT a safety stop (see safety note).</text>
+<rect x="70.0" y="352.5" width="690.0" height="27.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="361.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-06</text>
+<text x="115.0" y="361.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-005</text>
+<text x="205.0" y="361.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Photo-eye B1 device (historically 'unmapped') — make/model, PNP/NPN,</text>
+<text x="205.0" y="374.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">powered source</text>
+<text x="485.0" y="361.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Identify the physical sensor; confirm BN/BU/BK to +24V/0V/I-05; PNP</text>
+<text x="485.0" y="374.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">sourcing assumed.</text>
+<rect x="70.0" y="379.5" width="690.0" height="13.5" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="388.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-07</text>
+<text x="115.0" y="388.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-005</text>
+<text x="205.0" y="388.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Direction selector SS1 physical device (2-pos vs 3-pos FWD-OFF-REV)</text>
+<text x="485.0" y="388.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Confirm selector type and that FWD/REV contacts map to I-00/I-01.</text>
+<rect x="70.0" y="393.0" width="690.0" height="13.5" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="401.5" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-08</text>
+<text x="115.0" y="401.5" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-005</text>
+<text x="205.0" y="401.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Spares I-06..I-11 confirmed unused</text>
+<text x="485.0" y="401.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Confirm no field wires land on I-06..I-11 (program shows none).</text>
+<rect x="70.0" y="406.5" width="690.0" height="40.5" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="415.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-09</text>
+<text x="115.0" y="415.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-006</text>
+<text x="205.0" y="415.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Output bank technology + common feeds. +CM0/-CM0/+CM1/-CM1 polarity</text>
+<text x="205.0" y="428.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">naming suggests DC transistor banks; devices.yaml io line says 'relay</text>
+<text x="205.0" y="442.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">DO' — conflict.</text>
+<text x="485.0" y="415.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Resolve per 2080-IN009 + meter the bank feed (expect PS1 +24V/0V).</text>
+<rect x="70.0" y="447.0" width="690.0" height="27.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="455.5" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-10</text>
+<text x="115.0" y="455.5" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-006</text>
+<text x="205.0" y="455.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Q1 contactor identity — part number, coil voltage, pole count; coil</text>
+<text x="205.0" y="469.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">terminal ids A1/A2 are PROPOSED.</text>
+<text x="485.0" y="455.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Meter coil circuit from O-02.</text>
+<rect x="70.0" y="474.0" width="690.0" height="27.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="482.5" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-11</text>
+<text x="115.0" y="482.5" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-006</text>
+<text x="205.0" y="482.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">PL1/PL2 devices + lamp terminal ids (X1/X2 proposed); S2 lamp</text>
+<text x="205.0" y="496.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">terminals.</text>
+<text x="485.0" y="482.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Meter the light circuits and confirm device markings.</text>
+<rect x="70.0" y="501.0" width="690.0" height="13.5" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="509.5" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-12</text>
+<text x="115.0" y="509.5" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-006</text>
+<text x="205.0" y="509.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Confirm no field wires on spare O-04..O-06 (+CM1 bank unused).</text>
+<text x="485.0" y="509.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Trace the PLC output block and verify no wires to O-04, O-05, O-06.</text>
+<rect x="70.0" y="514.5" width="690.0" height="40.5" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="523.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-13</text>
+<text x="115.0" y="523.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-005, E-006</text>
+<text x="205.0" y="523.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Re-confirm input AND output map against the live Conv_Simple_1.8 CCW</text>
+<text x="205.0" y="536.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">project; v4.0 vintage drift proven on I-05 'Entry sensor' vs live</text>
+<text x="205.0" y="550.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">photo-eye.</text>
+<text x="485.0" y="523.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Open the live Conv_Simple_1.8 CCW project and cross-check every I-xx</text>
+<text x="485.0" y="536.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">and O-xx assignment against the drawn functions (I-05 drift already</text>
+<text x="485.0" y="550.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">proven; O-02 has independent Prog_init corroboration).</text>
+<rect x="70.0" y="555.0" width="690.0" height="27.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="563.5" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-14</text>
+<text x="115.0" y="563.5" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-003</text>
+<text x="205.0" y="563.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Q1 contactor placement in the power chain (assumed line side of VFD1</text>
+<text x="205.0" y="577.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">per 'safety power'; could be elsewhere).</text>
+<text x="485.0" y="563.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Trace conductors on the bench; verify Q1 poles 1-6 actual locations.</text>
+<text x="485.0" y="577.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">R-C surge absorber both ends recommended per GS10 manual.</text>
+<line x1="110.0" y1="204.0" x2="110.0" y2="582.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="200.0" y1="204.0" x2="200.0" y2="582.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="480.0" y1="204.0" x2="480.0" y2="582.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<rect x="830.0" y="204.0" width="690.0" height="13.5" fill="#EEEEEE" stroke="#111111" stroke-width="1.0"/>
+<text x="835.0" y="212.5" font-size="7.3" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">OI</text>
+<text x="875.0" y="212.5" font-size="7.3" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Sheet</text>
+<text x="965.0" y="212.5" font-size="7.3" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Item</text>
+<text x="1245.0" y="212.5" font-size="7.3" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Verify</text>
+<rect x="830.0" y="217.5" width="690.0" height="27.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="226.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-15</text>
+<text x="875.0" y="226.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-003</text>
+<text x="965.0" y="226.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Supply voltage/receptacle + CB1 existence/type/rating (2-pole, single-</text>
+<text x="965.0" y="239.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">phase 230 V branch breaker).</text>
+<text x="1245.0" y="226.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Identify the bench supply; confirm CB1 device and rating. NEC and GS10</text>
+<text x="1245.0" y="239.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">manual require upstream protection.</text>
+<rect x="830.0" y="244.5" width="690.0" height="27.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="253.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-16</text>
+<text x="875.0" y="253.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-003</text>
+<text x="965.0" y="253.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">GS10 exact model+frame (enables wire-gauge/fuse tables); M1 nameplate;</text>
+<text x="965.0" y="266.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">conductor gauges; PE points + ground resistance ≤0.1Ω check.</text>
+<text x="1245.0" y="253.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Photograph GS10 nameplate and motor nameplate; measure PE resistance</text>
+<text x="1245.0" y="266.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">between drive/motor grounds and supply PE.</text>
+<rect x="830.0" y="271.5" width="690.0" height="27.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="280.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-17</text>
+<text x="875.0" y="280.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-003</text>
+<text x="965.0" y="280.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">RFI jumper in/out per grounding topology (symmetrical vs corner-</text>
+<text x="965.0" y="293.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">grounded unknown).</text>
+<text x="1245.0" y="280.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Determine bench PE bonding strategy; verify RFI jumpers per</text>
+<text x="1245.0" y="293.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">GS10_UM.txt L1693-1718 if present.</text>
+<rect x="830.0" y="298.5" width="690.0" height="27.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="307.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-18</text>
+<text x="875.0" y="307.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-006</text>
+<text x="965.0" y="307.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Fallback DI wiring physical presence (expected ABSENT — P02.0x factory</text>
+<text x="965.0" y="320.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">default).</text>
+<text x="1245.0" y="307.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Trace the PLC output block; confirm zero hardwired leads to any GS10</text>
+<text x="1245.0" y="320.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">digital inputs (fallback path should be unpopulated).</text>
+<rect x="830.0" y="325.5" width="690.0" height="54.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="334.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-19</text>
+<text x="875.0" y="334.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-003, E-005, E-006</text>
+<text x="965.0" y="334.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Wire-numbering convention adopted: W[sheet-digit][line-2d] (see</text>
+<text x="965.0" y="347.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">wires.yaml convention + the E-001 key). E-005 renumbered W200..W205 →</text>
+<text x="965.0" y="361.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W500..W505. Rails (W24, W0V) and E-007 mnemonic labels</text>
+<text x="965.0" y="374.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">(485+/485-/SGND/SH) are exempt. All numbers PROPOSED until as-built.</text>
+<text x="1245.0" y="334.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Read the actual wire markers on the panel; replace proposed W-numbers</text>
+<text x="1245.0" y="347.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">with as-built (mirror of OI-03).</text>
+<rect x="830.0" y="379.5" width="690.0" height="27.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="388.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-20</text>
+<text x="875.0" y="388.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-007</text>
+<text x="965.0" y="388.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">GS10 comms line params: 2026-05-20 export = 38.4k/8N2 vs 2026-05-26</text>
+<text x="965.0" y="401.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">bench sniff = 9600/8N1 — adjudicate.</text>
+<text x="1245.0" y="388.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Fresh keypad readback of the GS10 serial config; update print if</text>
+<text x="1245.0" y="401.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">params differ from current 9600/8N1 assumption.</text>
+<rect x="830.0" y="406.5" width="690.0" height="40.5" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="415.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#666666">OI-21</text>
+<text x="875.0" y="415.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#666666">E-003</text>
+<text x="965.0" y="415.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">RESOLVED (2026-07-11): no separate motor contactor — the MLC control</text>
+<text x="965.0" y="428.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">relay IS the single-phase drive-supply switch (2 NO contacts). See</text>
+<text x="965.0" y="442.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">E-003.</text>
+<text x="1245.0" y="415.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Confirm whether a separate motor contactor exists between CB1 and</text>
+<text x="1245.0" y="428.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">VFD1; the device labeled 'MLC' (Q1) is a Schneider TeSys CA3KN22BD</text>
+<text x="1245.0" y="442.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">CONTROL RELAY — it has no main power poles.</text>
+<rect x="830.0" y="447.0" width="690.0" height="67.5" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="455.5" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-22</text>
+<text x="875.0" y="455.5" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-006, E-007</text>
+<text x="965.0" y="455.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">GS10 control map (full-res photo): top run/DI connector</text>
+<text x="965.0" y="469.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">(FWD/REV/DI3-5/+24V/DCM) confirmed EMPTY; bottom analog/output row</text>
+<text x="965.0" y="482.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">(+10V/ACM/AI/AO1/DO1/DOC) confirmed WIRED. Identify which bottom-row</text>
+<text x="965.0" y="496.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">terminals are used (speed reference +10V/AI/ACM vs feedback</text>
+<text x="965.0" y="509.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">AO1/DO1/DOC) and to what. Confirm nothing on the top run/DI row.</text>
+<text x="1245.0" y="455.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Map which of FWD/REV/DI3/DI4/DI5/AI/AO1/DO1/DOC are landed and to</text>
+<text x="1245.0" y="469.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">what; reconcile hybrid Modbus + hardwired-terminal control.</text>
+<rect x="830.0" y="514.5" width="690.0" height="27.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="523.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-23</text>
+<text x="875.0" y="523.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">panel</text>
+<text x="965.0" y="523.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Siemens CPU 1212C AC/DC/RLY (S7-1200) observed on the panel (photo</text>
+<text x="965.0" y="536.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">wire_2) — role vs CV-101 unknown.</text>
+<text x="1245.0" y="523.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Confirm whether the Siemens CPU 1212C controls any CV-101 function</text>
+<text x="1245.0" y="536.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">before referencing it on any CV-101 sheet; not drawn until evidenced.</text>
+<rect x="830.0" y="541.5" width="690.0" height="27.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="550.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-24</text>
+<text x="875.0" y="550.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">panel</text>
+<text x="965.0" y="550.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Device labeled "PMC 192.x" observed on the panel (photo wire_2).</text>
+<text x="1245.0" y="550.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Identify the device (network device / meter?) and its relationship, if</text>
+<text x="1245.0" y="563.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">any, to CV-101.</text>
+<rect x="830.0" y="568.5" width="690.0" height="67.5" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="577.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-25</text>
+<text x="875.0" y="577.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-004</text>
+<text x="965.0" y="577.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">DC +/- distribution block: which color (blue vs white) is +24V vs 0V,</text>
+<text x="965.0" y="590.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">circuit count, PS1 branch fusing; PLUS PS1's AC input source — which</text>
+<text x="965.0" y="604.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">leg/circuit feeds L and N (120 V leg vs the 230 V 1φ supply) is not</text>
+<text x="965.0" y="617.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">documented.</text>
+<text x="1245.0" y="577.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Trace/meter the distribution block conductors against PS1 +V/-V</text>
+<text x="1245.0" y="590.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">output; confirm color-to-polarity mapping, circuit count, and any</text>
+<text x="1245.0" y="604.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">branch fusing (photo wire_1/wire_2). Separately, identify the branch</text>
+<text x="1245.0" y="617.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">circuit feeding PS1.L/PS1.N and its voltage (single leg of the 230 V</text>
+<text x="1245.0" y="631.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">1φ supply, or a dedicated 120 V circuit).</text>
+<rect x="830.0" y="636.0" width="690.0" height="40.5" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="644.5" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">OI-26</text>
+<text x="875.0" y="644.5" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">E-006</text>
+<text x="965.0" y="644.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">MLC (Q1) aux contacts (full-res photo): coil A1/A2 wired + NO contacts</text>
+<text x="965.0" y="658.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">13-14 &amp; 43-44 in use confirmed; NC 21-22/31-32 appear unused. Trace</text>
+<text x="965.0" y="671.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">where 13-14 and 43-44 land in the control circuit.</text>
+<text x="1245.0" y="644.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Trace each aux contact to its destination in the control circuit;</text>
+<text x="1245.0" y="658.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">confirm function (e.g., interlock feedback, seal-in, indicator).</text>
+<rect x="830.0" y="676.5" width="690.0" height="40.5" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="685.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#666666">OI-27</text>
+<text x="875.0" y="685.0" font-size="7.0" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#666666">E-003</text>
+<text x="965.0" y="685.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">RESOLVED (2026-07-11): motor is 230 V (technician-confirmed) — the</text>
+<text x="965.0" y="698.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">GS10 is a standard 230 V 1φ-in / 230 V 3φ-out drive; the earlier</text>
+<text x="965.0" y="712.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">reported 480 V was a misstatement. E-003 letters 230 V 3φ output.</text>
+<text x="1245.0" y="685.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Closed by technician confirmation. Exact GS10 model/frame still</text>
+<text x="1245.0" y="698.5" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">tracked under OI-16 (for wire-gauge/fuse tables).</text>
+<line x1="870.0" y1="204.0" x2="870.0" y2="717.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="960.0" y1="204.0" x2="960.0" y2="717.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="1240.0" y1="204.0" x2="1240.0" y2="717.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<text x="70.0" y="904.0" font-size="9.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">NOTES</text>
+<text x="76.0" y="914.7" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• RESOLVED items stay listed (grayed, not deleted) for traceability — see the item text for the resolving evidence and date.</text>
+<text x="76.0" y="925.4" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• Closing an open item requires evidence — a repo artifact citation or a bench measurement — not a re-assertion (see the model discipline note on E-001).</text>
+<text x="70.0" y="946.1" font-size="8.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">SOURCES:</text>
+<text x="76.0" y="955.8" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">model/open_items.yaml (generated — do not hand-edit this table; re-run emit after any model change)</text>
+<rect x="1120.0" y="894.0" width="430.0" height="96.0" fill="none" stroke="#111111" stroke-width="1.6"/>
+<line x1="1120.0" y1="940.0" x2="1550.0" y2="940.0" stroke="#111111" stroke-width="0.9" stroke-linecap="butt"/>
+<line x1="1400.0" y1="894.0" x2="1400.0" y2="990.0" stroke="#111111" stroke-width="0.9" stroke-linecap="butt"/>
+<text x="1132.0" y="916.0" font-size="13" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">OPEN ITEMS / FIELD VERIFICATION</text>
+<text x="1132.0" y="932.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Conv_Simple / CV-101 (garage conveyor)</text>
+<text x="1132.0" y="958.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Drawn: MIRA / FactoryLM</text>
+<text x="1408.0" y="914.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">SHEET</text>
+<text x="1408.0" y="932.0" font-size="16" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">E-009</text>
+<text x="1408.0" y="956.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">REV A</text>
+<text x="1408.0" y="974.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">2026-07-11</text>
+<text x="1538.0" y="956.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">9 of 9</text></svg>

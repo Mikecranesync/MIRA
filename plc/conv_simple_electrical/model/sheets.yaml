@@ -21,7 +21,23 @@ sheets:
         - "Monitored e-stop is NOT a safety stop — hardwire S0 to remove drive power per NFPA 79 / EN 60204-1 (style law §7; docs/references/industrial-wiring-diagram-standards.md)."
   - id: E-002
     title: Power one-line
-    status: stub
+    status: drafted
+    subtitle: "230 V 1φ supply → CB1 → Q1/MLC → VFD1 (GS10) → M1 · branch tap → PS1 (24 VDC control, E-004)"
+    scope: >
+      Single-line summary of the CV-101 power distribution — one line per circuit,
+      device symbols, conductor-count tick marks, NO per-conductor wire numbers.
+      Map between E-003 (VFD power detail) and E-004 (24 VDC control power detail);
+      not a substitute for either.
+    model: model/e002_oneline.yaml
+    annotations:
+      caveat:
+        - "Summary sheet only — no wire numbers are assigned here (see the wire-numbering key on E-001). For per-conductor evidence and FIELD VERIFY status, use E-003 (VFD power) and E-004 (24 VDC control power)."
+      notes:
+        - "Conductor-count ticks (e.g. 2 ticks = '1φ, 2W') mark circuit conductor count only — not a conduit/cable schedule."
+        - "Supply is 230 V SINGLE-PHASE (2-wire), technician-confirmed 2026-07-11 — this sheet corrects the earlier 3-phase assumption."
+        - "PS1 branch is drawn as a tap off the same incoming supply; the exact AC leg/circuit feeding PS1 is FIELD VERIFY (OI-25)."
+      sources:
+        - "model/e002_oneline.yaml · review/PHOTO_EVIDENCE_V6.md (technician field correction 2026-07-11)"
   - id: E-003
     title: VFD power (CB1 -> VFD1 -> M1)
     status: drafted
@@ -61,7 +77,27 @@ sheets:
         - "review/PHOTO_EVIDENCE_V6.md (technician field correction 2026-07-11)"
   - id: E-004
     title: 24 VDC control power distribution (PS1)
-    status: stub
+    status: drafted
+    subtitle: "AC → PS1 (Mean Well 24V/1A) → DB1 +/- distribution block → +24V/0V to E-005, E-006 loads"
+    scope: >
+      AC supply → PS1 (Mean Well 24 VDC / 1.0 A DIN supply, verified device) →
+      DB1 (+/- push-in distribution block, verified to exist) → +24V / 0V control
+      power consumed as PS1.+24V / PS1.0V on E-005 (PLC digital inputs) and
+      E-006 (PLC outputs) — same electrical nodes, different sheet.
+    annotations:
+      caveat:
+        - "PS1 is a verified Mean Well DIN-rail supply (24 V / 1.0 A out, 100-240 VAC / 0.55 A in) — nameplate read directly (photo review/photos/wire_2.jpg, 2026-07-11). DB1 polarity (blue vs white = +24V vs 0V), circuit count, PS1 branch fusing, and PS1's AC input source (which leg/circuit feeds L, N) are FIELD VERIFY (OI-25)."
+      safety:
+        - "PS1 is fed from AC mains — LOTO + de-energize before opening the panel or metering DB1 (WI p.2 §2)."
+        - "Monitored e-stop is NOT a safety stop; de-energizing DB1/PS1 does not remove drive power — see E-003 for the drive supply isolation point."
+      notes:
+        - "DB1 is a push-in (WAGO-style), 2-level distribution block fed from PS1's +V/-V output; a bare-copper jumper bridges its top-left terminals in the photo (review/photos/dc_block_full.jpg) — internal jumpering/circuit count not documented."
+        - "PS1's DC-OK terminal (LED/relay status output) and PE input terminal are shown for reference only; neither carries a modeled conductor on this sheet."
+        - "+24V / 0V downstream of DB1 feed the E-005 input rail (W24/W0V) and the E-006 output bank 0 feed/return (W600/W609) — same electrical nodes, different sheet."
+      sources:
+        - "photo review/photos/wire_2.jpg (2026-07-11 — Mean Well nameplate read directly)"
+        - "photo review/photos/dc_block_full.jpg + wire_1.jpg (2026-07-11 — DC distribution block)"
+        - "review/PHOTO_EVIDENCE_V4.md · review/PHOTO_EVIDENCE_V5.md (OI-25)"
   - id: E-005
     title: PLC digital inputs
     status: drafted          # <-- rendered first, per the new rule
@@ -137,7 +173,31 @@ sheets:
         - "full-res photos review/photos/*_full.jpg + crops (2026-07-11); review/PHOTO_EVIDENCE_V5.md"
   - id: E-008
     title: Terminal strip (X1) + wire list
-    status: stub
+    status: drafted
+    subtitle: "Generated wire list — every conductor across E-003..E-007 (this sheet carries no wires of its own)"
+    scope: >
+      Full-package wire list, generated from wires.yaml (all sheets) and
+      e007_rs485.yaml. Reference/audit sheet — carries no conductors or devices
+      of its own; X1 (devices.yaml) is an existing field terminal strip whose
+      physical layout is undocumented.
+    annotations:
+      notes:
+        - "X1 (field terminal strip, devices.yaml) is where field devices land before the PLC. Its physical terminal-strip layout and numbering are NOT documented in any recovered source — FIELD VERIFY. This table lists the conductors on each side of it, indexed by their owning sheet — it is not X1's internal terminal map."
+        - "Rows are sorted by sheet, then wire number/label. VERIFIED (black) vs FIELD VERIFY (red) mirrors each conductor's status on its owning sheet — see that sheet for the drawn circuit and evidence."
+      sources:
+        - "model/wires.yaml · model/e007_rs485.yaml (generated — do not hand-edit this table; re-run emit after any model change)"
   - id: E-009
     title: Open items / field verification
-    status: stub            # generated from open_items.yaml
+    status: drafted          # generated from open_items.yaml
+    subtitle: "Generated from open_items.yaml — the formal field-verification docket"
+    scope: >
+      Every open item tracked across the print set, generated from
+      open_items.yaml. The docket a technician works during commissioning /
+      field verification; nothing may be drawn as a solid (verified) conductor
+      on any sheet until its open item is closed with evidence.
+    annotations:
+      notes:
+        - "RESOLVED items stay listed (grayed, not deleted) for traceability — see the item text for the resolving evidence and date."
+        - "Closing an open item requires evidence — a repo artifact citation or a bench measurement — not a re-assertion (see the model discipline note on E-001)."
+      sources:
+        - "model/open_items.yaml (generated — do not hand-edit this table; re-run emit after any model change)"

@@ -1,18 +1,21 @@
 """Render electrical print SHEETS from the structured model (YAML source of truth).
 
-Implements E-001 (cover/legend/schedule), E-003 (VFD power), E-005 (PLC inputs),
-E-006 (PLC outputs), E-007 (RS-485/Modbus) and SET (merged print set).
+Implements E-001 (cover/legend/schedule), E-002 (power one-line), E-003 (VFD
+power), E-004 (24 VDC control power), E-005 (PLC inputs), E-006 (PLC outputs),
+E-007 (RS-485/Modbus), E-008 (terminal strip + wire list), E-009 (open items)
+and SET (merged 9-sheet print set).
 
-Contract (V3):
+Contract (V4):
 - The model in ./model/*.yaml is authoritative. The renderer LAYS OUT model
   content; it never originates engineering content (sheet text lives in
-  sheets.yaml `annotations:` blocks, wiring in wires.yaml / e007_rs485.yaml).
+  sheets.yaml `annotations:` blocks, wiring in wires.yaml / e007_rs485.yaml /
+  e002_oneline.yaml, the open-items docket in open_items.yaml).
 - A conductor renders SOLID only if its wire's status == 'verified'; otherwise
   it renders as a DASHED group of real line segments (PyMuPDF drops
   stroke-dasharray, so dashes are constructed, never styled).
 - Every conductor segment carries data-wire/data-status for the validator.
 
-Usage:  python render_sheet.py E-001|E-003|E-005|E-006|E-007|SET
+Usage:  python render_sheet.py E-001|E-002|...|E-009|SET
 Outputs: sheets/<basename>.svg / .pdf  (+ a QA .png)
 """
 
@@ -327,6 +330,30 @@ GLYPH = {
 }
 
 
+def _tick_marks(s, x, y, n, horizontal=False):
+    """n small conductor-count tick marks straddling a one-line run (IEC-style
+    slash ticks): horizontal=True for a horizontal run, False (default) for a
+    vertical run. Count comes from the caller (model-sourced n_conductors)."""
+    for i in range(n):
+        off = (i - (n - 1) / 2) * 8
+        if horizontal:
+            s.line(x + off, y - 6, x + off + 5, y + 6, w=1.3)
+        else:
+            s.line(x - 6, y + off, x + 6, y + off + 5, w=1.3)
+
+
+def _oneline_run(s, x, y1, y2, seg, label_x):
+    """One VERTICAL one-line run (E-002): solid/dashed per the segment's model
+    evidence, tick marks for conductor count, label + conductor caption — both
+    pulled from the model, never hand-typed."""
+    verified = seg.get("evidence") == "verified"
+    s.line(x, y1, x, y2, w=1.8, dash=not verified)
+    mid_y = (y1 + y2) / 2
+    _tick_marks(s, x, mid_y, seg["n_conductors"])
+    s.text(label_x, mid_y - 6, seg["label"], size=8.5, weight="bold")
+    s.text(label_x, mid_y + 7, seg["conductors"], size=7.5, color=GRY)
+
+
 # ---------------------------------------------------------------- shared frame/table/emit
 def draw_frame(s, W, H, title, subtitle):
     fx0, fy0, fx1, fy1 = 30, 30, W - 30, H - 30
@@ -407,6 +434,48 @@ def draw_table(
             cx += w
         y += rh
     # column separators
+    cx = x0
+    for w in colw[:-1]:
+        cx += w
+        s.line(cx, y0, cx, y, color=GRY, w=0.6)
+    return y
+
+
+def draw_wrapped_table(
+    s, x0, y0, colw, headers, rows, wrap_cols=(), fs=7.0, mono_cols=(), row_color_fn=None
+):
+    """Variable-row-height table: cells in `wrap_cols` word-wrap to their own
+    column width (via `_wrap`, so check L's collision guarantee holds) and the
+    row grows to fit the tallest cell; other cells render as one line. Used by
+    E-009, whose Item/Verify prose is too long for draw_table's fixed rh.
+
+    row_color_fn(row) -> a text color applied to every cell in that row (E-009
+    uses it to gray out RESOLVED open items). Returns the y after the last row.
+    """
+    lh = fs + 6.5
+    total = sum(colw)
+    s.rect(x0, y0, total, lh, fill="#EEEEEE", sw=1.0)
+    cx = x0
+    for w, h in zip(colw, headers):
+        s.text(cx + 5, y0 + lh - 5, h, size=fs + 0.3, weight="bold")
+        cx += w
+    y = y0 + lh
+    for r in rows:
+        color = row_color_fn(r) if row_color_fn else BLK
+        wrapped = []
+        for i, cell in enumerate(r):
+            w = colw[i]
+            wrapped.append(_wrap(cell, w - 10, fs) if i in wrap_cols else [str(cell)])
+        n_lines = max(len(wl) for wl in wrapped)
+        row_h = n_lines * lh
+        s.rect(x0, y, total, row_h, sw=0.7)
+        cx = x0
+        for i, w in enumerate(colw):
+            mono = i in mono_cols
+            for k, ln in enumerate(wrapped[i]):
+                s.text(cx + 5, y + lh - 5 + k * lh, ln, size=fs, color=color, mono=mono)
+            cx += w
+        y += row_h
     cx = x0
     for w in colw[:-1]:
         cx += w
@@ -1334,6 +1403,388 @@ def render_e006():
     _emit(s, "E-006_plc_outputs")
 
 
+# ---------------------------------------------------------------- E-002 one-line
+def render_e002():
+    devices = _load("devices")
+    meta = devices["meta"]
+    dev_by_tag = {d["tag"]: d for d in devices["devices"]}
+    ol = _load("e002_oneline")
+    ann = _annotations_for("E-002")
+    nodes = {n["id"]: n for n in ol["nodes"]}
+    segs = {(sg["from"], sg["to"]): sg for sg in ol["segments"]}
+
+    W, H = 1600, 1040
+    s = SVG(W, H)
+    subtitle = _sheet_row("E-002")["subtitle"]
+    fx0, fy0, fx1, fy1 = draw_frame(
+        s,
+        W,
+        H,
+        "E-002  POWER ONE-LINE",
+        f"{meta['project']} / {meta['asset']}  —  {subtitle}",
+    )
+
+    def node_box(cx, cy, w, h, node_id):
+        n = nodes[node_id]
+        s.rect(cx - w / 2, cy - h / 2, w, h, sw=1.6)
+        s.text(cx, cy + 3, n["label"], size=11, anchor="middle", weight="bold")
+        if n.get("evidence") != "verified":
+            # Offset to the side, not centered below — a box's own vertical
+            # one-line run continues on the box's centerline right below it.
+            s.text(
+                cx + w / 2 + 10, cy + h / 2 + 4, "(FIELD VERIFY)", size=7, anchor="start", color=RED
+            )
+
+    x_main = 380
+
+    # ---- SOURCE ----
+    node_box(x_main, 190, 190, 40, "SOURCE")
+
+    # ---- SOURCE -> CB1 ----
+    _oneline_run(s, x_main, 210, 284, segs[("SOURCE", "CB1")], x_main + 20)
+    breaker_pole(s, x_main, 300, "CB1", side="right")
+    if nodes["CB1"].get("evidence") != "verified":
+        s.text(x_main + 24, 316, "(FIELD VERIFY)", size=7, anchor="start", color=RED)
+
+    # ---- PS1 branch tap: off the SOURCE box's own right edge (NOT the
+    #      SOURCE->CB1 run below, which already owns that vertical space for
+    #      its own tick marks + label) ----
+    tap_y, ps1_x = 190, 820
+    ps1_seg = segs[("SOURCE", "PS1")]
+    fv = ps1_seg.get("evidence") != "verified"
+    tap_x0 = x_main + 95  # SOURCE box right edge
+    s.circle(tap_x0, tap_y, 2.6, fill=BLK)
+    s.line(tap_x0, tap_y, ps1_x, tap_y, w=1.8, dash=fv)
+    s.line(ps1_x, tap_y, ps1_x, 280, w=1.8, dash=fv)
+    tick_x = (tap_x0 + ps1_x) / 2
+    _tick_marks(s, tick_x, tap_y, ps1_seg["n_conductors"], horizontal=True)
+    s.text(tick_x, tap_y + 18, ps1_seg["label"], size=8.5, anchor="middle", weight="bold")
+    s.text(tick_x, tap_y + 32, ps1_seg["conductors"], size=7.5, anchor="middle", color=GRY)
+    node_box(ps1_x, 300, 200, 40, "PS1")
+
+    # ---- CB1 -> Q1 ----
+    _oneline_run(s, x_main, 314, 366, segs[("CB1", "Q1")], x_main + 20)
+    contact_no_pole(s, x_main, 380, "Q1/MLC", side="right")
+
+    # ---- Q1 -> VFD1 ----
+    _oneline_run(s, x_main, 389, 440, segs[("Q1", "VFD1")], x_main + 20)
+    vy0, vh = 440, 170
+    s.rect(x_main - 95, vy0, 190, vh, sw=1.6)
+    s.text(x_main, vy0 + 34, "VFD1", size=14, anchor="middle", weight="bold")
+    s.text(x_main, vy0 + 52, dev_by_tag["VFD1"]["model"], size=8, anchor="middle", color=GRY)
+
+    # ---- VFD1 -> M1 ----
+    _oneline_run(s, x_main, vy0 + vh, 690, segs[("VFD1", "M1")], x_main + 20)
+    m1_fv = dev_by_tag["M1"].get("evidence") != "verified"
+    motor_sym(s, x_main, 726, phase_color=RED if m1_fv else GRY)
+    if m1_fv:
+        s.text(x_main, 726 + 34, "(FIELD VERIFY)", size=7.2, anchor="middle", color=RED)
+
+    # ---- one-line convention key (model-sourced, mirrors E-001's wire key) ----
+    kx = 960
+    s.text(kx, 172, "ONE-LINE CONVENTION", size=11, weight="bold")
+    conv_lines = _wrap(ol.get("convention", ""), 560, 7.5)
+    box_h = len(conv_lines) * 11 + 12
+    s.rect(kx, 180, 560, box_h, sw=1.0)
+    for i, ln in enumerate(conv_lines):
+        s.text(kx + 8, 194 + i * 11, ln, size=7.5)
+
+    # ---- annotations + legend ----
+    ann_end = draw_annotations(s, kx, 180 + box_h + 30, 560, ann, fs=7.5)
+    draw_legend(s, kx, ann_end + 16)
+
+    title_block(
+        s,
+        fx1,
+        fy1,
+        meta,
+        "E-002",
+        "POWER ONE-LINE",
+        "2 of 9",
+        lineage="one-line generated from model/e002_oneline.yaml",
+    )
+    _emit(s, "E-002_power_oneline")
+
+
+# ---------------------------------------------------------------- E-004 24VDC control power
+def render_e004():
+    devices = _load("devices")
+    terms = _load("terminals")
+    wires = _load("wires")
+    meta = devices["meta"]
+    ann = _annotations_for("E-004")
+    dev_by_tag = {d["tag"]: d for d in devices["devices"]}
+
+    e4 = [w for w in wires["wires"] if w.get("sheet") == "E-004"]
+    wire_by = {w["proposed_number"]: w for w in e4}
+
+    W, H = 1600, 1040
+    s = SVG(W, H)
+    subtitle = _sheet_row("E-004")["subtitle"]
+    fx0, fy0, fx1, fy1 = draw_frame(
+        s,
+        W,
+        H,
+        "E-004  24 VDC CONTROL POWER",
+        f"{meta['project']} / {meta['asset']}  —  {subtitle}",
+    )
+
+    def seg(num, x1, y1, x2, y2, w_=1.8):
+        """One orthogonal conductor segment of wire `num` (dashed = field_verify)."""
+        s.line(
+            x1, y1, x2, y2, color=BLK, w=w_, dash=True, wire=num, wire_status=wire_by[num]["status"]
+        )
+
+    xL, xC, xR = 280, 340, 400  # AC-in (PE/N/L) and DC-out (+V/-V/DC-OK) columns
+
+    # ---- AC source label (top; text pulled from the wire's own "from" node).
+    #      y=150 matches E-003's top SUPPLY box — clears draw_frame's subtitle
+    #      text (y=100) and header divider (y=112). ----
+    s.rect(260, 150, 220, 40, sw=1.4)
+    s.text(370, 166, wire_by["W400"]["from"], size=11.5, anchor="middle", weight="bold")
+    s.text(370, 182, "(FIELD VERIFY)", size=7.5, anchor="middle", color=RED)
+
+    # ---- source -> PS1.N / PS1.L (W401/W400) ----
+    seg("W401", xC, 190, xC, 240)
+    wire_tag(s, xC, 215, "W401", verified=False, orient="v")
+    seg("W400", xR, 190, xR, 240)
+    wire_tag(s, xR, 215, "W400", verified=False, orient="v")
+
+    # ---- PS1 block: AC terminals (top edge) / DC terminals (bottom edge).
+    #      Terminal id STRINGS are pulled from terminals.yaml (ps1_by_id) —
+    #      the tuples below only fix the LAYOUT (column + wired/unwired),
+    #      which the model doesn't (and shouldn't) dictate. ----
+    px, py, pw, ph = 180, 240, 320, 220
+    s.rect(px, py, pw, ph, sw=1.6)
+    ps1_by_id = {t["id"]: t for t in terms["PS1"]}
+    for tid, x, wired in (("PE", xL, False), ("N", xC, True), ("L", xR, True)):
+        s.circle(x, py, 2.8, fill=BLK if wired else "#FFFFFF")
+        s.text(x, py + 16, ps1_by_id[tid]["id"], size=8, anchor="middle", weight="bold", mono=True)
+    s.text(px - 12, py, "(not drawn)", size=6.5, anchor="end", color=GRY)
+    s.text(px + pw / 2, py + 44, "PS1", size=14, anchor="middle", weight="bold")
+    s.text(
+        px + pw / 2, py + 60, dev_by_tag["PS1"]["model"][:44], size=7.2, anchor="middle", color=GRY
+    )
+    for tid, x, wired in (("+V", xL, True), ("-V", xC, True), ("DC-OK", xR, False)):
+        s.circle(x, py + ph, 2.8, fill=BLK if wired else "#FFFFFF")
+        s.text(
+            x, py + ph - 8, ps1_by_id[tid]["id"], size=8, anchor="middle", weight="bold", mono=True
+        )
+    s.text(px + pw + 12, py + ph, "(not drawn)", size=6.5, anchor="start", color=GRY)
+
+    # ---- PS1.+V / PS1.-V -> DB1 rails (W402/W403) — tags at different y AND
+    #      different x (orient="v") so neither crowds the other or the DB1 box
+    #      top edge (560) / PS1's own DC terminal labels (452) ----
+    rail24_y, rail0_y = 600, 650
+    seg("W402", xL, py + ph, xL, rail24_y)
+    wire_tag(s, xL, 520, "W402", verified=False, orient="v")
+    seg("W403", xC, py + ph, xC, rail0_y)
+    wire_tag(s, xC, 590, "W403", verified=False, orient="v")
+
+    # ---- DB1: 2-rail distribution block (several tap points; +24V rail's
+    #      span stays clear of xC so W403's straight drop never crosses it) ----
+    dx, dy, dw, dh = 170, 560, 330, 150
+    s.rect(dx, dy, dw, dh, sw=1.6)
+    s.text(dx - 12, dy + 34, "DB1", size=11, anchor="end", weight="bold")
+    s.line(190, rail24_y, 325, rail24_y, w=2.0)
+    for tx in (210, 260, 305):
+        s.line(tx, rail24_y, tx, rail24_y + 8, w=1.1)
+    s.text(dx + 12, rail24_y - 8, "+24V-bus", size=7.5, weight="bold", mono=True)
+    s.line(190, rail0_y, 470, rail0_y, w=2.0)
+    for tx in (215, 270, 325, 380, 435):
+        s.line(tx, rail0_y, tx, rail0_y + 8, w=1.1)
+    s.text(dx + 12, rail0_y + 16, "0V-bus", size=7.5, weight="bold", mono=True)
+    s.text(
+        dx + 12,
+        dy + dh + 16,
+        "circuit count / branch fusing: FIELD VERIFY (OI-25)",
+        size=7,
+        color=RED,
+    )
+
+    # ---- DB1 -> control loads (W404/W405) ----
+    seg("W404", 325, rail24_y, 560, rail24_y, w_=1.6)
+    wire_tag(s, 445, rail24_y, "W404", verified=False)
+    seg("W405", 470, rail0_y, 560, rail0_y, w_=1.6)
+    wire_tag(s, 515, rail0_y, "W405", verified=False)
+    s.circle(560, rail24_y, 2.4, fill=BLK)
+    s.circle(560, rail0_y, 2.4, fill=BLK)
+
+    lx0, ly0, lw, lbh = 560, 580, 200, 90
+    s.rect(lx0, ly0, lw, lbh, sw=1.4)
+    load_lines = _wrap(wire_by["W404"]["to"], lw - 16, 8)
+    for i, ln in enumerate(load_lines):
+        s.text(
+            lx0 + lw / 2,
+            ly0 + lbh / 2 - (len(load_lines) - 1) * 6 + i * 12,
+            ln,
+            size=8,
+            anchor="middle",
+            weight="bold",
+        )
+
+    # ---- connection table ----
+    s.text(800, 172, "CONNECTION TABLE", size=11, weight="bold")
+    headers = ["Wire", "From", "To", "Signal", "Type", "Status", "Notes"]
+    rows = [
+        [
+            w["proposed_number"],
+            w["from"],
+            w["to"],
+            w["signal"],
+            w["type"],
+            w["status"],
+            w.get("note", ""),
+        ]
+        for w in e4
+    ]
+    draw_table(s, 800, 180, [44, 110, 180, 190, 85, 75, 60], headers, rows, evidence_col=5, fs=7.4)
+
+    # ---- annotations (caveat + safety left; notes + sources right) + legend ----
+    left_end = draw_annotations(
+        s, 70, 740, 700, {"caveat": ann.get("caveat"), "safety": ann.get("safety")}, fs=7.5
+    )
+    draw_annotations(
+        s, 800, 740, 700, {"notes": ann.get("notes"), "sources": ann.get("sources")}, fs=7.5
+    )
+    draw_legend(s, 70, left_end + 14)
+
+    title_block(s, fx1, fy1, meta, "E-004", "24 VDC CONTROL POWER", "4 of 9")
+    _emit(s, "E-004_24vdc_control_power")
+
+
+# ---------------------------------------------------------------- E-008 terminal strip + wire list
+def render_e008():
+    devices = _load("devices")
+    wires = _load("wires")
+    e007 = _load("e007_rs485")
+    meta = devices["meta"]
+    ann = _annotations_for("E-008")
+
+    rows_data = []
+    for w in wires["wires"]:
+        rows_data.append(
+            (
+                w.get("sheet", "?"),
+                w["proposed_number"],
+                w["from"],
+                w["to"],
+                w["signal"],
+                w.get("status", "?"),
+            )
+        )
+    for link in e007.get("links", []):
+        rows_data.append(
+            (
+                e007.get("sheet", "E-007"),
+                link["wire_label"],
+                f"{link['src_device']}.{link['src_terminal']}",
+                f"{link['dst_device']}.{link['dst_terminal']}",
+                link["signal"],
+                link.get("evidence", "?"),
+            )
+        )
+    rows_data.sort(key=lambda r: (r[0], r[1]))
+
+    W, H = 1600, 1040
+    s = SVG(W, H)
+    subtitle = _sheet_row("E-008")["subtitle"]
+    fx0, fy0, fx1, fy1 = draw_frame(
+        s,
+        W,
+        H,
+        "E-008  TERMINAL STRIP (X1) + WIRE LIST",
+        f"{meta['project']} / {meta['asset']}  —  {subtitle}",
+    )
+
+    s.text(70, 172, "WIRE LIST (all sheets, generated)", size=11, weight="bold")
+    headers = ["Wire", "From", "To", "Signal", "Sheet", "Status"]
+    rows = [[num, frm, to, sig, sh, st] for sh, num, frm, to, sig, st in rows_data]
+    draw_table(
+        s,
+        70,
+        180,
+        [65, 210, 210, 300, 60, 90],
+        headers,
+        rows,
+        evidence_col=5,
+        rh=16,
+        fs=7.0,
+        mono_cols=(0, 1, 2, 4, 5),
+    )
+
+    ann_end = draw_annotations(s, 1230, 200, 300, ann, fs=7.2)
+    draw_legend(s, 1230, ann_end + 16)
+
+    title_block(s, fx1, fy1, meta, "E-008", "TERMINAL STRIP (X1) + WIRE LIST", "8 of 9")
+    _emit(s, "E-008_terminal_strip_wire_list")
+
+
+# ---------------------------------------------------------------- E-009 open items
+def render_e009():
+    devices = _load("devices")
+    open_items = _load("open_items")
+    meta = devices["meta"]
+    ann = _annotations_for("E-009")
+    items = open_items["items"]
+
+    total_n = len(items)
+    resolved_n = sum(1 for it in items if str(it.get("item", "")).startswith("RESOLVED"))
+
+    W, H = 1600, 1040
+    s = SVG(W, H)
+    subtitle = _sheet_row("E-009")["subtitle"]
+    fx0, fy0, fx1, fy1 = draw_frame(
+        s,
+        W,
+        H,
+        "E-009  OPEN ITEMS / FIELD VERIFICATION",
+        f"{meta['project']} / {meta['asset']}  —  {subtitle}",
+    )
+
+    s.text(70, 172, "OPEN ITEMS (generated)", size=11, weight="bold")
+    s.text(70, 186, f"{total_n} open items; {resolved_n} resolved", size=9, color=GRY)
+
+    def color_fn(row):
+        return GRY if str(row[2]).startswith("RESOLVED") else BLK
+
+    headers = ["OI", "Sheet", "Item", "Verify"]
+    colw = [40, 90, 280, 280]
+    half = (total_n + 1) // 2
+    all_rows = [
+        [it["id"], it.get("sheet", ""), it.get("item", ""), it.get("verify", "")] for it in items
+    ]
+    draw_wrapped_table(
+        s,
+        70,
+        204,
+        colw,
+        headers,
+        all_rows[:half],
+        wrap_cols=(1, 2, 3),
+        fs=7.0,
+        mono_cols=(0, 1),
+        row_color_fn=color_fn,
+    )
+    draw_wrapped_table(
+        s,
+        830,
+        204,
+        colw,
+        headers,
+        all_rows[half:],
+        wrap_cols=(1, 2, 3),
+        fs=7.0,
+        mono_cols=(0, 1),
+        row_color_fn=color_fn,
+    )
+
+    draw_annotations(s, 70, 900, 1400, ann, fs=7.2)
+
+    title_block(s, fx1, fy1, meta, "E-009", "OPEN ITEMS / FIELD VERIFICATION", "9 of 9")
+    _emit(s, "E-009_open_items")
+
+
 # ---------------------------------------------------------------- print set
 def render_set():
     """Merge drafted sheets (sheets.yaml id order) into a single PDF."""
@@ -1344,10 +1795,14 @@ def render_set():
 
     basenames = {
         "E-001": "E-001_cover",
+        "E-002": "E-002_power_oneline",
         "E-003": "E-003_vfd_power",
+        "E-004": "E-004_24vdc_control_power",
         "E-005": "E-005_plc_inputs",
         "E-006": "E-006_plc_outputs",
         "E-007": "E-007_rs485_modbus",
+        "E-008": "E-008_terminal_strip_wire_list",
+        "E-009": "E-009_open_items",
     }
 
     pdfs = []
@@ -1376,10 +1831,14 @@ def render_set():
 
 RENDERERS = {
     "E-001": render_e001,
+    "E-002": render_e002,
     "E-003": render_e003,
+    "E-004": render_e004,
     "E-005": render_e005,
     "E-006": render_e006,
     "E-007": render_e007,
+    "E-008": render_e008,
+    "E-009": render_e009,
     "SET": render_set,
 }
 

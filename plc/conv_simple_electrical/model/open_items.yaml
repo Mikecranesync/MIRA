@@ -100,8 +100,8 @@ items:
     verify: "Identify the device (network device / meter?) and its relationship, if any, to CV-101."
   - id: OI-25
     sheet: E-004
-    item: "DC +/- distribution block: which color (blue vs white) is +24V vs 0V, circuit count, PS1 branch fusing."
-    verify: "Trace/meter the distribution block conductors against PS1 +V/-V output; confirm color-to-polarity mapping, circuit count, and any branch fusing (photo wire_1/wire_2)."
+    item: "DC +/- distribution block: which color (blue vs white) is +24V vs 0V, circuit count, PS1 branch fusing; PLUS PS1's AC input source — which leg/circuit feeds L and N (120 V leg vs the 230 V 1φ supply) is not documented."
+    verify: "Trace/meter the distribution block conductors against PS1 +V/-V output; confirm color-to-polarity mapping, circuit count, and any branch fusing (photo wire_1/wire_2). Separately, identify the branch circuit feeding PS1.L/PS1.N and its voltage (single leg of the 230 V 1φ supply, or a dedicated 120 V circuit)."
   - id: OI-26
     sheet: E-006
     item: "MLC (Q1) aux contacts (full-res photo): coil A1/A2 wired + NO contacts 13-14 & 43-44 in use confirmed; NC 21-22/31-32 appear unused. Trace where 13-14 and 43-44 land in the control circuit."

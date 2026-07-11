@@ -101,6 +101,12 @@ PS1:  # 24VDC supply (detailed on E-004)
   - {id: "N", function: "AC neutral in", status: verified, source: "photo review/photos/wire_2.jpg"}
   - {id: "PE", function: "AC protective earth in", status: verified, source: "photo review/photos/wire_2.jpg"}
 
+DB1:  # 24 VDC distribution block (push-in), fed from PS1 +V/-V (detailed on E-004).
+      # Rail ids are PROPOSED — the block's internal circuit/jumper layout is not
+      # documented (photo review/photos/dc_block_full.jpg); FIELD VERIFY (OI-25).
+  - {id: "+24V-bus", function: "+24 VDC distribution rail (proposed id; fed from PS1.+V)", status: field_verify}
+  - {id: "0V-bus", function: "0V distribution rail (proposed id; fed from PS1.-V)", status: field_verify}
+
 VFD1:  # power side — terminal NAMES verified from GS10 manual terminal table (GS10_UM.txt L1971-1986)
   power_input:
     - {id: "R/L1", function: "input power L1", status: verified, source: "GS10_UM.txt L1971/L1973"}

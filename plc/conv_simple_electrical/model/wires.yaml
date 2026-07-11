@@ -18,6 +18,8 @@ nodes:
   - "SUPPLY (source — see E-002)"
   - "PE bus"
   - "output return rail (E-006)"
+  - "230 V 1φ (E-002)"
+  - "control loads (E-005/E-006)"
 
 wires:
   # +24 VDC distribution to the input devices (source = PS1 on E-004)
@@ -272,3 +274,52 @@ wires:
     type: ground
     status: field_verify
     sheet: E-003
+
+  # ---- E-004 24VDC CONTROL POWER (PS1 -> DB1 -> E-005/E-006 loads) ----
+  # AC feed to PS1 (Mean Well DIN supply, verified device/ratings — see
+  # devices.yaml); DC output distributed through DB1 (push-in block, verified
+  # to exist per photo) to the +24V/0V nodes consumed as PS1.+24V/PS1.0V on
+  # E-005 (W24/W0V) and E-006 (W600/W609). Every conductor FIELD VERIFY — no
+  # as-built wire map exists (same as every other sheet in this package).
+  - proposed_number: "W400"
+    from: "230 V 1φ (E-002)"
+    to: PS1.L
+    signal: "AC line in"
+    type: power_line
+    status: field_verify
+    sheet: E-004
+  - proposed_number: "W401"
+    from: "230 V 1φ (E-002)"
+    to: PS1.N
+    signal: "AC neutral in"
+    type: power_line
+    status: field_verify
+    sheet: E-004
+  - proposed_number: "W402"
+    from: PS1.+V
+    to: DB1.+24V-bus
+    signal: "+24 VDC distribution feed"
+    type: control_24vdc
+    status: field_verify
+    sheet: E-004
+  - proposed_number: "W403"
+    from: PS1.-V
+    to: DB1.0V-bus
+    signal: "0V distribution return"
+    type: control_0v
+    status: field_verify
+    sheet: E-004
+  - proposed_number: "W404"
+    from: DB1.+24V-bus
+    to: "control loads (E-005/E-006)"
+    signal: "+24V to E-005/E-006 loads"
+    type: control_24vdc
+    status: field_verify
+    sheet: E-004
+  - proposed_number: "W405"
+    from: DB1.0V-bus
+    to: "control loads (E-005/E-006)"
+    signal: "0V to E-005/E-006 loads"
+    type: control_0v
+    status: field_verify
+    sheet: E-004

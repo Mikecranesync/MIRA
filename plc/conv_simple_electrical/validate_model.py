@@ -34,11 +34,24 @@ SHEETS = HERE / "sheets"
 
 SHEET_SVGS = {
     "E-003": "E-003_vfd_power",
+    "E-004": "E-004_24vdc_control_power",
     "E-005": "E-005_plc_inputs",
     "E-006": "E-006_plc_outputs",
     "E-007": "E-007_rs485_modbus",
 }
-ALL_SVGS = dict(SHEET_SVGS, **{"E-001": "E-001_cover"})
+# Sheets with NO per-conductor data-wire audit (check G doesn't apply): E-001
+# (cover/table), E-002 (one-line — no wire numbers by design, see its
+# annotations caveat), E-008/E-009 (generated tables, no conductors of their
+# own). They still get every other quality check (H/I/K/L) via ALL_SVGS.
+ALL_SVGS = dict(
+    SHEET_SVGS,
+    **{
+        "E-001": "E-001_cover",
+        "E-002": "E-002_power_oneline",
+        "E-008": "E-008_terminal_strip_wire_list",
+        "E-009": "E-009_open_items",
+    },
+)
 
 # Engineering-content markers that must never appear in render_sheet.py string
 # literals (the strings live in the model YAML now). Comments/docstrings exempt.
@@ -160,24 +173,40 @@ def check_e007_links(e007_data):
     return missing
 
 
-def check_drafted_coverage(sheets, wires):
-    """Check F: every drafted sheet has >=1 wire or a dedicated model file.
+# Sheets exempt from check F outright: no wires of their own AND no dedicated
+# model file, by design (not an oversight) —
+#   E-001: cover/legend — its "model" IS devices.yaml + sheets.yaml + the
+#          wires.yaml convention string; carries no conductors.
+#   E-008: generated wire-LIST table — aggregates every OTHER sheet's wires
+#          (wires.yaml + e007_rs485.yaml); owns none itself (sheet: E-008
+#          never appears in wires.yaml by design — that's what it lists).
+#   E-009: generated open-items table — sourced from open_items.yaml, which
+#          isn't a conductor/model file in the check_drafted_coverage sense.
+COVERAGE_EXEMPT_IDS = {"E-001", "E-008", "E-009"}
 
-    E-001 (cover/legend) is exempt: its model IS devices.yaml + sheets.yaml +
-    the wires.yaml convention — it carries no conductors by design.
+# Sheets with NO conductors in wires.yaml that instead carry a dedicated
+# per-sheet model file (mirrors E-007 -> e007_rs485.yaml). Add new entries
+# here rather than guessing a filename pattern.
+SHEET_MODEL_FILES = {
+    "E-007": "e007_rs485.yaml",
+    "E-002": "e002_oneline.yaml",
+}
+
+
+def check_drafted_coverage(sheets, wires):
+    """Check F: every drafted sheet has >=1 wire, a dedicated model file
+    (SHEET_MODEL_FILES), or an explicit exemption (COVERAGE_EXEMPT_IDS) —
+    see the comments above each registry for why a given sheet is exempt.
     """
     uncovered = []
     for sheet in sheets["sheets"]:
         if sheet.get("status") != "drafted":
             continue
         sheet_id = sheet["id"]
-        if sheet_id == "E-001":
+        if sheet_id in COVERAGE_EXEMPT_IDS:
             continue
-        model_file_variants = [
-            MODEL / f"{sheet_id.lower().replace('-', '')}_rs485.yaml",
-            MODEL / f"{sheet_id.lower()}_rs485.yaml",
-        ]
-        if any(f.exists() for f in model_file_variants):
+        model_file = SHEET_MODEL_FILES.get(sheet_id)
+        if model_file and (MODEL / model_file).exists():
             continue
         sheet_wires = [w for w in wires["wires"] if w.get("sheet") == sheet_id]
         if not sheet_wires:

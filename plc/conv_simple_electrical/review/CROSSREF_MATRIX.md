@@ -8,7 +8,8 @@
 |-----|------|----------|------|
 | B1 | photo_eye | verified | Product-present beam to I-05 (blocked -> pe_latched soft stop) |
 | CB1 | circuit_breaker | field_verify | 2-pole branch breaker on the 230 V single-phase supply (existence/type/rating unconfirmed) |
-| M1 | motor | field_verify | Conveyor drive motor (3~ from VFD1 U/V/W) |
+| DB1 | distribution_block | verified | 24 VDC +/- distribution block (push-in, WAGO-style, 2-level), fed from PS1's +V/-V outp... |
+| M1 | motor | field_verify | Conveyor drive motor — 230 V 3~ from VFD1 U/V/W (voltage technician-confirmed 2026-07-11) |
 | PL1 | pilot_light | verified | Green RUNNING pilot — load of O-00 (LightGreen) |
 | PL2 | pilot_light | verified | Red FAULT/E-STOP pilot — load of O-01 (LightRed) |
 | PLC1 | plc | verified | Conveyor controller; Modbus RTU master to VFD1 |
@@ -33,6 +34,8 @@
 | CB1.4 | load out L2 (proposed) | field_verify | W304 | E-003 |
 | CB1.5 | line in L3 (proposed, if 3φ) | field_verify | — | — |
 | CB1.6 | load out L3 (proposed, if 3φ) | field_verify | — | — |
+| DB1.+24V-bus | +24 VDC distribution rail (proposed id; fed from PS1.+V) | field_verify | W402, W404 | E-004 |
+| DB1.0V-bus | 0V distribution rail (proposed id; fed from PS1.-V) | field_verify | W403, W405 | E-004 |
 | M1.PE | motor frame ground | field_verify | W316 | E-003 |
 | M1.T1 | motor lead 1 | field_verify | W310 | E-003 |
 | M1.T2 | motor lead 2 | field_verify | W311 | E-003 |
@@ -66,12 +69,12 @@
 | PLC1.O-05 | spare | verified | — | — |
 | PLC1.O-06 | spare | verified | — | — |
 | PS1.+24V | +24 VDC feed | field_verify | W24, W600 | E-005, E-006 |
-| PS1.+V | DC output + (adjustable, +V ADJ pot) | verified | — | — |
-| PS1.-V | DC output - | verified | — | — |
+| PS1.+V | DC output + (adjustable, +V ADJ pot) | verified | W402 | E-004 |
+| PS1.-V | DC output - | verified | W403 | E-004 |
 | PS1.0V | 0V return | field_verify | W0V, W609 | E-005, E-006 |
 | PS1.DC-OK | DC-OK relay/LED output | verified | — | — |
-| PS1.L | AC line in | verified | — | — |
-| PS1.N | AC neutral in | verified | — | — |
+| PS1.L | AC line in | verified | W400 | E-004 |
+| PS1.N | AC neutral in | verified | W401 | E-004 |
 | PS1.PE | AC protective earth in | verified | — | — |
 | Q1.13 | aux contact 1 — NO (destination FIELD VERIFY, OI-26) | verified | W303 | E-003 |
 | Q1.14 | aux contact 1 — NO (destination FIELD VERIFY, OI-26) | verified | W305 | E-003 |
@@ -124,8 +127,10 @@
 | Node | Wires Touching |
 |------|--------|
 | +24V rail (this sheet) | W24 |
+| 230 V 1φ (E-002) | W400, W401 |
 | PE bus | W315, W316, W317 |
 | SUPPLY (source — see E-002) | W300, W301, W317 |
+| control loads (E-005/E-006) | W404, W405 |
 | output return rail (E-006) | W605, W606, W607, W608 |
 
 ## Orphans (Unresolved Endpoints)

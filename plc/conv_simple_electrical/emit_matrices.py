@@ -91,6 +91,7 @@ def parse_svg_wires(svg_path):
 
 svg_wires = {
     "E-003": parse_svg_wires(SHEETS_DIR / "E-003_vfd_power.svg"),
+    "E-004": parse_svg_wires(SHEETS_DIR / "E-004_24vdc_control_power.svg"),
     "E-005": parse_svg_wires(SHEETS_DIR / "E-005_plc_inputs.svg"),
     "E-006": parse_svg_wires(SHEETS_DIR / "E-006_plc_outputs.svg"),
     "E-007": parse_svg_wires(SHEETS_DIR / "E-007_rs485_modbus.svg"),
@@ -148,8 +149,8 @@ def build_evidence_matrix():
         "",
     ]
 
-    # Process each sheet (E-003, E-005, E-006, E-007)
-    for sheet_id in ["E-003", "E-005", "E-006"]:
+    # Process each sheet (E-003, E-004, E-005, E-006, E-007)
+    for sheet_id in ["E-003", "E-004", "E-005", "E-006"]:
         # Get wires for this sheet
         sheet_wires = [w for w in wires if w.get("sheet") == sheet_id]
         sheet_wires_sorted = sorted(sheet_wires, key=lambda x: x.get("proposed_number", ""))
@@ -441,7 +442,7 @@ def build_field_verify_list():
     ]
 
     # Wires by sheet
-    for sheet_id in ["E-003", "E-005", "E-006", "E-007"]:
+    for sheet_id in ["E-003", "E-004", "E-005", "E-006", "E-007"]:
         if sheet_id == "E-007":
             sheet_wires = e007_links
             key_field = "wire_label"
@@ -480,7 +481,7 @@ def build_field_verify_list():
                 lines.append("")
 
     # Field-verify terminals per sheet
-    for sheet_id in ["E-003", "E-005", "E-006", "E-007"]:
+    for sheet_id in ["E-003", "E-004", "E-005", "E-006", "E-007"]:
         # Find devices on this sheet
         sheet_devices = set()
         for wire in wires:
