@@ -78,7 +78,7 @@ segments:
     conductors: "3φ, 3W"
     n_conductors: 3
     evidence: field_verify
-    source: "plc/GS10_UM.txt (terminals L1971-1986); motor voltage technician-confirmed 2026-07-11 (OI-27 resolved)"
+    source: "plc/GS10_UM.txt (terminals L1971-1986); motor voltage technician-confirmed 2026-07-11 (OI-27 resolved) — review/PHOTO_EVIDENCE_V7.md §3, not V6 (which predates this confirmation)"
   - from: SOURCE
     to: PS1
     label: "branch tap — 24 VDC control supply"
@@ -88,6 +88,7 @@ segments:
     source: "photo review/photos/wire_2.jpg (2026-07-11 — Mean Well nameplate); see E-004"
 
 sources:
-  - "review/PHOTO_EVIDENCE_V6.md (technician field correction 2026-07-11 — single-phase topology, OI-21/OI-27 resolved)"
+  - "review/PHOTO_EVIDENCE_V6.md (technician field correction 2026-07-11 — single-phase topology, OI-21 resolved)"
+  - "review/PHOTO_EVIDENCE_V7.md (technician confirmation 2026-07-11 — 230 V motor output, OI-27 resolved; supersedes V6, which predates this confirmation and still showed 480 V/pending)"
   - "plc/GS10_UM.txt (terminals L1971-1986)"
   - "photo review/photos/wire_2.jpg (2026-07-11 — PS1 nameplate)"

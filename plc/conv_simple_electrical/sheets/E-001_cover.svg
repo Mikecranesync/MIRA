@@ -201,6 +201,11 @@
 <text x="926.0" y="362.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• LOTO + wait ≥5 min for DC-bus discharge before touching (WI p.2 §2).</text>
 <text x="926.0" y="373.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">• Monitored e-stop is NOT a safety stop — hardwire S0 to remove drive power per NFPA 79 / EN 60204-1 (style law §7;</text>
 <text x="926.0" y="384.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">docs/references/industrial-wiring-diagram-standards.md).</text>
+<text x="920.0" y="405.0" font-size="9.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">NOTES</text>
+<text x="926.0" y="416.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• LINE-STYLE LEGEND, red: red marks EITHER FIELD-VERIFY status (a dashed, unverified conductor/device or an unverified wire-number tag) OR a</text>
+<text x="926.0" y="427.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">safety-critical prohibition (a NOT/never instruction inside a sheet's SAFETY block, e.g. 'a monitored input is NOT a safety stop') — same</text>
+<text x="926.0" y="438.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">color, two distinct meanings distinguished by context (dashed line vs. SAFETY-block bullet). This is intentional package-wide convention,</text>
+<text x="926.0" y="449.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">not per-sheet drift.</text>
 <rect x="1120.0" y="894.0" width="430.0" height="96.0" fill="none" stroke="#111111" stroke-width="1.6"/>
 <line x1="1120.0" y1="940.0" x2="1550.0" y2="940.0" stroke="#111111" stroke-width="0.9" stroke-linecap="butt"/>
 <line x1="1400.0" y1="894.0" x2="1400.0" y2="990.0" stroke="#111111" stroke-width="0.9" stroke-linecap="butt"/>

@@ -68,6 +68,18 @@ K_BLOCKLIST = [
     "REV+RUN",
     "DC-bus",
     "LOTO",
+    # V4 cleanup pass: catches the class of render-only lineage/provenance text
+    # (title_block "lineage=" literals citing a work instruction or source file
+    # by name/section instead of living in the model — HF-B, E-006 "O-02
+    # do-not-reuse (WI-001 p.4)").
+    "reuse",
+    "WI-001",
+    "do-not-reuse",
+    "p.4",
+    "Prog_init",
+    # Re-audit residual: E-003 GS10-manual edition citation, same lineage class.
+    "GS10 UM",
+    "1st Ed",
 ]
 
 

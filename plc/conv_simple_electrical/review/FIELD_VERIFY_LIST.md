@@ -267,9 +267,10 @@ The docket of everything NOT yet verified. Every wire with status ≠ verified, 
 | OI-24 | panel | Device labeled "PMC 192.x" observed on the panel ( | Identify the device (network device / meter?) and  |
 | OI-25 | E-004 | DC +/- distribution block: which color (blue vs wh | Trace/meter the distribution block conductors agai |
 | OI-26 | E-006 | MLC (Q1) aux contacts (full-res photo): coil A1/A2 | Trace each aux contact to its destination in the c |
-| OI-27 | E-003 | RESOLVED (2026-07-11): motor is 230 V (technician- | Closed by technician confirmation. Exact GS10 mode |
+| OI-27 | E-003 | RESOLVED (2026-07-11): motor is 230 V (technician- | Closed by technician confirmation — review/PHOTO_E |
+| OI-28 | E-004 | PS1 enclosure/chassis ground and DC-0V-to-PE bondi | Meter PS1 enclosure/DIN rail to the PE bus for con |
 
 ### Summary
 - Total field-verify wires: 37
 - Total field-verify terminals: 34
-- Total open items: 27
+- Total open items: 28

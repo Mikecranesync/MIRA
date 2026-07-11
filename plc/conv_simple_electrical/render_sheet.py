@@ -157,6 +157,15 @@ class SVG:
 
 
 # ---------------------------------------------------------------- symbol templates
+# DEFERRED (V4 cleanup pass — too heavy for this pass, non-blocking drafting
+# refinements, intentionally left as-is):
+#   - CB1 vs Q1/MLC: give the breaker a visually distinct IEC breaker glyph
+#     (breaker_pole) vs the contactor/relay pole glyph (contact_no_pole) beyond
+#     their current shared-motif styling.
+#   - PE bus: a distinct line-style (vs the black conductor lines it runs
+#     alongside) to visually set grounding apart from power/control conductors.
+#   - selector(): a heavier/distinct actuator-stem weight so SS1's glyph reads
+#     more clearly as a selector vs a plain contact at a glance.
 def wire_tag(s, x, y, num, verified, orient="h"):
     """A small opaque wire-number flag on a conductor.
 
@@ -858,7 +867,7 @@ def render_e007():
         "E-007",
         "RS-485 / MODBUS RTU",
         "7 of 9",
-        lineage="recovers MIRA-WI-001 / Conv_Simple_CommsToVFD §2",
+        lineage=_sheet_row("E-007").get("lineage", ""),
     )
     _emit(s, "E-007_rs485_modbus")
 
@@ -1218,7 +1227,7 @@ def render_e003():
         "E-003",
         "VFD POWER",
         "3 of 9",
-        lineage="terminals per GS10 UM 1st Ed Rev B;",
+        lineage=_sheet_row("E-003").get("lineage", ""),
     )
 
     _emit(s, "E-003_vfd_power")
@@ -1397,7 +1406,7 @@ def render_e006():
         "E-006",
         "PLC OUTPUTS",
         "6 of 9",
-        lineage="output map CCW v4.0 + live Prog_init; O-02 do-not-reuse (WI-001 p.4)",
+        lineage=_sheet_row("E-006").get("lineage", ""),
     )
 
     _emit(s, "E-006_plc_outputs")
@@ -1563,7 +1572,12 @@ def render_e004():
     s.text(px - 12, py, "(not drawn)", size=6.5, anchor="end", color=GRY)
     s.text(px + pw / 2, py + 44, "PS1", size=14, anchor="middle", weight="bold")
     s.text(
-        px + pw / 2, py + 60, dev_by_tag["PS1"]["model"][:44], size=7.2, anchor="middle", color=GRY
+        px + pw / 2,
+        py + 60,
+        dev_by_tag["PS1"].get("short_label", dev_by_tag["PS1"]["model"]),
+        size=7.2,
+        anchor="middle",
+        color=GRY,
     )
     for tid, x, wired in (("+V", xL, True), ("-V", xC, True), ("DC-OK", xR, False)):
         s.circle(x, py + ph, 2.8, fill=BLK if wired else "#FFFFFF")

@@ -29,12 +29,14 @@ devices:
       the bottom analog/output connector (+10V/ACM/AI/AO1/DO1/DOC/PE) is WIRED, likely
       analog speed reference + feedback. Map = OI-22. Input is 230 V single-phase (2-wire),
       fed through the MLC NO contacts (E-003). Output to motor = 230 V 3-phase (motor is 230 V,
-      technician-confirmed 2026-07-11; standard 230 V 1φ-in / 230 V 3φ-out GS10).
+      technician-confirmed 2026-07-11, review/PHOTO_EVIDENCE_V7.md §3 — not PHOTO_EVIDENCE_V6.md,
+      which predates this confirmation; standard 230 V 1φ-in / 230 V 3φ-out GS10).
 
   - tag: M1
     type: motor
     role: Conveyor drive motor — 230 V 3~ from VFD1 U/V/W (voltage technician-confirmed 2026-07-11)
     evidence: field_verify   # voltage 230 V confirmed; FLA/kW/rpm/poles still not captured
+    source: review/PHOTO_EVIDENCE_V7.md (technician confirmation 2026-07-11 — "it's 230"; OI-27 resolved). NOT PHOTO_EVIDENCE_V6.md, which predates this confirmation and still shows 480 V/pending.
 
   - tag: S0
     type: e_stop
@@ -54,7 +56,7 @@ devices:
     type: pushbutton_no
     role: Run / rearm pushbutton to I-04; illuminated — lamp fed by PLC O-03 (PBRunLED)
     evidence: verified
-    source: plc/ignition-project/.../Inputs/tags.json ("DI-04 Run pushbutton"); plc/CCW_VARIABLES_v4.0.txt:80
+    source: plc/ignition-project/.../Inputs/tags.json ("DI-04 Run pushbutton"); plc/CCW_VARIABLES_v4.0.txt:73 ("I-04 _IO_EM_DI_04 PBRun (illuminated momentary)")
 
   - tag: B1
     type: photo_eye
@@ -65,6 +67,7 @@ devices:
   - tag: PS1
     type: power_supply
     model: Mean Well DIN-rail supply (24 V / 1.0 A; 100-240 VAC in @ 0.55 A; +V / -V / DC-OK out, N / L / PE in, +V ADJ pot, DC-OK LED)
+    short_label: "Mean Well 24 V / 1.0 A DIN supply"
     role: 24 VDC control supply (E-004). Feeds the DC +/- distribution block (blue = one polarity, white = the other) and the +24V/0V control loop.
     evidence: verified   # device identity + ratings from photo wire_2.jpg; field wiring still FIELD VERIFY
     source: photo review/photos/wire_2.jpg (2026-07-11 — Mean Well nameplate read directly); caption "MW 120 to 24 volt DC power supply"
@@ -109,12 +112,16 @@ devices:
       V6: MLC is the single-phase drive-supply contactor (technician-confirmed 2026-07-11), not out
       of the power path — reverses the V4 removal; device is still a CA3K control relay used within
       its contact rating for the small drive (P00.01=1.60 A).
+      CR-2: Schneider TeSys CA3KN22BD catalog rating: Ith = 10 A conventional thermal current,
+      classed for AC-15/DC-13 pilot (control-circuit) duty — NOT a power-circuit-rated contactor.
+      Used well within its thermal rating for the ~1.6 A drive; OI: confirm suitability for the
+      switched inrush (see OI-26, aux-contact destinations).
 
   - tag: PL1
     type: pilot_light
     role: Green RUNNING pilot — load of O-00 (LightGreen)
     evidence: verified
-    source: plc/CCW_VARIABLES_v4.0.txt:79
+    source: plc/CCW_VARIABLES_v4.0.txt:78
     note: Device model + lamp terminals FIELD VERIFY.
 
   - tag: PL2

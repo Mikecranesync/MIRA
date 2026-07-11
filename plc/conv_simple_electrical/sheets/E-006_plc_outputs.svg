@@ -187,41 +187,52 @@
 <text x="1236.0" y="352.4" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">lockable safety contactor); the e-stop (S0) → O-02 relationship is FIELD VERIFY</text>
 <text x="1236.0" y="363.1" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">(OI-26). Do not treat this circuit as the LOTO isolation point — always LOTO at</text>
 <text x="1236.0" y="373.8" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">CB1 or upstream.</text>
-<text x="1230.0" y="394.5" font-size="9.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">NOTES</text>
-<text x="1236.0" y="405.2" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• Q1/MLC = Schneider TeSys CA3KN22BD control relay (2 NO + 2 NC, 24 VDC coil);</text>
-<text x="1236.0" y="415.9" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">coil A1(+)/A2(-) driven by O-02 (verified from photo wire_3). NO contacts</text>
-<text x="1236.0" y="426.6" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">13-14/43-44 switch the VFD's 230 V 1φ supply (see E-003); 21-22/31-32 NC</text>
-<text x="1236.0" y="437.3" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">unused.</text>
-<text x="1236.0" y="448.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• GS10 control (full-res photo): run/dir/speed = Modbus — top FWD/REV/DI</text>
-<text x="1236.0" y="458.7" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">connector is EMPTY, RJ45 landed. Bottom analog/output row</text>
-<text x="1236.0" y="469.4" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">(+10V/ACM/AI/AO1/DO1/DOC) is wired — likely speed reference + feedback. Map =</text>
-<text x="1236.0" y="480.1" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">OI-22.</text>
-<text x="1236.0" y="490.8" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• NO contacts 13-14 &amp; 43-44 switch the 230 V 1φ VFD supply (see E-003); coil</text>
-<text x="1236.0" y="501.5" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">A1/A2 from O-02. NC 21-22/31-32 unused.</text>
-<text x="1236.0" y="512.2" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• GS10 run/dir/freq = Modbus — see E-007 (P00.20=1, P00.21=2 per 2026-05-20</text>
-<text x="1236.0" y="522.9" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">parameter export)</text>
-<text x="1236.0" y="533.6" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• No as-built: O-00/O-01/O-03 from CCW v4.0; O-02 corroborated by live</text>
-<text x="1236.0" y="544.3" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Prog_init v2.1.</text>
-<text x="1236.0" y="555.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• Output bank technology + common feed = FIELD VERIFY (OI-09): WI-001 p.4 says</text>
-<text x="1236.0" y="565.7" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">relay dry contacts; ±CM polarity naming suggests DC-fed banks — conflicting</text>
-<text x="1236.0" y="576.4" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">evidence, resolve per 2080-IN009 + meter.</text>
-<text x="1230.0" y="597.1" font-size="8.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">SOURCES:</text>
-<text x="1236.0" y="606.8" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">CCW_VARIABLES_v4.0.txt</text>
-<text x="1236.0" y="616.5" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Prog_init_ConvSimple_v2.1.st</text>
-<text x="1236.0" y="626.2" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">MIRA_PLC_WorkInstruction_v3.pdf</text>
-<text x="1236.0" y="635.9" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">GS10_actual_parameters_5.20.26.xlsx</text>
-<text x="1236.0" y="645.6" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">GS10_UM.txt</text>
-<text x="1236.0" y="655.3" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">photos review/photos/wire_1..4.jpg (2026-07-11, actual devices)</text>
-<text x="1236.0" y="665.0" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">full-res photos review/photos/*_full.jpg + crops (2026-07-11);</text>
-<text x="1236.0" y="674.7" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">review/PHOTO_EVIDENCE_V5.md</text>
-<text x="1230.0" y="702.4" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">LEGEND</text>
-<line x1="1240.0" y1="714.4" x2="1286.0" y2="714.4" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/>
-<text x="1294.0" y="717.4" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VERIFIED (solid)</text>
-<g data-dashed="true"><line x1="1240.00" y1="728.40" x2="1247.00" y2="728.40" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/><line x1="1251.00" y1="728.40" x2="1258.00" y2="728.40" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/><line x1="1262.00" y1="728.40" x2="1269.00" y2="728.40" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/><line x1="1273.00" y1="728.40" x2="1280.00" y2="728.40" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/><line x1="1284.00" y1="728.40" x2="1286.00" y2="728.40" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/></g>
-<text x="1294.0" y="731.4" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">FIELD VERIFY (dashed)</text>
-<rect x="1247.0" y="734.4" width="32.0" height="13.0" fill="#FFFFFF" stroke="#C0392B" stroke-width="0.9" data-flag="1"/>
-<text x="1263.0" y="744.4" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B" data-flag="1">Wxxx</text>
-<text x="1294.0" y="748.4" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">proposed wire number (red = unverified)</text>
+<text x="1236.0" y="384.5" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">• O-02 is the sole MLC/Q1 drive-enable coil output — do not reuse it for any</text>
+<text x="1236.0" y="395.2" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">other load (MIRA_PLC_WorkInstruction_v3.pdf §3: "DO_02 is already the MLC</text>
+<text x="1236.0" y="405.9" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">drive-enable coil and must never be reused").</text>
+<text x="1230.0" y="426.6" font-size="9.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">NOTES</text>
+<text x="1236.0" y="437.3" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• Q1/MLC = Schneider TeSys CA3KN22BD control relay (2 NO + 2 NC, 24 VDC coil);</text>
+<text x="1236.0" y="448.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">coil A1(+)/A2(-) driven by O-02 (verified from photo wire_3). NO contacts</text>
+<text x="1236.0" y="458.7" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">13-14/43-44 switch the VFD's 230 V 1φ supply (see E-003); 21-22/31-32 NC</text>
+<text x="1236.0" y="469.4" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">unused.</text>
+<text x="1236.0" y="480.1" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• GS10 control (full-res photo): run/dir/speed = Modbus — top FWD/REV/DI</text>
+<text x="1236.0" y="490.8" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">connector is EMPTY, RJ45 landed. Bottom analog/output row</text>
+<text x="1236.0" y="501.5" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">(+10V/ACM/AI/AO1/DO1/DOC) is wired — likely speed reference + feedback. Map =</text>
+<text x="1236.0" y="512.2" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">OI-22.</text>
+<text x="1236.0" y="522.9" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• NO contacts 13-14 &amp; 43-44 switch the 230 V 1φ VFD supply (see E-003); coil</text>
+<text x="1236.0" y="533.6" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">A1/A2 from O-02. NC 21-22/31-32 unused.</text>
+<text x="1236.0" y="544.3" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• GS10 run/dir/freq = Modbus — see E-007 (P00.20=1, P00.21=2 per 2026-05-20</text>
+<text x="1236.0" y="555.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">parameter export)</text>
+<text x="1236.0" y="565.7" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• No as-built: O-00/O-01/O-03 from CCW v4.0; O-02 corroborated by live</text>
+<text x="1236.0" y="576.4" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Prog_init v2.1.</text>
+<text x="1236.0" y="587.1" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• Output bank technology + common feed = FIELD VERIFY (OI-09): WI-001 p.4 says</text>
+<text x="1236.0" y="597.8" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">relay dry contacts; ±CM polarity naming suggests DC-fed banks — conflicting</text>
+<text x="1236.0" y="608.5" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">evidence, resolve per 2080-IN009 + meter.</text>
+<text x="1236.0" y="619.2" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• GS10 manual warns against cycling a power-circuit switching device for normal</text>
+<text x="1236.0" y="629.9" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">run/stop — emergency situations only (GS10_UM.txt L1754-1757, L1811-1813). This</text>
+<text x="1236.0" y="640.6" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">applies to Q1/MLC (energized by O-02, switches the drive's 230 V 1φ supply —</text>
+<text x="1236.0" y="651.3" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">see E-003): O-02/Q1 stays energized during normal operation; run/stop is</text>
+<text x="1236.0" y="662.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">commanded via Modbus (E-007), never by cycling Q1.</text>
+<text x="1236.0" y="672.7" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• S2 lamp (this sheet, O-03/PBRunLED) and S2's run/rearm pushbutton contact</text>
+<text x="1236.0" y="683.4" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">(E-005, I-04) are two elements of the SAME physical device — same cross-</text>
+<text x="1236.0" y="694.1" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">reference symmetry as Q1/MLC's coil (this sheet) ↔ power contacts (E-003).</text>
+<text x="1230.0" y="714.8" font-size="8.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">SOURCES:</text>
+<text x="1236.0" y="724.5" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">CCW_VARIABLES_v4.0.txt</text>
+<text x="1236.0" y="734.2" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Prog_init_ConvSimple_v2.1.st</text>
+<text x="1236.0" y="743.9" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">MIRA_PLC_WorkInstruction_v3.pdf</text>
+<text x="1236.0" y="753.6" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">GS10_actual_parameters_5.20.26.xlsx</text>
+<text x="1236.0" y="763.3" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">GS10_UM.txt</text>
+<text x="1236.0" y="773.0" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">photos review/photos/wire_1..4.jpg (2026-07-11, actual devices)</text>
+<text x="1236.0" y="782.7" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">full-res photos review/photos/*_full.jpg + crops (2026-07-11);</text>
+<text x="1236.0" y="792.4" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">review/PHOTO_EVIDENCE_V5.md</text>
+<text x="1230.0" y="820.1" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">LEGEND</text>
+<line x1="1240.0" y1="832.1" x2="1286.0" y2="832.1" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/>
+<text x="1294.0" y="835.1" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VERIFIED (solid)</text>
+<g data-dashed="true"><line x1="1240.00" y1="846.10" x2="1247.00" y2="846.10" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/><line x1="1251.00" y1="846.10" x2="1258.00" y2="846.10" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/><line x1="1262.00" y1="846.10" x2="1269.00" y2="846.10" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/><line x1="1273.00" y1="846.10" x2="1280.00" y2="846.10" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/><line x1="1284.00" y1="846.10" x2="1286.00" y2="846.10" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/></g>
+<text x="1294.0" y="849.1" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">FIELD VERIFY (dashed)</text>
+<rect x="1247.0" y="852.1" width="32.0" height="13.0" fill="#FFFFFF" stroke="#C0392B" stroke-width="0.9" data-flag="1"/>
+<text x="1263.0" y="862.1" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B" data-flag="1">Wxxx</text>
+<text x="1294.0" y="866.1" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">proposed wire number (red = unverified)</text>
 <text x="70.0" y="756.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">CONNECTION TABLE</text>
 <rect x="70.0" y="760.0" width="855.0" height="18.0" fill="#EEEEEE" stroke="#111111" stroke-width="1.0"/>
 <text x="75.0" y="771.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Wire</text>
@@ -323,8 +334,8 @@
 <text x="1132.0" y="916.0" font-size="13" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">PLC OUTPUTS</text>
 <text x="1132.0" y="932.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Conv_Simple / CV-101 (garage conveyor)</text>
 <text x="1132.0" y="958.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Drawn: MIRA / FactoryLM</text>
-<text x="1132.0" y="972.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">output map CCW v4.0 + live Prog_init; O-02 do-not-reuse</text>
-<text x="1132.0" y="981.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">(WI-001 p.4)</text>
+<text x="1132.0" y="972.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">output map CCW v4.0 + live Prog_init v2.1; O-02 do-not-</text>
+<text x="1132.0" y="981.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">reuse (MIRA_PLC_WorkInstruction_v3.pdf §3) — see SAFETY</text>
 <text x="1408.0" y="914.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">SHEET</text>
 <text x="1408.0" y="932.0" font-size="16" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">E-006</text>
 <text x="1408.0" y="956.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">REV A</text>

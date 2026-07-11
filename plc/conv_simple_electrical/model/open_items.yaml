@@ -109,4 +109,8 @@ items:
   - id: OI-27
     sheet: E-003
     item: "RESOLVED (2026-07-11): motor is 230 V (technician-confirmed) — the GS10 is a standard 230 V 1φ-in / 230 V 3φ-out drive; the earlier reported 480 V was a misstatement. E-003 letters 230 V 3φ output."
-    verify: "Closed by technician confirmation. Exact GS10 model/frame still tracked under OI-16 (for wire-gauge/fuse tables)."
+    verify: "Closed by technician confirmation — review/PHOTO_EVIDENCE_V7.md §3 ('it's 230'), not PHOTO_EVIDENCE_V6.md (which predates this confirmation and still shows 480 V/pending). Exact GS10 model/frame still tracked under OI-16 (for wire-gauge/fuse tables)."
+  - id: OI-28
+    sheet: E-004
+    item: "PS1 enclosure/chassis ground and DC-0V-to-PE bonding not documented — is PS1's DIN-rail/enclosure bonded to PE, and is the 24 VDC 0V rail (DB1 0V-bus) intentionally tied to PE anywhere (SELV/PELV grounding scheme), or left floating?"
+    verify: "Meter PS1 enclosure/DIN rail to the PE bus for continuity; meter DB1 0V-bus to the PE bus for continuity/resistance; confirm whether a deliberate 0V-PE bond exists or the 24 VDC system is intentionally floating."

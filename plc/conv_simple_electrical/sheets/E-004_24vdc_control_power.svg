@@ -65,7 +65,7 @@
 <text x="400.0" y="256.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="bold" fill="#111111">L</text>
 <text x="168.0" y="240.0" font-size="6.5" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">(not drawn)</text>
 <text x="340.0" y="284.0" font-size="14" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">PS1</text>
-<text x="340.0" y="300.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">Mean Well DIN-rail supply (24 V / 1.0 A; 100</text>
+<text x="340.0" y="300.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">Mean Well 24 V / 1.0 A DIN supply</text>
 <circle cx="280.0" cy="460.0" r="2.8" fill="#111111" stroke="#111111" stroke-width="1.4"/>
 <text x="280.0" y="452.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="bold" fill="#111111">+V</text>
 <circle cx="340.0" cy="460.0" r="2.8" fill="#111111" stroke="#111111" stroke-width="1.4"/>
@@ -179,11 +179,12 @@
 <text x="806.0" y="755.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• DB1 is a push-in (WAGO-style), 2-level distribution block fed from PS1's +V/-V output; a bare-copper jumper bridges its top-left terminals in the photo</text>
 <text x="806.0" y="766.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">(review/photos/dc_block_full.jpg) — internal jumpering/circuit count not documented.</text>
 <text x="806.0" y="777.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• PS1's DC-OK terminal (LED/relay status output) and PE input terminal are shown for reference only; neither carries a modeled conductor on this sheet.</text>
-<text x="806.0" y="788.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• +24V / 0V downstream of DB1 feed the E-005 input rail (W24/W0V) and the E-006 output bank 0 feed/return (W600/W609) — same electrical nodes, different sheet.</text>
-<text x="800.0" y="809.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">SOURCES:</text>
-<text x="806.0" y="819.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">photo review/photos/wire_2.jpg (2026-07-11 — Mean Well nameplate read directly)</text>
-<text x="806.0" y="829.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">photo review/photos/dc_block_full.jpg + wire_1.jpg (2026-07-11 — DC distribution block)</text>
-<text x="806.0" y="839.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">review/PHOTO_EVIDENCE_V4.md · review/PHOTO_EVIDENCE_V5.md (OI-25)</text>
+<text x="806.0" y="788.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• PS1 enclosure/chassis ground and whether DC-0V is bonded to PE anywhere (SELV/PELV scheme vs intentionally floating) is NOT documented — FIELD VERIFY (OI-28).</text>
+<text x="806.0" y="799.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• +24V / 0V downstream of DB1 feed the E-005 input rail (W24/W0V) and the E-006 output bank 0 feed/return (W600/W609) — same electrical nodes, different sheet.</text>
+<text x="800.0" y="820.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">SOURCES:</text>
+<text x="806.0" y="830.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">photo review/photos/wire_2.jpg (2026-07-11 — Mean Well nameplate read directly)</text>
+<text x="806.0" y="840.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">photo review/photos/dc_block_full.jpg + wire_1.jpg (2026-07-11 — DC distribution block)</text>
+<text x="806.0" y="850.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">review/PHOTO_EVIDENCE_V4.md · review/PHOTO_EVIDENCE_V5.md (OI-25)</text>
 <text x="70.0" y="839.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">LEGEND</text>
 <line x1="80.0" y1="851.0" x2="126.0" y2="851.0" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/>
 <text x="134.0" y="854.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VERIFIED (solid)</text>
