@@ -323,7 +323,7 @@ def _extract_fault_codes(query_text: str) -> list[str]:
 
 def recall_fault_code(
     code: str,
-    tenant_id: str,
+    tenant_id: str | None,
     model: str | None = None,
 ) -> list[dict]:
     """Deterministic fault code lookup from structured fault_codes table.
