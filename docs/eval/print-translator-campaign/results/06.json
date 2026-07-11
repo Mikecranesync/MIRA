@@ -1,0 +1,44 @@
+{
+  "id": 6,
+  "oem": "Eaton",
+  "document": "Freedom NEMA Magnetic Starters (CA08100006E Vol. 5)",
+  "url": "https://www.eaton.com/content/dam/eaton/products/industrialcontrols-drives-automation-sensors/nema-contactors-and-starters-v5-t2-ca08100006e.pdf",
+  "manifest_page_ref": "Wiring diagrams section (p. 22–40)",
+  "print_type": "NEMA magnetic starter wiring",
+  "standard": "NEMA ICS 2",
+  "category": "NEMA Starters",
+  "manifest_status": "CONFIRMED-2026-07-10",
+  "rendered_page_number": 27,
+  "image_sha256": "e09e14a2c5aabe83198879251676154a29218fa4d8b92960b9413a21a33565b2",
+  "caption": "Explain this print.",
+  "run_timestamp_utc": "2026-07-10T12:07:56.316579+00:00",
+  "bot_importable": true,
+  "code_path": "bot._try_print_translator_reply (real handler, spied engine, no Telegram)",
+  "handled": true,
+  "vision_called": true,
+  "router_called": true,
+  "vision": {
+    "classification": "ELECTRICAL_PRINT",
+    "classification_confidence": 0.75,
+    "drawing_type": "electrical drawing",
+    "drawing_type_confidence": 0.2,
+    "vision_result": "The image shows an electrical drawing, specifically a page from a technical manual or catalog for NEMA Contactors and Starters, detailing auxiliary contact locations, mounting positions, and configurations for various NEMA and IEC sizes.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  },
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: electrical drawing\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2945,
+    "output_tokens": 414,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "inference": "ran",
+  "translator_reply": "## 1. What this appears to be\nThis appears to be a technical diagram or table related to NEMA contactors and starters, specifically detailing auxiliary contact locations for various NEMA and IEC sizes.\n\n## 2. Main visible components\n- The image contains tables and diagrams illustrating the maximum number of auxiliary contacts that can be assembled to a contactor or starter and their locations.\n- There are sections for NEMA Sizes 00-2, IEC Sizes A-K, and NEMA Sizes 3-8, IEC Sizes L-Z.\n- The tables list details such as size, poles, available mounting positions (open type and enclosed), and catalog numbers.\n\n## 3. Plain-English theory of operation\n- The diagrams and tables provide information on where auxiliary contacts can be mounted on different sizes of contactors and starters.\n- For example, for NEMA Sizes 00-2 and IEC Sizes A-K, auxiliary contacts can be mounted in positions T1, L1, and R1 for open types and L1, R1 for enclosed types.\n- The mounting positions for auxiliary contacts vary by NEMA and IEC size, with specific configurations for non-reversing and reversing contactors and starters.\n\n## 4. What must be true for it to work\n- The correct NEMA or IEC size must be matched with the appropriate mounting positions for auxiliary contacts.\n- The type of contactor or starter (non-reversing or reversing) determines the available mounting positions for auxiliary contacts.\n- The number of poles and the specific catalog number must align with the provided tables.\n\n## 5. What would stop it from working\n- Mismatching the NEMA or IEC size with the incorrect mounting positions for auxiliary contacts.\n- Incorrectly identifying the type of contactor or starter (non-reversing or reversing) and its impact on auxiliary contact mounting.\n- Failure to use the correct catalog number for the specific configuration.\n\n## 6. Unclear or unreadable items\n- Nothing major appears to be unreadable in the provided image."
+}

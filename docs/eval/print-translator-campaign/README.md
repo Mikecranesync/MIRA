@@ -1,5 +1,13 @@
 # Print Translator Evaluation Campaign — Review Package
 
+> **2026-07-10 autonomous refresh:** the corpus no longer depends on any Mike-supplied print. 13 broken URLs were
+> resolved autonomously (Haiku discovery + Sonnet validation + deterministic httpx verification) → **22/25 entries
+> verified publicly-accessible + authentic**; **20 run** through the real handler; the **first-10 re-selected to 10
+> DISTINCT OEMs** (ABB, Rockwell, Eaton, Banner, Siemens, Omron, Mitsubishi, AutomationDirect, Schneider, Yaskawa)
+> across all 6 circuit categories. Real Groq vision cascade; no Telegram/prod. See `corpus_manifest.md` §"Campaign
+> Run Status". Images stay local (gitignored, copyright) — read the `response` field in `results/<id>.gate_bypassed.json`.
+
+
 **One folder, zero setup, zero drawings you supply.** Everything below is real: real OEM PDFs,
 real vision classification (Groq), real production prompt + cascade, real rendered images. Nothing
 is mocked or fabricated. Date: 2026-07-10.

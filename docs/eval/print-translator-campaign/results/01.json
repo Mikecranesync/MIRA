@@ -1,0 +1,32 @@
+{
+  "id": 1,
+  "oem": "Siemens",
+  "document": "3RT2 Contactors Manual (60306557)",
+  "url": "https://cache.industry.siemens.com/dl/files/557/60306557/att_111612/v1/manual_contactors_3RT2_en-US.pdf",
+  "manifest_page_ref": "Ch. 2–3, power & control circuits",
+  "print_type": "Power contactor diagram",
+  "standard": "IEC 60947-4-1",
+  "category": "European/IEC",
+  "manifest_status": "CONFIRMED-2026-07-10",
+  "rendered_page_number": 48,
+  "image_sha256": "b8ad7fa2e6f0366a9560d9111020c6f946bbede9d81c1255e9c8a14b81491f9c",
+  "caption": "Explain this print.",
+  "run_timestamp_utc": "2026-07-10T12:07:42.893514+00:00",
+  "bot_importable": true,
+  "code_path": "bot._try_print_translator_reply (real handler, spied engine, no Telegram)",
+  "handled": false,
+  "vision_called": true,
+  "router_called": false,
+  "inference": "not_triggered",
+  "reason": "vision classified as 'NAMEPLATE', not ELECTRICAL_PRINT",
+  "vision": {
+    "classification": "NAMEPLATE",
+    "classification_confidence": 0.65,
+    "drawing_type": null,
+    "drawing_type_confidence": 0.0,
+    "vision_result": "The image shows an electrical drawing, specifically a table from a technical manual for SIRIUS 3RT2 contactors/contactor assemblies. The table details drive system/coil selection, including operating mechanisms, coil surge suppressors, operating ranges, and preferred voltages for AC and DC operations.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  }
+}
