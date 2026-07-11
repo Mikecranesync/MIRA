@@ -1,8 +1,39 @@
 # Competitor Video Analysis — MIRA Promo Director
 
-**Last refresh:** 2026-05-03
+**Last refresh:** 2026-07-11
 **Scope:** Promo, launch, explainer, and product-demo videos. YouTube-primary; official channels and partner placements included.
 **Note:** YouTube direct-fetch is blocked (403). All entries are search-derived. Hook text extracted from press releases, descriptions, and search snippets. Mark `[transcript not verified]` where opening details are inferred.
+
+---
+
+## Refresh delta — 2026-07-11
+
+**Cutoff:** 2026-05-03 → 2026-07-11. 8 vendors with new signal.
+
+### Most actionable change for the playbook
+
+**Augury pivoted from hardware/sensor-category to "role-based AI agents" (May 18, 2026).** They now frame their product as an *AI Workforce* — distinct agents for reliability, maintenance, and operations teams — built on top of their Machine Health sensors + Google Gemini + AVEVA CONNECT. This moves Augury directly into MIRA's framing territory. MIRA's counterplay: Augury's agent workforce is sensor-first and hardware-gated; MIRA is context-first and sensor-agnostic. Own "the agent that works on your existing data" vs Augury's "the agent that requires our hardware."
+
+**Second pattern: Notion Agents iOS hook is directly transferable to MIRA's technician-on-the-floor context.** "A voice note. A photo of a napkin sketch. A question at 11pm. All handled before you're back at your desk." Swap workspace for factory floor and you have MIRA's mobile pitch: "A fault code. A photo of a nameplate. A call at shift change. Cited answer before you reach the machine."
+
+### New findings (2026-07-11 delta)
+
+**CMMS / EAM**
+- **MaintainX** — Autodesk acquisition for $3.6 billion (May 28, 2026): Bloomberg CEO interview video published May 29. Largest CMMS acquisition on record. MaintainX ARR >$135M, growing >50%. Competitive posture TBD: could shift to enterprise/AEC and reduce MIRA's SMB overlap.
+- **UpKeep** — "AI May" webinar series (May 2026): https://upkeep.com/lp/ai-may/ — "Your First Look at Nova and Studio" in Session 1. Nova PDF Builder + fleet warranty tracking released June 12 (https://upkeep.com/product-releases/upkeep-product-release-june-12-2026/). Framing: "Nova lives in your pocket. Create work orders, check inventory, look up asset history just by talking." [page-derived, transcript not verified]
+
+**Predictive maintenance**
+- **Augury** — "Industrial AI Workforce" launch (May 18, 2026): https://www.augury.com/media-center/press/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce/ — Previewed at AVEVA World in Milan. Role-based AI agents for reliability, maintenance, and ops teams, layered on Machine Health data + AVEVA CONNECT + Google Gemini. CTA: demo at conference, no hard URL in press coverage. Style: press release + partner co-announcement; no standalone YouTube video confirmed. [transcript not verified]
+
+**Automation / SCADA**
+- **Rockwell Automation** — ROKStudios June 4, 2026: https://www.prnewswire.com/news-releases/rockwell-automation-launches-new-season-of-rokstudios-video-series-highlighting-oem-leaders-on-machine-lifecycle-innovation-302788178.html — OEM machine lifecycle season recorded at Interpack 2026 in Düsseldorf. Theme: full machine lifecycle "from initial design through commissioning and long-term operation." Now 150+ recordings total. June 30: first German-language season. [no single YouTube URL; episodes at ROKStudios portal]
+
+**B2B SaaS / dev-tools**
+- **Notion** — Agents iOS app (July 7-8, 2026): https://www.notion.com/releases/2026-07-08 — standalone iPhone app for AI agents. Opening hook (marketing copy, not transcript): "A voice note. A photo of a napkin sketch. A question at 11pm. All handled before you're back at your desk. A team of agents, in your pocket." Notion 3.6 (July 1) added External Agents with Claude and Cursor as first partners. New pattern: standalone mobile app as agent entry point (not a chat tab inside existing app).
+- **Stripe** — Sessions 2026 keynote (Apr 29–May 1, 2026): https://www.youtube.com/watch?v=Nadf3MdJS-8 — "most ambitious single-day set of product launches in Stripe's history" — 288 new products and features. Theme: "building the economic infrastructure for AI." Patrick Collison opened; Will Gaybrick presented products. Footage: on-stage keynote, polished; founder register; no aggressive CTA. [transcript not verified]
+- **OpenAI** — June 2026 Product Announcements video: https://www.youtube.com/watch?v=034-1hTrapM — hook: "Brace yourselves: we're kicking off summer with a bang!" [search-snippet-derived]. 82 product updates across the month. July launch: ChatGPT Work (GPT-5.6) — "brings together context from your team's tools to turn scattered notes, drafts, and ideas into finished work."
+- **Anthropic** — Code with Claude conference series: SF (May 6) https://www.youtube.com/watch?v=wjvESxKgqaQ, London (May 19) https://www.youtube.com/watch?v=6amLO7I9xdg, Tokyo (June 10) https://www.youtube.com/watch?v=N4efO8viXXo — developer conference keynotes, all on YouTube. Claude Fable 5 (June 9), Claude Sonnet 5 (June 30) launched alongside. Register: engineering/product leaders; educational not promotional. MIT Tech Review: "Anthropic's Code with Claude showed off coding's future — whether you like it or not."
+- **Cursor** — SpaceX acquisition announced June 16, 2026 ($60 billion); iOS app June 29 (public beta, all paid plans). Grok 4.5 integration July 8. No dedicated promo video; growth remains changelog/word-of-mouth. The SpaceX deal signals AI coding tools entering defense/aerospace — not directly relevant to MIRA but signals massive valuation compression for the category.
 
 ---
 
@@ -86,7 +117,9 @@ UpKeep Nova's "acts on it" framing directly maps to MIRA's core value prop. Comp
 - "Digitize Fast with MaintainX and AI": https://www.youtube.com/watch?v=X8cY-d-_KZM
 - "Streamline workflows with MaintainX and AI": https://www.youtube.com/watch?v=z9mOVm-PtyY
 
-**Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner.
+**Market position:** 13,000+ companies; Deloitte Technology Fast 500 2025 winner. **Acquired by Autodesk for $3.6B (May 28, 2026)** — all-cash deal; MaintainX continues operating independently through close. Autodesk CEO: deal extends from design into "running of factories, facilities and physical assets." Bloomberg CEO interview (May 29): https://www.bloomberg.com/news/videos/2026-05-29/autodesk-ceo-maintainx-deal-brings-exciting-opportunity-video — corporate register, M&A framing, no product demo hook.
+
+**Competitive note (updated):** Post-acquisition trajectory unclear. Near-term: no change. Long-term: may become Autodesk's maintenance/operations layer for AEC + manufacturing customers — broadens ICP away from MIRA's SMB-maintenance target, or supercharges enterprise distribution.
 
 ---
 
@@ -146,6 +179,15 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 
 **Pattern note:** Augury is running a dual-track strategy — category-creation technical videos (Ultra Low RPM) alongside third-party credibility videos (Bloomberg/Fortune Brands). The 2.5x ROI claim with named customer + specific machine count is a strong proof template.
 
+**Industrial AI Workforce announcement (May 18, 2026)**
+- Source: https://www.augury.com/media-center/press/augury-shaping-the-future-of-production-with-the-industrial-ai-workforce/
+- Previewed at AVEVA World in Milan; no standalone YouTube video confirmed [transcript not verified]
+- Framing pivot: from "monitor your machines" to "AI agents for your reliability, maintenance, and ops teams"
+- Stack: Augury Machine Health sensors + AVEVA CONNECT operational context + Google Gemini reasoning
+- Claim: manufacturers can "build self-optimizing, adaptive production environments"; move "from reactive operations to AI-driven, autonomous production"
+- Footage style: press release + conference demo; no VO register confirmed
+- **MIRA counterplay:** Augury's agent workforce is hardware-gated (requires their sensors). MIRA's counterplay: "the agent that works on your existing data — manuals, PLC tags, work orders — no sensor rip-and-replace."
+
 ---
 
 ### Senseye (now Siemens)
@@ -199,6 +241,15 @@ No video content surfaced for 2025–2026. Both mid-market; no AI agent pivot ob
 - Episode topics: cyber resilience in OT/IT convergence, workforce reshaping under AI
 - VO register: corporate executive
 - CTA: soft brand / thought leadership
+
+**ROKStudios OEM Machine Lifecycle Season (June 4, 2026)**
+- URL: https://www.prnewswire.com/news-releases/rockwell-automation-launches-new-season-of-rokstudios-video-series-highlighting-oem-leaders-on-machine-lifecycle-innovation-302788178.html
+- Recorded at Interpack 2026 in Düsseldorf; OEM machine builder executives across packaging + manufacturing
+- Theme: "how OEMs are evolving their strategies to deliver value across the full machine lifecycle — from initial design through commissioning and long-term operation"
+- Format: exec interviews; no product demos; 150+ recordings now in the portal
+- VO register: corporate / OEM executives
+- CTA: portal viewing; no hard URL in individual episodes
+- June 30: First German-language season (DACH region leaders); signals international content localization strategy
 
 **Automation Fair 2025 (Nov 17–20, Chicago)**
 - 30+ new products: ControlLogix 5590 (integrated functional safety), OptixEdge gateway, Armor PowerFlex 330, Asset+ managed service
@@ -254,11 +305,17 @@ No video content surfaced for 2025–2026 in scope of promo/launch category.
 - VO register: product executive
 - CTA: soft — "available now" callouts within demo
 
-**Sessions 2026 keynote**
-- URL: https://www.youtube.com/watch?v=e13-s0p1tfE
-- Date: 2026; details not extracted
+**Sessions 2026 keynote (Apr 29–May 1, 2026)**
+- Opening keynote: https://www.youtube.com/watch?v=Nadf3MdJS-8
+- 12-minute recap: https://www.youtube.com/watch?v=8F4XyWYqZi8
+- Developer keynote: https://www.youtube.com/watch?v=NCw4TWMfV-k
+- Patrick Collison: "the most ambitious single-day set of product launches in Stripe's history" — 288 new products and features
+- Theme: "building the economic infrastructure for AI" — pivoted from commerce to AI monetization as the primary frame
+- Footage: on-stage keynote, polished; Collison opened, Will Gaybrick (President, Product & Business) presented products
+- VO register: founder / product executive; no aggressive CTA; ecosystem building
+- Scale claim: 288 products in one day — signals "platform depth" as the new competitive moat for infra companies [transcript not verified for individual hooks]
 
-**Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube.
+**Pattern note:** Stripe's annual conference is its primary video launch vehicle. No standalone explainer ads — all video investment goes to conference keynote content that lives organically on YouTube. The "economic infrastructure for AI" reframe (2026) is more powerful than the prior "future of commerce" frame — maps directly to the platform positioning any infrastructure company should aim for.
 
 ---
 
@@ -295,6 +352,19 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Key claim: Codex agent "grown 20x since August, now serves trillions of tokens weekly"
 - Multiple 2025 launches: GPT-4o Image, Sora standalone app, group chats
 
+**June 2026 Product Announcements video**
+- URL: https://www.youtube.com/watch?v=034-1hTrapM
+- Opening hook: "Brace yourselves: we're kicking off summer with a bang!" [search-snippet-derived; transcript not verified]
+- 82 product updates in June alone
+- Monthly anthology format: not a single product launch but a cadence-of-shipping signal
+
+**ChatGPT Work + GPT-5.6 Sol (July 2026)**
+- Announced July 9, 2026: https://9to5mac.com/2026/07/09/openai-announcing-the-next-chapter-for-chatgpt/
+- ChatGPT Work: "brings together context from your team's tools to turn scattered notes, drafts, and ideas into finished work"; GPT-5.6-powered
+- GPT-5.6 Sol: flagship reasoning model; available all plans on desktop then web/mobile rollout
+- No standalone YouTube video confirmed for this launch; livestream format used instead
+- Pattern: OpenAI now releasing on a monthly cadence with an anthology video format — signals shipping velocity as a marketing strategy in itself
+
 ---
 
 ### Anthropic
@@ -303,6 +373,16 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Claude Code: crossed $1B revenue ~6 months post-launch (Nov 2025 launch)
 - 30+ product releases in recent months per search results
 - No standalone promo video; analyst/conference appearances as primary video channel
+
+**Code with Claude 2026 — developer conference keynote series (May–June 2026)**
+- San Francisco (May 6): https://www.youtube.com/watch?v=wjvESxKgqaQ
+- London (May 19): https://www.youtube.com/watch?v=6amLO7I9xdg
+- Tokyo (June 10 — first APAC event): https://www.youtube.com/watch?v=N4efO8viXXo
+- Format: engineering/product leaders; breakout sessions, workshops, live demos, office hours
+- Register: technical/peer; not promotional; MIT Technology Review framing: "showed off coding's future — whether you like it or not"
+- Claude Fable 5 (June 9) and Claude Sonnet 5 (June 30) launched alongside the series
+- CTA: none explicit; developer ecosystem / word of mouth
+- Pattern: conference-as-launch-vehicle used three times in 5 weeks (SF → London → Tokyo). Each city's keynote is a discrete piece of content with its own YouTube upload, multiplying organic reach without additional creative cost.
 
 ---
 
@@ -339,6 +419,17 @@ No promo video surfaced. Apr 2026: Linear Agent + MCP support. Channel: https://
 - Music: likely ambient [not verified]
 - CTA: soft — "available now in Notion AI"
 - Pattern note: "busywork → life's work" contrast is the tightest agent-value compression found across all vendors; adapt for MIRA as "fault-chasing → running the line"
+
+**Notion 3.6: External Agents + Agents iOS app (July 1–8, 2026)**
+- Notion 3.6 release: https://www.notion.com/releases/2026-07-01 — Claude and Cursor are first two External Agents; agents assignable from a shared team board, mentionable like teammates
+- Agents iOS app launch: https://www.notion.com/releases/2026-07-08 — standalone iPhone app (separate from main Notion app)
+- Opening hook (marketing copy from launch, not transcript): "A voice note. A photo of a napkin sketch. A question at 11pm. All handled before you're back at your desk. A team of agents, in your pocket."
+- Key claims: agents read/write Excel and PowerPoint; speaker-labeled AI meeting notes; interactive HTML blocks
+- Footage style: product screenshot; mobile-first framing [no YouTube video URL confirmed; covered in 9to5Mac, AlternativeTo]
+- VO register: peer/friendly (written copy)
+- CTA: available now in App Store
+- **New pattern:** standalone mobile agent app as a separate product — not a tab inside existing app. Signals that "agent" is graduating from feature to product in the B2B SaaS category.
+- **MIRA transfer:** "A fault code. A photo of a nameplate. A question at shift change. Cited answer before you reach the machine." Same structure, factory-floor context.
 
 ---
 
@@ -395,6 +486,12 @@ No video content surfaced for 2025–2026.
 ### Vendor style drift (notable shifts)
 
 - **UpKeep**: shifted from feature-showcase to autonomous-agent narrative (Sep 2025 Nova launch). Now competing on workflow replacement, not workflow improvement.
-- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach.
+- **MaintainX**: added knowledge-base framing (OEM manual ingestion) in Feb 2025; previously pure workflow CMMS. Now directly adjacent to MIRA's diagnostic KB approach. **Acquired by Autodesk (May 2026)** — competitive posture shifting; may become enterprise AEC play rather than SMB CMMS.
 - **Inductive Automation**: doubled down on educational content (SCADA 101) over product feature content in 2025 — treating top-of-funnel education as the acquisition channel.
-- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience.
+- **Augury**: moved from B2B-tech-style VO demos to third-party credibility (Bloomberg) for enterprise deals, while maintaining technical deep-dives for practitioner audience. **Pivoted to "role-based AI agent workforce" framing (May 2026)** — now frames product as AI agents for maintenance/reliability/ops teams, not just a monitoring sensor. Directly encroaches on MIRA's territory; MIRA's counterplay is sensor-agnostic context.
+- **Stripe**: reframed from "economic infrastructure for commerce" to "economic infrastructure for AI" (Sessions 2026) — platform-layer companies are converging on "AI infrastructure" as the premium positioning tier.
+- **Notion**: graduated "agents" from a feature (Notion AI tab) to a standalone product (Agents iOS app, July 2026). Pattern: when agent capability matures, it warrants its own app. Watch for other B2B SaaS players doing the same.
+
+### New anti-pattern (2026 delta)
+
+- **Monthly announcement video as a substitute for a single strong launch** — OpenAI's 82-product June anthology signals "shipping velocity" but produces no single memorable hook. Useful for developer retention; not useful for brand acquisition. MIRA should launch one clear thing with one clear claim rather than a monthly roundup.
