@@ -21,12 +21,11 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
-from typing import Any, Optional
 
+from simlab.diagnostic import assemble_evidence, grade
 from simlab.engine import BASE_EPOCH, SimEngine
 from simlab.lines.juice_bottling import build_line
 from simlab.scenarios import get_scenario
-from simlab.diagnostic import assemble_evidence, grade
 
 _REPO = Path(__file__).resolve().parents[2]
 
@@ -273,6 +272,7 @@ def _live_explain(sc, event_block: str) -> str:  # pragma: no cover - needs clou
     """Opt-in: hand the event block to the REAL Supervisor for a cited answer.
     Requires INFERENCE_BACKEND=cloud + provider keys + NEON_DATABASE_URL."""
     import asyncio
+
     from shared.engine import Supervisor  # noqa: E402 — only imported on the live path
 
     sup = Supervisor(db_path=":memory:", openwebui_url="", api_key="", collection_id="")

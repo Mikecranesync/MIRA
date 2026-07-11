@@ -179,6 +179,7 @@ def write_fault_report(fault_bundle: dict, path: str) -> str:
 
 def _main(argv=None) -> int:
     import argparse
+
     from .fault_bundle import build_fault_bundle_for_scenario
     ap = argparse.ArgumentParser(description="Fault-centered static report (deterministic, offline)")
     ap.add_argument("--code", default="F007")
