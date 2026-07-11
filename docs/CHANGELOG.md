@@ -205,7 +205,7 @@
 - **Tests:** +16 (asset identity) +6 (raw_text) +5 (applicability parity); full drive-pack + nameplate suite green (85 + 6); ruff clean; Hub GS10 pack copy still byte-synced. Built with Haiku + Sonnet subagents on disjoint files; integration + doc-accuracy pass by the orchestrator.
 - **Scope:** no change to `engine.py` / `ask_api` / `drive_pack.py` / `ignition_chat.py`; resolver unchanged.
 
-### v3.111.3 (2026-07-08) - docs(plan): prod ingest storage fixes — embedder (Bravo Ollama down) + KG upsert ON CONFLICT
+### v3.129.5 (2026-07-11) - docs(plan): prod ingest storage fixes — embedder (Bravo Ollama down) + KG upsert ON CONFLICT
 - **Discovery (issue #2562 Phase 1 OCR proof):** the OCR path works end-to-end (scanned PDF → Tika → 224 chars) but the chunk is **never stored / not citable**. Root cause is **not** OCR — it's the storage layer.
 - **Primary:** prod embeddings go to Bravo's home-lab Ollama (`OLLAMA_BASE_URL=http://100.86.236.11:11434` in `factorylm/prd`), which is **offline** (`curl … :11434 → rc=7 connection refused`) → `0 chunks stored` for every manual (OCR *and* text-layer). `knowledge_entries.embedding` is `vector(768)` (nomic-embed-text), so any replacement must be 768-dim-compatible.
 - **Secondary:** `kg_writer.py` `ON CONFLICT (tenant_id, entity_type, name)` errors "no matching constraint" despite a matching non-partial unique index (`kg_entities_tenant_type_name_key`) — anomalous; needs a staging repro. Blocks the KG write, not the citable chunk.
