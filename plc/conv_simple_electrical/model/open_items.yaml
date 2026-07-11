@@ -34,3 +34,51 @@ items:
     sheet: E-005
     item: "Spares I-06..I-11 confirmed unused"
     verify: "Confirm no field wires land on I-06..I-11 (program shows none)."
+  - id: OI-09
+    sheet: E-006
+    item: "Output bank technology + common feeds. +CM0/-CM0/+CM1/-CM1 polarity naming suggests DC transistor banks; devices.yaml io line says 'relay DO' — conflict."
+    verify: "Resolve per 2080-IN009 + meter the bank feed (expect PS1 +24V/0V)."
+  - id: OI-10
+    sheet: E-006
+    item: "Q1 contactor identity — part number, coil voltage, pole count; coil terminal ids A1/A2 are PROPOSED."
+    verify: "Meter coil circuit from O-02."
+  - id: OI-11
+    sheet: E-006
+    item: "PL1/PL2 devices + lamp terminal ids (X1/X2 proposed); S2 lamp terminals."
+    verify: "Meter the light circuits and confirm device markings."
+  - id: OI-12
+    sheet: E-006
+    item: "Confirm no field wires on spare O-04..O-06 (+CM1 bank unused)."
+    verify: "Trace the PLC output block and verify no wires to O-04, O-05, O-06."
+  - id: OI-13
+    sheet: E-006
+    item: "Re-confirm output map against LIVE Conv_Simple_1.8 CCW project (v4.0 table vintage caveat)."
+    verify: "Cross-check O-00, O-01, O-02, O-03 function assignments in the live CCW project (v4.0 input half drifted — I-05)."
+  - id: OI-14
+    sheet: E-003
+    item: "Q1 contactor placement in the power chain (assumed line side of VFD1 per 'safety power'; could be elsewhere)."
+    verify: "Trace conductors on the bench; verify Q1 poles 1-6 actual locations. R-C surge absorber both ends recommended per GS10 manual."
+  - id: OI-15
+    sheet: E-003
+    item: "Supply voltage/phase/receptacle + CB1 existence/type/rating."
+    verify: "Identify the bench supply; confirm CB1 device and rating. NEC and GS10 manual require upstream protection."
+  - id: OI-16
+    sheet: E-003
+    item: "GS10 exact model+frame (enables wire-gauge/fuse tables); M1 nameplate; conductor gauges; PE points + ground resistance ≤0.1Ω check."
+    verify: "Photograph GS10 nameplate and motor nameplate; measure PE resistance between drive/motor grounds and supply PE."
+  - id: OI-17
+    sheet: E-003
+    item: "RFI jumper in/out per grounding topology (symmetrical vs corner-grounded unknown)."
+    verify: "Determine bench PE bonding strategy; verify RFI jumpers per GS10_UM.txt L1693-1718 if present."
+  - id: OI-18
+    sheet: E-006
+    item: "Fallback DI wiring physical presence (expected ABSENT — P02.0x factory default)."
+    verify: "Trace the PLC output block; confirm zero hardwired leads to any GS10 digital inputs (fallback path should be unpopulated)."
+  - id: OI-19
+    sheet: "E-003, E-006"
+    item: "Wire numbers W30x and W60x are PROPOSED (mirror of OI-03)."
+    verify: "Read the actual wire markers on the panel for E-003 and E-006; replace proposed numbers with as-built."
+  - id: OI-20
+    sheet: E-007
+    item: "GS10 comms line params: 2026-05-20 export = 38.4k/8N2 vs 2026-05-26 bench sniff = 9600/8N1 — adjudicate."
+    verify: "Fresh keypad readback of the GS10 serial config; update print if params differ from current 9600/8N1 assumption."

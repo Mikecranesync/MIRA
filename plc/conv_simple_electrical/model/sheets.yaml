@@ -11,8 +11,18 @@ sheets:
     title: Power one-line
     status: stub
   - id: E-003
-    title: VFD power (Q1 -> VFD1 -> M1)
-    status: stub
+    title: VFD power (CB1 -> Q1 -> VFD1 -> M1)
+    status: drafted
+    scope: >
+      Upstream supply → branch protection (CB1) → safety contactor (Q1) → VFD1 power input
+      (R/L1, S/L2, T/L3) → motor output (U/T1, V/T2, W/T3) → motor M1; PE bonding.
+    note: >
+      Bench supply voltage, phase count, GS10 exact model/frame, breaker rating, wire gauge:
+      NOT DOCUMENTED anywhere (every conductor is FIELD VERIFY). P00.01 rated current 1.60 A
+      (2026-05-20 export) is the only sizing clue. If the drive is a 1φ model, input is R/L1, S/L2 only.
+      Q1 placement in power chain assumed line-side per manual recommendation; verify actual location (OI-14).
+      MC is emergency/safety switching only — never start/stop via input power. LOTO + wait ≥5 min
+      for DC-bus discharge before touching (WI p.2 §2).
   - id: E-004
     title: 24 VDC control power distribution (PS1)
     status: stub
@@ -22,7 +32,16 @@ sheets:
     scope: Micro820 I-00..I-05 (+ spares I-06..I-11); E-stop, direction selector, run PB, photo-eye
   - id: E-006
     title: PLC outputs (O-00..O-06)
-    status: stub
+    status: drafted
+    scope: >
+      Micro820 outputs O-00..O-06 (banks +CM0/-CM0, +CM1/-CM1): PL1/PL2 pilots, Q1 contactor coil,
+      S2 lamp; O-04..O-06 spare. GS10 run/dir/freq = Modbus (E-007, P00.21=2) — NO GS10 control-terminal wiring.
+    note: >
+      Hardwired fallback documented in MIRA-WI-001 v3 §3 Fig 1 (DO_03..DO_07 → GS10 DI1..DI5 + DCM) —
+      NOT ACTIVE and NOT drawn: P02.0x at factory default per 2026-05-20 parameter export; DO_07 does not exist
+      on the 2080-LC20-20QBB (O-00..O-06); DO_03 collides with PBRunLED in the live I/O map. Bench presence of
+      any such wiring = FIELD VERIFY (OI-18). Correction: July-3 target sketch assumed CR relay → GS10 DI —
+      SUPERSEDED by P00.21=2 (RS-485 Modbus) + ContactorQ1 evidence.
   - id: E-007
     title: RS-485 Modbus (PLC1 Ch2 <-> VFD1 RJ45)
     status: drafted          # rebuilt from recovered CCW/MIRA_PLC CommsToVFD style, corrected values

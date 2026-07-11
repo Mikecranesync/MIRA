@@ -6,7 +6,7 @@ meta:
   asset: CV-101 (garage conveyor)
   drawn_by: MIRA / FactoryLM
   revision: A
-  date: "2026-07-03"
+  date: "2026-07-10"
 
 devices:
   - tag: PLC1
@@ -45,9 +45,9 @@ devices:
 
   - tag: S2
     type: pushbutton_no
-    role: Run / rearm pushbutton to I-04
+    role: Run / rearm pushbutton to I-04; illuminated — lamp fed by PLC O-03 (PBRunLED)
     evidence: verified
-    source: plc/ignition-project/.../Inputs/tags.json ("DI-04 Run pushbutton")
+    source: plc/ignition-project/.../Inputs/tags.json ("DI-04 Run pushbutton"); plc/CCW_VARIABLES_v4.0.txt:80
 
   - tag: B1
     type: photo_eye
@@ -60,10 +60,31 @@ devices:
     role: 24 VDC control supply (documented on E-004); feeds +24V/0V to input loop
     evidence: field_verify
 
-  - tag: Q1
+  - tag: CB1
     type: circuit_breaker
-    role: Main / branch protection (documented on E-002/E-003)
+    role: Upstream branch protection (E-002/E-003) — existence, type, rating unconfirmed
     evidence: field_verify
+
+  - tag: Q1
+    type: contactor
+    role: Safety power contactor — coil driven by PLC O-02 ('ContactorQ1', safety power); drops on E-stop (Integration Guide Phase-5 test). Coil shown on E-006; power poles on E-003. a.k.a. MLC in WorkInstruction_v3.
+    evidence: verified
+    source: plc/CCW_VARIABLES_v4.0.txt:80; plc/GS10_Integration_Guide.md:303; plc/Prog_init_ConvSimple_v2.1.st:214
+    note: Placement in power chain, part number, pole count, coil voltage = FIELD VERIFY.
+
+  - tag: PL1
+    type: pilot_light
+    role: Green RUNNING pilot — load of O-00 (LightGreen)
+    evidence: verified
+    source: plc/CCW_VARIABLES_v4.0.txt:79
+    note: Device model + lamp terminals FIELD VERIFY.
+
+  - tag: PL2
+    type: pilot_light
+    role: Red FAULT/E-STOP pilot — load of O-01 (LightRed)
+    evidence: verified
+    source: plc/CCW_VARIABLES_v4.0.txt:79; plc/GS10_Integration_Guide.md (Lineage-A fault_lamp)
+    note: Device model + lamp terminals FIELD VERIFY.
 
   - tag: X1
     type: terminal_block

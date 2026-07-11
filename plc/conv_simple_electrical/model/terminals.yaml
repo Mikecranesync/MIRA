@@ -58,6 +58,20 @@ PLC1:
     - id: COM0
       function: Digital-input common (return to 0V)
       status: field_verify   # sink/source jumpering + which COM serves I-00..I-05 not documented
+  outputs:   # CCW_VARIABLES_v4.0.txt:78-82 — I/O map "unchanged from v3.1"; O-02 corroborated
+             # by Prog_init v2.1 vfd_run_permit readback. Vintage caveat: see open item OI-13.
+    - {id: O-00, opc: _IO_EM_DO_00, function: "LightGreen -> PL1 (running)", status: verified}
+    - {id: O-01, opc: _IO_EM_DO_01, function: "LightRed -> PL2 (fault/e-stop)", status: verified}
+    - {id: O-02, opc: _IO_EM_DO_02, function: "ContactorQ1 coil (safety power)", status: verified}
+    - {id: O-03, opc: _IO_EM_DO_03, function: "PBRunLED -> S2 lamp", status: verified}
+    - {id: O-04, opc: _IO_EM_DO_04, function: spare, status: verified}
+    - {id: O-05, opc: _IO_EM_DO_05, function: spare, status: verified}
+    - {id: O-06, opc: _IO_EM_DO_06, function: spare, status: verified}
+  output_commons:   # names verbatim from CCW_VARIABLES; feed source + technology = FIELD VERIFY
+    - {id: "+CM0", function: "output bank 0 feed (O-00..O-03)", status: field_verify}
+    - {id: "-CM0", function: "output bank 0 return", status: field_verify}
+    - {id: "+CM1", function: "output bank 1 feed (O-04..O-06, spare)", status: field_verify}
+    - {id: "-CM1", function: "output bank 1 return", status: field_verify}
 
 # Field-device terminals — PROPOSED designations; must be confirmed on the device.
 S0:   # E-stop
@@ -76,3 +90,59 @@ B1:   # photo-eye (3-wire)
 PS1:  # 24VDC supply (detailed on E-004)
   - {id: "+24V", function: +24 VDC feed, status: field_verify}
   - {id: "0V", function: 0V return, status: field_verify}
+
+VFD1:  # power side — terminal NAMES verified from GS10 manual terminal table (GS10_UM.txt L1971-1986)
+  power_input:
+    - {id: "R/L1", function: "input power L1", status: verified, source: "GS10_UM.txt L1971/L1973"}
+    - {id: "S/L2", function: "input power L2", status: verified, source: "GS10_UM.txt L1971/L1973"}
+    - {id: "T/L3", function: "input power L3 (3-phase models only)", status: verified, source: "GS10_UM.txt L1973"}
+  power_output:
+    - {id: "U/T1", function: "motor output T1", status: verified, source: "GS10_UM.txt L1975 (prose form T1: L1773-1776)"}
+    - {id: "V/T2", function: "motor output T2", status: verified, source: "GS10_UM.txt L1975"}
+    - {id: "W/T3", function: "motor output T3", status: verified, source: "GS10_UM.txt L1975"}
+  dc_bus:
+    - {id: "+1", function: "DC reactor (factory jumper +1/+2 — leave unless reactor installed)", status: verified, source: "GS10_UM.txt L1824-1826, L1977-1978"}
+    - {id: "+2", function: "DC reactor jumper partner", status: verified, source: "GS10_UM.txt L1977-1978"}
+    - {id: "B1", function: "brake resistor (optional; else OPEN)", status: verified, source: "GS10_UM.txt L1842, L1980"}
+    - {id: "B2", function: "brake resistor partner (else OPEN)", status: verified, source: "GS10_UM.txt L1980"}
+    - {id: "DC+", function: "common DC bus (leave open; absent on 120VAC models)", status: verified, source: "GS10_UM.txt L1982, L1986"}
+    - {id: "DC-", function: "common DC bus (leave open)", status: verified, source: "GS10_UM.txt L1982, L1844"}
+  ground:
+    - {id: "GND", function: "drive ground terminal (manual table row L1984; silk-screen symbol — id GND is OUR label)", status: verified, source: "GS10_UM.txt L1984, L1760-1762"}
+
+M1:   # motor terminal ids per manual prose convention; physical markings FIELD VERIFY
+  - {id: "T1", function: "motor lead 1", status: field_verify}
+  - {id: "T2", function: "motor lead 2", status: field_verify}
+  - {id: "T3", function: "motor lead 3 (swap any two to reverse — GS10_UM.txt L1773-1776)", status: field_verify}
+  - {id: "PE", function: "motor frame ground", status: field_verify}
+
+Q1:   # contactor (MC) — pole/coil ids are IEC-convention PROPOSED, not evidenced
+  - {id: "1", function: "pole L1 in (proposed)", status: field_verify}
+  - {id: "2", function: "pole T1 out (proposed)", status: field_verify}
+  - {id: "3", function: "pole L2 in (proposed)", status: field_verify}
+  - {id: "4", function: "pole T2 out (proposed)", status: field_verify}
+  - {id: "5", function: "pole L3 in (proposed)", status: field_verify}
+  - {id: "6", function: "pole T3 out (proposed)", status: field_verify}
+  - {id: "A1", function: "coil + (from PLC1 O-02, E-006)", status: field_verify}
+  - {id: "A2", function: "coil - (to output return)", status: field_verify}
+
+CB1:  # upstream protection — REQUIRED by manual (L1758-1759); device unconfirmed on bench
+  - {id: "1", function: "line in L1 (proposed)", status: field_verify}
+  - {id: "2", function: "load out L1 (proposed)", status: field_verify}
+  - {id: "3", function: "line in L2 (proposed)", status: field_verify}
+  - {id: "4", function: "load out L2 (proposed)", status: field_verify}
+  - {id: "5", function: "line in L3 (proposed, if 3φ)", status: field_verify}
+  - {id: "6", function: "load out L3 (proposed, if 3φ)", status: field_verify}
+
+PL1:  # Green RUNNING pilot
+  - {id: "X1", function: "pilot light terminal (proposed)", status: field_verify}
+  - {id: "X2", function: "pilot light terminal (proposed)", status: field_verify}
+
+PL2:  # Red FAULT/E-STOP pilot
+  - {id: "X1", function: "pilot light terminal (proposed)", status: field_verify}
+  - {id: "X2", function: "pilot light terminal (proposed)", status: field_verify}
+
+S2:   # Run PB (extended with lamp terminals)
+  - {id: "3-4", function: NO contact out -> I-04, status: field_verify}
+  - {id: "X1", function: "lamp terminal (proposed)", status: field_verify}
+  - {id: "X2", function: "lamp terminal (proposed)", status: field_verify}

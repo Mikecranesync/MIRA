@@ -1,0 +1,305 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040"><rect width="1600" height="1040" fill="#FFFFFF"/><rect x="30.0" y="30.0" width="1540.0" height="980.0" fill="none" stroke="#111111" stroke-width="1.8"/>
+<rect x="40.0" y="40.0" width="1520.0" height="960.0" fill="none" stroke="#666666" stroke-width="0.8"/>
+<line x1="40.0" y1="30.0" x2="40.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="40.0" y1="1000.0" x2="40.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="135.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">1</text>
+<text x="135.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">1</text>
+<line x1="230.0" y1="30.0" x2="230.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="230.0" y1="1000.0" x2="230.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="325.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">2</text>
+<text x="325.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">2</text>
+<line x1="420.0" y1="30.0" x2="420.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="420.0" y1="1000.0" x2="420.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="515.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">3</text>
+<text x="515.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">3</text>
+<line x1="610.0" y1="30.0" x2="610.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="610.0" y1="1000.0" x2="610.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="705.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">4</text>
+<text x="705.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">4</text>
+<line x1="800.0" y1="30.0" x2="800.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="800.0" y1="1000.0" x2="800.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="895.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">5</text>
+<text x="895.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">5</text>
+<line x1="990.0" y1="30.0" x2="990.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="990.0" y1="1000.0" x2="990.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="1085.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">6</text>
+<text x="1085.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">6</text>
+<line x1="1180.0" y1="30.0" x2="1180.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="1180.0" y1="1000.0" x2="1180.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="1275.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">7</text>
+<text x="1275.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">7</text>
+<line x1="1370.0" y1="30.0" x2="1370.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="1370.0" y1="1000.0" x2="1370.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="1465.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">8</text>
+<text x="1465.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">8</text>
+<line x1="1560.0" y1="30.0" x2="1560.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="1560.0" y1="1000.0" x2="1560.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="35.0" y="160.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">A</text>
+<text x="1565.0" y="160.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">A</text>
+<text x="35.0" y="400.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">B</text>
+<text x="1565.0" y="400.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">B</text>
+<text x="35.0" y="640.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">C</text>
+<text x="1565.0" y="640.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">C</text>
+<text x="35.0" y="880.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">D</text>
+<text x="1565.0" y="880.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">D</text>
+<text x="70.0" y="78.0" font-size="22" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">E-006  PLC OUTPUTS</text>
+<text x="70.0" y="100.0" font-size="12" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Conv_Simple / CV-101 (garage conveyor)  —  O-00..O-06 · pilots, contactor coil, button lamp · GS10 control = Modbus (E-007), NO GS10 DI wiring</text>
+<line x1="60.0" y1="112.0" x2="1180.0" y2="112.0" stroke="#BBBBBB" stroke-width="1" stroke-linecap="butt"/>
+<rect x="150.0" y="170.0" width="280.0" height="580.0" fill="none" stroke="#111111" stroke-width="1.8"/>
+<text x="290.0" y="192.0" font-size="14" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">PLC1</text>
+<text x="290.0" y="208.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">Micro820 2080-LC20-20QBB</text>
+<text x="290.0" y="222.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">embedded digital outputs</text>
+<circle cx="430.0" cy="250.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="422.0" y="246.0" font-size="10" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="bold" fill="#111111">O-00</text>
+<text x="422.0" y="258.0" font-size="6.8" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="normal" fill="#666666">_IO_EM_DO_00</text>
+<text x="422.0" y="269.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#111111">LightGreen -&gt; PL1 (running)</text>
+<circle cx="430.0" cy="320.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="422.0" y="316.0" font-size="10" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="bold" fill="#111111">O-01</text>
+<text x="422.0" y="328.0" font-size="6.8" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="normal" fill="#666666">_IO_EM_DO_01</text>
+<text x="422.0" y="339.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#111111">LightRed -&gt; PL2 (fault/e-stop)</text>
+<circle cx="430.0" cy="390.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="422.0" y="386.0" font-size="10" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="bold" fill="#111111">O-02</text>
+<text x="422.0" y="398.0" font-size="6.8" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="normal" fill="#666666">_IO_EM_DO_02</text>
+<text x="422.0" y="409.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#111111">ContactorQ1 coil (safety power)</text>
+<circle cx="430.0" cy="460.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="422.0" y="456.0" font-size="10" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="bold" fill="#111111">O-03</text>
+<text x="422.0" y="468.0" font-size="6.8" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="normal" fill="#666666">_IO_EM_DO_03</text>
+<text x="422.0" y="479.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#111111">PBRunLED -&gt; S2 lamp</text>
+<circle cx="430.0" cy="505.0" r="3.0" fill="#FFFFFF" stroke="#111111" stroke-width="1.4"/>
+<text x="422.0" y="508.0" font-size="9" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="normal" fill="#666666">O-04</text>
+<text x="422.0" y="519.0" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#C0392B">spare (confirm no field wire — OI-12)</text>
+<circle cx="430.0" cy="545.0" r="3.0" fill="#FFFFFF" stroke="#111111" stroke-width="1.4"/>
+<text x="422.0" y="548.0" font-size="9" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="normal" fill="#666666">O-05</text>
+<text x="422.0" y="559.0" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#C0392B">spare (confirm no field wire — OI-12)</text>
+<circle cx="430.0" cy="585.0" r="3.0" fill="#FFFFFF" stroke="#111111" stroke-width="1.4"/>
+<text x="422.0" y="588.0" font-size="9" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="normal" fill="#666666">O-06</text>
+<text x="422.0" y="599.0" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#C0392B">spare (confirm no field wire — OI-12)</text>
+<circle cx="430.0" cy="630.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="422.0" y="627.0" font-size="9.5" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="bold" fill="#111111">+CM0</text>
+<text x="422.0" y="639.0" font-size="6.8" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">output bank 0 feed (O-00..O-03)</text>
+<circle cx="430.0" cy="660.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="422.0" y="657.0" font-size="9.5" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="bold" fill="#111111">-CM0</text>
+<text x="422.0" y="669.0" font-size="6.8" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">output bank 0 return</text>
+<circle cx="430.0" cy="690.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="422.0" y="687.0" font-size="9.5" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="bold" fill="#111111">+CM1</text>
+<text x="422.0" y="699.0" font-size="6.8" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">output bank 1 feed (O-04..O-06, spare) · spare bank — unused</text>
+<circle cx="430.0" cy="720.0" r="3.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="422.0" y="717.0" font-size="9.5" font-family="Consolas, 'Courier New', monospace" text-anchor="end" font-weight="bold" fill="#111111">-CM1</text>
+<text x="422.0" y="729.0" font-size="6.8" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">output bank 1 return · spare bank — unused</text>
+<text x="470.0" y="178.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">PS1 +24V (E-004)</text>
+<line x1="470.0" y1="186.0" x2="470.0" y2="630.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W600" data-status="field_verify"/>
+<line x1="470.0" y1="630.0" x2="430.0" y2="630.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W600" data-status="field_verify"/>
+<rect x="454.0" y="412.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="470.0" y="422.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W600</text>
+<circle cx="950.0" cy="250.0" r="12" fill="none" stroke="#111111" stroke-width="1.2"/>
+<line x1="941.0" y1="241.0" x2="959.0" y2="259.0" stroke="#111111" stroke-width="1.0" stroke-linecap="butt"/>
+<line x1="941.0" y1="259.0" x2="959.0" y2="241.0" stroke="#111111" stroke-width="1.0" stroke-linecap="butt"/>
+<text x="950.0" y="226.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">PL1 GREEN</text>
+<text x="950.0" y="280.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#666666">RUN LIGHT</text>
+<line x1="930.0" y1="250.0" x2="938.0" y2="250.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="962.0" y1="250.0" x2="970.0" y2="250.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<circle cx="930.0" cy="250.0" r="2.0" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<circle cx="970.0" cy="250.0" r="2.0" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="930.0" y="264.0" font-size="6.8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#666666">X1</text>
+<text x="970.0" y="264.0" font-size="6.8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#666666">X2</text>
+<circle cx="950.0" cy="320.0" r="12" fill="none" stroke="#111111" stroke-width="1.2"/>
+<line x1="941.0" y1="311.0" x2="959.0" y2="329.0" stroke="#111111" stroke-width="1.0" stroke-linecap="butt"/>
+<line x1="941.0" y1="329.0" x2="959.0" y2="311.0" stroke="#111111" stroke-width="1.0" stroke-linecap="butt"/>
+<text x="950.0" y="296.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">PL2 RED</text>
+<text x="950.0" y="350.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#666666">FAULT/E-STOP</text>
+<line x1="930.0" y1="320.0" x2="938.0" y2="320.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="962.0" y1="320.0" x2="970.0" y2="320.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<circle cx="930.0" cy="320.0" r="2.0" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<circle cx="970.0" cy="320.0" r="2.0" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="930.0" y="334.0" font-size="6.8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#666666">X1</text>
+<text x="970.0" y="334.0" font-size="6.8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#666666">X2</text>
+<circle cx="950.0" cy="390.0" r="14" fill="none" stroke="#111111" stroke-width="1.2"/>
+<text x="950.0" y="392.0" font-size="16" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">⌒</text>
+<text x="950.0" y="362.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">Q1 COIL</text>
+<line x1="924.0" y1="390.0" x2="936.0" y2="390.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="964.0" y1="390.0" x2="976.0" y2="390.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<text x="924.0" y="400.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="bold" fill="#111111">A1</text>
+<text x="976.0" y="400.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="bold" fill="#111111">A2</text>
+<circle cx="924.0" cy="390.0" r="2.0" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<circle cx="976.0" cy="390.0" r="2.0" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="950.0" y="417.0" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">poles on E-003</text>
+<circle cx="950.0" cy="460.0" r="12" fill="none" stroke="#111111" stroke-width="1.2"/>
+<line x1="941.0" y1="451.0" x2="959.0" y2="469.0" stroke="#111111" stroke-width="1.0" stroke-linecap="butt"/>
+<line x1="941.0" y1="469.0" x2="959.0" y2="451.0" stroke="#111111" stroke-width="1.0" stroke-linecap="butt"/>
+<text x="950.0" y="436.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">S2 LAMP</text>
+<text x="950.0" y="490.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#666666">RUN BTN</text>
+<line x1="930.0" y1="460.0" x2="938.0" y2="460.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="962.0" y1="460.0" x2="970.0" y2="460.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<circle cx="930.0" cy="460.0" r="2.0" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<circle cx="970.0" cy="460.0" r="2.0" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="930.0" y="474.0" font-size="6.8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#666666">X1</text>
+<text x="970.0" y="474.0" font-size="6.8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#666666">X2</text>
+<line x1="430.0" y1="250.0" x2="930.0" y2="250.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W601" data-status="field_verify"/>
+<rect x="664.0" y="230.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="680.0" y="240.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W601</text>
+<line x1="430.0" y1="320.0" x2="930.0" y2="320.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W602" data-status="field_verify"/>
+<rect x="664.0" y="300.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="680.0" y="310.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W602</text>
+<line x1="430.0" y1="390.0" x2="924.0" y2="390.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W603" data-status="field_verify"/>
+<rect x="664.0" y="370.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="680.0" y="380.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W603</text>
+<line x1="430.0" y1="460.0" x2="930.0" y2="460.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W604" data-status="field_verify"/>
+<rect x="664.0" y="440.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="680.0" y="450.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W604</text>
+<line x1="1150.0" y1="250.0" x2="1150.0" y2="880.0" stroke="#111111" stroke-width="2.0" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<text x="1164" y="565" font-size="8" font-family="Consolas, 'Courier New', monospace" fill="#666666" text-anchor="middle" transform="rotate(-90 1164 565)">output return rail (E-006)</text>
+<line x1="970.0" y1="250.0" x2="1150.0" y2="250.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W605" data-status="field_verify"/>
+<rect x="1046.0" y="230.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="1062.0" y="240.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W605</text>
+<line x1="970.0" y1="320.0" x2="1150.0" y2="320.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W606" data-status="field_verify"/>
+<rect x="1046.0" y="300.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="1062.0" y="310.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W606</text>
+<line x1="976.0" y1="390.0" x2="1150.0" y2="390.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W607" data-status="field_verify"/>
+<rect x="1046.0" y="370.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="1062.0" y="380.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W607</text>
+<line x1="970.0" y1="460.0" x2="1150.0" y2="460.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W608" data-status="field_verify"/>
+<rect x="1046.0" y="440.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="1062.0" y="450.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W608</text>
+<circle cx="1150.0" cy="250.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<circle cx="1150.0" cy="320.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<circle cx="1150.0" cy="390.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<circle cx="1150.0" cy="460.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<line x1="1150.0" y1="880.0" x2="1000.0" y2="880.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W609" data-status="field_verify"/>
+<line x1="1000.0" y1="880.0" x2="1000.0" y2="660.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W609" data-status="field_verify"/>
+<line x1="1000.0" y1="660.0" x2="430.0" y2="660.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W609" data-status="field_verify"/>
+<rect x="699.0" y="640.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="715.0" y="650.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W609</text>
+<text x="446.0" y="676.0" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">→ PS1.0V (E-004)</text>
+<rect x="1230.0" y="200.0" width="315.0" height="92.0" fill="#FFF5F5" stroke="#C0392B" stroke-width="1.0"/>
+<text x="1238.0" y="215.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">Hardwired fallback documented in MIRA-WI-001 v3 §3</text>
+<text x="1238.0" y="226.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">Fig 1 (DO_03..DO_07 → GS10 DI1..DI5 + DCM) — NOT</text>
+<text x="1238.0" y="237.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">ACTIVE and NOT drawn: P02.0x at factory default per</text>
+<text x="1238.0" y="248.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">the 2026-05-20 parameter export; DO_07 does not exist</text>
+<text x="1238.0" y="259.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">on the 2080-LC20-20QBB (O-00..O-06); DO_03 collides</text>
+<text x="1238.0" y="270.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">with PBRunLED in the live I/O map. Bench presence of</text>
+<text x="1238.0" y="281.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">any such wiring = FIELD VERIFY (OI-18).</text>
+<text x="1230.0" y="314.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">MODBUS CROSS-REF (run/dir/freq):</text>
+<text x="1230.0" y="327.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Run/dir/freq commands reach VFD1 over RS-485</text>
+<text x="1230.0" y="338.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">(E-007): 0x2000 cmd (STOP=1, FWD+RUN=18,</text>
+<text x="1230.0" y="349.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">REV+RUN=34), 0x2001 freq. P00.20=1, P00.21=2</text>
+<text x="1230.0" y="360.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">(RS-485) verified by 2026-05-20 parameter export.</text>
+<text x="1230.0" y="384.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">SAFETY NOTE:</text>
+<text x="1230.0" y="397.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Monitored outputs are NOT a safety function.</text>
+<text x="1230.0" y="408.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">E-stop must remove power per NFPA 79.</text>
+<text x="1230.0" y="419.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">Q1 drop path is the power-removal; verify it works.</text>
+<line x1="1230.0" y1="443.0" x2="1276.0" y2="443.0" stroke="#111111" stroke-width="1.8" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<text x="1284.0" y="440.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">FIELD VERIFY — dashed (no as-built;</text>
+<text x="1284.0" y="451.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">O-00/O-01/O-03 from CCW v4.0; O-02 corroborated)</text>
+<text x="1230.0" y="478.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">SOURCES:</text>
+<text x="1238.0" y="491.0" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">CCW_VARIABLES_v4.0.txt</text>
+<text x="1238.0" y="502.0" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Prog_init_ConvSimple_v2.1.st</text>
+<text x="1238.0" y="513.0" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">MIRA_PLC_WorkInstruction_v3.pdf</text>
+<text x="1238.0" y="524.0" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">GS10_actual_parameters_5.20.26.xlsx</text>
+<text x="1238.0" y="535.0" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">GS10_UM.txt</text>
+<text x="70.0" y="756.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">CONNECTION TABLE</text>
+<rect x="70.0" y="760.0" width="855.0" height="18.0" fill="#EEEEEE" stroke="#111111" stroke-width="1.0"/>
+<text x="75.0" y="771.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Wire</text>
+<text x="145.0" y="771.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">From</text>
+<text x="275.0" y="771.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">To</text>
+<text x="405.0" y="771.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Signal</text>
+<text x="620.0" y="771.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Type</text>
+<text x="730.0" y="771.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Status</text>
+<text x="810.0" y="771.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Notes</text>
+<rect x="70.0" y="778.0" width="855.0" height="18.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="789.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W600</text>
+<text x="145.0" y="789.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">PS1.+24V</text>
+<text x="275.0" y="789.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">PLC1.+CM0</text>
+<text x="405.0" y="789.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">output bank 0 feed</text>
+<text x="620.0" y="789.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">power_24vdc</text>
+<text x="730.0" y="789.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="810.0" y="789.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="70.0" y="796.0" width="855.0" height="18.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="807.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W601</text>
+<text x="145.0" y="807.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">PLC1.O-00</text>
+<text x="275.0" y="807.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">PL1.X1</text>
+<text x="405.0" y="807.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">LightGreen (run light)</text>
+<text x="620.0" y="807.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">control_output</text>
+<text x="730.0" y="807.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="810.0" y="807.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="70.0" y="814.0" width="855.0" height="18.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="825.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W602</text>
+<text x="145.0" y="825.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">PLC1.O-01</text>
+<text x="275.0" y="825.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">PL2.X1</text>
+<text x="405.0" y="825.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">LightRed (fault/e-stop light)</text>
+<text x="620.0" y="825.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">control_output</text>
+<text x="730.0" y="825.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="810.0" y="825.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="70.0" y="832.0" width="855.0" height="18.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="843.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W603</text>
+<text x="145.0" y="843.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">PLC1.O-02</text>
+<text x="275.0" y="843.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Q1.A1</text>
+<text x="405.0" y="843.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">ContactorQ1 coil (safety power)</text>
+<text x="620.0" y="843.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">control_output</text>
+<text x="730.0" y="843.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="810.0" y="843.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="70.0" y="850.0" width="855.0" height="18.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="861.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W604</text>
+<text x="145.0" y="861.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">PLC1.O-03</text>
+<text x="275.0" y="861.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">S2.X1</text>
+<text x="405.0" y="861.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">PBRunLED (run button lamp)</text>
+<text x="620.0" y="861.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">control_output</text>
+<text x="730.0" y="861.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="810.0" y="861.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="70.0" y="868.0" width="855.0" height="18.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="879.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W605</text>
+<text x="145.0" y="879.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">PL1.X2</text>
+<text x="275.0" y="879.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">output return rail (E-006)</text>
+<text x="405.0" y="879.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">run light return</text>
+<text x="620.0" y="879.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">control_return</text>
+<text x="730.0" y="879.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="810.0" y="879.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="70.0" y="886.0" width="855.0" height="18.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="897.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W606</text>
+<text x="145.0" y="897.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">PL2.X2</text>
+<text x="275.0" y="897.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">output return rail (E-006)</text>
+<text x="405.0" y="897.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">fault light return</text>
+<text x="620.0" y="897.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">control_return</text>
+<text x="730.0" y="897.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="810.0" y="897.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="70.0" y="904.0" width="855.0" height="18.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="915.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W607</text>
+<text x="145.0" y="915.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">Q1.A2</text>
+<text x="275.0" y="915.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">output return rail (E-006)</text>
+<text x="405.0" y="915.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">contactor coil return</text>
+<text x="620.0" y="915.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">control_return</text>
+<text x="730.0" y="915.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="810.0" y="915.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="70.0" y="922.0" width="855.0" height="18.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="933.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W608</text>
+<text x="145.0" y="933.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">S2.X2</text>
+<text x="275.0" y="933.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">output return rail (E-006)</text>
+<text x="405.0" y="933.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">PB lamp return</text>
+<text x="620.0" y="933.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">control_return</text>
+<text x="730.0" y="933.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="810.0" y="933.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="70.0" y="940.0" width="855.0" height="18.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="75.0" y="951.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W609</text>
+<text x="145.0" y="951.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">PLC1.-CM0</text>
+<text x="275.0" y="951.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">PS1.0V</text>
+<text x="405.0" y="951.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">output bank 0 return</text>
+<text x="620.0" y="951.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">power_0v</text>
+<text x="730.0" y="951.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="810.0" y="951.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<line x1="140.0" y1="760.0" x2="140.0" y2="958.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="270.0" y1="760.0" x2="270.0" y2="958.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="400.0" y1="760.0" x2="400.0" y2="958.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="615.0" y1="760.0" x2="615.0" y2="958.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="725.0" y1="760.0" x2="725.0" y2="958.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="805.0" y1="760.0" x2="805.0" y2="958.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<rect x="1120.0" y="894.0" width="430.0" height="96.0" fill="none" stroke="#111111" stroke-width="1.6"/>
+<line x1="1120.0" y1="940.0" x2="1550.0" y2="940.0" stroke="#111111" stroke-width="0.9" stroke-linecap="butt"/>
+<line x1="1400.0" y1="894.0" x2="1400.0" y2="990.0" stroke="#111111" stroke-width="0.9" stroke-linecap="butt"/>
+<text x="1132.0" y="916.0" font-size="13" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">PLC OUTPUTS</text>
+<text x="1132.0" y="932.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Conv_Simple / CV-101 (garage conveyor)</text>
+<text x="1132.0" y="958.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">MIRA / FactoryLM</text>
+<text x="1132.0" y="976.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">output map CCW v4.0 + live Prog_init; O-02 do-not-reuse</text>
+<text x="1408.0" y="914.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">SHEET</text>
+<text x="1408.0" y="932.0" font-size="16" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">E-006</text>
+<text x="1408.0" y="956.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">REV A</text>
+<text x="1408.0" y="974.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">2026-07-10</text>
+<text x="1538.0" y="956.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">6 of 9</text></svg>

@@ -1,0 +1,354 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040"><rect width="1600" height="1040" fill="#FFFFFF"/><rect x="30.0" y="30.0" width="1540.0" height="980.0" fill="none" stroke="#111111" stroke-width="1.8"/>
+<rect x="40.0" y="40.0" width="1520.0" height="960.0" fill="none" stroke="#666666" stroke-width="0.8"/>
+<line x1="40.0" y1="30.0" x2="40.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="40.0" y1="1000.0" x2="40.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="135.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">1</text>
+<text x="135.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">1</text>
+<line x1="230.0" y1="30.0" x2="230.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="230.0" y1="1000.0" x2="230.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="325.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">2</text>
+<text x="325.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">2</text>
+<line x1="420.0" y1="30.0" x2="420.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="420.0" y1="1000.0" x2="420.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="515.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">3</text>
+<text x="515.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">3</text>
+<line x1="610.0" y1="30.0" x2="610.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="610.0" y1="1000.0" x2="610.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="705.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">4</text>
+<text x="705.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">4</text>
+<line x1="800.0" y1="30.0" x2="800.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="800.0" y1="1000.0" x2="800.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="895.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">5</text>
+<text x="895.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">5</text>
+<line x1="990.0" y1="30.0" x2="990.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="990.0" y1="1000.0" x2="990.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="1085.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">6</text>
+<text x="1085.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">6</text>
+<line x1="1180.0" y1="30.0" x2="1180.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="1180.0" y1="1000.0" x2="1180.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="1275.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">7</text>
+<text x="1275.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">7</text>
+<line x1="1370.0" y1="30.0" x2="1370.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="1370.0" y1="1000.0" x2="1370.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="1465.0" y="38.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">8</text>
+<text x="1465.0" y="1007.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">8</text>
+<line x1="1560.0" y1="30.0" x2="1560.0" y2="40.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<line x1="1560.0" y1="1000.0" x2="1560.0" y2="1010.0" stroke="#666666" stroke-width="0.8" stroke-linecap="butt"/>
+<text x="35.0" y="160.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">A</text>
+<text x="1565.0" y="160.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">A</text>
+<text x="35.0" y="400.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">B</text>
+<text x="1565.0" y="400.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">B</text>
+<text x="35.0" y="640.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">C</text>
+<text x="1565.0" y="640.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">C</text>
+<text x="35.0" y="880.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">D</text>
+<text x="1565.0" y="880.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">D</text>
+<text x="70.0" y="78.0" font-size="22" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">E-003  VFD POWER</text>
+<text x="70.0" y="100.0" font-size="12" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Conv_Simple / CV-101 (garage conveyor)  —  supply → CB1 → Q1 (MC) → VFD1 (GS10) → M1  ·  every conductor FIELD VERIFY</text>
+<line x1="60.0" y1="112.0" x2="1180.0" y2="112.0" stroke="#BBBBBB" stroke-width="1" stroke-linecap="butt"/>
+<rect x="320.0" y="150.0" width="160.0" height="40.0" fill="none" stroke="#111111" stroke-width="1.4" stroke-dasharray="7,4"/>
+<text x="400.0" y="168.0" font-size="12" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">SUPPLY</text>
+<text x="400.0" y="183.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#C0392B">voltage/phase FIELD VERIFY</text>
+<line x1="340.0" y1="190.0" x2="340.0" y2="236.0" stroke="#111111" stroke-width="2.0" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W300" data-status="field_verify"/>
+<rect x="324.0" y="196.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="340.0" y="206.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W300</text>
+<line x1="400.0" y1="190.0" x2="400.0" y2="236.0" stroke="#111111" stroke-width="2.0" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W301" data-status="field_verify"/>
+<rect x="384.0" y="196.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="400.0" y="206.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W301</text>
+<line x1="460.0" y1="190.0" x2="460.0" y2="236.0" stroke="#111111" stroke-width="2.0" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W302" data-status="field_verify"/>
+<rect x="444.0" y="196.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="460.0" y="206.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W302</text>
+<rect x="322.5" y="236.0" width="35.0" height="28.0" fill="none" stroke="#111111" stroke-width="0.9" stroke-dasharray="7,4"/>
+<line x1="326.5" y1="250.0" x2="332.0" y2="250.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt"/>
+<line x1="348.0" y1="250.0" x2="353.5" y2="250.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt"/>
+<line x1="334.0" y1="244.0" x2="340.0" y2="250.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="340.0" y1="250.0" x2="346.0" y2="244.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<text x="340.0" y="232.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">L1</text>
+<rect x="382.5" y="236.0" width="35.0" height="28.0" fill="none" stroke="#111111" stroke-width="0.9" stroke-dasharray="7,4"/>
+<line x1="386.5" y1="250.0" x2="392.0" y2="250.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt"/>
+<line x1="408.0" y1="250.0" x2="413.5" y2="250.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt"/>
+<line x1="394.0" y1="244.0" x2="400.0" y2="250.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="400.0" y1="250.0" x2="406.0" y2="244.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<text x="400.0" y="232.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">L2</text>
+<rect x="442.5" y="236.0" width="35.0" height="28.0" fill="none" stroke="#111111" stroke-width="0.9" stroke-dasharray="7,4"/>
+<line x1="446.5" y1="250.0" x2="452.0" y2="250.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt"/>
+<line x1="468.0" y1="250.0" x2="473.5" y2="250.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt"/>
+<line x1="454.0" y1="244.0" x2="460.0" y2="250.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="460.0" y1="250.0" x2="466.0" y2="244.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<text x="460.0" y="232.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">L3 (3φ)</text>
+<text x="310.0" y="242.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="bold" fill="#111111">CB1</text>
+<text x="310.0" y="256.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">REQUIRED per GS10_UM L1758-1759 · type/rating: OI-15</text>
+<line x1="340.0" y1="264.0" x2="340.0" y2="346.0" stroke="#111111" stroke-width="2.0" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W303" data-status="field_verify"/>
+<rect x="324.0" y="290.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="340.0" y="300.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W303</text>
+<line x1="400.0" y1="264.0" x2="400.0" y2="346.0" stroke="#111111" stroke-width="2.0" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W304" data-status="field_verify"/>
+<rect x="384.0" y="290.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="400.0" y="300.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W304</text>
+<line x1="460.0" y1="264.0" x2="460.0" y2="346.0" stroke="#111111" stroke-width="2.0" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W305" data-status="field_verify"/>
+<rect x="444.0" y="290.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="460.0" y="300.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W305</text>
+<rect x="322.5" y="346.0" width="35.0" height="28.0" fill="none" stroke="#111111" stroke-width="0.9"/>
+<line x1="326.5" y1="360.0" x2="332.0" y2="360.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt"/>
+<line x1="348.0" y1="360.0" x2="353.5" y2="360.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt"/>
+<line x1="334.0" y1="354.0" x2="340.0" y2="360.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="340.0" y1="360.0" x2="346.0" y2="354.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<text x="340.0" y="342.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">L1</text>
+<rect x="382.5" y="346.0" width="35.0" height="28.0" fill="none" stroke="#111111" stroke-width="0.9"/>
+<line x1="386.5" y1="360.0" x2="392.0" y2="360.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt"/>
+<line x1="408.0" y1="360.0" x2="413.5" y2="360.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt"/>
+<line x1="394.0" y1="354.0" x2="400.0" y2="360.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="400.0" y1="360.0" x2="406.0" y2="354.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<text x="400.0" y="342.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">L2</text>
+<rect x="442.5" y="346.0" width="35.0" height="28.0" fill="none" stroke="#111111" stroke-width="0.9"/>
+<line x1="446.5" y1="360.0" x2="452.0" y2="360.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt"/>
+<line x1="468.0" y1="360.0" x2="473.5" y2="360.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt"/>
+<line x1="454.0" y1="354.0" x2="460.0" y2="360.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="460.0" y1="360.0" x2="466.0" y2="354.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<text x="460.0" y="342.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">L3 (3φ)</text>
+<text x="310.0" y="338.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="bold" fill="#111111">Q1 — SAFETY POWER CONTACTOR (MC)</text>
+<text x="310.0" y="352.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">coil ← O-02 (E-006)</text>
+<text x="310.0" y="364.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">R-C absorber both ends recommended</text>
+<text x="310.0" y="376.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">NOT for routine run/stop</text>
+<line x1="340.0" y1="374.0" x2="340.0" y2="430.0" stroke="#111111" stroke-width="1.8" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W306" data-status="field_verify"/>
+<rect x="324.0" y="386.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="340.0" y="396.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W306</text>
+<line x1="400.0" y1="374.0" x2="400.0" y2="430.0" stroke="#111111" stroke-width="1.8" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W307" data-status="field_verify"/>
+<rect x="384.0" y="386.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="400.0" y="396.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W307</text>
+<line x1="460.0" y1="374.0" x2="460.0" y2="430.0" stroke="#111111" stroke-width="1.8" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W308" data-status="field_verify"/>
+<rect x="444.0" y="386.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="460.0" y="396.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W308</text>
+<rect x="280.0" y="430.0" width="240.0" height="220.0" fill="none" stroke="#111111" stroke-width="1.6"/>
+<circle cx="340.0" cy="430.0" r="2.8" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="340.0" y="446.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="bold" fill="#111111">R/L1</text>
+<circle cx="400.0" cy="430.0" r="2.8" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="400.0" y="446.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="bold" fill="#111111">S/L2</text>
+<circle cx="460.0" cy="430.0" r="2.8" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="460.0" y="446.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="bold" fill="#111111">T/L3</text>
+<text x="400.0" y="478.0" font-size="14" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#111111">VFD1</text>
+<text x="400.0" y="494.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">GS10 DURApulse</text>
+<line x1="520.0" y1="514.0" x2="544.0" y2="514.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="520.0" y1="526.0" x2="544.0" y2="526.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="544.0" y1="514.0" x2="550.0" y2="514.0" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/>
+<line x1="550.0" y1="514.0" x2="550.0" y2="526.0" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/>
+<line x1="550.0" y1="526.0" x2="544.0" y2="526.0" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/>
+<text x="556.0" y="523.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">+1/+2 — factory jumper</text>
+<line x1="520.0" y1="555.0" x2="548.0" y2="555.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<text x="556.0" y="558.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">B1/B2 — OPEN</text>
+<line x1="520.0" y1="590.0" x2="548.0" y2="590.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<text x="556.0" y="588.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">DC+/DC- — OPEN</text>
+<text x="556.0" y="599.0" font-size="6.8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">(absent on 120VAC models)</text>
+<circle cx="340.0" cy="650.0" r="2.8" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="340.0" y="642.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="bold" fill="#111111">U/T1</text>
+<circle cx="400.0" cy="650.0" r="2.8" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="400.0" y="642.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="bold" fill="#111111">V/T2</text>
+<circle cx="460.0" cy="650.0" r="2.8" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="460.0" y="642.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="bold" fill="#111111">W/T3</text>
+<circle cx="510.0" cy="650.0" r="2.8" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="510.0" y="642.0" font-size="7.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#111111">GND</text>
+<line x1="340.0" y1="650.0" x2="340.0" y2="790.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W310" data-status="field_verify"/>
+<rect x="324.0" y="702.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="340.0" y="712.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W310</text>
+<line x1="400.0" y1="650.0" x2="400.0" y2="714.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W311" data-status="field_verify"/>
+<line x1="400.0" y1="746.0" x2="400.0" y2="790.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W311" data-status="field_verify"/>
+<rect x="384.0" y="664.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="400.0" y="674.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W311</text>
+<line x1="460.0" y1="650.0" x2="460.0" y2="790.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W312" data-status="field_verify"/>
+<rect x="444.0" y="702.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="460.0" y="712.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W312</text>
+<circle cx="400.0" cy="730.0" r="16" fill="none" stroke="#111111" stroke-width="1.4"/>
+<text x="400.0" y="731.0" font-size="12" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="bold" fill="#666666">M</text>
+<text x="400.0" y="741.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">3~</text>
+<text x="372.0" y="726.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="bold" fill="#111111">M1</text>
+<circle cx="340.0" cy="790.0" r="2.4" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="340.0" y="803.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#111111">T1</text>
+<circle cx="400.0" cy="790.0" r="2.4" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="400.0" y="803.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#111111">T2</text>
+<circle cx="460.0" cy="790.0" r="2.4" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="460.0" y="803.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#111111">T3</text>
+<circle cx="520.0" cy="790.0" r="2.4" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<text x="520.0" y="803.0" font-size="8" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#111111">PE</text>
+<text x="540.0" y="764.0" font-size="6.8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">swap any two leads to reverse — L1773-1776</text>
+<text x="700.0" y="190.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="middle" font-weight="normal" fill="#666666">to source PE (E-002)</text>
+<line x1="696.0" y1="206.0" x2="700.0" y2="198.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="704.0" y1="206.0" x2="700.0" y2="198.0" stroke="#111111" stroke-width="1.2" stroke-linecap="butt"/>
+<line x1="700.0" y1="198.0" x2="700.0" y2="690.0" stroke="#111111" stroke-width="2.2" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W317" data-status="field_verify"/>
+<rect x="684.0" y="430.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="700.0" y="440.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W317</text>
+<line x1="700.0" y1="690.0" x2="700.0" y2="795.0" stroke="#111111" stroke-width="2.2" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<circle cx="700.0" cy="690.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<circle cx="700.0" cy="790.0" r="2.2" fill="#111111" stroke="#111111" stroke-width="1.4"/>
+<line x1="700.0" y1="795.0" x2="700.0" y2="807.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<line x1="684.0" y1="807.0" x2="716.0" y2="807.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<line x1="690.0" y1="811.0" x2="710.0" y2="811.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<line x1="695.0" y1="815.0" x2="705.0" y2="815.0" stroke="#111111" stroke-width="1.6" stroke-linecap="butt"/>
+<text x="722.0" y="810.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">PE</text>
+<line x1="510.0" y1="650.0" x2="510.0" y2="690.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W315" data-status="field_verify"/>
+<line x1="510.0" y1="690.0" x2="700.0" y2="690.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W315" data-status="field_verify"/>
+<rect x="589.0" y="670.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="605.0" y="680.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W315</text>
+<line x1="520.0" y1="790.0" x2="700.0" y2="790.0" stroke="#111111" stroke-width="1.4" stroke-linecap="butt" stroke-dasharray="7,4" data-wire="W316" data-status="field_verify"/>
+<rect x="594.0" y="770.0" width="32.0" height="13.0" fill="none" stroke="#C0392B" stroke-width="0.9"/>
+<text x="610.0" y="780.0" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B">W316</text>
+<text x="830.0" y="172.0" font-size="11" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">CONNECTION TABLE</text>
+<rect x="830.0" y="180.0" width="729.0" height="22.0" fill="#EEEEEE" stroke="#111111" stroke-width="1.0"/>
+<text x="835.0" y="195.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Wire</text>
+<text x="883.0" y="195.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">From</text>
+<text x="1048.0" y="195.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">To</text>
+<text x="1168.0" y="195.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Signal</text>
+<text x="1318.0" y="195.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Type</text>
+<text x="1396.0" y="195.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Status</text>
+<text x="1474.0" y="195.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Notes</text>
+<rect x="830.0" y="202.0" width="729.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="217.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W300</text>
+<text x="883.0" y="217.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">SUPPLY (E-002)</text>
+<text x="1048.0" y="217.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">CB1.1</text>
+<text x="1168.0" y="217.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">L1 supply</text>
+<text x="1318.0" y="217.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">power_line</text>
+<text x="1396.0" y="217.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="1474.0" y="217.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="830.0" y="224.0" width="729.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="239.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W301</text>
+<text x="883.0" y="239.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">SUPPLY (E-002)</text>
+<text x="1048.0" y="239.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">CB1.3</text>
+<text x="1168.0" y="239.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">L2/N supply</text>
+<text x="1318.0" y="239.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">power_line</text>
+<text x="1396.0" y="239.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="1474.0" y="239.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="830.0" y="246.0" width="729.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="261.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W302</text>
+<text x="883.0" y="261.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">SUPPLY (E-002)</text>
+<text x="1048.0" y="261.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">CB1.5</text>
+<text x="1168.0" y="261.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">L3 supply (if 3φ)</text>
+<text x="1318.0" y="261.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">power_line</text>
+<text x="1396.0" y="261.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="1474.0" y="261.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">phase count unknown</text>
+<rect x="830.0" y="268.0" width="729.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="283.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W303</text>
+<text x="883.0" y="283.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">CB1.2</text>
+<text x="1048.0" y="283.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Q1.1</text>
+<text x="1168.0" y="283.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">L1 protected</text>
+<text x="1318.0" y="283.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">power_line</text>
+<text x="1396.0" y="283.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="1474.0" y="283.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="830.0" y="290.0" width="729.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="305.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W304</text>
+<text x="883.0" y="305.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">CB1.4</text>
+<text x="1048.0" y="305.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Q1.3</text>
+<text x="1168.0" y="305.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">L2 protected</text>
+<text x="1318.0" y="305.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">power_line</text>
+<text x="1396.0" y="305.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="1474.0" y="305.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="830.0" y="312.0" width="729.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="327.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W305</text>
+<text x="883.0" y="327.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">CB1.6</text>
+<text x="1048.0" y="327.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Q1.5</text>
+<text x="1168.0" y="327.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">L3 protected (if 3φ)</text>
+<text x="1318.0" y="327.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">power_line</text>
+<text x="1396.0" y="327.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="1474.0" y="327.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">phase count unknown</text>
+<rect x="830.0" y="334.0" width="729.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="349.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W306</text>
+<text x="883.0" y="349.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">Q1.2</text>
+<text x="1048.0" y="349.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VFD1.R/L1</text>
+<text x="1168.0" y="349.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">L1 switched</text>
+<text x="1318.0" y="349.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">power_line</text>
+<text x="1396.0" y="349.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="1474.0" y="349.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">power ⊥ control — L1787</text>
+<rect x="830.0" y="356.0" width="729.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="371.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W307</text>
+<text x="883.0" y="371.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">Q1.4</text>
+<text x="1048.0" y="371.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VFD1.S/L2</text>
+<text x="1168.0" y="371.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">L2 switched</text>
+<text x="1318.0" y="371.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">power_line</text>
+<text x="1396.0" y="371.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="1474.0" y="371.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="830.0" y="378.0" width="729.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="393.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W308</text>
+<text x="883.0" y="393.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">Q1.6</text>
+<text x="1048.0" y="393.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VFD1.T/L3</text>
+<text x="1168.0" y="393.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">L3 switched (if 3φ)</text>
+<text x="1318.0" y="393.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">power_line</text>
+<text x="1396.0" y="393.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="1474.0" y="393.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">phase count unknown</text>
+<rect x="830.0" y="400.0" width="729.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="415.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W310</text>
+<text x="883.0" y="415.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">VFD1.U/T1</text>
+<text x="1048.0" y="415.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">M1.T1</text>
+<text x="1168.0" y="415.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">motor phase U</text>
+<text x="1318.0" y="415.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">motor_lead</text>
+<text x="1396.0" y="415.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="1474.0" y="415.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="830.0" y="422.0" width="729.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="437.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W311</text>
+<text x="883.0" y="437.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">VFD1.V/T2</text>
+<text x="1048.0" y="437.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">M1.T2</text>
+<text x="1168.0" y="437.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">motor phase V</text>
+<text x="1318.0" y="437.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">motor_lead</text>
+<text x="1396.0" y="437.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="1474.0" y="437.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="830.0" y="444.0" width="729.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="459.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W312</text>
+<text x="883.0" y="459.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">VFD1.W/T3</text>
+<text x="1048.0" y="459.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">M1.T3</text>
+<text x="1168.0" y="459.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">motor phase W</text>
+<text x="1318.0" y="459.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">motor_lead</text>
+<text x="1396.0" y="459.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="1474.0" y="459.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="830.0" y="466.0" width="729.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="481.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W315</text>
+<text x="883.0" y="481.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">VFD1.GND</text>
+<text x="1048.0" y="481.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">PE bus</text>
+<text x="1168.0" y="481.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">drive PE (≤0.1Ω)</text>
+<text x="1318.0" y="481.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">ground</text>
+<text x="1396.0" y="481.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="1474.0" y="481.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="830.0" y="488.0" width="729.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="503.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W316</text>
+<text x="883.0" y="503.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">M1.PE</text>
+<text x="1048.0" y="503.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">PE bus</text>
+<text x="1168.0" y="503.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">motor frame PE</text>
+<text x="1318.0" y="503.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">ground</text>
+<text x="1396.0" y="503.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="1474.0" y="503.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<rect x="830.0" y="510.0" width="729.0" height="22.0" fill="none" stroke="#111111" stroke-width="0.7"/>
+<text x="835.0" y="525.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">W317</text>
+<text x="883.0" y="525.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">PE bus</text>
+<text x="1048.0" y="525.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">SUPPLY (E-002)</text>
+<text x="1168.0" y="525.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">PE to source</text>
+<text x="1318.0" y="525.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">ground</text>
+<text x="1396.0" y="525.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="1474.0" y="525.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111"></text>
+<line x1="878.0" y1="180.0" x2="878.0" y2="532.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="1043.0" y1="180.0" x2="1043.0" y2="532.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="1163.0" y1="180.0" x2="1163.0" y2="532.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="1313.0" y1="180.0" x2="1313.0" y2="532.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="1391.0" y1="180.0" x2="1391.0" y2="532.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<line x1="1469.0" y1="180.0" x2="1469.0" y2="532.0" stroke="#666666" stroke-width="0.6" stroke-linecap="butt"/>
+<rect x="70.0" y="820.0" width="612.0" height="34.0" fill="#FFF5F5" stroke="#C0392B" stroke-width="1.0"/>
+<text x="78.0" y="834.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">Bench supply voltage &amp; phase count, GS10 exact model/frame, breaker rating, wire gauge: NOT DOCUMENTED —</text>
+<text x="78.0" y="847.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">every conductor FIELD VERIFY. P00.01 = 1.60 A (2026-05-20 export) is the only sizing clue. If 1φ model, input = R/L1, S/L2 only (GS10_UM L1971).</text>
+<text x="70.0" y="872.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">SAFETY NOTES</text>
+<text x="78.0" y="886.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• Never start/stop via input power (L1811-1813); the MC (Q1) is emergency/safety switching only (L1754-1757).</text>
+<text x="78.0" y="898.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• LOTO + wait ≥5 min for DC-bus discharge before touching (WI p.2 §2).</text>
+<text x="78.0" y="910.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">• Monitored e-stop is NOT a safety stop — hardwire S0 to remove drive power per NFPA 79 / EN 60204-1.</text>
+<text x="78.0" y="922.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• PE resistance ≤0.1Ω (L1760-61); shield/conduit bonded both ends (L1792-95); RFI jumper in/out FIELD VERIFY (L1693-1718, OI-17).</text>
+<line x1="80.0" y1="942.0" x2="126.0" y2="942.0" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/>
+<text x="134.0" y="946.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VERIFIED — solid (no E-003 conductor qualifies yet; terminal names verified via table sources)</text>
+<line x1="80.0" y1="956.0" x2="126.0" y2="956.0" stroke="#111111" stroke-width="1.8" stroke-linecap="butt" stroke-dasharray="7,4"/>
+<text x="134.0" y="960.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">FIELD VERIFY — dashed + red wire flag (all E-003 conductors; wire numbers PROPOSED — OI-19)</text>
+<text x="70.0" y="978.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">SOURCES:</text>
+<text x="130.0" y="978.0" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">plc/GS10_UM.txt (terminals L1971-1986; topology L1750-1813) · plc/GS10_Integration_Guide.md (Q1 phase-5 test)</text>
+<text x="130.0" y="990.0" font-size="7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">plc/Prog_init_ConvSimple_v2.1.st (vfd_run_permit) · plc/MIRA_PLC_WorkInstruction_v3.pdf (LOTO §2)</text>
+<rect x="1120.0" y="894.0" width="430.0" height="96.0" fill="none" stroke="#111111" stroke-width="1.6"/>
+<line x1="1120.0" y1="940.0" x2="1550.0" y2="940.0" stroke="#111111" stroke-width="0.9" stroke-linecap="butt"/>
+<line x1="1400.0" y1="894.0" x2="1400.0" y2="990.0" stroke="#111111" stroke-width="0.9" stroke-linecap="butt"/>
+<text x="1132.0" y="916.0" font-size="13" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">VFD POWER</text>
+<text x="1132.0" y="932.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Conv_Simple / CV-101 (garage conveyor)</text>
+<text x="1132.0" y="958.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">MIRA / FactoryLM</text>
+<text x="1132.0" y="976.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">terminals per GS10 UM 1st Ed Rev B;</text>
+<text x="1408.0" y="914.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">SHEET</text>
+<text x="1408.0" y="932.0" font-size="16" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">E-003</text>
+<text x="1408.0" y="956.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">REV A</text>
+<text x="1408.0" y="974.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">2026-07-10</text>
+<text x="1538.0" y="956.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">3 of 9</text>
+<text x="1132.0" y="986.0" font-size="6.8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">MC placement per manual recommendation; as-built UNVERIFIED</text></svg>
