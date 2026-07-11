@@ -24,11 +24,17 @@ trust gate — when it is false, every VFD-derived value is marked ``stale``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from shared.drive_fault_intel import build_gs10_template_reader
-from shared.drive_packs import build_cards, load_pack
+from shared.drive_packs import (
+    DiagnosticCard,
+    KeypadNavigationCard,
+    ParameterCard,
+    build_cards,
+    load_pack,
+)
 from shared.drive_packs.schema import EnvelopeBand, RegisterEntry
 from shared.wire_scaling import TagScaling, to_engineering
 
@@ -115,6 +121,93 @@ class LiveTagSnapshot:
     label: str
     source: str
     ts: str
+
+
+@dataclass(frozen=True)
+class DriveDiagnostic:
+    """Surface-agnostic structured diagnosis for a drive at a moment in time.
+
+    Every DriveSense surface (engine Live Machine Evidence, Ignition Ask-MIRA,
+    and future Hub/Slack/Telegram) builds THIS from live snapshots, then renders
+    it — so all surfaces present the SAME deterministic assessment + cited fault
+    card. Read-only/offline; holds no live handles, only decoded values.
+
+    ``fault_card`` is the active fault's ``DiagnosticCard`` ONLY when the fault
+    snapshot is GOOD quality (a STALE/comms-lost fault yields ``None`` — the
+    assessment already carries the comms-LOST caveat); ``None`` also when there
+    is no active fault or no enrichment for it.
+
+    ``related_parameters`` / ``keypad_navigation`` are the DriveSense schema-v2
+    carry slots (parameter decode + how-to-reach-it keypad steps). They are
+    additive and default empty/None; ``build_drive_diagnostic`` populates them
+    from the module-global pack's ``parameters``/``keypad_navigation`` blocks
+    (whole-word-token match against the active fault card's ``meaning``) when
+    the pack ships them (schema_version 2). The shipped v1 pack ships neither
+    block, so both stay empty/``None`` and rendering is unchanged for it.
+    """
+
+    assessment: str | None
+    fault_card: DiagnosticCard | None
+    related_parameters: list[ParameterCard] = field(default_factory=list)
+    keypad_navigation: KeypadNavigationCard | None = None
+
+
+def _active_fault_card(snapshots: list[LiveTagSnapshot]) -> DiagnosticCard | None:
+    """The active, GOOD-quality fault's diagnostic card (the STALE-suppression
+    gate), or ``None``. Single source of truth for 'which card, if any'."""
+    fault = _dp(snapshots).get("vfd_fault_code")
+    if fault is None or fault.quality != GOOD or fault.value in (None, "no active fault"):
+        return None
+    card = _GS10_CARDS_BY_MEANING.get(str(fault.value))
+    if card is None or (not card.likely_causes and not card.first_checks):
+        return None
+    return card
+
+
+def _related_parameters(fault_card: DiagnosticCard | None) -> list[ParameterCard]:
+    """Pack ``ParameterCard``s whose ``related_faults`` whole-word-token-match
+    the active fault card's ``meaning`` (e.g. ``"CE10 modbus timeout"`` tokenizes
+    to ``{"CE10", "MODBUS", "TIMEOUT"}`` — a related-faults entry of ``"CE10"``
+    matches; ``"CE1"`` does not, avoiding a substring false-positive on
+    ``"CE10"``). Empty when ``fault_card`` is ``None`` or the pack ships no
+    ``parameters`` (the shipped v1 pack) -- a no-op by construction."""
+    if fault_card is None:
+        return []
+    fault_tokens = {t.upper() for t in fault_card.meaning.split()}
+    return [
+        p
+        for p in _GS10_PACK.parameters
+        if any(rf.upper() in fault_tokens for rf in p.related_faults)
+    ]
+
+
+def _keypad_for_top_parameter(
+    related: list[ParameterCard],
+) -> KeypadNavigationCard | None:
+    """The pack's ``KeypadNavigationCard`` for the top related parameter's id,
+    or ``None`` when there's no match (or no related parameter at all)."""
+    if not related:
+        return None
+    top_pid = related[0].parameter_id
+    return next((k for k in _GS10_PACK.keypad_navigation if k.parameter_id == top_pid), None)
+
+
+def build_drive_diagnostic(snapshots: list[LiveTagSnapshot]) -> DriveDiagnostic:
+    """Compose the deterministic assessment + the active-fault card into one
+    structured, surface-agnostic payload. Pure/offline.
+
+    Also populates the schema-v2 ``related_parameters``/``keypad_navigation``
+    slots from the module-global pack -- a no-op for the shipped v1 pack
+    (empty ``parameters``/``keypad_navigation`` lists), see ``DriveDiagnostic``.
+    """
+    fault_card = _active_fault_card(snapshots)
+    related = _related_parameters(fault_card)
+    return DriveDiagnostic(
+        assessment=assess_snapshots(snapshots),
+        fault_card=fault_card,
+        related_parameters=related,
+        keypad_navigation=_keypad_for_top_parameter(related),
+    )
 
 
 def _num(raw: Any) -> float | int | None:
@@ -469,14 +562,10 @@ def assess_snapshots(snapshots: list[LiveTagSnapshot]) -> str | None:
     )
 
 
-def render_fault_diagnostic(fault_name: str) -> str:
-    """Enriched diagnostic block for an active fault NAME (card likely-causes/
-    first-checks/citation), or "" when there's no enrichment. Pure/offline --
-    reads module-level cards built once via the offline FaultCodesTemplateReader.
-    """
-    card = _GS10_CARDS_BY_MEANING.get(fault_name)
-    if card is None or (not card.likely_causes and not card.first_checks):
-        return ""
+def _render_fault_card(card: DiagnosticCard) -> str:
+    """Render a ``DiagnosticCard`` (likely-causes/first-checks/citation) as the
+    ``### Fault diagnostic:`` block text. Pure formatting -- the caller decides
+    whether a card should render at all (the GOOD-quality / non-empty gates)."""
     lines = [f"### Fault diagnostic: {card.fault_or_symptom}"]
     if card.likely_causes:
         lines.append("Likely causes: " + "; ".join(card.likely_causes))
@@ -488,20 +577,61 @@ def render_fault_diagnostic(fault_name: str) -> str:
     return "\n".join(lines)
 
 
-def _render_active_fault_diagnostic(snapshots: list[LiveTagSnapshot]) -> str:
-    """Enriched per-fault diagnostic block for an active, GOOD-quality fault in
-    ``snapshots`` (via the shared card path), or "" when there is none. Shared by
-    the engine (``render_machine_evidence``) and the Ignition wire path
-    (``assess_from_paths``) so the fault-diagnostic gate + render live in ONE place.
+def _render_parameter_card(p: ParameterCard) -> str:
+    """Render a ``ParameterCard`` as a ``### Related parameter:`` block. Pure
+    formatting -- the caller decides whether/when to render it at all."""
+    lines = [f"### Related parameter: {p.parameter_id} — {p.name}"]
+    if p.purpose:
+        lines.append(p.purpose)
+    range_bits = []
+    if p.range:
+        range_bits.append(f"Range {p.range}")
+    if p.default is not None:
+        range_bits.append(f"Default {p.default}")
+    if p.unit:
+        range_bits.append(f"Unit {p.unit}")
+    if range_bits:
+        lines.append(" / ".join(range_bits))
+    if p.source_citation.doc:
+        cite = p.source_citation.doc
+        if p.source_citation.page:
+            cite += f" — {p.source_citation.page}"
+        lines.append(f"Source: {cite}")
+    return "\n".join(lines)
 
-    Quality gate: only a GOOD-quality fault renders. A STALE fault (comms lost —
-    ``vfd_comm_ok`` is this module's master trust gate) is skipped; the assessment
-    already leads with the comms-LOST caveat and a confident card would contradict it.
+
+def _render_keypad_card(k: KeypadNavigationCard) -> str:
+    """Render a ``KeypadNavigationCard`` as a ``### Keypad (view-only):`` block.
+
+    SAFETY GUARD: the view-only warning is NON-OPTIONAL whenever any keypad
+    text renders -- if ``view_only_warning`` is empty/blank, this returns ``""``
+    (suppress the whole card) rather than ever render keypad steps without it.
+    The loader already forbids an empty warning at load time; this is
+    belt-and-suspenders against that invariant ever slipping. Pure formatting.
     """
-    fault = _dp(snapshots).get("vfd_fault_code")
-    if fault is None or fault.quality != GOOD or fault.value in (None, "no active fault"):
+    if not k.view_only_warning or not k.view_only_warning.strip():
         return ""
-    return render_fault_diagnostic(str(fault.value))
+    lines = [f"### Keypad (view-only): {k.goal}"]
+    for i, step in enumerate(k.keypad_steps, start=1):
+        lines.append(f"{i}. {step}")
+    lines.append(f"⚠ View only: {k.view_only_warning}")
+    if k.source_citation.doc:
+        cite = k.source_citation.doc
+        if k.source_citation.page:
+            cite += f" — {k.source_citation.page}"
+        lines.append(f"Source: {cite}")
+    return "\n".join(lines)
+
+
+def render_fault_diagnostic(fault_name: str) -> str:
+    """Enriched diagnostic block for an active fault NAME (card likely-causes/
+    first-checks/citation), or "" when there's no enrichment. Pure/offline --
+    reads module-level cards built once via the offline FaultCodesTemplateReader.
+    """
+    card = _GS10_CARDS_BY_MEANING.get(fault_name)
+    if card is None or (not card.likely_causes and not card.first_checks):
+        return ""
+    return _render_fault_card(card)
 
 
 def render_machine_evidence(snapshots: list[LiveTagSnapshot]) -> str:
@@ -529,14 +659,23 @@ def render_machine_evidence(snapshots: list[LiveTagSnapshot]) -> str:
         "",
         render_status_block(snapshots),
     ]
-    assessment = assess_snapshots(snapshots)
-    if assessment:
-        parts += ["", f"Assessment: {assessment}"]
+    # Both surfaces (this one and `assess_from_paths`) build the SAME
+    # structured `DriveDiagnostic` object, then render it -- see `DriveDiagnostic`.
+    diag = build_drive_diagnostic(snapshots)
+    if diag.assessment:
+        parts += ["", f"Assessment: {diag.assessment}"]
     # Only render the authoritative per-fault card for a GOOD-quality fault — see
-    # `_render_active_fault_diagnostic`'s docstring for the STALE-suppression rule.
-    diagnostic = _render_active_fault_diagnostic(snapshots)
-    if diagnostic:
-        parts += ["", diagnostic]
+    # `DriveDiagnostic`'s docstring for the STALE-suppression rule.
+    if diag.fault_card is not None:
+        parts += ["", _render_fault_card(diag.fault_card)]
+    # Schema-v2 carry slots -- empty/None for the shipped v1 pack (see
+    # `DriveDiagnostic`), so this is a no-op there and adds no text.
+    for p in diag.related_parameters:
+        parts += ["", _render_parameter_card(p)]
+    if diag.keypad_navigation is not None:
+        kp = _render_keypad_card(diag.keypad_navigation)
+        if kp:
+            parts += ["", kp]
     return "\n".join(parts)
 
 
@@ -609,10 +748,11 @@ def assess_from_paths(path_values: dict[str, Any] | None) -> str | None:
     fabricated assessment. Pure / deterministic.
 
     When an active, GOOD-quality (comms-OK) GS10 fault is present, the same
-    per-fault diagnostic card the engine path renders (``render_fault_diagnostic``,
-    via the shared ``_render_active_fault_diagnostic`` helper) is appended after
-    the one-line assessment — this is the Ignition "Ask MIRA" enrichment (Drive
-    Commander DriveSense follow-up). A STALE fault (comms lost) never gets a card.
+    per-fault diagnostic card the engine path renders is appended after the
+    one-line assessment — both surfaces build the same ``DriveDiagnostic``
+    (``build_drive_diagnostic``) and render its ``fault_card``. This is the
+    Ignition "Ask MIRA" enrichment (Drive Commander DriveSense). A STALE fault
+    (comms lost) never gets a card.
     """
     if not path_values:
         return None
@@ -632,16 +772,28 @@ def assess_from_paths(path_values: dict[str, Any] | None) -> str | None:
     if not raw:
         return None
     snapshots = normalize(raw, "", source="ignition", ts="")
-    assessment = assess_snapshots(snapshots)
-    diagnostic = _render_active_fault_diagnostic(snapshots)
-    if diagnostic:
-        # A non-empty diagnostic implies a GOOD active fault, which also makes
-        # assess_snapshots emit its "Active VFD fault" line — so `assessment` is
-        # never None here today. The `else diagnostic` is a defensive fallback
-        # (never hit under current invariants), kept so a future assess_snapshots
-        # change can't drop the card.
-        return f"{assessment}\n\n{diagnostic}" if assessment else diagnostic
-    return assessment
+    # Both surfaces (this one and `render_machine_evidence`) build the SAME
+    # structured `DriveDiagnostic` object, then render it -- see `DriveDiagnostic`.
+    diag = build_drive_diagnostic(snapshots)
+    # Blocks are appended ONLY when present, joined `\n\n` -- for the shipped v1
+    # pack `related_parameters`/`keypad_navigation` are always empty/None (see
+    # `DriveDiagnostic`), so this is byte-identical to the pre-v2 behavior:
+    # `f"{assessment}\n\n{card_text}"` when both present, `card_text` alone when
+    # assessment is falsy, `diag.assessment` (possibly `None`) when there's no card.
+    blocks: list[str] = []
+    if diag.assessment:
+        blocks.append(diag.assessment)
+    if diag.fault_card is not None:
+        blocks.append(_render_fault_card(diag.fault_card))
+    for p in diag.related_parameters:
+        blocks.append(_render_parameter_card(p))
+    if diag.keypad_navigation is not None:
+        kp = _render_keypad_card(diag.keypad_navigation)
+        if kp:
+            blocks.append(kp)
+    if not blocks:
+        return diag.assessment
+    return "\n\n".join(blocks)
 
 
 # ── Analog assessment from the Ignition wire form — the SCALING CONTRACT ──────

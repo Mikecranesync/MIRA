@@ -306,8 +306,17 @@ class AgentReport:
         return "\n".join(lines)
 
     def _push_telegram(self) -> bool:
-        token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        chat_id = os.environ.get("TELEGRAM_REPORT_CHAT_ID", os.environ.get("TELEGRAM_CHAT_ID", ""))
+        # Ops reports go to the alert bot (staging), never the prod user bot.
+        token = (
+            os.environ.get("TELEGRAM_ALERT_BOT_TOKEN")
+            or os.environ.get("TELEGRAM_BOT_TOKEN_STG")
+            or os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        )
+        chat_id = (
+            os.environ.get("TELEGRAM_ALERT_CHAT_ID")
+            or os.environ.get("TELEGRAM_REPORT_CHAT_ID")
+            or os.environ.get("TELEGRAM_CHAT_ID", "")
+        )
         if not token or not chat_id:
             return False
         try:

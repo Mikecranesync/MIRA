@@ -1,0 +1,164 @@
+{
+  "generated_by": "tools/drive-pack-extract/scorecard.py (deterministic)",
+  "pack_count": 3,
+  "trust_ladder": [
+    "candidate",
+    "beta (manual-cited)",
+    "bench-proven",
+    "production"
+  ],
+  "packs": [
+    {
+      "pack_id": "durapulse_gs10",
+      "trust_level": "bench-proven",
+      "score": 94.0,
+      "promotable_gates_pass": true,
+      "metrics": {
+        "fault_count": 10,
+        "param_count": 8,
+        "keypad_nav_count": 4,
+        "param_citation_coverage": 1.0,
+        "broken_citations": [],
+        "uncited_params": [],
+        "fault_link_total": 1,
+        "fault_link_resolved": 1,
+        "fault_link_unresolved": [],
+        "param_link_resolved": "10/16",
+        "has_bench_live_decode": true,
+        "status_bits": 4,
+        "cmd_word": 3,
+        "registers": 4,
+        "envelope_populated": true,
+        "all_manual_cited": false,
+        "grader_trust_status": null,
+        "grader_cite_integrity": null,
+        "fabrication_detected": null,
+        "gold_fault_recall": 1.0,
+        "residual_count": 0
+      },
+      "gates": {
+        "schema_valid": true,
+        "param_citation_coverage>=0.9": true,
+        "no_broken_citations": true,
+        "fault_links_all_resolve": true,
+        "no_fabrication": true,
+        "graded_at_least_beta": true
+      },
+      "strengths": [
+        "param citation coverage 100%",
+        "broken citations: 0",
+        "fault->param link resolve 100%",
+        "gold fault recall 100%",
+        "bench live_decode present (status/cmd/registers)"
+      ],
+      "weaknesses": [],
+      "production_blockers": [
+        "no recorded human approval in registry"
+      ],
+      "schema_note": "loads via drive_packs.loader"
+    },
+    {
+      "pack_id": "powerflex_40",
+      "trust_level": "beta (manual-cited)",
+      "score": 74.5,
+      "promotable_gates_pass": true,
+      "metrics": {
+        "fault_count": 26,
+        "param_count": 9,
+        "keypad_nav_count": 0,
+        "param_citation_coverage": 1.0,
+        "broken_citations": [],
+        "uncited_params": [],
+        "fault_link_total": 2,
+        "fault_link_resolved": 2,
+        "fault_link_unresolved": [],
+        "param_link_resolved": "4/44",
+        "has_bench_live_decode": false,
+        "status_bits": 0,
+        "cmd_word": 0,
+        "registers": 0,
+        "envelope_populated": false,
+        "all_manual_cited": true,
+        "grader_trust_status": "beta",
+        "grader_cite_integrity": null,
+        "fabrication_detected": null,
+        "gold_fault_recall": 1.0,
+        "residual_count": 0
+      },
+      "gates": {
+        "schema_valid": true,
+        "param_citation_coverage>=0.9": true,
+        "no_broken_citations": true,
+        "fault_links_all_resolve": true,
+        "no_fabrication": true,
+        "graded_at_least_beta": true
+      },
+      "strengths": [
+        "param citation coverage 100%",
+        "broken citations: 0",
+        "fault->param link resolve 100%",
+        "gold fault recall 100%"
+      ],
+      "weaknesses": [
+        "no bench live_decode (manual-cited only)"
+      ],
+      "production_blockers": [
+        "no bench/live evidence -> ceiling is beta; cannot reach production",
+        "bench proof required to exceed beta (populate live_decode + envelope from hardware)"
+      ],
+      "schema_note": "loads via drive_packs.loader"
+    },
+    {
+      "pack_id": "powerflex_525",
+      "trust_level": "beta (manual-cited)",
+      "score": 74.0,
+      "promotable_gates_pass": true,
+      "metrics": {
+        "fault_count": 48,
+        "param_count": 45,
+        "keypad_nav_count": 0,
+        "param_citation_coverage": 1.0,
+        "broken_citations": [],
+        "uncited_params": [],
+        "fault_link_total": 5,
+        "fault_link_resolved": 5,
+        "fault_link_unresolved": [],
+        "param_link_resolved": "28/35",
+        "has_bench_live_decode": false,
+        "status_bits": 0,
+        "cmd_word": 0,
+        "registers": 0,
+        "envelope_populated": false,
+        "all_manual_cited": true,
+        "grader_trust_status": "beta",
+        "grader_cite_integrity": null,
+        "fabrication_detected": null,
+        "gold_fault_recall": 1.0,
+        "residual_count": 3
+      },
+      "gates": {
+        "schema_valid": true,
+        "param_citation_coverage>=0.9": true,
+        "no_broken_citations": true,
+        "fault_links_all_resolve": true,
+        "no_fabrication": true,
+        "graded_at_least_beta": true
+      },
+      "strengths": [
+        "param citation coverage 100%",
+        "broken citations: 0",
+        "fault->param link resolve 100%",
+        "gold fault recall 100%"
+      ],
+      "weaknesses": [
+        "no bench live_decode (manual-cited only)",
+        "3 declared residual(s)"
+      ],
+      "production_blockers": [
+        "no bench/live evidence -> ceiling is beta; cannot reach production",
+        "bench proof required to exceed beta (populate live_decode + envelope from hardware)"
+      ],
+      "schema_note": "loads via drive_packs.loader"
+    }
+  ]
+}

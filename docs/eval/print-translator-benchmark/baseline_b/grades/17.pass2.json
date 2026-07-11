@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "case_id": "17",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 10,
+    "power_control_flow": 18,
+    "sequence_interlocks_logic": 8,
+    "evidence_grounding_unsupported_claims": 6,
+    "technician_usefulness_clarity": 6
+  },
+  "total": 58,
+  "deductions": [
+    {
+      "claim": "SCM (safety circuit module)",
+      "evidence": "In the image, 'SCM' is a single filled-circle control terminal on the drive's terminal block, listed in a vertical column with +24V, STO1, STO2 — it is a terminal label, not a device. The image's actual distinct safety device (a labeled rectangular box with an internal switch/contact symbol) is clearly printed as 'Safety PLC', wired between E STOP and the drive's STO1/STO2/SCM/+24V terminals. The candidate never mentions 'Safety PLC' anywhere in the response.",
+      "category": "component_label_recognition",
+      "points_deducted": 6,
+      "severity": "hard_failure",
+      "correction": "Identify the labeled box between E STOP and the drive terminals as 'Safety PLC' (an external safety controller). Describe 'SCM' as the drive's Safety Common terminal, not as a module/device with an expanded functional name.",
+      "confidence": "high"
+    },
+    {
+      "claim": "The digital inputs (DI3 to DI7) are configured for multi-step speed control.",
+      "evidence": "The default-I/O legend box in the image maps DI3->'Multi-step speed 1', DI4->'Multi-step speed 2', DI5->'Multi-step speed 3', DI6->'Multi-step speed 4', but DI7's default row reads 'N/A', with a separate footnote '*DI7 can input 33 kHz pulses.' DI7 is not part of the multi-step-speed group by default.",
+      "category": "component_label_recognition",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "State that DI3-DI6 default to multi-step speed 1-4, and DI7 defaults to N/A (unused), optionally configurable as a 33 kHz pulse input.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Relay outputs: R10, R1C, R1",
+      "evidence": "The image's relay-output label reads 'R1O' (letter O, matching 'Multi-function relay output terminals'), not 'R10' (digit zero) as written by the candidate.",
+      "category": "component_label_recognition",
+      "points_deducted": 1,
+      "severity": "minor",
+      "correction": "Transcribe the terminal as R1O, not R10.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "(Omission) No mention of the optional DC reactor, optional brake resistor, or the manual's recommended R1C-R1 protective circuit note.",
+      "evidence": "The image explicitly labels 'DC reactor (optional)' and 'Brake resistor (optional)' at the top of the main power path, and a boxed NOTE recommends installing a protective circuit at R1C-R1 to protect the system, describing that an MC contact switches to ON to shut off power on a fault. None of this is addressed in the candidate's power/control-flow explanation.",
+      "category": "power_control_flow",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Mention the optional DC reactor/brake resistor taps and the recommended R1C-R1 protective circuit (MC contact opens power on fault) as part of the power-path explanation.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "The emergency stop (E STOP) is connected to the safety circuit module (SCM), which is linked to STO1 and STO2.",
+      "evidence": "The image shows E STOP wired into the 'Safety PLC' box; the Safety PLC's internal switch/contact output is what wires to STO1 and STO2 (with a separate +24VDC supply feeding the +24V/SCM node). The candidate's description skips the Safety PLC entirely and implies 'SCM' itself performs the switching/interlock function between E-STOP and STO1/STO2, which is a materially incorrect account of the interlock chain.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 8,
+      "severity": "hard_failure",
+      "correction": "Describe the chain as: E STOP -> Safety PLC (external safety relay/controller) -> Safety PLC output contact wired to STO1/STO2, with SCM and +24V as separate terminals the Safety PLC/supply also lands on.",
+      "confidence": "high"
+    },
+    {
+      "claim": "The digital inputs (DI3 to DI7) are configured for multi-step speed control.",
+      "evidence": "Grouping DI7 with DI3-DI6 under one sequencing function (multi-step speed) misstates the interlock/sequence table shown in the legend, where DI7 is a separate, unused-by-default input (N/A / optional 33 kHz pulse input) rather than a fifth speed-step input.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Describe only DI3-DI6 as the four multi-step-speed selection inputs; describe DI7 separately as N/A by default.",
+      "confidence": "high"
+    },
+    {
+      "claim": "SCM (safety circuit module) -- listed as a distinct 'control circuit component' and later as the device linking E-STOP to STO1/STO2.",
+      "evidence": "No text in the image expands 'SCM' or labels it a 'module.' It is one terminal among several (SCM, +24V, STO1, STO2) on the drive's control-terminal strip. The only distinctly-boxed safety device visible and legible in the print is labeled 'Safety PLC.' The candidate invents a device name/identity for SCM that is not supported by the print, while never reporting the device that actually is shown.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 10,
+      "severity": "hard_failure",
+      "correction": "Do not expand SCM into an invented device name. Report the legible 'Safety PLC' label as the external safety device, and SCM as a drive terminal only.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Nothing major appears to be unreadable in the provided diagram. All critical labels and connections seem clear based on the OCR data provided.",
+      "evidence": "This blanket completeness claim is inconsistent with the response's own content: the clearly legible 'Safety PLC' label and box were not captured or reported at all, and the DI7 'N/A' legend entry was misread as multi-step speed. The response presents its own extraction as complete and fully grounded when it demonstrably missed legible, in-scope content.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Avoid a blanket 'everything is clear/captured' statement; if a device or legend entry was not incorporated, that is a recognition gap, not evidence of full legibility coverage.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Overall explanation of the safety interlock circuit (SCM/E-STOP/STO1/STO2) presented as settled fact for a technician to rely on.",
+      "evidence": "Because the response substitutes an invented 'safety circuit module' for the actual visible 'Safety PLC' device and omits it entirely, a technician using this explanation to troubleshoot a safety-stop fault would not know to check/reset the external Safety PLC, creating false confidence about the safety architecture on a safety-critical circuit.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Explicitly flag the Safety PLC as the external safety controller a technician needs to check, distinct from the drive's own STO/SCM terminals.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": true,
+  "hard_failure_reasons": [
+    "invented_safety_device_or_component",
+    "reversed_or_materially_incorrect_sequence",
+    "failure_to_separate_evidence_from_inference"
+  ],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "high",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 2,
+  "notes": "Independent second pass, no prior grade file read. Two material findings drove the score: (1) the print's clearly-labeled external 'Safety PLC' device is never mentioned, and 'SCM' (a drive terminal) is instead mischaracterized as a 'safety circuit module' that links E-STOP to STO1/STO2 -- a materially incorrect account of the safety interlock topology on a safety-critical circuit. (2) DI7 is grouped with DI3-DI6 as 'multi-step speed control' inputs, but the print's default-I/O legend explicitly marks DI7 as 'N/A' (optional 33 kHz pulse input), not a speed-step input. Both are visible, legible facts in the image that the candidate got wrong with no hedging."
+}

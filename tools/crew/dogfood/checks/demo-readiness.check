@@ -22,6 +22,16 @@ SCN_VERIFIER="carlos"
 
 run_check() {
   local assets A asset tag fault mfr ans cites act comps
+  # Reachability + auth guard FIRST. A down/unreachable Hub or an expired session
+  # makes /api/assets return empty/non-JSON; without this guard the parse yields
+  # A="" and the check emits a false RED "no asset to build a demo around" — so a
+  # staging OUTAGE would be filed as a product bug. An outage is INFRA (flaky,
+  # never filed). Mirrors maintenance-tech.check's guard.
+  local me; me=$(curl -sS -m 20 "$DF_BASE/api/me/" -H "Cookie: next-auth.session-token=$DF_TOK")
+  if ! printf '%s' "$me" | grep -q '"email"'; then
+    echo "EVIDENCE: /api/me did not return a session for $DF_PERSONA (got: $(printf '%s' "$me" | head -c 80))"
+    echo "INFRA: could not authenticate $DF_PERSONA against the staging Hub (unreachable or expired session)"; return
+  fi
   assets=$(curl -sS -m 20 "$DF_BASE/api/assets/" -H "Cookie: next-auth.session-token=$DF_TOK")
   A=$(printf '%s' "$assets" | python3 -c 'import sys,json,re
 try:

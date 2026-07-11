@@ -48,7 +48,15 @@ import { sessionOr401 } from "@/lib/session";
 import pool from "@/lib/db";
 import { buildGraphContext } from "@/lib/knowledge-graph/context-builder";
 import { retrieveManualChunks, appendManualContext } from "@/lib/manual-rag";
-import { approvedAskEnforcementEnabled } from "@/lib/approved-context";
+import {
+  approvedAskEnforcementEnabled,
+  approvedContextReady,
+} from "@/lib/approved-context";
+import { KB_GAP_ADMISSION } from "@/lib/kb-gap";
+
+// A stable, unique fragment of the appended admission — used to assert the
+// server-side safety net fired (or did not).
+const GAP_MARKER = "so MIRA can cite it";
 
 const VALID_UUID = "11111111-2222-3333-4444-555555555555";
 const TENANT_ID = "tenant-aaaa-bbbb";
@@ -83,6 +91,21 @@ async function drain(res: Response): Promise<void> {
   }
 }
 
+// Read the entire SSE stream into a single string (for content assertions).
+async function readAll(res: Response): Promise<string> {
+  let raw = "";
+  const reader = res.body?.getReader();
+  const dec = new TextDecoder();
+  if (reader) {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      raw += dec.decode(value, { stream: true });
+    }
+  }
+  return raw;
+}
+
 // Mock client factory for test handlers
 function mockClient(handlers: Array<[RegExp, { rows: unknown[] }]>) {
   return {
@@ -92,6 +115,24 @@ function mockClient(handlers: Array<[RegExp, { rows: unknown[] }]>) {
     }),
     release: vi.fn(),
   };
+}
+
+// The route now calls fetch() twice on the "reaches the cascade" path: once
+// for the drive-pack pre-check (#2527) and once for the LLM provider. A bare
+// `fetchSpy.mockResolvedValue(sameResponseInstance)` breaks because the same
+// Response object's body gets consumed by the first call (drive-pack .json())
+// and is then unreadable for the second (provider .body.getReader()). This
+// helper differentiates by URL and returns a fresh Response per call.
+function mockFetchNoMatchThenProvider(providerBody: string) {
+  fetchSpy.mockImplementation(async (url: string | URL) => {
+    const u = typeof url === "string" ? url : url.toString();
+    if (u.includes("/drive-pack/ask")) {
+      return new Response(JSON.stringify({ matched: false, answer_source: "none" }), {
+        status: 200,
+      });
+    }
+    return new Response(providerBody, { status: 200 });
+  });
 }
 
 const goodAssetRow = {
@@ -241,11 +282,7 @@ describe("POST /api/assets/[id]/chat", () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
     vi.mocked(buildGraphContext).mockResolvedValue("[KG] verified relationship context");
     vi.mocked(retrieveManualChunks).mockResolvedValue([]);
-    fetchSpy.mockResolvedValue(
-      new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
-        status: 200,
-      }),
-    );
+    mockFetchNoMatchThenProvider('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n');
 
     const client = mockClient([
       [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
@@ -288,11 +325,7 @@ describe("POST /api/assets/[id]/chat", () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
     vi.mocked(buildGraphContext).mockResolvedValue("");
     vi.mocked(retrieveManualChunks).mockResolvedValue([]);
-    fetchSpy.mockResolvedValue(
-      new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
-        status: 200,
-      }),
-    );
+    mockFetchNoMatchThenProvider('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n');
 
     // Mock pool.connect() to return a client that has the asset for the owner
     const client = mockClient([
@@ -326,11 +359,7 @@ describe("POST /api/assets/[id]/chat", () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
     vi.mocked(buildGraphContext).mockResolvedValue("");
     vi.mocked(retrieveManualChunks).mockResolvedValue([]);
-    fetchSpy.mockResolvedValue(
-      new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
-        status: 200,
-      }),
-    );
+    mockFetchNoMatchThenProvider('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n');
 
     // Mock pool.connect to return a client whose query() throws
     const errorClient = {
@@ -350,5 +379,299 @@ describe("POST /api/assets/[id]/chat", () => {
     expect(res.status).not.toBe(404);
     // Confirm it tries to proceed (200 or 412 depending on context)
     expect([200, 412, 503]).toContain(res.status);
+  });
+
+  // ── Drive-pack pre-check regression tests (#2527) ───────────────────────
+  // The route pre-checks the read-only drive-pack answer service before the
+  // LLM cascade. A match short-circuits with the pack's cited answer; a
+  // non-match or any error falls straight through to the existing cascade.
+
+  it("drive-pack match short-circuits the cascade with a cited answer", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+
+    fetchSpy.mockImplementation(async (url: string | URL) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.includes("/drive-pack/ask")) {
+        return new Response(
+          JSON.stringify({
+            matched: true,
+            answer_source: "drive_pack",
+            answer: "GS10 fault CE10 — modbus timeout...",
+            citations: [{ doc: "DURApulse GS10 User Manual", page: "4-188" }],
+            pack_id: "durapulse_gs10",
+            fallback_used: false,
+            live_telemetry: false,
+            read_only: true,
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error("LLM provider cascade should not be called on a drive-pack match");
+    });
+
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(
+      makeReq(userMsg("what does CE10 mean on my gs10")),
+      makeParams(VALID_UUID)
+    );
+
+    expect(res.headers.get("Content-Type")).toContain("text/event-stream");
+    expect(res.headers.get("X-Drive-Pack")).toBe("durapulse_gs10");
+
+    let raw = "";
+    const reader = res.body?.getReader();
+    const dec = new TextDecoder();
+    if (reader) {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        raw += dec.decode(value, { stream: true });
+      }
+    }
+    expect(raw).toContain("GS10 fault CE10");
+    expect(raw).toContain("[Source: DURApulse GS10 User Manual p.4-188]");
+    expect(raw.trim().endsWith("data: [DONE]")).toBe(true);
+
+    // Only the drive-pack pre-check fetch happened — the LLM cascade never ran.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("drive-pack no-match falls through to the existing LLM cascade", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+    mockFetchNoMatchThenProvider('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n');
+
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(
+      makeReq(userMsg("what is a proximity sensor")),
+      makeParams(VALID_UUID)
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Drive-Pack")).toBeNull();
+    await drain(res);
+
+    // The drive-pack pre-check fired (no match) AND the cascade provider fired.
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("drive-pack endpoint error falls through to the existing LLM cascade", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+
+    fetchSpy.mockImplementation(async (url: string | URL) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.includes("/drive-pack/ask")) {
+        throw new Error("connection refused");
+      }
+      return new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
+        status: 200,
+      });
+    });
+
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(
+      makeReq(userMsg("help")),
+      makeParams(VALID_UUID)
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Drive-Pack")).toBeNull();
+    await drain(res);
+  });
+
+  // ── Drive-resolution from the open asset (#2527 follow-up) ──────────────
+  it("passes the open asset's manufacturer+model as `drive` so a bare fault question resolves", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+
+    let sentBody: Record<string, unknown> | null = null;
+    fetchSpy.mockImplementation(async (url: string | URL, init?: RequestInit) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.includes("/drive-pack/ask")) {
+        sentBody = JSON.parse(String(init?.body ?? "{}"));
+        return new Response(
+          JSON.stringify({
+            matched: true,
+            answer_source: "drive_pack",
+            answer: "GS10 fault CE10 — modbus timeout...",
+            citations: [{ doc: "DURApulse GS10 User Manual", page: "4-188" }],
+            pack_id: "durapulse_gs10",
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error("LLM cascade should not run when the asset-drive resolves the pack");
+    });
+
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      // NB: the real asset-fetch SELECT is multi-line, so a `.` regex can't
+      // match it (dot ≠ newline); anchor on a column that only that query has.
+      [/manufacturer, model_number/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    // Question names NO drive — resolution must come from the asset's make/model.
+    const res = await POST(makeReq(userMsg("what does CE10 mean?")), makeParams(VALID_UUID));
+
+    // The asset's manufacturer + model_number are sent as the `drive` fallback.
+    expect(sentBody).not.toBeNull();
+    expect((sentBody as Record<string, unknown>).question).toBe("what does CE10 mean?");
+    expect((sentBody as Record<string, unknown>).drive).toBe("FactoryLM M100");
+    // And the pack answer short-circuits the cascade.
+    expect(res.headers.get("X-Drive-Pack")).toBe("durapulse_gs10");
+    await drain(res);
+  });
+
+  // ── H4 gap-admission parity (#2542) ─────────────────────────────────────
+  // In the DEFAULT (non-enforced) path, an evidence-less asset chat must not
+  // stream a confident, ungrounded answer — the reply must carry an honest
+  // KB-gap admission. A question WITH evidence is unchanged.
+
+  it("appends a KB-gap admission when there is no evidence and the model didn't admit it", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]); // no sources
+    // Confident, ungrounded answer with no [Source:] tag and no gap phrase.
+    mockFetchNoMatchThenProvider(
+      'data: {"choices":[{"delta":{"content":"The fault is F5 — replace the drive."}}]}\n\ndata: [DONE]\n\n',
+    );
+
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(
+      makeReq(userMsg("what does this fault mean?")),
+      makeParams(VALID_UUID)
+    );
+
+    expect(res.status).toBe(200);
+    const raw = await readAll(res);
+    // The safety net appended the honest admission before [DONE].
+    expect(raw).toContain(GAP_MARKER);
+    expect(raw).toContain("knowledge base");
+    const doneIdx = raw.lastIndexOf("data: [DONE]");
+    expect(raw.indexOf(GAP_MARKER)).toBeLessThan(doneIdx);
+  });
+
+  it("does NOT append the admission when the model already admitted the gap", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]); // no sources
+    // Model already admits the gap in its own words.
+    mockFetchNoMatchThenProvider(
+      'data: {"choices":[{"delta":{"content":"I do not have specific documentation for this asset."}}]}\n\ndata: [DONE]\n\n',
+    );
+
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(
+      makeReq(userMsg("what does this fault mean?")),
+      makeParams(VALID_UUID)
+    );
+
+    const raw = await readAll(res);
+    // No double admission — the stock note (with its unique marker) is absent.
+    expect(raw).not.toContain(GAP_MARKER);
+    expect(raw).toContain("do not have specific documentation");
+  });
+
+  it("does NOT append the admission when manual sources ground the answer", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([
+      {
+        content: "Set parameter P0.03 to 5 to clear the fault.",
+        manufacturer: "FactoryLM",
+        modelNumber: "M100",
+        sourceUrl: "https://docs.test/manual",
+        sourcePage: 12,
+        title: "Service Manual",
+        rank: 0.95,
+        verified: true,
+      },
+    ]);
+    mockFetchNoMatchThenProvider(
+      'data: {"choices":[{"delta":{"content":"Per the manual, set P0.03 to 5. [Source: Service Manual p.12]"}}]}\n\ndata: [DONE]\n\n',
+    );
+
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(
+      makeReq(userMsg("how do I clear this fault?")),
+      makeParams(VALID_UUID)
+    );
+
+    const raw = await readAll(res);
+    expect(raw).not.toContain(GAP_MARKER);
+    expect(raw).toContain("P0.03");
+  });
+
+  it("opt-in 412 gate still refuses when enforcement is on and no context exists", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession as never);
+    vi.mocked(approvedAskEnforcementEnabled).mockReturnValue(true);
+    vi.mocked(approvedContextReady).mockReturnValue(false);
+    vi.mocked(buildGraphContext).mockResolvedValue("");
+    vi.mocked(retrieveManualChunks).mockResolvedValue([]);
+
+    const client = mockClient([
+      [/SELECT 1 FROM cmms_equipment/, { rows: [{ "?column?": 1 }] }],
+      [/SELECT.*FROM cmms_equipment/, { rows: [goodAssetRow] }],
+      [/FROM kg_relationships/, { rows: [{ count: 0 }] }],
+    ]);
+    vi.mocked(pool.connect).mockResolvedValue(client as never);
+
+    const res = await POST(
+      makeReq(userMsg("what does this fault mean?")),
+      makeParams(VALID_UUID)
+    );
+
+    expect(res.status).toBe(412);
+    const body = await res.json();
+    expect(body.gate).toBe("approved_context");
+  });
+
+  it("KB_GAP_ADMISSION carries the honest gap phrasing", () => {
+    expect(KB_GAP_ADMISSION).toContain("knowledge base");
+    expect(KB_GAP_ADMISSION).toContain(GAP_MARKER);
   });
 });

@@ -1,0 +1,39 @@
+{
+  "id": 17,
+  "oem": "AutomationDirect",
+  "document": "GS20 User Manual Ch. 2 (VFD Power & Control)",
+  "url": "cdn.automationdirect.com/static/manuals/gs20m/ch2.pdf",
+  "rendered_page_number": 37,
+  "category": "VFD",
+  "mode": "gate_bypassed_real_prompt_real_model_real_image_ocr_empty",
+  "explanation_of_mode": "REAL print_translator.build_theory_messages + REAL engine.router.complete + REAL format_theory_reply on the REAL rendered image. Skips ONLY the buggy classifier gate (vision_worker._classify_photo). Prompt is unchanged production code. NOT a mock. vision_data is the real captured vision output from results/17.json (ocr_items empty on this box).",
+  "caption_submitted": "Explain this print.",
+  "caption_is_theory_request": true,
+  "caption_note": "Caption governs ONLY print_translator.is_theory_request() (the trigger gate); it is NOT passed to build_theory_messages, so this explanation is caption-independent.",
+  "ocr_grounding": "unavailable_on_this_box",
+  "vision": {
+    "classification": "EQUIPMENT_PHOTO",
+    "classification_confidence": 0.65,
+    "drawing_type": null,
+    "drawing_type_confidence": 0.0,
+    "vision_result": "The image shows an electrical drawing, specifically a full I/O wiring diagram for a control circuit. The diagram is titled \"Control Circuit Wiring Diagrams (Continued) Full I/O Wiring Diagram\" and includes various symbols and labels indicating different components and connections.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  },
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: electrical drawing\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2945,
+    "output_tokens": 381,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "run_timestamp_utc": "2026-07-10T04:57:20.519428+00:00",
+  "inference": "ran",
+  "translator_reply": "## 1. What this appears to be\nThis appears to be a full I/O wiring diagram for a control circuit, specifically for a DURAPULSE GS20 & GS20X Drive.\n\n## 2. Main visible components\nThe main visible components include:\n* A circuit breaker or fuse\n* A DC reactor (optional)\n* A brake resistor (optional)\n* A motor\n* Multi-function relay output terminals\n* Multi-function output frequency terminals\n* Analog multi-function output terminals\n* Communication card/DC 24V external power supply card\n* Safety PLC\n* E-stop\n\n## 3. Plain-English theory of operation\nAccording to this print, the circuit appears to control a motor using a drive. The E-stop is connected to the safety PLC, which is connected to the drive's STO1 and STO2 terminals. The drive has various input and output terminals, including digital inputs (DI1-DI7), digital outputs (DO1-DO2), and analog outputs (AO1). The drive also has a communication card and a USB port.\n\n## 4. What must be true for it to work\nFor the circuit to work, the following conditions must be met:\n* The circuit breaker or fuse must be closed\n* The E-stop must be released\n* The safety PLC must be functioning correctly\n* The drive must be properly configured and powered\n* The motor must be connected and functioning correctly\n\n## 5. What would stop it from working\nThe following issues would prevent the circuit from working:\n* A blown fuse or tripped circuit breaker\n* A faulty E-stop or safety PLC\n* A misconfigured or malfunctioning drive\n* A faulty motor or motor connection\n* A communication issue with the communication card or USB port\n\n## 6. Unclear or unreadable items\nNothing major appears to be unreadable."
+}

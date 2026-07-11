@@ -31,6 +31,32 @@ PRINT_KEYWORDS = {
     "relay logic",
 }
 
+# STRONG "this IS a drawing" signals. If the vision model's own description uses
+# one of these phrases, the image is an electrical print regardless of which
+# equipment it depicts — a "wiring diagram of a VFD drive" is a drawing, not a
+# faceplate photo. These are checked BEFORE the equipment-face keywords so that
+# "drive"/"vfd"/"relay" in the description of a print no longer forces
+# EQUIPMENT_PHOTO. (Fixes the campaign-measured 91% mis-classification of real
+# electrical prints — docs/eval/print-translator-campaign/RANKED_REPORT.md.)
+STRONG_PRINT_SIGNALS = {
+    "wiring diagram",
+    "schematic",
+    "electrical schematic",
+    "electrical drawing",
+    "electrical print",
+    "ladder logic",
+    "ladder diagram",
+    "relay logic",
+    "one-line diagram",
+    "one line diagram",
+    "single-line diagram",
+    "single line diagram",
+    "connection diagram",
+    "control diagram",
+    "circuit diagram",
+    "terminal diagram",
+}
+
 # Keywords that indicate a nameplate / data plate / rating plate photo.
 # These appear in the vision model description or OCR text when the photo
 # shows an equipment identification label rather than a faceplate with
@@ -126,6 +152,29 @@ EQUIPMENT_FACE_KEYWORDS = {
     "thermocouple",
     "rtd",
 }
+
+# Compiled word-boundary matchers, cached per keyword. Word-boundary matching
+# (not substring) is required so an equipment keyword like "led" does not match
+# inside "titled", "run" inside "runway", or "drive" inside "driver" — every one
+# of those substring hits mis-classified a real electrical print in the campaign.
+_KW_PATTERN_CACHE: dict[str, "re.Pattern[str]"] = {}
+
+
+def _kw_in(keyword: str, text: str) -> bool:
+    """True if ``keyword`` occurs in ``text`` as a whole word/phrase.
+
+    ``(?<!\\w) … (?!\\w)`` anchors both ends to a non-word char (or string
+    edge), so ``"led"`` matches ``"led fault"`` but NOT ``"titled"``. Spaces
+    and punctuation inside a phrase (``"wiring diagram"``, ``"p&id"``,
+    ``"one-line"``) are matched literally via ``re.escape``. ``text`` and the
+    keywords are already lower-cased by the caller.
+    """
+    pattern = _KW_PATTERN_CACHE.get(keyword)
+    if pattern is None:
+        pattern = re.compile(r"(?<!\w)" + re.escape(keyword) + r"(?!\w)")
+        _KW_PATTERN_CACHE[keyword] = pattern
+    return pattern.search(text) is not None
+
 
 OCR_CLASSIFICATION_THRESHOLD = 10
 
@@ -356,16 +405,19 @@ class VisionWorker:
         ocr_text_lower = " ".join(ocr_items).lower()
         combined = vision_lower + " " + ocr_text_lower
 
-        equip_matches = sum(1 for kw in EQUIPMENT_FACE_KEYWORDS if kw in combined)
-        print_matches = sum(1 for kw in PRINT_KEYWORDS if kw in combined)
-        nameplate_matches = sum(1 for kw in NAMEPLATE_KEYWORDS if kw in combined)
+        # Word-boundary matching (`_kw_in`) — "led" must not match "titled",
+        # "drive" must not match "driver". NAMEPLATE_OCR_FIELDS keeps substring
+        # matching below (units like "5HP"/"60Hz" sit adjacent to digits).
+        equip_matches = sum(1 for kw in EQUIPMENT_FACE_KEYWORDS if _kw_in(kw, combined))
+        print_matches = sum(1 for kw in PRINT_KEYWORDS if _kw_in(kw, combined))
+        nameplate_matches = sum(1 for kw in NAMEPLATE_KEYWORDS if _kw_in(kw, combined))
 
         # Nameplate detection: vision model explicitly calls it a nameplate/data plate.
         # Check vision_lower first (high confidence); fall back to OCR (lower confidence).
-        if any(kw in vision_lower for kw in NAMEPLATE_KEYWORDS):
+        if any(_kw_in(kw, vision_lower) for kw in NAMEPLATE_KEYWORDS):
             conf = min(1.0, 0.7 + nameplate_matches * 0.05)
             return {"type": "NAMEPLATE", "confidence": round(conf, 2)}
-        if any(kw in ocr_text_lower for kw in NAMEPLATE_KEYWORDS):
+        if any(_kw_in(kw, ocr_text_lower) for kw in NAMEPLATE_KEYWORDS):
             conf = min(1.0, 0.5 + nameplate_matches * 0.05)
             return {"type": "NAMEPLATE", "confidence": round(conf, 2)}
 
@@ -373,6 +425,7 @@ class VisionWorker:
         # even if the vision model calls it a "specifications table" or "AC drive".
         # VFD and motor nameplates are often printed labels that vision models describe
         # using the equipment name ("drive", "controller") rather than "nameplate".
+        # (Substring match on purpose — "5HP"/"480VAC"/"60Hz" abut digits.)
         ocr_field_hits = sum(1 for f in NAMEPLATE_OCR_FIELDS if f in ocr_text_lower)
         if ocr_field_hits >= 3:
             conf = min(1.0, 0.55 + ocr_field_hits * 0.04)
@@ -389,16 +442,25 @@ class VisionWorker:
         if _spec_table:
             return {"type": "NAMEPLATE", "confidence": 0.65}
 
-        # Equipment faceplate keywords override everything — these are never drawings
-        if any(kw in vision_lower for kw in EQUIPMENT_FACE_KEYWORDS):
+        # STRONG print signal in the vision model's own description → it IS a drawing,
+        # regardless of which equipment it depicts. MUST precede the equipment-face
+        # keywords: a "wiring diagram of a VFD drive" must not be forced to
+        # EQUIPMENT_PHOTO by the word "drive". (The 91% mis-classification fix.)
+        if any(_kw_in(sig, vision_lower) for sig in STRONG_PRINT_SIGNALS):
+            conf = min(1.0, 0.7 + print_matches * 0.05)
+            return {"type": "ELECTRICAL_PRINT", "confidence": round(conf, 2)}
+
+        # Equipment faceplate keywords (only when NO strong print signal above) —
+        # a physical faceplate photo, never a drawing.
+        if any(_kw_in(kw, vision_lower) for kw in EQUIPMENT_FACE_KEYWORDS):
             conf = min(1.0, 0.6 + equip_matches * 0.05)
             return {"type": "EQUIPMENT_PHOTO", "confidence": round(conf, 2)}
-        if any(kw in ocr_text_lower for kw in EQUIPMENT_FACE_KEYWORDS):
+        if any(_kw_in(kw, ocr_text_lower) for kw in EQUIPMENT_FACE_KEYWORDS):
             conf = min(1.0, 0.4 + equip_matches * 0.05)
             return {"type": "EQUIPMENT_PHOTO", "confidence": round(conf, 2)}
 
-        # Vision model says it's a drawing — trust it
-        if any(kw in vision_lower for kw in PRINT_KEYWORDS):
+        # Weaker print keywords in the description — trust it.
+        if any(_kw_in(kw, vision_lower) for kw in PRINT_KEYWORDS):
             conf = min(1.0, 0.6 + print_matches * 0.08)
             return {"type": "ELECTRICAL_PRINT", "confidence": round(conf, 2)}
 

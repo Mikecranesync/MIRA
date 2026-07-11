@@ -193,6 +193,56 @@ jobs:
         # clarification invariants. Hermetic, no LLM, runs in <1s.
         run: pytest tests/bot_regression.py -v
 
+      - name: Golden-case harvester (flywheel Phase 4a)
+        # Pure core of tools/harvest_golden_cases.py — renders corrected
+        # conversation_eval rows into paste-ready bot_regression GOLDEN_CASES.
+        # Hermetic, no DB/LLM. Root tests/ is NOT collected wholesale here, so
+        # this file is named explicitly (like bot_regression.py above).
+        run: pytest tests/test_harvest_golden_cases.py -v
+
+      - name: Relational distiller (flywheel Phase 4b)
+        # Pure core of tools/relational_distill.py — matched drive-pack fault
+        # turns → grounded HAS_FAILURE_MODE edge proposals (human-gated, never
+        # auto-verified). Hermetic, no DB/LLM. Named explicitly (root tests/ is
+        # not collected wholesale here).
+        run: pytest tests/test_relational_distill.py -v
+
+      - name: Flywheel benchmark (grades every distillation stage)
+        # Guards the whole flywheel: run the real stage cores over a ground-truth
+        # fixture and grade the 6-criterion rubric. The test also proves the
+        # graders can FAIL on a broken stage (so 100 isn't vacuous). Hermetic.
+        run: pytest tests/test_flywheel_benchmark.py -v
+
+      - name: Flywheel benchmark scorecard (visible in the log)
+        # Prints the scored rubric table; exits non-zero if the flywheel regresses.
+        run: python tools/flywheel_benchmark.py
+
+      - name: Migration drift detector (pure core)
+        # Guards tools/migration_drift.py — the fail-loud check that no env
+        # silently misses a repo migration (W3). Hermetic, no DB.
+        run: pytest tests/test_migration_drift.py -v
+
+      - name: Wiring-map import (wiring_connections seam proof)
+        # Pure core of tools/wiring_map_import.py — cited electrical-model YAML →
+        # proposed wiring_connections rows (idempotent, evidence-preserving,
+        # approval_state='proposed'). Hermetic, no DB/vision. Named explicitly
+        # (root tests/ is not collected wholesale here).
+        run: pytest tests/test_wiring_map_import.py -v
+
+      - name: Wiring schematic import (/api/kg/schematic → wiring_connections)
+        # Pure core of tools/wiring_schematic_import.py — schematic-extractor
+        # payload → the SAME WiringRow/write_rows seam (PR-2), over a fixture
+        # (no live vision). Only electrically_connected edges become conductors;
+        # provenance preserved; proposed + idempotent. Hermetic, no DB.
+        run: pytest tests/test_wiring_schematic_import.py -v
+
+      - name: Deploy-target guard (staging deploy must rebuild the bot)
+        # Guards the 2026-07-08 staging drift (#2557): deploy-staging.yml's
+        # default TARGETS must include mira-bot-telegram and must name only
+        # real services in docker-compose.staging-vps.yml. Hermetic (reads two
+        # repo files), pyyaml already installed above.
+        run: pytest tests/test_deploy_staging_targets.py -v
+
       - name: Connector framework tests
         # mira-connectors/ is its own package (pyproject pythonpath=["."]) — run from
         # inside it. Hermetic mock connectors (Maximo/Ignition/SAP/MaintainX/PI), no
@@ -252,7 +302,11 @@ jobs:
           python-version: "3.12"
 
       - name: Install pytest + pyyaml
-        run: pip install pytest pyyaml
+        # pytest-asyncio: so the shared `asyncio_mode = "auto"` in pyproject.toml
+        # is a RECOGNIZED ini option here — without it pytest emits
+        # `PytestConfigWarning: Unknown config option: asyncio_mode`, which some
+        # pytest versions escalate to exit 1 despite all tests passing (#2553).
+        run: pip install pytest pytest-asyncio pyyaml
 
       - name: Check module boundaries
         run: pytest tests/test_architecture.py -v
@@ -282,7 +336,11 @@ jobs:
           python-version: "3.12"
 
       - name: Install pytest + pyyaml
-        run: pip install pytest pyyaml
+        # pytest-asyncio: so the shared `asyncio_mode = "auto"` in pyproject.toml
+        # is a RECOGNIZED ini option here — without it pytest emits
+        # `PytestConfigWarning: Unknown config option: asyncio_mode`, which some
+        # pytest versions escalate to exit 1 despite all tests passing (#2553).
+        run: pip install pytest pytest-asyncio pyyaml
 
       # Deterministic, no-LLM SimLab oracle suite. Pure simlab/ + stdlib parser +
       # offline beta + guarded conformance — all collect + pass under pytest+pyyaml
@@ -299,6 +357,35 @@ jobs:
             tests/simlab/test_mutation.py \
             tests/simlab/test_dashboard.py \
             tests/beta/test_simlab_beta_gate.py -v
+
+  drive-pack-extract-tests:
+    name: Drive Pack Extract Tests
+    runs-on: ubuntu-latest
+    # PR-A extractor + PR-B grading self-tests (ADR-0025 / docs/drive-commander/). OFFLINE ONLY —
+    # runs against the committed synthetic fixture (fixtures/pf_sample.pdf, ~4KB, no licensed
+    # manual content). Grading a real manual with grade.py is a documented LOCAL command
+    # (docs/drive-commander/runbook-pr-b-acceptance.md), never run in CI (no manual available).
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install pdfplumber + reportlab + pypdf (pinned to match mira-core/mira-ingest/requirements.txt)
+        # pytest-asyncio here too — recognizes the shared `asyncio_mode` ini
+        # option so no PytestConfigWarning→exit-1 flake (#2553).
+        run: pip install pytest pytest-asyncio pdfplumber==0.11.9 reportlab pypdf
+
+      - name: Run extractor + grading + registry + fleet-status + bridge + pdf-extract + eval-scorer offline tests
+        run: pytest tools/drive-pack-extract/tests/ tools/drive-pack-extract/grading/tests/ tools/drive-pack-extract/registry/tests/ mira-crawler/tests/test_fleet_status.py mira-crawler/tests/test_drive_pack_bridge.py mira-crawler/tests/test_pdf_extract.py mira-crawler/tests/test_eval_scorer.py -q
+
+      - name: Pack reliability gate (deterministic scorecard)
+        # Fails the build if ANY live/promoted drive pack regresses a reliability
+        # gate (schema, citation coverage, broken citations, fault<->param link
+        # consistency, fabrication, grading). See tools/drive-pack-extract/scorecard.py
+        # + docs/drive-commander/pack-reliability-benchmark.md. Deterministic, no LLM.
+        run: python tools/drive-pack-extract/scorecard.py --json-only --ci
 
   license-check:
     name: License Check

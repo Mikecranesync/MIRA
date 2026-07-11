@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "case_id": "13",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 13,
+    "power_control_flow": 17,
+    "sequence_interlocks_logic": 19,
+    "evidence_grounding_unsupported_claims": 14,
+    "technician_usefulness_clarity": 9
+  },
+  "total": 82,
+  "deductions": [
+    {
+      "claim": "Field devices with open-collector transistor outputs / The field devices must have open-collector transistor outputs",
+      "evidence": "The print's own body text states the PNP-type example has 'a field device [with] an open-emitter PNP transistor output' (under 'Sourcing Input Sensor (PNP Type) to PLC Sinking Input'). Only the NPN-type example is 'an open-collector NPN transistor output' (under 'Sinking Input Sensor (NPN Type) to PLC Sourcing Input'). The candidate applies 'open-collector' as a blanket description covering both sensor types shown, which contradicts the legible caption for the PNP/sourcing example.",
+      "category": "component_label_recognition",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "State that the NPN/sinking sensor example uses an open-collector transistor output and the PNP/sourcing sensor example uses an open-emitter transistor output — they are not the same.",
+      "confidence": "high"
+    },
+    {
+      "claim": "'Main visible components' section lists only four generic bullets (PLC DC I/O circuits, NPN/PNP sensors, field devices with transistor outputs, wiring diagrams) with no specific terminal labels named.",
+      "evidence": "The four sub-diagrams clearly print individual terminal/element labels: 'Input', 'Common', 'Output (sinking)', 'Output (sourcing)', 'Ground', 'Supply', 'Power', '+DC Power', '20-28 VDC', 'PLC DC Input', 'PLC DC Output', 'PLC Input (Sourcing)', 'PLC Input (Sinking)'. None of these visible labels are individually called out.",
+      "category": "component_label_recognition",
+      "points_deducted": 3,
+      "severity": "minor",
+      "correction": "Enumerate the specific labeled terminals visible on each sub-diagram (Input, Common, Output, Ground, Supply, Power, 20-28VDC) rather than only naming device categories.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Omission: the response never describes the top 'PLC DC Input' diagram's dual-diode input bridge or the same-common/same-polarity constraint.",
+      "evidence": "The page's intro text explicitly states: 'The dual diodes (shown in this diagram) allow current to flow in either direction. Inputs grouped by a common point must be either all sinking or all sourcing.' This is a substantive piece of the power/control-flow explanation that is visible and captioned but absent from the candidate's answer.",
+      "category": "power_control_flow",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "Explain the generic dual-diode PLC input circuit shown at top-left and the rule that inputs sharing a common terminal must all be the same polarity (sinking or sourcing).",
+      "confidence": "medium"
+    },
+    {
+      "claim": "'The field devices must have open-collector transistor outputs.' (stated as a general 'what must be true' requirement)",
+      "evidence": "Directly contradicted by the print's own text for the PNP/sourcing example ('open-emitter PNP transistor output'). Presenting 'open-collector' as a universal requirement for the configurations shown is not supported by the print, which explicitly documents both an open-collector (NPN) and an open-emitter (PNP) example.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "Qualify that the open-collector requirement applies only to the NPN/sinking-sensor wiring example, not to the PNP/sourcing example (open-emitter).",
+      "confidence": "high"
+    },
+    {
+      "claim": "'The PLC output points must be able to sink current to ground.' (stated as a general 'what must be true' requirement)",
+      "evidence": "The page's own 'DC Output Wiring Methods' intro text states: 'CLICK PLCs and I/O modules with DC output circuits are wired as all current sinking only or current sourcing only depending on which PLC or output module part number is used.' The single diagrammed output example happens to be sinking-type, but the print itself says sourcing-only output modules also exist — the candidate's blanket 'must' statement is not supported by, and partly contradicts, the visible text.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "State that the shown PLC output example is a sinking-type module, and note the print itself says CLICK output modules can instead be sourcing-only depending on part number.",
+      "confidence": "high"
+    },
+    {
+      "claim": "The whole page is framed as a 'theory of operation' narrative without noting that no PLC program logic, interlocks, or an actual machine's operating sequence are shown.",
+      "evidence": "The page contains no ladder rungs, no interlock contacts, and no state-transition/sequence diagram — only static generic sinking/sourcing wiring topologies for sensors and outputs.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 1,
+      "severity": "minor",
+      "correction": "Note explicitly that this page is a generic I/O wiring-method reference, not a specific machine's operating sequence or interlock logic.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Overall technician usefulness is reduced by the open-collector/open-emitter and sinking-output-only overgeneralizations noted above.",
+      "evidence": "Same visible evidence as the open-collector and sinking-output deductions above — a technician relying on these blanket statements when selecting a sensor or output module type could reach the wrong wiring conclusion.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 1,
+      "severity": "minor",
+      "correction": "Correct the transistor-type and output-type generalizations so a technician does not misapply them when selecting field devices or PLC output modules.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": false,
+  "hard_failure_reasons": [],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "high",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "Page is a legible generic DC I/O sinking/sourcing wiring reference (CLICK PLC manual, no OCR provided but the printed captions are clearly readable in the image itself). Candidate's narrative theory-of-operation (section 3) closely and accurately paraphrases the print's own explanatory text for all three worked examples with no invented components, tags, or wire numbers, and correctly avoids describing any sequence/interlock logic that isn't present. Main deduction driver is a recurring open-collector/open-emitter conflation and two overgeneralized 'must be true' absolutes that contradict text elsewhere on the same page. No hard-failure conditions present: no invented safety devices, no reversed sequence, no dangerous troubleshooting directive, no false certainty about illegible content."
+}

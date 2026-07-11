@@ -103,9 +103,93 @@ class Provenance:
     sources: list[dict[str, str]] = field(default_factory=list)
 
 
+# ─── v2 service-pack shapes: cited parameters + keypad navigation ────────────
+# schema_version 2 adds two OPTIONAL, pack-stored blocks — configurable
+# parameter decode (`parameters`) and button-press navigation
+# (`keypad_navigation`) — that exist in no other store (ADR-0025; DriveSense
+# manual-keypad phase, docs/discovery/drivesense_service_pack_schema_proposal.md).
+# Pure data shapes; view-only text; never a write. v1 packs omit both, so every
+# field below is optional at the pack level and v1 packs load unchanged.
+
+
+@dataclass(frozen=True)
+class Citation:
+    """A single evidence pointer — mirrors ``component_template_sources`` /
+    ``pack.provenance.sources`` shape.
+
+    Lives here (not in ``cards.py``) so the pack-stored ``ParameterCard`` /
+    ``KeypadNavigationCard`` can reference it without a schema→cards import
+    cycle; ``cards.py`` re-exports it for backward compatibility.
+    """
+
+    doc: str
+    page: str
+    excerpt: str
+
+
+@dataclass(frozen=True)
+class ValueMeaning:
+    """One decoded setting value of a configurable parameter (e.g. ``"0"`` ->
+    ``"Warn and continue running"``)."""
+
+    value: str
+    meaning: str
+
+
+@dataclass(frozen=True)
+class ParameterCard:
+    """A cited, structured view of one configurable drive parameter.
+
+    ``parameter_id`` is the keypad/manual identifier (e.g. ``"P09.03"``), NOT a
+    Modbus register address (those live in ``live_decode.registers``).
+    ``drive_family`` is the owning ``pack_id``. Pure data; view-only text.
+    """
+
+    drive_family: str
+    parameter_id: str
+    name: str
+    purpose: str
+    source_citation: Citation
+    value_meanings: list[ValueMeaning] = field(default_factory=list)
+    default: str | None = None
+    range: str | None = None
+    unit: str | None = None
+    related_faults: list[str] = field(default_factory=list)
+    related_parameters: list[str] = field(default_factory=list)
+    provenance_tier: str = "manual_cited"
+    confidence_tier: str | None = None
+
+
+@dataclass(frozen=True)
+class KeypadNavigationCard:
+    """Ordered button-press guidance to REACH and VIEW a parameter on the
+    physical drive — the genuinely-new structured data DriveSense adds.
+
+    ``keypad_steps`` are display strings, never executable instructions.
+    ``view_only_warning`` is mandatory and non-empty (the safety contract,
+    enforced in ``loader.py``). Beta ships VIEW-only, so ``edit_warning`` is
+    normally ``None``. ``drive_family`` is the owning ``pack_id``.
+    """
+
+    drive_family: str
+    goal: str
+    keypad_steps: list[str]
+    view_only_warning: str
+    source_citation: Citation
+    confidence_tier: str
+    provenance_tier: str
+    parameter_id: str | None = None
+    menu_group: str | None = None
+    edit_warning: str | None = None
+
+
 @dataclass(frozen=True)
 class DrivePack:
-    """A complete, validated drive-family pack."""
+    """A complete, validated drive-family pack.
+
+    ``parameters`` and ``keypad_navigation`` are the schema_version 2 additions
+    — empty for a v1 pack, so v1 packs load unchanged.
+    """
 
     pack_id: str
     schema_version: int
@@ -115,3 +199,5 @@ class DrivePack:
     envelope: Envelope
     knowledge: Knowledge
     provenance: Provenance
+    parameters: list[ParameterCard] = field(default_factory=list)
+    keypad_navigation: list[KeypadNavigationCard] = field(default_factory=list)

@@ -355,16 +355,23 @@ text isn't grounded in). **Both surfaces are now enriched:** the engine path
 single shared helper `_render_active_fault_diagnostic(snapshots)` — the GOOD-quality gate + card render
 lives in **one** place, no duplicated diagnostic logic across surfaces.
 
+**Structured response object (shipped):** both surfaces now build a single surface-agnostic
+`DriveDiagnostic` (`assessment` + optional `fault_card: DiagnosticCard`) via
+`build_drive_diagnostic(snapshots)` in `live_snapshot.py`, then render it — one typed payload the
+engine and Ignition paths share (and future Hub/Slack/Telegram + the trace layer can consume). This is
+a behavior-preserving refactor: the emitted text is byte-identical. It does **not** add new surfaces.
+
 **Remaining gaps (deferred, documented):**
 1. **DB-backed reader** over the live `fault_codes` table — replaces the interim offline
    `drive_fault_intel.py` adapter. Needs a thin NeonDB adapter (outside `drive_packs/`).
-2. **Trace threading** — card citation → `decision_traces` (see §5.2); engine + schema work.
-3. **`knowledge.*` id-pointers**, **register `addr`**, **`confidence_for()`** — as in §6/§7 above.
-4. **Shared cross-surface response object** (Hub / Slack / Telegram / HMI) — NOT yet built; the current
-   reuse (`_render_active_fault_diagnostic`) is a text helper. A structured DriveSense response object
-   is a larger step, deferred until a second consuming surface actually needs it.
+2. **Trace threading** — thread `DriveDiagnostic` (fault_code + card citations) into `decision_traces`
+   (see §5.2); engine + schema work. Now that the structured object exists, this is the natural next step.
+3. **Additional consuming surfaces** — Slack / Telegram / a Hub panel that render the shared
+   `DriveDiagnostic`. The object is ready; the surfaces are not built.
+4. **`knowledge.*` id-pointers**, **register `addr`**, **`confidence_for()`** — as in §6/§7 above.
 
-*(The Ignition-path gap listed here in follow-up #2 is now closed — this §7.1 entry reflects that.)*
+*(The Ignition-path gap and the cross-surface response-object gap listed in follow-up #2 are now
+closed — this §7.1 entry reflects that.)*
 
 ---
 

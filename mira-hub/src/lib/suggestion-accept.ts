@@ -34,7 +34,18 @@ import { normalizeTagPath } from "@/lib/normalize-tag-path";
  *      default to 'ignition' and record the bridge's provenance in `notes` rather than inventing a
  *      new source_system value.
  *
- * On `reject`: transition status → 'rejected'. No entity is created; `approved_tags` is untouched.
+ *   4. For a `drive_pack_update` proposal (mig 062), ENQUEUE a build+grade instead of just
+ *      flipping status. The extractor+grader is a Python CLI
+ *      (`tools/drive-pack-extract/registry/update_candidate.py`); the Hub must NOT shell out to it
+ *      synchronously inside the HTTP request. So accept writes a durable "build requested" marker
+ *      onto the suggestion's own `extracted_data` (no new table — the row IS the queue), and a
+ *      separate Python drain worker (`drain_build_requests.py`) invokes the CLI, which produces a
+ *      staged `candidates/<family>/` + grading report. It NEVER promotes into the live
+ *      `mira-bots/shared/drive_packs/packs/` tree — auto-promotion is forbidden (trust doctrine,
+ *      ADR-0025, `.claude/rules/train-before-deploy.md`). #2544.
+ *
+ * On `reject`: transition status → 'rejected'. No entity is created; `approved_tags` is untouched;
+ * no build is enqueued.
  *
  * The other non-edge suggestion types (`component_profile`, `uns_confirmation`, `namespace_move`)
  * remain status-only here.
@@ -207,6 +218,37 @@ async function createTagEntity(
   return entityId;
 }
 
+/**
+ * Enqueue a drive-pack build+grade for an accepted `drive_pack_update` suggestion by writing a
+ * durable "build requested" marker onto the suggestion's own `extracted_data`. The row IS the
+ * queue — no new table. A Python drain worker
+ * (`tools/drive-pack-extract/registry/drain_build_requests.py`) reads rows where
+ * `status='accepted'` AND `build_requested=true` AND `build_status='requested'`, runs
+ * `update_candidate.py` (generator + grader as subprocesses), and flips `build_status` off
+ * `requested` when done — so a marker is drained at most once. The worker only stages a
+ * `candidates/<family>/` + grading report; it never promotes to the live `packs/` tree.
+ *
+ * This is a data annotation, not a status transition, so it does NOT go through the ADR-0017
+ * helper (which governs the `status` column). Idempotent by `|| jsonb_build_object(...)`; a second
+ * decide is already blocked by the `status='pending'` guard in {@link decideSuggestion}.
+ */
+async function markDrivePackBuildRequested(
+  c: QueryClient,
+  tenantId: string,
+  id: string,
+): Promise<void> {
+  await c.query(
+    `UPDATE ai_suggestions
+        SET extracted_data = COALESCE(extracted_data, '{}'::jsonb)
+            || jsonb_build_object(
+                 'build_requested', true,
+                 'build_requested_at', now(),
+                 'build_status', 'requested')
+      WHERE id = $1 AND tenant_id = $2::uuid`,
+    [id, tenantId],
+  );
+}
+
 export async function decideSuggestion(
   tenantId: string,
   userId: string | undefined,
@@ -242,6 +284,9 @@ export async function decideSuggestion(
         entityId = await createKgEntity(c, tenantId, data);
       } else if (s.suggestion_type === "tag_mapping") {
         entityId = await createTagEntity(c, tenantId, data);
+      } else if (s.suggestion_type === "drive_pack_update") {
+        // Not a KG/tag entity — enqueue a build+grade (no auto-promote). #2544.
+        await markDrivePackBuildRequested(c, tenantId, id);
       }
     }
 

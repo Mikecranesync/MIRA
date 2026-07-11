@@ -437,6 +437,82 @@ def _lookup_agent_state(tenant_id: str, asset_id: str) -> Optional[str]:
         engine.dispose()
 
 
+# ── Drive-pack asset binding (#2527 UNS follow-up) ───────────────────────────
+# Resolve the connected asset's manufacturer/model so a panel bound to a GS10
+# answers "what does CE10 mean?" WITHOUT the technician typing "gs10". The
+# descriptor is folded into the engine message (in the handler) so the
+# deterministic drive-pack fast-path (shared/engine.py, #2526) resolves the
+# pack; it also grounds general RAG to the right vendor. Read-only, best-effort,
+# tenant-scoped. `::text` on the tenant compare avoids a UUID-cast error on a
+# legacy slug tenant (cmms_equipment.tenant_id is TEXT — matches on either side).
+_DRIVE_INFO_SQL = """
+SELECT e.manufacturer, e.model_number
+FROM cmms_equipment e
+LEFT JOIN installed_component_instances ici
+  ON ici.asset_id = e.id
+WHERE e.tenant_id::text = :tid
+  AND (
+        e.id::text = :token
+     OR trim(both '_' from regexp_replace(lower(trim(e.equipment_number)), '[^a-z0-9]+', '_', 'g')) = :slug
+     OR lower(e.equipment_number) = lower(:token)
+     OR ici.plc_tag = :token
+  )
+LIMIT 1
+"""
+
+
+def _drive_info_from_conn(conn, tenant_id: str, token: str) -> Optional[str]:
+    """Resolve an Ignition asset token → "manufacturer model" descriptor, or None.
+
+    The pure resolution seam (no engine/secret setup) so the query + params are
+    unit-testable with a fake connection. Mirrors `_agent_state_from_conn` but
+    reads `cmms_equipment.manufacturer`/`model_number` directly. Returns None
+    when nothing matches or the row carries no make/model.
+    """
+    from sqlalchemy import text
+
+    row = conn.execute(
+        text(_DRIVE_INFO_SQL),
+        {"tid": tenant_id, "token": token, "slug": _slug(token)},
+    ).fetchone()
+    if not row:
+        return None
+    parts = [str(p).strip() for p in (row[0], row[1]) if p and str(p).strip()]
+    return " ".join(parts) if parts else None
+
+
+def _lookup_drive_info(tenant_id: str, token: str) -> Optional[str]:
+    """Best-effort "manufacturer model" for a connected asset, or None.
+
+    Unlike `_lookup_agent_state` (which raises so the gate can fail open), this
+    is purely additive enrichment: ANY failure (no DB, bad token, query error)
+    returns None so the turn proceeds with an un-enriched message. Never raises
+    — it must never break an Ignition chat turn.
+    """
+    if not token:
+        return None
+    neon_url = os.getenv("NEON_DATABASE_URL", "")
+    if not neon_url:
+        return None
+    try:
+        from sqlalchemy import NullPool, create_engine
+
+        engine = create_engine(
+            neon_url,
+            poolclass=NullPool,
+            connect_args={"sslmode": "require"},
+            pool_pre_ping=True,
+        )
+        try:
+            with engine.connect() as conn:
+                return _drive_info_from_conn(conn, tenant_id, token)
+        finally:
+            engine.dispose()
+    except Exception:
+        logger.debug("IGNITION_CHAT drive_info lookup failed (best-effort skip)", exc_info=True)
+        return None
+
+
 def _mark_deployed(tenant_id: str, asset_id: str) -> bool:
     """Best-effort: flip an approved agent to 'deployed' on first live turn.
 
@@ -547,6 +623,17 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
             except Exception:  # pragma: no cover - defensive
                 analog_assessment = None
 
+        # Bind the drive pack to the connected asset (#2527 UNS follow-up):
+        # resolve the asset's manufacturer/model and fold it into the message so
+        # the engine's drive-pack fast-path answers a bare "what does CE10 mean?"
+        # for a GS10-bound panel WITHOUT the technician naming the drive. Only
+        # for direct-connection turns (an asset identifier is present); purely
+        # additive + best-effort (never breaks chat). Placed in the message (not
+        # the retrieval query) so it never pollutes RAG recall.
+        _drive_token = asset_id or _asset_context_token(req.asset_context)
+        asset_descriptor = _lookup_drive_info(tenant_id, _drive_token) if _drive_token else None
+        asset_line = f"Asset: {asset_descriptor}" if asset_descriptor else None
+
         if preamble:
             evidence = [preamble]
             if assessment:
@@ -557,9 +644,9 @@ def build_router(get_engine: Callable[[], Any]) -> APIRouter:
                 "In your answer, clearly separate: (1) this LIVE evidence, (2) "
                 "asset/manual context, (3) your inference, and (4) the recommended next checks."
             )
-            message = "\n\n".join(evidence + [question])
+            message = "\n\n".join(([asset_line] if asset_line else []) + evidence + [question])
         else:
-            message = question
+            message = "\n\n".join(([asset_line] if asset_line else []) + [question])
 
         tag_reads = sorted((req.tag_snapshot or {}).keys())
 

@@ -1,0 +1,39 @@
+{
+  "id": 20,
+  "oem": "WEG",
+  "document": "CFW-11W Frequency Inverter Manual (static.weg.net)",
+  "url": "static.weg.net/medias/downloadcenter/hae/h83/WEG-10004699316-13871637-r00-CFW11-W-users-manual-en.pdf",
+  "rendered_page_number": 26,
+  "category": "VFD",
+  "mode": "gate_bypassed_real_prompt_real_model_real_image_ocr_empty",
+  "explanation_of_mode": "REAL print_translator.build_theory_messages + REAL engine.router.complete + REAL format_theory_reply on the REAL rendered image. Skips ONLY the buggy classifier gate (vision_worker._classify_photo). Prompt is unchanged production code. NOT a mock. vision_data is the real captured vision output from results/20.json (ocr_items empty on this box).",
+  "caption_submitted": "Describe the theory of operation.",
+  "caption_is_theory_request": true,
+  "caption_note": "Caption governs ONLY print_translator.is_theory_request() (the trigger gate); it is NOT passed to build_theory_messages, so this explanation is caption-independent.",
+  "ocr_grounding": "unavailable_on_this_box",
+  "vision": {
+    "classification": "EQUIPMENT_PHOTO",
+    "classification_confidence": 0.7,
+    "drawing_type": null,
+    "drawing_type_confidence": 0.0,
+    "vision_result": "The image shows an electrical drawing, specifically a general wiring diagram. The diagram is labeled \"Figure 3.6: General wiring diagram\" and features various components, including a motor, HMI, and multiple connections. It appears to be a technical illustration for installation and connection purposes.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  },
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: electrical drawing\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2800,
+    "output_tokens": 325,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "run_timestamp_utc": "2026-07-10T04:57:30.982396+00:00",
+  "inference": "ran",
+  "translator_reply": "## **1. What this appears to be**\nThis appears to be a general wiring diagram for a motor control system, likely part of an industrial or commercial installation.\n\n## **2. Main visible components**\n- A human-machine interface (HMI) or control panel labeled \"HMI\" on the left.\n- A large gray block labeled \"IFSC\" with multiple connectors (XC00, XC90, XC25A, XC25B).\n- Three identical sections, each labeled \"UP11,\" which seem to be power or control units.\n- A motor, represented by a circle labeled \"MOTOR.\"\n- Various connections and wiring lines.\n\n## **3. Plain-English theory of operation**\nThe HMI (or control panel) likely provides user interface and control signals. The IFSC block appears to be a central control or interface unit. The three \"UP11\" sections seem to be power or drive units for the motor. The motor is connected to these drive units.\n\n## **4. What must be true for it to work**\n- Power must be supplied to the IFSC block and the UP11 sections.\n- Control signals from the HMI must be properly connected and functioning.\n- The motor must be correctly wired to the UP11 sections.\n\n## **5. What would stop it from working**\n- A broken connection between the IFSC and UP11 sections.\n- A faulty HMI or control panel.\n- A malfunctioning UP11 section.\n- Incorrect or loose wiring to the motor.\n\n## **6. Unclear or unreadable items**\nNothing major appears to be unreadable in the provided image."
+}

@@ -16,18 +16,28 @@ from pathlib import Path
 from typing import Any
 
 from .schema import (
+    Citation,
     DrivePack,
     Envelope,
     EnvelopeBand,
     Family,
+    KeypadNavigationCard,
     Knowledge,
     LiveDecode,
     Nameplate,
+    ParameterCard,
     Provenance,
     RegisterEntry,
+    ValueMeaning,
 )
 
 _VALID_PROVENANCE = {"bench_verified", "manual_cited"}
+
+# schema_version generations this loader understands. v1 = live-decode + envelope
+# + knowledge pointers. v2 adds the OPTIONAL `parameters` + `keypad_navigation`
+# blocks (DriveSense manual-keypad phase). An unknown version is a hard error —
+# never a silent best-effort parse.
+_SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2})
 
 _REQUIRED_TOP_LEVEL_KEYS = {
     "pack_id",
@@ -110,6 +120,106 @@ def _validate_provenance(items: dict[str, str], pack_id: str) -> None:
         )
 
 
+def _check_provenance_tier(tier: str, *, pack_id: str, where: str) -> str:
+    """Validate a single card's provenance_tier against the closed vocabulary
+    (ADR-0025 axiom 2 — never bare 'verified'). Returns the tier unchanged."""
+    if tier not in _VALID_PROVENANCE:
+        raise ValueError(
+            f"pack '{pack_id}': invalid provenance_tier {tier!r} on {where} — "
+            f"must be one of {sorted(_VALID_PROVENANCE)}"
+        )
+    return tier
+
+
+def _citation(raw: dict[str, Any] | None) -> Citation:
+    """Parse one source_citation object. Missing fields default to '' — never a
+    fabricated page/excerpt."""
+    raw = raw or {}
+    return Citation(
+        doc=raw.get("doc", ""),
+        page=raw.get("page", ""),
+        excerpt=raw.get("excerpt", ""),
+    )
+
+
+def _value_meanings(raw_list: list[dict[str, Any]]) -> list[ValueMeaning]:
+    return [
+        ValueMeaning(value=str(vm.get("value", "")), meaning=vm.get("meaning", ""))
+        for vm in raw_list
+    ]
+
+
+def _parameters(raw_list: list[dict[str, Any]], pack_id: str) -> list[ParameterCard]:
+    """Parse the v2 ``parameters`` block into ``ParameterCard``s (v1 packs have
+    none). ``drive_family`` is injected from ``pack_id`` — the JSON never repeats
+    it. ``parameter_id`` is required per entry."""
+    out: list[ParameterCard] = []
+    for entry in raw_list:
+        pid = entry.get("parameter_id")
+        if not pid:
+            raise ValueError(
+                f"pack '{pack_id}': a parameters[] entry is missing required 'parameter_id'"
+            )
+        out.append(
+            ParameterCard(
+                drive_family=pack_id,
+                parameter_id=pid,
+                name=entry.get("name", ""),
+                purpose=entry.get("purpose", ""),
+                source_citation=_citation(entry.get("source_citation")),
+                value_meanings=_value_meanings(entry.get("value_meanings", [])),
+                default=entry.get("default"),
+                range=entry.get("range"),
+                unit=entry.get("unit"),
+                related_faults=list(entry.get("related_faults", [])),
+                related_parameters=list(entry.get("related_parameters", [])),
+                provenance_tier=_check_provenance_tier(
+                    entry.get("provenance_tier", "manual_cited"),
+                    pack_id=pack_id,
+                    where=f"parameter {pid!r}",
+                ),
+                confidence_tier=entry.get("confidence_tier"),
+            )
+        )
+    return out
+
+
+def _keypad_navigation(raw_list: list[dict[str, Any]], pack_id: str) -> list[KeypadNavigationCard]:
+    """Parse the v2 ``keypad_navigation`` block into ``KeypadNavigationCard``s.
+
+    Enforces the safety contract: ``view_only_warning`` MUST be present and
+    non-empty (a keypad card that can't say "view only, don't press ENTER" is
+    invalid). ``drive_family`` is injected from ``pack_id``.
+    """
+    out: list[KeypadNavigationCard] = []
+    for entry in raw_list:
+        warning = entry.get("view_only_warning", "")
+        if not warning or not warning.strip():
+            raise ValueError(
+                f"pack '{pack_id}': keypad_navigation entry (goal={entry.get('goal')!r}) has an "
+                "empty view_only_warning — the safety contract requires a non-empty view-only warning"
+            )
+        out.append(
+            KeypadNavigationCard(
+                drive_family=pack_id,
+                goal=entry.get("goal", ""),
+                keypad_steps=list(entry.get("keypad_steps", [])),
+                view_only_warning=warning,
+                source_citation=_citation(entry.get("source_citation")),
+                confidence_tier=entry.get("confidence_tier", "low"),
+                provenance_tier=_check_provenance_tier(
+                    entry.get("provenance_tier", "manual_cited"),
+                    pack_id=pack_id,
+                    where=f"keypad_navigation goal={entry.get('goal')!r}",
+                ),
+                parameter_id=entry.get("parameter_id"),
+                menu_group=entry.get("menu_group"),
+                edit_warning=entry.get("edit_warning"),
+            )
+        )
+    return out
+
+
 def load_pack(pack_id: str) -> DrivePack:
     """Load and validate ``packs/<pack_id>/pack.json``.
 
@@ -127,14 +237,33 @@ def load_pack(pack_id: str) -> DrivePack:
     except json.JSONDecodeError as exc:
         raise ValueError(f"pack '{pack_id}': invalid JSON in {path}: {exc}") from exc
 
+    return _parse_pack(raw, pack_id, str(path))
+
+
+def _parse_pack(raw: dict[str, Any], pack_id: str, path_label: str) -> DrivePack:
+    """Validate + build a ``DrivePack`` from an already-parsed JSON dict.
+
+    Split out of ``load_pack`` so the pure parse (incl. schema_version 2's
+    ``parameters``/``keypad_navigation`` blocks) is unit-testable without a
+    disk fixture. ``path_label`` is only used in error messages.
+    """
     missing = _REQUIRED_TOP_LEVEL_KEYS - raw.keys()
     if missing:
-        raise ValueError(f"pack '{pack_id}': missing required key(s) {sorted(missing)} in {path}")
+        raise ValueError(
+            f"pack '{pack_id}': missing required key(s) {sorted(missing)} in {path_label}"
+        )
 
     if raw["pack_id"] != pack_id:
         raise ValueError(
-            f"pack '{pack_id}': pack.json at {path} declares "
+            f"pack '{pack_id}': pack.json at {path_label} declares "
             f"pack_id={raw['pack_id']!r}, expected {pack_id!r}"
+        )
+
+    version = raw["schema_version"]
+    if version not in _SUPPORTED_SCHEMA_VERSIONS:
+        raise ValueError(
+            f"pack '{pack_id}': unsupported schema_version {version!r} in {path_label} — "
+            f"supported: {sorted(_SUPPORTED_SCHEMA_VERSIONS)}"
         )
 
     live_decode_raw = raw["live_decode"]
@@ -180,15 +309,22 @@ def load_pack(pack_id: str) -> DrivePack:
 
     nameplate = Nameplate(match_keywords=list(raw["nameplate"].get("match_keywords", [])))
 
+    # schema_version 2 blocks — absent in v1, so these default to empty and a v1
+    # pack loads exactly as before.
+    parameters = _parameters(raw.get("parameters", []), pack_id)
+    keypad_navigation = _keypad_navigation(raw.get("keypad_navigation", []), pack_id)
+
     return DrivePack(
         pack_id=raw["pack_id"],
-        schema_version=raw["schema_version"],
+        schema_version=version,
         family=family,
         nameplate=nameplate,
         live_decode=live_decode,
         envelope=envelope,
         knowledge=knowledge,
         provenance=provenance,
+        parameters=parameters,
+        keypad_navigation=keypad_navigation,
     )
 
 

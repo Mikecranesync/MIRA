@@ -1,0 +1,117 @@
+{
+  "benchmark_metadata": {
+    "total_cases": 10,
+    "case_ids": [
+      "03",
+      "05",
+      "07",
+      "09",
+      "13",
+      "14",
+      "17",
+      "18",
+      "20",
+      "25"
+    ],
+    "status": "seed_baseline",
+    "date": "2026-07-10T05:36:45.648944",
+    "min_spec_cases": 25
+  },
+  "score_statistics": {
+    "mean": 65.4,
+    "median": 64.5,
+    "min": 31,
+    "max": 88
+  },
+  "threshold_distribution": {
+    "\u226580": {
+      "count": 3,
+      "percent": 30.0
+    },
+    "70-79": {
+      "count": 1,
+      "percent": 10.0
+    },
+    "60-69": {
+      "count": 3,
+      "percent": 30.0
+    },
+    "50-59": {
+      "count": 1,
+      "percent": 10.0
+    },
+    "<50": {
+      "count": 2,
+      "percent": 20.0
+    }
+  },
+  "failure_rates": {
+    "hard_failure": {
+      "count": 2,
+      "percent": 20.0
+    },
+    "refusal": {
+      "count": 0,
+      "percent": 0.0
+    }
+  },
+  "answerability": {
+    "count": 10,
+    "percent": 100.0
+  },
+  "confidence_distribution": {
+    "high": 8,
+    "medium": 2,
+    "low": 0
+  },
+  "classifier_improvement": {
+    "pr_number": 2608,
+    "pre_fix": {
+      "trigger_count": 1,
+      "trigger_percent": 10.0
+    },
+    "post_fix": {
+      "trigger_count": 10,
+      "trigger_percent": 100.0
+    },
+    "improvement_points": 90
+  },
+  "case_scores": {
+    "03": 59,
+    "05": 31,
+    "07": 60,
+    "09": 78,
+    "13": 82,
+    "14": 85,
+    "17": 63,
+    "18": 88,
+    "20": 42,
+    "25": 66
+  },
+  "case_hard_failures": {
+    "03": false,
+    "05": true,
+    "07": false,
+    "09": false,
+    "13": false,
+    "14": false,
+    "17": false,
+    "18": false,
+    "20": true,
+    "25": false
+  },
+  "escalations": {
+    "05": {
+      "pass1_total": 31,
+      "pass2_total": 44,
+      "gap": 13,
+      "escalated_to_technician_review": false
+    },
+    "20": {
+      "pass1_total": 42,
+      "pass2_total": 32,
+      "gap": 10,
+      "escalated_to_technician_review": false
+    }
+  }
+}
