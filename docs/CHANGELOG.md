@@ -1,13 +1,19 @@
 # MIRA Release Notes
 
 
+### v3.129.7 (2026-07-11) - test(engine): golden case + CI guard for CMMS work-order-history citation (#2445)
+- **Why:** the CMMS work-order-history evidence path (`ENABLE_WO_EVIDENCE`, shipped flag-gated OFF in #2472) is built + unit-tested + wired into the diagnosis prompt, but #2445's Definition of Done requires a **golden case** proving a diagnosis for an asset with prior work orders cites them as evidence. That artifact was missing.
+- **What:**
+  - `tests/golden_factorylm.csv` — new golden case: a recurring GS10 `oC` overcurrent on conveyor CV-101 whose ideal answer cites two prior repairs (`[WO 1042]`, `[WO 0987]`) grounded in the provided work-order context, alongside the manual `[Source:]` tag. Mirrors the real `_format_wo_evidence` block shape (`[WO <num>] <date> (<status>): <title> -- <resolution>`).
+  - `tests/test_wo_evidence.py` — `test_golden_set_has_wo_citation_case`: a deterministic CI guard that the truth set keeps a work-order-citation case, cites ≥2 `[WO N]`, and every cited `[WO N]` is grounded in the case's own context (no invented citations). Keeps the DoD artifact from silently rotting (the CSV isn't auto-run by the offline eval, which loads `tests/eval/fixtures/*.yaml`).
+- **Scope:** test/fixture only — no engine, prompt, or flag-default change; `ENABLE_WO_EVIDENCE` stays OFF. Enablement (document the flag + wire it into the engine service `environment:` blocks + Doppler staging→gate→prod) is the deliberate follow-up. 14/14 `tests/test_wo_evidence.py` pass. VERSION 3.129.6 → 3.129.7.
+
 ### v3.129.6 (2026-07-11) - docs(discovery): prod manual-ingest broken (dead docling) + VPS memory over-subscription
 - **What:** discovery record from enabling the drive-pack bridge on prod. Read-only VPS investigation surfaced two pre-existing prod issues beyond the bridge.
 - **Bridge:** `MIRA_DRIVE_PACK_BRIDGE=1` enabled + verified injected into the hourly cron; candidate creation proven on the live box via a one-shot against the cached PF525 PDF (`review_only`, `promoted:false`).
 - **Bug found:** `kb_growth_cron` manual ingest has failed for ~3 weeks — `mira-docling` was removed 2026-06-06 (OOM) but `full_ingest_pipeline` still calls it at `:5001` → `Connection refused` on every PDF. A real PowerFlex-525 manual is stuck failing in the queue purely because of this; fixing it makes the bridge fire automatically.
 - **Memory:** the 8 GB VPS is over-subscribed (swap 3.6/4.0 GiB) — a full staging stack (`stg-*` ≈ 870 MiB+) runs alongside prod, plus two MinIO instances + JVM services (java 777 MiB swapped). That's why docling has no room. Recommend: repoint ingest off docling onto the Tika/OW path; move staging off the prod box.
 - **Scope:** docs only. No code/runtime change. Full findings: `docs/discovery/2026-07-07-prod-ingest-docling-and-vps-memory.md`.
-
 
 ### v3.129.1 (2026-07-10) - fix(ci): install pytest-asyncio in the offline pytest jobs — stop the asyncio_mode PytestConfigWarning→exit-1 flake
 - **Why:** the `Architecture Check` job (and the two other offline pytest jobs) install only `pytest pyyaml`, but every pytest run reads `asyncio_mode = "auto"` from the shared `[tool.pytest.ini_options]` in `pyproject.toml`. Without `pytest-asyncio` present that's an **unknown ini option** → `PytestConfigWarning: Unknown config option: asyncio_mode`, which some resolved pytest versions escalate to **exit 1 despite all tests passing** (`9 passed, 1 warning` + exit 1). It flaked red on 4 PRs (#2547/#2549/#2550 Drive Commander convergence) while passing on clean-env draws (#2553).
