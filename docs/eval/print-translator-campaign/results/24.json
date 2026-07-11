@@ -1,0 +1,44 @@
+{
+  "id": 24,
+  "oem": "Siemens",
+  "document": "3RU/3RB Thermal Overload Relay & Braking Module (60298164)",
+  "url": "https://www.pes-group.co.uk/media/parkuk%20cms/datasheets/siemens/extra/SIRIUS%20Overload%20Relay%203RU%203RB.pdf",
+  "manifest_page_ref": "Ch. 2, overload winding & braking contact diagram",
+  "print_type": "Overload relay & DC braking element",
+  "standard": "IEC 60947-4-1",
+  "category": "Reversing/Braking",
+  "manifest_status": "CONFIRMED-2026-07-10",
+  "rendered_page_number": 162,
+  "image_sha256": "c71dd2ab7e45bc81edaad9cf2a657663a2d033ee845d7eca471228bc4abd680f",
+  "caption": "Explain this print.",
+  "run_timestamp_utc": "2026-07-10T12:09:56.507532+00:00",
+  "bot_importable": true,
+  "code_path": "bot._try_print_translator_reply (real handler, spied engine, no Telegram)",
+  "handled": true,
+  "vision_called": true,
+  "router_called": true,
+  "vision": {
+    "classification": "ELECTRICAL_PRINT",
+    "classification_confidence": 0.85,
+    "drawing_type": "wiring diagram",
+    "drawing_type_confidence": 0.65,
+    "vision_result": "The image shows an electrical drawing, specifically a wiring example for circuit diagrams. The diagram includes various components and their connections, with labels and symbols indicating different parts of the circuit. It appears to be a technical illustration for instructional or reference purposes.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  },
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: wiring diagram\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2945,
+    "output_tokens": 495,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "inference": "ran",
+  "translator_reply": "## **1. What this appears to be**\nThis appears to be a technical diagram showing two variations of electrical remote reset configurations for overload relays.\n\n## **2. Main visible components**\nThe diagrams show:\n* Two overload relay configurations (Figure 12-22 and Figure 12-23)\n* A motor (M1)\n* Fuses (F1, F2, F3)\n* A circuit breaker or disconnect (Q1)\n* Control switches (S1, S2, S3)\n* Terminals and wiring\n\n## **3. Plain-English theory of operation**\nThe diagrams appear to show remote reset configurations for overload relays. Here's a step-by-step breakdown:\n\n* The motor (M1) is connected to the overload relay (F2).\n* The overload relay is powered by a 3-phase supply (L1, L2, L3) and a control circuit powered by DC 24V.\n* The control circuit includes:\n\t+ A start switch (S1)\n\t+ An off switch (S2)\n\t+ A reset switch (labelled \"Reset\")\n* When the start switch (S1) is activated, the motor appears to start.\n* If the overload relay trips, it can be reset remotely using the reset switch.\n\n## **4. What must be true for it to work**\nFor the circuit to operate as shown:\n* The overload relay (F2) must be properly configured and connected to the motor (M1).\n* The control switches (S1, S2, S3) must be functioning correctly.\n* The fuses (F1, F2, F3) must be intact.\n* The circuit breaker or disconnect (Q1) must be closed.\n\n## **5. What would stop it from working**\nPotential issues that would prevent the circuit from working:\n* A blown fuse (F1, F2, or F3)\n* A faulty overload relay (F2)\n* A malfunctioning control switch (S1, S2, or S3)\n* A tripped circuit breaker or open disconnect (Q1)\n* A wiring issue or loose connection\n\n## **6. Unclear or unreadable items**\nThe image does not provide clear labels or text for many components. The following are unclear or unreadable:\n* Specific part numbers or models for the overload relays, motor, and other components\n* Wire designations or numbers\n* Some terminal labels"
+}
