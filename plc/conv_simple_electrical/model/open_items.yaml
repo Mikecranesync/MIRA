@@ -108,5 +108,5 @@ items:
     verify: "Trace each aux contact to its destination in the control circuit; confirm function (e.g., interlock feedback, seal-in, indicator)."
   - id: OI-27
     sheet: E-003
-    item: "GS10 output voltage: technician reported 480 V out on 230 V 1φ in — physically atypical for a PWM VFD (outputs <= input). Confirm the motor nameplate voltage + exact GS10 model; correct the drive output label."
-    verify: "Read the motor nameplate voltage; read the GS10 keypad/nameplate exact model+frame; reconcile with P00.xx output-voltage parameter; correct the E-003 output label if the reported 480 V does not hold."
+    item: "RESOLVED (2026-07-11): motor is 230 V (technician-confirmed) — the GS10 is a standard 230 V 1φ-in / 230 V 3φ-out drive; the earlier reported 480 V was a misstatement. E-003 letters 230 V 3φ output."
+    verify: "Closed by technician confirmation. Exact GS10 model/frame still tracked under OI-16 (for wire-gauge/fuse tables)."

@@ -25,7 +25,7 @@ sheets:
   - id: E-003
     title: VFD power (CB1 -> VFD1 -> M1)
     status: drafted
-    subtitle: "supply → CB1 → Q1/MLC (supply switch) → VFD1 (GS10) → M1 · 230 V 1φ in, 3φ to motor"
+    subtitle: "supply → CB1 → Q1/MLC (supply switch) → VFD1 (GS10) → M1 · 230 V 1φ in → 230 V 3φ to motor"
     scope: >
       Upstream supply → branch protection (CB1) → Q1/MLC (single-phase drive-supply switch,
       2 NO contacts) → VFD1 power input (R/L1, S/L2; T/L3 unused, 1φ) → motor output (U/T1,
@@ -37,8 +37,8 @@ sheets:
       model/frame, breaker rating, wire gauge remain NOT DOCUMENTED (every conductor is FIELD
       VERIFY). P00.01 rated current 1.60 A (2026-05-20 export) is the only sizing clue. Input is
       R/L1, S/L2 only; T/L3 unused. Q1/MLC's 2 NO contacts (13-14, 43-44) are the single-phase
-      drive-supply switch between CB1 and VFD1 (OI-21 RESOLVED). Output voltage to motor =
-      CONFIRM (OI-27) — technician reported 480 V out, pending motor nameplate + GS10 model.
+      drive-supply switch between CB1 and VFD1 (OI-21 RESOLVED). Output to motor = 230 V 3φ
+      (230 V motor, technician-confirmed 2026-07-11).
       LOTO + wait ≥5 min for DC-bus discharge before touching (WI p.2 §2).
     annotations:
       caveat:
@@ -53,7 +53,7 @@ sheets:
         - "CB1 REQUIRED per GS10_UM L1758-1759 — type/rating unknown (OI-15)."
         - "M1: swap any two motor leads to reverse — GS10_UM L1773-1776."
         - "VFD control source = Modbus — see E-007. No control wiring on this sheet."
-        - "Supply is 230 V SINGLE-PHASE (2-wire). Output voltage to motor = CONFIRM (OI-27): reported 480 V, but a 230 V 1φ GS10 outputs 230 V 3φ — pending motor nameplate + GS10 model."
+        - "Supply is 230 V SINGLE-PHASE (2-wire); drive output = 230 V 3φ to a 230 V motor (technician-confirmed 2026-07-11)."
       sources:
         - "plc/GS10_UM.txt (terminals L1971-1986; topology L1750-1813) · plc/GS10_Integration_Guide.md (Q1 phase-5 test)"
         - "plc/Prog_init_ConvSimple_v2.1.st (vfd_run_permit) · plc/MIRA_PLC_WorkInstruction_v3.pdf (LOTO §2)"

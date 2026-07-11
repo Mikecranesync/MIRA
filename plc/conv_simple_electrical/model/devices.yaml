@@ -28,14 +28,13 @@ devices:
       (FWD/REV/DI3-5/+24V/DCM) is EMPTY — run/dir/speed command is Modbus (RJ45 landed);
       the bottom analog/output connector (+10V/ACM/AI/AO1/DO1/DOC/PE) is WIRED, likely
       analog speed reference + feedback. Map = OI-22. Input is 230 V single-phase (2-wire),
-      fed through the MLC NO contacts (E-003). Output voltage to motor = CONFIRM (OI-27):
-      technician reported 480 V out, but a 230 V 1φ GS10 normally outputs 230 V 3φ — pending
-      motor nameplate + exact GS10 model.
+      fed through the MLC NO contacts (E-003). Output to motor = 230 V 3-phase (motor is 230 V,
+      technician-confirmed 2026-07-11; standard 230 V 1φ-in / 230 V 3φ-out GS10).
 
   - tag: M1
     type: motor
-    role: Conveyor drive motor (3~ from VFD1 U/V/W)
-    evidence: field_verify   # nameplate FLA/kW/rpm/poles not captured in repo
+    role: Conveyor drive motor — 230 V 3~ from VFD1 U/V/W (voltage technician-confirmed 2026-07-11)
+    evidence: field_verify   # voltage 230 V confirmed; FLA/kW/rpm/poles still not captured
 
   - tag: S0
     type: e_stop
