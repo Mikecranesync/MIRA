@@ -20,8 +20,14 @@ Production-reliability ladder (worst -> best):
 
 Usage:  python tools/drive-pack-extract/scorecard.py [--json-only]
 """
+
 from __future__ import annotations
-import io, json, os, sys, glob
+
+import glob
+import io
+import json
+import os
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))  # tools/drive-pack-extract -> repo root
@@ -80,7 +86,8 @@ def score_pack(pack_dir: str, approval: dict) -> dict:
     broken = [
         p["parameter_id"]
         for p in cited
-        if not p["source_citation"].get("doc") or not str(p["source_citation"].get("page", "")).strip()
+        if not p["source_citation"].get("doc")
+        or not str(p["source_citation"].get("page", "")).strip()
     ]
     uncited = [p["parameter_id"] for p in params if not p.get("source_citation")]
 
@@ -116,10 +123,18 @@ def score_pack(pack_dir: str, approval: dict) -> dict:
     all_manual_cited = bool(prov_items) and all(v == "manual_cited" for v in prov_items.values())
 
     # from the grader (if present)
-    cite_integrity = grep.get("layers", {}).get("citation") if isinstance(grep.get("layers"), dict) else None
-    residuals = grep.get("residuals") or (pack.get("provenance", {}) or {}).get("known_residuals") or []
+    cite_integrity = (
+        grep.get("layers", {}).get("citation") if isinstance(grep.get("layers"), dict) else None
+    )
+    residuals = (
+        grep.get("residuals") or (pack.get("provenance", {}) or {}).get("known_residuals") or []
+    )
     grader_trust = grep.get("trust_status")
-    fabrication = grep.get("gold_score", {}).get("fabrication_detected") if isinstance(grep.get("gold_score"), dict) else grep.get("fabrication_detected")
+    fabrication = (
+        grep.get("gold_score", {}).get("fabrication_detected")
+        if isinstance(grep.get("gold_score"), dict)
+        else grep.get("fabrication_detected")
+    )
 
     # gold coverage — gold "faults" is a LIST of {code, fault_id, ...} objects
     # (see gold/<id>/gold.json). Deterministic recall of gold fault codes present
@@ -135,7 +150,9 @@ def score_pack(pack_dir: str, approval: dict) -> dict:
         }
     present_faults = {fault_num(k) for k in fault_keys}
     gold_fault_recall = (
-        round(len(gold_fault_ids & present_faults) / len(gold_fault_ids), 3) if gold_fault_ids else None
+        round(len(gold_fault_ids & present_faults) / len(gold_fault_ids), 3)
+        if gold_fault_ids
+        else None
     )
 
     param_cite_cov = round(len(cited) / max(1, len(params)), 3)
@@ -169,22 +186,30 @@ def score_pack(pack_dir: str, approval: dict) -> dict:
 
     # ---- composite score (transparent, 0-100) -------------------------------
     score = 0.0
-    score += 25 * param_cite_cov                          # citation coverage
-    score += 15 * (1.0 if len(broken) == 0 else 0.0)      # no broken citations
-    score += 15 * link_consistency                        # link consistency
-    score += 15 * (gold_fault_recall if gold_fault_recall is not None else 0.6)  # fault coverage vs gold
-    score += 10 * min(1.0, len(params) / 20.0)            # parameter depth
-    score += 5 * (1.0 if keypad else 0.0)                 # wiring/keypad presence
-    score += 15 * (1.0 if has_bench else 0.0)             # bench data bonus
-    score -= 2 * len(residuals)                           # residual penalty
+    score += 25 * param_cite_cov  # citation coverage
+    score += 15 * (1.0 if len(broken) == 0 else 0.0)  # no broken citations
+    score += 15 * link_consistency  # link consistency
+    score += 15 * (
+        gold_fault_recall if gold_fault_recall is not None else 0.6
+    )  # fault coverage vs gold
+    score += 10 * min(1.0, len(params) / 20.0)  # parameter depth
+    score += 5 * (1.0 if keypad else 0.0)  # wiring/keypad presence
+    score += 15 * (1.0 if has_bench else 0.0)  # bench data bonus
+    score -= 2 * len(residuals)  # residual penalty
     score = max(0.0, min(100.0, round(score, 1)))
 
     strengths, weaknesses, blockers = [], [], []
-    (strengths if param_cite_cov >= 0.99 else weaknesses).append(f"param citation coverage {int(param_cite_cov*100)}%")
+    (strengths if param_cite_cov >= 0.99 else weaknesses).append(
+        f"param citation coverage {int(param_cite_cov * 100)}%"
+    )
     (strengths if len(broken) == 0 else weaknesses).append(f"broken citations: {len(broken)}")
-    (strengths if link_consistency >= 0.999 else weaknesses).append(f"fault->param link resolve {int(link_consistency*100)}%")
+    (strengths if link_consistency >= 0.999 else weaknesses).append(
+        f"fault->param link resolve {int(link_consistency * 100)}%"
+    )
     if gold_fault_recall is not None:
-        (strengths if gold_fault_recall >= 0.9 else weaknesses).append(f"gold fault recall {int(gold_fault_recall*100)}%")
+        (strengths if gold_fault_recall >= 0.9 else weaknesses).append(
+            f"gold fault recall {int(gold_fault_recall * 100)}%"
+        )
     if has_bench:
         strengths.append("bench live_decode present (status/cmd/registers)")
     else:
@@ -195,7 +220,9 @@ def score_pack(pack_dir: str, approval: dict) -> dict:
     if not appr_by and has_bench:
         blockers.append("no recorded human approval in registry")
     if trust.startswith("beta"):
-        blockers.append("bench proof required to exceed beta (populate live_decode + envelope from hardware)")
+        blockers.append(
+            "bench proof required to exceed beta (populate live_decode + envelope from hardware)"
+        )
 
     return {
         "pack_id": pack_id,
@@ -236,7 +263,11 @@ def score_pack(pack_dir: str, approval: dict) -> dict:
 def build() -> dict:
     appr = approvals()
     packs = sorted(glob.glob(os.path.join(PACKS_DIR, "*")))
-    results = [score_pack(p, appr.get(os.path.basename(p), {})) for p in packs if os.path.isfile(os.path.join(p, "pack.json"))]
+    results = [
+        score_pack(p, appr.get(os.path.basename(p), {}))
+        for p in packs
+        if os.path.isfile(os.path.join(p, "pack.json"))
+    ]
     return {
         "generated_by": "tools/drive-pack-extract/scorecard.py (deterministic)",
         "pack_count": len(results),
@@ -263,7 +294,7 @@ def to_md(report: dict) -> str:
         gates = f"{sum(p['gates'].values())}/{len(p['gates'])}"
         lines.append(
             f"| `{p['pack_id']}` | {p['trust_level']} | {p['score']} | {m['fault_count']} | "
-            f"{m['param_count']} | {int(m['param_citation_coverage']*100)}% | "
+            f"{m['param_count']} | {int(m['param_citation_coverage'] * 100)}% | "
             f"{m['fault_link_resolved']}/{m['fault_link_total']} | {'yes' if m['has_bench_live_decode'] else 'no'} | {gates} |"
         )
     lines.append("")
@@ -277,7 +308,8 @@ def to_md(report: dict) -> str:
             "",
             "**Weaknesses:** " + ("; ".join(p["weaknesses"]) or "—"),
             "",
-            "**Blocks production:** " + ("; ".join(p["production_blockers"]) or "nothing — promotable"),
+            "**Blocks production:** "
+            + ("; ".join(p["production_blockers"]) or "nothing — promotable"),
             "",
         ]
     return "\n".join(lines)
@@ -286,7 +318,9 @@ def to_md(report: dict) -> str:
 if __name__ == "__main__":
     report = build()
     out_json = os.path.join(HERE, "benchmark_report.json")
-    io.open(out_json, "w", encoding="utf-8", newline="\n").write(json.dumps(report, indent=2, ensure_ascii=True))
+    io.open(out_json, "w", encoding="utf-8", newline="\n").write(
+        json.dumps(report, indent=2, ensure_ascii=True)
+    )
     if "--json-only" not in sys.argv:
         out_md = os.path.join(REPO, "docs", "drive-commander", "pack-reliability-benchmark.md")
         os.makedirs(os.path.dirname(out_md), exist_ok=True)
@@ -294,7 +328,9 @@ if __name__ == "__main__":
         print(f"wrote {out_json}")
         print(f"wrote {out_md}")
     for p in report["packs"]:
-        print(f"  {p['pack_id']:<16} {p['trust_level']:<22} score={p['score']:<6} gates={sum(p['gates'].values())}/{len(p['gates'])}")
+        print(
+            f"  {p['pack_id']:<16} {p['trust_level']:<22} score={p['score']:<6} gates={sum(p['gates'].values())}/{len(p['gates'])}"
+        )
 
     # CI gate: every LIVE (promoted) pack must pass all reliability gates.
     if "--ci" in sys.argv:
