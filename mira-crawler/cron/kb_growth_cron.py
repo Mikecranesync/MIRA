@@ -75,6 +75,7 @@ MAX_ATTEMPTS = int(os.getenv("KB_GROWTH_MAX_ATTEMPTS", "5"))
 RETRY_BASE_SEC = int(os.getenv("KB_GROWTH_RETRY_BASE_SEC", "600"))  # 10 min
 RETRY_CAP_SEC = int(os.getenv("KB_GROWTH_RETRY_CAP_SEC", "21600"))  # 6 h
 STALE_STATE_SEC = int(os.getenv("KB_GROWTH_STALE_STATE_SEC", "3600"))  # 1 h
+OCR_DRAIN_BATCH_SIZE = int(os.getenv("KB_GROWTH_OCR_DRAIN_BATCH_SIZE", "1"))  # bounded drain
 
 MILESTONE_STEP = int(os.getenv("KB_GROWTH_MILESTONE_STEP", "100"))
 TENANT_ID = os.getenv("MIRA_TENANT_ID", "")
@@ -525,7 +526,7 @@ def drain_needs_ocr() -> dict:
 
     started_at = time.monotonic()
     processed: list[dict] = []
-    for idx in targets[:BATCH_SIZE]:
+    for idx in targets[:OCR_DRAIN_BATCH_SIZE]:
         if time.monotonic() - started_at > RUN_BUDGET_SEC:
             _log(f"Run budget exceeded ({RUN_BUDGET_SEC}s) — stopping drain early")
             break
