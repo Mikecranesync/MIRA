@@ -46,19 +46,23 @@ def test_load_pack_gs10_succeeds():
 
 
 def test_gs10_pack_carries_p0903_parameter_and_keypad_card_live():
-    """schema_version 2 flip: the shipped pack now carries the cited P09.03
-    ParameterCard + its KeypadNavigationCard — the CE10<->P09.03 content is
-    live, not just in the test fixture."""
+    """The shipped pack carries the cited P09.03 ParameterCard (+ its
+    KeypadNavigationCard) so the CE10<->P09.03 content is live, PLUS the grounded
+    P01 Basic-Parameter set (incl. P01.24) added from the manual. Asserts
+    presence + grounding, not an exact count, so it survives future expansion."""
     pack = load_pack(PACK_ID)
-    assert len(pack.parameters) == 1
-    param = pack.parameters[0]
-    assert param.parameter_id == "P09.03"
-    assert "CE10" in param.related_faults
+    params = {p.parameter_id: p for p in pack.parameters}
+    assert "P09.03" in params
+    assert "CE10" in params["P09.03"].related_faults
+    assert "P01.24" in params  # grounded P01 expansion (S-curve accel begin time)
+    # Every parameter is manual-cited with a page — no fabricated content.
+    for p in pack.parameters:
+        assert p.provenance_tier == "manual_cited", p.parameter_id
+        assert p.source_citation.page, p.parameter_id
 
-    assert len(pack.keypad_navigation) == 1
-    keypad = pack.keypad_navigation[0]
-    assert keypad.parameter_id == "P09.03"
-    assert keypad.view_only_warning
+    keypad = {k.parameter_id: k for k in pack.keypad_navigation}
+    assert "P09.03" in keypad
+    assert keypad["P09.03"].view_only_warning
 
 
 def test_gs10_pack_status_bits_match_live_snapshot_exactly():
@@ -163,7 +167,9 @@ def test_resolve_pack_matches_nameplate_keyword():
 
 
 def test_resolve_pack_returns_none_for_unrelated_drive():
-    assert resolve_pack("PowerFlex 525") is None
+    # NB: "PowerFlex 525" is now a packaged family (promoted 2026-07-06), so it
+    # resolves. Use a drive with no pack as the "unrelated" example.
+    assert resolve_pack("Yaskawa GA800") is None
 
 
 def test_resolve_pack_returns_none_for_empty_text():

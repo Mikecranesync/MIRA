@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "case_id": "18",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 14,
+    "power_control_flow": 18,
+    "sequence_interlocks_logic": 20,
+    "evidence_grounding_unsupported_claims": 18,
+    "technician_usefulness_clarity": 8
+  },
+  "total": 88,
+  "deductions": [
+    {
+      "claim": "(omission) The response never mentions the manual disconnect/switch symbols shown below each INPUT terminal (U1/L, V1/N, W1) and below BRK+/BRK-.",
+      "evidence": "The diagram shows discrete switch/contact symbols (open-circle break-contact icons) directly below each input terminal and below BRK+/BRK-, tied to footnote 5) 'For alternatives, see section Selecting the supply disconnecting device (disconnecting means)', plus a padlock icon near L3/-. None of this is referenced anywhere in the response.",
+      "category": "component_label_recognition",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "Note that the diagram shows the customer-supplied supply disconnecting device (switch symbols) upstream of each input terminal, referenced by footnote 5, and the padlock icon marking a lockable disconnect point.",
+      "confidence": "high"
+    },
+    {
+      "claim": "(omission) The response does not mention the numbered footnote callouts (1)-7)) on the diagram, the cable-shield/360-degree-grounding annotations, or the 'Optional brake resistor or Common DC' text box.",
+      "evidence": "The image shows footnote callout numbers 1) through 7) attached to specific symbols (shield grounding at U1/L-V1/N-W1 and BRK+/BRK-, dual grounding-conductor note at PE, one-phase note at L3/-, disconnect-device note), and a text box directly under BRK+/BRK- reading 'Optional brake resistor or Common DC' with footnote 3) pointing to the ACS355 Common DC application guide.",
+      "category": "component_label_recognition",
+      "points_deducted": 3,
+      "severity": "minor",
+      "correction": "Mention that the numbered footnotes govern cable-shield grounding requirements, and that BRK+/BRK- can alternatively be wired for a Common DC bus per the labeled box, not only a brake resistor.",
+      "confidence": "high"
+    },
+    {
+      "claim": "\"There are also connections for a brake resistor (BRK+, BRK-).\"",
+      "evidence": "The diagram's own label under BRK+/BRK- reads 'Optional brake resistor or Common DC' (with footnote 3 referencing the Common DC application guide) — BRK+/BRK- have a second documented function the response omits, describing them only as brake-resistor terminals.",
+      "category": "power_control_flow",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "State that BRK+/BRK- can serve either an optional brake resistor or a Common DC bus connection, per the diagram's own label.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "\"The drive appears to be connected to a motor with three-phase power lines (U1, V1, W1).\"",
+      "evidence": "U1, V1, W1 are labeled on the motor circle itself (the motor's own terminal designations), not on the drive. The drive's actual output terminal block is labeled U2, V2, W2, which the response correctly states one sentence later — creating an internal inconsistency between drive-side and motor-side terminal names.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Clarify that U1/V1/W1 are the motor's terminal labels while the drive's output terminals are U2/V2/W2, connected to the motor via the motor cable.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "(omission) The response never mentions the supply disconnecting device / lockout point visible in the diagram, despite covering 'what must be true for it to work' and 'what would stop it from working'.",
+      "evidence": "A padlock icon and footnote 5) reference the 'supply disconnecting device (disconnecting means)' directly below the input terminals — practically relevant content for a technician wiring this print, omitted from the technician-facing summary entirely.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Add a note directing the technician to the supply disconnect/lockout point referenced by the padlock icon and footnote 5 before performing the wiring.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": false,
+  "hard_failure_reasons": [],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "high",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "Print is a clean, legible manual diagram (ABB ACS355 power-cable connection diagram) — high-confidence grading. Candidate response is well-grounded overall: every terminal/label it cites (PE, U1/L-V1/N-W1 region generalized as L1/L-L2/N-L3/-, BRK+/BRK-, U2/V2/W2, U1/V1/W1 motor terminals) is genuinely visible in the image, and no fabricated component, tag, or wire number was found. Main weakness is completeness: the disconnect-switch symbols, footnote callouts, padlock/lockout icon, and the dual brake-resistor/Common-DC function of BRK+/BRK- are all visible but unmentioned. No hard-failure conditions present — no invented safety devices, no reversed sequence, no dangerous troubleshooting advice, and section 6's 'nothing major appears unreadable' is an accurate observation about image legibility (correctly conditional/hedged language used throughout sections 4-5)."
+}

@@ -64,6 +64,7 @@ const SUGGESTION_TYPE_LABELS: Record<string, string> = {
   component_profile: "Component profile",
   uns_confirmation: "UNS confirmation",
   namespace_move: "Namespace change",
+  drive_pack_update: "Drive-pack update",
 };
 
 interface ProposalsResponse {

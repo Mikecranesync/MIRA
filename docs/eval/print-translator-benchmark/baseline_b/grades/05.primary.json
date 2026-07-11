@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "case_id": "05",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 8,
+    "power_control_flow": 8,
+    "sequence_interlocks_logic": 6,
+    "evidence_grounding_unsupported_claims": 6,
+    "technician_usefulness_clarity": 6
+  },
+  "total": 44,
+  "deductions": [
+    {
+      "claim": "Two contactors (K1, K2)",
+      "evidence": "In the top schematic, \"K1\" and \"K2\" are printed directly beneath a small contact-terminal box (\"3\"-O-\"13\") positioned next to the CR terminal strip (A1X A2X A3X A4X / A1Y A2Y A3Y A4Y / CR). In the bottom ladder diagram, \"(K1)\" and \"(K2)\" appear as parenthetical labels flanking the single \"CR\" coil circle itself (node -(K1)- CR -13- (K2)- O.L.), in the same small-parenthetical style used throughout the print for wire/terminal numbers (e.g. (A1Y)(A1X), (A2Y)(A2X)). No second or third coil/contactor symbol with its own device tag is drawn anywhere in the print -- the only relay/coil device tag present is \"CR\". K1/K2 read as the two wire-number designators for CR's own coil leads, not as a pair of separate contactor devices.",
+      "category": "component_label_recognition",
+      "points_deducted": 6,
+      "severity": "hard_failure",
+      "correction": "State that K1 and K2 are wire/terminal numbers on the CR relay coil's two leads (matching the \"3\"/\"13\" pin box), not two separate contactor devices; note no second contactor coil symbol appears in the print.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Fuses (FU) and fuse holder (1A)",
+      "evidence": "The print shows a single fuse device labeled \"FU\" with \"1A\" printed immediately beside/below it (both in the top terminal-block diagram and at the head of the ladder diagram, \"FU 1A\"). \"1A\" reads as the fuse's 1-amp rating, not a separate \"fuse holder\" component.",
+      "category": "component_label_recognition",
+      "points_deducted": 1,
+      "severity": "minor",
+      "correction": "Identify \"FU 1A\" as a single fuse rated 1 amp, not a fuse plus a separate fuse-holder component.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Motor (M) with a lamp or indicator (L.B.)",
+      "evidence": "The actual 3-phase motor is drawn as a separate labeled box (\"MOTOR\" with leads T1, T2, T3) at the lower-left of the top diagram. The small circled \"M\" tagged \"(L.B.)\" sits instead inside a different dashed sub-assembly (with Mov., Rect., Econ. Cap., Res. components) that is not wired to the T1/T2/T3 motor leads, and no bulb/lamp symbol is drawn at that location -- the adjacent symbol reads as a switch/contact, not a lamp.",
+      "category": "component_label_recognition",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "Distinguish the 3-phase MOTOR (T1/T2/T3) from the small circled \"M\" near \"(L.B.)\", which belongs to the separate operating-mechanism sub-circuit; do not assert an unlabeled \"lamp or indicator\" without a visible bulb symbol.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Omitted: Mov. (varistor), Rect. (rectifier bridge), and 1 Res./2 Res. (resistor blocks), all clearly labeled in the print",
+      "evidence": "\"Mov.\", \"Rect.\", \"1 Res.\", and \"2 Res.\" are all directly labeled in the top schematic and bottom ladder diagram (the operating-mechanism sub-circuit alongside the Econ. Caps the candidate does list), but none is mentioned anywhere in the response.",
+      "category": "component_label_recognition",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "List the Mov. (varistor), Rect. (rectifier), and 1 Res./2 Res. (resistor) components that are visibly labeled in the mechanism sub-circuit.",
+      "confidence": "high"
+    },
+    {
+      "claim": "it appears to energize the control relay (CR) which in turn energizes contactor K1 and K2, allowing power to the motor",
+      "evidence": "Per the K1/K2-as-wire-numbers reading above, CR does not \"energize\" K1/K2 as downstream devices -- K1/K2 are the wire numbers feeding CR's own coil. The print's actual main-power-switching path is never described: L1/L2/L3 feed through the 1C.T./2C.T./3C.T. current transformers toward T1/T2/T3, and the visible operating-mechanism sub-circuit (Mov./Rect./Econ. Caps driving the circled \"M\") is the element CR's auxiliary contacts (A2X/A2Y, A3X/A3Y, A4X/A4Y) actually operate. This mechanism, which appears to be what actually closes the power path to the motor, is omitted entirely in favor of an invented \"K1, K2 contactors\" narrative.",
+      "category": "power_control_flow",
+      "points_deducted": 12,
+      "severity": "hard_failure",
+      "correction": "Describe that Start energizes the CR coil (via leads K1/K2); CR's auxiliary contacts then drive the motor-operated mechanism (M, through Rect./Mov./Econ. Caps) that performs the actual power switching, rather than describing \"K1/K2 contactors\" as the switching devices.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Omitted: the CR holding/seal-in contact wired in parallel with the Start button",
+      "evidence": "The ladder diagram shows a \"CR (A1Y)(A1X)\" contact symbol drawn in parallel with the Start pushbutton (the standard 3-wire seal-in arrangement) -- this is never mentioned in the described sequence, even though the response otherwise walks through the Start/Stop/CR sequence step by step.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 6,
+      "severity": "material",
+      "correction": "Describe the CR seal-in (holding) contact in parallel with Start: once CR picks up, this contact holds the coil energized after the Start button is released, until Stop or O.L. opens the circuit.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "energize the control relay (CR) which in turn energizes contactor K1 and K2",
+      "evidence": "This reverses the actual coil/terminal relationship visible in both the top pin-box (\"3\"-O-\"13\" under \"K1\"/\"K2\") and the ladder diagram ((K1)-CR-(K2) directly flanking the single CR coil): K1/K2 are wire numbers on CR's own leads, so CR is not a separate stage that subsequently \"energizes\" K1/K2 as if they were downstream relay logic.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 8,
+      "severity": "hard_failure",
+      "correction": "Correct the causal chain: CR's coil itself is fed via leads K1/K2, not the other way around; do not present K1/K2 as a second logic stage energized by CR.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Nothing major appears to be unreadable in the provided image. All labels and connections seem clear based on the provided OCR data.",
+      "evidence": "No OCR text extraction was supplied to the candidate for this case (OCR was unavailable for this benchmark's cases per the judge protocol's OCR-grounding caveat) -- the claim of reliance on \"provided OCR data\" references a data source that did not exist for this run. The claim that all labels/connections \"seem clear\" is also contradicted by the response's own misreadings of the small parenthetical terminal labels (K1/K2) and its omission of several labeled components (Mov., Rect., Res.).",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 6,
+      "severity": "severe",
+      "correction": "State the readability assessment as based on visual inspection of the image alone, without referencing OCR data that was not supplied, and note which small labels (e.g. K1/K2, A1X-A4Y) carry lower confidence.",
+      "confidence": "high"
+    },
+    {
+      "claim": "The contactors (K1, K2) must close to allow power to the motor.",
+      "evidence": "This restates the invented two-contactor device as an observed operating requirement, in a third separate section of the response (after the component list and the theory-of-operation section), with full confidence and no hedging -- an assumption about K1/K2's function stated as an established fact rather than flagged as uncertain given the print's contrary wire-number convention.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 8,
+      "severity": "hard_failure",
+      "correction": "Qualify the K1/K2 characterization as uncertain, or correctly identify them as CR coil wire numbers, instead of restating \"contactors K1, K2\" as fact across multiple sections.",
+      "confidence": "high"
+    },
+    {
+      "claim": "A faulty contactor (K1, K2)",
+      "evidence": "Listed as a specific troubleshooting target in \"What would stop it from working\"; because K1/K2 do not correspond to a real, separate physical contactor (see component_label_recognition deduction above), directing a technician to inspect \"contactor K1, K2\" for faults points at a device that is not actually present in the described form, risking wasted troubleshooting time versus checking the CR relay and the motor-operated mechanism.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Flag the K1/K2 mechanism explanation as tentative, or correct it, so a technician does not search for a nonexistent second/third contactor during troubleshooting.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": true,
+  "hard_failure_reasons": [
+    "invented_safety_device_or_component",
+    "reversed_or_materially_incorrect_sequence",
+    "failure_to_separate_evidence_from_inference"
+  ],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "high",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "Print is a clean, legible line-art scan (Bulletin 509 Sizes 7/8, standard Start-Stop wiring) -- classification and most primary device tags (L1/L2/L3, CTs, CR, O.L.'s, FU, Econ Caps, Start/Stop, the T1/T2/T3 MOTOR) are correctly read. The dominant, repeated error is treating \"K1\"/\"K2\" as two separate contactor devices energized by CR, when both the top pin-box (\"3\"-O-\"13\" under K1/K2) and the ladder diagram ((K1)-CR-(K2) directly flanking the single CR coil) show K1/K2 in the same small-parenthetical wire-number style used elsewhere in the print (A1X/A1Y, etc.) -- i.e. they are wire numbers on CR's own coil leads, not a second relay stage. This invented two-contactor narrative also causes the response to omit the print's real operating mechanism (Mov./Rect./Econ. Caps driving a motor-operated \"M\" element via CR's auxiliary contacts) and the CR seal-in contact. Compounding this, section 6 claims reliance on \"provided OCR data\" that was not supplied for this case and asserts full readability despite the misread labels. overall_confidence is high because the K1/K2-as-wire-number reading is corroborated by two independent, consistent visual cues (the top pin-box and the ladder-diagram coil flanking) and by the print's own internal labeling convention."
+}

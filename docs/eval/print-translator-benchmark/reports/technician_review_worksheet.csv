@@ -1,0 +1,11 @@
+case_id,oem,standard,category,question,image_path,primary_total,hard_failure,overall_confidence,pass2_total,key_deduction_summary,mike_accept_modify_reject,mike_total,mike_hard_failure,mike_notes
+03,"ABB","IEC 60947-4-1","European/IEC","Explain this print.","C:\Users\hharp\Downloads\print-translator-eval-images\03.png",59,N,medium,,"## **2. Main visible components** ... Power circui",,,,
+05,"Rockwell Automation","NEMA ICS 2","NEMA Starters","Explain this print.","C:\Users\hharp\Downloads\print-translator-eval-images\05.png",31,Y,high,44,"6. Unclear or unreadable items â€” Nothing major a",,,,
+07,"AutomationDirect","NEMA industrial","NEMA Starters","Describe the theory of operation.","C:\Users\hharp\Downloads\print-translator-eval-images\07.png",60,N,high,,"Main visible components ... The power circuit incl",,,,
+09,"Rockwell Automation","ISO 13849-1 PLd","Safety Relays","Explain this print.","C:\Users\hharp\Downloads\print-translator-eval-images\09.png",78,N,high,,"Mechanical Contacts (K1; K2): These are the output",,,,
+13,"AutomationDirect","Industrial standard (24VDC)","PLC I/O","Describe the theory of operation.","C:\Users\hharp\Downloads\print-translator-eval-images\13.png",82,N,high,,"Field devices with open-collector transistor outpu",,,,
+14,"AutomationDirect","Industrial 24VDC","PLC I/O","Describe the theory of operation.","C:\Users\hharp\Downloads\print-translator-eval-images\14.png",85,N,high,,"The main visible components include: - A detailed ",,,,
+17,"AutomationDirect","NEMA ICS 6","VFD","Explain this print.","C:\Users\hharp\Downloads\print-translator-eval-images\17.png",63,N,high,,"Main visible components include: A circuit breaker",,,,
+18,"ABB","IEC 61800-5-1","VFD","Explain this print.","C:\Users\hharp\Downloads\print-translator-eval-images\18.png",88,N,high,,"(omission) The response never mentions the manual ",,,,
+20,"WEG","IEC 61800","VFD","Describe the theory of operation.","C:\Users\hharp\Downloads\print-translator-eval-images\20.png",42,Y,medium,32,"This appears to be a general wiring diagram for a ",,,,
+25,"Yaskawa","IEC 61800","Reversing/Braking","Describe the theory of operation.","C:\Users\hharp\Downloads\print-translator-eval-images\25.png",66,N,high,,"This appears to be a standard connection diagram f",,,,

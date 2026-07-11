@@ -1,0 +1,44 @@
+{
+  "id": 18,
+  "oem": "ABB",
+  "document": "ACS355 Drive User Manual (EN_ACS355_UM_E_A5)",
+  "url": "library.e.abb.com/public/805f31a82d524d8aa8a750011e2cd001/EN_ACS355_UM_E_A5.pdf",
+  "manifest_page_ref": "Ch. 5–6, terminal connections & control wiring",
+  "print_type": "VFD terminal layout & control signals",
+  "standard": "IEC 61800-5-1",
+  "category": "VFD",
+  "manifest_status": "NEEDS-BROWSER",
+  "rendered_page_number": 50,
+  "image_sha256": "e9ce89863a39a40020f13a1c0f7c78c4372a5c34e5a8e636bc7ea25fa25fe0c4",
+  "caption": "Explain this print.",
+  "run_timestamp_utc": "2026-07-10T04:36:04.679985+00:00",
+  "bot_importable": true,
+  "code_path": "bot._try_print_translator_reply (real handler, spied engine, no Telegram)",
+  "handled": true,
+  "vision_called": true,
+  "router_called": true,
+  "vision": {
+    "classification": "ELECTRICAL_PRINT",
+    "classification_confidence": 0.76,
+    "drawing_type": "electrical drawing",
+    "drawing_type_confidence": 0.2,
+    "vision_result": "The image shows an electrical drawing, specifically a connection diagram for connecting power cables. The diagram illustrates the connections between various components, including input and output sections, with notes and labels providing additional information on proper installation and safety precautions.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  },
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: electrical drawing\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2800,
+    "output_tokens": 270,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "inference": "ran",
+  "translator_reply": "## **1. What this appears to be**\nThis appears to be a connection diagram for connecting power cables to a drive and motor system.\n\n## **2. Main visible components**\n- A drive with input and output connections\n- A motor\n- Grounding points (PE)\n- Brake resistor connections (BRK+, BRK-)\n- Optional common DC connection\n\n## **3. Plain-English theory of operation**\nThe drive appears to be connected to a three-phase motor (U1, V1, W1). The drive has input connections for power (U1/L, V1/N, W1) and output connections to the motor. There are also connections for a brake resistor (BRK+, BRK-). The diagram shows grounding points (PE) for both the drive and motor. \n\n## **4. What must be true for it to work**\n- Proper phase connections from the drive to the motor (U1, V1, W1)\n- Correct grounding of the drive and motor (PE)\n- Optional: Brake resistor connected (BRK+, BRK-)\n\n## **5. What would stop it from working**\n- Incorrect phase connections\n- Missing or improper grounding\n- Open brake resistor connections (if used)\n\n## **6. Unclear or unreadable items**\nNothing major unreadable."
+}

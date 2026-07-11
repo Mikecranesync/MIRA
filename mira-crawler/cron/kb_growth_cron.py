@@ -11,11 +11,18 @@ Crontab entry (VPS, set by ``scripts/install_crons.sh``):
   0 * * * * cd /opt/mira && doppler run -- python3 \\
       mira-crawler/cron/kb_growth_cron.py >> /var/log/kb_growth.log 2>&1
 
+A 0-char (scanned/image-only) PDF is OCR'd via Apache Tika (``--ocr`` on the
+pipeline) before it is quarantined ``needs_ocr``; if Tika is unreachable the
+entry still lands ``needs_ocr`` (fail-safe). Existing ``needs_ocr`` entries are
+drained on demand with ``--drain-needs-ocr``. Spec: issue #2539.
+
 CLI:
   python3 kb_growth_cron.py                 # run a batch (default)
   python3 kb_growth_cron.py --status        # print queue stats and exit
   python3 kb_growth_cron.py --hydrate-from-cache
                                             # append manual_cache rows as pending
+  python3 kb_growth_cron.py --drain-needs-ocr
+                                            # one-time OCR retry of needs_ocr PDFs
 """
 
 from __future__ import annotations
@@ -34,16 +41,21 @@ _REPO_ROOT = Path(__file__).parent.parent.parent
 try:
     from mira_crawler.reporting.agent_report import AgentReport
     from mira_crawler.reporting.telegram_notify import notify as _tg_notify
+
     _REPORT_AVAILABLE = True
 except ImportError:
     try:
         sys.path.insert(0, str(_REPO_ROOT))
         from mira_crawler.reporting.agent_report import AgentReport
         from mira_crawler.reporting.telegram_notify import notify as _tg_notify
+
         _REPORT_AVAILABLE = True
     except ImportError:
         _REPORT_AVAILABLE = False
-        def _tg_notify(*_: object) -> bool: return False  # type: ignore[misc]
+
+        def _tg_notify(*_: object) -> bool:
+            return False  # type: ignore[misc]
+
 
 # ─── paths ────────────────────────────────────────────────────────────────────
 _HERE = Path(__file__).parent.resolve()
@@ -53,11 +65,11 @@ PIPELINE = _REPO / "mira-crawler" / "tasks" / "full_ingest_pipeline.py"
 
 # ─── tunables (env-overridable) ───────────────────────────────────────────────
 BATCH_SIZE = int(os.getenv("KB_GROWTH_BATCH_SIZE", "5"))
-RUN_BUDGET_SEC = int(os.getenv("KB_GROWTH_RUN_BUDGET_SEC", "3000"))   # 50 min
+RUN_BUDGET_SEC = int(os.getenv("KB_GROWTH_RUN_BUDGET_SEC", "3000"))  # 50 min
 PIPELINE_TIMEOUT_SEC = int(os.getenv("KB_GROWTH_PIPELINE_TIMEOUT_SEC", "900"))
 MAX_ATTEMPTS = int(os.getenv("KB_GROWTH_MAX_ATTEMPTS", "5"))
-RETRY_BASE_SEC = int(os.getenv("KB_GROWTH_RETRY_BASE_SEC", "600"))    # 10 min
-RETRY_CAP_SEC = int(os.getenv("KB_GROWTH_RETRY_CAP_SEC", "21600"))    # 6 h
+RETRY_BASE_SEC = int(os.getenv("KB_GROWTH_RETRY_BASE_SEC", "600"))  # 10 min
+RETRY_CAP_SEC = int(os.getenv("KB_GROWTH_RETRY_CAP_SEC", "21600"))  # 6 h
 STALE_STATE_SEC = int(os.getenv("KB_GROWTH_STALE_STATE_SEC", "3600"))  # 1 h
 
 MILESTONE_STEP = int(os.getenv("KB_GROWTH_MILESTONE_STEP", "100"))
@@ -67,16 +79,47 @@ NEON_URL = os.getenv("NEON_DATABASE_URL", "")
 # ─── error classification ─────────────────────────────────────────────────────
 # Substrings (lowercased) that indicate a transient error worth retrying.
 _TRANSIENT_MARKERS = (
-    "timeout", "timed out", "504", "502", "503",
-    "connectionerror", "connecterror", "networkerror", "readtimeout",
-    "temporarily unavailable", "operationalerror", "interfaceerror",
-    "remote end closed", "max retries", "ssl",
+    "timeout",
+    "timed out",
+    "504",
+    "502",
+    "503",
+    "connectionerror",
+    "connecterror",
+    "networkerror",
+    "readtimeout",
+    "temporarily unavailable",
+    "operationalerror",
+    "interfaceerror",
+    "remote end closed",
+    "max retries",
+    "ssl",
 )
 # Substrings that indicate a hard failure — never retry.
 _HARD_MARKERS = (
-    "404", "410", "bad magic bytes", "exceeds 50 mb",
-    "not a valid pdf", "no such host", "name resolution",
+    "404",
+    "410",
+    "bad magic bytes",
+    "exceeds 50 mb",
+    "not a valid pdf",
+    "no such host",
+    "name resolution",
 )
+
+# Marker printed in the pipeline's report when the PDF downloaded/opened fine
+# but extraction produced zero characters (scanned/image-only manual, no text
+# layer, no OCR available). This is the exact error string
+# `full_ingest_pipeline.step_extract` appends to `PipelineReport.errors`
+# (`f"Extract: {method} produced 0 chars"`), rendered under the report's
+# "Errors (N):" section. It is NOT emitted for download/network failures or
+# the >50MB skip case, so it uniquely identifies a no-text-layer PDF —
+# retrying will never produce text, so we quarantine instead of retrying.
+_ZERO_CHAR_MARKER = "produced 0 chars"
+
+
+def _is_zero_char_extraction(tail: str) -> bool:
+    """True iff the pipeline downloaded/opened the PDF but extracted 0 chars."""
+    return _ZERO_CHAR_MARKER in (tail or "")
 
 
 def _classify_error(err: str) -> str:
@@ -114,6 +157,15 @@ def _parse_iso(s: str | None) -> datetime | None:
 
 
 def load_queue() -> list[dict]:
+    """Return the queue, or an empty list if the file doesn't exist yet.
+
+    ``manual_queue.json`` is runtime state (not version-controlled — see
+    .gitignore); a freshly-provisioned box, or this file right after it was
+    untracked, may have none yet. Self-heal instead of crashing so the cron
+    (and ``--status``) still work.
+    """
+    if not QUEUE_FILE.exists():
+        return []
     with open(QUEUE_FILE) as f:
         return json.load(f)
 
@@ -136,6 +188,7 @@ def url_already_ingested(url: str) -> bool:
         return False
     try:
         import psycopg2
+
         with psycopg2.connect(NEON_URL) as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -185,21 +238,31 @@ def revive_stale(queue: list[dict]) -> int:
 
 
 # ─── pipeline driver ─────────────────────────────────────────────────────────
-def run_pipeline(entry: dict) -> tuple[bool, str, int]:
+def run_pipeline(entry: dict, ocr: bool = False) -> tuple[bool, str, int]:
     """Run full_ingest_pipeline.py for one entry.
 
     Returns (success, output_tail, chunks_inserted).
     chunks_inserted is parsed best-effort from the report; defaults to 0.
+
+    ``ocr=True`` adds ``--ocr`` so the pipeline falls back to Tika OCR when
+    local (pdfplumber/pypdf) extraction finds no text layer — the scanned /
+    image-only manual case.
     """
     cmd = [
         sys.executable,
         str(PIPELINE),
-        "--pdf-url", entry["url"],
-        "--manufacturer", entry.get("manufacturer", ""),
-        "--model", entry.get("model", ""),
-        "--type", entry.get("type", "installation_manual"),
+        "--pdf-url",
+        entry["url"],
+        "--manufacturer",
+        entry.get("manufacturer", ""),
+        "--model",
+        entry.get("model", ""),
+        "--type",
+        entry.get("type", "installation_manual"),
         "--no-quality-gate",
     ]
+    if ocr:
+        cmd.append("--ocr")
     env = dict(os.environ)
     env["PYTHONUNBUFFERED"] = "1"
 
@@ -227,6 +290,64 @@ def run_pipeline(entry: dict) -> tuple[bool, str, int]:
             break
 
     return result.returncode == 0, tail, chunks
+
+
+def _run_drive_pack_bridge(entry: dict) -> None:
+    """Best-effort drive-pack update candidate (default-OFF, fail-open).
+
+    A successful manual ingest MAY create a review-only drive-pack update
+    candidate if the PDF matches a known drive family and its hash is new/
+    changed. It never extracts/grades inline, never promotes, never touches a
+    trusted pack — and MUST NOT affect the (already-successful) KB ingest.
+    """
+    try:
+        import sys as _sys
+
+        _cdir = str(Path(__file__).resolve().parent.parent)  # mira-crawler/
+        if _cdir not in _sys.path:
+            _sys.path.insert(0, _cdir)
+        from drive_pack_bridge import maybe_create_candidate
+
+        _b = maybe_create_candidate(entry, now_iso=entry.get("done_at", _ts()))
+        if _b.get("status") == "candidate_created":
+            _log(
+                f"drive-pack candidate: {_b.get('registry_manual_id')} ({_b.get('change_state')}) → {_b.get('candidate_path')}"
+            )
+        elif _b.get("status") not in ("disabled", "unchanged"):
+            _log(f"drive-pack bridge: {_b.get('status')} ({_b.get('reason', '')})")
+    except Exception as _exc:  # noqa: BLE001 — bridge must NEVER fail KB ingest
+        _log(f"drive-pack bridge skipped (non-fatal): {_exc}")
+
+
+def _finalize_success(entry: dict, name: str, chunks: int, ocr: bool = False) -> None:
+    """Mark an entry done and run the drive-pack bridge. Shared by the normal
+    ingest path and the OCR-drain path so a scanned manual that OCRs cleanly
+    becomes a drive-pack candidate exactly like a text-layer manual."""
+    entry["status"] = "done"
+    entry["done_at"] = _ts()
+    entry["chunks_inserted"] = chunks
+    entry.pop("next_retry_at", None)
+    entry.pop("last_error", None)
+    if ocr:
+        entry["ocr_used"] = True
+    _log(f"SUCCESS{' via OCR' if ocr else ''}: {name} ({chunks} chunks)")
+    _run_drive_pack_bridge(entry)
+
+
+def _attempt_ocr(entry: dict) -> tuple[bool, str, int]:
+    """Re-run the ingest pipeline with Tika OCR enabled for a 0-char PDF.
+
+    Fail-safe: any error (incl. Tika unreachable / timeout) returns
+    ``(False, tail, 0)`` so the caller quarantines ``needs_ocr`` — it never
+    raises, never crashes the cron. When Tika is not deployed the pipeline
+    simply reports 0 chars again and this returns a non-success tuple.
+    """
+    try:
+        return run_pipeline(entry, ocr=True)
+    except subprocess.TimeoutExpired:
+        return False, f"OCR TIMEOUT after {PIPELINE_TIMEOUT_SEC}s", 0
+    except Exception as exc:  # noqa: BLE001 — OCR must never crash the cron
+        return False, f"OCR attempt failed: {exc}", 0
 
 
 def _process_entry(entry: dict, queue: list[dict]) -> dict:
@@ -265,25 +386,40 @@ def _process_entry(entry: dict, queue: list[dict]) -> dict:
         success, tail, chunks = False, str(exc), 0
 
     if success:
-        entry["status"] = "done"
-        entry["done_at"] = _ts()
-        entry["chunks_inserted"] = chunks
-        entry.pop("next_retry_at", None)
-        entry.pop("last_error", None)
-        _log(f"SUCCESS: {name} ({chunks} chunks)")
+        _finalize_success(entry, name, chunks)
     else:
-        kind = _classify_error(tail)
         entry["last_error"] = tail[-200:]
-        if kind == "hard" or entry["attempts"] >= MAX_ATTEMPTS:
-            entry["status"] = "failed"
-            entry["failed_at"] = _ts()
-            entry.pop("next_retry_at", None)
-            _log(f"FAILED (hard, attempt {entry['attempts']}): {name}")
+        if _is_zero_char_extraction(tail):
+            # Scanned/image-only PDF — no text layer. Attempt Tika OCR BEFORE
+            # quarantining (#2539). If OCR yields chunks, continue the normal
+            # ingest (chunk/embed/KG) via the pipeline's --ocr path; only
+            # quarantine needs_ocr when OCR is unavailable or still empty.
+            ocr_success, ocr_tail, ocr_chunks = _attempt_ocr(entry)
+            if ocr_success and ocr_chunks > 0:
+                _finalize_success(entry, name, ocr_chunks, ocr=True)
+                tail = ocr_tail
+            else:
+                # Fail-safe: Tika unreachable/empty → quarantine (prior
+                # behavior). Retrying every hour will never produce text.
+                entry["status"] = "needs_ocr"
+                entry["needs_ocr_at"] = _ts()
+                entry.pop("next_retry_at", None)
+                tail = ocr_tail or tail
+                _log(f"NEEDS_OCR (0 chars; OCR unavailable/empty): {name}")
         else:
-            entry["status"] = "failed_retryable"
-            delay = _backoff_seconds(entry["attempts"])
-            entry["next_retry_at"] = (_now() + timedelta(seconds=delay)).isoformat(timespec="seconds")
-            _log(f"FAILED (retry in {delay}s, attempt {entry['attempts']}): {name}")
+            kind = _classify_error(tail)
+            if kind == "hard" or entry["attempts"] >= MAX_ATTEMPTS:
+                entry["status"] = "failed"
+                entry["failed_at"] = _ts()
+                entry.pop("next_retry_at", None)
+                _log(f"FAILED (hard, attempt {entry['attempts']}): {name}")
+            else:
+                entry["status"] = "failed_retryable"
+                delay = _backoff_seconds(entry["attempts"])
+                entry["next_retry_at"] = (_now() + timedelta(seconds=delay)).isoformat(
+                    timespec="seconds"
+                )
+                _log(f"FAILED (retry in {delay}s, attempt {entry['attempts']}): {name}")
 
     _log(f"Pipeline output (tail):\n{tail}")
     save_queue(queue)
@@ -293,8 +429,14 @@ def _process_entry(entry: dict, queue: list[dict]) -> dict:
 # ─── batch loop ──────────────────────────────────────────────────────────────
 def _queue_stats(queue: list[dict]) -> dict[str, int]:
     counts = {
-        "pending": 0, "downloading": 0, "processing": 0,
-        "done": 0, "failed": 0, "failed_retryable": 0, "skipped_dedup": 0,
+        "pending": 0,
+        "downloading": 0,
+        "processing": 0,
+        "done": 0,
+        "failed": 0,
+        "failed_retryable": 0,
+        "skipped_dedup": 0,
+        "needs_ocr": 0,
     }
     for e in queue:
         s = e.get("status", "pending")
@@ -306,9 +448,6 @@ def _queue_stats(queue: list[dict]) -> dict[str, int]:
 
 def run_batch() -> dict:
     """Process up to BATCH_SIZE eligible entries. Returns a run summary."""
-    if not QUEUE_FILE.exists():
-        _log(f"ERROR: queue file not found: {QUEUE_FILE}")
-        sys.exit(1)
     if not PIPELINE.exists():
         _log(f"ERROR: pipeline not found: {PIPELINE}")
         sys.exit(1)
@@ -356,6 +495,58 @@ def run_batch() -> dict:
         "done_after": done_after,
         "started_at": _ts(),
     }
+
+
+# ─── needs_ocr drain (opt-in, one-time OCR retry of quarantined PDFs) ─────────
+def drain_needs_ocr() -> dict:
+    """Re-attempt OCR on up to BATCH_SIZE entries stuck in ``needs_ocr``.
+
+    Opt-in via ``--drain-needs-ocr`` — a normal cron run never touches
+    ``needs_ocr`` entries (they stay terminal / ineligible). This is the drain
+    that closes the dead-letter once ``mira-tika`` is deployed: each entry gets
+    a one-time OCR retry; on success it becomes ``done`` (and a drive-pack
+    candidate), on failure it stays ``needs_ocr`` for a later drain. Fail-safe:
+    ``_attempt_ocr`` never raises, so an unreachable Tika leaves entries in
+    ``needs_ocr``.
+    """
+    if not PIPELINE.exists():
+        _log(f"ERROR: pipeline not found: {PIPELINE}")
+        sys.exit(1)
+
+    queue = load_queue()
+    targets = [i for i, e in enumerate(queue) if e.get("status") == "needs_ocr"]
+    if not targets:
+        _log("drain-needs-ocr: no needs_ocr entries")
+        return {"processed": [], "stats": _queue_stats(queue), "started_at": _ts()}
+
+    started_at = time.monotonic()
+    processed: list[dict] = []
+    for idx in targets[:BATCH_SIZE]:
+        if time.monotonic() - started_at > RUN_BUDGET_SEC:
+            _log(f"Run budget exceeded ({RUN_BUDGET_SEC}s) — stopping drain early")
+            break
+        entry = queue[idx]
+        name = f"{entry.get('manufacturer', '?')} {entry.get('model', '?')}"
+        entry["attempts"] = int(entry.get("attempts", 0)) + 1
+        entry["started_at"] = _ts()
+        _log(f"Draining needs_ocr [{idx + 1}/{len(queue)}]: {name}")
+
+        ocr_success, ocr_tail, ocr_chunks = _attempt_ocr(entry)
+        if ocr_success and ocr_chunks > 0:
+            _finalize_success(entry, name, ocr_chunks, ocr=True)
+        else:
+            # Stays needs_ocr — record the attempt so operators can see it was
+            # tried (and when). Not counted as "remaining".
+            entry["status"] = "needs_ocr"
+            entry["last_ocr_attempt_at"] = _ts()
+            entry["last_error"] = (ocr_tail or "OCR produced no text")[-200:]
+            _log(f"STILL needs_ocr (OCR unavailable/empty): {name}")
+        save_queue(queue)
+        processed.append(entry)
+
+    stats = _queue_stats(queue)
+    _log(f"Drain complete. Attempted {len(processed)} entries. Stats: {stats}")
+    return {"processed": processed, "stats": stats, "started_at": _ts()}
 
 
 # ─── reporting ───────────────────────────────────────────────────────────────
@@ -496,14 +687,16 @@ def hydrate_from_manual_cache() -> int:
     for mfr, model, url, title in rows:
         if url in existing_urls:
             continue
-        queue.append({
-            "url": url,
-            "manufacturer": mfr or "Unknown",
-            "model": model or "Unknown",
-            "type": "installation_manual",
-            "status": "pending",
-            "notes": f"Hydrated from manual_cache on {_ts()}: {title or ''}"[:300],
-        })
+        queue.append(
+            {
+                "url": url,
+                "manufacturer": mfr or "Unknown",
+                "model": model or "Unknown",
+                "type": "installation_manual",
+                "status": "pending",
+                "notes": f"Hydrated from manual_cache on {_ts()}: {title or ''}"[:300],
+            }
+        )
         existing_urls.add(url)
         appended += 1
 
@@ -515,16 +708,20 @@ def hydrate_from_manual_cache() -> int:
 # ─── main ────────────────────────────────────────────────────────────────────
 def main() -> None:
     parser = argparse.ArgumentParser(description="KB growth cron")
-    parser.add_argument("--status", action="store_true",
-                        help="Print queue stats and exit")
-    parser.add_argument("--hydrate-from-cache", action="store_true",
-                        help="Append manual_cache rows to the queue as pending")
+    parser.add_argument("--status", action="store_true", help="Print queue stats and exit")
+    parser.add_argument(
+        "--hydrate-from-cache",
+        action="store_true",
+        help="Append manual_cache rows to the queue as pending",
+    )
+    parser.add_argument(
+        "--drain-needs-ocr",
+        action="store_true",
+        help="One-time OCR retry of quarantined needs_ocr PDFs (requires TIKA_URL)",
+    )
     args = parser.parse_args()
 
     if args.status:
-        if not QUEUE_FILE.exists():
-            _log(f"queue file not found: {QUEUE_FILE}")
-            sys.exit(1)
         print(json.dumps(_queue_stats(load_queue()), indent=2))
         return
 
@@ -532,9 +729,31 @@ def main() -> None:
         hydrate_from_manual_cache()
         return
 
+    if args.drain_needs_ocr:
+        _log("KB growth cron: draining needs_ocr via Tika OCR")
+        summary = drain_needs_ocr()
+        _emit_run_report(summary)
+        _log("KB growth cron done (drain)")
+        return
+
     _log(f"KB growth cron starting (batch={BATCH_SIZE}, budget={RUN_BUDGET_SEC}s)")
-    summary = run_batch()
-    _emit_run_report(summary)
+    # Singleton lock: if a slow batch hasn't finished before the next hourly tick,
+    # a second run would double-process the queue and double memory/CPU. The lock
+    # is an advisory fcntl lock (OS-released if the holder dies, so a crash can't
+    # permanently block ingest); a second concurrent run exits cleanly (0).
+    # Fail-open: if the hardening helper isn't importable, run without the lock.
+    try:
+        sys.path.insert(0, str(_REPO_ROOT / "tools" / "lead-hunter"))
+        from hardening import singleton_lock
+
+        lock_cm = singleton_lock("kb-growth")
+    except Exception:  # noqa: BLE001 — never let lock setup block ingest
+        from contextlib import nullcontext
+
+        lock_cm = nullcontext()
+    with lock_cm:
+        summary = run_batch()
+        _emit_run_report(summary)
     _log("KB growth cron done")
 
 

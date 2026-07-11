@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **62** (8 dynamic) |
-| API routes | **154** (47 dynamic) |
+| API routes | **155** (47 dynamic) |
 
 ## Pages (62)
 
@@ -80,7 +80,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (154)
+## API routes (155)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -222,6 +222,7 @@
 | `/api/sessions/[id]` | dynamic | `api/sessions/[id]/route.ts` |
 | `/api/sessions/confirm` | static | `api/sessions/confirm/route.ts` |
 | `/api/suggestions/[id]/decide` | dynamic | `api/suggestions/[id]/decide/route.ts` |
+| `/api/suggestions/drive-pack-candidate` | static | `api/suggestions/drive-pack-candidate/route.ts` |
 | `/api/team` | static | `api/team/route.ts` |
 | `/api/uns/browse` | static | `api/uns/browse/route.ts` |
 | `/api/uns/subtree` | static | `api/uns/subtree/route.ts` |

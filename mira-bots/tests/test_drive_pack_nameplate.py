@@ -57,11 +57,13 @@ def test_gs20_is_honestly_none_not_stretched_to_match_gs10():
 
 
 def test_unrelated_drive_returns_none():
+    # "PowerFlex 525" is now a packaged family (promoted 2026-07-06) so it
+    # resolves; use a still-unpackaged drive as the "unrelated" example.
     vision_output = {
-        "component": "PowerFlex 525",
+        "component": "Yaskawa GA800",
         "symptom": "",
         "condition": "",
-        "description": "PowerFlex 525 nameplate",
+        "description": "Yaskawa GA800 nameplate",
     }
     assert resolve_pack_from_vision(vision_output) is None
 

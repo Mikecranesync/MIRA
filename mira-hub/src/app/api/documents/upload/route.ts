@@ -68,14 +68,20 @@ export async function POST(req: Request) {
       // The canonical read filter `(is_private = false OR tenant_id = $caller)`
       // relies on this so /api/documents never leaks it to another tenant.
       // See `.claude/rules/knowledge-entries-tenant-scoping.md` (#1833).
-      // knowledge_entries.id is a UUID PRIMARY KEY with NO server default — every
-      // other writer (node-knowledge-ingest.ts, seed-synthetic-users.ts) supplies
-      // it explicitly. Omitting it here made every upload 500 with a NOT NULL
-      // violation on id ("Insert failed"). Generate it in-SQL to match those writers.
+      // Both id AND source_type are NOT NULL with no server default on the live
+      // schema — every other writer (node-knowledge-ingest.ts, seed-synthetic-users.ts)
+      // supplies both explicitly. Omitting id made every upload 500 (#2493, fixed by
+      // gen_random_uuid() below); omitting source_type still 500'd with
+      // `null value in column "source_type" … violates not-null constraint`
+      // (the second cause the id fix masked). source_type='customer_upload' matches
+      // seed-synthetic-users.ts's per-tenant-upload value (proven valid — no CHECK
+      // rejects it). Migration 001 lists source_type as nullable, but the live
+      // knowledge_entries predates the Hub migrations and enforces NOT NULL — always
+      // supply it, never rely on the schema-of-record.
       const result = await c.query(
         `INSERT INTO knowledge_entries
-           (id, tenant_id, source_url, manufacturer, model_number, equipment_type, content, is_private)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, true)
+           (id, tenant_id, source_type, source_url, manufacturer, model_number, equipment_type, content, is_private)
+         VALUES (gen_random_uuid(), $1, 'customer_upload', $2, $3, $4, $5, $6, true)
          RETURNING id`,
         [
           ctx.tenantId,

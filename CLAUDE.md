@@ -241,6 +241,26 @@ Installed 2026-04-20. Triggers on every PR to `main`/`develop`/`dev`.
 
 ---
 
+## Release / PR Workflow
+
+Any PR that touches shippable code must bump `/VERSION` (semver: feat→minor, fix→patch, breaking→major) and add a `docs/CHANGELOG.md` note. **CI-enforced** — `.github/workflows/version-gate.yml` (`Version Bump Check`) is a required status check on `main` and fails a code-touching PR that leaves `/VERSION` unchanged. Docs/wiki/markdown-only PRs are exempt (no bump required). See `docs/versioning.md` for semver conventions and the auto-tag-on-merge behavior.
+
+## Git Workflow
+
+`tools/hooks/git-state-guard.sh` (a `PreToolUse(Bash)` hook) blocks git mutators while the repo is mid-rebase or on a detached `HEAD` — **except** `git rebase --continue`/`--abort`/`--skip`/`--quit`, which are always allowed even mid-rebase, since they're the only way to resolve the wedge from inside a single Bash call. If a rebase gets wedged for a reason `--continue`/`--abort` can't resolve, **stop and ask the user** — don't retry with `MIRA_ALLOW_GIT_WEDGE=1`, `git reset --hard`, or by hand-deleting `.git/rebase-merge`. Those are destructive workarounds for a state a human should look at.
+
+## Sub-agents / Worktrees
+
+Any sub-agent dispatched for parallel work that will Edit/Write files MUST operate in its own isolated git worktree (`Agent` tool `isolation: "worktree"`) or have explicit confirmation there's no uncommitted foreign work in the shared checkout it could clobber — verified **before** running file/git commands, not after. See `.claude/rules/subagent-worktree-isolation.md`.
+
+## Safety / Dangerous Commands
+
+Before running `rm -rf`, `git reset --hard`, `git clean -f[d]`, or any other command that irreversibly discards data, print the exact resolved absolute path/target first and confirm it matches the intended target before executing. See `.claude/rules/dangerous-commands-safety.md`.
+
+## Security
+
+Credentials and passwords come from environment variables (Doppler-managed, `factorylm/{dev,stg,prd}`) — never hardcoded in scripts, including one-off `tools/`/`plc/` ops scripts and seed/migration scripts. Enforced by `.ast-grep-rules/hardcoded-secret.yml` (every PR, `code-review.yml`) and `gitleaks protect --staged` (pre-commit). See `.claude/rules/security-boundaries.md`.
+
 ## CLAUDE.md Maintenance
 
 This file targets **~120 lines** (map, not encyclopedia). Agent compliance drops past ~150.

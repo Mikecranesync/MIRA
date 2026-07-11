@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "case_id": "25",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 8,
+    "power_control_flow": 9,
+    "sequence_interlocks_logic": 8,
+    "evidence_grounding_unsupported_claims": 17,
+    "technician_usefulness_clarity": 7
+  },
+  "total": 59,
+  "deductions": [
+    {
+      "claim": "Main visible components include: ... Control circuit components: MC, S1, S2, S3, S4, S5, S6, S7 ... (no mention of DC reactor / thermal relay / braking resistor terminals or the jumper)",
+      "evidence": "The main circuit at the top of the diagram clearly shows 'DC reactor (option) <1>' with a 'Jumper' and terminals '+2 +1 - B1 B2', 'Thermal relay (option) <2>', and 'Braking resistor (option)' connected across B1/B2 — all legible and part of the same main circuit the candidate otherwise describes.",
+      "category": "component_label_recognition",
+      "points_deducted": 5,
+      "severity": "material",
+      "correction": "List the DC bus terminals (+1/+2/-/B1/B2) and the optional DC reactor, thermal relay, and braking resistor connections as visible main-circuit components.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Main visible components include ... (no mention of the motor cooling-fan circuit)",
+      "evidence": "A separate '2 MCCB' branch feeds r1/s1/t1 to FU/FV/FW on a 'Cooling fan' motor 'M', with 'THRX' and a 'Fault relay'/'Thermal relay for motor cooling fan' block shown at the left of the main circuit.",
+      "category": "component_label_recognition",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "Note the separate cooling-fan power branch (2MCCB -> r1/s1/t1 -> FU/FV/FW) and its thermal/fault relay (THRX/TRX).",
+      "confidence": "high"
+    },
+    {
+      "claim": "Main visible components include: ... Analog output: AM ... Option card connector (no mention of MA/MB/MC, P1/P2/PC, RP/MP, A1/A2/+V, comm terminals, or the safety switch)",
+      "evidence": "The control circuit legibly labels 'MA/MB/MC' (Fault relay output), 'P1'/'P2'/'PC' (During Run / Frequency agree photocoupler outputs), 'RP' (pulse train input) and 'MP' (pulse train output), 'A1'/'A2'/'+V'/'AC' (analog frequency reference), 'R+/R-/S+/S-/IG' (MEMOBUS/Modbus RS-485/422), and 'HC/H1' (Safe Disable Input / safety switch) — none of these appear in the candidate's component list.",
+      "category": "component_label_recognition",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Enumerate the fault relay contacts (MA/MB/MC), photocoupler status outputs (P1/P2/PC), pulse train I/O (RP/MP), analog frequency reference inputs (A1/A2/+V/AC), the RS-485/422 MEMOBUS/Modbus terminals, and the Safe Disable Input (HC/H1).",
+      "confidence": "high"
+    },
+    {
+      "claim": "Power is supplied to the drive through R/L1, S/L2, and T/L3. The drive controls a motor connected to U/T1, V/T2, and W/T3.",
+      "evidence": "This is the only power-flow content given. It omits the DC bus power path through the DC reactor terminals (+1/+2, with a jumper removed when the DC reactor option is installed) and the dynamic braking resistor across B1/B2 -- a materially significant part of the diagrammed power flow, called out with its own footnote <1>.",
+      "category": "power_control_flow",
+      "points_deducted": 6,
+      "severity": "material",
+      "correction": "Explain the DC bus (+1/+2 with jumper, replaced by an optional DC reactor) and the optional dynamic braking resistor across B1/B2 as part of the power flow.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Control circuit components: MC ... (no explanation of MC's role in the power path)",
+      "evidence": "MC (main contactor) is shown in series with the incoming three-phase supply ahead of R/L1/S/L2/T/L3, with separate MC/THRX/TRX relay logic at the left controlling it -- the response lists 'MC' as a component but never explains that it must be closed for power to reach the drive.",
+      "category": "power_control_flow",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "State that the main contactor MC must be closed (via the fan/fault relay logic shown) before three-phase power reaches R/L1-T/L3.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "(no mention of the cooling-fan sub-circuit's power flow)",
+      "evidence": "r1/s1/t1 -> FU/FV/FW -> cooling fan motor is fed from a separate 2MCCB tap off the incoming supply, distinct from the main U/T1-W/T3 motor power path.",
+      "category": "power_control_flow",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Note the cooling-fan motor is powered from a separate branch off the incoming supply.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "(the response never mentions the Safe Disable Input / safety switch)",
+      "evidence": "A box labeled '<7> Safety switch -- Safe Disable Input -- Jumper -- HC / H1' is legible in the lower-left of the control circuit -- a documented hardware safety interlock, entirely absent from the response.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 6,
+      "severity": "severe",
+      "correction": "Identify the Safe Disable Input (HC/H1) safety interlock -- a jumper by default that must be removed and wired to an external safety switch/relay to enable a hardware safety-disable function.",
+      "confidence": "high"
+    },
+    {
+      "claim": "(no mention of the fault relay MA/MB/MC contact logic)",
+      "evidence": "'MA/MB/MC -- Fault -- Digital output 5-48Vdc 2 to 50mA (default setting)' is shown as a relay contact set indicating drive fault status.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "Explain that MA-MC / MB-MC form a fault relay output (form C) indicating drive fault status to external logic.",
+      "confidence": "high"
+    },
+    {
+      "claim": "(no mention of the P1/P2 status/interlock outputs)",
+      "evidence": "'P1 During Run (photocoupler 1)', 'P2 Frequency agree (photocoupler 2)', and 'PC Photocoupler output common' are legibly labeled, providing running-status and at-speed feedback relevant to sequence/state.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "Note P1/P2 as running-status and at-speed (frequency-agree) outputs useful for confirming operating sequence.",
+      "confidence": "high"
+    },
+    {
+      "claim": "The drive has various configuration options using DIP switches (S1-S3).",
+      "evidence": "The diagram shows three physically separate DIP switches individually labeled 'DIP switch S1' (near the option-card connector, a V/I selector), 'DIP switch S2' (near the comm connector, a termination-resistor selector), and 'DIP switch S3' (near the control-circuit digital inputs, a Sink/Source selector). These are distinct from, and functionally unrelated to, the like-numbered digital input terminals S1-S3 (Forward run/stop, Reverse run/stop, External fault) discussed immediately before this sentence. Grouping them as 'DIP switches (S1-S3)' right after the terminal list conflates two differently-purposed items that only coincidentally share numbers, which the print itself does not present as equivalent.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 3,
+      "severity": "minor",
+      "correction": "Clarify that 'DIP switch S1/S2/S3' are separate physical switches (V/I selection, comm termination, sink/source) distinct from the like-numbered digital input terminals S1-S3.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Overall response quality/clarity given the ambiguous DIP-switch phrasing and the complete omission of the safety interlock",
+      "evidence": "No mention of the Safe Disable Input anywhere in the response, combined with the ambiguous 'DIP switches (S1-S3)' phrasing, reduces the practical, non-misleading usefulness of the explanation for a technician who would want to know about the safety-disable jumper and would be confused by the switch/terminal numbering overlap.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 3,
+      "severity": "minor",
+      "correction": "Add a short safety-relevant callout for the Safe Disable Input jumper, and disambiguate DIP-switch naming from terminal naming.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": false,
+  "hard_failure_reasons": [],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "medium",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "Response is fluent, honestly hedged ('appears to be'), and contains no invented components, wire numbers, or dangerous troubleshooting advice -- so evidence_grounding stays high. The score is driven mainly by breadth: the print carries roughly five times as many legible labeled elements (DC bus/reactor/braking resistor, cooling-fan circuit, fault relay MA/MB/MC, photocoupler status outputs P1/P2, pulse train I/O, analog reference inputs, MEMOBUS/Modbus RS-485/422 terminals, and the Safe Disable Input safety interlock) than the candidate discusses. The safety-interlock omission (Safe Disable Input, HC/H1) is the single most consequential gap given the rubric's emphasis on interlocks, though it falls short of a hard failure since the response never asserts anything false about it -- it simply never addresses it. Section 6's claim that 'nothing major appears to be unreadable' is accurate as a legibility statement (the print is a clean vector diagram, not a degraded scan) and was not treated as a grounding violation; the deficiency is coverage, not legibility."
+}

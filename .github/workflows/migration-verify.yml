@@ -141,6 +141,20 @@ jobs:
             fi
           done < .migration_plan
 
+      - name: CHECK constraint drift detection
+        if: steps.plan.outputs.files != ''
+        env:
+          DATABASE_URL: ${{ secrets.NEON_STG_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          echo "### CHECK constraint drift detection" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Checking for silent CHECK constraint value shrinks..." >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          python tools/check_migration_check_drift.py $(cat .migration_plan | tr '\n' ' ') 2>&1 | tee drift-check.out
+          echo '```' >> "$GITHUB_STEP_SUMMARY" || true
+          cat drift-check.out >> "$GITHUB_STEP_SUMMARY" || true
+
       - name: Verify Phase 0 schema (tools/verify_phase0_deploy.py)
         env:
           NEON_DATABASE_URL: ${{ secrets.NEON_STG_DATABASE_URL }}

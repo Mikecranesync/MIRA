@@ -1,0 +1,32 @@
+{
+  "id": 20,
+  "oem": "WEG",
+  "document": "CFW-11W Frequency Inverter Manual (static.weg.net)",
+  "url": "static.weg.net/medias/downloadcenter/hae/h83/WEG-10004699316-13871637-r00-CFW11-W-users-manual-en.pdf",
+  "manifest_page_ref": "Terminal diagram & control wiring (p. 6–8)",
+  "print_type": "Inverter power & control connections",
+  "standard": "IEC 61800",
+  "category": "VFD",
+  "manifest_status": "CONFIRMED-2026-07-10",
+  "rendered_page_number": 26,
+  "image_sha256": "2301c316489112cb991a29fd33f18616484ea408d14449a7b02459d09fa52e75",
+  "caption": "Explain this print.",
+  "run_timestamp_utc": "2026-07-10T04:36:18.922817+00:00",
+  "bot_importable": true,
+  "code_path": "bot._try_print_translator_reply (real handler, spied engine, no Telegram)",
+  "handled": false,
+  "vision_called": true,
+  "router_called": false,
+  "inference": "not_triggered",
+  "reason": "vision classified as 'EQUIPMENT_PHOTO', not ELECTRICAL_PRINT",
+  "vision": {
+    "classification": "EQUIPMENT_PHOTO",
+    "classification_confidence": 0.7,
+    "drawing_type": null,
+    "drawing_type_confidence": 0.0,
+    "vision_result": "The image shows an electrical drawing, specifically a general wiring diagram. The diagram is labeled \"Figure 3.6: General wiring diagram\" and features various components, including a motor, HMI, and multiple connections. It appears to be a technical illustration for installation and connection purposes.",
+    "ocr_item_count": 0,
+    "ocr_items": [],
+    "tesseract_text_len": 0
+  }
+}

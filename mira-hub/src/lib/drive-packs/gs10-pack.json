@@ -4,10 +4,10 @@
   "family": {
     "manufacturer": "AutomationDirect",
     "series": "DURApulse GS10",
-    "aliases": ["GS10", "DURApulse", "GS-10"]
+    "aliases": ["GS10", "DURApulse", "GS-10", "GS11N", "GS13N"]
   },
   "nameplate": {
-    "match_keywords": ["GS10", "DURAPULSE", "GS-10"]
+    "match_keywords": ["GS10", "DURAPULSE", "GS-10", "GS11N", "GS13N"]
   },
   "live_decode": {
     "status_bits": {
@@ -69,6 +69,132 @@
   },
   "parameters": [
     {
+      "parameter_id": "P01.00",
+      "name": "Maximum operation frequency",
+      "purpose": "The maximum output frequency the drive will command. The acceleration and deceleration times (P01.12 / P01.13) are defined as the ramp between 0.00 Hz and this maximum operation frequency.",
+      "value_meanings": [],
+      "default": "60.00 / 50.00",
+      "range": "0.00–599.0 Hz",
+      "unit": "Hz",
+      "related_faults": [],
+      "related_parameters": ["P01.12", "P01.13"],
+      "source_citation": {
+        "doc": "DURApulse GS10 AC Drive User Manual (1st Ed., Rev B)",
+        "page": "4-8",
+        "excerpt": "P01.00 Maximum operation frequency. Range 0.00–599.0 Hz. Default 60.00 / 50.00 Hz. Modbus address hex 0100 / decimal 40257."
+      },
+      "provenance_tier": "manual_cited",
+      "confidence_tier": "high"
+    },
+    {
+      "parameter_id": "P01.01",
+      "name": "Motor 1 base frequency (Fbase)",
+      "purpose": "The motor's rated (base) frequency from the motor nameplate — the base point of the drive's V/F (volts-per-hertz) curve, paired with the rated voltage P01.02.",
+      "value_meanings": [],
+      "default": "60.00 / 50.00",
+      "range": "0.00–599.0 Hz",
+      "unit": "Hz",
+      "related_faults": [],
+      "related_parameters": ["P01.02"],
+      "source_citation": {
+        "doc": "DURApulse GS10 AC Drive User Manual (1st Ed., Rev B)",
+        "page": "4-8",
+        "excerpt": "P01.01 Motor 1 Fbase. Range 0.00–599.0 Hz. Default 60.00 / 50.00 Hz. Modbus address hex 0101 / decimal 40258."
+      },
+      "provenance_tier": "manual_cited",
+      "confidence_tier": "high"
+    },
+    {
+      "parameter_id": "P01.02",
+      "name": "Motor 1 rated voltage (nameplate)",
+      "purpose": "The motor's rated voltage from the nameplate — the output voltage the drive targets at the base frequency (P01.01) on the V/F curve.",
+      "value_meanings": [],
+      "default": "220.0 (230 V models) / 440.0 (460 V models)",
+      "range": "120 V / 230 V models: 0.0–255.0 V; 460 V models: 0.0–510.0 V",
+      "unit": "V",
+      "related_faults": [],
+      "related_parameters": ["P01.01"],
+      "source_citation": {
+        "doc": "DURApulse GS10 AC Drive User Manual (1st Ed., Rev B)",
+        "page": "4-8",
+        "excerpt": "P01.02 Motor 1, Rated Voltage (Nameplate). 120V / 230V models: 0.0–255.0 V; 460V models: 0.0–510.0 V. Default 220.0 / 440.0. Modbus address hex 0102 / decimal 40259."
+      },
+      "provenance_tier": "manual_cited",
+      "confidence_tier": "high"
+    },
+    {
+      "parameter_id": "P01.12",
+      "name": "Acceleration time 1",
+      "purpose": "The time the drive takes to ramp the motor from 0.00 Hz up to the maximum operation frequency (P01.00). Setting it too short may trigger over-current stall prevention (P06.03) or damage the motor.",
+      "value_meanings": [],
+      "default": "10.00 / 10.0",
+      "range": "P01.45=0: 0.00–600.0 sec; P01.45=1: 0.0–6000 sec",
+      "unit": "sec",
+      "related_faults": [],
+      "related_parameters": ["P01.00", "P01.13", "P01.24"],
+      "source_citation": {
+        "doc": "DURApulse GS10 AC Drive User Manual (1st Ed., Rev B)",
+        "page": "4-69",
+        "excerpt": "The acceleration time determines the time required for the AC motor drive to ramp from 0.00 Hz to the maximum operation frequency (P01.00). Note that setting the acceleration time too short may cause motor damage or trigger drive protection due to over-current during the drive's acceleration."
+      },
+      "provenance_tier": "manual_cited",
+      "confidence_tier": "high"
+    },
+    {
+      "parameter_id": "P01.13",
+      "name": "Deceleration time 1",
+      "purpose": "The time the drive takes to ramp the motor down from the maximum operation frequency (P01.00) to 0.00 Hz. Setting it too short may trigger over-voltage stall prevention (P06.01); a braking resistor may be needed to stop quickly.",
+      "value_meanings": [],
+      "default": "10.00 / 10.0",
+      "range": "P01.45=0: 0.00–600.0 sec; P01.45=1: 0.0–6000 sec",
+      "unit": "sec",
+      "related_faults": [],
+      "related_parameters": ["P01.00", "P01.12", "P01.26"],
+      "source_citation": {
+        "doc": "DURApulse GS10 AC Drive User Manual (1st Ed., Rev B)",
+        "page": "4-69",
+        "excerpt": "The deceleration time determines the time required for the AC motor drive to decelerate from the maximum operation frequency (P01.00) down to 0.00 Hz. Use suitable braking resistors (refer to Appendix A: Accessories) to decelerate in a short time and prevent over-voltage."
+      },
+      "provenance_tier": "manual_cited",
+      "confidence_tier": "high"
+    },
+    {
+      "parameter_id": "P01.22",
+      "name": "JOG frequency",
+      "purpose": "The target frequency the drive accelerates to while a JOG command is ON, using the JOG acceleration/deceleration times (P01.20 / P01.21). The JOG command cannot run while the drive is already running.",
+      "value_meanings": [],
+      "default": "6.00",
+      "range": "0.00–599.0 Hz",
+      "unit": "Hz",
+      "related_faults": [],
+      "related_parameters": ["P01.20", "P01.21"],
+      "source_citation": {
+        "doc": "DURApulse GS10 AC Drive User Manual (1st Ed., Rev B)",
+        "page": "4-70",
+        "excerpt": "When the JOG command is ON, the AC motor drive accelerates from 0 Hz to the JOG frequency (P01.22). When the JOG command is OFF, the AC motor drive decelerates from the JOG frequency to stop. You cannot execute the JOG command when the AC motor drive is running."
+      },
+      "provenance_tier": "manual_cited",
+      "confidence_tier": "high"
+    },
+    {
+      "parameter_id": "P01.24",
+      "name": "S-curve for acceleration begin time 1",
+      "purpose": "Sets the S-curve applied at the START of acceleration. An S-curve gives the smoothest transition between speed changes; when the S-curve parameters (P01.24–P01.27) are enabled, the actual acceleration/deceleration time is longer than the plain P01.12/P01.13 setting. The S-curve is inactive when the acceleration/deceleration time is set to 0.",
+      "value_meanings": [],
+      "default": "0.20",
+      "range": "P01.45=0: 0.00–25.00 sec; P01.45=1: 0.0–250.0 sec",
+      "unit": "sec",
+      "related_faults": [],
+      "related_parameters": ["P01.12", "P01.25", "P01.26", "P01.27"],
+      "source_citation": {
+        "doc": "DURApulse GS10 AC Drive User Manual (1st Ed., Rev B)",
+        "page": "4-70",
+        "excerpt": "P01.24 S-curve for Acceleration Begin Time 1. These parameters allow you to enable an S-curve. Using an S-curve gives the smoothest transition between speed changes. When you enable P01.24–P01.27 (S-curve acceleration and deceleration begin and arrival time), the actual acceleration and deceleration time are longer than the setting. The S-curve function is invalid when you set the acceleration and deceleration time to 0. Range/Units 0.00–25.00 sec, Default 0.20. Modbus address hex 0118 / decimal 40281."
+      },
+      "provenance_tier": "manual_cited",
+      "confidence_tier": "high"
+    },
+    {
       "parameter_id": "P09.03",
       "name": "COM1 Time-out Detection",
       "purpose": "Sets the RS-485 Modbus communication time-out value. If the drive receives no valid Modbus packets within this time, it declares a communication timeout (fault CE10).",
@@ -87,6 +213,66 @@
     }
   ],
   "keypad_navigation": [
+    {
+      "goal": "View the acceleration-time-1 setting (P01.12) on the GS10 keypad",
+      "parameter_id": "P01.12",
+      "menu_group": "P01 Basic Parameters",
+      "keypad_steps": [
+        "Press MENU until the parameter screen appears (typically \"H 0.0\").",
+        "Press ENTER to switch to the parameter group, then press UP to select group 01.",
+        "Press ENTER to switch to the parameter number, then press UP to select 12 (parameter 01.12 / P01.12).",
+        "Press ENTER to display the current value of P01.12 (the acceleration time, in seconds)."
+      ],
+      "view_only_warning": "These steps only VIEW P01.12. At the value screen, do NOT press UP/DOWN then ENTER — that changes and saves the setting (the keypad shows \"END\" when a change is stored). To exit without changing, press MENU.",
+      "edit_warning": null,
+      "source_citation": {
+        "doc": "DURApulse GS10 AC Drive User Manual (1st Ed., Rev B)",
+        "page": "3-6",
+        "excerpt": "Parameter Setting Instructions: 1) Press MENU until the parameter screen appears (typically H 0.0). 2) Press ENTER to switch to the parameter group, then press the UP button to select the desired group number. 3) Press ENTER to switch to the parameter number, then press the UP button to select the number. 4) Press ENTER to switch to the parameter value. 5) Press ENTER. If END displays, the parameter was successfully updated."
+      },
+      "confidence_tier": "medium",
+      "provenance_tier": "manual_cited"
+    },
+    {
+      "goal": "View the deceleration-time-1 setting (P01.13) on the GS10 keypad",
+      "parameter_id": "P01.13",
+      "menu_group": "P01 Basic Parameters",
+      "keypad_steps": [
+        "Press MENU until the parameter screen appears (typically \"H 0.0\").",
+        "Press ENTER to switch to the parameter group, then press UP to select group 01.",
+        "Press ENTER to switch to the parameter number, then press UP to select 13 (parameter 01.13 / P01.13).",
+        "Press ENTER to display the current value of P01.13 (the deceleration time, in seconds)."
+      ],
+      "view_only_warning": "These steps only VIEW P01.13. At the value screen, do NOT press UP/DOWN then ENTER — that changes and saves the setting (the keypad shows \"END\" when a change is stored). To exit without changing, press MENU.",
+      "edit_warning": null,
+      "source_citation": {
+        "doc": "DURApulse GS10 AC Drive User Manual (1st Ed., Rev B)",
+        "page": "3-6",
+        "excerpt": "Parameter Setting Instructions: 1) Press MENU until the parameter screen appears (typically H 0.0). 2) Press ENTER to switch to the parameter group, then press the UP button to select the desired group number. 3) Press ENTER to switch to the parameter number, then press the UP button to select the number. 4) Press ENTER to switch to the parameter value. 5) Press ENTER. If END displays, the parameter was successfully updated."
+      },
+      "confidence_tier": "medium",
+      "provenance_tier": "manual_cited"
+    },
+    {
+      "goal": "View the S-curve acceleration begin time (P01.24) on the GS10 keypad",
+      "parameter_id": "P01.24",
+      "menu_group": "P01 Basic Parameters",
+      "keypad_steps": [
+        "Press MENU until the parameter screen appears (typically \"H 0.0\").",
+        "Press ENTER to switch to the parameter group, then press UP to select group 01.",
+        "Press ENTER to switch to the parameter number, then press UP to select 24 (parameter 01.24 / P01.24).",
+        "Press ENTER to display the current value of P01.24 (the S-curve begin time, in seconds)."
+      ],
+      "view_only_warning": "These steps only VIEW P01.24. At the value screen, do NOT press UP/DOWN then ENTER — that changes and saves the setting (the keypad shows \"END\" when a change is stored). To exit without changing, press MENU.",
+      "edit_warning": null,
+      "source_citation": {
+        "doc": "DURApulse GS10 AC Drive User Manual (1st Ed., Rev B)",
+        "page": "3-6",
+        "excerpt": "Parameter Setting Instructions: 1) Press MENU until the parameter screen appears (typically H 0.0). 2) Press ENTER to switch to the parameter group, then press the UP button to select the desired group number. 3) Press ENTER to switch to the parameter number, then press the UP button to select the number. 4) Press ENTER to switch to the parameter value. 5) Press ENTER. If END displays, the parameter was successfully updated."
+      },
+      "confidence_tier": "medium",
+      "provenance_tier": "manual_cited"
+    },
     {
       "goal": "View the COM1 communication time-out setting (P09.03) on the GS10 keypad",
       "parameter_id": "P09.03",

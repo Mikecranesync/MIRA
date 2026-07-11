@@ -155,6 +155,7 @@ class ParameterCard:
     range: str | None = None
     unit: str | None = None
     related_faults: list[str] = field(default_factory=list)
+    related_parameters: list[str] = field(default_factory=list)
     provenance_tier: str = "manual_cited"
     confidence_tier: str | None = None
 

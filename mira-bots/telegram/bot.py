@@ -16,14 +16,21 @@ from admin_commands import (
 )
 from chat_adapter import TelegramChatAdapter
 from PIL import Image
-from shared import chat_tenant, tts
+from shared import chat_tenant, print_translator, tts, wiring_intake
 from shared.chat.dispatcher import ChatDispatcher
 from shared.contextualization_intake import (
-    INGEST_ROUTE_TELEGRAM,
-    build_intake_envelope,
-    submit_intake_to_hub,
+    hub_folder_upload_configured,
+    submit_file_to_hub_folder,
 )
 from shared.conversation_logger import log_turn, measure_ms
+from shared.drive_packs import (
+    answer_question,
+    build_asset_identity,
+    list_packs,
+    load_pack,
+    resolve_pack,
+    resolve_service_pack,
+)
 from shared.engine import Supervisor
 from shared.identity.service import get_identity_service
 from shared.integrations.atlas_cmms import AtlasCMMSClient
@@ -71,11 +78,24 @@ MCP_REST_API_KEY = os.environ.get("MCP_REST_API_KEY", "")
 KNOWLEDGE_COLLECTION_ID = os.environ.get(
     "KNOWLEDGE_COLLECTION_ID", "dd9004b9-3af2-4751-9993-3307e478e9a3"
 )
-# HubV3: Telegram is a thin evidence-capture client. Photos/docs are submitted as
-# the §2 contextualization intake contract to the Hub import endpoint (the Hub is
-# the system of record). Replaces the legacy mira-ingest {asset_tag, image} path.
-HUB_IMPORT_URL = os.environ.get("HUB_IMPORT_URL", "")
-HUB_IMPORT_TOKEN = os.environ.get("HUB_IMPORT_TOKEN", "")
+# Telegram is a thin evidence-capture client. Photos/docs are POSTed as raw
+# files to the Hub's citable folder-upload door (POST /api/uploads/folder,
+# Bearer HUB_INGEST_TOKEN + X-Mira-Tenant-Id), which routes through the golden
+# path to `knowledge_entries` (per-tenant, citable) — #2540. Env-var names match
+# tools/mira-drop-watcher. HUB_IMPORT_URL is kept only as a back-compat base.
+HUB_URL = os.environ.get("HUB_URL", "")
+HUB_BASE_PATH = os.environ.get("HUB_BASE_PATH", "/hub")
+HUB_INGEST_TOKEN = os.environ.get("HUB_INGEST_TOKEN", "")
+HUB_IMPORT_URL = os.environ.get("HUB_IMPORT_URL", "")  # back-compat base only
+
+
+def _hub_intake_configured() -> bool:
+    """True when the Hub folder-upload door has a base URL + Bearer token."""
+    return hub_folder_upload_configured(
+        hub_url=HUB_URL or HUB_IMPORT_URL or None,
+        token=HUB_INGEST_TOKEN or None,
+    )
+
 
 engine = Supervisor(
     db_path=os.environ.get("MIRA_DB_PATH", "/data/mira.db"),
@@ -190,6 +210,85 @@ def _resize_for_vision(image_bytes: bytes) -> bytes:
     return buf.getvalue()
 
 
+def _format_drive_pack_reply(result) -> str:
+    """Render a ``DrivePackAnswer`` the same way for every surface that asks a
+    drive pack a question (the ``/drive`` command and the nameplate-photo fast
+    path below) — plain text, inline ``[Source: ...]`` citations, and the
+    metadata footer a technician can use to see this was pack-grounded, not a
+    guess."""
+    reply = result.answer
+    if result.citations:
+        reply += "\n\nSources:"
+        for c in result.citations:
+            page = f" p.{c['page']}" if c.get("page") else ""
+            reply += f"\n[Source: {c['doc']}{page}]"
+    reply += (
+        f"\n\nsource: {result.answer_source} · pack: {result.pack_id} · "
+        f"fallback_used: {str(result.fallback_used).lower()} · "
+        f"live_telemetry: {str(result.live_telemetry).lower()} · "
+        f"read_only: {str(result.read_only).lower()}"
+    )
+    return reply
+
+
+def _drive_pack_meta(entry: str, result, resolution=None) -> dict:
+    """The ``conversation_eval.meta`` payload for a drive-pack turn — the labels
+    the distillation flywheel mines. ``matched=False`` is the knowledge-gap
+    signal (e.g. a technician asking about an undocumented parameter)."""
+    d = result.to_dict()
+    meta = {
+        "surface": "drive_pack",
+        "entry": entry,  # "nameplate" | "followup" | "command"
+        "pack_id": d.get("pack_id"),
+        "matched": d.get("matched"),
+        "matched_kind": d.get("matched_kind"),
+        "answer_source": d.get("answer_source"),
+        "resolved": d.get("resolved"),
+    }
+    if resolution is not None:
+        try:
+            r = resolution.to_dict()
+            meta["resolution"] = {
+                "source": r.get("source"),
+                "confidence": r.get("confidence"),
+                "ambiguous": r.get("ambiguous"),
+            }
+        except Exception:  # noqa: BLE001 — resolution meta is best-effort
+            pass
+    return meta
+
+
+async def _capture_drive_pack_turn(
+    *,
+    question: str,
+    result,
+    update: Update,
+    entry: str,
+    resolution=None,
+) -> None:
+    """Capture a drive-pack Q&A turn into ``conversation_eval`` (fail-open, via
+    the shared ``log_turn``). Called AFTER the reply is sent, so it never delays
+    the technician's answer. Carries drive-pack labels (pack_id / matched /
+    matched_kind) so the flywheel can surface knowledge gaps per pack. No LLM,
+    no behaviour change to the reply."""
+    try:
+        _uploader, _captured_at, tenant_id = _intake_meta(update)
+    except Exception:  # noqa: BLE001 — tenant is optional metadata
+        tenant_id = ""
+    meta = _drive_pack_meta(entry, result, resolution)
+    if tenant_id:
+        meta["tenant_id"] = tenant_id
+    await log_turn(
+        chat_id=str(update.effective_chat.id),
+        user_message=question or "",
+        bot_response=_format_drive_pack_reply(result),
+        source="telegram",
+        intent="drive_pack",
+        has_citations=bool(result.citations),
+        meta=meta,
+    )
+
+
 def _intake_meta(update: Update) -> tuple[str, str, str]:
     """(uploader_id, captured_at_iso, tenant_id) from a Telegram update.
 
@@ -206,70 +305,45 @@ def _intake_meta(update: Update) -> tuple[str, str, str]:
     return uploader, captured_at, tenant_id
 
 
-def _asset_hints_from_caption(caption: str) -> dict:
-    """Minimal asset-identity hint from a caption (first token = asset name).
-
-    Preserves today's ``asset_tag`` behaviour. Richer hints (mfr/model/serial/
-    IP/UNS) are the Hub's job to derive from evidence — the client owns no truth.
-    """
-    tokens = caption.split() if caption else []
-    return {"name": tokens[0]} if tokens else {}
-
-
 async def _submit_photo_to_hub(raw_bytes: bytes, caption: str, update: Update) -> None:
-    """Build the §2 intake envelope for a photo and POST it to the Hub.
+    """POST a photo to the Hub's citable folder-upload door (#2540).
 
-    Runs in background — ``submit_intake_to_hub`` never raises, so a failed Hub
-    POST cannot break the chat reply. Replaces the legacy mira-ingest path.
+    Runs in background — ``submit_file_to_hub_folder`` never raises, so a failed
+    Hub POST cannot break the chat reply. The tenant header keeps the upload
+    per-tenant and citable. ``caption`` is unused on this path (the folder door
+    ingests the raw file; the Hub derives context on its own).
     """
-    if not HUB_IMPORT_URL:
+    if not _hub_intake_configured():
         return
-    uploader, captured_at, tenant_id = _intake_meta(update)
-    envelope = build_intake_envelope(
-        raw_bytes=raw_bytes,
-        filename="photo.jpg",
-        mime="image/jpeg",
-        uploader=uploader,
-        captured_at=captured_at,
-        caption=caption,
-        asset_hints=_asset_hints_from_caption(caption),
-        ingest_route=INGEST_ROUTE_TELEGRAM,
-    )
-    await submit_intake_to_hub(
-        envelope,
+    _uploader, _captured_at, tenant_id = _intake_meta(update)
+    await submit_file_to_hub_folder(
         raw_bytes=raw_bytes,
         filename="photo.jpg",
         mime="image/jpeg",
         tenant_id=tenant_id,
-        token=HUB_IMPORT_TOKEN or None,
+        hub_url=HUB_URL or HUB_IMPORT_URL or None,
+        base_path=HUB_BASE_PATH,
+        token=HUB_INGEST_TOKEN or None,
     )
 
 
 async def _submit_doc_to_hub(pdf_bytes: bytes, filename: str, caption: str, update: Update) -> bool:
-    """Build the §2 intake envelope for a PDF and POST it to the Hub.
+    """POST a PDF to the Hub's citable folder-upload door (#2540).
 
-    Returns True on a 2xx Hub response. Never raises.
+    Returns True on a 2xx Hub response. Never raises. ``caption`` is unused on
+    this path (the folder door ingests the raw file).
     """
-    if not HUB_IMPORT_URL:
+    if not _hub_intake_configured():
         return False
-    uploader, captured_at, tenant_id = _intake_meta(update)
-    envelope = build_intake_envelope(
-        raw_bytes=pdf_bytes,
-        filename=filename,
-        mime="application/pdf",
-        uploader=uploader,
-        captured_at=captured_at,
-        caption=caption,
-        asset_hints=_asset_hints_from_caption(caption),
-        ingest_route=INGEST_ROUTE_TELEGRAM,
-    )
-    return await submit_intake_to_hub(
-        envelope,
+    _uploader, _captured_at, tenant_id = _intake_meta(update)
+    return await submit_file_to_hub_folder(
         raw_bytes=pdf_bytes,
         filename=filename,
         mime="application/pdf",
         tenant_id=tenant_id,
-        token=HUB_IMPORT_TOKEN or None,
+        hub_url=HUB_URL or HUB_IMPORT_URL or None,
+        base_path=HUB_BASE_PATH,
+        token=HUB_INGEST_TOKEN or None,
     )
 
 
@@ -293,7 +367,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"{filename} is {doc.file_size // MB}MB — limit is 20MB.")
         return
 
-    if not HUB_IMPORT_URL:
+    if not _hub_intake_configured():
         await update.message.reply_text("Hub intake is not configured.")
         return
 
@@ -385,6 +459,199 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+# --- Per-chat drive-pack context (bot-local; NOT the engine's FSM state) -----
+# When a nameplate photo or /drive identifies a drive, remember its pack for
+# this chat so a TEXT follow-up ("what is P09.03?") continues in that drive's
+# context and answers from the pack — the multi-turn continuity that the
+# photo-only fast path deliberately deferred. Deliberately a DEDICATED table,
+# separate from the engine's `conversation_state` (no engine.py change), keyed
+# by chat_id with a freshness TTL so a stale context can't hijack a new topic.
+_DRIVE_CONTEXT_TTL_S = 1800  # 30 min
+
+# A drive-question signal in free text: a dotted parameter id (P09.03 / P01.24),
+# a bare Pxxx(x) parameter, or explicit drive vocabulary. Used only to decide
+# whether an ALREADY-established drive conversation should stay in-pack when the
+# pack itself didn't match the question (e.g. an undocumented parameter → the
+# pack's honest "not documented" answer, not the enrollment wall).
+_DRIVE_QUESTION_RE = re.compile(
+    r"\b[A-Za-z]\d{2}\.\d{2}\b"
+    r"|\bP\d{3,4}\b"
+    r"|\b(parameter|param|fault|error\s*code|alarm|trip|keypad|register)\b",
+    re.IGNORECASE,
+)
+
+
+def _drive_context_db():
+    import sqlite3
+
+    db_path = os.environ.get("MIRA_DB_PATH", "/data/mira.db")
+    db = sqlite3.connect(db_path)
+    db.execute("PRAGMA journal_mode=WAL")
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS telegram_drive_context ("
+        "chat_id TEXT PRIMARY KEY, pack_id TEXT NOT NULL, updated_at REAL NOT NULL)"
+    )
+    return db
+
+
+def _set_drive_context(chat_id: str, pack_id: str) -> None:
+    """Remember (or refresh) the drive pack this chat is talking about."""
+    import time as _time
+
+    try:
+        db = _drive_context_db()
+        db.execute(
+            "INSERT INTO telegram_drive_context (chat_id, pack_id, updated_at) "
+            "VALUES (?, ?, ?) ON CONFLICT(chat_id) DO UPDATE SET "
+            "pack_id = excluded.pack_id, updated_at = excluded.updated_at",
+            (chat_id, pack_id, _time.time()),
+        )
+        db.commit()
+        db.close()
+    except Exception as exc:  # never let a context write break the turn
+        logger.warning("drive-context write failed: %s", exc)
+
+
+def _get_drive_context(chat_id: str, max_age_s: int | None = None) -> str | None:
+    """The pack this chat is talking about, if identified within the TTL.
+
+    ``max_age_s`` defaults to the module ``_DRIVE_CONTEXT_TTL_S`` read at call
+    time (not bound at definition), so the freshness window stays overridable.
+    """
+    import time as _time
+
+    max_age = _DRIVE_CONTEXT_TTL_S if max_age_s is None else max_age_s
+    try:
+        db = _drive_context_db()
+        row = db.execute(
+            "SELECT pack_id, updated_at FROM telegram_drive_context WHERE chat_id = ?",
+            (chat_id,),
+        ).fetchone()
+        db.close()
+    except Exception:
+        return None
+    if not row:
+        return None
+    pack_id, updated_at = row
+    if (_time.time() - float(updated_at)) > max_age:
+        return None
+    return pack_id
+
+
+async def _try_drive_pack_followup(
+    text: str,
+    chat_id: str,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> bool:
+    """Continue an established drive conversation on a TEXT turn (read-only,
+    cited, no LLM, un-gated — same public-OEM contract as the photo fast path).
+
+    Only claims the turn (returns ``True``) when this chat recently identified a
+    drive AND the text either maps to the pack's content OR reads like a drive
+    question. Everything else falls through (returns ``False``) to the normal,
+    enrollment-gated engine dispatch — so general chat, FSM confirmations
+    ("yes"/"no"), and non-drive questions are untouched.
+    """
+    if not text:
+        return False
+    pack_id = _get_drive_context(chat_id)
+    if not pack_id:
+        return False
+
+    result = await asyncio.to_thread(answer_question, pack_id, text)
+    if not (result.matched or _DRIVE_QUESTION_RE.search(text)):
+        return False
+
+    reply = _format_drive_pack_reply(result)
+    await update.message.reply_text(reply)
+    _set_drive_context(chat_id, pack_id)  # refresh TTL on continued use
+    await _maybe_send_voice(update, context, chat_id, reply)
+    await _capture_drive_pack_turn(question=text, result=result, update=update, entry="followup")
+    return True
+
+
+# --- Wiring loop (PR-4): photo -> proposed rows; text -> verified-only cited
+# Q&A (`shared/wiring_intake.py`). Additive, fall-through fast paths — mirror
+# the drive-pack precedent above. See `shared/wiring_intake.py` module
+# docstring for the full doctrine + the mig-026 direct-INSERT decision.
+#
+# Per-chat wiring-asset memory was deliberately NOT added: the existing
+# `telegram_drive_context` table (`_set_drive_context`/`_get_drive_context`,
+# above) is keyed `chat_id -> pack_id` with no context-kind column, so it
+# cannot be reused for a second concept (a wiring asset) with "a distinct
+# key" — that would require either a schema change to that table or a new
+# table, and the PR-4 spec says: if trivial reuse isn't available, skip
+# memory rather than add one. The asset must be named in the text/caption
+# ("CV-101 add this wiring", "CV-101 where does W200 land?") or MIRA asks
+# for it (`wiring_intake.MISSING_ASSET_REPLY`) — it never guesses.
+def _write_rows_blocking(tenant_id: str, rows: list) -> tuple[int, int]:
+    """Sync DB glue for `_try_wiring_intake_reply` (psycopg2 is sync — run in
+    a thread via `asyncio.to_thread`). Opens a NeonDB connection, writes the
+    PR-2-converted rows through the reused writer seam (always
+    `approval_state='proposed'`), commits, and closes.
+    """
+    conn = wiring_intake.open_neon_conn()
+    try:
+        with conn.cursor() as cur:
+            inserted, skipped = wiring_intake.write_proposed_rows(cur, tenant_id, rows)
+        conn.commit()
+    finally:
+        conn.close()
+    return inserted, skipped
+
+
+def _answer_wiring_blocking(
+    tenant_id: str, asset: str, question: str
+) -> "wiring_intake.WiringAnswer":
+    """Sync DB glue for `_try_wiring_question_reply` — read-only. Loads the
+    asset's `MachineWiringProfile` and answers the question from `verified`
+    rows only (`shared.wiring_profile.answer_wiring_question`'s gate).
+    """
+    conn = wiring_intake.open_neon_conn()
+    try:
+        with conn.cursor() as cur:
+            profile = wiring_intake.load_profile(cur, tenant_id, asset=asset)
+    finally:
+        conn.close()
+    return wiring_intake.answer_wiring_question(profile, question)
+
+
+async def _try_wiring_question_reply(
+    text: str,
+    chat_id: str,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> bool:
+    """Wiring-question TEXT fast path (read-only, cited, no LLM fallback).
+
+    Only claims the turn (returns ``True``) when ``text`` reads as a wiring
+    question per ``wiring_intake.parse_wiring_intent`` — a question marker
+    ("where does", "connected to", ...) PLUS a parseable wire/terminal
+    token. Answers ONLY from ``verified`` rows; a match that exists only
+    among proposed/needs_review/rejected rows is an explicit refusal, never
+    an assertion, and an absent record is an honest "no record" — never a
+    guess, never a generic LLM fallback. Falls through unchanged (returns
+    ``False``) for anything that isn't a wiring question, so the normal
+    enrollment-gated engine dispatch in ``handle_message`` is untouched.
+    """
+    intent = wiring_intake.parse_wiring_intent(text)
+    if intent.kind != "question":
+        return False
+
+    asset = intent.asset
+    if not asset:
+        await update.message.reply_text(wiring_intake.MISSING_ASSET_REPLY)
+        return True
+
+    tenant_id = chat_tenant.resolve(str(update.effective_user.id))
+    answer = await asyncio.to_thread(
+        _answer_wiring_blocking, tenant_id, asset, intent.question or text
+    )
+    await update.message.reply_text(wiring_intake.format_wiring_answer(answer, asset))
+    return True
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Route text messages through the GSD engine via ChatAdapter."""
     import time as _time
@@ -392,6 +659,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     chat_id = str(update.effective_chat.id)
     logger.info("Received from %s: %s", update.effective_user.first_name, text)
+
+    # Drive-conversation continuity: a text follow-up after a nameplate / /drive
+    # identification answers from that pack directly (read-only, cited, un-gated)
+    # instead of dropping to the enrollment-gated engine path with no memory of
+    # the drive. Falls through unchanged for non-drive text.
+    if await _try_drive_pack_followup(text, chat_id, update, context):
+        return
+    # Wiring Q&A: verified-only, cited answers over `wiring_connections`
+    # (PR-4). Falls through unchanged for anything that isn't a wiring
+    # question. See `_try_wiring_question_reply` docstring.
+    if await _try_wiring_question_reply(text, chat_id, update, context):
+        return
     if any(kw in text.lower() for kw in FAULT_KEYWORDS):
         await update.message.reply_text("Diagnosing...")
     normalized = await adapter.normalize_incoming(update.to_dict())
@@ -485,6 +764,209 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(f"MIRA error: {exc}")
 
 
+async def _try_nameplate_drive_pack_reply(
+    vision_bytes: bytes,
+    caption: str,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> bool:
+    """Nameplate-photo -> drive-pack fast path (additive, read-only, no LLM
+    fallback). Reuses ``engine.nameplate`` (the same ``NameplateWorker`` the
+    Supervisor's own nameplate flow uses) purely to EXTRACT fields, then
+    resolves them via ``resolve_service_pack`` — the surface-agnostic
+    service-pack contract. Never touches ``engine.process``/the FSM.
+
+    Only short-circuits the normal photo dispatch (returns ``True``) when the
+    nameplate signal confidently identifies a LIVE drive pack, or names a
+    recognized manufacturer the technician explicitly asked a question about.
+    Any photo whose nameplate extraction doesn't identify a known drive family
+    falls through unchanged to the existing engine-dispatched photo flow
+    (returns ``False``) — non-nameplate photos are untouched by this path.
+    """
+    photo_b64 = base64.b64encode(vision_bytes).decode()
+    try:
+        fields = await engine.nameplate.extract(photo_b64)
+    except Exception as e:
+        logger.warning("nameplate drive-pack extract failed: %s", e)
+        return False
+
+    if not isinstance(fields, dict) or "parse_error" in fields:
+        return False
+
+    resolution = resolve_service_pack(nameplate=fields)
+
+    # Phase 2 (#2561): preserve the extracted nameplate as a structured Asset
+    # Identity Packet (raw OCR kept separate from interpreted fields; nothing
+    # fabricated) instead of discarding the fields after routing. Persisting it
+    # to a Hub review record is Phase 3 — here it is built + audit-logged so the
+    # evidence is not silently dropped. The full raw_text lives on the packet
+    # (for a future Hub sink); the log line stays a concise identity summary.
+    identity = build_asset_identity(nameplate=fields, resolution=resolution)
+    logger.info(
+        "nameplate asset identity: manufacturer=%s model=%s sku_prefix=%s "
+        "serial=%s candidate_pack=%s approval=%s",
+        identity.manufacturer,
+        identity.model_number,
+        identity.sku_prefix,
+        identity.serial_number,
+        identity.candidate_pack_id,
+        identity.approval_status,
+    )
+
+    has_question = bool(caption) and caption != DEFAULT_PHOTO_CAPTION
+
+    if resolution.pack_id is not None:
+        pack = load_pack(resolution.pack_id)
+        # Remember this drive for the chat so a TEXT follow-up (a parameter or
+        # fault question with no photo) continues in this pack's context.
+        _set_drive_context(str(update.effective_chat.id), resolution.pack_id)
+        if has_question:
+            async with typing_action(context, update.effective_chat.id):
+                result = await asyncio.to_thread(answer_question, resolution.pack_id, caption)
+            await update.message.reply_text(_format_drive_pack_reply(result))
+            await _capture_drive_pack_turn(
+                question=caption,
+                result=result,
+                update=update,
+                entry="nameplate",
+                resolution=resolution,
+            )
+            return True
+
+        # No question yet — confirm identification, invite one. Per
+        # `.claude/rules/train-before-deploy.md` / session discipline this
+        # session does NOT stash pack_id for a text follow-up turn: the only
+        # per-chat conversation state is the engine's private SQLite
+        # `conversation_state` (`_load_state`/`_save_state`, no public
+        # accessor) and no clean migration-free per-chat KV exists outside
+        # it. Deferred — see the PR description / runbook note.
+        await update.message.reply_text(
+            f"\U0001f4c7 Identified: {pack.family.manufacturer} {pack.family.series} "
+            f'— ask me about it, e.g. "what does CE10 mean?"'
+        )
+        return True
+
+    if has_question and "recognized manufacturer" in resolution.reason:
+        # A drive nameplate was clearly present (we recognized the
+        # manufacturer) but the model/series didn't resolve to a live pack —
+        # give the honest, actionable refusal instead of guessing or silently
+        # falling through to a generic engine answer.
+        await update.message.reply_text(resolution.reason)
+        return True
+
+    # Nothing recognized at all (not a drive nameplate, or extraction was too
+    # thin to tell) — let the existing engine-dispatched photo flow handle it,
+    # unchanged.
+    return False
+
+
+async def _try_wiring_intake_reply(
+    vision_bytes: bytes,
+    caption: str,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> bool:
+    """Wiring-photo -> proposed-rows fast path (additive, no LLM fallback).
+
+    Only claims the turn (returns ``True``) when ``caption`` reads as wiring
+    INTAKE per ``wiring_intake.parse_wiring_intent`` (e.g. "CV-101 add this
+    wiring"). Reuses ``engine._extract_schematic`` — the SAME schematic
+    extractor the engine's own ELECTRICAL_PRINT path calls — purely to get
+    the KG-shaped payload, then writes it through the merged PR-1/PR-2 seam
+    (``wiring_intake.payload_to_proposed_rows`` -> ``write_proposed_rows``)
+    as ``approval_state='proposed'`` — NEVER verified; a human must approve
+    before MIRA will answer from these rows (see ``wiring_profile``).
+
+    Falls through unchanged (returns ``False``) for any caption that isn't
+    wiring intake, so the existing ELECTRICAL_PRINT/PrintWorker photo flow
+    in ``_dispatch_single_photo`` is untouched.
+    """
+    intent = wiring_intake.parse_wiring_intent(caption)
+    if intent.kind != "intake":
+        return False
+
+    chat_id = str(update.effective_chat.id)
+    asset = intent.asset
+    if not asset:
+        await update.message.reply_text(wiring_intake.MISSING_ASSET_REPLY)
+        return True
+
+    tenant_id = chat_tenant.resolve(str(update.effective_user.id))
+    photo_b64 = base64.b64encode(vision_bytes).decode()
+    payload = await engine._extract_schematic(photo_b64)
+    if not payload or not payload.get("relationships"):
+        await update.message.reply_text(
+            "I couldn't read any wiring connections from that image. "
+            "Send a clearer electrical print."
+        )
+        return True
+
+    rows = wiring_intake.payload_to_proposed_rows(
+        payload,
+        asset,
+        drawing_ref=f"telegram:{chat_id}",
+        proposed_by="telegram:wiring_intake",
+        source=f"telegram:chat:{chat_id}",
+    )
+    inserted, skipped = await asyncio.to_thread(_write_rows_blocking, tenant_id, rows)
+    await update.message.reply_text(
+        wiring_intake.build_intake_preview(payload, inserted, skipped, asset)
+    )
+    return True
+
+
+# --- Print Translator: read-only LLM explanation of an electrical print,
+# NOT the wiring loop. See `shared/print_translator.py` module docstring for
+# the full grounding doctrine (OCR-only, hedged framing, no invention). This
+# fast path never writes to `wiring_connections`, never touches control, and
+# never persists anything — it reads the vision classification + OCR, calls
+# the inference cascade, and replies.
+async def _try_print_translator_reply(
+    vision_bytes: bytes,
+    caption: str,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> bool:
+    """Print Translator: an electrical-print photo + an "explain this / theory
+    of operation" caption -> a plain-English, OCR-grounded explanation of what
+    the circuit appears to do. Read-only generation — NO wiring DB writes, NO
+    control writes. Falls through (returns ``False``) for any caption that
+    isn't a print-explanation request, and for photos the vision worker does
+    NOT classify as ``ELECTRICAL_PRINT`` — so non-print photos and the
+    existing nameplate/drive and wiring-intake flows are untouched.
+    """
+    if not print_translator.is_theory_request(caption):
+        return False  # cheap reject, no vision call
+
+    photo_b64 = base64.b64encode(vision_bytes).decode()
+    try:
+        vision_data = await engine.vision.process(photo_b64, caption)
+    except Exception as e:
+        logger.warning("print translator vision classify failed: %s", e)
+        return False  # a vision hiccup shouldn't eat the turn — fall through
+
+    if (vision_data or {}).get("classification") != "ELECTRICAL_PRINT":
+        return False  # not a print → fall through unchanged
+
+    messages = print_translator.build_theory_messages(photo_b64, vision_data)
+    try:
+        reply, _usage = await engine.router.complete(
+            messages,
+            max_tokens=1200,
+            session_id=str(update.effective_chat.id),
+        )
+    except Exception as e:  # noqa: BLE001 — a malformed provider reply must not eat the turn
+        # router.complete's per-provider guard only catches _ProviderSkip, so a
+        # JSONDecodeError/KeyError on a malformed 200 can escape. Mirror the
+        # vision-call handling above: degrade to the graceful fallback, never crash.
+        logger.warning("print translator LLM call failed: %s", e)
+        reply = ""  # -> FALLBACK_REPLY via format_theory_reply
+    await update.message.reply_text(
+        print_translator.format_theory_reply(reply, vision_data.get("drawing_type"))
+    )
+    return True
+
+
 async def _dispatch_single_photo(
     raw_bytes: bytes,
     vision_bytes: bytes,
@@ -497,7 +979,30 @@ async def _dispatch_single_photo(
     Unchanged behaviour from the previous in-memory PHOTO_BUFFER. Single
     photos still need work-order / FSM context, so they bypass the durable
     queue and run synchronously while we still hold the original Update.
+
+    Before any of that: try the read-only nameplate -> drive-pack fast path
+    (see ``_try_nameplate_drive_pack_reply``). It only claims the turn when it
+    confidently resolves a LIVE service pack (or a recognized-manufacturer
+    refusal) from the nameplate — everything else falls through to the
+    unchanged engine dispatch below.
     """
+    if await _try_nameplate_drive_pack_reply(vision_bytes, caption, update, context):
+        return
+
+    # Wiring intake: propose rows into `wiring_connections` from an
+    # electrical-print photo captioned "add this wiring" (PR-4). Falls
+    # through unchanged for any other caption. See
+    # `_try_wiring_intake_reply` docstring.
+    if await _try_wiring_intake_reply(vision_bytes, caption, update, context):
+        return
+
+    # Print Translator: read-only LLM explanation of an electrical print for
+    # an "explain this / theory of operation" caption. Falls through
+    # unchanged for anything else. See `_try_print_translator_reply`
+    # docstring.
+    if await _try_print_translator_reply(vision_bytes, caption, update, context):
+        return
+
     chat_id = str(update.effective_chat.id)
     await update.message.reply_text("Analyzing equipment...")
     update_dict = update.to_dict()
@@ -522,7 +1027,7 @@ async def _dispatch_single_photo(
             logger.error("Photo processing error: %s", e)
             final_reply = f"MIRA error: {e}"
 
-    if HUB_IMPORT_URL:
+    if _hub_intake_configured():
         asyncio.create_task(_submit_photo_to_hub(raw_bytes, caption, update))
         final_reply += "\n\nPhoto submitted to the Hub for review."
 
@@ -587,7 +1092,7 @@ async def _enqueue_multi_photo_burst(
         await photo_queue.mark_failed(batch_id, "queue full at close_burst")
         return
 
-    if HUB_IMPORT_URL:
+    if _hub_intake_configured():
         for raw_bytes, _ in batches:
             asyncio.create_task(_submit_photo_to_hub(raw_bytes, caption, update))
 
@@ -869,6 +1374,53 @@ async def faults_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"MIRA error: {e}")
 
 
+async def drive_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Answer a drive-pack question — deterministic, pack-grounded, read-only.
+
+    ``/drive <pack-alias> <question>``. The ONLY answer source is
+    ``shared.drive_packs.answer_question`` (deterministic pack JSON) — never
+    the engine or an LLM. An unmatched question still renders the pack's own
+    honest "I won't guess" answer, never a generic fallback.
+    """
+    if not context.args or len(context.args) < 2:
+        packs = ", ".join(list_packs())
+        await update.message.reply_text(
+            "Usage: /drive <drive> <question>\n"
+            "Example: /drive gs10 What does CE10 mean?\n"
+            f"Available: {packs}"
+        )
+        return
+
+    pack_alias = context.args[0]
+    question = " ".join(context.args[1:])
+    pack = resolve_pack(pack_alias)
+    if pack is None:
+        packs = ", ".join(list_packs())
+        await update.message.reply_text(
+            f"I don't have a drive pack matching '{pack_alias}'. Available: {packs}."
+        )
+        return
+
+    # Remember this drive for the chat so a plain-text follow-up continues in
+    # this pack's context (no need to repeat "/drive gs10 ..." every turn).
+    _set_drive_context(str(update.effective_chat.id), pack.pack_id)
+
+    try:
+        async with typing_action(context, update.effective_chat.id):
+            result = await asyncio.to_thread(answer_question, pack.pack_id, question)
+        # Plain text (no parse_mode): the pack answer contains OEM text with
+        # unbalanced brackets ("[COM1 Time-out Detection]", "[Source: ...]") that
+        # Telegram's legacy Markdown parser rejects with a 400 "can't parse
+        # entities" — send it verbatim instead.
+        await update.message.reply_text(_format_drive_pack_reply(result))
+        await _capture_drive_pack_turn(
+            question=question, result=result, update=update, entry="command"
+        )
+    except Exception as e:
+        logger.error("Drive command error: %s", e)
+        await update.message.reply_text(f"MIRA error: {e}")
+
+
 async def bad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Flag the last response as unhelpful."""
     chat_id = str(update.effective_chat.id)
@@ -892,6 +1444,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/invite_status \u2014 (admin) list pending/used invites\n"
         "/equipment [id] \u2014 Live equipment status (instant)\n"
         "/faults \u2014 Active fault list (instant)\n"
+        "/drive <drive> <question> \u2014 Ask a drive pack (instant, pack-grounded)\n"
         "/status \u2014 AI equipment summary\n"
         "/voice on|off \u2014 Enable/disable spoken responses\n"
         "/bad [reason] \u2014 Flag this response as unhelpful\n"
@@ -1116,6 +1669,7 @@ def main():
     app.add_handler(CommandHandler("invite_status", _wrap_invite_status))
     app.add_handler(CommandHandler("equipment", equipment_command))
     app.add_handler(CommandHandler("faults", faults_command))
+    app.add_handler(CommandHandler("drive", drive_command))
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("reset", reset_command))
     app.add_handler(CommandHandler("voice", voice_command))

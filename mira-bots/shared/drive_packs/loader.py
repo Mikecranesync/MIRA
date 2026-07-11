@@ -172,6 +172,7 @@ def _parameters(raw_list: list[dict[str, Any]], pack_id: str) -> list[ParameterC
                 range=entry.get("range"),
                 unit=entry.get("unit"),
                 related_faults=list(entry.get("related_faults", [])),
+                related_parameters=list(entry.get("related_parameters", [])),
                 provenance_tier=_check_provenance_tier(
                     entry.get("provenance_tier", "manual_cited"),
                     pack_id=pack_id,

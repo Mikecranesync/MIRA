@@ -19,6 +19,12 @@
 #
 # Override: MIRA_ALLOW_GIT_WEDGE=1 (set per-shell when you're deliberately
 # operating inside a rebase, e.g. scripting a `git rebase --continue` loop).
+# NOTE: this only works when the env var is already set in the calling shell's
+# environment BEFORE the hook fires — it does NOT help a single Bash tool call
+# that does `export MIRA_ALLOW_GIT_WEDGE=1 && git rebase --continue`, because
+# the hook evaluates the submitted command text before any of it has executed.
+# The --continue/--abort/--skip/--quit exemption below is what actually makes
+# a single-call `git rebase --continue` work while mid-rebase.
 #
 # Reads PreToolUse JSON from stdin OR $CLAUDE_TOOL_INPUT (legacy MIRA hooks).
 # Emits PreToolUse permission JSON on stdout (matches tools/hooks/prod-guard.sh).
@@ -61,6 +67,15 @@ fi
 # Resolve the git dir for whatever repo we're cwd'd into (not hardcoded).
 GITDIR=$(git rev-parse --git-dir 2>/dev/null || true)
 [ -z "$GITDIR" ] && exit 0  # Not in a git repo; nothing to guard.
+
+# A mutator that's ITSELF the resolving action (--continue/--abort/--skip/
+# --quit on rebase/cherry-pick/revert/am) must always be allowed through even
+# while mid-rebase — otherwise there is no way to resolve the wedge from a
+# single Bash tool call (see NOTE above).
+RESOLVER='git([[:space:]]+-[^[:space:]]+)*[[:space:]]+(rebase|cherry-pick|revert|am)([[:space:]]+-[^[:space:]]+)*[[:space:]]+--(continue|abort|skip|quit)([[:space:]]|$)'
+if printf '%s' "$cmd" | grep -qE "$RESOLVER"; then
+  exit 0  # Resolving a wedge, not creating one; allow.
+fi
 
 reason=""
 if [ -d "${GITDIR}/rebase-merge" ] || [ -d "${GITDIR}/rebase-apply" ]; then

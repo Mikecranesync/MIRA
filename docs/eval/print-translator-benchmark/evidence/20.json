@@ -1,0 +1,13 @@
+{
+  "case_id": "20",
+  "image_path": "C:\\Users\\hharp\\Downloads\\print-translator-eval-images\\20.png",
+  "oem": "WEG",
+  "document": "CFW-11W Frequency Inverter Manual (static.weg.net)",
+  "source_url": "static.weg.net/medias/downloadcenter/hae/h83/WEG-10004699316-13871637-r00-CFW11-W-users-manual-en.pdf",
+  "page": 26,
+  "category": "VFD",
+  "standard": "IEC 61800",
+  "question": "Describe the theory of operation.",
+  "candidate_response": "## **1. What this appears to be**\nThis appears to be a general wiring diagram for a motor control system, likely part of an industrial or commercial installation.\n\n## **2. Main visible components**\n- A human-machine interface (HMI) or control panel labeled \"HMI\" on the left.\n- A large gray block labeled \"IFSC\" with multiple connectors (XC00, XC90, XC25A, XC25B).\n- Three identical sections, each labeled \"UP11,\" which seem to be power or control units.\n- A motor, represented by a circle labeled \"MOTOR.\"\n- Various connections and wiring lines.\n\n## **3. Plain-English theory of operation**\nThe HMI (or control panel) likely provides user interface and control signals. The IFSC block appears to be a central control or interface unit. The three \"UP11\" sections seem to be power or drive units for the motor. The motor is connected to these drive units.\n\n## **4. What must be true for it to work**\n- Power must be supplied to the IFSC block and the UP11 sections.\n- Control signals from the HMI must be properly connected and functioning.\n- The motor must be correctly wired to the UP11 sections.\n\n## **5. What would stop it from working**\n- A broken connection between the IFSC and UP11 sections.\n- A faulty HMI or control panel.\n- A malfunctioning UP11 section.\n- Incorrect or loose wiring to the motor.\n\n## **6. Unclear or unreadable items**\nNothing major appears to be unreadable in the provided image.",
+  "context_notes": "This candidate had NO OCR text extracted — it was grounded on the image only (ocr_grounding='unavailable_on_this_box'). Judge whether it correctly separates what is visibly readable from inference accordingly: do not penalize it for declining to cite a specific tag/wire-number string it could not have OCR'd, but do penalize it under evidence_grounding_unsupported_claims if it invents a specific tag/wire-number/label that is not actually legible in the image."
+}

@@ -207,6 +207,36 @@ class TestQueueStats:
         assert stats["total"] == 6
 
 
+# ─── missing queue file (fresh box / just-untracked) ─────────────────────────
+# manual_queue.json is runtime state, not version-controlled (see .gitignore) —
+# a fresh box, or this file right after being untracked, may not have one yet.
+
+
+class TestMissingQueueFile:
+    def test_load_queue_returns_empty_list_when_missing(self, tmp_path, monkeypatch):
+        missing = tmp_path / "manual_queue.json"
+        assert not missing.exists()
+        monkeypatch.setattr(cron, "QUEUE_FILE", missing)
+        assert cron.load_queue() == []
+
+    def test_run_batch_self_heals_when_missing(self, tmp_path, monkeypatch):
+        missing = tmp_path / "manual_queue.json"
+        monkeypatch.setattr(cron, "QUEUE_FILE", missing)
+        summary = cron.run_batch()
+        assert summary["processed"] == []
+        assert summary["stats"]["total"] == 0
+        assert summary["stats"]["remaining"] == 0
+
+    def test_status_sane_when_missing(self, tmp_path, monkeypatch, capsys):
+        missing = tmp_path / "manual_queue.json"
+        monkeypatch.setattr(cron, "QUEUE_FILE", missing)
+        monkeypatch.setattr(sys, "argv", ["kb_growth_cron.py", "--status"])
+        cron.main()
+        stats = json.loads(capsys.readouterr().out)
+        assert stats["total"] == 0
+        assert stats["remaining"] == 0
+
+
 # ─── batch processing (with mocked pipeline + dedup) ──────────────────────────
 
 

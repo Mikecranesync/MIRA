@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "title": "Known Hallucinations — Print Translator Regression Fixtures",
+  "description": "Four permanent known-bad examples from Baseline A and B. Each represents a specific type of hallucination that must be prevented by an evidence-binding guard (when built).",
+  "caveat": "These are REGRESSION FIXTURES to be detected by a future evidence_binding_guard(response_text, legible_tokens) function. The guard does NOT YET EXIST; test is marked @pytest.mark.skip.",
+  "cases": [
+    {
+      "case_id": "05",
+      "print_identifier": "star_delta_starter_control_circuit",
+      "baseline": "A",
+      "severity": "hard_failure",
+      "hallucinated_claim": "K1/K2 are separate contactor coils energized by CR.",
+      "correct_reading": "K1/K2 are wire-numbers on the CR coil's own leads; no second contactor exists.",
+      "visible_evidence": "The print clearly labels K1 and K2 as points on a single coil terminal block, not as distinct coil identifier symbols.",
+      "error_type": "structural_misunderstanding",
+      "guard_target": "The claim 'K1 and K2 are separate coils' conflicts with the legible wire-number labels; guard must flag this as unsupported by the visible component structure.",
+      "notes": "This error persists in Baseline B (case 05, score 44), indicating OCR alone does not resolve structural misunderstandings."
+    },
+    {
+      "case_id": "05_a",
+      "print_identifier": "star_delta_starter_power_circuit",
+      "baseline": "A_only",
+      "severity": "hard_failure",
+      "hallucinated_claim": "A control transformer supplies control power.",
+      "correct_reading": "The print labels 'C.T. = current transformers' (not control transformers); control power originates from a separate source.",
+      "visible_evidence": "The text 'C.T.' is printed on the diagram. When read as 'current transformers,' it contradicts the invention of a control transformer.",
+      "error_type": "fabricated_device",
+      "guard_target": "Assertion of 'control transformer' must be grounded in visible text or labeled component. If OCR shows 'C.T.', the guard must verify the meaning before allowing 'control transformer' as fact.",
+      "baseline_b_status": "ELIMINATED — Baseline B does not repeat this fabrication, because OCR labels made 'C.T.' visible.",
+      "notes": "Example of hallucination that OCR successfully prevented. Guard should learn from this case: when OCR provides legible labels, use them to override invented device names."
+    },
+    {
+      "case_id": "20",
+      "print_identifier": "industrial_motor_starter_connectors",
+      "baseline": "A",
+      "severity": "hard_failure",
+      "hallucinated_claim": "Connector XC00 is present on the print.",
+      "correct_reading": "XC00 does not appear on the print. Only XC45, XC46, XC47, XC60, 25A, and 25B are labeled.",
+      "visible_evidence": "A complete scan of the print labels shows no XC00. The legible connector identifiers are XC45/46/47/60/25A/25B only.",
+      "error_type": "fabricated_identifier",
+      "guard_target": "Any assertion of a specific connector part number (e.g., 'XC00', 'XC90') must be verified against the legible token set extracted by OCR.",
+      "baseline_b_status": "MUTATED — Baseline B eliminates 'XC00' but introduces 'XC90' (via OCR proxy hallucination). See error_propagation note below.",
+      "error_propagation_note": "Baseline B OCR proxy returned 'XC90' (unverified on real print). Model repeated it, creating a new hard-failure. CAVEAT: cascade-vision-OCR is not production glm-ocr; production behavior unknown.",
+      "notes": "Example of pure fabrication (A) and propagation (B). Guard must reject assertions of unseen connectors."
+    },
+    {
+      "case_id": "20_b",
+      "print_identifier": "industrial_motor_starter_connectors_b",
+      "baseline": "B",
+      "severity": "hard_failure",
+      "hallucinated_claim": "Connector XC90 is present on the print.",
+      "correct_reading": "XC90 does not appear on the print. Only XC45, XC46, XC47, XC60, 25A, and 25B are labeled.",
+      "visible_evidence": "A complete scan shows no XC90. The legible connector identifiers are XC45/46/47/60/25A/25B only.",
+      "error_type": "error_propagation",
+      "guard_target": "Assertion of 'XC90' must fail guard check: 'XC90' is not in the legible_tokens set extracted from OCR.",
+      "ocr_proxy_note": "Cascade-vision-OCR proxy returned 'XC90' as an OCR label candidate. Model included it verbatim. Production glm-ocr behavior is unknown; requires staging/compose retest.",
+      "notes": "Example of OCR hallucination propagation (not pure model fabrication). Shows that OCR itself can introduce errors that the guard must catch."
+    }
+  ],
+  "guard_interface": {
+    "function_signature": "def evidence_binding_guard(response_text: str, legible_tokens: set[str]) -> list[str]",
+    "inputs": {
+      "response_text": "The full translator response (markdown or plain text).",
+      "legible_tokens": "Set of legible identifiers extracted from OCR (e.g., {'XC45', 'XC46', 'XC47', 'XC60', '25A', '25B'})."
+    },
+    "outputs": {
+      "return_type": "list[str]",
+      "description": "List of flagged assertions (quotes from response_text) that are not grounded in legible_tokens."
+    },
+    "semantics": "For each claimed identifier (connector, component name, part number, etc.), verify it appears in legible_tokens or is explicitly hedged as uncertain. Unsupported claims are flagged."
+  },
+  "test_parameters": {
+    "test_file": "regression_fixtures/test_known_hallucinations.py",
+    "status": "@pytest.mark.skip(reason='evidence-binding guard not built yet')",
+    "assertion_template": "guard_should_flag_all_claimed_identifiers_not_in_visible_token_set"
+  }
+}

@@ -1,144 +1,131 @@
-"""HubV3 Phase 6 — Telegram thin evidence client → Hub import pipeline.
+"""Telegram file intake → the Hub's citable folder-upload door (#2540).
 
-Gating test = PRD §6 test 9: a Telegram/photo source enters the SAME
-contextualization import pipeline as an offline/direct upload, and lands
-``proposed``.
+The legacy §2 ``/api/contextualization/import`` path was a verified dead-end for
+a raw Telegram file (browser-session auth, zip-only multipart, dark env). The
+working citable door is ``POST /api/uploads/folder`` — Bearer ``HUB_INGEST_TOKEN``
++ an ``X-Mira-Tenant-Id`` header, multipart raw file — which routes through the
+golden path to ``knowledge_entries`` (per-tenant, ``is_private=true``, citable).
 
-Scope is the CLIENT half (the Hub endpoint accepting the JSON contract is
-Phase 2 — not exercised here). These tests assert that the shared
-envelope-builder produces the canonical §2 intake contract and that the
-Telegram submit path POSTs it to the Hub import endpoint (not mira-ingest),
-with raw bytes carried and PII scrubbed from free text.
+These tests assert the client half (``submit_file_to_hub_folder``) POSTs to that
+endpoint with the right auth + tenant header, carries the raw bytes (not a zip),
+skips gracefully when unconfigured, and never raises.
 """
 
 from __future__ import annotations
 
-import hashlib
-import json
-
 from shared import contextualization_intake as ci
 
-# §2 "Shared Contextualization Intake Contract" — required envelope keys.
-_REQUIRED_KEYS = {
-    "project_hint",
-    "asset_hints",
-    "source_metadata",
-    "source_sha256",
-    "evidence",
-    "entities",
-    "proposed_uns",
-    "proposed_i3x",
-    "proposed_faults",
-    "proposed_parameters",
-    "proposed_signals",
-    "proposed_relationships",
-    "provenance",
-    "confidence",
-    "review_status",
-    "ingest_route",
-}
+_RAW = b"\xff\xd8\xff telegram nameplate jpeg bytes"
+_TENANT = "11111111-2222-3333-4444-555555555555"
 
 
-def _build_telegram_photo_envelope() -> tuple[dict, bytes]:
-    raw = b"\xff\xd8\xff telegram nameplate jpeg; ctrl at 10.1.2.3"
-    env = ci.build_intake_envelope(
-        raw_bytes=raw,
+class _Resp:
+    def __init__(self, status_code: int = 201):
+        self.status_code = status_code
+
+    @property
+    def text(self):  # pragma: no cover - only read on failure paths
+        return ""
+
+
+class _Client:
+    """Records the single POST the submit path makes."""
+
+    def __init__(self, seen: dict, status_code: int = 201):
+        self._seen = seen
+        self._status = status_code
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def post(self, url, **kwargs):
+        self._seen["url"] = url
+        self._seen["kwargs"] = kwargs
+        return _Resp(self._status)
+
+
+def _patch_client(monkeypatch, seen: dict, status_code: int = 201):
+    monkeypatch.setattr(
+        ci.httpx, "AsyncClient", lambda *a, **k: _Client(seen, status_code)
+    )
+
+
+async def test_posts_to_citable_folder_endpoint(monkeypatch):
+    """The submit path targets /api/uploads/folder — NOT the dead import route."""
+    seen: dict = {}
+    _patch_client(monkeypatch, seen)
+
+    ok = await ci.submit_file_to_hub_folder(
+        raw_bytes=_RAW,
         filename="photo.jpg",
         mime="image/jpeg",
-        uploader="789",  # numeric Telegram id (pseudonymous), not a name
-        captured_at="2026-06-20T12:00:00+00:00",
-        caption="conveyor-1 nameplate controller at 10.1.2.3",
-        location=None,
-        project_hint="garage-demo",
-        asset_hints={
-            "name": "conveyor-1",
-            "serial": "SN-ABC123456",
-            "controller_ip": "10.1.2.3",
-        },
-        ingest_route=ci.INGEST_ROUTE_TELEGRAM,
-        review_status="approved",  # a caller MUST NOT be able to self-approve
+        tenant_id=_TENANT,
+        hub_url="https://hub.example.com",
+        base_path="/hub",
+        token="svc-token",
     )
-    return env, raw
+
+    assert ok is True
+    assert seen["url"] == "https://hub.example.com/hub/api/uploads/folder/"
+    # Explicitly NOT the legacy dead-end.
+    assert "/api/contextualization/import" not in seen["url"]
 
 
-def test_envelope_has_full_section2_contract_shape():
-    env, _ = _build_telegram_photo_envelope()
-    assert set(env) == _REQUIRED_KEYS, "envelope must match §2 contract exactly"
-    sm = env["source_metadata"]
-    for field in ("filename", "mime", "size", "captured_at", "uploader", "location"):
-        assert field in sm, f"source_metadata missing {field}"
-
-
-def test_source_sha256_is_content_fingerprint():
-    env, raw = _build_telegram_photo_envelope()
-    assert env["source_sha256"] == hashlib.sha256(raw).hexdigest()
-
-
-def test_review_status_forced_proposed_even_when_caller_overrides():
-    env, _ = _build_telegram_photo_envelope()
-    # Caller passed review_status="approved"; Telegram owns NO truth.
-    assert env["review_status"] == "proposed"
-
-
-def test_ingest_route_is_telegram():
-    env, _ = _build_telegram_photo_envelope()
-    assert env["ingest_route"] == "telegram"
-
-
-def test_client_owns_no_truth_domain_proposals_empty():
-    env, _ = _build_telegram_photo_envelope()
-    for key in (
-        "proposed_uns",
-        "proposed_i3x",
-        "proposed_faults",
-        "proposed_parameters",
-        "proposed_signals",
-        "proposed_relationships",
-        "entities",
-    ):
-        assert env[key] == [], f"{key} must be empty — client collects evidence only"
-
-
-def test_free_text_pii_scrubbed_but_asset_hints_preserved():
-    env, _ = _build_telegram_photo_envelope()
-    evidence_text = " ".join(b.get("text", "") for b in env["evidence"])
-    # Free-text evidence is PII-scrubbed (security-boundaries.md).
-    assert "10.1.2.3" not in evidence_text
-    assert "[IP]" in evidence_text
-    # But structured asset hints are deliberate matching evidence — preserved.
-    assert env["asset_hints"]["controller_ip"] == "10.1.2.3"
-    assert env["asset_hints"]["serial"] == "SN-ABC123456"
-
-
-def test_uploader_is_pseudonymous_id_not_a_name():
-    env, _ = _build_telegram_photo_envelope()
-    assert env["source_metadata"]["uploader"] == "789"
-
-
-async def test_telegram_source_enters_same_import_pipeline_as_offline(monkeypatch):
-    """PRD §6 test 9 (gating).
-
-    The Telegram-built envelope is the canonical §2 intake contract and is
-    POSTed to the Hub import endpoint — the same pipeline an offline/direct
-    upload uses — carrying the raw bytes, landing ``proposed``.
-    """
-    env, raw = _build_telegram_photo_envelope()
-
+async def test_bearer_auth_and_tenant_header(monkeypatch):
+    """Bearer HUB_INGEST_TOKEN + X-Mira-Tenant-Id keep uploads per-tenant."""
     seen: dict = {}
+    _patch_client(monkeypatch, seen)
 
-    class _Resp:
-        status_code = 201
+    await ci.submit_file_to_hub_folder(
+        raw_bytes=_RAW,
+        filename="gs10manual.pdf",
+        mime="application/pdf",
+        tenant_id=_TENANT,
+        hub_url="https://hub.example.com",
+        token="svc-token",
+    )
 
-        def json(self):  # pragma: no cover - not asserted
-            return {"ok": True}
+    headers = seen["kwargs"]["headers"]
+    assert headers["Authorization"] == "Bearer svc-token"
+    assert headers["X-Mira-Tenant-Id"] == _TENANT
 
-        @property
-        def text(self):  # pragma: no cover
-            return ""
 
-    class _Client:
+async def test_raw_file_carried_not_a_zip(monkeypatch):
+    """Body is the raw file under the `file` field — not a zip bundle."""
+    seen: dict = {}
+    _patch_client(monkeypatch, seen)
+
+    await ci.submit_file_to_hub_folder(
+        raw_bytes=_RAW,
+        filename="photo.jpg",
+        mime="image/jpeg",
+        tenant_id=_TENANT,
+        hub_url="https://hub.example.com",
+        token="svc-token",
+    )
+
+    files = seen["kwargs"]["files"]
+    assert files["file"][0] == "photo.jpg"
+    assert files["file"][1] == _RAW
+    assert files["file"][2] == "image/jpeg"
+    # No zip envelope / JSON contract travels on this path.
+    assert "data" not in seen["kwargs"]
+
+
+async def test_graceful_skip_when_env_unset(monkeypatch):
+    """No base URL / no token → skip (return False), never POST."""
+    monkeypatch.setattr(ci, "HUB_URL", "")
+    monkeypatch.setattr(ci, "HUB_IMPORT_URL", "")
+    monkeypatch.setattr(ci, "HUB_INGEST_TOKEN", "")
+
+    posted = {"n": 0}
+
+    class _NoPost:
         def __init__(self, *a, **k):
-            seen["client_kwargs"] = k
+            pass
 
         async def __aenter__(self):
             return self
@@ -146,47 +133,52 @@ async def test_telegram_source_enters_same_import_pipeline_as_offline(monkeypatc
         async def __aexit__(self, *a):
             return False
 
-        async def post(self, url, **kwargs):
-            seen["url"] = url
-            seen["kwargs"] = kwargs
+        async def post(self, *a, **k):  # pragma: no cover - must not run
+            posted["n"] += 1
             return _Resp()
 
-    monkeypatch.setattr(ci.httpx, "AsyncClient", _Client)
+    monkeypatch.setattr(ci.httpx, "AsyncClient", _NoPost)
 
-    ok = await ci.submit_intake_to_hub(
-        env,
-        raw_bytes=raw,
+    ok = await ci.submit_file_to_hub_folder(
+        raw_bytes=_RAW,
         filename="photo.jpg",
         mime="image/jpeg",
-        tenant_id="11111111-2222-3333-4444-555555555555",
+        tenant_id=_TENANT,
+    )
+    assert ok is False
+    assert posted["n"] == 0
+
+
+async def test_hub_folder_upload_configured_reflects_env(monkeypatch):
+    monkeypatch.setattr(ci, "HUB_URL", "")
+    monkeypatch.setattr(ci, "HUB_IMPORT_URL", "")
+    monkeypatch.setattr(ci, "HUB_INGEST_TOKEN", "")
+    assert ci.hub_folder_upload_configured() is False
+    # Base + token present → configured.
+    assert ci.hub_folder_upload_configured(hub_url="https://h", token="t") is True
+    # HUB_IMPORT_URL counts as a base (back-compat).
+    monkeypatch.setattr(ci, "HUB_IMPORT_URL", "https://legacy")
+    monkeypatch.setattr(ci, "HUB_INGEST_TOKEN", "svc")
+    assert ci.hub_folder_upload_configured() is True
+
+
+async def test_non_2xx_returns_false(monkeypatch):
+    seen: dict = {}
+    _patch_client(monkeypatch, seen, status_code=401)
+
+    ok = await ci.submit_file_to_hub_folder(
+        raw_bytes=_RAW,
+        filename="photo.jpg",
+        mime="image/jpeg",
+        tenant_id=_TENANT,
         hub_url="https://hub.example.com",
         token="svc-token",
     )
-
-    assert ok is True
-    # Routed to the Hub import pipeline — NOT mira-ingest.
-    assert "/api/contextualization/import" in seen["url"]
-    assert "/ingest/" not in seen["url"]
-    assert seen["url"].startswith("https://hub.example.com")
-
-    # Multipart: the §2 contract travels as JSON; raw bytes travel as `file`.
-    data = seen["kwargs"]["data"]
-    files = seen["kwargs"]["files"]
-    posted = json.loads(data["contract"])
-    assert posted["ingest_route"] == "telegram"
-    assert posted["review_status"] == "proposed"
-    assert posted["source_sha256"] == hashlib.sha256(raw).hexdigest()
-    assert files["file"][1] == raw  # bytes are carried, not dropped
-    # Tenant scoping travels at transport level.
-    assert data["tenant_id"] == "11111111-2222-3333-4444-555555555555"
-    # Forward-looking service-token auth (Phase-2 server support).
-    headers = seen["kwargs"].get("headers", {})
-    assert headers.get("Authorization") == "Bearer svc-token"
+    assert ok is False
 
 
-async def test_submit_never_raises_on_transport_error(monkeypatch):
+async def test_never_raises_on_transport_error(monkeypatch):
     """Background-safe: a failing Hub POST must not break the chat reply."""
-    env, raw = _build_telegram_photo_envelope()
 
     class _BoomClient:
         def __init__(self, *a, **k):
@@ -203,12 +195,12 @@ async def test_submit_never_raises_on_transport_error(monkeypatch):
 
     monkeypatch.setattr(ci.httpx, "AsyncClient", _BoomClient)
 
-    ok = await ci.submit_intake_to_hub(
-        env,
-        raw_bytes=raw,
+    ok = await ci.submit_file_to_hub_folder(
+        raw_bytes=_RAW,
         filename="photo.jpg",
         mime="image/jpeg",
-        tenant_id="t",
+        tenant_id=_TENANT,
         hub_url="https://hub.example.com",
+        token="svc-token",
     )
     assert ok is False  # swallowed, reported as failure, not raised

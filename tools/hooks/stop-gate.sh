@@ -35,6 +35,20 @@ DIFF_STAGED=$(git diff --cached --name-only 2>/dev/null || true)
 CHANGED=$(printf '%s\n%s\n%s\n' "$DIFF_BASE" "$DIFF_WORK" "$DIFF_STAGED" \
   | sort -u | grep -v '^$' || true)
 
+# If this session logged which files it touched (PostToolUse hook appends to log),
+# intersect with CHANGED so we only gate on files THIS session modified.
+# If log doesn't exist or session ID unset, use all CHANGED (backward compat).
+SESSION_TOUCHED_LOG=""
+if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+  GITDIR=$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")
+  SESSION_TOUCHED_LOG="${GITDIR}/claude-sessions/${CLAUDE_CODE_SESSION_ID}-touched-files"
+fi
+
+if [ -f "$SESSION_TOUCHED_LOG" ]; then
+  # Intersect: only files that are BOTH changed AND touched by this session
+  CHANGED=$(comm -12 <(printf '%s\n' $CHANGED | sort) <(sort -u "$SESSION_TOUCHED_LOG") || true)
+fi
+
 CHANGED_PY=$(echo "$CHANGED" | grep '\.py$' || true)
 CHANGED_SH=$(echo "$CHANGED" | grep '\.sh$' || true)
 CHANGED_HUB=$(echo "$CHANGED" | grep '^mira-hub/' || true)
@@ -61,8 +75,19 @@ if [ -n "$CHANGED_SH" ] && command -v shellcheck >/dev/null 2>&1; then
 fi
 
 # Gate 3: mira-hub TypeScript build.
+# Serialized with flock (where available) so two overlapping Stop-hook invocations
+# don't both run `next build` and race on Next's build lock. On a lock loss, the
+# concurrent build still completes — so a "Another next build process is already
+# running" failure is a benign race, NOT a real build error, and must not block.
 if [ -n "$CHANGED_HUB" ] && [ -f "mira-hub/package.json" ] && [ -d "mira-hub/node_modules" ]; then
-  if ! (cd mira-hub && npm run build >/tmp/mira-hub-stop-build.log 2>&1); then
+  BUILD_LOG=/tmp/mira-hub-stop-build.log
+  if command -v flock >/dev/null 2>&1; then
+    ( flock -w 300 9 || exit 0; cd mira-hub && npm run build >"$BUILD_LOG" 2>&1 ) 9>/tmp/mira-hub-stop-build.lock
+    build_rc=$?
+  else
+    ( cd mira-hub && npm run build >"$BUILD_LOG" 2>&1 ); build_rc=$?
+  fi
+  if [ "$build_rc" -ne 0 ] && ! grep -q "Another next build process is already running" "$BUILD_LOG"; then
     FAILS+=("mira-hub build failed (tail /tmp/mira-hub-stop-build.log)")
   fi
 fi

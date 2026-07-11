@@ -12,8 +12,11 @@ ARCHITECTURE NOTE (2026-04-29):
        manuals exist for a given manufacturer, then cross-reference with known
        direct PDF sources (sources.yaml).
     2. Direct PDF mode — given a publicly accessible PDF URL (manufacturer CDN,
-       government portal, etc.), download it, send to the docling API for
-       text extraction, and feed through ingest_text_inline().
+       government portal, etc.), download it, extract text in-process via
+       ingest.pdf_extract (pdfplumber/pypdf — no external service), and feed
+       through ingest_text_inline(). Docling was removed 2026-06-06 (OOM —
+       docs/known-issues/2026-06-06-hub-upload-failures-docling-oom.md); this
+       module kept POSTing to the dead service until 2026-07-10.
 
   Use `scrape_pdf_direct()` for the actual extraction pipeline.
   Use `discover_manuals()` to find what equipment has documentation.
@@ -54,9 +57,16 @@ except ImportError:
         app = None  # standalone mode
 
 try:
-    from mira_crawler.tasks._shared import get_redis, ingest_text_inline, REDIS_SEEN_TTL_SEC
+    from mira_crawler.tasks._shared import REDIS_SEEN_TTL_SEC, get_redis, ingest_text_inline
 except ImportError:
-    from tasks._shared import get_redis, ingest_text_inline, REDIS_SEEN_TTL_SEC
+    from tasks._shared import REDIS_SEEN_TTL_SEC, get_redis, ingest_text_inline
+
+# In-process PDF extraction (pdfplumber/pypdf) — same seam full_ingest_pipeline
+# uses. Replaces the removed docling HTTP service (see module docstring).
+try:
+    from mira_crawler.ingest.pdf_extract import extract_pdf_text as _extract_pdf_text
+except ImportError:
+    from ingest.pdf_extract import extract_pdf_text as _extract_pdf_text
 
 logger = logging.getLogger("mira-crawler.tasks.manualslib")
 
@@ -91,8 +101,17 @@ _USER_AGENTS = [
 
 # Priority queue: HVAC equipment types crawled first
 _PRIORITY_TYPES = [
-    "hvac", "chiller", "vfd", "drive", "motor", "boiler",
-    "compressor", "pump", "plc", "controller", "inverter",
+    "hvac",
+    "chiller",
+    "vfd",
+    "drive",
+    "motor",
+    "boiler",
+    "compressor",
+    "pump",
+    "plc",
+    "controller",
+    "inverter",
 ]
 
 
@@ -100,7 +119,7 @@ _PRIORITY_TYPES = [
 # Regexes
 # ---------------------------------------------------------------------------
 
-_RE_PAGE_COUNT = re.compile(r'pageCount\s*=\s*(\d+)')
+_RE_PAGE_COUNT = re.compile(r"pageCount\s*=\s*(\d+)")
 _RE_PRELOAD_IMG = re.compile(
     r'<link[^>]+rel=["\']preload["\'][^>]+href=["\']'
     r'(https://static-data2\.manualslib\.com/storage/[^"\']+?_\d+_bg\.[^"\']+)'
@@ -221,10 +240,12 @@ def scrape_pdf_direct(
     ingest: bool = True,
     docling_url: Optional[str] = None,
 ) -> dict:
-    """Extract text from a publicly accessible PDF via the docling API.
+    """Extract text from a publicly accessible PDF — in-process, no service.
 
     This is the recommended extraction path for manufacturer PDFs.
     ManualsLib's own viewer is Vue.js rendered and cannot be scraped via httpx.
+    Extraction runs locally via ``ingest.pdf_extract`` (pdfplumber when
+    importable, pypdf fallback) — the same seam ``full_ingest_pipeline`` uses.
 
     Args:
         pdf_url:      Direct HTTPS URL to the PDF (must be publicly accessible).
@@ -232,11 +253,17 @@ def scrape_pdf_direct(
         model:        Model identifier.
         manual_type:  Type label (``"user_manual"``, ``"service_guide"``, etc.).
         ingest:       If True, feed extracted text through ingest_text_inline().
-        docling_url:  Base URL of the docling-serve API (default: DOCLING_URL env var).
+        docling_url:  DEPRECATED, ignored. Docling was removed 2026-06-06;
+                      kept only so old call sites don't TypeError.
     """
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    _docling = docling_url or os.getenv("DOCLING_URL", "http://localhost:5001")
+    if docling_url is not None:
+        logger.warning(
+            "docling_url=%r is deprecated and ignored — extraction runs "
+            "in-process (docling service removed 2026-06-06)",
+            docling_url,
+        )
     safe_mfr = re.sub(r"[^\w-]", "_", manufacturer).lower()
     safe_model = re.sub(r"[^\w-]", "_", model).lower()
     safe_type = re.sub(r"[^\w-]", "_", manual_type).lower()
@@ -253,10 +280,11 @@ def scrape_pdf_direct(
         "output_file": str(text_path),
     }
 
-    logger.info("Downloading %s for docling extraction", pdf_url)
+    logger.info("Downloading %s for local extraction", pdf_url)
 
-    # Download PDF to temp file then upload (docling container may lack outbound access)
+    # Download PDF to a temp file, then extract in-process.
     import tempfile
+
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
         tmp_path = tmp.name
 
@@ -268,46 +296,19 @@ def scrape_pdf_direct(
                 f.write(resp.content)
         logger.info("Downloaded %d bytes", len(resp.content))
 
-        # Submit to docling file endpoint
-        with open(tmp_path, "rb") as pdf_file:
-            with httpx.Client(timeout=300) as client:
-                dr = client.post(
-                    f"{_docling}/v1/convert/file",
-                    files={"files": (f"{safe_model}.pdf", pdf_file, "application/pdf")},
-                    data={"options": json.dumps({
-                        "to_formats": ["md"],
-                        "image_export_mode": "placeholder",
-                        "do_ocr": False,
-                        "do_table_structure": True,
-                    })},
-                )
-                dr.raise_for_status()
-                data = dr.json()
+        text, method = _extract_pdf_text(Path(tmp_path))
+        logger.info("Extracted via %s", method)
     finally:
         try:
             import os as _os
+
             _os.unlink(tmp_path)
         except Exception:
             pass
 
-    md = (data.get("document") or {}).get("md_content", "")
-    if not md:
-        result["error"] = "docling returned no md_content"
+    if not text:
+        result["error"] = "extraction produced no text (no text layer? scanned PDF needs OCR)"
         return result
-
-    # Strip base64 image data; keep markdown structure and text
-    clean_lines = []
-    in_b64 = False
-    for line in md.split("\n"):
-        if re.match(r"^!\[.*?\]\(data:image/", line):
-            in_b64 = True
-            clean_lines.append("[IMAGE]")
-            continue
-        if in_b64 and re.match(r"^[A-Za-z0-9+/=]{50,}", line.strip()):
-            continue
-        in_b64 = False
-        clean_lines.append(line)
-    text = "\n".join(clean_lines)
 
     text_path.write_text(text, encoding="utf-8")
     result["extracted_chars"] = len(text)
@@ -402,7 +403,9 @@ def scrape_manual(
             result["error"] = "could not determine page count"
             return result
         if not storage_base or not model_slug:
-            result["error"] = f"could not extract image URL components (storage_base={storage_base!r}, slug={model_slug!r})"
+            result["error"] = (
+                f"could not extract image URL components (storage_base={storage_base!r}, slug={model_slug!r})"
+            )
             return result
 
         result["pages_total"] = page_count
@@ -447,12 +450,15 @@ def scrape_manual(
                     logger.warning("  Page %d: image not found (tried jpg+png)", page_num)
                     result["errors"] += 1
                     # Still update last_completed so we don't re-attempt on resume
-                    _save_metadata(meta_path, {
-                        **result,
-                        "last_completed_page": page_num,
-                        "storage_base": storage_base,
-                        "model_slug": model_slug,
-                    })
+                    _save_metadata(
+                        meta_path,
+                        {
+                            **result,
+                            "last_completed_page": page_num,
+                            "storage_base": storage_base,
+                            "model_slug": model_slug,
+                        },
+                    )
                     _sleep()
                     continue
 
@@ -468,12 +474,15 @@ def scrape_manual(
                 if page_num % 10 == 0:
                     logger.info("  Progress: %d/%d pages", page_num, page_count)
 
-                _save_metadata(meta_path, {
-                    **result,
-                    "last_completed_page": page_num,
-                    "storage_base": storage_base,
-                    "model_slug": model_slug,
-                })
+                _save_metadata(
+                    meta_path,
+                    {
+                        **result,
+                        "last_completed_page": page_num,
+                        "storage_base": storage_base,
+                        "model_slug": model_slug,
+                    },
+                )
 
                 _sleep()
 
@@ -540,7 +549,9 @@ def discover_manuals(brand_url: str) -> list[str]:
 
             manuals.extend(new)
             seen.update(new)
-            logger.info("Discovery page %d: found %d manuals (total %d)", page, len(new), len(manuals))
+            logger.info(
+                "Discovery page %d: found %d manuals (total %d)", page, len(new), len(manuals)
+            )
             page += 1
             _sleep()
 
@@ -561,9 +572,15 @@ def _priority_sort_key(path: str) -> int:
 # ---------------------------------------------------------------------------
 
 if app is not None:
+
     @app.task(name="mira_crawler.tasks.manualslib.scrape_manual_task", bind=True, max_retries=2)
-    def scrape_manual_task(self, manual_path: str, manufacturer: str = "unknown",  # noqa: ANN001
-                           model: str = "unknown", manual_type: str = "manual") -> dict:
+    def scrape_manual_task(
+        self,
+        manual_path: str,
+        manufacturer: str = "unknown",  # noqa: ANN001
+        model: str = "unknown",
+        manual_type: str = "manual",
+    ) -> dict:
         """Celery-wrapped scrape for a single manual."""
         try:
             return scrape_manual(
@@ -626,17 +643,25 @@ if __name__ == "__main__":
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    # Primary path: extract from a direct PDF URL via docling
-    p_pdf = sub.add_parser("scrape", help="Extract text from a direct PDF URL via docling")
-    p_pdf.add_argument("--pdf-url", required=True, help="Direct PDF URL (manufacturer CDN, govt portal, etc.)")
+    # Primary path: extract from a direct PDF URL (in-process, no service)
+    p_pdf = sub.add_parser(
+        "scrape", help="Extract text from a direct PDF URL (local pdfplumber/pypdf)"
+    )
+    p_pdf.add_argument(
+        "--pdf-url", required=True, help="Direct PDF URL (manufacturer CDN, govt portal, etc.)"
+    )
     p_pdf.add_argument("--manufacturer", default="unknown")
     p_pdf.add_argument("--model", default="unknown")
     p_pdf.add_argument("--type", dest="manual_type", default="manual")
     p_pdf.add_argument("--no-ingest", action="store_true", help="Skip KB ingest (text file only)")
 
     # Legacy: ManualsLib viewer path (blank images — kept for Playwright future)
-    p_ml = sub.add_parser("scrape-ml", help="[DEPRECATED] ManualsLib viewer path (requires Playwright)")
-    p_ml.add_argument("--url", required=True, help="Manual path, e.g. /manual/2912913/Abb-Acs880.html")
+    p_ml = sub.add_parser(
+        "scrape-ml", help="[DEPRECATED] ManualsLib viewer path (requires Playwright)"
+    )
+    p_ml.add_argument(
+        "--url", required=True, help="Manual path, e.g. /manual/2912913/Abb-Acs880.html"
+    )
     p_ml.add_argument("--manufacturer", default="unknown")
     p_ml.add_argument("--model", default="unknown")
     p_ml.add_argument("--type", dest="manual_type", default="manual")

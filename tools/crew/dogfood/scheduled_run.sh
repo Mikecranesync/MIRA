@@ -117,4 +117,31 @@ if [ -n "${GH_TOKEN:-}" ] && [ -n "$DOGFOOD_STATUS_ISSUE" ]; then
 else
   echo "[dogfood] status post skipped — no GH token or issue set (non-fatal)"
 fi
+
+# Alert the operator on a customer-blocking RED (Telegram DM). Best-effort — a
+# failed alert must NEVER fail the run. Only RED pages: GREEN/YELLOW/INFRA don't
+# (INFRA = flaky/outage, and the "routine is DEAD" case — Bravo down, launchd not
+# firing — is covered by the GitHub dead-man's-switch dogfood-judge-heartbeat.yml,
+# which a dead local script cannot self-report). Uses the STAGING bot (never the
+# prod @FactoryLM_Diagnose). Chat id + token from Doppler stg; unset = no-op + warn.
+if printf '%s' "$verdict" | grep -q 'RED'; then
+  ALERT_TOK="$(doppler secrets get TELEGRAM_BOT_TOKEN_STG --project factorylm --config stg --plain 2>/dev/null)"
+  ALERT_CHAT="$(doppler secrets get DOGFOOD_ALERT_CHAT_ID --project factorylm --config stg --plain 2>/dev/null)"
+  if [ -n "$ALERT_TOK" ] && [ -n "$ALERT_CHAT" ]; then
+    top="$(grep -A6 'Top blockers' qa/dogfood/latest-report.md 2>/dev/null | grep -E '^[0-9]+\.' | head -3 || true)"
+    msg="🔴 FactoryLM Dogfood RED — ${TS} · HEAD $(git rev-parse --short HEAD 2>/dev/null)
+${top}
+report: qa/dogfood/latest-report.md · evidence: $(basename "$OUT") · filing=$([ "${DOGFOOD_FILE_ISSUES:-0}" = "1" ] && echo on || echo off)"
+    if curl -s --max-time 15 "https://api.telegram.org/bot${ALERT_TOK}/sendMessage" \
+         --data-urlencode "chat_id=${ALERT_CHAT}" \
+         --data-urlencode "text=${msg}" \
+         --data-urlencode "disable_web_page_preview=true" >/dev/null 2>&1; then
+      echo "[dogfood] RED alert sent to Telegram chat ${ALERT_CHAT}"
+    else
+      echo "[dogfood] WARN Telegram RED alert failed (non-fatal)"
+    fi
+  else
+    echo "[dogfood] WARN verdict is RED but no Telegram alert configured (set Doppler stg DOGFOOD_ALERT_CHAT_ID)"
+  fi
+fi
 exit "$rc"

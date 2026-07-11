@@ -36,6 +36,7 @@ from .dialogue_tracker import (
     DISPATCH_SLOT_DONT_KNOW,
     track_turn,
 )
+from .drive_packs import answer_question, resolve_pack
 from .fallback_responses import (
     GENERIC_ENGINE_ERROR,
     INFERENCE_EXHAUSTED,
@@ -326,6 +327,12 @@ _TRUSTED_DISPATCH_KINDS: frozenset[str] = frozenset(
         # substring heuristics spuriously flag repeated tag-name patterns.
         "tag_query",
         "status_summary",
+        # 2026-07-06: drive-pack fast-path replies are composed verbatim from
+        # a pack's fault/parameter cards (shared.drive_packs.ask.answer_question)
+        # — templated, pack-grounded text, not LLM free text. Repeated
+        # boilerplate ("VIEW-ONLY", citation blocks) trips the same n-gram /
+        # substring heuristics as tag_query/status_summary above.
+        "drive_pack",
     }
 )
 
@@ -2107,6 +2114,63 @@ class Supervisor:
                 asset = state.get("asset_identified") or "Unknown equipment"
                 asyncio.ensure_future(push_safety_alert(asset=asset, message=message[:200]))
                 return self._make_result(reply, "high", trace_id, "SAFETY_ALERT")
+
+            # Drive-pack fast-path (2026-07-06) — deterministic, pack-grounded
+            # answer for a text question that explicitly names a drive MIRA has
+            # a pack for (e.g. "what does CE10 mean on my gs10"). Placed AFTER
+            # the safety short-circuit above (safety always wins) and BEFORE
+            # the router-exclusive dispatches below — this fast-path must never
+            # pre-empt the safety stop. resolve_pack() is a pure text match over
+            # pack aliases/keywords (shared/drive_packs/loader.py); a non-match,
+            # or a match whose question doesn't map to real pack content
+            # (answer_question().matched is False), falls through to the
+            # existing routing/RAG path completely unchanged — a false-positive
+            # resolve_pack() match is harmless by construction. See ADR-0025 +
+            # shared/drive_packs/ask.py for the pack-grounded-only contract
+            # (never a generic LLM answer, never a guess).
+            _dp_pack = resolve_pack(message)
+            if _dp_pack is not None:
+                _dp_answer = answer_question(_dp_pack.pack_id, message)
+                if _dp_answer.matched:
+                    _dp_seen: set[tuple[str, str]] = set()
+                    _dp_cite_parts: list[str] = []
+                    for _c in _dp_answer.citations:
+                        _doc = _c.get("doc", "")
+                        _page = _c.get("page", "")
+                        _key = (_doc, _page)
+                        if not _doc or _key in _dp_seen:
+                            continue
+                        _dp_seen.add(_key)
+                        _dp_cite_parts.append(
+                            f"[Source: {_doc} p.{_page}]" if _page else f"[Source: {_doc}]"
+                        )
+                    reply = _dp_answer.answer
+                    if _dp_cite_parts:
+                        reply = f"{reply}\n\n{' '.join(_dp_cite_parts)}"
+                    # Static-vs-live label: a drive-pack answer is manual-cited
+                    # pack intelligence, NEVER a live telemetry read
+                    # (DrivePackAnswer.live_telemetry is always False — see
+                    # shared/drive_packs/ask.py). If this turn ALSO carries a
+                    # live snapshot, say so explicitly so a static pack answer is
+                    # never conflated with a live read. Two live-preamble markers
+                    # reach the engine: the kiosk/conveyor "[LIVE CONVEYOR STATUS]"
+                    # block (_maybe_attach_live_snapshot) and the Ignition
+                    # direct-connection "[LIVE TAGS …]" preamble
+                    # (mira-pipeline/ignition_chat.py::_format_tag_preamble) — cover both.
+                    if _LIVE_STATUS_HEADER in message or "[LIVE TAGS" in message:
+                        reply = f"(Static pack reference — not from live telemetry.)\n\n{reply}"
+                    self._record_exchange(chat_id, state, message, reply)
+                    tl_flush()
+                    return self._make_result(
+                        reply,
+                        "high",
+                        trace_id,
+                        state.get("state", "IDLE"),
+                        dispatch_kind="drive_pack",
+                    )
+                # else: matched=False — the question doesn't map to this pack's
+                # fault/parameter content; fall through to the existing
+                # routing/RAG flow below unchanged.
 
             # Router-exclusive dispatches — intents the keyword classifier doesn't handle
             if _router_intent == "log_work_order":

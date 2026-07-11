@@ -185,6 +185,14 @@ jobs:
           set -euo pipefail
           cd /opt/mira
 
+          # Signal "deploy in progress" so the heartbeat + self-healer crons stand
+          # down instead of racing this deploy's container recreate and firing
+          # false 502/container-missing escalations every 15 min (incident
+          # 2026-07-08). Removed on exit (success OR failure) via trap; the healer
+          # also ages out a stale sentinel after 30 min in case this trap is missed.
+          touch /opt/mira/.deploy-in-progress
+          trap 'rm -f /opt/mira/.deploy-in-progress' EXIT
+
           echo "=== Pull latest code (pin to release tag, not main HEAD) ==="
           # Rollback target is only real if prod references a tag, not a moving main HEAD
           # (docs/versioning.md). version-tag.yml lays vX.Y.Z on every merge commit, so we
@@ -204,6 +212,18 @@ jobs:
           # Host bind-mounts must match or containers crash-loop on SQLite WAL.
           # Script is idempotent — safe on every deploy. See incident 2026-05-15.
           bash scripts/host_perm_setup.sh
+
+          echo "=== Reinstall agent crontab (keep host crons in sync with repo) ==="
+          # The crontab is a deployed artifact like everything else: install_crons.sh
+          # is the source of truth for every agent schedule (and, since 2026-07-08, the
+          # -e TELEGRAM_ALERT_* forwards that route the 3 container agents' ops traffic
+          # to the alert bot instead of @FactoryLM_Diagnose). Without this step the
+          # crontab silently drifts from the repo and every cron change needs a manual
+          # SSH. Idempotent — replaces the full crontab cleanly. Non-fatal: a cron
+          # hiccup must not block the service deploy (container rebuild is the critical
+          # path), so warn-don't-fail, mirroring the hub health check below.
+          bash scripts/install_crons.sh \
+            || echo "::warning::install_crons.sh failed — host crontab may be stale; re-run manually: ssh root@165.245.138.91 'cd /opt/mira && bash scripts/install_crons.sh'"
 
           # Resolve the rebuild list once so cleanup + build + up all agree.
           # mira-ask added 2026-06-06 (closes ops gap surfaced by AskMira P0 fix

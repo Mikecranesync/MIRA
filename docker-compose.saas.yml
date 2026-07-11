@@ -308,6 +308,10 @@ services:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
       - MIRA_TENANT_ID=${MIRA_TENANT_ID:-}
       - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS:-}
+      # Citable file intake → Hub folder-upload door (#2540). Unset token = skip.
+      - HUB_URL=${MIRA_HUB_URL:-http://mira-hub:3000}
+      - HUB_BASE_PATH=${HUB_BASE_PATH:-/hub}
+      - HUB_INGEST_TOKEN=${HUB_INGEST_TOKEN:-}
       - VISION_MODEL=qwen2.5vl:7b
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - INFERENCE_BACKEND=cloud
@@ -451,7 +455,10 @@ services:
       - mira-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9998/tika"]
+      # apache/tika image has no curl/wget — probe the Tika port with a bash
+      # /dev/tcp TCP connect (image is Ubuntu-based, so /bin/bash exists).
+      # The old curl test always failed → false "(unhealthy)" while Tika worked.
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/127.0.0.1/9998'"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -679,6 +686,11 @@ services:
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}
       # mira-ingest target for Knowledge upload pipeline
       - INGEST_URL=${INGEST_URL:-http://mira-ingest-saas:8001}
+      # mira-ask drive-pack read-only pre-check (#2527) — asset-chat calls
+      # POST /drive-pack/ask before the LLM cascade; falls through on any
+      # error/non-match.
+      - MIRA_ASK_URL=${MIRA_ASK_URL:-http://mira-ask:8011}
+      - ASK_API_KEY=${ASK_API_KEY:-}
       # Where local-upload bytes are persisted so a FAILED local upload can be
       # retried without the user re-picking the file from disk (2026-06-06).
       # Buffers are deleted on success; a sweep prunes stragglers. Volume-backed

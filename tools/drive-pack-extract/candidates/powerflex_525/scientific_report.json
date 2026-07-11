@@ -1,0 +1,105 @@
+{
+  "generated_at": "2026-07-07",
+  "pack_id": "powerflex_525",
+  "manufacturer": "Rockwell Automation",
+  "series": "PowerFlex 525",
+  "schema_version": 2,
+  "overall_score": 100.0,
+  "grade": "A",
+  "grade_meaning": "Production-ready after human sign-off",
+  "incomplete": false,
+  "not_applicable_categories": [],
+  "categories": [
+    {
+      "key": "provenance_traceability",
+      "name": "Manual provenance and traceability",
+      "weight": 10,
+      "score": 100.0,
+      "gradeable": true,
+      "findings": []
+    },
+    {
+      "key": "fault_coverage_precision",
+      "name": "Fault coverage and precision",
+      "weight": 20,
+      "score": 100.0,
+      "gradeable": true,
+      "findings": []
+    },
+    {
+      "key": "fault_field_accuracy",
+      "name": "Fault field accuracy",
+      "weight": 20,
+      "score": 100.0,
+      "gradeable": true,
+      "findings": []
+    },
+    {
+      "key": "parameter_coverage_precision",
+      "name": "Parameter coverage and precision",
+      "weight": 20,
+      "score": 100.0,
+      "gradeable": true,
+      "findings": []
+    },
+    {
+      "key": "parameter_field_accuracy",
+      "name": "Parameter field accuracy",
+      "weight": 15,
+      "score": 100.0,
+      "gradeable": true,
+      "findings": []
+    },
+    {
+      "key": "relationship_accuracy",
+      "name": "Relationship accuracy",
+      "weight": 10,
+      "score": 100.0,
+      "gradeable": true,
+      "findings": []
+    },
+    {
+      "key": "citation_fidelity",
+      "name": "Citation fidelity",
+      "weight": 15,
+      "score": 100.0,
+      "gradeable": true,
+      "findings": []
+    },
+    {
+      "key": "safety_usability",
+      "name": "Safety and technician usability",
+      "weight": 10,
+      "score": 100.0,
+      "gradeable": true,
+      "findings": []
+    }
+  ],
+  "hard_gates": [
+    {
+      "key": "schema_validity",
+      "passed": true,
+      "detail": "schema OK (schema_version=2) \u2014 48 fault codes, 45 parameters"
+    },
+    {
+      "key": "runtime_compatibility",
+      "passed": true,
+      "detail": "pack loads + validates through the runtime drive_packs loader"
+    },
+    {
+      "key": "provenance_present",
+      "passed": true,
+      "detail": "provenance.items present with valid tiers"
+    }
+  ],
+  "critical_failures": [],
+  "fault_recall": 100.0,
+  "fault_precision": 100.0,
+  "parameter_recall": 100.0,
+  "diagnostic_critical_precision": 100.0,
+  "citation_accuracy": 100.0,
+  "missing_evidence": [],
+  "promotable": true,
+  "promotion_recommendation": "PROMOTABLE after recorded human sign-off (grade A).",
+  "note": "COMPLEMENTS the beta/trusted trust-status (grade.py); does not replace it."
+}
