@@ -241,15 +241,24 @@ _INSERT_SQL = """
         (%s::uuid, %s::uuid, %s, %s::uuid, %s,
          %s, NULL, NULL, NULL, %s,
          %s, %s, %s, %s::jsonb)
+    RETURNING id
 """
 
 
-def write_rows(cur, tenant_id: str, rows: list[WiringRow]) -> tuple[int, int]:
-    """Insert each row unless an identical one already exists. Returns (inserted, skipped).
+def write_rows(
+    cur, tenant_id: str, rows: list[WiringRow]
+) -> tuple[int, int, list[tuple[str, WiringRow]]]:
+    """Insert each row unless an identical one already exists.
+
+    Returns (inserted_count, skipped_count, inserted_rows_with_ids).
+    inserted_rows_with_ids is a list of (wiring_connection_id, WiringRow) tuples
+    for rows that were newly inserted (used by callers to emit proposals).
 
     Idempotent by construction: the dedup SELECT on the natural key means re-running is
     a no-op. `cur` is a live DB cursor owned by the caller's transaction."""
     inserted, skipped = 0, 0
+    inserted_rows_with_ids: list[tuple[str, WiringRow]] = []
+
     for r in rows:
         cur.execute(
             _DEDUP_SQL,
@@ -281,8 +290,13 @@ def write_rows(cur, tenant_id: str, rows: list[WiringRow]) -> tuple[int, int]:
                 json.dumps(r.evidence_summary),
             ),
         )
+        result = cur.fetchone()
+        if result:
+            wiring_id = str(result[0])
+            inserted_rows_with_ids.append((wiring_id, r))
         inserted += 1
-    return inserted, skipped
+
+    return inserted, skipped, inserted_rows_with_ids
 
 
 def _dry_run_line(r: WiringRow) -> str:
@@ -348,7 +362,7 @@ def main(argv: Optional[list[str]] = None) -> int:  # pragma: no cover - DB glue
         with conn.cursor() as cur:
             # RLS: scope reads+writes to this tenant (mirrors proposal_writer.py).
             cur.execute("SELECT set_config('app.current_tenant_id', %s, true)", (args.tenant_id,))
-            inserted, skipped = write_rows(cur, args.tenant_id, rows)
+            inserted, skipped, _inserted_rows = write_rows(cur, args.tenant_id, rows)
         conn.commit()
     finally:
         conn.close()
