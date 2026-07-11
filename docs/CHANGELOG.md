@@ -1,6 +1,12 @@
 # MIRA Release Notes
 
 
+### v3.129.1 (2026-07-10) - fix(ci): install pytest-asyncio in the offline pytest jobs — stop the asyncio_mode PytestConfigWarning→exit-1 flake
+- **Why:** the `Architecture Check` job (and the two other offline pytest jobs) install only `pytest pyyaml`, but every pytest run reads `asyncio_mode = "auto"` from the shared `[tool.pytest.ini_options]` in `pyproject.toml`. Without `pytest-asyncio` present that's an **unknown ini option** → `PytestConfigWarning: Unknown config option: asyncio_mode`, which some resolved pytest versions escalate to **exit 1 despite all tests passing** (`9 passed, 1 warning` + exit 1). It flaked red on 4 PRs (#2547/#2549/#2550 Drive Commander convergence) while passing on clean-env draws (#2553).
+- **What:** add `pytest-asyncio` to the three offline pytest jobs in `.github/workflows/ci.yml` — `architecture-check`, the **required** `simlab-gate` (would *hard-block* merges if it flaked the same way), and `drive-pack-extract-tests`. This makes `asyncio_mode` a recognized option → no warning → the failure mode is removed at its source regardless of pytest version. No test-behavior change: these suites are synchronous, so `asyncio_mode=auto` is a no-op for them, and `pytest-asyncio`'s only dependency is `pytest` (no chromadb shadow risk).
+- **Evidence:** clean-venv repro (`pip install pytest pyyaml` → `pytest tests/test_architecture.py`) emits the `PytestConfigWarning`; adding `pytest-asyncio` removes the warning and keeps `9 passed`.
+- **Impact:** infra/CI only — no `mira-bots`/product code, nothing deployed. VERSION 3.129.0 → 3.129.1.
+
 ### v3.128.5 (2026-07-10) - docs(eval): Print Translator automated benchmark + Next-Steps (Claude-judge baseline + OCR A/B)
 - **Why:** durable, evidence-grounded benchmark for the Print Translator, plus the "Next-Step Plan" (freeze baseline, prove the OCR path, run the OCR A/B, regression fixtures, calibration packet) — all NON-authoritative until technician calibration, no product/prompt/deploy change.
 - **What:** `docs/eval/print-translator-benchmark/` — anonymized Claude (Sonnet-subagent) judging of the 10 preserved responses on a 100-pt rubric with independent 2nd-judge escalation; **Baseline A** frozen (`BASELINE_A.sha256`, immutable); **OCR-path proof** (code trace glm-ocr → theory prompt); **Baseline B** OCR A/B (image-only vs image+OCR-proxy).
