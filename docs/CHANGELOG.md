@@ -1,6 +1,12 @@
 # MIRA Release Notes
 
 
+### v3.129.8 (2026-07-11) - feat(ops): wire ENABLE_WO_EVIDENCE (default-off) into every engine service in saas.yml (#2445 Step 1)
+- **Why:** the CMMS work-order-history evidence path (`ENABLE_WO_EVIDENCE` + `MIRA_WO_EVIDENCE_TIMEOUT_S`/`MIRA_WO_EVIDENCE_LIMIT`, shipped flag-gated OFF in #2472) was settable in code but wired into **no** deployment, so enabling it meant hand-editing several services. This makes enabling a single Doppler-var flip, with **zero runtime behavior change** until then.
+- **What:** added the three vars (default-off: `${ENABLE_WO_EVIDENCE:-0}`, `${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}`, `${MIRA_WO_EVIDENCE_LIMIT:-5}`) to **every** `docker-compose.saas.yml` service that instantiates `shared.engine.Supervisor` — verified by grepping `Supervisor(` and mapping each hit to its saas build: **mira-pipeline, mira-bot-telegram, mira-bot-slack, mira-ask** (4 — the "assume three" trap: `mira-ask`/AskMira kiosk also runs the engine). Excluded (verified): `mira-mcp` proxies to mira-pipeline over HTTP (no engine); `mira-relay`/`mira-sparkplug-consumer` are ingest-only; teams/whatsapp/reddit/gchat/email adapters instantiate `Supervisor` in code but have no saas service.
+- **Docs + guard:** documented all three in `docs/env-vars.md`; new `tests/test_wo_evidence_compose.py` (4 tests) asserts every engine service carries all three vars default-off, that no non-engine service receives them, and that all three are documented (keeps env-drift green: used + documented).
+- **Scope:** config + docs + test only. Default OFF — nothing enabled, no Doppler/staging/prod change, `#2445` stays open. VERSION 3.129.7 → 3.129.8.
+
 ### v3.129.7 (2026-07-11) - test(engine): golden case + CI guard for CMMS work-order-history citation (#2445)
 - **Why:** the CMMS work-order-history evidence path (`ENABLE_WO_EVIDENCE`, shipped flag-gated OFF in #2472) is built + unit-tested + wired into the diagnosis prompt, but #2445's Definition of Done requires a **golden case** proving a diagnosis for an asset with prior work orders cites them as evidence. That artifact was missing.
 - **What:**
