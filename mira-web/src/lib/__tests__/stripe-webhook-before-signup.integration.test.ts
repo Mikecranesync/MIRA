@@ -289,7 +289,7 @@ describe("Stripe webhook before Hub signup race condition (#2438)", () => {
 
     // Scenario: two queued payments, but we reconcile only the first email
     scriptedReturns = [
-      // 1. SELECT WHERE LOWER(email) = LOWER(targetEmail)
+      // 1. SELECT WHERE LOWER(email) = LOWER(targetEmail) — only evt1 returned
       [
         {
           stripe_event_id: evt1,
@@ -314,8 +314,11 @@ describe("Stripe webhook before Hub signup race condition (#2438)", () => {
     expect(result.scanned).toBe(1);
     expect(result.completed).toBe(1);
 
-    // Verify the SELECT used LOWER() comparison
+    // Verify the SELECT used LOWER() comparison and filtered to targetEmail only
     expect(joinedSql(0)).toContain("LOWER(email) = LOWER(");
     expect(capturedQueries[0].values).toContain(targetEmail);
+    // Confirm otherEmail (evt2) is not in the scan results — scoping enforced
+    expect(capturedQueries[0].values).not.toContain(otherEmail);
+    expect(joinedSql(0)).not.toContain(evt2);
   });
 });
