@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "case_id": "07",
+  "category_scores": {
+    "classification_answerability": 10,
+    "component_label_recognition": 15,
+    "power_control_flow": 16,
+    "sequence_interlocks_logic": 11,
+    "evidence_grounding_unsupported_claims": 12,
+    "technician_usefulness_clarity": 9
+  },
+  "total": 73,
+  "deductions": [
+    {
+      "claim": "Main visible components (list omits the isolation switchgear and feeder cables)",
+      "evidence": "The dashed box labeled \"Isolation and Protection Switch-gear (provided by the customer)\" and the dotted \"Feeder cables\" leads from L1/L2/L3 into that box are both clearly visible and labeled on the power side of the print, but neither appears in the candidate's component list.",
+      "category": "component_label_recognition",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "List the isolation/protection switchgear and feeder cables as visible upstream power components.",
+      "confidence": "high"
+    },
+    {
+      "claim": "C1 (Forward Contactor) and C2 (Reversing Contactor) ... SR44 Control Supply Card and SR44 Electronic Control Card",
+      "evidence": "A third, distinct SR44 block is visible in the power path with terminals labeled \"1 L1\", \"3 L2\", \"5 L3\" (inputs, wired from the contactors) and \"2 T1\", \"4 T2\", \"6 T3\" (outputs, wired to the Induction Motor). This power-terminal SR44 block is a separate labeled item from the \"SR44 Control Supply Card\" and \"SR44 Electronic Control Card\" the candidate names, and it is never identified.",
+      "category": "component_label_recognition",
+      "points_deducted": 3,
+      "severity": "material",
+      "correction": "Identify the third SR44 block (terminals 1/3/5 in, 2/4/6 out) as the soft-starter power module sitting between the contactors and the motor.",
+      "confidence": "high"
+    },
+    {
+      "claim": "the circuit appears to control the direction of an induction motor using two contactors (C1 for forward and C2 for reverse)",
+      "evidence": "The print shows motor power does not go directly from the contactors to the Induction Motor. It is wired from C1/C2 into the SR44 power block (terminals 1 L1/3 L2/5 L3), through the device, and out (terminals 2 T1/4 T2/6 T3) to the Induction Motor. This document is the \"SR44 Series Soft Starter User Manual\"; the print's central functional element (the soft starter sitting in the current path) is never described in the power/control-flow narrative.",
+      "category": "power_control_flow",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Describe the full current path: mains -> isolation switchgear -> C1/C2 contactors (direction selection) -> SR44 soft-starter power terminals -> motor, rather than stopping at \"contactors control direction.\"",
+      "confidence": "high"
+    },
+    {
+      "claim": "The Mechanical Interlock between C1 and C2 prevents both contactors from being energized simultaneously.",
+      "evidence": "In addition to the dashed \"Mechanical Interlock\" arrow/link shown between the C1 and C2 coils (and the X-symbol mechanical interlock repeated on the right-side power diagram), the ladder also shows a labeled \"C2\" contact symbol in series ahead of the C1 coil in the FORWARD branch, and a labeled \"C1\" contact symbol in series ahead of the C2 coil in the REVERSE branch -- a visible electrical (auxiliary-contact) interlock distinct from the mechanical one. The candidate attributes the entire anti-simultaneous-energization function to the mechanical interlock alone and never mentions this second, electrical interlock path.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 5,
+      "severity": "material",
+      "correction": "Explain both interlocks: the electrical interlock (opposite contactor's N.C. auxiliary contact wired in series with each coil) and the mechanical interlock between the physical contactors.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "When the FORWARD switch is activated, it appears to energize the C1 coil ... Similarly, when the REVERSE switch is activated, it appears to energize the C2 coil",
+      "evidence": "A second \"C1\" contact symbol is drawn in a branch parallel to the FORWARD pushbutton (and a second \"C2\" contact parallel to REVERSE) -- the standard seal-in/holding-contact arrangement for a momentary 3-wire start/stop control circuit. The candidate's sequence description never explains that the FORWARD/REVERSE actuation is held in by this seal-in contact after the pushbutton is released, or that STOP breaks that seal.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 4,
+      "severity": "material",
+      "correction": "Describe the seal-in (holding) contact: once FORWARD is pressed and C1 picks up, the parallel C1 auxiliary contact holds the coil energized after the pushbutton is released, until STOP or the interlock/E-STOP opens the circuit.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Nothing major appears to be unreadable in the provided image. All labels and regions seem clear based on the provided OCR data.",
+      "evidence": "Per this case's context_notes/judge protocol, OCR was unavailable for this case -- the candidate was grounded on the rendered image alone, with no OCR-extracted text supplied. The candidate's stated basis for its \"everything is clear\" assessment (\"based on the provided OCR data\") describes a data source that did not exist for this run.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 8,
+      "severity": "severe",
+      "correction": "State the readability assessment as based on visual inspection of the image only, and do not reference OCR data that was not supplied.",
+      "confidence": "high"
+    },
+    {
+      "claim": "This appears to be a wiring diagram for a motor reversing circuit, specifically a typical power and contactor control circuit for motor reversing.",
+      "evidence": "The document is titled \"SR44 Series Soft Starter User Manual\" and the figure is captioned \"Typical Power and Contactor Control Circuits for Motor Reversing\" within a chapter on the SR44 soft starter. The candidate's explanation never uses the term \"soft starter\" or explains that the labeled \"SR44\" blocks are the soft-starter unit this print exists to wire up -- a technician reading only the candidate's answer would not learn what kind of starter this print governs.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 1,
+      "severity": "minor",
+      "correction": "Note that this print is from a soft-starter manual and that the SR44 blocks are the soft starter, not a plain across-the-line contactor scheme.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": false,
+  "hard_failure_reasons": [],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "medium",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 1,
+  "notes": "Image is clean/legible printed line art; no fabricated components or reversed sequences found. Main issues are (1) a false claim of using 'provided OCR data' when none was available for this case, and (2) real omissions of visible logic (electrical interlock contacts, seal-in/holding contacts) and of the SR44 soft-starter's role in the power path. overall_confidence set to medium because two deductions (electrical-interlock and seal-in-contact readings) rely on standard NEMA reversing-starter convention to interpret contact NC/NO state from the drawing, not on an explicit label confirming it."
+}

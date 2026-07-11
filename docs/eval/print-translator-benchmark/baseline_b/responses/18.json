@@ -1,0 +1,52 @@
+{
+  "case_id": "18",
+  "ocr_source": "cascade_vision_transcription_proxy_not_production_glm_ocr",
+  "oem": "ABB",
+  "document": "ACS355 Drive User Manual (EN_ACS355_UM_E_A5)",
+  "url": "library.e.abb.com/public/805f31a82d524d8aa8a750011e2cd001/EN_ACS355_UM_E_A5.pdf",
+  "category": "VFD",
+  "question": "Explain this print.",
+  "source_image_path": "C:\\Users\\hharp\\Downloads\\print-translator-eval-images\\18.png",
+  "source_image_sha256": "743ed1b4b1af08cbcdf79cbd852997fa56860aadbdbe30c7a6ccbdb3848664b5",
+  "run_timestamp_utc": "2026-07-10T10:23:12.785583+00:00",
+  "mode": "baseline_b_ocr_grounded",
+  "ocr_items": [
+    "Connecting the power cables",
+    "Electrical installation",
+    "51",
+    "Connection diagram",
+    "INPUT",
+    "Drive",
+    "OUTPUT",
+    "PE",
+    "U1/L",
+    "V1/N",
+    "W1",
+    "BRK+",
+    "BRK-",
+    "U2",
+    "V2",
+    "W2",
+    "Motor",
+    "L1/L",
+    "L2/N",
+    "L3/-",
+    "Optional brake resistor or Common DC"
+  ],
+  "ocr_proxy_usage": {
+    "input_tokens": 2566,
+    "output_tokens": 90,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "ocr_proxy_raw_response": "[\"Connecting the power cables\", \"Electrical installation\", \"51\", \"Connection diagram\", \"INPUT\", \"Drive\", \"OUTPUT\", \"PE\", \"U1/L\", \"V1/N\", \"W1\", \"BRK+\", \"BRK-\", \"U2\", \"V2\", \"W2\", \"Motor\", \"L1/L\", \"L2/N\", \"L3/-\", \"Optional brake resistor or Common DC\"]",
+  "messages_ocr_block": "Drawing type: electrical drawing\n\nOCR labels extracted from the drawing (ground truth — use these verbatim, do not invent new labels):\n- Connecting the power cables\n- Electrical installation\n- 51\n- Connection diagram\n- INPUT\n- Drive\n- OUTPUT\n- PE\n- U1/L\n- V1/N\n- W1\n- BRK+\n- BRK-\n- U2\n- V2\n- W2\n- Motor\n- L1/L\n- L2/N\n- L3/-\n- Optional brake resistor or Common DC",
+  "router_usage": {
+    "input_tokens": 2899,
+    "output_tokens": 365,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "translator_reply": "## 1. **What this appears to be**\nThis appears to be a connection diagram for an electrical drive system, specifically showing how to connect power cables to a drive and motor.\n\n## 2. **Main visible components**\nThe main visible components are:\n- Drive\n- Motor\n- INPUT terminals: \n  - PE\n  - U1/L\n  - V1/N\n  - W1\n  - BRK+\n  - BRK-\n- OUTPUT terminals:\n  - U2\n  - V2\n  - W2\n- Power supply connections:\n  - L1/L\n  - L2/N\n  - L3/-\n\n## 3. **Plain-English theory of operation**\nThe drive appears to be connected to a three-phase power supply (L1/L, L2/N, L3/-) and provides output to a motor (U2, V2, W2). The drive has an optional brake resistor or common DC connection. \n\n## 4. **What must be true for it to work**\nFor the system to work, the following must be true:\n- Proper connections between the power supply (L1/L, L2/N, L3/-) and the drive INPUT terminals.\n- Proper connections between the drive OUTPUT terminals (U2, V2, W2) and the motor.\n- Correct grounding (PE).\n\n## 5. **What would stop it from working**\nThe system would not work if:\n- The power supply connections to the drive are incorrect or missing.\n- The OUTPUT connections from the drive to the motor are incorrect or missing.\n- Grounding (PE) is not properly connected.\n\n## 6. **Unclear or unreadable items**\nNothing major appears to be unreadable in the provided image.",
+  "invented_label_check": null
+}

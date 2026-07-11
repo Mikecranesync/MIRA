@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "case_id": "20",
+  "category_scores": {
+    "classification_answerability": 8,
+    "component_label_recognition": 6,
+    "power_control_flow": 7,
+    "sequence_interlocks_logic": 2,
+    "evidence_grounding_unsupported_claims": 5,
+    "technician_usefulness_clarity": 4
+  },
+  "total": 32,
+  "deductions": [
+    {
+      "claim": "This appears to be a general wiring diagram for a motor control system, likely part of an industrial or commercial installation.",
+      "evidence": "The print shows a shared '+UD -UD' DC bus feeding three parallel 'UP11' power modules into a single motor, with a distinct HMI/CC11/IFSC control section — the layout of a modular AC drive / frequency-inverter wiring diagram (consistent with the 'Installation and Connection' section header visible on the page), not a generic 'motor control system.'",
+      "category": "classification_answerability",
+      "points_deducted": 2,
+      "severity": "minor",
+      "correction": "Identify the print as a wiring diagram for a modular AC drive/frequency inverter (control section + parallel power modules) driving a motor, not just a generic 'motor control system.'",
+      "confidence": "medium"
+    },
+    {
+      "claim": "A large gray block labeled \"IFSC\" with multiple connectors (XC00, XC90, XC25A, XC25B).",
+      "evidence": "The IFSC block's visible connector labels are XC60 (twice — the CC11/HMI ribbon cable and the 24Vcc supply pins), XC47U/V/W, XC46U/V/W, XC45U/V/W, XC25A, XC25B, and XU/XV/XW/XN/XP at the bottom terminal strip. No connector labeled 'XC00' or 'XC90' appears anywhere in the image.",
+      "category": "component_label_recognition",
+      "points_deducted": 6,
+      "severity": "hard_failure",
+      "correction": "List only connector tags actually legible on the print (XC60, XC47U/V/W, XC46U/V/W, XC45U/V/W, XC25A, XC25B, XU/XV/XW/XN/XP) — do not state 'XC00'/'XC90', which do not appear.",
+      "confidence": "high"
+    },
+    {
+      "claim": "(Omission) The response never mentions 'CC11', 'UC11', the '+UD -UD' bus label, the 'Safety stop connection' label, the '24 Vcc' HMI-power pins, or the 'XVent'/'24 Vdc'/module-number ('1'/'2'/'3') labels on each UP11 block.",
+      "evidence": "All are legible printed labels on the drawing: top-left dashed enclosure 'UC11'; box 'CC11' next to the HMI icon; '+UD -UD' header across the top; vertical 'Safety stop connection' label beside XC25A/XC25B; '24 Vcc' beside the XC60 pins 1-3; and 'XVent'/'24 Vdc' plus boxed module numbers 1/2/3 at the bottom of each UP11 block.",
+      "category": "component_label_recognition",
+      "points_deducted": 8,
+      "severity": "material",
+      "correction": "Enumerate the additional visible labels: enclosure 'UC11', keypad interface unit 'CC11', the shared '+UD -UD' DC bus, the 'Safety stop connection' terminal group, the '24 Vcc' HMI supply pins, and each module's 'XVent'/'24 Vdc' fan connection and module number.",
+      "confidence": "high"
+    },
+    {
+      "claim": "The three \"UP11\" sections seem to be power or drive units for the motor. The motor is connected to these drive units.",
+      "evidence": "The diagram shows a single '+UD -UD' DC bus tied (via visible junction dots) into all three UP11 modules' +UD/-UD input terminals in parallel, and each module's U/V/W output terminals are wired together (junction dots on the U/V/W lines) before reaching the single MOTOR's U/V/W terminals — the three power modules are electrically paralleled onto one shared DC bus and one shared U/V/W output, not three independent drive paths.",
+      "category": "power_control_flow",
+      "points_deducted": 9,
+      "severity": "material",
+      "correction": "Explain that the three UP11 power modules share a common DC bus (+UD/-UD) and their U/V/W outputs are wired in parallel to a single motor — a paralleled multi-module power stage, not three separate/independent drive units.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "The IFSC block appears to be a central control or interface unit.",
+      "evidence": "IFSC is drawn with distinct zig-zag/hash coupling symbols between it and each UP11 module (XC47U->X1U, XC46U->X1U, XC45U->X1U, etc.), consistent with an isolated control/gate-drive signal interface from the control section to each power module — a functional detail not mentioned at all.",
+      "category": "power_control_flow",
+      "points_deducted": 4,
+      "severity": "minor",
+      "correction": "Note that IFSC distributes isolated control signals to each UP11 module via the XC47/XC46/XC45 links (drawn with a distinct coupling symbol), rather than describing IFSC only in generic terms.",
+      "confidence": "low"
+    },
+    {
+      "claim": "(Omission) No discussion anywhere in the response of interlocks, permissives, or safety-stop logic; sections 4-5 give only generic power/wiring failure hypotheses.",
+      "evidence": "The print shows a labeled 'Safety stop connection' terminal group (pins 1-4 on XC25A, pins 1-3 on XC25B) wired into the IFSC — a visible interlock/safety-permissive input directly relevant to sequence/interlock logic — never referenced, and no start/enable/run sequence is described.",
+      "category": "sequence_interlocks_logic",
+      "points_deducted": 18,
+      "severity": "severe",
+      "correction": "Identify the 'Safety stop connection' terminals (XC25A/XC25B) as a safety interlock input to the drive's control logic, and describe, even briefly, that operation depends on that permissive plus the HMI/control-power path, instead of omitting sequence/interlock content entirely.",
+      "confidence": "high"
+    },
+    {
+      "claim": "A large gray block labeled \"IFSC\" with multiple connectors (XC00, XC90, XC25A, XC25B).",
+      "evidence": "'XC00' and 'XC90' are not legible or present anywhere on the print; they are stated as directly-observed labels with no hedging, i.e. fabricated content presented as confirmed fact.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 12,
+      "severity": "hard_failure",
+      "correction": "Do not state specific tag names unless they are actually legible; if a connector's exact designation is uncertain, say so rather than inventing a plausible-looking label.",
+      "confidence": "high"
+    },
+    {
+      "claim": "Nothing major appears to be unreadable in the provided image.",
+      "evidence": "A large amount of legible print content (the '+UD -UD' bus label, 'Safety stop connection' labels, '24 Vcc'/'24 Vdc' pin labels, the XU/XV/XW/XN/XP terminal strip, the individual XC47/XC46/XC45 phase-connector tags, and the UC11/CC11 labels) is present in the image but was not extracted or reported, undermining the claim that the review found 'nothing major' unread.",
+      "category": "evidence_grounding_unsupported_claims",
+      "points_deducted": 3,
+      "severity": "minor",
+      "correction": "Either report the additional legible labels present, or qualify the completeness claim rather than asserting nothing is unreadable while omitting most of the fine print.",
+      "confidence": "medium"
+    },
+    {
+      "claim": "Overall response, in particular the fabricated 'XC00, XC90' connector labels in the 'Main visible components' section.",
+      "evidence": "A technician using this explanation to locate hardware would look for nonexistent connectors 'XC00'/'XC90' (not present on the drive), and the explanation gives no actionable detail tied to the actual legible tags (XC47/46/45, XC25A/B, XVent, +UD/-UD) a tech would need for real troubleshooting.",
+      "category": "technician_usefulness_clarity",
+      "points_deducted": 6,
+      "severity": "material",
+      "correction": "Ground the explanation in the actual legible terminal designations so a technician can map it onto the physical hardware, and drop any labels that cannot be confirmed from the print.",
+      "confidence": "medium"
+    }
+  ],
+  "hard_failure": true,
+  "hard_failure_reasons": [
+    "false_certainty_from_unreadable_evidence"
+  ],
+  "answerable": true,
+  "refusal": false,
+  "overall_confidence": "high",
+  "judge_version": "benchmark-judge-v1",
+  "judge_pass": 2,
+  "notes": "Image is clearly legible at full resolution (WEG CFW-11W Figure 3.6, page 3-7). Candidate correctly caught the top-level structural labels (HMI, IFSC, UP11 x3, MOTOR, XC25A/XC25B) but invented two connector labels ('XC00', 'XC90') that do not appear anywhere on the print, omitted the majority of the smaller legible labels (UC11, CC11, +UD -UD, Safety stop connection, 24 Vcc, XVent/24 Vdc, module numbers 1/2/3), and never addressed the diagram's core functional facts: the three UP11 power modules share one DC bus and paralleled U/V/W outputs into a single motor, and a visible Safety stop connection is wired into the control section. The invented tag labels are the hard-failure trigger per the protocol's explicit OCR-caveat instruction (fabricated tag presented as confirmed fact)."
+}

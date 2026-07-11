@@ -302,7 +302,11 @@ jobs:
           python-version: "3.12"
 
       - name: Install pytest + pyyaml
-        run: pip install pytest pyyaml
+        # pytest-asyncio: so the shared `asyncio_mode = "auto"` in pyproject.toml
+        # is a RECOGNIZED ini option here — without it pytest emits
+        # `PytestConfigWarning: Unknown config option: asyncio_mode`, which some
+        # pytest versions escalate to exit 1 despite all tests passing (#2553).
+        run: pip install pytest pytest-asyncio pyyaml
 
       - name: Check module boundaries
         run: pytest tests/test_architecture.py -v
@@ -332,7 +336,11 @@ jobs:
           python-version: "3.12"
 
       - name: Install pytest + pyyaml
-        run: pip install pytest pyyaml
+        # pytest-asyncio: so the shared `asyncio_mode = "auto"` in pyproject.toml
+        # is a RECOGNIZED ini option here — without it pytest emits
+        # `PytestConfigWarning: Unknown config option: asyncio_mode`, which some
+        # pytest versions escalate to exit 1 despite all tests passing (#2553).
+        run: pip install pytest pytest-asyncio pyyaml
 
       # Deterministic, no-LLM SimLab oracle suite. Pure simlab/ + stdlib parser +
       # offline beta + guarded conformance — all collect + pass under pytest+pyyaml
@@ -365,7 +373,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install pdfplumber + reportlab + pypdf (pinned to match mira-core/mira-ingest/requirements.txt)
-        run: pip install pytest pdfplumber==0.11.9 reportlab pypdf
+        # pytest-asyncio here too — recognizes the shared `asyncio_mode` ini
+        # option so no PytestConfigWarning→exit-1 flake (#2553).
+        run: pip install pytest pytest-asyncio pdfplumber==0.11.9 reportlab pypdf
 
       - name: Run extractor + grading + registry + fleet-status + bridge + pdf-extract + eval-scorer offline tests
         run: pytest tools/drive-pack-extract/tests/ tools/drive-pack-extract/grading/tests/ tools/drive-pack-extract/registry/tests/ mira-crawler/tests/test_fleet_status.py mira-crawler/tests/test_drive_pack_bridge.py mira-crawler/tests/test_pdf_extract.py mira-crawler/tests/test_eval_scorer.py -q

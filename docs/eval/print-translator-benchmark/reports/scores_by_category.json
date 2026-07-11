@@ -1,0 +1,106 @@
+{
+  "European/IEC": {
+    "name": "European/IEC",
+    "case_ids": [
+      "03"
+    ],
+    "scores": [
+      59
+    ],
+    "statistics": {
+      "mean": 59,
+      "median": 59,
+      "min": 59,
+      "max": 59
+    },
+    "hard_failure_count": 0
+  },
+  "NEMA Starters": {
+    "name": "NEMA Starters",
+    "case_ids": [
+      "05",
+      "07"
+    ],
+    "scores": [
+      31,
+      60
+    ],
+    "statistics": {
+      "mean": 45.5,
+      "median": 45.5,
+      "min": 31,
+      "max": 60
+    },
+    "hard_failure_count": 1
+  },
+  "PLC I/O": {
+    "name": "PLC I/O",
+    "case_ids": [
+      "13",
+      "14"
+    ],
+    "scores": [
+      82,
+      85
+    ],
+    "statistics": {
+      "mean": 83.5,
+      "median": 83.5,
+      "min": 82,
+      "max": 85
+    },
+    "hard_failure_count": 0
+  },
+  "Reversing/Braking": {
+    "name": "Reversing/Braking",
+    "case_ids": [
+      "25"
+    ],
+    "scores": [
+      66
+    ],
+    "statistics": {
+      "mean": 66,
+      "median": 66,
+      "min": 66,
+      "max": 66
+    },
+    "hard_failure_count": 0
+  },
+  "Safety Relays": {
+    "name": "Safety Relays",
+    "case_ids": [
+      "09"
+    ],
+    "scores": [
+      78
+    ],
+    "statistics": {
+      "mean": 78,
+      "median": 78,
+      "min": 78,
+      "max": 78
+    },
+    "hard_failure_count": 0
+  },
+  "VFD": {
+    "name": "Variable Frequency Drive (VFD)",
+    "case_ids": [
+      "17",
+      "18",
+      "20"
+    ],
+    "scores": [
+      63,
+      88,
+      42
+    ],
+    "statistics": {
+      "mean": 64.3,
+      "median": 63,
+      "min": 42,
+      "max": 88
+    },
+    "hard_failure_count": 1
+  }
+}
