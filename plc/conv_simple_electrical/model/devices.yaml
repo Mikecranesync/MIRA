@@ -20,14 +20,17 @@ devices:
   - tag: VFD1
     type: vfd
     model: AutomationDirect GS10 DURApulse
-    role: Drives conveyor motor. Commanded over Modbus RTU (RJ45, Ch2 node 1) — photo confirms the RS-485 cable is landed. NOTE the GS10 control connector is ALSO wired (hybrid, not Modbus-only) — see OI-22.
+    role: Drives conveyor motor. Power input is 230 V single-phase (R/L1, S/L2; T/L3 unused — technician-confirmed 2026-07-11, see E-003). Commanded over Modbus RTU (RJ45, Ch2 node 1) — photo confirms the RS-485 cable is landed. NOTE the GS10 control connector is ALSO wired (hybrid, not Modbus-only) — see OI-22.
     evidence: verified
     source: photo review/photos/wire_4.jpg (2026-07-11 — keypad, control-terminal legend, RJ45 read directly); plc/GS10_Integration_Guide.md; plc/Prog_init_ConvSimple_v2.1.st; review/photos/gs10_full.jpg + gs10_control_terminals.jpg (2026-07-11 — full-resolution control-terminal read)
     note: >
       GS10 control is HYBRID (full-res photo 2026-07-11): the top run/DI connector
       (FWD/REV/DI3-5/+24V/DCM) is EMPTY — run/dir/speed command is Modbus (RJ45 landed);
       the bottom analog/output connector (+10V/ACM/AI/AO1/DO1/DOC/PE) is WIRED, likely
-      analog speed reference + feedback. Map = OI-22.
+      analog speed reference + feedback. Map = OI-22. Input is 230 V single-phase (2-wire),
+      fed through the MLC NO contacts (E-003). Output voltage to motor = CONFIRM (OI-27):
+      technician reported 480 V out, but a 230 V 1φ GS10 normally outputs 230 V 3φ — pending
+      motor nameplate + exact GS10 model.
 
   - tag: M1
     type: motor
@@ -70,14 +73,18 @@ devices:
 
   - tag: CB1
     type: circuit_breaker
-    role: Upstream branch protection (E-002/E-003) — existence, type, rating unconfirmed
+    role: 2-pole branch breaker on the 230 V single-phase supply (existence/type/rating unconfirmed)
     evidence: field_verify
 
   - tag: Q1
     type: control_relay
     sheet_label: "Q1/MLC — Schneider TeSys CA3KN22BD control relay (24 VDC coil)"
     model: Schneider Electric TeSys CA3KN22BD (control relay, 2 NO + 2 NC, 24 VDC coil)
-    role: Drive-enable CONTROL RELAY (hand-labeled 'MLC'). Coil A1(+)/A2(-) driven by PLC O-02 (24 VDC); aux contacts 13-14 & 43-44 (NO), 21-22 & 31-32 (NC) sit in the control circuit. NOT a motor power contactor — no main poles. Coil + contacts shown on E-006.
+    role: >
+      Control relay (Schneider CA3KN22BD, hand-labeled 'MLC') USED AS THE VFD SUPPLY SWITCH — its
+      two NO contacts 13-14 & 43-44 switch the 230 V single-phase supply into the GS10 (R/L1, S/L2);
+      coil A1(+)/A2(-) 24 VDC driven by PLC O-02. Energizing O-02 closes the contacts and powers the
+      drive. Shown on E-003 (power contacts) + E-006 (coil). NC 21-22/31-32 unused.
     evidence: verified
     source: photo review/photos/wire_3.jpg (2026-07-11 — device label 'MLC', part no CA3KN22BD, coil A1/A2 24V, aux 13-14/21-22/31-32/43-44 read directly); plc/CCW_VARIABLES_v4.0.txt:80 (O-02 coil); plc/Prog_init_ConvSimple_v2.1.st:214 (vfd_run_permit reads O-02); review/photos/mlc_full.jpg + mlc_top_terminals.jpg + mlc_bottom_terminals.jpg (2026-07-11 — full-resolution terminal read)
     note: >
@@ -88,6 +95,9 @@ devices:
       observed in the 2026-07-11 photos). Full-res photo confirms coil A1/A2 wired and NO contacts
       13-14 & 43-44 in use (NC 21-22/31-32 appear unused); contact destinations FIELD VERIFY
       (OI-26).
+      V6: MLC is the single-phase drive-supply contactor (technician-confirmed 2026-07-11), not out
+      of the power path — reverses the V4 removal; device is still a CA3K control relay used within
+      its contact rating for the small drive (P00.01=1.60 A).
 
   - tag: PL1
     type: pilot_light

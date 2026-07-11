@@ -6,12 +6,12 @@
 
 | Wire | From | To | Signal | Type | Status | Source | Notes | Rendered | Tagged |
 |------|------|----|---------|---------|----|--------|-------|----------|--------|
-| W300 | SUPPLY (source — see E-002) | CB1.1 | L1 supply | power_line | field_verify |  |  | dashed | yes |
-| W301 | SUPPLY (source — see E-002) | CB1.3 | L2/N supply | power_line | field_verify |  |  | dashed | yes |
-| W302 | SUPPLY (source — see E-002) | CB1.5 | L3 supply (if 3φ) | power_line | field_verify |  | phase count unknown | dashed | yes |
-| W303 | CB1.2 | VFD1.R/L1 | L1 to drive | power_line | field_verify |  |  | dashed | yes |
-| W304 | CB1.4 | VFD1.S/L2 | L2 to drive | power_line | field_verify |  |  | dashed | yes |
-| W305 | CB1.6 | VFD1.T/L3 | L3 to drive (if 3φ) | power_line | field_verify |  | phase count unknown | dashed | yes |
+| W300 | SUPPLY (source — see E-002) | CB1.1 | L1 230V 1ph supply | power_line | field_verify |  |  | dashed | yes |
+| W301 | SUPPLY (source — see E-002) | CB1.3 | L2 230V 1ph supply | power_line | field_verify |  |  | dashed | yes |
+| W303 | CB1.2 | Q1.13 | L1 protected -> MLC | power_line | field_verify |  |  | dashed | yes |
+| W304 | CB1.4 | Q1.43 | L2 protected -> MLC | power_line | field_verify |  |  | dashed | yes |
+| W305 | Q1.14 | VFD1.R/L1 | L1 switched -> drive | power_line | field_verify |  |  | dashed | yes |
+| W306 | Q1.44 | VFD1.S/L2 | L2 switched -> drive | power_line | field_verify |  |  | dashed | yes |
 | W310 | VFD1.U/T1 | M1.T1 | motor phase U | motor_lead | field_verify |  |  | dashed | yes |
 | W311 | VFD1.V/T2 | M1.T2 | motor phase V | motor_lead | field_verify |  |  | dashed | yes |
 | W312 | VFD1.W/T3 | M1.T3 | motor phase W | motor_lead | field_verify |  |  | dashed | yes |

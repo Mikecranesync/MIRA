@@ -62,7 +62,7 @@
 <text x="75.0" y="233.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111" class="schedule-tag">VFD1</text>
 <text x="127.0" y="233.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">vfd</text>
 <text x="219.0" y="233.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">AutomationDirect GS10 DURApulse</text>
-<text x="469.0" y="233.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Drives conveyor motor. Commanded over Modbus RTU (RJ45, Ch2 node 1) — photo c...</text>
+<text x="469.0" y="233.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Drives conveyor motor. Power input is 230 V single-phase (R/L1, S/L2; T/L3 un...</text>
 <text x="799.0" y="233.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">verified</text>
 <rect x="70.0" y="240.0" width="798.0" height="20.0" fill="none" stroke="#111111" stroke-width="0.7"/>
 <text x="75.0" y="253.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111" class="schedule-tag">M1</text>
@@ -104,13 +104,13 @@
 <text x="75.0" y="373.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111" class="schedule-tag">CB1</text>
 <text x="127.0" y="373.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">circuit breaker</text>
 <text x="219.0" y="373.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111"></text>
-<text x="469.0" y="373.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Upstream branch protection (E-002/E-003) — existence, type, rating unconfirmed</text>
+<text x="469.0" y="373.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">2-pole branch breaker on the 230 V single-phase supply (existence/type/rating...</text>
 <text x="799.0" y="373.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
 <rect x="70.0" y="380.0" width="798.0" height="20.0" fill="none" stroke="#111111" stroke-width="0.7"/>
 <text x="75.0" y="393.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111" class="schedule-tag">Q1</text>
 <text x="127.0" y="393.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">control relay</text>
 <text x="219.0" y="393.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">Schneider Electric TeSys CA3KN22BD (control rel...</text>
-<text x="469.0" y="393.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Drive-enable CONTROL RELAY (hand-labeled 'MLC'). Coil A1(+)/A2(-) driven by P...</text>
+<text x="469.0" y="393.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Control relay (Schneider CA3KN22BD, hand-labeled 'MLC') USED AS THE VFD SUPPL...</text>
 <text x="799.0" y="393.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">verified</text>
 <rect x="70.0" y="400.0" width="798.0" height="20.0" fill="none" stroke="#111111" stroke-width="0.7"/>
 <text x="75.0" y="413.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111" class="schedule-tag">PL1</text>

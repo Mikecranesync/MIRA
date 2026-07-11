@@ -7,17 +7,17 @@
 | Tag | Type | Evidence | Role |
 |-----|------|----------|------|
 | B1 | photo_eye | verified | Product-present beam to I-05 (blocked -> pe_latched soft stop) |
-| CB1 | circuit_breaker | field_verify | Upstream branch protection (E-002/E-003) — existence, type, rating unconfirmed |
+| CB1 | circuit_breaker | field_verify | 2-pole branch breaker on the 230 V single-phase supply (existence/type/rating unconfirmed) |
 | M1 | motor | field_verify | Conveyor drive motor (3~ from VFD1 U/V/W) |
 | PL1 | pilot_light | verified | Green RUNNING pilot — load of O-00 (LightGreen) |
 | PL2 | pilot_light | verified | Red FAULT/E-STOP pilot — load of O-01 (LightRed) |
 | PLC1 | plc | verified | Conveyor controller; Modbus RTU master to VFD1 |
 | PS1 | power_supply | verified | 24 VDC control supply (E-004). Feeds the DC +/- distribution block (blue = one polarity... |
-| Q1 | control_relay | verified | Drive-enable CONTROL RELAY (hand-labeled 'MLC'). Coil A1(+)/A2(-) driven by PLC O-02 (2... |
+| Q1 | control_relay | verified | Control relay (Schneider CA3KN22BD, hand-labeled 'MLC') USED AS THE VFD SUPPLY SWITCH —... |
 | S0 | e_stop | verified | Emergency stop, DUAL-CHANNEL (diverse) — NC ch to I-02, NO ch to I-03 |
 | S2 | pushbutton_no | verified | Run / rearm pushbutton to I-04; illuminated — lamp fed by PLC O-03 (PBRunLED) |
 | SS1 | selector_switch | verified | Direction selector — FWD contact to I-00, REV contact to I-01 (FWD-OFF-REV) |
-| VFD1 | vfd | verified | Drives conveyor motor. Commanded over Modbus RTU (RJ45, Ch2 node 1) — photo confirms th... |
+| VFD1 | vfd | verified | Drives conveyor motor. Power input is 230 V single-phase (R/L1, S/L2; T/L3 unused — tec... |
 | X1 | terminal_block | field_verify | Field terminal strip — field devices land here before PLC (E-008) |
 
 ## Terminals
@@ -31,8 +31,8 @@
 | CB1.2 | load out L1 (proposed) | field_verify | W303 | E-003 |
 | CB1.3 | line in L2 (proposed) | field_verify | W301 | E-003 |
 | CB1.4 | load out L2 (proposed) | field_verify | W304 | E-003 |
-| CB1.5 | line in L3 (proposed, if 3φ) | field_verify | W302 | E-003 |
-| CB1.6 | load out L3 (proposed, if 3φ) | field_verify | W305 | E-003 |
+| CB1.5 | line in L3 (proposed, if 3φ) | field_verify | — | — |
+| CB1.6 | load out L3 (proposed, if 3φ) | field_verify | — | — |
 | M1.PE | motor frame ground | field_verify | W316 | E-003 |
 | M1.T1 | motor lead 1 | field_verify | W310 | E-003 |
 | M1.T2 | motor lead 2 | field_verify | W311 | E-003 |
@@ -73,14 +73,14 @@
 | PS1.L | AC line in | verified | — | — |
 | PS1.N | AC neutral in | verified | — | — |
 | PS1.PE | AC protective earth in | verified | — | — |
-| Q1.13 | aux contact 1 — NO (destination FIELD VERIFY, OI-26) | verified | — | — |
-| Q1.14 | aux contact 1 — NO (destination FIELD VERIFY, OI-26) | verified | — | — |
+| Q1.13 | aux contact 1 — NO (destination FIELD VERIFY, OI-26) | verified | W303 | E-003 |
+| Q1.14 | aux contact 1 — NO (destination FIELD VERIFY, OI-26) | verified | W305 | E-003 |
 | Q1.21 | aux contact 2 — NC (destination FIELD VERIFY, OI-26) | verified | — | — |
 | Q1.22 | aux contact 2 — NC (destination FIELD VERIFY, OI-26) | verified | — | — |
 | Q1.31 | aux contact 3 — NC (destination FIELD VERIFY, OI-26) | verified | — | — |
 | Q1.32 | aux contact 3 — NC (destination FIELD VERIFY, OI-26) | verified | — | — |
-| Q1.43 | aux contact 4 — NO (destination FIELD VERIFY, OI-26) | verified | — | — |
-| Q1.44 | aux contact 4 — NO (destination FIELD VERIFY, OI-26) | verified | — | — |
+| Q1.43 | aux contact 4 — NO (destination FIELD VERIFY, OI-26) | verified | W304 | E-003 |
+| Q1.44 | aux contact 4 — NO (destination FIELD VERIFY, OI-26) | verified | W306 | E-003 |
 | Q1.A1 | coil + (from PLC1 O-02, E-006) | verified | W603 | E-006 |
 | Q1.A2 | coil - (to output return) | verified | W607 | E-006 |
 | S0.11-12 | NC channel out -> I-02 | field_verify | W502 | E-005 |
@@ -111,10 +111,10 @@
 | VFD1.FWD | forward run command input | verified | — | — |
 | VFD1.GND | drive ground terminal (manual table row L1984; silk-screen symbol — id GND is OUR label) | verified | W315 | E-003 |
 | VFD1.PE | control-terminal-strip ground | verified | — | — |
-| VFD1.R/L1 | input power L1 | verified | W303 | E-003 |
+| VFD1.R/L1 | input power L1 | verified | W305 | E-003 |
 | VFD1.REV | reverse run command input | verified | — | — |
-| VFD1.S/L2 | input power L2 | verified | W304 | E-003 |
-| VFD1.T/L3 | input power L3 (3-phase models only) | verified | W305 | E-003 |
+| VFD1.S/L2 | input power L2 | verified | W306 | E-003 |
+| VFD1.T/L3 | input power L3 (3-phase models only) | verified | — | — |
 | VFD1.U/T1 | motor output T1 | verified | W310 | E-003 |
 | VFD1.V/T2 | motor output T2 | verified | W311 | E-003 |
 | VFD1.W/T3 | motor output T3 | verified | W312 | E-003 |
@@ -125,7 +125,7 @@
 |------|--------|
 | +24V rail (this sheet) | W24 |
 | PE bus | W315, W316, W317 |
-| SUPPLY (source — see E-002) | W300, W301, W302, W317 |
+| SUPPLY (source — see E-002) | W300, W301, W317 |
 | output return rail (E-006) | W605, W606, W607, W608 |
 
 ## Orphans (Unresolved Endpoints)

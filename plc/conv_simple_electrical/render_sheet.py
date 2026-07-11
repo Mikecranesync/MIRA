@@ -266,6 +266,20 @@ def breaker_pole(s, x, y, label, side="left"):
     _pole_label(s, x, y, label, side)
 
 
+def contact_no_pole(s, x, y, label, side="left"):
+    """NO contact on a VERTICAL run — E-003's compact analog of contact_no()
+    (which is horizontal-only, built for E-005's rungs): the same
+    open-diagonal-arm motif that marks a normally-open contact, scaled down
+    and oriented for a vertical power leg, styled like its neighbor glyph
+    breaker_pole() (same sheet) so the two device symbols read consistently."""
+    s.circle(x, y - 9, 1.8, fill=BLK)
+    s.circle(x, y + 9, 1.8, fill=BLK)
+    s.line(x, y - 9, x, y - 4)  # top stub into the gap (device shape: solid)
+    s.line(x, y + 9, x, y + 4)  # bottom stub into the gap
+    s.line(x, y - 4, x + 8, y + 5)  # open diagonal arm across the gap (NO = open)
+    _pole_label(s, x, y, label, side)
+
+
 def coil(s, cx, cy, label, t1, t2, dashed=False):
     """Relay/contactor coil: circle with terminal stubs left/right."""
     r = 14
@@ -963,38 +977,53 @@ def render_e003():
             x1, y1, x2, y2, color=BLK, w=w_, dash=True, wire=num, wire_status=wire_by[num]["status"]
         )
 
-    xL, xC, xR = 340, 400, 460  # the three power-column conductors
+    xL, xC, xR = 340, 400, 460  # xL/xC = the 2 live 1φ supply columns (V6);
+    # xR carries only the motor's 3rd phase (VFD1 W/T3 -> M1.T3) — the T/L3
+    # INPUT terminal is unused on this single-phase install.
 
     # ---- SUPPLY node (top) — device outline SOLID; uncertainty = red text ----
     s.rect(320, 150, 160, 40, sw=1.4)
-    s.text(400, 168, "SUPPLY", size=12, anchor="middle", weight="bold")
-    s.text(400, 183, "(FIELD VERIFY)", size=7.5, anchor="middle", color=RED)
+    s.text(400, 166, "230 V 1φ SUPPLY", size=11.5, anchor="middle", weight="bold")
+    s.text(400, 182, "(FIELD VERIFY)", size=7.5, anchor="middle", color=RED)
 
-    # ---- SUPPLY -> CB1 (W300/W301/W302) ----
-    for num, x in (("W300", xL), ("W301", xC), ("W302", xR)):
+    # ---- SUPPLY -> CB1 (W300/W301) — single-phase, 2-wire (V6: dropped the
+    #      old W302 3rd-phase leg; review/PHOTO_EVIDENCE_V6.md) ----
+    for num, x in (("W300", xL), ("W301", xC)):
         seg(num, x, 190, x, 236, w_=2.0)
         wire_tag(s, x, 216, num, verified=False, orient="v")
 
-    # ---- CB1: one breaker pole per conductor (L3 labels right, outside the cluster) ----
-    for lbl, x, side in (("L1", xL, "left"), ("L2", xC, "left"), ("L3 (3φ)", xR, "right")):
+    # ---- CB1: 2-pole (V6 — single-phase; dropped the 3rd phase pole) ----
+    for lbl, x, side in (("L1", xL, "left"), ("L2", xC, "left")):
         breaker_pole(s, x, 250, lbl, side=side)
     s.text(290, 242, "CB1", size=10, anchor="end", weight="bold")
     s.text(290, 254, "(FIELD VERIFY)", size=7.5, anchor="end", color=RED)
 
-    # ---- CB1 -> VFD1 line terminals, DIRECT (W303/W304/W305) — no contactor in
-    #      this run. V4 photo correction: Q1/MLC is a control relay with no power
-    #      poles, moved off this sheet entirely (see OI-21 and E-006). ----
-    for num, x in (("W303", xL), ("W304", xC), ("W305", xR)):
-        seg(num, x, 264, x, 350, w_=2.0)
-        wire_tag(s, x, 307, num, verified=False, orient="v")
+    # ---- CB1 -> Q1/MLC's 2 NO contacts -> VFD1 (V6 correction: MLC IS the
+    #      single-phase drive-supply switch — its NO contacts (13-14, 43-44)
+    #      sit IN the power path, reversing the V4 removal; OI-21 RESOLVED,
+    #      review/PHOTO_EVIDENCE_V6.md). Coil A1/A2 <- O-02, shown on E-006. ----
+    q1_y = 305
+    for num, x in (("W303", xL), ("W304", xC)):
+        seg(num, x, 264, x, q1_y - 9, w_=2.0)
+        wire_tag(s, x, 274, num, verified=False, orient="v")
+    for term, x in (("13-14", xL), ("43-44", xC)):
+        contact_no_pole(s, x, q1_y, term, side="left")
+    for num, x in (("W305", xL), ("W306", xC)):
+        seg(num, x, q1_y + 9, x, 350, w_=2.0)
+        wire_tag(s, x, 334, num, verified=False, orient="v")
+    s.text(290, 301, "Q1/MLC", size=10, anchor="end", weight="bold")
+    s.text(290, 313, "coil A1/A2 -> O-02 (E-006)", size=7, anchor="end", color=GRY)
 
     # ---- VFD1 block (name + terminal ids from the model — never hand-retyped) ----
     vx, vy, vw, vh = 280, 350, 240, 220
     s.rect(vx, vy, vw, vh, sw=1.6)
-    pin_ids = [t["id"] for t in terms["VFD1"]["power_input"]]
-    for lbl, x in zip(pin_ids, (xL, xC, xR)):
+    pin_terms = terms["VFD1"]["power_input"]
+    for t, x in zip(pin_terms, (xL, xC, xR)):
         s.circle(x, vy, 2.8, fill=BLK)
-        s.text(x, vy + 16, lbl, size=8, anchor="middle", weight="bold", mono=True)
+        s.text(x, vy + 16, t["id"], size=8, anchor="middle", weight="bold", mono=True)
+        if t.get("note"):  # T/L3 "unused on 1φ" note (V6) — pulled from the model
+            for k, ln in enumerate(_wrap(f"({t['note']})", 108, 6.5)):
+                s.text(x, vy + 28 + k * 9, ln, size=6.5, anchor="middle", color=GRY)
     s.text(400, 398, "VFD1", size=14, anchor="middle", weight="bold")
     s.text(400, 414, dev_by_tag["VFD1"]["model"], size=8, anchor="middle", color=GRY)
 

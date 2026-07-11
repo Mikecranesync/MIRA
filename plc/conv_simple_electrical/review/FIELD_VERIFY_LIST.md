@@ -12,17 +12,17 @@ The docket of everything NOT yet verified. Every wire with status ≠ verified, 
 - **W301**: SUPPLY (source — see E-002) → CB1.3
   - Verify: confirm conductor + endpoints + wire number
 
-- **W302**: SUPPLY (source — see E-002) → CB1.5
-  - Verify: phase count unknown
-
-- **W303**: CB1.2 → VFD1.R/L1
+- **W303**: CB1.2 → Q1.13
   - Verify: confirm conductor + endpoints + wire number
 
-- **W304**: CB1.4 → VFD1.S/L2
+- **W304**: CB1.4 → Q1.43
   - Verify: confirm conductor + endpoints + wire number
 
-- **W305**: CB1.6 → VFD1.T/L3
-  - Verify: phase count unknown
+- **W305**: Q1.14 → VFD1.R/L1
+  - Verify: confirm conductor + endpoints + wire number
+
+- **W306**: Q1.44 → VFD1.S/L2
+  - Verify: confirm conductor + endpoints + wire number
 
 - **W310**: VFD1.U/T1 → M1.T1
   - Verify: confirm conductor + endpoints + wire number
@@ -225,20 +225,21 @@ The docket of everything NOT yet verified. Every wire with status ≠ verified, 
 | OI-12 | E-006 | Confirm no field wires on spare O-04..O-06 (+CM1 b | Trace the PLC output block and verify no wires to  |
 | OI-13 | E-005, E-006 | Re-confirm input AND output map against the live C | Open the live Conv_Simple_1.8 CCW project and cros |
 | OI-14 | E-003 | Q1 contactor placement in the power chain (assumed | Trace conductors on the bench; verify Q1 poles 1-6 |
-| OI-15 | E-003 | Supply voltage/phase/receptacle + CB1 existence/ty | Identify the bench supply; confirm CB1 device and  |
+| OI-15 | E-003 | Supply voltage/receptacle + CB1 existence/type/rat | Identify the bench supply; confirm CB1 device and  |
 | OI-16 | E-003 | GS10 exact model+frame (enables wire-gauge/fuse ta | Photograph GS10 nameplate and motor nameplate; mea |
 | OI-17 | E-003 | RFI jumper in/out per grounding topology (symmetri | Determine bench PE bonding strategy; verify RFI ju |
 | OI-18 | E-006 | Fallback DI wiring physical presence (expected ABS | Trace the PLC output block; confirm zero hardwired |
 | OI-19 | E-003, E-005, E-006 | Wire-numbering convention adopted: W[sheet-digit][ | Read the actual wire markers on the panel; replace |
 | OI-20 | E-007 | GS10 comms line params: 2026-05-20 export = 38.4k/ | Fresh keypad readback of the GS10 serial config; u |
-| OI-21 | E-003 | Separate 3-phase motor contactor upstream of the G | Confirm whether a separate motor contactor exists  |
+| OI-21 | E-003 | RESOLVED (2026-07-11): no separate motor contactor | Confirm whether a separate motor contactor exists  |
 | OI-22 | E-006, E-007 | GS10 control map (full-res photo): top run/DI conn | Map which of FWD/REV/DI3/DI4/DI5/AI/AO1/DO1/DOC ar |
 | OI-23 | panel | Siemens CPU 1212C AC/DC/RLY (S7-1200) observed on  | Confirm whether the Siemens CPU 1212C controls any |
 | OI-24 | panel | Device labeled "PMC 192.x" observed on the panel ( | Identify the device (network device / meter?) and  |
 | OI-25 | E-004 | DC +/- distribution block: which color (blue vs wh | Trace/meter the distribution block conductors agai |
 | OI-26 | E-006 | MLC (Q1) aux contacts (full-res photo): coil A1/A2 | Trace each aux contact to its destination in the c |
+| OI-27 | E-003 | GS10 output voltage: technician reported 480 V out | Read the motor nameplate voltage; read the GS10 ke |
 
 ### Summary
 - Total field-verify wires: 31
 - Total field-verify terminals: 32
-- Total open items: 26
+- Total open items: 27

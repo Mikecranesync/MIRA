@@ -105,7 +105,7 @@ VFD1:  # power side — terminal NAMES verified from GS10 manual terminal table 
   power_input:
     - {id: "R/L1", function: "input power L1", status: verified, source: "GS10_UM.txt L1971/L1973"}
     - {id: "S/L2", function: "input power L2", status: verified, source: "GS10_UM.txt L1971/L1973"}
-    - {id: "T/L3", function: "input power L3 (3-phase models only)", status: verified, source: "GS10_UM.txt L1973"}
+    - {id: "T/L3", function: "input power L3 (3-phase models only)", status: verified, source: "GS10_UM.txt L1973", note: "unused on single-phase 230 V input"}
   power_output:
     - {id: "U/T1", function: "motor output T1", status: verified, source: "GS10_UM.txt L1975 (prose form T1: L1773-1776)"}
     - {id: "V/T2", function: "motor output T2", status: verified, source: "GS10_UM.txt L1975"}

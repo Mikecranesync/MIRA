@@ -176,54 +176,56 @@ wires:
     sheet: E-006
 
   # ---- E-003 VFD POWER ----
-  # Supply to branch protection
+  # Supply to branch protection — SINGLE-PHASE 230V (2-wire L1/L2), per
+  # technician field correction 2026-07-11 (review/PHOTO_EVIDENCE_V6.md).
+  # V5 wrongly drew a 3rd-phase supply leg (old W302) — DELETED in V6.
   - proposed_number: "W300"
     from: "SUPPLY (source — see E-002)"
     to: CB1.1
-    signal: "L1 supply"
+    signal: "L1 230V 1ph supply"
     type: power_line
     status: field_verify
     sheet: E-003
   - proposed_number: "W301"
     from: "SUPPLY (source — see E-002)"
     to: CB1.3
-    signal: "L2/N supply"
+    signal: "L2 230V 1ph supply"
     type: power_line
     status: field_verify
     sheet: E-003
-  - proposed_number: "W302"
-    from: "SUPPLY (source — see E-002)"
-    to: CB1.5
-    signal: "L3 supply (if 3φ)"
-    type: power_line
-    status: field_verify
-    sheet: E-003
-    note: "phase count unknown"
 
-  # Breaker directly to VFD1 line terminals — NO contactor in this run (V4 photo
-  # correction: Q1/MLC is a control relay with no power poles; see OI-21).
+  # Breaker -> Q1/MLC's two NO contacts (13-14, 43-44) -- the single-phase
+  # drive-supply switch (V6 correction: MLC is IN the power path, reversing
+  # the V4 removal). Q1's NO contacts then feed VFD1 R/L1 & S/L2 directly;
+  # T/L3 unused (1φ input). Coil A1/A2 <- O-02, shown on E-006.
   - proposed_number: "W303"
     from: CB1.2
-    to: VFD1.R/L1
-    signal: "L1 to drive"
+    to: Q1.13
+    signal: "L1 protected -> MLC"
     type: power_line
     status: field_verify
     sheet: E-003
   - proposed_number: "W304"
     from: CB1.4
-    to: VFD1.S/L2
-    signal: "L2 to drive"
+    to: Q1.43
+    signal: "L2 protected -> MLC"
     type: power_line
     status: field_verify
     sheet: E-003
   - proposed_number: "W305"
-    from: CB1.6
-    to: VFD1.T/L3
-    signal: "L3 to drive (if 3φ)"
+    from: Q1.14
+    to: VFD1.R/L1
+    signal: "L1 switched -> drive"
     type: power_line
     status: field_verify
     sheet: E-003
-    note: "phase count unknown"
+  - proposed_number: "W306"
+    from: Q1.44
+    to: VFD1.S/L2
+    signal: "L2 switched -> drive"
+    type: power_line
+    status: field_verify
+    sheet: E-003
 
   # VFD to motor (output terminals)
   - proposed_number: "W310"

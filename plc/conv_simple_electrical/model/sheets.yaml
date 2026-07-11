@@ -25,23 +25,25 @@ sheets:
   - id: E-003
     title: VFD power (CB1 -> VFD1 -> M1)
     status: drafted
-    subtitle: "supply → CB1 → VFD1 (GS10) → M1"
+    subtitle: "supply → CB1 → Q1/MLC (supply switch) → VFD1 (GS10) → M1 · 230 V 1φ in, 3φ to motor"
     scope: >
-      Upstream supply → branch protection (CB1) → VFD1 power input (R/L1, S/L2, T/L3) →
-      motor output (U/T1, V/T2, W/T3) → motor M1; PE bonding. No motor contactor — CB1
-      feeds VFD1 directly (2026-07-11 photo correction; a separate contactor, if one
-      exists, is FIELD VERIFY — OI-21).
+      Upstream supply → branch protection (CB1) → Q1/MLC (single-phase drive-supply switch,
+      2 NO contacts) → VFD1 power input (R/L1, S/L2; T/L3 unused, 1φ) → motor output (U/T1,
+      V/T2, W/T3) → motor M1; PE bonding. Q1/MLC's NO contacts 13-14 & 43-44 ARE the power
+      path between CB1 and VFD1 (2026-07-11 technician field correction — reverses the earlier
+      "no motor contactor, CB1 feeds VFD1 directly" reading; OI-21 RESOLVED).
     note: >
-      Bench supply voltage, phase count, GS10 exact model/frame, breaker rating, wire gauge:
-      NOT DOCUMENTED anywhere (every conductor is FIELD VERIFY). P00.01 rated current 1.60 A
-      (2026-05-20 export) is the only sizing clue. If the drive is a 1φ model, input is R/L1, S/L2 only.
-      No 3-phase motor contactor observed in the 2026-07-11 photos between CB1 and VFD1; a
-      separate power contactor, if one exists, is FIELD VERIFY (OI-21). LOTO + wait ≥5 min
-      for DC-bus discharge before touching (WI p.2 §2).
+      Bench supply confirmed 230 V SINGLE-PHASE 2026-07-11 (technician field report); GS10 exact
+      model/frame, breaker rating, wire gauge remain NOT DOCUMENTED (every conductor is FIELD
+      VERIFY). P00.01 rated current 1.60 A (2026-05-20 export) is the only sizing clue. Input is
+      R/L1, S/L2 only; T/L3 unused. Q1/MLC's 2 NO contacts (13-14, 43-44) are the single-phase
+      drive-supply switch between CB1 and VFD1 (OI-21 RESOLVED). Output voltage to motor =
+      CONFIRM (OI-27) — technician reported 480 V out, pending motor nameplate + GS10 model.
+      LOTO + wait ≥5 min for DC-bus discharge before touching (WI p.2 §2).
     annotations:
       caveat:
         - "Bench supply voltage & phase count, GS10 exact model/frame, breaker rating, wire gauge: NOT DOCUMENTED — every conductor FIELD VERIFY. P00.01 = 1.60 A (2026-05-20 export) is the only sizing clue. If 1φ model, input = R/L1, S/L2 only (GS10_UM L1971)."
-        - "No 3-phase motor contactor observed in the 2026-07-11 photos. The device labeled 'MLC' is a Schneider TeSys CA3KN22BD CONTROL RELAY (drive-enable interlock) shown on E-006 — not a motor contactor. Separate power contactor = FIELD VERIFY (OI-21)."
+        - "MLC (Q1) is a control relay USED AS the single-phase drive-supply switch — its 2 NO contacts (13-14, 43-44) carry the 230 V 1φ supply into the GS10; coil A1/A2 from O-02 (E-006). Energizing O-02 powers the drive (technician-confirmed 2026-07-11)."
       safety:
         - "Never start/stop via input power (L1811-1813); CB1 is branch protection only, not a run/stop device."
         - "LOTO + wait ≥5 min for DC-bus discharge before touching (WI p.2 §2)."
@@ -51,10 +53,12 @@ sheets:
         - "CB1 REQUIRED per GS10_UM L1758-1759 — type/rating unknown (OI-15)."
         - "M1: swap any two motor leads to reverse — GS10_UM L1773-1776."
         - "VFD control source = Modbus — see E-007. No control wiring on this sheet."
+        - "Supply is 230 V SINGLE-PHASE (2-wire). Output voltage to motor = CONFIRM (OI-27): reported 480 V, but a 230 V 1φ GS10 outputs 230 V 3φ — pending motor nameplate + GS10 model."
       sources:
         - "plc/GS10_UM.txt (terminals L1971-1986; topology L1750-1813) · plc/GS10_Integration_Guide.md (Q1 phase-5 test)"
         - "plc/Prog_init_ConvSimple_v2.1.st (vfd_run_permit) · plc/MIRA_PLC_WorkInstruction_v3.pdf (LOTO §2)"
         - "photos review/photos/wire_1..4.jpg (2026-07-11, actual devices)"
+        - "review/PHOTO_EVIDENCE_V6.md (technician field correction 2026-07-11)"
   - id: E-004
     title: 24 VDC control power distribution (PS1)
     status: stub
@@ -96,11 +100,11 @@ sheets:
       safety:
         - "Monitored outputs are NOT a safety function."
         - "E-stop must remove power per NFPA 79."
-        - "Q1/MLC is a CONTROL RELAY (drive-enable interlock), NOT a power-removal device — it has no main poles (E-003 corrected 2026-07-11). Whether a separate power-removal contactor exists is FIELD VERIFY (OI-21); until confirmed, do not assume E-stop removes drive input power via this circuit."
+        - "Q1/MLC is a CONTROL RELAY (24 VDC coil, driven by O-02) whose 2 NO contacts (13-14, 43-44) switch the drive's 230 V 1φ supply (V6 correction, E-003) — de-energizing O-02 DOES remove Q1's switched supply to the GS10. Q1 is NOT an NFPA-79/EN-60204-1 safety-rated disconnect (small control-relay contacts, not a lockable safety contactor); the e-stop (S0) → O-02 relationship is FIELD VERIFY (OI-26). Do not treat this circuit as the LOTO isolation point — always LOTO at CB1 or upstream."
       notes:
-        - "Q1/MLC = Schneider TeSys CA3KN22BD control relay (2 NO + 2 NC, 24 VDC coil); coil A1(+)/A2(-) driven by O-02 (verified from photo wire_3). Aux contacts 13-14/43-44 NO, 21-22/31-32 NC → control circuit (destinations FIELD VERIFY, OI-26)."
+        - "Q1/MLC = Schneider TeSys CA3KN22BD control relay (2 NO + 2 NC, 24 VDC coil); coil A1(+)/A2(-) driven by O-02 (verified from photo wire_3). NO contacts 13-14/43-44 switch the VFD's 230 V 1φ supply (see E-003); 21-22/31-32 NC unused."
         - "GS10 control (full-res photo): run/dir/speed = Modbus — top FWD/REV/DI connector is EMPTY, RJ45 landed. Bottom analog/output row (+10V/ACM/AI/AO1/DO1/DOC) is wired — likely speed reference + feedback. Map = OI-22."
-        - "MLC (Q1) coil A1/A2 wired; NO contacts 13-14 & 43-44 in use, NC 21-22/31-32 unused (per photo); contact destinations = OI-26."
+        - "NO contacts 13-14 & 43-44 switch the 230 V 1φ VFD supply (see E-003); coil A1/A2 from O-02. NC 21-22/31-32 unused."
         - "GS10 run/dir/freq = Modbus — see E-007 (P00.20=1, P00.21=2 per 2026-05-20 parameter export)"
         - "No as-built: O-00/O-01/O-03 from CCW v4.0; O-02 corroborated by live Prog_init v2.1."
         - "Output bank technology + common feed = FIELD VERIFY (OI-09): WI-001 p.4 says relay dry contacts; ±CM polarity naming suggests DC-fed banks — conflicting evidence, resolve per 2080-IN009 + meter."
