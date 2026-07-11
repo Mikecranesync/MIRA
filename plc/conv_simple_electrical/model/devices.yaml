@@ -67,6 +67,7 @@ devices:
 
   - tag: Q1
     type: contactor
+    sheet_label: "Q1 — SAFETY POWER CONTACTOR (MC/'MLC' — WI-001)"
     role: Safety power contactor — coil driven by PLC O-02 ('ContactorQ1', safety power); drops on E-stop (Integration Guide Phase-5 test). Coil shown on E-006; power poles on E-003. a.k.a. MLC in WorkInstruction_v3.
     evidence: verified
     source: plc/CCW_VARIABLES_v4.0.txt:80; plc/GS10_Integration_Guide.md:303; plc/Prog_init_ConvSimple_v2.1.st:214

@@ -87,7 +87,7 @@ serial_config:
 
 readback:
   - "vfd_comm_ok = TRUE proves the link is up (PLC global)."
-  - "Read 0x2103 (output freq, Hz x10) via FC03; nonzero readback confirms end-to-end."
+  - "Read 0x2103 (output freq, Hz x100) via FC03; nonzero readback confirms end-to-end. (Prog_init v2.1:164 'Hz x100'; GS10_UM.txt L15703-05 format XXX.XX Hz)"
 
 troubleshooting:
   - "Nothing after config -> swap 485+/485- (A/B polarity; vendors disagree)."

@@ -25,6 +25,7 @@ sheets:
   - id: E-003
     title: VFD power (CB1 -> Q1 -> VFD1 -> M1)
     status: drafted
+    subtitle: "supply → CB1 → Q1 (MC) → VFD1 (GS10) → M1"
     scope: >
       Upstream supply → branch protection (CB1) → safety contactor (Q1) → VFD1 power input
       (R/L1, S/L2, T/L3) → motor output (U/T1, V/T2, W/T3) → motor M1; PE bonding.
@@ -47,6 +48,7 @@ sheets:
         - "Q1 coil ← O-02 (E-006); R-C surge absorber both ends recommended (GS10 manual); NOT for routine run/stop (L1754-1757)."
         - "CB1 REQUIRED per GS10_UM L1758-1759 — type/rating unknown (OI-15)."
         - "M1: swap any two motor leads to reverse — GS10_UM L1773-1776."
+        - "VFD control source = Modbus — see E-007. No control wiring on this sheet."
       sources:
         - "plc/GS10_UM.txt (terminals L1971-1986; topology L1750-1813) · plc/GS10_Integration_Guide.md (Q1 phase-5 test)"
         - "plc/Prog_init_ConvSimple_v2.1.st (vfd_run_permit) · plc/MIRA_PLC_WorkInstruction_v3.pdf (LOTO §2)"
@@ -71,6 +73,7 @@ sheets:
   - id: E-006
     title: PLC outputs (O-00..O-06)
     status: drafted
+    subtitle: "O-00..O-06 · pilots, contactor coil, button lamp · GS10 control = Modbus (E-007), NO GS10 DI wiring"
     scope: >
       Micro820 outputs O-00..O-06 (banks +CM0/-CM0, +CM1/-CM1): PL1/PL2 pilots, Q1 contactor coil,
       S2 lamp; O-04..O-06 spare. GS10 run/dir/freq = Modbus (E-007, P00.21=2) — NO GS10 control-terminal wiring.
@@ -90,6 +93,7 @@ sheets:
       notes:
         - "GS10 run/dir/freq = Modbus — see E-007 (P00.20=1, P00.21=2 per 2026-05-20 parameter export)"
         - "No as-built: O-00/O-01/O-03 from CCW v4.0; O-02 corroborated by live Prog_init v2.1."
+        - "Output bank technology + common feed = FIELD VERIFY (OI-09): WI-001 p.4 says relay dry contacts; ±CM polarity naming suggests DC-fed banks — conflicting evidence, resolve per 2080-IN009 + meter."
       sources:
         - "CCW_VARIABLES_v4.0.txt"
         - "Prog_init_ConvSimple_v2.1.st"
@@ -110,6 +114,7 @@ sheets:
       notes:
         - "Belden 3105A — shielded twisted pair (485+/485-) + 1 conductor (SGND) + drain"
         - "VERIFIED (solid) = recovered CommsToVFD + Beginner_Verify p48 + Prog_init v2.1; FIELD VERIFY (dashed) = exact PLC chassis ground point; cable P/N if not Belden 3105A."
+        - "Port locations per CommsToVFD (PLC top-edge connector; GS10 front-face RJ45) — WI-001 says bottom-front. Wayfinding only; confirm on unit (FIELD VERIFY)."
   - id: E-008
     title: Terminal strip (X1) + wire list
     status: stub

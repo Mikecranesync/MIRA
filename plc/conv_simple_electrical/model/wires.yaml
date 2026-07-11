@@ -11,7 +11,7 @@
 # E-007 comms) is indexed by the sheet: field on each wire row. Pseudo-nodes (rails,
 # buses, off-sheet sources) are listed in the nodes: allowlist below.
 
-convention: "Conductor numbers are W[sheet-digit][line-2d] (e.g. W503 = sheet E-005, line 3) — all PROPOSED until as-built (OI-03/OI-19). Rail/bus labels (W24, W0V) are exempt. Comms sheets (E-007) use mnemonic conductor labels (485+/485-/SGND/SH) per CommsToVFD ancestry."
+convention: "Conductor numbers are W[sheet-digit][line-2d] (e.g. W503 = sheet E-005, line 3) — all PROPOSED until as-built (OI-03/OI-19). Rail/bus labels (W24, W0V) are exempt. Comms sheets (E-007) use mnemonic conductor labels (485+/485-/SGND/SH) per CommsToVFD ancestry. Same electrical node = same wire number; a number changes only through a device."
 
 nodes:
   - "+24V rail (this sheet)"

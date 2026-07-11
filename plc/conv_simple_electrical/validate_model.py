@@ -12,11 +12,16 @@ Checks:
  I. Raster parity: PDF vector line count >= 0.9 x SVG conductor segment count
  J. E-001 schedule parity: one schedule row per device, one index row per sheet
  K. No render-only engineering text: blocklist markers must not appear in render_sheet.py literals
+ L. Layout collisions: (a) ANY rendered stroke — every <line> plus every <rect>
+    edge, not just data-wire conductors — through a text bbox (Liang-Barsky;
+    text fully contained in a rect is fine, only border CROSSINGS fail),
+    (b) text-bbox vs text-bbox overlap >1px², (c) wire_tag flag rects vs other text
 """
 
 from __future__ import annotations
 
 import ast
+import math
 import pathlib
 import re
 import sys
@@ -329,6 +334,232 @@ def check_no_render_engineering_text():
     return errors
 
 
+def _attr(attrs, name, default=None):
+    m = re.search(rf'{name}="([^"]*)"', attrs)
+    return m.group(1) if m else default
+
+
+def _text_boxes(svg_text):
+    """Every <text> element as an estimated, anchor-aware bounding box.
+
+    width ≈ 0.55 × font-size × char-count; the baseline y sits 0.8×fs above the
+    box bottom edge... precisely: box = [y - 0.8·fs, y + 0.4·fs]. data-flag="1"
+    texts are the wire_tag digits inside their own opaque flag (tracked so the
+    caller can exempt them).
+    """
+    boxes = []
+    for m in re.finditer(r"<text([^>]*)>([^<]*)</text>", svg_text):
+        attrs, raw = m.group(1), m.group(2)
+        content = raw.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+        if not content.strip():
+            continue
+        try:
+            x = float(_attr(attrs, "x"))
+            y = float(_attr(attrs, "y"))
+            fs = float(_attr(attrs, "font-size", "10"))
+        except (TypeError, ValueError):
+            continue
+        anchor = _attr(attrs, "text-anchor", "start")
+        w = 0.55 * fs * len(content)
+        if anchor == "middle":
+            xmin = x - w / 2
+        elif anchor == "end":
+            xmin = x - w
+        else:
+            xmin = x
+        boxes.append(
+            {
+                "content": content,
+                "x": x,
+                "y": y,
+                "xmin": xmin,
+                "xmax": xmin + w,
+                "ymin": y - 0.8 * fs,
+                "ymax": y + 0.4 * fs,
+                "flag": _attr(attrs, "data-flag") == "1",
+                # rotated text: the axis-aligned estimate is the wrong axis, so it
+                # is exempt from stroke-obstacle checks (it stays in text-text)
+                "rotated": "transform=" in attrs,
+            }
+        )
+    return boxes
+
+
+def _flag_rects(svg_text):
+    """wire_tag flag rectangles (opaque backing boxes), marked data-flag="1"."""
+    rects = []
+    for m in re.finditer(r"<rect[^>]*/>", svg_text):
+        tag = m.group(0)
+        if 'data-flag="1"' not in tag:
+            continue
+        try:
+            rects.append(tuple(float(_attr(tag, k)) for k in ("x", "y", "width", "height")))
+        except (TypeError, ValueError):
+            continue
+    return rects
+
+
+def _conductor_segments(svg_text):
+    """(wire_id, x1, y1, x2, y2) for every conductor stroke — solid data-wire
+    lines plus every real dash segment inside data-wire dashed groups."""
+    segs = []
+    for wire_id, is_dashed, open_tag, body in _conductor_elements(svg_text):
+        pieces = re.findall(r"<line[^>]*/>", body) if is_dashed else [open_tag]
+        for piece in pieces:
+            try:
+                coords = tuple(float(_attr(piece, k)) for k in ("x1", "y1", "x2", "y2"))
+            except (TypeError, ValueError):
+                continue
+            segs.append((wire_id, *coords))
+    return segs
+
+
+def _stroke_obstacles(svg_text):
+    """EVERY rendered stroke as (label, x1, y1, x2, y2) segments.
+
+    - every <line> element (conductor dashes/solids, glyph internals, leader
+      ticks, table rules, frame furniture, earth-glyph bars, ...). Conductor
+      strokes keep their wire name in the label (resolved via
+      _conductor_segments, which also names the children of data-wire groups);
+    - every <rect> as its 4 edges — EXCEPT wire_tag flag rects (data-flag="1"),
+      which are handled by the stricter opaque-obstacle area rule (c).
+    A text fully inside a rect crosses no edge, so containment is free — only
+    border CROSSINGS fail (the H2 "cell text bisected by a table rule" class).
+    """
+    wire_by_coords = {}
+    for wire_id, x1, y1, x2, y2 in _conductor_segments(svg_text):
+        wire_by_coords[(x1, y1, x2, y2)] = wire_id
+
+    obstacles = []
+    for m in re.finditer(r"<line[^>]*/>", svg_text):
+        tag = m.group(0)
+        try:
+            x1, y1, x2, y2 = (float(_attr(tag, k)) for k in ("x1", "y1", "x2", "y2"))
+        except (TypeError, ValueError):
+            continue
+        wire = wire_by_coords.get((x1, y1, x2, y2))
+        label = f"conductor {wire}" if wire else f"line ({x1:.0f},{y1:.0f})-({x2:.0f},{y2:.0f})"
+        obstacles.append((label, x1, y1, x2, y2))
+
+    for m in re.finditer(r"<rect[^>]*/>", svg_text):
+        tag = m.group(0)
+        if 'data-flag="1"' in tag:
+            continue  # opaque flag boxes take rule (c) instead
+        try:
+            x, y, w, h = (float(_attr(tag, k)) for k in ("x", "y", "width", "height"))
+        except (TypeError, ValueError):
+            continue  # the page background rect has no x/y
+        label = f"rect edge ({x:.0f},{y:.0f} {w:.0f}x{h:.0f})"
+        for ex1, ey1, ex2, ey2 in (
+            (x, y, x + w, y),
+            (x, y + h, x + w, y + h),
+            (x, y, x, y + h),
+            (x + w, y, x + w, y + h),
+        ):
+            obstacles.append((label, ex1, ey1, ex2, ey2))
+    return obstacles
+
+
+def _segment_crosses_box(x1, y1, x2, y2, xmin, ymin, xmax, ymax, inset=0.3):
+    """True if the segment passes through the rect INTERIOR (Liang-Barsky slab
+    clipping). The rect is inset slightly so boundary grazes don't count, and
+    the clipped span must have real length (>0.5px) — not a corner touch."""
+    xmin, ymin, xmax, ymax = xmin + inset, ymin + inset, xmax - inset, ymax - inset
+    if xmin >= xmax or ymin >= ymax:
+        return False
+    dx, dy = x2 - x1, y2 - y1
+    t0, t1 = 0.0, 1.0
+    for p, q in ((-dx, x1 - xmin), (dx, xmax - x1), (-dy, y1 - ymin), (dy, ymax - y1)):
+        if abs(p) < 1e-9:
+            if q < 0:
+                return False
+            continue
+        r = q / p
+        if p < 0:
+            t0 = max(t0, r)
+        else:
+            t1 = min(t1, r)
+        if t0 > t1:
+            return False
+    return math.hypot(dx, dy) * (t1 - t0) > 0.5
+
+
+def _overlap_area(axmin, aymin, axmax, aymax, bxmin, bymin, bxmax, bymax):
+    ox = min(axmax, bxmax) - max(axmin, bxmin)
+    oy = min(aymax, bymax) - max(aymin, bymin)
+    return ox * oy if (ox > 0 and oy > 0) else 0.0
+
+
+def check_text_conductor_collision(svg_path, sheet_id):
+    """Check L: layout collisions on a rendered sheet.
+
+    (a) NO rendered stroke may pass through a text bbox interior — every <line>
+        and every <rect> edge is an obstacle (Liang-Barsky segment-vs-rect), not
+        just data-wire conductors. Containment inside a rect is fine (no edge
+        crossing); rotated text is exempt from this sub-check only (axis-aligned
+        estimate is the wrong axis — the one rotated label parallels its rail);
+    (b) no two text bboxes overlap by more than 1 px² (names both strings);
+    (c) wire_tag flag RECTs are opaque obstacles — no OTHER text bbox may
+        overlap one by more than 1 px².
+    wire_tag digits (data-flag="1" texts) sit inside their own opaque flag and
+    are exempt throughout.
+    """
+    if not svg_path.exists():
+        return [f"SVG not found: {svg_path}"]
+    svg_text = svg_path.read_text(encoding="utf-8")
+    errors = []
+    boxes = [b for b in _text_boxes(svg_text) if not b["flag"]]
+
+    # (a) every rendered stroke vs text bbox (deduped per text+obstacle label)
+    seen = set()
+    for label, x1, y1, x2, y2 in _stroke_obstacles(svg_text):
+        for b in boxes:
+            if b["rotated"]:
+                continue
+            key = (label, b["content"], b["x"], b["y"])
+            if key in seen:
+                continue
+            if _segment_crosses_box(x1, y1, x2, y2, b["xmin"], b["ymin"], b["xmax"], b["ymax"]):
+                seen.add(key)
+                errors.append(
+                    f"{sheet_id}: text '{b['content']}' (at {b['x']:.0f},{b['y']:.0f}) "
+                    f"collides with {label}"
+                )
+
+    # (b) text vs text — pairwise bbox overlap >1px² fails, naming both strings
+    for i, a in enumerate(boxes):
+        for b in boxes[i + 1 :]:
+            area = _overlap_area(
+                a["xmin"],
+                a["ymin"],
+                a["xmax"],
+                a["ymax"],
+                b["xmin"],
+                b["ymin"],
+                b["xmax"],
+                b["ymax"],
+            )
+            if area > 1.0:
+                errors.append(
+                    f"{sheet_id}: text '{a['content']}' (at {a['x']:.0f},{a['y']:.0f}) overlaps "
+                    f"text '{b['content']}' (at {b['x']:.0f},{b['y']:.0f}) [{area:.1f}px²]"
+                )
+
+    # (c) wire_tag flag rects vs all OTHER text (the flag's own digits are exempt)
+    for rx, ry, rw, rh in _flag_rects(svg_text):
+        for b in boxes:
+            area = _overlap_area(
+                rx, ry, rx + rw, ry + rh, b["xmin"], b["ymin"], b["xmax"], b["ymax"]
+            )
+            if area > 1.0:
+                errors.append(
+                    f"{sheet_id}: text '{b['content']}' (at {b['x']:.0f},{b['y']:.0f}) overlaps "
+                    f"wire_tag flag rect at ({rx:.0f},{ry:.0f}) [{area:.1f}px²]"
+                )
+
+    return errors
+
+
 def main():
     try:
         devices = _load("devices")
@@ -390,6 +621,12 @@ def main():
     # K: no render-only engineering text
     k_errors = check_no_render_engineering_text()
     results["K. No render-only engineering text"] = ("PASS" if not k_errors else "FAIL", k_errors)
+
+    # L: layout collisions (conductor-through-text, text-text, flag-rect-text)
+    l_errors = []
+    for sheet_id, basename in ALL_SVGS.items():
+        l_errors.extend(check_text_conductor_collision(SHEETS / f"{basename}.svg", sheet_id))
+    results["L. Text/conductor collision"] = ("PASS" if not l_errors else "FAIL", l_errors)
 
     print("\n" + "=" * 80)
     print("VALIDATION RESULTS")
