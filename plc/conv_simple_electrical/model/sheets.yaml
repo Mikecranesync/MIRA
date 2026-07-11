@@ -99,7 +99,8 @@ sheets:
         - "Q1/MLC is a CONTROL RELAY (drive-enable interlock), NOT a power-removal device — it has no main poles (E-003 corrected 2026-07-11). Whether a separate power-removal contactor exists is FIELD VERIFY (OI-21); until confirmed, do not assume E-stop removes drive input power via this circuit."
       notes:
         - "Q1/MLC = Schneider TeSys CA3KN22BD control relay (2 NO + 2 NC, 24 VDC coil); coil A1(+)/A2(-) driven by O-02 (verified from photo wire_3). Aux contacts 13-14/43-44 NO, 21-22/31-32 NC → control circuit (destinations FIELD VERIFY, OI-26)."
-        - "GS10 control connector is populated on the real bench (photo wire_4) — control is HYBRID Modbus + hardwired I/O, not Modbus-only. Map = OI-22."
+        - "GS10 control (full-res photo): run/dir/speed = Modbus — top FWD/REV/DI connector is EMPTY, RJ45 landed. Bottom analog/output row (+10V/ACM/AI/AO1/DO1/DOC) is wired — likely speed reference + feedback. Map = OI-22."
+        - "MLC (Q1) coil A1/A2 wired; NO contacts 13-14 & 43-44 in use, NC 21-22/31-32 unused (per photo); contact destinations = OI-26."
         - "GS10 run/dir/freq = Modbus — see E-007 (P00.20=1, P00.21=2 per 2026-05-20 parameter export)"
         - "No as-built: O-00/O-01/O-03 from CCW v4.0; O-02 corroborated by live Prog_init v2.1."
         - "Output bank technology + common feed = FIELD VERIFY (OI-09): WI-001 p.4 says relay dry contacts; ±CM polarity naming suggests DC-fed banks — conflicting evidence, resolve per 2080-IN009 + meter."
@@ -110,6 +111,7 @@ sheets:
         - "GS10_actual_parameters_5.20.26.xlsx"
         - "GS10_UM.txt"
         - "photos review/photos/wire_1..4.jpg (2026-07-11, actual devices)"
+        - "full-res photos review/photos/*_full.jpg + crops (2026-07-11); review/PHOTO_EVIDENCE_V5.md"
   - id: E-007
     title: RS-485 Modbus (PLC1 Ch2 <-> VFD1 RJ45)
     status: drafted          # rebuilt from recovered CCW/MIRA_PLC CommsToVFD style, corrected values
@@ -126,6 +128,9 @@ sheets:
         - "VERIFIED (solid) = recovered CommsToVFD + Beginner_Verify p48 + Prog_init v2.1; FIELD VERIFY (dashed) = exact PLC chassis ground point; cable P/N if not Belden 3105A."
         - "Port locations per CommsToVFD (PLC top-edge connector; GS10 front-face RJ45) — WI-001 says bottom-front. Wayfinding only; confirm on unit (FIELD VERIFY)."
         - "GS10 RS-485 RJ45 cable confirmed landed (photo wire_4). The GS10 control connector (FWD/REV/DI/AI/AO1/DO1) is also wired — see OI-22."
+        - "GS10 RS-485 RJ45 confirmed landed (full-res photo). The GS10 top run/DI control connector is EMPTY — no hardwired run/dir; command is Modbus. Bottom analog/output row is wired (OI-22)."
+      sources:
+        - "full-res photos review/photos/*_full.jpg + crops (2026-07-11); review/PHOTO_EVIDENCE_V5.md"
   - id: E-008
     title: Terminal strip (X1) + wire list
     status: stub

@@ -753,9 +753,11 @@ def render_e007():
     # ---- annotations (caveat + notes from sheets.yaml; width clears the right column) ----
     y = draw_annotations(s, 70, y, 620, ann, fs=7.5)
 
-    # ---- sources (model) ----
+    # ---- doc references (e007_rs485 model; labeled distinctly from the
+    #      annotations SOURCES block above so V5's added photo-evidence
+    #      source line doesn't produce two adjacent identical headings) ----
     sy = y + 12
-    s.text(70, sy, "SOURCES:", size=8.5, weight="bold")
+    s.text(70, sy, "DOC REFS:", size=8.5, weight="bold")
     for i, src in enumerate(e["sources"]):
         s.text(130, sy + i * 12, src, size=7.6, color=GRY)
 

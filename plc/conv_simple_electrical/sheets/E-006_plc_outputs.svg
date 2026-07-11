@@ -189,30 +189,36 @@
 <text x="1236.0" y="383.8" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">coil A1(+)/A2(-) driven by O-02 (verified from photo wire_3). Aux contacts</text>
 <text x="1236.0" y="394.5" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">13-14/43-44 NO, 21-22/31-32 NC → control circuit (destinations FIELD VERIFY,</text>
 <text x="1236.0" y="405.2" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">OI-26).</text>
-<text x="1236.0" y="415.9" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• GS10 control connector is populated on the real bench (photo wire_4) —</text>
-<text x="1236.0" y="426.6" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">control is HYBRID Modbus + hardwired I/O, not Modbus-only. Map = OI-22.</text>
-<text x="1236.0" y="437.3" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• GS10 run/dir/freq = Modbus — see E-007 (P00.20=1, P00.21=2 per 2026-05-20</text>
-<text x="1236.0" y="448.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">parameter export)</text>
-<text x="1236.0" y="458.7" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• No as-built: O-00/O-01/O-03 from CCW v4.0; O-02 corroborated by live</text>
-<text x="1236.0" y="469.4" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Prog_init v2.1.</text>
-<text x="1236.0" y="480.1" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• Output bank technology + common feed = FIELD VERIFY (OI-09): WI-001 p.4 says</text>
-<text x="1236.0" y="490.8" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">relay dry contacts; ±CM polarity naming suggests DC-fed banks — conflicting</text>
-<text x="1236.0" y="501.5" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">evidence, resolve per 2080-IN009 + meter.</text>
-<text x="1230.0" y="522.2" font-size="8.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">SOURCES:</text>
-<text x="1236.0" y="531.9" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">CCW_VARIABLES_v4.0.txt</text>
-<text x="1236.0" y="541.6" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Prog_init_ConvSimple_v2.1.st</text>
-<text x="1236.0" y="551.3" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">MIRA_PLC_WorkInstruction_v3.pdf</text>
-<text x="1236.0" y="561.0" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">GS10_actual_parameters_5.20.26.xlsx</text>
-<text x="1236.0" y="570.7" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">GS10_UM.txt</text>
-<text x="1236.0" y="580.4" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">photos review/photos/wire_1..4.jpg (2026-07-11, actual devices)</text>
-<text x="1230.0" y="608.1" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">LEGEND</text>
-<line x1="1240.0" y1="620.1" x2="1286.0" y2="620.1" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/>
-<text x="1294.0" y="623.1" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VERIFIED (solid)</text>
-<g data-dashed="true"><line x1="1240.00" y1="634.10" x2="1247.00" y2="634.10" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/><line x1="1251.00" y1="634.10" x2="1258.00" y2="634.10" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/><line x1="1262.00" y1="634.10" x2="1269.00" y2="634.10" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/><line x1="1273.00" y1="634.10" x2="1280.00" y2="634.10" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/><line x1="1284.00" y1="634.10" x2="1286.00" y2="634.10" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/></g>
-<text x="1294.0" y="637.1" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">FIELD VERIFY (dashed)</text>
-<rect x="1247.0" y="640.1" width="32.0" height="13.0" fill="#FFFFFF" stroke="#C0392B" stroke-width="0.9" data-flag="1"/>
-<text x="1263.0" y="650.1" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B" data-flag="1">Wxxx</text>
-<text x="1294.0" y="654.1" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">proposed wire number (red = unverified)</text>
+<text x="1236.0" y="415.9" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• GS10 control (full-res photo): run/dir/speed = Modbus — top FWD/REV/DI</text>
+<text x="1236.0" y="426.6" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">connector is EMPTY, RJ45 landed. Bottom analog/output row</text>
+<text x="1236.0" y="437.3" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">(+10V/ACM/AI/AO1/DO1/DOC) is wired — likely speed reference + feedback. Map =</text>
+<text x="1236.0" y="448.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">OI-22.</text>
+<text x="1236.0" y="458.7" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• MLC (Q1) coil A1/A2 wired; NO contacts 13-14 &amp; 43-44 in use, NC 21-22/31-32</text>
+<text x="1236.0" y="469.4" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">unused (per photo); contact destinations = OI-26.</text>
+<text x="1236.0" y="480.1" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• GS10 run/dir/freq = Modbus — see E-007 (P00.20=1, P00.21=2 per 2026-05-20</text>
+<text x="1236.0" y="490.8" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">parameter export)</text>
+<text x="1236.0" y="501.5" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• No as-built: O-00/O-01/O-03 from CCW v4.0; O-02 corroborated by live</text>
+<text x="1236.0" y="512.2" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Prog_init v2.1.</text>
+<text x="1236.0" y="522.9" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• Output bank technology + common feed = FIELD VERIFY (OI-09): WI-001 p.4 says</text>
+<text x="1236.0" y="533.6" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">relay dry contacts; ±CM polarity naming suggests DC-fed banks — conflicting</text>
+<text x="1236.0" y="544.3" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">evidence, resolve per 2080-IN009 + meter.</text>
+<text x="1230.0" y="565.0" font-size="8.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">SOURCES:</text>
+<text x="1236.0" y="574.7" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">CCW_VARIABLES_v4.0.txt</text>
+<text x="1236.0" y="584.4" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">Prog_init_ConvSimple_v2.1.st</text>
+<text x="1236.0" y="594.1" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">MIRA_PLC_WorkInstruction_v3.pdf</text>
+<text x="1236.0" y="603.8" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">GS10_actual_parameters_5.20.26.xlsx</text>
+<text x="1236.0" y="613.5" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">GS10_UM.txt</text>
+<text x="1236.0" y="623.2" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">photos review/photos/wire_1..4.jpg (2026-07-11, actual devices)</text>
+<text x="1236.0" y="632.9" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">full-res photos review/photos/*_full.jpg + crops (2026-07-11);</text>
+<text x="1236.0" y="642.6" font-size="6.7" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">review/PHOTO_EVIDENCE_V5.md</text>
+<text x="1230.0" y="670.3" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">LEGEND</text>
+<line x1="1240.0" y1="682.3" x2="1286.0" y2="682.3" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/>
+<text x="1294.0" y="685.3" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VERIFIED (solid)</text>
+<g data-dashed="true"><line x1="1240.00" y1="696.30" x2="1247.00" y2="696.30" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/><line x1="1251.00" y1="696.30" x2="1258.00" y2="696.30" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/><line x1="1262.00" y1="696.30" x2="1269.00" y2="696.30" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/><line x1="1273.00" y1="696.30" x2="1280.00" y2="696.30" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/><line x1="1284.00" y1="696.30" x2="1286.00" y2="696.30" stroke="#111111" stroke-width="1.8" stroke-linecap="butt"/></g>
+<text x="1294.0" y="699.3" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">FIELD VERIFY (dashed)</text>
+<rect x="1247.0" y="702.3" width="32.0" height="13.0" fill="#FFFFFF" stroke="#C0392B" stroke-width="0.9" data-flag="1"/>
+<text x="1263.0" y="712.3" font-size="8.5" font-family="Consolas, 'Courier New', monospace" text-anchor="middle" font-weight="normal" fill="#C0392B" data-flag="1">Wxxx</text>
+<text x="1294.0" y="716.3" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">proposed wire number (red = unverified)</text>
 <text x="70.0" y="756.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">CONNECTION TABLE</text>
 <rect x="70.0" y="760.0" width="855.0" height="18.0" fill="#EEEEEE" stroke="#111111" stroke-width="1.0"/>
 <text x="75.0" y="771.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">Wire</text>
@@ -319,5 +325,5 @@
 <text x="1408.0" y="914.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">SHEET</text>
 <text x="1408.0" y="932.0" font-size="16" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">E-006</text>
 <text x="1408.0" y="956.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">REV A</text>
-<text x="1408.0" y="974.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">2026-07-10</text>
+<text x="1408.0" y="974.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">2026-07-11</text>
 <text x="1538.0" y="956.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">6 of 9</text></svg>

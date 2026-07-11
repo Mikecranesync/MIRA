@@ -6,7 +6,7 @@ meta:
   asset: CV-101 (garage conveyor)
   drawn_by: MIRA / FactoryLM
   revision: A
-  date: "2026-07-10"
+  date: "2026-07-11"
 
 devices:
   - tag: PLC1
@@ -22,7 +22,12 @@ devices:
     model: AutomationDirect GS10 DURApulse
     role: Drives conveyor motor. Commanded over Modbus RTU (RJ45, Ch2 node 1) — photo confirms the RS-485 cable is landed. NOTE the GS10 control connector is ALSO wired (hybrid, not Modbus-only) — see OI-22.
     evidence: verified
-    source: photo review/photos/wire_4.jpg (2026-07-11 — keypad, control-terminal legend, RJ45 read directly); plc/GS10_Integration_Guide.md; plc/Prog_init_ConvSimple_v2.1.st
+    source: photo review/photos/wire_4.jpg (2026-07-11 — keypad, control-terminal legend, RJ45 read directly); plc/GS10_Integration_Guide.md; plc/Prog_init_ConvSimple_v2.1.st; review/photos/gs10_full.jpg + gs10_control_terminals.jpg (2026-07-11 — full-resolution control-terminal read)
+    note: >
+      GS10 control is HYBRID (full-res photo 2026-07-11): the top run/DI connector
+      (FWD/REV/DI3-5/+24V/DCM) is EMPTY — run/dir/speed command is Modbus (RJ45 landed);
+      the bottom analog/output connector (+10V/ACM/AI/AO1/DO1/DOC/PE) is WIRED, likely
+      analog speed reference + feedback. Map = OI-22.
 
   - tag: M1
     type: motor
@@ -74,13 +79,15 @@ devices:
     model: Schneider Electric TeSys CA3KN22BD (control relay, 2 NO + 2 NC, 24 VDC coil)
     role: Drive-enable CONTROL RELAY (hand-labeled 'MLC'). Coil A1(+)/A2(-) driven by PLC O-02 (24 VDC); aux contacts 13-14 & 43-44 (NO), 21-22 & 31-32 (NC) sit in the control circuit. NOT a motor power contactor — no main poles. Coil + contacts shown on E-006.
     evidence: verified
-    source: photo review/photos/wire_3.jpg (2026-07-11 — device label 'MLC', part no CA3KN22BD, coil A1/A2 24V, aux 13-14/21-22/31-32/43-44 read directly); plc/CCW_VARIABLES_v4.0.txt:80 (O-02 coil); plc/Prog_init_ConvSimple_v2.1.st:214 (vfd_run_permit reads O-02)
+    source: photo review/photos/wire_3.jpg (2026-07-11 — device label 'MLC', part no CA3KN22BD, coil A1/A2 24V, aux 13-14/21-22/31-32/43-44 read directly); plc/CCW_VARIABLES_v4.0.txt:80 (O-02 coil); plc/Prog_init_ConvSimple_v2.1.st:214 (vfd_run_permit reads O-02); review/photos/mlc_full.jpg + mlc_top_terminals.jpg + mlc_bottom_terminals.jpg (2026-07-11 — full-resolution terminal read)
     note: >
       CORRECTED V4 from photo: the earlier "safety POWER contactor / power poles on E-003" was an
       inference error — the physical 'MLC' device is a TeSys CA3K CONTROL RELAY (aux contacts only,
       no main poles). Coil A1/A2 + 24 VDC now verified. Aux-contact destinations = FIELD VERIFY
       (OI-26). A separate 3-phase motor contactor upstream of the GS10 = FIELD VERIFY (OI-21; none
-      observed in the 2026-07-11 photos).
+      observed in the 2026-07-11 photos). Full-res photo confirms coil A1/A2 wired and NO contacts
+      13-14 & 43-44 in use (NC 21-22/31-32 appear unused); contact destinations FIELD VERIFY
+      (OI-26).
 
   - tag: PL1
     type: pilot_light

@@ -167,11 +167,15 @@
 <text x="76.0" y="816.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• Port locations per CommsToVFD (PLC top-edge connector; GS10 front-face RJ45) — WI-001 says bottom-front. Wayfinding only; confirm on unit (FIELD</text>
 <text x="76.0" y="827.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VERIFY).</text>
 <text x="76.0" y="838.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• GS10 RS-485 RJ45 cable confirmed landed (photo wire_4). The GS10 control connector (FWD/REV/DI/AI/AO1/DO1) is also wired — see OI-22.</text>
-<text x="70.0" y="867.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">SOURCES:</text>
-<text x="130.0" y="867.0" font-size="7.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">CCW/MIRA_PLC/docs/instructions/Conv_Simple_CommsToVFD.pdf §2 (recovered style + wiring)</text>
-<text x="130.0" y="879.0" font-size="7.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">CCW/MIRA_PLC/docs/instructions/Conv_Simple_GS10_Beginner_Verify_V2.pdf p48 (corrected pins/channel)</text>
-<text x="130.0" y="891.0" font-size="7.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">plc/Prog_init_ConvSimple_v2.1.st (Channel 2, node 1, 0x2103)</text>
-<text x="130.0" y="903.0" font-size="7.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">plc/GS10_Integration_Guide.md §3 (RJ45 pinout, register map)</text>
+<text x="76.0" y="849.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• GS10 RS-485 RJ45 confirmed landed (full-res photo). The GS10 top run/DI control connector is EMPTY — no hardwired run/dir; command is Modbus. Bottom</text>
+<text x="76.0" y="860.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">analog/output row is wired (OI-22).</text>
+<text x="70.0" y="881.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">SOURCES:</text>
+<text x="76.0" y="891.0" font-size="7.0" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">full-res photos review/photos/*_full.jpg + crops (2026-07-11); review/PHOTO_EVIDENCE_V5.md</text>
+<text x="70.0" y="913.0" font-size="8.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">DOC REFS:</text>
+<text x="130.0" y="913.0" font-size="7.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">CCW/MIRA_PLC/docs/instructions/Conv_Simple_CommsToVFD.pdf §2 (recovered style + wiring)</text>
+<text x="130.0" y="925.0" font-size="7.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">CCW/MIRA_PLC/docs/instructions/Conv_Simple_GS10_Beginner_Verify_V2.pdf p48 (corrected pins/channel)</text>
+<text x="130.0" y="937.0" font-size="7.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">plc/Prog_init_ConvSimple_v2.1.st (Channel 2, node 1, 0x2103)</text>
+<text x="130.0" y="949.0" font-size="7.6" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">plc/GS10_Integration_Guide.md §3 (RJ45 pinout, register map)</text>
 <text x="830.0" y="648.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">TROUBLESHOOTING (this circuit)</text>
 <text x="838.0" y="664.0" font-size="8.4" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• Nothing after config -&gt; swap 485+/485- (A/B polarity; vendors disagree).</text>
 <text x="838.0" y="677.0" font-size="8.4" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">• CRC errors -&gt; usually polarity. Complete silence -&gt; usually baud mismatch (confirm 9600 8N1).</text>
@@ -196,5 +200,5 @@
 <text x="1408.0" y="914.0" font-size="8" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">SHEET</text>
 <text x="1408.0" y="932.0" font-size="16" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="bold" fill="#111111">E-007</text>
 <text x="1408.0" y="956.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">REV A</text>
-<text x="1408.0" y="974.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">2026-07-10</text>
+<text x="1408.0" y="974.0" font-size="9" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#666666">2026-07-11</text>
 <text x="1538.0" y="956.0" font-size="10" font-family="Arial, Helvetica, sans-serif" text-anchor="end" font-weight="normal" fill="#666666">7 of 9</text></svg>

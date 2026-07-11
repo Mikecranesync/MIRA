@@ -122,6 +122,10 @@ VFD1:  # power side — terminal NAMES verified from GS10 manual terminal table 
   control:  # control-terminal legend read directly off the device (photo wire_4.jpg,
             # 2026-07-11). NAMES verified; WHICH of these are actually landed = FIELD
             # VERIFY (OI-22) — the connector is populated (hybrid Modbus + hardwired I/O).
+            # Full-res photo (2026-07-11, gs10_control_terminals.jpg): the TOP run/DI row
+            # (FWD/REV/DI3-5/+24V/DCM) is EMPTY; the BOTTOM analog/output row (+10V/ACM/
+            # AI/AO1/DO1/DOC/PE) is WIRED. Names below stay status: verified; the wiring
+            # (which bottom-row terminal does what) remains FIELD VERIFY (OI-22).
     - {id: "FWD", function: "forward run command input", status: verified, source: "photo review/photos/wire_4.jpg"}
     - {id: "REV", function: "reverse run command input", status: verified, source: "photo review/photos/wire_4.jpg"}
     - {id: "DI3", function: "digital input 3 (multi-function)", status: verified, source: "photo review/photos/wire_4.jpg"}

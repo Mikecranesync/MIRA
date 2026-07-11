@@ -232,11 +232,11 @@ The docket of everything NOT yet verified. Every wire with status ≠ verified, 
 | OI-19 | E-003, E-005, E-006 | Wire-numbering convention adopted: W[sheet-digit][ | Read the actual wire markers on the panel; replace |
 | OI-20 | E-007 | GS10 comms line params: 2026-05-20 export = 38.4k/ | Fresh keypad readback of the GS10 serial config; u |
 | OI-21 | E-003 | Separate 3-phase motor contactor upstream of the G | Confirm whether a separate motor contactor exists  |
-| OI-22 | E-006, E-007 | GS10 control connector IS wired (photo wire_4) — c | Map which of FWD/REV/DI3/DI4/DI5/AI/AO1/DO1/DOC ar |
+| OI-22 | E-006, E-007 | GS10 control map (full-res photo): top run/DI conn | Map which of FWD/REV/DI3/DI4/DI5/AI/AO1/DO1/DOC ar |
 | OI-23 | panel | Siemens CPU 1212C AC/DC/RLY (S7-1200) observed on  | Confirm whether the Siemens CPU 1212C controls any |
 | OI-24 | panel | Device labeled "PMC 192.x" observed on the panel ( | Identify the device (network device / meter?) and  |
 | OI-25 | E-004 | DC +/- distribution block: which color (blue vs wh | Trace/meter the distribution block conductors agai |
-| OI-26 | E-006 | MLC (Q1) aux-contact destinations — where 13-14/43 | Trace each aux contact to its destination in the c |
+| OI-26 | E-006 | MLC (Q1) aux contacts (full-res photo): coil A1/A2 | Trace each aux contact to its destination in the c |
 
 ### Summary
 - Total field-verify wires: 31
