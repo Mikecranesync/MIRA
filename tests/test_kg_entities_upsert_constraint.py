@@ -66,7 +66,7 @@ def test_kg_entities_upsert_on_conflict_constraint():
                 else:
                     raise
 
-        # Apply migrations: 001_knowledge_graph, 025, 026, 063
+        # Apply migrations: 001_knowledge_graph, 025, 026, 064
         migration_files = [
             "mira-hub/db/migrations/001_knowledge_graph.sql",
             "mira-hub/db/migrations/025_kg_entities_natural_key.sql",
@@ -156,7 +156,7 @@ def test_kg_entities_upsert_on_conflict_constraint():
 
 @pytest.mark.unit
 def test_kg_entities_constraint_exists_after_migration():
-    """Verify that migration 063 creates the named constraint."""
+    """Verify that migration 064 creates the named constraint."""
 
     # This test verifies the migration SQL is syntactically correct
     # by parsing it. Since we can't run it without a real DB, we at least
