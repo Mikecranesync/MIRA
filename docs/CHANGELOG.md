@@ -1,6 +1,12 @@
 # MIRA Release Notes
 
 
+### v3.129.13 (2026-07-12) - chore(deps): remove unused anthropic dependency from Telegram bot
+- **Why:** MIRA policy (PR #610) removed Anthropic as a provider; the `anthropic>=0.97.0` line in `mira-bots/telegram/requirements.txt` is dead weight. Verified unused via grep across the entire Telegram bot codebase.
+- **What:** removed `anthropic>=0.97.0` from `mira-bots/telegram/requirements.txt`. No code change, no behavior change — pure dependency hygiene.
+- **Evidence:** `grep -rn "anthropic\|import anthropic\|from anthropic" mira-bots/telegram/` returns only the requirements.txt line (no actual usage).
+- **Impact:** cleanup only — no functionality affected. VERSION 3.129.1 → 3.129.2.
+
 ### v3.129.12 (2026-07-12) - test(stripe): reconcile webhook-before-signup provisioning (#2438)
 - **Why:** GitHub issue #2438 flagged a race condition: if a Stripe webhook fires before Hub signup, the payment is best-effort only—no retry. A paying customer ends up without a provisioned tenant.
 - **What:** integration test `mira-web/src/lib/__tests__/stripe-webhook-before-signup.integration.test.ts` (5 test cases) exercises the full queue-and-reconcile path: webhook queues payment when Hub user doesn't exist yet; later reconciliation drains the queue and provisions the tenant; re-running reconciliation is idempotent (no double-provision); Stripe redelivery doesn't double-queue (ON CONFLICT idempotency); unmatched rows stay pending with attempt count bumped; reconciliation scoped to one email finds and retries only that email.
