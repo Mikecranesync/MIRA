@@ -1,6 +1,15 @@
 # MIRA Release Notes
 
 
+### v3.132.0 (2026-07-11) - feat(visual): MIRA Visual Technician Phase 2 — equipment/nameplate intelligence
+- **Why:** ADR-0027 Phase 2. Adds the session-integrated equipment path (photo → identity candidates → service-pack/manual resolution → cited answer) the PRD calls the strongest-readiness capability, **reusing** the Drive Commander packs + manual retrieval + the Phase 1 session. **Stacked on Phase 1 (PR #2645).**
+- **What:**
+  - `mira-bots/shared/visual/equipment.py` (new) — `resolve_equipment` resolves each identity signal **independently** and compares, closing the resolver's cross-signal-conflict blind spot so it **never silently selects a pack when identifiers conflict/are incomplete** (`RESOLVED`/`AMBIGUOUS`/`CONFLICTING`/`NONE`; `pack_id` non-None only for `RESOLVED`; deterministic, no LLM). `default_manual_retriever` (injectable, tenant-scoped by the session's `tenant_id` — the only guard — vendor-relevance filtered, graceful-empty). `answer_equipment` gathers deterministic pack facts + tenant manuals as `DOCUMENTED` observations → the **unchanged** Phase 1 composer (never invents; `LIKELY` for inference; energization safety short-circuit preserved even without identity).
+  - `mira-bots/shared/visual/session_service.py` (extended, additive — Phase 1 print route + `ask` byte-identical) — nameplate/equipment ingest route (raw OCR kept separate from normalized) + `ask_equipment`.
+  - **No new migration** — reuses the Phase 1 `observation` ledger (candidates/confidence in JSONB metadata). `answer_composer.py` + migration 063 unchanged.
+  - 64 Phase 2 tests (incl. real-Postgres tenant isolation as `factorylm_app`) + 38 Phase 1 = **102 pass, zero regressions**; ruff check + format clean.
+- **Scope:** additive; no deployed service / resolver / composer / Phase-1 file touched. PR-only per the PRD; stacked on PR #2645. VERSION 3.131.0 → 3.132.0.
+
 ### v3.131.0 (2026-07-11) - feat(visual): MIRA Visual Technician Phase 1 — VisualSession spine + grounded answer envelope
 - **Why:** ADR-0027 Phase 1 (Snippet Interpreter MVP) of the MIRA Visual Technician PRD. The north star needs a persistent, multi-image, evidence-graded visual session with claim-level uncertainty — a genuine gap today (a session held ONE photo, replaced not accumulated). This builds the spine + the structured grounded-answer contract, **reusing** the existing extraction workers rather than rebuilding them.
 - **What:**

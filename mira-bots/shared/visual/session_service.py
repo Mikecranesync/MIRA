@@ -45,7 +45,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+from . import equipment
 from .answer_composer import compose_answer
+from .equipment import NAMEPLATE_IDENTITY_FIELDS, EquipmentResolution, ManualRetriever
 from .evidence_state import EvidenceState
 from .models import AnswerEnvelope, Observation, QualityScore
 from .quality_gate import score_image
@@ -71,6 +73,17 @@ _SOURCE_TYPE_BY_CLASSIFICATION = {
     "EQUIPMENT_PHOTO": "component",
 }
 
+# Phase 2 (ADR-0027) equipment/nameplate ingest route. Deliberately excludes
+# the literal string "equipment" -- migration 063's evidence_item.source_type
+# CHECK constraint does NOT list "equipment" as a valid value (it lists
+# print/panel/component/nameplate/terminal/plc/drive/hmi/area/mixed/unknown);
+# writing that value would violate the CHECK on a real Postgres. "component"
+# (EQUIPMENT_PHOTO's mapped source_type, above) already covers the general
+# "photo of equipment" case within the valid vocabulary.
+_EQUIPMENT_SOURCE_TYPES = frozenset({"nameplate", "drive", "panel", "component"})
+
+_NAMEPLATE_UNREADABLE_HINT = "nameplate unreadable — resend a clear, glare-free photo"
+
 _PRINT_THEORY_PROMPT = (
     "Summarize this print's likely theory of operation in 1-2 sentences, "
     "grounded only in the OCR labels provided. If nothing is legible, say so."
@@ -93,6 +106,10 @@ class IngestResult:
     observations: list[Observation] = field(default_factory=list)
     status: str = "ok"  # "ok" | "needs_better_photo" | "error"
     hint: str | None = None
+    # Phase 2 (ADR-0027): populated only when this ingest ran the nameplate/
+    # equipment route (source_type in _EQUIPMENT_SOURCE_TYPES). None for the
+    # Phase 1 print/unclassified routes -- unchanged behavior for those.
+    equipment_resolution: EquipmentResolution | None = None
 
 
 def _source_type_for(classification_label: str | None) -> str:
@@ -115,6 +132,16 @@ def _default_print_worker():
     return PrintWorker(
         os.environ.get(_OPENWEBUI_URL_VAR, _OPENWEBUI_URL_DEFAULT),
         os.environ.get(_OPENWEBUI_KEY_VAR, ""),
+    )
+
+
+def _default_nameplate_worker():
+    from ..workers.nameplate_worker import NameplateWorker
+
+    return NameplateWorker(
+        os.environ.get(_OPENWEBUI_URL_VAR, _OPENWEBUI_URL_DEFAULT),
+        os.environ.get(_OPENWEBUI_KEY_VAR, ""),
+        os.environ.get(_VISION_MODEL_VAR, _VISION_MODEL_DEFAULT),
     )
 
 
@@ -219,6 +246,7 @@ class VisualSessionService:
         vision: Any = None,
         print_worker: Any = None,
         schematic: Callable[[bytes], Any] | None = None,
+        nameplate_worker: Any = None,
     ) -> IngestResult:
         quality = score_image(image_bytes)
         original_hash = hashlib.sha256(image_bytes).hexdigest()
@@ -302,6 +330,20 @@ class VisualSessionService:
             schematic=schematic,
         )
 
+        # Phase 2 (ADR-0027): nameplate/equipment identity route. Purely
+        # additive alongside the Phase 1 OCR/vision + print-structure recording
+        # above (unchanged) -- gated on the SAME classification-derived
+        # source_type, never on a "print" classification.
+        equipment_resolution: EquipmentResolution | None = None
+        if source_type in _EQUIPMENT_SOURCE_TYPES:
+            equipment_resolution = await self._record_equipment_observations(
+                session_id,
+                tenant_id,
+                evidence_id,
+                image_bytes,
+                nameplate_worker=nameplate_worker,
+            )
+
         observations = await self.store.load_observations(session_id, tenant_id)
         return IngestResult(
             session_id=session_id,
@@ -310,6 +352,7 @@ class VisualSessionService:
             observations=observations,
             status="ok",
             hint=None,
+            equipment_resolution=equipment_resolution,
         )
 
     async def _record_extraction_observations(
@@ -450,6 +493,136 @@ class VisualSessionService:
                 extractor="print_worker",
             )
 
+    # -- equipment / nameplate route (ADR-0027 Phase 2) ---------------------
+
+    async def _record_equipment_observations(
+        self,
+        session_id: str,
+        tenant_id: str,
+        evidence_id: str | None,
+        image_bytes: bytes,
+        *,
+        nameplate_worker: Any,
+    ) -> EquipmentResolution:
+        """Extract nameplate fields, persist them, resolve equipment identity,
+        persist the outcome. Graceful on any NameplateWorker failure -- a
+        single NEEDS_CONTEXT observation, never a raised exception.
+        """
+        worker = nameplate_worker if nameplate_worker is not None else _default_nameplate_worker()
+        try:
+            photo_b64 = base64.b64encode(image_bytes).decode("ascii")
+            fields = await _maybe_await(worker.extract(photo_b64))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("ingest_image: nameplate worker failed: %s", exc)
+            fields = {"parse_error": str(exc), "raw_text": None}
+
+        if not isinstance(fields, dict) or "parse_error" in fields:
+            await self.store.append_observation(
+                session_id,
+                tenant_id,
+                obs_kind="property",
+                evidence_state=EvidenceState.NEEDS_CONTEXT,
+                evidence_id=evidence_id,
+                raw_value=_NAMEPLATE_UNREADABLE_HINT,
+                extractor="nameplate_worker",
+            )
+            return EquipmentResolution(
+                status="NONE",
+                candidates=[],
+                evidence=[],
+                reason="nameplate image unreadable (parse_error)",
+                needs_context=_NAMEPLATE_UNREADABLE_HINT,
+            )
+
+        # One VISIBLE observation per read field -- raw_text is recorded
+        # SEPARATELY below, never folded into a per-field value (rule 3: raw
+        # OCR kept apart from normalized/interpreted fields).
+        for field_name in NAMEPLATE_IDENTITY_FIELDS:
+            value = fields.get(field_name)
+            if value in (None, ""):
+                continue
+            await self.store.append_observation(
+                session_id,
+                tenant_id,
+                obs_kind="property",
+                evidence_state=EvidenceState.VISIBLE,
+                evidence_id=evidence_id,
+                raw_value=str(value),
+                normalized_value=f"{field_name}: {value}",
+                extractor="nameplate_worker",
+                metadata={"field": field_name},
+            )
+
+        raw_text = fields.get("raw_text")
+        if raw_text:
+            await self.store.append_observation(
+                session_id,
+                tenant_id,
+                obs_kind="property",
+                evidence_state=EvidenceState.VISIBLE,
+                evidence_id=evidence_id,
+                raw_value=str(raw_text),
+                extractor="nameplate_worker",
+                metadata={"field": "raw_text"},
+            )
+
+        resolution = equipment.resolve_equipment(nameplate=fields)
+        await self._persist_equipment_resolution(session_id, tenant_id, evidence_id, resolution)
+        return resolution
+
+    async def _persist_equipment_resolution(
+        self,
+        session_id: str,
+        tenant_id: str,
+        evidence_id: str | None,
+        resolution: EquipmentResolution,
+    ) -> None:
+        """Persist the resolve_equipment outcome as ONE observation whose
+        evidence_state reflects the outcome (never RESOLVED-shaped unless the
+        resolution genuinely is): RESOLVED -> DOCUMENTED, CONFLICTING ->
+        CONFLICTING, AMBIGUOUS/NONE -> NEEDS_CONTEXT. The full resolution
+        (including every candidate) round-trips through metadata so
+        ask_equipment can reconstruct it later without re-resolving.
+        """
+        state_by_status = {
+            "RESOLVED": EvidenceState.DOCUMENTED,
+            "CONFLICTING": EvidenceState.CONFLICTING,
+            "AMBIGUOUS": EvidenceState.NEEDS_CONTEXT,
+            "NONE": EvidenceState.NEEDS_CONTEXT,
+        }
+        state = state_by_status.get(resolution.status, EvidenceState.NEEDS_CONTEXT)
+
+        if resolution.status == "RESOLVED" and resolution.pack_id:
+            try:
+                pack = equipment.load_pack(resolution.pack_id)
+                family_label = f"{pack.family.manufacturer} {pack.family.series}"
+            except Exception as exc:  # noqa: BLE001 - pack removed/corrupted since resolving
+                logger.warning(
+                    "_persist_equipment_resolution: load_pack(%s) failed: %s",
+                    resolution.pack_id,
+                    exc,
+                )
+                family_label = resolution.pack_id
+            normalized = (
+                f"identified as {family_label} (from nameplate; not field-verified installed)"
+            )
+            raw_value = normalized
+        else:
+            normalized = resolution.needs_context or resolution.reason
+            raw_value = resolution.reason or resolution.needs_context
+
+        await self.store.append_observation(
+            session_id,
+            tenant_id,
+            obs_kind="entity",
+            evidence_state=state,
+            evidence_id=evidence_id,
+            raw_value=raw_value,
+            normalized_value=normalized,
+            extractor="equipment_resolver",
+            metadata=resolution.to_dict(),
+        )
+
     # -- ask -------------------------------------------------------------------
 
     async def ask(
@@ -468,3 +641,60 @@ class VisualSessionService:
         )
         await self.store.record_answer(session_id, tenant_id, question, envelope, asked_by=asked_by)
         return envelope
+
+    # -- ask_equipment (ADR-0027 Phase 2) ---------------------------------
+
+    async def ask_equipment(
+        self,
+        session_id: str,
+        tenant_id: str,
+        question: str,
+        *,
+        retriever: ManualRetriever | None = None,
+        llm: Callable[[str], str] | None = None,
+    ) -> AnswerEnvelope:
+        """Answer an equipment question grounded in this session's resolved
+        pack identity (from the most recent nameplate/equipment ingest) plus
+        tenant manuals. Loads the persisted identity/candidate/conflict
+        observation ``_record_equipment_observations`` wrote (tagged
+        ``extractor="equipment_resolver"``) rather than re-resolving.
+
+        Prefers the LATEST observation whose persisted status was RESOLVED,
+        even if a later re-scan in the same session failed (CONFLICTING/
+        AMBIGUOUS/NONE) -- a failed re-scan must not erase a previously
+        established identity. If nothing ever resolved but at least one
+        attempt was made, surfaces that attempt's own (unresolved) status
+        rather than a generic "nothing yet" message. If no nameplate/equipment
+        photo was ever ingested in this session, NEEDS_CONTEXT.
+        """
+        observations = await self.store.load_observations(session_id, tenant_id)
+        identity_obs = [o for o in observations if o.extractor == "equipment_resolver"]
+
+        resolved_obs = [
+            o
+            for o in identity_obs
+            if isinstance(o.metadata, dict) and o.metadata.get("status") == "RESOLVED"
+        ]
+        if resolved_obs:
+            resolution = EquipmentResolution.from_dict(resolved_obs[-1].metadata)
+        elif identity_obs:
+            resolution = EquipmentResolution.from_dict(identity_obs[-1].metadata)
+        else:
+            hint = "no equipment identified yet in this session — send a clear photo of the nameplate first"
+            resolution = EquipmentResolution(
+                status="NONE",
+                candidates=[],
+                evidence=[],
+                reason=hint,
+                needs_context=hint,
+            )
+
+        return await equipment.answer_equipment(
+            session_id,
+            tenant_id,
+            question,
+            resolution,
+            store=self.store,
+            retriever=retriever,
+            llm=llm,
+        )
