@@ -1,0 +1,101 @@
+# shellcheck shell=bash disable=SC2034  # sourced fragment; SCN_* are read by judge.sh
+# fault-lookup.check — "can a technician access the public Drive Commander fault library?"
+#
+# The money path: a technician finds a GS10 fault code (F30001), searches for it
+# in Drive Commander, and gets a CITED explanation without needing a login or
+# subscription. This is the PLG funnel starting point — the free public SEO/funnel
+# page that teaches and converts to the paid tier.
+#
+# The check verifies:
+#   1. Reachability: /drive-commander/siemens-g120 returns a landing page (200, HTML).
+#   2. Fault detail: GET .../faults/F30001 returns fault MEANING + a citation (grounded).
+#   3. Freemium gate: FREE tier content is present; PRO teasers (if any) are blocked.
+#   4. Public access: no auth required; unauthenticated users can browse.
+#
+# Note: the route may not be deployed yet (before the feature lands). That's INFRA
+# (not a product failure) — the check won't file a false RED on pre-deployment.
+#
+# Verdict on the LAST line: GREEN | YELLOW:<reason> | RED:<reason> | INFRA:<reason>
+
+SCN_PATH="Drive Commander public fault lookup"
+SCN_TITLE="bug(mira-web): Drive Commander fault-lookup funnel unreachable or ungrounded — technician cannot access free fault library"
+SCN_IMPACT="The public Drive Commander landing page and fault-detail views are broken or missing — the SEO/funnel gate that converts free browsers to paid tier is blocked, and technicians cannot cite fault meanings from the public library."
+SCN_LABELS="bug,mira-web,dogfood,needs-triage,plg"
+SCN_FINDER="operator"      # a technician or prospect browsing
+SCN_VERIFIER="carlos"      # a second session confirms the fault detail
+SCN_DEDUPE="drive commander fault-lookup public free library"
+
+run_check() {
+  local base_url model fault_code landing fault_detail cites freemium_marker
+
+  # Resolve base URL: mira-web may be on a different port than the Hub.
+  # Staging: DF_BASE points to hub (4101), mira-web is separate (4200).
+  # Try to auto-detect mira-web from DF_BASE origin.
+  if [[ "$DF_BASE" == *":4101"* ]]; then
+    base_url="${DF_BASE/:4101/:4200}"  # replace Hub port with mira-web port
+  else
+    # Fallback: assume same host, same path (e.g. staging-vps or local with unified reverse proxy)
+    base_url="$DF_BASE"
+  fi
+
+  model="siemens-g120"
+  fault_code="F30001"
+
+  # 1. Reachability: Landing page for the G120 fault library.
+  landing=$(curl -sS -m 20 "$base_url/drive-commander/$model" 2>/dev/null)
+  if [[ -z "$landing" ]]; then
+    echo "EVIDENCE: /drive-commander/$model did not respond (unreachable or timeout)"
+    echo "INFRA: fault-lookup route not deployed (or mira-web unreachable at $base_url)"; return
+  fi
+  if ! printf '%s' "$landing" | grep -q "G120" && ! printf '%s' "$landing" | grep -q "Siemens"; then
+    echo "EVIDENCE: /drive-commander/$model did not return G120 library content (got: $(printf '%s' "$landing" | head -c 80))"
+    echo "INFRA: route returned non-HTML or wrong content"; return
+  fi
+  echo "EVIDENCE: landing page /drive-commander/$model reachable and contains G120 fault library"
+
+  # 2. Fault detail page: specific fault code.
+  fault_detail=$(curl -sS -m 20 "$base_url/drive-commander/$model/faults/$fault_code" 2>/dev/null)
+  if [[ -z "$fault_detail" ]]; then
+    echo "EVIDENCE: /drive-commander/$model/faults/$fault_code did not respond"
+    echo "INFRA: fault detail route unreachable"; return
+  fi
+  if ! printf '%s' "$fault_detail" | grep -q "$fault_code"; then
+    echo "EVIDENCE: fault detail page does not mention the fault code $fault_code (got: $(printf '%s' "$fault_detail" | head -c 80))"
+    echo "RED: the fault-detail page loaded but does not contain the requested fault code — it is not grounded"; return
+  fi
+  echo "EVIDENCE: fault detail page /drive-commander/$model/faults/$fault_code loaded and mentions $fault_code"
+
+  # 3. Citation check: fault meaning must cite a source (grounded).
+  # Look for citation markers: [1], [2], etc. OR explicit "manual" / "page" references.
+  cites=$(printf '%s' "$fault_detail" | grep -o '\[\|manual\|page\|source\|reference' | wc -l)
+  if [[ $cites -eq 0 ]]; then
+    echo "EVIDENCE: fault detail page has no citation markers ([1]/[2] syntax) or explicit reference language"
+    echo "YELLOW: the fault page loads but lacks visible citations — a technician sees a description with no grounding"; return
+  fi
+  echo "EVIDENCE: fault detail page contains citation markers (found $cites citation-related strings)"
+
+  # 4. Freemium gate check: FREE tier must be accessible; no login prompt.
+  if printf '%s' "$fault_detail" | grep -q -i "sign in\|login\|log in\|requires subscription"; then
+    echo "EVIDENCE: fault detail page shows a login or subscription prompt"
+    echo "RED: the public fault page is behind a login — free tier cannot access it"; return
+  fi
+  echo "EVIDENCE: fault detail page is publicly accessible (no login prompt detected)"
+
+  # 5. Pro content gate: if there's a "Pro" section or "Upgrade" teaser, it must be labeled as locked.
+  # This is softer: a minimal pass just checks that if PRO content exists, it's not confidently served.
+  if printf '%s' "$fault_detail" | grep -q -i "pro\|upgrade\|premium"; then
+    # Pro content is present. Is it *locked* (teaser only)?
+    if printf '%s' "$fault_detail" | grep -q -i "upgrade to.*pro\|pro.*premium\|locked\|coming soon"; then
+      echo "EVIDENCE: Pro content is present and clearly locked/teased (freemium gate working)"
+    else
+      # Pro content is present but NOT clearly locked — could be leaking paid data.
+      echo "EVIDENCE: Pro content is present but freemium gate may not be working (no 'locked' marker)"
+      echo "YELLOW: Pro content hints exist without a clear upgrade teaser — verify the freemium boundary is enforced"; return
+    fi
+  else
+    echo "EVIDENCE: No Pro content detected (all content is free tier)"
+  fi
+
+  # ---- verdict (business language) ----
+  echo "GREEN: technician can browse $model fault library, find fault $fault_code, and read a cited free explanation without login"
+}

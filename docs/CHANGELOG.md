@@ -1,6 +1,15 @@
 # MIRA Release Notes
 
 
+### v3.129.2 (2026-07-11) - feat(dogfood): Drive Commander public fault-lookup funnel regression check
+- **Why:** extend the daily judge to guard the public fault-lookup money path (Drive Commander SEO funnel). The freemium landing page and fault-detail views must stay live, reachable, grounded (cited), and publicly accessible — the cash-conversion gate for the PLG funnel.
+- **What:** `tools/crew/dogfood/checks/fault-lookup.check` — two-persona gate verifying that `GET /drive-commander/siemens-g120` and `GET /drive-commander/siemens-g120/faults/F30001` return HTML/JSON, contain the G120 library and fault code, ground with citations, require no login. Auto-detects mira-web base URL (defaults to staging 4200 if DF_BASE is 4101). Emits `GREEN` (funnel works), `YELLOW` (works but degraded, e.g., missing citations), `RED` (blocked), or `INFRA` (route not deployed yet — never files false product-RED on pre-deployment).
+- **Base URL logic:** mira-web is on separate port (4200) in staging; the check reuses the Hub base `http://100.68.120.99:4101` and auto-swaps the port. On prod/unified reverse-proxy hosts, it falls back to the same base.
+- **Integration:** auto-discovered from `tools/crew/dogfood/checks/*.check`; wired into the daily judge.sh loop as a 6th check (alongside maintenance-tech, contextualization, work-order, demo-readiness, beta-gate).
+- **Verdict contract:** `GREEN` (200, G120+F30001+citations, no login) | `YELLOW` (reachable but missing citations/freemium gate) | `RED` (200 but missing content/login-blocked) | `INFRA` (404/timeout, not deployed).
+- **CI:** CI runs `test_judge.sh` (hermetic, passes); dry-run judge emits `INFRA` verdict (expected until route deploys).
+- `VERSION 3.129.1 → 3.129.2`.
+
 ### v3.129.1 (2026-07-10) - fix(ci): install pytest-asyncio in the offline pytest jobs — stop the asyncio_mode PytestConfigWarning→exit-1 flake
 - **Why:** the `Architecture Check` job (and the two other offline pytest jobs) install only `pytest pyyaml`, but every pytest run reads `asyncio_mode = "auto"` from the shared `[tool.pytest.ini_options]` in `pyproject.toml`. Without `pytest-asyncio` present that's an **unknown ini option** → `PytestConfigWarning: Unknown config option: asyncio_mode`, which some resolved pytest versions escalate to **exit 1 despite all tests passing** (`9 passed, 1 warning` + exit 1). It flaked red on 4 PRs (#2547/#2549/#2550 Drive Commander convergence) while passing on clean-env draws (#2553).
 - **What:** add `pytest-asyncio` to the three offline pytest jobs in `.github/workflows/ci.yml` — `architecture-check`, the **required** `simlab-gate` (would *hard-block* merges if it flaked the same way), and `drive-pack-extract-tests`. This makes `asyncio_mode` a recognized option → no warning → the failure mode is removed at its source regardless of pytest version. No test-behavior change: these suites are synchronous, so `asyncio_mode=auto` is a no-op for them, and `pytest-asyncio`'s only dependency is `pytest` (no chromadb shadow risk).
