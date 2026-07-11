@@ -26,6 +26,13 @@ x-staging-env: &staging-env
   NEON_DATABASE_URL: ${NEON_DATABASE_URL:?staging must point at a NeonDB staging branch}
   MIRA_TENANT_ID: ${MIRA_TENANT_ID:-staging}
   INFERENCE_BACKEND: ${INFERENCE_BACKEND:-cloud}
+  # CMMS work-order-history evidence (#2445). Default OFF — zero behavior change
+  # until ENABLE_WO_EVIDENCE=1 (Doppler factorylm/stg). Reads the staging Neon
+  # work_orders table directly (independent of the dummy MCP above). Both local
+  # staging engine services inherit these via `<<: *staging-env`.
+  ENABLE_WO_EVIDENCE: "${ENABLE_WO_EVIDENCE:-0}"
+  MIRA_WO_EVIDENCE_TIMEOUT_S: "${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}"
+  MIRA_WO_EVIDENCE_LIMIT: "${MIRA_WO_EVIDENCE_LIMIT:-5}"
   GROQ_API_KEY: ${GROQ_API_KEY:?GROQ_API_KEY required for cascade}
   GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
   GROQ_VISION_MODEL: ${GROQ_VISION_MODEL:-meta-llama/llama-4-scout-17b-16e-instruct}
