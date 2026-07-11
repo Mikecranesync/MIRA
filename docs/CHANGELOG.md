@@ -1,6 +1,11 @@
 # MIRA Release Notes
 
 
+### v3.130.0 (2026-07-11) - feat(conv-simple-electrical): CV-101 electrical print package (9 sheets, photo-aligned)
+- **Why:** a model-first, evidence-graded electrical print set for the CV-101 garage conveyor, aligned to the real bench — every claim cited to a repo artifact / bench photo, or marked FIELD VERIFY. No invented terminals/wires/devices.
+- **What:** `plc/conv_simple_electrical/` — 9 drafted sheets (E-001 cover · E-002 power one-line · E-003 VFD power · E-004 24 VDC control · E-005 PLC inputs · E-006 PLC outputs · E-007 RS-485 · E-008 wire list · E-009 field-verify docket) generated from YAML by `render_sheet.py`; a 12-check `validate_model.py` (dash-construction, PDF-raster parity, no-render-only-engineering-text, all-stroke text collision) + `emit_matrices.py` (conductor evidence / terminal cross-ref / field-verify docket). Graded by a 4-reviewer panel (technician / controls / drafting / evidence-auditor) → unanimous **APPROVABLE WITH FIELD VERIFICATION** (`review/GRADES_FINAL.md`).
+- **Key finding:** real bench photos corrected the drawing twice — the device hand-labeled "MLC" is a Schneider TeSys CA3KN22BD **control relay used as the single-phase 230 V drive-supply switch** (its 2 NO contacts carry the supply into the GS10), not a 3-phase motor contactor; and GS10 control is a hybrid (Modbus command + analog I/O), not Modbus-only. 28 open items (OI-01..28) are the bench-meter docket rendered on E-009. PR #2631. VERSION 3.129.4 → 3.130.0.
+
 ### v3.128.5 (2026-07-10) - docs(eval): Print Translator automated benchmark + Next-Steps (Claude-judge baseline + OCR A/B)
 - **Why:** durable, evidence-grounded benchmark for the Print Translator, plus the "Next-Step Plan" (freeze baseline, prove the OCR path, run the OCR A/B, regression fixtures, calibration packet) — all NON-authoritative until technician calibration, no product/prompt/deploy change.
 - **What:** `docs/eval/print-translator-benchmark/` — anonymized Claude (Sonnet-subagent) judging of the 10 preserved responses on a 100-pt rubric with independent 2nd-judge escalation; **Baseline A** frozen (`BASELINE_A.sha256`, immutable); **OCR-path proof** (code trace glm-ocr → theory prompt); **Baseline B** OCR A/B (image-only vs image+OCR-proxy).
