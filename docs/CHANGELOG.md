@@ -1,6 +1,9 @@
 # MIRA Release Notes
 
 
+### v3.129.2 (2026-07-11) - fix(ruff): split multi-import lines + sort imports in drive-pack-extract
+- `tools/drive-pack-extract/scorecard.py` and `tests/test_scorecard.py` had E401 (multiple imports on one line) and I001 (unsorted imports) violations introduced in the machine-pack work. Auto-fixed with `ruff --fix` + `ruff format`. No logic changes.
+
 ### v3.129.1 (2026-07-10) - fix(ci): install pytest-asyncio in the offline pytest jobs — stop the asyncio_mode PytestConfigWarning→exit-1 flake
 - **Why:** the `Architecture Check` job (and the two other offline pytest jobs) install only `pytest pyyaml`, but every pytest run reads `asyncio_mode = "auto"` from the shared `[tool.pytest.ini_options]` in `pyproject.toml`. Without `pytest-asyncio` present that's an **unknown ini option** → `PytestConfigWarning: Unknown config option: asyncio_mode`, which some resolved pytest versions escalate to **exit 1 despite all tests passing** (`9 passed, 1 warning` + exit 1). It flaked red on 4 PRs (#2547/#2549/#2550 Drive Commander convergence) while passing on clean-env draws (#2553).
 - **What:** add `pytest-asyncio` to the three offline pytest jobs in `.github/workflows/ci.yml` — `architecture-check`, the **required** `simlab-gate` (would *hard-block* merges if it flaked the same way), and `drive-pack-extract-tests`. This makes `asyncio_mode` a recognized option → no warning → the failure mode is removed at its source regardless of pytest version. No test-behavior change: these suites are synchronous, so `asyncio_mode=auto` is a no-op for them, and `pytest-asyncio`'s only dependency is `pytest` (no chromadb shadow risk).
