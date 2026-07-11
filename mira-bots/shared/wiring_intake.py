@@ -309,15 +309,44 @@ def payload_to_proposed_rows(
 
 
 def write_proposed_rows(cur, tenant_id: str, rows: list) -> tuple[int, int]:
-    """Set RLS then delegate to the reused PR-1/PR-2 writer seam.
+    """Set RLS, write wiring_connections, and emit ai_suggestions proposals.
 
     `cur` is a live DB cursor owned by the caller's transaction (mirrors
     `wiring_map_import.main()`). Returns `(inserted, skipped)`. Never sets
     `approval_state='verified'` — that column value is already fixed to
     `'proposed'` on every row by `kg_payload_to_rows`.
+
+    Per PR #2605, each newly-inserted wiring_connection also gets an ai_suggestions
+    row so the Hub `/proposals` review/approve path can govern them.
     """
+    from .proposal_writer import propose_wiring_connection  # local import: only on write path
+
     cur.execute("SELECT set_config('app.current_tenant_id', %s, true)", (tenant_id,))
-    return _load_schematic().base.write_rows(cur, tenant_id, rows)
+    inserted, skipped, inserted_rows = _load_schematic().base.write_rows(cur, tenant_id, rows)
+
+    # Emit ai_suggestions for each newly-inserted wiring_connection (PR #2605).
+    # Any failure here logs but doesn't abort the whole transaction — wiring rows
+    # remain `proposed` and readable, and a retry can emit the proposals later.
+    for wiring_id, row in inserted_rows:
+        try:
+            propose_wiring_connection(
+                cur,
+                tenant_id,
+                wiring_id,
+                source_terminal=row.source_terminal,
+                dest_terminal=row.dest_terminal,
+                function_class=row.function_class,
+                drawing_reference=row.drawing_reference,
+                proposed_by=row.proposed_by,
+                confidence=0.75,  # Telegram vision extraction confidence
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                f"failed to propose ai_suggestions for wiring {wiring_id}: {e}",
+                extra={"wiring_id": wiring_id, "error": str(e)},
+            )
+
+    return inserted, skipped
 
 
 # ---------------------------------------------------------------------------

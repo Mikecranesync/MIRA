@@ -244,19 +244,46 @@ def main(argv: Optional[list[str]] = None) -> int:  # pragma: no cover - DB glue
         return 2
 
     import psycopg2  # local import: only main() needs the driver
+    from mira_bots.shared.proposal_writer import (  # local import: only writer path needs it
+        propose_wiring_connection,
+    )
 
     conn = psycopg2.connect(db_url)
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT set_config('app.current_tenant_id', %s, true)", (args.tenant_id,))
-            inserted, skipped = base.write_rows(cur, args.tenant_id, rows)
+            inserted, skipped, inserted_rows = base.write_rows(cur, args.tenant_id, rows)
+
+            # Emit ai_suggestions proposal rows for each newly-inserted wiring_connection.
+            # This routes LLM-derived wiring through the Hub review/approve path (PR #2605).
+            proposal_count = 0
+            for wiring_id, row in inserted_rows:
+                try:
+                    propose_wiring_connection(
+                        cur,
+                        args.tenant_id,
+                        wiring_id,
+                        source_terminal=row.source_terminal,
+                        dest_terminal=row.dest_terminal,
+                        function_class=row.function_class,
+                        drawing_reference=row.drawing_reference,
+                        proposed_by=row.proposed_by,
+                        confidence=0.75,  # Vision extraction is moderately confident
+                    )
+                    proposal_count += 1
+                except Exception as e:  # noqa: BLE001
+                    print(
+                        f"WARNING: failed to propose ai_suggestions for wiring {wiring_id}: {e}",
+                        file=sys.stderr,
+                    )
         conn.commit()
     finally:
         conn.close()
 
     print(
         f"wiring_connections: proposed {inserted} new schematic connection(s), "
-        f"skipped {skipped} already-present (asset {args.asset})."
+        f"skipped {skipped} already-present (asset {args.asset}). "
+        f"ai_suggestions: {proposal_count} proposals for Hub review."
     )
     return 0
 

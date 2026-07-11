@@ -11,6 +11,13 @@ interface TagSuggestionRow {
   extracted_data: Record<string, unknown>;
 }
 
+// Shape of an ai_suggestions row for wiring_connection decisions.
+interface WiringSuggestionRow {
+  id: string;
+  status: string;
+  extracted_data: Record<string, unknown>;
+}
+
 export const dynamic = "force-dynamic";
 
 /**
@@ -149,6 +156,52 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
                 SET approval_state = $1, updated_at = now()
               WHERE id = $2 AND tenant_id = $3`,
             [newApprovalState, tagEntityId, ctx.tenantId],
+          );
+        }
+
+        const newStatus = decision === "verify" ? "verified" : "rejected";
+        return { kind: "ok" as const, decision, status: newStatus };
+      }
+
+      // ── wiring_connection path (PR #2605) ─────────────────────────────────
+      // Similar to tag_mapping: ai_suggestions header with extracted_data
+      // pointing at the wiring_connections row. Approval updates the
+      // wiring_connections.approval_state directly (like tag_entities does).
+      const wiringSugRes = await c.query<WiringSuggestionRow>(
+        `SELECT id, status, extracted_data
+           FROM ai_suggestions
+          WHERE id = $1 AND tenant_id = $2 AND suggestion_type = 'wiring_connection'
+          FOR UPDATE`,
+        [id, ctx.tenantId],
+      );
+      if (wiringSugRes.rows.length > 0) {
+        const s = wiringSugRes.rows[0];
+        if (s.status !== "pending" && s.status !== "deferred") {
+          return { kind: "wrong_state" as const, status: s.status };
+        }
+        const reviewerLabel = `human:${ctx.userId ?? ctx.tenantId}`;
+        // ADR-0017: update ai_suggestions status through the canonical helper.
+        // wiring_connections.approval_state is updated directly below.
+        await applyHubProposalTransition(c, {
+          trigger: decision === "verify" ? "accept" : "reject",
+          aiSuggestionId: id,
+          reviewerLabel,
+          reason,
+        });
+
+        // Update the wiring_connections approval_state (mirrors tag_entities).
+        // extracted_data.wiring_connection_id is the UUID of the wiring row.
+        const wiringConnectionId = s.extracted_data?.wiring_connection_id;
+        if (
+          typeof wiringConnectionId === "string" &&
+          /^[0-9a-f-]{36}$/i.test(wiringConnectionId)
+        ) {
+          const newApprovalState = decision === "verify" ? "verified" : "rejected";
+          await c.query(
+            `UPDATE wiring_connections
+                SET approval_state = $1, updated_at = now()
+              WHERE id = $2 AND tenant_id = $3`,
+            [newApprovalState, wiringConnectionId, ctx.tenantId],
           );
         }
 
