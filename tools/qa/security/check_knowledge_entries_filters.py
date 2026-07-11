@@ -13,9 +13,10 @@ Run: python tools/qa/security/check_knowledge_entries_filters.py [--fix]
 
 import re
 import sys
-import yaml
 from pathlib import Path
-from typing import Optional, TypedDict
+from typing import TypedDict
+
+import yaml
 
 
 class ReadSite(TypedDict):
@@ -42,7 +43,10 @@ def find_knowledge_entries_reads(repo_root: Path) -> list[ReadSite]:
         for file_path in repo_root.glob(pattern):
             # Skip node_modules, .next, test files we don't care about
             if any(part in str(file_path) for part in [
-                "node_modules", ".next", "dist", "__pycache__", ".venv"
+                "node_modules", ".next", "dist", "__pycache__", ".venv",
+                # the checker and its fixtures contain pattern strings, not reads
+                "tools/qa/security/check_knowledge_entries_filters.py",
+                "tests/test_knowledge_entries_security_check.py",
             ]):
                 continue
 
@@ -59,6 +63,10 @@ def find_knowledge_entries_reads(repo_root: Path) -> list[ReadSite]:
                     # Extract the query context (this is a heuristic)
                     query_context = _extract_query_context(lines, i)
                     classification, reason = _classify_read(query_context)
+                    if classification in ("UNFILTERED", "TENANT-ONLY"):
+                        composed = _classify_composed_filter(query_context, lines)
+                        if composed:
+                            classification, reason = composed
 
                     reads.append({
                         "file": str(file_path.relative_to(repo_root)),
@@ -94,6 +102,32 @@ def _extract_query_context(lines: list[str], start_idx: int) -> str:
 
     context = "\n".join(lines[start:end])
     return context
+
+
+_COMPOSED_HYBRID_BRANCH = "(is_private = false OR tenant_id = :tid)"
+_COMPOSED_PUBLIC_BRANCH = '"is_private = false"'
+
+
+def _classify_composed_filter(query: str, lines: list[str]) -> tuple[str, str] | None:
+    """Resolve the dynamically-composed tenant_filter pattern (neon_recall.py).
+
+    A query interpolating `{tenant_filter}` is HYBRID iff the SAME file assigns
+    BOTH canonical branches of the hybrid law:
+        tenant_filter = "(is_private = false OR tenant_id = :tid)"   # tenant branch
+        tenant_filter = "is_private = false"                          # anonymous branch
+    Exact-string match, file-scoped — deterministic, no allowlist entry needed.
+    Anything else stays UNFILTERED/TENANT-ONLY and must be allowlisted.
+    """
+    if "{tenant_filter}" not in query:
+        return None
+    text = "\n".join(lines)
+    if _COMPOSED_HYBRID_BRANCH in text and _COMPOSED_PUBLIC_BRANCH in text:
+        return (
+            "HYBRID",
+            "Composed tenant_filter: file assigns both hybrid-law branches "
+            "((is_private = false OR tenant_id = :tid) | is_private = false)",
+        )
+    return None
 
 
 def _classify_read(query: str) -> tuple[str, str]:
@@ -164,7 +198,7 @@ def _classify_read(query: str) -> tuple[str, str]:
         return "PUBLIC-ONLY", "Only filters on is_private = false (OEM corpus)"
 
     if has_tenant_filter and not has_is_private_false and not has_is_private_true:
-        return "TENANT-ONLY", f"Only filters on tenant_id without is_private = false (bug class #1761)"
+        return "TENANT-ONLY", "Only filters on tenant_id without is_private = false (bug class #1761)"
 
     if has_is_private_true:
         return "PRIVATE-ONLY", "Filters only on is_private = true (private uploads only)"
@@ -195,6 +229,7 @@ def check_reads(reads: list[ReadSite], allowlist: dict) -> tuple[list[str], int]
     Returns: (error messages, exit code)
     """
     errors = []
+    pending_justification = 0
     allowlist_entries = allowlist.get("approved", {})
 
     for read in reads:
@@ -219,6 +254,9 @@ def check_reads(reads: list[ReadSite], allowlist: dict) -> tuple[list[str], int]
                         f"   Found: {classification}\n"
                         f"   Note: The read pattern may have changed"
                     )
+                elif "TODO" in str(entry.get("reason", "")):
+                    # enumerated debt, not approval — non-fatal but counted
+                    pending_justification += 1
 
     # Check for stale allowlist entries (files that no longer read knowledge_entries)
     current_keys = {f"{r['file']}:{r['line_num']}" for r in reads}
@@ -229,6 +267,13 @@ def check_reads(reads: list[ReadSite], allowlist: dict) -> tuple[list[str], int]
                 f"⚠️  {allowlist_key} - Allowlist entry not found in code\n"
                 f"   Note: The file or line may have been moved/deleted"
             )
+
+    if pending_justification:
+        print(
+            f"⏳ {pending_justification} allowlisted site(s) still carry a TODO reason — "
+            "enumerated debt, tracked in the seeding follow-up issue (non-fatal)",
+            file=sys.stderr,
+        )
 
     exit_code = 0 if not errors else 1
     return errors, exit_code
@@ -251,8 +296,8 @@ def generate_allowlist_template(reads: list[ReadSite]) -> str:
             key = f"{read['file']}:{read['line_num']}"
             template += f"  \"{key}\":\n"
             template += f"    approved_classification: {read['classification']}\n"
-            template += f"    reason: \"TODO: justify this read pattern\"\n"
-            template += f"    query_snippet: |\n"
+            template += "    reason: \"TODO: justify this read pattern\"\n"
+            template += "    query_snippet: |\n"
             for line in read["query"].split("\n")[:3]:
                 template += f"      {line}\n"
 

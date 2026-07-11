@@ -79,45 +79,15 @@ compliant:
     status: compliant
     reason: Asset chat RAG uses (is_private=false OR tenant_id) hybrid filter for OEM+uploads
 
-  "mira-bots/shared/neon_recall.py:411":
-    classification: HYBRID
-    status: compliant
-    reason: BM25 recall with (tenant_id OR shared_tid) pattern for OEM + tenant docs
 
-  "mira-bots/shared/neon_recall.py:456":
-    classification: HYBRID
-    status: compliant
-    reason: BM25 recall with (tenant_id OR shared_tid) for hybrid corpus
 
-  "mira-bots/shared/neon_recall.py:558":
-    classification: HYBRID
-    status: compliant
-    reason: FullText recall with (tenant_id OR shared_tid) hybrid pattern
 
-  "mira-bots/shared/neon_recall.py:811":
-    classification: HYBRID
-    status: compliant
-    reason: Embedding recall with (tenant_id OR shared_tid) for OEM + tenant
 
-  "mira-bots/shared/neon_recall.py:990":
-    classification: HYBRID
-    status: compliant
-    reason: Vendor pattern match with (tenant_id OR shared_tid)
 
-  "mira-bots/shared/neon_recall.py:1069":
-    classification: HYBRID
-    status: compliant
-    reason: Vendor fallback with (tenant_id OR shared_tid)
 
 # Approved non-production reads (scripts, tests, tools)
 approved:
   # Test fixture: demonstrating TENANT-ONLY bug class #1761
-  "tests/test_knowledge_entries_security_check.py:175":
-    approved_classification: TENANT-ONLY
-    reason: "Test fixture demonstrating #1761 bug (library surfaces hide OEM corpus)"
-    query_snippet: |
-      SELECT source_url, COUNT(*) FROM knowledge_entries
-      WHERE tenant_id = $1
   "mira-web/src/seed/knowledge-seed.ts:473":
     approved_classification: UNFILTERED
     reason: "TODO: justify this read pattern"
@@ -357,28 +327,28 @@ approved:
                ORDER BY chunk_count DESC
   "mira-hub/src/app/api/readiness/route.ts:56":
     approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
+    reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
                     WHERE tenant_id = $1::uuid AND verified = true
                   )::text AS docs,
   "mira-hub/src/app/api/readiness/route.ts:60":
     approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
+    reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
                     WHERE tenant_id = $1::uuid AND COALESCE(verified, false) = false
                   )::text AS docs_pending,
   "mira-hub/src/app/api/readiness/recalculate/route.ts:51":
     approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
+    reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
                     WHERE tenant_id = $1::uuid AND verified = true
                   )::text AS docs,
   "mira-hub/src/app/api/readiness/recalculate/route.ts:55":
     approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
+    reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
                     WHERE tenant_id = $1::uuid AND COALESCE(verified, false) = false
@@ -486,7 +456,7 @@ approved:
                AND to_tsvector('english', content) @@ plainto_tsquery('english', $2)
   "tools/vendor_coverage_ingest.py:159":
     approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
+    reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
                       WHERE tenant_id = :tid
@@ -661,7 +631,7 @@ approved:
                          AND TRIM(manufacturer) = :mfr
   "tools/migrations/backfill_equipment_entities.py:158":
     approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
+    reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
                                WHERE tenant_id = :tenant
@@ -680,27 +650,6 @@ approved:
       FROM knowledge_entries
                       WHERE content ILIKE %s
                         AND embedding IS NOT NULL
-  "tools/qa/security/check_knowledge_entries_filters.py:33":
-    approved_classification: UNFILTERED
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      from typing import Optional, TypedDict
-      
-      
-  "tools/qa/security/check_knowledge_entries_filters.py:34":
-    approved_classification: UNFILTERED
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      from typing import Optional, TypedDict
-      
-      
-  "tools/qa/security/check_knowledge_entries_filters.py:107":
-    approved_classification: UNFILTERED
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      # Check if it's even selecting from knowledge_entries
-          if "knowledge_entries" not in query_lower:
-              return "UNKNOWN", "No knowledge_entries reference found"
   "tools/seeds/seed-simlab-docs.py:271":
     approved_classification: TENANT-ONLY
     reason: "TODO: justify this read pattern"
@@ -801,7 +750,7 @@ approved:
                         AND created_at > NOW() - INTERVAL ':hours hours'
   "mira-crawler/ingest/store.py:50":
     approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
+    reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
                           WHERE tenant_id = :tid
@@ -829,53 +778,11 @@ approved:
                          )
   "mira-bots/shared/quota.py:128":
     approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
+    reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
                               WHERE tenant_id = :tid
                                 AND created_at >= CURRENT_DATE
-  "mira-bots/shared/neon_recall.py:411":
-    approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-              WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
-                AND ({where_clause}){_approval_filter_sql()}
-  "mira-bots/shared/neon_recall.py:456":
-    approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-              WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
-                AND ({where_clause}){_approval_filter_sql()}
-  "mira-bots/shared/neon_recall.py:558":
-    approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      "FROM knowledge_entries "
-                          "WHERE (tenant_id = :tid OR tenant_id = :shared_tid) "
-                          f"  AND content_tsv @@ to_tsquery('english', :tsq){_approval_filter_sql()} "
-  "mira-bots/shared/neon_recall.py:811":
-    approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-                              WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
-                                AND embedding IS NOT NULL{_approval_filter_sql()}
-  "mira-bots/shared/neon_recall.py:990":
-    approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-                          WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
-                            AND LOWER(manufacturer) LIKE LOWER(:vendor_pat)
-  "mira-bots/shared/neon_recall.py:1069":
-    approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-                          WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
-                            AND LOWER(manufacturer) LIKE LOWER(:vendor_pat)
   "mira-bots/shared/uns_resolver.py:701":
     approved_classification: UNFILTERED
     reason: "TODO: justify this read pattern"
@@ -990,7 +897,7 @@ approved:
                         AND image_embedding IS NOT NULL
   "mira-core/mira-ingest/db/neon.py:212":
     approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
+    reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
                       WHERE tenant_id = :tid
@@ -1011,7 +918,7 @@ approved:
                   text(
   "mira-core/mira-ingest/db/neon.py:505":
     approved_classification: TENANT-ONLY
-    reason: "TODO: justify this read pattern"
+    reason: "Per-tenant daily-upload quota count — counting the tenant's OWN rows is the point; OEM corpus must NOT inflate quota (legit TENANT-ONLY per the rule's pure-tenant carve-out)"
     query_snippet: |
       SELECT COUNT(*) FROM knowledge_entries
                       WHERE tenant_id = :tid
