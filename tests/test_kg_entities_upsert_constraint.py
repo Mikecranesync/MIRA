@@ -8,10 +8,8 @@ exclusion constraint matching the ON CONFLICT specification".
 
 import pytest
 import subprocess
-import tempfile
 import os
-import sys
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 
 @pytest.mark.integration
@@ -20,7 +18,7 @@ def test_kg_entities_upsert_on_conflict_constraint():
 
     This is an integration test that:
     1. Spins up a temporary PostgreSQL container
-    2. Applies migrations 001, 025, 026, 063
+    2. Applies migrations 001, 025, 026, 064
     3. Tests the INSERT ... ON CONFLICT ON CONSTRAINT kg_entities_tenant_type_name_uq
     4. Verifies idempotency (re-inserting with same key returns same id)
     """
@@ -73,7 +71,7 @@ def test_kg_entities_upsert_on_conflict_constraint():
             "mira-hub/db/migrations/001_knowledge_graph.sql",
             "mira-hub/db/migrations/025_kg_entities_natural_key.sql",
             "mira-hub/db/migrations/026_kg_entities_dedupe_and_constraint.sql",
-            "mira-hub/db/migrations/063_kg_entities_upsert_constraint.sql",
+            "mira-hub/db/migrations/064_kg_entities_upsert_constraint.sql",
         ]
 
         for mig_file in migration_files:
@@ -159,13 +157,12 @@ def test_kg_entities_upsert_on_conflict_constraint():
 @pytest.mark.unit
 def test_kg_entities_constraint_exists_after_migration():
     """Verify that migration 063 creates the named constraint."""
-    import sqlalchemy
 
     # This test verifies the migration SQL is syntactically correct
     # by parsing it. Since we can't run it without a real DB, we at least
     # check the DDL is present.
 
-    with open("mira-hub/db/migrations/063_kg_entities_upsert_constraint.sql", "r") as f:
+    with open("mira-hub/db/migrations/064_kg_entities_upsert_constraint.sql", "r") as f:
         sql = f.read()
 
     # Check the expected statements are present

@@ -59,6 +59,30 @@ def _engine():
     return store_engine()
 
 
+_HAS_NAMED_CONSTRAINT: bool | None = None
+
+
+def _has_named_constraint(c) -> bool:
+    """True once migration 064's named constraint exists in this database.
+
+    Cached for the process lifetime — the constraint only ever appears
+    (rollback is a deliberate operator action that restarts services).
+    """
+    global _HAS_NAMED_CONSTRAINT
+    if _HAS_NAMED_CONSTRAINT is None:
+        from sqlalchemy import text  # noqa: PLC0415
+
+        _HAS_NAMED_CONSTRAINT = bool(
+            c.execute(
+                text(
+                    "SELECT 1 FROM pg_constraint"
+                    " WHERE conname = 'kg_entities_tenant_type_name_uq'"
+                )
+            ).first()
+        )
+    return _HAS_NAMED_CONSTRAINT
+
+
 @contextmanager
 def _get_conn(conn=None) -> Generator:
     """Yield a connection. If the caller passed one, reuse it without
@@ -117,8 +141,16 @@ def upsert_entity(
 
     try:
         with _get_conn(conn) as c:
+            # Migration 064 promotes the natural-key index to the named
+            # constraint; environments where it hasn't applied yet fall back
+            # to column inference (pre-064 behavior). Probed via SELECT so a
+            # missing constraint never poisons the caller's transaction.
+            if _has_named_constraint(c):
+                conflict_target = "ON CONSTRAINT kg_entities_tenant_type_name_uq"
+            else:
+                conflict_target = "(tenant_id, entity_type, name)"
             row = c.execute(
-                text("""
+                text(f"""
                     INSERT INTO kg_entities
                         (tenant_id, entity_type, name, properties,
                          source_chunk_id, uns_path)
@@ -127,8 +159,8 @@ def upsert_entity(
                          cast(:properties AS jsonb),
                          cast(:source_chunk_id AS uuid),
                          cast(:uns_path AS ltree))
-                    ON CONFLICT ON CONSTRAINT kg_entities_tenant_type_name_uq DO UPDATE
-                        SET properties = COALESCE(kg_entities.properties, '{}'::jsonb)
+                    ON CONFLICT {conflict_target} DO UPDATE
+                        SET properties = COALESCE(kg_entities.properties, '{{}}'::jsonb)
                                        || EXCLUDED.properties
                     RETURNING id
                 """),
