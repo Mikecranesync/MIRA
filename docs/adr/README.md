@@ -20,5 +20,6 @@ decision, the options considered, what was chosen and why, and the consequences.
 | [0010](0010-karpathy-eval-alignment.md) | Full Karpathy Eval Alignment — Closing the 7 Gaps | Accepted |
 | [0021](0021-ignition-module-first-edge.md) | Ignition-Module-First Edge Architecture | Accepted — 2026-06-01 |
 | [0025](0025-drive-intelligence-packs-and-drive-commander.md) | Single Sellable Product — VFD Drive-Intelligence Packs via "Drive Commander" | Accepted — 2026-07-05 |
+| [0027](0027-mira-visual-technician-architecture.md) | MIRA Visual Technician — architecture, canonical contracts, and reuse map | Draft — 2026-07-11 |
 
 (Index is currently incomplete — ADRs 0009, 0011–0020 exist on disk; cleanup tracked separately.)
