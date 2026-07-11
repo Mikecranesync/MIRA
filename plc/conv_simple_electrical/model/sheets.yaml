@@ -1,12 +1,24 @@
 # The print set for Conv_Simple / CV-101. One sheet = one circuit family.
 # status: drafted | stub (planned, not yet drawn)
+#
+# annotations: per-sheet engineering text (single source of truth — the renderer
+# only lays these out, it never originates engineering content):
+#   caveat:  list of strings -> red-bordered caveat box
+#   safety:  list of strings -> SAFETY block (red where the text says NOT/never)
+#   notes:   list of strings -> NOTES block
+#   sources: list of strings -> SOURCES block
 project: Conv_Simple
 asset: CV-101
 revision: A
 sheets:
   - id: E-001
     title: Cover / legend / device schedule
-    status: stub
+    status: drafted
+    scope: Cover / legend / device schedule / wire-numbering key / sheet index
+    annotations:
+      safety:
+        - "LOTO + wait ≥5 min for DC-bus discharge before touching (WI p.2 §2)."
+        - "Monitored e-stop is NOT a safety stop — hardwire S0 to remove drive power per NFPA 79 / EN 60204-1 (style law §7; docs/references/industrial-wiring-diagram-standards.md)."
   - id: E-002
     title: Power one-line
     status: stub
@@ -23,6 +35,21 @@ sheets:
       Q1 placement in power chain assumed line-side per manual recommendation; verify actual location (OI-14).
       MC is emergency/safety switching only — never start/stop via input power. LOTO + wait ≥5 min
       for DC-bus discharge before touching (WI p.2 §2).
+    annotations:
+      caveat:
+        - "Bench supply voltage & phase count, GS10 exact model/frame, breaker rating, wire gauge: NOT DOCUMENTED — every conductor FIELD VERIFY. P00.01 = 1.60 A (2026-05-20 export) is the only sizing clue. If 1φ model, input = R/L1, S/L2 only (GS10_UM L1971)."
+      safety:
+        - "Never start/stop via input power (L1811-1813); the MC (Q1) is emergency/safety switching only (L1754-1757)."
+        - "LOTO + wait ≥5 min for DC-bus discharge before touching (WI p.2 §2)."
+        - "Monitored e-stop is NOT a safety stop — hardwire S0 to remove drive power per NFPA 79 / EN 60204-1."
+        - "PE resistance ≤0.1Ω (L1760-61); shield/conduit bonded both ends (L1792-95); RFI jumper in/out FIELD VERIFY (L1693-1718, OI-17)."
+      notes:
+        - "Q1 coil ← O-02 (E-006); R-C surge absorber both ends recommended (GS10 manual); NOT for routine run/stop (L1754-1757)."
+        - "CB1 REQUIRED per GS10_UM L1758-1759 — type/rating unknown (OI-15)."
+        - "M1: swap any two motor leads to reverse — GS10_UM L1773-1776."
+      sources:
+        - "plc/GS10_UM.txt (terminals L1971-1986; topology L1750-1813) · plc/GS10_Integration_Guide.md (Q1 phase-5 test)"
+        - "plc/Prog_init_ConvSimple_v2.1.st (vfd_run_permit) · plc/MIRA_PLC_WorkInstruction_v3.pdf (LOTO §2)"
   - id: E-004
     title: 24 VDC control power distribution (PS1)
     status: stub
@@ -30,6 +57,17 @@ sheets:
     title: PLC digital inputs
     status: drafted          # <-- rendered first, per the new rule
     scope: Micro820 I-00..I-05 (+ spares I-06..I-11); E-stop, direction selector, run PB, photo-eye
+    annotations:
+      safety:
+        - "I-02/I-03 are MONITORED e-stop inputs only — a monitored input is NOT a safety stop. A compliant install must hardwire S0 to remove drive power (NFPA 79 / EN 60204-1, stop cat 0/1) (style law §7; docs/references/industrial-wiring-diagram-standards.md)."
+        - "De-energize + LOTO before metering."
+      notes:
+        - "READS (acceptance): +24 VDC starts at PS1 (E-004) → device contact shown → proposed wire # → PLC terminal I-0x → function/OPC tag → returns via COM0 → 0V (E-004). Verified vs field-verify marked per conductor."
+        - "VERIFIED (solid) = PLC terminal + function traced to the running program / Ignition OPC docs; FIELD VERIFY (dashed) = physical wiring not documented — meter it (see E-009 open items)."
+        - "COM0 input common — sink/source jumpering FIELD VERIFY (OI-02)."
+      sources:
+        - "plc/Prog_init_ConvSimple_v2.1.st · plc/ignition-project/.../MIRA_IOCheck/Inputs/tags.json"
+        - "plc/ccw/controller/Controller/LogicalValues.csv · plc/GS10_Integration_Guide.md"
   - id: E-006
     title: PLC outputs (O-00..O-06)
     status: drafted
@@ -42,6 +80,22 @@ sheets:
       on the 2080-LC20-20QBB (O-00..O-06); DO_03 collides with PBRunLED in the live I/O map. Bench presence of
       any such wiring = FIELD VERIFY (OI-18). Correction: July-3 target sketch assumed CR relay → GS10 DI —
       SUPERSEDED by P00.21=2 (RS-485 Modbus) + ContactorQ1 evidence.
+    annotations:
+      caveat:
+        - "Hardwired fallback documented in MIRA-WI-001 v3 §3 Fig 1 (DO_03..DO_07 → GS10 DI1..DI5 + DCM) — NOT ACTIVE and NOT drawn: P02.0x at factory default per the 2026-05-20 parameter export; DO_07 does not exist on the 2080-LC20-20QBB (O-00..O-06); DO_03 collides with PBRunLED in the live I/O map. Bench presence of any such wiring = FIELD VERIFY (OI-18)."
+      safety:
+        - "Monitored outputs are NOT a safety function."
+        - "E-stop must remove power per NFPA 79."
+        - "Q1 drop path is the power-removal; verify it works."
+      notes:
+        - "GS10 run/dir/freq = Modbus — see E-007 (P00.20=1, P00.21=2 per 2026-05-20 parameter export)"
+        - "No as-built: O-00/O-01/O-03 from CCW v4.0; O-02 corroborated by live Prog_init v2.1."
+      sources:
+        - "CCW_VARIABLES_v4.0.txt"
+        - "Prog_init_ConvSimple_v2.1.st"
+        - "MIRA_PLC_WorkInstruction_v3.pdf"
+        - "GS10_actual_parameters_5.20.26.xlsx"
+        - "GS10_UM.txt"
   - id: E-007
     title: RS-485 Modbus (PLC1 Ch2 <-> VFD1 RJ45)
     status: drafted          # rebuilt from recovered CCW/MIRA_PLC CommsToVFD style, corrected values
@@ -50,6 +104,12 @@ sheets:
     note: >
       Values reconciled to bench-verified: Channel 2 (not 0), SGND=pin 3 (not 1/8), 8N1 (not 8N2).
       Mostly VERIFIED (CommsToVFD + Beginner_Verify p48 + Prog_init v2.1); shield chassis point = field-verify.
+    annotations:
+      caveat:
+        - "CORRECTED from May-16 draft:  Channel 0 → 2   ·   SGND pin 1/8 → pin 3   ·   8N2 → 8N1.  Do not copy the old values."
+      notes:
+        - "Belden 3105A — shielded twisted pair (485+/485-) + 1 conductor (SGND) + drain"
+        - "VERIFIED (solid) = recovered CommsToVFD + Beginner_Verify p48 + Prog_init v2.1; FIELD VERIFY (dashed) = exact PLC chassis ground point; cable P/N if not Belden 3105A."
   - id: E-008
     title: Terminal strip (X1) + wire list
     status: stub

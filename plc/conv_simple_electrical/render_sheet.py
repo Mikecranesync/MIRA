@@ -1,18 +1,27 @@
-"""Render an electrical print SHEET from the structured model (YAML source of truth).
+"""Render electrical print SHEETS from the structured model (YAML source of truth).
 
-Currently implements the E-005 "PLC Digital Inputs" sheet. The model in ./model/*.yaml
-is authoritative: a conductor is drawn SOLID only if its wire's status == 'verified',
-otherwise DASHED + "FIELD VERIFY". PLC terminal<->function come from terminals.yaml
-(status verified from the real Micro820 program + Ignition OPC docs).
+Implements E-001 (cover/legend/schedule), E-003 (VFD power), E-005 (PLC inputs),
+E-006 (PLC outputs), E-007 (RS-485/Modbus) and SET (merged print set).
 
-Usage:  python render_sheet.py E-005
-Outputs: sheets/E-005_plc_inputs.svg / .pdf  (+ a QA .png)
+Contract (V3):
+- The model in ./model/*.yaml is authoritative. The renderer LAYS OUT model
+  content; it never originates engineering content (sheet text lives in
+  sheets.yaml `annotations:` blocks, wiring in wires.yaml / e007_rs485.yaml).
+- A conductor renders SOLID only if its wire's status == 'verified'; otherwise
+  it renders as a DASHED group of real line segments (PyMuPDF drops
+  stroke-dasharray, so dashes are constructed, never styled).
+- Every conductor segment carries data-wire/data-status for the validator.
+
+Usage:  python render_sheet.py E-001|E-003|E-005|E-006|E-007|SET
+Outputs: sheets/<basename>.svg / .pdf  (+ a QA .png)
 """
 
 from __future__ import annotations
 
+import math
 import pathlib
 import sys
+import textwrap
 
 import yaml
 
@@ -27,7 +36,6 @@ GRY = "#666666"
 LGRY = "#BBBBBB"
 RED = "#C0392B"  # reserved for the "FIELD VERIFY" / unverified marker ONLY
 BG = "#FFFFFF"
-DASH = "7,4"
 
 
 def _load(name):
@@ -38,6 +46,12 @@ def esc(s):
     return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def _wrap(text, width_px, fs, mono=False):
+    """Wrap text to a pixel width for the given font size (approx metrics)."""
+    per_char = fs * (0.60 if mono else 0.50)  # conservative: caps-heavy text must stay inside boxes
+    return textwrap.wrap(str(text), max(10, int(width_px / per_char))) or [""]
+
+
 class SVG:
     def __init__(self, w, h):
         self.w, self.h = w, h
@@ -46,18 +60,38 @@ class SVG:
     def line(
         self, x1, y1, x2, y2, color=BLK, w=1.6, dash=False, cap="butt", wire=None, wire_status=None
     ):
-        d = f' stroke-dasharray="{DASH}"' if dash else ""
         attrs = f' data-wire="{wire}" data-status="{wire_status}"' if wire is not None else ""
-        self.p.append(
-            f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
-            f'stroke="{color}" stroke-width="{w}" stroke-linecap="{cap}"{d}{attrs}/>'
-        )
+        if not dash:
+            self.p.append(
+                f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
+                f'stroke="{color}" stroke-width="{w}" stroke-linecap="{cap}"{attrs}/>'
+            )
+            return
+        # Dashed = REAL segments in a group (PyMuPDF drops stroke-dasharray).
+        # Short runs compress the period so every dashed group has >=3 segments.
+        length = math.hypot(x2 - x1, y2 - y1)
+        if length <= 0:
+            return
+        on, off = 7.0, 4.0
+        if length < 3 * on + 2 * off:
+            on, off = length * 7.0 / 29.0, length * 4.0 / 29.0
+        ux, uy = (x2 - x1) / length, (y2 - y1) / length
+        segs = []
+        pos = 0.0
+        while pos < length - 0.01:
+            end = min(pos + on, length)
+            segs.append(
+                f'<line x1="{x1 + ux * pos:.2f}" y1="{y1 + uy * pos:.2f}" '
+                f'x2="{x1 + ux * end:.2f}" y2="{y1 + uy * end:.2f}" '
+                f'stroke="{color}" stroke-width="{w}" stroke-linecap="{cap}"/>'
+            )
+            pos = end + off
+        self.p.append(f'<g data-dashed="true"{attrs}>' + "".join(segs) + "</g>")
 
-    def rect(self, x, y, w, h, color=BLK, sw=1.4, fill="none", dash=False):
-        d = f' stroke-dasharray="{DASH}"' if dash else ""
+    def rect(self, x, y, w, h, color=BLK, sw=1.4, fill="none"):
         self.p.append(
             f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" '
-            f'fill="{fill}" stroke="{color}" stroke-width="{sw}"{d}/>'
+            f'fill="{fill}" stroke="{color}" stroke-width="{sw}"/>'
         )
 
     def circle(self, cx, cy, r, color=BLK, sw=1.4, fill="none"):
@@ -66,11 +100,17 @@ class SVG:
             f'stroke="{color}" stroke-width="{sw}"/>'
         )
 
-    def text(self, x, y, s, size=10, anchor="start", color=BLK, weight="normal", mono=False):
+    def path(self, d, color=BLK, sw=1.4):
+        self.p.append(f'<path d="{d}" fill="none" stroke="{color}" stroke-width="{sw}"/>')
+
+    def text(
+        self, x, y, s, size=10, anchor="start", color=BLK, weight="normal", mono=False, cls=None
+    ):
         fam = "Consolas, 'Courier New', monospace" if mono else "Arial, Helvetica, sans-serif"
+        c = f' class="{cls}"' if cls else ""
         self.p.append(
             f'<text x="{x:.1f}" y="{y:.1f}" font-size="{size}" font-family="{fam}" '
-            f'text-anchor="{anchor}" font-weight="{weight}" fill="{color}">{esc(s)}</text>'
+            f'text-anchor="{anchor}" font-weight="{weight}" fill="{color}"{c}>{esc(s)}</text>'
         )
 
     def dump(self):
@@ -87,30 +127,46 @@ class SVG:
 
 
 # ---------------------------------------------------------------- symbol templates
-def wire_tag(s, x, y, num, verified):
-    """A small wire-number flag on a conductor."""
+def wire_tag(s, x, y, num, verified, orient="h"):
+    """A small opaque wire-number flag on a conductor.
+
+    orient="h": box sits just above the (horizontal) run at (x, y).
+    orient="v": box offset 26px LEFT of the (vertical) run + a leader tick.
+    orient="vr": box offset 26px RIGHT of the (vertical) run + a leader tick.
+    """
     color = BLK if verified else RED
-    s.rect(x - 16, y - 20, 32, 13, color=color, sw=0.9)
-    s.text(x, y - 10, num, size=8.5, anchor="middle", color=color, mono=True)
+    if orient == "v":
+        cxx = x - 26
+        s.line(x - 10, y, x, y, color=color, w=0.8)
+        s.rect(cxx - 16, y - 7, 32, 13, color=color, sw=0.9, fill=BG)
+        s.text(cxx, y + 3, num, size=8.5, anchor="middle", color=color, mono=True)
+    elif orient == "vr":
+        cxx = x + 26
+        s.line(x, y, x + 10, y, color=color, w=0.8)
+        s.rect(cxx - 16, y - 7, 32, 13, color=color, sw=0.9, fill=BG)
+        s.text(cxx, y + 3, num, size=8.5, anchor="middle", color=color, mono=True)
+    else:
+        s.rect(x - 16, y - 20, 32, 13, color=color, sw=0.9, fill=BG)
+        s.text(x, y - 10, num, size=8.5, anchor="middle", color=color, mono=True)
 
 
-def contact_no(s, xl, xr, y, label, term):
+def contact_no(s, xl, xr, y, label, term, dashed=False):
     """Normally-open contact glyph between xl and xr on line y."""
     cx = (xl + xr) / 2
-    s.line(xl, y, cx - 12, y)
-    s.line(cx + 12, y, xr, y)
+    s.line(xl, y, cx - 12, y, dash=dashed)
+    s.line(cx + 12, y, xr, y, dash=dashed)
     s.circle(xl, y, 2.2, fill=BLK)
     s.circle(xr, y, 2.2, fill=BLK)
-    s.line(cx - 12, y, cx + 8, y - 13)  # open diagonal arm
+    s.line(cx - 12, y, cx + 8, y - 13)  # open diagonal arm (device shape: solid)
     s.text(cx, y - 20, label, size=9.5, anchor="middle", weight="bold")
     s.text(cx, y + 16, term, size=8, anchor="middle", color=GRY, mono=True)
 
 
-def contact_nc(s, xl, xr, y, label, term):
+def contact_nc(s, xl, xr, y, label, term, dashed=False):
     """Normally-closed contact glyph."""
     cx = (xl + xr) / 2
-    s.line(xl, y, cx - 12, y)
-    s.line(cx + 12, y, xr, y)
+    s.line(xl, y, cx - 12, y, dash=dashed)
+    s.line(cx + 12, y, xr, y, dash=dashed)
     s.circle(xl, y, 2.2, fill=BLK)
     s.circle(xr, y, 2.2, fill=BLK)
     s.line(cx - 12, y, cx + 10, y - 12)  # arm
@@ -119,11 +175,11 @@ def contact_nc(s, xl, xr, y, label, term):
     s.text(cx, y + 16, term, size=8, anchor="middle", color=GRY, mono=True)
 
 
-def selector(s, xl, xr, y, label, term):
+def selector(s, xl, xr, y, label, term, dashed=False):
     """Selector-switch contact (contact + small selector actuator tick)."""
     cx = (xl + xr) / 2
-    s.line(xl, y, cx - 12, y)
-    s.line(cx + 12, y, xr, y)
+    s.line(xl, y, cx - 12, y, dash=dashed)
+    s.line(cx + 12, y, xr, y, dash=dashed)
     s.circle(xl, y, 2.2, fill=BLK)
     s.circle(xr, y, 2.2, fill=BLK)
     s.line(cx - 12, y, cx + 8, y - 13)
@@ -133,10 +189,10 @@ def selector(s, xl, xr, y, label, term):
     s.text(cx, y + 16, term, size=8, anchor="middle", color=GRY, mono=True)
 
 
-def pushbutton(s, xl, xr, y, label, term):
+def pushbutton(s, xl, xr, y, label, term, dashed=False):
     cx = (xl + xr) / 2
-    s.line(xl, y, cx - 12, y)
-    s.line(cx + 12, y, xr, y)
+    s.line(xl, y, cx - 12, y, dash=dashed)
+    s.line(cx + 12, y, xr, y, dash=dashed)
     s.circle(xl, y, 2.2, fill=BLK)
     s.circle(xr, y, 2.2, fill=BLK)
     s.line(cx - 12, y, cx + 8, y - 13)
@@ -146,10 +202,10 @@ def pushbutton(s, xl, xr, y, label, term):
     s.text(cx, y + 16, term, size=8, anchor="middle", color=GRY, mono=True)
 
 
-def photoeye(s, xl, xr, y, label, term):
+def photoeye(s, xl, xr, y, label, term, dashed=False):
     cx = (xl + xr) / 2
-    s.line(xl, y, cx - 20, y)
-    s.line(cx + 20, y, xr, y)
+    s.line(xl, y, cx - 20, y, dash=dashed)
+    s.line(cx + 20, y, xr, y, dash=dashed)
     s.circle(xl, y, 2.2, fill=BLK)
     s.circle(xr, y, 2.2, fill=BLK)
     s.rect(cx - 20, y - 12, 40, 24)
@@ -158,54 +214,55 @@ def photoeye(s, xl, xr, y, label, term):
     s.text(cx, y + 22, term, size=8, anchor="middle", color=GRY, mono=True)
 
 
-def breaker_pole(s, x, y, label, w=40, h=30):
-    """Circuit breaker pole glyph: line break with dashed chevron in a dashed box."""
-    s.rect(x - w / 2, y - h / 2, w, h, sw=0.9, dash=True)
-    s.line(x - w / 2 + 4, y, x - 8, y, w=1.4)
-    s.line(x + 8, y, x + w / 2 - 4, y, w=1.4)
-    # chevron (break indicator)
-    s.line(x - 6, y - 6, x, y, w=1.2)
-    s.line(x, y, x + 6, y - 6, w=1.2)
-    s.text(x, y - 18, label, size=9, anchor="middle", weight="bold")
+def breaker_pole(s, x, y, label):
+    """IEC-style circuit-breaker pole on a VERTICAL run: conductor break with a
+    quarter-arc operating mechanism + small X at the fixed contact."""
+    s.circle(x, y - 14, 2.2, fill=BLK)
+    s.circle(x, y + 14, 2.2, fill=BLK)
+    s.line(x, y - 14, x, y - 8)  # top stub (device shape: solid)
+    s.line(x, y + 14, x, y + 6)  # bottom stub
+    # small X at the top (fixed) contact — breaker marker
+    s.line(x - 4, y - 8, x + 4, y - 1)
+    s.line(x - 4, y - 1, x + 4, y - 8)
+    # quarter-arc mechanism from the bottom contact
+    s.path(f"M {x:.1f},{y + 6:.1f} A 14 14 0 0 0 {x - 12:.1f},{y - 6:.1f}", sw=1.2)
+    s.text(x, y - 22, label, size=8, anchor="middle", weight="bold")
 
 
-def contactor_pole(s, x, y, label, w=40, h=30):
-    """Contactor (MC) NO contact pole glyph: similar to breaker but solid."""
-    s.rect(x - w / 2, y - h / 2, w, h, sw=0.9)
-    s.line(x - w / 2 + 4, y, x - 8, y, w=1.4)
-    s.line(x + 8, y, x + w / 2 - 4, y, w=1.4)
-    # contact indicator
-    s.line(x - 6, y - 6, x, y, w=1.2)
-    s.line(x, y, x + 6, y - 6, w=1.2)
-    s.text(x, y - 18, label, size=9, anchor="middle", weight="bold")
+def contactor_pole(s, x, y, label):
+    """Contactor (MC) pole on a VERTICAL run: open NO-contact pair (angled arm)."""
+    s.circle(x, y - 14, 2.2, fill=BLK)
+    s.circle(x, y + 14, 2.2, fill=BLK)
+    s.line(x, y - 14, x, y - 6)  # fixed-side stub
+    s.line(x, y + 14, x, y + 6)  # moving-side stub
+    s.line(x, y + 6, x + 10, y - 10)  # open contact arm
+    s.text(x, y - 22, label, size=8, anchor="middle", weight="bold")
 
 
-def coil(s, cx, cy, label, t1, t2):
-    """Relay/contactor coil: circle with A1/A2 terminal stubs."""
+def coil(s, cx, cy, label, t1, t2, dashed=False):
+    """Relay/contactor coil: circle with terminal stubs left/right."""
     r = 14
     s.circle(cx, cy, r, sw=1.2)
     s.text(cx, cy + 2, "⌒", size=16, anchor="middle", color=GRY)  # coil symbol
     s.text(cx, cy - 28, label, size=10, anchor="middle", weight="bold")
-    # terminals
-    s.line(cx - r - 12, cy, cx - r, cy, w=1.2)
-    s.line(cx + r, cy, cx + r + 12, cy, w=1.2)
+    s.line(cx - r - 12, cy, cx - r, cy, w=1.2, dash=dashed)
+    s.line(cx + r, cy, cx + r + 12, cy, w=1.2, dash=dashed)
     s.text(cx - r - 12, cy + 10, t1, size=8.5, anchor="middle", weight="bold", mono=True)
     s.text(cx + r + 12, cy + 10, t2, size=8.5, anchor="middle", weight="bold", mono=True)
     s.circle(cx - r - 12, cy, 2.0, fill=BLK)
     s.circle(cx + r + 12, cy, 2.0, fill=BLK)
 
 
-def pilot(s, cx, cy, label, term):
+def pilot(s, cx, cy, label, term, dashed=False):
     """Pilot light: circle with X cross per IEC 60617; horizontal X1/X2 stubs."""
     r = 12
     s.circle(cx, cy, r, sw=1.2)
-    s.line(cx - r + 3, cy - r + 3, cx + r - 3, cy + r - 3, w=1.0)  # X
+    s.line(cx - r + 3, cy - r + 3, cx + r - 3, cy + r - 3, w=1.0)  # X (device shape)
     s.line(cx - r + 3, cy + r - 3, cx + r - 3, cy - r + 3, w=1.0)
     s.text(cx, cy - 24, label, size=10, anchor="middle", weight="bold")
     s.text(cx, cy + 30, term, size=8, anchor="middle", color=GRY, mono=True)
-    # left (X1) / right (X2) stubs for horizontal rungs
-    s.line(cx - r - 8, cy, cx - r, cy, w=1.2)
-    s.line(cx + r, cy, cx + r + 8, cy, w=1.2)
+    s.line(cx - r - 8, cy, cx - r, cy, w=1.2, dash=dashed)
+    s.line(cx + r, cy, cx + r + 8, cy, w=1.2, dash=dashed)
     s.circle(cx - r - 8, cy, 2.0, fill=BLK)
     s.circle(cx + r + 8, cy, 2.0, fill=BLK)
     s.text(cx - r - 8, cy + 14, "X1", size=6.8, anchor="middle", color=GRY, mono=True)
@@ -270,7 +327,19 @@ def title_block(s, fx1, fy1, meta, sheet_id, title, sheet_no, lineage=""):
     s.text(tx + tb_w - 12, ty + 62, sheet_no, size=10, anchor="end", color=GRY)
 
 
-def draw_table(s, x0, y0, colw, headers, rows, evidence_col=None, rh=22, fs=8.0):
+def draw_table(
+    s,
+    x0,
+    y0,
+    colw,
+    headers,
+    rows,
+    evidence_col=None,
+    rh=22,
+    fs=8.0,
+    mono_cols=(1, 3, 5),
+    first_col_class=None,
+):
     total = sum(colw)
     # header
     s.rect(x0, y0, total, rh, fill="#EEEEEE", sw=1.0)
@@ -285,10 +354,11 @@ def draw_table(s, x0, y0, colw, headers, rows, evidence_col=None, rh=22, fs=8.0)
         cx = x0
         for i, (w, cell) in enumerate(zip(colw, r)):
             color = BLK
-            mono = i in (1, 3, 5)
+            mono = i in mono_cols
             if evidence_col is not None and i == evidence_col:
                 color = BLK if str(cell).startswith("verified") else RED
-            s.text(cx + 5, y + rh - 7, cell, size=fs, color=color, mono=mono)
+            cls = first_col_class if (i == 0 and first_col_class) else None
+            s.text(cx + 5, y + rh - 7, cell, size=fs, color=color, mono=mono, cls=cls)
             cx += w
         y += rh
     # column separators
@@ -297,6 +367,68 @@ def draw_table(s, x0, y0, colw, headers, rows, evidence_col=None, rh=22, fs=8.0)
         cx += w
         s.line(cx, y0, cx, y, color=GRY, w=0.6)
     return y
+
+
+def draw_annotations(s, x, y, w, ann, fs=7.5):
+    """Model-sourced annotation blocks, in order: caveat (red box), safety, notes, sources.
+
+    The renderer lays out; sheets.yaml annotations hold the engineering text.
+    Returns the y after the last block.
+    """
+    ann = ann or {}
+    lh = fs + 3.5
+    caveats = ann.get("caveat") or []
+    if caveats:
+        lines = []
+        for c in caveats:
+            lines.extend(_wrap(c, w - 16, fs))
+        box_h = len(lines) * lh + 10
+        s.rect(x, y, w, box_h, color=RED, sw=1.0, fill="#FFF5F5")
+        ty = y + lh + 1
+        for ln in lines:
+            s.text(x + 8, ty, ln, size=fs, color=RED)
+            ty += lh
+        y += box_h + 10
+    safety = ann.get("safety") or []
+    if safety:
+        s.text(x, y + 4, "SAFETY", size=fs + 2, weight="bold")
+        y += lh + 4
+        for item in safety:
+            color = RED if ("NOT" in item or "never" in item.lower()) else BLK
+            for ln in _wrap("• " + item, w, fs):
+                s.text(x + 6, y, ln, size=fs, color=color)
+                y += lh
+        y += 6
+    notes = ann.get("notes") or []
+    if notes:
+        s.text(x, y + 4, "NOTES", size=fs + 2, weight="bold")
+        y += lh + 4
+        for item in notes:
+            for ln in _wrap("• " + item, w, fs):
+                s.text(x + 6, y, ln, size=fs)
+                y += lh
+        y += 6
+    sources = ann.get("sources") or []
+    if sources:
+        s.text(x, y + 4, "SOURCES:", size=fs + 1, weight="bold")
+        y += lh + 3
+        for item in sources:
+            for ln in _wrap(item, w, fs - 0.5):
+                s.text(x + 6, y, ln, size=fs - 0.5, color=GRY)
+                y += lh - 1
+    return y
+
+
+def draw_legend(s, x, y):
+    """Generic line-style key (engineering meaning of each style lives in the model notes)."""
+    s.text(x, y, "LEGEND", size=9, weight="bold")
+    s.line(x + 10, y + 12, x + 56, y + 12, color=BLK, w=1.8)
+    s.text(x + 64, y + 15, "VERIFIED (solid)", size=8)
+    s.line(x + 10, y + 26, x + 56, y + 26, color=BLK, w=1.8, dash=True)
+    s.text(x + 64, y + 29, "FIELD VERIFY (dashed)", size=8)
+    wire_tag(s, x + 33, y + 52, "Wxxx", verified=False)
+    s.text(x + 64, y + 46, "proposed wire number (red = unverified)", size=8)
+    return y + 58
 
 
 def _emit(s, basename):
@@ -321,10 +453,108 @@ def earth_symbol(s, x, y):
         s.line(x - wq, y + 12 + i * 4, x + wq, y + 12 + i * 4)
 
 
+def _annotations_for(sheet_id):
+    sheets = _load("sheets")
+    sh = next(x for x in sheets["sheets"] if x["id"] == sheet_id)
+    return sh.get("annotations") or {}
+
+
+# ---------------------------------------------------------------- E-001 cover
+def render_e001():
+    devices = _load("devices")
+    sheets = _load("sheets")
+    wires = _load("wires")
+    meta = devices["meta"]
+    ann = _annotations_for("E-001")
+
+    W, H = 1600, 1040
+    s = SVG(W, H)
+    fx0, fy0, fx1, fy1 = draw_frame(
+        s,
+        W,
+        H,
+        "E-001  COVER / LEGEND / DEVICE SCHEDULE",
+        f"{meta['project']} / {meta['asset']}  —  device schedule · sheet index · wire-numbering key · line-style legend",
+    )
+
+    # ---- device schedule (from devices.yaml) ----
+    s.text(70, 172, "DEVICE SCHEDULE", size=11, weight="bold")
+    rows = []
+    for d in devices["devices"]:
+        role = d.get("role", "")
+        if len(role) > 80:
+            role = role[:77] + "..."
+        rows.append([d["tag"], d.get("type", ""), d.get("model", ""), role, d.get("evidence", "")])
+    draw_table(
+        s,
+        70,
+        180,
+        [52, 92, 250, 330, 74],
+        ["Tag", "Type", "Model", "Role", "Evidence"],
+        rows,
+        evidence_col=4,
+        rh=20,
+        fs=7.2,
+        mono_cols=(0, 2),
+        first_col_class="schedule-tag",
+    )
+
+    # ---- sheet index (from sheets.yaml) ----
+    idx_y = 180 + (len(rows) + 1) * 20 + 36
+    s.text(70, idx_y - 8, "SHEET INDEX", size=11, weight="bold")
+    idx_rows = [[sh["id"], sh.get("title", ""), sh.get("status", "")] for sh in sheets["sheets"]]
+    draw_table(
+        s,
+        70,
+        idx_y,
+        [70, 470, 90],
+        ["Id", "Title", "Status"],
+        idx_rows,
+        rh=20,
+        fs=7.5,
+        mono_cols=(0,),
+        first_col_class="index-id",
+    )
+
+    # ---- wire-numbering key (wires.yaml `convention`, verbatim) ----
+    nx = 920
+    s.text(nx, 172, "WIRE-NUMBERING KEY", size=11, weight="bold")
+    conv_lines = _wrap(wires.get("convention", ""), 560, 7.5)
+    box_h = len(conv_lines) * 11 + 12
+    s.rect(nx, 180, 580, box_h, sw=1.0)
+    for i, ln in enumerate(conv_lines):
+        s.text(nx + 8, 194 + i * 11, ln, size=7.5)
+
+    # ---- line-style legend ----
+    leg_y = 180 + box_h + 34
+    s.text(nx, leg_y - 8, "LINE-STYLE LEGEND", size=11, weight="bold")
+    leg_end = draw_legend(s, nx, leg_y + 4)
+
+    # ---- package safety banner (model annotations) ----
+    draw_annotations(s, nx, leg_end + 26, 580, ann, fs=7.5)
+
+    title_block(
+        s,
+        fx1,
+        fy1,
+        meta,
+        "E-001",
+        "COVER / LEGEND / DEVICE SCHEDULE",
+        "1 of 9",
+        lineage="cover generated from model/*.yaml",
+    )
+    _emit(s, "E-001_cover")
+
+
+# ---------------------------------------------------------------- E-007 comms
 def render_e007():
-    m = _load("devices")["meta"]
-    e = yaml.safe_load((MODEL / "e007_rs485.yaml").read_text(encoding="utf-8"))
+    devices = _load("devices")
+    m = devices["meta"]
+    e = _load("e007_rs485")
+    ann = _annotations_for("E-007")
     plc, vfd = e["endpoints"]["plc"], e["endpoints"]["vfd"]
+    sc = e["serial_config"]
+    cw = e["command_words"]
 
     W, H = 1600, 1040
     s = SVG(W, H)
@@ -333,79 +563,87 @@ def render_e007():
         W,
         H,
         "E-007  RS-485 / MODBUS RTU COMMUNICATION",
-        f"{m['project']} / {m['asset']}  —  Micro820 (master) ↔ GS10 (node 1)  ·  Modbus RTU only",
+        f"{m['project']} / {m['asset']}  —  {plc['device']} (master) ↔ {vfd['device']} (node {sc['node'].split()[0]})  ·  Modbus RTU only",
     )
 
-    # device blocks
+    # device blocks (names/ports from the model)
     plx, pw = 250, 250
     vfx, vw = 1090, 250
     by, bh = 200, 258
     s.rect(plx, by, pw, bh, sw=1.8)
     s.text(plx + pw / 2, by + 24, plc["tag"], size=15, anchor="middle", weight="bold")
-    s.text(plx + pw / 2, by + 42, "Micro820 2080-LC20-20QBB", size=8.5, anchor="middle", color=GRY)
-    s.text(plx + pw / 2, by + 56, "embedded RS-485 (Ch 2)", size=8.5, anchor="middle", color=BLK)
+    s.text(plx + pw / 2, by + 42, plc["device"], size=8.5, anchor="middle", color=GRY)
+    s.text(plx + pw / 2, by + 56, plc["channel"], size=8.5, anchor="middle", color=BLK)
     s.rect(vfx, by, vw, bh, sw=1.8)
     s.text(vfx + vw / 2, by + 24, vfd["tag"], size=15, anchor="middle", weight="bold")
-    s.text(vfx + vw / 2, by + 42, "GS10 DURApulse", size=8.5, anchor="middle", color=GRY)
-    s.text(vfx + vw / 2, by + 56, "RS-485 RJ45 jack", size=8.5, anchor="middle", color=BLK)
+    s.text(vfx + vw / 2, by + 42, vfd["device"], size=8.5, anchor="middle", color=GRY)
+    s.text(vfx + vw / 2, by + 56, vfd["port"], size=8.5, anchor="middle", color=BLK)
 
-    # terminal Y positions
-    ty = {"485+": 288, "485-": 338, "SGND": 388}
-    plc_term = {"485+": "D+ (A)", "485-": "D- (B)", "SGND": "SG"}
-    vfd_pin = {"485+": "pin 5 · SG+", "485-": "pin 4 · SG-", "SGND": "pin 3 · SGND"}
-    for lbl, y in ty.items():
+    # links (drawn wire + terminal labels + conductor captions, all from the model)
+    link_y = {"485+": 288, "485-": 338, "SGND": 388, "SH": 443}
+    links = {ln["wire_label"]: ln for ln in e["links"]}
+    for lbl in ("485+", "485-", "SGND"):
+        ln = links[lbl]
+        y = link_y[lbl]
+        verified = ln["evidence"] == "verified"
         s.circle(plx + pw, y, 3.2, fill=BLK)
-        s.text(plx + pw - 8, y - 4, plc_term[lbl], size=9, anchor="end", mono=True)
+        s.text(plx + pw - 8, y - 4, ln["src_terminal"], size=9, anchor="end", mono=True)
         s.circle(vfx, y, 3.2, fill=BLK)
-        s.text(vfx + 8, y - 4, vfd_pin[lbl], size=9, anchor="start", mono=True)
-
-    # signal wires (verified -> solid) with labels + conductor color
-    cond = {"485+": "white of pair", "485-": "black of pair", "SGND": "third conductor"}
-    for lbl, y in ty.items():
-        s.line(plx + pw, y, vfx, y, color=BLK, w=1.8)
+        s.text(vfx + 8, y - 4, ln["dst_terminal"], size=9, anchor="start", mono=True)
+        s.line(
+            plx + pw,
+            y,
+            vfx,
+            y,
+            color=BLK,
+            w=1.8,
+            dash=not verified,
+            wire=lbl,
+            wire_status=ln["evidence"],
+        )
         mid = (plx + pw + vfx) / 2
-        wire_tag(s, mid, y, lbl, verified=True)
-        s.text(mid, y + 16, cond[lbl], size=8, anchor="middle", color=GRY)
+        wire_tag(s, mid, y, lbl, verified=verified)
+        s.text(mid, y + 16, ln["conductor"], size=8, anchor="middle", color=GRY)
 
-    # shield: land PLC end only, float GS10 end (field-verify)
-    shy = 443
+    # shield: land PLC end only, float GS10 end (from the SH link row)
+    sh = links["SH"]
+    shy = link_y["SH"]
     s.circle(plx + pw, shy, 3.2, fill=BLK)
-    s.text(plx + pw - 8, shy - 4, "shield / drain", size=9, anchor="end", mono=True)
-    s.line(plx + pw, shy, plx + pw + 90, shy, color=BLK, w=1.6, dash=True)
+    s.text(plx + pw - 8, shy - 4, sh["src_terminal"], size=9, anchor="end", mono=True)
+    s.line(
+        plx + pw,
+        shy,
+        plx + pw + 90,
+        shy,
+        color=BLK,
+        w=1.6,
+        dash=(sh["evidence"] != "verified"),
+        wire="SH",
+        wire_status=sh["evidence"],
+    )
     earth_symbol(s, plx + pw + 90, shy)
-    s.text(plx + pw + 108, shy + 2, "chassis — PLC end ONLY", size=8, color=RED)
-    s.text(vfx - 8, shy - 4, "(floated / taped at GS10)", size=8, anchor="end", color=GRY)
+    s.text(plx + pw + 108, shy + 2, sh["notes"], size=8, color=RED)
+    s.text(vfx - 8, shy - 4, sh["dst_terminal"], size=8, anchor="end", color=GRY)
 
-    # 120 ohm termination across SG+/SG- at drive end
+    # termination across SG+/SG- at drive end (endpoints.vfd.termination)
     tx = vfx - 34
-    s.line(tx, ty["485+"], tx, ty["485-"], color=BLK, w=1.2)
-    s.line(vfx, ty["485+"], tx, ty["485+"], color=BLK, w=1.2)
-    s.line(vfx, ty["485-"], tx, ty["485-"], color=BLK, w=1.2)
-    s.rect(tx - 6, (ty["485+"] + ty["485-"]) / 2 - 12, 12, 24, sw=1.1)
-    s.text(tx - 12, (ty["485+"] + ty["485-"]) / 2 + 2, "120Ω", size=8, anchor="end")
-    s.text(
-        tx - 12, (ty["485+"] + ty["485-"]) / 2 + 14, "(drive end)", size=7, anchor="end", color=GRY
-    )
+    s.line(tx, link_y["485+"], tx, link_y["485-"], color=BLK, w=1.2)
+    s.line(vfx, link_y["485+"], tx, link_y["485+"], color=BLK, w=1.2)
+    s.line(vfx, link_y["485-"], tx, link_y["485-"], color=BLK, w=1.2)
+    s.rect(tx - 6, (link_y["485+"] + link_y["485-"]) / 2 - 12, 12, 24, sw=1.1)
+    for i, ln in enumerate(_wrap(vfd["termination"], 150, 7)):
+        s.text(
+            tx - 12,
+            (link_y["485+"] + link_y["485-"]) / 2 + 2 + i * 9,
+            ln,
+            size=7,
+            anchor="end",
+            color=GRY,
+        )
 
-    # cable bracket
-    s.text(
-        (plx + pw + vfx) / 2,
-        175,
-        "Belden 3105A — shielded twisted pair (485+/485-) + 1 conductor (SGND) + drain",
-        size=9,
-        anchor="middle",
-        color=GRY,
-    )
-
-    # readback note
-    s.text(
-        vfx + vw / 2,
-        by + bh + 18,
-        "link up ⇒ vfd_comm_ok = TRUE ; read 0x2103 (FC03) for nonzero freq",
-        size=8.5,
-        anchor="middle",
-        color=GRY,
-    )
+    # readback notes (model)
+    for i, rb in enumerate(e.get("readback", [])):
+        s.text(vfx + vw / 2, by + bh + 16 + i * 12, rb, size=7.6, anchor="middle", color=GRY)
 
     # ---- connection table ----
     ty0 = 500
@@ -422,23 +660,22 @@ def render_e007():
         "Notes",
     ]
     rows = []
-    for L in e["links"]:
+    for ln in e["links"]:
         rows.append(
             [
-                L["src_device"],
-                L["src_terminal"],
-                L["dst_device"],
-                L["dst_terminal"],
-                f"{L['cable']} · {L['conductor']}",
-                L["wire_label"],
-                L["evidence"],
-                L.get("notes", ""),
+                ln["src_device"],
+                ln["src_terminal"],
+                ln["dst_device"],
+                ln["dst_terminal"],
+                f"{ln['cable']} · {ln['conductor']}",
+                ln["wire_label"],
+                ln["evidence"],
+                ln.get("notes", ""),
             ]
         )
     tbl_bottom = draw_table(s, 70, ty0, colw, headers, rows, evidence_col=6)
 
-    # ---- serial config strip ----
-    sc = e["serial_config"]
+    # ---- serial config strip (model, incl. the OI-20 adjudication note) ----
     y = tbl_bottom + 26
     s.text(70, y, "CCW SERIAL PORT:", size=9, weight="bold")
     s.text(
@@ -449,47 +686,37 @@ def render_e007():
         mono=True,
     )
     s.text(70, y + 14, sc["note"], size=7.6, color=GRY)
+    s.text(70, y + 27, sc["oi20_note"], size=7.6, color=RED)
 
-    # ---- correction callout ----
-    y += 40
-    s.rect(70, y - 12, 1180, 20, color=RED, sw=1.0)
-    s.text(
-        78,
-        y + 2,
-        "CORRECTED from May-16 draft:  Channel 0 → 2   ·   SGND pin 1/8 → pin 3   ·   "
-        "8N2 → 8N1.  Do not copy the old values.",
-        size=8.6,
-        color=RED,
+    # ---- command words strip (model command_words) ----
+    y += 48
+    s.text(70, y, f"COMMAND WORDS ({cw['register']}):", size=9, weight="bold")
+    vals = " · ".join(
+        [f"{k.replace('_', '+').upper()} = {cw[k]}" for k in ("stop", "fwd_run", "rev_run")]
+        + [f"freq register {cw['freq_register']}"]
     )
+    s.text(230, y, vals, size=9, mono=True)
+    sup_lines = _wrap(cw["rev_run_supersession"], 700, 7.6)
+    for i, ln in enumerate(sup_lines):
+        s.text(70, y + 13 + i * 11, ln, size=7.6, color=RED)
+    y += 13 + len(sup_lines) * 11
+    s.text(70, y + 2, cw["source"], size=6.8, color=GRY)
+    y += 18
 
-    # ---- troubleshooting ----
-    y += 34
-    s.text(70, y, "TROUBLESHOOTING (this circuit)", size=10, weight="bold")
-    for i, t in enumerate(e["troubleshooting"]):
-        s.text(78, y + 16 + i * 14, f"• {t}", size=8.4)
+    # ---- annotations (caveat + notes from sheets.yaml) ----
+    y = draw_annotations(s, 70, y, 720, ann, fs=7.5)
 
-    # ---- legend ----
-    ly = y + 16 + len(e["troubleshooting"]) * 14 + 16
-    s.line(80, ly, 130, ly, color=BLK, w=1.8)
-    s.text(
-        140,
-        ly + 4,
-        "VERIFIED (recovered CommsToVFD + Beginner_Verify p48 + Prog_init v2.1)",
-        size=8.5,
-    )
-    s.line(80, ly + 18, 130, ly + 18, color=BLK, w=1.8, dash=True)
-    s.text(
-        140,
-        ly + 22,
-        "FIELD VERIFY (exact PLC chassis ground point; cable P/N if not Belden 3105A)",
-        size=8.5,
-    )
-
-    # ---- sources ----
-    sy = ly + 44
+    # ---- sources (model) ----
+    sy = y + 12
     s.text(70, sy, "SOURCES:", size=8.5, weight="bold")
     for i, src in enumerate(e["sources"]):
         s.text(130, sy + i * 12, src, size=7.6, color=GRY)
+
+    # ---- troubleshooting + legend (right column) ----
+    s.text(830, 648, "TROUBLESHOOTING (this circuit)", size=10, weight="bold")
+    for i, t in enumerate(e["troubleshooting"]):
+        s.text(838, 664 + i * 13, f"• {t}", size=8.4)
+    draw_legend(s, 830, 664 + len(e["troubleshooting"]) * 13 + 16)
 
     title_block(
         s,
@@ -504,16 +731,21 @@ def render_e007():
     _emit(s, "E-007_rs485_modbus")
 
 
+# ---------------------------------------------------------------- E-005 inputs
 def render_e005():
     devices = _load("devices")
     terms = _load("terminals")
     wires = _load("wires")
-    sheets = _load("sheets")
     meta = devices["meta"]
+    ann = _annotations_for("E-005")
+    dev_by_tag = {d["tag"]: d for d in devices["devices"]}
 
     # index wires by destination PLC terminal
     wl = {w["to"]: w for w in wires["wires"] if str(w["to"]).startswith("PLC1.I-")}
+    w24 = next(w for w in wires["wires"] if w["proposed_number"] == "W24")
+    w0v = next(w for w in wires["wires"] if w["proposed_number"] == "W0V")
     plc_in = terms["PLC1"]["inputs"]
+    com0 = terms["PLC1"]["common"][0]
 
     # which glyph + field label each used input gets
     plan = {
@@ -527,65 +759,39 @@ def render_e005():
 
     W, H = 1600, 1040
     s = SVG(W, H)
-
-    # ---- sheet border + zone grid ----
-    fx0, fy0, fx1, fy1 = 30, 30, 1570, 1010
-    s.rect(fx0, fy0, fx1 - fx0, fy1 - fy0, sw=1.8)
-    s.rect(fx0 + 10, fy0 + 10, (fx1 - fx0) - 20, (fy1 - fy0) - 20, sw=0.8, color=GRY)
-    cols = 8
-    for i in range(cols + 1):
-        x = fx0 + 10 + i * ((fx1 - fx0 - 20) / cols)
-        s.line(x, fy0, x, fy0 + 10, color=GRY, w=0.8)
-        s.line(x, fy1 - 10, x, fy1, color=GRY, w=0.8)
-        if i < cols:
-            s.text(
-                x + ((fx1 - fx0 - 20) / cols) / 2,
-                fy0 + 8,
-                str(i + 1),
-                size=8,
-                anchor="middle",
-                color=GRY,
-            )
-            s.text(
-                x + ((fx1 - fx0 - 20) / cols) / 2,
-                fy1 - 3,
-                str(i + 1),
-                size=8,
-                anchor="middle",
-                color=GRY,
-            )
-    rows = "ABCD"
-    for j, ch in enumerate(rows):
-        yy = fy0 + 10 + (j + 0.5) * ((fy1 - fy0 - 20) / len(rows))
-        s.text(fx0 + 5, yy, ch, size=8, anchor="middle", color=GRY)
-        s.text(fx1 - 5, yy, ch, size=8, anchor="middle", color=GRY)
-
-    # ---- header ----
-    s.text(70, 78, "E-005  PLC DIGITAL INPUTS", size=22, weight="bold")
-    s.text(
-        70,
-        100,
-        f"{meta['project']} / {meta['asset']}  —  Micro820 2080-LC20-20QBB embedded DI (24 VDC)",
-        size=12,
-        color=GRY,
+    fx0, fy0, fx1, fy1 = draw_frame(
+        s,
+        W,
+        H,
+        "E-005  PLC DIGITAL INPUTS",
+        f"{meta['project']} / {meta['asset']}  —  {dev_by_tag['PLC1']['model']} embedded DI (24 VDC)",
     )
-    s.line(60, 112, 1180, 112, color=LGRY, w=1)
 
     # ---- rails ----
     rail_x = 250
     rung_y = {"I-00": 235, "I-01": 297, "I-02": 359, "I-03": 421, "I-04": 483, "I-05": 545}
     rail_top, rail_bot = 210, 560
-    s.line(rail_x, rail_top, rail_x, rail_bot, color=BLK, w=2.2, dash=True)
-    wire_tag(s, rail_x, rail_top - 2, "W24", verified=False)
+    s.line(
+        rail_x,
+        rail_top,
+        rail_x,
+        rail_bot,
+        color=BLK,
+        w=2.2,
+        dash=True,
+        wire="W24",
+        wire_status=w24["status"],
+    )
+    wire_tag(s, rail_x, rail_top - 2, "W24", verified=(w24["status"] == "verified"))
     s.text(rail_x, rail_top - 26, "+24 VDC", size=11, anchor="middle", weight="bold")
     s.text(rail_x, rail_top - 40, "(PS1 / E-004)", size=8.5, anchor="middle", color=GRY)
 
     # ---- PLC input block ----
     bx, by, bw = 1170, 150, 300
-    by2 = 900
+    by2 = 884
     s.rect(bx, by, bw, by2 - by, sw=1.8)
     s.text(bx + bw / 2, by + 22, "PLC1", size=15, anchor="middle", weight="bold")
-    s.text(bx + bw / 2, by + 40, "Micro820 2080-LC20-20QBB", size=9, anchor="middle", color=GRY)
+    s.text(bx + bw / 2, by + 40, dev_by_tag["PLC1"]["model"], size=9, anchor="middle", color=GRY)
     s.text(bx + bw / 2, by + 54, "embedded digital inputs", size=8.5, anchor="middle", color=GRY)
 
     # spare + common Y positions
@@ -597,17 +803,28 @@ def render_e005():
     for tid, y in rung_y.items():
         info = next(t for t in plc_in if t["id"] == tid)
         w = wl.get(f"PLC1.{tid}")
-        verified_wire = w and w.get("status") == "verified"
+        verified_wire = bool(w and w.get("status") == "verified")
+        wnum = w["proposed_number"] if w else "?"
+        wst = w["status"] if w else "field_verify"
         kind, dev_label, field_term = plan[tid]
 
-        # device glyph between rail and a mid point
         dxl, dxr = rail_x, 470
-        # +24V lead into device (field-verify -> dashed)
-        s.line(rail_x, y, dxl + 60, y, color=BLK, w=1.6, dash=not verified_wire)
-        GLYPH[kind](s, dxl + 60, dxr, y, dev_label, field_term)
-        # signal conductor device -> PLC terminal (field-verify -> dashed)
-        s.line(dxr, y, bx, y, color=BLK, w=1.6, dash=not verified_wire)
-        wire_tag(s, (dxr + bx) / 2, y, w["proposed_number"] if w else "?", verified_wire)
+        # +24V lead from the rail into the device (part of the W24 distribution)
+        s.line(
+            rail_x,
+            y,
+            dxl + 60,
+            y,
+            color=BLK,
+            w=1.6,
+            dash=not verified_wire,
+            wire="W24",
+            wire_status=w24["status"],
+        )
+        GLYPH[kind](s, dxl + 60, dxr, y, dev_label, field_term, dashed=not verified_wire)
+        # signal conductor device -> PLC terminal
+        s.line(dxr, y, bx, y, color=BLK, w=1.6, dash=not verified_wire, wire=wnum, wire_status=wst)
+        wire_tag(s, (dxr + bx) / 2, y, wnum, verified_wire)
         # PLC terminal (VERIFIED) — solid dot + label inside block
         s.circle(bx, y, 3.2, fill=BLK)
         s.text(bx + 10, y - 3, tid, size=11, weight="bold", mono=True)
@@ -621,92 +838,52 @@ def render_e005():
             anchor="end",
             color=GRY,
         )
+        if info.get("note"):
+            for k, ln in enumerate(_wrap(info["note"], 280, 6.4)):
+                s.text(bx + 10, y + 32 + k * 8, ln, size=6.4, color=RED)
 
-    # spares
+    # spares (function from the model; OI-08 tracks the field check)
     for tid, y in spare_y.items():
+        info = next(t for t in plc_in if t["id"] == tid)
         s.circle(bx, y, 3.0, fill="#FFFFFF")
         s.text(bx + 10, y + 3, f"{tid}", size=10, mono=True, color=GRY)
-        s.text(bx + 60, y + 3, "spare (no field wire — confirmed unused)", size=8, color=GRY)
+        s.text(bx + 60, y + 3, f"{info['function']} (no field wire — OI-08)", size=8, color=GRY)
 
-    # common
+    # common (function from the model)
     s.circle(bx, com_y, 3.2, fill=BLK)
-    s.text(bx + 10, com_y + 3, "COM0", size=10, weight="bold", mono=True)
-    s.line(bx, com_y, bx - 120, com_y, color=BLK, w=1.6, dash=True)
-    wire_tag(s, bx - 60, com_y, "W0V", verified=False)
+    s.text(bx + 10, com_y + 3, com0["id"], size=10, weight="bold", mono=True)
+    s.line(
+        bx,
+        com_y,
+        bx - 120,
+        com_y,
+        color=BLK,
+        w=1.6,
+        dash=True,
+        wire="W0V",
+        wire_status=w0v["status"],
+    )
+    wire_tag(s, bx - 60, com_y, "W0V", verified=(w0v["status"] == "verified"))
     s.text(bx - 128, com_y + 3, "0V (PS1 / E-004)", size=8.5, anchor="end", color=GRY)
-    s.text(bx + 70, com_y + 3, "input common — sink/source FIELD VERIFY", size=8, color=RED)
+    s.text(bx + 70, com_y + 3, com0["function"], size=8, color=GRY)
+    s.text(bx + 70, com_y + 14, "(FIELD VERIFY — OI-02)", size=7.5, color=RED)
 
-    # ---- legend + notes (bottom-left) ----
-    ly = 590
-    s.text(70, ly, "LEGEND", size=11, weight="bold")
-    s.line(80, ly + 16, 130, ly + 16, color=BLK, w=1.8)
-    s.text(
-        140,
-        ly + 20,
-        "VERIFIED — PLC terminal + function traced to the running program / Ignition OPC docs",
-        size=9,
-    )
-    s.line(80, ly + 34, 130, ly + 34, color=BLK, w=1.8, dash=True)
-    s.text(
-        140,
-        ly + 38,
-        "FIELD VERIFY — physical wiring not documented; meter it (see E-009 open items)",
-        size=9,
-    )
-    s.rect(84, ly + 48, 32, 13, color=RED, sw=0.9)
-    s.text(94, ly + 58, "Wxx", size=8, color=RED, mono=True)
-    s.text(140, ly + 58, "wire numbers are PROPOSED (no as-built wire list in the repo)", size=9)
+    # ---- legend + model annotations ----
+    draw_legend(s, 70, 594)
+    draw_annotations(s, 70, 668, 1000, ann, fs=7.5)
 
-    ny = ly + 90
-    notes = [
-        "READS (acceptance): +24 VDC starts at PS1 (E-004) → device contact shown → proposed wire # → PLC terminal I-0x →",
-        "   function/OPC tag → returns via COM0 → 0V (E-004). Verified vs field-verify marked per conductor.",
-        "SAFETY: I-02/I-03 are MONITORED e-stop inputs only — a monitored input is NOT a safety stop. A compliant install must",
-        "   hardwire S0 to remove drive power (NFPA 79 / EN 60204-1, stop cat 0/1). De-energize + LOTO before metering.",
-        "SOURCES (verified): plc/Prog_init_ConvSimple_v2.1.st · plc/ignition-project/.../MIRA_IOCheck/Inputs/tags.json ·",
-        "   plc/ccw/controller/Controller/LogicalValues.csv · plc/GS10_Integration_Guide.md",
-    ]
-    for i, n in enumerate(notes):
-        s.text(
-            70, ny + i * 15, n, size=8.6, color=BLK if i not in (2, 3) else RED if i == 2 else BLK
-        )
-
-    # ---- title block (bottom-right) ----
-    tb_w, tb_h = 430, 96
-    tx, ty = fx1 - 20 - tb_w, fy1 - 20 - tb_h
-    s.rect(tx, ty, tb_w, tb_h, sw=1.6)
-    s.line(tx, ty + 46, tx + tb_w, ty + 46, color=BLK, w=0.9)
-    s.line(tx + tb_w - 150, ty, tx + tb_w - 150, ty + tb_h, color=BLK, w=0.9)
-    s.text(tx + 12, ty + 22, "PLC DIGITAL INPUTS", size=13, weight="bold")
-    s.text(tx + 12, ty + 38, f"{meta['project']} / {meta['asset']}", size=10, color=GRY)
-    s.text(tx + 12, ty + 66, "MIRA / FactoryLM", size=9)
-    s.text(tx + 12, ty + 82, f"Drawn: {meta['drawn_by']}", size=8, color=GRY)
-    s.text(tx + tb_w - 142, ty + 20, "SHEET", size=8, color=GRY)
-    s.text(tx + tb_w - 142, ty + 38, "E-005", size=16, weight="bold")
-    s.text(tx + tb_w - 142, ty + 62, f"REV {meta['revision']}", size=10)
-    s.text(tx + tb_w - 142, ty + 80, f"{meta['date']}", size=9, color=GRY)
-    s.text(tx + tb_w - 12, ty + 62, "5 of 9", size=10, anchor="end", color=GRY)
-
-    svg = s.dump()
-    (SHEETS / "E-005_plc_inputs.svg").write_text(svg, encoding="utf-8")
-
-    import fitz
-
-    doc = fitz.open(stream=svg.encode("utf-8"), filetype="svg")
-    try:
-        (SHEETS / "E-005_plc_inputs.pdf").write_bytes(doc.convert_to_pdf())
-        pix = doc[0].get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
-        pix.save(str(SHEETS / "E-005_plc_inputs.png"))
-    finally:
-        doc.close()
-    print("wrote", SHEETS / "E-005_plc_inputs.pdf")
-    _ = sheets  # (sheets.yaml available for multi-sheet driver later)
+    title_block(s, fx1, fy1, meta, "E-005", "PLC DIGITAL INPUTS", "5 of 9")
+    _emit(s, "E-005_plc_inputs")
 
 
+# ---------------------------------------------------------------- E-003 power
 def render_e003():
     devices = _load("devices")
+    terms = _load("terminals")
     wires = _load("wires")
     meta = devices["meta"]
+    ann = _annotations_for("E-003")
+    dev_by_tag = {d["tag"]: d for d in devices["devices"]}
 
     e3 = [w for w in wires["wires"] if w.get("sheet") == "E-003"]
     wire_by = {w["proposed_number"]: w for w in e3}
@@ -729,72 +906,73 @@ def render_e003():
 
     xL, xC, xR = 340, 400, 460  # the three power-column conductors
 
-    # ---- SUPPLY node (top) ----
-    s.rect(320, 150, 160, 40, sw=1.4, dash=True)
+    # ---- SUPPLY node (top) — device outline SOLID; uncertainty = red text ----
+    s.rect(320, 150, 160, 40, sw=1.4)
     s.text(400, 168, "SUPPLY", size=12, anchor="middle", weight="bold")
-    s.text(400, 183, "voltage/phase FIELD VERIFY", size=7.5, anchor="middle", color=RED)
+    s.text(400, 183, "(FIELD VERIFY)", size=7.5, anchor="middle", color=RED)
 
     # ---- SUPPLY -> CB1 (W300/W301/W302) ----
     for num, x in (("W300", xL), ("W301", xC), ("W302", xR)):
         seg(num, x, 190, x, 236, w_=2.0)
-        wire_tag(s, x, 216, num, verified=False)
+        wire_tag(s, x, 216, num, verified=False, orient="v")
 
     # ---- CB1: one breaker pole per conductor ----
     for lbl, x in (("L1", xL), ("L2", xC), ("L3 (3φ)", xR)):
-        breaker_pole(s, x, 250, lbl, w=35, h=28)
+        breaker_pole(s, x, 250, lbl)
     s.text(310, 242, "CB1", size=10, anchor="end", weight="bold")
-    s.text(
-        310,
-        256,
-        "REQUIRED per GS10_UM L1758-1759 · type/rating: OI-15",
-        size=7.2,
-        anchor="end",
-        color=GRY,
-    )
+    s.text(310, 254, "(FIELD VERIFY)", size=7.2, anchor="end", color=RED)
 
     # ---- CB1 -> Q1 (W303/W304/W305) ----
     for num, x in (("W303", xL), ("W304", xC), ("W305", xR)):
         seg(num, x, 264, x, 346, w_=2.0)
-        wire_tag(s, x, 310, num, verified=False)
+        wire_tag(s, x, 310, num, verified=False, orient="v")
 
     # ---- Q1: three contactor poles ----
     for lbl, x in (("L1", xL), ("L2", xC), ("L3 (3φ)", xR)):
-        contactor_pole(s, x, 360, lbl, w=35, h=28)
-    s.text(310, 338, "Q1 — SAFETY POWER CONTACTOR (MC)", size=9, anchor="end", weight="bold")
-    q1_notes = [
-        "coil ← O-02 (E-006)",
-        "R-C absorber both ends recommended",
-        "NOT for routine run/stop",
-    ]
-    for i, note in enumerate(q1_notes):
-        s.text(310, 352 + i * 12, note, size=7.2, anchor="end", color=GRY)
+        contactor_pole(s, x, 360, lbl)
+    s.text(
+        310,
+        342,
+        "Q1 — SAFETY POWER CONTACTOR (MC · 'MLC' in WI-001)",
+        size=8.5,
+        anchor="end",
+        weight="bold",
+    )
 
     # ---- Q1 -> VFD1 (W306/W307/W308) ----
     for num, x in (("W306", xL), ("W307", xC), ("W308", xR)):
         seg(num, x, 374, x, 430)
-        wire_tag(s, x, 406, num, verified=False)
+        wire_tag(s, x, 406, num, verified=False, orient="v")
 
-    # ---- VFD1 block ----
+    # ---- VFD1 block (name from the model) ----
     vx, vy, vw, vh = 280, 430, 240, 220
     s.rect(vx, vy, vw, vh, sw=1.6)
     for lbl, x in (("R/L1", xL), ("S/L2", xC), ("T/L3", xR)):
         s.circle(x, vy, 2.8, fill=BLK)
         s.text(x, vy + 16, lbl, size=8, anchor="middle", weight="bold", mono=True)
     s.text(400, 478, "VFD1", size=14, anchor="middle", weight="bold")
-    s.text(400, 494, "GS10 DURApulse", size=8.5, anchor="middle", color=GRY)
+    s.text(400, 494, dev_by_tag["VFD1"]["model"], size=8, anchor="middle", color=GRY)
 
-    # side stubs: +1/+2 (factory jumper, small solid bracket), B1/B2 OPEN, DC+/DC- OPEN
-    s.line(vx + vw, 514, vx + vw + 24, 514, w=1.2)
-    s.line(vx + vw, 526, vx + vw + 24, 526, w=1.2)
-    s.line(vx + vw + 24, 514, vx + vw + 30, 514, w=1.8)
-    s.line(vx + vw + 30, 514, vx + vw + 30, 526, w=1.8)
-    s.line(vx + vw + 30, 526, vx + vw + 24, 526, w=1.8)
-    s.text(vx + vw + 36, 523, "+1/+2 — factory jumper", size=7.5, anchor="start")
-    s.line(vx + vw, 555, vx + vw + 28, 555, w=1.2)
-    s.text(vx + vw + 36, 558, "B1/B2 — OPEN", size=7.5, anchor="start")
-    s.line(vx + vw, 590, vx + vw + 28, 590, w=1.2)
-    s.text(vx + vw + 36, 588, "DC+/DC- — OPEN", size=7.5, anchor="start")
-    s.text(vx + vw + 36, 599, "(absent on 120VAC models)", size=6.8, anchor="start", color=GRY)
+    # side stubs — terminal ids + functions from terminals.yaml VFD1.dc_bus
+    dc_terms = {t["id"]: t["function"] for t in terms["VFD1"]["dc_bus"]}
+    sx = vx + vw
+    stub_y = 508
+    for ids, jumper in ((("+1", "+2"), True), (("B1", "B2"), False), (("DC+", "DC-"), False)):
+        if jumper:
+            s.line(sx, stub_y, sx + 24, stub_y, w=1.2)
+            s.line(sx, stub_y + 12, sx + 24, stub_y + 12, w=1.2)
+            s.line(sx + 24, stub_y, sx + 30, stub_y, w=1.8)
+            s.line(sx + 30, stub_y, sx + 30, stub_y + 12, w=1.8)
+            s.line(sx + 30, stub_y + 12, sx + 24, stub_y + 12, w=1.8)
+        else:
+            s.line(sx, stub_y + 6, sx + 28, stub_y + 6, w=1.2)
+        s.text(
+            sx + 36, stub_y + 3, "/".join(ids), size=7.5, anchor="start", weight="bold", mono=True
+        )
+        fn_lines = _wrap(dc_terms[ids[0]], 130, 6.8)
+        for j, ln in enumerate(fn_lines):
+            s.text(sx + 36, stub_y + 13 + j * 9, ln, size=6.8, anchor="start", color=GRY)
+        stub_y += 20 + len(fn_lines) * 9 + 8
 
     # output terminals (bottom edge) + GND lug
     for lbl, x in (("U/T1", xL), ("V/T2", xC), ("W/T3", xR)):
@@ -805,27 +983,27 @@ def render_e003():
 
     # ---- VFD1 -> M1 (W310/W311/W312); motor terminal row at y=790 ----
     seg("W310", xL, 650, xL, 790, w_=1.4)
-    wire_tag(s, xL, 722, "W310", verified=False)
+    wire_tag(s, xL, 722, "W310", verified=False, orient="v")
     seg("W311", xC, 650, xC, 714, w_=1.4)  # interrupted by the motor glyph
     seg("W311", xC, 746, xC, 790, w_=1.4)
-    wire_tag(s, xC, 684, "W311", verified=False)
+    wire_tag(s, xC, 684, "W311", verified=False, orient="v")
     seg("W312", xR, 650, xR, 790, w_=1.4)
-    wire_tag(s, xR, 722, "W312", verified=False)
+    wire_tag(s, xR, 722, "W312", verified=False, orient="vr")
 
     # ---- Motor M1 (circle ~730, terminal dot row ~790) ----
     motor_sym(s, 400, 730)
     s.text(372, 726, "M1", size=10, anchor="end", weight="bold")
+    s.text(372, 737, "(FIELD VERIFY)", size=6.5, anchor="end", color=RED)
     for lbl, x in (("T1", xL), ("T2", xC), ("T3", xR), ("PE", 520)):
         s.circle(x, 790, 2.4, fill=BLK)
         s.text(x, 803, lbl, size=8, anchor="middle", mono=True)
-    s.text(540, 764, "swap any two leads to reverse — L1773-1776", size=6.8, color=GRY)
 
     # ---- PE bus (vertical at x=700) ----
     s.text(700, 190, "to source PE (E-002)", size=7.5, anchor="middle", color=GRY)
     s.line(696, 206, 700, 198, w=1.2)
     s.line(704, 206, 700, 198, w=1.2)
     seg("W317", 700, 198, 700, 690, w_=2.2)
-    wire_tag(s, 700, 450, "W317", verified=False)
+    wire_tag(s, 700, 450, "W317", verified=False, orient="v")
     s.line(700, 690, 700, 795, color=BLK, w=2.2, dash=True)  # bus collector (node)
     s.circle(700, 690, 2.2, fill=BLK)
     s.circle(700, 790, 2.2, fill=BLK)
@@ -842,7 +1020,7 @@ def render_e003():
     wire_tag(s, 610, 790, "W316", verified=False)
 
     # ---- connection table (right half) ----
-    s.text(830, 172, "CONNECTION TABLE", size=11, weight="bold")
+    s.text(800, 172, "CONNECTION TABLE", size=11, weight="bold")
     headers = ["Wire", "From", "To", "Signal", "Type", "Status", "Notes"]
 
     def short(endpoint):
@@ -851,9 +1029,6 @@ def render_e003():
 
     rows = []
     for w in e3:
-        note = w.get("note", "")
-        if note.startswith("route power"):
-            note = "power ⊥ control — L1787"  # table-only abbreviation of the yaml note
         rows.append(
             [
                 w["proposed_number"],
@@ -862,80 +1037,19 @@ def render_e003():
                 w["signal"],
                 w["type"],
                 w["status"],
-                note,
+                w.get("note", ""),
             ]
         )
-    draw_table(s, 830, 180, [48, 165, 120, 150, 78, 78, 90], headers, rows, evidence_col=5, fs=7.2)
+    draw_table(s, 800, 180, [44, 148, 106, 140, 72, 75, 170], headers, rows, evidence_col=5, fs=7.2)
 
-    # ---- red caveat box (bottom-left) ----
-    s.rect(70, 820, 612, 34, color=RED, sw=1.0, fill="#FFF5F5")
-    s.text(
-        78,
-        834,
-        "Bench supply voltage & phase count, GS10 exact model/frame, breaker rating, wire gauge: NOT DOCUMENTED —",
-        size=7.2,
-        color=RED,
+    # ---- model annotations (caveat + safety left; notes + sources right) ----
+    draw_annotations(
+        s, 70, 816, 610, {"caveat": ann.get("caveat"), "safety": ann.get("safety")}, fs=7.5
     )
-    s.text(
-        78,
-        847,
-        "every conductor FIELD VERIFY. P00.01 = 1.60 A (2026-05-20 export) is the only sizing clue. If 1φ model, input = R/L1, S/L2 only (GS10_UM L1971).",
-        size=7.2,
-        color=RED,
+    draw_annotations(
+        s, 720, 816, 440, {"notes": ann.get("notes"), "sources": ann.get("sources")}, fs=7.5
     )
-
-    # ---- safety notes ----
-    s.text(70, 872, "SAFETY NOTES", size=10, weight="bold")
-    safety_notes = [
-        (
-            "• Never start/stop via input power (L1811-1813); the MC (Q1) is emergency/safety switching only (L1754-1757).",
-            BLK,
-        ),
-        ("• LOTO + wait ≥5 min for DC-bus discharge before touching (WI p.2 §2).", BLK),
-        (
-            "• Monitored e-stop is NOT a safety stop — hardwire S0 to remove drive power per NFPA 79 / EN 60204-1.",
-            RED,
-        ),
-        (
-            "• PE resistance ≤0.1Ω (L1760-61); shield/conduit bonded both ends (L1792-95); RFI jumper in/out FIELD VERIFY (L1693-1718, OI-17).",
-            BLK,
-        ),
-    ]
-    for i, (note, color) in enumerate(safety_notes):
-        s.text(78, 886 + i * 12, note, size=7.5, color=color)
-
-    # ---- legend (solid / dashed) ----
-    s.line(80, 942, 126, 942, color=BLK, w=1.8)
-    s.text(
-        134,
-        946,
-        "VERIFIED — solid (no E-003 conductor qualifies yet; terminal names verified via table sources)",
-        size=8,
-    )
-    s.line(80, 956, 126, 956, color=BLK, w=1.8, dash=True)
-    s.text(
-        134,
-        960,
-        "FIELD VERIFY — dashed + red wire flag (all E-003 conductors; wire numbers PROPOSED — OI-19)",
-        size=8,
-    )
-
-    # ---- sources ----
-    s.text(70, 978, "SOURCES:", size=8.5, weight="bold")
-    s.text(
-        130,
-        978,
-        "plc/GS10_UM.txt (terminals L1971-1986; topology L1750-1813) · plc/GS10_Integration_Guide.md (Q1 phase-5 test)",
-        size=7,
-        color=GRY,
-    )
-    s.text(
-        130,
-        990,
-        "plc/Prog_init_ConvSimple_v2.1.st (vfd_run_permit) · plc/MIRA_PLC_WorkInstruction_v3.pdf (LOTO §2)",
-        size=7,
-        color=GRY,
-    )
+    draw_legend(s, 70, 936)
 
     # ---- title block ----
     title_block(
@@ -959,11 +1073,14 @@ def render_e003():
     _emit(s, "E-003_vfd_power")
 
 
+# ---------------------------------------------------------------- E-006 outputs
 def render_e006():
     devices = _load("devices")
     terms = _load("terminals")
     wires = _load("wires")
     meta = devices["meta"]
+    ann = _annotations_for("E-006")
+    dev_by_tag = {d["tag"]: d for d in devices["devices"]}
 
     e6 = [w for w in wires["wires"] if w.get("sheet") == "E-006"]
     wire_by = {w["proposed_number"]: w for w in e6}
@@ -988,7 +1105,7 @@ def render_e006():
     bx0, bx1 = 150, 430
     s.rect(bx0, 170, bx1 - bx0, 580, sw=1.8)
     s.text((bx0 + bx1) / 2, 192, "PLC1", size=14, anchor="middle", weight="bold")
-    s.text((bx0 + bx1) / 2, 208, "Micro820 2080-LC20-20QBB", size=8.5, anchor="middle", color=GRY)
+    s.text((bx0 + bx1) / 2, 208, dev_by_tag["PLC1"]["model"], size=8, anchor="middle", color=GRY)
     s.text((bx0 + bx1) / 2, 222, "embedded digital outputs", size=8, anchor="middle", color=GRY)
 
     out_y = {
@@ -1037,16 +1154,16 @@ def render_e006():
     s.text(470, 178, "PS1 +24V (E-004)", size=8.5, anchor="middle", weight="bold")
     seg("W600", 470, 186, 470, 630)
     seg("W600", 470, 630, 430, 630)
-    wire_tag(s, 470, 432, "W600", verified=False)
+    wire_tag(s, 470, 432, "W600", verified=False, orient="vr")
 
     # ---- loads (right column at x~950, each at its rung's y) ----
     lx = 950
-    pilot(s, lx, out_y["O-00"], "PL1 GREEN", "RUN LIGHT")
-    pilot(s, lx, out_y["O-01"], "PL2 RED", "FAULT/E-STOP")
-    coil(s, lx, out_y["O-02"], "Q1 COIL", "A1", "A2")
+    pilot(s, lx, out_y["O-00"], "PL1 GREEN", "RUN LIGHT", dashed=True)
+    pilot(s, lx, out_y["O-01"], "PL2 RED", "FAULT/E-STOP", dashed=True)
+    coil(s, lx, out_y["O-02"], "Q1 COIL", "A1", "A2", dashed=True)
     # cross-ref sits under the coil (above collides with PL2's sub-label)
     s.text(lx, 417, "poles on E-003", size=7, anchor="middle", color=GRY)
-    pilot(s, lx, out_y["O-03"], "S2 LAMP", "RUN BTN")
+    pilot(s, lx, out_y["O-03"], "S2 LAMP", "RUN BTN", dashed=True)
 
     # ---- output rungs W601..W604 (one straight horizontal each, into the left stub) ----
     seg("W601", bx1, out_y["O-00"], 930, out_y["O-00"], w_=1.4)
@@ -1085,50 +1202,9 @@ def render_e006():
     wire_tag(s, 715, 660, "W609", verified=False)
     s.text(446, 676, "→ PS1.0V (E-004)", size=7, anchor="start", color=GRY)
 
-    # ---- notes column (right, x 1230-1545) ----
-    nx = 1230
-    s.rect(nx, 200, 315, 92, color=RED, sw=1.0, fill="#FFF5F5")
-    fb_lines = [
-        "Hardwired fallback documented in MIRA-WI-001 v3 §3",
-        "Fig 1 (DO_03..DO_07 → GS10 DI1..DI5 + DCM) — NOT",
-        "ACTIVE and NOT drawn: P02.0x at factory default per",
-        "the 2026-05-20 parameter export; DO_07 does not exist",
-        "on the 2080-LC20-20QBB (O-00..O-06); DO_03 collides",
-        "with PBRunLED in the live I/O map. Bench presence of",
-        "any such wiring = FIELD VERIFY (OI-18).",
-    ]
-    for i, ln in enumerate(fb_lines):
-        s.text(nx + 8, 215 + i * 11, ln, size=7.2, color=RED)
-
-    s.text(nx, 314, "MODBUS CROSS-REF (run/dir/freq):", size=8.5, weight="bold")
-    mb_lines = [
-        "Run/dir/freq commands reach VFD1 over RS-485",
-        "(E-007): 0x2000 cmd (STOP=1, FWD+RUN=18,",
-        "REV+RUN=34), 0x2001 freq. P00.20=1, P00.21=2",
-        "(RS-485) verified by 2026-05-20 parameter export.",
-    ]
-    for i, ln in enumerate(mb_lines):
-        s.text(nx, 327 + i * 11, ln, size=7.2, color=GRY)
-
-    s.text(nx, 384, "SAFETY NOTE:", size=8.5, weight="bold")
-    s.text(nx, 397, "Monitored outputs are NOT a safety function.", size=7.2)
-    s.text(nx, 408, "E-stop must remove power per NFPA 79.", size=7.2)
-    s.text(nx, 419, "Q1 drop path is the power-removal; verify it works.", size=7.2, color=RED)
-
-    s.line(nx, 443, nx + 46, 443, color=BLK, w=1.8, dash=True)
-    s.text(nx + 54, 440, "FIELD VERIFY — dashed (no as-built;", size=7.2)
-    s.text(nx + 54, 451, "O-00/O-01/O-03 from CCW v4.0; O-02 corroborated)", size=7.2)
-
-    s.text(nx, 478, "SOURCES:", size=8.5, weight="bold")
-    sources = [
-        "CCW_VARIABLES_v4.0.txt",
-        "Prog_init_ConvSimple_v2.1.st",
-        "MIRA_PLC_WorkInstruction_v3.pdf",
-        "GS10_actual_parameters_5.20.26.xlsx",
-        "GS10_UM.txt",
-    ]
-    for i, src in enumerate(sources):
-        s.text(nx + 8, 491 + i * 11, src, size=7, color=GRY)
+    # ---- model annotations (right column) + legend ----
+    ann_end = draw_annotations(s, 1230, 200, 315, ann, fs=7.2)
+    draw_legend(s, 1230, ann_end + 18)
 
     # ---- connection table (bottom-left) ----
     s.text(70, 756, "CONNECTION TABLE", size=9, weight="bold")
@@ -1158,32 +1234,31 @@ def render_e006():
         "E-006",
         "PLC OUTPUTS",
         "6 of 9",
-        lineage="output map CCW v4.0 + live Prog_init; O-02 do-not-reuse",
+        lineage="output map CCW v4.0 + live Prog_init; O-02 do-not-reuse (WI-001 p.4)",
     )
 
     _emit(s, "E-006_plc_outputs")
 
 
+# ---------------------------------------------------------------- print set
 def render_set():
-    """Merge drafted sheets into a single PDF."""
+    """Merge drafted sheets (sheets.yaml id order) into a single PDF."""
     sheets = _load("sheets")
     import fitz
 
-    # Collect drafted sheets in order
     drafted = [sh for sh in sheets["sheets"] if sh.get("status") == "drafted"]
 
     basenames = {
+        "E-001": "E-001_cover",
         "E-003": "E-003_vfd_power",
         "E-005": "E-005_plc_inputs",
         "E-006": "E-006_plc_outputs",
         "E-007": "E-007_rs485_modbus",
     }
 
-    # Ensure all sheets exist
     pdfs = []
     for sheet in drafted:
-        sheet_id = sheet["id"]
-        basename = basenames.get(sheet_id)
+        basename = basenames.get(sheet["id"])
         if basename:
             pdf_path = SHEETS / f"{basename}.pdf"
             if pdf_path.exists():
@@ -1193,7 +1268,6 @@ def render_set():
         print("No drafted sheets found or PDFs missing")
         return
 
-    # Merge into CV-101_print_set.pdf
     doc = fitz.open(pdfs[0])
     for pdf_path in pdfs[1:]:
         src = fitz.open(pdf_path)
@@ -1207,6 +1281,7 @@ def render_set():
 
 
 RENDERERS = {
+    "E-001": render_e001,
     "E-003": render_e003,
     "E-005": render_e005,
     "E-006": render_e006,

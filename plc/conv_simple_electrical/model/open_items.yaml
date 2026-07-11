@@ -51,9 +51,9 @@ items:
     item: "Confirm no field wires on spare O-04..O-06 (+CM1 bank unused)."
     verify: "Trace the PLC output block and verify no wires to O-04, O-05, O-06."
   - id: OI-13
-    sheet: E-006
-    item: "Re-confirm output map against LIVE Conv_Simple_1.8 CCW project (v4.0 table vintage caveat)."
-    verify: "Cross-check O-00, O-01, O-02, O-03 function assignments in the live CCW project (v4.0 input half drifted — I-05)."
+    sheet: "E-005, E-006"
+    item: "Re-confirm input AND output map against the live Conv_Simple_1.8 CCW project; v4.0 vintage drift proven on I-05 'Entry sensor' vs live photo-eye."
+    verify: "Open the live Conv_Simple_1.8 CCW project and cross-check every I-xx and O-xx assignment against the drawn functions (I-05 drift already proven; O-02 has independent Prog_init corroboration)."
   - id: OI-14
     sheet: E-003
     item: "Q1 contactor placement in the power chain (assumed line side of VFD1 per 'safety power'; could be elsewhere)."
@@ -75,9 +75,9 @@ items:
     item: "Fallback DI wiring physical presence (expected ABSENT — P02.0x factory default)."
     verify: "Trace the PLC output block; confirm zero hardwired leads to any GS10 digital inputs (fallback path should be unpopulated)."
   - id: OI-19
-    sheet: "E-003, E-006"
-    item: "Wire numbers W30x and W60x are PROPOSED (mirror of OI-03)."
-    verify: "Read the actual wire markers on the panel for E-003 and E-006; replace proposed numbers with as-built."
+    sheet: "E-003, E-005, E-006"
+    item: "Wire-numbering convention adopted: W[sheet-digit][line-2d] (see wires.yaml convention + the E-001 key). E-005 renumbered W200..W205 → W500..W505. Rails (W24, W0V) and E-007 mnemonic labels (485+/485-/SGND/SH) are exempt. All numbers PROPOSED until as-built."
+    verify: "Read the actual wire markers on the panel; replace proposed W-numbers with as-built (mirror of OI-03)."
   - id: OI-20
     sheet: E-007
     item: "GS10 comms line params: 2026-05-20 export = 38.4k/8N2 vs 2026-05-26 bench sniff = 9600/8N1 — adjudicate."

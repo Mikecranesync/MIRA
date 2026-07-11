@@ -36,6 +36,7 @@ PLC1:
       function: Photo-eye (beam blocked -> pe_latched)
       healthy_state: "0 = clear, 1 = blocked"
       status: verified
+      note: "CCW_VARIABLES v4.0 labels I-05 'Entry sensor (spare)' — superseded by live Prog_init v2.1 (_IO_EM_DI_05 -> pe_latched photo-eye). See OI-13."
     - id: I-06
       function: spare
       status: verified   # confirmed UNused (no program/doc reference)

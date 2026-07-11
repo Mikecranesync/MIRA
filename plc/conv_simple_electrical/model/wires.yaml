@@ -11,6 +11,8 @@
 # E-007 comms) is indexed by the sheet: field on each wire row. Pseudo-nodes (rails,
 # buses, off-sheet sources) are listed in the nodes: allowlist below.
 
+convention: "Conductor numbers are W[sheet-digit][line-2d] (e.g. W503 = sheet E-005, line 3) — all PROPOSED until as-built (OI-03/OI-19). Rail/bus labels (W24, W0V) are exempt. Comms sheets (E-007) use mnemonic conductor labels (485+/485-/SGND/SH) per CommsToVFD ancestry."
+
 nodes:
   - "+24V rail (this sheet)"
   - "SUPPLY (source — see E-002)"
@@ -28,14 +30,14 @@ wires:
     sheet: E-005
 
   # Direction selector -> I-00 / I-01
-  - proposed_number: "W200"
+  - proposed_number: "W500"
     from: SS1.FWD
     to: PLC1.I-00
     signal: dir_fwd
     type: input_24vdc
     status: field_verify
     sheet: E-005
-  - proposed_number: "W201"
+  - proposed_number: "W501"
     from: SS1.REV
     to: PLC1.I-01
     signal: dir_rev
@@ -44,14 +46,14 @@ wires:
     sheet: E-005
 
   # E-stop dual channel -> I-02 (NC) / I-03 (NO)
-  - proposed_number: "W202"
+  - proposed_number: "W502"
     from: S0.11-12
     to: PLC1.I-02
     signal: e_stop_nc (healthy=1)
     type: input_24vdc
     status: field_verify
     sheet: E-005
-  - proposed_number: "W203"
+  - proposed_number: "W503"
     from: S0.23-24
     to: PLC1.I-03
     signal: e_stop_no (healthy=0)
@@ -60,7 +62,7 @@ wires:
     sheet: E-005
 
   # Run PB -> I-04
-  - proposed_number: "W204"
+  - proposed_number: "W504"
     from: S2.3-4
     to: PLC1.I-04
     signal: run_pb
@@ -69,7 +71,7 @@ wires:
     sheet: E-005
 
   # Photo-eye output -> I-05
-  - proposed_number: "W205"
+  - proposed_number: "W505"
     from: B1.BK
     to: PLC1.I-05
     signal: photo_eye
