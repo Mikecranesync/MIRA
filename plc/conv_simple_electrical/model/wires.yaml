@@ -200,50 +200,26 @@ wires:
     sheet: E-003
     note: "phase count unknown"
 
-  # Breaker to contactor
+  # Breaker directly to VFD1 line terminals — NO contactor in this run (V4 photo
+  # correction: Q1/MLC is a control relay with no power poles; see OI-21).
   - proposed_number: "W303"
     from: CB1.2
-    to: Q1.1
-    signal: "L1 protected"
+    to: VFD1.R/L1
+    signal: "L1 to drive"
     type: power_line
     status: field_verify
     sheet: E-003
   - proposed_number: "W304"
     from: CB1.4
-    to: Q1.3
-    signal: "L2 protected"
+    to: VFD1.S/L2
+    signal: "L2 to drive"
     type: power_line
     status: field_verify
     sheet: E-003
   - proposed_number: "W305"
     from: CB1.6
-    to: Q1.5
-    signal: "L3 protected (if 3φ)"
-    type: power_line
-    status: field_verify
-    sheet: E-003
-    note: "phase count unknown"
-
-  # Contactor to VFD
-  - proposed_number: "W306"
-    from: Q1.2
-    to: VFD1.R/L1
-    signal: "L1 switched"
-    type: power_line
-    status: field_verify
-    sheet: E-003
-    note: "route power ⊥ control wiring — GS10_UM.txt L1787"
-  - proposed_number: "W307"
-    from: Q1.4
-    to: VFD1.S/L2
-    signal: "L2 switched"
-    type: power_line
-    status: field_verify
-    sheet: E-003
-  - proposed_number: "W308"
-    from: Q1.6
     to: VFD1.T/L3
-    signal: "L3 switched (if 3φ)"
+    signal: "L3 to drive (if 3φ)"
     type: power_line
     status: field_verify
     sheet: E-003

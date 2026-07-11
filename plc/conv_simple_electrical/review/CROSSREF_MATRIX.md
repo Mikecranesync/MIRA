@@ -12,12 +12,12 @@
 | PL1 | pilot_light | verified | Green RUNNING pilot — load of O-00 (LightGreen) |
 | PL2 | pilot_light | verified | Red FAULT/E-STOP pilot — load of O-01 (LightRed) |
 | PLC1 | plc | verified | Conveyor controller; Modbus RTU master to VFD1 |
-| PS1 | power_supply | field_verify | 24 VDC control supply (documented on E-004); feeds +24V/0V to input loop |
-| Q1 | contactor | verified | Safety power contactor — coil driven by PLC O-02 ('ContactorQ1', safety power); drops o... |
+| PS1 | power_supply | verified | 24 VDC control supply (E-004). Feeds the DC +/- distribution block (blue = one polarity... |
+| Q1 | control_relay | verified | Drive-enable CONTROL RELAY (hand-labeled 'MLC'). Coil A1(+)/A2(-) driven by PLC O-02 (2... |
 | S0 | e_stop | verified | Emergency stop, DUAL-CHANNEL (diverse) — NC ch to I-02, NO ch to I-03 |
 | S2 | pushbutton_no | verified | Run / rearm pushbutton to I-04; illuminated — lamp fed by PLC O-03 (PBRunLED) |
 | SS1 | selector_switch | verified | Direction selector — FWD contact to I-00, REV contact to I-01 (FWD-OFF-REV) |
-| VFD1 | vfd | verified | Drives conveyor motor; commanded over Modbus RTU (Ch2, node 1) |
+| VFD1 | vfd | verified | Drives conveyor motor. Commanded over Modbus RTU (RJ45, Ch2 node 1) — photo confirms th... |
 | X1 | terminal_block | field_verify | Field terminal strip — field devices land here before PLC (E-008) |
 
 ## Terminals
@@ -66,15 +66,23 @@
 | PLC1.O-05 | spare | verified | — | — |
 | PLC1.O-06 | spare | verified | — | — |
 | PS1.+24V | +24 VDC feed | field_verify | W24, W600 | E-005, E-006 |
+| PS1.+V | DC output + (adjustable, +V ADJ pot) | verified | — | — |
+| PS1.-V | DC output - | verified | — | — |
 | PS1.0V | 0V return | field_verify | W0V, W609 | E-005, E-006 |
-| Q1.1 | pole L1 in (proposed) | field_verify | W303 | E-003 |
-| Q1.2 | pole T1 out (proposed) | field_verify | W306 | E-003 |
-| Q1.3 | pole L2 in (proposed) | field_verify | W304 | E-003 |
-| Q1.4 | pole T2 out (proposed) | field_verify | W307 | E-003 |
-| Q1.5 | pole L3 in (proposed) | field_verify | W305 | E-003 |
-| Q1.6 | pole T3 out (proposed) | field_verify | W308 | E-003 |
-| Q1.A1 | coil + (from PLC1 O-02, E-006) | field_verify | W603 | E-006 |
-| Q1.A2 | coil - (to output return) | field_verify | W607 | E-006 |
+| PS1.DC-OK | DC-OK relay/LED output | verified | — | — |
+| PS1.L | AC line in | verified | — | — |
+| PS1.N | AC neutral in | verified | — | — |
+| PS1.PE | AC protective earth in | verified | — | — |
+| Q1.13 | aux contact 1 — NO (destination FIELD VERIFY, OI-26) | verified | — | — |
+| Q1.14 | aux contact 1 — NO (destination FIELD VERIFY, OI-26) | verified | — | — |
+| Q1.21 | aux contact 2 — NC (destination FIELD VERIFY, OI-26) | verified | — | — |
+| Q1.22 | aux contact 2 — NC (destination FIELD VERIFY, OI-26) | verified | — | — |
+| Q1.31 | aux contact 3 — NC (destination FIELD VERIFY, OI-26) | verified | — | — |
+| Q1.32 | aux contact 3 — NC (destination FIELD VERIFY, OI-26) | verified | — | — |
+| Q1.43 | aux contact 4 — NO (destination FIELD VERIFY, OI-26) | verified | — | — |
+| Q1.44 | aux contact 4 — NO (destination FIELD VERIFY, OI-26) | verified | — | — |
+| Q1.A1 | coil + (from PLC1 O-02, E-006) | verified | W603 | E-006 |
+| Q1.A2 | coil - (to output return) | verified | W607 | E-006 |
 | S0.11-12 | NC channel out -> I-02 | field_verify | W502 | E-005 |
 | S0.23-24 | NO channel out -> I-03 | field_verify | W503 | E-005 |
 | S2.3-4 | NO contact out -> I-04 | field_verify | W504 | E-005 |
@@ -84,15 +92,29 @@
 | SS1.FWD | FWD contact out -> I-00 | field_verify | W500 | E-005 |
 | SS1.REV | REV contact out -> I-01 | field_verify | W501 | E-005 |
 | VFD1.+1 | DC reactor (factory jumper +1/+2 — leave unless reactor installed) | verified | — | — |
+| VFD1.+10V | internal +10VDC reference for analog input | verified | — | — |
 | VFD1.+2 | DC reactor jumper partner | verified | — | — |
+| VFD1.+24V | internal +24VDC supply for digital inputs | verified | — | — |
+| VFD1.ACM | analog common | verified | — | — |
+| VFD1.AI | analog input (speed reference) | verified | — | — |
+| VFD1.AO1 | analog output 1 (monitor) | verified | — | — |
 | VFD1.B1 | brake resistor (optional; else OPEN) | verified | — | — |
 | VFD1.B2 | brake resistor partner (else OPEN) | verified | — | — |
 | VFD1.DC+ | common DC bus (leave open; absent on 120VAC models) | verified | — | — |
 | VFD1.DC- | common DC bus (leave open) | verified | — | — |
+| VFD1.DCM | digital input common | verified | — | — |
+| VFD1.DI3 | digital input 3 (multi-function) | verified | — | — |
+| VFD1.DI4 | digital input 4 (multi-function) | verified | — | — |
+| VFD1.DI5 | digital input 5 (multi-function) | verified | — | — |
+| VFD1.DO1 | digital output 1 (open-collector) | verified | — | — |
+| VFD1.DOC | digital output 1 common | verified | — | — |
+| VFD1.FWD | forward run command input | verified | — | — |
 | VFD1.GND | drive ground terminal (manual table row L1984; silk-screen symbol — id GND is OUR label) | verified | W315 | E-003 |
-| VFD1.R/L1 | input power L1 | verified | W306 | E-003 |
-| VFD1.S/L2 | input power L2 | verified | W307 | E-003 |
-| VFD1.T/L3 | input power L3 (3-phase models only) | verified | W308 | E-003 |
+| VFD1.PE | control-terminal-strip ground | verified | — | — |
+| VFD1.R/L1 | input power L1 | verified | W303 | E-003 |
+| VFD1.REV | reverse run command input | verified | — | — |
+| VFD1.S/L2 | input power L2 | verified | W304 | E-003 |
+| VFD1.T/L3 | input power L3 (3-phase models only) | verified | W305 | E-003 |
 | VFD1.U/T1 | motor output T1 | verified | W310 | E-003 |
 | VFD1.V/T2 | motor output T2 | verified | W311 | E-003 |
 | VFD1.W/T3 | motor output T3 | verified | W312 | E-003 |

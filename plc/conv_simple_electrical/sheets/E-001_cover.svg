@@ -62,7 +62,7 @@
 <text x="75.0" y="233.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111" class="schedule-tag">VFD1</text>
 <text x="127.0" y="233.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">vfd</text>
 <text x="219.0" y="233.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">AutomationDirect GS10 DURApulse</text>
-<text x="469.0" y="233.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Drives conveyor motor; commanded over Modbus RTU (Ch2, node 1)</text>
+<text x="469.0" y="233.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Drives conveyor motor. Commanded over Modbus RTU (RJ45, Ch2 node 1) — photo c...</text>
 <text x="799.0" y="233.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">verified</text>
 <rect x="70.0" y="240.0" width="798.0" height="20.0" fill="none" stroke="#111111" stroke-width="0.7"/>
 <text x="75.0" y="253.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111" class="schedule-tag">M1</text>
@@ -97,9 +97,9 @@
 <rect x="70.0" y="340.0" width="798.0" height="20.0" fill="none" stroke="#111111" stroke-width="0.7"/>
 <text x="75.0" y="353.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111" class="schedule-tag">PS1</text>
 <text x="127.0" y="353.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">power supply</text>
-<text x="219.0" y="353.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111"></text>
-<text x="469.0" y="353.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">24 VDC control supply (documented on E-004); feeds +24V/0V to input loop</text>
-<text x="799.0" y="353.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
+<text x="219.0" y="353.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">Mean Well DIN-rail supply (24 V / 1.0 A; 100-24...</text>
+<text x="469.0" y="353.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">24 VDC control supply (E-004). Feeds the DC +/- distribution block (blue = on...</text>
+<text x="799.0" y="353.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">verified</text>
 <rect x="70.0" y="360.0" width="798.0" height="20.0" fill="none" stroke="#111111" stroke-width="0.7"/>
 <text x="75.0" y="373.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111" class="schedule-tag">CB1</text>
 <text x="127.0" y="373.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">circuit breaker</text>
@@ -108,9 +108,9 @@
 <text x="799.0" y="373.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#C0392B">field_verify</text>
 <rect x="70.0" y="380.0" width="798.0" height="20.0" fill="none" stroke="#111111" stroke-width="0.7"/>
 <text x="75.0" y="393.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111" class="schedule-tag">Q1</text>
-<text x="127.0" y="393.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">contactor</text>
-<text x="219.0" y="393.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111"></text>
-<text x="469.0" y="393.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Safety power contactor — coil driven by PLC O-02 ('ContactorQ1', safety power...</text>
+<text x="127.0" y="393.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">control relay</text>
+<text x="219.0" y="393.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111">Schneider Electric TeSys CA3KN22BD (control rel...</text>
+<text x="469.0" y="393.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">Drive-enable CONTROL RELAY (hand-labeled 'MLC'). Coil A1(+)/A2(-) driven by P...</text>
 <text x="799.0" y="393.0" font-size="7.2" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">verified</text>
 <rect x="70.0" y="400.0" width="798.0" height="20.0" fill="none" stroke="#111111" stroke-width="0.7"/>
 <text x="75.0" y="413.0" font-size="7.2" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111" class="schedule-tag">PL1</text>
@@ -149,7 +149,7 @@
 <text x="615.0" y="549.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">stub</text>
 <rect x="70.0" y="556.0" width="630.0" height="20.0" fill="none" stroke="#111111" stroke-width="0.7"/>
 <text x="75.0" y="569.0" font-size="7.5" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111" class="index-id">E-003</text>
-<text x="145.0" y="569.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VFD power (CB1 -&gt; Q1 -&gt; VFD1 -&gt; M1)</text>
+<text x="145.0" y="569.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">VFD power (CB1 -&gt; VFD1 -&gt; M1)</text>
 <text x="615.0" y="569.0" font-size="7.5" font-family="Arial, Helvetica, sans-serif" text-anchor="start" font-weight="normal" fill="#111111">drafted</text>
 <rect x="70.0" y="576.0" width="630.0" height="20.0" fill="none" stroke="#111111" stroke-width="0.7"/>
 <text x="75.0" y="589.0" font-size="7.5" font-family="Consolas, 'Courier New', monospace" text-anchor="start" font-weight="normal" fill="#111111" class="index-id">E-004</text>

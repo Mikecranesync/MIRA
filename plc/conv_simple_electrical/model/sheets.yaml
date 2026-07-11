@@ -23,35 +23,38 @@ sheets:
     title: Power one-line
     status: stub
   - id: E-003
-    title: VFD power (CB1 -> Q1 -> VFD1 -> M1)
+    title: VFD power (CB1 -> VFD1 -> M1)
     status: drafted
-    subtitle: "supply → CB1 → Q1 (MC) → VFD1 (GS10) → M1"
+    subtitle: "supply → CB1 → VFD1 (GS10) → M1"
     scope: >
-      Upstream supply → branch protection (CB1) → safety contactor (Q1) → VFD1 power input
-      (R/L1, S/L2, T/L3) → motor output (U/T1, V/T2, W/T3) → motor M1; PE bonding.
+      Upstream supply → branch protection (CB1) → VFD1 power input (R/L1, S/L2, T/L3) →
+      motor output (U/T1, V/T2, W/T3) → motor M1; PE bonding. No motor contactor — CB1
+      feeds VFD1 directly (2026-07-11 photo correction; a separate contactor, if one
+      exists, is FIELD VERIFY — OI-21).
     note: >
       Bench supply voltage, phase count, GS10 exact model/frame, breaker rating, wire gauge:
       NOT DOCUMENTED anywhere (every conductor is FIELD VERIFY). P00.01 rated current 1.60 A
       (2026-05-20 export) is the only sizing clue. If the drive is a 1φ model, input is R/L1, S/L2 only.
-      Q1 placement in power chain assumed line-side per manual recommendation; verify actual location (OI-14).
-      MC is emergency/safety switching only — never start/stop via input power. LOTO + wait ≥5 min
+      No 3-phase motor contactor observed in the 2026-07-11 photos between CB1 and VFD1; a
+      separate power contactor, if one exists, is FIELD VERIFY (OI-21). LOTO + wait ≥5 min
       for DC-bus discharge before touching (WI p.2 §2).
     annotations:
       caveat:
         - "Bench supply voltage & phase count, GS10 exact model/frame, breaker rating, wire gauge: NOT DOCUMENTED — every conductor FIELD VERIFY. P00.01 = 1.60 A (2026-05-20 export) is the only sizing clue. If 1φ model, input = R/L1, S/L2 only (GS10_UM L1971)."
+        - "No 3-phase motor contactor observed in the 2026-07-11 photos. The device labeled 'MLC' is a Schneider TeSys CA3KN22BD CONTROL RELAY (drive-enable interlock) shown on E-006 — not a motor contactor. Separate power contactor = FIELD VERIFY (OI-21)."
       safety:
-        - "Never start/stop via input power (L1811-1813); the MC (Q1) is emergency/safety switching only (L1754-1757)."
+        - "Never start/stop via input power (L1811-1813); CB1 is branch protection only, not a run/stop device."
         - "LOTO + wait ≥5 min for DC-bus discharge before touching (WI p.2 §2)."
         - "Monitored e-stop is NOT a safety stop — hardwire S0 to remove drive power per NFPA 79 / EN 60204-1."
         - "PE resistance ≤0.1Ω (L1760-61); shield/conduit bonded both ends (L1792-95); RFI jumper in/out FIELD VERIFY (L1693-1718, OI-17)."
       notes:
-        - "Q1 coil ← O-02 (E-006); R-C surge absorber both ends recommended (GS10 manual); NOT for routine run/stop (L1754-1757)."
         - "CB1 REQUIRED per GS10_UM L1758-1759 — type/rating unknown (OI-15)."
         - "M1: swap any two motor leads to reverse — GS10_UM L1773-1776."
         - "VFD control source = Modbus — see E-007. No control wiring on this sheet."
       sources:
         - "plc/GS10_UM.txt (terminals L1971-1986; topology L1750-1813) · plc/GS10_Integration_Guide.md (Q1 phase-5 test)"
         - "plc/Prog_init_ConvSimple_v2.1.st (vfd_run_permit) · plc/MIRA_PLC_WorkInstruction_v3.pdf (LOTO §2)"
+        - "photos review/photos/wire_1..4.jpg (2026-07-11, actual devices)"
   - id: E-004
     title: 24 VDC control power distribution (PS1)
     status: stub
@@ -73,24 +76,30 @@ sheets:
   - id: E-006
     title: PLC outputs (O-00..O-06)
     status: drafted
-    subtitle: "O-00..O-06 · pilots, contactor coil, button lamp · GS10 control = Modbus (E-007), NO GS10 DI wiring"
+    subtitle: "O-00..O-06 · pilots, Q1/MLC control-relay coil, button lamp · GS10 control = HYBRID Modbus + hardwired I/O (E-007; map OI-22)"
     scope: >
-      Micro820 outputs O-00..O-06 (banks +CM0/-CM0, +CM1/-CM1): PL1/PL2 pilots, Q1 contactor coil,
-      S2 lamp; O-04..O-06 spare. GS10 run/dir/freq = Modbus (E-007, P00.21=2) — NO GS10 control-terminal wiring.
+      Micro820 outputs O-00..O-06 (banks +CM0/-CM0, +CM1/-CM1): PL1/PL2 pilots, Q1/MLC control-relay
+      coil, S2 lamp; O-04..O-06 spare. GS10 run/dir/freq = Modbus (E-007, P00.21=2); the GS10
+      control-terminal connector is ALSO populated on the bench (hybrid, not Modbus-only — map = OI-22).
     note: >
       Hardwired fallback documented in MIRA-WI-001 v3 §3 Fig 1 (DO_03..DO_07 → GS10 DI1..DI5 + DCM) —
       NOT ACTIVE and NOT drawn: P02.0x at factory default per 2026-05-20 parameter export; DO_07 does not exist
       on the 2080-LC20-20QBB (O-00..O-06); DO_03 collides with PBRunLED in the live I/O map. Bench presence of
       any such wiring = FIELD VERIFY (OI-18). Correction: July-3 target sketch assumed CR relay → GS10 DI —
-      SUPERSEDED by P00.21=2 (RS-485 Modbus) + ContactorQ1 evidence.
+      SUPERSEDED by P00.21=2 (RS-485 Modbus) + ContactorQ1 evidence. NOTE (2026-07-11): photo evidence shows
+      the GS10 control-terminal connector IS populated on the bench — control is HYBRID Modbus + hardwired
+      I/O; the specific WI-001 DO_03..DO_07 fallback pattern remains unconfirmed (OI-18) but "Modbus-only" is
+      no longer the working assumption — see OI-22.
     annotations:
       caveat:
         - "Hardwired fallback documented in MIRA-WI-001 v3 §3 Fig 1 (DO_03..DO_07 → GS10 DI1..DI5 + DCM) — NOT ACTIVE and NOT drawn: P02.0x at factory default per the 2026-05-20 parameter export; DO_07 does not exist on the 2080-LC20-20QBB (O-00..O-06); DO_03 collides with PBRunLED in the live I/O map. Bench presence of any such wiring = FIELD VERIFY (OI-18)."
       safety:
         - "Monitored outputs are NOT a safety function."
         - "E-stop must remove power per NFPA 79."
-        - "Q1 drop path is the power-removal; verify it works."
+        - "Q1/MLC is a CONTROL RELAY (drive-enable interlock), NOT a power-removal device — it has no main poles (E-003 corrected 2026-07-11). Whether a separate power-removal contactor exists is FIELD VERIFY (OI-21); until confirmed, do not assume E-stop removes drive input power via this circuit."
       notes:
+        - "Q1/MLC = Schneider TeSys CA3KN22BD control relay (2 NO + 2 NC, 24 VDC coil); coil A1(+)/A2(-) driven by O-02 (verified from photo wire_3). Aux contacts 13-14/43-44 NO, 21-22/31-32 NC → control circuit (destinations FIELD VERIFY, OI-26)."
+        - "GS10 control connector is populated on the real bench (photo wire_4) — control is HYBRID Modbus + hardwired I/O, not Modbus-only. Map = OI-22."
         - "GS10 run/dir/freq = Modbus — see E-007 (P00.20=1, P00.21=2 per 2026-05-20 parameter export)"
         - "No as-built: O-00/O-01/O-03 from CCW v4.0; O-02 corroborated by live Prog_init v2.1."
         - "Output bank technology + common feed = FIELD VERIFY (OI-09): WI-001 p.4 says relay dry contacts; ±CM polarity naming suggests DC-fed banks — conflicting evidence, resolve per 2080-IN009 + meter."
@@ -100,6 +109,7 @@ sheets:
         - "MIRA_PLC_WorkInstruction_v3.pdf"
         - "GS10_actual_parameters_5.20.26.xlsx"
         - "GS10_UM.txt"
+        - "photos review/photos/wire_1..4.jpg (2026-07-11, actual devices)"
   - id: E-007
     title: RS-485 Modbus (PLC1 Ch2 <-> VFD1 RJ45)
     status: drafted          # rebuilt from recovered CCW/MIRA_PLC CommsToVFD style, corrected values
@@ -115,6 +125,7 @@ sheets:
         - "Belden 3105A — shielded twisted pair (485+/485-) + 1 conductor (SGND) + drain"
         - "VERIFIED (solid) = recovered CommsToVFD + Beginner_Verify p48 + Prog_init v2.1; FIELD VERIFY (dashed) = exact PLC chassis ground point; cable P/N if not Belden 3105A."
         - "Port locations per CommsToVFD (PLC top-edge connector; GS10 front-face RJ45) — WI-001 says bottom-front. Wayfinding only; confirm on unit (FIELD VERIFY)."
+        - "GS10 RS-485 RJ45 cable confirmed landed (photo wire_4). The GS10 control connector (FWD/REV/DI/AI/AO1/DO1) is also wired — see OI-22."
   - id: E-008
     title: Terminal strip (X1) + wire list
     status: stub

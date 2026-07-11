@@ -9,12 +9,9 @@
 | W300 | SUPPLY (source — see E-002) | CB1.1 | L1 supply | power_line | field_verify |  |  | dashed | yes |
 | W301 | SUPPLY (source — see E-002) | CB1.3 | L2/N supply | power_line | field_verify |  |  | dashed | yes |
 | W302 | SUPPLY (source — see E-002) | CB1.5 | L3 supply (if 3φ) | power_line | field_verify |  | phase count unknown | dashed | yes |
-| W303 | CB1.2 | Q1.1 | L1 protected | power_line | field_verify |  |  | dashed | yes |
-| W304 | CB1.4 | Q1.3 | L2 protected | power_line | field_verify |  |  | dashed | yes |
-| W305 | CB1.6 | Q1.5 | L3 protected (if 3φ) | power_line | field_verify |  | phase count unknown | dashed | yes |
-| W306 | Q1.2 | VFD1.R/L1 | L1 switched | power_line | field_verify |  | route power ⊥ control wiring — | dashed | yes |
-| W307 | Q1.4 | VFD1.S/L2 | L2 switched | power_line | field_verify |  |  | dashed | yes |
-| W308 | Q1.6 | VFD1.T/L3 | L3 switched (if 3φ) | power_line | field_verify |  | phase count unknown | dashed | yes |
+| W303 | CB1.2 | VFD1.R/L1 | L1 to drive | power_line | field_verify |  |  | dashed | yes |
+| W304 | CB1.4 | VFD1.S/L2 | L2 to drive | power_line | field_verify |  |  | dashed | yes |
+| W305 | CB1.6 | VFD1.T/L3 | L3 to drive (if 3φ) | power_line | field_verify |  | phase count unknown | dashed | yes |
 | W310 | VFD1.U/T1 | M1.T1 | motor phase U | motor_lead | field_verify |  |  | dashed | yes |
 | W311 | VFD1.V/T2 | M1.T2 | motor phase V | motor_lead | field_verify |  |  | dashed | yes |
 | W312 | VFD1.W/T3 | M1.T3 | motor phase W | motor_lead | field_verify |  |  | dashed | yes |
@@ -23,9 +20,9 @@
 | W317 | PE bus | SUPPLY (source — see E-002) | PE to source | ground | field_verify |  |  | dashed | yes |
 
 ### SUMMARY
-- Total wires: 15
+- Total wires: 12
 - Verified: 0
-- Field verify: 15
+- Field verify: 12
 - Proposed: 0
 
 ## E-005

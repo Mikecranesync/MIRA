@@ -91,6 +91,15 @@ B1:   # photo-eye (3-wire)
 PS1:  # 24VDC supply (detailed on E-004)
   - {id: "+24V", function: +24 VDC feed, status: field_verify}
   - {id: "0V", function: 0V return, status: field_verify}
+  # real nameplate terminal ids read directly off the device (photo wire_2.jpg,
+  # 2026-07-11) — NAMES verified; branch wiring from these to the +24V/0V
+  # functional terminals above = FIELD VERIFY (OI-25)
+  - {id: "+V", function: "DC output + (adjustable, +V ADJ pot)", status: verified, source: "photo review/photos/wire_2.jpg"}
+  - {id: "-V", function: "DC output -", status: verified, source: "photo review/photos/wire_2.jpg"}
+  - {id: "DC-OK", function: "DC-OK relay/LED output", status: verified, source: "photo review/photos/wire_2.jpg"}
+  - {id: "L", function: "AC line in", status: verified, source: "photo review/photos/wire_2.jpg"}
+  - {id: "N", function: "AC neutral in", status: verified, source: "photo review/photos/wire_2.jpg"}
+  - {id: "PE", function: "AC protective earth in", status: verified, source: "photo review/photos/wire_2.jpg"}
 
 VFD1:  # power side — terminal NAMES verified from GS10 manual terminal table (GS10_UM.txt L1971-1986)
   power_input:
@@ -110,6 +119,23 @@ VFD1:  # power side — terminal NAMES verified from GS10 manual terminal table 
     - {id: "DC-", function: "common DC bus (leave open)", status: verified, source: "GS10_UM.txt L1982, L1844"}
   ground:
     - {id: "GND", function: "drive ground terminal (manual table row L1984; silk-screen symbol — id GND is OUR label)", status: verified, source: "GS10_UM.txt L1984, L1760-1762"}
+  control:  # control-terminal legend read directly off the device (photo wire_4.jpg,
+            # 2026-07-11). NAMES verified; WHICH of these are actually landed = FIELD
+            # VERIFY (OI-22) — the connector is populated (hybrid Modbus + hardwired I/O).
+    - {id: "FWD", function: "forward run command input", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "REV", function: "reverse run command input", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "DI3", function: "digital input 3 (multi-function)", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "DI4", function: "digital input 4 (multi-function)", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "DI5", function: "digital input 5 (multi-function)", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "+24V", function: "internal +24VDC supply for digital inputs", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "DCM", function: "digital input common", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "+10V", function: "internal +10VDC reference for analog input", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "ACM", function: "analog common", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "AI", function: "analog input (speed reference)", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "AO1", function: "analog output 1 (monitor)", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "DO1", function: "digital output 1 (open-collector)", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "DOC", function: "digital output 1 common", status: verified, source: "photo review/photos/wire_4.jpg"}
+    - {id: "PE", function: "control-terminal-strip ground", status: verified, source: "photo review/photos/wire_4.jpg"}
 
 M1:   # motor terminal ids per manual prose convention; physical markings FIELD VERIFY
   - {id: "T1", function: "motor lead 1", status: field_verify}
@@ -117,15 +143,19 @@ M1:   # motor terminal ids per manual prose convention; physical markings FIELD 
   - {id: "T3", function: "motor lead 3 (swap any two to reverse — GS10_UM.txt L1773-1776)", status: field_verify}
   - {id: "PE", function: "motor frame ground", status: field_verify}
 
-Q1:   # contactor (MC) — pole/coil ids are IEC-convention PROPOSED, not evidenced
-  - {id: "1", function: "pole L1 in (proposed)", status: field_verify}
-  - {id: "2", function: "pole T1 out (proposed)", status: field_verify}
-  - {id: "3", function: "pole L2 in (proposed)", status: field_verify}
-  - {id: "4", function: "pole T2 out (proposed)", status: field_verify}
-  - {id: "5", function: "pole L3 in (proposed)", status: field_verify}
-  - {id: "6", function: "pole T3 out (proposed)", status: field_verify}
-  - {id: "A1", function: "coil + (from PLC1 O-02, E-006)", status: field_verify}
-  - {id: "A2", function: "coil - (to output return)", status: field_verify}
+Q1:   # control relay (hand-labeled "MLC") — Schneider TeSys CA3KN22BD; terminal ids
+      # read directly off the device (photo wire_3.jpg, 2026-07-11). NOT a motor
+      # contactor — it has no main power poles (see OI-21).
+  - {id: "A1", function: "coil + (from PLC1 O-02, E-006)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "A2", function: "coil - (to output return)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "13", function: "aux contact 1 — NO (destination FIELD VERIFY, OI-26)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "14", function: "aux contact 1 — NO (destination FIELD VERIFY, OI-26)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "21", function: "aux contact 2 — NC (destination FIELD VERIFY, OI-26)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "22", function: "aux contact 2 — NC (destination FIELD VERIFY, OI-26)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "31", function: "aux contact 3 — NC (destination FIELD VERIFY, OI-26)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "32", function: "aux contact 3 — NC (destination FIELD VERIFY, OI-26)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "43", function: "aux contact 4 — NO (destination FIELD VERIFY, OI-26)", status: verified, source: "photo review/photos/wire_3.jpg"}
+  - {id: "44", function: "aux contact 4 — NO (destination FIELD VERIFY, OI-26)", status: verified, source: "photo review/photos/wire_3.jpg"}
 
 CB1:  # upstream protection — REQUIRED by manual (L1758-1759); device unconfirmed on bench
   - {id: "1", function: "line in L1 (proposed)", status: field_verify}

@@ -266,16 +266,6 @@ def breaker_pole(s, x, y, label, side="left"):
     _pole_label(s, x, y, label, side)
 
 
-def contactor_pole(s, x, y, label, side="left"):
-    """Contactor (MC) pole on a VERTICAL run: open NO-contact pair (angled arm)."""
-    s.circle(x, y - 14, 2.2, fill=BLK)
-    s.circle(x, y + 14, 2.2, fill=BLK)
-    s.line(x, y - 14, x, y - 6)  # fixed-side stub
-    s.line(x, y + 14, x, y + 6)  # moving-side stub
-    s.line(x, y + 6, x + 10, y - 10)  # open contact arm
-    _pole_label(s, x, y, label, side)
-
-
 def coil(s, cx, cy, label, t1, t2, dashed=False):
     """Relay/contactor coil: circle with terminal stubs left/right."""
     r = 14
@@ -528,11 +518,14 @@ def render_e001():
         role = d.get("role", "")
         if len(role) > 80:
             role = role[:77] + "..."
+        model = d.get("model", "")
+        if len(model) > 50:
+            model = model[:47] + "..."
         rows.append(
             [
                 d["tag"],
                 humanize_snake_case(d.get("type", "")),
-                d.get("model", ""),
+                model,
                 role,
                 d.get("evidence", ""),
             ]
@@ -986,36 +979,27 @@ def render_e003():
     s.text(290, 242, "CB1", size=10, anchor="end", weight="bold")
     s.text(290, 254, "(FIELD VERIFY)", size=7.5, anchor="end", color=RED)
 
-    # ---- CB1 -> Q1 (W303/W304/W305) ----
+    # ---- CB1 -> VFD1 line terminals, DIRECT (W303/W304/W305) — no contactor in
+    #      this run. V4 photo correction: Q1/MLC is a control relay with no power
+    #      poles, moved off this sheet entirely (see OI-21 and E-006). ----
     for num, x in (("W303", xL), ("W304", xC), ("W305", xR)):
-        seg(num, x, 264, x, 346, w_=2.0)
-        wire_tag(s, x, 310, num, verified=False, orient="v")
-
-    # ---- Q1: three contactor poles (header text from devices.yaml Q1.sheet_label,
-    #      right-anchored clear of the pole-label row — >=6px to every bbox) ----
-    for lbl, x, side in (("L1", xL, "left"), ("L2", xC, "left"), ("L3 (3φ)", xR, "right")):
-        contactor_pole(s, x, 360, lbl, side=side)
-    s.text(290, 342, dev_by_tag["Q1"]["sheet_label"], size=8.5, anchor="end", weight="bold")
-
-    # ---- Q1 -> VFD1 (W306/W307/W308) ----
-    for num, x in (("W306", xL), ("W307", xC), ("W308", xR)):
-        seg(num, x, 374, x, 430)
-        wire_tag(s, x, 406, num, verified=False, orient="v")
+        seg(num, x, 264, x, 350, w_=2.0)
+        wire_tag(s, x, 307, num, verified=False, orient="v")
 
     # ---- VFD1 block (name + terminal ids from the model — never hand-retyped) ----
-    vx, vy, vw, vh = 280, 430, 240, 220
+    vx, vy, vw, vh = 280, 350, 240, 220
     s.rect(vx, vy, vw, vh, sw=1.6)
     pin_ids = [t["id"] for t in terms["VFD1"]["power_input"]]
     for lbl, x in zip(pin_ids, (xL, xC, xR)):
         s.circle(x, vy, 2.8, fill=BLK)
         s.text(x, vy + 16, lbl, size=8, anchor="middle", weight="bold", mono=True)
-    s.text(400, 478, "VFD1", size=14, anchor="middle", weight="bold")
-    s.text(400, 494, dev_by_tag["VFD1"]["model"], size=8, anchor="middle", color=GRY)
+    s.text(400, 398, "VFD1", size=14, anchor="middle", weight="bold")
+    s.text(400, 414, dev_by_tag["VFD1"]["model"], size=8, anchor="middle", color=GRY)
 
     # side stubs — terminal ids + functions from terminals.yaml VFD1.dc_bus
     dc_terms = {t["id"]: t["function"] for t in terms["VFD1"]["dc_bus"]}
     sx = vx + vw
-    stub_y = 508
+    stub_y = 428
     for ids, jumper in ((("+1", "+2"), True), (("B1", "B2"), False), (("DC+", "DC-"), False)):
         if jumper:
             s.line(sx, stub_y, sx + 24, stub_y, w=1.2)
@@ -1042,45 +1026,45 @@ def render_e003():
     gnd_id = terms["VFD1"]["ground"][0]["id"]
     s.text(510, vy + vh - 8, gnd_id, size=7.5, anchor="middle", mono=True)
 
-    # ---- VFD1 -> M1 (W310/W311/W312); motor terminal row at y=790 ----
-    seg("W310", xL, 650, xL, 790, w_=1.4)
-    wire_tag(s, xL, 722, "W310", verified=False, orient="v")
-    seg("W311", xC, 650, xC, 714, w_=1.4)  # interrupted by the motor glyph
-    seg("W311", xC, 746, xC, 790, w_=1.4)
-    wire_tag(s, xC, 684, "W311", verified=False, orient="v")
-    seg("W312", xR, 650, xR, 790, w_=1.4)
-    wire_tag(s, xR, 722, "W312", verified=False, orient="vr")
+    # ---- VFD1 -> M1 (W310/W311/W312); motor terminal row at y=710 ----
+    seg("W310", xL, 570, xL, 710, w_=1.4)
+    wire_tag(s, xL, 642, "W310", verified=False, orient="v")
+    seg("W311", xC, 570, xC, 634, w_=1.4)  # interrupted by the motor glyph
+    seg("W311", xC, 666, xC, 710, w_=1.4)
+    wire_tag(s, xC, 604, "W311", verified=False, orient="v")
+    seg("W312", xR, 570, xR, 710, w_=1.4)
+    wire_tag(s, xR, 642, "W312", verified=False, orient="vr")
 
-    # ---- Motor M1 (circle ~730, terminal dot row ~790); caption clears the
+    # ---- Motor M1 (circle ~650, terminal dot row ~710); caption clears the
     #      W310 flag rect (>=4px) — left of it, right-anchored ----
     m1_fv = dev_by_tag["M1"].get("evidence") != "verified"
-    motor_sym(s, 400, 730, phase_color=RED if m1_fv else GRY)
-    s.text(290, 712, "M1", size=10, anchor="end", weight="bold")
-    s.text(290, 724, "(FIELD VERIFY)", size=7.2, anchor="end", color=RED)
+    motor_sym(s, 400, 650, phase_color=RED if m1_fv else GRY)
+    s.text(290, 632, "M1", size=10, anchor="end", weight="bold")
+    s.text(290, 644, "(FIELD VERIFY)", size=7.2, anchor="end", color=RED)
     for lbl, x in (("T1", xL), ("T2", xC), ("T3", xR), ("PE", 520)):
-        s.circle(x, 790, 2.4, fill=BLK)
-        s.text(x, 803, lbl, size=8, anchor="middle", mono=True)
+        s.circle(x, 710, 2.4, fill=BLK)
+        s.text(x, 723, lbl, size=8, anchor="middle", mono=True)
 
     # ---- PE bus (vertical at x=700) ----
     s.text(700, 190, "to source PE (E-002)", size=7.5, anchor="middle", color=GRY)
     s.line(696, 206, 700, 198, w=1.2)
     s.line(704, 206, 700, 198, w=1.2)
-    seg("W317", 700, 198, 700, 690, w_=2.2)
-    wire_tag(s, 700, 450, "W317", verified=False, orient="v")
-    s.line(700, 690, 700, 795, color=BLK, w=2.2, dash=True)  # bus collector (node)
-    s.circle(700, 690, 2.2, fill=BLK)
-    s.circle(700, 790, 2.2, fill=BLK)
-    earth_symbol(s, 700, 795)
-    s.text(722, 810, "PE", size=10, anchor="start", weight="bold")
+    seg("W317", 700, 198, 700, 610, w_=2.2)
+    wire_tag(s, 700, 404, "W317", verified=False, orient="v")
+    s.line(700, 610, 700, 715, color=BLK, w=2.2, dash=True)  # bus collector (node)
+    s.circle(700, 610, 2.2, fill=BLK)
+    s.circle(700, 710, 2.2, fill=BLK)
+    earth_symbol(s, 700, 715)
+    s.text(722, 730, "PE", size=10, anchor="start", weight="bold")
 
     # W315: VFD1.GND drops down, then runs horizontally to the bus
-    seg("W315", 510, 650, 510, 690, w_=1.4)
-    seg("W315", 510, 690, 700, 690, w_=1.4)
-    wire_tag(s, 605, 690, "W315", verified=False)
+    seg("W315", 510, 570, 510, 610, w_=1.4)
+    seg("W315", 510, 610, 700, 610, w_=1.4)
+    wire_tag(s, 605, 610, "W315", verified=False)
 
     # W316: M1.PE runs horizontally to the bus
-    seg("W316", 520, 790, 700, 790, w_=1.4)
-    wire_tag(s, 610, 790, "W316", verified=False)
+    seg("W316", 520, 710, 700, 710, w_=1.4)
+    wire_tag(s, 610, 710, "W316", verified=False)
 
     # ---- connection table (right half) ----
     s.text(800, 172, "CONNECTION TABLE", size=11, weight="bold")
@@ -1110,15 +1094,20 @@ def render_e003():
     # ---- model annotations (caveat + safety left; notes + sources right).
     #      Widths keep the two columns' estimated text extents apart and the
     #      right column clear of the title block (check L text-text audit). ----
-    draw_annotations(
-        s, 70, 816, 540, {"caveat": ann.get("caveat"), "safety": ann.get("safety")}, fs=7.5
+    # y0=740 (was 816): the V4 caveat addition made the left column taller —
+    # start higher, using the headroom freed by the E-003 recompression (diagram
+    # bottom is now ~735), so the legend below still clears the frame at y=1000.
+    left_ann_end = draw_annotations(
+        s, 70, 740, 540, {"caveat": ann.get("caveat"), "safety": ann.get("safety")}, fs=7.5
     )
-    # right column starts at 740: clear of the PE bus terminus + earth glyph
-    # (bars end x=716) and the "PE" label; est extent stays left of title-block text
+    # right column x=740: clear of the PE bus terminus + earth glyph (bars end
+    # x=716) and the "PE" label; est extent stays left of title-block text
     draw_annotations(
-        s, 740, 816, 340, {"notes": ann.get("notes"), "sources": ann.get("sources")}, fs=7.5
+        s, 740, 740, 340, {"notes": ann.get("notes"), "sources": ann.get("sources")}, fs=7.5
     )
-    draw_legend(s, 70, 936)
+    # legend position COMPUTED from the actual left-column annotation height
+    # (never hand-pinned) — a fixed y drifted stale once the V4 caveat grew the block
+    draw_legend(s, 70, left_ann_end + 14)
 
     # ---- title block ----
     title_block(
@@ -1130,13 +1119,6 @@ def render_e003():
         "VFD POWER",
         "3 of 9",
         lineage="terminals per GS10 UM 1st Ed Rev B;",
-    )
-    s.text(
-        1132,
-        986,  # clears the lineage line above AND the title-block bottom edge (990)
-        "MC placement per manual recommendation; as-built UNVERIFIED",
-        size=7.2,
-        color=GRY,
     )
 
     _emit(s, "E-003_vfd_power")
@@ -1234,9 +1216,16 @@ def render_e006():
     lx = 950
     pilot(s, lx, out_y["O-00"], "PL1 GREEN", "RUN LIGHT", dashed=True)
     pilot(s, lx, out_y["O-01"], "PL2 RED", "FAULT/E-STOP", dashed=True)
-    coil(s, lx, out_y["O-02"], "Q1 COIL", "A1", "A2", dashed=True)
-    # cross-ref sits under the coil (above collides with PL2's sub-label)
-    s.text(lx, 417, "poles on E-003", size=7.5, anchor="middle", color=GRY)
+    # coil label pulled from the model (tag + humanized type) — never hand-typed
+    q1_label = f"{dev_by_tag['Q1']['tag']} {humanize_snake_case(dev_by_tag['Q1']['type']).upper()}"
+    coil(s, lx, out_y["O-02"], q1_label, "A1", "A2", dashed=True)
+    # aux-contact tally COMPUTED from terminals.yaml Q1 function text (never
+    # hand-asserted — same discipline as the E-003 FIELD-VERIFY count). Sits
+    # under the coil (above collides with PL2's sub-label).
+    q1_terms = terms.get("Q1", [])
+    n_no = len({t["function"] for t in q1_terms if "NO" in t.get("function", "")})
+    n_nc = len({t["function"] for t in q1_terms if "NC" in t.get("function", "")})
+    s.text(lx, 417, f"aux contacts: {n_no} NO + {n_nc} NC", size=7.5, anchor="middle", color=GRY)
     pilot(s, lx, out_y["O-03"], "S2 LAMP", "RUN BTN", dashed=True)
 
     # ---- output rungs W601..W604 (one straight horizontal each, into the left stub) ----

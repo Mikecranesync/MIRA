@@ -15,22 +15,13 @@ The docket of everything NOT yet verified. Every wire with status ≠ verified, 
 - **W302**: SUPPLY (source — see E-002) → CB1.5
   - Verify: phase count unknown
 
-- **W303**: CB1.2 → Q1.1
+- **W303**: CB1.2 → VFD1.R/L1
   - Verify: confirm conductor + endpoints + wire number
 
-- **W304**: CB1.4 → Q1.3
+- **W304**: CB1.4 → VFD1.S/L2
   - Verify: confirm conductor + endpoints + wire number
 
-- **W305**: CB1.6 → Q1.5
-  - Verify: phase count unknown
-
-- **W306**: Q1.2 → VFD1.R/L1
-  - Verify: route power ⊥ control wiring — GS10_UM.txt L1787
-
-- **W307**: Q1.4 → VFD1.S/L2
-  - Verify: confirm conductor + endpoints + wire number
-
-- **W308**: Q1.6 → VFD1.T/L3
+- **W305**: CB1.6 → VFD1.T/L3
   - Verify: phase count unknown
 
 - **W310**: VFD1.U/T1 → M1.T1
@@ -136,22 +127,6 @@ The docket of everything NOT yet verified. Every wire with status ≠ verified, 
 
 - **M1.T3**: motor lead 3 (swap any two to reverse — GS10_UM.txt L1773-1776)
 
-- **Q1.1**: pole L1 in (proposed)
-
-- **Q1.2**: pole T1 out (proposed)
-
-- **Q1.3**: pole L2 in (proposed)
-
-- **Q1.4**: pole T2 out (proposed)
-
-- **Q1.5**: pole L3 in (proposed)
-
-- **Q1.6**: pole T3 out (proposed)
-
-- **Q1.A1**: coil + (from PLC1 O-02, E-006)
-
-- **Q1.A2**: coil - (to output return)
-
 ## E-005 — Terminals to Verify
 
 - **B1.BK**: output (black) -> I-05
@@ -214,22 +189,6 @@ The docket of everything NOT yet verified. Every wire with status ≠ verified, 
 
 - **PS1.0V**: 0V return
 
-- **Q1.1**: pole L1 in (proposed)
-
-- **Q1.2**: pole T1 out (proposed)
-
-- **Q1.3**: pole L2 in (proposed)
-
-- **Q1.4**: pole T2 out (proposed)
-
-- **Q1.5**: pole L3 in (proposed)
-
-- **Q1.6**: pole T3 out (proposed)
-
-- **Q1.A1**: coil + (from PLC1 O-02, E-006)
-
-- **Q1.A2**: coil - (to output return)
-
 - **S2.3-4**: NO contact out -> I-04
 
 - **S2.X1**: lamp terminal (proposed)
@@ -272,8 +231,14 @@ The docket of everything NOT yet verified. Every wire with status ≠ verified, 
 | OI-18 | E-006 | Fallback DI wiring physical presence (expected ABS | Trace the PLC output block; confirm zero hardwired |
 | OI-19 | E-003, E-005, E-006 | Wire-numbering convention adopted: W[sheet-digit][ | Read the actual wire markers on the panel; replace |
 | OI-20 | E-007 | GS10 comms line params: 2026-05-20 export = 38.4k/ | Fresh keypad readback of the GS10 serial config; u |
+| OI-21 | E-003 | Separate 3-phase motor contactor upstream of the G | Confirm whether a separate motor contactor exists  |
+| OI-22 | E-006, E-007 | GS10 control connector IS wired (photo wire_4) — c | Map which of FWD/REV/DI3/DI4/DI5/AI/AO1/DO1/DOC ar |
+| OI-23 | panel | Siemens CPU 1212C AC/DC/RLY (S7-1200) observed on  | Confirm whether the Siemens CPU 1212C controls any |
+| OI-24 | panel | Device labeled "PMC 192.x" observed on the panel ( | Identify the device (network device / meter?) and  |
+| OI-25 | E-004 | DC +/- distribution block: which color (blue vs wh | Trace/meter the distribution block conductors agai |
+| OI-26 | E-006 | MLC (Q1) aux-contact destinations — where 13-14/43 | Trace each aux contact to its destination in the c |
 
 ### Summary
-- Total field-verify wires: 34
-- Total field-verify terminals: 40
-- Total open items: 20
+- Total field-verify wires: 31
+- Total field-verify terminals: 32
+- Total open items: 26

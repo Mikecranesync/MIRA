@@ -82,3 +82,27 @@ items:
     sheet: E-007
     item: "GS10 comms line params: 2026-05-20 export = 38.4k/8N2 vs 2026-05-26 bench sniff = 9600/8N1 — adjudicate."
     verify: "Fresh keypad readback of the GS10 serial config; update print if params differ from current 9600/8N1 assumption."
+  - id: OI-21
+    sheet: E-003
+    item: "Separate 3-phase motor contactor upstream of the GS10 — NONE observed in the 2026-07-11 photos."
+    verify: "Confirm whether a separate motor contactor exists between CB1 and VFD1; the device labeled 'MLC' (Q1) is a Schneider TeSys CA3KN22BD CONTROL RELAY — it has no main power poles."
+  - id: OI-22
+    sheet: "E-006, E-007"
+    item: "GS10 control connector IS wired (photo wire_4) — contradicts the prior 'Modbus-only, no GS10 DI wiring' assumption."
+    verify: "Map which of FWD/REV/DI3/DI4/DI5/AI/AO1/DO1/DOC are landed and to what; reconcile hybrid Modbus + hardwired-terminal control."
+  - id: OI-23
+    sheet: panel
+    item: "Siemens CPU 1212C AC/DC/RLY (S7-1200) observed on the panel (photo wire_2) — role vs CV-101 unknown."
+    verify: "Confirm whether the Siemens CPU 1212C controls any CV-101 function before referencing it on any CV-101 sheet; not drawn until evidenced."
+  - id: OI-24
+    sheet: panel
+    item: "Device labeled \"PMC 192.x\" observed on the panel (photo wire_2)."
+    verify: "Identify the device (network device / meter?) and its relationship, if any, to CV-101."
+  - id: OI-25
+    sheet: E-004
+    item: "DC +/- distribution block: which color (blue vs white) is +24V vs 0V, circuit count, PS1 branch fusing."
+    verify: "Trace/meter the distribution block conductors against PS1 +V/-V output; confirm color-to-polarity mapping, circuit count, and any branch fusing (photo wire_1/wire_2)."
+  - id: OI-26
+    sheet: E-006
+    item: "MLC (Q1) aux-contact destinations — where 13-14/43-44 (NO) and 21-22/31-32 (NC) land in the control circuit."
+    verify: "Trace each aux contact to its destination in the control circuit; confirm function (e.g., interlock feedback, seal-in, indicator)."
