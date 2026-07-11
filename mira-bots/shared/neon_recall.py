@@ -1023,6 +1023,21 @@ def kb_has_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool, str]
 
 KB_PAIR_COVERAGE_MIN_CHUNKS = int(os.getenv("MIRA_KB_PAIR_COVERAGE_MIN_CHUNKS", "1"))
 
+# No ``embedding IS NOT NULL`` filter — kept in parity with ``kb_has_coverage``
+# (#1308). A row reachable only via BM25 (content_tsv) is still KB coverage, and
+# a freshly-seeded (vendor, model) pair whose embeddings haven't been backfilled
+# yet must NOT be judged "not covered": that makes the resolver drop the model
+# (UNS_PAIR_DROPPED), degrading the UNS path, the product-name rerank stream, and
+# the citation label for a product the KB does cover lexically. See the sibling's
+# rationale comment above and the retrieval-grounding audit (2026-06-21).
+_KB_PAIR_COVERAGE_SQL = """
+    SELECT COUNT(*) AS cnt
+    FROM knowledge_entries
+    WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
+      AND LOWER(manufacturer) LIKE LOWER(:vendor_pat)
+      AND LOWER(model_number) LIKE LOWER(:model_pat)
+"""
+
 
 def kb_has_pair_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool, int]:
     """Strict-pair coverage probe — does the KB have chunks tagged with BOTH
@@ -1063,16 +1078,7 @@ def kb_has_pair_coverage(vendor: str, model: str, tenant_id: str) -> tuple[bool,
         )
         with engine.connect() as conn:
             row = conn.execute(
-                text(
-                    """
-                    SELECT COUNT(*) AS cnt
-                    FROM knowledge_entries
-                    WHERE (tenant_id = :tid OR tenant_id = :shared_tid)
-                      AND LOWER(manufacturer) LIKE LOWER(:vendor_pat)
-                      AND LOWER(model_number) LIKE LOWER(:model_pat)
-                      AND embedding IS NOT NULL
-                    """
-                ),
+                text(_KB_PAIR_COVERAGE_SQL),
                 {
                     "tid": tenant_id,
                     "shared_tid": SHARED_TENANT_ID,
