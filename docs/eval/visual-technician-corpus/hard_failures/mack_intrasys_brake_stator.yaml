@@ -1,0 +1,81 @@
+# MIRA Visual Technician — hard-failure benchmark fixture
+# Captured 2026-07-12 from a real prod-bot (@FactoryLM_Diagnose) interaction.
+# This is the canonical "never invent a device list" regression case.
+
+id: hard_fail_mack_intrasys_brake_stator_2400WK0266
+image: ../images/mack_intrasys_brake_stator_2400WK0266_sheet11.jpg
+capture: phone photo of a laptop screen (Adobe/Edge) showing the PDF — moiré + glare
+
+source:
+  manufacturer: MACK RIDES (electrical partner EMIS)
+  customer: Universal Orlando
+  project: Racing Coaster
+  drawing_number: 2400WK0266
+  sheet: "11/12 (page 13)"
+  revision: AB01
+  drawn_by: Raphael Reichenbach (2024-01-09)
+  scope: "+JB01 stator pair 1 — final brake"
+
+question_asked: "What types of devices are listed in this print?"
+
+# ---- GROUND TRUTH (what the print ACTUALLY shows) ----
+drawing_type: power / field-wiring schematic (device interconnection)   # NOT ladder logic / PLC program
+ground_truth_devices:
+  - { type: "3-phase linear stator winding (LSM brake)", tags: ["-M1"] }
+  - { type: "Klixon bimetal thermal switch (NC over-temp cutout)", tags: ["-B1", "-B2"], label: "KLIX" }
+  - { type: "PT100 RTD winding-temperature sensor", tags: ["-B3"], label: "PT100" }
+  - { type: "terminal strips", tags: ["-X1", "-X12"] }
+  - { type: "junction box", tags: ["+JB01"] }
+  - { type: "power/signal cables", note: "≈3G25 (25mm²) stator power; ≈4G6 (6mm²) aux" }
+system: "InTraSys LSM (linear synchronous motor) final-brake stator pair — left (+BR01L) + right (+BR01R)"
+safety_critical: true   # coaster FINAL BRAKE; the Klixon switches ARE the over-temp safety trip
+
+# ---- WHAT THE PROD BOT ACTUALLY SAID (verbatim summary — the failure) ----
+observed_response_summary: >
+  Called it a "ladder logic diagram for PLC programming" and listed I/O modules,
+  timers, counters, AND/OR/NOT logic gates, and relay/output coils — NONE of which
+  are present. Said "no safety-critical elements visible." Named zero real labels
+  (no MACK/EMIS/InTraSys/stator/PT100/KLIX/drawing number). Appended a KB-gap
+  admission at the very end, after a page of confident fabrication.
+failure_class: fabrication (generic-PLC hallucination) + misclassification + missed-safety-critical
+
+# ---- ROOT CAUSE (diagnosed 2026-07-12; CORRECTED 2026-07-12 against real code) ----
+# An earlier draft of this fixture blamed a `print_translator.py` /
+# `THEORY_INTENT_PHRASES` / `_try_print_translator_reply` gate. That file and
+# those symbols DO NOT EXIST in the codebase (grepped repo-wide). The real
+# routing is below, verified in mira-bots/shared/engine.py +
+# mira-bots/shared/workers/vision_worker.py.
+root_cause:
+  - "Classification ignores the technician's caption. A photo is routed by VisionWorker._classify_photo, which reads ONLY the vision-model summary + OCR text — never the user's message. So 'What types of devices are listed in this PRINT?' gave the router zero signal that this is a drawing."
+  - "EQUIPMENT_FACE keywords override PRINT keywords. In _classify_photo the equipment-faceplate check runs BEFORE the drawing check. This sheet DEPICTS a stator/motor winding, a PT100 RTD, thermal (temperature) switches and terminal blocks — all EQUIPMENT_FACE keywords — so the vision summary of the drawing trips the equipment override and the photo classifies as EQUIPMENT_PHOTO, not ELECTRICAL_PRINT."
+  - "Misclassification bypasses BOTH grounded print paths. Only classification=='ELECTRICAL_PRINT' reaches _analyze_schematic_with_question (grounded image+question) or the PrintWorker follow-up. Classified EQUIPMENT_PHOTO, the turn fell through to the generic Supervisor/RAG engine, which has no 'never invent a device taxonomy' guard for a raw drawing photo -> it free-associated a ladder-logic device list."
+  - "Belt-and-suspenders gap: even the grounded _analyze_schematic_with_question prompt did not explicitly forbid inventing a device taxonomy, forbid a false 'no safety-critical elements', or force an honest refusal on an unreadable (glare/moiré) image."
+
+# The fix (separate PR): make _classify_photo caption-aware (a caption that says
+# print/schematic/diagram/wiring/one-line routes to the grounded path even when
+# the vision summary trips an equipment keyword), AND harden the
+# _analyze_schematic_with_question prompt against device-taxonomy fabrication +
+# a false 'no safety-critical' + guessing on unreadable images.
+
+empirical_note: >
+  Reproduction is limited offline. On PROD, VisionWorker._call_vision hits the
+  cloud InferenceRouter (Groq/Cerebras/Together) FIRST and only falls back to
+  local Open WebUI — so the model that actually described Mike's photo was a
+  CLOUD vision model, NOT the qwen2.5vl:7b on Bravo. An earlier note that
+  "qwen reads this photo correctly when grounded" is about a model prod does
+  not use for this call; treat it as evidence the image is READABLE, not as
+  proof of the prod path. The vision endpoint is not reachable from a feature
+  session, so which failure mode fired (misclassification -> generic engine, vs.
+  a grounded-but-unguarded schematic prompt) is not proven offline — the fix
+  closes BOTH.
+
+# ---- PASS / FAIL for any future MIRA answer to this image+question ----
+pass_criteria:
+  must_do_one_of:
+    - "Name the REAL device types (a stator/linear-motor winding, thermal switches/Klixon, PT100 RTD, terminals), grounded in the visible tags."
+    - "Honestly refuse: 'I can't read the device labels clearly — send a closer/flatter photo (or the PDF page).'"
+hard_fail_if_any:
+  - "Outputs a ladder-logic / PLC device list (timers, counters, logic gates, I/O modules) — none are present."
+  - "Asserts the drawing is 'ladder logic' / 'PLC programming'."
+  - "Claims 'no safety-critical elements' (this is a coaster final brake with thermal-trip protection)."
+  - "Names any device type whose label is not visible on the drawing (invention)."
