@@ -1,8 +1,17 @@
-# MIRA — The Signal Difference Engine with a Contextual Supervisor
+# MIRA — The Signal Difference Engine with a Contextual Supervisor (Architecture)
 
-**Status:** product positioning (2026-06-30). **Sharpens, does not replace,** the
+> **⚠️ PRODUCT FRAMING UPDATE (2026-07-11).** This document describes the foundational engine
+> (signal difference + contextual supervisor) that MIRA is built on. The **first sellable product
+> is Drive Commander**, a read-only VFD troubleshooting tool (issue #2577, PR #2504, ADR-0025).
+> This engine doc is still valid architecture; however, it is **not the product pitch**. The "signal
+> difference engine" framing here describes what goes on *inside* Drive Commander and future services,
+> not the customer-facing story. **See [NORTH_STAR.md](../../NORTH_STAR.md) and [ADR-0025](../adr/0025-drive-intelligence-packs-and-drive-commander.md)
+> for the first product wedge.**
+
+**Status:** engine architecture (2026-06-30 original). **Sharpens, does not replace,** the
 canonical wedge in `NORTH_STAR.md` (FactoryLM = maintenance-context layer; MIRA =
-grounded agent). This doc names the *engine underneath* that wedge.
+grounded agent). This doc names the *engine underneath* that wedge. Drive Commander is the first
+product packaging this engine.
 
 ---
 

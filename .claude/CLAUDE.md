@@ -226,6 +226,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - `.claude/rules/dangerous-commands-safety.md` — print + confirm the resolved path before `rm -rf`/`git reset --hard`/etc.
 - `.claude/rules/codegraph-usage.md` — when to use CodeGraph vs grep/Read + trust model + preflight + blind spots
 - `.claude/rules/graphify-excluded.md` — Graphify excluded from code navigation (CodeGraph is the single code-nav graph)
+- `.claude/rules/fast-path-optimization.md` — when a feature is a Supervisor fast-path vs a fork (read-only, reuses seams, falls through, no writes, citation-compliant)
 - `docs/specs/uns-kg-unification-spec.md` — UNS authority (data architecture)
 - `docs/specs/mira-component-intelligence-architecture.md` — implementation-level architecture (component templates, KG mechanics)
 - `docs/specs/dialogue-state-tracker-spec.md` — FSM the UNS gate plugs into

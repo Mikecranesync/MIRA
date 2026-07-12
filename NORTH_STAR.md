@@ -1,15 +1,20 @@
 # FactoryLM / MIRA — North Star
 
-> **Canonical strategy. Updated 2026-06-22.** This document supersedes every earlier wedge framing
-> (services-led "transformation firm", "Slack-first AI copilot", "self-serve quickstart copilot",
-> "Ignition module"). Those were front-doors and motions, not the wedge. The wedge below is the one
-> the June PRD identified and the 2026 competitive map independently confirmed. `STRATEGY.md`, the
-> root `CLAUDE.md` North Star, and the PRD are reconciled to *this*.
+> **Canonical strategy. Updated 2026-07-11.** This document states the infrastructure wedge — the
+> context layer and grounded agent. The **first product wedge** (Phase 1) is **Drive Commander**, a
+> read-only VFD troubleshooting tool, per issue #2577, PR #2504, and ADR-0025. This NORTH_STAR is
+> the foundation that Drive Commander (and future services) are built on; read NORTH_STAR first to
+> understand the product philosophy, then see **`docs/adr/0025-drive-intelligence-packs-and-drive-commander.md`**
+> for the first sellable motion. Earlier wedge framings (services-led "transformation firm",
+> "Slack-first AI copilot", "signal difference engine", "Ignition module") are archived in
+> `docs/product/`; see those files' superseded-by headers.
 >
 > **See also (2026-06-30):** the *engine* under this wedge is named in
 > `docs/product/mira_difference_engine_offering.md` — "signal difference engine with a contextual
 > supervisor" (find what changed → group into machine events → explain what they mean). A
-> **sharpening of this wedge, not a new one**; the context layer is still the lead.
+> **sharpening of this wedge, not a new one**; the context layer is still the lead. However, this
+> engine docs is now subordinate to the Drive Commander product execution; see ADR-0025 for
+> prioritization.
 
 ---
 
@@ -77,15 +82,10 @@ prerequisite of every flashy agent demo is a mature context layer. **We are that
 The thesis is right. The execution is **behind it.** Stated honestly so the roadmap stays pointed:
 
 - **Zero paying customers.** The 90-day MVP's "3 paying logos" window has passed with none.
-- **The *narrow* beta gate is MET — the *ProveIt-grade* one is not.** "A stranger uploads a manual →
-  cited answer, no Mike fixing it" now works on staging (#1592/#1863/#1911/#2100, un-xfailed #2077,
-  CI-enforced `beta-gate.yml`). **But it's only proven on our staging tenant — never on a *foreign,
-  messy UNS* or a real stranger's plant,** and the per-answer score + decision trace aren't surfaced
-  in-product yet. The real bar is "works on a factory we didn't seed," and that's untested.
+- **The *Hub NodeChat* beta gate is proven (staging only); generic-upload beta is deferred behind Drive Commander.** "A stranger uploads a manual → cited answer, no Mike fixing it" now works on the **Hub NodeChat surface** on staging (#1592/#1863/#1911/#2100, un-xfailed #2077, CI-enforced `beta-gate.yml`). However, bot surfaces (`neon_recall`) cannot yet retrieve folder=brain tenant-scoped uploads, and the per-answer score + decision trace aren't surfaced in-product. The Drive Commander wedge (issue #2577, PR #2504) is Phase 1; generic-upload beta is sequenced behind it. **See the product roadmap (ADR-0025) for the staged execution.**
 - **Never proven on foreign messy data.** Every live demo still runs on Mike's pre-seeded garage conveyor.
 - **Trust is half-built:** citation grounding *logs* but does not *enforce*; a cross-tenant documents
-  IDOR was live on `main`; a shipped Perspective view **violates the read-only anti-goal by writing to
-  the VFD** — fence both, they directly undercut the trust pitch.
+  IDOR was live on `main`; the shipped Perspective bundle's write paths were **removed in v3.26.1 (2026-06-17)** — read-only is now enforced by CI guard `test_no_customer_write_paths.py`, per `docs/mira-ignition-secure-architecture.md`.
 - The plumbing (engine, FSM, UNS gate, KB retrieval, parser, bench hardware) is genuinely mature.
   **The self-serve contextualization loop a stranger walks unaided is not.** Self-scored 6.5/10.
 

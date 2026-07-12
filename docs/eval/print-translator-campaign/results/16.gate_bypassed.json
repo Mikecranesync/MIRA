@@ -1,0 +1,31 @@
+{
+  "id": 16,
+  "oem": "Mitsubishi",
+  "document": "FX3U PLC Input Module Wiring Caution (Technical Data JY997D19001)",
+  "url": "https://dl.mitsubishielectric.com/dl/fa/document/manual/plc_fx/jy997d19001(e)/jy997d19001(e)e.pdf",
+  "manifest_page_ref": "Schematic & terminal table (p. 2–4)",
+  "print_type": "PLC input module terminal layout",
+  "standard": "Industrial 24VDC",
+  "category": "PLC I/O",
+  "rendered_page_number": 0,
+  "image_path": "docs/eval/print-translator-campaign/images/16.png",
+  "run_timestamp_utc": "2026-07-10T12:06:05.141880+00:00",
+  "mode": "gate_bypassed_real_prompt_real_model_real_image_ocr_empty",
+  "caption": "Describe the theory of operation.",
+  "image_sha256": "e57fd1a518dbff8e0f4417cbe71c70c068f1511a8031d196c602137ed7070d0c",
+  "drawing_type": "wiring diagram",
+  "ocr_item_count": 0,
+  "messages_sent_to_router": {
+    "system_prompt_sha256": "c5f5e6482d7537f844824eaebd1a2cd10fd188a7dcf4689ec411911debdc46ff",
+    "system_prompt_is_theory_system_prompt": true,
+    "user_text": "Drawing type: wiring diagram\n\nNo OCR labels were extracted; rely on the image.",
+    "has_image_block": true
+  },
+  "router_usage": {
+    "input_tokens": 2365,
+    "output_tokens": 328,
+    "provider": "groq",
+    "model": "groq/meta-llama/llama-4-scout-17b-16e-instruct"
+  },
+  "response": "1. **What this appears to be**\nThis appears to be a wiring diagram for Mitsubishi Electric's FX3U programmable controller, specifically detailing input wiring configurations.\n\n2. **Main visible components**\nThe main visible components are:\n* Four separate wiring examples\n* Two for AC power type\n* Two for DC power type\n* Each example shows either sink or source input wiring configurations\n* Terminal designations: S/S, 0V, X0, X1, X2\n* Power connections: 24V, L, N\n\n3. **Plain-English theory of operation**\nThe diagram illustrates two types of input wiring for the FX3U controller:\n* Sink input wiring\n* Source input wiring\nFor both AC and DC power types, the diagrams show how to properly connect the S/S, 0V, and input terminals (X0, X1, X2).\n\n4. **What must be true for it to work**\nAccording to the diagram, the following must be true for the wiring to work:\n* The S/S terminal must be wired\n* For DC power type:\n\t+ 0V and 24V terminals should not be connected to other terminals\n\t+ Polarity must be observed (+ and - connections)\n\n5. **What would stop it from working**\nThe following could stop the wiring from working:\n* S/S terminal not connected\n* Incorrect polarity for DC power type\n* 0V and 24V terminals connected to other terminals (for DC)\n\n6. **Unclear or unreadable items**\nNothing major appears to be unreadable in the provided image."
+}

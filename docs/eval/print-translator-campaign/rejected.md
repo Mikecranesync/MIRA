@@ -27,3 +27,16 @@ redirect pages rather than a direct PDF during this session's fetchability probe
 rejections on quality grounds — they were simply outside the bounded scope and would each need a
 web-search-resolve-and-verify pass (the procedure that recovered the 7 corrected URLs) before a
 full 25-entry run.
+
+
+## 2026-07-10 autonomous refresh — rejections & exclusions
+
+| id | OEM / Doc | Disposition | Reason |
+|---|---|---|---|
+| 4  | Siemens SIRIUS Overview (60311318) | REJECTED-NO-SOURCE | No authentic official direct-PDF located via discovery; dropped from runnable corpus. |
+| 23 | Schneider TeSys Giga reversing (LV429349) | NEEDS-PDF | Official source is an HTML documentation viewer (content-type text/html), not a downloadable PDF — not runnable by the PDF runner. Kept as reference. |
+| 2  | Schneider TeSys Star-Delta (LV429349) | NEEDS-BROWSER | Placeholder "…" URL; mislabeled CONFIRMED in the old manifest; missed by this batch (targeted NEEDS-BROWSER only). Still needs a real URL. |
+| 24 | Siemens 3RU/3RB overload+braking (60298164) | RUN, excluded from first-10 | Verified 206 application/pdf but hosted on pes-group.co.uk (authorized UK Siemens DISTRIBUTOR mirror, scanned/image-based) — authentic content, non-OEM host. |
+| 1  | Siemens 3RT2 Contactors (60306557) | RUN, excluded from first-10 | 420-page manual; density heuristic landed a table page (weak schematic). Re-run on a true wiring page to promote. |
+| 8  | Siemens 3RW30/40 Soft Starter (38752095) | RUN, excluded from first-10 | 180-page manual; landed an index page. The "Typical circuit diagrams" section (~pp.167-198) is the page to re-run. |
+| 22 | Rockwell Bulletin 505 (GI-WD004) | NOT RUN | GI-WD004 does not exist; the real doc (gi-wd005) is the SAME booklet as entry #5 — skipped to avoid a duplicate source/image. |
