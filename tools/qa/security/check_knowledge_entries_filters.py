@@ -33,21 +33,25 @@ def find_knowledge_entries_reads(repo_root: Path) -> list[ReadSite]:
 
     # Patterns that indicate a read from knowledge_entries
     # Match: FROM knowledge_entries, JOIN knowledge_entries, etc.
-    ke_pattern = re.compile(
-        r"(?:FROM|JOIN|,\s*)\s+knowledge_entries\b",
-        re.IGNORECASE
-    )
+    ke_pattern = re.compile(r"(?:FROM|JOIN|,\s*)\s+knowledge_entries\b", re.IGNORECASE)
 
     # Search TypeScript and Python files
     for pattern in ["**/*.ts", "**/*.py"]:
         for file_path in repo_root.glob(pattern):
             # Skip node_modules, .next, test files we don't care about
-            if any(part in str(file_path) for part in [
-                "node_modules", ".next", "dist", "__pycache__", ".venv",
-                # the checker and its fixtures contain pattern strings, not reads
-                "tools/qa/security/check_knowledge_entries_filters.py",
-                "tests/test_knowledge_entries_security_check.py",
-            ]):
+            if any(
+                part in str(file_path)
+                for part in [
+                    "node_modules",
+                    ".next",
+                    "dist",
+                    "__pycache__",
+                    ".venv",
+                    # the checker and its fixtures contain pattern strings, not reads
+                    "tools/qa/security/check_knowledge_entries_filters.py",
+                    "tests/test_knowledge_entries_security_check.py",
+                ]
+            ):
                 continue
 
             try:
@@ -68,13 +72,15 @@ def find_knowledge_entries_reads(repo_root: Path) -> list[ReadSite]:
                         if composed:
                             classification, reason = composed
 
-                    reads.append({
-                        "file": str(file_path.relative_to(repo_root)),
-                        "line_num": i + 1,
-                        "query": query_context.strip(),
-                        "classification": classification,
-                        "reason": reason,
-                    })
+                    reads.append(
+                        {
+                            "file": str(file_path.relative_to(repo_root)),
+                            "line_num": i + 1,
+                            "query": query_context.strip(),
+                            "classification": classification,
+                            "reason": reason,
+                        }
+                    )
 
     return reads
 
@@ -144,9 +150,7 @@ def _classify_read(query: str) -> tuple[str, str]:
 
     # Extract WHERE clause (simplified regex)
     where_match = re.search(
-        r"WHERE\s+(.*?)(?:GROUP BY|ORDER BY|LIMIT|;|$)",
-        query,
-        re.IGNORECASE | re.DOTALL
+        r"WHERE\s+(.*?)(?:GROUP BY|ORDER BY|LIMIT|;|$)", query, re.IGNORECASE | re.DOTALL
     )
 
     if not where_match:
@@ -161,34 +165,25 @@ def _classify_read(query: str) -> tuple[str, str]:
 
     # Detect patterns
     has_is_private_false = (
-        "is_private = false" in where_lower or
-        "is_private is false" in where_lower or
-        "is_private is not true" in where_lower or
-        "is_private=false" in where_lower
+        "is_private = false" in where_lower
+        or "is_private is false" in where_lower
+        or "is_private is not true" in where_lower
+        or "is_private=false" in where_lower
     )
 
-    has_tenant_filter = (
-        "tenant_id" in where_lower and
-        ("=" in where_lower or "in" in where_lower)
-    )
+    has_tenant_filter = "tenant_id" in where_lower and ("=" in where_lower or "in" in where_lower)
 
-    has_is_private_true = (
-        "is_private = true" in where_lower or
-        "is_private is true" in where_lower
-    )
+    has_is_private_true = "is_private = true" in where_lower or "is_private is true" in where_lower
 
     # HYBRID: Both is_private=false AND tenant_id filter (with OR between them)
-    has_hybrid_pattern = (
-        re.search(
-            r"\(?\s*is_private\s*(?:=|is)\s*false.*?OR.*?tenant_id\s*[=in].*?\)?",
-            where_lower,
-            re.DOTALL
-        ) or
-        re.search(
-            r"\(?\s*tenant_id\s*[=in].*?OR.*?is_private\s*(?:=|is)\s*false.*?\)?",
-            where_lower,
-            re.DOTALL
-        )
+    has_hybrid_pattern = re.search(
+        r"\(?\s*is_private\s*(?:=|is)\s*false.*?OR.*?tenant_id\s*[=in].*?\)?",
+        where_lower,
+        re.DOTALL,
+    ) or re.search(
+        r"\(?\s*tenant_id\s*[=in].*?OR.*?is_private\s*(?:=|is)\s*false.*?\)?",
+        where_lower,
+        re.DOTALL,
     )
 
     if has_hybrid_pattern:
@@ -198,7 +193,10 @@ def _classify_read(query: str) -> tuple[str, str]:
         return "PUBLIC-ONLY", "Only filters on is_private = false (OEM corpus)"
 
     if has_tenant_filter and not has_is_private_false and not has_is_private_true:
-        return "TENANT-ONLY", "Only filters on tenant_id without is_private = false (bug class #1761)"
+        return (
+            "TENANT-ONLY",
+            "Only filters on tenant_id without is_private = false (bug class #1761)",
+        )
 
     if has_is_private_true:
         return "PRIVATE-ONLY", "Filters only on is_private = true (private uploads only)"
@@ -294,9 +292,9 @@ def generate_allowlist_template(reads: list[ReadSite]) -> str:
     for read in reads:
         if read["classification"] not in ["HYBRID", "PUBLIC-ONLY"]:
             key = f"{read['file']}:{read['line_num']}"
-            template += f"  \"{key}\":\n"
+            template += f'  "{key}":\n'
             template += f"    approved_classification: {read['classification']}\n"
-            template += "    reason: \"TODO: justify this read pattern\"\n"
+            template += '    reason: "TODO: justify this read pattern"\n'
             template += "    query_snippet: |\n"
             for line in read["query"].split("\n")[:3]:
                 template += f"      {line}\n"
@@ -307,7 +305,9 @@ def generate_allowlist_template(reads: list[ReadSite]) -> str:
 def main():
     """Main entry point."""
     repo_root = Path(__file__).parent.parent.parent.parent
-    allowlist_path = repo_root / "tools" / "qa" / "security" / "knowledge_entries_read_allowlist.yml"
+    allowlist_path = (
+        repo_root / "tools" / "qa" / "security" / "knowledge_entries_read_allowlist.yml"
+    )
 
     print(f"Scanning {repo_root} for knowledge_entries reads...", file=sys.stderr)
     reads = find_knowledge_entries_reads(repo_root)
@@ -326,12 +326,17 @@ def main():
 
     # If no allowlist exists, generate template
     if not allowlist_path.exists() or "--generate" in sys.argv:
-        template = generate_allowlist_template([r for r in reads if r["classification"] not in ["HYBRID", "PUBLIC-ONLY"]])
+        template = generate_allowlist_template(
+            [r for r in reads if r["classification"] not in ["HYBRID", "PUBLIC-ONLY"]]
+        )
         if "--generate" in sys.argv:
             allowlist_path.write_text(template)
             print(f"Generated allowlist template at {allowlist_path}", file=sys.stderr)
         else:
-            print(f"\nTo generate allowlist template, run: python {Path(__file__).name} --generate", file=sys.stderr)
+            print(
+                f"\nTo generate allowlist template, run: python {Path(__file__).name} --generate",
+                file=sys.stderr,
+            )
 
     return exit_code
 

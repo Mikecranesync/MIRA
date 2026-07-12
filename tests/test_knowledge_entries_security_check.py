@@ -107,7 +107,9 @@ def test_private_only_is_private_true():
     WHERE is_private = true AND tenant_id = $1
     """
     classification, reason = _classify_read(query)
-    assert classification == "PRIVATE-ONLY", f"Expected PRIVATE-ONLY, got {classification}: {reason}"
+    assert classification == "PRIVATE-ONLY", (
+        f"Expected PRIVATE-ONLY, got {classification}: {reason}"
+    )
 
 
 def test_is_private_false_case_insensitive():
