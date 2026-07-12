@@ -1,5 +1,10 @@
 # MIRA Release Notes
 
+### v3.134.1 (2026-07-12) - fix(tools): ruff E401/I001 in drive-pack-extract (import-sorting autofix)
+- **Why:** PRs #2623/#2624 tried to fix these ruff violations but were closed unmerged; #2654's first commit bumped VERSION/CHANGELOG but never staged the actual fix, leaving 4 errors on main (E401 multiple imports on one line, I001 unsorted imports) in `scorecard.py` and `tests/test_scorecard.py`.
+- **What:** `ruff --fix` applied — imports split and sorted in `scorecard.py` and `tests/test_scorecard.py`. Imports-only diff.
+- **Result:** 0 ruff errors; `test_scorecard.py` 7/7 pass. Supersedes #2623/#2624.
+
 ### v3.133.2 (2026-07-12) - fix(saas): pass RESEND_API_KEY to mira-hub — magic-link login emails never sent
 - **Why:** prod magic-link sign-in was silently broken for everyone: `mira-hub` reads `RESEND_API_KEY` in `api/auth/magic-link` (and team invites), but the compose env block never passed it through, so every request hit the missing-key branch — no email sent, and the magic URL (a live sign-in token) written to container logs instead. Found while driving a Command Center fix that needed a real session.
 - **What:** one line — `RESEND_API_KEY=${RESEND_API_KEY:-}` in the mira-hub `environment:` block (key already in Doppler prd; mira-web already had the passthrough). With the key present the token-logging branch is dead code in prod, closing the token-in-logs hygiene issue too.
