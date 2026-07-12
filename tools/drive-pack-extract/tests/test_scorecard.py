@@ -7,7 +7,11 @@ and a pack cannot claim `production` without bench/live evidence.
 Runnable as a plain script (`python tools/drive-pack-extract/tests/test_scorecard.py`)
 or under pytest. No network, no LLM.
 """
-import io, json, os, sys, tempfile
+import io
+import json
+import os
+import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TOOL = os.path.dirname(HERE)
