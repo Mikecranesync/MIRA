@@ -33,7 +33,15 @@ from pathlib import Path
 
 import yaml
 
-_COMPOSE = Path(__file__).resolve().parents[1] / "docker-compose.saas.yml"
+_REPO = Path(__file__).resolve().parents[1]
+_COMPOSE = _REPO / "docker-compose.saas.yml"
+# Staging compose files (#2445 Step 1.5). The DEPLOYED VPS staging stack and the
+# local-dev staging stack each run the engine on only two surfaces — Slack is
+# intentionally omitted (a shared token would dual-poll prod) and mira-ask is
+# prod-only. Both must carry the flags default-off so Step 2 can enable them.
+_STAGING_VPS = _REPO / "docker-compose.staging-vps.yml"
+_STAGING_LOCAL = _REPO / "docker-compose.staging.yml"
+STAGING_ENGINE_SERVICES = ("mira-pipeline", "mira-bot-telegram")
 
 # saas services that run shared.engine.Supervisor (see module docstring).
 ENGINE_SERVICES = (
@@ -108,3 +116,47 @@ def test_wo_vars_are_documented_in_env_vars_md():
     doc = (Path(__file__).resolve().parents[1] / "docs" / "env-vars.md").read_text()
     for var in EXPECTED:
         assert f"`{var}`" in doc, f"{var} is not documented in docs/env-vars.md"
+
+
+# ── #2445 Step 1.5: the staging compose files carry the flags default-off ──────
+# The engine surfaces that actually exist on staging (pipeline + Telegram) must
+# receive all three vars default-off so Step 2 can flip ENABLE_WO_EVIDENCE=1 in
+# Doppler factorylm/stg without editing compose. PyYAML resolves `<<: *anchor`
+# merge keys, so the local-dev file's anchor-inherited vars are visible too.
+
+
+def _services_at(path: Path) -> dict:
+    return yaml.safe_load(path.read_text())["services"]
+
+
+def test_staging_vps_engine_services_have_all_three_wo_vars_default_off():
+    services = _services_at(_STAGING_VPS)
+    for svc in STAGING_ENGINE_SERVICES:
+        assert svc in services, f"{svc} missing from docker-compose.staging-vps.yml"
+        env = _env_map(services[svc])
+        for var, expected in EXPECTED.items():
+            assert var in env, f"staging-vps {svc} is missing {var}"
+            assert expected in env[var], (
+                f"staging-vps {svc}: {var}={env[var]!r} != expected {expected!r}"
+            )
+        assert ":-0" in env["ENABLE_WO_EVIDENCE"], (
+            f"staging-vps {svc}: ENABLE_WO_EVIDENCE must default OFF, got {env['ENABLE_WO_EVIDENCE']!r}"
+        )
+
+
+def test_staging_local_engine_services_inherit_wo_vars_default_off():
+    services = _services_at(_STAGING_LOCAL)
+    # local-dev service keys are suffixed (mira-pipeline-staging, ...); they
+    # inherit the flags from the x-staging-env anchor via `<<:`.
+    local_engine = [n for n in services if n.startswith(tuple(f"{s}-staging" for s in STAGING_ENGINE_SERVICES))]
+    assert local_engine, "no local staging engine services found"
+    for svc in local_engine:
+        env = _env_map(services[svc])
+        for var, expected in EXPECTED.items():
+            assert var in env, f"staging-local {svc} is missing {var} (anchor not inherited?)"
+            assert expected in env[var], (
+                f"staging-local {svc}: {var}={env[var]!r} != expected {expected!r}"
+            )
+        assert ":-0" in env["ENABLE_WO_EVIDENCE"], (
+            f"staging-local {svc}: ENABLE_WO_EVIDENCE must default OFF, got {env['ENABLE_WO_EVIDENCE']!r}"
+        )

@@ -273,7 +273,8 @@ proof_simlab.db
 .superpowers/
 
 # KB growth cron runtime ingest-queue state (pending/done/failed manuals +
-# timestamps/attempts). MUST NOT be version-controlled: deploy-vps.yml runs
-# `git checkout --force <tag>` on /opt/mira, which was clobbering live queue
-# progress back to whatever was last committed on every deploy.
+# timestamps/attempts). Runtime file is at /var/lib/mira/manual_queue.json
+# (configurable via MIRA_MANUAL_QUEUE_PATH env var), outside the repo tree so it
+# survives deploy-vps.yml's `git checkout --force <tag>` on /opt/mira.
+# The mira-crawler/cron/ template is shipped as reference only (not runtime).
 mira-crawler/cron/manual_queue.json
