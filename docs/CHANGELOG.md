@@ -1,6 +1,46 @@
 # MIRA Release Notes
 
 
+### v3.129.13 (2026-07-12) - chore(deps): remove unused anthropic dependency from Telegram bot
+- **Why:** MIRA policy (PR #610) removed Anthropic as a provider; the `anthropic>=0.97.0` line in `mira-bots/telegram/requirements.txt` is dead weight. Verified unused via grep across the entire Telegram bot codebase.
+- **What:** removed `anthropic>=0.97.0` from `mira-bots/telegram/requirements.txt`. No code change, no behavior change — pure dependency hygiene.
+- **Evidence:** `grep -rn "anthropic\|import anthropic\|from anthropic" mira-bots/telegram/` returns only the requirements.txt line (no actual usage).
+- **Impact:** cleanup only — no functionality affected. VERSION 3.129.1 → 3.129.2.
+
+### v3.129.12 (2026-07-12) - test(stripe): reconcile webhook-before-signup provisioning (#2438)
+- **Why:** GitHub issue #2438 flagged a race condition: if a Stripe webhook fires before Hub signup, the payment is best-effort only—no retry. A paying customer ends up without a provisioned tenant.
+- **What:** integration test `mira-web/src/lib/__tests__/stripe-webhook-before-signup.integration.test.ts` (5 test cases) exercises the full queue-and-reconcile path: webhook queues payment when Hub user doesn't exist yet; later reconciliation drains the queue and provisions the tenant; re-running reconciliation is idempotent (no double-provision); Stripe redelivery doesn't double-queue (ON CONFLICT idempotency); unmatched rows stay pending with attempt count bumped; reconciliation scoped to one email finds and retries only that email.
+- **Test Results:** all 5 pass; surrounding `hub-provisioning-queue.test.ts` suite remains green (9 pass).
+- **Status:** Test PASSES — the queue and reconciliation code already exists (PR #2437 added the durable queue) and works as intended. Test closes issue #2438 by proving the behavior works end-to-end. No product code change.
+
+### v3.129.11 (2026-07-12) - feat(dogfood): Drive Commander public fault-lookup funnel regression check
+- **Why:** extend the daily judge to guard the public fault-lookup money path (Drive Commander SEO funnel). The freemium landing page and fault-detail views must stay live, reachable, grounded (cited), and publicly accessible — the cash-conversion gate for the PLG funnel.
+- **What:** `tools/crew/dogfood/checks/fault-lookup.check` — two-persona gate verifying that `GET /drive-commander/siemens-g120` and `GET /drive-commander/siemens-g120/faults/F30001` return HTML/JSON, contain the G120 library and fault code, ground with citations, require no login. Auto-detects mira-web base URL (defaults to staging 4200 if DF_BASE is 4101). Emits `GREEN` (funnel works), `YELLOW` (works but degraded, e.g., missing citations), `RED` (blocked), or `INFRA` (route not deployed yet — never files false product-RED on pre-deployment).
+- **Base URL logic:** mira-web is on separate port (4200) in staging; the check reuses the Hub base `http://100.68.120.99:4101` and auto-swaps the port. On prod/unified reverse-proxy hosts, it falls back to the same base.
+- **Integration:** auto-discovered from `tools/crew/dogfood/checks/*.check`; wired into the daily judge.sh loop as a 6th check (alongside maintenance-tech, contextualization, work-order, demo-readiness, beta-gate).
+- **Verdict contract:** `GREEN` (200, G120+F30001+citations, no login) | `YELLOW` (reachable but missing citations/freemium gate) | `RED` (200 but missing content/login-blocked) | `INFRA` (404/timeout, not deployed).
+- **CI:** CI runs `test_judge.sh` (hermetic, passes); dry-run judge emits `INFRA` verdict (expected until route deploys).
+- `VERSION 3.129.1 → 3.129.2`.
+
+### v3.129.10 (2026-07-12) - feat(drive-commander): public G120 fault funnel + freemium gate (Pro CTA)
+- **What:** Light up the Drive Commander freemium gate for Siemens G120. Landing page at `/drive-commander/siemens-g120` (lists all 13 faults). Fault pages at `/drive-commander/siemens-g120/faults/F30001` (etc.) show: free tier = fault code + name + cited parameters (id, purpose, citation + manual excerpt); Pro lock teaser = "Full troubleshooting + wiring + reset workflow + Ask MIRA + history" with CTA to pricing page.
+- **Free tier display:** fault meaning (hero) + first N cited parameters from the pack (name, purpose, manual page reference + excerpt), no guesses, all grounded.
+- **Pro gate:** Unlock CTA → `/pricing?product=drive-commander-pro` ($29/mo or $197/yr, individual technician license). TODO(stripe-sku): create Drive Commander Pro price in Stripe + wire Doppler `factorylm/prd STRIPE_DRIVE_COMMANDER_PRICE_ID`.
+- **Routes now rendering:** G120 landing + 13 fault pages + 18 parameter detail pages (same pattern as PowerFlex 525/40).
+- **Tests:** sitemap test updated to include G120 count (was 2 packs → now 3 packs); `drive-commander.test.ts` 21/21 pass.
+- **Impact:** Product feature — public, indexable, no auth, freemium gate live. Users can discover G120 faults for free; Pro subscribers see full cited troubleshooting.
+- **VERSION:** 3.129.2 → 3.130.0 (minor).
+
+### v3.129.2 (2026-07-11) - feat(drive-packs): Siemens SINAMICS G120 fault/parameter pack (cited)
+
+### v3.129.9 (2026-07-12) - feat(drive-packs): Siemens SINAMICS G120 fault/parameter pack (cited)
+- **What:** new G120 pack with 13 faults (F30001–F7011) + 18 cited parameters (P0100–P2011). Schema matches powerflex_525.json reference. 100% manual-cited from G120X operational instructions (0319_en-US).
+- **Routes:** `/drive-commander/siemens-g120` (landing + faults + parameters all resolve).
+- **Citation coverage:** 100% — F30001 overcurrent, F30004 motor overtemp, F30006 inverter overtemp, P1200 ramp acceleration, etc. all grounded.
+- **Validation:** JSON parse OK, schema compliance, all 13 faults registered, all 18 parameters resolvable. Eval fixture `vfd_siemens_01_sinamics_g120_f30001.yaml` grounds to pack.
+- **Impact:** Proves schema + renderer portability across manufacturers (Siemens/Rockwell).
+- **VERSION:** 3.129.1 → 3.129.2 (patch).
+
 ### v3.129.8 (2026-07-11) - feat(ops): wire ENABLE_WO_EVIDENCE (default-off) into every engine service in saas.yml (#2445 Step 1)
 - **Why:** the CMMS work-order-history evidence path (`ENABLE_WO_EVIDENCE` + `MIRA_WO_EVIDENCE_TIMEOUT_S`/`MIRA_WO_EVIDENCE_LIMIT`, shipped flag-gated OFF in #2472) was settable in code but wired into **no** deployment, so enabling it meant hand-editing several services. This makes enabling a single Doppler-var flip, with **zero runtime behavior change** until then.
 - **What:** added the three vars (default-off: `${ENABLE_WO_EVIDENCE:-0}`, `${MIRA_WO_EVIDENCE_TIMEOUT_S:-3.0}`, `${MIRA_WO_EVIDENCE_LIMIT:-5}`) to **every** `docker-compose.saas.yml` service that instantiates `shared.engine.Supervisor` — verified by grepping `Supervisor(` and mapping each hit to its saas build: **mira-pipeline, mira-bot-telegram, mira-bot-slack, mira-ask** (4 — the "assume three" trap: `mira-ask`/AskMira kiosk also runs the engine). Excluded (verified): `mira-mcp` proxies to mira-pipeline over HTTP (no engine); `mira-relay`/`mira-sparkplug-consumer` are ingest-only; teams/whatsapp/reddit/gchat/email adapters instantiate `Supervisor` in code but have no saas service.
