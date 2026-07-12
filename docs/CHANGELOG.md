@@ -6,6 +6,9 @@
 - **What:** `ask_equipment` now uses the **latest `equipment_resolver` observation outright**, not the latest RESOLVED. The unreadable-photo path (parse_error / quality-gate reject) deliberately writes **no** `equipment_resolver` observation, so an unreadable re-scan still cannot erase a prior identity (preserved + tested) — but a legible different/unsupported machine supersedes it, so `answer_equipment` refuses with NEEDS_CONTEXT instead of leaking a stale pack's cited facts. Verified against the reviewer's own PoC (now refuses) + a new regression test.
 - **Scope:** one-method fix in `session_service.py` + one test. `answer_composer.py`, `equipment.py`, migration 063 unchanged. 103 tests pass (102 + 1 new), ruff clean. Stacked on Phase 2 (PR #2648). VERSION 3.132.0 → 3.132.1.
 
+=======
+>>>>>>> origin/main
+
 ### v3.132.0 (2026-07-11) - feat(visual): MIRA Visual Technician Phase 2 — equipment/nameplate intelligence
 - **Why:** ADR-0027 Phase 2. Adds the session-integrated equipment path (photo → identity candidates → service-pack/manual resolution → cited answer) the PRD calls the strongest-readiness capability, **reusing** the Drive Commander packs + manual retrieval + the Phase 1 session. **Stacked on Phase 1 (PR #2645).**
 - **What:**
@@ -14,6 +17,9 @@
   - **No new migration** — reuses the Phase 1 `observation` ledger (candidates/confidence in JSONB metadata). `answer_composer.py` + migration 063 unchanged.
   - 64 Phase 2 tests (incl. real-Postgres tenant isolation as `factorylm_app`) + 38 Phase 1 = **102 pass, zero regressions**; ruff check + format clean.
 - **Scope:** additive; no deployed service / resolver / composer / Phase-1 file touched. PR-only per the PRD; stacked on PR #2645. VERSION 3.131.0 → 3.132.0.
+
+=======
+>>>>>>> origin/main
 
 ### v3.131.0 (2026-07-11) - feat(visual): MIRA Visual Technician Phase 1 — VisualSession spine + grounded answer envelope
 - **Why:** ADR-0027 Phase 1 (Snippet Interpreter MVP) of the MIRA Visual Technician PRD. The north star needs a persistent, multi-image, evidence-graded visual session with claim-level uncertainty — a genuine gap today (a session held ONE photo, replaced not accumulated). This builds the spine + the structured grounded-answer contract, **reusing** the existing extraction workers rather than rebuilding them.
