@@ -15,6 +15,7 @@
 // Bun/TS native JSON import — one per promoted+vendored pack.
 import powerflex525 from "../data/drive-packs/powerflex_525.json";
 import powerflex40 from "../data/drive-packs/powerflex_40.json";
+import siemens_g120 from "../data/drive-packs/siemens_g120.json";
 
 export interface Citation {
   doc: string;
@@ -125,6 +126,7 @@ function buildPack(raw: any, modelSlug: string): DrivePackDisplay {
 const PACKS: Record<string, DrivePackDisplay> = {
   "powerflex-525": buildPack(powerflex525 as any, "powerflex-525"),
   "powerflex-40": buildPack(powerflex40 as any, "powerflex-40"),
+  "siemens-g120": buildPack(siemens_g120 as any, "siemens-g120"),
 };
 
 export const PACK_MODELS = Object.keys(PACKS);
