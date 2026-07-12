@@ -6,7 +6,7 @@ meta:
   asset: CV-101 (garage conveyor)
   drawn_by: MIRA / FactoryLM
   revision: A
-  date: "2026-07-03"
+  date: "2026-07-11"
 
 devices:
   - tag: PLC1
@@ -15,19 +15,28 @@ devices:
     role: Conveyor controller; Modbus RTU master to VFD1
     io: 12 DI (I-00..I-11), 7 relay DO (O-00..O-06), 4 AI, 1 AO
     evidence: verified
-    source: plc/GS10_Integration_Guide.md; plc/ccw/controller/Controller/LogicalValues.csv
+    source: photo review/photos/wire_2.jpg (2026-07-11 — model label + MAC ID 5C:88:16:D8:E4:D7 read directly); plc/GS10_Integration_Guide.md; plc/ccw/controller/Controller/LogicalValues.csv
 
   - tag: VFD1
     type: vfd
     model: AutomationDirect GS10 DURApulse
-    role: Drives conveyor motor; commanded over Modbus RTU (Ch2, node 1)
+    role: Drives conveyor motor. Power input is 230 V single-phase (R/L1, S/L2; T/L3 unused — technician-confirmed 2026-07-11, see E-003). Commanded over Modbus RTU (RJ45, Ch2 node 1) — photo confirms the RS-485 cable is landed. NOTE the GS10 control connector is ALSO wired (hybrid, not Modbus-only) — see OI-22.
     evidence: verified
-    source: plc/GS10_Integration_Guide.md; plc/Prog_init_ConvSimple_v2.1.st
+    source: photo review/photos/wire_4.jpg (2026-07-11 — keypad, control-terminal legend, RJ45 read directly); plc/GS10_Integration_Guide.md; plc/Prog_init_ConvSimple_v2.1.st; review/photos/gs10_full.jpg + gs10_control_terminals.jpg (2026-07-11 — full-resolution control-terminal read)
+    note: >
+      GS10 control is HYBRID (full-res photo 2026-07-11): the top run/DI connector
+      (FWD/REV/DI3-5/+24V/DCM) is EMPTY — run/dir/speed command is Modbus (RJ45 landed);
+      the bottom analog/output connector (+10V/ACM/AI/AO1/DO1/DOC/PE) is WIRED, likely
+      analog speed reference + feedback. Map = OI-22. Input is 230 V single-phase (2-wire),
+      fed through the MLC NO contacts (E-003). Output to motor = 230 V 3-phase (motor is 230 V,
+      technician-confirmed 2026-07-11, review/PHOTO_EVIDENCE_V7.md §3 — not PHOTO_EVIDENCE_V6.md,
+      which predates this confirmation; standard 230 V 1φ-in / 230 V 3φ-out GS10).
 
   - tag: M1
     type: motor
-    role: Conveyor drive motor (3~ from VFD1 U/V/W)
-    evidence: field_verify   # nameplate FLA/kW/rpm/poles not captured in repo
+    role: Conveyor drive motor — 230 V 3~ from VFD1 U/V/W (voltage technician-confirmed 2026-07-11)
+    evidence: field_verify   # voltage 230 V confirmed; FLA/kW/rpm/poles still not captured
+    source: review/PHOTO_EVIDENCE_V7.md (technician confirmation 2026-07-11 — "it's 230"; OI-27 resolved). NOT PHOTO_EVIDENCE_V6.md, which predates this confirmation and still shows 480 V/pending.
 
   - tag: S0
     type: e_stop
@@ -45,9 +54,9 @@ devices:
 
   - tag: S2
     type: pushbutton_no
-    role: Run / rearm pushbutton to I-04
+    role: Run / rearm pushbutton to I-04; illuminated — lamp fed by PLC O-03 (PBRunLED)
     evidence: verified
-    source: plc/ignition-project/.../Inputs/tags.json ("DI-04 Run pushbutton")
+    source: plc/ignition-project/.../Inputs/tags.json ("DI-04 Run pushbutton"); plc/CCW_VARIABLES_v4.0.txt:73 ("I-04 _IO_EM_DI_04 PBRun (illuminated momentary)")
 
   - tag: B1
     type: photo_eye
@@ -57,13 +66,70 @@ devices:
 
   - tag: PS1
     type: power_supply
-    role: 24 VDC control supply (documented on E-004); feeds +24V/0V to input loop
+    model: Mean Well DIN-rail supply (24 V / 1.0 A; 100-240 VAC in @ 0.55 A; +V / -V / DC-OK out, N / L / PE in, +V ADJ pot, DC-OK LED)
+    short_label: "Mean Well 24 V / 1.0 A DIN supply"
+    role: 24 VDC control supply (E-004). Feeds the DC +/- distribution block (blue = one polarity, white = the other) and the +24V/0V control loop.
+    evidence: verified   # device identity + ratings from photo wire_2.jpg; field wiring still FIELD VERIFY
+    source: photo review/photos/wire_2.jpg (2026-07-11 — Mean Well nameplate read directly); caption "MW 120 to 24 volt DC power supply"
+    note: Exact model number + branch fusing + which distribution circuits it feeds = FIELD VERIFY (OI-25).
+
+  - tag: DB1
+    type: distribution_block
+    role: >
+      24 VDC +/- distribution block (push-in, WAGO-style, 2-level), fed from PS1's
+      +V/-V output — blue = one polarity, white = the other (caption); which color
+      is +24V vs 0V = FIELD VERIFY (OI-25).
+    evidence: verified   # device exists per photo; internal circuit count/polarity FIELD VERIFY
+    source: photo review/photos/dc_block_full.jpg + wire_1.jpg (2026-07-11 — push-in distribution block read directly)
+    note: >
+      A bare-copper jumper bridges the top-left terminals in the photo, a red conductor
+      feeds in top; exact circuit count and any branch fusing = FIELD VERIFY (OI-25).
+
+  - tag: CB1
+    type: circuit_breaker
+    role: 2-pole branch breaker on the 230 V single-phase supply (existence/type/rating unconfirmed)
     evidence: field_verify
 
   - tag: Q1
-    type: circuit_breaker
-    role: Main / branch protection (documented on E-002/E-003)
-    evidence: field_verify
+    type: control_relay
+    sheet_label: "Q1/MLC — Schneider TeSys CA3KN22BD control relay (24 VDC coil)"
+    model: Schneider Electric TeSys CA3KN22BD (control relay, 2 NO + 2 NC, 24 VDC coil)
+    role: >
+      Control relay (Schneider CA3KN22BD, hand-labeled 'MLC') USED AS THE VFD SUPPLY SWITCH — its
+      two NO contacts 13-14 & 43-44 switch the 230 V single-phase supply into the GS10 (R/L1, S/L2);
+      coil A1(+)/A2(-) 24 VDC driven by PLC O-02. Energizing O-02 closes the contacts and powers the
+      drive. Shown on E-003 (power contacts) + E-006 (coil). NC 21-22/31-32 unused.
+    evidence: verified
+    source: photo review/photos/wire_3.jpg (2026-07-11 — device label 'MLC', part no CA3KN22BD, coil A1/A2 24V, aux 13-14/21-22/31-32/43-44 read directly); plc/CCW_VARIABLES_v4.0.txt:80 (O-02 coil); plc/Prog_init_ConvSimple_v2.1.st:214 (vfd_run_permit reads O-02); review/photos/mlc_full.jpg + mlc_top_terminals.jpg + mlc_bottom_terminals.jpg (2026-07-11 — full-resolution terminal read)
+    note: >
+      CORRECTED V4 from photo: the earlier "safety POWER contactor / power poles on E-003" was an
+      inference error — the physical 'MLC' device is a TeSys CA3K CONTROL RELAY (aux contacts only,
+      no main poles). Coil A1/A2 + 24 VDC now verified. Aux-contact destinations = FIELD VERIFY
+      (OI-26). A separate 3-phase motor contactor upstream of the GS10 = FIELD VERIFY (OI-21; none
+      observed in the 2026-07-11 photos). Full-res photo confirms coil A1/A2 wired and NO contacts
+      13-14 & 43-44 in use (NC 21-22/31-32 appear unused); contact destinations FIELD VERIFY
+      (OI-26).
+      V6: MLC is the single-phase drive-supply contactor (technician-confirmed 2026-07-11), not out
+      of the power path — reverses the V4 removal; device is still a CA3K control relay used within
+      its contact rating for the small drive (P00.01=1.60 A).
+      CR-2: Schneider TeSys CA3KN22BD catalog rating: Ith = 10 A conventional thermal current,
+      classed for AC-15/DC-13 pilot (control-circuit) duty — NOT a power-circuit-rated contactor.
+      Used well within its thermal rating for the ~1.6 A drive; OI: confirm suitability for the
+      switched inrush (see OI-26, aux-contact destinations).
+
+  - tag: PL1
+    type: pilot_light
+    role: Green RUNNING pilot — load of O-00 (LightGreen)
+    evidence: verified
+    source: plc/CCW_VARIABLES_v4.0.txt:78
+    note: Device model + lamp terminals FIELD VERIFY.
+
+  - tag: PL2
+    type: pilot_light
+    role: Red FAULT/E-STOP pilot — load of O-01 (LightRed)
+    evidence: verified
+    source: plc/CCW_VARIABLES_v4.0.txt:79; plc/GS10_Integration_Guide.md (Lineage-A fault_lamp)
+    note: Device model + lamp terminals FIELD VERIFY.
 
   - tag: X1
     type: terminal_block

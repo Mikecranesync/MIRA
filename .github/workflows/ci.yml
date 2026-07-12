@@ -236,6 +236,16 @@ jobs:
         # provenance preserved; proposed + idempotent. Hermetic, no DB.
         run: pytest tests/test_wiring_schematic_import.py -v
 
+      - name: Machine Print Pack (build determinism + commercial validator)
+        # Guards machine-print-pack/build/{build_pack,validate_pack}.py — the
+        # deterministic Print Pack build (text/data artifacts byte-identical on
+        # rebuild) + the M–R commercial bundle validator, against the committed
+        # CV-101 example bundle (the golden reference IS the graded PR #2631 package).
+        # Renders via PyMuPDF; redacts via Pillow — deps not in the job-level install.
+        run: |
+          pip install pyyaml pymupdf pillow
+          pytest tests/test_machine_print_pack.py -v
+
       - name: Deploy-target guard (staging deploy must rebuild the bot)
         # Guards the 2026-07-08 staging drift (#2557): deploy-staging.yml's
         # default TARGETS must include mira-bot-telegram and must name only

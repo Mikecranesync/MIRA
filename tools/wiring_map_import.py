@@ -155,7 +155,6 @@ def load_wiring_rows(model_dir: Path, asset: str = _DEFAULT_ASSET) -> list[Wirin
     terminals_doc = _load_yaml(model_dir / "terminals.yaml")
     devices_doc = _load_yaml(model_dir / "devices.yaml")
 
-    sheet = wires_doc.get("sheet", "")
     signal_family = wires_doc.get("signal_family", "")
     verified_terms = _verified_terminal_index(terminals_doc)
     device_types = {
@@ -174,6 +173,10 @@ def load_wiring_rows(model_dir: Path, asset: str = _DEFAULT_ASSET) -> list[Wirin
         signal = w.get("signal", "")
         wire_type = w.get("type", "")
         model_status = w.get("status", "")
+        # Multi-sheet registry (E-003/E-004/E-005/E-006): each conductor carries its
+        # own `sheet:` field. Fall back to a top-level `sheet:` for back-compat with
+        # any single-sheet model that predates the registry restructure.
+        sheet = w.get("sheet") or wires_doc.get("sheet", "")
 
         fclass = classify_function(signal, wire_type)
         if fclass not in _VALID_FUNCTION_CLASSES:  # defensive; classify never returns other

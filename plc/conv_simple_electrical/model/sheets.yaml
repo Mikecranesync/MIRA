@@ -1,39 +1,209 @@
 # The print set for Conv_Simple / CV-101. One sheet = one circuit family.
 # status: drafted | stub (planned, not yet drawn)
+#
+# annotations: per-sheet engineering text (single source of truth — the renderer
+# only lays these out, it never originates engineering content):
+#   caveat:  list of strings -> red-bordered caveat box
+#   safety:  list of strings -> SAFETY block (red where the text says NOT/never)
+#   notes:   list of strings -> NOTES block
+#   sources: list of strings -> SOURCES block
 project: Conv_Simple
 asset: CV-101
 revision: A
 sheets:
   - id: E-001
     title: Cover / legend / device schedule
-    status: stub
+    status: drafted
+    scope: Cover / legend / device schedule / wire-numbering key / sheet index
+    annotations:
+      safety:
+        - "LOTO + wait ≥5 min for DC-bus discharge before touching (WI p.2 §2)."
+        - "Monitored e-stop is NOT a safety stop — hardwire S0 to remove drive power per NFPA 79 / EN 60204-1 (style law §7; docs/references/industrial-wiring-diagram-standards.md)."
+      notes:
+        - "LINE-STYLE LEGEND, red: red marks EITHER FIELD-VERIFY status (a dashed, unverified conductor/device or an unverified wire-number tag) OR a safety-critical prohibition (a NOT/never instruction inside a sheet's SAFETY block, e.g. 'a monitored input is NOT a safety stop') — same color, two distinct meanings distinguished by context (dashed line vs. SAFETY-block bullet). This is intentional package-wide convention, not per-sheet drift."
   - id: E-002
     title: Power one-line
-    status: stub
+    status: drafted
+    subtitle: "230 V 1φ supply → CB1 → Q1/MLC → VFD1 (GS10) → M1 · branch tap → PS1 (24 VDC control, E-004)"
+    scope: >
+      Single-line summary of the CV-101 power distribution — one line per circuit,
+      device symbols, conductor-count tick marks, NO per-conductor wire numbers.
+      Map between E-003 (VFD power detail) and E-004 (24 VDC control power detail);
+      not a substitute for either.
+    model: model/e002_oneline.yaml
+    annotations:
+      caveat:
+        - "Summary sheet only — no wire numbers are assigned here (see the wire-numbering key on E-001). For per-conductor evidence and FIELD VERIFY status, use E-003 (VFD power) and E-004 (24 VDC control power)."
+      notes:
+        - "Conductor-count ticks (e.g. 2 ticks = '1φ, 2W') mark circuit conductor count only — not a conduit/cable schedule."
+        - "Supply is 230 V SINGLE-PHASE (2-wire), technician-confirmed 2026-07-11 — this sheet corrects the earlier 3-phase assumption."
+        - "PS1 branch is drawn as a tap off the same incoming supply; the exact AC leg/circuit feeding PS1 is FIELD VERIFY (OI-25)."
+      sources:
+        - "model/e002_oneline.yaml · review/PHOTO_EVIDENCE_V6.md (technician field correction 2026-07-11)"
   - id: E-003
-    title: VFD power (Q1 -> VFD1 -> M1)
-    status: stub
+    title: VFD power (CB1 -> VFD1 -> M1)
+    status: drafted
+    subtitle: "supply → CB1 → Q1/MLC (supply switch) → VFD1 (GS10) → M1 · 230 V 1φ in → 230 V 3φ to motor"
+    lineage: "terminals per GS10 UM 1st Ed Rev B"
+    scope: >
+      Upstream supply → branch protection (CB1) → Q1/MLC (single-phase drive-supply switch,
+      2 NO contacts) → VFD1 power input (R/L1, S/L2; T/L3 unused, 1φ) → motor output (U/T1,
+      V/T2, W/T3) → motor M1; PE bonding. Q1/MLC's NO contacts 13-14 & 43-44 ARE the power
+      path between CB1 and VFD1 (2026-07-11 technician field correction — reverses the earlier
+      "no motor contactor, CB1 feeds VFD1 directly" reading; OI-21 RESOLVED).
+    annotations:
+      caveat:
+        - "Supply is CONFIRMED 230 V single-phase (technician-confirmed 2026-07-11, review/PHOTO_EVIDENCE_V7.md) — R/L1, S/L2 only; T/L3 unused. Only the GS10 exact model/frame, breaker rating, and wire gauge remain NOT DOCUMENTED — every conductor FIELD VERIFY. P00.01 = 1.60 A (2026-05-20 export) is the only sizing clue."
+        - "MLC (Q1) is a control relay USED AS the single-phase drive-supply switch — its 2 NO contacts (13-14, 43-44) carry the 230 V 1φ supply into the GS10; coil A1/A2 from O-02 (E-006). Energizing O-02 powers the drive (technician-confirmed 2026-07-11)."
+      safety:
+        - "Never start/stop via input power (L1811-1813); CB1 is branch protection only, not a run/stop device."
+        - "LOTO + wait ≥5 min for DC-bus discharge before touching (WI p.2 §2)."
+        - "Monitored e-stop is NOT a safety stop — hardwire S0 to remove drive power per NFPA 79 / EN 60204-1."
+        - "PE resistance ≤0.1Ω (L1760-61); shield/conduit bonded both ends (L1792-95); RFI jumper in/out FIELD VERIFY (L1693-1718, OI-17)."
+      notes:
+        - "CB1 REQUIRED per GS10_UM L1758-1759 — type/rating unknown (OI-15)."
+        - "M1: swap any two motor leads to reverse — GS10_UM L1773-1776."
+        - "VFD control source = Modbus — see E-007. No control wiring on this sheet."
+        - "Supply is 230 V SINGLE-PHASE (2-wire); drive output = 230 V 3φ to a 230 V motor (technician-confirmed 2026-07-11)."
+        - "GS10 manual also warns against cycling a POWER-CIRCUIT switching device for normal run/stop — emergency situations only (GS10_UM.txt L1754-1757), same caution as L1811-1813 above. This applies to Q1/MLC (the device that powers the drive) exactly as it applies to CB1: normal run/stop is via Modbus (E-007), never by cycling Q1's coil."
+      sources:
+        - "plc/GS10_UM.txt (terminals L1971-1986; topology L1750-1813) · plc/GS10_Integration_Guide.md (Q1 phase-5 test)"
+        - "plc/Prog_init_ConvSimple_v2.1.st (vfd_run_permit) · plc/MIRA_PLC_WorkInstruction_v3.pdf (LOTO §2)"
+        - "photos review/photos/wire_1..4.jpg (2026-07-11, actual devices)"
+        - "review/PHOTO_EVIDENCE_V6.md (technician field correction 2026-07-11 — single-phase supply topology, MLC in power path)"
+        - "review/PHOTO_EVIDENCE_V7.md (technician confirmation 2026-07-11 — 230 V motor output, OI-27 resolved)"
   - id: E-004
     title: 24 VDC control power distribution (PS1)
-    status: stub
+    status: drafted
+    subtitle: "AC → PS1 (Mean Well 24V/1A) → DB1 +/- distribution block → +24V/0V to E-005, E-006 loads"
+    scope: >
+      AC supply → PS1 (Mean Well 24 VDC / 1.0 A DIN supply, verified device) →
+      DB1 (+/- push-in distribution block, verified to exist) → +24V / 0V control
+      power consumed as PS1.+24V / PS1.0V on E-005 (PLC digital inputs) and
+      E-006 (PLC outputs) — same electrical nodes, different sheet.
+    annotations:
+      caveat:
+        - "PS1 is a verified Mean Well DIN-rail supply (24 V / 1.0 A out, 100-240 VAC / 0.55 A in) — nameplate read directly (photo review/photos/wire_2.jpg, 2026-07-11). DB1 polarity (blue vs white = +24V vs 0V), circuit count, PS1 branch fusing, and PS1's AC input source (which leg/circuit feeds L, N) are FIELD VERIFY (OI-25)."
+      safety:
+        - "PS1 is fed from AC mains — LOTO + de-energize before opening the panel or metering DB1 (WI p.2 §2)."
+        - "Monitored e-stop is NOT a safety stop; de-energizing DB1/PS1 does not remove drive power — see E-003 for the drive supply isolation point."
+      notes:
+        - "DB1 is a push-in (WAGO-style), 2-level distribution block fed from PS1's +V/-V output; a bare-copper jumper bridges its top-left terminals in the photo (review/photos/dc_block_full.jpg) — internal jumpering/circuit count not documented."
+        - "PS1's DC-OK terminal (LED/relay status output) and PE input terminal are shown for reference only; neither carries a modeled conductor on this sheet."
+        - "PS1 enclosure/chassis ground and whether DC-0V is bonded to PE anywhere (SELV/PELV scheme vs intentionally floating) is NOT documented — FIELD VERIFY (OI-28)."
+        - "+24V / 0V downstream of DB1 feed the E-005 input rail (W24/W0V) and the E-006 output bank 0 feed/return (W600/W609) — same electrical nodes, different sheet."
+      sources:
+        - "photo review/photos/wire_2.jpg (2026-07-11 — Mean Well nameplate read directly)"
+        - "photo review/photos/dc_block_full.jpg + wire_1.jpg (2026-07-11 — DC distribution block)"
+        - "review/PHOTO_EVIDENCE_V4.md · review/PHOTO_EVIDENCE_V5.md (OI-25)"
   - id: E-005
     title: PLC digital inputs
     status: drafted          # <-- rendered first, per the new rule
     scope: Micro820 I-00..I-05 (+ spares I-06..I-11); E-stop, direction selector, run PB, photo-eye
+    annotations:
+      safety:
+        - "I-02/I-03 are MONITORED e-stop inputs only — a monitored input is NOT a safety stop. A compliant install must hardwire S0 to remove drive power (NFPA 79 / EN 60204-1, stop cat 0/1) (style law §7; docs/references/industrial-wiring-diagram-standards.md)."
+        - "De-energize + LOTO before metering."
+      notes:
+        - "READS (acceptance): +24 VDC starts at PS1 (E-004) → device contact shown → proposed wire # → PLC terminal I-0x → function/OPC tag → returns via COM0 → 0V (E-004). Verified vs field-verify marked per conductor."
+        - "VERIFIED (solid) = PLC terminal + function traced to the running program / Ignition OPC docs; FIELD VERIFY (dashed) = physical wiring not documented — meter it (see E-009 open items). Red is also used inside the SAFETY block above for a NOT/never prohibition (e.g. 'a monitored input is NOT a safety stop') — same color, a different meaning by context (see E-001 LINE-STYLE LEGEND note)."
+        - "COM0 input common — sink/source jumpering FIELD VERIFY (OI-02)."
+      sources:
+        - "plc/Prog_init_ConvSimple_v2.1.st · plc/ignition-project/.../MIRA_IOCheck/Inputs/tags.json"
+        - "plc/ccw/controller/Controller/LogicalValues.csv · plc/GS10_Integration_Guide.md"
   - id: E-006
     title: PLC outputs (O-00..O-06)
-    status: stub
+    status: drafted
+    subtitle: "O-00..O-06 · pilots, Q1/MLC control-relay coil, button lamp · GS10 control = HYBRID Modbus + hardwired I/O (E-007; map OI-22)"
+    lineage: "output map CCW v4.0 + live Prog_init v2.1; O-02 do-not-reuse (MIRA_PLC_WorkInstruction_v3.pdf §3) — see SAFETY"
+    scope: >
+      Micro820 outputs O-00..O-06 (banks +CM0/-CM0, +CM1/-CM1): PL1/PL2 pilots, Q1/MLC control-relay
+      coil, S2 lamp; O-04..O-06 spare. GS10 run/dir/freq = Modbus (E-007, P00.21=2); the GS10
+      control-terminal connector is ALSO populated on the bench (hybrid, not Modbus-only — map = OI-22).
+    note: >
+      Hardwired fallback documented in MIRA-WI-001 v3 §3 Fig 1 (DO_03..DO_07 → GS10 DI1..DI5 + DCM) —
+      NOT ACTIVE and NOT drawn: P02.0x at factory default per 2026-05-20 parameter export; DO_07 does not exist
+      on the 2080-LC20-20QBB (O-00..O-06); DO_03 collides with PBRunLED in the live I/O map. Bench presence of
+      any such wiring = FIELD VERIFY (OI-18). Correction: July-3 target sketch assumed CR relay → GS10 DI —
+      SUPERSEDED by P00.21=2 (RS-485 Modbus) + ContactorQ1 evidence. NOTE (2026-07-11): photo evidence shows
+      the GS10 control-terminal connector IS populated on the bench — control is HYBRID Modbus + hardwired
+      I/O; the specific WI-001 DO_03..DO_07 fallback pattern remains unconfirmed (OI-18) but "Modbus-only" is
+      no longer the working assumption — see OI-22.
+    annotations:
+      caveat:
+        - "Hardwired fallback documented in MIRA-WI-001 v3 §3 Fig 1 (DO_03..DO_07 → GS10 DI1..DI5 + DCM) — NOT ACTIVE and NOT drawn: P02.0x at factory default per the 2026-05-20 parameter export; DO_07 does not exist on the 2080-LC20-20QBB (O-00..O-06); DO_03 collides with PBRunLED in the live I/O map. Bench presence of any such wiring = FIELD VERIFY (OI-18)."
+      safety:
+        - "Monitored outputs are NOT a safety function."
+        - "E-stop must remove power per NFPA 79."
+        - "Q1/MLC is a CONTROL RELAY (24 VDC coil, driven by O-02) whose 2 NO contacts (13-14, 43-44) switch the drive's 230 V 1φ supply (V6 correction, E-003) — de-energizing O-02 DOES remove Q1's switched supply to the GS10. Q1 is NOT an NFPA-79/EN-60204-1 safety-rated disconnect (small control-relay contacts, not a lockable safety contactor); the e-stop (S0) → O-02 relationship is FIELD VERIFY (OI-26). Do not treat this circuit as the LOTO isolation point — always LOTO at CB1 or upstream."
+        - "O-02 is the sole MLC/Q1 drive-enable coil output — do not reuse it for any other load (MIRA_PLC_WorkInstruction_v3.pdf §3: \"DO_02 is already the MLC drive-enable coil and must never be reused\")."
+      notes:
+        - "Q1/MLC = Schneider TeSys CA3KN22BD control relay (2 NO + 2 NC, 24 VDC coil); coil A1(+)/A2(-) driven by O-02 (verified from photo wire_3). NO contacts 13-14/43-44 switch the VFD's 230 V 1φ supply (see E-003); 21-22/31-32 NC unused."
+        - "GS10 control (full-res photo): run/dir/speed = Modbus — top FWD/REV/DI connector is EMPTY, RJ45 landed. Bottom analog/output row (+10V/ACM/AI/AO1/DO1/DOC) is wired — likely speed reference + feedback. Map = OI-22."
+        - "NO contacts 13-14 & 43-44 switch the 230 V 1φ VFD supply (see E-003); coil A1/A2 from O-02. NC 21-22/31-32 unused."
+        - "GS10 run/dir/freq = Modbus — see E-007 (P00.20=1, P00.21=2 per 2026-05-20 parameter export)"
+        - "No as-built: O-00/O-01/O-03 from CCW v4.0; O-02 corroborated by live Prog_init v2.1."
+        - "Output bank technology + common feed = FIELD VERIFY (OI-09): WI-001 p.4 says relay dry contacts; ±CM polarity naming suggests DC-fed banks — conflicting evidence, resolve per 2080-IN009 + meter."
+        - "GS10 manual warns against cycling a power-circuit switching device for normal run/stop — emergency situations only (GS10_UM.txt L1754-1757, L1811-1813). This applies to Q1/MLC (energized by O-02, switches the drive's 230 V 1φ supply — see E-003): O-02/Q1 stays energized during normal operation; run/stop is commanded via Modbus (E-007), never by cycling Q1."
+        - "S2 lamp (this sheet, O-03/PBRunLED) and S2's run/rearm pushbutton contact (E-005, I-04) are two elements of the SAME physical device — same cross-reference symmetry as Q1/MLC's coil (this sheet) ↔ power contacts (E-003)."
+      sources:
+        - "CCW_VARIABLES_v4.0.txt"
+        - "Prog_init_ConvSimple_v2.1.st"
+        - "MIRA_PLC_WorkInstruction_v3.pdf"
+        - "GS10_actual_parameters_5.20.26.xlsx"
+        - "GS10_UM.txt"
+        - "photos review/photos/wire_1..4.jpg (2026-07-11, actual devices)"
+        - "full-res photos review/photos/*_full.jpg + crops (2026-07-11); review/PHOTO_EVIDENCE_V5.md"
   - id: E-007
     title: RS-485 Modbus (PLC1 Ch2 <-> VFD1 RJ45)
     status: drafted          # rebuilt from recovered CCW/MIRA_PLC CommsToVFD style, corrected values
     scope: Modbus-only. PLC1 embedded RS-485 (Ch2) D+/D-/SG/shield <-> VFD1 GS10 RJ45 pin5/4/3. NO FWD/REV/VI/ACM/FA.
     model: model/e007_rs485.yaml
+    lineage: "recovers MIRA-WI-001 / Conv_Simple_CommsToVFD §2"
     note: >
       Values reconciled to bench-verified: Channel 2 (not 0), SGND=pin 3 (not 1/8), 8N1 (not 8N2).
       Mostly VERIFIED (CommsToVFD + Beginner_Verify p48 + Prog_init v2.1); shield chassis point = field-verify.
+    annotations:
+      caveat:
+        - "CORRECTED from May-16 draft:  Channel 0 → 2   ·   SGND pin 1/8 → pin 3   ·   8N2 → 8N1.  Do not copy the old values."
+      notes:
+        - "Belden 3105A — shielded twisted pair (485+/485-) + 1 conductor (SGND) + drain"
+        - "VERIFIED (solid) = recovered CommsToVFD + Beginner_Verify p48 + Prog_init v2.1; FIELD VERIFY (dashed) = exact PLC chassis ground point; cable P/N if not Belden 3105A."
+        - "Port locations per CommsToVFD (PLC top-edge connector; GS10 front-face RJ45) — WI-001 says bottom-front. Wayfinding only; confirm on unit (FIELD VERIFY)."
+        - "GS10 RS-485 RJ45 cable confirmed landed (photo wire_4). The GS10 control connector (FWD/REV/DI/AI/AO1/DO1) is also wired — see OI-22."
+        - "GS10 RS-485 RJ45 confirmed landed (full-res photo). The GS10 top run/DI control connector is EMPTY — no hardwired run/dir; command is Modbus. Bottom analog/output row is wired (OI-22)."
+        - "GS10 run/freq source = Modbus: P00.20=1, P00.21=2 (2026-05-20 export; same fact as E-006)."
+        - "P09.09 (Response Delay) = 10.0 ms — program flags CRITICAL (default 2.0 ms → ErrorID-55): Prog_init_ConvSimple_v2.1.st:79."
+        - "120 ohm termination (SG+/SG- at GS10 end): often omitted on a <2 m bench run — presence is FIELD VERIFY, not confirmed here."
+      sources:
+        - "full-res photos review/photos/*_full.jpg + crops (2026-07-11); review/PHOTO_EVIDENCE_V5.md"
   - id: E-008
     title: Terminal strip (X1) + wire list
-    status: stub
+    status: drafted
+    subtitle: "Generated wire list — every conductor across E-003..E-007 (this sheet carries no wires of its own)"
+    scope: >
+      Full-package wire list, generated from wires.yaml (all sheets) and
+      e007_rs485.yaml. Reference/audit sheet — carries no conductors or devices
+      of its own; X1 (devices.yaml) is an existing field terminal strip whose
+      physical layout is undocumented.
+    annotations:
+      notes:
+        - "X1 (field terminal strip, devices.yaml) is where field devices land before the PLC. Its physical terminal-strip layout and numbering are NOT documented in any recovered source — FIELD VERIFY. This table lists the conductors on each side of it, indexed by their owning sheet — it is not X1's internal terminal map."
+        - "Rows are sorted by sheet, then wire number/label. VERIFIED (black) vs FIELD VERIFY (red) mirrors each conductor's status on its owning sheet — see that sheet for the drawn circuit and evidence."
+      sources:
+        - "model/wires.yaml · model/e007_rs485.yaml (generated — do not hand-edit this table; re-run emit after any model change)"
   - id: E-009
     title: Open items / field verification
-    status: stub            # generated from open_items.yaml
+    status: drafted          # generated from open_items.yaml
+    subtitle: "Generated from open_items.yaml — the formal field-verification docket"
+    scope: >
+      Every open item tracked across the print set, generated from
+      open_items.yaml. The docket a technician works during commissioning /
+      field verification; nothing may be drawn as a solid (verified) conductor
+      on any sheet until its open item is closed with evidence.
+    annotations:
+      notes:
+        - "RESOLVED items stay listed (grayed, not deleted) for traceability — see the item text for the resolving evidence and date."
+        - "Closing an open item requires evidence — a repo artifact citation or a bench measurement — not a re-assertion (see the model discipline note on E-001)."
+      sources:
+        - "model/open_items.yaml (generated — do not hand-edit this table; re-run emit after any model change)"

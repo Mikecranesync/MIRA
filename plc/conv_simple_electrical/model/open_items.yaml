@@ -34,3 +34,83 @@ items:
     sheet: E-005
     item: "Spares I-06..I-11 confirmed unused"
     verify: "Confirm no field wires land on I-06..I-11 (program shows none)."
+  - id: OI-09
+    sheet: E-006
+    item: "Output bank technology + common feeds. +CM0/-CM0/+CM1/-CM1 polarity naming suggests DC transistor banks; devices.yaml io line says 'relay DO' — conflict."
+    verify: "Resolve per 2080-IN009 + meter the bank feed (expect PS1 +24V/0V)."
+  - id: OI-10
+    sheet: E-006
+    item: "Q1 contactor identity — part number, coil voltage, pole count; coil terminal ids A1/A2 are PROPOSED."
+    verify: "Meter coil circuit from O-02."
+  - id: OI-11
+    sheet: E-006
+    item: "PL1/PL2 devices + lamp terminal ids (X1/X2 proposed); S2 lamp terminals."
+    verify: "Meter the light circuits and confirm device markings."
+  - id: OI-12
+    sheet: E-006
+    item: "Confirm no field wires on spare O-04..O-06 (+CM1 bank unused)."
+    verify: "Trace the PLC output block and verify no wires to O-04, O-05, O-06."
+  - id: OI-13
+    sheet: "E-005, E-006"
+    item: "Re-confirm input AND output map against the live Conv_Simple_1.8 CCW project; v4.0 vintage drift proven on I-05 'Entry sensor' vs live photo-eye."
+    verify: "Open the live Conv_Simple_1.8 CCW project and cross-check every I-xx and O-xx assignment against the drawn functions (I-05 drift already proven; O-02 has independent Prog_init corroboration)."
+  - id: OI-14
+    sheet: E-003
+    item: "Q1 contactor placement in the power chain (assumed line side of VFD1 per 'safety power'; could be elsewhere)."
+    verify: "Trace conductors on the bench; verify Q1 poles 1-6 actual locations. R-C surge absorber both ends recommended per GS10 manual."
+  - id: OI-15
+    sheet: E-003
+    item: "Supply voltage/receptacle + CB1 existence/type/rating (2-pole, single-phase 230 V branch breaker)."
+    verify: "Identify the bench supply; confirm CB1 device and rating. NEC and GS10 manual require upstream protection."
+  - id: OI-16
+    sheet: E-003
+    item: "GS10 exact model+frame (enables wire-gauge/fuse tables); M1 nameplate; conductor gauges; PE points + ground resistance ≤0.1Ω check."
+    verify: "Photograph GS10 nameplate and motor nameplate; measure PE resistance between drive/motor grounds and supply PE."
+  - id: OI-17
+    sheet: E-003
+    item: "RFI jumper in/out per grounding topology (symmetrical vs corner-grounded unknown)."
+    verify: "Determine bench PE bonding strategy; verify RFI jumpers per GS10_UM.txt L1693-1718 if present."
+  - id: OI-18
+    sheet: E-006
+    item: "Fallback DI wiring physical presence (expected ABSENT — P02.0x factory default)."
+    verify: "Trace the PLC output block; confirm zero hardwired leads to any GS10 digital inputs (fallback path should be unpopulated)."
+  - id: OI-19
+    sheet: "E-003, E-005, E-006"
+    item: "Wire-numbering convention adopted: W[sheet-digit][line-2d] (see wires.yaml convention + the E-001 key). E-005 renumbered W200..W205 → W500..W505. Rails (W24, W0V) and E-007 mnemonic labels (485+/485-/SGND/SH) are exempt. All numbers PROPOSED until as-built."
+    verify: "Read the actual wire markers on the panel; replace proposed W-numbers with as-built (mirror of OI-03)."
+  - id: OI-20
+    sheet: E-007
+    item: "GS10 comms line params: 2026-05-20 export = 38.4k/8N2 vs 2026-05-26 bench sniff = 9600/8N1 — adjudicate."
+    verify: "Fresh keypad readback of the GS10 serial config; update print if params differ from current 9600/8N1 assumption."
+  - id: OI-21
+    sheet: E-003
+    item: "RESOLVED (2026-07-11): no separate motor contactor — the MLC control relay IS the single-phase drive-supply switch (2 NO contacts). See E-003."
+    verify: "Confirm whether a separate motor contactor exists between CB1 and VFD1; the device labeled 'MLC' (Q1) is a Schneider TeSys CA3KN22BD CONTROL RELAY — it has no main power poles."
+  - id: OI-22
+    sheet: "E-006, E-007"
+    item: "GS10 control map (full-res photo): top run/DI connector (FWD/REV/DI3-5/+24V/DCM) confirmed EMPTY; bottom analog/output row (+10V/ACM/AI/AO1/DO1/DOC) confirmed WIRED. Identify which bottom-row terminals are used (speed reference +10V/AI/ACM vs feedback AO1/DO1/DOC) and to what. Confirm nothing on the top run/DI row."
+    verify: "Map which of FWD/REV/DI3/DI4/DI5/AI/AO1/DO1/DOC are landed and to what; reconcile hybrid Modbus + hardwired-terminal control."
+  - id: OI-23
+    sheet: panel
+    item: "Siemens CPU 1212C AC/DC/RLY (S7-1200) observed on the panel (photo wire_2) — role vs CV-101 unknown."
+    verify: "Confirm whether the Siemens CPU 1212C controls any CV-101 function before referencing it on any CV-101 sheet; not drawn until evidenced."
+  - id: OI-24
+    sheet: panel
+    item: "Device labeled \"PMC 192.x\" observed on the panel (photo wire_2)."
+    verify: "Identify the device (network device / meter?) and its relationship, if any, to CV-101."
+  - id: OI-25
+    sheet: E-004
+    item: "DC +/- distribution block: which color (blue vs white) is +24V vs 0V, circuit count, PS1 branch fusing; PLUS PS1's AC input source — which leg/circuit feeds L and N (120 V leg vs the 230 V 1φ supply) is not documented."
+    verify: "Trace/meter the distribution block conductors against PS1 +V/-V output; confirm color-to-polarity mapping, circuit count, and any branch fusing (photo wire_1/wire_2). Separately, identify the branch circuit feeding PS1.L/PS1.N and its voltage (single leg of the 230 V 1φ supply, or a dedicated 120 V circuit)."
+  - id: OI-26
+    sheet: E-006
+    item: "MLC (Q1) aux contacts (full-res photo): coil A1/A2 wired + NO contacts 13-14 & 43-44 in use confirmed; NC 21-22/31-32 appear unused. Trace where 13-14 and 43-44 land in the control circuit."
+    verify: "Trace each aux contact to its destination in the control circuit; confirm function (e.g., interlock feedback, seal-in, indicator)."
+  - id: OI-27
+    sheet: E-003
+    item: "RESOLVED (2026-07-11): motor is 230 V (technician-confirmed) — the GS10 is a standard 230 V 1φ-in / 230 V 3φ-out drive; the earlier reported 480 V was a misstatement. E-003 letters 230 V 3φ output."
+    verify: "Closed by technician confirmation — review/PHOTO_EVIDENCE_V7.md §3 ('it's 230'), not PHOTO_EVIDENCE_V6.md (which predates this confirmation and still shows 480 V/pending). Exact GS10 model/frame still tracked under OI-16 (for wire-gauge/fuse tables)."
+  - id: OI-28
+    sheet: E-004
+    item: "PS1 enclosure/chassis ground and DC-0V-to-PE bonding not documented — is PS1's DIN-rail/enclosure bonded to PE, and is the 24 VDC 0V rail (DB1 0V-bus) intentionally tied to PE anywhere (SELV/PELV grounding scheme), or left floating?"
+    verify: "Meter PS1 enclosure/DIN rail to the PE bus for continuity; meter DB1 0V-bus to the PE bus for continuity/resistance; confirm whether a deliberate 0V-PE bond exists or the 24 VDC system is intentionally floating."
