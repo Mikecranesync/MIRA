@@ -1,0 +1,2 @@
+timeout=0.001s → block='' (PASS: graceful empty)
+timeout=3.0s → has_block=True
